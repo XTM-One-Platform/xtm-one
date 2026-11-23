@@ -19,7 +19,12 @@ a dry run unless ``apply`` is set) and it reconciles them both ways:
   rule for the reconcile and the sync, so an emptied profile against a
   non-empty OpenCRQ is always proposed the import;
 - a jewel whose ``opencrq_asset_id`` OpenCRQ no longer holds is reported,
-  never removed.
+  never removed;
+- a link never makes a typed jewel an OpenCRQ row (#1473): it stays a typed
+  row carrying ``opencrq_asset_id``, which no sync removes; a synced jewel
+  whose criticality is pushed below the sync's threshold becomes such a typed
+  row (``kept_below_sync_threshold``), so the sync never removes a jewel for
+  a criticality the reconcile wrote.
 
 :func:`plan_sync` is the pure rule; :func:`run_sync` reads OpenCRQ through
 the company-managed integration with a token minted for the administrator,
@@ -55,10 +60,12 @@ class SyncPlan:
     pulled: list[tuple[str, str]] = field(default_factory=list)  # (asset id, name)
     ambiguous: list[str] = field(default_factory=list)  # jewel names matching several assets
     stale: list[tuple[str, str]] = field(default_factory=list)  # (jewel, asset id OpenCRQ lacks)
+    #: Synced jewels whose pushed criticality falls below the sync's threshold: kept as typed rows (#1473).
+    released: list[tuple[str, str]] = field(default_factory=list)  # (jewel, asset id)
 
     @property
     def profile_changed(self) -> bool:
-        return bool(self.linked or self.pulled)
+        return bool(self.linked or self.pulled or self.released)
 
     @property
     def in_sync(self) -> bool:
@@ -72,6 +79,7 @@ class SyncPlan:
             "pulled_from_opencrq": [{"opencrq_asset_id": a, "name": n} for a, n in self.pulled],
             "ambiguous": list(self.ambiguous),
             "not_in_opencrq": [{"crown_jewel": j, "opencrq_asset_id": a} for j, a in self.stale],
+            "kept_below_sync_threshold": [{"crown_jewel": j, "opencrq_asset_id": a} for j, a in self.released],
             "in_sync": self.in_sync,
         }
 
@@ -122,6 +130,15 @@ def plan_sync(
                 wanted = TO_OPENCRQ[jewel.criticality]
                 if str(asset.get("criticality") or "").lower() != wanted:
                     plan.pushed.append((asset_id, _asset_name(asset), wanted))
+                    if jewel.source == "opencrq" and OPENCRQ_LEVELS.index(wanted) < OPENCRQ_LEVELS.index(
+                        min_criticality
+                    ):
+                        # The crown-jewel sync would no longer read the asset and remove the
+                        # row: the jewel becomes a typed row linked to its asset (#1473).
+                        jewel = jewel.model_copy(
+                            update={"source": "manual", "external_id": "", "sync_id": "", "opencrq_asset_id": asset_id}
+                        )
+                        plan.released.append((jewel.name, asset_id))
         jewels.append(jewel)
 
     named = {j.name.casefold() for j in jewels}

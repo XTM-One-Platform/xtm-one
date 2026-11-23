@@ -45,6 +45,10 @@ class OrganizationContextResponse(BaseModel):
     author_user_id: str | None
     profile: dict[str, Any]
     missing_fields: list[str]
+    #: On a save: list field -> the names of the rows it held in the version before and no longer holds (#1473).
+    removed_rows: dict[str, list[str]] = {}
+    #: The provenance a version keeps (a restore names the version it restored from, #1473).
+    sources: dict[str, Any] | None = None
 
 
 class OrganizationContextVersionSummary(BaseModel):
@@ -62,6 +66,16 @@ class SaveOrganizationContextRequest(BaseModel):
     source: Literal["form", "draft", "api", "ai_draft"] = "form"
     #: With ``ai_draft``: the accepted proposals' provenance, field -> ``{source, basis}``.
     sources: dict[str, dict[str, str]] | None = None
+    #: The version the profile was edited from: another version saved since answers 409, nothing saved (#1473).
+    #: Omitted: no check (a client written before it).
+    based_on_version: int | None = None
+
+
+class RestoreOrganizationContextRequest(BaseModel):
+    #: The profile fields to take from the past version (e.g. ``crown_jewels``); empty: every field.
+    fields: list[str] = []
+    #: The current version the restore starts from: another version saved since answers 409.
+    based_on_version: int | None = None
 
 
 class OpenCrqSyncRequest(BaseModel):
@@ -107,7 +121,9 @@ class DraftOrganizationContextResponse(BaseModel):
     missing_fields: list[str]
 
 
-def _response(row: OrganizationContextVersion | None) -> OrganizationContextResponse:
+def _response(
+    row: OrganizationContextVersion | None, removed_rows: dict[str, list[str]] | None = None
+) -> OrganizationContextResponse:
     profile = org_context.parse_profile(row.profile if row else {})
     return OrganizationContextResponse(
         version=row.version if row else None,
@@ -116,7 +132,24 @@ def _response(row: OrganizationContextVersion | None) -> OrganizationContextResp
         author_user_id=str(row.author_user_id) if row and row.author_user_id else None,
         profile=profile.model_dump(mode="json"),
         missing_fields=org_context.missing_fields(profile),
+        removed_rows=removed_rows or {},
+        sources=row.sources if row else None,
     )
+
+
+def _stale_base(based_on_version: int | None, current: OrganizationContextVersion | None) -> None:
+    """409 when *based_on_version* is given and another version was saved since (#1473)."""
+    if based_on_version is None:
+        return
+    latest = current.version if current is not None else None
+    if latest != based_on_version:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"The profile changed since version {based_on_version} "
+                f"(now version {latest}). Reload and apply your change again: nothing was saved."
+            ),
+        )
 
 
 @router.get("", response_model=OrganizationContextResponse)
@@ -235,6 +268,32 @@ async def list_organization_context_versions(
     ]
 
 
+async def _checked_profile(
+    db: AsyncSession, admin: User, stored: dict[str, Any] | None, profile: org_context.OrganizationProfile
+) -> org_context.OrganizationProfile:
+    """The checks every hand save runs (form PUT and restore, #1473): 422 on the first problem.
+
+    Links between lists (``check_links``), the #1367 lock on synced rows, the
+    ticketing target; then each PIR is stored with its OpenCTI name (#11589).
+    """
+    from app.services.ctem_ticketing import target_problem
+    from app.services.organization_assets_import import check_links
+    from app.services.organization_context_draft import name_saved_pirs
+    from app.services.organization_context_locks import synced_edit_problems
+
+    problems = check_links(profile)
+    if problems:
+        raise HTTPException(status_code=422, detail=problems[0])
+    # A synced row is read-only by hand on every surface: only its local fields change (#1367).
+    locked = synced_edit_problems(stored, profile.model_dump(mode="json"))
+    if locked:
+        raise HTTPException(status_code=422, detail=locked[0])
+    ticketing_problem = await target_problem(db, profile)
+    if ticketing_problem:
+        raise HTTPException(status_code=422, detail=ticketing_problem)
+    return await name_saved_pirs(db, user_id=admin.id, profile=profile)
+
+
 @router.put("", response_model=OrganizationContextResponse)
 async def save_organization_context(
     body: SaveOrganizationContextRequest,
@@ -242,9 +301,6 @@ async def save_organization_context(
     admin: User = Depends(require_admin),
 ) -> OrganizationContextResponse:
     """Save *body.profile* as the next version (administrators); 422 names the bad field."""
-    from app.services.organization_assets_import import check_links
-    from app.services.organization_context_draft import name_saved_pirs
-
     submitted = dict(body.profile or {})
     # #1383: the reference exchange rates are set by API or by an agent, not by the
     # settings form; #1432: the shipped products likewise until a form sends them.
@@ -259,24 +315,10 @@ async def save_organization_context(
         profile = org_context.parse_profile(submitted)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
-    problems = check_links(profile)
-    if problems:
-        raise HTTPException(status_code=422, detail=problems[0])
-    # A synced row is read-only by hand on every surface: only its local fields change (#1367).
-    from app.services.organization_context_locks import synced_edit_problems
-
     current = await org_context.current_version(db)
+    _stale_base(body.based_on_version, current)
     stored = org_context.parse_profile(current.profile).model_dump(mode="json") if current is not None else None
-    locked = synced_edit_problems(stored, profile.model_dump(mode="json"))
-    if locked:
-        raise HTTPException(status_code=422, detail=locked[0])
-    from app.services.ctem_ticketing import target_problem
-
-    ticketing_problem = await target_problem(db, profile)
-    if ticketing_problem:
-        raise HTTPException(status_code=422, detail=ticketing_problem)
-    # Every save stores each PIR with its OpenCTI name, whoever sent the ids (form, drafts, API; #11589).
-    profile = await name_saved_pirs(db, user_id=admin.id, profile=profile)
+    profile = await _checked_profile(db, admin, stored, profile)
     try:
         row = await org_context.save_version(
             db,
@@ -292,7 +334,62 @@ async def save_organization_context(
             status_code=409, detail="Another version was saved at the same time. Reload and save again."
         ) from None
     await db.refresh(row)
+    return _response(row, org_context.removed_rows(stored, profile.model_dump(mode="json")))
+
+
+@router.get("/versions/{version}", response_model=OrganizationContextResponse)
+async def get_organization_context_version(
+    version: int,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+) -> OrganizationContextResponse:
+    """One saved version's full profile (administrators, #1473); 404 when it does not exist."""
+    row = await org_context.get_version(db, version)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Version {version} of the organization profile does not exist.")
     return _response(row)
+
+
+@router.post("/versions/{version}/restore", response_model=OrganizationContextResponse)
+async def restore_organization_context_version(
+    version: int,
+    body: RestoreOrganizationContextRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> OrganizationContextResponse:
+    """Save the next version with *body.fields* taken from version *version* (administrators, #1473).
+
+    The current profile keeps every other field; the saved version's
+    provenance names each restored field ``restored from v<version>``. 404
+    for an unknown version, 422 for an unknown field, 409 when
+    ``based_on_version`` is not the current version.
+    """
+    past = await org_context.get_version(db, version)
+    if past is None:
+        raise HTTPException(status_code=404, detail=f"Version {version} of the organization profile does not exist.")
+    current = await org_context.current_version(db)
+    _stale_base(body.based_on_version, current)
+    stored = org_context.parse_profile(current.profile if current else {}).model_dump(mode="json")
+    old = org_context.parse_profile(past.profile).model_dump(mode="json")
+    try:
+        merged, fields = org_context.restored_profile(stored, old, body.fields)
+        profile = org_context.parse_profile(merged)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    # A restore is a hand save: the same checks as PUT (links, synced-row lock, ticketing, PIR names).
+    profile = await _checked_profile(db, admin, stored if current is not None else None, profile)
+    basis = f"restored from v{version} by an administrator"
+    sources = {name: {"source": f"restored from v{version}", "basis": basis} for name in fields}
+    try:
+        row = await org_context.save_version(db, profile, source="api", author_user_id=admin.id, sources=sources)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409, detail="Another version was saved at the same time. Reload and restore again."
+        ) from None
+    await db.refresh(row)
+    return _response(row, org_context.removed_rows(stored, profile.model_dump(mode="json")))
 
 
 class EnterpriseKnowledgeLink(BaseModel):
@@ -1202,7 +1299,7 @@ async def apply_organization_import(
     if body.based_on_version is not None and body.based_on_version != version:
         raise HTTPException(status_code=409, detail="The profile changed since the preview. Preview again.")
     response = ImportPreviewResponse(based_on_version=version, plan=plan.as_dict())
-    removes = plan.remove_gone and bool(plan.gone)
+    removes = plan.remove_gone and len(plan.gone) > len(plan.gone_kept)
     if not (plan.new or plan.updated or removes) or plan.profile is None:
         if not plan.error and plan.software:
             # An endpoint source (#1251): only the software changed (a re-run with new versions).
