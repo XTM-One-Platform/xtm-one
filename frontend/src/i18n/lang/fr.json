@@ -20565,6 +20565,8 @@
   "Threat package drafted, coverage not requested yet": "Paquet de menace rédigé, couverture pas encore demandée",
   "Threat package drafted, not validated: coverage not sent to OpenAEV": "Paquet de menace rédigé, non validé : couverture non envoyée à OpenAEV",
   "Threat package validated, coverage not requested yet": "Paquet de menace validé, couverture pas encore demandée",
+  "Review answered without approval: the package waits for a new plan, coverage not sent to OpenAEV": "Revue répondue sans approbation : le paquet attend un nouveau plan, couverture non envoyée à OpenAEV",
+  "Review refused the package: not published, coverage not sent to OpenAEV": "La revue a refusé le paquet : non publié, couverture non envoyée à OpenAEV",
   "Coverage requested in OpenCTI": "Couverture demandée dans OpenCTI",
   "Still in a draft past the case SLA: validate it in OpenCTI or answer the review": "Toujours dans un brouillon après le SLA du cas : validez-le dans OpenCTI ou répondez à la revue",
   "Context: {value}": "Contexte : {value}",

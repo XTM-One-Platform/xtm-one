@@ -20565,6 +20565,8 @@
   "Threat package drafted, coverage not requested yet": "脅威パッケージを作成しました。カバレッジはまだ要求していません",
   "Threat package drafted, not validated: coverage not sent to OpenAEV": "脅威パッケージは下書きのまま未検証です。カバレッジは OpenAEV に送信されていません",
   "Threat package validated, coverage not requested yet": "脅威パッケージを検証しました。カバレッジはまだ要求していません",
+  "Review answered without approval: the package waits for a new plan, coverage not sent to OpenAEV": "レビューは承認なしで回答されました。パッケージは新しい計画を待っています。カバレッジは OpenAEV に送信されていません",
+  "Review refused the package: not published, coverage not sent to OpenAEV": "レビューでパッケージが却下されました。公開されず、カバレッジは OpenAEV に送信されていません",
   "Coverage requested in OpenCTI": "OpenCTI でカバレッジを要求しました",
   "Still in a draft past the case SLA: validate it in OpenCTI or answer the review": "ケースの SLA を過ぎても下書きのままです。OpenCTI で検証するか、レビューに回答してください",
   "Context: {value}": "コンテキスト: {value}",
