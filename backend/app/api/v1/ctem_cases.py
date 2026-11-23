@@ -31,6 +31,7 @@ from app.core.redis import redis_client
 from app.models.ctem_case import CASE_STATES
 from app.models.user import User
 from app.services import ctem_case_audit_view as case_audit_view
+from app.services import ctem_case_gate_records_view as case_gates_view
 from app.services import ctem_case_loop as case_loop
 from app.services import ctem_case_routing as case_routing
 from app.services import ctem_case_versions as case_versions
@@ -45,16 +46,7 @@ from app.services.organizations import get_primary
 
 router = APIRouter()
 
-CaseState = Literal[
-    "new",
-    "analyzing",
-    "waiting_decision",
-    "remediating",
-    "validating",
-    "mitigated_watching",
-    "resolved",
-    "accepted_risk",
-]
+CaseState = Literal["needs_attention", "in_progress", "mitigated_watching", "resolved", "accepted_risk"]
 
 
 class CaseValidation(BaseModel):
@@ -193,11 +185,6 @@ async def list_ctem_cases(
         limit=limit,
         offset=offset,
     )
-    # The CTEM phase of each case on the page and what it waits on (#1503): the list groups by
-    # phase, the Kanban lays its columns out by it, a case waiting for decision says on whom.
-    history = await store.events_of(db, [uuid.UUID(row["id"]) for row in rows])
-    for row in rows:
-        row.update(view_of.case_position(history.get(uuid.UUID(row["id"]), []), view))
     return {
         "vertical": vertical,
         "counts": {s: counts.get(s, 0) for s in CASE_STATES},
@@ -451,9 +438,13 @@ async def get_ctem_case(
     (case, _, _), rendered = shown
     # The audit trail (#1490): each event with its CTEM phase, autonomy class and actor, and the phases.
     audit = await case_audit_view.audit_trail(db, rendered.get("history") or [], viewer_id=user.id)
+    # One resolved decision record per gate (#1518): the decision row joined with the gate events;
+    # the waiting gate events of the history carry the same record in ``answer``.
+    gate_records = await case_gates_view.gate_records(db, str(case.id), audit["history"], viewer_id=user.id)
     return {
         **rendered,
         **audit,
+        "gates": gate_records,
         # The versions the case's product runs on the assets (#1252), never a typed tech stack version.
         "running_versions": await case_versions.for_case(db, case),
         # The assets its visible issues name, with the version each runs from the inventory (#1176 slice 3b).
