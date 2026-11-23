@@ -56,6 +56,18 @@ a first patched version the case is an upgrade in that repository, keyed
 <version> in <repository>". `fixed`, `dismissed` and `auto_dismissed` close its
 members as Aikido's `issue.closed` does. Read-only: nothing is written to GitHub.
 
+A GitHub repository security advisory the organization published on one of its
+repositories (#1410) is a vulnerability in a product it ships: a path 1 signal
+(`new_vulnerability`, lens `inside`, subject kind `vulnerability`) keyed
+`<repository id>:<GHSA id>`. Only `repository_advisory.published` with the
+advisory's own `state` at `published` records one: a private report in triage
+(`reported`), a draft or a withdrawn advisory records nothing. The subject is
+the CVE id when the advisory has one, else its GHSA id, so the same CVE seen
+from OpenCTI lands on the same subject (related signals, one case per fix). The
+evidence names the GHSA and CVE ids, severity, CVSS score, summary, advisory
+link, affected packages with their vulnerable range and patched versions, and
+writes the repository to `evidence.assets` as for a Dependabot alert.
+
 ## 2bis. Signal sources (the dialog of the command center)
 
 `GET /api/v1/ctem-signals/paths` also names, per path, what fires it

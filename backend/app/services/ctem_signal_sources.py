@@ -80,6 +80,7 @@ PATH_SOURCES: dict[str, tuple[Source, ...]] = {
     "new_vulnerability": (
         Source("opencti", "listener", "A vulnerability is created or updated, or linked to one of your assets"),
         Source("opencti", "pir_playbook", "The PIR playbook flags a vulnerability in one of your PIRs"),
+        Source("github", "listener", "A security advisory is published on one of your repositories"),
     ),
     "relevant_threat": (
         Source("opencti", "listener", "An intrusion set, threat actor, campaign or malware is created or updated"),
