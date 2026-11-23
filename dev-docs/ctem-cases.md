@@ -225,8 +225,28 @@ same way.
   up to `asset_count`;
 - with no fixed version: `fixed_version_checked` names the sources looked in
   (section 4.2bis, steps 1 and 2); nothing asks the user to type a version.
+- per platform (#1572): a row is one (version, `platform`), the platform
+  being the asset's `fields.os_family` (Intune, Defender, OpenAEV fill it;
+  `null` when unknown; read by a join on the software rows of the case's
+  product keys, never an IN list of asset ids, so no estate size reaches the
+  driver's bind cap), with its `asset_ids` (at most 20, `more_asset_ids`
+  counts the rest). Each asset is compared with the fixed version of its own
+  platform: `fixed_versions` `{platform: version}` when the remediation names
+  one (the row then carries its `fixed_version`), else the case's generic
+  `fixed_version`. A platform the per-platform map does not name, or a generic
+  fix over assets of several platforms (`platform_unverified` true), is never
+  read as fixed: an asset not below it is `not_comparable` with
+  `status_reason` "fix not known for this platform" (counted in
+  `assets_fix_not_known_for_platform`), so the case never leaves the scope on
+  the inventory. One platform with a generic fix behaves as before. The answer
+  also gives `platforms`, `assets_multi_version` (distinct assets running more
+  than one version), `version_row_asset_sum` and `version_rows_note`: the rows
+  may sum above `asset_count` because an asset running two versions is in each
+  row, while the three status totals still add up to `asset_count`. The
+  per-platform map is not yet sourced from OpenCTI (slice 2 of #1572); the
+  version match line names the platform (`36.0 (macOS) on 2 asset(s)`).
 
-Two grouped reads, in a savepoint: an unreadable store answers `null`, never a
+Two grouped reads and one platform read, in a savepoint: an unreadable store answers `null`, never a
 failed case read. Versions compare with `ctem_fixed_version.compare_versions`.
 
 ### 4.2quater Affected assets on the case read
@@ -254,8 +274,9 @@ outside the inventory is no link (CTEM-20-UI).
 **Leaving the scope.** At every recompute (`ctem_cases_store.apply_recompute`)
 an upgrade case with a known fixed version, open or resolved, is checked
 against the inventory (`ctem_case_versions.fixed_in_inventory`): when every
-asset running the product runs the fixed version or later (`all_on_fixed`: at
-least one asset on it, none below, none `unknown` or unreadable), the case
+asset running the product runs the fixed version of its platform or later
+(`all_on_fixed`: at least one asset on it, none below, none `unknown` or
+unreadable, not `platform_unverified`), the case
 leaves the scope. An open case resolves with the evidence "every asset running
 the product runs the fixed version or later (asset inventory)" and resolution
 kind `fixed`; a resolved case is not reopened by member issues that stay open
