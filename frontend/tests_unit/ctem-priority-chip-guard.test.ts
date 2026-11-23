@@ -19,6 +19,13 @@ describe("CTEM priority chips", () => {
     expect(source).toMatch(/CTEM_PRIORITY_CONFIG: Record<string, \{ label: string; tone: HotTone \}>/);
   });
 
+  it("label through the priority context keys, never the bare Medium (medium term in fr, es, ja)", async () => {
+    const source = await readFile(path.resolve(__dirname, "../src/lib/constants.ts"), "utf8");
+    for (const level of ["High", "Medium", "Low"]) {
+      expect(source).toContain(`label: "${level} (priority)"`);
+    }
+  });
+
   it("render through ToneBadge on every caller", async () => {
     for (const file of CALLERS) {
       const source = await readFile(path.join(PAGES, file), "utf8");

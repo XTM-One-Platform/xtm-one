@@ -2637,11 +2637,12 @@ export const CTEM_BAND_SCALE_TEXT =
  *  the ToneBadge tone it is drawn in (#1354), so the High / Medium / Low chip
  *  follows the pastel preference like every other CTEM chip (plain when pastel,
  *  outlined when standard) and looks identical on the Exposure Briefing page,
- *  the briefing card, Act now and Recommended actions. */
+ *  the briefing card, Act now and Recommended actions. The labels are context
+ *  keys: the bare "Medium" key means "medium term" in fr, es and ja. */
 export const CTEM_PRIORITY_CONFIG: Record<string, { label: string; tone: HotTone }> = {
-  high: { label: "High", tone: "red" },
-  medium: { label: "Medium", tone: "orange" },
-  low: { label: "Low", tone: "neutral" },
+  high: { label: "High (priority)", tone: "red" },
+  medium: { label: "Medium (priority)", tone: "orange" },
+  low: { label: "Low (priority)", tone: "neutral" },
 };
 
 /** Products that feed the CTEM command center. OpenCRQ is registration-driven
