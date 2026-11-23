@@ -90,6 +90,16 @@ interface InventoryEntryDialogProps {
   onSaved?: () => void;
 }
 
+/** The dialog's title per list and mode. @i18n-keys */
+const DIALOG_TITLES = {
+  assets_exposure: { add: "Add an asset", update: "Update the asset", bulk: "Update the selected assets" },
+  asset_groups: { add: "Add an asset group", update: "Update the asset group", bulk: "Update the selected asset groups" },
+} as const;
+
+function dialogTitle(section: InventorySection, mode: EntryDialogMode): string {
+  return DIALOG_TITLES[section][mode.kind];
+}
+
 export function InventoryEntryDialog({ section, mode, onOpenChange, onSaved }: InventoryEntryDialogProps) {
   const open = mode !== null;
   return (
@@ -101,6 +111,7 @@ export function InventoryEntryDialog({ section, mode, onOpenChange, onSaved }: I
 
 /** Reads the row an update starts from (one record, or the group from the group list), then mounts the form. */
 function EntryLoader({ section, mode, onClose, onSaved }: { section: InventorySection; mode: EntryDialogMode; onClose: () => void; onSaved?: () => void }) {
+  const { t_i18n } = useFormatter();
   const isGroup = section === "asset_groups";
   const groups = useAssetGroups();
   const record = useAssetRecord(!isGroup && mode.kind === "update" ? mode.id : undefined);
@@ -110,6 +121,9 @@ function EntryLoader({ section, mode, onClose, onSaved }: { section: InventorySe
     if (!row) {
       return (
         <DialogContent size="md" data-testid="ctem-entry-dialog">
+          <DialogHeader>
+            <DialogTitle>{t_i18n(dialogTitle(section, mode))}</DialogTitle>
+          </DialogHeader>
           <DialogBody className="space-y-3">
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-full" />
@@ -153,12 +167,7 @@ function EntryForm({
   const locked = (key: string) => mode.kind === "update" && Boolean(row) && !fieldEditable(section, row!, key);
   const lockedHelper = t_i18n("Set by the source that syncs this row.");
 
-  const title =
-    mode.kind === "add"
-      ? t_i18n(isGroup ? "Add an asset group" : "Add an asset")
-      : mode.kind === "update"
-        ? t_i18n(isGroup ? "Update the asset group" : "Update the asset")
-        : t_i18n(isGroup ? "Update the selected asset groups" : "Update the selected assets");
+  const title = t_i18n(dialogTitle(section, mode));
 
   const done = (locks: number, outcome?: RowsOutcome) => {
     if (outcome && outcome.refused.length > 0) {
