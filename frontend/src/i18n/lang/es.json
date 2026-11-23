@@ -21176,5 +21176,14 @@
   "What this reply suggestion setting does": "Qué hace este ajuste de sugerencias de respuesta",
   "On, the platform's routing model reads each answer and proposes one next message, greyed out in the message box. Tab puts it in the box, typing or Escape dismisses it, and nothing is sent until you press Enter. Off, no suggestion is generated for you.": "Activado, el modelo de enrutamiento de la plataforma lee cada respuesta y propone un próximo mensaje, en gris en el cuadro de mensaje. Tab lo coloca en el cuadro, escribir o Escape lo descarta, y no se envía nada hasta que pulse Intro. Desactivado, no se genera ninguna sugerencia para usted.",
   "Once an agent has answered, the routing model proposes the user's next message in the chat's message box (Tab to use it). Each user can turn it off in their profile.": "Cuando un agente ha respondido, el modelo de enrutamiento propone el próximo mensaje del usuario en el cuadro de mensaje del chat (Tab para usarlo). Cada usuario puede desactivarlo en su perfil.",
-  "Needs a routing model: with none set, no reply suggestion is generated.": "Requiere un modelo de enrutamiento: sin él, no se genera ninguna sugerencia de respuesta."
+  "Needs a routing model: with none set, no reply suggestion is generated.": "Requiere un modelo de enrutamiento: sin él, no se genera ninguna sugerencia de respuesta.",
+  "Shipped products": "Productos distribuidos",
+  "Source repositories": "Repositorios de código",
+  "owner/name, Enter to add": "propietario/nombre, Intro para añadir",
+  "Add a shipped product": "Añadir un producto distribuido",
+  "Paste shipped products": "Pegar productos distribuidos",
+  "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
+  "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "Los productos que distribuye su organización, con sus repositorios de código: una vulnerabilidad en uno de ellos se asocia a sus repositorios en CTEM.",
+  "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "Aún no hay productos distribuidos: una vulnerabilidad en un producto que distribuye queda sin resolver.",
+  "A repository is not owner/name": "Un repositorio no tiene la forma propietario/nombre"
 }

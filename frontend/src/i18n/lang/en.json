@@ -21176,5 +21176,14 @@
   "What this reply suggestion setting does": "What this reply suggestion setting does",
   "On, the platform's routing model reads each answer and proposes one next message, greyed out in the message box. Tab puts it in the box, typing or Escape dismisses it, and nothing is sent until you press Enter. Off, no suggestion is generated for you.": "On, the platform's routing model reads each answer and proposes one next message, greyed out in the message box. Tab puts it in the box, typing or Escape dismisses it, and nothing is sent until you press Enter. Off, no suggestion is generated for you.",
   "Once an agent has answered, the routing model proposes the user's next message in the chat's message box (Tab to use it). Each user can turn it off in their profile.": "Once an agent has answered, the routing model proposes the user's next message in the chat's message box (Tab to use it). Each user can turn it off in their profile.",
-  "Needs a routing model: with none set, no reply suggestion is generated.": "Needs a routing model: with none set, no reply suggestion is generated."
+  "Needs a routing model: with none set, no reply suggestion is generated.": "Needs a routing model: with none set, no reply suggestion is generated.",
+  "Shipped products": "Shipped products",
+  "Source repositories": "Source repositories",
+  "owner/name, Enter to add": "owner/name, Enter to add",
+  "Add a shipped product": "Add a shipped product",
+  "Paste shipped products": "Paste shipped products",
+  "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
+  "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.",
+  "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "No shipped product yet: a vulnerability on a product you ship stays unresolved.",
+  "A repository is not owner/name": "A repository is not owner/name"
 }
