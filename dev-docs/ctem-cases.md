@@ -516,6 +516,15 @@ then the existing AI assessment and facts grid unchanged.
   Due ascending (the most urgent case on top), `?sort=priority&dir=desc` in
   the URL; a click on the active column flips the direction, another column
   takes over the sort.
+- **Saved views (#1176)**: a "Views" pill beside Group by. Its panel lists the
+  views saved in this browser (`localStorage` key `xtm.ctem-cases.views`, 20 at
+  most, the oldest dropped) and saves the list as shown under a name: the state
+  tab `?state=` and the table parameters `?c_*` (filters, search, sort, page
+  size, grouping; never the page number; columns stay the table's own stored
+  choice). A click opens a view on page 1 (other URL parameters kept), the
+  trash deletes it, a name already used is replaced. One query, one view:
+  saving a list that a view already opens renames that view, so the pill,
+  accented, always names the view the list matches (`cases-saved-views.ts`).
 - **Grouping (#1176)**: a "Group by" pill at the right of the toolbar, the
   anatomy of Columns (a toolbar select is refused by the data-table gates):
   No grouping, Owner, State, Priority, Fix family; accented and named while
