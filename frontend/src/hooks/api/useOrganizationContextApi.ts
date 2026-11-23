@@ -52,6 +52,8 @@ export interface OrganizationProfile {
   crown_jewels: CrownJewel[];
   tech_stack: TechStackEntry[];
   ai_systems: AiSystem[];
+  /** What the organization ships, with its source repositories (#1432); absent when none is declared. */
+  shipped_products?: { product: string; vendor: string; cpe: string; repositories: string[] }[];
   pir_ids: string[];
   /** The last known OpenCTI name of each saved PIR (#9615). */
   pir_names?: Record<string, string>;

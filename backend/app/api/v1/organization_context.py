@@ -247,7 +247,8 @@ async def save_organization_context(
 
     submitted = dict(body.profile or {})
     # #1383: the reference exchange rates are set by API or by an agent, not by the
-    # settings form; #1432: the shipped products likewise until a form sends them.
+    # settings form; #1432: the form sends the shipped products (an empty list clears
+    # them), and a client that leaves the key out keeps the stored ones.
     # A save that does not send one keeps the stored value.
     kept = [key for key in ("fx_rates", "shipped_products") if key not in submitted]
     if kept:

@@ -21167,5 +21167,14 @@
   "{count, plural, one {# synced row kept the values its source sends} other {# synced rows kept the values their source sends}}": "{count, plural, one {# fila sincronizada conservó los valores que envía su fuente} other {# filas sincronizadas conservaron los valores que envía su fuente}}",
   "Keep as is": "Dejar como está",
   "{count, plural, one {Applies to # row. A synced row keeps the values its source sends.} other {Applies to # rows. A synced row keeps the values its source sends.}}": "{count, plural, one {Se aplica a # fila. Una fila sincronizada conserva los valores que envía su fuente.} other {Se aplica a # filas. Una fila sincronizada conserva los valores que envía su fuente.}}",
-  "Left empty, each row keeps its owner.": "Si se deja vacío, cada fila conserva su propietario."
+  "Left empty, each row keeps its owner.": "Si se deja vacío, cada fila conserva su propietario.",
+  "Shipped products": "Productos distribuidos",
+  "Source repositories": "Repositorios de código",
+  "owner/name, Enter to add": "propietario/nombre, Intro para añadir",
+  "Add a shipped product": "Añadir un producto distribuido",
+  "Paste shipped products": "Pegar productos distribuidos",
+  "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
+  "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "Los productos que distribuye su organización, con sus repositorios de código: una vulnerabilidad en uno de ellos se asocia a sus repositorios en CTEM.",
+  "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "Aún no hay productos distribuidos: una vulnerabilidad en un producto que distribuye queda sin resolver.",
+  "A repository is not owner/name": "Un repositorio no tiene la forma propietario/nombre"
 }

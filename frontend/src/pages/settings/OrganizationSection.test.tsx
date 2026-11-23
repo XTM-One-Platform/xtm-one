@@ -1,7 +1,7 @@
 // Settings > Organization (#8987): the profile every agent reads, its missing fields, the save and the OpenCRQ check.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import { api } from "@/lib/api";
@@ -346,6 +346,30 @@ describe("OrganizationSection", () => {
     await waitFor(() => expect(document.activeElement).toBe(rate));
     expect(rate).not.toBeDisabled();
     expect(screen.getByTestId("settings.save-bar")).toBeTruthy();
+  });
+
+  it("lists the shipped products on the Business tab, empty and filled, and marks a repository that is not owner/name (#1432)", async () => {
+    renderPage("business");
+    const card = await screen.findByTestId("settings.organization.shipped-products");
+    expect(card.textContent).toContain("No shipped product yet");
+    cleanup();
+    const base = get.getMockImplementation()!;
+    get.mockImplementation(async (path: string) =>
+      path === "/organization-context"
+        ? { ...CONTEXT, profile: { ...CONTEXT.profile, shipped_products: [{ product: "Acme Server", vendor: "Acme", cpe: "", repositories: ["acme/server"] }] } }
+        : base(path),
+    );
+    renderPage("business");
+    expect(await screen.findByText("acme/server")).toBeTruthy();
+    expect(screen.getAllByTestId("settings.organization.shipped-row")).toHaveLength(1);
+    fireEvent.click(screen.getByTestId("settings.organization.edit-shipped_products"));
+    fireEvent.click(await screen.findByRole("button", { name: /Add a shipped product/ }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Product" }), { target: { value: "Acme Agent" } });
+    const repos = screen.getByRole("textbox", { name: "Source repositories" });
+    fireEvent.change(repos, { target: { value: "agent" } });
+    fireEvent.keyDown(repos, { key: "Enter" });
+    // Not owner/name: the field is marked and the row counts as needing attention.
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Source repositories" }).getAttribute("aria-invalid")).toBe("true"));
   });
 
   it("lists the crown jewels in a table with column headers", async () => {

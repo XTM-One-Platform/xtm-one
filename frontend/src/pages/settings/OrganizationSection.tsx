@@ -19,7 +19,8 @@ import { DetailTabs } from "@/components/ui/detail-tabs";
 import { cn } from "@/lib/utils";
 import { landOnCard } from "@/lib/land-on-card";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Bot, Building2, Coins, Import, Link2, Lock, MessageSquare, Pencil, Plus, RefreshCw, Server, Shield, Sparkles, Ticket } from "lucide-react";
+import { Bot, Building2, Coins, Import, Link2, Lock, MessageSquare, Package, Pencil, Plus, RefreshCw, Server, Shield, Sparkles, Ticket } from "lucide-react";
+import { TagInput } from "@/components/ui/tag-input";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -99,7 +100,7 @@ import { OrganizationUsedBy } from "./OrganizationUsedBy";
 import { OrganizationTicketingSync } from "./OrganizationTicketingSync";
 import { type BulkField, type ListEditColumn, ListSaveBar, OrganizationListEditor } from "./OrganizationListEditor";
 import { OrganizationListPasteDialog } from "./OrganizationListPasteDialog";
-import { addRow, addRows, attentionCount, changeCounts, committedValues, type EditRow, fieldSuggestions, LIST_ISSUES, LIST_RULES, rowIssues, startRows } from "@/lib/organization-list-edit";
+import { addRow, addRows, attentionCount, changeCounts, committedValues, type EditRow, fieldSuggestions, isRepository, LIST_ISSUES, LIST_RULES, rowIssues, startRows } from "@/lib/organization-list-edit";
 import type { PasteSpec } from "@/lib/organization-list-paste";
 import { TrackedOrganizations } from "./TrackedOrganizations";
 import { OrganizationSourcesSyncs } from "./OrganizationSourcesSyncs";
@@ -144,9 +145,14 @@ const NO_VALUE = "none";
 const COUNTRY_CODES = Object.keys(ISO_3166_NUMERIC);
 
 /** The lists edited in their own card (#12256). */
-const LIST_KEYS = ["crown_jewels", "tech_stack", "ai_systems"] as const;
+const LIST_KEYS = ["crown_jewels", "shipped_products", "tech_stack", "ai_systems"] as const;
 /** @i18n-keys */
-const LIST_TITLES = { crown_jewels: "Crown jewels and business services", tech_stack: "Tech stack", ai_systems: "AI systems inventory" } as const;
+const LIST_TITLES = {
+  crown_jewels: "Crown jewels and business services",
+  shipped_products: "Shipped products",
+  tech_stack: "Tech stack",
+  ai_systems: "AI systems inventory",
+} as const;
 type ListKey = (typeof LIST_KEYS)[number];
 /** The exposure tables edited in their own card (#12256 slice 2). @i18n-keys */
 const EXPOSURE_TITLES = {
@@ -547,7 +553,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     setDraftedTabs(new Set());
   };
   // Leaving the page with an unsaved edit asks first (#12329); a tab switch never loses it.
-  const leaveGuard = editing || listEdits.crown_jewels !== undefined || listEdits.tech_stack !== undefined || listEdits.ai_systems !== undefined || exposureEdit !== null;
+  const leaveGuard = editing || LIST_KEYS.some((key) => listEdits[key] !== undefined) || exposureEdit !== null;
   useEffect(() => {
     if (!leaveGuard) return;
     const warn = (event: BeforeUnloadEvent) => event.preventDefault();
@@ -1012,6 +1018,13 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     },
     sourceColumn<TechRow>(),
   ];
+  type ShippedRow = { index: number; value: ProfileForm["shipped_products"][number] };
+  const shippedColumns: DataTableColumn<ShippedRow>[] = [
+    { key: "product", header: "Product", width: readWidth(240), cell: ({ value }) => readCell(value.product), interactive: true, sortValue: sortable<ShippedRow>(({ value }) => value.product.toLowerCase()), firstSort: "asc", csv: ({ value }) => value.product },
+    { key: "vendor", header: "Vendor", hideable: true, width: readWidth(200), cell: ({ value }) => readCell(value.vendor), interactive: true, sortValue: sortable<ShippedRow>(({ value }) => value.vendor.toLowerCase()), firstSort: "asc", csv: ({ value }) => value.vendor },
+    { key: "cpe", header: "CPE (optional)", hideable: true, width: readWidth(240), cell: ({ value }) => readCell(value.cpe), interactive: true, sortValue: sortable<ShippedRow>(({ value }) => value.cpe.toLowerCase()), firstSort: "asc", csv: ({ value }) => value.cpe },
+    { key: "repositories", header: "Source repositories", hideable: true, cell: ({ value }) => readCell(value.repositories.join(", ")), interactive: true, sortValue: sortable<ShippedRow>(({ value }) => value.repositories.join(",").toLowerCase()), firstSort: "asc", csv: ({ value }) => value.repositories.join(" ") },
+  ];
   const techFilters: DataTableFilter<TechRow>[] = [
     { key: "vendor", label: "Vendor", values: ({ value }) => [value.vendor.trim()] },
     sourceFilter<TechRow>(),
@@ -1071,6 +1084,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   type Jewel = ProfileForm["crown_jewels"][number];
   type Tech = ProfileForm["tech_stack"][number];
   type AiSystem = ProfileForm["ai_systems"][number];
+  type Shipped = ProfileForm["shipped_products"][number];
   const pick = (labels: Record<string, string>, value: string, label: string, onChange: (value: string) => void) => (
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger className="w-full min-w-0" aria-label={t_i18n(label)}>
@@ -1142,6 +1156,33 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     { key: "owner", header: "Owner", hideable: true, read: (v) => readCell(v.owner), edit: (v, set) => editText("Owner", v.owner, (owner) => set({ owner }), false, "Owner", suggestId("ai_systems", "owner")), sortValue: (v) => v.owner.toLowerCase(), firstSort: "asc" },
     sourceEdit<AiSystem>(),
   ];
+  // What the organization ships (#1432): a vulnerability on one of these resolves to its repositories in CTEM.
+  const shippedEdit: ListEditColumn<Shipped>[] = [
+    { key: "product", header: "Product", width: readWidth(200), read: (v) => readCell(v.product), edit: (v, set, bad) => editText("Product", v.product, (product) => set({ product }), bad), sortValue: (v) => v.product.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
+    { key: "vendor", header: "Vendor", hideable: true, width: readWidth(160), read: (v) => readCell(v.vendor), edit: (v, set) => editText("Vendor", v.vendor, (vendor) => set({ vendor }), false, "Vendor", suggestId("shipped_products", "vendor")), sortValue: (v) => v.vendor.toLowerCase(), firstSort: "asc" },
+    { key: "cpe", header: "CPE (optional)", hideable: true, width: readWidth(240), read: (v) => readCell(v.cpe), edit: (v, set, bad) => editText("CPE (optional)", v.cpe, (cpe) => set({ cpe }), bad, "cpe:2.3:a:vendor:product:*"), sortValue: (v) => v.cpe.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.cpe] },
+    {
+      key: "repositories",
+      header: "Source repositories",
+      hideable: true,
+      read: (v) => readCell(v.repositories.join(", ")),
+      edit: (v, set, bad) => (
+        <TagInput
+          value={v.repositories}
+          onChange={(repositories) => set({ repositories })}
+          preserveCase
+          suggestFromPlatformTags={false}
+          placeholder={t_i18n("owner/name, Enter to add")}
+          aria-label={t_i18n("Source repositories")}
+          aria-invalid={bad || undefined}
+          invalidTags={v.repositories.filter((repo) => !isRepository(repo))}
+        />
+      ),
+      sortValue: (v) => v.repositories.join(",").toLowerCase(),
+      firstSort: "asc",
+      issues: [LIST_ISSUES.repository],
+    },
+  ];
   /** Per list (slice 2): the fields the selection toolbar sets, the free-text fields suggested from the list, and "Paste a list". */
   const LIST_BULK = {
     crown_jewels: [
@@ -1150,13 +1191,14 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       { key: "business_service", label: "Business service" },
     ],
     tech_stack: [{ key: "vendor", label: "Vendor", suggestions: suggestId("tech_stack", "vendor") }],
+    shipped_products: [{ key: "vendor", label: "Vendor", suggestions: suggestId("shipped_products", "vendor") }],
     ai_systems: [
       { key: "owner", label: "Owner", suggestions: suggestId("ai_systems", "owner") },
       { key: "kind", label: "Kind", options: AI_KIND_LABELS },
       { key: "exposure", label: "Exposure", options: EXPOSURE_LABELS },
     ],
   } as const;
-  const LIST_SUGGESTED: { [K in ListKey]: readonly (keyof ProfileForm[K][number] & string)[] } = { crown_jewels: ["owner"], tech_stack: ["vendor"], ai_systems: ["owner"] };
+  const LIST_SUGGESTED: { [K in ListKey]: readonly (keyof ProfileForm[K][number] & string)[] } = { crown_jewels: ["owner"], shipped_products: ["vendor"], tech_stack: ["vendor"], ai_systems: ["owner"] };
   const choiceWords = (labels: Record<string, string>) => Object.fromEntries(Object.entries(labels).map(([key, label]) => [key, [label, t_i18n(label)]]));
   const header = (label: string) => [label, t_i18n(label)];
   const PASTE = {
@@ -1184,6 +1226,19 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         headers: { product: header("Product"), vendor: header("Vendor"), cpe: header("CPE (optional)"), version: [...header("Version (optional)"), "Version"] },
         identity: LIST_RULES.tech_stack.identity,
       } as PasteSpec<Tech>,
+    },
+    // The repositories are added on the row once pasted: a line holds one value per field.
+    shipped_products: {
+      title: "Paste shipped products",
+      example: "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
+      fieldLabels: { product: "Product", vendor: "Vendor", cpe: "CPE (optional)" },
+      spec: {
+        fields: ["product", "vendor", "cpe"],
+        empty: { product: "", vendor: "", cpe: "", repositories: [] },
+        name: "product",
+        headers: { product: header("Product"), vendor: header("Vendor"), cpe: header("CPE (optional)") },
+        identity: LIST_RULES.shipped_products.identity,
+      } as PasteSpec<Shipped>,
     },
     ai_systems: {
       title: "Paste AI systems",
@@ -1227,7 +1282,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         <OrganizationListEditor
           {...props}
           bulkFields={LIST_BULK[key] as unknown as BulkField<ProfileForm[K][number]>[]}
-          locked={lockedFor(key)}
+          locked={key in LOCAL_FIELDS ? lockedFor(key as keyof typeof LOCAL_FIELDS) : undefined}
           confirmRemove={synced.confirmRemove}
           rows={rows}
           onRows={(next) => setListRows(key, next)}
@@ -2072,6 +2127,59 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                 </div>
               </div>
             )}
+          </SettingsCard>
+
+          {/* What the organization ships (#1432), apart from the tech stack it runs: CTEM resolves a vulnerability on one to its repositories. */}
+          <SettingsCard
+            id={`${fieldId}-shipped_products`}
+            className={SECTION_BAR_ANCHOR_CLASS}
+            data-anchor="card"
+            {...cardFold("shipped_products", current.shipped_products.length)}
+            tabIndex={-1}
+            data-testid="settings.organization.shipped-products"
+            icon={Package}
+            title={t_i18n("Shipped products")}
+            description={t_i18n("The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.")}
+            action={
+              <>
+                {attention("shipped_products")}
+                {listEditAction("shipped_products")}
+                {pasteAction("shipped_products")}
+                {listOpen("shipped_products") && (
+                  <Button variant="secondary" className="gap-1.5" onClick={() => addListRow("shipped_products", { product: "", vendor: "", cpe: "", repositories: [] })}>
+                    <Plus className="h-3.5 w-3.5" /> {t_i18n("Add a shipped product")}
+                  </Button>
+                )}
+              </>
+            }
+          >
+            {listEditor("shipped_products", {
+              columns: shippedEdit,
+              filters: [{ key: "vendor", label: "Vendor", values: (v: Shipped) => [v.vendor.trim()] }],
+              searchFields: (v) => [v.product, v.vendor, v.cpe, ...v.repositories],
+              rowLabel: (v) => v.product,
+              storageKey: "settings-organization-shipped-products",
+              rowTestId: "settings.organization.shipped-row",
+              emptyLabel: t_i18n("No shipped product yet: a vulnerability on a product you ship stays unresolved."),
+            }) ??
+              (current.shipped_products.length === 0 ? (
+                <p className="text-default-secondary">{t_i18n("No shipped product yet: a vulnerability on a product you ship stays unresolved.")}</p>
+              ) : (
+                <DataTable
+                  rows={current.shipped_products.map((value, index) => ({ index, value }))}
+                  columns={shippedColumns}
+                  layout={tableLayout}
+                  rowKey={(row) => String(row.index)}
+                  searchFields={(row) => [row.value.product, row.value.vendor, row.value.cpe, ...row.value.repositories]}
+                  searchPlaceholder={t_i18n("Search...")}
+                  filters={[{ key: "vendor", label: "Vendor", values: ({ value }) => [value.vendor.trim()] }]}
+                  exportName="shipped-products"
+                  urlKey="osp_"
+                  storageKey="settings-organization-shipped-products"
+                  emptyLabel={t_i18n("No shipped product yet: a vulnerability on a product you ship stays unresolved.")}
+                  rowTestId="settings.organization.shipped-row"
+                />
+              ))}
           </SettingsCard>
 
           {/* The tracked organizations (#9157, M2): added from this page; the first-login setup sets up the primary only. */}

@@ -21167,5 +21167,14 @@
   "{count, plural, one {# synced row kept the values its source sends} other {# synced rows kept the values their source sends}}": "{count, plural, one {# synced row kept the values its source sends} other {# synced rows kept the values their source sends}}",
   "Keep as is": "Keep as is",
   "{count, plural, one {Applies to # row. A synced row keeps the values its source sends.} other {Applies to # rows. A synced row keeps the values its source sends.}}": "{count, plural, one {Applies to # row. A synced row keeps the values its source sends.} other {Applies to # rows. A synced row keeps the values its source sends.}}",
-  "Left empty, each row keeps its owner.": "Left empty, each row keeps its owner."
+  "Left empty, each row keeps its owner.": "Left empty, each row keeps its owner.",
+  "Shipped products": "Shipped products",
+  "Source repositories": "Source repositories",
+  "owner/name, Enter to add": "owner/name, Enter to add",
+  "Add a shipped product": "Add a shipped product",
+  "Paste shipped products": "Paste shipped products",
+  "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
+  "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.",
+  "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "No shipped product yet: a vulnerability on a product you ship stays unresolved.",
+  "A repository is not owner/name": "A repository is not owner/name"
 }
