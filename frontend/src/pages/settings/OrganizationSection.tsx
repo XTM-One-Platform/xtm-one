@@ -56,7 +56,7 @@ import { useAiActionDisabled } from "@/hooks/useAiDisabled";
 import { OrganizationAiDraftDialog } from "./OrganizationAiDraftDialog";
 import { OrganizationAssetsImportDialog } from "./OrganizationAssetsImportDialog";
 import { OrganizationFillAgentDialog } from "./OrganizationFillAgentDialog";
-import { OrganizationImportDialog } from "./OrganizationImportDialog";
+import { OrganizationImportDialog, PROFILE_IMPORT_SECTIONS } from "./OrganizationImportDialog";
 import { EXPOSURE_SECTIONS, type ExposureCard, type ExposureIssue, OrganizationExposureCards, exposureIssueFromRefusal, exposureIssues } from "./OrganizationExposureCards";
 import { primeOrganizationOnboarding } from "@/lib/organization-onboarding";
 import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
@@ -131,6 +131,7 @@ import {
   tabsOfFields,
 } from "@/lib/organization-profile-tabs";
 import { Icon, Spinner } from "@filigran/design-system";
+import { BackButton } from "@/components/ui/back-button";
 
 /** @i18n-keys */
 const AI_KIND_LABELS = { assistant: "Assistant", agent: "Agent", model_api: "Model API", embedded: "Embedded" } as const;
@@ -1532,6 +1533,12 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         </div>
         {(!editing || setupGuide) && (
           <div className="flex shrink-0 items-center gap-2">
+            {/* Knowledge and sources is a page of its own, opened from here (#1367, point 7: a button, not a tab). */}
+            {full && tab !== "knowledge" && (
+              <Button variant="secondary" className="gap-1.5" onClick={() => goToTab("knowledge")} data-testid="settings.organization.knowledge">
+                <Icon name="refresh-cw" size={16} aria-hidden /> {t_i18n(PROFILE_TAB_LABELS.knowledge)}
+              </Button>
+            )}
             {/* One "Draft" menu (section 6.1): the free deterministic draft and the metered AI draft. */}
             <OverflowMenu
               label={t_i18n("Draft")}
@@ -1646,22 +1653,26 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         // Five real tabs (#12329): the URL holds the active one, only its panel is rendered, and the
         // bar sticks under the top bar (the tables' sticky heads stop under it).
         <div className="space-y-4">
+          {/* The Knowledge and sources page: a back link to the profile instead of the tab bar (#1367, point 7). */}
+          {full && tab === "knowledge" && (
+            <BackButton to={profileTabPath("identity")} label="Back to Organization Profile" />
+          )}
           {/* The bar is a row of links (UX r1 B1): the shared DetailTabs, so a tab opens in a new tab
               and Back returns to the previous one. It sits on the content grid, transparent at rest;
               stuck under the top bar it takes the page surface and the separator of the sticky bars
               (UX r1 B2). The sentinel above it tells when it is stuck. */}
-          {full && <div ref={tabBarSentinel} aria-hidden className="h-px" />}
-          {full && (
+          {full && tab !== "knowledge" && <div ref={tabBarSentinel} aria-hidden className="h-px" />}
+          {full && tab !== "knowledge" && (
           <div
             {...{ [PAGE_STICKY_BAR_ATTRIBUTE]: "" }}
             data-stuck={tabBarStuck || undefined}
             className={cn("sticky top-[var(--fds-header-height,68px)] z-20 flex py-1", tabBarStuck && "border-b border-elevation-subtle bg-elevation-default")}
           >
-            <DetailTabs tabs={SETTINGS_PROFILE_TABS.map(profileTab)} active={tab} ariaLabel={t_i18n("Organization profile")} testId="settings.organization.tabs" />
+            <DetailTabs tabs={SETTINGS_PROFILE_TABS.filter((key) => key !== "knowledge").map(profileTab)} active={tab} ariaLabel={t_i18n("Organization profile")} testId="settings.organization.tabs" />
           </div>
           )}
           {/* The Technology and Exposure cards moved to CTEM > Inventory (#1178, Sam 22 Nov 2026): one line points there. */}
-          {full && (
+          {full && tab !== "knowledge" && (
             <div data-testid="settings.organization.inventory-pointer" className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-elevation-subtle px-3 py-2 content-base">
               <p>{t_i18n("The tech stack, AI systems, assets, asset groups and exposure now live in CTEM > Inventory.")}</p>
               <Button variant="secondary" onClick={() => navigate(INVENTORY_HOME)}>
@@ -2264,6 +2275,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         <OrganizationImportDialog
           open={platformImportOpen}
           onOpenChange={setPlatformImportOpen}
+          // The inventory sections are imported from CTEM > Inventory > Sources only (#1367, point 5).
+          sections={PROFILE_IMPORT_SECTIONS}
           quickSetupPending={drafting.isPending}
           onQuickSetup={() => {
             setPlatformImportOpen(false);

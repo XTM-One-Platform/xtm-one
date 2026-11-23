@@ -21167,5 +21167,10 @@
   "{count, plural, one {# synced row kept the values its source sends} other {# synced rows kept the values their source sends}}": "{count, plural, one {# synced row kept the values its source sends} other {# synced rows kept the values their source sends}}",
   "Keep as is": "Keep as is",
   "{count, plural, one {Applies to # row. A synced row keeps the values its source sends.} other {Applies to # rows. A synced row keeps the values its source sends.}}": "{count, plural, one {Applies to # row. A synced row keeps the values its source sends.} other {Applies to # rows. A synced row keeps the values its source sends.}}",
-  "Left empty, each row keeps its owner.": "Left empty, each row keeps its owner."
+  "Left empty, each row keeps its owner.": "Left empty, each row keeps its owner.",
+  "Add a Sync all schedule": "Add a Sync all schedule",
+  "Back to Organization Profile": "Back to Organization Profile",
+  "Inventory sources": "Inventory sources",
+  "About the inventory sources": "About the inventory sources",
+  "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset."
 }

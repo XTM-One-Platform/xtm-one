@@ -21167,5 +21167,10 @@
   "{count, plural, one {# synced row kept the values its source sends} other {# synced rows kept the values their source sends}}": "{count, plural, one {# fila sincronizada conservó los valores que envía su fuente} other {# filas sincronizadas conservaron los valores que envía su fuente}}",
   "Keep as is": "Dejar como está",
   "{count, plural, one {Applies to # row. A synced row keeps the values its source sends.} other {Applies to # rows. A synced row keeps the values its source sends.}}": "{count, plural, one {Se aplica a # fila. Una fila sincronizada conserva los valores que envía su fuente.} other {Se aplica a # filas. Una fila sincronizada conserva los valores que envía su fuente.}}",
-  "Left empty, each row keeps its owner.": "Si se deja vacío, cada fila conserva su propietario."
+  "Left empty, each row keeps its owner.": "Si se deja vacío, cada fila conserva su propietario.",
+  "Add a Sync all schedule": "Añadir una programación Sincronizar todo",
+  "Back to Organization Profile": "Volver al perfil de la organización",
+  "Inventory sources": "Fuentes del inventario",
+  "About the inventory sources": "Acerca de las fuentes del inventario",
+  "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "Las plataformas que cada sincronización lee según una programación, los agentes y socios que escriben a través de la API, las importaciones CSV y las filas introducidas a mano. La correspondencia de activos fusiona los registros de varias fuentes en un solo activo."
 }

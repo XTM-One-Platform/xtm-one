@@ -248,10 +248,10 @@ describe("OrganizationSection identity header and threshold previews (#9173 S2)"
 });
 
 describe("OrganizationSection tabs (#12329)", () => {
-  it("renders the three Settings tabs, only the active panel, and opens the tab the URL names (#1178)", async () => {
+  it("renders the two Settings tabs, only the active panel, and opens the tab the URL names (#1178, #1367 point 7)", async () => {
     renderPage("business");
     const tabs = await screen.findAllByRole("tab");
-    expect(tabs.map((tab) => tab.textContent?.replace(/\d+\/\d+.*$/, ""))).toEqual(["Identity and risk", "Business", "Knowledge and sources"]);
+    expect(tabs.map((tab) => tab.textContent?.replace(/\d+\/\d+.*$/, ""))).toEqual(["Identity and risk", "Business"]);
     expect(screen.getByRole("tab", { name: /^Business/ }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
     expect(screen.getByTestId("settings.organization.crown-jewels")).toBeTruthy();
@@ -275,7 +275,9 @@ describe("OrganizationSection tabs (#12329)", () => {
     const identity = await screen.findByRole("tab", { name: /^Identity and risk/ });
     expect(identity.tagName).toBe("A");
     expect(identity.getAttribute("href")).toBe("/settings/organization");
-    expect(screen.getByRole("tab", { name: /^Knowledge and sources/ }).getAttribute("href")).toBe("/settings/organization/profile/knowledge");
+    // Knowledge and sources is a button of the header opening its own page (#1367, point 7), never a tab.
+    expect(screen.queryByRole("tab", { name: /^Knowledge and sources/ })).toBeNull();
+    expect(screen.getByTestId("settings.organization.knowledge").textContent).toContain("Knowledge and sources");
     const business = screen.getByRole("tab", { name: /^Business/ });
     expect(business.getAttribute("aria-current")).toBe("page");
     expect(identity.getAttribute("aria-current")).toBeNull();
@@ -963,6 +965,10 @@ describe("OrganizationSection", () => {
     );
     renderPage("knowledge");
     const panel = await screen.findByTestId("organization-sources");
+    // Its own page (#1367, point 7): a back link to the profile, no tab bar, no header button to itself.
+    expect(screen.getByRole("button", { name: /Back to Organization Profile/ })).toBeTruthy();
+    expect(screen.queryByTestId("settings.organization.tabs")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.knowledge")).toBeNull();
     // The table's last block of its tab (UX r1 B1, B2 on #1294): no tab bar, no card below it.
     expect(within(screen.getByTestId("settings.organization.panel-knowledge")).getByTestId("organization-sources")).toBe(panel);
     const rows = await within(panel).findAllByTestId("organization-sources.row");
