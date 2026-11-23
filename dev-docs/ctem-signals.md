@@ -139,8 +139,11 @@ organization-wide: a reader who cannot see the administrator's Shodan or
 OpenCRQ integration reads the same `connected` or `off` as the administrator.
 
 The Signals page (`/ctem/signals`) is a row of the CTEM menu group, between
-Cases and Inventory (#1401), with the standard list header. Its Sources tab
-(`/ctem/signals/sources`, `SignalSourcesPanel.tsx`) is a compact table grouped
+Cases and Inventory (#1401), with the standard list header and no tabs: a
+secondary "Sources" button top right of the header, with the connected count,
+opens the signal sources as a page of their own (the Inventory Sources and
+Platform Health settings pattern), "Back to Signals" first, then its title.
+That page (`/ctem/signals/sources`, `SignalSourcesPanel.tsx`) is a compact table grouped
 by lens: trigger path, sources (the event sentence in a tooltip), status,
 signals in 30 days, last signal, action; rows of at most two lines. The
 Sources column lists what feeds the path on this platform: every source of a
@@ -164,7 +167,7 @@ on one line, cut with an ellipsis, the whole list in a tooltip. An empty signal 
 shows the table's standard empty statement alone; the summary strip carries
 the connected count.
 
-**Managing a path's sources (#1445).** A row of the Sources tab opens the
+**Managing a path's sources (#1445).** A row of the signal sources page opens the
 path's side panel (`SignalPathSourcesSheet`): every source of the path,
 connected or not, its state (feeds this path, not used on this path, off, not
 set up, not connected on this platform) and the control that exists for it.

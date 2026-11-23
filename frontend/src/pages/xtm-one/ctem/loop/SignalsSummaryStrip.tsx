@@ -2,8 +2,8 @@
 
 /**
  * The summary strip of the Signals page (#1263, Sam, 22 Nov 2026): four cards
- * above the Signals and Sources tabs, so the page reads at a glance whatever
- * tab is open and an empty list still carries the sources' context.
+ * above the signals list, so the page reads at a glance and an empty list
+ * still carries the sources' context.
  *
  * - Signals in 30 days: the paths' `count_30d`, the all-time total under it.
  * - Unmatched: the signals no inventory entry holds, parked until one does (#1505), the new ones under it.
@@ -18,8 +18,8 @@
  *
  * The state counts are the key row's (`useRecentCtemSignals`, the same read the
  * command center makes), so the page and the key row never disagree. The first
- * three cards open the Signals tab on their state; the fourth carries the logos
- * and a link to the Sources tab.
+ * three cards open the signals list on their state; the fourth carries the logos
+ * and a link to the signal sources page (#1519).
  */
 import { type ComponentProps } from "react";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
