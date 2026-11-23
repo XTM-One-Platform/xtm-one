@@ -136,8 +136,28 @@ def _refuse_unreadable(field: str, text: str) -> None:
         )
 
 
+#: The mark a text cut at its cap ends with, so the reader knows words are missing (#1598).
+CUT_MARK = "…"
+
+
+def fit(text: str, limit: int) -> str:
+    """*text* within *limit* characters: cut on the last word boundary and marked, never mid-word (#1598).
+
+    A text that fits is returned as is. A single word longer than the room
+    left is cut at the room (a URL, an identifier), still marked.
+    """
+    if len(text) <= limit:
+        return text
+    room = max(limit - len(CUT_MARK), 0)
+    head = text[:room]
+    space = max(head.rfind(" "), head.rfind("\n"))
+    if space > room // 2:
+        head = head[:space]
+    return head.rstrip(" \n,;:.") + CUT_MARK
+
+
 def _text(value: object, limit: int) -> str:
-    return " ".join(str(value).split())[:limit] if value is not None else ""
+    return fit(" ".join(str(value).split()), limit) if value is not None else ""
 
 
 def _deadline(value: object) -> str | None:
@@ -162,7 +182,7 @@ def _context(value: object) -> str:
     if isinstance(value, list):
         value = "\n".join(str(line) for line in value)
     lines = [" ".join(line.split()) for line in str(value).splitlines()]
-    return "\n".join(line for line in lines if line)[:MAX_CONTEXT_CHARS]
+    return fit("\n".join(line for line in lines if line), MAX_CONTEXT_CHARS)
 
 
 # The card marks the recommended option itself (dev-docs/human-gates.md, J.1):
