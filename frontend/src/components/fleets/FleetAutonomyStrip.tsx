@@ -23,9 +23,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *   apply, and offers "Review actions" (the gates computed from the members'
  *   configuration, `GET /fleets/{id}/approval-gates`, no AI, no quota).
  * - With a catalog: the four steps, the summary at the current level, and the
- *   actions that wait and those that run alone BY NAME with their module mark,
- *   on every view with no click; "Show what waits at each level" opens the
- *   matrix; one line says what the level does not cover (condition C2).
+ *   matrix of what waits at each level, always shown with no click (#1493, Sam
+ *   23 Nov 2026: the table is the content, no grouped "Waits / Runs alone"
+ *   lists above it); one line says what the level does not cover (condition C2).
  * - The "i" next to "Human approval" opens the explainer inline, under the row:
  *   four headed parts, a Close button and Esc; what the level does not cover is
  *   stated once, in the strip, and the explainer points to it (UX round 1 B4 on
@@ -37,20 +37,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *   actions start waiting, with Undo for an administrator.
  * - A reader who may not manage the fleet sees the same lists, read only.
  */
-import { ChevronRight, Info, X } from "lucide-react";
+import { Info, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { DisclosureSummary } from "@/components/ui/disclosure";
 import { SegmentedFilter, type SegmentedFilterOption } from "@/components/ui/segmented-filter";
 import { useToast } from "@/components/ui/toast";
 import {
   useFleetApprovalGates,
   useFleetDocumentation,
   useSetFleetAutonomy,
-  type FleetAutonomyGate,
   type FleetAutonomyLevel,
 } from "@/hooks/api/useFleetApi";
 import { useFormatter } from "@/i18n";
@@ -60,19 +58,14 @@ import {
   AUTONOMY_LEVEL_LABELS,
   AUTONOMY_LEVELS,
   autonomyCounts,
-  autonomySplit,
   becomesAutomatic,
   becomesGated,
   effectiveAutonomyLevel,
   gateActionLabel,
   gateNames,
-  groupGates,
-  integrationName,
   isAutonomyRaise,
   selectableLevels,
-  type GateGroup,
 } from "./fleet-autonomy";
-import { moduleLabel } from "./fleet-about-showcase";
 import { FleetInstructionsPositionControl } from "./FleetInstructionsPosition";
 import { FleetAutonomyCatalog } from "./FleetAutonomyCatalog";
 import { FleetGateReview } from "./FleetGateReview";
@@ -110,52 +103,6 @@ const EXPLAINER_PARTS: { heading: string; body: string }[] = [
 const SOURCE_STORED = "Source: this fleet's approval gate catalog, stored in its configuration. Regenerating the documentation never changes it.";
 const SOURCE_DOCUMENTED = "Source: the approval gates declared in this fleet's documentation.";
 
-/**
- * One list of the Approval tab (#10176): grouped by integration, each group a
- * collapsed disclosure with its mark, name and count; the action names show
- * only when a group opens, so a fleet with dozens of actions reads in one line
- * per integration, never as an inline list of every action.
- */
-function GateNames({ label, gates, testId }: { label: string; gates: FleetAutonomyGate[]; testId: string }) {
-  const { t_i18n } = useFormatter();
-  const groupName = (group: GateGroup) => {
-    if (group.provider) return integrationName(group.provider);
-    const name = moduleLabel(group.module, {});
-    return name.translate ? t_i18n(name.text) : name.text;
-  };
-  return (
-    <div className="min-w-0 space-y-1 content-compact" data-testid={testId}>
-      <span className="font-medium text-default-primary">{t_i18n(label)}</span>
-      {gates.length === 0 ? (
-        <span className="ml-2 text-default-secondary">{t_i18n("None")}</span>
-      ) : (
-        <ul className="space-y-1">
-          {groupGates(gates).map((group) => (
-            <li key={group.key}>
-              <details className="group" data-testid={`${testId}-group`}>
-                {/* The chevron is the expand marker (UX r1 B1 of #10178): a group never reads as a plain line. */}
-                <DisclosureSummary size="block" className="inline-flex items-center gap-2 px-1 py-0.5 hover:bg-elevation-hover">
-                  <ChevronRight className="h-3 w-3 shrink-0 transition-transform group-open:rotate-90" aria-hidden data-testid={`${testId}-group-chevron`} />
-                  <FleetGateMark gate={group} />
-                  <span className="font-medium">{groupName(group)}</span>
-                  <span className="text-default-secondary tabular-nums">
-                    {t_i18n("{count, plural, one {# action} other {# actions}}", { count: group.gates.length })}
-                  </span>
-                </DisclosureSummary>
-                <ul className="ml-7 mt-1 space-y-0.5 text-default-secondary">
-                  {group.gates.map((gate) => (
-                    <li key={gate.key}>{gateActionLabel(gate, t_i18n)}</li>
-                  ))}
-                </ul>
-              </details>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 /** The strip's element id: the fleet chat's raise refusal scrolls to it and focuses it. */
 export const FLEET_AUTONOMY_STRIP_ID = "fleet-autonomy-strip";
 
@@ -185,7 +132,6 @@ export function FleetAutonomyStrip({
   const setLevel = useSetFleetAutonomy(fleetId);
   const [reduceTo, setReduceTo] = useState<FleetAutonomyLevel | null>(null);
   const [explainerOpen, setExplainerOpen] = useState(false);
-  const [matrixOpen, setMatrixOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const explainerToggle = useRef<HTMLButtonElement>(null);
 
@@ -297,7 +243,6 @@ export function FleetAutonomyStrip({
   };
 
   const unlocked = reduceTo ? becomesAutomatic(catalog, level, reduceTo) : [];
-  const { waits, runsAlone } = autonomySplit(catalog, level);
 
   return (
     <section
@@ -428,33 +373,21 @@ export function FleetAutonomyStrip({
         </div>
       )}
 
+      {/* The matrix is the content, always shown (#1493): no grouped lists, no toggle. */}
       {hasCatalog && !compact && (
-        <div className="space-y-1">
-          <GateNames label="Waits:" gates={waits} testId="fleet-autonomy-waits" />
-          <GateNames label="Runs alone:" gates={runsAlone} testId="fleet-autonomy-runs-alone" />
+        <div className="space-y-2">
           {/* The one place the not-covered line is written (C2): the explainer points here. */}
           <p className="content-compact text-default-secondary" data-testid="fleet-autonomy-not-covered">
             {t_i18n(NOT_COVERED_LINE)}
           </p>
-          <Button
-            variant="link"
-            size="sm"
-            aria-expanded={matrixOpen}
-            onClick={() => setMatrixOpen((open) => !open)}
-            data-testid="fleet-autonomy-matrix-toggle"
-          >
-            {matrixOpen ? t_i18n("Hide what waits at each level") : t_i18n("Show what waits at each level")}
-          </Button>
-          {matrixOpen && (
-            <FleetAutonomyCatalog
-              catalog={catalog}
-              level={level}
-              source={gates ? t_i18n(gates.stored ? SOURCE_STORED : SOURCE_DOCUMENTED) : undefined}
-              fleetId={fleetId}
-              canManage={canManage}
-              isAdmin={isAdmin}
-            />
-          )}
+          <FleetAutonomyCatalog
+            catalog={catalog}
+            level={level}
+            source={gates ? t_i18n(gates.stored ? SOURCE_STORED : SOURCE_DOCUMENTED) : undefined}
+            fleetId={fleetId}
+            canManage={canManage}
+            isAdmin={isAdmin}
+          />
         </div>
       )}
 

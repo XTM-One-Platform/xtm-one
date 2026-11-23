@@ -49,6 +49,8 @@ export interface WaitingDecision {
   asked_at: string | null;
   deadline: string | null;
   link: string;
+  /** False on a fleet read for a decision addressed to someone else: shown read only (#1493). */
+  can_answer?: boolean;
 }
 
 export interface WaitingDecisions {
@@ -60,10 +62,15 @@ export interface WaitingDecisions {
 
 const WAITING_DECISIONS_KEY = ["decisions", "waiting"] as const;
 
-export function useWaitingDecisions(enabled = true) {
+/**
+ * @param fleetId the fleet's Approval tab (#1493): only the decisions that fleet raised, under
+ *   the same query key root so an answer anywhere refreshes it.
+ */
+export function useWaitingDecisions(enabled = true, fleetId?: string) {
   return useQuery<WaitingDecisions>({
-    queryKey: WAITING_DECISIONS_KEY,
-    queryFn: () => api.get("/decisions/waiting"),
+    queryKey: fleetId ? [...WAITING_DECISIONS_KEY, { fleet: fleetId }] : WAITING_DECISIONS_KEY,
+    queryFn: () =>
+      fleetId ? api.get(`/decisions/waiting?fleet=${encodeURIComponent(fleetId)}&limit=200`) : api.get("/decisions/waiting"),
     enabled,
     refetchInterval: REFETCH_INTERVAL_STANDARD,
     // A failed read stays on its surface (an inline line), never the page error boundary.

@@ -24,7 +24,7 @@ import json as _json
 import logging
 import random
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -1223,8 +1223,15 @@ def _extract_retry_after(exc: Exception) -> float | None:
 _RATE_LIMIT_ERROR_CODES = frozenset({"ThrottlingException", "TooManyRequestsException"})
 
 
+def gateway_error_envelope(body: object) -> Mapping:
+    """An error body's ``error`` envelope (the AI Gateway's), or the body itself when unwrapped; ``{}`` otherwise."""
+    if isinstance(body, Mapping) and isinstance(body.get("error"), Mapping):
+        body = body["error"]
+    return body if isinstance(body, Mapping) else {}
+
+
 def is_rate_limit_error(exc: BaseException) -> bool:
-    """Whether a provider SDK error is a rate limit (HTTP 429 or its Bedrock form)."""
+    """Whether a provider SDK error is a rate limit (HTTP 429, its Bedrock form, or the AI Gateway's throttle or shedding)."""
     for status in (
         getattr(exc, "status_code", None),
         getattr(exc, "code", None),
@@ -1232,6 +1239,15 @@ def is_rate_limit_error(exc: BaseException) -> bool:
     ):
         if status == 429:
             return True
+    # The gateway answers an upstream throttle, or the circuit it opened, with a 502 it marks
+    # ``retryable: true``: the only errors it marks so, a plain provider fault says nothing.
+    # Its own load shedding is a 503 ``gateway_overloaded``.
+    error = gateway_error_envelope(getattr(exc, "body", None))
+    status = getattr(exc, "status_code", None)
+    if status == 502 and error.get("code") == "provider_error":
+        return error.get("retryable") is True
+    if status == 503 and error.get("code") == "gateway_overloaded":
+        return True
     response = getattr(exc, "response", None)
     if isinstance(response, dict):
         code = (response.get("Error") or {}).get("Code")
@@ -1246,7 +1262,7 @@ async def _note_llm_rate_limit() -> None:
 
         await note_rate_limited("llm")
     except Exception:
-        logger.debug("Could not report an LLM 429 to assignment dispatch", exc_info=True)
+        logger.debug("Could not report an LLM rate limit to assignment dispatch", exc_info=True)
 
 
 # ---------------------------------------------------------------------------
