@@ -53,6 +53,7 @@ import {
   FILTER_LABELS,
   MIN_CRITICALITY_LABELS,
   filterValueLabel,
+  keepsSourceOrder,
   type FilterKey,
 } from "@/lib/organization-import-filters";
 import { IMPORT_SOURCE_NAMES, IMPORT_SOURCE_PROVIDER } from "@/lib/organization-profile";
@@ -639,7 +640,7 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
             selected={listValue(key)}
             onToggle={(value) => toggle(key, value)}
             disabled={Boolean(reason)}
-            sort={key !== "criticality"}
+            sort={!keepsSourceOrder(key)}
             placeholder={options.isLoading ? t_i18n("Reading {platform}", { platform }) : t_i18n("Every value")}
             searchPlaceholder={t_i18n("Search a value")}
             emptyOptionsLabel={t_i18n("No value in {platform}", { platform })}

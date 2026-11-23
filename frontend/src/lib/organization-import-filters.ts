@@ -86,6 +86,19 @@ const MICROSOFT_WORDED: ReadonlySet<string> = new Set(["compliance", "ownership"
 /** ServiceNow's operational status choice values. @i18n-keys */
 const OPERATIONAL_STATUS_LABELS = { "1": "Operational", "2": "Non-operational", "3": "Repair in progress", "4": "DR standby", "5": "Ready", "6": "Retired (ServiceNow status)" } as const;
 
+/**
+ * The picked filters whose values keep the source's own order instead of an A to Z
+ * sort of their translated words: a scale (criticality) or a lifecycle (ServiceNow's
+ * operational status, Operational first, Retired last), so the order never changes
+ * with the language (UX round 2 of #1565).
+ */
+const SOURCE_ORDERED_FILTERS: ReadonlySet<string> = new Set(["criticality", "operational_status"]);
+
+/** Whether the picker of a filter keeps the order the source gives its values. */
+export function keepsSourceOrder(key: string): boolean {
+  return SOURCE_ORDERED_FILTERS.has(key);
+}
+
 /** ServiceNow's CMDB hardware classes a sync may read. @i18n-keys */
 const CI_CLASS_LABELS = { cmdb_ci_computer: "Computers", cmdb_ci_server: "Servers", cmdb_ci_hardware: "All hardware", cmdb_ci_netgear: "Network gear" } as const;
 
