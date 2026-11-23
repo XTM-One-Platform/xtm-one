@@ -20,6 +20,7 @@ import { Icon } from "@filigran/design-system";
 import {
   useAssetFacets,
   useCanonicalAssets,
+  useDeleteAssetRecords,
   useRecordAssetDecision,
   useTechStackInventory,
   type AssetFilterKey,
@@ -29,15 +30,13 @@ import {
 import { useTabParam } from "@/hooks/useTabParam";
 import { useAuth } from "@/hooks/useAuth";
 import { OrganizationSection } from "@/pages/settings/OrganizationSection";
-import { useOrganizationContext, useSaveOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
-import type { AssetRow } from "@/lib/organization-profile";
 import { useFormatter } from "@/i18n";
 import { readTableState, storedPageSize } from "@/lib/data-table-state";
 import { formatCount } from "@/lib/number-format";
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import { CategoryMark, OsMark, SourceLogo } from "./ctem/inventory-icons";
 import { AiSystemsTab, AssetGroupsTab, BULK_ACTION, type AddRequest } from "./ctem/InventoryProfileTabs";
-import { assetRowIndexes, deleteRows, isSyncedRow } from "./ctem/inventory-entries";
+import { deletableRows, recordRefs, type RowRef } from "./ctem/inventory-entries";
 import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
 import { AssetMatchingCard, InventorySourcesCard } from "./ctem/InventorySourcesCard";
 import { INVENTORY_LABEL, INVENTORY_PATH, assetCategory, assetCategoryLabel, assetFieldLabel, sourceLabel } from "./ctem/inventory";
@@ -87,26 +86,25 @@ function AssetsTab({ add }: { add: AddRequest }) {
   const decide = useRecordAssetDecision();
   const [selected, setSelected] = useState<string[]>([]);
   const [confirmMerge, setConfirmMerge] = useState(false);
-  // Entity management (#1367, point 2): Add, the row menu and the bulk actions write the profile's asset rows.
-  const { data: context } = useOrganizationContext();
-  const save = useSaveOrganizationContext();
-  // The API type leaves the #11543 sections out; the profile carries them (lib/organization-profile ProfileForm).
-  const profileRows = ((context?.profile as { assets_exposure?: AssetRow[] } | undefined)?.assets_exposure ?? []) as AssetRow[];
+  // Entity management (#1367, point 2; row APIs since #1543): Add, the row menu and the bulk actions write the asset
+  // records behind each canonical asset, one row API call each, never the whole profile.
+  const remove = useDeleteAssetRecords();
   const [dialog, setDialog] = useState<EntryDialogMode | null>(null);
-  const [toDelete, setToDelete] = useState<number[] | null>(null);
-  const indexesOf = (assets: readonly CanonicalAssetSummary[]) => assetRowIndexes(profileRows, assets.flatMap((a) => a.records ?? []));
+  const [toDelete, setToDelete] = useState<{ ids: string[]; assetIds: string[] } | null>(null);
   // An asset whose every record a sync owns cannot be deleted here.
-  const handIndexes = (a: CanonicalAssetSummary) => indexesOf([a]).filter((i) => !isSyncedRow(profileRows[i]));
+  const handIds = (a: CanonicalAssetSummary) => deletableRows(recordRefs([a])).ids;
+  const updateMode = (refs: RowRef[]): EntryDialogMode => (refs.length === 1 ? { kind: "update", id: refs[0].id } : { kind: "bulk", rows: refs });
   const selectedAssets = (data?.items ?? []).filter((a) => selected.includes(a.id));
+  const askDelete = (assets: readonly CanonicalAssetSummary[]) =>
+    setToDelete({ ids: assets.flatMap(handIds), assetIds: assets.filter((a) => recordRefs([a]).every((r) => handIds(a).includes(r.id))).map((a) => a.id) });
   const onDelete = () => {
-    if (!context || !toDelete) return;
-    const out = deleteRows(profileRows, toDelete);
-    save.mutate(
-      { profile: { ...context.profile, assets_exposure: out.rows } as typeof context.profile, source: "form" },
+    if (!toDelete) return;
+    remove.mutate(
+      toDelete,
       {
-        onSuccess: () => {
+        onSuccess: (out) => {
           setSelected([]);
-          toast({ title: t_i18n("{count, plural, one {# entry deleted} other {# entries deleted}}", { count: out.changed }), variant: "success" });
+          toast({ title: t_i18n("{count, plural, one {# entry deleted} other {# entries deleted}}", { count: out.removed.length }), variant: "success" });
         },
         onError: (error) => toast({ title: t_i18n("Nothing was deleted"), description: error.message, variant: "error" }),
       },
@@ -124,7 +122,10 @@ function AssetsTab({ add }: { add: AddRequest }) {
   }));
 
   const rows = data?.items ?? [];
-  const mergeRecords = rows.filter((a) => selected.includes(a.id)).flatMap((a) => a.records ?? []);
+  const mergeRecords = rows
+    .filter((a) => selected.includes(a.id))
+    .flatMap((a) => a.records ?? [])
+    .map((r) => ({ source: r.source, external_id: r.external_id }));
   const canMerge = selected.length >= 2 && mergeRecords.length >= 2 && mergeRecords.length <= MAX_MERGE_RECORDS;
   const onMerge = () => {
     decide.mutate(
@@ -248,8 +249,8 @@ function AssetsTab({ add }: { add: AddRequest }) {
         rowActions={
           isAdmin
             ? (a) => {
-                const indexes = indexesOf([a]);
-                const deletable = handIndexes(a);
+                const refs = recordRefs([a]);
+                const deletable = handIds(a);
                 return (
                   <OverflowMenu
                     label={t_i18n("Actions on {name}", { name: a.name })}
@@ -259,8 +260,8 @@ function AssetsTab({ add }: { add: AddRequest }) {
                         id: "update",
                         label: t_i18n("Update"),
                         glyph: "pencil",
-                        disabled: indexes.length === 0,
-                        onSelect: () => setDialog(indexes.length === 1 ? { kind: "update", index: indexes[0] } : { kind: "bulk", indexes }),
+                        disabled: refs.length === 0,
+                        onSelect: () => setDialog(updateMode(refs)),
                       },
                       {
                         id: "delete",
@@ -268,7 +269,7 @@ function AssetsTab({ add }: { add: AddRequest }) {
                         destructive: true,
                         disabled: deletable.length === 0,
                         disabledReason: deletable.length === 0 ? syncedReason : undefined,
-                        onSelect: () => setToDelete(deletable),
+                        onSelect: () => askDelete([a]),
                       },
                     ]}
                   />
@@ -284,15 +285,16 @@ function AssetsTab({ add }: { add: AddRequest }) {
                 onChange: setSelected,
                 actions: (
                   <>
-                    <Button size="sm" variant="secondary" className={BULK_ACTION} onClick={() => setDialog({ kind: "bulk", indexes: indexesOf(selectedAssets) })}>
+                    <Button size="sm" variant="secondary" className={BULK_ACTION} disabled={recordRefs(selectedAssets).length === 0}
+                      onClick={() => setDialog({ kind: "bulk", rows: recordRefs(selectedAssets) })}>
                       {t_i18n("Update")}
                     </Button>
                     <Button
                       size="sm"
                       variant="secondary"
                       className={BULK_ACTION}
-                      disabled={save.isPending || selectedAssets.every((a) => handIndexes(a).length === 0)}
-                      onClick={() => setToDelete(selectedAssets.flatMap(handIndexes))}
+                      disabled={remove.isPending || selectedAssets.every((a) => handIds(a).length === 0)}
+                      onClick={() => askDelete(selectedAssets)}
                     >
                       {t_i18n("Delete")}
                     </Button>

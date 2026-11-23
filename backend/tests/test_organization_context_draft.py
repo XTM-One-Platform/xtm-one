@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -108,8 +109,11 @@ async def test_a_failing_platform_is_reported_and_the_others_still_draft(monkeyp
 async def test_the_draft_starts_from_the_current_version_and_saves_nothing(monkeypatch):
     row = SimpleNamespace(version=3, profile={"name": "Acme"})
 
-    async def current_version(db):
+    async def current_version(db: Any, organization_id: Any = None) -> Any:
         return row
+
+    async def hydrated_profile(db: Any, current: Any) -> Any:  # no asset records in this fake session (#1543)
+        return oc.parse_profile(current.profile)
 
     async def collect_facts(db, *, user_id, tenant_id=""):
         facts = d.PlatformFacts(sector="Energy")
@@ -120,6 +124,7 @@ async def test_the_draft_starts_from_the_current_version_and_saves_nothing(monke
         raise AssertionError("the draft saved a version")
 
     monkeypatch.setattr(oc, "current_version", current_version)
+    monkeypatch.setattr(oc, "hydrated_profile", hydrated_profile)
     monkeypatch.setattr(oc, "save_version", no_save)
     monkeypatch.setattr(d, "collect_facts", collect_facts)
     draft, version = await d.draft_profile(SimpleNamespace(), user_id=uuid.uuid4())
