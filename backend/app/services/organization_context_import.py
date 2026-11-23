@@ -193,6 +193,9 @@ class ReadResult:
     findings: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     #: Name and identity key per repository id (#1331, slice 4): the asset a dependency match lands on.
     repositories: dict[str, dict[str, str]] = field(default_factory=dict)
+    #: Ids of this source whose stored rows belong to another layer (#1591: OpenCRQ supporting assets an older
+    #: build imported as crown jewels): removed by the import whoever wrote them, never kept as gone.
+    superseded: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -217,6 +220,9 @@ class ImportPlan:
     excluded: list[str] = field(default_factory=list)
     #: Stored rows of an excluded id, removed by this plan whatever ``remove_gone`` says.
     excluded_removed: list[str] = field(default_factory=list)
+    #: Stored rows of a superseded layer (#1591: crown jewels an older build imported from OpenCRQ supporting
+    #: assets), removed by this plan whatever ``remove_gone`` says.
+    superseded: list[str] = field(default_factory=list)
     #: The sync writing the plan, stamped as ``sync_id`` on its rows (empty: a one-off import).
     sync_id: str = ""
     #: Rows that took the batch type (no category in the source).
@@ -271,6 +277,7 @@ class ImportPlan:
             "skipped": self.skipped[:SAMPLE_SIZE],
             "gone": self.gone[:SAMPLE_SIZE],
             "gone_kept": self.gone_kept[:SAMPLE_SIZE],
+            "superseded": self.superseded[:SAMPLE_SIZE],
             "excluded": self.excluded[:SAMPLE_SIZE],
             "remove_gone": self.remove_gone,
             "batch_typed": self.batch_typed,
@@ -494,18 +501,50 @@ def opencti_system(node: dict[str, Any], batch_type: str) -> AssetEntry | None:
     )
 
 
-def opencrq_jewel(asset: dict[str, Any], min_level: str) -> CrownJewel | None:
-    """An OpenCRQ supporting asset at or above *min_level* as a crown jewel."""
-    from app.services.organization_context_opencrq import _asset_name
+#: The four security needs of an OpenCRQ primary asset (``SECURITY_NEED_CRITERIA``), rated on :data:`OPENCRQ_LEVELS`.
+OPENCRQ_SECURITY_NEEDS: tuple[str, ...] = ("availability", "integrity", "confidentiality", "traceability")
 
-    level = str(asset.get("criticality") or "").lower()
-    if level not in OPENCRQ_LEVELS or OPENCRQ_LEVELS.index(level) < OPENCRQ_LEVELS.index(min_level):
-        return None
-    name = _asset_name(asset)
-    asset_id = str(asset.get("id") or "")
+
+def primary_asset_level(asset: dict[str, Any]) -> str:
+    """The highest security need of an OpenCRQ primary asset; ``""`` when none is rated (#1591)."""
+    rated = [str(asset.get(need) or "").lower() for need in OPENCRQ_SECURITY_NEEDS]
+    levels = [OPENCRQ_LEVELS.index(level) for level in rated if level in OPENCRQ_LEVELS]
+    return OPENCRQ_LEVELS[max(levels)] if levels else ""
+
+
+def opencrq_primary_asset(asset: dict[str, Any], min_level: str = "") -> CrownJewel | None:
+    """An OpenCRQ PRIMARY asset (a business asset) as a profile primary asset row (#1591).
+
+    The criticality is the highest of its four security needs (``very_high`` ->
+    ``critical``); a primary asset with no need rated yet is ``high``, since
+    OpenCRQ lists only what the business named as a primary asset. Its business
+    function is the row's business service and its owner the owner. A
+    *min_level* drops a primary asset whose rated needs all fall below it;
+    one with no need rated is always kept. Supporting assets (the IT under a
+    primary asset) are never rows of this section: they are inventory assets,
+    linked to their primary asset by the link sync.
+    """
+    name = str(asset.get("name") or "").strip()
+    asset_id = str(asset.get("id") or "").strip()
     if not name or not asset_id:
         return None
-    return CrownJewel(name=name[:200], criticality=FROM_OPENCRQ[level], source="opencrq", external_id=asset_id[:200])  # type: ignore[arg-type]
+    level = primary_asset_level(asset)
+    if level and min_level in OPENCRQ_LEVELS and OPENCRQ_LEVELS.index(level) < OPENCRQ_LEVELS.index(min_level):
+        return None
+    owner = asset.get("owner") if isinstance(asset.get("owner"), dict) else {}
+    return CrownJewel(
+        name=name[:200],
+        business_service=str(asset.get("businessFunction") or "").strip()[:200],
+        owner=str((owner or {}).get("name") or "").strip()[:200],
+        criticality=FROM_OPENCRQ[level] if level else "high",  # type: ignore[arg-type]
+        source="opencrq",
+        external_id=asset_id[:200],
+    )
+
+
+def opencrq_jewel(asset: dict[str, Any], min_level: str) -> CrownJewel | None:
+    """Alias of :func:`opencrq_primary_asset` kept for one release (#1591): it reads PRIMARY assets now."""
+    return opencrq_primary_asset(asset, min_level)
 
 
 # ── Merge (no I/O) ────────────────────────────────────────────────────
@@ -564,6 +603,8 @@ def plan_import(
         repositories=read.repositories,
     )
     draft = profile.model_copy(deep=True)
+    if section in SOURCED_FIELDS and read.superseded and not read.error:
+        _drop_superseded(draft, section, source, read.superseded, plan)
     if section in SOURCED_FIELDS:
         _merge_sourced(draft, section, read.rows, source, plan, {str(i) for i in excluded_ids or [] if str(i)})
     elif section == "pirs":
@@ -573,6 +614,24 @@ def plan_import(
     ]
     plan.profile = draft
     return plan
+
+
+def _drop_superseded(
+    draft: OrganizationProfile, section: str, source: str, superseded: set[str], plan: ImportPlan
+) -> None:
+    """Remove the rows of *source* keyed on a *superseded* id (#1591), listed in ``superseded`` of the plan.
+
+    A typed row merely linked to such an id (``source`` manual) is not a row of
+    *source* and stays.
+    """
+    attr, name_key, _cap, _local = SOURCED_FIELDS[section]
+    current: list[Any] = list(getattr(draft, attr))
+    dropped = [r for r in current if r.source == source and r.external_id and r.external_id in superseded]
+    if not dropped:
+        return
+    plan.superseded = [getattr(r, name_key) for r in dropped]
+    gone = {id(r) for r in dropped}
+    setattr(draft, attr, [r for r in current if id(r) not in gone])
 
 
 def _merge_sourced(
@@ -1138,8 +1197,15 @@ async def _read_opencti(
 
 
 async def _read_opencrq(db: AsyncSession, user_id: str, filters: dict[str, Any]) -> ReadResult:
+    """OpenCRQ PRIMARY assets as profile primary asset rows (#1591), every organization of the tenant.
+
+    ``min_criticality`` (empty: every primary asset) drops a primary asset whose
+    rated security needs all fall below it. The ids of the tenant's supporting
+    assets go in ``superseded``: rows an older build imported from them
+    (the wrong layer, before #1591) are removed by the import.
+    """
     from app.integrations.providers.opencrq._common import _resolve_tenant
-    from app.services.organization_context_opencrq import _list_assets, _opencrq_connection
+    from app.services.organization_context_opencrq import _list_assets, _list_primary_assets, _opencrq_connection
 
     connection = await _opencrq_connection(db, user_id)
     if isinstance(connection, str):
@@ -1148,15 +1214,15 @@ async def _read_opencrq(db: AsyncSession, user_id: str, filters: dict[str, Any])
     tenant, err = await _resolve_tenant(base_url, headers, str(filters.get("tenant_id") or ""))
     if err:
         return ReadResult(error=f"OpenCRQ: {err}")
-    assets, err = await _list_assets(base_url, headers, tenant or "")
+    primary, err = await _list_primary_assets(base_url, headers, tenant or "")
     if err:
         return ReadResult(error=f"OpenCRQ: {err}")
-    level = str(filters.get("min_criticality") or "high")
-    if level not in OPENCRQ_LEVELS:
-        level = "high"
-    rows = [j for j in (opencrq_jewel(a, level) for a in assets) if j]
+    level = str(filters.get("min_criticality") or "")
+    rows = [j for j in (opencrq_primary_asset(a, level) for a in primary) if j]
     rows.sort(key=lambda j: ("critical", "high", "medium", "low").index(j.criticality))
-    return ReadResult(rows=rows, total=len(rows))
+    supporting, err = await _list_assets(base_url, headers, tenant or "")
+    superseded = set() if err else {str(a.get("id")) for a in supporting if a.get("id")}
+    return ReadResult(rows=rows, total=len(rows), superseded=superseded)
 
 
 async def _read_microsoft(db: AsyncSession, user_id: str, source: str, filters: dict[str, Any]) -> ReadResult:

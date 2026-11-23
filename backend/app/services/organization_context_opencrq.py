@@ -218,6 +218,32 @@ async def _opencrq_connection(db: AsyncSession, user_id: str) -> tuple[str, Any]
     return base_url.strip().rstrip("/"), _headers(api_token.strip())
 
 
+async def _list_primary_assets(base_url: str, headers: Any, tenant: str) -> tuple[list[dict], str | None]:
+    """The tenant's OpenCRQ PRIMARY assets, every organization of it (#1591), at most :data:`MAX_ASSETS`."""
+    from app.integrations.providers.opencrq._common import _trpc
+
+    organizations, err = await _trpc(
+        base_url, headers, "organizations.getOrganizations", "list organizations", tenant_id=tenant
+    )
+    if err:
+        return [], str(err)
+    assets: list[dict] = []
+    for organization in organizations or []:
+        organization_id = str((organization or {}).get("id") or "")
+        if not organization_id:
+            continue
+        items, err = await _trpc(
+            base_url, headers, "primaryAssets.getPrimaryAssets", "list primary assets",
+            input={"organizationId": organization_id}, tenant_id=tenant,
+        )
+        if err:
+            return assets, str(err)
+        assets.extend(a for a in (items or []) if isinstance(a, dict))
+        if len(assets) >= MAX_ASSETS:
+            break
+    return assets[:MAX_ASSETS], None
+
+
 async def _list_assets(base_url: str, headers: Any, tenant: str) -> tuple[list[dict], str | None]:
     from app.integrations.providers.opencrq._common import _trpc
 
