@@ -282,7 +282,8 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
             <span className="min-w-0">
               <TruncatedText text={nameOf(row)} className="max-w-[12rem] font-medium" />
               {kind === "agent" && row.source?.written_by_agent && (
-                <span className="block content-compact text-default-secondary">{t_i18n("Written by agent {name}", { name: row.source.written_by_agent })}</span>
+                // One line, ellipsized with the whole text in the tooltip: a wrapped subline made agent rows taller in es and ja.
+                <TruncatedText text={t_i18n("Written by agent {name}", { name: row.source.written_by_agent })} className="max-w-[12rem] content-compact text-default-secondary" />
               )}
             </span>
           </span>
@@ -400,7 +401,7 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
       header: "Next run",
       hideable: true,
       // Clamped so the default columns fit an 810 px card; the whole reason is in the tooltip.
-      cell: (row) => (row.sync ? <TruncatedText text={nextRunLine(row.sync)} lines={2} className="w-max max-w-[10rem] text-default-secondary" /> : null),
+      cell: (row) => (row.sync ? <TruncatedText text={nextRunLine(row.sync)} lines={2} className="w-max max-w-[8.5rem] text-default-secondary" /> : null),
       sortValue: (row) => row.sync?.next_run_at ?? "",
       csv: (row) => row.sync?.next_run_at ?? "",
     },
