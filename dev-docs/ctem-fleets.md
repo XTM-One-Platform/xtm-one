@@ -1707,6 +1707,16 @@ estimate, on top of the table. Before a default is saved the bar says
 what it rewrites ("Applies to 12 members, 3 keep their override", A3);
 the save gives the same Undo toast as a bulk action.
 
+**One Members fold (#1387).** Under the Capabilities card (open first),
+the fleet defaults, the toolbar, the selection bar and the table sit in
+one "Members" section, folded by default: folded, one bar reads the home
+and connected member counts and the current defaults (context, scope,
+instruction) with a Show / Hide toggle; open, the defaults form shows
+whole (no nested toggle), then the toolbar and the table. An unsaved
+defaults edit or a selection keeps it open. A link with a members search,
+filter or sort (`mq`, `mrole`, `mstate`, `msort`, `mdir`) or `mopen=1`
+opens it; Hide over such a link writes `mopen=0`. No localStorage.
+
 **Selection and bulk actions (B1).** The table uses the shared selection
 of the product, never a page-local bar or a native checkbox:
 - `SelectionBox` (`role="checkbox"`) on each row only; there is no

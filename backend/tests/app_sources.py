@@ -9,11 +9,14 @@ The trees are shared between tests: a scan reads them, and never mutates a
 node or keeps state on one.
 
 The cache costs about 1.5 GB of resident memory per process (some 1,800
-files). Under xdist every worker that runs one tripwire builds its own copy,
-and two copies on the 8 GB CI runner left a few hundred MB free and got the
-runner killed (#10437). The suite's conftest puts every test of a file that
-reads this module in the xdist group :data:`XDIST_GROUP` (``--dist
-loadgroup``), so one worker per job holds the cache.
+files). Under xdist every worker that runs one tripwire builds its own copy:
+on the 8 GB runner of a private repository two copies left a few hundred MB
+free and got the runner killed (#10437), so every reader ran on one worker,
+which ended each job alone for a minute while the others idled. The public
+repository's runners have 16 GB: the suite's conftest deals the files that
+read this module into :data:`XDIST_GROUPS` xdist groups (``--dist
+loadgroup``, :func:`xdist_groups`), longest first by the shard weights, so
+that many workers per job hold a copy and share the tripwires.
 """
 
 from __future__ import annotations
@@ -21,15 +24,17 @@ from __future__ import annotations
 import ast
 import functools
 import re
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 APP_DIR = BACKEND_DIR / "app"
 REPO_ROOT = BACKEND_DIR.parent
 
-#: The xdist group of every test whose file reads the parsed source.
+#: The prefix of the xdist groups of the tests whose file reads the parsed source.
 XDIST_GROUP = "app_sources"
+#: How many groups the readers are dealt into: one copy of the cache per group, on its own worker.
+XDIST_GROUPS = 2
 
 _READS_SOURCES = re.compile(r"\bapp_sources\b")
 
@@ -56,6 +61,22 @@ def reads_sources(test_file: Path) -> bool:
     if _READS_SOURCES.search(text):
         return True
     return any(re.search(rf"\b{name}\b", text) for name in _helpers_reading_sources(test_file.parent))
+
+
+def xdist_groups(files: Iterable[str], durations: Mapping[str, float]) -> dict[str, str]:
+    """The xdist group of each reader file (paths from the backend root), dealt longest first by ``durations``.
+
+    Every worker collects the same files and reads the same table, so each
+    names the same group for a file, as ``--dist loadgroup`` needs.
+    """
+    from tests.sharding import shard_files
+
+    files = sorted(set(files))
+    groups: dict[str, str] = {}
+    for index in range(1, XDIST_GROUPS + 1):
+        for name in sorted(shard_files(files, durations, index, XDIST_GROUPS)):
+            groups.setdefault(name, f"{XDIST_GROUP}-{index}")
+    return groups
 
 
 @functools.cache

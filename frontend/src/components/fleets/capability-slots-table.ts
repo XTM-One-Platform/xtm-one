@@ -23,7 +23,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 import type { IconName } from "@filigran/design-system";
 
-import type { FleetCapabilityType, FleetCapabilityTypeMember, FleetSlotIntegration } from "@/hooks/api/useFleetApi";
+import type {
+  FleetCapabilityType,
+  FleetCapabilityTypeMember,
+  FleetSlotBlockedIntegration,
+  FleetSlotIntegration,
+} from "@/hooks/api/useFleetApi";
 
 /** Capabilities is what a fleet setup needs first: open on arrival. */
 export const CAPABILITIES_OPEN_BY_DEFAULT = true;
@@ -35,6 +40,7 @@ export const TYPE_STATE_LABELS = {
   connected: "Connected",
   partial: "Partial",
   not_bound: "Not bound",
+  not_usable: "Not usable",
   none_connected: "None connected",
 } as const satisfies Record<FleetCapabilityType["state"], string>;
 
@@ -43,6 +49,8 @@ export const TYPE_STATE_VARIANTS = {
   connected: "success",
   partial: "warning",
   not_bound: "warning",
+  // Something of the type exists but cannot be taken: a person has a fix to make (#1373).
+  not_usable: "warning",
   none_connected: "outline",
 } as const satisfies Record<FleetCapabilityType["state"], string>;
 
@@ -80,13 +88,40 @@ export function flexibleColumnWidth(tableWidth: number): number {
   return wide ? left / 2 : left;
 }
 
-/** What is left to do first: Not bound, Partial, None connected, then Connected. */
+/** What is left to do first: Not bound, Partial, Not usable, None connected, then Connected. */
 const TYPE_STATE_ORDER: Record<FleetCapabilityType["state"], number> = {
   not_bound: 0,
   partial: 1,
-  none_connected: 2,
-  connected: 3,
+  not_usable: 2,
+  none_connected: 3,
+  connected: 4,
 };
+
+/**
+ * Why an integration of the type cannot be taken, and how to fix it, one line a reason (#1373):
+ * the row of a Not usable type says it instead of "Connect one". @i18n-keys
+ */
+export const BLOCKED_REASON_LINES = {
+  not_company_managed:
+    "{name} is connected but not company-managed: this fleet's members take company-managed integrations only. An administrator can make it company-managed.",
+  not_connected: "{name} is not connected yet: finish its sign-in on the integration page.",
+} as const satisfies Record<FleetSlotBlockedIntegration["reason"], string>;
+
+/** The short words of a blocked integration in the row's action cell (#1373). @i18n-keys */
+export const BLOCKED_REASON_SHORT = {
+  not_company_managed: "Not company-managed",
+  not_connected: "Sign-in not finished",
+} as const satisfies Record<FleetSlotBlockedIntegration["reason"], string>;
+
+/** The integration a Not usable row names first: one the members could take after a fix, else none. */
+export function firstBlocked(type: Pick<FleetCapabilityType, "blocked">): FleetSlotBlockedIntegration | null {
+  return type.blocked?.[0] ?? null;
+}
+
+/** The page that fixes a blocked integration: its own detail page (#1373). */
+export function blockedFixPath(blocked: Pick<FleetSlotBlockedIntegration, "integration_id">): string {
+  return `/integrations/${blocked.integration_id}`;
+}
 
 /** The capabilities that take several integrations at once: the picker is a multi-select (#1201). */
 export const MULTI_CHANNEL_CAPABILITIES: ReadonlySet<string> = new Set(["notification"]);
@@ -187,6 +222,23 @@ export function idsForPick(value: string): string[] {
 export function toggledIds(current: readonly string[], value: string): string[] {
   if (value.startsWith(BUILTIN_VALUE_PREFIX)) return [...current].sort();
   return (current.includes(value) ? current.filter((id) => id !== value) : [...current, value]).sort();
+}
+
+/**
+ * The values a multi-channel picker shows checked (#1373): the always-on built-in option first,
+ * then the bound channels. The built-in is a locked row of the list, never a field placeholder.
+ */
+export function multiChannelSelection(
+  type: Pick<FleetCapabilityType, "builtin">,
+  bound: readonly FleetSlotIntegration[],
+): string[] {
+  const builtin = builtinValue(type);
+  return [...(builtin ? [builtin] : []), ...integrationIds(bound)];
+}
+
+/** Whether a picker value is a capability's built-in option. */
+export function isBuiltinValue(value: string): boolean {
+  return value.startsWith(BUILTIN_VALUE_PREFIX);
 }
 
 /** The value a single-choice picker shows: the bound integration, else the built-in option, else nothing. */

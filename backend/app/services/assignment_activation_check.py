@@ -157,6 +157,15 @@ class ActivationCheckOutcome:
     #: (``held_by_run`` alive, never the evaluating run): the event the run
     #: stood down on is delivered again once that run ends (#11988).
     live_holder: str | None = None
+    #: A permanent configuration error (#1400): the agent holds no such tool,
+    #: or the object the check reads no longer exists. The run is skipped,
+    #: never let through, and the reason is named (``error``).
+    misconfigured: bool = False
+
+
+#: The structured flag a gate tool sets when the object it was asked about
+#: does not exist (or the caller may not read it): a configuration error.
+TARGET_MISSING_KEY = "target_missing"
 
 
 def _path_segments(path: str) -> list[str | int] | None:
@@ -638,10 +647,12 @@ async def run_activation_check(
     condition = check.get("condition", "non_empty")
     resolved = resolve_check_tool(check, executor)
     if resolved is None:
+        reason = f"the agent holds no tool named {tool} a gate check can call"
         return ActivationCheckOutcome(
-            True,
-            f"Gate check {tool} not evaluated",
-            error=f"the agent holds no tool named {tool} a gate check can call",
+            False,
+            f"{SKIP_SUMMARY_PREFIX} {tool} misconfigured: {reason}",
+            error=reason,
+            misconfigured=True,
         )
     try:
         arguments = resolved_arguments(
@@ -673,6 +684,16 @@ async def run_activation_check(
             error=f"{tool} returned no structured result to test the condition on",
             preview=preview,
             arguments=arguments,
+        )
+    if isinstance(data, dict) and data.get(TARGET_MISSING_KEY) is True:
+        reason = f"{tool} found no object for {json.dumps(arguments, sort_keys=True, default=str)}: it no longer exists"
+        return ActivationCheckOutcome(
+            False,
+            f"{SKIP_SUMMARY_PREFIX} {tool} misconfigured: {reason}",
+            error=reason,
+            preview=preview,
+            arguments=arguments,
+            misconfigured=True,
         )
     data = without_own_hold(data, run_id)
     if condition_met(data, condition):
