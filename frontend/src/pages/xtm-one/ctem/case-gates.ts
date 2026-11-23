@@ -48,6 +48,17 @@ export const GATE_OUTCOME_LABEL = {
   answered: "Answered by a person",
 } as const satisfies Record<GateOutcome, string>;
 
+/**
+ * The status a gate card shows: the newest gate of a card is live, so a gate that waits reads
+ * in the present ("Waiting for a person"), while History rows keep GATE_OUTCOME_LABEL, a past
+ * event (#1539, UX round 1 on #1541 B1). @i18n-keys
+ */
+export const GATE_CARD_STATUS_LABEL = {
+  passed_automatically: "Passed automatically",
+  waited: "Waiting for a person",
+  answered: "Answered by a person",
+} as const satisfies Record<GateOutcome, string>;
+
 export function isGateOutcome(value: string | null | undefined): value is GateOutcome {
   return value === "passed_automatically" || value === "waited" || value === "answered";
 }
