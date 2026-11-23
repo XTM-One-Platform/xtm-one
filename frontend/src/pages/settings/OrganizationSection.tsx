@@ -1500,8 +1500,23 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
 
   return (
     <div data-testid="settings.organization" className="space-y-4">
+      {/* The Knowledge and sources page draws its own header, like its siblings (Inventory sources, the asset page):
+          the back link first, then its title; the profile's Draft, Edit and fields banner stay on the profile
+          (UX round 1 on #1476, B1). */}
+      {full && tab === "knowledge" && (
+        <div className="space-y-2" data-testid="settings.organization.knowledge-header">
+          <BackButton to={profileTabPath("identity")} label="Back to Organization Profile" />
+          <h3 className="flex items-center gap-2 title-xs">
+            {t_i18n(PROFILE_TAB_LABELS.knowledge)}
+            <InfoTip
+              label={t_i18n("About the knowledge and sources")}
+              content={t_i18n("The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.")}
+            />
+          </h3>
+        </div>
+      )}
       {/* A short header (#12329): the title with its explanation in a bubble, the version line, Draft and Edit. */}
-      {full && (
+      {full && tab !== "knowledge" && (
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 max-w-3xl space-y-1">
           <h3 className="flex items-center gap-2 title-xs">
@@ -1534,9 +1549,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         {(!editing || setupGuide) && (
           <div className="flex shrink-0 items-center gap-2">
             {/* Knowledge and sources is a page of its own, opened from here (#1367, point 7: a button, not a tab). */}
-            {full && tab !== "knowledge" && (
+            {full && (
               <Button variant="secondary" className="gap-1.5" onClick={() => goToTab("knowledge")} data-testid="settings.organization.knowledge">
-                <Icon name="refresh-cw" size={16} aria-hidden /> {t_i18n(PROFILE_TAB_LABELS.knowledge)}
+                <Icon name="database" size={16} aria-hidden /> {t_i18n(PROFILE_TAB_LABELS.knowledge)}
               </Button>
             )}
             {/* One "Draft" menu (section 6.1): the free deterministic draft and the metered AI draft. */}
@@ -1575,7 +1590,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
 
       {/* One compact row instead of the four figure cards (#12329): the completeness is per tab on the tab
           bar, the fields not filled sit at the top of their tab, and onboarding stays one click away. */}
-      {full && missing.length > 0 && !editing && (
+      {full && missing.length > 0 && !editing && tab !== "knowledge" && (
         <div data-testid="settings.organization.overview" className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-elevation-subtle px-3 py-2 content-base">
           <p>
             {t_i18n("{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}", {
@@ -1653,10 +1668,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         // Five real tabs (#12329): the URL holds the active one, only its panel is rendered, and the
         // bar sticks under the top bar (the tables' sticky heads stop under it).
         <div className="space-y-4">
-          {/* The Knowledge and sources page: a back link to the profile instead of the tab bar (#1367, point 7). */}
-          {full && tab === "knowledge" && (
-            <BackButton to={profileTabPath("identity")} label="Back to Organization Profile" />
-          )}
           {/* The bar is a row of links (UX r1 B1): the shared DetailTabs, so a tab opens in a new tab
               and Back returns to the previous one. It sits on the content grid, transparent at rest;
               stuck under the top bar it takes the page surface and the separator of the sticky bars

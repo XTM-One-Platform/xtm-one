@@ -505,7 +505,8 @@ describe("OrganizationSection", () => {
     fireEvent.click(within(card).getByRole("button", { name: "Link a knowledge base" }));
     fireEvent.click(within(within(card).getByTestId("settings.save-bar")).getByRole("button", { name: "Cancel" }));
     expect(within(card).queryByTestId("settings.save-bar")).toBeNull();
-    expect((screen.getByTestId("settings.organization.edit") as HTMLButtonElement).disabled).toBe(false);
+    // The Knowledge and sources page has no profile Edit of its own (UX round 1 on #1476, B1).
+    expect(screen.queryByTestId("settings.organization.edit")).toBeNull();
     expect(put).not.toHaveBeenCalled();
     // The focus goes back to the card's Edit, never to the page body (#12271 UX r1 B3).
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: /Edit Enterprise knowledge/ })));
@@ -969,6 +970,14 @@ describe("OrganizationSection", () => {
     expect(screen.getByRole("button", { name: /Back to Organization Profile/ })).toBeTruthy();
     expect(screen.queryByTestId("settings.organization.tabs")).toBeNull();
     expect(screen.queryByTestId("settings.organization.knowledge")).toBeNull();
+    // Its own header (UX round 1 on #1476, B1): the back link first, then its title; the profile's header and
+    // fields banner stay on the profile.
+    const header = screen.getByTestId("settings.organization.knowledge-header");
+    expect(header.firstElementChild?.textContent).toContain("Back to Organization Profile");
+    expect(header.textContent).toContain("Knowledge and sources");
+    expect(screen.queryByText("Organization profile", { selector: "h3" })).toBeNull();
+    expect(screen.queryByTestId("settings.organization.edit")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.overview")).toBeNull();
     // The table's last block of its tab (UX r1 B1, B2 on #1294): no tab bar, no card below it.
     expect(within(screen.getByTestId("settings.organization.panel-knowledge")).getByTestId("organization-sources")).toBe(panel);
     const rows = await within(panel).findAllByTestId("organization-sources.row");

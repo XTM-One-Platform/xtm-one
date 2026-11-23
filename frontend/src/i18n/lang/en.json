@@ -21181,5 +21181,7 @@
   "Back to Organization Profile": "Back to Organization Profile",
   "Inventory sources": "Inventory sources",
   "About the inventory sources": "About the inventory sources",
-  "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset."
+  "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.",
+  "About the knowledge and sources": "About the knowledge and sources",
+  "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.": "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs."
 }

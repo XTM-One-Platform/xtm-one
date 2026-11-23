@@ -7,7 +7,7 @@
  * ten.
  */
 import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -437,7 +437,7 @@ export default function CtemInventory() {
   const [tab] = useTabParam<InventoryTab>("assets");
   // No page-level Edit mode any more (#1367, point 2): each tab manages its rows (Add, row menu, bulk actions).
   const [searchParams, setSearchParams] = useSearchParams();
-  const { isAdmin } = useAuth();
+  const { isAdmin, isLoading: authLoading } = useAuth();
   const [adding, setAdding] = useState(false);
   const add: AddRequest = { open: adding, onClose: () => setAdding(false) };
   const editCards = tab === "assets" ? EDIT_CARDS.assets : null;
@@ -459,6 +459,11 @@ export default function CtemInventory() {
     );
   // Sources is a page of its own, not a tab (#1367, point 4): the standard back link to the inventory, its title, and
   // Asset matching as the header action.
+  // The sources and syncs are read and written by administrators only (the API answers 403 to a reader): a reader
+  // who opens the URL lands on the inventory (UX round 1 on #1476, B2).
+  if (tab === "sources" && !isAdmin) {
+    return authLoading ? null : <Navigate to={INVENTORY_PATH} replace />;
+  }
   if (tab === "sources") {
     return (
       <div className="space-y-4" data-testid="ctem-inventory-sources-page">
@@ -508,10 +513,13 @@ export default function CtemInventory() {
                   <Icon name="plus" size={16} aria-hidden /> {t_i18n(tab === "assets" ? "Add an asset" : "Add an asset group")}
                 </Button>
               )}
-              {/* Sources, the page's primary action top right (#1367, point 4: a button, not a tab). */}
-              <Button className="gap-1.5" onClick={() => navigate(`${INVENTORY_PATH}/sources`)} data-testid="ctem-inventory-sources">
-                <Icon name="refresh-cw" size={16} aria-hidden /> {t_i18n("Sources")}
-              </Button>
+              {/* Sources, the page's primary action top right (#1367, point 4: a button, not a tab), for administrators
+                  only: the sources API is admin-only (UX round 1 on #1476, B2). */}
+              {isAdmin && (
+                <Button className="gap-1.5" onClick={() => navigate(`${INVENTORY_PATH}/sources`)} data-testid="ctem-inventory-sources">
+                  <Icon name="database" size={16} aria-hidden /> {t_i18n("Sources")}
+                </Button>
+              )}
             </span>
           )
         }
