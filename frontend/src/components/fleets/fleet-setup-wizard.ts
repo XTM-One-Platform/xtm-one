@@ -155,6 +155,8 @@ export function pickedPlan(items: readonly FleetEnableItem[], left: ReadonlySet<
 
 /** Days a monthly load counts (the About tab basis). */
 const MONTH_DAYS = 30;
+/** Days a yearly load counts (a schedule rarer than once a month, UX round 2 B3 on #1550). */
+const YEAR_DAYS = 365;
 
 /**
  * The expected load of a pick (#1538): the runs a day its schedules start, how
@@ -165,16 +167,20 @@ const MONTH_DAYS = 30;
  * The per-item rates are summed unrounded and only the total is rounded, so a
  * pick of monthly schedules never reads as no run. Under one run a day the
  * load is said per month (`perMonth`): `runs` and `cost` then count a month
- * of `MONTH_DAYS` days, else a day (`runs` to one decimal).
+ * of `MONTH_DAYS` days, else a day (`runs` to one decimal). Under one run a
+ * month once rounded (a quarterly or half-yearly schedule) it is said per year (`perYear`, `perMonth`
+ * false): `runs` and `cost` then count `YEAR_DAYS` days.
  */
 export function pickedLoad(picked: readonly FleetEnableItem[], estimate: FleetEnableEstimate | null | undefined) {
   const rawPerDay = picked.reduce((sum, item) => sum + (item.runs_per_day ?? 0), 0);
-  const perMonth = rawPerDay > 0 && rawPerDay < 1;
-  const rawRuns = perMonth ? rawPerDay * MONTH_DAYS : rawPerDay;
-  const runs = perMonth ? Math.max(1, Math.round(rawRuns)) : Math.round(rawRuns * 10) / 10;
+  // Rounded first: a monthly cron is 0.0333 a day, 0.999 a month, and stays said per month.
+  const perYear = rawPerDay > 0 && Math.round(rawPerDay * MONTH_DAYS) < 1;
+  const perMonth = !perYear && rawPerDay > 0 && rawPerDay < 1;
+  const rawRuns = perYear ? rawPerDay * YEAR_DAYS : perMonth ? rawPerDay * MONTH_DAYS : rawPerDay;
+  const runs = perYear || perMonth ? Math.max(1, Math.round(rawRuns)) : Math.round(rawRuns * 10) / 10;
   const eventDriven = picked.filter((item) => item.event_driven).length;
   const avg = estimate?.avg_cost_per_run ?? null;
-  return { runs, perMonth, eventDriven, cost: avg === null ? null : avg * rawRuns, costDays: estimate?.cost_days ?? 30 };
+  return { runs, perMonth, perYear, eventDriven, cost: avg === null ? null : avg * rawRuns, costDays: estimate?.cost_days ?? 30 };
 }
 
 /**

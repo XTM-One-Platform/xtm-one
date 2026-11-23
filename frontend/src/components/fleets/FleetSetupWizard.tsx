@@ -201,8 +201,10 @@ export function FleetSetupWizard({
   };
 
   const close = () => onOpenChange(false);
-  // Under one run a day the load is said per month (UX round 1 B3 on #1550).
-  const runsLine = load.perMonth
+  // Under one run a day the load is said per month (UX round 1 B3 on #1550), under one a month per year (round 2 B3).
+  const runsLine = load.perYear
+    ? t_i18n("{count, plural, one {About # scheduled run a year.} other {About # scheduled runs a year.}}", { count: load.runs })
+    : load.perMonth
     ? t_i18n("{count, plural, one {About # scheduled run a month.} other {About # scheduled runs a month.}}", { count: load.runs })
     : t_i18n("{count, plural, =0 {No scheduled run a day.} one {About # scheduled run a day.} other {About # scheduled runs a day.}}", { count: load.runs });
   const eventLine =
@@ -212,6 +214,8 @@ export function FleetSetupWizard({
   const costLine =
     load.cost === null
       ? t_i18n("No cost yet: these automations have not run in the last {days, plural, one {# day} other {# days}}.", { days: load.costDays })
+      : load.perYear
+        ? t_i18n("About {cost} a year for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.", { cost: formatCost(load.cost, intl.locale), days: load.costDays })
       : load.perMonth
         ? t_i18n("About {cost} a month for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.", { cost: formatCost(load.cost, intl.locale), days: load.costDays })
         : t_i18n("About {cost} a day for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.", { cost: formatCost(load.cost, intl.locale), days: load.costDays });

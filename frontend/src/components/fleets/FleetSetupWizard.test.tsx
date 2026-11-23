@@ -326,8 +326,8 @@ describe("fleet-setup-wizard rules", () => {
       { id: "a2", name: "B", providers: [], missing: [], selected: true, runs_per_day: 4, event_driven: true },
     ];
     const estimate = { scheduled_runs_per_day: 4.3, event_automations: 1, avg_cost_per_run: 0.1, cost_per_day: 0.43, cost_days: 30 };
-    expect(pickedLoad(items, estimate)).toEqual({ runs: 4.3, perMonth: false, eventDriven: 1, cost: 0.1 * 4.3, costDays: 30 });
-    expect(pickedLoad([], null)).toEqual({ runs: 0, perMonth: false, eventDriven: 0, cost: null, costDays: 30 });
+    expect(pickedLoad(items, estimate)).toEqual({ runs: 4.3, perMonth: false, perYear: false, eventDriven: 1, cost: 0.1 * 4.3, costDays: 30 });
+    expect(pickedLoad([], null)).toEqual({ runs: 0, perMonth: false, perYear: false, eventDriven: 0, cost: null, costDays: 30 });
   });
 
   it("says a pick under one run a day per month, from the unrounded rates (UX round 1 B3 on #1550)", () => {
@@ -340,6 +340,15 @@ describe("fleet-setup-wizard rules", () => {
     expect(load).toMatchObject({ runs: 1, perMonth: true, eventDriven: 0 });
     expect(load.cost).toBeCloseTo(2 * 0.0389 * 30);
     expect(pickedLoad([{ ...monthly[0], runs_per_day: 0.1429 }], null)).toMatchObject({ runs: 4, perMonth: true });
+    expect(pickedLoad([monthly[0]], null)).toMatchObject({ runs: 1, perMonth: true, perYear: false });
+  });
+
+  it("says a half-yearly pick per year, never as no run (UX round 2 B3 on #1550)", () => {
+    const halfYearly = [{ id: "h1", name: "Half-year review", providers: [], missing: [], selected: true, runs_per_day: 0.0055 }];
+    const estimate = { scheduled_runs_per_day: 0.0055, event_automations: 0, avg_cost_per_run: 2, cost_per_day: 0.011, cost_days: 30 };
+    const load = pickedLoad(halfYearly, estimate);
+    expect(load).toMatchObject({ runs: 2, perMonth: false, perYear: true, eventDriven: 0 });
+    expect(load.cost).toBeCloseTo(2 * 0.0055 * 365);
   });
 
   it("counts the slots bound and still to bind", () => {

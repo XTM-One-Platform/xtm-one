@@ -296,6 +296,8 @@ class FleetEnablePlan:
 
 #: Days of history the average cost of one run is read over.
 ESTIMATE_COST_DAYS = 30
+#: Days a schedule too rare for a month is counted over (#1538, UX round 2 B3).
+YEAR_DAYS = 365
 #: Trigger kinds that start one run per event: their daily count is unknown before they run.
 EVENT_TRIGGERS = frozenset({"integration_event", "platform_event", "webhook", "work_item"})
 
@@ -327,16 +329,25 @@ def scheduled_runs_per_day(assignments: list[Any]) -> float:
     per-item rate rounded to 0.0 made a monthly-only pick read as no run at all
     once the client summed the items (#1538, UX round 1 B3). The client rounds
     the total it shows.
-    """
-    from app.services.fleet_doc_generation import QUOTA_DAYS, runs_per_month
 
-    total = 0
+    A schedule that never fires in the 30-day window (a quarterly, half-yearly
+    or yearly cron) is counted over a full year instead, its fires divided by
+    :data:`YEAR_DAYS`, so it never reads as no run (#1538, UX round 2 B3).
+    """
+    from app.services.fleet_doc_generation import QUOTA_DAYS, cron_fires
+
+    total = 0.0
     for assignment in assignments:
         if str(getattr(assignment, "trigger_type", "") or "") != "schedule":
             continue
         config = assignment.trigger_config if isinstance(assignment.trigger_config, dict) else {}
-        total += runs_per_month(config.get("cron")) or 0
-    return round(total / QUOTA_DAYS, 4)
+        cron = config.get("cron")
+        monthly = cron_fires(cron, QUOTA_DAYS)
+        if monthly:
+            total += monthly / QUOTA_DAYS
+        elif monthly == 0:
+            total += (cron_fires(cron, YEAR_DAYS) or 0) / YEAR_DAYS
+    return round(total, 4)
 
 
 async def average_run_cost(db: AsyncSession, assignment_ids: list[uuid.UUID], *, days: int) -> float | None:

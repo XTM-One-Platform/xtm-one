@@ -253,6 +253,16 @@ def test_sub_daily_schedule_keeps_its_rate_unrounded() -> None:
     assert fleet_control.scheduled_runs_per_day([weekly]) in {round(4 / 30, 4), round(5 / 30, 4)}
 
 
+def test_half_yearly_schedule_is_counted_over_a_year() -> None:
+    """A cron that never fires in the 30-day window counts its fires over 365 days (#1538, UX round 2 B3)."""
+    half_yearly = _assignment("Half-yearly", enabled=False, reason="created_disabled")
+    half_yearly.trigger_config = {"cron": "0 8 1 1,7 *"}
+    assert fleet_control.scheduled_runs_per_day([half_yearly]) == round(2 / 365, 4)
+    monthly = _assignment("Monthly", enabled=False, reason="created_disabled")
+    monthly.trigger_config = {"cron": "0 8 1 * *"}
+    assert fleet_control.scheduled_runs_per_day([monthly, half_yearly]) == round(1 / 30 + 2 / 365, 4)
+
+
 @pytest.mark.asyncio
 async def test_estimate_without_history_gives_no_cost():
     rows = [(_assignment("Manual", enabled=False, reason="user_toggle"), _agent())]
