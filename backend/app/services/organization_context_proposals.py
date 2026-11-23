@@ -66,6 +66,9 @@ PROPOSABLE_POLICY_PATHS: tuple[str, ...] = ("prioritization_policy.scope_min_cri
 #: owned domains, the address ranges (CIDR, validated by the profile model) and the attack
 #: surface pass. They stay exposure fields: out of the always-on block and of missing_fields.
 PROPOSABLE_EXPOSURE_PATHS: tuple[str, ...] = ("owned_domains", "address_ranges", "attack_surface")
+#: The reference exchange rates the risk agents cite to convert a figure (#1383): an
+#: administrator sets them by API or through an agent; not a contract field.
+PROPOSABLE_RATE_PATHS: tuple[str, ...] = ("fx_rates",)
 
 
 def _contract_paths(role: str) -> tuple[str, ...]:
@@ -76,6 +79,7 @@ def _contract_paths(role: str) -> tuple[str, ...]:
             tuple(path for path, _label in org_context.CONTRACT_FIELDS)
             + PROPOSABLE_POLICY_PATHS
             + PROPOSABLE_EXPOSURE_PATHS
+            + PROPOSABLE_RATE_PATHS
         )
     return tuple(path for path, _label in TRACKED_CONTRACT_FIELDS)
 

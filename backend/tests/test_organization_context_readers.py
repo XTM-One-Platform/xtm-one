@@ -116,5 +116,5 @@ def test_only_seeded_agents_of_the_table_are_named_once_per_field():
     fork = SimpleNamespace(id=uuid.uuid4(), slug="ctem-risk-quantifier-copy", name="Copy", is_builtin=False)
     custom = SimpleNamespace(id=uuid.uuid4(), slug="ctem-risk-quantifier", name="Mine", is_builtin=False)
     readers = readers_from_agents([quantifier, fork, custom])
-    assert set(readers) == {"crown_jewels", "risk_appetite", "currency"}
+    assert set(readers) == {"crown_jewels", "risk_appetite", "currency", "fx_rates"}
     assert readers["risk_appetite"] == [{"agent_id": str(quantifier.id), "name": "Risk Quantifier"}]
