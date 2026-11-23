@@ -18,6 +18,7 @@ import { Card } from "@/components/ui/card";
 import { Tip } from "@/components/ui/tooltip";
 import type { AssetFieldOrigin, AssetSourceRecord, CanonicalAssetDetail } from "@/hooks/api/useOrganizationAssetsApi";
 import { useFormatter } from "@/i18n";
+import { formatCount } from "@/lib/number-format";
 import { cn } from "@/lib/utils";
 import { assetCategoryLabel, assetFieldLabel, sourceLabel } from "./inventory";
 import { CategoryMark, OsMark, SourceLogo } from "./inventory-icons";
@@ -50,7 +51,7 @@ export function AssetSection({
       <div className="flex min-h-8 items-center justify-between gap-3">
         <h2 id={id} className="title-xs flex items-center gap-2">
           {title}
-          {!empty && count != null && <span className="content-caption text-default-secondary">{intl.formatNumber(count)}</span>}
+          {!empty && count != null && <span className="content-caption text-default-secondary">{formatCount(intl.locale, count)}</span>}
         </h2>
         {actions}
       </div>
