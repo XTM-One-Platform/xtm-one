@@ -13679,6 +13679,7 @@
   "Coordinate a fleet across runs: a durable, claimable work queue (create, update, list, atomically claim and complete work items, delegate a tracked run to an assignment), a cross-run key-value store so agents never cold-start, and a workset, a working corpus for material too large for one context, summarised and searchable. Work items are shared data: they never trigger an agent by themselves.": "Coordonner une flotte d’une exécution à l’autre : une file de tâches durable et réservable (créer, mettre à jour, lister, réserver de façon atomique et terminer des tâches, déléguer une exécution suivie à une mission), un stockage clé-valeur partagé entre exécutions pour que les agents ne repartent jamais de zéro, et un workset, un corpus de travail pour les contenus trop volumineux pour un seul contexte, résumé et consultable. Les tâches sont des données partagées : elles ne déclenchent jamais un agent d’elles-mêmes.",
   "Open (status)": "Ouvert",
   "Open (case scope)": "Ouverts",
+  "Waiting (case scope)": "En attente",
   "Closed (case scope)": "Fermés",
   "Assigning Jira issue": "Attribution du ticket Jira",
   "Attaching file to Jira issue": "Ajout d'un fichier au ticket Jira",

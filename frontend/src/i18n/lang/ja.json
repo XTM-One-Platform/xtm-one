@@ -13679,6 +13679,7 @@
   "Coordinate a fleet across runs: a durable, claimable work queue (create, update, list, atomically claim and complete work items, delegate a tracked run to an assignment), a cross-run key-value store so agents never cold-start, and a workset, a working corpus for material too large for one context, summarised and searchable. Work items are shared data: they never trigger an agent by themselves.": "実行をまたいでフリートを連携させます：永続的で取得可能な作業キュー（作業項目の作成、更新、一覧、アトミックな取得と完了、追跡付き実行のアサインメントへの委任）、エージェントがゼロから始めずに済む実行間共有のキーバリューストア、そして 1 つのコンテキストに収まらない資料のための要約・検索可能な作業コーパスであるワークセット。作業項目は共有データであり、それ自体でエージェントを起動することはありません。",
   "Open (status)": "オープン",
   "Open (case scope)": "未完了",
+  "Waiting (case scope)": "判断待ち",
   "Closed (case scope)": "完了",
   "Assigning Jira issue": "Jira 課題を割り当て中",
   "Attaching file to Jira issue": "Jira 課題にファイルを添付中",
