@@ -20080,7 +20080,6 @@
   "Triggers when a finished simulation's attack path reached an asset of high or very high criticality in OpenAEV.": "OpenAEVで完了したシミュレーションの攻撃パスが、重要度が高いまたは非常に高い資産に到達したときに発火します。",
   "Opened by": "起点",
   "The signals of this case could not be read.": "このケースのシグナルを読み取れませんでした。",
-  "No signal opened this case: it groups open issues read from the products.": "このケースはシグナルから開かれていません。製品から読み取った未解決の課題をまとめたものです。",
   "See the loop trace": "ループのトレースを見る",
   "A signal joined the case": "シグナルがケースに追加されました",
   "Recorded a validation": "検証を記録しました",
@@ -20714,8 +20713,6 @@
   "Not computed yet": "未計算",
   "{count, plural, one {{products} did not answer at {time}, cases unchanged.} other {{products} did not answer at {time}, cases unchanged.}}": "{count, plural, other {{products} は {time} に応答しませんでした。ケースは変更されていません。}}",
   "Open the {product} integration": "{product} の連携を開く",
-  "Opened from OpenCTI vulnerabilities matched to your inventory": "インベントリと照合された OpenCTI の脆弱性から作成",
-  "Opened from OpenAEV findings on your assets": "資産に対する OpenAEV の検出結果から作成",
   "Add a sync": "同期を追加",
   "Start with your sources": "ソースから始める",
   "Pick a platform, pick the sections it fills, preview the rows, then keep them in sync.": "プラットフォームと埋めるセクションを選び、行をプレビューしてから同期を維持します。",
@@ -21208,5 +21205,7 @@
   "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
   "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "組織が出荷する製品とそのソースリポジトリ。製品の脆弱性はCTEMでそのリポジトリに紐付けられます。",
   "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "出荷製品はまだありません。出荷製品の脆弱性は未解決のままです。",
-  "A repository is not owner/name": "owner/name 形式でないリポジトリがあります"
+  "A repository is not owner/name": "owner/name 形式でないリポジトリがあります",
+  "Opened by a source read before signals (legacy)": "シグナル導入前のソース読み取りで作成 (レガシー)",
+  "Split into its own case by a person or an agent": "ユーザーまたはエージェントにより個別のケースに分割"
 }
