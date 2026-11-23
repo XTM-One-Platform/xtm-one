@@ -67,6 +67,10 @@ FLEET_NAME = "Risk budget desk"
 
 #: Shared state of the fleet: the last register snapshot, the ranked investments, the Board packs.
 STATE_KEY = "opencrq:risk-budget-desk:state"
+#: Where the monthly snapshots trimmed from STATE_KEY (keep_last) go: history is archived, never lost.
+STATE_ARCHIVE_KEY = f"{STATE_KEY}:archive"
+#: Monthly snapshots kept in STATE_KEY: two years of trend.
+SNAPSHOTS_KEPT = 24
 #: Work-item key prefix of the recommendations the fleet files for a person.
 RECOMMENDATION_PREFIX = "opencrq:risk-budget-desk:recommendation:"
 #: Work-item key prefix of a proposed write to the register of record (a scenario, its loss
@@ -84,6 +88,10 @@ REGISTER_EVENTS: dict[str, str] = {
     "Finding re-scored": "finding_score_changed",
     "Control validation ingested": "control_validation_ingested",
 }
+
+#: A register move below this share of the last snapshot's total is noise (a
+#: Monte Carlo re-run): no explanation, no snapshot, no investment case (#1417).
+MATERIAL_MOVE_PERCENT = 1.0
 
 #: What drove a scenario's expected annual loss to move.
 DRIVERS: tuple[str, ...] = ("frequency", "magnitude", "control", "asset", "settings", "unknown")
@@ -285,11 +293,17 @@ _COMMON = {
 }
 
 _EVENT_PROMPT = (
-    "OpenCRQ finished the job named in the trigger information below ({what}).\n"
-    "Run one register refresh of the risk budget desk: delegate to the Register Analyst the scenarios "
-    f"re-priced since the last snapshot in shared state {STATE_KEY}, with the driver of each move. When a "
-    "scenario crosses the risk tolerance, have the Investment Analyst price the control upgrades that "
-    "bring it back and file one recommendation work item. A write the register needs (a scenario, its "
+    "OpenCRQ finished the jobs named in the trigger information below ({what}); `covers` lists every "
+    "job this one run stands for, `run_count` how many.\n"
+    "Run ONE register refresh of the risk budget desk for all of them. First read the register total "
+    f"and compare it with the last snapshot in shared state {STATE_KEY}: when the total moved by less than "
+    f"{MATERIAL_MOVE_PERCENT:g}% and no scenario crossed the risk tolerance, stop there and answer the run "
+    "JSON with the summary 'no material move', writing nothing. Otherwise delegate to the Register Analyst "
+    "the scenarios re-priced since the last snapshot, with the driver of each move, and record the "
+    "snapshot keyed by the current month (update the entry of that month in place, never a second one; "
+    f"a new month is appended with keep_last {SNAPSHOTS_KEPT} and archive_key {STATE_ARCHIVE_KEY}). "
+    "When a scenario crosses the risk tolerance, have the Investment Analyst price the control upgrades "
+    "that bring it back and file one recommendation work item. A write the register needs (a scenario, its "
     "loss estimates, the risk tolerance) is proposed for a person as one needs_human work item keyed "
     f"{APPROVAL_PREFIX} followed by the write kind and the OpenCRQ id; never write it yourself. Answer "
     "with the run JSON."
@@ -308,6 +322,10 @@ RISK_BUDGET_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
             "trigger_config": {
                 "provider": opencrq_job_events.PROVIDER,
                 "event": event,
+                # One refresh at a time per event: a burst of OpenCRQ jobs folds
+                # into the one queued run (event_coalescing, #1417), so two runs
+                # never read the same base and write two snapshots.
+                "max_concurrent_runs": 1,
                 # The poller already asks for these runs; the filter keeps a run
                 # from reaching the desk when another source replays the event.
                 "filter": {

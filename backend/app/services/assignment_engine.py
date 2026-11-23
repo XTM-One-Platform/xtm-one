@@ -87,6 +87,7 @@ from app.services import (
     assignment_run_resume,
     chat_reply_guard,
     chat_turn_coalescing,
+    event_coalescing,
     event_run_dedup,
 )
 from app.services.agent_posts import set_posting_assignment
@@ -10385,8 +10386,10 @@ class QueuedTriggerResult:
       dedup key within the window (``services/event_run_dedup.py``); ``run_id``
       is the ``skipped`` run that records the refusal. Nothing executes.
     - ``"coalesced"``   — a chat message merged into the waiting turn of a run
-      of the same conversation and sender (``services/chat_turn_coalescing.py``);
-      ``run_id`` is that run. No run is created.
+      of the same conversation and sender (``services/chat_turn_coalescing.py``),
+      or a polled event folded into the queued run of its coalesce key
+      (``services/event_coalescing.py``); ``run_id`` is that run. No run is
+      created.
     - ``"steered"``     — a chat message handed to the running turn of its
       conversation and sender, injected at the loop's next iteration
       (``services/chat_turn_steering.py``); ``run_id`` is that run. No
@@ -10869,6 +10872,25 @@ async def trigger_or_queue_assignment(
                 )
                 return QueuedTriggerResult(status="steered", run_id=steered_into)
 
+    coalesce_key = event_coalescing.context_key(trigger_context)
+    if coalesce_key is not None:
+        # A burst of polled events that stand for one change (an OpenCRQ batch
+        # recompute, #1417): folded into the run of the same key still waiting
+        # in the queue, so at most one waits behind the one running.
+        folded_into = await _fold_into_queued_run(db, assignment, coalesce_key, payload)
+        if folded_into is not None:
+            await db.commit()
+            await _release_event_claim(assignment.agent_id, dedup_key)
+            logger.info(
+                "Assignment '%s' (%s): event %s folded into queued run %s (coalesce key %s)",
+                assignment.name,
+                assignment.id,
+                (payload or {}).get("message_id") or "?",
+                folded_into,
+                coalesce_key,
+            )
+            return QueuedTriggerResult(status="coalesced", run_id=folded_into)
+
     usage = await _slot_usage(db, assignment.id)
     depth = await count_queued_runs(db, assignment.id)
     start_now = usage.has_room(cap) and ordering_key not in usage.busy_keys
@@ -10978,6 +11000,37 @@ async def trigger_or_queue_assignment(
         queue_depth=depth,
         dropped_run_id=dropped_run_id,
     )
+
+
+async def _fold_into_queued_run(
+    db: AsyncSession,
+    assignment: Assignment,
+    coalesce_key: str,
+    payload: dict[str, Any] | None,
+) -> str | None:
+    """Fold a coalescing event into the queued run of the same key; its id, or ``None``.
+
+    The oldest queued run of *assignment* whose trigger context carries
+    *coalesce_key* (``services/event_coalescing.py``), locked so two events
+    folding at once never lose one. Flushes, the caller commits.
+    """
+    result = await db.execute(
+        select(AssignmentRun)
+        .where(
+            AssignmentRun.assignment_id == assignment.id,
+            AssignmentRun.status == QUEUED_RUN_STATUS,
+            AssignmentRun.trigger_context[event_coalescing.CONTEXT_KEY].as_string() == coalesce_key,
+        )
+        .order_by(AssignmentRun.created_at.asc())
+        .limit(1)
+        .with_for_update()
+    )
+    run = result.scalar_one_or_none()
+    if run is None:
+        return None
+    run.trigger_payload = event_coalescing.merged_payload(run.trigger_payload or {}, payload or {})
+    await db.flush()
+    return str(run.id)
 
 
 async def _merge_into_waiting_turn(

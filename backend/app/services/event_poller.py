@@ -63,7 +63,14 @@ from app.integrations.providers.quotapath import events as quotapath_events
 from app.models.agent import Agent
 from app.models.assignment import Assignment, event_read_from_legacy_key
 from app.models.integration import Integration
-from app.services import dealhub_events, jira_events, netsuite_events, opencrq_job_events, pennylane_events
+from app.services import (
+    dealhub_events,
+    event_coalescing,
+    jira_events,
+    netsuite_events,
+    opencrq_job_events,
+    pennylane_events,
+)
 from app.services.agent_posts import (
     is_agent_mail,
     is_agent_slack_post,
@@ -570,6 +577,11 @@ async def _dispatch_poll_page(
                 "message_id": msg_id or None,
                 "triggered_at": datetime.now(UTC).isoformat(),
             }
+            # A poller that coalesces its events (``event_coalescing``): the
+            # dispatcher folds this one into a queued run of the same key.
+            coalesce_key = event_coalescing.payload_key(event_payload)
+            if coalesce_key:
+                event_trigger_context[event_coalescing.CONTEXT_KEY] = coalesce_key
             try:
                 # Started in a free slot, else queued: a polled event has a
                 # cursor to fall back on, so it always waits in the queue rather
@@ -615,6 +627,13 @@ async def _dispatch_poll_page(
                     replay_unsafe=replay_unsafe,
                 )
                 return dispatched, "queue_full"
+            if coalesce_key:
+                # Every event the coalesced one stands for is seen now: a page
+                # read again past a backed-off cursor starts nothing twice.
+                for covered in event_payload.get("covers") or []:
+                    covered_id = covered.get("message_id") if isinstance(covered, dict) else None
+                    if covered_id and covered_id != msg_id:
+                        await claim_seen(redis, wf.id, covered_id)
             dispatched += 1
 
         # The whole batch was dispatched: the cursor moves past it.
@@ -1035,6 +1054,11 @@ async def _poll_opencrq_job_runs(credential: str, event_type: str, wf: Assignmen
     ``finishedFrom`` is inclusive: the run at the cursor comes back and the seen
     set skips it. The tenant is the trigger filter's ``tenant_id``, else the
     account's sole tenant. The first poll starts from now.
+
+    The page is ONE event (``opencrq_job_events.coalesce_events``, #1417): a
+    batch recompute starts one run, not one per job, and a run that processed
+    nothing is no event. The runs a page covers that were already dispatched
+    are left out, so a page fetched again starts nothing new.
     """
     cursor_key = f"event_cursor:{wf.id}"
     since = await redis.get(cursor_key)
@@ -1058,9 +1082,13 @@ async def _poll_opencrq_job_runs(credential: str, event_type: str, wf: Assignmen
     await _note_backlog(redis, wf, "OpenCRQ", page.more)
     if page.cursor is not None and page.cursor.get("finishedAt"):
         await redis.set(cursor_key, str(page.cursor["finishedAt"]), ex=_CURSOR_TTL_SECONDS)
-    return [
-        opencrq_job_events.run_event(run, event_type, base_url=base_url, tenant_id=tenant) for run in page.items
-    ]
+    fresh = []
+    for run in page.items:
+        msg_id = opencrq_job_events.run_event(run, event_type, base_url=base_url, tenant_id=tenant)["message_id"]
+        if msg_id and await redis.zscore(event_seen_set_key(wf.id), msg_id) is not None:
+            continue
+        fresh.append(run)
+    return opencrq_job_events.coalesce_events(fresh, event_type, base_url=base_url, tenant_id=tenant)
 
 
 async def _poll_quotapath_payouts(api_key: str, event_type: str, wf: Assignment, redis: Redis) -> list[dict[str, Any]]:
