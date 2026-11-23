@@ -44,6 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.api.v1.helpers import get_user_group_ids
 from app.core.database import get_db
+from app.core.docs_links import absolute_docs_link
 from app.models.health_check import (
     MODULES,
     SEVERITIES,
@@ -334,7 +335,7 @@ def _response(
         subject_name=names.get(str(agent_id)) if agent_id else None,
         evidence=dict(row.evidence or {}),
         recommendation=row.recommendation or "",
-        doc_link=row.doc_link or "",
+        doc_link=absolute_docs_link(row.doc_link or ""),
         first_seen=row.first_seen,
         last_seen=row.last_seen,
         resolved_at=row.resolved_at,
