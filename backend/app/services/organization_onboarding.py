@@ -60,7 +60,7 @@ FIELD_HINTS: dict[str, str] = {
     "tech_stack": "the main products in use (list of {product, vendor})",
     "ai_systems": (
         "the AI systems the organization runs or exposes (list of {name, kind: assistant|agent|model_api|embedded, "
-        "owner, exposure: internal|partner|public})"
+        "owner, exposure: internal|partner|public}); saved as assets of category ai_target"
     ),
     "pir_ids": "the OpenCTI priority intelligence requirements to follow (list of OpenCTI PIR ids)",
     "currency": "the currency of every amount (ISO 4217 code, e.g. EUR)",

@@ -138,3 +138,105 @@ async def test_an_outbound_run_records_the_created_rows_and_audits(monkeypatch):
     assert (result["direction"], result["added"], result["error"]) == ("outbound", 1, None)
     assert sync.outbound_ids == {"crm": "new-id"}
     assert calls["audit"][0]["summary"].startswith("Outbound organization sync of crown_jewels to opencrq")
+
+
+def _ai_profile(*rows: dict) -> oc.OrganizationProfile:
+    return oc.parse_profile({"name": "Acme", "assets_exposure": [{"category": "ai_target", **r} for r in rows]})
+
+
+def test_ai_target_assets_can_sync_outbound_to_openaev_and_endpoints_stay_out():
+    """#1501: an AI system is an asset; its outbound sync writes OpenAEV AI targets only."""
+    osync.validate(section="assets", source="openaev", direction="outbound", **OK)
+    osync.validate(section="ai_systems", source="openaev", direction="outbound", **OK)
+    profile = oc.parse_profile({"name": "Acme", "assets_exposure": [{"name": "laptop-1", "category": "host"}]})
+    plan = outbound.plan_ai_target_outbound(profile, [], {})
+    assert plan.create == [] and plan.platform == "openaev"
+
+
+def test_ai_target_plan_creates_updates_deletes_only_its_own_and_skips_openaev_rows():
+    profile = _ai_profile(
+        {"name": "Copilot", "criticality": "high", "ai_target_provider": "xtm_one", "ai_target_model": "m1"},
+        {"name": "Chatbot", "criticality": "low"},
+        {"name": "Theirs", "source": "openaev", "external_id": "t9"},
+    )
+    targets = [
+        {
+            "asset_id": "made-copilot",
+            "asset_name": "Copilot",
+            "asset_criticality": "LOW",
+            "ai_target_provider": "XTM_ONE",
+            "ai_target_model": "m1",
+            "ai_target_modality": "TEXT",
+            "ai_target_system_prompt": "keep me",
+            "ai_target_token": "secret",
+            "asset_tags": ["tag-1"],
+        },
+        {"asset_id": "made-old", "asset_name": "Old"},
+        {"asset_id": "t9", "asset_name": "Theirs"},
+    ]
+    plan = outbound.plan_ai_target_outbound(profile, targets, {"copilot": "made-copilot", "old": "made-old"})
+    assert plan.create == [("Chatbot", "LOW")]
+    assert plan.bodies["Chatbot"]["ai_target_provider"] == outbound.DEFAULT_AI_TARGET_PROVIDER.upper()
+    assert plan.update == [("made-copilot", "Copilot", "HIGH")]
+    # A PUT replaces every field: what XTM One does not own is sent back as OpenAEV holds it.
+    body = plan.bodies["Copilot"]
+    assert (body["ai_target_system_prompt"], body["ai_target_token"], body["asset_tags"]) == (
+        "keep me",
+        "secret",
+        ["tag-1"],
+    )
+    assert plan.delete == [("old", "made-old")]
+    assert plan.skipped == ["Theirs"]
+    assert all("t9" not in str(x) for x in (plan.create, plan.update, plan.delete))
+    assert plan.summary()["update"] == [{"openaev_asset_id": "made-copilot", "name": "Copilot", "criticality": "HIGH"}]
+
+
+def test_ai_target_in_step_is_not_updated():
+    profile = _ai_profile({"name": "Copilot", "criticality": "high", "ai_target_provider": "anthropic"})
+    targets = [
+        {
+            "asset_id": "a1",
+            "asset_name": "Copilot",
+            "asset_criticality": "HIGH",
+            "ai_target_provider": "ANTHROPIC",
+            "ai_target_modality": "TEXT",
+        }
+    ]
+    plan = outbound.plan_ai_target_outbound(profile, targets, {"copilot": "a1"})
+    assert plan.create == [] and plan.update == [] and plan.delete == []
+
+
+@pytest.mark.asyncio
+async def test_an_ai_target_outbound_run_writes_openaev_and_records_ids(monkeypatch):
+    from app.integrations.providers.openaev import _common as oaev
+    from app.services import ctem_metrics_collector as cmc
+
+    calls: list[tuple[str, str]] = []
+
+    async def creds(_db, _user, _provider):
+        return "https://oaev", {}
+
+    async def search(_base, _headers, path, _group, _text=""):
+        assert path == "/api/ai_targets/search"
+        return imp.ReadResult(rows=[{"asset_id": "gone-id", "asset_name": "Old"}], total=1)
+
+    class _Resp:
+        def json(self):
+            return {"asset_id": "new-id"}
+
+    async def api(_base, _headers, method, path, _action, **_kw):
+        calls.append((method, path))
+        return _Resp(), None
+
+    async def current_version(_db):
+        return SimpleNamespace(profile={"name": "Acme", "assets_exposure": [{"name": "Bot", "category": "ai_target"}]})
+
+    monkeypatch.setattr(cmc, "_user_creds", creds)
+    monkeypatch.setattr(imp, "_openaev_search", search)
+    monkeypatch.setattr(oaev, "_api", api)
+    monkeypatch.setattr(oc, "current_version", current_version)
+    sync = SimpleNamespace(section="assets", source="openaev", outbound_ids={"old": "gone-id"}, filters={})
+    plan, ids = await outbound.run_outbound(None, sync, user_id=uuid.uuid4(), apply=True)
+    assert plan.error == ""
+    assert calls == [("post", "/api/ai_targets"), ("delete", "/api/ai_targets/gone-id")]
+    assert ids == {"bot": "new-id"}

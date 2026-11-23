@@ -100,8 +100,17 @@ CATEGORY_NAMES: tuple[str, ...] = tuple(category.name for category in CATEGORIES
 _BY_NAME = {category.name: category for category in CATEGORIES}
 
 
+#: Deprecated since #1501 (kept one release): ``ai_systems`` reads the assets of category ``ai_target``.
+AI_SYSTEMS_ALIAS = Category(
+    "ai_systems", "assets_exposure", "AI systems (deprecated: the assets of category ai_target)"
+)
+
+
 def get(name: str) -> Category | None:
-    return _BY_NAME.get(str(name or "").strip().lower())
+    wanted = str(name or "").strip().lower()
+    if wanted == AI_SYSTEMS_ALIAS.name:
+        return AI_SYSTEMS_ALIAS
+    return _BY_NAME.get(wanted)
 
 
 def normalize_categories(value: object) -> list[str]:
@@ -168,6 +177,8 @@ def rows_of(profile: OrganizationProfile, category: Category) -> list[Any]:
     if category.field == "prioritization_policy":
         return policy_rows(profile)
     values = getattr(profile, category.field, None) or []
+    if category is AI_SYSTEMS_ALIAS:
+        values = [v for v in values if getattr(v, "category", "") == "ai_target"]
     if category.field == "pir_ids":
         return [{"id": pir, "name": profile.pir_names.get(pir, "")} for pir in values]
     return [value.model_dump(mode="json") if isinstance(value, BaseModel) else value for value in values]
