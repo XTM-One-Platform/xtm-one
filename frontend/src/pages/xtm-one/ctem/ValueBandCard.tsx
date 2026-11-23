@@ -27,7 +27,7 @@
  *
  * Reading the band starts no run, calls no model and uses no quota.
  */
-import { VALUE_METHODOLOGY_PATH, valuePath, workItemsPath } from "@/lib/task-routes";
+import { VALUE_METHODOLOGY_PATH, valuePath, waitingForMePath } from "@/lib/task-routes";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowDownRight, ArrowUpRight, RefreshCw, ShieldAlert, TrendingUp, Zap } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -242,7 +242,7 @@ export function ValueBandCard(props: ValueBandProps) {
             </p>
             <button
               type="button"
-              onClick={() => navigate(workItemsPath({ view: "waiting" }))}
+              onClick={() => navigate(waitingForMePath())}
               className={cn("self-start content-compact hover:underline", waitingCount > 0 ? "text-feedback-warning-primary" : "text-default-secondary")}
             >
               {t_i18n("{count} waiting for you", { count: formatCount(intl.locale, waitingCount) })}

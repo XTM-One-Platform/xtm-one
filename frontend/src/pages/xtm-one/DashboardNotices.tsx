@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { workItemPath, workItemsPath } from "@/lib/task-routes";
+import { waitingForMePath, workItemPath } from "@/lib/task-routes";
 import { Icon } from "@filigran/design-system";
 import { ListTodo, ShieldOff } from "lucide-react";
 import { useMemo } from "react";
@@ -28,8 +28,8 @@ import { ModelConfigWarnings } from "./ModelConfigWarnings";
  * An agent's own waits (on another item, a pull request, a deployment, a run
  * holding it) are never the reader's to-do and stay in Operations. Names the
  * item waiting longest; Review opens that item when it is the only one, and
- * otherwise the Operations "Waiting for me" view, which lists every item this
- * notice counts (one query, `waiting_for_me`). Renders nothing when nothing
+ * otherwise the Tasks "Waiting for me" view on the All segment, which lists
+ * every item this notice counts (`waitingForMePath`). Renders nothing when nothing
  * waits.
  */
 function WorkItemsWaitingForMeAlert() {
@@ -45,7 +45,7 @@ function WorkItemsWaitingForMeAlert() {
     navigate(
       count === 1 && oldest
         ? workItemPath(oldest.id)
-        : workItemsPath({ view: "waiting" }),
+        : waitingForMePath(),
     );
   return (
     <DashboardNotice
