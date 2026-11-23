@@ -402,39 +402,17 @@ async def list_canonical_assets(
     q: str = Query("", max_length=200),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
-    category: list[str] = Query(default_factory=list, max_length=50),
-    criticality: list[str] = Query(default_factory=list, max_length=50),
-    internet_facing: list[str] = Query(default_factory=list, max_length=50),
-    source: list[str] = Query(default_factory=list, max_length=50),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ) -> CanonicalAssetsPage:
-    """The canonical assets (one per real thing, its sources and software count), paginated by name.
-
-    Each filter (repeated for several values) keeps the assets holding one of its values.
-    """
+    """The canonical assets (one per real thing, its sources and software count), paginated by name."""
     from app.services.organization_asset_store import list_assets
 
     org = await _built_store(db)
     if org is None:
         return CanonicalAssetsPage(items=[], total=0, offset=offset, limit=limit)
-    filters = {"category": category, "criticality": criticality, "internet_facing": internet_facing, "source": source}
-    page = await list_assets(db, org, q=q, offset=offset, limit=limit, filters=filters)
+    page = await list_assets(db, org, q=q, offset=offset, limit=limit)
     return CanonicalAssetsPage(**vars(page))
-
-
-@router.get("/assets/facets")
-async def read_asset_facets(
-    db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
-) -> dict[str, list[str]]:
-    """The values the asset list filters on: category, criticality, internet facing and source."""
-    from app.services.organization_asset_store import FILTER_FIELDS, asset_facets
-
-    org = await _built_store(db)
-    if org is None:
-        return {name: [] for name in (*FILTER_FIELDS, "source")}
-    return await asset_facets(db, org)
 
 
 @router.get("/assets/identity")
@@ -983,6 +961,8 @@ class ImportSourceStatus(BaseModel):
     available: bool
     #: Why the platform cannot feed the section (empty when it can).
     reason: str = ""
+    #: The reason as a code the dialog words in the user's language: ``not_connected``, ``no_token`` or empty.
+    reason_code: str = ""
     #: The filters this source supports for the section.
     filters: list[str]
 
@@ -1000,7 +980,7 @@ class ImportSourcesResponse(BaseModel):
 
 class ImportRequest(BaseModel):
     section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"]
-    source: Literal["openaev", "opencti", "opencrq"]
+    source: Literal["openaev", "opencti", "opencrq", "intune", "defender"]
     filters: dict[str, Any] = {}
     #: The asset type of the batch, for a source without a type taxonomy (OpenCTI Systems).
     batch_type: str = ""
@@ -1035,6 +1015,7 @@ async def list_organization_import_sources(
                     source=source,
                     available=statuses[source].available,
                     reason=statuses[source].reason,
+                    reason_code=statuses[source].reason_code,
                     filters=list(imp.SOURCE_FILTERS.get((section, source), ())),
                 )
                 for source in imp.SECTION_SOURCES[section]
@@ -1064,7 +1045,7 @@ class ImportFilterOptionsResponse(BaseModel):
 @router.get("/import/options", response_model=ImportFilterOptionsResponse)
 async def list_organization_import_options(
     section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"],
-    source: Literal["openaev", "opencti", "opencrq"],
+    source: Literal["openaev", "opencti", "opencrq", "intune", "defender"],
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> ImportFilterOptionsResponse:
@@ -1133,11 +1114,18 @@ async def apply_organization_import(
     response = ImportPreviewResponse(based_on_version=version, plan=plan.as_dict())
     removes = plan.remove_gone and bool(plan.gone)
     if not (plan.new or plan.updated or removes) or plan.profile is None:
+        if not plan.error and plan.software:
+            # An endpoint source (#1251): only the software changed (a re-run with new versions).
+            changed = await imp.store_endpoint_software(db, plan)
+            await db.commit()
+            response.applied = bool(changed)
         return response
     try:
         saved = await org_context.save_version(
             db, plan.profile, source="draft", author_user_id=admin.id, sources=imp.provenance(plan, body.filters)
         )
+        if not plan.error and plan.software:
+            await imp.store_endpoint_software(db, plan)
         await db.commit()
     except IntegrityError:
         await db.rollback()
@@ -1152,7 +1140,7 @@ async def apply_organization_import(
 class OrganizationSyncRequest(BaseModel):
     #: A section of the import, or ``all`` for the global schedule that runs every section sync.
     section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs", "all"]
-    source: Literal["openaev", "opencti", "opencrq", ""] = ""
+    source: Literal["openaev", "opencti", "opencrq", "intune", "defender", ""] = ""
     filters: dict[str, Any] = {}
     batch_type: str = ""
     #: A deletion upstream deletes the row here (default since #1134).

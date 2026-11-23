@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -458,9 +458,14 @@ def sbom_document_key(doc: Any, file_name: str) -> str:
     return _cut(file_name or "sbom", 300)
 
 
+#: Software documents an endpoint source writes on its own device records (#1251): ``format`` is the
+#: source, so the software ranks by that source's class (``mdm``, ``edr``), not as an SBOM.
+ENDPOINT_SOFTWARE_FORMATS: frozenset[str] = frozenset({"intune", "defender"})
+
+
 def _sbom_record(row: OrganizationAssetSbom) -> identity.SourceRecord:
     return identity.SourceRecord(
-        source=SBOM_SOURCE,
+        source=row.format if row.format in ENDPOINT_SOFTWARE_FORMATS else SBOM_SOURCE,
         external_id=f"{row.anchor_source}:{row.anchor_external_id}:{row.document_key}",
         software=[
             {**c, "first_seen": row.imported_at, "last_seen": row.imported_at}
@@ -490,6 +495,82 @@ async def load_sboms(
     for row in rows:
         out.setdefault(identity.RecordRef(row.anchor_source, row.anchor_external_id), []).append(_sbom_record(row))
     return out
+
+
+async def replace_endpoint_software(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    source: str,
+    software: Mapping[str, list[dict[str, Any]]],
+    *,
+    complete: bool,
+    unread: Collection[str] = (),
+) -> int:
+    """Store the software an endpoint source read per device, anchored on its device record (#1251).
+
+    One document per device (``document_key`` the source): a re-run replaces its
+    components, so versions follow the source. When the read was *complete*, the
+    documents of devices it no longer returned are removed with them, except the
+    *unread* devices (their software read failed): their stored document is kept.
+    Answers the number of documents written or removed; the caller rebuilds the store.
+    """
+    if source not in ENDPOINT_SOFTWARE_FORMATS:
+        raise ValueError(f"source must be one of {', '.join(sorted(ENDPOINT_SOFTWARE_FORMATS))}")
+    stored = {
+        row.anchor_external_id: row
+        for row in (
+            await db.execute(
+                select(OrganizationAssetSbom).where(
+                    OrganizationAssetSbom.organization_id == organization_id,
+                    OrganizationAssetSbom.anchor_source == source,
+                    OrganizationAssetSbom.document_key == source,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    }
+    changed = 0
+    now = datetime.now(UTC)
+    for external_id, entries in software.items():
+        external_id = _cut(external_id, 200)
+        components = [
+            {
+                "vendor": _cut(e.get("vendor"), 200),
+                "product": _cut(e.get("product"), 300),
+                "version": _cut(e.get("version"), 100) or identity.UNKNOWN_VERSION,
+                "cpe": "",
+                "purl": "",
+                "bundled_in": "",
+            }
+            for e in entries
+            if isinstance(e, Mapping) and str(e.get("product") or "").strip()
+        ]
+        row = stored.pop(external_id, None)
+        if row is None:
+            row = OrganizationAssetSbom(
+                organization_id=organization_id,
+                anchor_source=source,
+                anchor_external_id=external_id,
+                document_key=source,
+                format=source,
+                file_name="",
+            )
+            db.add(row)
+        elif row.components == components:
+            continue
+        row.components = components
+        row.imported_at = now
+        changed += 1
+    if complete:
+        keep = {_cut(external_id, 200) for external_id in unread}
+        for external_id, row in stored.items():
+            if external_id in keep:
+                continue
+            await db.delete(row)
+            changed += 1
+    await db.flush()
+    return changed
 
 
 async def import_sbom(
@@ -623,12 +704,7 @@ def _limit(limit: int) -> int:
     return max(1, min(int(limit or 50), MAX_PAGE))
 
 
-def _summary(
-    asset: OrganizationAsset,
-    sources: list[str],
-    software_count: int,
-    records: list[dict[str, str]] | None = None,
-) -> dict[str, Any]:
+def _summary(asset: OrganizationAsset, sources: list[str], software_count: int) -> dict[str, Any]:
     fields = asset.fields or {}
 
     def value(name: str) -> Any:
@@ -648,45 +724,7 @@ def _summary(
         "sources": sources,
         "software_count": software_count,
         "merged_on": asset.merged_on or [],
-        # The source records merged into it, by address: what a merge of assets names (#1178).
-        "records": records or [],
     }
-
-
-#: The asset fields the list filters on (``fields.<name>.value``), in the order the facets answer them.
-FILTER_FIELDS: tuple[str, ...] = ("category", "criticality", "internet_facing")
-
-
-def _field_value(name: str) -> Any:
-    return OrganizationAsset.fields[name]["value"].astext
-
-
-async def asset_facets(db: AsyncSession, organization_id: uuid.UUID) -> dict[str, list[str]]:
-    """The values the list can be filtered on: each filter field's distinct values, and the sources."""
-    facets: dict[str, list[str]] = {}
-    for name in FILTER_FIELDS:
-        column = _field_value(name)
-        rows = (
-            await db.execute(
-                select(column)
-                .where(OrganizationAsset.organization_id == organization_id, column.is_not(None), column != "")
-                .distinct()
-                .order_by(column)
-                .limit(MAX_PAGE)
-            )
-        ).all()
-        facets[name] = [str(value) for (value,) in rows]
-    sources = (
-        await db.execute(
-            select(OrganizationAssetSource.source)
-            .where(OrganizationAssetSource.organization_id == organization_id)
-            .distinct()
-            .order_by(OrganizationAssetSource.source)
-            .limit(MAX_PAGE)
-        )
-    ).all()
-    facets["source"] = [str(value) for (value,) in sources]
-    return facets
 
 
 async def list_assets(
@@ -696,33 +734,12 @@ async def list_assets(
     q: str = "",
     offset: int = 0,
     limit: int = 50,
-    filters: Mapping[str, Sequence[str]] | None = None,
 ) -> Page:
-    """The canonical assets of *organization_id*, by name, filtered on a name substring *q*.
-
-    *filters* keeps the assets whose field (``FILTER_FIELDS``) holds one of the
-    values given, and with ``source`` the assets one of whose records comes from
-    one of the sources given; an empty list filters nothing.
-    """
+    """The canonical assets of *organization_id*, by name, filtered on a name substring *q*."""
     limit, offset = _limit(limit), max(0, int(offset or 0))
-    where: list[Any] = [OrganizationAsset.organization_id == organization_id]
+    where = [OrganizationAsset.organization_id == organization_id]
     if q.strip():
         where.append(OrganizationAsset.name_key.contains(_key(q)))
-    for name, values in (filters or {}).items():
-        wanted = [str(v) for v in values if str(v).strip()]
-        if not wanted:
-            continue
-        if name == "source":
-            where.append(
-                OrganizationAsset.id.in_(
-                    select(OrganizationAssetSource.asset_id).where(
-                        OrganizationAssetSource.organization_id == organization_id,
-                        OrganizationAssetSource.source.in_(wanted),
-                    )
-                )
-            )
-        elif name in FILTER_FIELDS:
-            where.append(_field_value(name).in_(wanted))
     total = (await db.execute(select(func.count()).select_from(OrganizationAsset).where(*where))).scalar() or 0
     assets = (
         (
@@ -739,24 +756,18 @@ async def list_assets(
     )
     ids = [a.id for a in assets]
     sources: dict[uuid.UUID, list[str]] = {}
-    refs: dict[uuid.UUID, list[dict[str, str]]] = {}
     counts: dict[uuid.UUID, int] = {}
     if ids:
-        for asset_id, source, external_id in (
+        for asset_id, source in (
             await db.execute(
-                select(
-                    OrganizationAssetSource.asset_id,
-                    OrganizationAssetSource.source,
-                    OrganizationAssetSource.external_id,
-                )
+                select(OrganizationAssetSource.asset_id, OrganizationAssetSource.source)
                 .where(OrganizationAssetSource.asset_id.in_(ids))
-                .order_by(OrganizationAssetSource.source, OrganizationAssetSource.external_id)
+                .order_by(OrganizationAssetSource.source)
             )
         ).all():
             names = sources.setdefault(asset_id, [])
             if source not in names:
                 names.append(source)
-            refs.setdefault(asset_id, []).append({"source": source, "external_id": external_id})
         for asset_id, count in (
             await db.execute(
                 select(OrganizationAssetSoftware.asset_id, func.count())
@@ -766,7 +777,7 @@ async def list_assets(
         ).all():
             counts[asset_id] = int(count)
     return Page(
-        items=[_summary(a, sources.get(a.id, []), int(counts.get(a.id, 0)), refs.get(a.id, [])) for a in assets],
+        items=[_summary(a, sources.get(a.id, []), int(counts.get(a.id, 0))) for a in assets],
         total=int(total),
         offset=offset,
         limit=limit,

@@ -5,7 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { syncFlowNodeCatalog } from "@/lib/flow-node-catalog";
-import type { AssetIdentitySettings, AttackSurfacePass, CaseAttentionProfile, PrioritizationPolicy, TicketingSync } from "@/lib/organization-profile";
+import type { AttackSurfacePass, CaseAttentionProfile, PrioritizationPolicy, TicketingSync } from "@/lib/organization-profile";
 
 interface CrownJewel {
   name: string;
@@ -13,8 +13,6 @@ interface CrownJewel {
   owner: string;
   criticality: "low" | "medium" | "high" | "critical";
   opencrq_asset_id: string;
-  /** The assets and asset groups (by name) it runs on (#11543); absent when none is named. */
-  asset_names?: string[];
   /** Where the row came from (#1134): manual, csv, api, agent:<id> or a platform. */
   source?: string;
   external_id?: string;
@@ -70,11 +68,10 @@ export interface OrganizationProfile {
   attack_surface?: AttackSurfacePass;
   /** The points of the Cases attention score (#1176); absent on an older backend: the defaults. */
   case_attention?: CaseAttentionProfile;
-  /** Parts edited elsewhere (CTEM-28, #1216), carried whole by every profile save. */
+  /** Parts edited elsewhere (CTEM-28, #1216, #1178), carried whole by every profile save. */
   evidence_health?: Record<string, unknown>;
   cases_recompute?: Record<string, unknown>;
-  /** Asset matching and field precedence (#1178), edited in CTEM > Inventory, Sources. */
-  asset_identity?: AssetIdentitySettings;
+  asset_identity?: Record<string, unknown>;
 }
 
 export interface OrganizationContextResponse {
@@ -414,14 +411,16 @@ export function useDraftOrganizationContext() {
 
 /** A profile section the platform import fills (#11780); one run imports one section. */
 export type ImportSectionKey = "assets" | "asset_groups" | "ai_systems" | "tech_stack" | "crown_jewels" | "pirs";
-export type ImportSourceKey = "openaev" | "opencti" | "opencrq";
+/** The Filigran platforms, then the endpoint sources read through a Microsoft integration (#1251). */
+export type ImportSourceKey = "openaev" | "opencti" | "opencrq" | "intune" | "defender";
 
 export interface ImportSourcesResponse {
   sections: {
     section: ImportSectionKey;
     /** The profile field the section writes. */
     field: string;
-    sources: { source: ImportSourceKey; available: boolean; reason: string; filters: string[] }[];
+    /** reason_code: `not_connected` or `no_token` when the dialog words the reason itself (#1251); empty: `reason` as given. */
+    sources: { source: ImportSourceKey; available: boolean; reason: string; reason_code?: string; filters: string[] }[];
   }[];
 }
 
