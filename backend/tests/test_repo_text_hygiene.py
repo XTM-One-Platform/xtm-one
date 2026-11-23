@@ -19,9 +19,6 @@ import pytest
 
 from tests import app_sources
 
-#: One worker reads the index once (``--dist loadgroup``), the one that holds the parsed source.
-pytestmark = pytest.mark.xdist_group(app_sources.XDIST_GROUP)
-
 REPO_ROOT = app_sources.REPO_ROOT
 
 #: Files that quote mojibake on purpose, as paths relative to the repository.

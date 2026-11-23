@@ -12,7 +12,6 @@
 # Usage: bash build-dev-image.sh <target> <tag>
 #   e.g. bash build-dev-image.sh python-dev sandbox-python-dev:0.1
 #        bash build-dev-image.sh toolchain-jvm sandbox-toolchain-jvm:0.1
-# Honours BUILDX_CACHE_DIR like build-image.sh.
 set -uo pipefail
 
 TARGET="${1:-}"
@@ -37,11 +36,4 @@ if ! command -v docker >/dev/null 2>&1; then
     exit 1
 fi
 
-if [ -n "${BUILDX_CACHE_DIR:-}" ]; then
-    docker buildx build --load \
-      --cache-from "type=local,src=${BUILDX_CACHE_DIR}" \
-      --cache-to "type=local,dest=${BUILDX_CACHE_DIR}-new,mode=max" \
-      -f "$DOCKERFILE" --target "$TARGET" -t "$TAG" .
-else
-    docker build -f "$DOCKERFILE" --target "$TARGET" -t "$TAG" .
-fi
+docker build -f "$DOCKERFILE" --target "$TARGET" -t "$TAG" .

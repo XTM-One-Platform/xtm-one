@@ -67,7 +67,7 @@ test("CTEM: a top-level group between Chat and Orchestration in XTM One mode onl
   const ctem = group("ctem", true, xtmOne);
   assert.equal(ctem.label, "CTEM");
   assert.equal(ctem.to, undefined, "no hub page: the heading folds the group");
-  assert.deepEqual(ctem.children.map((child) => child.to), ["/ctem/cases", "/ctem/inventory"]);
+  assert.deepEqual(ctem.children.map((child) => child.to), ["/ctem/cases", "/ctem/signals", "/ctem/inventory"]);
   for (const flags of [{ ...xtmOne, aiEnabled: false }, { ...xtmOne, aiLicensed: false }, { ...xtmOne, chat: false }]) {
     const found = group("ctem", true, flags);
     assert.ok(!found.locked, "the group carries no lock");
@@ -75,7 +75,8 @@ test("CTEM: a top-level group between Chat and Orchestration in XTM One mode onl
     assert.ok(cases && !cases.locked, "listed and open: a read surface, no AI or licence lock");
   }
   assert.equal(ctem.children[0].label, "Cases");
-  assert.equal(ctem.children[1].label, "Inventory", "Sam, 22 Nov 2026 (#1178)");
+  assert.equal(ctem.children[1].label, "Signals", "between Cases and Inventory, Sam, 23 Nov 2026 (#1401)");
+  assert.equal(ctem.children[2].label, "Inventory", "Sam, 22 Nov 2026 (#1178)");
   const glyphs = resolveNav(xtmOne, true)[0].entries.filter((entry) => entry.kind === "group" && entry.id !== "ctem").map((entry) => entry.icon);
   assert.ok(!glyphs.includes(ctem.icon), "the CTEM glyph is not another group's (Orchestration, Work)");
 });
@@ -88,6 +89,19 @@ test("a case page lights Cases, the other CTEM pages still light Home (#1135)", 
   for (const pathname of ["/ctem", "/ctem/discovery", "/ctem/governance", "/ctem/casesx", "/briefing"]) {
     assert.equal(activeNavPath(sections, pathname), "/", pathname);
   }
+});
+
+test("the Signals page and its Sources tab light CTEM > Signals (#1401)", () => {
+  const sections = resolveNav(XTM_ONE, true);
+  for (const pathname of ["/ctem/signals", "/ctem/signals/sources"]) {
+    assert.equal(activeNavPath(sections, pathname), "/ctem/signals", pathname);
+  }
+  assert.equal(activeNavPath(sections, "/ctem/signalsx"), "/", "a longer path is not the page");
+  const found = navDestinations(resolveNav(XTM_ONE, false)).find((dest) => dest.to === "/ctem/signals");
+  assert.ok(found, "listed in the palette in XTM One mode");
+  assert.equal(found.parent, "CTEM");
+  assert.deepEqual(found.keywords, ["CTEM", "Trigger paths", "Signal sources"]);
+  assert.equal(navDestinations(resolveNav(FLAGS, false)).find((dest) => dest.to === "/ctem/signals"), undefined, "never in Copilot mode");
 });
 
 test("the palette lists CTEM > Cases in XTM One mode only, found by CTEM and exposure cases (#1135)", () => {

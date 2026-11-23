@@ -189,6 +189,8 @@ class ReadResult:
     software_unread: set[str] = field(default_factory=set)
     #: Why the software read failed (devices still sync): said in the run status, never a silent zero.
     software_error: str = ""
+    #: GitLab dependency vulnerabilities per project read whole (#1331), recorded as CTEM signals at save.
+    findings: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
 
 @dataclass
@@ -226,6 +228,8 @@ class ImportPlan:
     software_unread: set[str] = field(default_factory=set)
     #: Why the software read failed for those devices (empty: every read answered).
     software_error: str = ""
+    #: GitLab dependency vulnerabilities per project; recorded by :func:`store_endpoint_software`.
+    findings: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -534,6 +538,7 @@ def plan_import(
         software_rows=read.software_rows,
         software_unread=read.software_unread,
         software_error=read.software_error,
+        findings=read.findings,
     )
     draft = profile.model_copy(deep=True)
     if section in SOURCED_FIELDS:
@@ -1021,6 +1026,7 @@ async def _read_code(db: AsyncSession, user_id: str, source: str, filters: dict[
     result.software = {k: v for k, v in read.software.items() if k in kept}
     result.software_rows = sum(len(v) for v in result.software.values())
     result.software_unread = {k for k in read.software_unread if k in kept}
+    result.findings = {k: v for k, v in read.findings.items() if k in kept}
     return result
 
 
@@ -1044,6 +1050,11 @@ async def store_endpoint_software(db: AsyncSession, plan: ImportPlan) -> int:
     )
     if changed:
         await store.rebuild_from_profile(db, primary.id)
+    if plan.findings:
+        # GitLab dependency vulnerabilities (#1331, slice 3): path 3 signals on the repository.
+        from app.services import ctem_code_findings
+
+        await ctem_code_findings.record_findings(db, plan.findings, organization_id=primary.id)
     return changed
 
 

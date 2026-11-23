@@ -21141,5 +21141,8 @@
   "A reversible mark, label or draft outside XTM One.": "XTM One の外での元に戻せるマーク、ラベル、または下書き。",
   "{name} is connected but not company-managed: this fleet's members take company-managed integrations only. An administrator can make it company-managed.": "{name} は接続済みですが会社管理ではありません。このフリートのメンバーは会社管理の連携のみを使用します。管理者が会社管理に変更できます。",
   "{name} is not connected yet: finish its sign-in on the integration page.": "{name} はまだ接続されていません。連携ページでサインインを完了してください。",
-  "{name} · {reason}": "{name} · {reason}"
+  "{name} · {reason}": "{name} · {reason}",
+  "Not connected on this platform": "このプラットフォームでは未接続",
+  "{count, plural, other {+# possible}}": "{count, plural, other {ほか#件の候補}}",
+  "Trigger paths": "トリガーパス"
 }
