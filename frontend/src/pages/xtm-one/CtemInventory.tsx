@@ -30,7 +30,8 @@ import { OrganizationSection } from "@/pages/settings/OrganizationSection";
 import { useFormatter } from "@/i18n";
 import { readTableState, storedPageSize } from "@/lib/data-table-state";
 import { formatCount } from "@/lib/number-format";
-import { CtemPageHeader } from "./ctem/CtemPageHeader";
+import { ListPageHeader } from "@/components/ui/list-page-header";
+import { CategoryMark, OsMark, SourceLogo } from "./ctem/inventory-icons";
 import { AiSystemsTab, AssetGroupsTab } from "./ctem/InventoryProfileTabs";
 import { AssetMatchingCard, InventorySourcesCard } from "./ctem/InventorySourcesCard";
 import { INVENTORY_LABEL, INVENTORY_PATH, assetCategory, assetCategoryLabel, assetFieldLabel, sourceLabel } from "./ctem/inventory";
@@ -119,7 +120,12 @@ function AssetsTab() {
     {
       key: "category",
       header: "Category",
-      cell: (a) => <TruncatedText text={assetCategoryLabel(t_i18n, a)} className="max-w-[16rem]" />,
+      cell: (a) => (
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          <CategoryMark category={a.category} subcategory={a.subcategory} />
+          <TruncatedText text={assetCategoryLabel(t_i18n, a)} className="max-w-[16rem]" />
+        </span>
+      ),
       csv: (a) => assetCategory(a),
       hideable: true,
     },
@@ -149,7 +155,13 @@ function AssetsTab() {
     {
       key: "os",
       header: "OS",
-      cell: (a) => [a.os_family, a.os_version].filter(Boolean).join(" "),
+      cell: (a) =>
+        a.os_family || a.os_version ? (
+          <span className="inline-flex min-w-0 items-center gap-1.5">
+            <OsMark family={a.os_family} />
+            <TruncatedText text={[a.os_family, a.os_version].filter(Boolean).join(" ")} className="max-w-[12rem]" />
+          </span>
+        ) : null,
       csv: (a) => [a.os_family, a.os_version].filter(Boolean).join(" "),
       hideable: true,
       hideBelow: "6xl",
@@ -165,7 +177,15 @@ function AssetsTab() {
     {
       key: "sources",
       header: "Sources",
-      cell: (a) => <TruncatedText text={a.sources.map((source) => sourceLabel(t_i18n, source)).join(", ")} className="max-w-[14rem]" />,
+      // The logo of each source, its name beside the first and on hover (#1367, point 8a).
+      cell: (a) => (
+        <span className="inline-flex min-w-0 items-center gap-1.5" title={a.sources.map((source) => sourceLabel(t_i18n, source)).join(", ")}>
+          {a.sources.map((source) => (
+            <SourceLogo key={source} source={source} />
+          ))}
+          <TruncatedText text={a.sources.map((source) => sourceLabel(t_i18n, source)).join(", ")} className="max-w-[12rem]" />
+        </span>
+      ),
       csv: (a) => a.sources.join(" "),
       hideable: true,
     },
@@ -345,10 +365,11 @@ export default function CtemInventory() {
   const setMatching = (on: boolean) => toggleParam(MATCHING_PARAM, on);
   return (
     <div className="space-y-4">
-      <CtemPageHeader
+      {/* The app's standard list header (#1367, Sam 23 Nov 2026: no band with a surface and a border). */}
+      <ListPageHeader
         title={t_i18n(INVENTORY_LABEL)}
-        hint={t_i18n("One asset per real thing across your sources: the records of several sources on one thing are merged on their identifiers. The tech stack is built from the software the assets run.")}
-        hintLabel={t_i18n("About the inventory")}
+        info={t_i18n("One asset per real thing across your sources: the records of several sources on one thing are merged on their identifiers. The tech stack is built from the software the assets run.")}
+        infoLabel={t_i18n("About the inventory")}
         actions={
           tab === "sources" ? (
             matching ? (

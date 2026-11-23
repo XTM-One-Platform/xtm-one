@@ -28,22 +28,15 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import { CasePriorityChip, CaseStateChip } from "./ctem/cases-shared";
-import { CtemPageHeader } from "./ctem/CtemPageHeader";
-import { INVENTORY_LABEL, INVENTORY_PATH, assetCategoryLabel, assetFieldLabel, sourceLabel } from "./ctem/inventory";
+import { EntityPageHeader } from "@/components/ui/entity-page-header";
+import { AssetOverviewCard, AssetSection } from "./ctem/AssetOverview";
+import { INVENTORY_PATH, sourceLabel } from "./ctem/inventory";
+import { CategoryMark, SourceLogo } from "./ctem/inventory-icons";
 
 const SOFTWARE_PAGE = 100;
 
 /* The library glyph handed to NotFoundState (no direct lucide-react import, src/no-direct-lucide-import.test.ts). */
 const AssetGlyph = ({ className }: { className?: string }) => <Icon name="server" size={16} className={className} />;
-
-/** The fields of the header band, in the order people read them. */
-const HEADER_FIELDS = ["category", "criticality", "internet_facing", "owner"] as const;
-const HEADER_LABELS: Record<(typeof HEADER_FIELDS)[number], string> = {
-  category: "Category",
-  criticality: "Criticality",
-  internet_facing: "Internet facing",
-  owner: "Owner",
-};
 
 /** The cases still to work: a resolved one is history, read from the Cases page. */
 const OPEN_STATES = new Set(["needs_attention", "in_progress", "mitigated_watching", "accepted_risk"]);
@@ -115,10 +108,6 @@ export default function CtemAssetDetail() {
     );
   }
 
-  const origin = (field: string) => {
-    const source = data?.fields?.[field]?.source;
-    return source ? t_i18n("From {source}", { source: sourceLabel(t_i18n, String(source)) }) : undefined;
-  };
   const date = (value: string | null) => (value ? intl.formatDate(value, { dateStyle: "medium" }) : "");
 
   const softwareColumns: DataTableColumn<AssetSoftware>[] = [
@@ -147,7 +136,13 @@ export default function CtemAssetDetail() {
     {
       key: "sources",
       header: "Sources",
-      cell: (s) => s.sources.map((source) => sourceLabel(t_i18n, source)).join(", "),
+      cell: (s) => (
+        <span className="inline-flex items-center gap-1.5" title={s.sources.map((source) => sourceLabel(t_i18n, source)).join(", ")}>
+          {s.sources.map((source) => (
+            <SourceLogo key={source} source={source} />
+          ))}
+        </span>
+      ),
       csv: (s) => s.sources.join(" "),
       hideable: true,
     },
@@ -162,7 +157,17 @@ export default function CtemAssetDetail() {
   ];
 
   const recordColumns: DataTableColumn<AssetSourceRecord>[] = [
-    { key: "source", header: "Source", cell: (r) => sourceLabel(t_i18n, r.source), csv: (r) => r.source, sortValue: (r) => sourceLabel(t_i18n, r.source).toLowerCase() },
+    {
+      key: "source",
+      header: "Source",
+      cell: (r) => (
+        <span className="inline-flex items-center gap-1.5">
+          <SourceLogo source={r.source} />
+          {sourceLabel(t_i18n, r.source)}
+        </span>
+      ),
+      csv: (r) => r.source, sortValue: (r) => sourceLabel(t_i18n, r.source).toLowerCase(),
+    },
     {
       key: "external_id",
       header: "Its id there",
@@ -193,26 +198,61 @@ export default function CtemAssetDetail() {
     { key: "due", header: "Due", cell: (c) => date(c.due_at), csv: (c) => c.due_at, sortValue: (c) => c.due_at, hideable: true },
   ];
 
+  const records = data?.records ?? [];
+  const software = data?.software;
+  const softwareEmpty = !isLoading && (software?.total ?? 0) === 0;
+  const sbomButton = isAdmin && (
+    <>
+      <input
+        ref={fileInput}
+        type="file"
+        accept=".json,application/json"
+        className="hidden"
+        aria-label={t_i18n("SBOM file")}
+        onChange={(event) => {
+          onSbom(event.target.files?.[0]);
+          event.target.value = "";
+        }}
+      />
+      <Button size="sm" variant="secondary" className="gap-1.5" disabled={!data || importSbom.isPending} onClick={() => fileInput.current?.click()}>
+        <Icon name="upload" size={16} aria-hidden />
+        {importSbom.isPending ? t_i18n("Importing...") : t_i18n("Import SBOM")}
+      </Button>
+    </>
+  );
+
   return (
     <div className="space-y-4">
-      <CtemPageHeader
-        back={{ to: INVENTORY_PATH, label: t_i18n(INVENTORY_LABEL) }}
+      {/* The app's standard entity header (#1367, Sam 23 Nov 2026): the back link, the category mark as the tile,
+          the name with how it was matched behind the "i", criticality and the sources on the meta row. */}
+      <EntityPageHeader
+        backTo={INVENTORY_PATH}
+        backLabel="Back to Inventory"
+        icon={data ? <CategoryMark category={data.category} subcategory={data.subcategory} className="h-5 w-5" /> : undefined}
         title={data?.name ?? ""}
         hint={data?.explanation || undefined}
         hintLabel={t_i18n("How this asset was matched")}
-        stats={HEADER_FIELDS.map((field) => ({
-          id: field,
-          label: t_i18n(HEADER_LABELS[field]),
-          value:
-            (field === "category" && data
-              ? assetCategoryLabel(t_i18n, data)
-              : assetFieldLabel(t_i18n, field, String(data?.fields?.[field]?.value ?? ""))) || "-",
-          title: origin(field),
-        }))}
+        badges={
+          data ? (
+            <span className="inline-flex items-center gap-1.5" data-testid="ctem-asset-header-sources">
+              {data.sources.map((source) => (
+                <SourceLogo key={source} source={source} />
+              ))}
+              <span className="content-caption text-default-secondary">{data.sources.map((source) => sourceLabel(t_i18n, source)).join(", ")}</span>
+            </span>
+          ) : undefined
+        }
       />
 
-      <section aria-labelledby="asset-cases" className="space-y-2">
-        <h2 id="asset-cases" className="text-base font-semibold">{t_i18n("Open cases")}</h2>
+      {data && <AssetOverviewCard asset={data} />}
+
+      <AssetSection
+        id="asset-cases"
+        title={t_i18n("Open cases")}
+        count={openCases.length}
+        empty={!cases.isLoading && openCases.length === 0 && !cases.isError}
+        emptyLabel={t_i18n("No open case on this asset.")}
+      >
         <DataTable<CtemCaseSummary>
           rows={openCases}
           columns={caseColumns}
@@ -227,53 +267,40 @@ export default function CtemAssetDetail() {
           emptyLabel={t_i18n("No open case on this asset.")}
           rowTestId="ctem-asset-case-row"
         />
-      </section>
+      </AssetSection>
 
-      <section aria-labelledby="asset-jewels" className="space-y-2">
-        <h2 id="asset-jewels" className="text-base font-semibold">{t_i18n("Crown jewels it supports")}</h2>
-        {jewels.length ? (
-          <ul className="flex flex-wrap gap-2" data-testid="ctem-asset-jewels">
-            {jewels.map((j) => (
-              <li key={j.name}>
-                <Link to="/settings/organization?card=crown_jewels" className="text-sm underline-offset-2 hover:underline">
-                  {j.name}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-default-secondary">{t_i18n("No crown jewel names this asset.")}</p>
-        )}
-      </section>
+      <AssetSection
+        id="asset-jewels"
+        title={t_i18n("Crown jewels it supports")}
+        count={jewels.length}
+        empty={jewels.length === 0}
+        emptyLabel={t_i18n("No crown jewel names this asset.")}
+      >
+        <ul className="flex flex-wrap gap-2" data-testid="ctem-asset-jewels">
+          {jewels.map((j) => (
+            <li key={j.name}>
+              <Link to="/settings/organization?card=crown_jewels" className="inline-flex items-center gap-1.5 text-sm underline-offset-2 hover:underline">
+                <Icon name="gem" size={16} className="text-default-secondary" aria-hidden />
+                {j.name}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </AssetSection>
 
-      <section aria-labelledby="asset-software" className="space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <h2 id="asset-software" className="text-base font-semibold">{t_i18n("Software")}</h2>
-          {isAdmin && (
-            <>
-              <input
-                ref={fileInput}
-                type="file"
-                accept=".json,application/json"
-                className="hidden"
-                aria-label={t_i18n("SBOM file")}
-                onChange={(event) => {
-                  onSbom(event.target.files?.[0]);
-                  event.target.value = "";
-                }}
-              />
-              <Button size="sm" variant="secondary" className="gap-1.5" disabled={!data || importSbom.isPending} onClick={() => fileInput.current?.click()}>
-                <Icon name="upload" size={16} aria-hidden />
-                {importSbom.isPending ? t_i18n("Importing...") : t_i18n("Import SBOM")}
-              </Button>
-            </>
-          )}
-        </div>
+      <AssetSection
+        id="asset-software"
+        title={t_i18n("Software")}
+        count={software?.total}
+        actions={sbomButton}
+        empty={softwareEmpty}
+        emptyLabel={t_i18n("No software known on this asset yet.")}
+      >
         <DataTable<AssetSoftware>
-          rows={data?.software.items ?? []}
+          rows={software?.items ?? []}
           columns={softwareColumns}
           rowKey={(s) => `${s.vendor}|${s.product}|${s.version}`}
-          server={{ total: data?.software.total ?? 0 }}
+          server={{ total: software?.total ?? 0 }}
           onStateChange={(state) => setSoftwarePage(state.page)}
           defaultPageSize={SOFTWARE_PAGE}
           noFilters="One asset's software, paged on the server."
@@ -283,25 +310,28 @@ export default function CtemAssetDetail() {
           emptyLabel={t_i18n("No software known on this asset yet.")}
           rowTestId="ctem-asset-software-row"
         />
-      </section>
+      </AssetSection>
 
-      <section aria-labelledby="asset-sources" className="space-y-2">
-        <h2 id="asset-sources" className="text-base font-semibold">{t_i18n("Sources")}</h2>
+      <AssetSection
+        id="asset-sources"
+        title={t_i18n("Sources")}
+        count={records.length}
+        empty={!isLoading && records.length === 0}
+        emptyLabel={t_i18n("No source record.")}
+      >
         <DataTable<AssetSourceRecord>
-          rows={data?.records ?? []}
+          rows={records}
           columns={recordColumns}
           rowKey={(r) => `${r.source}|${r.external_id}`}
           defaultSort={{ key: "source", direction: "asc" }}
           defaultPageSize={25}
-          searchFields={(r) => [r.source, sourceLabel(t_i18n, r.source), r.external_id]}
-          searchPlaceholder={t_i18n("Search source or id")}
           noFilters="The few records merged into one asset."
           exportName="ctem-asset-sources"
           isLoading={isLoading && !data}
           emptyLabel={t_i18n("No source record.")}
           rowTestId="ctem-asset-record-row"
           selection={
-            isAdmin && (data?.records.length ?? 0) > 1
+            isAdmin && records.length > 1
               ? {
                   selected: splitPicked,
                   onChange: setSplitPicked,
@@ -314,7 +344,7 @@ export default function CtemAssetDetail() {
               : undefined
           }
         />
-      </section>
+      </AssetSection>
       <ConfirmDialog
         open={confirmSplit}
         onOpenChange={setConfirmSplit}
