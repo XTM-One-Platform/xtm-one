@@ -69,6 +69,11 @@ FLEET_NAME = "Risk budget desk"
 STATE_KEY = "opencrq:risk-budget-desk:state"
 #: Work-item key prefix of the recommendations the fleet files for a person.
 RECOMMENDATION_PREFIX = "opencrq:risk-budget-desk:recommendation:"
+#: Work-item key prefix of a proposed write to the register of record (a scenario, its loss
+#: estimates, the risk tolerance), followed by the write kind and the OpenCRQ id.
+APPROVAL_PREFIX = "opencrq:risk-budget-desk:approval:"
+#: Every decision key the desk files for a person: the "Gate answered" listener takes these.
+DECISION_PREFIXES: tuple[str, ...] = (RECOMMENDATION_PREFIX, APPROVAL_PREFIX)
 
 #: Existing agents the fleet works with; connected, never members.
 SHARED_AGENTS: tuple[str, ...] = ("opencrq-assistant", "ctem-risk-quantifier")
@@ -284,7 +289,10 @@ _EVENT_PROMPT = (
     "Run one register refresh of the risk budget desk: delegate to the Register Analyst the scenarios "
     f"re-priced since the last snapshot in shared state {STATE_KEY}, with the driver of each move. When a "
     "scenario crosses the risk tolerance, have the Investment Analyst price the control upgrades that "
-    "bring it back and file one recommendation work item. Answer with the run JSON."
+    "bring it back and file one recommendation work item. A write the register needs (a scenario, its "
+    "loss estimates, the risk tolerance) is proposed for a person as one needs_human work item keyed "
+    f"{APPROVAL_PREFIX} followed by the write kind and the OpenCRQ id; never write it yourself. Answer "
+    "with the run JSON."
 )
 
 RISK_BUDGET_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
@@ -355,13 +363,20 @@ RISK_BUDGET_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
     },
     gate_answered_assignment(
         _COMMON,
-        prefixes=(RECOMMENDATION_PREFIX,),
+        prefixes=DECISION_PREFIXES,
         inherit_switch_from="Weekly investment review",
-        description="A person answered a control investment recommendation: record the decision.",
+        description=(
+            "A person answered a control investment recommendation or a proposed register write: "
+            "record the decision and track the write."
+        ),
         apply=(
-            f"Record the decision on the control in shared state {STATE_KEY} (funded, refused or "
-            "deferred, with the reason), so the next review and the Board pack carry it; OpenCRQ "
-            "stays read only. Answer with the run JSON."
+            f"A key starting {RECOMMENDATION_PREFIX}: record the decision on the control in shared state "
+            f"{STATE_KEY} (funded, refused or deferred, with the reason), so the next review and the Board "
+            f"pack carry it. A key starting {APPROVAL_PREFIX}: an approved write is made by a person in "
+            "OpenCRQ, never by you; file one follow-up work item you own, recipient the person who "
+            "answered (what to set, the value, where in OpenCRQ), which a later run completes once the value "
+            "reads back in OpenCRQ, and name it in the outcome; a rejected one is recorded in shared state "
+            f"{STATE_KEY}. OpenCRQ stays read only. Answer with the run JSON."
         ),
     ),
 ]

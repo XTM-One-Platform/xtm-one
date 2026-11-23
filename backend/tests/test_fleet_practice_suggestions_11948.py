@@ -148,6 +148,20 @@ async def test_an_inbox_and_a_listener_clear_their_suggestions(desk) -> None:
     assert await _suggestions(desk, assignments=assignments, open_owned={enrich.id: 1}) == []
 
 
+async def test_a_decision_listener_counts_as_an_inbox(desk) -> None:
+    """The seeded "Gate answered" listener (#1388) takes the owner's answered items: no owner_without_inbox."""
+    target = str(desk.lead.id)
+    for m in desk.members:
+        m.handover_agent_ids, m.handover_types = [target], {target: "consult"}
+    gate = _assignment(desk.lead, "platform_event", {"event": "work_item.status_changed", "filter": {}})
+    found = await _suggestions(desk, assignments=[*desk.listeners, gate], open_owned={desk.lead.id: 3})
+    assert [s["kind"] for s in found] == []
+    # Any other platform event is still no inbox.
+    other = _assignment(desk.lead, "platform_event", {"event": "run.failed"})
+    found = await _suggestions(desk, assignments=[*desk.listeners, other], open_owned={desk.lead.id: 3})
+    assert [(s["kind"], s["member"]) for s in found] == [("owner_without_inbox", "Desk Lead")]
+
+
 async def test_a_fleet_without_orchestrator_gets_none() -> None:
     fleet = SimpleNamespace(id=uuid.uuid4(), orchestrator_agent_id=None)
     assert await practice.practice_suggestions(object(), fleet) == []
