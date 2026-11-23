@@ -24,14 +24,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.redis import redis_client
 from app.models.ctem_case import CASE_STATES
 from app.models.user import User
 from app.services import ctem_case_audit_view as case_audit_view
-from app.services import ctem_case_gate_records_view as case_gates_view
 from app.services import ctem_case_loop as case_loop
 from app.services import ctem_case_routing as case_routing
 from app.services import ctem_case_versions as case_versions
@@ -325,6 +324,35 @@ async def merge_ctem_cases(
     return shown[1]
 
 
+class ThreatPackageRepair(BaseModel):
+    #: ``true`` (default) answers what the repair would correct and writes nothing.
+    dry_run: bool = True
+
+
+@router.post("/threat-packages/repair")
+async def repair_ctem_threat_packages(
+    body: ThreatPackageRepair,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Correct the threat packages stored with a Grouping page whose Grouping is not live (#1547).
+
+    One-off repair, administrators: each case's newest package recorded with a
+    Grouping page is re-read in OpenCTI with the caller's own access; a Grouping
+    inside an open draft gets the draft page, one found nowhere gets no page
+    (both read ``drafted``). ``dry_run`` answers the count and the cases.
+    """
+    _require_xtm_one()
+    from app.services import ctem_threat_package_live as package_live
+
+    result = await package_live.repair_stored_packages(
+        db, await _organization_id(db), str(admin.id), dry_run=body.dry_run
+    )
+    # A dry run writes nothing, so the commit is a no-op there.
+    await db.commit()
+    return result
+
+
 #: One on-demand recompute per user per window (design section 4.3).
 RECOMPUTE_WINDOW_SECONDS = 60
 
@@ -409,13 +437,9 @@ async def get_ctem_case(
     (case, _, _), rendered = shown
     # The audit trail (#1490): each event with its CTEM phase, autonomy class and actor, and the phases.
     audit = await case_audit_view.audit_trail(db, rendered.get("history") or [], viewer_id=user.id)
-    # One resolved decision record per gate (#1518): the decision row joined with the gate events;
-    # the waiting gate events of the history carry the same record in ``answer``.
-    gate_records = await case_gates_view.gate_records(db, str(case.id), audit["history"], viewer_id=user.id)
     return {
         **rendered,
         **audit,
-        "gates": gate_records,
         # The versions the case's product runs on the assets (#1252), never a typed tech stack version.
         "running_versions": await case_versions.for_case(db, case),
         # The assets its visible issues name, with the version each runs from the inventory (#1176 slice 3b).
