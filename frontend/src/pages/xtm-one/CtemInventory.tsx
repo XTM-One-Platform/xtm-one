@@ -36,16 +36,23 @@ import { readTableState, storedPageSize } from "@/lib/data-table-state";
 import { formatCount } from "@/lib/number-format";
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import { CategoryMark, OsMark, SourceLogo } from "./ctem/inventory-icons";
-import { AiSystemsTab, AssetGroupsTab, BULK_ACTION, type AddRequest } from "./ctem/InventoryProfileTabs";
+import { AssetGroupsTab, BULK_ACTION, type AddRequest } from "./ctem/InventoryProfileTabs";
 import { assetRowIndexes, deleteRows, isSyncedRow } from "./ctem/inventory-entries";
 import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
 import { AssetMatchingCard, InventorySourcesCard } from "./ctem/InventorySourcesCard";
 import { useInventoryEditView } from "./ctem/inventory-edit-view";
 import { INVENTORY_LABEL, INVENTORY_PATH, assetCategory, assetCategoryLabel, assetFieldLabel, sourceLabel } from "./ctem/inventory";
 
-type InventoryTab = "assets" | "asset-groups" | "tech-stack" | "ai-systems" | "sources";
+type InventoryTab = "assets" | "asset-groups" | "tech-stack" | "sources";
+
+/**
+ * The retired AI systems tab (#1501: an AI system is an asset of category AI target): its old link lands on the
+ * Assets tab filtered on that category, so a bookmark or a fleet link keeps working.
+ */
+const RETIRED_AI_SYSTEMS_TAB = "ai-systems";
 
 const ASSETS_URL_KEY = "a_";
+const AI_TARGET_ASSETS_HREF = `${INVENTORY_PATH}?${ASSETS_URL_KEY}f_category=ai_target`;
 const ASSETS_STORAGE_KEY = "ctem-inventory-assets";
 const TECH_URL_KEY = "t_";
 const TECH_STORAGE_KEY = "ctem-inventory-tech-stack";
@@ -433,6 +440,12 @@ const EDIT_CARDS = {
   assets: ["prioritization_policy", "outside_lens", "evidence_health"],
 } as const;
 export default function CtemInventory() {
+  const [tab] = useTabParam<InventoryTab>("assets");
+  if ((tab as string) === RETIRED_AI_SYSTEMS_TAB) return <Navigate to={AI_TARGET_ASSETS_HREF} replace />;
+  return <InventoryPage />;
+}
+
+function InventoryPage() {
   const { t_i18n } = useFormatter();
   const [tab] = useTabParam<InventoryTab>("assets");
   // No page-level Edit mode any more (#1367, point 2): each tab manages its rows (Add, row menu, bulk actions).
@@ -531,7 +544,6 @@ export default function CtemInventory() {
           { key: "assets", label: "Assets" },
           { key: "asset-groups", label: "Asset groups" },
           { key: "tech-stack", label: "Tech stack" },
-          { key: "ai-systems", label: "AI systems" },
         ]}
       />
       {editing && editCards ? (
@@ -540,8 +552,6 @@ export default function CtemInventory() {
         <AssetGroupsTab add={add} />
       ) : tab === "tech-stack" ? (
         <TechStackTab />
-      ) : tab === "ai-systems" ? (
-        <AiSystemsTab />
       ) : (
         <AssetsTab add={add} />
       )}

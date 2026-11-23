@@ -802,7 +802,6 @@ SECTION_IDENTITY: dict[
     "asset_groups": (("external_reference", "name"), _group_ids, frozenset()),
     "tech_stack": (("cpe", "product", "name"), _tech_ids, frozenset()),
     "crown_jewels": (("platform_id", "name"), _platform_ids("opencrq_asset_id"), frozenset()),
-    "ai_systems": (("platform_id", "name"), _platform_ids("openaev_asset_id"), frozenset()),
     "pirs": (("platform_id", "name"), _platform_ids("id"), frozenset()),
     "tracked_organizations": (("name",), _name_ids, frozenset()),
 }
