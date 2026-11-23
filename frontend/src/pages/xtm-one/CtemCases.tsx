@@ -19,6 +19,7 @@ import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { DataTable, type DataTableColumn, type DataTableGroupBy } from "@/components/ui/data-table";
 import { caseGroupLabel, caseGroupRank, caseGroupValue, readCaseGroupBy, type CaseGroupBy } from "./ctem/cases-grouping";
 import { CasesGroupByPill } from "./ctem/CasesGroupByPill";
+import { CasesViewsPill } from "./ctem/CasesViewsPill";
 import { SegmentedFilter } from "@/components/ui/segmented-filter";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { useUserDirectoryByIds } from "@/hooks/api/useAuthApi";
@@ -55,10 +56,10 @@ export default function CtemCases() {
   const { t_i18n, intl } = useFormatter();
   const { data, isLoading, isError, refetch } = useCtemCases();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [tab, setTabState] = useState<StateTab>(() => initialStateTab(searchParams.get("state")));
-  // The tab is in the URL (`?state=`): the command center widget opens the list on a state.
+  // The tab is in the URL (`?state=`): the command center widget opens the list on a state,
+  // and a saved view (CasesViewsPill) sets it.
+  const tab = initialStateTab(searchParams.get("state"));
   const setTab = (next: StateTab) => {
-    setTabState(next);
     setSearchParams(
       (prev) => {
         const params = new URLSearchParams(prev);
@@ -340,7 +341,12 @@ export default function CtemCases() {
           ),
         }}
         groupBy={groupBy}
-        toolbar={<CasesGroupByPill value={groupKey} onChange={setGroupKey} />}
+        toolbar={
+          <>
+            <CasesGroupByPill value={groupKey} onChange={setGroupKey} />
+            <CasesViewsPill />
+          </>
+        }
         defaultSort={{ key: "attention", direction: "desc" }}
         defaultPageSize={25}
         searchFields={(c) => [c.title, c.product_label, c.fixed_version]}
