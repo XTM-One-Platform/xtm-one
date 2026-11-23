@@ -210,12 +210,21 @@ export interface CtemCaseTreatmentPlan {
 /**
  * The threat package the review step drafted for a case (CTEM-16-UI, #1115):
  * the OpenCTI Grouping and the security coverage requested on it. `restricted`
- * true for a viewer who does not read OpenCTI: then only `coverage_requested`
- * and `at` are served.
+ * true for a viewer who does not read OpenCTI: then only the status fields
+ * (`state`, `coverage_requested`, `coverage_drafted`, `draft_overdue`) and `at`
+ * are served. `state` is `drafted` while the package sits in an OpenCTI draft
+ * (its link is the draft page, nothing reached OpenAEV) and `validated` once it
+ * is in the live graph; `coverage_requested` is true only for a validated
+ * package (#1480).
  */
 export interface CtemCaseThreatPackage {
   restricted: boolean;
+  state?: "drafted" | "validated";
   coverage_requested: boolean;
+  /** The coverage is written in the draft: not sent to OpenAEV until the draft is validated. */
+  coverage_drafted?: boolean;
+  /** Still drafted past the case SLA. */
+  draft_overdue?: boolean;
   grouping_id?: string;
   name?: string | null;
   url?: string | null;

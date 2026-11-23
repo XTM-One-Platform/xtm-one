@@ -267,6 +267,7 @@ async def test_a_passing_retest_resolves_the_case_and_raises_resolved(
             provider="openaev",
             ref="simulation-42",
             result="passed",
+            evidence_type="remediation",
         )
     )
     assert body["updated"]["state"] == "resolved"

@@ -15,12 +15,21 @@ software entries:
   matches left apart.
 - ``organization_asset_sources``: one row per source record (source and its id
   there), unique per organization, so one source record belongs to one asset.
-- ``organization_asset_software``: one row per vendor, product and version on
-  an asset, with its sources and first and last seen; an unknown version is
-  ``unknown``, never empty. ``(organization_id, product_key, version)`` answers
-  "which assets run this software" without reading the assets.
+- ``organization_asset_software``: one installation, a vendor, product and
+  version on an asset, with its sources and first and last seen; an unknown
+  version is ``unknown``, never empty. ``(organization_id, product_key,
+  version)`` answers "which assets run this software" without reading the
+  assets; ``software_version_id`` names the software version it installs.
 
-Design: ``dev-docs/asset-model.md`` section 9.
+Software is an entity of its own (#1495), kept across the rebuilds of the store:
+
+- ``organization_software``: one per organization, vendor and product, with its
+  type, CPE 2.3 and its resolution state, PURL and sources.
+- ``organization_software_versions``: one per software and version.
+- ``organization_software_dependencies``: a software version that depends on,
+  or is bundled in, another one (an SBOM's ``dependencies`` and nesting).
+
+Design: ``dev-docs/asset-model.md`` sections 6 and 9.
 """
 
 import uuid
@@ -134,6 +143,113 @@ class OrganizationAssetSoftware(Base):
     first_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     #: The sources that report this entry on the asset.
+    sources: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
+    #: The software version installed (#1495); set by the software sync of every rebuild.
+    software_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organization_software_versions.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+class OrganizationSoftware(Base):
+    """One software of an organization (#1495): a vendor and product, whatever its versions and assets.
+
+    Convertible to the STIX 2.1 Software SCO (``name``, ``vendor``, ``cpe``,
+    ``x_opencti_product``). ``origin`` ``synced``: a source reports it, it is
+    read-only to people; ``manual``: an administrator typed it. Kept across the
+    rebuilds of the store, so its id is stable.
+    """
+
+    __tablename__ = "organization_software"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "vendor_key", "product_key", name="uq_organization_software_key"),
+        Index("ix_organization_software_org_name", "organization_id", "name_key"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    vendor: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    product: Mapped[str] = mapped_column(String(200), nullable=False)
+    vendor_key: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    product_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    #: The name shown (``vendor product`` unless set) and its lower-case form for the search.
+    name: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+    name_key: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+    #: ``application``, ``operating_system``, ``library``, ``firmware``, ``container_image`` or ``saas``.
+    software_type: Mapped[str] = mapped_column(String(30), nullable=False, default="application")
+    description: Mapped[str] = mapped_column(String(2000), nullable=False, default="", server_default="")
+    #: The product-level CPE 2.3 (version ``*``) and how it was found (``CPE_CONFIDENCES``).
+    cpe: Mapped[str] = mapped_column(String(300), nullable=False, default="", server_default="")
+    cpe_state: Mapped[str] = mapped_column(String(20), nullable=False, default="unresolved")
+    #: An administrator's CPE, kept across syncs; it wins over every source.
+    cpe_override: Mapped[str] = mapped_column(String(300), nullable=False, default="", server_default="")
+    purl: Mapped[str] = mapped_column(String(500), nullable=False, default="", server_default="")
+    #: ``synced`` (a source reports it) or ``manual`` (typed by an administrator).
+    origin: Mapped[str] = mapped_column(String(10), nullable=False, default="synced")
+    sources: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
+    first_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now, server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now, onupdate=_now, server_default=text("now()")
+    )
+
+
+class OrganizationSoftwareVersion(Base):
+    """One version of a software (#1495); ``unknown`` when no source knows it, never empty."""
+
+    __tablename__ = "organization_software_versions"
+    __table_args__ = (UniqueConstraint("software_id", "version", name="uq_organization_software_versions_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    software_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organization_software.id", ondelete="CASCADE"), nullable=False
+    )
+    version: Mapped[str] = mapped_column(String(100), nullable=False, default="unknown")
+    #: The CPE 2.3 of this version (reported, else the software's with the version set).
+    cpe: Mapped[str] = mapped_column(String(300), nullable=False, default="", server_default="")
+    purl: Mapped[str] = mapped_column(String(500), nullable=False, default="", server_default="")
+    #: End of life (ISO date) when known.
+    eol: Mapped[str] = mapped_column(String(40), nullable=False, default="", server_default="")
+    first_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class OrganizationSoftwareDependency(Base):
+    """A software version that needs another (#1495): ``depends_on`` or ``bundled_in``.
+
+    Read from the SBOMs of the assets (CycloneDX ``dependencies`` and nested
+    ``components``, SPDX ``DEPENDS_ON`` / ``CONTAINS``); rebuilt with the store.
+    """
+
+    __tablename__ = "organization_software_dependencies"
+    __table_args__ = (
+        UniqueConstraint(
+            "version_id", "depends_on_version_id", "kind", name="uq_organization_software_dependencies_edge"
+        ),
+        Index("ix_organization_software_dependencies_target", "depends_on_version_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organization_software_versions.id", ondelete="CASCADE"), nullable=False
+    )
+    depends_on_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organization_software_versions.id", ondelete="CASCADE"), nullable=False
+    )
+    #: ``depends_on`` or ``bundled_in`` (the version is bundled in the other).
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="depends_on")
+    #: The SBOM's scope when it gives one (``required``, ``optional``, ``dev``...).
+    scope: Mapped[str] = mapped_column(String(40), nullable=False, default="", server_default="")
     sources: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
 
 

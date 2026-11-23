@@ -46,8 +46,14 @@ def _diff(
     observations: list[surface.Observation],
     baseline: dict[str, surface.Baseline],
     profile: oc.OrganizationProfile | None = None,
+    **kw: Any,
 ) -> list[surface.Finding]:
-    return surface.diff(profile or _profile(), observations, baseline, now=NOW, provider="shodan")
+    return surface.diff(profile or _profile(), observations, baseline, now=NOW, provider="shodan", **kw)
+
+
+READ = "shodan|corp.example"
+COMPLETE = {READ: "complete"}
+PREVIOUS = surface.PreviousPass(at=NOW - timedelta(days=1), statuses=COMPLETE)
 
 
 # ── profile fields ──────────────────────────────────────────────────────
@@ -126,11 +132,63 @@ def test_a_host_unseen_for_the_stale_delay_is_path_6() -> None:
 
 
 def test_an_unknown_host_gives_one_path_7_signal() -> None:
+    """Two complete passes; the host is absent from pass 1 and unknown to the provider before it."""
     baseline = {"shop.corp.example": _base("shop.corp.example", 443)}
     found = _diff(
-        [_obs("shop.corp.example", "203.0.113.10", 443), _obs("dev.corp.example", "203.0.113.20", 22)], baseline
+        [
+            _obs("shop.corp.example", "203.0.113.10", 443, reads=[READ]),
+            _obs("dev.corp.example", "203.0.113.20", 22, reads=[READ], known_since=NOW - timedelta(hours=2)),
+        ],
+        baseline,
+        previous=PREVIOUS,
+        statuses=COMPLETE,
     )
-    assert [(f.trigger_path, f.host) for f in found] == [("surface_drift", "dev.corp.example")]
+    assert [(f.trigger_path, f.host, f.detail) for f in found] == [("surface_drift", "dev.corp.example", "new_host")]
+    assert found[0].evidence["previous_pass_at"] == PREVIOUS.at.isoformat()
+
+
+def test_hosts_a_truncated_previous_read_missed_join_the_baseline_silently() -> None:
+    """Pass 1 read 3 hosts on a truncated DNS page, pass 2 reads 41 completely: no new host."""
+    known = [f"h{i}.corp.example" for i in range(3)]
+    baseline = {h: _base(h, 443) for h in known}
+    observed = [_obs(f"h{i}.corp.example", f"203.0.113.{i + 1}", 443, reads=[READ]) for i in range(41)]
+    withheld: dict[str, str] = {}
+    previous = surface.PreviousPass(at=NOW - timedelta(days=1), statuses={READ: "truncated"})
+    found = _diff(observed, baseline, previous=previous, statuses=COMPLETE, withheld=withheld)
+    assert [f for f in found if f.trigger_path == "surface_drift"] == []
+    assert len(withheld) == 38 and set(withheld.values()) == {"previous_read_truncated"}
+
+
+def test_no_new_host_without_a_previous_summary_or_on_an_incomplete_read() -> None:
+    baseline = {"shop.corp.example": _base("shop.corp.example", 443)}
+    host = [_obs("dev.corp.example", "203.0.113.20", 22, reads=[READ])]
+    assert _diff(host, baseline) == []
+    assert _diff(host, baseline, previous=PREVIOUS, statuses={READ: "truncated"}) == []
+    assert _diff(host, baseline, previous=PREVIOUS, statuses={READ: "empty"}) == []
+    missing = surface.PreviousPass(at=PREVIOUS.at, statuses={})
+    assert _diff(host, baseline, previous=missing, statuses=COMPLETE) == []
+
+
+def test_a_host_the_provider_knew_before_the_previous_pass_is_not_new() -> None:
+    baseline = {"shop.corp.example": _base("shop.corp.example", 443)}
+    old = _obs("dev.corp.example", "203.0.113.20", 22, reads=[READ], known_since=NOW - timedelta(days=30))
+    withheld: dict[str, str] = {}
+    assert _diff([old], baseline, previous=PREVIOUS, statuses=COMPLETE, withheld=withheld) == []
+    assert withheld == {"dev.corp.example": "known_to_provider"}
+
+
+def test_read_statuses_name_truncated_empty_and_complete_reads() -> None:
+    coverage = [
+        surface.ReadCoverage("shodan", "corp.example", "dns", 5, 500, truncated=True),
+        surface.ReadCoverage("shodan", "corp.example", "search", 1, 3),
+        surface.ReadCoverage("shodan", "203.0.113.0/24", "search", 1, 0),
+        surface.ReadCoverage("shodan", "other.example", "dns", 1, 4),
+    ]
+    assert surface.read_statuses(coverage) == {
+        "shodan|corp.example": "truncated",
+        "shodan|203.0.113.0/24": "empty",
+        "shodan|other.example": "complete",
+    }
 
 
 def test_the_first_pass_sets_the_baseline_and_raises_no_drift() -> None:
@@ -205,6 +263,56 @@ async def test_a_name_backed_only_by_mx_or_txt_records_is_not_dangling(monkeypat
     observed = await surface.ShodanSurfaceReader("k").observe(["corp.example"], [])
     dangling = sorted(o.host for o in observed if o.resolves is False)
     assert dangling == ["old.corp.example"]
+
+
+@pytest.mark.asyncio
+async def test_the_shodan_reader_pages_dns_and_search_up_to_the_bound(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``/dns/domain`` is paged while ``more`` is true, the search while matches remain; the bound truncates."""
+    calls: list[tuple[str, int]] = []
+
+    async def _get(self: Any, path: str, action: str, params: Any = None) -> Any:
+        page = int((params or {}).get("page") or 1)
+        calls.append((path, page))
+        if path.startswith("/dns/domain/"):
+            return {"more": True, "data": [{"subdomain": f"d{page}", "type": "A", "value": f"203.0.113.{page}"}]}
+        matches = [
+            {"ip_str": f"198.51.100.{page}", "port": 1000 + i, "hostnames": [f"s{page}.corp.example"]}
+            for i in range(surface._SHODAN_SEARCH_PAGE_SIZE)
+        ]
+        return {"total": 10_000, "matches": matches}
+
+    monkeypatch.setattr(surface.ShodanSurfaceReader, "_get", _get)
+    reader = surface.ShodanSurfaceReader("k")
+    observed = await reader.observe(["corp.example"], [])
+    dns_pages = [p for path, p in calls if path.startswith("/dns/domain/")]
+    search_pages = [p for path, p in calls if path == "/shodan/host/search"]
+    assert dns_pages == list(range(1, surface._SHODAN_DNS_PAGES + 1))
+    assert search_pages == list(range(1, surface._SHODAN_SEARCH_PAGES + 1))
+    assert all(c.truncated for c in reader.coverage)
+    assert surface.read_statuses(reader.coverage) == {"shodan|corp.example": "truncated"}
+    assert {o.host for o in observed} >= {"d1.corp.example", f"d{surface._SHODAN_DNS_PAGES}.corp.example"}
+    assert all(o.reads == ["shodan|corp.example"] for o in observed)
+
+
+@pytest.mark.asyncio
+async def test_the_shodan_reader_stops_when_the_read_is_complete(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    async def _get(self: Any, path: str, action: str, params: Any = None) -> Any:
+        calls.append(path)
+        if path.startswith("/dns/domain/"):
+            return {
+                "more": False,
+                "data": [{"subdomain": "www", "type": "A", "value": "203.0.113.5", "last_seen": "2026-10-01T00:00:00"}],
+            }
+        return {"total": 1, "matches": [{"ip_str": "203.0.113.5", "port": 443, "hostnames": ["www.corp.example"]}]}
+
+    monkeypatch.setattr(surface.ShodanSurfaceReader, "_get", _get)
+    reader = surface.ShodanSurfaceReader("k")
+    observed = await reader.observe(["corp.example"], [])
+    assert len(calls) == 2
+    assert surface.read_statuses(reader.coverage) == {"shodan|corp.example": "complete"}
+    assert observed[0].known_since == datetime(2026, 10, 1, tzinfo=UTC)
 
 
 # The shape of a Search ASM Entities hit, as Google documents it for its SecOps integration
@@ -495,7 +603,12 @@ async def test_pass_signals_are_recorded_by_system(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(ctem_signals, "record_signal", _record)
     monkeypatch.setattr(ctem_scope_gate_store, "evaluate_after_record", _evaluate)
+
+    async def _previous(db, organization_id):
+        return None
+
     monkeypatch.setattr(surface, "_baseline", _baseline)
+    monkeypatch.setattr(surface, "_previous_pass", _previous)
     import uuid
 
     result = await surface.run_pass(_Db(), organization_id=uuid.uuid4(), profile=_profile(), reader=_Reader(), now=NOW)

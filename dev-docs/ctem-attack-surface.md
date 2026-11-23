@@ -70,7 +70,7 @@ next tick retries.
 |---|---|
 | 5 `new_exposure` | A declared asset with `internet_facing: no` answers; a declared asset answers on a port the previous pass did not see. |
 | 6 `stale_asset` | A listed name that no DNS record of any type backs (a name with only MX, TXT or NS records is not dangling); a name of an owned domain points outside the owned ranges; a host an earlier pass saw is unseen for `stale_after_days`. |
-| 7 `surface_drift` | A host neither declared nor seen by an earlier pass (the reconcile leaves it `to_validate`); a new port on an undeclared host. |
+| 7 `surface_drift` | A host neither declared nor seen by an earlier pass, read completely by this pass and the previous one (section 2quater; the reconcile leaves it `to_validate`); a new port on an undeclared host. |
 
 The first pass sets the baseline: it raises paths 5 and 6 (they compare with
 the profile) and no path 7. A port that closes, a name that resolves again or a
@@ -86,12 +86,55 @@ shape the tests record, never approximated.
 
 | Provider | Reader | What it reads | Limits |
 |---|---|---|---|
-| Shodan (`shodan`) | `ShodanSurfaceReader` | `GET /dns/domain/{domain}` (records and listed subdomains), `GET /shodan/host/search` on `hostname:` and `net:` (banners: address, port, transport, product, certificate CN) | One query credit per domain and per range. |
+| Shodan (`shodan`) | `ShodanSurfaceReader` | `GET /dns/domain/{domain}` paged on `more` (records and listed subdomains), `GET /shodan/host/search` on `hostname:` and `net:` paged on `total` (banners: address, port, transport, product, certificate CN) | Up to 5 DNS pages and 3 search pages per query (section 2quater); a query at its bound is a truncated read. |
 | Google Threat Intelligence ASM (`gti`) | `GtiAsmSurfaceReader` | `GET /asm/projects`, then per project `GET /asm/search/entities/type:Intrigue::Entity::IpAddress` (in-scope IP entities: `summary.ports.tcp/udp`, `summary.resolutions`), kept when a resolution is under an owned domain or the address is in an owned range | Up to 5 projects and 10 pages of 100 per pass. ASM lists no unresolved name: path 6 "resolves to nothing" comes from Shodan only. Needs the ASM module on the license. |
 | SecurityScorecard | not supported | | Scores and findings per issue type, no host inventory with open ports. |
 | SOCRadar | not supported | | The ASM digital asset list (`GET /company/{id}/asm`) carries names, source and monitoring state, no address and no open ports. |
 | DomainTools | not supported | | DNS and WHOIS history, no open ports; the registrar's view, not the reachable surface. |
 | Rapid7 | not supported | | InsightVM assets are the inside scan of managed assets, not the outside view. |
+
+## 2quater. Read completeness and the pass summary (#1498)
+
+A host missing from the baseline is only new when the previous pass could have
+seen it. Each reader records what each query read (`ReadCoverage`: provider,
+scope, kind, pages, records, `truncated` when the query hit its page bound);
+`read_statuses` gives each `<provider>|<scope>` read a status: `truncated`,
+`empty` (its queries answered nothing) or `complete`. The scope is the owned
+domain or range queried; GTI ASM reads per project, so its one read is `*`.
+
+Path 7 `new_host` is raised only when (`new_host_withheld`):
+
+- a previous pass summary exists;
+- every read that saw the host is `complete` in this pass and was `complete`
+  in the previous one (a read missing from the previous summary counts as not
+  complete);
+- the provider's own dating does not put the host before the previous pass
+  (`known_since`: a Shodan DNS record's `last_seen`, a banner's `timestamp`,
+  an ASM entity's `first_seen`).
+
+Any other host joins the baseline silently; the pass counts it as
+`new_host_withheld`. A signal raised carries `reads` and `previous_pass_at` in
+its evidence. The first pass after this change has no previous summary, so it
+raises no path 7: it records the summary the next pass compares with.
+
+Credit budget per pass (Shodan): up to `_SHODAN_DNS_PAGES` (5) pages of
+`/dns/domain` and `_SHODAN_SEARCH_PAGES` (3) pages of 100 matches of each host
+search, so at most 8 query credits per owned domain and 3 per range. GTI ASM
+keeps its 5 projects and 10 pages of 100.
+
+Every committed pass is stored (`ctem_surface_passes`, `models/ctem_surface_pass.py`):
+time, provider label, hosts observed, the coverage list, the statuses, the counts
+per path (with `recorded` and `new_host_withheld`) and the time of the pass it
+compared with. An administrator reads the latest ones with
+`GET /api/v1/ctem-signals/attack-surface/passes?limit=N` (`truncated` true when
+a read hit its bound), so a pass that found nothing is still visible.
+
+Repair: `POST /api/v1/ctem-signals/attack-surface/repair-new-hosts` with
+`{"dry_run": false}` (administrators; `dry_run` true by default answers the
+hosts) discards the open path 7 `new_host` signals of the outside lens that carry
+no `previous_pass_at` (raised before this rule), with the verdict
+`false_positive` and reason code `partial_previous_read`. The hosts stay in the
+baseline; a signal that opened a case is left to the case step.
 
 ## 2ter. OpenAEV feeds (CTEM-27)
 
