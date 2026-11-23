@@ -101,6 +101,10 @@ class ModuleCheckReport(BaseModel):
 class ModuleCheckReportsResponse(BaseModel):
     module: str
     items: list[ModuleCheckReport]
+    #: Whether the checks have a usable "Run checks as" user (12.3): ``ok``, ``not_set`` (none
+    #: configured) or ``no_access`` (the user cannot read this module). The card shows one
+    #: state for the last two instead of a "not run" line per check.
+    run_as: Literal["ok", "not_set", "no_access"] = "ok"
 
 
 class CycleResponse(BaseModel):
@@ -356,9 +360,11 @@ async def list_module_check_reports(
     """
     from app.api.v1.platform_health_findings import ANALYST_MODULES, present_modules
     from app.models.health_module_analyst import HealthModuleCheckReport
+    from app.services.health.run_as import run_as_state
 
     if module not in ANALYST_MODULES or module not in present_modules():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown health module")
+    run_as = await run_as_state(db, module)
     rows = (
         await db.execute(
             select(HealthModuleCheckReport)
@@ -369,6 +375,7 @@ async def list_module_check_reports(
     ).scalars()
     return ModuleCheckReportsResponse(
         module=module,
+        run_as=run_as,
         items=[
             ModuleCheckReport(
                 report_id=row.id,

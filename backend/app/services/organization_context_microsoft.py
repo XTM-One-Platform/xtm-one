@@ -39,6 +39,9 @@ DEFENDER = "defender"
 SOURCES: tuple[str, ...] = (INTUNE, DEFENDER)
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
+#: A managed device's ``detectedApps`` exist on the beta endpoint only: v1.0 answers HTTP 400 for
+#: ``managedDevices/{id}/detectedApps`` (its managedDevice has no such relationship).
+GRAPH_BETA = "https://graph.microsoft.com/beta"
 MDE_BASE = "https://api.securitycenter.microsoft.com/api"
 GRAPH_SCOPE = "https://graph.microsoft.com/.default"
 MDE_SCOPE = "https://api.securitycenter.microsoft.com/.default"
@@ -416,6 +419,8 @@ class EndpointRead:
     #: Devices whose software could not be read (a failed per-device read, a partial inventory):
     #: their stored software is kept, never taken for "no software".
     software_unread: set[str] = field(default_factory=set)
+    #: The first reason a software read failed (said in the run status, never a silent zero).
+    software_error: str = ""
 
 
 async def _get_json(client: Any, url: str, headers: dict[str, str], source: str) -> tuple[dict[str, Any] | None, str]:
@@ -432,9 +437,21 @@ async def _get_json(client: Any, url: str, headers: dict[str, str], source: str)
         if resp.status_code in (401, 403):
             return None, missing_scope_message(source, resp.status_code)
         if resp.status_code >= 400:
-            return None, f"{source}: HTTP {resp.status_code}"
+            detail = _error_detail(resp)
+            return None, f"{source}: HTTP {resp.status_code}" + (f" ({detail})" if detail else "")
         return resp.json(), ""
     return None, f"{source}: throttled, retry later"
+
+
+def _error_detail(resp: Any) -> str:
+    """The API's own error message (Graph and Defender: ``error.message``), cut short; "" when none."""
+    try:
+        body = resp.json()
+    except Exception:  # not JSON: the status says enough
+        return ""
+    error = body.get("error") if isinstance(body, dict) else None
+    message = error.get("message") if isinstance(error, dict) else None
+    return _text(message, 160)
 
 
 async def _paged(
@@ -495,11 +512,12 @@ async def read_intune(token: str, filters: dict[str, Any], *, limit: int, client
 
         async def apps_of(row: dict[str, Any]) -> None:
             async with sem:
-                url = f"{GRAPH_BASE}/deviceManagement/managedDevices/{row['external_id']}/detectedApps?$top=999"
+                url = f"{GRAPH_BETA}/deviceManagement/managedDevices/{row['external_id']}/detectedApps"
                 apps, app_cut, app_err = await _paged(http, url, headers, INTUNE, MAX_APPS_PER_DEVICE)
             if app_err:
                 logger.info("Intune detected apps of %s unreadable: %s", row["external_id"], app_err)
                 result.software_unread.add(row["external_id"])
+                result.software_error = result.software_error or app_err
                 return
             software = intune_software(apps)
             result.software[row["external_id"]] = software
@@ -550,6 +568,7 @@ async def read_defender(token: str, filters: dict[str, Any], *, limit: int, clie
             logger.info("Defender software inventory unreadable: %s", inv_err)
             result.error = None
             result.software_unread = set(wanted)
+            result.software_error = inv_err
             return result
         by_machine = defender_software_by_machine(inventory)
         for machine_id, software in by_machine.items():

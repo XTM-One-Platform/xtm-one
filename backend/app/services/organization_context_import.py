@@ -183,6 +183,8 @@ class ReadResult:
     software_rows: int = 0
     #: Devices whose software read failed: their stored software is kept (never read as "none").
     software_unread: set[str] = field(default_factory=set)
+    #: Why the software read failed (devices still sync): said in the run status, never a silent zero.
+    software_error: str = ""
 
 
 @dataclass
@@ -218,6 +220,8 @@ class ImportPlan:
     software_rows: int = 0
     #: Devices whose software read failed: :func:`store_endpoint_software` keeps their stored software.
     software_unread: set[str] = field(default_factory=set)
+    #: Why the software read failed for those devices (empty: every read answered).
+    software_error: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -241,6 +245,8 @@ class ImportPlan:
             "remove_gone": self.remove_gone,
             "batch_typed": self.batch_typed,
             "software_rows": self.software_rows,
+            "software_unread": len(self.software_unread),
+            "software_error": self.software_error or None,
             "sample": self.sample,
             "truncated": self.truncated,
             "error": self.error,
@@ -326,6 +332,8 @@ def openaev_asset(asset: dict[str, Any], batch_type: str = "") -> AssetEntry | N
         internet_facing=_yes_no(asset.get("asset_internet_facing")),  # type: ignore[arg-type]
         source="openaev",
         external_id=asset_id[:200],
+        # The hostname the agent reports (``asset_hostname``), an identity key beside the name.
+        hostname=str(asset.get("asset_hostname") or "").strip()[:255],
         last_seen=openaev_last_seen(asset.get("asset_last_seen")),
         status=status if status in OPENAEV_ASSET_STATUSES else "",  # type: ignore[arg-type]
     )
@@ -500,6 +508,7 @@ def plan_import(
         software=read.software,
         software_rows=read.software_rows,
         software_unread=read.software_unread,
+        software_error=read.software_error,
     )
     draft = profile.model_copy(deep=True)
     if section in SOURCED_FIELDS:
@@ -954,6 +963,7 @@ async def _read_microsoft(db: AsyncSession, user_id: str, source: str, filters: 
     result.software = {k: v for k, v in read.software.items() if k in kept}
     result.software_rows = sum(len(v) for v in result.software.values())
     result.software_unread = {k for k in read.software_unread if k in kept}
+    result.software_error = read.software_error if result.software_unread else ""
     return result
 
 

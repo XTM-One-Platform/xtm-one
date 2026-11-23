@@ -52,6 +52,8 @@ export type BlockProps = {
   draft: HealthSettings;
   editing: boolean;
   onChange: (next: HealthSettings) => void;
+  /** The save refused the draft's "Run checks as" user: the message shown under that field (UX r1 B1). */
+  runAsError?: string | null;
 };
 
 export function BlockTitle({ icon: Icon, title, hint }: { icon: React.ComponentType<{ className?: string }>; title: string; hint: string }) {

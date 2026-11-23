@@ -17,10 +17,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
 import { InfoTip } from "@/components/ui/info-tip";
 import { ProviderLogo } from "@/components/ui/provider-logo";
+import { useTriggerTabIndex } from "@/components/ui/row-target-context";
 import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
 import type { CtemCaseRunningVersion, CtemCaseRunningVersions } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES, PROVIDER_LOGOS } from "@/lib/constants";
+import { pivotModuleOf } from "@/lib/module-pivot";
 import { formatCount } from "@/lib/number-format";
 
 const UNKNOWN = "unknown";
@@ -44,22 +46,28 @@ const STATUS_LABEL: Record<NonNullable<CtemCaseRunningVersion["status"]>, string
 const STATUS_RANK: Record<NonNullable<CtemCaseRunningVersion["status"]>, number> = { below_fixed: 0, not_comparable: 1, fixed: 2 };
 
 /** The name a source is read under: a CTEM product, an integration, a glyph source, an agent, else its key. */
-export function versionSourceName(source: string): string {
-  if (source.startsWith("agent:")) return "Agent";
+export function versionSourceName(raw: string): string {
+  if (raw.startsWith("agent:")) return "Agent";
+  // A module under a pre-rename key (openbas, opengrc) reads under its current name (#1357).
+  const source = pivotModuleOf(raw) ?? raw;
   return CTEM_PRODUCT_INFO[source]?.name ?? INTEGRATION_PROVIDER_NAMES[source] ?? SOURCE_GLYPHS[source]?.label ?? source;
 }
 
 /** One source as its logo or glyph, its name in the product tooltip and for screen readers; shared by Running versions and Affected assets (UX r2 B1 on #1324). */
-export function SourceMark({ source }: { source: string }) {
+export function SourceMark({ source: raw }: { source: string }) {
   const { t_i18n } = useFormatter();
+  // The module's canonical emblem, the one SourceBadge draws (#1357), whatever key the inventory used.
+  const source = pivotModuleOf(raw) ?? raw;
   const name = t_i18n(versionSourceName(source));
   const glyph: { icon: IconName } | undefined = source.startsWith("agent:") ? { icon: "bot" } : SOURCE_GLYPHS[source];
+  // Inside a routed row the row link is the single tab stop (#12070); elsewhere the mark keeps its own (UX r1 B1 on #1361).
+  const tabIndex = useTriggerTabIndex();
   // The product tooltip, shown on hover and on keyboard focus, never the native title (UX r1 B3 on #1277).
   return (
     <Tip content={name}>
       <span
         className={`inline-flex shrink-0 items-center ${TIP_WRAP_FOCUS_RING}`}
-        tabIndex={0}
+        tabIndex={tabIndex}
         data-testid="ctem-case-version-source"
       >
         {PROVIDER_LOGOS[source] ? (

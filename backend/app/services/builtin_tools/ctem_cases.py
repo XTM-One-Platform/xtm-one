@@ -143,16 +143,27 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     return "No organization is set up yet: there are no cases."
                 cases = await store.list_cases(db, organization_id=org_id, vertical=vertical)
                 owner = _uuid(owner_user_id)
+                view = await view_of.viewer_view(db, str(scope), vertical)
                 rows, counts = view_of.list_for_viewer(
                     cases,
-                    await view_of.viewer_view(db, str(scope), vertical),
+                    view,
                     state=state or None,
                     priority=priority or None,
                     owner_user_id=str(owner) if owner else None,
                     limit=max(1, min(int(limit or 20), 50)),
                     offset=max(0, int(offset or 0)),
                 )
-                return _dump({"vertical": vertical, "counts": {s: counts.get(s, 0) for s in _STATES}, "cases": rows})
+                from .ctem_signals import case_signal_scope
+
+                return _dump(
+                    {
+                        "vertical": vertical,
+                        "counts": {s: counts.get(s, 0) for s in _STATES},
+                        "cases": rows,
+                        # Which signal rule applied, so an empty list is never read as no case (#1359).
+                        "scope": await case_signal_scope(db, scope, view.signals),
+                    }
+                )
         except Exception:
             logger.warning("CTEM case list failed", exc_info=True)
             return "Error: the cases could not be read right now. Say so; do not guess them."

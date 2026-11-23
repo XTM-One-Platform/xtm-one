@@ -16,6 +16,10 @@ import { type ReactNode } from "react";
 import { Icon } from "@filigran/design-system";
 import { useCtemSignal, useProposeSignalScope, type CtemDecisionRecord, type CtemSignal } from "@/hooks/api/useCtemSignalsApi";
 import { Button } from "@/components/ui/button";
+import { ModulePivotLink } from "@/components/ui/module-pivot-link";
+import { SourceBadge } from "@/components/ui/source-badge";
+import { useModuleBaseUrls } from "@/hooks/useModuleBaseUrls";
+import { pivotModuleOf } from "@/lib/module-pivot";
 import { useFormatter } from "@/i18n";
 import { isNotFoundError } from "@/lib/api";
 import { formatDayIntl, formatShortDateTimeIntl } from "@/lib/relative-time";
@@ -498,6 +502,10 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
   const { t_i18n, intl } = useFormatter();
   const link = safeExternalUrl(signalSourceLink(signal.evidence));
   const provider = signalProviderName(signal.source.provider);
+  const moduleUrls = useModuleBaseUrls();
+  // No link in the evidence: the OpenCTI entity the signal names, by its id (#1357); an OpenAEV
+  // delivery carries its own platform_url, any other source has no module page.
+  const pivotModule = pivotModuleOf(signal.source.provider) === "opencti" ? "opencti" : null;
   const ruleFacts = signalRuleFacts(signal.evidence, signal.decision);
   const findingFacts = aikidoFacts(signal.source.provider, signal.evidence);
   const identityFacts = subjectFacts(signal.subject.kind, signal.evidence);
@@ -523,14 +531,27 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
     { label: t_i18n("Subject"), value: signal.subject.label || signal.subject.ref },
     {
       label: t_i18n("Source"),
+      // The source's emblem and name (#1357), then the way to the source object.
       value: link ? (
-        <a href={link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
-          {provider}
+        <a href={link} target="_blank" rel="noopener noreferrer" className="inline-flex max-w-full items-center gap-1 align-top text-accent hover:underline">
+          <SourceBadge source={signal.source.provider} label={provider} testId="ctem-signal-source" />
           <Icon name="external-link" size={16} className="shrink-0" />
           <span className="sr-only">{t_i18n("Open the source")}</span>
         </a>
       ) : (
-        provider
+        // On the top of the line box, the 24 px pivot pulled into the 16 px line: the value stays on its
+        // label's line and the row keeps its height (UX r1 B2 on #1358).
+        <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 align-top">
+          <SourceBadge source={signal.source.provider} label={provider} testId="ctem-signal-source" />
+          <ModulePivotLink
+            className="-my-1"
+            module={pivotModule}
+            baseUrl={pivotModule ? moduleUrls[pivotModule] : null}
+            id={signal.source.external_id}
+            iconOnly
+            testId="ctem-signal-source-pivot"
+          />
+        </span>
       ),
     },
     ...ruleFacts.map((fact) => ruleFactRow(fact, t_i18n)),

@@ -281,7 +281,8 @@ async def test_the_module_check_reports_answer_each_role_as_the_matrix_says(mode
 
     assert answers["admin"].status_code == CHECKS_ADMIN[mode]
     if CHECKS_ADMIN[mode] == 200:
-        assert answers["admin"].json() == {"module": "opencti", "items": []}
+        # No run-as user is configured in this database (dev-docs 12.3).
+        assert answers["admin"].json() == {"module": "opencti", "items": [], "run_as": "not_set"}
     others = {role: answers[role].status_code for role in ROLES if role != "admin"}
     assert others == dict.fromkeys(others, 403), f"{mode}: {others}"
 
