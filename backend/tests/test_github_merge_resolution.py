@@ -95,6 +95,13 @@ class FakeGitHub:
         self.merged = False
         self.calls: list[tuple[str, str, dict]] = []
         self.blobs = {_sha(text): text for text in [*ours.values(), *theirs.values()]}
+        # The scratch branch a resolution is built on shares the branch's state; the target keeps its own tip
+        # (target_tip) from the scratch's creation until the one fast-forward moves it.
+        self.scratch: str | None = None
+        self.target_tip: str | None = None
+        self.target_moves: list[str] = []
+        self.scratch_deleted = False
+        self.refuse_target_move = False
 
     def posts(self) -> list[str]:
         return [url for verb, url, _ in self.calls if verb == "post"]
@@ -120,6 +127,28 @@ class FakeGitHub:
 
         def ok(payload, status: int = 200):
             return httpx.Response(status, json=payload), None
+
+        if method == "get" and url == f"{API}/git/matching-refs/heads/tmp/commit-batch":
+            return ok([])
+        if method == "post" and url == f"{API}/git/refs":
+            self.scratch = kwargs["json"]["ref"].removeprefix("refs/heads/")
+            assert self.scratch.startswith("tmp/commit-batch/") and kwargs["json"]["sha"] == self.tip
+            self.target_tip = self.tip
+            return ok({"ref": kwargs["json"]["ref"]}, 201)
+        if method == "delete" and self.scratch and url == f"{API}/git/refs/heads/{self.scratch}":
+            self.scratch_deleted = True
+            return httpx.Response(204), None
+        if method == "patch" and url == f"{API}/git/refs/heads/feat/x":
+            assert kwargs["json"]["force"] is False
+            if self.refuse_target_move:
+                return httpx.Response(422, json={"message": "Update is not a fast forward"}), "Error: 422"
+            self.target_moves.append(kwargs["json"]["sha"])
+            self.target_tip = None
+            return ok({"object": {"sha": kwargs["json"]["sha"]}})
+        if self.scratch and self.scratch in url:
+            url = url.replace(self.scratch, "feat/x")
+        elif self.target_tip is not None and method == "get" and url == f"{API}/commits/feat/x":
+            return ok({"sha": self.target_tip, "commit": {"tree": {"sha": "a" * 40}}})
 
         if method == "get" and url == API:
             return ok({"default_branch": "main"})
@@ -189,7 +218,7 @@ class FakeGitHub:
             self.ref_updates.append(update)
             if self.refuse_ref_update or update["beforeOid"] != self.tip:
                 return ok({"errors": [{"message": "Ref update refused"}]})
-            assert update["afterOid"] == OURS and update["name"] == "refs/heads/feat/x"
+            assert update["afterOid"] == OURS and update["name"] in ("refs/heads/feat/x", f"refs/heads/{self.scratch}")
             self.tip, self.tip_parent, self.ours = OURS, None, dict(self.initial_ours)
             return ok({"data": {"updateRefs": {"clientMutationId": None}}})
         if method == "get" and url.startswith(f"{API}/compare/{THEIRS}..."):
@@ -258,6 +287,44 @@ async def test_resolutions_land_the_merge_in_three_signed_commits():
     }
     assert fake.ours["src/a.py"] == "merged a\n" and fake.ours["docs/b.md"] == "branch b\n"
     assert "verified" in result and MERGE[:12] in result
+
+
+@pytest.mark.asyncio
+async def test_the_branch_moves_once_after_every_commit_landed_on_a_scratch_branch():
+    ours, theirs = _sides()
+    fake = FakeGitHub(ours, theirs, both=["docs/b.md", "src/a.py"])
+    with patch(_SAFE_REQUEST, new=fake):
+        result = await _merge()(
+            repo="acme/app",
+            branch="feat/x",
+            resolutions=[{"path": "src/a.py", "content": "merged a\n"}, {"path": "docs/b.md", "keep": "branch"}],
+        )
+
+    commit_branches = [
+        kwargs["json"]["variables"]["input"]["branch"]["branchName"]
+        for verb, url, kwargs in fake.calls
+        if verb == "post" and url == GRAPHQL and "createCommitOnBranch" in kwargs["json"]["query"]
+    ]
+    merges = [kwargs["json"]["base"] for verb, url, kwargs in fake.calls if verb == "post" and url == f"{API}/merges"]
+    assert commit_branches and set(commit_branches) == {fake.scratch}
+    assert set(merges) == {fake.scratch}
+    # One fast-forward of the target, to the last commit, never to an intermediate one.
+    assert fake.target_moves == [fake.tip] and fake.scratch_deleted
+    assert "moved once from" in result and result.rstrip().splitlines()[-1].startswith("Outcome") is False
+
+
+@pytest.mark.asyncio
+async def test_a_refused_move_leaves_the_branch_unchanged_and_keeps_the_scratch():
+    ours, theirs = _sides()
+    fake = FakeGitHub(ours, theirs, both=["src/a.py"])
+    fake.refuse_target_move = True
+    with patch(_SAFE_REQUEST, new=fake):
+        result = await _merge()(
+            repo="acme/app", branch="feat/x", resolutions=[{"path": "src/a.py", "content": "merged a\n"}]
+        )
+
+    assert result.startswith("Error: the merge was built on scratch branch") and "is unchanged" in result
+    assert not fake.target_moves and not fake.scratch_deleted
 
 
 @pytest.mark.asyncio

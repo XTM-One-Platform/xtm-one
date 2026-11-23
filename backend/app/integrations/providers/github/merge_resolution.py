@@ -68,6 +68,7 @@ import base64
 import hashlib
 import json
 import re
+import time
 from dataclasses import dataclass
 from typing import Any, NamedTuple
 
@@ -89,6 +90,8 @@ from .contents import (
     _graphql_signature_verdict,
     _json_object,
     _rest_signature_verdict,
+    _scratch_branch_name,
+    _sweep_stale_scratch_branches,
 )
 
 #: What ``keep`` takes: the branch's own version, the merged ref's, or both sides' lines in each overlapping hunk
@@ -982,6 +985,21 @@ def _broken_resolutions(
     )
 
 
+async def _move_target(
+    client: Any, headers: dict[str, str], repo: str, repo_url: str, branch: str, before: str, last: str
+) -> str | None:
+    """Fast-forward *branch* from *before* to *last* once; None when done, else why it was not moved."""
+    now = await _branch_tip(client, headers, repo, repo_url, branch)
+    if now != before:
+        return f"'{branch}' now points at {now[:12] or 'an unreadable commit'}, not at {before[:12]}"
+    _, err = await _common.safe_request(
+        client, "patch", f"{repo_url}/git/refs/heads/{_enc(branch)}", _PROVIDER,
+        f"move branch {branch} of {repo} to the resolved merge", headers=_json_headers(headers),
+        json={"sha": last, "force": False},
+    )
+    return err
+
+
 async def resolve_and_merge(
     client: Any,
     headers: dict[str, str],
@@ -993,8 +1011,84 @@ async def resolve_and_merge(
     both: list[str],
     resolutions: dict[str, Resolution],
 ) -> str:
-    """Land a conflicting merge with its *resolutions* in signed commits split under the cap; the answer for the model."""
-    lead = f"Merging '{head}' into '{branch}' of {repo} conflicts"
+    """Land a conflicting merge on a scratch branch, then move *branch* once to its last commit.
+
+    The alignment, the merge and the resolution chunks are written on ``tmp/commit-batch/...`` made at the
+    branch's tip, so *branch* never points at an intermediate commit: no push event, CI run or stacked pull
+    request sees the ref's side of a conflicting file or a split resolution at ``(k/n)``. The branch is then
+    fast-forwarded once, only while it still points at the tip read; any failure leaves it unchanged.
+    """
+    before = await _branch_tip(client, headers, repo, repo_url, branch)
+    if not before:
+        return f"Error: the tip of '{branch}' of {repo} could not be read, so nothing was written."
+    now = time.time()
+    await _sweep_stale_scratch_branches(client, headers, repo_url, repo, now)
+    scratch = _scratch_branch_name(before, now)
+    _, err = await _common.safe_request(
+        client, "post", f"{repo_url}/git/refs", _PROVIDER, f"create scratch branch {scratch} in {repo}",
+        headers=_json_headers(headers), json={"ref": f"refs/heads/{scratch}", "sha": before},
+    )
+    if err:
+        return f"{err}\nThe scratch branch the merge is built on could not be made, so nothing was written."
+    keep_scratch = False
+    try:
+        answer = await _resolve_and_merge_on(
+            client, headers, repo, repo_url, scratch, head, message, both, resolutions, target=branch
+        )
+        # The steps name the branch they wrote on: the scratch one, never seen by the caller.
+        answer = answer.replace(scratch, branch)
+        last = final_head_of(answer)
+        if not answer.startswith("Merged") or not last:
+            # The helpers name the branch they wrote on: the scratch stands for the target in the answer.
+            return (
+                f"{answer.replace(scratch, branch)}\nAll of the above happened on a scratch branch made at "
+                f"{before[:12]}, now deleted: '{branch}' itself was never moved and is unchanged."
+            )
+        why = await _move_target(client, headers, repo, repo_url, branch, before, last)
+        if why is not None:
+            keep_scratch = True
+            return (
+                f"Error: the merge was built on scratch branch '{scratch}' (last commit {last}), but '{branch}' "
+                f"was not moved to it and is unchanged: {why}. A pull request can take the scratch branch; the "
+                f"next split commit on {repo} deletes it once it is a day old."
+            )
+        moved = await _settled_tip(client, headers, repo, repo_url, branch, last)
+        body, sep, tail = answer.rpartition("\nFinal head: ")
+        note = (
+            f"\nBuilt on a scratch branch, then '{branch}' moved once from {before[:12]} to {last[:12]}: it never "
+            "pointed at an intermediate commit."
+        )
+        if moved != last:
+            note += f" Read back: '{branch}' points at {moved[:12] or 'an unreadable commit'}."
+        return f"{body}{note}{sep}{tail}" if sep else answer + note
+    finally:
+        if not keep_scratch:
+            await _common.safe_request(
+                client, "delete", f"{repo_url}/git/refs/heads/{_enc(scratch)}", _PROVIDER,
+                f"delete scratch branch {scratch} of {repo}", headers=headers,
+            )
+
+
+async def _resolve_and_merge_on(
+    client: Any,
+    headers: dict[str, str],
+    repo: str,
+    repo_url: str,
+    branch: str,
+    head: str,
+    message: str,
+    both: list[str],
+    resolutions: dict[str, Resolution],
+    *,
+    target: str = "",
+) -> str:
+    """Land a conflicting merge with its *resolutions* in signed commits split under the cap on *branch*.
+
+    *branch* is the scratch branch :func:`resolve_and_merge` made; *target* names the branch it stands for in
+    the answer.
+    """
+    shown = target or branch
+    lead = f"Merging '{head}' into '{shown}' of {repo} conflicts"
     missing = [path for path in both if path not in resolutions]
     unknown = sorted(set(resolutions) - set(both))
     if missing or unknown:
@@ -1269,6 +1363,6 @@ async def resolve_and_merge(
         lines.append(f"Kept as on '{head}': {_listed(kept)}.")
     lines.append(final_head_line(tip))
     return (
-        f"Merged '{head}' into '{branch}' of {repo} with its conflicts resolved, in commits GitHub built:\n"
+        f"Merged '{head}' into '{shown}' of {repo} with its conflicts resolved, in commits GitHub built:\n"
         + "\n".join(lines)
     )
