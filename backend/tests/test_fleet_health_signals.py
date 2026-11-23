@@ -204,7 +204,7 @@ async def test_an_orchestrator_gets_the_tool_and_the_skill_once():
     agent = SimpleNamespace(builtin_tool_ids=["web"], builtin_allowed_tools=None, skill_ids=[])
     assert await grant_fleet_health_advisory(db, agent)
     assert "platform" in agent.builtin_tool_ids
-    assert agent.builtin_allowed_tools["platform"] == ["get_fleet_health"]
+    assert agent.builtin_allowed_tools["platform"] == ["get_fleet_health", "dismiss_fleet_health_findings"]
     assert agent.skill_ids == [str(skill_id)]
     # Idempotent.
     assert not await grant_fleet_health_advisory(db, agent)
