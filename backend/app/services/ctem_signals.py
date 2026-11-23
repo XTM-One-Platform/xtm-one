@@ -354,6 +354,28 @@ async def observed_by_case(
     return out
 
 
+async def select_signals(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    recorded_by: str | None,
+    ids: list[uuid.UUID] | None = None,
+    state: str | None = None,
+    trigger_path: str | None = None,
+    limit: int = 2000,
+) -> list[CtemSignal]:
+    """The signals the reader may see, by id or by filter, newest sighting first (#1505 triage)."""
+    statement = _visible(select(CtemSignal), organization_id=organization_id, recorded_by=recorded_by)
+    if ids is not None:
+        statement = statement.where(CtemSignal.id.in_(ids))
+    if state:
+        statement = statement.where(CtemSignal.state == state)
+    if trigger_path:
+        statement = statement.where(CtemSignal.trigger_path == trigger_path)
+    statement = statement.order_by(CtemSignal.last_seen_at.desc(), CtemSignal.id).limit(max(1, int(limit)))
+    return list((await db.execute(statement)).scalars())
+
+
 async def get_signal(
     db: AsyncSession, signal_id: uuid.UUID, *, organization_id: uuid.UUID, recorded_by: str | None
 ) -> CtemSignal | None:
