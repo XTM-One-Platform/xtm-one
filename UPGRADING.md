@@ -11,6 +11,7 @@ releases that need special attention.
 
 - **Back-off**: an assignment whose run meets the gateway's throttle (`502 provider_error`, `retryable: true`) or load shedding (`503 gateway_overloaded`) has its cap halved, as a provider's 429 already did.
 - **Fewer requests**: a gateway chat call is sent at most 6 times (it was up to 18): the OpenAI SDK no longer retries under XTM One's own retries. Embeddings, images, speech, video and listings keep the SDK's retries.
+- **Sent once**: an error marked `x-should-retry: false` (the gateway's spent quota or a circuit-open past 60 s, or OpenAI's own) fails at once on every OpenAI-compatible provider instead of after 5 retries; a rate limit still backs the assignment off.
 
 ## The Filigran AI Gateway provider is always offered
 

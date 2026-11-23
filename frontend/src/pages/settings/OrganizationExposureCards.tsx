@@ -287,14 +287,16 @@ interface Props {
   saveBar?: (card: ExposureCard) => ReactNode;
   /** The cards drawn, in their order (#12329: the exposure tab draws three, the knowledge tab one); default every card. */
   cards?: readonly ExposureSection[];
+  /** A reader's view (#1540 UX r1 B2): no sentence points at an Edit the reader does not have. */
+  readOnly?: boolean;
 }
 
 /** The cards of this component, by their profile field. */
 export const EXPOSURE_SECTIONS = ["assets_exposure", "asset_groups", "prioritization_policy", "enterprise_knowledge"] as const;
 type ExposureSection = (typeof EXPOSURE_SECTIONS)[number];
 
-/** The exposure tables that open in edit on their own. */
-export type ExposureCard = "assets_exposure" | "asset_groups" | "accepted_risks" | "enterprise_knowledge";
+/** The exposure cards that open in edit on their own (the policy thresholds too since #1540 UX r1 B2). */
+export type ExposureCard = "assets_exposure" | "asset_groups" | "prioritization_policy" | "accepted_risks" | "enterprise_knowledge";
 
 /** The page size of an exposure table in edit, as the list cards' editor (#12271 UX r1 B2). */
 const EDIT_PAGE_SIZE = 25;
@@ -389,17 +391,20 @@ export function OrganizationExposureCards({
   editAction = () => null,
   saveBar = () => null,
   cards = EXPOSURE_SECTIONS,
+  readOnly = false,
 }: Props) {
   const { t_i18n } = useFormatter();
+  // The policy thresholds are in edit with the whole form, or alone from the card's own Edit (#1540 UX r1 B2).
+  const policyEditing = editing || cardEdit === "prioritization_policy";
   const [invalidScores, setInvalidScores] = useState<Record<string, boolean>>({});
   const anyInvalidScore = Object.values(invalidScores).some(Boolean);
   // Cancel drops what was typed: the next edit starts with valid scores.
   useEffect(() => {
-    if (!editing) setInvalidScores({});
-  }, [editing]);
+    if (!policyEditing) setInvalidScores({});
+  }, [policyEditing]);
   useEffect(() => {
-    onScoreValidity?.(editing && anyInvalidScore);
-  }, [anyInvalidScore, editing, onScoreValidity]);
+    onScoreValidity?.(policyEditing && anyInvalidScore);
+  }, [anyInvalidScore, policyEditing, onScoreValidity]);
   const issueOf = (section: ExposureIssue["section"], field: string, index?: number) =>
     issues.find((issue) => issue.section === section && issue.field === field && issue.index === index);
   // The error under a control in a table cell, named by the control's aria-describedby.
@@ -965,15 +970,18 @@ export function OrganizationExposureCards({
         title={t_i18n("Prioritization policy")}
         description={t_i18n("The rules the CTEM funnel and its agents apply. Money thresholds stay in Risk appetite.")}
         action={
-          editing &&
-          !policySet && (
-            <Button variant="secondary" className="gap-1.5" onClick={() => patchPolicy({ ...RECOMMENDED_POLICY, accepted_risks: policy.accepted_risks, exclusions: policy.exclusions })}>
-              {t_i18n("Use the recommended policy")}
-            </Button>
+          policyEditing ? (
+            !policySet && (
+              <Button variant="secondary" className="gap-1.5" onClick={() => patchPolicy({ ...RECOMMENDED_POLICY, accepted_risks: policy.accepted_risks, exclusions: policy.exclusions })}>
+                {t_i18n("Use the recommended policy")}
+              </Button>
+            )
+          ) : (
+            editAction("prioritization_policy")
           )
         }
       >
-        {editing ? (
+        {policyEditing ? (
           <div className="space-y-4">
             <SettingsFieldGrid>
               {scoreField(
@@ -1048,11 +1056,14 @@ export function OrganizationExposureCards({
             <SettingsReadField label={t_i18n("Internet exposure required")} value={policy.internet_exposure_required ? t_i18n("Yes") : t_i18n("No")} />
           </SettingsReadGrid>
         )}
-        {!editing && !policySet && (
+        {!policyEditing && !policySet && (
           <p className="mt-3 content-compact text-default-secondary">
-            {t_i18n("No policy yet: findings rank as before. Edit to start from the recommended policy (CVSS 7, EPSS 0.1, KEV always in).")}
+            {readOnly
+              ? t_i18n("No policy yet: findings rank as before.")
+              : t_i18n("No policy yet: findings rank as before. Edit to start from the recommended policy (CVSS 7, EPSS 0.1, KEV always in).")}
           </p>
         )}
+        {saveBar("prioritization_policy")}
 
         <div className="mt-4 space-y-2">
           <div className="flex items-center justify-between gap-2">
