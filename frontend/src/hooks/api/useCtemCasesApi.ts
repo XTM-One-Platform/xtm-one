@@ -215,11 +215,15 @@ export interface CtemCaseTreatmentPlan {
  * are served. `state` is `drafted` while the package sits in an OpenCTI draft
  * (its link is the draft page, nothing reached OpenAEV) and `validated` once it
  * is in the live graph; `coverage_requested` is true only for a validated
- * package (#1480).
+ * package (#1480). From the analyst review gate (#1573): `awaiting_review`
+ * while it waits, `replan` once answered with free text or another option,
+ * `rejected` once refused; `validated` needs the review approved.
  */
+export type CtemThreatPackageState = "drafted" | "awaiting_review" | "replan" | "rejected" | "validated";
+
 export interface CtemCaseThreatPackage {
   restricted: boolean;
-  state?: "drafted" | "validated";
+  state?: CtemThreatPackageState;
   coverage_requested: boolean;
   /** The coverage is written in the draft: not sent to OpenAEV until the draft is validated. */
   coverage_drafted?: boolean;
@@ -303,66 +307,6 @@ export interface CtemCaseDetail extends CtemCaseSummary {
   affected_assets?: CtemCaseAffectedAssets;
   /** The fleet that runs the case (#1390); absent on an API older than #1396. */
   owner_fleet?: CtemCaseOwnerFleet | null;
-  /** One resolved decision record per gate the case met (#1518); absent on an API older than #1524. */
-  gates?: CtemCaseGateRecord[];
-}
-
-/** The status of a gate record (`ctem_case_gate_records.STATUSES`). */
-export type CtemCaseGateStatus = "waiting" | "answered" | "passed_automatically" | "expired" | "cancelled";
-
-/** Why a gate ran without a person (`ctem_case_gate_records.REASON_KINDS`). */
-type CtemCaseGateReasonKind =
-  | "runbook"
-  | "within_threshold"
-  | "above_threshold"
-  | "loss_unknown"
-  | "safe_mode"
-  | "fleet_level"
-  | "person";
-
-/** A person, group or audience a decision was asked of; `name` null when the viewer may not see it. */
-export interface CtemCaseGateRecipient {
-  type: "user" | "group" | "company" | "admins" | string;
-  id?: string;
-  name?: string | null;
-}
-
-/**
- * The decision record of one gate (#1518, `ctem_case_gate_records.resolve`):
- * the decision row joined with the case's `gate` events, so an answered
- * decision reads as answered even before the case recorded it.
- */
-export interface CtemCaseGateRecord {
-  key: string;
-  phase: string | null;
-  status: CtemCaseGateStatus;
-  asked_at: string | null;
-  asked_of: CtemCaseGateRecipient | null;
-  asked_by_agent: { id: string; name: string | null } | null;
-  deadline: string | null;
-  answered_at: string | null;
-  answered_by: { id: string; name: string | null } | null;
-  /** The channel the answer came from (`decision_router.SURFACES`). */
-  surface: string | null;
-  option: { key: string; label: string | null } | null;
-  comment: string | null;
-  reason: { kind: CtemCaseGateReasonKind; runbook?: string } | null;
-  passed_at: string | null;
-  wait_seconds: number | null;
-  decision_id: string | null;
-  work_item_id: string | null;
-  /** False while the answer is on the decision but no `gate answered` event is on the case yet. */
-  recorded_on_case: boolean;
-  /** The first later event of the case: its kind, and `from` / `to` as the history stores them (a state's new value, a gate key and its outcome). */
-  next: {
-    at: string;
-    kind: string | null;
-    from?: string | null;
-    to?: string | null;
-    headline: string | null;
-    actor_type: string | null;
-    actor_name: string | null;
-  } | null;
 }
 
 /** `owner_fleet` of a case: `active` false when no active fleet owns it (#1390). */
