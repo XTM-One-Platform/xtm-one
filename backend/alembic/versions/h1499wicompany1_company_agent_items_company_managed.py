@@ -15,7 +15,7 @@ Not reversible by design (which rows were personal is not recorded):
 downgrade is a no-op.
 
 Revision ID: h1499wicompany1
-Revises: c1498surfacepass1
+Revises: f1526fleetrunbudget1
 Create Date: 2026-11-23 11:50:00.000000
 """
 
@@ -29,7 +29,7 @@ from app.core.migration_ddl import set_lock_timeout
 revision: str = "h1499wicompany1"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "c1498surfacepass1"
+down_revision: str | Sequence[str] | None = "f1526fleetrunbudget1"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
