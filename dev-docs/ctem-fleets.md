@@ -1032,7 +1032,10 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   the seed owner). None resolvable: the state says `template binding opencti:
   no OpenCTI integration resolvable for the run-as user`. The OpenAEV pass and
   the CTEM-08 live PIR score re-read (the provisioned `integration_id`) follow
-  the same rule.
+  the same rule, and so does the event poller (`event_poller._poll_integration`,
+  the OpenCRQ job events): a template-resolved integration is polled as the
+  run-as user. A poll that reads nothing says why in `get_assignment`
+  (`Poll skipped: <reason>`, `event_poll_skip:<assignment>`, a day).
 - Visible: `opencti_provisioning` (status, trigger_id, notifier_id, error,
   checked_at) is returned with the assignment's `trigger_config`, next to
   `last_triggered_at`.
