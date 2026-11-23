@@ -24,9 +24,9 @@ import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { DetailTabs } from "@/components/ui/detail-tabs";
-import { ProviderLogo } from "@/components/ui/provider-logo";
 import { SegmentedFilter } from "@/components/ui/segmented-filter";
 import { SlideOver } from "@/components/ui/slide-over";
+import { SourceBadge } from "@/components/ui/source-badge";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import {
   CTEM_SIGNAL_STATES,
@@ -165,10 +165,8 @@ function SignalsTab() {
       hideable: true,
       width: COLUMN_WIDTH.source,
       cell: (s) => (
-        <span className="flex min-w-0 items-center gap-2" data-testid="ctem-signal-source-cell">
-          <ProviderLogo provider={s.source.provider} className="size-4 shrink-0" decorative />
-          <TruncatedText text={signalProviderName(s.source.provider)} />
-        </span>
+        // The shared source badge (#1357): the official emblem when one exists, then the name.
+        <SourceBadge source={s.source.provider} label={signalProviderName(s.source.provider)} className="max-w-full" testId="ctem-signal-source-cell" />
       ),
       sortValue: (s) => signalProviderName(s.source.provider),
       csv: (s) => s.source.provider,
