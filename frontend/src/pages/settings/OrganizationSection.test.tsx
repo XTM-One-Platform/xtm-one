@@ -1089,6 +1089,74 @@ describe("OrganizationSection", () => {
     expect(screen.getByRole("button", { name: /Apply/ })).toBeTruthy();
   });
 
+  it("says no OpenCRQ asset reaches the threshold, with the counts, instead of already agree (#1558)", async () => {
+    get.mockImplementation(async (path: string) =>
+      path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, crown_jewels: [] } } : path.startsWith("/organization-context/syncs") ? [] : null,
+    );
+    post.mockImplementation(async (_path: string, body: unknown) => {
+      const level = (body as { min_criticality?: string }).min_criticality ?? "high";
+      return {
+        applied: false,
+        plan: {
+          linked: [],
+          pushed_to_opencrq: [],
+          pulled_from_opencrq: level === "medium" ? [{ opencrq_asset_id: "a-5", name: "CRM" }] : [],
+          ambiguous: [],
+          not_in_opencrq: [],
+          in_sync: level !== "medium",
+          min_criticality: level,
+          assets_read: 1751,
+          by_criticality: { unknown: 1750, medium: 1 },
+        },
+        errors: [],
+        version: null,
+      };
+    });
+    renderPage("business");
+    fireEvent.click(await screen.findByRole("button", { name: /Check against OpenCRQ/ }));
+    const none = await screen.findByTestId("settings.organization.opencrq-none-rated");
+    expect(none.textContent).toContain("No OpenCRQ supporting asset is rated High or above: 1,751 assets read.");
+    expect(none.textContent).toContain("1,750 unrated, 1 medium");
+    expect(screen.queryByText("The crown jewels and OpenCRQ already agree.")).toBeNull();
+    expect(post).toHaveBeenCalledWith("/organization-context/opencrq-sync", { apply: false });
+  });
+
+  it("restores the crown jewels of a past version alone, from the version it starts from (#1558)", async () => {
+    get.mockImplementation(async (path: string) => {
+      if (path === "/organization-context") return { ...CONTEXT, version: 46, profile: { ...CONTEXT.profile, crown_jewels: [] } };
+      if (path.startsWith("/organization-context/versions?"))
+        return [
+          { version: 46, source: "form", created_at: "2026-11-23T10:00:00Z", author_user_id: null, missing_fields: [], crown_jewels: 0 },
+          { version: 28, source: "form", created_at: "2026-11-20T10:00:00Z", author_user_id: null, missing_fields: [], crown_jewels: 2 },
+        ];
+      if (path === "/organization-context/versions/28")
+        return {
+          ...CONTEXT,
+          version: 28,
+          profile: {
+            ...CONTEXT.profile,
+            crown_jewels: [
+              { name: "Payments", business_service: "", owner: "", criticality: "critical", opencrq_asset_id: "" },
+              { name: "Ledger", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" },
+            ],
+          },
+        };
+      if (path.startsWith("/organization-context/syncs")) return [];
+      return null;
+    });
+    post.mockResolvedValue({ ...CONTEXT, version: 47, profile: { ...CONTEXT.profile, crown_jewels: [{ name: "Payments" }, { name: "Ledger" }] } });
+    renderPage("business");
+    fireEvent.click(await screen.findByRole("button", { name: /Restore from a past version/ }));
+    const dialog = await screen.findByTestId("settings.organization.restore-dialog");
+    // The current version is never offered; the newest one holding crown jewels is picked and previewed.
+    expect(within(dialog).queryByText("Version 46")).toBeNull();
+    expect(await within(dialog).findByText("Ledger")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Restore version 28" }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/organization-context/versions/28/restore", { fields: ["crown_jewels"], based_on_version: 46 }),
+    );
+  });
+
   it("opens the form on the draft from the platforms, names each source, and saves it as a draft version", async () => {
     post.mockImplementation(async (path: string) => {
       if (path !== "/organization-context/draft") throw new Error(`unexpected POST ${path}`);
