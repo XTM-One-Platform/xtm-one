@@ -59,11 +59,13 @@ from app.services.organization_context_microsoft import os_family
 logger = logging.getLogger(__name__)
 
 Section = Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"]
-Source = Literal["openaev", "opencti", "opencrq", "intune", "defender", "github", "gitlab"]
+Source = Literal[
+    "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
+]
 
 #: section -> the platforms that can feed it, in the order the dialog lists them.
 SECTION_SOURCES: dict[str, tuple[str, ...]] = {
-    "assets": ("openaev", "opencti", "intune", "defender", "github", "gitlab"),
+    "assets": ("openaev", "opencti", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"),
     "asset_groups": ("openaev",),
     "ai_systems": ("openaev",),
     "tech_stack": ("openaev",),
@@ -99,6 +101,10 @@ SOURCE_FILTERS: dict[tuple[str, str], tuple[str, ...]] = {
     # Microsoft endpoint sources (#1251): devices, OS and software with versions.
     ("assets", "intune"): ("operating_system", "compliance", "ownership", "last_seen_days", "include_owner"),
     ("assets", "defender"): ("os_platform", "health_status", "exposure_level", "last_seen_days"),
+    # Endpoint and CMDB sources (#1556): devices with their identity keys, Tanium software with versions.
+    ("assets", "tanium"): ("operating_system", "last_seen_days", "skip_software"),
+    ("assets", "crowdstrike"): ("platform", "last_seen_days", "filter_query"),
+    ("assets", "servicenow"): ("ci_class", "operational_status", "query"),
     # Code sources: repositories as source_code assets, their SBOM as software.
     ("assets", "github"): ("organizations", "include_archived", "include_forks", "skip_dependencies"),
     ("assets", "gitlab"): ("groups", "include_archived", "include_forks", "skip_dependencies"),
@@ -747,6 +753,15 @@ async def source_statuses(db: AsyncSession, *, user_id: uuid.UUID) -> dict[str, 
             logger.warning("Organization import: %s status unreadable: %s", source, format_exception_message(exc))
             available, reason, code = False, "unreadable", ""
         statuses[source] = SourceStatus(source=source, available=available, reason=reason, reason_code=code)
+    from app.services import organization_context_endpoints as endpoints
+
+    for source in endpoints.SOURCES:
+        try:
+            available, reason, code = await endpoints.connection_status(db, str(user_id), source)
+        except Exception as exc:
+            logger.warning("Organization import: %s status unreadable: %s", source, format_exception_message(exc))
+            available, reason, code = False, "unreadable", ""
+        statuses[source] = SourceStatus(source=source, available=available, reason=reason, reason_code=code)
     from app.services import organization_context_code as code_sources
 
     for source in code_sources.SOURCES:
@@ -1058,6 +1073,28 @@ async def _read_microsoft(db: AsyncSession, user_id: str, source: str, filters: 
     return result
 
 
+async def _read_endpoint(db: AsyncSession, user_id: str, source: str, filters: dict[str, Any]) -> ReadResult:
+    """Devices from Tanium, CrowdStrike Falcon or ServiceNow CMDB (#1556), read with the source's integration."""
+    from app.services import organization_context_endpoints as endpoints
+
+    token, reason = await endpoints.credential(db, user_id, source)
+    if not token:
+        return ReadResult(error=f"{source}: {reason}")
+    read = await endpoints.READERS[source](token, filters, limit=MAX_ROWS)
+    result = ReadResult(total=read.total, truncated=read.truncated, error=read.error)
+    if read.error:
+        return result
+    for row in read.rows:
+        try:
+            result.rows.append(AssetEntry.model_validate(row))
+        except ValueError as exc:  # one bad device never stops the others
+            logger.info("Organization import: %s device %s refused: %s", source, row.get("external_id"), exc)
+    kept = {r.external_id for r in result.rows}
+    result.software = {k: v for k, v in read.software.items() if k in kept}
+    result.software_rows = sum(len(v) for v in result.software.values())
+    return result
+
+
 async def _read_code(db: AsyncSession, user_id: str, source: str, filters: dict[str, Any]) -> ReadResult:
     """Repositories (and their dependencies) from GitHub or GitLab, read-only."""
     from app.services import organization_context_code as code_sources
@@ -1139,6 +1176,8 @@ async def read_source(
             return await _read_opencti(db, str(user_id), section, filters, batch_type)
         if source in ("intune", "defender"):
             return await _read_microsoft(db, str(user_id), source, filters)
+        if source in ("tanium", "crowdstrike", "servicenow"):
+            return await _read_endpoint(db, str(user_id), source, filters)
         if source in ("github", "gitlab"):
             return await _read_code(db, str(user_id), source, filters)
         return await _read_opencrq(db, str(user_id), filters)
@@ -1363,6 +1402,12 @@ async def _code_options(db: AsyncSession, user_id: str, source: str) -> FilterOp
         return FilterOptions(options=switches, unavailable={owners: "unreadable"})
 
 
+def _endpoint_options(source: str) -> FilterOptions:
+    from app.services.organization_context_endpoints import FILTER_VALUES
+
+    return FilterOptions(options={key: [_option(v) for v in values] for key, values in FILTER_VALUES[source].items()})
+
+
 def _microsoft_options(source: str) -> FilterOptions:
     return FilterOptions(
         options={key: [_option(v) for v in values] for key, values in MICROSOFT_FILTER_VALUES[source].items()}
@@ -1380,6 +1425,8 @@ async def filter_options(db: AsyncSession, *, user_id: uuid.UUID, section: str, 
             return await _openaev_options(db, str(user_id), section)
         if source in ("intune", "defender"):
             return _microsoft_options(source)
+        if source in ("tanium", "crowdstrike", "servicenow"):
+            return _endpoint_options(source)
         if source in ("github", "gitlab"):
             return await _code_options(db, str(user_id), source)
         return await _opencrq_options(db, str(user_id))

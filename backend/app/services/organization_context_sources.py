@@ -60,6 +60,7 @@ DISPLAY_NAMES: dict[str, str] = {
     "github": "GitHub",
     "gitlab": "GitLab",
     "crowdstrike": "CrowdStrike",
+    "tanium": "Tanium",
     "sentinelone": "SentinelOne",
     "servicenow": "ServiceNow",
 }

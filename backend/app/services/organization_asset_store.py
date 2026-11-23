@@ -467,7 +467,7 @@ def sbom_document_key(doc: Any, file_name: str) -> str:
 
 #: Software documents an endpoint source writes on its own device records (#1251): ``format`` is the
 #: source, so the software ranks by that source's class (``mdm``, ``edr``), not as an SBOM.
-ENDPOINT_SOFTWARE_FORMATS: frozenset[str] = frozenset({"intune", "defender", "github", "gitlab"})
+ENDPOINT_SOFTWARE_FORMATS: frozenset[str] = frozenset({"intune", "defender", "tanium", "github", "gitlab"})
 
 
 #: The format of the hand document that carries an administrator's software attachments on an asset (#1495).
