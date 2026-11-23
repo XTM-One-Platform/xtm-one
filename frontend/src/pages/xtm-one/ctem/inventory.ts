@@ -14,7 +14,7 @@ type Translate = (text: string) => string;
 /** The page title and the CTEM menu row (English, translated where drawn). */
 export const INVENTORY_LABEL = "Inventory";
 
-/** The page's route; `/ctem/assets` redirects to it. */
+/** The page's route. */
 export const INVENTORY_PATH = "/ctem/inventory";
 
 /** The names of the sources only the Inventory lists (SBOM and the platforms). @i18n-keys */

@@ -685,8 +685,7 @@ export default function App() {
         <Route path="/ctem/signals" element={<XtmOneRoute><Page><CtemSignals /></Page></XtmOneRoute>} />
         <Route path="/ctem/signals/:tab" element={<XtmOneRoute><Page><CtemSignals /></Page></XtmOneRoute>} />
         <Route path="/ctem/cases/:id" element={<XtmOneRoute><Page><CtemCaseDetail /></Page></XtmOneRoute>} />
-        {/* CTEM > Inventory (#1178): the old Assets links land on it. */}
-        <Route path="/ctem/assets" element={<Navigate to="/ctem/inventory" replace />} />
+        {/* CTEM > Inventory (#1178). */}
         <Route path="/ctem/inventory/assets/:id" element={<XtmOneRoute><Page><CtemAssetDetail /></Page></XtmOneRoute>} />
         <Route path="/ctem/inventory/:tab?" element={<XtmOneRoute><Page><CtemInventory /></Page></XtmOneRoute>} />
         <Route path="/ctem/:stage" element={<XtmOneRoute><Page><CtemStageDetail /></Page></XtmOneRoute>} />

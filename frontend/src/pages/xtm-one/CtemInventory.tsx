@@ -4,7 +4,7 @@
  * CTEM > Inventory `/ctem/inventory/:tab?` (#1178, Sam 22 Nov 2026): the organization's assets, read from the
  * canonical asset store (one asset per real thing across sources, dev-docs/asset-model.md section 9), and the
  * tech stack built from their software. Every list is paginated on the server, so 10,000 assets read as fast as
- * ten. The old `/ctem/assets` links redirect here.
+ * ten.
  */
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
