@@ -16911,10 +16911,6 @@
   "Human approval was not changed": "Human approval was not changed",
   "No action of this fleet is gated by this control yet.": "No action of this fleet is gated by this control yet.",
   "Review actions": "Review actions",
-  "Waits:": "Waits:",
-  "Runs alone:": "Runs alone:",
-  "Show what waits at each level": "Show what waits at each level",
-  "Hide what waits at each level": "Hide what waits at each level",
   "Reduce human approval to {level}?": "Reduce human approval to {level}?",
   "Reduce to {level}": "Reduce to {level}",
   "{count, plural, =0 {No action of this fleet changes. Every action stays logged and reported in Operations.} one {# action will run without approval:} other {# actions will run without approval:}}": "{count, plural, =0 {No action of this fleet changes. Every action stays logged and reported in Operations.} one {# action will run without approval:} other {# actions will run without approval:}}",
@@ -21176,5 +21172,12 @@
   "What this reply suggestion setting does": "What this reply suggestion setting does",
   "On, the platform's routing model reads each answer and proposes one next message, greyed out in the message box. Tab puts it in the box, typing or Escape dismisses it, and nothing is sent until you press Enter. Off, no suggestion is generated for you.": "On, the platform's routing model reads each answer and proposes one next message, greyed out in the message box. Tab puts it in the box, typing or Escape dismisses it, and nothing is sent until you press Enter. Off, no suggestion is generated for you.",
   "Once an agent has answered, the routing model proposes the user's next message in the chat's message box (Tab to use it). Each user can turn it off in their profile.": "Once an agent has answered, the routing model proposes the user's next message in the chat's message box (Tab to use it). Each user can turn it off in their profile.",
-  "Needs a routing model: with none set, no reply suggestion is generated.": "Needs a routing model: with none set, no reply suggestion is generated."
+  "Needs a routing model: with none set, no reply suggestion is generated.": "Needs a routing model: with none set, no reply suggestion is generated.",
+  "Work item decision": "Work item decision",
+  "What to decide": "What to decide",
+  "No waiting decision matches the search and filters.": "No waiting decision matches the search and filters.",
+  "{count, plural, one {# decision waits for a person} other {# decisions wait for a person}}": "{count, plural, one {# decision waits for a person} other {# decisions wait for a person}}",
+  "oldest asked {age}": "oldest asked {age}",
+  "Read only: this decision is addressed to someone else.": "Read only: this decision is addressed to someone else.",
+  "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.": "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota."
 }

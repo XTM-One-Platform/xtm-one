@@ -145,22 +145,6 @@ describe("FleetAutonomyStrip", () => {
     expect(api.mutateAsync).not.toHaveBeenCalled();
   });
 
-  it("groups the actions by integration, collapsed, with a count per group (#10176)", () => {
-    api.catalog = [
-      { ...gate("Send a message", false), key: "a", provider: "microsoft" },
-      { ...gate("Create an event", false), key: "b", provider: "microsoft" },
-      { ...gate("Open a pull request", false), key: "c", provider: "github" },
-    ];
-    renderWithProviders(<FleetAutonomyStrip fleetId="f1" level="medium" canManage isAdmin />);
-    const groups = screen.getAllByTestId("fleet-autonomy-runs-alone-group");
-    expect(groups).toHaveLength(2);
-    expect(groups[0]).toHaveTextContent("2 actions");
-    expect(groups[1]).toHaveTextContent("1 action");
-    for (const group of groups) expect(group).not.toHaveAttribute("open");
-    // Every group summary carries an expand marker (UX r1 B1 of #10178).
-    expect(screen.getAllByTestId("fleet-autonomy-runs-alone-group-chevron")).toHaveLength(2);
-  });
-
   it("puts the enforced row and the instructions row in one sources grid, label then control (UX r1 B2 of #10178)", () => {
     api.gates = { stored: false, editable: true, instructions_position: "medium_low" };
     renderWithProviders(<FleetAutonomyStrip fleetId="f1" level="medium" canManage isAdmin />);
@@ -187,11 +171,15 @@ describe("FleetAutonomyStrip", () => {
     expect(screen.queryByRole("combobox", { name: "Instructions position" })).toBeNull();
   });
 
-  it("names, at the current level, the actions that wait and those that run alone, and what the level does not cover", () => {
+  it("shows the matrix of every action with no click, no grouped lists and no toggle, and what the level does not cover (#1493)", () => {
     renderWithProviders(<FleetAutonomyStrip fleetId="f1" level="medium" canManage isAdmin />);
-    expect(screen.getByTestId("fleet-autonomy-waits")).toHaveTextContent("Launch a scenario");
-    expect(screen.getByTestId("fleet-autonomy-waits")).not.toHaveTextContent("Create a ticket");
-    expect(screen.getByTestId("fleet-autonomy-runs-alone")).toHaveTextContent("Create a ticket");
+    const matrix = screen.getByTestId("about-autonomy-catalog");
+    expect(matrix).toHaveTextContent("Launch a scenario");
+    expect(matrix).toHaveTextContent("Create a ticket");
+    expect(screen.queryByTestId("fleet-autonomy-waits")).toBeNull();
+    expect(screen.queryByTestId("fleet-autonomy-runs-alone")).toBeNull();
+    expect(screen.queryByTestId("fleet-autonomy-matrix-toggle")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Show what waits at each level" })).toBeNull();
     expect(screen.getByTestId("fleet-autonomy-not-covered")).toHaveTextContent("chat, channel and consult runs");
   });
 
@@ -215,17 +203,14 @@ describe("FleetAutonomyStrip", () => {
     expect(screen.queryByTestId("fleet-autonomy-explainer")).toBeNull();
   });
 
-  it("opens the matrix of every level on demand", () => {
-    renderWithProviders(<FleetAutonomyStrip fleetId="f1" level="medium" canManage isAdmin />);
+  it("keeps the compact setup strip free of the matrix", () => {
+    renderWithProviders(<FleetAutonomyStrip fleetId="f1" level="medium" canManage isAdmin compact />);
     expect(screen.queryByTestId("about-autonomy-catalog")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Show what waits at each level" }));
-    expect(screen.getByTestId("about-autonomy-catalog")).toBeInTheDocument();
   });
 
   it("says under the matrix where the catalog comes from, with no PR number (C3)", () => {
     api.gates = { stored: true };
     renderWithProviders(<FleetAutonomyStrip fleetId="f1" level="medium" canManage isAdmin />);
-    fireEvent.click(screen.getByRole("button", { name: "Show what waits at each level" }));
     const source = screen.getByTestId("about-autonomy-source");
     expect(source).toHaveTextContent("stored in its configuration");
     expect(source.textContent).not.toMatch(/#\d/);

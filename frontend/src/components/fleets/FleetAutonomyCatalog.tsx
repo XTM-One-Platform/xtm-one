@@ -36,7 +36,6 @@ import { Icon } from "@filigran/design-system";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { InfoLabel } from "@/components/ui/info-tip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { useSetFleetGatePins, type FleetAutonomyGate, type FleetAutonomyLevel, type FleetGatePin } from "@/hooks/api/useFleetApi";
@@ -182,7 +181,7 @@ export function FleetAutonomyCatalog({
                 const effect = ctemGateEffect(gate);
                 return (
                   <tr key={gate.key} className="border-b border-[var(--border-elevation-subtle-soft)] last:border-0">
-                    <th scope="row" className="min-w-[320px] max-w-[400px] py-2 pr-3 text-left font-normal">
+                    <th scope="row" className="min-w-[320px] max-w-[480px] py-2 pr-3 text-left font-normal">
                       <span className="flex items-start gap-2">
                         <FleetGateMark gate={gate} />
                         <span className="min-w-0">
@@ -196,12 +195,11 @@ export function FleetAutonomyCatalog({
                               </span>
                             )}
                           </span>
+                          {/* Whole, never truncated (#1493): the matrix is the content of the Approval tab. */}
                           {effect && (
-                            <InfoLabel content={<div className="max-w-xs content-compact">{t_i18n(effect)}</div>} className="block">
-                              <span className="block truncate text-default-secondary" data-testid={`about-autonomy-effect-${gate.key}`}>
-                                {t_i18n(effect)}
-                              </span>
-                            </InfoLabel>
+                            <span className="block text-default-secondary" data-testid={`about-autonomy-effect-${gate.key}`}>
+                              {t_i18n(effect)}
+                            </span>
                           )}
                         </span>
                       </span>
