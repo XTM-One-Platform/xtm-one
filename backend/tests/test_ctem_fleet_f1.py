@@ -110,6 +110,7 @@ def test_the_spec_assignments_live_on_the_orchestrator() -> None:
         "Re-test due",
         "Case opened or reopened",
         "Gate answered",
+        "Loop reminder due",
     }
     assert assignments["Weekly threat sweep"]["trigger_config"] == {"cron": "0 7 * * 1"}
     assert assignments["Re-test due"]["trigger_type"] == "work_item"
