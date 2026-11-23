@@ -16,7 +16,7 @@ import { useWorkItems } from "@/hooks/api/useWorkItemApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import { waitsForAnswer } from "@/lib/work-item-context";
-import { GATE_OUTCOME_LABEL, latestGate } from "./case-gates";
+import { GATE_CARD_STATUS_LABEL, latestGate } from "./case-gates";
 import {
   SAFE_MODE_LABEL,
   VALIDATION_GATE,
@@ -86,7 +86,7 @@ export function CaseValidation({
             <span className="font-medium">
               {auto === "safe_mode"
                 ? t_i18n("Passed automatically: safe mode")
-                : t_i18n(GATE_OUTCOME_LABEL[gate.to as keyof typeof GATE_OUTCOME_LABEL] ?? gate.to ?? "")}
+                : t_i18n(GATE_CARD_STATUS_LABEL[gate.to as keyof typeof GATE_CARD_STATUS_LABEL] ?? gate.to ?? "")}
             </span>
             {auto === "fleet_runs" && <span className="text-default-secondary">{t_i18n("The fleet runs this gate without a person")}</span>}
             {gate.evidence && (

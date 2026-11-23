@@ -90,7 +90,7 @@ describe("CaseAnalystReview", () => {
   it("renders a waiting review on the unified decision card", () => {
     state.items = [{ id: "w1", status: "blocked", needs_human: true, ask: { question: "Request it?", options: [] }, is_company_managed: false }];
     renderWithProviders(<CaseAnalystReview caseId="c1" pkg={{ ...PKG, coverage_requested: false, coverage_id: null }} history={[ev({ to: "waited" })]} />);
-    expect(screen.getByText("Waited for a person")).toBeTruthy();
+    expect(screen.getByText("Waiting for a person")).toBeTruthy();
     expect(screen.getByTestId("unified-decision-card")).toBeTruthy();
     expect(screen.getByText("Threat package drafted, coverage not requested yet")).toBeTruthy();
     expect(state.calls.some((c) => (c as { filters: { correlation_key: string } }).filters.correlation_key === "ctem:review:c1")).toBe(true);
