@@ -155,7 +155,7 @@ const EVENT_LABEL: Record<string, string> = {
 
 /** The status word of a `ticket` history row, translated where drawn (#1032). */
 const TICKET_EVENT_STATUS: Record<string, string> = {
-  open: "Open",
+  open: "Open (status)",
   in_progress: "In progress",
   done: "Done",
   cancelled: "Cancelled",
@@ -604,7 +604,7 @@ export default function CtemCaseDetail() {
       header: "State",
       cell: (r) => {
         if (isRestrictedIssue(r.issue)) return null;
-        if (r.issue.open) return t_i18n("Open");
+        if (r.issue.open) return t_i18n("Open (status)");
         const version = notAffectedOf(r);
         return version ? (
           <span className="flex min-w-0 flex-col" data-testid="ctem-case-not-affected">

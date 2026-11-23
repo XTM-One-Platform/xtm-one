@@ -219,7 +219,8 @@ export function CaseAuditTrail({ rows, phases, currentPhase, renderEvent, render
     },
     {
       key: "change",
-      header: "Change",
+      // Its own key (UX round 5 on #1520, B1): the shared "Change" is the verb in fr and es.
+      header: "Change (from → to)",
       hideable: true,
       hideBelow: "6xl",
       cell: (r) => {
