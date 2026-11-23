@@ -18,6 +18,21 @@ export const SIGNALS_TABLE_URL_KEY = "s_";
 /** The query parameters of the Signals tab: the trigger path is the table's own filter, read by the server too. */
 export const SIGNALS_PARAMS = { state: "state", path: `${SIGNALS_TABLE_URL_KEY}f_path`, signal: "signal" } as const;
 
+/**
+ * What "select all" may send beside the state (#1505, review on #1521): the server filters by
+ * state and one trigger path only, so a search, a source filter or several paths (the table's
+ * client-side filters) answer null and no "select all" is offered, else the bulk action would
+ * reach signals the table hides.
+ */
+export function selectAllScope(params: URLSearchParams): { trigger_path?: string } | null {
+  const key = (name: string) => `${SIGNALS_TABLE_URL_KEY}${name}`;
+  if ((params.get(key("q")) ?? "").trim()) return null;
+  if (params.getAll(key("f_source")).some(Boolean)) return null;
+  const paths = params.getAll(key("f_path")).filter(Boolean);
+  if (paths.length > 1) return null;
+  return paths.length === 1 ? { trigger_path: paths[0] } : {};
+}
+
 export interface SignalsView {
   state?: CtemSignalState | null;
   path?: string | null;
