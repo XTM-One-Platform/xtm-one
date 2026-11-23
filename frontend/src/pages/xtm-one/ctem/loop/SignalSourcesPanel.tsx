@@ -234,7 +234,7 @@ export function SignalSourcesPanel() {
             label: "Status",
             values: (path) => [pathStatus(path)],
             options: STATUS_ORDER.map((s) => ({ value: s, label: t_i18n(PATH_STATUS_LABEL[s]) })),
-            // An ordinal scale: connected first, agents-only last.
+            // Ordinal scale: connected first, agents-only last.
             ordered: true,
           },
           {
@@ -242,7 +242,7 @@ export function SignalSourcesPanel() {
             label: "Lens",
             values: (path) => [path.default_lens],
             options: LENSES.map((lens) => ({ value: lens, label: t_i18n(LENS_HEADING[lens]) })),
-            // The loop's order: inside, outside, world.
+            // Ordinal scale: the loop's lenses, inside, outside, world.
             ordered: true,
           },
         ]}

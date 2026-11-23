@@ -65,6 +65,7 @@ const INVENTORY_CARD_PATH: Partial<Record<ProfileCard, string>> = {
   assets_exposure: "/ctem/inventory",
   prioritization_policy: "/ctem/inventory",
   outside_lens: "/ctem/inventory",
+  evidence_health: "/ctem/inventory",
   asset_groups: "/ctem/inventory/asset-groups",
 };
 

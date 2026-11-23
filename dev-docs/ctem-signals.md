@@ -83,7 +83,7 @@ sources (the event sentence in a tooltip), status, signals in 30 days, last
 signal, action; rows of at most two lines. Connect sends a listener to
 `/integrations/new?provider=`; Connect or Turn on sends a pass and the
 playbook to their card in Settings > Organization (attack surface: outside
-lens; evidence health: its card of the Exposure tab). An empty signal list
+lens; evidence health: its card beside it on CTEM > Inventory). An empty signal list
 shows the table's standard empty statement alone; the summary strip carries
 the connected count.
 

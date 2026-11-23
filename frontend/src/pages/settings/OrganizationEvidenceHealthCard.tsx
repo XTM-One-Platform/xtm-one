@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Settings > Organization > Exposure: "Evidence health" (#1344), the card the signal sources'
+ * CTEM > Inventory (with the outside lens card): "Evidence health" (#1344), the card the signal sources'
  * "Turn on" opens for the OpenCRQ evidence health pass (CTEM-28, trigger paths 9 and 12,
  * dev-docs/ctem-signals.md s.2bis). Read view at rest; Edit (administrators, like the PUT)
  * opens the switch, the integration and the two numbers; Save writes a new profile version
@@ -14,7 +14,7 @@ import { Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SECTION_BAR_ANCHOR_CLASS } from "@/components/ui/section-index";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   SettingsCard,
   type SettingsCardFold,
@@ -196,27 +196,21 @@ export function OrganizationEvidenceHealthCard({ id: anchorId, fold }: Organizat
               }
               error={pickMissing ? t_i18n("Several OpenCRQ integrations are connected: pick the one the pass reads.") : undefined}
             >
-              <Select value={draft.integration} onValueChange={(integration) => setDraft({ ...draft, integration })}>
-                <SelectTrigger
-                  id={`${id}-integration`}
-                  aria-labelledby={settingsFieldLabelId(`${id}-integration`)}
-                  aria-describedby={settingsFieldHintId(`${id}-integration`)}
-                  aria-invalid={pickMissing ? true : undefined}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={AUTO}>{t_i18n("The single connected one")}</SelectItem>
-                  {candidates.map((integration) => (
-                    <SelectItem key={integration.id} value={integration.id}>
-                      {integration.name}
-                    </SelectItem>
-                  ))}
-                  {draft.integration !== AUTO && !candidates.some((integration) => integration.id === draft.integration) && (
-                    <SelectItem value={draft.integration}>{t_i18n("{name} (not connected)", { name: nameOf(draft.integration) })}</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                id={`${id}-integration`}
+                aria-labelledby={settingsFieldLabelId(`${id}-integration`)}
+                aria-describedby={settingsFieldHintId(`${id}-integration`)}
+                className="max-w-md"
+                options={[
+                  { value: AUTO, label: t_i18n("The single connected one") },
+                  ...candidates.map((integration) => ({ value: integration.id, label: integration.name })),
+                  ...(draft.integration !== AUTO && !candidates.some((integration) => integration.id === draft.integration)
+                    ? [{ value: draft.integration, label: t_i18n("{name} (not connected)", { name: nameOf(draft.integration) }) }]
+                    : []),
+                ]}
+                value={draft.integration}
+                onValueChange={(integration) => setDraft({ ...draft, integration: integration || AUTO })}
+              />
             </SettingsField>
             <SettingsField
               id={`${id}-max-age`}

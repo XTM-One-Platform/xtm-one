@@ -312,7 +312,7 @@ function TechStackTab() {
  * Settings > Organization had, now here; Settings keeps the business profile.
  */
 const EDIT_CARDS = {
-  assets: ["assets_exposure", "prioritization_policy", "outside_lens"],
+  assets: ["assets_exposure", "prioritization_policy", "outside_lens", "evidence_health"],
   "asset-groups": ["asset_groups"],
   "tech-stack": ["tech_stack"],
   "ai-systems": ["ai_systems"],
