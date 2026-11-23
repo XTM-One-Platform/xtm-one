@@ -1163,6 +1163,27 @@ describe("OrganizationSection", () => {
     );
   });
 
+  it("shows a refused restore inline in the dialog and offers a reload of the versions on a 409 (#1567 UX B2)", async () => {
+    const base = get.getMockImplementation()!;
+    get.mockImplementation(async (path: string) => {
+      if (path === "/organization-context") return { ...CONTEXT, version: 46, profile: { ...CONTEXT.profile, crown_jewels: [] } };
+      if (path.startsWith("/organization-context/versions?"))
+        return [{ version: 28, source: "form", created_at: "2026-11-20T10:00:00Z", author_user_id: null, missing_fields: [], crown_jewels: 1 }];
+      if (path === "/organization-context/versions/28")
+        return { ...CONTEXT, version: 28, profile: { ...CONTEXT.profile, crown_jewels: [{ name: "Ledger", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" }] } };
+      return base(path);
+    });
+    post.mockRejectedValue(Object.assign(new Error("The profile changed since version 46 (now version 47)."), { status: 409 }));
+    renderPage("business");
+    fireEvent.click(await screen.findByRole("button", { name: /Restore from a past version/ }));
+    const dialog = await screen.findByTestId("settings.organization.restore-dialog");
+    expect(await within(dialog).findByText("Ledger")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Restore version 28" }));
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toContain("The profile changed since version 46");
+    expect(within(alert).getByRole("button", { name: "Reload the versions" })).toBeTruthy();
+  });
+
   it("opens the form on the draft from the platforms, names each source, and saves it as a draft version", async () => {
     post.mockImplementation(async (path: string) => {
       if (path !== "/organization-context/draft") throw new Error(`unexpected POST ${path}`);

@@ -2107,15 +2107,17 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                   )}
                 </Tip>
                 {!listOpen("crown_jewels") && (
-                  <Tip content={editing || cardOpen ? t_i18n("Save or cancel the edit first.") : ""} wrap="auto">
+                  // An icon button: a third labelled action wraps the card title at 1080 (UX round 1 B1, #1567).
+                  <Tip content={editing || cardOpen ? t_i18n("Save or cancel the edit first.") : t_i18n("Restore from a past version")} wrap="auto">
                     <Button
                       variant="secondary"
-                      className="gap-1.5"
+                      size="icon"
+                      aria-label={t_i18n("Restore from a past version")}
                       data-testid="settings.organization.crown-jewels-restore"
                       disabled={editing || cardOpen !== null}
                       onClick={() => setRestoreOpen(true)}
                     >
-                      <Icon name="rotate-ccw" size={16} aria-hidden /> {t_i18n("Restore from a past version")}
+                      <Icon name="rotate-ccw" size={16} aria-hidden />
                     </Button>
                   </Tip>
                 )}

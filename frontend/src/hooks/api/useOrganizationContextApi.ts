@@ -907,6 +907,8 @@ export function useRestoreOrganizationContextVersion() {
   const qc = useQueryClient();
   return useMutation<OrganizationContextResponse, Error, { version: number; fields: string[]; based_on_version: number | null }>({
     mutationFn: ({ version, ...body }) => api.post(`/organization-context/versions/${version}/restore`, body),
+    // The dialog shows the refusal inline (a 409 offers a reload of the versions): no global toast.
+    meta: { suppressGlobalErrorToast: true },
     onSuccess: (saved) => {
       qc.setQueryData(KEY, saved);
       qc.invalidateQueries({ queryKey: KEY });

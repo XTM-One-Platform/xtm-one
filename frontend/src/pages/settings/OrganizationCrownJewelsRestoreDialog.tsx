@@ -64,9 +64,20 @@ export function OrganizationCrownJewelsRestoreDialog({
   const [picked, setPicked] = useState<number | null>(null);
   const selected = picked ?? rows.find((row) => (row.crown_jewels ?? 0) > 0)?.version ?? null;
 
+  // A refused restore shows inline above the footer; a 409 (a version saved since) offers a reload of the list.
+  const refusedConflict = (restore.error as { status?: number } | null)?.status === 409;
+
   const close = (next: boolean) => {
-    if (!next) setPicked(null);
+    if (!next) {
+      setPicked(null);
+      restore.reset();
+    }
     onOpenChange(next);
+  };
+  const reloadVersions = () => {
+    restore.reset();
+    setPicked(null);
+    void versions.refetch();
   };
   const restoreSelected = (version: number) =>
     restore.mutate(
@@ -82,7 +93,6 @@ export function OrganizationCrownJewelsRestoreDialog({
           });
           close(false);
         },
-        onError: (error) => toast({ title: t_i18n("The crown jewels could not be restored"), description: error.message, variant: "error" }),
       },
     );
 
@@ -105,7 +115,10 @@ export function OrganizationCrownJewelsRestoreDialog({
               <li key={row.version}>
                 <button
                   type="button"
-                  onClick={() => setPicked(row.version)}
+                  onClick={() => {
+                    restore.reset();
+                    setPicked(row.version);
+                  }}
                   aria-current={selected === row.version}
                   data-testid="settings.organization.restore-version"
                   className={cn(
@@ -126,8 +139,18 @@ export function OrganizationCrownJewelsRestoreDialog({
             {selected !== null ? <VersionRows version={selected} /> : <p className="text-default-secondary">{t_i18n("Pick a version to see its crown jewels.")}</p>}
           </div>
         </div>
+        {restore.isError && (
+          <div role="alert" className="flex flex-wrap items-center gap-2 content-compact text-feedback-error-primary" data-testid="settings.organization.restore-error">
+            <span>{t_i18n("The crown jewels could not be restored: {reason}", { reason: restore.error.message })}</span>
+            {refusedConflict && (
+              <Button variant="secondary" size="sm" onClick={reloadVersions}>
+                {t_i18n("Reload the versions")}
+              </Button>
+            )}
+          </div>
+        )}
         <DialogFooter>
-          <Button variant="ghost" onClick={() => close(false)}>
+          <Button variant="secondary" onClick={() => close(false)}>
             {t_i18n("Cancel")}
           </Button>
           <Button
