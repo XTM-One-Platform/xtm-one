@@ -32,17 +32,21 @@ export function FleetTriggerList({ triggers, testId }: { triggers: readonly Flee
   if (!triggers?.length) return null;
   return (
     <ul className="space-y-1" aria-label={t_i18n("What starts it")} data-testid={testId}>
-      {triggers.map((trigger) => (
-        <li key={`${trigger.module}-${trigger.name}`} className="flex min-w-0 items-center gap-2" data-testid={testId ? `${testId}-row` : undefined}>
-          <FleetModuleMark module={trigger.module} className="h-4 w-4" />
-          <span className="min-w-0">{trigger.detail ? `${trigger.name}: ${trigger.detail}` : trigger.name}</span>
-          {trigger.enabled === false && (
-            <Badge variant="secondary" className="shrink-0">
-              {t_i18n("Off")}
-            </Badge>
-          )}
-        </li>
-      ))}
+      {triggers.map((trigger) => {
+        // The built-in fleets document when a trigger fires as `filter`; a generated documentation as `detail`.
+        const when = trigger.detail?.trim() || trigger.filter?.trim();
+        return (
+          <li key={`${trigger.module}-${trigger.name}`} className="flex min-w-0 items-center gap-2" data-testid={testId ? `${testId}-row` : undefined}>
+            <FleetModuleMark module={trigger.module} className="h-4 w-4" />
+            <span className="min-w-0">{when ? `${trigger.name}: ${when}` : trigger.name}</span>
+            {trigger.enabled === false && (
+              <Badge variant="secondary" className="shrink-0">
+                {t_i18n("Off")}
+              </Badge>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }

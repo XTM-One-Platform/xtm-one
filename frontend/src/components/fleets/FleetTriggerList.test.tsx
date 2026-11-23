@@ -20,12 +20,12 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 
 /** The six triggers Platform Health ships (`PLATFORM_HEALTH_STRUCTURED` in builtin_fleet_docs.py). */
 const PLATFORM_HEALTH_TRIGGERS = [
-  { module: "platform", name: "Signals", detail: "Feedback drop, failure rate, cost increase or model change" },
-  { module: "schedule", name: "Memory review", detail: "Daily, on the schedule set in Settings" },
-  { module: "schedule", name: "Quality review", detail: "Weekly, on the schedule set in Settings" },
-  { module: "schedule", name: "Flow review", detail: "Weekly, on the schedule set in Settings" },
-  { module: "schedule", name: "Weekly digest", detail: "On the schedule set in Settings" },
-  { module: "schedule", name: "Module checks", detail: "Daily, on every registered module (XTM One)" },
+  { module: "platform", name: "Signals", filter: "Feedback drop, failure rate, cost increase or model change" },
+  { module: "schedule", name: "Memory review", filter: "Daily, on the schedule set in Settings" },
+  { module: "schedule", name: "Quality review", filter: "Weekly, on the schedule set in Settings" },
+  { module: "schedule", name: "Flow review", filter: "Weekly, on the schedule set in Settings" },
+  { module: "schedule", name: "Weekly digest", filter: "On the schedule set in Settings" },
+  { module: "schedule", name: "Module checks", filter: "Daily, on every registered module (XTM One)" },
 ];
 
 function healthDoc(): FleetDocumentation {
@@ -63,6 +63,11 @@ describe("What starts it", () => {
     const rows = screen.getAllByRole("listitem");
     expect(within(rows[0]).getByText("Off")).toBeTruthy();
     expect(within(rows[1]).queryByText("Off")).toBeNull();
+  });
+
+  it("prefers the generated detail over the shipped filter", () => {
+    renderWithProviders(<FleetTriggerList triggers={[{ module: "opencti", name: "New report", detail: "every report", filter: "type = report" }]} />);
+    expect(screen.getByText("New report: every report")).toBeTruthy();
   });
 
   it("draws nothing without a trigger", () => {
