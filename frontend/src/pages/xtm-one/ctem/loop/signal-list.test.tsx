@@ -269,11 +269,30 @@ describe("Signals page", () => {
     const signals = Array.from({ length: 2 }, (_, i) => signal(i + 1));
     renderPage("/ctem/signals?state=to_validate", { total: 2, counts: { to_validate: 2 }, signals });
     await screen.findAllByTestId("ctem-signal-row");
-    fireEvent.click(screen.getAllByRole("checkbox", { name: "Select this row" })[0]);
+    // Every row of the state selected: no "select all" link, so one action shows inline.
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Select every row on this page" })[0]);
     const bar = await screen.findByTestId("ctem-signals-bulk-actions");
     expect(within(bar).getByTestId("ctem-signals-dismiss")).toBeTruthy();
     expect(within(bar).queryByTestId("ctem-signals-recheck")).toBeNull();
     expect(within(bar).getByRole("button", { name: "More actions" })).toBeTruthy();
+  });
+
+  // UX round 4 on #1521, B1: at 1080 with a trigger path filter and a selection, the "select all N"
+  // link takes the inline slot and every action is a row of More actions, so the bar keeps one row.
+  it("moves every bulk action under More actions below 1440 px while select all is offered", async () => {
+    setCompactToolbar(true);
+    const signals = Array.from({ length: 8 }, (_, i) => signal(i + 1));
+    renderPage("/ctem/signals?state=to_validate&s_f_path=new_exposure", { total: 8, counts: { to_validate: 9 }, signals });
+    await screen.findAllByTestId("ctem-signal-row");
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Select this row" })[0]);
+    const bar = await screen.findByTestId("ctem-signals-bulk-actions");
+    expect(within(bar).getByRole("button", { name: /select all 8/ })).toBeTruthy();
+    expect(within(bar).queryByTestId("ctem-signals-dismiss")).toBeNull();
+    expect(within(bar).queryByTestId("ctem-signals-recheck")).toBeNull();
+    expect(within(bar).getByRole("button", { name: "More actions" })).toBeTruthy();
+    // Once every row of the path is selected, the link is gone and one action is back inline.
+    fireEvent.click(within(bar).getByRole("button", { name: /select all 8/ }));
+    expect(within(screen.getByTestId("ctem-signals-bulk-actions")).getByTestId("ctem-signals-dismiss")).toBeTruthy();
   });
 
   it("says the sources are connected and nothing was seen when one is", async () => {

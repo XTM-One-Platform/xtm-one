@@ -224,13 +224,16 @@ function SignalsTab() {
       ? [{ id: "restore", label: t_i18n("Restore"), glyph: "rotate-ccw" as const, run: () => runTriage("restore") }]
       : []),
   ];
-  const inlineCount = compactToolbar ? 1 : 2;
+  // Below 1440 px the "select all N" link takes the one inline slot when a menu follows, so the
+  // bar still fits one 32 px row at 1080 with a trigger path filter and a selection (UX round 4 on
+  // #1521, B1). A lone action stays a button: a menu of one row hides it for nothing.
+  const inlineCount = compactToolbar ? (canSelectAllMatching && bulkActions.length > 1 ? 0 : 1) : 2;
   const inlineActions = bulkActions.slice(0, inlineCount);
   const menuActions: OverflowMenuItem[] = bulkActions.slice(inlineCount).map((a) => ({ id: a.id, label: a.label, glyph: a.glyph, onSelect: a.run, disabled: busy }));
   const selectionActions = (
     <span className="flex flex-wrap items-center gap-2" data-testid="ctem-signals-bulk-actions">
       {canSelectAllMatching && (
-        <Button variant="link" size="sm" className={cn(TOOLBAR_CONTROL_HEIGHT, "px-1 content-compact")} onClick={() => setAllMatching(true)}>
+        <Button variant="link" size="sm" className={cn(TOOLBAR_CONTROL_HEIGHT, BULK_BUTTON_TYPE)} onClick={() => setAllMatching(true)}>
           {t_i18n("select all {count}", { count: stateTotal })}
         </Button>
       )}
