@@ -39,7 +39,7 @@ def test_the_ports_never_meet_another_lab():
     module = _module()
     ours = {module.PORT, module.VITE_PORT, module.BACKEND_PORT, module.HEALTH_PORT}
     assert len(ours) == 4
-    others = {spec["port"] for name, spec in _services().items() if name != "lab-opencrq"}
+    others = {spec["port"] for name, spec in _services().items() if name not in ("lab-opencrq", "lab-opencrq-opencti")}
     assert not ours & others
 
 
@@ -161,6 +161,35 @@ def test_the_language_is_the_users_locale(monkeypatch):
     assert module.set_locale("default", user) is True
     assert calls[-1] == ("UPDATE users SET locale = NULL WHERE id = :'user'::uuid", {"user": user})
     assert module.set_locale("de", user) is False and len(calls) == 2
+
+
+def test_opencti_is_off_by_default(monkeypatch):
+    """No connectors.opencti: the default lab renders every OpenCTI surface unavailable, as before."""
+    module = _module()
+    monkeypatch.delenv("LAB_OPENCRQ_OPENCTI", raising=False)
+    config = module.local_config()
+    assert "connectors" not in config and "xtm" not in config
+    assert module.opencti_connectors("off") == {} and module.opencti_connectors("") == {}
+
+
+def test_the_opencti_variant_connects_the_fresh_start_tenant_to_the_lab_opencti(monkeypatch):
+    module = _module()
+    service = _services()["lab-opencrq-opencti"]
+    assert service["argv"] == _services()["lab-opencrq"]["argv"]
+    assert service["depends_on"] == ["lab-opencti"]
+    assert service["env"] == {"LAB_OPENCRQ_OPENCTI": "live"}
+    monkeypatch.setenv("LAB_OPENCRQ_OPENCTI", "live")
+    config = module.local_config()
+    # config-schema.ts keys each connector by tenant UUID: the platform seed's Tenant_FreshStart.
+    assert config["connectors"] == {
+        "opencti": {
+            module.FRESH_START_TENANT: {"url": module.lab.LIVE_OPENCTI_URL, "token": module.lab.CTEM_OPENCTI_TOKEN}
+        }
+    }
+    assert config["xtm"] == {"opencti_url": module.lab.LIVE_OPENCTI_URL}
+    lab_opencti = _services()["lab-opencti"]
+    assert lab_opencti["env"]["APP__ADMIN__TOKEN"] == module.lab.CTEM_OPENCTI_TOKEN
+    assert module.lab.LIVE_OPENCTI_URL.endswith(f":{lab_opencti['port']}")
 
 
 def test_the_declaration_comment_names_every_sub_path():

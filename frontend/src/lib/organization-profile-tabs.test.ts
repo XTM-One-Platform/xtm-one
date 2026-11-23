@@ -71,8 +71,8 @@ describe("organization profile tabs", () => {
   it("links a field to its tab and card, never to the bare first tab when the field lives elsewhere", () => {
     expect(profileFieldHref("crown_jewels")).toBe("/settings/organization/profile/business?card=crown_jewels");
     // The technology and exposure cards live on CTEM > Inventory (#1178).
-    expect(profileFieldHref("prioritization_policy")).toBe("/ctem/inventory?card=prioritization_policy");
-    expect(profileFieldHref("accepted_risks")).toBe("/ctem/inventory?card=prioritization_policy");
+    expect(profileFieldHref("prioritization_policy")).toBe("/ctem/inventory/exposure?card=prioritization_policy");
+    expect(profileFieldHref("accepted_risks")).toBe("/ctem/inventory/exposure?card=prioritization_policy");
     expect(profileFieldHref("assets_exposure")).toBe("/ctem/inventory?card=assets_exposure");
     expect(profileFieldHref("tech_stack")).toBe("/ctem/inventory/tech-stack?card=tech_stack");
     expect(profileFieldHref("ai_systems")).toBe("/ctem/inventory/ai-systems?card=ai_systems");

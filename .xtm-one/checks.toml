@@ -384,6 +384,25 @@ needs = [".xtm-one/lab", ".xtm-one/stores.py"]
 timeout = 900
 lifetime = 7200
 
+# The same OpenCRQ lab connected to the lab's OpenCTI (#1563): LAB_OPENCRQ_OPENCTI = "live" writes
+# connectors.opencti for the seeded Fresh Start tenant (the lab OpenCTI on localhost:4000, its lab-only admin token)
+# and xtm.opencti_url. Open /lab/sign-in, then /lab/tenant/Fresh%20Start?next=/ for its Get started wizard: the
+# Threats step and Integrations > OpenCTI talk to a running OpenCTI. Same nested opencrq/ checkout as above. Heavy
+# (the OpenCTI image and its four stores), started only on purpose.
+[service.lab-opencrq-opencti]
+description = "The OpenCRQ PR-head lab with the Fresh Start tenant (Get started wizard) connected to the lab's OpenCTI"
+argv = ["python", ".xtm-one/lab/opencrq_pr_head.py"]
+port = 3600
+image = "python-dev"
+ready_path = "/lab/ready"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py"]
+timeout = 900
+lifetime = 7200
+depends_on = ["lab-opencti"]
+env = { LAB_OPENCRQ_OPENCTI = "live" }
+
 # The Filigran licensing application built from the PR head (xtm-one #12370): next dev on the lab's PostgreSQL
 # (database licensing, the app's knex migrations), one seeded customer (/customer/0f1a2b3c-4d5e-4f60-8a7b-9c0d1e2f3a4b)
 # and the Filigran License product, signed in through the app's own development provider (NODE_ENV=development and

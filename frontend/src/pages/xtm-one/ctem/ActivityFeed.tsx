@@ -11,7 +11,7 @@ import { SIGNAL_STATE_LABEL } from "./loop/DecisionReason";
  * The deterministic activity feed of the Live activity card (D3-4, #9567):
  * the rows of `deterministicActivity` through the card's shared `ActivityRow`
  * (icon, title, one detail line, status dot, time). A signal row (#838) opens
- * its loop trace through `onOpenSignal` (the page sets `?loop=`); the other
+ * its loop trace through `onOpenSignal` (the Signals page, `?signal=<id>`); the other
  * rows stay read-only: no row links to a page CE cannot open.
  */
 export function ActivityFeed({ events, onOpenSignal }: { events: ActivityEvent[]; onOpenSignal?: (signalId: string) => void }) {

@@ -177,8 +177,12 @@ async def evaluate_ctem_signals(
 ) -> dict[str, Any]:
     """Run the reconcile and scope gate again on every open signal (after a policy change); counts by state."""
     _require_xtm_one()
-    counts = await scope_gate.evaluate_open(db, organization_id=await _organization_id(db), user_id=admin.id)
+    pending = case_loop.PendingEvents()
+    counts = await scope_gate.evaluate_open(
+        db, organization_id=await _organization_id(db), user_id=admin.id, events=pending
+    )
     await db.commit()
+    await case_loop.publish_pending(pending)  # ctem_signal.triaged per changed verdict (#1409)
     return {"evaluated": sum(counts.values()), "counts": counts}
 
 
@@ -239,10 +243,12 @@ async def evaluate_ctem_signal(
     row = await signals.get_signal(db, signal_id, organization_id=await _organization_id(db), recorded_by=None)
     if row is None:
         raise HTTPException(status_code=404, detail="No such signal")
-    decision = await scope_gate.evaluate_one(db, row, evaluator_id=admin.id)
+    pending = case_loop.PendingEvents()
+    decision = await scope_gate.evaluate_one(db, row, evaluator_id=admin.id, events=pending)
     if decision is None:
         raise HTTPException(status_code=409, detail="This signal opened a case: the case step owns it now")
     await db.commit()
+    await case_loop.publish_pending(pending)  # ctem_signal.triaged when the verdict changed (#1409)
     return signals.to_dict(row)
 
 
