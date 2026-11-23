@@ -1425,6 +1425,9 @@ def classify(tokens: list[str]) -> tuple[str, str] | None:
         return classify(rest[1:])
     if tool in ("python", "python3") and rest and rest[0].endswith(".py"):
         return classify(rest)
+    if tool == "manage.py":
+        # Django's own runner (`python manage.py test`): the project's unit tests.
+        return ("python", "unit") if words[:1] == ["test"] else None
     if tool.endswith(".py") and len(tool) > 3:
         # A repository script (`uv run plugin/scripts/flow_lint.py`, `python scripts/lint_docs.py`): its
         # name says the kind, as a package.json script name does; a PEP 723 header carries its dependencies.
@@ -2560,6 +2563,16 @@ def _python(collector: _Collector, paths: frozenset[str], files: Mapping[str, by
                 f"{source} (pytest)",
                 report="junit",
                 report_path=".xtm/pytest.xml",
+            )
+        elif _has(paths, directory, "manage.py"):
+            # A Django project with no pytest: its tests run through Django's runner (a database
+            # the CI services start is named in the listing's services part).
+            collector.add(
+                directory,
+                "python",
+                "unit",
+                [*prefix, "python", "manage.py", "test", "--noinput"],
+                f"{source} (manage.py test)",
             )
 
 
