@@ -64,7 +64,7 @@ export function CaseOpeningSwitch({ testId = "ctem-case-opening" }: { testId?: s
   const id = `${testId}-switch`;
   return (
     <Tip content={t_i18n("Off: confirmed signals wait and open no case. On: every waiting signal opens its case at once.")}>
-      <label htmlFor={id} className="flex items-center gap-2 content-body-sm whitespace-nowrap" data-testid={testId}>
+      <label htmlFor={id} className="flex items-center gap-2 content-compact whitespace-nowrap" data-testid={testId}>
         <Switch id={id} checked={data.on} disabled={pending} onCheckedChange={toggle} />
         {t_i18n("Case opening")}
       </label>
@@ -82,8 +82,8 @@ export function CaseOpeningPausedState() {
   return (
     <div className="flex flex-col items-center gap-3 py-10 text-center" data-testid="ctem-case-opening-paused-state">
       <Icon name="clock" size={24} aria-hidden className="text-default-secondary" />
-      <p className="content-body font-medium">{t_i18n("Case opening is paused.")}</p>
-      <p className="content-body-sm text-default-secondary">
+      <p className="content-base-medium">{t_i18n("Case opening is paused.")}</p>
+      <p className="content-compact text-default-secondary">
         {t_i18n("{count, plural, =0 {No confirmed signal is waiting.} one {# confirmed signal is waiting.} other {# confirmed signals are waiting.}}", { count: data.waiting })}
       </p>
       {isAdmin ? (
