@@ -15843,6 +15843,7 @@ def build_agent_builder_tool(
                 "required": ["integration_id"],
             },
             source="builtin:platform",
+            changes_tool_surface=True,
         ),
         ToolDefinition(
             name="delete_integration",
