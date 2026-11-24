@@ -174,3 +174,66 @@ async def test_an_event_source_is_read_on_its_event_once_a_minute_at_most(monkey
             reader_id = reader.id
         assert await _reading_assignment(scratch.sessions, str(target)) == [(reader_id, "feed")]
         assert await _reading_assignment(scratch.sessions, str(uuid.uuid4())) == []
+
+
+async def test_each_read_says_what_changed_and_an_alert_is_told_once_per_crossing(monkeypatch) -> None:
+    import app.core.database as database
+    from app.models.activity import Activity
+    from app.services import dashboard_refresh_events
+    from app.services.custom_dashboards import save_dashboard
+    from app.services.dashboard_refresh import refresh_row
+
+    async def _publish(*_a) -> None:
+        return None
+
+    class _Redis:
+        async def publish(self, *_a):
+            return 1
+
+    async def _redis():
+        return _Redis()
+
+    import app.core.redis as core_redis
+
+    monkeypatch.setattr(dashboard_refresh_events, "publish_source_updated", _publish)
+    monkeypatch.setattr(core_redis, "redis_client", _redis)
+    alert = {"id": "many_high", "op": "gt", "value": 4, "label": "High findings", "severity": "critical"}
+    async with _world() as (scratch, owner, _viewer, kb, doc):
+        monkeypatch.setattr(database, "async_session", scratch.sessions)
+        definition = _definition(kb.id, doc.id, refreshMode="manual", alerts=[alert])
+        definition["dataSources"]["sev"]["options"].pop("refresh")
+        async with scratch.sessions() as db:
+            await save_dashboard(db, user_id=owner.id, spec_payload=definition)
+            await db.commit()
+            row_id = (await db.execute(select(CustomDashboardSourceSnapshot.id))).scalar_one()
+
+        async def _table(*counts: int) -> None:
+            async with scratch.sessions() as db:
+                stored = await db.get(KnowledgeDocument, doc.id)
+                stored.content = "# Weekly\n\n| severity | count |\n|---|---|\n" + "".join(f"| s{i} | {c} |\n" for i, c in enumerate(counts))
+                await db.commit()
+
+        async def _read() -> tuple[dict, int]:
+            assert await refresh_row(scratch.sessions, row_id)
+            async with scratch.sessions() as db:
+                row = await db.get(CustomDashboardSourceSnapshot, row_id)
+                told = len((await db.execute(select(Activity).where(Activity.user_id == owner.id))).scalars().all())
+                return row.result, told
+
+        first, told = await _read()  # 2 rows: under the threshold, nothing to compare with yet
+        assert "changes" not in first and told == 0
+        await _table(1, 1, 1, 1, 1)
+        second, told = await _read()
+        assert second["changes"]["figure"] == {"before": 2, "after": 5} and told == 1
+        await _table(1, 1, 1, 1, 1, 1)
+        _third, told = await _read()  # still above: told once
+        assert told == 1
+        await _table(1)
+        await _read()  # back under
+        await _table(1, 1, 1, 1, 1)
+        _fifth, told = await _read()  # crosses again: told again
+        assert told == 2
+        async with scratch.sessions() as db:
+            activity = (await db.execute(select(Activity).order_by(Activity.created_at.desc()))).scalars().first()
+        assert activity.title == "SOC: High findings" and activity.summary == "5 > 4"
+        assert activity.extra_data["notification_source"] == "dashboard_alert"

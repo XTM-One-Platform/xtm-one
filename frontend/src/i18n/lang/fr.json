@@ -21855,5 +21855,11 @@
   "Event of": "Événement de",
   "An integration": "Une intégration",
   "On the server, on a schedule": "Sur le serveur, selon une planification",
-  "On the server, on an event": "Sur le serveur, sur un événement"
+  "On the server, on an event": "Sur le serveur, sur un événement",
+  "Unchanged since {time}.": "Inchangé depuis {time}.",
+  "{before} → {after} since {time}.": "{before} → {after} depuis {time}.",
+  "Dashboard alerts": "Alertes des tableaux de bord",
+  "An alert needs a number to compare the figure with.": "Une alerte a besoin d'un nombre auquel comparer le chiffre.",
+  "Alert when the figure is": "Alerter quand le chiffre est",
+  "No alert": "Aucune alerte"
 }

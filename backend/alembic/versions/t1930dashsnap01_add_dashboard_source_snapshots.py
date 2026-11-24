@@ -68,6 +68,7 @@ def upgrade() -> None:
         sa.Column("refreshed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("due_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("trigger", sa.String(320), nullable=True),
+        sa.Column("alert_state", postgresql.JSON(), nullable=True),
         sa.UniqueConstraint("dashboard_id", "source_id", name="uq_custom_dashboard_source_snapshot"),
         if_not_exists=True,
     )

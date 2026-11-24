@@ -102,6 +102,9 @@ const REFRESH_MODE_LABELS = {
   manual: "On the server, when asked",
 } as const;
 type RefreshMode = keyof typeof REFRESH_MODE_LABELS;
+/** When an alert holds, on the source's figure. @i18n-keys */
+const ALERT_OP_LABELS = { none: "No alert", gt: "Above", lt: "Below" } as const;
+type AlertOp = keyof typeof ALERT_OP_LABELS;
 /** How often the server reads it (at least every 5 minutes). @i18n-keys */
 const REFRESH_EVERY_LABELS = { "5m": "5 minutes", "15m": "15 minutes", "1h": "Hour", "6h": "6 hours", "24h": "Day" } as const;
 type RefreshEvery = keyof typeof REFRESH_EVERY_LABELS;
@@ -237,6 +240,8 @@ function NewSourceDialog({
   const [eventKind, setEventKind] = useState<"platformEvent" | "integrationEvent">("integrationEvent");
   const [eventName, setEventName] = useState("");
   const [history, setHistory] = useState("");
+  const [alertOp, setAlertOp] = useState<AlertOp>("none");
+  const [alertValue, setAlertValue] = useState("");
   const integrations = useIntegrations();
   const tools = useIntegrationTools(integrationId, open && type === "integration");
   const knowledgeBases = useKnowledgeBases();
@@ -286,6 +291,9 @@ function NewSourceDialog({
       platform: { ...platform },
     };
     if (refreshMode === "event" && !eventName.trim()) return { ok: false, error: t_i18n("Name the event it is read on.") };
+    const alerting = refreshMode !== "live" && alertOp !== "none";
+    if (alerting && !Number.isFinite(Number(alertValue)))
+      return { ok: false, error: t_i18n("An alert needs a number to compare the figure with.") };
     const refresh =
       SERVER_REFRESHED.includes(type) && refreshMode !== "live"
         ? {
@@ -293,6 +301,7 @@ function NewSourceDialog({
             ...(refreshMode === "server" ? { refresh: every } : {}),
             ...(refreshMode === "schedule" ? { cron: cron.trim() } : {}),
             ...(refreshMode === "event" ? { on: { [eventKind]: eventName.trim() } } : {}),
+            ...(alerting ? { alerts: [{ id: "alert_1", op: alertOp, value: Number(alertValue), label: name.trim() || undefined }] } : {}),
           }
         : {};
     return { ok: true, value: { type, ...(name.trim() ? { name: name.trim() } : {}), options: { ...options[type], ...refresh } } };
@@ -525,6 +534,21 @@ function NewSourceDialog({
                 onChange={(next) => setEvery(next as RefreshEvery)}
                 options={(Object.keys(REFRESH_EVERY_LABELS) as RefreshEvery[]).map((key) => ({ value: key, label: t_i18n(REFRESH_EVERY_LABELS[key]) }))}
               />
+            )}
+            {refreshMode !== "live" && (
+              <>
+                <Choice
+                  label={t_i18n("Alert when the figure is")}
+                  value={alertOp}
+                  onChange={(next) => setAlertOp(next as AlertOp)}
+                  options={(Object.keys(ALERT_OP_LABELS) as AlertOp[]).map((key) => ({ value: key, label: t_i18n(ALERT_OP_LABELS[key]) }))}
+                />
+                {alertOp !== "none" && (
+                  <Field label={t_i18n("Threshold")}>
+                    <Input type="number" value={alertValue} onChange={(event) => setAlertValue(event.target.value)} className="h-8" aria-label={t_i18n("Threshold")} />
+                  </Field>
+                )}
+              </>
             )}
             {refreshMode !== "live" && (
               <p className="content-caption text-default-secondary sm:col-span-2">

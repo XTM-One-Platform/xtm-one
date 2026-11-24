@@ -148,8 +148,9 @@ describe("PlatformWidget", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-23T10:05:00Z"));
     const snapshot = { mode: "server", every: "15m", refreshed_at: "2026-10-23T10:00:00Z", publisher: "Alice" } as const;
+    const changes = { since: "2026-10-23T09:05:00Z", figure: { before: 4, after: 7 }, items: [{ label: "high", before: 2, after: 6 }] };
     api.post.mockResolvedValue({
-      status: "ok", shape: "number", data: { value: 7, change: null }, fetched_at: "2026-10-23T10:00:00Z", open_url: null, snapshot,
+      status: "ok", shape: "number", data: { value: 7, change: null }, fetched_at: "2026-10-23T10:00:00Z", open_url: null, snapshot, changes,
     } satisfies WidgetData);  // prettier-ignore
     const dashboard = normalizeDashboard({
       version: 2,
@@ -163,6 +164,8 @@ describe("PlatformWidget", () => {
     });
     renderWithProviders(<CustomDashboardView dashboard={dashboard} dashboardId={ID} revision={2} />, new QueryClient({ defaultOptions: { queries: { retry: false } } }));
     expect(await screen.findByText("Data read 5m ago with Alice's access.")).toBeTruthy();
+    // What changed since the previous read, said from the two reads.
+    expect(screen.getByTestId("widget.changes").textContent).toBe("4 → 7 since 1h ago. high 2 → 6");
     fireEvent.click(screen.getByRole("button", { name: "Refresh now" }));
     await waitFor(() => expect(api.post.mock.calls.map(([path]) => String(path))).toContain(`/custom-dashboards/${ID}/data-sources/sev/refresh`));
     vi.useRealTimers();

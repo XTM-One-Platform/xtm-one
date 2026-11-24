@@ -300,7 +300,8 @@ async def refresh_due(db_factory, *, now: datetime | None = None) -> int:
 
 
 async def refresh_row(db_factory, row_id: uuid.UUID) -> bool:
-    """Read one snapshot's source as its publisher now, store it and tell the open pages; whether it was read."""
+    """Read one snapshot's source as its publisher now, store it with what changed since its last read, tell the
+    people of an alert that starts to hold, and tell the open pages; whether it was read."""
     try:
         async with db_factory() as db:
             row = await db.get(CustomDashboardSourceSnapshot, row_id)
@@ -310,14 +311,129 @@ async def refresh_row(db_factory, row_id: uuid.UUID) -> bool:
             if source is None:
                 return False
             read_at = datetime.now(UTC)
-            row.result, row.refreshed_at, row.due_at = result, read_at, _next_due(source, read_at)
-            dashboard_id, source_id = row.dashboard_id, row.source_id
+            result = with_changes(row.result, row.refreshed_at, result)  # type: ignore[arg-type]
+            holding, started = evaluate_alerts(source, result, row.alert_state or [])
+            row.result, row.refreshed_at, row.due_at, row.alert_state = result, read_at, _next_due(source, read_at), holding
+            dashboard_id, source_id, publisher_id = row.dashboard_id, row.source_id, row.publisher_id
             await db.commit()
     except Exception as exc:
         logger.warning("Refreshing dashboard source %s failed: %r", row_id, str(exc)[:200])
         return False
+    if started:
+        await alert_people(db_factory, dashboard_id, source_id, publisher_id, started, figure_of(result))
     await notify_updated(dashboard_id, source_id)
     return True
+
+
+# ── What changed since the last read, and the alerts it crosses ─────────────
+
+#: The items of a distribution that changed the most, told at most.
+MAX_CHANGED_ITEMS = 5
+
+
+def figure_of(result: dict | None) -> float | None:
+    """The one figure a read stands for: a number's value, a series' last point, a distribution's total, a table's
+    row count; ``None`` for anything else or a read that failed."""
+    if not isinstance(result, dict) or result.get("status") != "ok":
+        return None
+    data = result.get("data") if isinstance(result.get("data"), dict) else {}
+    shape = result.get("shape")
+    if shape == "number":
+        value = data.get("value")
+        return float(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
+    if shape == "series":
+        for series in data.get("series") or []:
+            points = [p for p in series.get("points") or [] if isinstance(p.get("y"), int | float)]
+            if points:
+                return float(points[-1]["y"])
+        return None
+    if shape == "distribution":
+        values = [i.get("value") for i in data.get("items") or [] if isinstance(i.get("value"), int | float)]
+        return float(sum(values)) if values else None
+    if shape == "rows":
+        rows = data.get("rows")
+        return float(len(rows)) if isinstance(rows, list) else None
+    return None
+
+
+def with_changes(previous: dict | None, previous_at: datetime | None, result: dict) -> dict:
+    """*result* with what changed since *previous* (``changes``): its figure before and after and, for a
+    distribution, the items that moved the most; a number without a change of its own gets this one. Computed from
+    the two reads, never by a model: what a widget says changed is what the data says."""
+    before, after = figure_of(previous), figure_of(result)
+    if before is None or after is None or previous_at is None:
+        return result
+    changes: dict = {"since": previous_at.isoformat(), "figure": {"before": before, "after": after}}
+    if result.get("shape") == "distribution" and (previous or {}).get("shape") == "distribution":
+        old = {str(i.get("label")): i.get("value") for i in previous["data"].get("items") or []}
+        moved = []
+        for item in result["data"].get("items") or []:
+            label, value = str(item.get("label")), item.get("value")
+            was = old.get(label, 0)
+            if isinstance(value, int | float) and isinstance(was, int | float) and value != was:
+                moved.append({"label": label, "before": was, "after": value})
+        moved.sort(key=lambda m: abs(m["after"] - m["before"]), reverse=True)
+        changes["items"] = moved[:MAX_CHANGED_ITEMS]
+    result = {**result, "changes": changes}
+    if result.get("shape") == "number" and result["data"].get("change") is None:
+        result["data"] = {**result["data"], "change": after - before}
+    return result
+
+
+_OPS = {
+    "gt": lambda a, b: a > b, "gte": lambda a, b: a >= b, "lt": lambda a, b: a < b,
+    "lte": lambda a, b: a <= b, "eq": lambda a, b: a == b, "ne": lambda a, b: a != b,
+}  # fmt: skip
+
+
+def evaluate_alerts(source: dict, result: dict, held: list) -> tuple[list[str], list[dict]]:
+    """The ids of *source*'s alerts that hold on *result*, and those that start to (held at no previous read).
+
+    A read that failed or has no figure keeps the alerts as they were: a platform down is not a threshold crossed.
+    """
+    alerts = (source.get("options") or {}).get("alerts") or []
+    figure = figure_of(result)
+    if figure is None:
+        return list(held), []
+    holding = [a["id"] for a in alerts if _OPS[a["op"]](figure, float(a["value"]))]
+    return holding, [a for a in alerts if a["id"] in holding and a["id"] not in held]
+
+
+async def alert_people(db_factory, dashboard_id: uuid.UUID, source_id: str, publisher_id, started: list[dict], figure) -> None:
+    """Tell the dashboard's owner and the source's publisher that an alert starts to hold: a notification in their
+    bell (an activity, ``notification_feed``), pushed to their open pages. Never raises."""
+    import json
+
+    from app.core.redis import redis_client
+    from app.models.activity import Activity
+    from app.services.mobile_push import queue_push
+
+    try:
+        async with db_factory() as db:
+            dashboard = await db.get(CustomDashboard, dashboard_id)
+            if dashboard is None:
+                return
+            people = {p for p in (dashboard.user_id, publisher_id) if p is not None}
+            symbols = {"gt": ">", "gte": "≥", "lt": "<", "lte": "≤", "eq": "=", "ne": "≠"}
+            for alert in started:
+                title = f"{dashboard.title}: {alert.get('label') or source_id}"[:500]
+                summary = f"{figure:g} {symbols[alert['op']]} {float(alert['value']):g}"
+                for person in people:
+                    activity = Activity(
+                        user_id=person, activity_type="notification", title=title, summary=summary,
+                        extra_data={"notification_source": "dashboard_alert", "dashboard_id": str(dashboard_id),
+                                    "source_id": source_id, "alert_id": alert["id"], "severity": alert.get("severity", "warning")},
+                    )  # fmt: skip
+                    db.add(activity)
+                    await db.flush()
+                    # Their phones too, once committed (``mobile_push``; nothing while the companion is off).
+                    queue_push(db, user_id=person, ref_kind="activity", ref_id=activity.id)
+            await db.commit()
+        redis = await redis_client()
+        for person in people:
+            await redis.publish(f"activity:{person}", json.dumps({"type": "notification", "source": "dashboard_alert"}))
+    except Exception as exc:
+        logger.warning("Telling the people of dashboard %s's alert failed: %r", dashboard_id, str(exc)[:200])
 
 
 async def snapshot_row_id(db: AsyncSession, dashboard_id: uuid.UUID, source_id: str) -> uuid.UUID | None:
@@ -339,6 +455,9 @@ async def notify_updated(dashboard_id: object, source_id: str) -> None:
 
 
 __all__ = [
+    "alert_people",
+    "evaluate_alerts",
+    "figure_of",
     "hear_integration_event",
     "hear_platform_event",
     "mark_event",
@@ -348,4 +467,5 @@ __all__ = [
     "snapshot_row_id",
     "sync_snapshots",
     "trigger_of",
+    "with_changes",
 ]

@@ -37,8 +37,9 @@ import { useDashboardAccess } from "@/hooks/api/dashboard-access";
 import { useAskDataSource, useDataSourceData, useRefreshSnapshot, useWidgetData } from "@/hooks/api/useCustomDashboardApi";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useFormatter } from "@/i18n";
+import { formatCount } from "@/lib/number-format";
 import { safeExternalUrl, timeAgo } from "@/lib/utils";
-import type { WidgetDataErrorCode, WidgetSnapshot } from "@/types";
+import type { WidgetChanges, WidgetDataErrorCode, WidgetSnapshot } from "@/types";
 
 import { accentStyle } from "./charts/colors";
 import { presentedOptions } from "./definition";
@@ -252,7 +253,7 @@ function LiveWidget({ widget, dashboardId }: { widget: PlatformDashboardWidget |
       </div>
       {asks && widget.kind === "data" && <AskButton sourceId={widget.sourceId} again />}
       {data.snapshot ? (
-        <SnapshotLine widget={widget} snapshot={data.snapshot} />
+        <SnapshotLine widget={widget} snapshot={data.snapshot} changes={data.changes ?? null} />
       ) : (
         footer && (
           <span className="mt-auto min-w-0 truncate content-caption text-default-secondary">
@@ -292,7 +293,7 @@ export function DataWidget({ widget }: { widget: DataDashboardWidget }) {
  * and when (decision D1), and offers Refresh now on the page of a signed-in
  * viewer; a published link's snapshot says it on its own page.
  */
-function SnapshotLine({ widget, snapshot }: { widget: DashboardWidget; snapshot: WidgetSnapshot }) {
+function SnapshotLine({ widget, snapshot, changes }: { widget: DashboardWidget; snapshot: WidgetSnapshot; changes: WidgetChanges | null }) {
   const { t_i18n, locale } = useFormatter();
   const { dashboardId } = useDashboardLive() ?? {};
   const access = useDashboardAccess();
@@ -300,7 +301,9 @@ function SnapshotLine({ widget, snapshot }: { widget: DashboardWidget; snapshot:
   const sourceId = widget.kind === "data" || widget.kind === "platform" ? widget.sourceId : undefined;
   if (!snapshot.refreshed_at) return null;
   return (
-    <span className="mt-auto flex min-w-0 items-center gap-1 content-caption text-default-secondary" data-testid="widget.snapshot">
+    <span className="mt-auto flex min-w-0 flex-col gap-0.5 content-caption text-default-secondary" data-testid="widget.snapshot">
+      {changes && <ChangesLine changes={changes} />}
+      <span className="flex min-w-0 items-center gap-1">
       <span className="min-w-0 truncate">
         {t_i18n("Data read {time} with {name}'s access.", { time: timeAgo(snapshot.refreshed_at, locale), name: snapshot.publisher ?? "?" })}
       </span>
@@ -316,6 +319,28 @@ function SnapshotLine({ widget, snapshot }: { widget: DashboardWidget; snapshot:
           <RefreshCw className={refresh.isPending ? "h-3 w-3 animate-spin" : "h-3 w-3"} />
         </Button>
       )}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * What changed since the previous read, said from the two reads alone
+ * (`dashboard_refresh.with_changes`): the figure before and after, and for a
+ * breakdown the items that moved the most.
+ */
+function ChangesLine({ changes }: { changes: WidgetChanges }) {
+  const { t_i18n, locale } = useFormatter();
+  const number = (value: number) => formatCount(locale, value);
+  const { before, after } = changes.figure;
+  const delta = after - before;
+  const moved = (changes.items ?? []).slice(0, 3).map((item) => `${item.label} ${number(item.before)} → ${number(item.after)}`);
+  return (
+    <span className="min-w-0 truncate" data-testid="widget.changes">
+      {delta === 0
+        ? t_i18n("Unchanged since {time}.", { time: timeAgo(changes.since, locale) })
+        : t_i18n("{before} → {after} since {time}.", { before: number(before), after: number(after), time: timeAgo(changes.since, locale) })}
+      {moved.length > 0 && ` ${moved.join(" · ")}`}
     </span>
   );
 }

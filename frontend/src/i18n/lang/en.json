@@ -21855,5 +21855,11 @@
   "Event of": "Event of",
   "An integration": "An integration",
   "On the server, on a schedule": "On the server, on a schedule",
-  "On the server, on an event": "On the server, on an event"
+  "On the server, on an event": "On the server, on an event",
+  "Unchanged since {time}.": "Unchanged since {time}.",
+  "{before} → {after} since {time}.": "{before} → {after} since {time}.",
+  "Dashboard alerts": "Dashboard alerts",
+  "An alert needs a number to compare the figure with.": "An alert needs a number to compare the figure with.",
+  "Alert when the figure is": "Alert when the figure is",
+  "No alert": "No alert"
 }

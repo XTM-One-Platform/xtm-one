@@ -48,7 +48,7 @@ function KindIcon({ item }: { item: NotificationItem }) {
   if (item.kind === "reminder") return <AlarmClock className={cn(className, "text-accent")} aria-hidden="true" />;
   if (item.kind === "agent_message") return <Bot className={cn(className, "text-filigran-ia-primary")} aria-hidden="true" />;
   if (item.kind === "builtin_tools_outside_allowlist") return <Sparkles className={cn(className, "text-accent")} aria-hidden="true" />;
-  if (["auth_failure", "stale_reference", "continuation_refused", "security_audit", "api_key"].includes(item.kind)) {
+  if (["auth_failure", "stale_reference", "continuation_refused", "security_audit", "api_key", "dashboard_alert"].includes(item.kind)) {
     return <ShieldAlert className={cn(className, item.critical ? "text-feedback-error-primary" : "text-feedback-warning-primary")} aria-hidden="true" />;
   }
   return <CheckCircle2 className={cn(className, "text-feedback-success-primary")} aria-hidden="true" />;

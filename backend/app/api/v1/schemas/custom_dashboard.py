@@ -261,6 +261,9 @@ class WidgetDataResponse(BaseModel):
     #: A source refreshed on the server (``dashboard_refresh``): ``{"mode", "every", "refreshed_at", "publisher"}`` -
     #: the snapshot shown, read with its publisher's access.
     snapshot: dict | None = None
+    #: What changed since the source's previous read on the server (``dashboard_refresh.with_changes``):
+    #: ``{"since", "figure": {"before", "after"}, "items"?}``.
+    changes: dict | None = None
 
 
 class PlatformSchemaRequest(BaseModel):

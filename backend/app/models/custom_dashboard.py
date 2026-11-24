@@ -193,6 +193,9 @@ class CustomDashboardSourceSnapshot(Base):
     #: An ``event`` source's event (``dashboard_refresh.trigger_of``): ``platform:<name>`` or
     #: ``integration:<event>:<integration id or *>``; none otherwise.
     trigger: Mapped[str | None] = mapped_column(String(320), nullable=True, index=True)
+    #: The ids of the source's alerts that held at its last read (``dashboard_refresh.evaluate_alerts``): an alert
+    #: tells its people when it starts to hold, not on every read.
+    alert_state: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
 
 class CustomDashboardPublicLink(Base):

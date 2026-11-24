@@ -285,6 +285,24 @@ MIN_SERVER_REFRESH_SECONDS = 300
 SERVER_REFRESH_TYPES = ("platform", "integration", "knowledge", "variable", "derived")
 
 
+#: Alerts one source holds, at most.
+MAX_ALERTS = 5
+
+
+class SourceAlert(_Model):
+    """A threshold on a source read on the server: its people are told when the figure starts to cross it.
+
+    The figure is the source's own (``dashboard_refresh.figure_of``): a number's value, a series' last point, a
+    distribution's total, a table's row count.
+    """
+
+    id: ElementId
+    op: Literal["gt", "gte", "lt", "lte", "eq", "ne"]
+    value: float
+    label: Annotated[str | None, Field(default=None, max_length=120)]
+    severity: Literal["info", "warning", "critical"] = "warning"
+
+
 class RefreshEvent(_Model):
     """What an ``event`` source is read again on: a platform event, or an event an integration raises."""
 
@@ -329,6 +347,8 @@ class _Refreshed(_Model):
     cron: Annotated[str | None, Field(default=None, max_length=100)]
     #: ``event``: what it is read on.
     on: RefreshEvent | None = None
+    #: Thresholds checked at each read on the server (``dashboard_refresh.evaluate_alerts``).
+    alerts: Annotated[list[SourceAlert] | None, Field(default=None, max_length=MAX_ALERTS)]
 
     @model_validator(mode="after")
     def _server(self) -> _Refreshed:
@@ -342,6 +362,10 @@ class _Refreshed(_Model):
             self.cron = check_refresh_cron(self.cron)
         if (self.refresh_mode == "event") != (self.on is not None):
             raise ValueError("on goes with refreshMode 'event', and an event refresh needs one: on {platformEvent} or {integrationEvent}")
+        if self.alerts and self.refresh_mode in (None, "live"):
+            raise ValueError("alerts are checked when the server reads the source: set a refreshMode other than live")
+        if self.alerts and len({alert.id for alert in self.alerts}) != len(self.alerts):
+            raise ValueError("each alert of a source has an id of its own")
         return self
 
     @field_validator("refresh")

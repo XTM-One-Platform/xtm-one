@@ -222,6 +222,8 @@ export function Header() {
                             <Bot className="h-3 w-3 text-filigran-ia-primary shrink-0" />
                           ) : item.kind === "builtin_tools_outside_allowlist" ? (
                             <Sparkles className="h-3 w-3 text-accent shrink-0" />
+                          ) : item.kind === "dashboard_alert" ? (
+                            <LayoutDashboard className={cn("h-3 w-3 shrink-0", item.critical ? "text-feedback-error-primary" : "text-feedback-warning-primary")} />
                           ) : (
                             <CheckCircle2 className="h-3 w-3 text-feedback-success-primary shrink-0" />
                           )}

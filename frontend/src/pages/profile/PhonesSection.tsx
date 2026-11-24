@@ -34,6 +34,7 @@ const MUTABLE_KINDS = {
   analytics_refresh: "Analytics updates",
   flow: "Flow notifications",
   security_audit: "Security audit findings",
+  dashboard_alert: "Dashboard alerts",
 } as const;
 
 function PhoneRow({ phone }: { phone: LinkedPhone }) {

@@ -21855,5 +21855,11 @@
   "Event of": "イベントの発生元",
   "An integration": "連携",
   "On the server, on a schedule": "サーバー上で、スケジュールに従って",
-  "On the server, on an event": "サーバー上で、イベント発生時に"
+  "On the server, on an event": "サーバー上で、イベント発生時に",
+  "Unchanged since {time}.": "{time} から変化なし。",
+  "{before} → {after} since {time}.": "{time} から {before} → {after}。",
+  "Dashboard alerts": "ダッシュボードのアラート",
+  "An alert needs a number to compare the figure with.": "アラートには、数値と比較するしきい値が必要です。",
+  "Alert when the figure is": "アラートの条件",
+  "No alert": "アラートなし"
 }

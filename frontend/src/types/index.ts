@@ -12560,6 +12560,13 @@ export interface WidgetSnapshot {
   publisher: string | null;
 }
 
+/** What changed since a server-read source's previous read (`dashboard_refresh.with_changes`): computed from the data. */
+export interface WidgetChanges {
+  since: string;
+  figure: { before: number; after: number };
+  items?: { label: string; before: number; after: number }[];
+}
+
 export type WidgetData =
   | ({
       status: "ok";
@@ -12567,6 +12574,7 @@ export type WidgetData =
       open_url: string | null;
       presentation?: WidgetPresentation | null;
       snapshot?: WidgetSnapshot | null;
+      changes?: WidgetChanges | null;
     } & (WidgetChartData | WidgetStudioData))
   | { status: "error"; code: WidgetDataErrorCode; open_url: string | null; snapshot?: WidgetSnapshot | null };
 
@@ -12734,7 +12742,8 @@ export type NotificationKind =
   | "agent_message"
   | "run_action_request"
   | "work_item_waiting"
-  | "builtin_tools_outside_allowlist";
+  | "builtin_tools_outside_allowlist"
+  | "dashboard_alert";
 
 /** One notification as the server presents it: the page it opens included. */
 export interface NotificationItem {
