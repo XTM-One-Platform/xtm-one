@@ -2288,12 +2288,9 @@ CTEM_POSTURE_ORCHESTRATOR_SLUG = "ctem-posture-orchestrator"
 
 _CTEM_POSTURE_ORCHESTRATOR_PERSONA = """\
 You are the Posture Orchestrator of XTM One, Filigran's Continuous Threat \
-Exposure Management command center. You lead the posture and reporting role of \
-the CTEM loop fleet, under its Loop Orchestrator: the five CTEM stage analysts \
-(Scoping, Discovery, Prioritization, Validation, Mobilization) and the Exposure \
-Briefing Analyst (Report). The open and closed work of the loop is its CTEM \
-cases, read with list_ctem_cases and get_ctem_case; the shared states \
-ctem:<fleet>:state hold counters only.
+Exposure Management command center. You lead the posture and reporting fleet: \
+the five CTEM stage analysts (Scoping, Discovery, Prioritization, Validation, \
+Mobilization) and the Exposure Briefing Analyst (Report).
 
 What you do:
 1. Answer "where do we stand" questions on the organization's CTEM posture: the \
@@ -2332,9 +2329,9 @@ BUILTIN_AGENTS.append(
         "persona": _CTEM_POSTURE_ORCHESTRATOR_PERSONA,
         "name": "Posture Orchestrator",
         "description": (
-            "Leads the posture and reporting role of the CTEM loop: reads the five "
-            "stage assessments, the CTEM cases and the exposure briefing, and answers "
-            "where the organization stands across OpenCTI, OpenAEV and OpenCRQ."
+            "Leads the CTEM posture and reporting fleet: reads the five stage "
+            "assessments and the exposure briefing, and answers where the "
+            "organization stands across OpenCTI, OpenAEV and OpenCRQ."
         ),
         "icon": "Gauge",
         "output_format": "markdown",
@@ -2365,10 +2362,9 @@ BUILTIN_AGENTS.append(
             "exposure-briefing-analyst": "delegate",
             "opencti-dashboard-widget-creator": "consult",
         },
-        # shared_state: the refresh debounce and the fleets' counters
-        # (``ctem:<fleet>:state``); ctem_read: the CTEM cases the board report
-        # counts (#1832), read-only.
-        "builtin_tool_ids": ["shared_state", "ctem_read"],
+        # shared_state: the refresh debounce and the F1-F3 case counters
+        # (``ctem:<fleet>:state``) the board report reads.
+        "builtin_tool_ids": ["shared_state"],
         "integration_template_bindings": ["opencti", "openaev", "opencrq"],
         "memory_short_term_enabled": True,
         "memory_medium_term_enabled": False,
@@ -2415,12 +2411,10 @@ in five minutes.
 month, from the latest stage assessments (delegate a stage to its analyst \
 when its last assessment is older than 7 days). A stage never assessed is \
 said so, never scored.
-2. Outcomes of the loop: count the CTEM cases with list_ctem_cases (opened, \
-resolved, accepted and still open over the month, by vertical), and read the \
-counters of shared state ctem:f1:state, ctem:f2:state and ctem:f3:state \
-(counters only: threats reviewed, cases resolved, loss avoided). Report cases \
-resolved, exposures fixed and re-tested, simulations run and loss avoided as \
-the loop recorded it. No case and no counters yet is reported as not running.
+2. Outcomes of the fleets: read shared state ctem:f1:state, ctem:f2:state and \
+ctem:f3:state (open cases, closed cases, counters). Per fleet: cases \
+closed, exposures fixed and re-tested, simulations run, loss avoided as the \
+fleet recorded it. A fleet with no state yet is reported as not running.
 3. Value: the hours saved, the cost and the ROI the fleets' counters carry, \
 marked estimated unless the counters say the organization set its own \
 baselines. Never compute a figure the state does not hold.
@@ -2466,12 +2460,11 @@ CTEM_POSTURE_ASSIGNMENTS: list[dict] = [
         "name": "Monthly board report",
         "description": (
             "Board-ready CTEM report on the 1st of the month: stage scores and "
-            "trend, the CTEM cases of the month, loss avoided and the ROI."
+            "trend, F1-F3 outcomes, loss avoided and the ROI of the fleets."
         ),
         "trigger_type": "schedule",
-        # Two hours after the monthly exposure briefing (0 8 1 * *) and after the
-        # OpenCRQ Monthly Board pack (0 10 1 * *, #1832), so the report reads both.
-        "trigger_config": {"cron": "0 11 1 * *"},
+        # An hour after the monthly exposure briefing (0 8 1 * *).
+        "trigger_config": {"cron": "0 9 1 * *"},
         "run_as_all_users": False,
         "prompt": _CTEM_BOARD_REPORT_PROMPT,
         **SEEDED_FLEET_OPT_IN,
@@ -2854,17 +2847,12 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
         "trigger_config": {"correlation_prefix": "ctem:f2:retest:"},
         "prompt": (
             "A re-test is due (the work item key is `ctem:f2:retest:` followed by the "
-            "case_id). Read the case with get_ctem_case. Step 1, propose: when the gate "
-            "ctem.validation.non_readonly waits for this case, file the re-run of the validation its "
-            "validations list names as one decision item keyed `ctem:validation:` followed by the "
-            "case_id (what runs, on which targets, your recommendation) and end the run: the 'Gate "
-            "answered' assignment launches it on approval. When the gate runs, launch it now and write "
-            "the gate on the case. Step 2, read: the result arrives as ctem_case.validation_finished on "
-            "the case loop, which writes it with record_ctem_case_validation (kind retest): a negative "
-            "validation is inconclusive unless it proves the fixed version (conclusive true), so "
-            "the case stays open; failed reopens it. Never wait for the result in this run. When the "
-            "result is written, record the OpenCRQ expected-loss delta in a case note and complete "
-            "the re-test item."
+            "case_id). Read the case with get_ctem_case and re-run the validation its "
+            "validations list names (launching it needs the approval the work item "
+            "carries). Write the result on the case with record_ctem_case_validation "
+            "(kind retest; conclusive false when what ran does not prove the exposure gone, as you "
+            "read it, so the case stays open); failed reopens it. Record the "
+            "OpenCRQ expected-loss delta in a case note."
         ),
     },
 ]
@@ -2965,21 +2953,24 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: di
             "and write every result on the case: the validation with "
             "record_ctem_case_validation, the ticket with sync_ctem_case_ticket, notes "
             "with update_ctem_case. On ctem_case.sla_breached: add a note to that work item "
-            "and to the case naming the breach and the next step, and raise its priority. "
+            "and to the case naming the breach and the next step, raise its priority, and file one "
+            "needs_human decision keyed `ctem:remediation:` followed by the case id (unless one is "
+            "already open for the case) with the options left (act now, defer with a new date, "
+            "accept the risk), the effect of each and your recommendation. "
+            "Two answered decisions of one case that contradict (for example mobilize upgrade_only "
+            "and remediation defer_to_patch_cycle) are settled the same way: one decision with that "
+            "key naming both answers, never a note alone. "
+            "Each phase (scoping, validation, mobilization) ends on one case note written with "
+            "update_ctem_case, `Verdict PHASE: proven affected | proven not affected | unproven`, "
+            "then its evidence in one line; the newest verdict of a phase is the one that holds. "
             "On ctem_case.validation_finished: an OpenAEV result the case waits on arrived "
             "(the openaev block names the simulation or finding); read it in OpenAEV, write it "
-            "on the case with record_ctem_case_validation (passed, not_exposed or failed, with the "
-            "inject_class assess_ctem_validation_inject answered; a negative exploit attempt is "
-            "inconclusive unless it proves the fixed version) and "
+            "on the case with record_ctem_case_validation (passed, not_exposed or failed; conclusive "
+            "false when what ran does not prove the exposure gone, as you read it) and "
             "move the case's work item to its next step. "
             "On ctem_case.retest_requested (its ticket reached done): add a note to that work "
-            f"item and file one work item keyed `{fleet_key}:retest:` followed by the case_id, owned by "
-            "you, unless one is already open; never run the re-test in this run: the 'Re-test due' "
-            "assignment runs it. The case closes on the re-test, never on the ticket. "
-            "Gates are decision items filed between two steps (ctem:review:, ctem:validation:, "
-            "ctem:remediation: and your fleet's mobilize key, each followed by the case id): whether one "
-            "waits follows the fleet's autonomy level and pins as the case and its gate card state them; "
-            "a gate that runs is written on the case with update_ctem_case gate. "
+            "item and run the case's re-test; write it with record_ctem_case_validation (kind "
+            "retest): the case closes on the re-test, never on the ticket. "
             "On ctem_case.stalled (the case waits on nobody: no open gate item, no armed reminder): "
             "add a note to that work item, re-read the case and run the loop again from its next step. "
             "Every run ends on exactly one of: a needs_human work item keyed `ctem:` and ending with the "
@@ -3017,7 +3008,15 @@ def _gate_answered_assignment(common: dict[str, Any], *, fleet_key: str) -> dict
             "or answered in the person's own words: record it on the case with the reason and move "
             "the case where the answer and the evidence point (back to analyzing, validation again, "
             "remediating, or closed with its evidence), filing a new decision if you judge one is "
-            "needed. End with the case id, the gate, the decision, the state you set and the next step."
+            "needed. A re-plan answer on the review gate (`ctem:review:`): once the new package is "
+            "drafted and attached to the case, complete the answered item and file the review "
+            "decision again under the same key with the new draft link; a new draft is reviewed "
+            "again, never published on the earlier answer. An answer in the person's own words that "
+            "picks no option and decides nothing (a question, a remark): answer it on the case with "
+            "update_ctem_case and in the item's result for the person, complete the answered item, "
+            "then file the same decision again under the same key, its context carrying the answer; "
+            "never read it as approved or rejected. End with the case id, the gate, the decision, "
+            "the state you set and the next step."
         ),
     )
 
@@ -3255,17 +3254,14 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
         "name": "Weekly threat sweep",
         "description": (
             "Every Monday, reviews the intrusion sets, campaigns and reports "
-            "OpenCTI received or updated in the last 7 days that no case covers yet, "
-            "and records a threat signal for each relevant one; the scope gate opens "
-            "or joins its case."
+            "OpenCTI received in the last 7 days that no case covers yet, and "
+            "opens a case for each relevant one."
         ),
         "trigger_type": "schedule",
-        # Staggered off the Monday 07:00Z of the desks (#1832): briefing 08:00, PIR answer 07:00.
-        "trigger_config": {"cron": "30 6 * * 1"},
+        "trigger_config": {"cron": "0 7 * * 1"},
         "prompt": (
             "Weekly sweep: list the intrusion sets, campaigns and reports "
-            "created or updated in OpenCTI in the last 7 days (filter on updated_at, "
-            "newest first; an entity with no activity in the window is out). Skip those an open CTEM case "
+            "created in OpenCTI in the last 7 days. Skip those an open CTEM case "
             "(list_ctem_cases) or an open ctem:f1 work item already covers. "
             "Ask the Threat Relevance Analyst to score the rest in one batch (" + CTEM_RELEVANCE_RULE + "), "
             "and record the relevant ones in one record_ctem_signals call "
@@ -3284,17 +3280,12 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
         "trigger_config": {"correlation_prefix": "ctem:f1:retest:"},
         "prompt": (
             "A re-test is due for the case in the work item below (key `ctem:f1:retest:` "
-            "followed by the case_id). Read the case with get_ctem_case. Step 1, propose: when the gate "
-            "ctem.validation.non_readonly waits for this case, file the re-run of its validated scenario "
-            "as one decision item keyed `ctem:validation:` followed by the case_id (the scenario, its "
-            "injects as assess_ctem_validation_inject answers, targets and schedule; your recommendation) "
-            "and end the run: the 'Gate answered' assignment launches it on approval. When the gate runs, "
-            "launch it now and write the gate on the case. Step 2, read: the result arrives as "
-            "ctem_case.validation_finished on the case loop, which writes it with "
-            "record_ctem_case_validation (kind retest): a negative validation is inconclusive unless it "
-            "proves the fixed version, failed reopens it. Never wait for the result in this run. When the "
-            "result is written, ask the Risk Quantifier for the loss after, note the delta on the case, "
-            "bump the counters in ctem:f1:state and complete the re-test item."
+            "followed by the case_id). Propose the re-run of its validated scenario as a "
+            "needs_human work item with an ask card (approve or reject, your "
+            "recommendation), read the result once it ran, write it on the case with "
+            "record_ctem_case_validation (kind retest; conclusive false when the result does not prove "
+            "the exposure gone, as you read it), failed reopens it. Ask the Risk Quantifier for the "
+            "loss after and note the delta on the case; bump the counters in ctem:f1:state."
         ),
     },
 ]
