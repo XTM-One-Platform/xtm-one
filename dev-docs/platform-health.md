@@ -1202,6 +1202,27 @@ source (13.4 scope).
 - **Recommendations on declared findings** (12.4) stay: after the checks, the checker
   reads the module's open deterministic findings and attaches a recommendation to each one
   the checks explain.
+- **Check logic version (#1732).** Every agentic finding (`evidence.check_logic`) and every
+  report entry records the check logic that produced it: `build` (`settings.app_version`)
+  and `skill_hash` (first 16 hex of the sha256 of the checker's playbook
+  `seed_data/skill_content/health-<module>-checks.md` as the build ships it). An open
+  agentic finding whose recorded logic differs from the running one, or that records none
+  (written before #1732), is **stale** (`check_reports.is_stale`): `GET /health/findings`
+  serves it `stale: true` with `check_build`, and the trigger pass starts one round for its
+  registration with `module_trigger` `deploy` (`module_analyst.deploy_due`): after the
+  change cycles, under the same debounce, pass cap and Module Analyst ceiling, once per
+  running build (`last_value.deploy_build`), so a finding the new playbook no longer reports
+  stays marked stale and never re-triggers. The round's report resolves (pass) or refreshes
+  (warn, fail) the finding under the running logic; a deploy that changes no checker still
+  re-checks once, because the build is part of the logic.
+- **Analyse now vs Run checks now.** Analyse now (`POST /health/analysis/{module}/run`)
+  never re-runs a check: one model call rewrites the module's summary from the stored open
+  findings. Run checks now starts a checker round, which writes new evidence. The analysis
+  prompt carries, per agentic finding, `evidence_at`, `check_build` and `stale` (another
+  check logic, or evidence over 24 h old) and `running_build`; the instruction forbids a
+  rollback, downgrade, restart or other disruptive action from a stale finding and names Run
+  checks now instead, and `analysis.guard_summary` drops any summary line that still
+  proposes one (no rollback target is ever named from stale evidence).
 
 ### 13.7 Triggers, quota, ceiling
 

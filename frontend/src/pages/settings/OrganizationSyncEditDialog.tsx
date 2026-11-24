@@ -34,7 +34,7 @@ export const SYNC_SECTION_LABELS = {
   asset_groups: "Asset groups",
   ai_systems: "AI systems",
   tech_stack: "Software",
-  crown_jewels: "Crown jewels",
+  crown_jewels: "Primary assets",
   pirs: "PIRs",
 } as const satisfies Record<ImportSectionKey | "all", string>;
 
@@ -136,7 +136,7 @@ export function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProp
               id="org-sync-edit-direction"
               label={t_i18n("Direction")}
               info={t_i18n(
-                "Which side is the master of this list. Inbound: the platform's rows are copied here, read-only. Outbound: the XTM One list is written to the platform, for example crown jewels sent to OpenCRQ as supporting assets. A sync saved without a direction is Inbound.",
+                "Which side is the master of this list. Inbound: the platform's rows are copied here, read-only. Outbound: the XTM One list is written to the platform, for example primary assets sent to OpenCRQ as supporting assets. A sync saved without a direction is Inbound.",
               )}
             >
               <RadioGroup

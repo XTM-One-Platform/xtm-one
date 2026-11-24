@@ -59,31 +59,41 @@ def test_mobilize_waits_behind_review_and_every_validation_key() -> None:
     assert not any("mobilize" in k for k in keys)
 
 
-async def test_mobilize_parked_while_validation_waits_is_refused() -> None:
+async def test_mobilize_parked_while_validation_waits_is_a_warning_not_a_refusal() -> None:
+    """#1675: the order is the agent's judgement; the item is written with a warning."""
     db = _Db([f"ctem:validation:{_CASE}"])
-    with pytest.raises(ValueError, match="waits behind the review and validation"):
-        await order.refuse_mobilize_before_review(
-            db, f"ctem:f2:mobilize:{_CASE}", True, user_id=uuid.uuid4(), workspace_id=None
-        )
+    warning = await order.mobilize_before_review_warning(
+        db, f"ctem:f2:mobilize:{_CASE}", True, user_id=uuid.uuid4(), workspace_id=None
+    )
+    assert warning and f"ctem:validation:{_CASE}" in warning
 
 
-async def test_mobilize_once_review_and_validation_are_answered_goes_through() -> None:
+async def test_mobilize_once_review_and_validation_are_answered_has_no_warning() -> None:
     db = _Db([])
-    await order.refuse_mobilize_before_review(
-        db, f"ctem:f2:mobilize:{_CASE}", True, user_id=uuid.uuid4(), workspace_id=uuid.uuid4()
+    assert (
+        await order.mobilize_before_review_warning(
+            db, f"ctem:f2:mobilize:{_CASE}", True, user_id=uuid.uuid4(), workspace_id=uuid.uuid4()
+        )
+        is None
     )
     assert db.queries == 1
 
 
-async def test_autonomous_and_other_gates_are_never_held() -> None:
+async def test_autonomous_and_other_gates_are_never_warned() -> None:
     db = _Db([f"ctem:review:{_CASE}"])
-    # Autonomous mode: no person waits, no hold.
-    await order.refuse_mobilize_before_review(
-        db, f"ctem:f2:mobilize:{_CASE}", False, user_id=uuid.uuid4(), workspace_id=None
+    # Autonomous mode: no person waits.
+    assert (
+        await order.mobilize_before_review_warning(
+            db, f"ctem:f2:mobilize:{_CASE}", False, user_id=uuid.uuid4(), workspace_id=None
+        )
+        is None
     )
-    # A validation decision is never held behind anything.
-    await order.refuse_mobilize_before_review(
-        db, f"ctem:validation:{_CASE}", True, user_id=uuid.uuid4(), workspace_id=None
+    # A validation decision is never behind anything.
+    assert (
+        await order.mobilize_before_review_warning(
+            db, f"ctem:validation:{_CASE}", True, user_id=uuid.uuid4(), workspace_id=None
+        )
+        is None
     )
     assert db.queries == 0
 

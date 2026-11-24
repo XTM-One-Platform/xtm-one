@@ -1,6 +1,6 @@
 """One provenance shape on every list section of the organization profile (#1134).
 
-Crown jewels, tech stack and AI systems carry ``source`` / ``external_id`` /
+Crown jewels, software and AI systems carry ``source`` / ``external_id`` /
 ``sync_id`` like the assets; the ids saved before #1134 (``opencrq_asset_id``,
 ``openaev_asset_id``) read as a platform row; every section merges on
 ``source`` + ``external_id``, removes what the source no longer returns when

@@ -61,7 +61,7 @@ describe("CompanyContextNotice on the home dashboard", () => {
   it("names the empty fields when the context is partial, with the link", () => {
     notice({ state: "partial", missing_fields: ["tech_stack", "crown_jewels"] });
     expect(screen.getByText("Your organization context is incomplete")).toBeTruthy();
-    expect(screen.getByTestId("ctem-context-partial").textContent).toContain("Software, Crown jewels and business services");
+    expect(screen.getByTestId("ctem-context-partial").textContent).toContain("Software, Primary assets and business services");
     expect(screen.getByRole("link", { name: "Complete organization context" })).toBeTruthy();
   });
 

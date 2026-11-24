@@ -2,7 +2,7 @@
 // CTEM-08-UI (#998): the loop trace says what the CTEM-08 trigger rules know
 // about a signal in its own rows, never as raw evidence, and names the rule
 // "vulnerability on software we run" only when the scope gate resolved the
-// source to the tech stack (#1000 UX round 1 B2).
+// source to the software inventory (#1000 UX round 1 B2).
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { screen, within } from "@testing-library/react";

@@ -311,7 +311,8 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
     },
     "run.completed": {
         "description": (
-            "An assignment run completed. stop_reason names why a run stopped before its task was done "
+            "A run completed: an assignment run, or a delegated child run (no assignment; parent_run_id "
+            "names the run that delegated it). stop_reason names why a run stopped before its task was done "
             "(deadline, budget_exhausted, max_iterations, timeout, waiting_on_tasks...): the run still "
             "completes with a partial result; null when it ended on its own terms. partial is true exactly "
             "when stop_reason is set."
@@ -319,7 +320,10 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
         "filter_keys": _RUN_KEYS,
     },
     "run.failed": {
-        "description": "An assignment run failed.",
+        "description": (
+            "A run failed: an assignment run, or a delegated child run (no assignment; parent_run_id "
+            "names the run that delegated it)."
+        ),
         "filter_keys": (*_RUN_KEYS, "error"),
     },
     "run.orphaned": {
@@ -478,6 +482,16 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
         ),
         "filter_keys": _CTEM_CASE_KEYS,
     },
+    "ctem_case.stalled": {
+        "description": (
+            "An open CTEM case waits on nobody (#1736): no open gate work item of the case, no armed "
+            "ctem-loop-reminder timer and no case activity for CTEM_CASE_STALL_HOURS; raised by the case sweep "
+            "once per stall window. Re-run the loop and end it on an ask to a named person with a due date, "
+            "an armed reminder, or a terminal state. Payload: case_id, vertical, state, trigger_path. Heard only "
+            "by readers of the case."
+        ),
+        "filter_keys": _CTEM_CASE_KEYS,
+    },
     "ctem_case.validation_finished": {
         "description": (
             "An OpenAEV result a CTEM case waits on arrived (a simulation it references finished, a finding it "
@@ -548,6 +562,7 @@ VIEWER_CHECKED_EVENTS: frozenset[str] = frozenset(
         "ctem_case.reopened",
         "ctem_case.resolved",
         "ctem_case.sla_breached",
+        "ctem_case.stalled",
         "ctem_case.validation_finished",
         "ctem_case.retest_requested",
         "ctem_signal.recorded",

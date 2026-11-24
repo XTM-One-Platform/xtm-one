@@ -24,6 +24,8 @@ export const CASE_EVENT_LABEL: Readonly<Record<string, string>> = {
   signal: "A signal joined the case",
   validation: "Recorded a validation",
   sla_breached: "Escalated: SLA breached",
+  // The case sweep found the case waiting on nobody: no gate, no reminder, no activity (#1736).
+  stalled: "Stalled: waiting on nobody",
   // How the CVE would be exploited, read from OpenCRQ by triage (CTEM-24-UI, #936).
   exploitation: "Recorded how it would be exploited",
   // The attack-path reach of the affected asset, read from OpenCRQ by triage (CTEM-23-UI, #1289).

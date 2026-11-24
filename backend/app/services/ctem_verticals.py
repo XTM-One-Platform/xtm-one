@@ -172,7 +172,7 @@ METHODOLOGY: dict[str, dict[str, str]] = {
             "NOT critical and NOT CISA-KEV known-exploited. The analyst weighs "
             "known-exploited / high-EPSS CVEs, indicator sightings (threats "
             "actually observed) and Priority Intelligence Requirements against the "
-            "company's tech stack (Company Context) to decide what to fix first."
+            "company's software inventory (Company Context) to decide what to fix first."
         ),
         _VALIDATION: (
             "Blended OpenAEV simulation efficacy (prevention %, detection %, "

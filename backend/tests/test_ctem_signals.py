@@ -544,11 +544,17 @@ class _Store:
 
 
 class _Db:
+    commits = 0
+
     async def commit(self):
-        return None
+        _Db.commits += 1
 
     async def get(self, _model, ident):
         return SimpleNamespace(is_admin=str(ident) == ADMIN)
+
+    @asynccontextmanager
+    async def begin_nested(self):
+        yield self
 
 
 ADMIN = str(uuid.uuid4())
@@ -868,6 +874,52 @@ async def test_the_tool_records_one_signal_for_each_of_the_12_paths_idempotently
         "credential_leak",
         "third_party_event",
     }
+
+
+async def test_the_bulk_tool_records_a_sweep_in_one_call_and_one_commit(tools, monkeypatch):
+    """#1726: a list in, one result per row out, idempotent on the dedupe key, a bad row refused alone."""
+    from app.services import ctem_scope_gate_store
+
+    async def _no_gate(_db, _row, *, created):
+        return None
+
+    monkeypatch.setattr(ctem_scope_gate_store, "evaluate_after_record", _no_gate)
+    defs, call = tools(ALICE)
+    bulk = next(d for d in defs if d.name == "record_ctem_signals")
+    assert bulk.input_schema["required"] == ["signals"]
+    rows = [
+        {"trigger_path": path, "source_provider": provider, "subject_kind": kind, "subject_ref": ref}
+        for path, provider, kind, ref in ONE_PER_PATH
+    ]
+    rows.append(dict(rows[0]))  # the same signal twice in one sweep
+    rows.append({"trigger_path": "nope", "source_provider": "m", "subject_kind": "asset", "subject_ref": "a"})
+    rows.append({**rows[1], "observed_at": "yesterday"})
+    rows.append("not a row")
+    before = _Db.commits
+    out = json.loads(await call("record_ctem_signals", signals=rows))
+    assert _Db.commits == before + 1
+    assert (out["recorded"], out["created"], out["refused"]) == (13, 12, 3)
+    assert [r["index"] for r in out["results"]] == list(range(len(rows)))
+    assert out["results"][12]["created"] is False and out["results"][12]["seen_count"] == 2
+    assert out["results"][12]["id"] == out["results"][0]["id"]
+    assert out["results"][13]["error"].startswith("trigger_path")
+    assert out["results"][14]["error"].startswith("observed_at")
+    assert out["results"][15]["error"] == "not an object"
+    # A second sweep of the same rows creates nothing.
+    again = json.loads(await call("record_ctem_signals", signals=rows[:12]))
+    assert (again["recorded"], again["created"]) == (12, 0)
+    assert json.loads(await call("list_ctem_signals", limit=50))["total"] == 12
+
+
+async def test_the_bulk_tool_refuses_an_empty_or_oversized_list_before_any_write(tools):
+    from app.services.builtin_tools.ctem_signals import MAX_BULK_SIGNALS
+
+    _, call = tools(ALICE)
+    assert (await call("record_ctem_signals", signals=[])).startswith("signals must be a non-empty list")
+    row = {"trigger_path": "blind_spot", "source_provider": "m", "subject_kind": "asset", "subject_ref": "a"}
+    too_many = await call("record_ctem_signals", signals=[row] * (MAX_BULK_SIGNALS + 1))
+    assert too_many.startswith(f"Refused: at most {MAX_BULK_SIGNALS}") and "Nothing was recorded" in too_many
+    assert json.loads(await call("list_ctem_signals"))["total"] == 0
 
 
 async def test_the_tool_refuses_a_bad_field_and_scopes_the_list_to_the_user(tools):

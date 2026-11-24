@@ -18,7 +18,7 @@ Layers, in order (the PR body carries the same table):
 * ``known``: every vulnerability the user can read in OpenCTI; the OpenAEV
   CVE findings ride along as the asset-side entry when OpenAEV is connected.
 * ``relevant``: vulnerabilities related to software matching the organization
-  tech stack (CPE, or product and vendor). Not configured without a tech stack.
+  software inventory (CPE, or product and vendor). Not configured without one.
 * ``exploitable``: known-exploited (CISA KEV) or EPSS above ``EPSS_THRESHOLD``,
   on the last live layer.
 * ``exposed``: on a reachable asset, by the rule of
@@ -80,7 +80,7 @@ def build_funnel(
     """The funnel from the collected counts, ``None`` without a known count.
 
     ``relevant`` and ``exploitable_relevant`` are ``None`` when the profile has
-    no tech stack (or OpenCTI could not answer the tailored query): the
+    no software inventory (or OpenCTI could not answer the tailored query): the
     ``relevant`` layer is then not configured and ``exploitable`` reads the
     known vulnerabilities (``exploitable_known``).
 

@@ -308,7 +308,7 @@ const CRITICALITY_RANK: Record<string, number> = { critical: 0, high: 1, medium:
 export interface CaseScope {
   /** The highest scope criticality among its signals, or null when none is readable. */
   criticality: string | null;
-  /** The crown jewels its signals were reconciled to. */
+  /** The primary assets its signals were reconciled to. */
   crownJewels: string[];
 }
 

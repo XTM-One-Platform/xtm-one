@@ -12,7 +12,7 @@ and ``remove_organization_rows`` tools stand on:
   source is the platform the rows come from (``intune``...), never a hand
   source (``manual``, ``csv``, ``api``): a row a person wrote is never
   updated or removed, and an incoming row named like one is refused;
-- tech stack products, shipped products (#1432) and AI systems have no
+- software products, shipped products (#1432) and AI systems have no
   source: a new name is added, an existing one is left as it is (never
   overwritten);
 - every row is validated with the profile's own models (the taxonomy of the
@@ -56,7 +56,7 @@ ROW_SECTIONS: dict[str, tuple[str, type[BaseModel], int]] = {
     "tech_stack": ("tech_stack", TechStackEntry, 500),
     # Deprecated alias since #1501 (one release): an AI system is an asset of category ai_target.
     "ai_systems": ("assets_exposure", AssetEntry, 5000),
-    # #1432: what the organization ships, keyed on the product like the tech stack.
+    # #1432: what the organization ships, keyed on the product like the software.
     "shipped_products": ("shipped_products", ShippedProduct, 200),
 }
 #: Sections keyed on ``source`` + ``external_id`` (the others on the name).
@@ -451,7 +451,7 @@ def intune_device_row(device: dict[str, Any], *, include_owner: bool = False) ->
 
 
 def intune_security_products(apps: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The security products among Intune detected apps, as tech stack rows (one per product)."""
+    """The security products among Intune detected apps, as software rows (one per product)."""
     found: dict[str, dict[str, Any]] = {}
     for app in apps:
         name = str(app.get("displayName") or app.get("name") or "").lower()

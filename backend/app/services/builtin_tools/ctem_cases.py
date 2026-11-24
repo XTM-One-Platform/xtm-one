@@ -46,6 +46,8 @@ CTEM_CASE_TOOL_NAMES: tuple[str, ...] = (
     "record_ctem_case_ticket",
     "decide_ctem_case_remediation",
     "sync_ctem_case_ticket",
+    "bulk_update_ctem_cases",
+    "delete_ctem_cases",
 )
 _SOURCE = "builtin:ctem_cases"
 #: The built-in agents that carry the tools (design section 8): the two loop
@@ -202,7 +204,11 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     running = {**running, "history": version_history.history_of(events)}
                 match = (
                     matching.version_match(
-                        running, product_label=shown[0].product_label, fixed_version=shown[0].fixed_version
+                        running,
+                        product_label=shown[0].product_label,
+                        fixed_version=shown[0].fixed_version,
+                        # The running versions OpenCTI places as affected or not (#1783), never a range.
+                        affected=matching.affected_from_outcomes(shown[2].get("issues")),
                     )
                     if shown[0].remediation_kind == "upgrade"
                     else None
@@ -744,7 +750,72 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             logger.warning("CTEM case ticket sync failed", exc_info=True)
             return "Error: the ticket could not be synced right now. Say so; the scheduled sync retries it."
 
+    async def _bulk_update(case_ids: list[str] | None = None, **change: Any) -> str:
+        """One change on several cases (#1723): each case is checked and written as update_ctem_case does."""
+        ids = list(dict.fromkeys(case_ids or []))
+        if not 1 <= len(ids) <= 200:
+            return "case_ids must hold 1 to 200 case ids."
+        updated: list[str] = []
+        failed: list[dict[str, str]] = []
+        for one in ids:
+            answer = await _update(case_id=one, **change)
+            if answer.startswith("{"):
+                updated.append(one)
+            else:
+                failed.append({"id": one, "reason": answer})
+        return _dump({"updated": updated, "failed": failed})
+
+    async def _delete(
+        case_ids: list[str] | None = None,
+        states: list[str] | None = None,
+        opened_by: str = "",
+        reason: str = "",
+        dry_run: bool = True,
+    ) -> str:
+        """Delete cases as the acting administrator (#1723); a dry run (default) writes nothing."""
+        from app.core.database import async_session
+        from app.models.user import User
+        from app.services import ctem_case_delete as case_delete
+
+        ids = [_uuid(c) for c in case_ids or []]
+        if any(i is None for i in ids):
+            return "case_ids must be ids list_ctem_cases answers."
+        if len(ids) > case_delete.MAX_CASES:
+            return f"At most {case_delete.MAX_CASES} cases at once."
+        bad = [s for s in states or [] if s not in _STATES]
+        if bad:
+            return f"Unknown state {bad[0]!r}: one of {', '.join(_STATES)}."
+        if opened_by and opened_by not in ("legacy", "signal", "split"):
+            return "opened_by is legacy, signal or split."
+        if not ids and not states and not opened_by:
+            return "Name the cases (case_ids) or a filter (states, opened_by)."
+        try:
+            async with async_session() as db:
+                user = await db.get(User, scope) if scope else None
+                if user is None or not getattr(user, "is_admin", False):
+                    return "Refused: deleting CTEM cases needs an administrator as the acting person."
+                org_id, _vertical = await _context(db)
+                if org_id is None:
+                    return "No organization is set up yet: there are no cases."
+                cases, unknown = await case_delete.select_cases(
+                    db,
+                    organization_id=org_id,
+                    case_ids=[i for i in ids if i],
+                    states=states or [],
+                    opened_by=opened_by or None,
+                )
+                result = await case_delete.delete_cases(
+                    db, cases, actor=user, reason=reason or f"by agent {agent_id}", dry_run=bool(dry_run)
+                )
+                await db.commit()
+                return _dump({**result, "unknown": unknown})
+        except Exception:
+            logger.warning("CTEM case delete failed", exc_info=True)
+            return "Error: the cases could not be deleted right now. Say so; nothing was changed."
+
     executor = CallableToolExecutor()
+    executor.register("bulk_update_ctem_cases", _bulk_update)
+    executor.register("delete_ctem_cases", _delete)
     executor.register("list_ctem_cases", _list)
     executor.register("get_ctem_case", _get)
     executor.register("create_ctem_case", _create)
@@ -1080,6 +1151,47 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "create": {"type": "boolean", "description": "Open the ticket when the case has none."},
                 },
                 "required": ["case_id"],
+            },
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="bulk_update_ctem_cases",
+            description=(
+                "Apply one change (state with reason, owner, due date, note) to 1-200 CTEM cases; each is "
+                "checked as update_ctem_case. Answers updated ids and failed {id, reason}."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "case_ids": {"type": "array", "items": {"type": "string"}},
+                    "state": state_enum,
+                    "owner_user_id": {"type": "string"},
+                    "due_at": {"type": "string"},
+                    "reason": {"type": "string"},
+                    "evidence": {"type": "string"},
+                    "note": {"type": "string"},
+                },
+                "required": ["case_ids"],
+            },
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="delete_ctem_cases",
+            description=(
+                "Administrator only: delete CTEM cases by id or filter (states, opened_by legacy). Cancels "
+                "their work items and timers, sends their signals back to the gate, frees the fix key. "
+                "dry_run (default true) lists what would go."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "case_ids": {"type": "array", "items": {"type": "string"}},
+                    "states": {"type": "array", "items": state_enum},
+                    "opened_by": {"type": "string", "enum": ["legacy", "signal", "split"]},
+                    "reason": {"type": "string"},
+                    "dry_run": {"type": "boolean"},
+                },
+                "required": [],
             },
             source=_SOURCE,
         ),

@@ -29,8 +29,10 @@ import { Input } from "@/components/ui/input";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { useMe, useUserDirectoryByIds } from "@/hooks/api/useAuthApi";
 import {
+  isOpenCaseState,
   isRestrictedIssue,
   useCtemCase,
+  useCtemCases,
   useCtemCaseRuns,
   useSplitCtemCase,
   useUpdateCtemCase,
@@ -76,7 +78,10 @@ import { useModuleBaseUrls } from "@/hooks/useModuleBaseUrls";
 import { pivotModuleOf } from "@/lib/module-pivot";
 import { CaseAttentionNow } from "./ctem/CaseAttentionNow";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
-import { EntityPageHeader } from "@/components/ui/entity-page-header";
+import { EntityHeaderMoreActions, EntityPageHeader } from "@/components/ui/entity-page-header";
+import type { OverflowMenuItem } from "@/components/ui/overflow-menu";
+import { caseActionDef, caseHeaderActions, type CaseActionId } from "./ctem/case-actions";
+import { useCaseActionDialogs } from "./ctem/CasesBulkActions";
 
 /** A table row: the issue and its place, so restricted rows keep a stable key. */
 interface IssueRow {
@@ -147,6 +152,7 @@ const VALIDATION_RESULT_LABEL: Record<string, string> = {
   exposed: "Exposed",
   failed: "Failed",
   pending: "Pending",
+  inconclusive: "Inconclusive",
 };
 
 /**
@@ -255,6 +261,19 @@ export default function CtemCaseDetail() {
   const moduleUrls = useModuleBaseUrls();
   const update = useUpdateCtemCase(id);
   const split = useSplitCtemCase();
+  // The More actions menu shares the Cases bulk bar's dialogs (#1751): owner, due date and
+  // Merge into another open case hit the same endpoints as the bulk bar.
+  const allCases = useCtemCases({ throwOnError: false });
+  const mergeTargets = useMemo(
+    () => (allCases.data?.cases ?? []).filter((c) => c.id !== id && isOpenCaseState(c.state)),
+    [allCases.data, id],
+  );
+  const caseActions = useCaseActionDialogs({
+    cases: kase ? [kase] : [],
+    onDone: () => void refetch(),
+    mergeTargets,
+    onMerged: (targetId) => navigate(`/ctem/cases/${targetId}`),
+  });
   const [picked, setPicked] = useState<string[]>([]);
   const [splitTitle, setSplitTitle] = useState("");
   const [dialog, setDialog] = useState<DialogKind>(null);
@@ -583,14 +602,28 @@ export default function CtemCaseDetail() {
     },
   ];
 
-  // The next state as the filled primary, the platform order (secondary first).
-  // Before remediation a person starts it (with an owner, #1503); in remediation or validation they resolve it.
-  const notStarted = kase.state === "new" || kase.state === "analyzing" || kase.state === "waiting_decision";
-  const primary = notStarted
-    ? { label: t_i18n("Start"), kind: "start" as const }
-    : kase.state === "remediating" || kase.state === "validating"
-      ? { label: t_i18n("Resolve"), kind: "resolve" as const }
-      : { label: t_i18n("Reopen"), kind: "reopen" as const };
+  // The header actions (#1751, case-actions.ts): Accept risk and the next state as the filled primary
+  // (secondary first), every other case action in the More actions menu, disabled with its reason
+  // when the state refuses it. Before remediation a person starts it (with an owner, #1503); in
+  // remediation or validation they resolve it.
+  const header = caseHeaderActions(kase.state);
+  const primaryKind = header.buttons[header.buttons.length - 1] as "start" | "resolve" | "reopen";
+  const primary = { label: t_i18n(caseActionDef(primaryKind).label), kind: primaryKind };
+  const runAction = (action: CaseActionId) => {
+    if (action === "assign" || action === "due" || action === "merge") caseActions.open(action);
+    else open(action);
+  };
+  const moreActions: OverflowMenuItem[] = header.menu.map(({ id: action, availability }) => {
+    const def = caseActionDef(action);
+    return {
+      id: `ctem-case-${action}`,
+      label: t_i18n(def.singleLabel ?? def.label),
+      onSelect: () => runAction(action),
+      disabled: !availability.enabled,
+      disabledReason: availability.reason ? t_i18n(availability.reason) : undefined,
+      separatorBefore: action === "merge",
+    };
+  });
 
   const dialogTitle: Record<Exclude<DialogKind, null>, string> = {
     start: t_i18n("Start this case"),
@@ -637,7 +670,7 @@ export default function CtemCaseDetail() {
         hintLabel={t_i18n("About cases")}
         actions={
           <>
-            {kase.state !== "accepted_risk" && kase.state !== "resolved" && (
+            {header.buttons.includes("accept") && (
               <Button variant="outline" onClick={() => open("accept")}>
                 {t_i18n("Accept risk")}
               </Button>
@@ -645,9 +678,13 @@ export default function CtemCaseDetail() {
             <Button onClick={() => open(primary.kind)}>
               {primary.label}
             </Button>
+            {/* Every other case action, the same set as the Cases bulk bar (#1751), at every width. */}
+            <EntityHeaderMoreActions items={[]} menuOnly={moreActions} />
           </>
         }
       />
+
+      {caseActions.dialogs}
 
       {/* Why now, created, age, last change and due (#1176): the same explained score as the Cases list. */}
       <CaseAttentionNow c={kase} now={now} onChanged={() => void refetch()} />
@@ -680,10 +717,10 @@ export default function CtemCaseDetail() {
           value={formatCount(intl.locale, kase.max_cvss)}
           subtitle={t_i18n("On the issues you can see")}
         />
-        <StatCard icon={AssetsGlyph} label={t_i18n("Assets")} value={kase.asset_count} subtitle={t_i18n("{count, plural, one {# crown jewel} other {# crown jewels}}", { count: kase.crown_jewel_count })} />
+        <StatCard icon={AssetsGlyph} label={t_i18n("Assets")} value={kase.asset_count} subtitle={t_i18n("{count, plural, one {# primary asset} other {# primary assets}}", { count: kase.crown_jewel_count })} />
       </div>
 
-      {/* The running versions come from the asset inventory, never typed by hand in the tech stack (#1252). */}
+      {/* The running versions come from the asset inventory, never typed by hand in the software inventory (#1252). */}
       {kase.remediation_kind === "upgrade" && (
         <CaseRunningVersions productLabel={kase.product_label} fixedVersion={kase.fixed_version} versions={kase.running_versions} />
       )}
@@ -701,7 +738,7 @@ export default function CtemCaseDetail() {
         <CaseWorkCard
           work={work}
           loopFleetId={loopFleet?.id ?? null}
-          onStart={notStarted ? () => open("start") : undefined}
+          onStart={primaryKind === "start" ? () => open("start") : undefined}
         />
       )}
 

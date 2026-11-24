@@ -100,7 +100,7 @@ GATE_PHASE: dict[str, str] = {
 }
 
 #: Kinds that happen in whatever phase the case is in (state, owner, due, SLA, a note).
-CARRY_KINDS: frozenset[str] = frozenset({"state", "owner", "due", "note", "sla_breached", "owner_requested"})
+CARRY_KINDS: frozenset[str] = frozenset({"state", "owner", "due", "note", "sla_breached", "owner_requested", "stalled"})
 
 #: Kinds that record a change of the case (rendered with from -> to).
 CHANGE_KINDS: frozenset[str] = frozenset(

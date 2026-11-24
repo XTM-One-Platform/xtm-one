@@ -1522,7 +1522,7 @@ async def trace_llm_call(
             _bind_background_run_checkpoint(
                 local_trace_id, name=name, parent_ctx=effective_parent, model=model
             )
-            return {
+            return _register_open_trace({
                 "trace": None,
                 "generation": None,
                 "client": None,
@@ -1549,7 +1549,7 @@ async def trace_llm_call(
                 "local_agent_id": _coerce_uuid(agent_id),
                 "local_assignment_id": _coerce_uuid(assignment_id),
                 "local_assignment_run_id": _coerce_uuid(run_id),
-            }
+            })
 
         # v4: ``propagate_attributes`` is the supported way to attach
         # trace-level attributes to spans (the v3 ``span.update_trace`` helper
@@ -1695,7 +1695,7 @@ async def trace_llm_call(
         _bind_background_run_checkpoint(
             local_trace_id, name=name, parent_ctx=effective_parent, model=model
         )
-        return {
+        return _register_open_trace({
             "trace": root_span,
             "generation": generation,
             "client": client,
@@ -1730,7 +1730,7 @@ async def trace_llm_call(
             "local_agent_id": _coerce_uuid(agent_id),
             "local_assignment_id": _coerce_uuid(assignment_id),
             "local_assignment_run_id": _coerce_uuid(run_id),
-        }
+        })
     except Exception as exc:
         logger.warning(
             "Langfuse trace_llm_call failed for '%s' (source=%s): %s",
@@ -2104,6 +2104,191 @@ def _parent_local_trace_id(parent_ctx: dict | None) -> uuid.UUID | None:
     return None
 
 
+# ---------------------------------------------------------------------------
+# Traces still open when the process stops
+# ---------------------------------------------------------------------------
+#
+# The local trace is assembled in ``end_trace`` only. A turn still running
+# when its process stops (a rolling deploy, a drained pod, a worker restarted
+# under a long tool call) never reaches it, so the run left no trace at all.
+# Every root context ``trace_llm_call`` hands out is kept here until its
+# ``end_trace``; the graceful-stop paths (the web lifespan, the SAQ worker
+# shutdown hook) close what is left as an ``error`` trace naming the step the
+# run was on, before the tracing dispatcher drains.
+
+#: Root contexts opened and not yet ended, by local trace id (insertion order).
+_OPEN_TRACES: dict[Any, dict[str, Any]] = {}
+#: Bound of :data:`_OPEN_TRACES`: past it the oldest entry is forgotten (a
+#: caller that never ends its trace must not grow the process without bound).
+_OPEN_TRACES_MAX = 2000
+#: Set on a root context closed by the stop, so its own late ``end_trace``
+#: writes nothing a second time.
+_CLOSED_ON_SHUTDOWN_KEY = "local_closed_on_shutdown"
+#: The spans started under a root and not yet ended, by span id.
+_OPEN_SPANS_KEY = "local_open_spans"
+#: ``metadata.kind`` of a trace closed by the process's stop.
+INTERRUPTED_TRACE_KIND = "run_interrupted"
+
+
+def _register_open_trace(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Keep *ctx* until its ``end_trace``; returns it. Never raises."""
+    with contextlib.suppress(Exception):
+        key = ctx.get("local_trace_id")
+        if key is not None:
+            _OPEN_TRACES[key] = ctx
+            while len(_OPEN_TRACES) > _OPEN_TRACES_MAX:
+                _OPEN_TRACES.pop(next(iter(_OPEN_TRACES)), None)
+    return ctx
+
+
+def _unregister_open_trace(ctx: dict[str, Any]) -> None:
+    with contextlib.suppress(Exception):
+        key = ctx.get("local_trace_id")
+        if key is not None and _OPEN_TRACES.get(key) is ctx:
+            _OPEN_TRACES.pop(key, None)
+
+
+def open_trace_count() -> int:
+    """How many traces this process opened and has not ended."""
+    return len(_OPEN_TRACES)
+
+
+def _note_open_span(root_ctx: dict[str, Any], span_ctx: dict[str, Any]) -> None:
+    with contextlib.suppress(Exception):
+        open_spans = root_ctx.setdefault(_OPEN_SPANS_KEY, {})
+        if isinstance(open_spans, dict):
+            open_spans[span_ctx["local_span_id"]] = span_ctx
+
+
+def _forget_open_span(root_ctx: dict[str, Any], span_ctx: dict[str, Any] | None) -> None:
+    with contextlib.suppress(Exception):
+        open_spans = root_ctx.get(_OPEN_SPANS_KEY)
+        if isinstance(open_spans, dict) and isinstance(span_ctx, dict):
+            open_spans.pop(span_ctx.get("local_span_id"), None)
+
+
+def _step_summary(span: dict[str, Any], *, open_: bool) -> dict[str, Any]:
+    started = span.get("local_started_at") if open_ else span.get("started_at")
+    summary: dict[str, Any] = {
+        "type": str((span.get("local_span_type") if open_ else span.get("type")) or ""),
+        "name": span.get("local_name") if open_ else span.get("name"),
+        "started_at": started.isoformat() if isinstance(started, datetime) else None,
+        "open": open_,
+    }
+    tool_call_id = span.get("local_tool_call_id") if open_ else span.get("tool_call_id")
+    if tool_call_id:
+        summary["tool_call_id"] = tool_call_id
+    return summary
+
+
+def _interrupted_spans(
+    root_ctx: dict[str, Any], reason: str, now: datetime
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    """The spans still open under *root_ctx*, ended now as interrupted, and the run's last step."""
+    open_spans = root_ctx.get(_OPEN_SPANS_KEY)
+    started: list[dict[str, Any]] = (
+        [s for s in open_spans.values() if isinstance(s, dict)] if isinstance(open_spans, dict) else []
+    )
+    started.sort(key=lambda s: int(s.get("local_position") or 0))
+    records: list[dict[str, Any]] = []
+    for span in started:
+        span_started = span.get("local_started_at")
+        if not isinstance(span_started, datetime):
+            span_started = now
+        span_meta = span.get("local_metadata")
+        records.append(
+            {
+                "id": span.get("local_span_id") or uuid.uuid4(),
+                "parent_span_id": span.get("local_parent_span_id"),
+                "type": str(span.get("local_span_type") or "SPAN"),
+                "name": _truncate(str(span.get("local_name") or "span"), max_len=255),
+                "position": int(span.get("local_position") or 0),
+                "started_at": span_started,
+                "ended_at": now,
+                "duration_ms": max(0.0, (now - span_started).total_seconds() * 1000.0),
+                "input": span.get("local_input"),
+                "model": span.get("local_model"),
+                "metadata": {
+                    **(span_meta if isinstance(span_meta, dict) else {}),
+                    "interrupted": True,
+                },
+                "level": "ERROR",
+                "status_message": reason,
+                "tool_call_id": span.get("local_tool_call_id"),
+                "tool_arguments": span.get("local_tool_arguments"),
+            }
+        )
+    last_step: dict[str, Any] | None
+    if started:
+        last_step = _step_summary(started[-1], open_=True)
+    else:
+        local_spans = root_ctx.get("local_spans")
+        ended: list[Any] = local_spans if isinstance(local_spans, list) else []
+        last = max(
+            (s for s in ended if isinstance(s, dict)),
+            key=lambda s: int(s.get("position") or 0),
+            default=None,
+        )
+        last_step = _step_summary(last, open_=False) if last else None
+    return records, last_step
+
+
+async def close_open_traces_on_shutdown(reason: str = "worker_stopped") -> int:
+    """Close every trace this process still holds open as an ``error`` trace.
+
+    Called by the graceful-stop paths before the tracing dispatcher drains, so
+    a run cut by the stop leaves a trace: the spans it ended, each span still
+    open ended now as interrupted, the step it was on in
+    ``metadata.last_step``, failure cause ``engine_abandoned`` with detail
+    *reason*. Its own ``end_trace``, if it still comes, writes nothing. The
+    traces reach the dispatcher's queue before it returns. A hard kill runs
+    no stop path, so this cannot cover it. Returns how many traces it
+    closed; never raises.
+    """
+    closed = 0
+    try:
+        from app.services.failure_causes import (
+            FailureCause,
+            FailureClassification,
+            FailureDetermination,
+        )
+
+        failure = FailureClassification(FailureCause.ENGINE_ABANDONED, FailureDetermination.STRUCTURAL, reason)
+    except Exception:
+        failure = None
+    for ctx in list(_OPEN_TRACES.values()):
+        try:
+            if ctx.get(_CLOSED_ON_SHUTDOWN_KEY):
+                continue
+            now = datetime.now(UTC)
+            message = f"Run interrupted: its process stopped ({reason}) before the run ended"
+            records, last_step = _interrupted_spans(ctx, message, now)
+            if isinstance(ctx.get("local_spans"), list):
+                ctx["local_spans"].extend(records)
+            interrupted = {"kind": INTERRUPTED_TRACE_KIND, "interrupted_by": reason, "last_step": last_step}
+            # Both stashes: the failure merge in ``end_trace`` rebuilds the
+            # local one from ``metadata``.
+            for stash in ("metadata", "local_metadata"):
+                current = ctx.get(stash)
+                ctx[stash] = {**current, **interrupted} if isinstance(current, dict) else dict(interrupted)
+            if last_step and last_step.get("name"):
+                message = f"{message}; last step: {last_step.get('type')} {last_step.get('name')}"
+            end_trace(ctx, error=message, failure=failure)
+            closed += 1
+        except Exception as exc:
+            logger.warning("Open trace not closed at stop: %s", format_exception_message(exc))
+        finally:
+            ctx[_CLOSED_ON_SHUTDOWN_KEY] = True
+            _unregister_open_trace(ctx)
+    if closed:
+        logger.info("Stop: closed %d open trace(s) as interrupted", closed)
+        with contextlib.suppress(Exception):
+            from app.services.tracing.dispatcher import wait_for_submitted_traces
+
+            await wait_for_submitted_traces()
+    return closed
+
+
 def trace_root_ctx(ctx: dict | None) -> dict | None:
     """The trace *ctx* belongs to, rather than the span it may be.
 
@@ -2165,6 +2350,8 @@ def _build_local_span_context(
         ctx["local_tool_call_id"] = _truncate(tool_call_id, max_len=TRUNCATE_LABEL)
     if tool_arguments is not None:
         ctx["local_tool_arguments"] = _coerce_tool_arguments_object(tool_arguments)
+    if root_ctx is not None:
+        _note_open_span(root_ctx, ctx)
     return ctx
 
 
@@ -2206,6 +2393,11 @@ def end_trace(
     """
     if not ctx:
         return
+    if ctx.get(_CLOSED_ON_SHUTDOWN_KEY):
+        # Already written as interrupted by the process's stop: a second
+        # row under the same trace id would fail or duplicate it.
+        return
+    _unregister_open_trace(ctx)
     try:
         # The final output is the assistant's answer, which routinely quotes
         # tool results verbatim (the null-byte vector) —
@@ -3422,6 +3614,8 @@ def _close_observation(
         logger.debug("_close_observation failed: %s", format_exception_message(exc), exc_info=True)
     finally:
         root_ctx = _root_local_context(ctx)
+        if root_ctx is not None:
+            _forget_open_span(root_ctx, ctx)
         if root_ctx and isinstance(root_ctx.get("local_spans"), list):
             ended_at = datetime.now(UTC)
             started_at = ctx.get("local_started_at")

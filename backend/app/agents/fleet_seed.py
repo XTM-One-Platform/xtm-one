@@ -516,6 +516,8 @@ async def seed_builtin_fleets(db: AsyncSession, *, platform_mode: str, fleets: l
         fleet, was_created = await _upsert_fleet(db, data, owner_id)
         created += int(was_created)
         await _apply_seed_autonomy(db, fleet, owner_id)
+        # A seeded fleet never pauses a tool call, on any deployment (#1675).
+        fleet.enforce_gates_at_tool_level = False
         _carry_pins(fleet, pins_by_slug.get(data["slug"]))
         await _sync_members(db, fleet, data, agents)
         await _sync_connected(db, fleet, data, agents)

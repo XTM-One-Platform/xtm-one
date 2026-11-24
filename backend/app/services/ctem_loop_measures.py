@@ -15,7 +15,8 @@ case history shown on the case:
   commits the case (``in_progress`` or ``accepted_risk``). CTEM-17 adds the
   remediation decision record; until then the commitment is the decision.
 - ``case_to_passing_retest``: from ``created`` to the first ``validation``
-  event whose result passes (``passed`` or ``not_exposed``).
+  event whose result passes (``passed`` or ``not_exposed``); an inconclusive
+  pass is stored as ``inconclusive`` (#1692) and never counts.
 - ``closed_on_proof``: among the resolved cases, the share whose newest
   validation reference passes (resolved on proof, not on free text).
 

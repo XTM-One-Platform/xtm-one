@@ -61,6 +61,47 @@ def _terminal_trace(traces: list[Any]) -> dict[str, Any] | None:
     return (complete or rows)[-1]
 
 
+#: Trace statuses that end a step without a failure.
+_OK_TRACE_STATUSES = frozenset({"SUCCESS", "INFO"})
+#: Characters of a failing step's message kept in the answer (stdout/stderr JSON).
+_CAUSE_MESSAGE_CHARS = 600
+
+
+def _failure_cause(traces: list[Any], terminal: dict[str, Any]) -> dict[str, Any] | None:
+    """The step that made a non-success terminal trace fail.
+
+    The implant's last COMPLETE trace always reads 'Payload completed'; OpenAEV
+    rewrites its status from the agent's earlier traces, so the reason of an
+    ERROR lives in the latest earlier non-COMPLETE trace whose status is not a
+    success (a COMMAND_EXECUTION or PREREQUISITE step with its stdout, stderr
+    and exit code).
+    """
+    if str(terminal.get("execution_status") or "").upper() in _OK_TRACE_STATUSES:
+        return None
+    rows = [
+        t
+        for t in traces
+        if isinstance(t, dict)
+        and t is not terminal
+        and t.get("execution_action") != "COMPLETE"
+        and str(t.get("execution_status") or "").upper() not in _OK_TRACE_STATUSES
+    ]
+    if not rows:
+        return None
+    rows.sort(key=lambda t: str(t.get("execution_time") or ""))
+    return rows[-1]
+
+
+def _cause_line(cause: dict[str, Any]) -> str:
+    message = str(cause.get("execution_message") or "")
+    if len(message) > _CAUSE_MESSAGE_CHARS:
+        message = message[:_CAUSE_MESSAGE_CHARS] + f"... [{len(message) - _CAUSE_MESSAGE_CHARS} more chars]"
+    return (
+        f"    cause: {cause.get('execution_action', '?')} {cause.get('execution_status', '?')} "
+        f"at {cause.get('execution_time', '?')}: {message}"
+    )
+
+
 #: The runtime setting that bounds an inject's execution (InjectExecutionThresholdService).
 _THRESHOLD_KEY = "inject_execution_threshold_minutes"
 
@@ -220,11 +261,15 @@ async def _target_traces(base_url: str, headers: dict[str, str], inject_id: str)
         last = _terminal_trace(traces if isinstance(traces, list) else [])
         if last is None:
             return f"- {_target_label(target)}: no trace yet"
-        return (
+        line = (
             f"- {_target_label(target)}: {last.get('execution_status', '?')} "
             f"{last.get('execution_action', '?')} at {last.get('execution_time', '?')}: "
             f"{last.get('execution_message', '')}"
         )
+        cause = _failure_cause(traces if isinstance(traces, list) else [], last)
+        if cause is not None:
+            line += "\n" + _cause_line(cause)
+        return line
 
     lines = await asyncio.gather(*(_one(t) for t in targets))
     head = f"Inject {inject_id}: {len(targets)} target(s), terminal trace of each:"

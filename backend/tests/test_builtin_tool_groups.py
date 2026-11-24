@@ -62,8 +62,8 @@ def test_one_group_per_catalog_id():
     # Lab, 24 with its orchestrator, 25 with organization profile editing (#11594), 26 with
     # the grounded STIX extraction, its own group so Threat Intelligence never carries it,
     # 27 with user administration (#250), 28 with the Module Analyst's (#101 S14),
-    # 29 with the read-only CTEM signals and cases (#1337).
-    assert len(_IDS) == len(set(_IDS)) == 29
+    # 29 with the read-only CTEM signals and cases (#1337), 30 with the CTEM repairs (#1778).
+    assert len(_IDS) == len(set(_IDS)) == 30
     assert set(_IDS) == set(catalog)
 
 

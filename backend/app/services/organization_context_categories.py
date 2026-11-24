@@ -14,7 +14,7 @@
 """The categories of the organization context, and how an agent resolves them (#11533).
 
 The profile has a short identity (name, sector, regions, size, risk
-appetite) and long lists: the crown jewels, the tech stack, the AI systems,
+appetite) and long lists: the crown jewels, the software, the AI systems,
 the PIRs, the tracked organizations. The identity is always in the prompt
 (``organization_context_injection``); a list is a CATEGORY: announced in the
 prompt with its size, preloaded only when the cascade selects it, and read
@@ -87,11 +87,21 @@ SOFTWARE_FIELD = "tech_stack"
 SOFTWARE = "software"
 #: Deprecated since #1495 (kept one release): ``tech_stack`` answers the ``software`` category.
 TECH_STACK_ALIAS = "tech_stack"
+#: The profile field the primary assets are stored under (#1591: OpenCRQ's primary assets, the stored key kept).
+PRIMARY_ASSETS_FIELD = "crown_jewels"
+#: The category of the organization's primary assets (#1591), in OpenCRQ's words.
+PRIMARY_ASSETS = "primary_assets"
+#: Deprecated since #1591 (kept one release): ``crown_jewels`` answers the ``primary_assets`` category.
+CROWN_JEWELS_ALIAS = "crown_jewels"
+#: Each deprecated category name, to the category it answers.
+CATEGORY_ALIASES: dict[str, str] = {TECH_STACK_ALIAS: SOFTWARE, CROWN_JEWELS_ALIAS: PRIMARY_ASSETS}
 
 
 def _category_name(field: str) -> str:
     if field == SOFTWARE_FIELD:
         return SOFTWARE
+    if field == PRIMARY_ASSETS_FIELD:
+        return PRIMARY_ASSETS
     # ``pir_ids`` is read as ``pirs``: a category names what it lists.
     return field[: -len("_ids")] + "s" if field.endswith("_ids") else field
 
@@ -113,6 +123,22 @@ CATEGORY_NAMES: tuple[str, ...] = tuple(category.name for category in CATEGORIES
 _BY_NAME = {category.name: category for category in CATEGORIES}
 
 
+def available() -> tuple[Category, ...]:
+    """The categories this platform's mode exposes: every one, none in Copilot mode (#1690).
+
+    Copilot has no CTEM loop: its agents read the identity alone, so no category is
+    listed, readable, preloaded or offered in a picker. The stored data stays untouched.
+    """
+    from app.services.organization_context import identity_only
+
+    return () if identity_only() else CATEGORIES
+
+
+def available_names() -> tuple[str, ...]:
+    """The names of :func:`available`."""
+    return tuple(category.name for category in available())
+
+
 #: Deprecated since #1501 (kept one release): ``ai_systems`` reads the assets of category ``ai_target``.
 AI_SYSTEMS_ALIAS = Category(
     "ai_systems", "assets_exposure", "AI systems (deprecated: the assets of category ai_target)"
@@ -120,9 +146,9 @@ AI_SYSTEMS_ALIAS = Category(
 
 
 def canonical_name(name: object) -> str:
-    """*name* lower-cased, a deprecated alias read as the category it answers (``tech_stack`` -> ``software``)."""
+    """*name* lower-cased, a deprecated alias read as the category it answers (``crown_jewels`` -> ``primary_assets``)."""
     wanted = str(name or "").strip().lower()
-    return SOFTWARE if wanted == TECH_STACK_ALIAS else wanted
+    return CATEGORY_ALIASES.get(wanted, wanted)
 
 
 def get(name: str) -> Category | None:
@@ -300,6 +326,58 @@ def render_page(
     return "\n".join([head + ".", wrap_untrusted(json.dumps(page, ensure_ascii=False), "organization profile"), tail])
 
 
+#: The ``field:value`` terms an agent's query on the assets category filters on (#1774): the
+#: CTEM Inventory list's filters (``organization_asset_store``), ``source`` and ``group`` included.
+ASSET_QUERY_FIELDS: tuple[str, ...] = (
+    "category",
+    "subcategory",
+    "criticality",
+    "internet_facing",
+    "os_family",
+    "source",
+    "group",
+)
+
+
+def split_asset_query(query: str) -> tuple[dict[str, list[str]], str]:
+    """``(filters, name text)`` of an assets query: ``os_family:windows source:intune web`` (#1774).
+
+    A ``field:value`` term on a known field is a filter (a repeated field ORs its values,
+    fields AND); every other word stays the name substring.
+    """
+    filters: dict[str, list[str]] = {}
+    words: list[str] = []
+    for term in str(query or "").split():
+        name, sep, value = term.partition(":")
+        if sep and name.lower() in ASSET_QUERY_FIELDS and value:
+            filters.setdefault(name.lower(), []).append(value)
+        else:
+            words.append(term)
+    return filters, " ".join(words)
+
+
+def render_asset_page(rows: list[dict[str, Any]], *, total: int, query: str, offset: int, limit: int) -> str:
+    """One page of the merged CTEM Inventory assets as an agent reads it (#1774)."""
+    from app.services.content_safety import wrap_untrusted
+
+    scope = f" matching {query.strip()!r}" if query.strip() else ""
+    name = "assets_exposure (merged CTEM Inventory assets, one row per real asset)"
+    if not total:
+        return f"Category {name}: no row{scope}. Do not guess it."
+    if not rows:
+        return f"Category {name}: offset {offset} is past the {total} rows{scope}."
+    nxt = offset + len(rows)
+    tail = (
+        'More: get_organization_context(category="assets_exposure"'
+        + (f", query={query.strip()!r}" if scope else "")
+        + f", offset={nxt}, limit={limit})."
+        if nxt < total
+        else "End of the category."
+    )
+    head = f"Category {name}: rows {offset + 1}-{nxt} of {total}{scope}."
+    return "\n".join([head, wrap_untrusted(json.dumps(rows, ensure_ascii=False), "organization profile"), tail])
+
+
 def render_categories(counts: dict[str, int]) -> str:
     """What ``get_organization_context(category="*")`` answers: every category with its size."""
     lines = [
@@ -307,7 +385,12 @@ def render_categories(counts: dict[str, int]) -> str:
         'get_organization_context(category="software"), narrow it with query=, page it with offset= and limit=, up to '
         f"{MAX_PAGE} rows a page):"
     ]
-    lines += [index_line(category, counts.get(category.name, 0)) for category in CATEGORIES]
+    if not available():
+        return (
+            "No organization context category on this platform: the profile is its identity alone "
+            "(get_organization_context() reads it)."
+        )
+    lines += [index_line(category, counts.get(category.name, 0)) for category in available()]
     return "\n".join(lines)
 
 

@@ -25,14 +25,24 @@ registration:
 * ``not_run`` leaves it as it is (the 7-day expiry of section 12.4 covers it).
 
 A dismissal still live is respected: the row is refreshed, never reopened.
+
+Every agentic finding and every report entry records the check logic that produced it
+(:func:`check_logic_version`: the running build and a hash of the module checker's
+playbook skill). A finding whose recorded logic differs from the running one, or that
+records none (written before #1732), is *stale* (:func:`is_stale`): the trigger pass
+starts one ``deploy`` round for its registration and Analyse now never recommends a
+disruptive action from it (``dev-docs/platform-health.md`` 13.6).
 """
 
 from __future__ import annotations
 
+import functools
+import hashlib
 import re
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
@@ -54,6 +64,60 @@ DEFAULT_CATEGORY: Final = "configuration"
 SOURCE: Final = "module_checker"
 #: The segment between the module and the check in an agentic check id (never a component name).
 AGENTIC_SEGMENT: Final = "agentic"
+#: ``evidence`` key of the check logic that produced an agentic finding.
+CHECK_LOGIC_KEY: Final = "check_logic"
+#: Evidence older than this is too old to act on without a new round (Analyse now).
+MAX_EVIDENCE_AGE: Final = timedelta(hours=24)
+
+
+@functools.cache
+def _skill_hash(module: str) -> str:
+    """The first 16 hex of the sha256 of *module*'s checker playbook as this build ships it."""
+    from app.agents.seed import SEED_DATA_DIR
+
+    path = SEED_DATA_DIR / "skill_content" / f"health-{module}-checks.md"
+    body = path.read_bytes() if path.is_file() else b""
+    return hashlib.sha256(body).hexdigest()[:16]
+
+
+def check_logic_version(module: str) -> dict[str, str]:
+    """The check logic running now for *module*: ``{"build", "skill_hash"}``."""
+    from app.core.config import settings
+
+    return {"build": str(settings.app_version or ""), "skill_hash": _skill_hash(module)}
+
+
+def finding_check_logic(evidence: Mapping[str, Any] | None) -> dict[str, str] | None:
+    """The check logic an agentic finding's evidence records, ``None`` when it records none."""
+    logic = (evidence or {}).get(CHECK_LOGIC_KEY)
+    return dict(logic) if isinstance(logic, Mapping) else None
+
+
+def is_agentic_evidence(evidence: Mapping[str, Any] | None) -> bool:
+    return (evidence or {}).get("source") == SOURCE
+
+
+def is_stale(module: str, evidence: Mapping[str, Any] | None) -> bool:
+    """Whether an agentic finding comes from another check logic than the running one.
+
+    A finding written before the logic was recorded is stale too: nothing says which
+    logic produced it. A deterministic finding is never stale (the engine re-reads it).
+    """
+    if not is_agentic_evidence(evidence):
+        return False
+    return finding_check_logic(evidence) != check_logic_version(module)
+
+
+def evidence_time(evidence: Mapping[str, Any] | None) -> datetime | None:
+    """When an agentic finding's evidence was read (``evidence.read_at``), ``None`` when unknown."""
+    raw = (evidence or {}).get("read_at")
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(raw))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
 
 
 class CheckReportError(ValueError):
@@ -71,7 +135,7 @@ class CheckVerdict:
     reason: str = ""
     evidence: list[dict[str, Any]] = field(default_factory=list)
 
-    def as_entry(self, finding_id: str | None) -> dict[str, Any]:
+    def as_entry(self, finding_id: str | None, check_logic: Mapping[str, str] | None = None) -> dict[str, Any]:
         return {
             "id": self.check,
             "verdict": self.verdict,
@@ -80,6 +144,7 @@ class CheckVerdict:
             "reason": self.reason or None,
             "evidence": self.evidence,
             "finding_id": finding_id,
+            CHECK_LOGIC_KEY: dict(check_logic) if check_logic else None,
         }
 
 
@@ -179,6 +244,7 @@ async def apply_verdicts(
     from app.services.health.engine import dismissal_live, finding_key
 
     subject = {"registration_id": str(registration_id)}
+    logic = check_logic_version(module)
     tally = {"opened": 0, "refreshed": 0, "resolved": 0}
     finding_ids: list[str | None] = []
     for v in verdicts:
@@ -192,7 +258,7 @@ async def apply_verdicts(
                 tally["resolved"] += 1
             finding_ids.append(row.id if row is not None else None)
             continue
-        evidence = {"source": SOURCE, "read_at": now.isoformat(), "checks": v.evidence}
+        evidence = {"source": SOURCE, "read_at": now.isoformat(), "checks": v.evidence, CHECK_LOGIC_KEY: logic}
         if row is None:
             row = HealthCheckFinding(
                 id=key,

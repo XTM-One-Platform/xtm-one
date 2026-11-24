@@ -395,6 +395,19 @@ async def shutdown_tracing_dispatcher(timeout_seconds: float = 30.0) -> None:
     _DISPATCHER = None
 
 
+async def wait_for_submitted_traces(timeout_seconds: float = 5.0) -> None:
+    """Let the traces just handed to :func:`submit_trace_for_flush` reach the queue.
+
+    The submit is a task of its own: a drain that starts before it ran finds
+    the queue empty and returns. Bounded; never raises.
+    """
+    pending = [task for task in _BACKGROUND_TRACE_TASKS if not task.done()]
+    if not pending:
+        return
+    with contextlib.suppress(Exception):
+        await asyncio.wait(pending, timeout=timeout_seconds)
+
+
 def submit_trace_for_flush(trace: TraceData, spans: list[SpanData]) -> None:
     async def _submit() -> None:
         dispatcher = get_tracing_dispatcher()
