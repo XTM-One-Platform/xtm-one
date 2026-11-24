@@ -18,14 +18,18 @@ import {
   type SoftwareEdge,
   type SoftwareInstallation,
   type SoftwareVersion,
+  useDeleteSoftware,
   useSoftware,
 } from "@/hooks/api/useOrganizationAssetsApi";
+import { useToast } from "@/components/ui/toast";
+import { useAuth } from "@/hooks/useAuth";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useFormatter } from "@/i18n";
 import { formatCount } from "@/lib/number-format";
 import { AssetSection, Fact } from "./ctem/AssetOverview";
 import { INVENTORY_PATH, assetFieldLabel, edgeOwnVersion, softwarePath, sourceLabel } from "./ctem/inventory";
 import { SourceLogo } from "./ctem/inventory-icons";
+import { InventoryDeleteAction } from "./ctem/InventoryDeleteAction";
 
 /** The Installations table opens at 25 rows, the platform's page size; the picker changes it. */
 const INSTALLATIONS_PAGE_SIZE = 25;
@@ -73,6 +77,24 @@ function SoftwareDetailPage({ id }: { id: string | undefined }) {
     limit: page.size,
     q: search,
   });
+  const { isAdmin } = useAuth();
+  const { toast } = useToast();
+  // Delete (#1729): a software typed by hand only; the API refuses a synced one (it goes when no source reports it).
+  const remove = useDeleteSoftware();
+  const onDelete = () => {
+    if (!data) return;
+    remove.mutate([data.id], {
+      onSuccess: (out) => {
+        if (out.refused.length > 0) {
+          toast({ title: t_i18n("Nothing was deleted"), description: out.refused.map((r) => r.reason).join("\n"), variant: "error" });
+          return;
+        }
+        toast({ title: t_i18n("Software deleted"), variant: "success" });
+        navigate(SOFTWARE_TAB_PATH);
+      },
+      onError: (error) => toast({ title: t_i18n("Nothing was deleted"), description: error.message, variant: "error" }),
+    });
+  };
 
   if (isError && !data) {
     return (
@@ -268,6 +290,18 @@ function SoftwareDetailPage({ id }: { id: string | undefined }) {
               {" · "}
               {t_i18n("{count, plural, one {# version} other {# versions}}", { count: data.version_count })}
             </span>
+          ) : undefined
+        }
+        actions={
+          isAdmin && data?.origin === "manual" ? (
+            <InventoryDeleteAction
+              name={data.name}
+              title={t_i18n("Delete the software \"{name}\"?", { name: data.name })}
+              description={t_i18n("This software was typed by hand: it is deleted and leaves the assets it was attached to.")}
+              pending={remove.isPending}
+              onConfirm={onDelete}
+              testId="ctem-software-delete"
+            />
           ) : undefined
         }
       />

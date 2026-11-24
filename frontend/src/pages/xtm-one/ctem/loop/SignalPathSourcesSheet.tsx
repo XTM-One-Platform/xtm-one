@@ -28,7 +28,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import type { CtemSignalPath, CtemSignalPathSource } from "@/hooks/api/useCtemSignalsApi";
 import { useIntegrations } from "@/hooks/api/useIntegrationApi";
-import { type OrganizationProfile, useOrganizationContext, useSaveOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
+import { type OrganizationProfile, useOrganizationContext, usePatchOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
@@ -215,7 +215,7 @@ export function SignalPathSourcesSheet({
   const { toast } = useToast();
   const { isAdmin } = useAuth();
   const { data } = useOrganizationContext();
-  const save = useSaveOrganizationContext();
+  const save = usePatchOrganizationContext();
   const qc = useQueryClient();
   const profile = data?.profile;
   const labels = Object.fromEntries(paths.map((p) => [p.id, t_i18n(p.label)]));
@@ -223,7 +223,8 @@ export function SignalPathSourcesSheet({
   const onSave = (next: Partial<OrganizationProfile>, done: string) => {
     if (!profile || !isAdmin) return;
     save.mutate(
-      { profile: { ...profile, ...next }, source: "form" },
+      // #1752: the changed fields alone travel, never the asset rows.
+      { fields: next, based_on_version: data?.version ?? null },
       {
         onSuccess: () => {
           // The paths read the saved profile: status, sources and the connected count follow at once.

@@ -88,8 +88,8 @@ def test_the_case_decision_names_the_repository() -> None:
 
 @pytest.mark.parametrize("source", ["intune", "defender", "tanium", "github", "gitlab"])
 def test_an_endpoint_or_code_source_refused_for_software_points_to_its_assets_import(source: str) -> None:
-    message = imp.refused_section_message(source, "tech_stack")
-    assert message.startswith(f"{source} cannot feed tech_stack: its software comes with the Assets import")
+    message = imp.refused_section_message(source, "software")
+    assert message.startswith(f"{source} cannot feed software: its software comes with the Assets import")
     reason = imp.readable_error(source, message)
     assert reason is not None and "Assets import" in reason and "CTEM Inventory Software tab" in reason
     assert reason.startswith(("Microsoft", "Tanium", "GitHub", "GitLab"))

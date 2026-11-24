@@ -436,13 +436,13 @@ def test_pirs_merge_adds_and_names():
     assert plan.profile.pir_names == {"p1": "Ransomware", "p2": "Espionage"}
 
 
-def test_tech_stack_merge_never_duplicates_a_product():
+def test_software_merge_never_duplicates_a_product():
     profile = _profile(tech_stack=[oc.TechStackEntry(product="Splunk")])
     rows = [
         oc.TechStackEntry(product="splunk", source="openaev", external_id="splunk"),
         oc.TechStackEntry(product="CrowdStrike", source="openaev", external_id="crowdstrike"),
     ]
-    plan = imp.plan_import(profile, "tech_stack", "openaev", imp.ReadResult(rows=rows, total=2))
+    plan = imp.plan_import(profile, "software", "openaev", imp.ReadResult(rows=rows, total=2))
     # The typed "Splunk" is a person's row: the import never takes it over (#1134).
     assert (plan.new, plan.skipped) == (["CrowdStrike"], ["splunk"])
     assert plan.profile is not None
@@ -475,7 +475,7 @@ async def test_options_of_a_source_that_fails_name_the_reason(monkeypatch):
 async def test_a_source_that_cannot_feed_the_section_is_refused_without_io():
     read = await imp.read_source(None, user_id=uuid.uuid4(), section="pirs", source="openaev", filters={})
     # #1774: the refusal names what the source feeds instead.
-    assert read.error == "openaev cannot feed pirs: it feeds assets, asset_groups, tech_stack"
+    assert read.error == "openaev cannot feed pirs: it feeds assets, asset_groups, software"
 
 
 @pytest.mark.asyncio

@@ -34,7 +34,7 @@ export const SYNC_SECTION_LABELS = {
   assets: "Assets",
   asset_groups: "Asset groups",
   ai_systems: "AI systems",
-  tech_stack: "Software",
+  software: "Software",
   crown_jewels: "Primary assets",
   pirs: "PIRs",
 } as const satisfies Record<ImportSectionKey | "all", string>;
@@ -56,7 +56,7 @@ const OUTBOUND_REASONS = {
   openaev_asset_groups: "Planned: OpenAEV asset group writes are not wired for syncs yet.",
   opencti_pirs: "Planned: OpenCTI PIR writes are not wired for syncs yet.",
   opencti_assets: "OpenCTI Systems are owned by its connectors.",
-  openaev_tech_stack: "OpenAEV software inventory is read from its agents.",
+  openaev_software: "OpenAEV software inventory is read from its agents.",
   other: "This pairing reads only.",
 } as const;
 
