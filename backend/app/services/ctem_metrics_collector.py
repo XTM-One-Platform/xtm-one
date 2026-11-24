@@ -1117,7 +1117,7 @@ async def _organization_software(db: AsyncSession | None) -> list[dict[str, Any]
     except Exception as exc:  # a bad stored profile or store never breaks the posture
         logger.info("CTEM organization software unreadable: %s", format_exception_message(exc))
         return []
-    typed = [{"vendor": e.vendor, "product": e.product, "cpe": e.cpe, "version": e.version} for e in profile.tech_stack]
+    typed = [{"vendor": e.vendor, "product": e.product, "cpe": e.cpe, "version": e.version} for e in profile.software]
     return software_store.matcher_entries(software, typed)
 
 

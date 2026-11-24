@@ -9,13 +9,13 @@
 import { profileCardHref, type ProfileCard } from "./organization-profile-tabs";
 
 /** The profile lists that carry a row source, in the order of the tabs. */
-const SOURCED_SECTIONS = ["crown_jewels", "tech_stack", "assets_exposure", "asset_groups"] as const;
+const SOURCED_SECTIONS = ["crown_jewels", "software", "assets_exposure", "asset_groups"] as const;
 export type SourcedSection = (typeof SOURCED_SECTIONS)[number];
 
 /** The section names on a chip. @i18n-keys */
 export const SOURCED_SECTION_LABELS = {
   crown_jewels: "Primary assets",
-  tech_stack: "Software",
+  software: "Software",
   assets_exposure: "Assets",
   asset_groups: "Asset groups",
 } as const satisfies Record<SourcedSection, string>;
@@ -40,7 +40,7 @@ const SOURCE_FILTER: Partial<Record<SourcedSection, { prefix: string; value: key
 /** The card of the profile page that lists a section. */
 const SECTION_CARD: Record<SourcedSection, ProfileCard> = {
   crown_jewels: "crown_jewels",
-  tech_stack: "tech_stack",
+  software: "software",
   assets_exposure: "assets_exposure",
   asset_groups: "asset_groups",
 };

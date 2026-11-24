@@ -267,7 +267,7 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     serve(
       [sync({ id: "s-1", source: "openaev", section: "software" })],
       [
-        source({ key: "openaev", display_name: "OpenAEV", rows: { tech_stack: 4 }, total: 4, sync_ids: ["s-1"] }),
+        source({ key: "openaev", display_name: "OpenAEV", rows: { software: 4 }, total: 4, sync_ids: ["s-1"] }),
         source({ key: "csv", kind: "csv", display_name: "csv", rows: { assets_exposure: 12 }, total: 12, sync_ids: [] }),
       ],
     );

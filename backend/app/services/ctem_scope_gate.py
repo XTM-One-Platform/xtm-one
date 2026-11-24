@@ -372,7 +372,7 @@ def runs_in_profile(profile: OrganizationProfile, name: str) -> list[str]:
         return []
     found = [
         entry.product
-        for entry in profile.tech_stack
+        for entry in profile.software
         if _product_matches(entry.product, text) or (entry.cpe and entry.cpe.lower() == text.lower())
     ]
     key = stable_key(text)
@@ -421,7 +421,7 @@ def resolve(
         software += threat_software(facts.evidence)
     software = list(dict.fromkeys(software))
     out.software_refs = software
-    for entry in profile.tech_stack:
+    for entry in profile.software:
         if any(
             _product_matches(entry.product, ref) or (entry.cpe and entry.cpe.lower() == ref.lower()) for ref in software
         ):

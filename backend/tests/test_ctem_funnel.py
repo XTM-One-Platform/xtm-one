@@ -59,7 +59,7 @@ def test_without_a_tech_stack_relevant_is_not_configured_and_never_zero():
     relevant = _layer(funnel, "relevant")
     assert relevant["state"] == NOT_CONFIGURED
     assert relevant["count"] is None and relevant["drop"] is None
-    assert relevant["category"] == "tech_stack"
+    assert relevant["category"] == "software"
     # Not counted as filtered: exploitable reads the known layer.
     exploitable = _layer(funnel, "exploitable")
     assert exploitable["basis"] == "known"

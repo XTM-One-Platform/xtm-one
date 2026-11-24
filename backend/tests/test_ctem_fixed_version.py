@@ -16,7 +16,7 @@ import pytest
 from app.services import ctem_cases as cc
 from app.services import ctem_cases_source as source
 from app.services import ctem_fixed_version as fv
-from app.services.organization_context import TechStackEntry
+from app.services.organization_context import SoftwareEntry
 
 # ---------------------------------------------------------------------------
 # Versions
@@ -369,8 +369,8 @@ def test_without_a_declared_version_every_has_counts_and_latest_stays():
 
 
 def test_the_tech_stack_entry_takes_an_optional_version():
-    assert TechStackEntry(product="nginx").version == ""
-    assert TechStackEntry(product="nginx", version="1.27.1").version == "1.27.1"
+    assert SoftwareEntry(product="nginx").version == ""
+    assert SoftwareEntry(product="nginx", version="1.27.1").version == "1.27.1"
 
 
 class _FakeOpenCti:

@@ -17,7 +17,7 @@ describe("organization sources (#1134 S2 part 2, #1276, #1178)", () => {
   });
 
   it("gives no link to a section whose Inventory list has no Source filter, so the chip never promises one (B11)", () => {
-    for (const section of ["tech_stack", "asset_groups"] as const) {
+    for (const section of ["software", "asset_groups"] as const) {
       expect(sourceSectionHref(section, { key: "openaev", label: "OpenAEV" })).toBeNull();
     }
   });

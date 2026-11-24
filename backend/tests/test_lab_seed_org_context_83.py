@@ -31,7 +31,7 @@ def _api(state: str, calls: list):
         if path == "/organization-context" and method == "PUT":
             return {"version": 1}
         if path.startswith("/ctem-metrics/posture"):
-            return {"context": {"state": state, "missing_fields": [] if state == "complete" else ["tech_stack"]}}
+            return {"context": {"state": state, "missing_fields": [] if state == "complete" else ["software"]}}
         return {}
 
     return api

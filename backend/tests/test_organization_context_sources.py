@@ -75,7 +75,7 @@ def test_purge_of_one_sync_removes_only_its_rows_and_names_the_same_name_elsewhe
 def test_a_sync_purge_or_release_stays_in_the_field_of_its_section() -> None:
     # Review on #1278: unstamped rows of the same platform in another field are not the sync's.
     profile = _profile()
-    profile.tech_stack = [oc.TechStackEntry(product="nginx", source="openaev")]
+    profile.software = [oc.SoftwareEntry(product="nginx", source="openaev")]
     assert osources.sync_fields("assets") == ("assets_exposure",)
     assert osources.sync_fields("pirs") == () and osources.sync_fields("all") == ()
     for mode in ("purge", "release"):
@@ -83,7 +83,7 @@ def test_a_sync_purge_or_release_stays_in_the_field_of_its_section() -> None:
             profile, source="openaev", mode=mode, sync_id="s1", fields=osources.sync_fields("assets")
         )
         assert set(plan.touched) == {"assets_exposure"} and plan.profile is not None
-        assert [(r.product, r.source) for r in plan.profile.tech_stack] == [("nginx", "openaev")]
+        assert [(r.product, r.source) for r in plan.profile.software] == [("nginx", "openaev")]
     # A pirs sync writes no row field: its purge touches nothing.
     plan = osources.plan_rows(profile, source="opencti", mode="purge", sync_id="p1", fields=())
     assert plan.count == 0 and plan.profile is not None

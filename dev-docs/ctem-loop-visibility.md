@@ -116,6 +116,14 @@ loop, and why".
   the `?loop=` links are gone (CTEM is unreleased, no redirect is kept), so a trace can
   be shared and reopened after a reload. Focus returns to the row that opened
   it.
+- **One sheet, opened in place** (#1934, Sam, 24 Nov 2026): the trace is one
+  side sheet, `ctem/loop/LoopTraceSheet.tsx`, used by the Signals page and by
+  the case page's "Opened by" card. On a case, "See the loop trace" opens it over
+  the case: the pathname is kept and the case URL carries `?signal=<id>`, so a
+  reload reopens it and Back, Close or Escape return to the case. Off the
+  Signals page the sheet adds "Open in Signals", the only way to leave the case.
+  A signal with a `case_id` shows "Open case" on its "Case opened" stage,
+  except on that case's own page.
 - **Reached from**: a signal row of Live activity, a case card of the board,
   the case page header (More menu, "Show in the loop"), a Done for you point
   that is a signal or a case, an Act now row that comes from a case. Nothing

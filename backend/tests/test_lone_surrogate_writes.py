@@ -220,7 +220,7 @@ _ASSIGNMENT_SAMPLES: dict[str, tuple[object, str]] = {
     "manual_trigger_parameters": ([{"key": "topic", "label": "\ud800"}], "manual_trigger_parameters[0].label"),
     "wait_policy": ({"unbounded_with_until": "x\ud800"}, "wait_policy.unbounded_with_until"),
     "organization_context_mode": ("off\ud800", "organization_context_mode"),
-    "organization_context_categories": (["tech_stack", "\ud800"], "organization_context_categories[1]"),
+    "organization_context_categories": (["software", "\ud800"], "organization_context_categories[1]"),
 }
 
 

@@ -28,7 +28,7 @@ def _profile(**policy) -> oc.OrganizationProfile:
                 },
                 {"name": "Wiki", "criticality": "medium", "asset_names": ["wiki.example.com"]},
             ],
-            "tech_stack": [{"product": "nginx", "vendor": "f5"}, {"product": "Confluence"}],
+            "software": [{"product": "nginx", "vendor": "f5"}, {"product": "Confluence"}],
             "assets_exposure": [
                 {"name": "shop.example.com", "group": "DMZ", "internet_facing": "yes", "tech_stack": ["nginx"]},
                 {"name": "wiki.example.com", "internet_facing": "no", "tech_stack": ["Confluence"], "tags": ["lab"]},

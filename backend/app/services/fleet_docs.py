@@ -158,7 +158,7 @@ PREREQUISITE_CHECKS: tuple[str, ...] = (
     "profile:sector",
     "profile:regions",
     "profile:crown_jewels",
-    "profile:tech_stack",
+    "profile:software",
     "profile:ai_targets",
     "profile:tracked_organizations",
     # At least one of the fleet's automations is switched on, read live (#10094).

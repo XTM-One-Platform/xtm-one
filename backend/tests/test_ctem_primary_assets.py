@@ -18,7 +18,7 @@ def _profile(**policy: object) -> oc.OrganizationProfile:
     return oc.parse_profile(
         {
             "crown_jewels": [{"name": WORKSTATIONS, "criticality": "high", "source": "opencrq", "external_id": "pa-1"}],
-            "tech_stack": [{"product": "Windows"}],
+            "software": [{"product": "Windows"}],
             "prioritization_policy": {"min_crown_jewel_criticality": "medium", "cvss_min": 7, **policy},
         }
     )
