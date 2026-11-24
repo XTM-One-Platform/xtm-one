@@ -44,7 +44,7 @@ _OPT_IN = (
 #: and the three single-product desks, as roles.
 CTEM_LOOP_DOC: dict[str, str] = {
     "purpose": (
-        "Run the whole CTEM loop on your software, case by case: any change in exposure becomes a "
+        "Run the whole CTEM loop on your stack, case by case: any change in exposure becomes a "
         "case, the case is validated, priced, decided once by you, mobilised and closed by a "
         "passing re-test. One fleet, every trigger path, every module in its role."
     ),
@@ -101,7 +101,7 @@ CTEM_LOOP_DOC: dict[str, str] = {
     "prerequisites": (
         "OpenCTI, OpenAEV and OpenCRQ connected for the administrator who switches it on (each role "
         "works with its own module alone), and an organization profile (sector, regions, "
-        "technology, crown jewels). " + _OPT_IN
+        "technology, primary assets). " + _OPT_IN
     ),
 }
 
@@ -142,7 +142,7 @@ CTEM_THREAT_RESPONSE_DOC: dict[str, str] = {
     ),
     "prerequisites": (
         "OpenCTI, OpenAEV and OpenCRQ connected for the administrator who switches it on, and "
-        "an organization profile (sector, regions, technology, crown jewels). " + _OPT_IN
+        "an organization profile (sector, regions, technology, primary assets). " + _OPT_IN
     ),
 }
 
@@ -158,7 +158,7 @@ CTEM_VULN_PRIORITIZATION_DOC: dict[str, str] = {
     ),
     "triggers": (
         "- **New KEV or EPSS jump**: an OpenCTI creation or update of a Vulnerability.\n"
-        "- **Vulnerability on software we run**: an OpenCTI has relationship to a Vulnerability whose source is in the software inventory or the profile assets, checked before any model call.\n"
+        "- **Vulnerability on software we run**: an OpenCTI has relationship to a Vulnerability whose source is in the tech stack or the profile assets, checked before any model call.\n"
         "- **Vulnerability flagged in a PIR**: OpenCTI flags a Vulnerability in an organization PIR; the run starts when its live PIR score reaches the policy threshold (70 by default, Settings).\n"
         "- **Vulnerability sighted**: an OpenCTI sighting, triaged at a higher priority.\n"
         "- **Daily backlog pass**: every day at 06:00, re-ranks the open cases.\n"
@@ -258,7 +258,7 @@ CTEM_THIRD_PARTY_RISK_DOC: dict[str, str] = {
     "use_case": (
         "A report or an incident in OpenCTI names a tracked organization. For a supplier, the "
         "fleet builds a case: the threat or breach, the services the supplier provides and the "
-        "crown jewels behind them, the expected loss from the primary organization's OpenCRQ "
+        "primary assets behind them, the expected loss from the primary organization's OpenCRQ "
         "scenarios, and the proposed actions. A customer or partner gets an awareness case only."
     ),
     "triggers": (
@@ -328,7 +328,7 @@ OPENAEV_DETECTION_DESK_DOC: dict[str, str] = {
     ),
     "use_case": (
         "A SOC or detection engineering team runs OpenAEV. Every week the fleet plans simulations from the "
-        "threat arsenal against the crown jewel assets and proposes each launch to a person. When a "
+        "threat arsenal against the primary assets and proposes each launch to a person. When a "
         "simulation ends, it sorts every inject and asset into blocked, detected, logged or missed, finds "
         "the root cause of each gap (no rule, no log, or a broken collector such as one silent for weeks), "
         "drafts the missing detection rule, raises the remediation and re-tests the gap once it is fixed. "
@@ -342,7 +342,7 @@ OPENAEV_DETECTION_DESK_DOC: dict[str, str] = {
         "- **Gate answered**: a person answers a launch approval; the simulation is launched or the refusal recorded."
     ),
     "flow": (
-        "1. Plan: the orchestrator picks the techniques with no recent result against the crown jewels; the "
+        "1. Plan: the orchestrator picks the techniques with no recent result against the primary assets; the "
         "OpenAEV Scenario Creator, Payload Creator and Scenario Publisher build what is missing. Each launch "
         "waits for a person.\n"
         "2. Sort: the Coverage Gap Analyst sorts the results into blocked, detected, logged and missed, with "
@@ -360,7 +360,7 @@ OPENAEV_DETECTION_DESK_DOC: dict[str, str] = {
     ),
     "prerequisites": (
         "OpenAEV connected, with assets and at least one security platform collector, and the organization's "
-        "crown jewels and software in its profile. " + _OPT_IN
+        "primary assets and tech stack in its profile. " + _OPT_IN
     ),
 }
 
@@ -461,7 +461,7 @@ _NEEDS_OPENCRQ = _prereq("integration:opencrq", "OpenCRQ connected for you", _IN
 _NEEDS_SECTOR = _prereq("profile:sector", "Sector in the organization profile", profile_fix_route("sector"))
 _NEEDS_REGIONS = _prereq("profile:regions", "Regions in the organization profile", profile_fix_route("regions"))
 _NEEDS_JEWELS = _prereq(
-    "profile:crown_jewels", "Crown jewels in the organization profile", profile_fix_route("crown_jewels")
+    "profile:crown_jewels", "Primary assets in the organization profile", profile_fix_route("crown_jewels")
 )
 _NEEDS_TECH = _prereq("profile:tech_stack", "Technology in the organization profile", profile_fix_route("tech_stack"))
 _SWITCHED_ON = _prereq("manual", "An administrator switches each automation on", "")
@@ -740,7 +740,7 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
             "module": "opencti",
             "name": "Vulnerability on software we run",
             "filter": "Software, an infrastructure or a system in the profile has a vulnerability",
-            "detail": "Kept only when the source is in the software inventory or the profile assets",
+            "detail": "Kept only when the source is in the tech stack or the profile assets",
         },
         {
             "module": "opencti",
@@ -1026,7 +1026,7 @@ OPENAEV_DETECTION_DESK_STRUCTURED: dict[str, Any] = {
         {"module": "platform", "name": "Gate answered", "filter": "A person answers a launch approval"},
     ],
     "steps": [
-        {"title": "Plan", "detail": "Simulations from the threat arsenal against the crown jewels.", "gate": True},
+        {"title": "Plan", "detail": "Simulations from the threat arsenal against the primary assets.", "gate": True},
         {"title": "Sort", "detail": "Blocked, detected, logged or missed, per inject and asset."},
         {"title": "Root cause", "detail": "No rule, no log or a broken collector."},
         {"title": "Rule", "detail": "The missing detection rule drafted by the rule chain."},
@@ -1240,7 +1240,7 @@ def _loop_gates() -> list[dict[str, Any]]:
 #: 1. CTEM loop, the generic fleet (CTEM-31, #1048): the triggers of the former
 #: threat response, posture and module desks under one case-driven loop.
 CTEM_LOOP_STRUCTURED: dict[str, Any] = {
-    "purpose_line": "The whole CTEM loop on your software: any change in exposure, one case, closed on proof.",
+    "purpose_line": "The whole CTEM loop on your stack: any change in exposure, one case, closed on proof.",
     "outcome_line": (
         "Cases validated, priced, decided once and closed by a re-test; posture, PIR answers, "
         "detection coverage and the risk register kept current."
