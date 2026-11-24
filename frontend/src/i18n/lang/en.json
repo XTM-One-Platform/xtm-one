@@ -21677,5 +21677,14 @@
   "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.",
   "No review decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case, or an analyst sets the review label on the Grouping in OpenCTI.": "No review decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case, or an analyst sets the review label on the Grouping in OpenCTI.",
   "No validation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.": "No validation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.",
-  "No remediation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.": "No remediation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case."
+  "No remediation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.": "No remediation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.",
+  "Case opening": "Case opening",
+  "Case opening: {state}": "Case opening: {state}",
+  "Case opening on": "Case opening on",
+  "Case opening off": "Case opening off",
+  "Case opening is off": "Case opening is off",
+  "Open a case for each confirmed signal": "Open a case for each confirmed signal",
+  "{count, plural, =0 {Off: no confirmed signal is waiting} one {Off: # confirmed signal is waiting} other {Off: # confirmed signals are waiting}}": "{count, plural, =0 {Off: no confirmed signal is waiting} one {Off: # confirmed signal is waiting} other {Off: # confirmed signals are waiting}}",
+  "Case opening was not changed": "Case opening was not changed",
+  "CTEM case opening turned on or off": "CTEM case opening turned on or off"
 }
