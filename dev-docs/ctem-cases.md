@@ -44,7 +44,7 @@ progress, resolved, accepted risk).
    (#11613).** Cases (the fix and the workflow: state, owner, due date,
    history) are shared by the organization; their content is not. The
    database stores ids and workflow only: no name, CVE, score, KEV, asset,
-   crown jewel, priority or count. Every read renders the case for the viewer
+   primary asset, priority or count. Every read renders the case for the viewer
    from the viewer's OWN source read (their JWT, the same reads recompute
    makes; `services/ctem_cases_view.py`), cached per user and vertical for
    5 minutes. XTM One mirrors no group, role, marking, organization or scope.
@@ -53,7 +53,7 @@ progress, resolved, accepted risk).
    - A member issue the viewer cannot see is a row `{"restricted": true}`,
      nothing else: no id, source, name, score, asset or link (OpenCTI's
      "Restricted" pattern). The member count shows the total and the
-     restricted count; priority, scores, assets and crown jewels are
+     restricted count; priority, scores, assets and primary assets are
      computed on the visible issues only and may differ from one viewer to
      the next. A history line about an issue they cannot see shows
      "Restricted".
@@ -527,7 +527,7 @@ downgrade deletes the shared rows and restores the columns.
 | resolved -> needs attention | member issues open again (system) or a user | system, user |
 
 Priority comes from the prioritization policy of #11543 (KEV always in, CVSS and
-EPSS thresholds, internet exposure, crown jewel criticality). Without a policy
+EPSS thresholds, internet exposure, primary asset criticality). Without a policy
 the priority is computed from KEV, max CVSS and max EPSS with the platform
 defaults, labelled "default policy" in the case.
 
@@ -558,7 +558,7 @@ Due date: set by the user, or suggested from the priority SLA of the policy
   hue (needs attention `feedback-warning-primary`, in progress
   `feedback-info-primary`, mitigated `feedback-alert-primary`, resolved
   `feedback-success-primary`, accepted risk `feedback-neutral-primary`). AI purple is never used on Cases (it is the AI
-  colour only): crown jewels are a `neutral` Chip with the shield icon.
+  colour only): primary assets are a `neutral` Chip with the shield icon.
 - **Owners** are the DS `Avatar` (initials, name in its tooltip); unassigned
   reads "Unassigned" in secondary text, never a warning colour.
 - **Period switch**: the shared `SegmentedFilter` (`size="sm"`, radio). One
@@ -649,7 +649,7 @@ then the existing AI assessment and facts grid unchanged.
   30 d", never an empty gap.
 - **Top cases** under each open column: the three highest-priority cases
   (title on one line with ellipsis and its full text in the tooltip, priority
-  Chip, issue count, crown jewel Chip, owner Avatar or "Unassigned", age),
+  Chip, issue count, primary asset Chip, owner Avatar or "Unassigned", age),
   each a link to its page.
 - **Resolved** column: cases resolved in the period, the median time to
   resolve, and the issues they closed ("22 cases, 412 issues closed"; the
@@ -714,7 +714,7 @@ then the existing AI assessment and facts grid unchanged.
 - **The shared `DataTable`, its own toolbar anatomy (B2)**, one row at 1080
   and 1728 in en, fr, es and ja: search ("Search fix, product or CVE"), ONE
   `FiltersPill` holding the facets (owner: me / unassigned / a person,
-  priority, crown jewel, source, product, overdue, accepted risk expiring in
+  priority, primary asset, source, product, overdue, accepted risk expiring in
   14 days) with its count badge, "Clear all filters" (an icon with its
   tooltip in compact mode), then right: `TotalChip`, Columns, page size, CSV
   export. Active filters show as the pill's count and the panel's checked
@@ -725,9 +725,9 @@ then the existing AI assessment and facts grid unchanged.
   and "14 CVEs from OpenCTI and OpenAEV" in its tooltip; the sub line is
   gone, so every row is one line), Issues, Owner (Avatar + name, truncate),
   Due ("6 Nov" with the error-tone "Overdue" Chip), State (Chip). Hidden below
-  `xl` and offered in Columns: Crown jewels, Assets, KEV, In state. At 1728
+  `xl` and offered in Columns: Primary assets, Assets, KEV, In state. At 1728
   every column shows.
-- **Sort (round 2 B3)**: Priority, Fix, Issues, Crown jewels, Assets, KEV,
+- **Sort (round 2 B3)**: Priority, Fix, Issues, Primary assets, Assets, KEV,
   Owner, Due and In state are sortable. Default: Priority descending, then
   Due ascending (the most urgent case on top), `?sort=priority&dir=desc` in
   the URL; a click on the active column flips the direction, another column
@@ -798,7 +798,7 @@ with "Ranking points" on the band (a dialog, "Reset to defaults", saved with
 |---|---|---|
 | Priority critical / high / medium / low | `priority_*` | 40 / 25 / 10 / 0 |
 | At least one KEV issue | `kev` | 15 |
-| At least one crown jewel touched | `crown_jewel` | 15 |
+| At least one primary asset touched | `primary_asset` | 15 |
 | SLA breached or due date passed | `overdue` | 20 |
 | Due within `due_soon_days` (1 to 90, default 3) | `due_soon` | 10 |
 | No owner | `no_owner` | 5 |
@@ -827,7 +827,7 @@ the Settings form carries it whole.
   (`ctem/CasesBulkActions.tsx`); `case-actions.test.ts` fails when the two
   drift apart. Split stays in the Issues table selection.
 - Summary: the shared `StatCard` row (issues, KEV, max CVSS, max EPSS, assets,
-  crown jewels, first seen), wrapping to two rows at 1080; each value's
+  primary assets, first seen), wrapping to two rows at 1080; each value's
   tooltip names its source and read time.
 - "Why this case" sentence: the key rule that grouped it (R1 / R2 / R3) and
   the policy rules that set its priority.
@@ -898,7 +898,7 @@ the Settings form carries it whole.
   read before signals (legacy)". Legacy cases are labelled, not backfilled:
   their members carry no reference that maps one signal per case for every
   viewer.
-- Assets and crown jewels (from #11543 when present; otherwise "Link assets
+- Assets and primary assets (from #11543 when present; otherwise "Link assets
   in Settings > Organization").
 - History: vertical event list with actor (person Avatar, or the system or
   agent icon of 7.0), time
@@ -953,7 +953,7 @@ cases the caller sees, with the list's visibility rule, so each count equals
 the list it links to: `counts` by status, `open`, per CTEM phase (`phases`,
 keyed by `ctem_case_audit.PHASES`) the open and waiting cases, the counts by
 status and the five open cases that need attention first (waiting for a
-decision, then priority, then the oldest status; each with the crown jewel it
+decision, then priority, then the oldest status; each with the primary asset it
 touches among the issues the caller sees), `no_phase_open` (open cases with no
 event yet: in the band, in no stage card), `waiting` (the open cases waiting
 for a decision with their gate, the oldest one and its age in hours) and
