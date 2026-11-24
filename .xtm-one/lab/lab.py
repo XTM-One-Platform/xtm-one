@@ -1153,7 +1153,7 @@ LAB_ORG_TECH_STACK = (
 LAB_ORG_COMPLETE_PROFILE = {
     **LAB_ORG_PROFILE,
     "regions": ["FR", "US"],
-    "crown_jewels": [{"name": "Payments platform", "business_service": "Card payments", "criticality": "critical"}],
+    "primary_assets": [{"name": "Payments platform", "business_service": "Card payments", "criticality": "critical"}],
     "software": [dict(entry) for entry in LAB_ORG_TECH_STACK],
     "pir_ids": ["5b1e0c3a-7d2f-4e61-9a10-000000000001"],
     "risk_appetite": {"approval_threshold": 50000},
@@ -1741,7 +1741,7 @@ LAB_INVENTORY_ASSETS = (
 #: ``organization_context_import.SECTION_SOURCES``) and the rows, synced ones carrying an ``external_id``; a row
 #: without one is typed. Each synced row gets the ``sync_id`` of its section's sync at seed time.
 LAB_ORG_SYNCED_ROWS = {
-    "crown_jewels": ("opencrq", (
+    "primary_assets": ("opencrq", (
         {"name": "Payments platform", "business_service": "Card payments", "criticality": "critical",
          "external_id": "lab-opencrq-asset-1"},
         {"name": "Customer data lake", "criticality": "high", "external_id": "lab-opencrq-asset-2"},

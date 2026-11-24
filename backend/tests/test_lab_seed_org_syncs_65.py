@@ -59,7 +59,7 @@ def test_the_fixture_reads_rows_through_the_real_mappers(monkeypatch, section, s
 
 def test_no_fixture_for_a_pair_the_lab_does_not_cover(monkeypatch):
     module, _ = _asgi(monkeypatch, {})
-    assert module.lab_org_import_read("crown_jewels", "opencrq") is None
+    assert module.lab_org_import_read("primary_assets", "opencrq") is None
 
 
 def test_the_stub_replaces_only_a_not_connected_read(monkeypatch):

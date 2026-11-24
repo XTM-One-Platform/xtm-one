@@ -9,7 +9,7 @@ import { DEFAULT_CASE_ATTENTION_WEIGHTS, weightsFromProfile, weightsToProfile } 
 const saved = vi.hoisted(() => ({ calls: [] as unknown[] }));
 vi.mock("@/hooks/api/useOrganizationContextApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useOrganizationContextApi")>()),
-  useOrganizationContext: () => ({ data: { version: 3, profile: { name: "Acme", crown_jewels: [] } } }),
+  useOrganizationContext: () => ({ data: { version: 3, profile: { name: "Acme", primary_assets: [] } } }),
   usePatchOrganizationContext: () => ({ isPending: false, mutate: (body: unknown) => saved.calls.push(body) }),
 }));
 

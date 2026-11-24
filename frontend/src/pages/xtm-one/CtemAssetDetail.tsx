@@ -88,7 +88,7 @@ export default function CtemAssetDetail() {
   const openCases = (cases.data?.cases ?? []).filter((c) => OPEN_STATES.has(c.state));
   const nameKey = (data?.name ?? "").trim().toLowerCase();
   const jewels = nameKey
-    ? (context?.profile.crown_jewels ?? []).filter((j) => (j.asset_names ?? []).some((n) => n.trim().toLowerCase() === nameKey))
+    ? (context?.profile.primary_assets ?? []).filter((j) => (j.asset_names ?? []).some((n) => n.trim().toLowerCase() === nameKey))
     : [];
 
   const onSbom = (file: File | undefined) => {
@@ -343,7 +343,7 @@ export default function CtemAssetDetail() {
         <ul className="flex flex-wrap gap-2" data-testid="ctem-asset-jewels">
           {jewels.map((j) => (
             <li key={j.name}>
-              <Link to="/settings/organization?card=crown_jewels" className="inline-flex items-center gap-1.5 text-sm underline-offset-2 hover:underline">
+              <Link to="/settings/organization?card=primary_assets" className="inline-flex items-center gap-1.5 text-sm underline-offset-2 hover:underline">
                 <Icon name="gem" size={16} className="text-default-secondary" aria-hidden />
                 {j.name}
               </Link>

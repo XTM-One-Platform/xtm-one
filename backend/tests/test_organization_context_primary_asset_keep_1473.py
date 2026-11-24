@@ -1,4 +1,4 @@
-"""Hand-typed crown jewels survive the OpenCRQ reconcile and the crown-jewel sync (#1473).
+"""Hand-typed primary assets survive the OpenCRQ reconcile and the primary-asset sync (#1473).
 
 A link set by the reconcile never hands a typed row to the sync; a sync only
 removes the rows it wrote; a jewel whose criticality the reconcile pushes
@@ -39,33 +39,33 @@ def _sync_read(assets: list[dict[str, Any]], min_level: str = "high") -> imp.Rea
 
 def test_a_link_keeps_a_typed_row_typed() -> None:
     profile = oc.parse_profile(
-        {"crown_jewels": [{**_typed("ERP", "medium"), "source": "manual", "opencrq_asset_id": "a-1"}]}
+        {"primary_assets": [{**_typed("ERP", "medium"), "source": "manual", "opencrq_asset_id": "a-1"}]}
     )
-    jewel = profile.crown_jewels[0]
+    jewel = profile.primary_assets[0]
     assert (jewel.source, jewel.external_id, jewel.opencrq_asset_id) == ("manual", "", "a-1")
 
 
 def test_a_row_saved_before_provenance_still_reads_as_an_opencrq_row() -> None:
-    jewel = oc.parse_profile({"crown_jewels": [{"name": "Payments", "opencrq_asset_id": "a-1"}]}).crown_jewels[0]
+    jewel = oc.parse_profile({"primary_assets": [{"name": "Payments", "opencrq_asset_id": "a-1"}]}).primary_assets[0]
     assert (jewel.source, jewel.external_id) == ("opencrq", "a-1")
 
 
 def test_three_typed_jewels_survive_the_reconcile_then_the_sync() -> None:
     """The acceptance scenario: critical, medium and low typed, OpenCRQ assets of the same names."""
     profile = oc.parse_profile(
-        {"crown_jewels": [_typed("Core", "critical"), _typed("Billing", "medium"), _typed("Wiki", "low")]}
+        {"primary_assets": [_typed("Core", "critical"), _typed("Billing", "medium"), _typed("Wiki", "low")]}
     )
     assets = _assets({"Core": "high", "Billing": "high", "Wiki": "high"})
     reconcile = plan_sync(profile, assets)
     assert sorted(j for j, _ in reconcile.linked) == ["Billing", "Core", "Wiki"]
     # Saved then read back, as the next request does.
     saved = oc.parse_profile(reconcile.profile.model_dump(mode="json"))
-    assert {j.source for j in saved.crown_jewels} == {"manual"}
+    assert {j.source for j in saved.primary_assets} == {"manual"}
     # #1591: nothing is pushed to OpenCRQ; the sync reads the same primary assets (>= high).
     assert reconcile.pushed == []
-    plan = imp.plan_import(saved, "crown_jewels", "opencrq", _sync_read(assets), remove_gone=True, sync_id=_SYNC)
+    plan = imp.plan_import(saved, "primary_assets", "opencrq", _sync_read(assets), remove_gone=True, sync_id=_SYNC)
     assert plan.profile is not None
-    jewels = {j.name: j for j in plan.profile.crown_jewels}
+    jewels = {j.name: j for j in plan.profile.primary_assets}
     assert sorted(jewels) == ["Billing", "Core", "Wiki"]
     for name in ("Core", "Billing", "Wiki"):
         assert (jewels[name].owner, jewels[name].business_service) == (f"{name} owner", f"{name} svc")
@@ -74,49 +74,49 @@ def test_three_typed_jewels_survive_the_reconcile_then_the_sync() -> None:
 
 def test_a_row_already_converted_by_an_older_build_is_kept_by_the_sync() -> None:
     """Rows stored as opencrq with no sync stamp (written by a link before #1473) are reported, never removed."""
-    stored = oc.CrownJewel(name="Billing", criticality="medium", source="opencrq", external_id="a-Billing", owner="CFO")
-    profile = oc.OrganizationProfile(crown_jewels=[stored])
-    plan = imp.plan_import(profile, "crown_jewels", "opencrq", _sync_read([]), remove_gone=True, sync_id=_SYNC)
+    stored = oc.PrimaryAsset(name="Billing", criticality="medium", source="opencrq", external_id="a-Billing", owner="CFO")
+    profile = oc.OrganizationProfile(primary_assets=[stored])
+    plan = imp.plan_import(profile, "primary_assets", "opencrq", _sync_read([]), remove_gone=True, sync_id=_SYNC)
     assert plan.gone == ["Billing"] and plan.gone_kept == ["Billing"]
-    assert plan.profile is not None and [j.owner for j in plan.profile.crown_jewels] == ["CFO"]
+    assert plan.profile is not None and [j.owner for j in plan.profile.primary_assets] == ["CFO"]
     assert plan.as_dict()["gone_kept"] == ["Billing"]
 
 
 def test_a_sync_still_removes_the_rows_it_wrote() -> None:
-    mine = oc.CrownJewel(name="Old", source="opencrq", external_id="a-Old", sync_id=_SYNC)
+    mine = oc.PrimaryAsset(name="Old", source="opencrq", external_id="a-Old", sync_id=_SYNC)
     plan = imp.plan_import(
-        oc.OrganizationProfile(crown_jewels=[mine]),
-        "crown_jewels",
+        oc.OrganizationProfile(primary_assets=[mine]),
+        "primary_assets",
         "opencrq",
         _sync_read([]),
         remove_gone=True,
         sync_id=_SYNC,
     )
     assert plan.gone == ["Old"] and plan.gone_kept == []
-    assert plan.profile is not None and plan.profile.crown_jewels == []
+    assert plan.profile is not None and plan.profile.primary_assets == []
 
 
 def test_the_reconcile_never_releases_a_synced_row() -> None:
     # #1591: no criticality is pushed, so no synced row falls below the sync's threshold by the reconcile.
-    synced = oc.CrownJewel(
+    synced = oc.PrimaryAsset(
         name="Billing", criticality="medium", source="opencrq", external_id="a-Billing", sync_id=_SYNC, owner="CFO"
     )
-    plan = plan_sync(oc.OrganizationProfile(crown_jewels=[synced]), _assets({"Billing": "high"}))
+    plan = plan_sync(oc.OrganizationProfile(primary_assets=[synced]), _assets({"Billing": "high"}))
     assert plan.released == [] and plan.pushed == []
-    jewel = plan.profile.crown_jewels[0]
+    jewel = plan.profile.primary_assets[0]
     assert (jewel.source, jewel.external_id, jewel.owner) == ("opencrq", "a-Billing", "CFO")
     assert plan.summary()["kept_below_sync_threshold"] == []
 
 
 def test_removed_rows_names_what_a_save_dropped() -> None:
     before = oc.OrganizationProfile(
-        crown_jewels=[oc.CrownJewel(name="A"), oc.CrownJewel(name="B", source="opencrq", external_id="x")],
+        primary_assets=[oc.PrimaryAsset(name="A"), oc.PrimaryAsset(name="B", source="opencrq", external_id="x")],
         software=[oc.SoftwareEntry(product="Splunk")],
     ).model_dump(mode="json")
     after = oc.OrganizationProfile(
-        crown_jewels=[oc.CrownJewel(name="A")], software=[oc.SoftwareEntry(product="Splunk")]
+        primary_assets=[oc.PrimaryAsset(name="A")], software=[oc.SoftwareEntry(product="Splunk")]
     )
-    assert oc.removed_rows(before, after.model_dump(mode="json")) == {"crown_jewels": ["B"]}
+    assert oc.removed_rows(before, after.model_dump(mode="json")) == {"primary_assets": ["B"]}
     assert oc.removed_rows(None, after.model_dump(mode="json")) == {}
 
 
@@ -168,11 +168,11 @@ def _store(monkeypatch: pytest.MonkeyPatch, versions: dict[int, dict[str, Any]])
 async def test_a_save_based_on_a_stale_version_is_refused_and_nothing_is_lost(monkeypatch: pytest.MonkeyPatch) -> None:
     """Client A added a jewel (v2); client B saves its copy based on v1: 409, v2 kept."""
     versions: dict[int, dict[str, Any]] = {
-        1: {"crown_jewels": [{"name": "A"}]},
-        2: {"crown_jewels": [{"name": "A"}, {"name": "B"}]},
+        1: {"primary_assets": [{"name": "A"}]},
+        2: {"primary_assets": [{"name": "A"}, {"name": "B"}]},
     }
     saved = _store(monkeypatch, versions)
-    body = api.SaveOrganizationContextRequest(profile={"crown_jewels": [{"name": "A"}]}, based_on_version=1)
+    body = api.SaveOrganizationContextRequest(profile={"primary_assets": [{"name": "A"}]}, based_on_version=1)
     admin: Any = SimpleNamespace(id=uuid.uuid4())
     db: Any = _Db()
     with pytest.raises(HTTPException) as exc:
@@ -184,26 +184,26 @@ async def test_a_save_based_on_a_stale_version_is_refused_and_nothing_is_lost(mo
 @pytest.mark.asyncio
 async def test_a_version_reads_whole_and_a_restore_names_its_source(monkeypatch: pytest.MonkeyPatch) -> None:
     versions: dict[int, dict[str, Any]] = {
-        1: {"name": "Acme", "crown_jewels": [{"name": "A", "owner": "CISO"}]},
-        2: {"name": "Acme Corp", "crown_jewels": []},
+        1: {"name": "Acme", "primary_assets": [{"name": "A", "owner": "CISO"}]},
+        2: {"name": "Acme Corp", "primary_assets": []},
     }
     saved = _store(monkeypatch, versions)
     admin: Any = SimpleNamespace(id=uuid.uuid4())
     reader: Any = _Db()
     past = await api.get_organization_context_version(1, db=reader, _admin=admin)
-    assert past.version == 1 and past.profile["crown_jewels"][0]["owner"] == "CISO"
+    assert past.version == 1 and past.profile["primary_assets"][0]["owner"] == "CISO"
     with pytest.raises(HTTPException) as missing:
         await api.get_organization_context_version(9, db=reader, _admin=admin)
     assert missing.value.status_code == 404
 
     db: Any = _Db()
-    body = api.RestoreOrganizationContextRequest(fields=["crown_jewels"], based_on_version=2)
+    body = api.RestoreOrganizationContextRequest(fields=["primary_assets"], based_on_version=2)
     restored = await api.restore_organization_context_version(1, body, db=db, admin=admin)
     assert db.committed and restored.version == 3
-    assert [j["name"] for j in restored.profile["crown_jewels"]] == ["A"]
+    assert [j["name"] for j in restored.profile["primary_assets"]] == ["A"]
     assert restored.profile["name"] == "Acme Corp"
     assert restored.sources == {
-        "crown_jewels": {"source": "restored from v1", "basis": "restored from v1 by an administrator"}
+        "primary_assets": {"source": "restored from v1", "basis": "restored from v1 by an administrator"}
     }
     assert len(saved) == 1
 
@@ -216,13 +216,13 @@ async def test_a_version_reads_whole_and_a_restore_names_its_source(monkeypatch:
 async def test_a_restore_linking_an_asset_gone_since_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     """A restore runs the checks of a form save: a jewel linking an asset no longer listed is a 422, nothing saved."""
     versions: dict[int, dict[str, Any]] = {
-        1: {"assets_exposure": [{"name": "ERP"}], "crown_jewels": [{"name": "A", "asset_names": ["ERP"]}]},
-        2: {"assets_exposure": [], "crown_jewels": []},
+        1: {"assets_exposure": [{"name": "ERP"}], "primary_assets": [{"name": "A", "asset_names": ["ERP"]}]},
+        2: {"assets_exposure": [], "primary_assets": []},
     }
     saved = _store(monkeypatch, versions)
     admin: Any = SimpleNamespace(id=uuid.uuid4())
     db: Any = _Db()
-    body = api.RestoreOrganizationContextRequest(fields=["crown_jewels"], based_on_version=2)
+    body = api.RestoreOrganizationContextRequest(fields=["primary_assets"], based_on_version=2)
     with pytest.raises(HTTPException) as exc:
         await api.restore_organization_context_version(1, body, db=db, admin=admin)
     assert exc.value.status_code == 422 and "ERP" in exc.value.detail
@@ -234,13 +234,13 @@ async def test_a_restore_rewriting_a_synced_row_is_refused(monkeypatch: pytest.M
     """A restore cannot set a synced row's fields by hand (#1367 lock): 422, nothing saved."""
     synced = {"name": "S", "source": "opencrq", "external_id": "a-S"}
     versions: dict[int, dict[str, Any]] = {
-        1: {"crown_jewels": [{**synced, "criticality": "medium"}]},
-        2: {"crown_jewels": [{**synced, "criticality": "critical"}]},
+        1: {"primary_assets": [{**synced, "criticality": "medium"}]},
+        2: {"primary_assets": [{**synced, "criticality": "critical"}]},
     }
     saved = _store(monkeypatch, versions)
     admin: Any = SimpleNamespace(id=uuid.uuid4())
     db: Any = _Db()
-    body = api.RestoreOrganizationContextRequest(fields=["crown_jewels"], based_on_version=2)
+    body = api.RestoreOrganizationContextRequest(fields=["primary_assets"], based_on_version=2)
     with pytest.raises(HTTPException) as exc:
         await api.restore_organization_context_version(1, body, db=db, admin=admin)
     assert exc.value.status_code == 422 and "kept in sync from opencrq" in exc.value.detail
@@ -248,10 +248,10 @@ async def test_a_restore_rewriting_a_synced_row_is_refused(monkeypatch: pytest.M
 
 
 def test_restored_profile_takes_the_named_fields_only() -> None:
-    current = {"name": "Now", "crown_jewels": []}
-    past = {"name": "Then", "crown_jewels": [{"name": "A"}]}
-    merged, fields = oc.restored_profile(current, past, ["crown_jewels"])
-    assert merged == {"name": "Now", "crown_jewels": [{"name": "A"}]} and fields == ["crown_jewels"]
+    current = {"name": "Now", "primary_assets": []}
+    past = {"name": "Then", "primary_assets": [{"name": "A"}]}
+    merged, fields = oc.restored_profile(current, past, ["primary_assets"])
+    assert merged == {"name": "Now", "primary_assets": [{"name": "A"}]} and fields == ["primary_assets"]
     try:
         oc.restored_profile(current, past, ["nope"])
     except ValueError as exc:

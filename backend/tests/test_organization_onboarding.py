@@ -35,13 +35,13 @@ def test_every_contract_field_is_in_exactly_one_group_with_a_hint():
 
 
 def test_the_next_question_is_the_first_missing_field():
-    assert onboarding.next_group(_profile()) == ["crown_jewels"]
+    assert onboarding.next_group(_profile()) == ["primary_assets"]
     assert onboarding.next_group(oc.parse_profile({})) == ["name"]
 
 
 def test_currency_and_hourly_rate_are_asked_together():
     profile = _profile(
-        crown_jewels=[{"name": "SCADA"}],
+        primary_assets=[{"name": "SCADA"}],
         software=[{"product": "Windows"}],
         pir_ids=["pir-1"],
     )
@@ -50,10 +50,10 @@ def test_currency_and_hourly_rate_are_asked_together():
 
 
 def test_a_skipped_field_is_not_asked_again_and_still_reported_missing():
-    profile = onboarding.skip_fields(_profile(), ["crown_jewels"])
-    assert profile.onboarding_skipped == ["crown_jewels"]
+    profile = onboarding.skip_fields(_profile(), ["primary_assets"])
+    assert profile.onboarding_skipped == ["primary_assets"]
     assert onboarding.next_group(profile) == ["software"]
-    assert "crown_jewels" in oc.missing_fields(profile)
+    assert "primary_assets" in oc.missing_fields(profile)
 
 
 def test_a_filled_field_is_never_skipped_and_an_unknown_one_is_refused():
@@ -102,9 +102,9 @@ def test_the_step_names_the_next_question_and_the_completion():
     text = onboarding.render_step(_profile(), version=3, saved=["sector"])
     assert "Saved as version 3: sector." in text
     assert "4 of 12 fields filled" in text
-    assert "crown_jewels:" in text
+    assert "primary_assets:" in text
     full = {
-        "crown_jewels": [{"name": "SCADA"}],
+        "primary_assets": [{"name": "SCADA"}],
         "software": [{"product": "Windows"}],
         "pir_ids": ["pir-1"],
         "currency": "EUR",

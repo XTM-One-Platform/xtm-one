@@ -45,7 +45,7 @@ from app.models.organization_asset_record import (
     OrganizationAssetIdentifier,
     OrganizationAssetImport,
     OrganizationAssetRecord,
-    OrganizationCrownJewelLink,
+    OrganizationPrimaryAssetLink,
 )
 from app.services import organization_asset_identity as identity
 from app.services import organization_asset_store as store
@@ -294,7 +294,7 @@ async def ensure_records(db: AsyncSession, organization_id: uuid.UUID | None = N
 
     ``None`` names the primary organization; no profile and no organization
     answers ``None``. The import reads the current profile version's
-    ``assets_exposure``, ``asset_groups`` and crown jewels' ``asset_names``,
+    ``assets_exposure``, ``asset_groups`` and primary assets' ``asset_names``,
     writes one ``import`` change, then builds the canonical store from the
     records. The caller commits.
     """
@@ -355,7 +355,7 @@ async def ensure_records(db: AsyncSession, organization_id: uuid.UUID | None = N
         seen.add(ref)
         rows.append(value)
     await _insert_records(db, org, rows, actor="import")
-    await _link_crown_jewels(db, org, profile.get("crown_jewels") or [])
+    await _link_primary_assets(db, org, profile.get("primary_assets") or [])
     db.add(OrganizationAssetImport(organization_id=org, profile_version=int(version.version) if version else 0))
     _log(
         db,
@@ -659,42 +659,42 @@ async def record_groups(
     return list(out.values())
 
 
-async def _link_crown_jewels(db: AsyncSession, organization_id: uuid.UUID, jewels: Iterable[Any]) -> None:
-    """The crown jewels' ``asset_names`` as links to the records and groups of those names."""
+async def _link_primary_assets(db: AsyncSession, organization_id: uuid.UUID, jewels: Iterable[Any]) -> None:
+    """The primary assets' ``asset_names`` as links to the records and groups of those names."""
     for jewel in jewels:
         if not isinstance(jewel, Mapping):
             continue
-        await set_crown_jewel_links(db, organization_id, str(jewel.get("name") or ""), jewel.get("asset_names") or [])
+        await set_primary_asset_links(db, organization_id, str(jewel.get("name") or ""), jewel.get("asset_names") or [])
 
 
-async def set_crown_jewel_links(
-    db: AsyncSession, organization_id: uuid.UUID, crown_jewel: str, names: Iterable[Any]
+async def set_primary_asset_links(
+    db: AsyncSession, organization_id: uuid.UUID, primary_asset: str, names: Iterable[Any]
 ) -> list[str]:
-    """Replace the links of *crown_jewel* with the records and groups *names* name; answer the names found none.
+    """Replace the links of *primary_asset* with the records and groups *names* name; answer the names found none.
 
     A person's write (#1591): the manual links are replaced; a link a sync wrote
     (``source`` opencrq or rule) whose record *names* leaves out is marked
     ``removed``, so the sync never adds it back, and one *names* keeps is kept
     (restored if it was removed). Manual wins over the sync either way.
     """
-    jewel_key = _key(crown_jewel)[:200]
+    jewel_key = _key(primary_asset)[:200]
     if not jewel_key:
         return []
     await db.execute(
-        delete(OrganizationCrownJewelLink).where(
-            OrganizationCrownJewelLink.organization_id == organization_id,
-            OrganizationCrownJewelLink.crown_jewel_key == jewel_key,
-            OrganizationCrownJewelLink.source == "manual",
+        delete(OrganizationPrimaryAssetLink).where(
+            OrganizationPrimaryAssetLink.organization_id == organization_id,
+            OrganizationPrimaryAssetLink.primary_asset_key == jewel_key,
+            OrganizationPrimaryAssetLink.source == "manual",
         )
     )
     keys = {_key(n)[:200]: str(n) for n in names if _key(n)}
     synced = list(
         (
             await db.execute(
-                select(OrganizationCrownJewelLink).where(
-                    OrganizationCrownJewelLink.organization_id == organization_id,
-                    OrganizationCrownJewelLink.crown_jewel_key == jewel_key,
-                    OrganizationCrownJewelLink.source != "manual",
+                select(OrganizationPrimaryAssetLink).where(
+                    OrganizationPrimaryAssetLink.organization_id == organization_id,
+                    OrganizationPrimaryAssetLink.primary_asset_key == jewel_key,
+                    OrganizationPrimaryAssetLink.source != "manual",
                 )
             )
         ).scalars()
@@ -726,14 +726,18 @@ async def set_crown_jewel_links(
     for name_key, group_id in groups:
         found.add(name_key)
         db.add(
-            OrganizationCrownJewelLink(organization_id=organization_id, crown_jewel_key=jewel_key, group_id=group_id)
+            OrganizationPrimaryAssetLink(
+                organization_id=organization_id, primary_asset_key=jewel_key, group_id=group_id
+            )
         )
     for name_key, record_id in records:
         found.add(name_key)
         if record_id in synced_records:
             continue  # the synced link stands for it, kept above
         db.add(
-            OrganizationCrownJewelLink(organization_id=organization_id, crown_jewel_key=jewel_key, record_id=record_id)
+            OrganizationPrimaryAssetLink(
+                organization_id=organization_id, primary_asset_key=jewel_key, record_id=record_id
+            )
         )
     await db.flush()
     return [keys[k] for k in keys if k not in found]

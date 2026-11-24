@@ -21,7 +21,7 @@ export interface PirDetail {
   question: string;
   owner: string;
   review_cadence: ReviewCadence;
-  crown_jewels: string[];
+  primary_assets: string[];
 }
 
 export const REVIEW_CADENCES = ["", "weekly", "monthly", "quarterly", "half_yearly", "yearly"] as const;
@@ -112,12 +112,12 @@ export function missingRateInto(currency: string, rates: readonly FxRate[]): boo
 }
 
 export function emptyPirDetail(): PirDetail {
-  return { question: "", owner: "", review_cadence: "", crown_jewels: [] };
+  return { question: "", owner: "", review_cadence: "", primary_assets: [] };
 }
 
 /** Whether *detail* says nothing (the save leaves it out). */
 function pirDetailEmpty(detail: PirDetail): boolean {
-  return !detail.question.trim() && !detail.owner.trim() && !detail.review_cadence && detail.crown_jewels.length === 0;
+  return !detail.question.trim() && !detail.owner.trim() && !detail.review_cadence && detail.primary_assets.length === 0;
 }
 
 /**
@@ -133,7 +133,7 @@ export function pirDetailsOf(pirIds: readonly string[], details: Record<string, 
       question: detail.question.trim(),
       owner: detail.owner.trim(),
       review_cadence: detail.review_cadence,
-      crown_jewels: [...new Set(detail.crown_jewels.map((name) => name.trim()).filter(Boolean))],
+      primary_assets: [...new Set(detail.primary_assets.map((name) => name.trim()).filter(Boolean))],
     };
     if (!pirDetailEmpty(clean)) kept[id] = clean;
   }
@@ -144,7 +144,7 @@ export function pirDetailsOf(pirIds: readonly string[], details: Record<string, 
 export function pirDetailProblem(detail: PirDetail): string | null {
   if (detail.question.trim().length > REFERENCE_BOUNDS.question) return "The question is 1,000 characters at most.";
   if (detail.owner.trim().length > REFERENCE_BOUNDS.owner) return "The owner is 200 characters at most.";
-  if (detail.crown_jewels.length > REFERENCE_BOUNDS.jewels) return "50 primary assets at most.";
+  if (detail.primary_assets.length > REFERENCE_BOUNDS.jewels) return "50 primary assets at most.";
   return null;
 }
 
