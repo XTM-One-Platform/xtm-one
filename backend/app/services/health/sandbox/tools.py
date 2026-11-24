@@ -42,7 +42,8 @@ from app.tools.base import CallableToolExecutor, ToolDefinition
 
 logger = logging.getLogger(__name__)
 
-SANDBOX_SUITE_ID = "health_sandbox"
+#: Its functions belong to Platform Health's one internal group (#1943).
+SANDBOX_SUITE_ID = "health_specialists"
 _SOURCE = f"builtin:{SANDBOX_SUITE_ID}"
 REFUSED = "Refused: the sandbox is not available to this caller for this target."
 #: Recorded traces or runs one copy takes.

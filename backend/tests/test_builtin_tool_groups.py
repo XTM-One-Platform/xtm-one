@@ -42,7 +42,7 @@ _MIN_FUNCTIONS = {
     "coordination": 25,
     "generate_report": 3,
     "deep_investigation": 2,
-    "memory_steward": 3,
+    "health_specialists": 34,
 }
 
 
@@ -63,8 +63,9 @@ def test_one_group_per_catalog_id():
     # the grounded STIX extraction, its own group so Threat Intelligence never carries it,
     # 27 with user administration (#250), 28 with the Module Analyst's (#101 S14),
     # 29 with the read-only CTEM signals and cases (#1337), 30 with the CTEM repairs (#1778),
-    # 31 with the CTEM signal and case tools on any agent (#1748).
-    assert len(_IDS) == len(set(_IDS)) == 31
+    # 31 with the CTEM signal and case tools on any agent (#1748); 24 once Platform Health's
+    # eight specialist groups merged into one internal group (#1943).
+    assert len(_IDS) == len(set(_IDS)) == 24
     assert set(_IDS) == set(catalog)
 
 
@@ -99,23 +100,29 @@ def test_audience_flags_match_the_backend_sets():
     assert not {g.id for g in BUILTIN_TOOL_GROUPS if g.agent_keyed and g.default_on}
 
 
-def test_health_only_groups_are_the_specialists_suites():
-    """A chat's session tools never offer a suite that only a Platform Health specialist's run may use."""
+def test_platform_health_shows_one_group_and_keeps_one_internal():
+    """#1943: one Platform Health group a person sees, one internal group its fleet carries."""
+    from app.services.builtin_tools import agent_builder
     from app.services.health.fleet_seed import FLEET_AGENTS
 
-    health_only = {g.id for g in BUILTIN_TOOL_GROUPS if g.health_only}
-    assert health_only == {"memory_steward", "health_diagnosis", "health_experiments", "flow_lab", "health_modules"}
-    for group in BUILTIN_TOOL_GROUPS:
-        if group.health_only:
-            assert group.gate == "health" and group.agent_keyed, group.id
-    # Carried by the fleet's specialists, none of which takes a chat; the
-    # chattable orchestrator carries none of them.
-    carriers = {gid: [a for a in FLEET_AGENTS if gid in a.builtin_tool_ids] for gid in health_only}
-    for gid, agents in carriers.items():
-        assert agents, gid
-        assert all(a.disable_chat for a in agents), gid
+    health = {g.id for g in BUILTIN_TOOL_GROUPS if g.gate == "health"}
+    assert health == {"health_orchestrator", "health_specialists"}
+    internal = {g.id for g in BUILTIN_TOOL_GROUPS if g.internal}
+    assert internal == {"health_specialists"}
+    visible_health = {g.id for g in BUILTIN_TOOL_GROUPS if g.gate == "health" and not g.internal}
+    assert visible_health == {"health_orchestrator"}
+    # The agent builder never names the internal group to the model.
+    assert "health_specialists" not in agent_builder._advertised_builtin_tool_ids()
+    assert "health_orchestrator" in agent_builder._advertised_builtin_tool_ids()
+    # Every fleet agent but the orchestrator carries it, scoped to its own functions.
+    catalog = build_builtin_tool_catalog(include_disabled=True)
+    names = {d["name"] for d in catalog["health_specialists"]}
+    for agent in FLEET_AGENTS:
+        assert "health_specialists" in agent.builtin_tool_ids, agent.slug
+        scoped = agent.allowed_tools["health_specialists"]
+        assert scoped and set(scoped) <= names, agent.slug
     payload = builtin_tool_groups_payload({})
-    assert {entry["id"] for entry in payload if entry["health_only"]} == health_only
+    assert {entry["id"] for entry in payload if entry["internal"]} == internal
 
 
 def test_every_group_has_its_card():
@@ -176,7 +183,6 @@ def test_every_function_is_stamped_with_its_group_source():
         "generate_presentation": bt.build_presentation_tools(db=None, user_id="", conversation_id=None)[0],
         "generate_report": bt.build_report_tools(db=None, user_id="", conversation_id=None)[0],
         "platform_insights": bt.build_platform_insights_tools("")[0],
-        "memory_steward": bt.build_memory_steward_tools()[0],
         "deep_investigation": bt.build_deep_investigation_tool(None, "")[0],
         "observability": bt.build_trace_tools(db=None, user_id="", agent_id="")[0],
         # The four builders of the platform group.
@@ -186,10 +192,13 @@ def test_every_function_is_stamped_with_its_group_source():
             *bt.build_flow_builder_tool(None, "00000000-0000-0000-0000-000000000000")[0],
             *build_roi_tools("")[0],
         ],
-        "health_diagnosis": bt.build_health_diagnosis_tools("")[0],
-        "health_experiments": bt.build_health_experiment_tools("")[0],
-        "flow_lab": bt.build_flow_lab_tools("")[0],
-        "health_modules": build_health_module_tools("")[0],
+        "health_specialists": [
+            *bt.build_memory_steward_tools()[0],
+            *bt.build_health_diagnosis_tools("")[0],
+            *bt.build_health_experiment_tools("")[0],
+            *bt.build_flow_lab_tools("")[0],
+            *build_health_module_tools("")[0],
+        ],
     }
     for group_id, definitions in built.items():
         for definition in definitions:

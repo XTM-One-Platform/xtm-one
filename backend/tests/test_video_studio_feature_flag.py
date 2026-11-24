@@ -156,13 +156,16 @@ def test_the_agent_builder_does_not_name_the_tool_but_still_accepts_it():
     # Every flag-gated id whose flag is off is withheld, this one included.
     withheld = {t for t, flag in agent_builder._FEATURE_GATED_BUILTIN_TOOL_IDS.items() if not is_feature_enabled(flag)}
     assert "video_studio" in withheld
-    assert set(agent_builder._advertised_builtin_tool_ids()) == current - withheld
+    # Platform Health's internal group is never advertised either (#1943).
+    assert set(agent_builder._advertised_builtin_tool_ids()) == current - withheld - {"health_specialists"}
 
 
 def test_with_the_flag_on_the_agent_builder_names_every_tool(monkeypatch):
     monkeypatch.setattr(agent_builder, "is_feature_enabled", lambda _flag: True)
     assert agent_builder._advertised_builtin_tool_ids() == tuple(
-        t for t in agent_builder._VALID_BUILTIN_TOOL_IDS if not is_former_builtin_id(t)
+        t
+        for t in agent_builder._VALID_BUILTIN_TOOL_IDS
+        if not is_former_builtin_id(t) and t != "health_specialists"
     )
 
 
