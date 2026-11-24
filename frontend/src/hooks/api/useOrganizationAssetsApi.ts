@@ -381,7 +381,7 @@ export function useAssetRecord(id: string | undefined) {
 }
 
 /** The fields a person sets on a record or a group from the Inventory. */
-export type RowPatch = Record<string, string | { tags: string[]; categories: string[]; name_contains: string }>;
+export type RowPatch = Record<string, string>;
 
 /** What a write of several rows answers: the rows written and the rows the API refused, with its reason. */
 export interface RowsOutcome {
@@ -479,6 +479,15 @@ export function useDeleteAssetGroups() {
       return { groups };
     },
     onError: (_error, _ids, context) => context?.groups && qc.setQueryData(GROUPS_KEY, context.groups),
+    onSettled: () => invalidateAssets(qc),
+  });
+}
+
+/** Delete hand-typed software, one DELETE each (`DELETE /software/{id}`, #1729); a synced one is refused (422) and reported. */
+export function useDeleteSoftware() {
+  const qc = useQueryClient();
+  return useMutation<RowsOutcome, Error, string[]>({
+    mutationFn: async (ids) => outcome(ids, await Promise.allSettled(ids.map((id) => api.delete(`/organization-context/software/${id}`)))),
     onSettled: () => invalidateAssets(qc),
   });
 }

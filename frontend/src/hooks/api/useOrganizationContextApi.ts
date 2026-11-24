@@ -5,7 +5,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { syncFlowNodeCatalog } from "@/lib/flow-node-catalog";
-import type { FxRate, PirDetail } from "@/lib/organization-reference";
 import type {
   AssetIdentitySettings,
   AttackSurfacePass,
@@ -54,10 +53,6 @@ export interface OrganizationProfile {
   pir_ids: string[];
   /** The last known OpenCTI name of each saved PIR (#9615). */
   pir_names?: Record<string, string>;
-  /** What the organization says about each PIR it follows, by PIR id (#1773); absent on an older backend. */
-  pir_details?: Record<string, PirDetail>;
-  /** The reference exchange rates an agent converts an amount with (#1383, settable in the form since #1773). */
-  fx_rates?: FxRate[];
   risk_appetite: { annual_loss_threshold: number | null; approval_threshold: number | null };
   loaded_hourly_rate: number | null;
   currency: string;
@@ -89,8 +84,6 @@ export interface OrganizationContextResponse {
   author_user_id: string | null;
   profile: OrganizationProfile;
   missing_fields: string[];
-  /** The provenance the version keeps, field -> {source, basis, confirmed_at?} (#1473, #1773). */
-  sources?: Record<string, unknown> | null;
 }
 
 const KEY = ["organization-context"] as const;
@@ -311,6 +304,8 @@ export function usePatchOrganizationContext() {
     meta: { suppressGlobalErrorToast: true },
     onSuccess: (saved) => {
       qc.setQueryData(KEY, saved);
+      // A patched software list or matching rule changes what the Inventory tabs read (#1752).
+      void qc.invalidateQueries({ queryKey: ["organization-assets"] });
     },
   });
 }
@@ -431,7 +426,7 @@ export function useDraftOrganizationContext() {
 }
 
 /** A profile section the platform import fills (#11780); one run imports one section. */
-export type ImportSectionKey = "assets" | "asset_groups" | "ai_systems" | "tech_stack" | "crown_jewels" | "pirs";
+export type ImportSectionKey = "assets" | "asset_groups" | "ai_systems" | "software" | "crown_jewels" | "pirs";
 /** The Filigran platforms, then the endpoint sources read through a Microsoft integration (#1251). */
 export type ImportSourceKey =
   | "openaev"
