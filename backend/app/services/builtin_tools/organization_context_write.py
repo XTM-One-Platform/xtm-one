@@ -33,7 +33,13 @@ off by default:
   saved by the administrator the turn acts for (#11888);
 - ``list_organization_proposals`` and ``decide_organization_proposal`` read
   and accept or reject the pending proposals, the review of Settings >
-  Organization (``organization_context_proposals.decide``, #475).
+  Organization (``organization_context_proposals.decide``, #475);
+- ``list_organization_versions`` and ``restore_organization_version`` read
+  the saved versions and restore fields from one, through the handlers of
+  the Settings > Organization routes so every check is the same (#1676);
+  ``update_organization_context`` takes ``based_on_version``; the tools the
+  profile's platform services declare (``organization_context_agent_tools``)
+  join the group, named there, never here (invariant 18).
 
 Authorization is enforced twice, as Settings > Organization is admin-only:
 the turn wires the group only when the person it acts for is a platform
@@ -63,6 +69,8 @@ ORGANIZATION_CREATE_SYNC_TOOL = "create_organization_sync"
 ORGANIZATION_RUN_SYNC_TOOL = "run_organization_sync"
 ORGANIZATION_LIST_PROPOSALS_TOOL = "list_organization_proposals"
 ORGANIZATION_DECIDE_PROPOSAL_TOOL = "decide_organization_proposal"
+ORGANIZATION_VERSIONS_TOOL = "list_organization_versions"
+ORGANIZATION_RESTORE_TOOL = "restore_organization_version"
 _PROPOSAL_STATUSES = ("pending", "accepted", "rejected")
 _SOURCE = f"builtin:{ORGANIZATION_CONTEXT_WRITE_GROUP}"
 REFUSAL = "Refused: only an administrator can change the organization profile."
@@ -109,7 +117,9 @@ def build_organization_context_write_tools(
 ) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """The write tools of the profile, acting for *user_id* (an administrator)."""
 
-    async def _update(organization: str = "", changes: list | None = None) -> str:
+    async def _update(
+        organization: str = "", changes: list[Any] | None = None, based_on_version: int | None = None
+    ) -> str:
         if not caller_is_admin or not user_id:
             return REFUSAL
         from app.core.database import async_session
@@ -133,6 +143,7 @@ def build_organization_context_write_tools(
                     organization=str(organization or ""),
                     changes=list(changes or []),
                     agent_name=agent_name,
+                    based_on_version=based_on_version,
                 )
                 await log_audit(
                     db,
@@ -620,6 +631,85 @@ def build_organization_context_write_tools(
             return "Error: the proposal could not be decided right now. Say so; nothing was changed."
         return json.dumps({"proposal_id": str(wanted), **outcome}, default=str)
 
+    def _http_refusal(prefix: str, exc: Any) -> str:
+        """The route's refusal (404, 409, 422) as the tool's answer: nothing was saved."""
+        return f"{prefix}: {getattr(exc, 'detail', exc)}"
+
+    async def _versions(version: int | None = None, limit: int = 20) -> str:
+        import json
+
+        from fastapi import HTTPException
+
+        from app.api.v1 import organization_context as routes
+        from app.core.database import async_session
+
+        try:
+            async with async_session() as db:
+                person = await _admin(db)
+                if person is None:
+                    return REFUSAL
+                if version is not None:
+                    one = await routes.get_organization_context_version(int(version), db=db, _admin=person)
+                    return json.dumps(one.model_dump(mode="json"), default=str)
+                rows = await routes.list_organization_context_versions(
+                    limit=max(1, min(int(limit or 20), 100)), db=db, _admin=person
+                )
+                return json.dumps({"versions": [r.model_dump(mode="json") for r in rows]}, default=str)
+        except HTTPException as exc:
+            return _http_refusal("Not read", exc)
+        except Exception:
+            logger.warning("Organization profile versions read failed", exc_info=True)
+            return "Error: the profile versions could not be read right now. Say so."
+
+    async def _restore(version: int = 0, fields: list[Any] | None = None, based_on_version: int | None = None) -> str:
+        import json
+
+        from fastapi import HTTPException
+
+        from app.api.v1 import organization_context as routes
+        from app.core.database import async_session
+        from app.services.audit import log_audit
+
+        try:
+            async with async_session() as db:
+                person = await _admin(db)
+                if person is None:
+                    return REFUSAL
+                body = routes.RestoreOrganizationContextRequest(
+                    fields=[str(f) for f in (fields or [])], based_on_version=based_on_version
+                )
+                # The route's own handler: the 409 stale base and every check of a hand save (#1473).
+                saved = await routes.restore_organization_context_version(int(version), body, db=db, admin=person)
+                await log_audit(
+                    db,
+                    user=person,
+                    action="update",
+                    entity_type="organization_context",
+                    entity_id=str(saved.version),
+                    entity_name="organization",
+                    summary=(
+                        f"Organization profile version {saved.version} restored from v{version} by agent "
+                        f"{agent_name or 'unknown'}: {', '.join(body.fields) or 'every field'}"
+                    )[:500],
+                    details={"agent": agent_name, "version": saved.version, "restored_from": int(version)},
+                )
+                await db.commit()
+                return json.dumps(
+                    {
+                        "version": saved.version,
+                        "restored_from": int(version),
+                        "fields": body.fields or "every field",
+                        "removed_rows": saved.removed_rows,
+                        "missing_fields": saved.missing_fields,
+                    },
+                    default=str,
+                )
+        except HTTPException as exc:
+            return _http_refusal("Not restored", exc)
+        except Exception:
+            logger.warning("Organization profile restore failed", exc_info=True)
+            return "Error: the version could not be restored right now. Say so; nothing was changed."
+
     executor = CallableToolExecutor()
     executor.register(ORGANIZATION_UPDATE_TOOL, _update)
     executor.register(ORGANIZATION_UPSERT_ROWS_TOOL, _upsert_rows)
@@ -630,6 +720,8 @@ def build_organization_context_write_tools(
     executor.register(ORGANIZATION_RUN_SYNC_TOOL, _run_sync)
     executor.register(ORGANIZATION_LIST_PROPOSALS_TOOL, _list_proposals)
     executor.register(ORGANIZATION_DECIDE_PROPOSAL_TOOL, _decide_proposal)
+    executor.register(ORGANIZATION_VERSIONS_TOOL, _versions)
+    executor.register(ORGANIZATION_RESTORE_TOOL, _restore)
     _apply = {"type": "boolean", "description": "false (default): preview only. true: save a new version."}
     # The platforms and formats are declared by the services, never named here (invariant 18).
     from app.services.organization_context_import import SECTION_SOURCES
@@ -661,6 +753,10 @@ def build_organization_context_write_tools(
                         "type": "array",
                         "description": "Field changes: {field (contract path, e.g. tech_stack), value, basis}.",
                         "items": {"type": "object"},
+                    },
+                    "based_on_version": {
+                        "type": "integer",
+                        "description": "The version you read: another saved since refuses, nothing saved.",
                     },
                 },
                 "required": ["changes"],
@@ -827,7 +923,46 @@ def build_organization_context_write_tools(
             source=_SOURCE,
             priority=0,
         ),
+        ToolDefinition(
+            name=ORGANIZATION_VERSIONS_TOOL,
+            description=(
+                "The saved versions of your organization's profile, newest first (version, source, author, "
+                "crown jewel count, provenance); with version, that version's whole profile."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {"version": {"type": "integer"}, "limit": {"type": "integer"}},
+            },
+            source=_SOURCE,
+            priority=0,
+        ),
+        ToolDefinition(
+            name=ORGANIZATION_RESTORE_TOOL,
+            description=(
+                "Save the next profile version with fields taken from a past version (Settings > Organization "
+                "restore, same checks). Answers the rows the restore drops." + SHARED_CONTEXT_CLAUSE
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "version": {"type": "integer"},
+                    "fields": {"type": "array", "items": {"type": "string"}, "description": "Empty: every field."},
+                    "based_on_version": {"type": "integer", "description": "The current version you read."},
+                },
+                "required": ["version"],
+            },
+            source=_SOURCE,
+            priority=0,
+        ),
     ]
+    # The tools a platform service of the profile declares (#1676): named and run there, wired here generically.
+    from app.services.organization_context_agent_tools import declared_organization_tools
+
+    for definition, handler in declared_organization_tools(
+        admin=_admin, refusal=REFUSAL, shared_context_clause=SHARED_CONTEXT_CLAUSE
+    ):
+        executor.register(definition.name, handler)
+        definitions.append(dataclasses.replace(definition, source=_SOURCE, priority=0))
     if include_proposal:
         from .organization_proposals import build_organization_proposal_tool
 

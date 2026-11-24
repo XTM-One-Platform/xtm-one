@@ -24,6 +24,14 @@ def test_stack_matches_by_cpe_then_name_and_vendor():
     assert collector._stack_matches({"name": "FortiOS", "vendor": "Other"}, STACK) is None
     assert collector._stack_matches({"name": "FortiOS"}, STACK) == "Fortinet FortiOS"
     assert collector._stack_matches({"name": "Nginx"}, STACK) is None
+    # The vendor a CPE names counts as the node's vendor (#1693).
+    assert collector._stack_matches({"name": "FortiOS", "cpe": "cpe:2.3:o:other:fortios:7.0"}, STACK) is None
+    assert (
+        collector._stack_matches({"name": "FortiOS", "cpe": "cpe:2.3:o:fortinet:fortios:7.0"}, STACK)
+        == "Fortinet FortiOS"
+    )
+    assert collector._stack_matches({"name": "FortiOS", "cpe": "cpe:/o:fortinet:fortios"}, STACK) == "Fortinet FortiOS"
+    assert collector._stack_matches({"name": "FortiOS", "cpe": "cpe:2.3:o:*:fortios"}, STACK) == "Fortinet FortiOS"
 
 
 async def test_kev_tailored_counts_kev_related_to_matched_software(monkeypatch):
