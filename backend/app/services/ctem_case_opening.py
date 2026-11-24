@@ -111,7 +111,6 @@ async def set_opening(db: AsyncSession, *, vertical: str, on: bool, actor: User)
         user=actor,
         action="update",
         entity_type="ctem_case_opening",
-        entity_id=vertical,
         entity_name=f"CTEM case opening ({vertical})",
         summary=f"Turned CTEM case opening {'on' if on else 'off'} for {vertical}",
         details={"vertical": vertical, "on": on, "changed_at": datetime.now(UTC).isoformat()},
