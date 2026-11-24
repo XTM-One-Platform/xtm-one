@@ -791,6 +791,9 @@ export default function CtemCaseDetail() {
             changeText={changeTextOf}
             renderRun={renderRun}
             renderEvent={renderEvent}
+            gates={kase.gates}
+            history={kase.history}
+            backTo={`/ctem/cases/${kase.id}`}
           />
         </CardContent>
       </Card>

@@ -51,6 +51,38 @@ export const CASE_FACT_ICON = {
   order: "list-ordered",
 } as const satisfies Record<string, IconName>;
 
+/** The icon of each kind of case history event (`ctem_cases_store` kinds), a plain dot when unknown. */
+const CASE_EVENT_ICON: Readonly<Record<string, IconName>> = {
+  created: "circle-plus",
+  issue_added: "plus",
+  issue_closed: "circle-check",
+  retargeted: "refresh-cw",
+  state: "flag",
+  owner: "user",
+  due: "calendar",
+  note: "sticky-note",
+  split: "copy",
+  merged: "layers-2",
+  merge: "layers-2",
+  signal: "radar",
+  validation: "shield-check",
+  sla_breached: "triangle-alert",
+  exploitation: "zap",
+  attack_path: "route",
+  source_event: "custom/openaev",
+  ticket: "tag",
+  retest_requested: "rotate-ccw",
+  gate: "badge-check",
+  treatment_plan: "wrench",
+  threat_package: "package-check",
+  run: "bot",
+};
+
+/** The icon of a history event by its kind (`run` for a fleet run). */
+export function caseEventIcon(kind: string): IconName {
+  return CASE_EVENT_ICON[kind] ?? "circle";
+}
+
 /** The icon of an actor by its type, the system icon when unknown. */
 export function actorIcon(type: string | null | undefined): IconName {
   if (type === "person" || type === "user") return CASE_FACT_ICON.person;
