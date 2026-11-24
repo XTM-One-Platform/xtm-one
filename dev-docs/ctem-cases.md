@@ -382,7 +382,13 @@ explained. A single-platform answer draws the card as before.
   the system evidence "every member issue closed at source" (history line),
   unless it is in "accepted risk", which keeps its state until expiry.
 - A resolved case whose issues return is reopened ("needs attention") with a
-  history line "reopened: issues open again at source".
+  history line "reopened: issues open again at source". A case a person, an
+  agent or a gate resolved (its newest `resolved` transition carries evidence
+  other than the two recompute writes, a gate answered not exploitable for
+  example) holds while its issues stay as they were (#1646): recompute reopens
+  it only on a changed issue (a new member, a member that closed and came
+  back, a moved fixed version), with the history line "reopened: issues
+  changed since the closure decision (<the closure evidence>)".
 - State, owner, due date, notes and history are never written by recompute.
 - Every case a recompute writes is worked by the loop (#1206): a new case
   raises `ctem_case.opened`, a reopen `ctem_case.reopened`, a resolve
@@ -964,7 +970,7 @@ The third brick of the spine: signal (`dev-docs/ctem-signals.md`) -> reconcile a
 
 **Gate order (#1606).** A case moves scoping -> validation -> mobilization, one person decision at a time. `services/ctem_gate_order.py` holds three rules at the agent's work item write (`require_person_ask`, the `create_work_item` / `update_work_item` tools): (1) a `ctem.mobilize` item (`ctem:f1:case-mobilize:`, `ctem:f2:mobilize:` + case id) parked for a person is refused while a `ctem.analyst_review` or `ctem.validation.non_readonly` item of the same case (`ctem:review:`, `ctem:validation:`, `ctem:f2:validate:`) still waits for one, in the writer's own items or its workspace; the Gate answered run files it after; (2) the question of a waiting gate item is never changed in place: the item is cancelled with a note naming its replacement and a new item is filed, so the stored decision and the cards sent keep their question; (3) a gate card never points to a run, a trace or a transcript: the evidence is in its context. Autonomous mode files no gate item, so nothing holds it. A person's own write and a system write are not checked. The doctrine the orchestrators apply (doubt moves forward, mobilize on unproven validation, deterministic closure of stale items with the reason, a stated outcome per phase) is in their personas.
 
-**A person's answer resumes the case, whatever its key.** The seeded "Gate answered" listener of each CTEM loop (`agents/gate_answered.py`, `builtin_agents._gate_answered_assignment`) hears `work_item.status_changed` from blocked to open on every own item keyed `ctem:` whose event carries `answered: true`. Only `work_item.answer_work_item` sets that flag (`publish_transition(answered=True)`), so a decision the loop keyed outside its gate catalog (an evidence request such as `ctem:f1:version-read:`, an operational blocker such as `ctem:f1:jira-reauth:`) resumes the case, and a dependency release of a case or re-test item wakes nothing. The catalog `CTEM_F*_GATE_PREFIXES` still names the gates the case page draws and the personas file.
+**A person's answer resumes the case, whatever its key.** The seeded "Gate answered" listener of each CTEM loop (`agents/gate_answered.py`, `builtin_agents._gate_answered_assignment`) hears `work_item.status_changed` from blocked to open on every own item keyed `ctem:` whose event carries `answered: true`. Only `work_item.answer_work_item` sets that flag (`publish_transition(answered=True)`), so a decision the loop keyed outside its gate catalog (an evidence request such as `ctem:f1:version-read:`, an operational blocker such as `ctem:f1:jira-reauth:`) resumes the case, and a dependency release of a case or re-test item wakes nothing. The catalog `CTEM_F*_GATE_PREFIXES` still names the gates the case page draws and the personas file. Answers of different decisions run side by side: every seeded "Gate answered" listener names `max_concurrent_runs` (`GATE_ANSWERED_CONCURRENCY`, 5) over the one-run default of seeded event triggers, and `ordering_key: correlation_key`, so two answers on one decision key run one at a time in arrival order; the seed rewrites the trigger of an existing install at boot.
 
 **Visibility.** A `signal` member is shown to a viewer under the signal API's rule (an administrator, or the user it was recorded for); a case with no member the viewer sees stays absent, as before (#11613).
 
