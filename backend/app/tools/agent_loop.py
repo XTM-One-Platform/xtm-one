@@ -268,6 +268,7 @@ from app.tools.write_coalescing import (
 
 if TYPE_CHECKING:
     from app.llm.base import BaseLLMProvider, ChatMessage, ChatResponse
+    from app.services.tool_surface_refresh import IntegrationSurfaceRefresher
 
     # ``True`` for a tool result the model has not been sent yet — see
     # ``_unseen_tool_result_predicate`` and the curation passes that take it.
@@ -9993,6 +9994,10 @@ async def run_agent_loop(
     # Evaluation only: each tool_done carries its tool's time.
     report_tool_durations: bool = False,
     context_sections: Mapping[str, int] | None = None,
+    # The caller's own integration build and narrowing (#1874): a tool of the
+    # turn that changes an integration the run is bound to refreshes the
+    # surface through it at the end of that iteration. None: no refresh.
+    tool_surface_refresher: IntegrationSurfaceRefresher | None = None,
 ) -> ChatResponse:
     """Run the agentic loop until the LLM stops calling tools.
 

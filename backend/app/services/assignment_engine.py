@@ -162,6 +162,7 @@ from app.services.orchestration_engine import (
     notify_orchestration_wake,
     queued_deadline,
 )
+from app.services.tool_surface_refresh import IntegrationSurfaceRefresher
 from app.tools.base import FileContext, HumanInputRequestedError, ScopedToolExecutor
 from app.tools.wait_policy import WaitPolicy
 
@@ -5812,6 +5813,9 @@ async def execute_assignment_run(
             _platform_names: list = []
             # The run's bound MITRE ATT&CK sources, for the same extraction.
             _attack_sources: list = []
+            # The integration build of this run, replayed when a tool of the run
+            # changes an integration it is bound to (#1874); None: no refresh.
+            _rebuild_integration_tools: Any = None
             if effective_bindings:
                 try:
                     from app.services.assignment_helpers import resolve_hitl
@@ -5969,6 +5973,32 @@ async def execute_assignment_run(
                             len(filtered_defs),
                             len(integ_defs) - len(filtered_defs),
                         )
+
+                    _refresh_bindings = dict(effective_bindings)
+                    _refresh_context = dict(integration_context)
+                    _refresh_allowed = merge_tool_allow_lists(
+                        agent.integration_allowed_tools or {},
+                        assignment.integration_allowed_tools or {},
+                    )
+                    _refresh_guard = auth_guard
+
+                    async def _rebuild_integration_tools_now() -> tuple[list[Any], Any]:
+                        """This run's integration build, allow lists and auth guard,
+                        in a session of its own (the loop holds none)."""
+                        context = {
+                            **_refresh_context,
+                            "missing_integration_bindings": [],
+                            PLATFORM_NAMES_CONTEXT_KEY: [],
+                            ATTACK_SOURCES_CONTEXT_KEY: [],
+                        }
+                        async with async_session() as refresh_db:
+                            defs, executor = await build_integration_tools(
+                                refresh_db, _refresh_bindings, context=context
+                            )
+                        defs = filter_integration_tools(defs, _refresh_allowed)
+                        return defs, AuthGuardedExecutor(executor, defs, _refresh_guard)
+
+                    _rebuild_integration_tools = _rebuild_integration_tools_now
                 except Exception as e:
                     # Without integration tools the assignment runs with a
                     # silently degraded toolbox — operators frequently see
@@ -7922,7 +7952,6 @@ async def execute_assignment_run(
                     getattr(assignment, "builtin_allowed_tools", None) or {},
                 )
                 if _builtin_allowed:
-                    from app.services.builtin_tools import filter_builtin_tools
                     from app.services.builtin_tools.filtering import (
                         builtin_tools_outside_scope,
                         describe_outside_builtin_scope,
@@ -7936,15 +7965,23 @@ async def execute_assignment_run(
                             describe_outside_builtin_scope(_group, scope="this agent's or this assignment's"),
                             registered=True,
                         )
-                    effective_tools = filter_builtin_tools(
-                        effective_tools, _builtin_allowed
-                    )
-                if agent.tool_deny_list:
-                    from app.services.builtin_tools import apply_tool_deny_list
+                _deny_list = agent.tool_deny_list
 
-                    effective_tools = apply_tool_deny_list(
-                        effective_tools, agent.tool_deny_list
-                    )
+                def _narrow_tool_surface(tools: list[Any]) -> list[Any]:
+                    """The offered surface from the composite's tools: the one
+                    narrowing a refresh inside the turn replays (#1874)."""
+                    narrowed = tools
+                    if _builtin_allowed:
+                        from app.services.builtin_tools import filter_builtin_tools
+
+                        narrowed = filter_builtin_tools(narrowed, _builtin_allowed)
+                    if _deny_list:
+                        from app.services.builtin_tools import apply_tool_deny_list
+
+                        narrowed = apply_tool_deny_list(narrowed, _deny_list)
+                    return narrowed
+
+                effective_tools = _narrow_tool_surface(effective_tools)
 
                 # --- Per-tool approval gate ------------------------
                 # Resolve everything the gate needs ONCE for this run and close
@@ -8302,6 +8339,12 @@ async def execute_assignment_run(
                     user_id=effective_user_id,
                 )
                 loop_kwargs["on_checkpoint"] = _run_checkpoint.offer
+                # The run's own build and narrowing, replayed by the loop when a
+                # tool of the run changes an integration it is bound to (#1874).
+                if loop_kwargs["executor"] is not None and _rebuild_integration_tools is not None:
+                    loop_kwargs["tool_surface_refresher"] = IntegrationSurfaceRefresher(
+                        composite, loop_kwargs["executor"], _rebuild_integration_tools, _narrow_tool_surface
+                    )
                 # Tool groups the assignment declares are on the wire from the
                 # first request, so the cached prompt prefix holds all run.
                 _preload_groups = assignment_dispatch.preload_tool_groups(
