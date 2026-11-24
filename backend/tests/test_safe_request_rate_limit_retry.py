@@ -11,7 +11,8 @@ Validates that safe_request:
   emits the ``"after N retries"`` log label on that path.
 - Returns the success response when a retry eventually succeeds.
 - Does not retry on other non-success status codes (4xx, 5xx).
-- Does not retry on network errors.
+- Retries a connection never established (any verb), never a timeout, and
+  names the outage (since when, retries made) once the retries are spent.
 - Keeps the ``(None, err)`` contract on failure by default, and only returns
   the failed ``httpx.Response`` when the caller opts in via
   ``expected_statuses`` (so it can branch on ``resp.status_code``).
@@ -26,6 +27,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+from app.integrations import http as http_mod
 from app.integrations.http import (
     _RATE_LIMIT_MAX_DELAY,
     _RATE_LIMIT_MAX_RETRIES,
@@ -447,19 +449,61 @@ async def test_transient_retry_does_not_cover_unlisted_statuses():
 
 
 @pytest.mark.asyncio
-async def test_returns_immediately_on_network_error():
-    """A ConnectError must be returned immediately, no sleep, no retry."""
+async def test_connect_error_is_retried_then_names_the_outage():
+    """A connection never established is retried (any verb), then the error names since when."""
+    calls = {"n": 0}
 
     class _ErrorClient:
         async def request(self, method: str, url: str, **kwargs) -> httpx.Response:
+            calls["n"] += 1
             raise httpx.ConnectError("connection refused")
 
+    http_mod._UNREACHABLE_SINCE.pop("OutageProvider", None)
     with patch("app.integrations.http.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
-        resp, err = await safe_request(_ErrorClient(), "get", "https://example.com/net", "TestProvider", "net call")
+        resp, err = await safe_request(_ErrorClient(), "post", "https://example.com/net", "OutageProvider", "net call")
 
     assert resp is None
     assert err is not None
-    assert "connect" in err.lower() or "reach" in err.lower()
+    assert "connect" in err.lower()
+    assert calls["n"] == http_mod._CONNECT_MAX_RETRIES + 1
+    assert mock_sleep.await_count == http_mod._CONNECT_MAX_RETRIES
+    assert "Outage: OutageProvider unreachable from this worker since " in err
+    assert f"{http_mod._CONNECT_MAX_RETRIES} retries made" in err
+    assert "OutageProvider" in http_mod._UNREACHABLE_SINCE
+
+
+@pytest.mark.asyncio
+async def test_connect_error_then_answer_clears_the_outage():
+    """A blip is absorbed by the retry and the first answer ends the outage."""
+    answers: list = [httpx.ConnectError("refused"), _make_response(200)]
+
+    class _BlipClient:
+        async def request(self, method: str, url: str, **kwargs) -> httpx.Response:
+            answer = answers.pop(0)
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+    with patch("app.integrations.http.asyncio.sleep", new_callable=AsyncMock):
+        resp, err = await safe_request(_BlipClient(), "get", "https://example.com/net", "BlipProvider", "net call")
+
+    assert err is None and resp is not None
+    assert "BlipProvider" not in http_mod._UNREACHABLE_SINCE
+
+
+@pytest.mark.asyncio
+async def test_timeout_is_not_retried():
+    """A timeout may have reached the provider: returned at once, no retry."""
+
+    class _TimeoutClient:
+        async def request(self, method: str, url: str, **kwargs) -> httpx.Response:
+            raise httpx.ReadTimeout("slow")
+
+    with patch("app.integrations.http.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        resp, err = await safe_request(_TimeoutClient(), "post", "https://example.com/net", "TestProvider", "net call")
+
+    assert resp is None and err is not None
+    assert "Outage" not in err
     mock_sleep.assert_not_called()
 
 

@@ -103,6 +103,30 @@ _RATE_LIMIT_MAX_DELAY = 30.0
 # when the first attempt succeeded behind a failing proxy.
 TRANSIENT_RETRY_STATUSES = frozenset({502, 503, 504})
 
+# A connection that was never established (DNS, refused, TLS handshake) is
+# retried for every verb: no byte of the request reached the provider, so a
+# mutation cannot be applied twice. Short and bounded, for a blip.
+_CONNECT_MAX_RETRIES = 2
+_CONNECT_BASE_DELAY = 1.0
+
+# provider -> wall time of the first connection failure of the current outage,
+# cleared by the first response the provider answers. Process-local: it names
+# how long this worker has been unable to reach the provider.
+_UNREACHABLE_SINCE: dict[str, float] = {}
+
+
+def _outage_line(provider: str, retries: int) -> str:
+    """The outage status a connection failure ends with: since when, retries made."""
+    since = _UNREACHABLE_SINCE.get(provider)
+    if since is None:
+        return ""
+    stamp = time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime(since))
+    minutes = max(0.0, (time.time() - since) / 60.0)
+    return (
+        f" Outage: {provider} unreachable from this worker since {stamp} "
+        f"({minutes:.0f} min), {retries} retr{'y' if retries == 1 else 'ies'} made."
+    )
+
 # Default timeout (seconds) for integration HTTP requests.
 DEFAULT_TIMEOUT = 30
 
@@ -1169,10 +1193,30 @@ async def safe_request(
             # behaviour-preserving change for every call that already worked.
             resp: httpx.Response = await client.request(method.upper(), url, **kwargs)
         except httpx.HTTPError as exc:
+            is_connect = isinstance(exc, httpx.ConnectError) and not getattr(exc, "is_relay_error", False)
+            if is_connect:
+                _UNREACHABLE_SINCE.setdefault(provider, time.time())
+                if attempt < _CONNECT_MAX_RETRIES:
+                    wait = random.uniform(0, _CONNECT_BASE_DELAY * (2**attempt))  # noqa: S311
+                    # Retry jitter for backoff; not used for secrets or security decisions.
+                    if max_total_seconds is None or (time.monotonic() - started + wait <= max_total_seconds):
+                        _log_request_warning(
+                            provider,
+                            method,
+                            log_path,
+                            f"retry {attempt + 1}/{_CONNECT_MAX_RETRIES} in {wait:.1f}s",
+                            label="connection error",
+                        )
+                        await asyncio.sleep(wait)
+                        continue
             err = format_network_error(exc, provider, action)
+            if is_connect:
+                err += _outage_line(provider, attempt)
             _log_request_warning(provider, method, log_path, err, label="network error")
             _note(None, attempt, network_error=True)
             return None, err
+
+        _UNREACHABLE_SINCE.pop(provider, None)
 
         if resp.status_code >= 500:
             seen["5xx"] += 1
