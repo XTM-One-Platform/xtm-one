@@ -130,7 +130,7 @@ const SECTION_FIELD: Partial<Record<OrganizationSync["section"], SourcedSection>
   assets: "assets_exposure",
   asset_groups: "asset_groups",
   ai_systems: "ai_systems",
-  tech_stack: "tech_stack",
+  software: "tech_stack",
   crown_jewels: "crown_jewels",
 };
 

@@ -37,7 +37,7 @@ from app.services.organization_context import AGENT_SOURCE_PREFIX, PLATFORM_SOUR
 #: The profile lists that carry a row source, with the section key the syncs and the UI use.
 SOURCED_FIELDS: dict[str, str] = {
     "crown_jewels": "crown_jewels",
-    "tech_stack": "tech_stack",
+    "tech_stack": "software",
     "assets_exposure": "assets",
     "asset_groups": "asset_groups",
 }

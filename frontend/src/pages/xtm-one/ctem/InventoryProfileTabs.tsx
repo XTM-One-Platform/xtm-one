@@ -20,6 +20,7 @@ import { formatCount } from "@/lib/number-format";
 import { assetFieldLabel, assetGroupPath, sourceLabel } from "./inventory";
 import { deletableRows, isSyncedRow } from "./inventory-entries";
 import { InventoryEntryDialog, type EntryDialogMode } from "./InventoryEntryDialog";
+import { SourceLogo } from "./inventory-icons";
 
 /** The page header's Add of the Assets and Asset groups tabs (UX round 1 on #1375, B1): one add request the tab answers. */
 export type AddRequest = { open: boolean; onClose: () => void };
@@ -128,7 +129,13 @@ export function AssetGroupsTab({ add }: { add: AddRequest }) {
     {
       key: "source",
       header: "Source",
-      cell: (g) => sourceLabel(t_i18n, g.source || "manual"),
+      // The source's logo and name, as the Assets and Software lists draw them (#1729).
+      cell: (g) => (
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          <SourceLogo source={g.source || "manual"} />
+          <TruncatedText text={sourceLabel(t_i18n, g.source || "manual")} className="max-w-[10rem]" />
+        </span>
+      ),
       csv: (g) => g.source || "manual",
       hideable: true,
       hideBelow: "6xl",

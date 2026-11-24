@@ -202,7 +202,7 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
 
   it("counts a platform with several syncs as one source, and gives each kind with no sync its own schedule words (UX r1 B3, B4 on #1294)", async () => {
     serve(
-      [sync({ id: "s-1", source: "openaev" }), sync({ id: "s-2", source: "openaev", section: "tech_stack" })],
+      [sync({ id: "s-1", source: "openaev" }), sync({ id: "s-2", source: "openaev", section: "software" })],
       [
         source({ key: "openaev", display_name: "OpenAEV", sync_ids: ["s-1", "s-2"] }),
         source({ key: "csv", kind: "csv", display_name: "csv", rows: { assets_exposure: 3 }, total: 3, sync_ids: [] }),
@@ -221,7 +221,7 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
 
   it("lands an Assets chip filtered on the source key and draws a section with no Source filter as plain text (UX round 5 on #1254, B11)", async () => {
     serve(
-      [sync({ id: "s-1", source: "openaev", section: "tech_stack" })],
+      [sync({ id: "s-1", source: "openaev", section: "software" })],
       [
         source({ key: "openaev", display_name: "OpenAEV", rows: { tech_stack: 4 }, total: 4, sync_ids: ["s-1"] }),
         source({ key: "csv", kind: "csv", display_name: "csv", rows: { assets_exposure: 12 }, total: 12, sync_ids: [] }),
@@ -315,7 +315,7 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     serve(
       [
         sync({ id: "s-1" }),
-        sync({ id: "s-2", source: "openaev", section: "tech_stack" }),
+        sync({ id: "s-2", source: "openaev", section: "software" }),
         sync({ id: "s-3", source: "openaev", section: "ai_systems", enabled: false }),
         sync({ id: "s-all", section: "all", source: "", filters: {} }),
       ],
@@ -342,7 +342,7 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
   });
 
   it("reports the syncs that failed after Run all syncs", async () => {
-    serve([sync({ id: "s-1" }), sync({ id: "s-2", source: "openaev", section: "tech_stack" })], [source(), source({ key: "openaev", display_name: "OpenAEV", sync_ids: ["s-2"] })]);
+    serve([sync({ id: "s-1" }), sync({ id: "s-2", source: "openaev", section: "software" })], [source(), source({ key: "openaev", display_name: "OpenAEV", sync_ids: ["s-2"] })]);
     post.mockResolvedValueOnce(sync({ id: "s-1" })).mockRejectedValueOnce(new Error("Timeout"));
     render("inventory");
     await rows();

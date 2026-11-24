@@ -374,7 +374,7 @@ async def test_run_due_syncs_creates_the_default_source_before_reading_due_ones(
 
 @pytest.mark.asyncio
 async def test_sync_all_runs_every_section_sync_and_sums_them(monkeypatch, stubs):
-    members = [_sync(), _sync(section="tech_stack")]
+    members = [_sync(), _sync(section="software")]
     seen = []
 
     async def section_syncs(_db):
@@ -388,6 +388,6 @@ async def test_sync_all_runs_every_section_sync_and_sums_them(monkeypatch, stubs
     monkeypatch.setattr(osync, "run_sync", run_sync)
     everything = _sync(section="all", source="")
     totals = await osync.run_now(None, everything, trigger="schedule")
-    assert [s for s, _ in seen] == ["assets", "tech_stack"] and seen[0][1] == "schedule, sync all"
+    assert [s for s, _ in seen] == ["assets", "software"] and seen[0][1] == "schedule, sync all"
     assert (totals["runs"], totals["added"], totals["updated"], totals["version"]) == (2, 4, 2, 9)
     assert everything.last_result == totals
