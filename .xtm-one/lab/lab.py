@@ -6164,7 +6164,14 @@ def seed_ctem_gates(token: str, base: str) -> dict[str, dict[str, str]]:
     wanted = {"answered", "waiting", "passed_automatically"}
     if not wanted <= set(statuses.values()):
         raise RuntimeError(f"the CTEM case gates read back {statuses}")
-    return {f"CTEM case gates ({len(statuses)})": {"id": case_id, "url": f"{base}/ctem/cases/{case_id}"}}
+    package = case.get("threat_package") if isinstance(case, dict) else None
+    if not isinstance(package, dict) or package.get("state") != "drafted":
+        raise RuntimeError(f"the CTEM case threat package read back {str(package)[:300]}")
+    url = f"{base}/ctem/cases/{case_id}"
+    return {
+        f"CTEM case gates ({len(statuses)})": {"id": case_id, "url": url},
+        "CTEM case threat package drafted": {"id": case_id, "url": url},
+    }
 
 
 def seed_ctem_screens_scope(token: str) -> None:
