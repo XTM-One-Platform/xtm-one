@@ -5,7 +5,7 @@
 import uuid
 from typing import Any
 
-from app.models.organization_asset_record import OrganizationCrownJewelLink
+from app.models.organization_asset_record import OrganizationPrimaryAssetLink
 from app.services import organization_context_opencrq_links as links
 
 JEWELS = {"pa-1": "Payments", "pa-2": "Customer data"}
@@ -25,11 +25,11 @@ def _link(
 
 def _stored(
     external_id: str, record_id: uuid.UUID, jewel: str, roles: list[str], removed: bool = False
-) -> OrganizationCrownJewelLink:
-    return OrganizationCrownJewelLink(
+) -> OrganizationPrimaryAssetLink:
+    return OrganizationPrimaryAssetLink(
         id=uuid.uuid4(),
         organization_id=uuid.uuid4(),
-        crown_jewel_key=jewel,
+        primary_asset_key=jewel,
         record_id=record_id,
         source="opencrq",
         external_id=external_id,
@@ -76,7 +76,7 @@ def test_links_match_the_opencrq_record_first_then_a_single_name() -> None:
     )
     added = {w.external_id: w for w in plan.add}
     assert set(added) == {"l1", "l2"}
-    assert added["l1"].record_id == by_id and added["l1"].crown_jewel_key == "payments"
+    assert added["l1"].record_id == by_id and added["l1"].primary_asset_key == "payments"
     assert added["l2"].record_id == by_name and added["l2"].roles == ["transmits"]
     assert added["l1"].inherited_needs["traceability"] == "lower"
     assert plan.unmatched == [("Customer data", "nowhere")]

@@ -309,7 +309,7 @@ export interface CaseScope {
   /** The highest scope criticality among its signals, or null when none is readable. */
   criticality: string | null;
   /** The primary assets its signals were reconciled to. */
-  crownJewels: string[];
+  primaryAssets: string[];
 }
 
 /**
@@ -318,17 +318,17 @@ export interface CaseScope {
  * has no entry, and its row shows severity and SLA only.
  */
 export function caseScopes(
-  signals: readonly { case_id: string | null; decision: { scope?: { criticality?: string | null } | null; reconcile?: { crown_jewels_named?: string[] } } | null }[],
+  signals: readonly { case_id: string | null; decision: { scope?: { criticality?: string | null } | null; reconcile?: { primary_assets_named?: string[] } } | null }[],
 ): Map<string, CaseScope> {
   const out = new Map<string, CaseScope>();
   for (const s of signals) {
     if (!s.case_id) continue;
-    const prev = out.get(s.case_id) ?? { criticality: null, crownJewels: [] };
+    const prev = out.get(s.case_id) ?? { criticality: null, primaryAssets: [] };
     const crit = s.decision?.scope?.criticality ?? null;
     const better = crit && (prev.criticality === null || (CRITICALITY_RANK[crit] ?? 9) < (CRITICALITY_RANK[prev.criticality] ?? 9));
-    const jewels = [...prev.crownJewels];
-    for (const j of s.decision?.reconcile?.crown_jewels_named ?? []) if (!jewels.includes(j)) jewels.push(j);
-    out.set(s.case_id, { criticality: better ? crit : prev.criticality, crownJewels: jewels });
+    const jewels = [...prev.primaryAssets];
+    for (const j of s.decision?.reconcile?.primary_assets_named ?? []) if (!jewels.includes(j)) jewels.push(j);
+    out.set(s.case_id, { criticality: better ? crit : prev.criticality, primaryAssets: jewels });
   }
   return out;
 }

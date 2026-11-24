@@ -24,7 +24,7 @@ function kase(over: Partial<CtemCaseSummary>): CtemCaseSummary {
     open_issue_count: 1,
     restricted_count: 0,
     asset_count: 1,
-    crown_jewel_count: 0,
+    primary_asset_count: 0,
     kev_count: 0,
     max_cvss: null,
     max_epss: null,

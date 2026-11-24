@@ -326,19 +326,19 @@ def test_opencrq_threshold_keeps_that_level_and_above():
 def test_a_row_of_the_superseded_supporting_asset_layer_is_removed_and_a_typed_row_kept() -> None:
     # #1591: rows an older build imported from OpenCRQ SUPPORTING assets go at the next import.
     profile = oc.OrganizationProfile(
-        crown_jewels=[
-            oc.CrownJewel(name="Mail server", source="opencrq", external_id="s1"),
-            oc.CrownJewel(name="Mail", source="manual", opencrq_asset_id="s1"),
+        primary_assets=[
+            oc.PrimaryAsset(name="Mail server", source="opencrq", external_id="s1"),
+            oc.PrimaryAsset(name="Mail", source="manual", opencrq_asset_id="s1"),
         ]
     )
     rows = [imp.opencrq_primary_asset({"id": "p1", "name": "Messaging", "availability": "high"})]
     read = imp.ReadResult(rows=[r for r in rows if r], total=1, superseded={"s1"})
-    plan = imp.plan_import(profile, "crown_jewels", "opencrq", read)
+    plan = imp.plan_import(profile, "primary_assets", "opencrq", read)
     assert plan.superseded == ["Mail server"]
     assert plan.profile is not None
-    assert [j.name for j in plan.profile.crown_jewels] == ["Mail", "Messaging"]
+    assert [j.name for j in plan.profile.primary_assets] == ["Mail", "Messaging"]
     # A failed read supersedes nothing.
-    failed = imp.plan_import(profile, "crown_jewels", "opencrq", imp.ReadResult(error="x", superseded={"s1"}))
+    failed = imp.plan_import(profile, "primary_assets", "opencrq", imp.ReadResult(error="x", superseded={"s1"}))
     assert failed.superseded == []
 
 
@@ -410,20 +410,20 @@ def test_the_same_import_twice_is_unchanged_the_second_time():
     assert first.new == ["web-01"] and second.unchanged == ["web-01"] and not second.new
 
 
-def test_crown_jewels_merge_keeps_links_and_hand_jewels():
+def test_primary_assets_merge_keeps_links_and_hand_jewels():
     profile = _profile(
-        crown_jewels=[
-            oc.CrownJewel(name="Billing", criticality="high", opencrq_asset_id="1", asset_names=["db-01"]),
-            oc.CrownJewel(name="SCADA", criticality="critical"),
+        primary_assets=[
+            oc.PrimaryAsset(name="Billing", criticality="high", opencrq_asset_id="1", asset_names=["db-01"]),
+            oc.PrimaryAsset(name="SCADA", criticality="critical"),
         ]
     )
     rows = [
-        oc.CrownJewel(name="Billing", criticality="critical", opencrq_asset_id="1"),
-        oc.CrownJewel(name="scada", criticality="critical", opencrq_asset_id="2"),
+        oc.PrimaryAsset(name="Billing", criticality="critical", opencrq_asset_id="1"),
+        oc.PrimaryAsset(name="scada", criticality="critical", opencrq_asset_id="2"),
     ]
-    plan = imp.plan_import(profile, "crown_jewels", "opencrq", imp.ReadResult(rows=rows, total=2))
+    plan = imp.plan_import(profile, "primary_assets", "opencrq", imp.ReadResult(rows=rows, total=2))
     assert (plan.updated, plan.skipped) == (["Billing"], ["scada"])
-    billing = plan.profile.crown_jewels[0]
+    billing = plan.profile.primary_assets[0]
     assert (billing.criticality, billing.asset_names) == ("critical", ["db-01"])
 
 

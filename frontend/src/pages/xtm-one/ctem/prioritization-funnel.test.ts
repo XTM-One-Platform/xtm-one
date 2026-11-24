@@ -98,7 +98,7 @@ test("a not configured layer leads to the Settings card of its field, never the 
     funnelLayerHref({ key, count: null, drop: null, state: "not_configured", source: "organization", category: null }, "https://cti.example");
   assert.equal(notConfigured("relevant"), "/ctem/inventory/software?card=software");
   assert.equal(notConfigured("exposed"), "/ctem/inventory?card=assets_exposure");
-  assert.equal(notConfigured("business_impact"), "/ctem/inventory/business?card=crown_jewels");
+  assert.equal(notConfigured("business_impact"), "/ctem/inventory/business?card=primary_assets");
   assert.equal(notConfigured("policy"), "/ctem/inventory/exposure?card=prioritization_policy");
   assert.equal(notConfigured("open_issues"), "/ctem/inventory/software?card=software");
   // Every layer with a call to action names a field, so no CTA falls back to the first tab.
@@ -106,7 +106,7 @@ test("a not configured layer leads to the Settings card of its field, never the 
     if (copy.cta) assert.ok(FUNNEL_LAYER_FIELD[key as keyof typeof FUNNEL_LAYER_FIELD], key);
     if (copy.cta) assert.notEqual(notConfigured(key as keyof typeof FUNNEL_LAYER_COPY), "/settings/organization", key);
   }
-  assert.equal(isOrganizationSettingsHref("/settings/organization/profile/business?card=crown_jewels"), true);
+  assert.equal(isOrganizationSettingsHref("/settings/organization/profile/business?card=primary_assets"), true);
   assert.equal(isOrganizationSettingsHref("/settings/organization"), true);
   assert.equal(isOrganizationSettingsHref("/ctem/cases"), false);
 });

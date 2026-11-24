@@ -42,7 +42,7 @@ def _case(state: str, *, title: str = "Upgrade Apache Tomcat", severity: str | N
 
 
 def _issue(ext: str, *, jewels: tuple[str, ...] = ()) -> rules.SourceIssue:
-    return rules.SourceIssue(source="opencti", external_id=ext, name=ext, assets=("web-1",), crown_jewels=jewels)
+    return rules.SourceIssue(source="opencti", external_id=ext, name=ext, assets=("web-1",), primary_assets=jewels)
 
 
 def _member(case: CtemCase, ext: str, *, source: str = "opencti", open_: bool = True) -> CtemCaseIssue:
@@ -119,7 +119,7 @@ def test_a_phase_counts_its_open_and_waiting_cases_and_lists_the_waiting_first(m
     assert remediation["open"] == 2 and remediation["waiting"] == 1
     assert [row["id"] for row in remediation["top"]] == [str(second.id), str(first.id)]
     assert remediation["counts"]["waiting_decision"] == 1 and remediation["counts"]["remediating"] == 1
-    assert out["phases"]["prioritization"]["top"][0]["crown_jewel"] == "Payments"
+    assert out["phases"]["prioritization"]["top"][0]["primary_asset"] == "Payments"
     assert out["phases"]["prioritization"]["top"][0]["priority"] == "critical"
     # The gate the oldest waiting case waits on, falling back to its status time.
     assert out["waiting"]["oldest"]["gate"] == "approve_fix"

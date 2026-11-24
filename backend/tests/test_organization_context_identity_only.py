@@ -36,7 +36,7 @@ FULL_PROFILE = {
     "sector": "Finance",
     "regions": ["FR"],
     "size": "51-250",
-    "crown_jewels": [],
+    "primary_assets": [],
     "currency": "EUR",
     "loaded_hourly_rate": 80,
     "risk_appetite": {"annual_loss_threshold": 100000, "approval_threshold": 200000},
@@ -67,14 +67,14 @@ def test_copilot_contract_is_identity(copilot):
 def test_xtm_one_contract_is_whole(xtm_one):
     assert org_context.contract_fields() == org_context.CONTRACT_FIELDS
     missing = org_context.missing_fields(org_context.parse_profile(FULL_PROFILE))
-    assert "crown_jewels" in missing and "ticketing" in missing
+    assert "primary_assets" in missing and "ticketing" in missing
 
 
 def test_copilot_render_for_agent_names_identity_only(copilot):
     text = org_context.render_for_agent(_row(FULL_PROFILE), ctem_work=False)
     assert "Fields not filled: none." in text
     assert "Acme" in text
-    for absent in ("currency", "loaded_hourly_rate", "risk_appetite", "crown_jewels"):
+    for absent in ("currency", "loaded_hourly_rate", "risk_appetite", "primary_assets"):
         assert absent not in text
 
 

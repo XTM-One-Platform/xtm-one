@@ -28,7 +28,7 @@ def _profile() -> oc.OrganizationProfile:
                 {"name": "laptop-7", "type": "workstation", "source": "manual"},
                 {"name": "db-01", "type": "server", "source": "ciso-office", "external_id": "c1"},
             ],
-            "crown_jewels": [{"name": "Billing", "criticality": "critical", "source": "opencrq", "external_id": "j1"}],
+            "primary_assets": [{"name": "Billing", "criticality": "critical", "source": "opencrq", "external_id": "j1"}],
         }
     )
 
@@ -58,7 +58,7 @@ def test_summarize_lists_each_source_once_with_rows_writer_and_syncs_platforms_f
     assert by_key["opencti"].total == 0
     assert by_key["ciso-office"].written_by_agent == "CISO Office"
     # Primary assets are an Inventory source (Sam, 24 Nov 2026): OpenCRQ is listed with its rows there.
-    assert by_key["opencrq"].rows == {"crown_jewels": 1}
+    assert by_key["opencrq"].rows == {"primary_assets": 1}
     business = osources.summarize(_profile(), [sync], scope="profile")
     assert "opencrq" not in {s.key for s in business}
 

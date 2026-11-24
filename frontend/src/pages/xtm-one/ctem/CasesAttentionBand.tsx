@@ -47,7 +47,7 @@ export function useAttentionWhy(): (attention: CaseAttention) => string {
         return r.assets > 0
           ? t_i18n("{count, plural, one {# KEV} other {# KEV}} on {assets, plural, one {# asset} other {# assets}}", { count: r.count, assets: r.assets })
           : t_i18n("{count, plural, one {# KEV} other {# KEV}}", { count: r.count });
-      case "crown_jewel":
+      case "primary_asset":
         return t_i18n("{count, plural, one {# primary asset touched} other {# primary assets touched}}", { count: r.count });
       case "overdue":
         return t_i18n("Overdue");

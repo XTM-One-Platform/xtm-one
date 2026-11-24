@@ -43,14 +43,14 @@ logger = logging.getLogger(__name__)
 #: The global schedule's section: it runs every other enabled sync in order.
 ALL_SECTIONS = "all"
 #: The sections a sync may keep up to date: the import's, never a typed field.
-SYNCABLE_SECTIONS: tuple[str, ...] = ("assets", "asset_groups", "software", "crown_jewels", "pirs")
+SYNCABLE_SECTIONS: tuple[str, ...] = ("assets", "asset_groups", "software", "primary_assets", "pirs")
 #: Where each section's syncs are configured (#1134 S2, Sam 22 Nov 2026): the business profile
 #: in Settings > Organization, the inventory in CTEM > Inventory. The global ``all`` schedule is in both.
-#: Primary assets (``crown_jewels``) are an Inventory source since they moved to Inventory > Business
+#: Primary assets (``primary_assets``) are an Inventory source since they moved to Inventory > Business
 #: (#1690): their OpenCRQ sync is listed next to the asset sources (Sam, 24 Nov 2026).
 SECTION_SCOPES: dict[str, tuple[str, ...]] = {
     "profile": ("pirs",),
-    "inventory": ("assets", "asset_groups", "software", "crown_jewels"),
+    "inventory": ("assets", "asset_groups", "software", "primary_assets"),
 }
 #: How long a run may hold its lock before another run may take it.
 LOCK_SECONDS = 900
@@ -320,7 +320,7 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
             sync_id=str(sync.id),
         )
         result["added"], result["updated"] = len(plan.new), len(plan.updated)
-        # Superseded rows (#1591: an older build's supporting-asset crown jewels) count as removed, so a run
+        # Superseded rows (#1591: an older build's supporting-asset primary assets) count as removed, so a run
         # that only drops them still saves the cleaned profile.
         result["removed"] = (
             (len(plan.gone) - len(plan.gone_kept) if plan.remove_gone else 0)
@@ -343,12 +343,17 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
                 db, plan.profile, source="draft", author_user_id=owner.id, sources=sync_provenance(plan, sync, owner)
             )
             result["version"] = saved.version
-        if not plan.error and sync.section == "crown_jewels" and sync.source == "opencrq" and plan.profile is not None:
+        if (
+            not plan.error
+            and sync.section == "primary_assets"
+            and sync.source == "opencrq"
+            and plan.profile is not None
+        ):
             # Supporting asset -> primary asset links (#1591), on unless the sync's filter says "false".
             from app.services import organization_context_opencrq_links as opencrq_links
 
             links = await opencrq_links.sync_links_for(
-                db, user_id=owner.id, filters=sync.filters or {}, jewels=list(plan.profile.crown_jewels)
+                db, user_id=owner.id, filters=sync.filters or {}, jewels=list(plan.profile.primary_assets)
             )
             if links is not None:
                 result["links"] = links

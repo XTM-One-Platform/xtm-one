@@ -23,7 +23,7 @@ export const EXPOSURE_TAB_CARDS = ["outside_lens", "prioritization_policy", "evi
  * products and tracked organizations moved from Settings > Organization to a tab of their own, read by everyone,
  * each card's own Edit for administrators, as the Exposure policy tab.
  */
-export const BUSINESS_TAB_CARDS = ["crown_jewels", "shipped_products", "tracked_organizations"] as const satisfies readonly ProfileCard[];
+export const BUSINESS_TAB_CARDS = ["primary_assets", "shipped_products", "tracked_organizations"] as const satisfies readonly ProfileCard[];
 
 /** The tabs the page draws, in order (English labels, translated by DetailTabs). */
 // AI targets are assets of category AI target, on the Assets tab: no tab of their own.

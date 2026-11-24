@@ -45,7 +45,7 @@ def _issue(external_id: str, *, assets: tuple[str, ...], jewels: tuple[str, ...]
         epss=0.2,
         kev=True,
         assets=assets,
-        crown_jewels=jewels,
+        primary_assets=jewels,
         first_seen_at=NOW,
     )
 
@@ -84,7 +84,7 @@ def test_a_signal_only_viewer_reads_null_with_a_reason_never_zero() -> None:
 
     admin = view_of.summary(case, rows, _admin_view(signal))
     assert admin is not None
-    assert admin["crown_jewel_count"] == 2 and admin["asset_count"] == 3 and admin["kev_count"] == 2
+    assert admin["primary_asset_count"] == 2 and admin["asset_count"] == 3 and admin["kev_count"] == 2
     assert admin["aggregates_restricted"] is False and admin["aggregates_reason"] is None
     assert admin["members_without_details"] == 0
 
@@ -98,7 +98,7 @@ def test_an_unavailable_member_restricts_the_aggregates_too() -> None:
     view.unavailable.add("opencti:2")
     row = view_of.summary(case, rows, view)
     assert row is not None
-    assert row["crown_jewel_count"] is None and row["aggregates_restricted"] is True
+    assert row["primary_asset_count"] is None and row["aggregates_restricted"] is True
     assert row["members_without_details"] == 1
 
 
@@ -108,7 +108,7 @@ def test_a_fully_read_case_with_no_primary_asset_is_a_real_zero() -> None:
     view = view_of.ViewerView(issues={"opencti:1": _issue("1", assets=("srv-a",), jewels=())}, open_ids={"opencti:1"})
     row = view_of.summary(case, rows, view)
     assert row is not None
-    assert row["crown_jewel_count"] == 0 and row["asset_count"] == 1
+    assert row["primary_asset_count"] == 0 and row["asset_count"] == 1
     assert row["aggregates_restricted"] is False and row["members_without_details"] == 0
 
 
@@ -119,7 +119,7 @@ def test_a_signal_only_case_with_no_product_member_is_not_restricted() -> None:
     rows = [CtemCaseIssue(case_id=case.id, source="signal", external_id=signal, open=True)]
     row = view_of.summary(case, rows, view_of.ViewerView(signals={f"signal:{signal}"}))
     assert row is not None
-    assert row["aggregates_restricted"] is False and row["crown_jewel_count"] == 0
+    assert row["aggregates_restricted"] is False and row["primary_asset_count"] == 0
 
 
 def test_hidden_cases_counts_the_open_cases_the_viewer_sees_none_of() -> None:
@@ -151,7 +151,7 @@ def test_list_row_and_case_read_agree_on_the_asset_count_for_one_viewer() -> Non
         listed, _ = view_of.list_for_viewer([(case, rows)], view)
         row = version_history.with_asset_count(listed[0], [])
         rendered = version_history.with_asset_count(view_of.hydrate(case, rows, [], view) or {}, [])
-        for key in ("asset_count", "asset_count_source", "aggregates_restricted", "crown_jewel_count"):
+        for key in ("asset_count", "asset_count_source", "aggregates_restricted", "primary_asset_count"):
             assert row[key] == rendered[key], key
     own = version_history.with_asset_count(
         view_of.summary(case, rows, view_of.ViewerView(signals={f"signal:{signal}"})) or {}, []

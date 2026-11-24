@@ -13,10 +13,10 @@ What each platform gives, read with a token minted for that administrator:
 - **OpenCTI**: the platform organization's name and first sector
   (``settings.platform_organization``), and the PIR ids (``pirs``);
 - **OpenAEV**: the security platforms (EDR, SIEM, ...) as software entries;
-- **OpenCRQ**: the primary assets (business assets) as crown jewels linked to
+- **OpenCRQ**: the primary assets (business assets) as primary assets linked to
   their primary asset, criticality the highest of their security needs
   (``very_high`` -> ``critical``, none rated -> ``high``; #1591). Supporting
-  assets are the IT under them, never crown jewels.
+  assets are the IT under them, never primary assets.
 
 Rules: only an EMPTY field of the current profile is filled (what a person
 typed always wins); every filled field names the platform it came from; a
@@ -35,12 +35,12 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.utils import format_exception_message
-from app.services.organization_context import CrownJewel, OrganizationProfile, SoftwareEntry
+from app.services.organization_context import OrganizationProfile, PrimaryAsset, SoftwareEntry
 
 logger = logging.getLogger(__name__)
 
-#: OpenCRQ supporting-asset criticality -> profile crown-jewel criticality.
-#: Lower ratings are not crown jewels and are left out of the draft.
+#: OpenCRQ supporting-asset criticality -> profile primary-asset criticality.
+#: Lower ratings are not primary assets and are left out of the draft.
 FROM_OPENCRQ: dict[str, str] = {"very_high": "critical", "high": "high"}
 #: Entries read at most per platform list.
 MAX_ITEMS = 100
@@ -72,7 +72,7 @@ class PlatformFacts:
     #: OpenCTI's name of each PIR in ``pir_ids`` (#11589): a drafted PIR is saved with its name.
     pir_names: dict[str, str] = field(default_factory=dict)
     software: list[SoftwareEntry] = field(default_factory=list)
-    crown_jewels: list[CrownJewel] = field(default_factory=list)
+    primary_assets: list[PrimaryAsset] = field(default_factory=list)
     #: profile field -> the platform the value came from.
     sources: dict[str, str] = field(default_factory=dict)
     #: one line per platform that could not be read, and why.
@@ -103,7 +103,7 @@ def merge_draft(current: OrganizationProfile, facts: PlatformFacts) -> Draft:
     # Every PIR the draft holds keeps its OpenCTI name, a name already saved included (#11589).
     draft.pir_names = {**{k: v for k, v in facts.pir_names.items() if k in draft.pir_ids}, **draft.pir_names}
     _fill("software", facts.software[:500], f"{len(facts.software[:500])} product(s)")
-    _fill("crown_jewels", facts.crown_jewels[:200], f"{len(facts.crown_jewels[:200])} asset(s)")
+    _fill("primary_assets", facts.primary_assets[:200], f"{len(facts.primary_assets[:200])} asset(s)")
     return Draft(profile=draft, filled=filled, unavailable=list(facts.unavailable))
 
 
@@ -145,18 +145,18 @@ def openaev_facts(platforms: list[dict], facts: PlatformFacts) -> None:
 
 
 def opencrq_facts(assets: list[dict], facts: PlatformFacts) -> None:
-    """Map OpenCRQ's PRIMARY assets onto crown jewels (no I/O, #1591)."""
+    """Map OpenCRQ's PRIMARY assets onto primary assets (no I/O, #1591)."""
     from app.services.organization_context_import import opencrq_primary_asset
 
     seen: set[str] = set()
-    jewels: list[CrownJewel] = []
+    jewels: list[PrimaryAsset] = []
     for asset in assets:
         row = opencrq_primary_asset(asset)
         if row is None or row.name.casefold() in seen:
             continue
         seen.add(row.name.casefold())
         jewels.append(
-            CrownJewel(
+            PrimaryAsset(
                 name=row.name,
                 business_service=row.business_service,
                 owner=row.owner,
@@ -167,8 +167,8 @@ def opencrq_facts(assets: list[dict], facts: PlatformFacts) -> None:
     # The most critical first, so a cut at 200 keeps them.
     jewels.sort(key=lambda j: j.criticality != "critical")
     if jewels:
-        facts.crown_jewels = jewels
-        facts.sources["crown_jewels"] = "opencrq"
+        facts.primary_assets = jewels
+        facts.sources["primary_assets"] = "opencrq"
 
 
 async def _read_opencti(db: AsyncSession, user_id: str, facts: PlatformFacts) -> None:
