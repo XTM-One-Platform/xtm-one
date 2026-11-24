@@ -433,6 +433,11 @@ export interface CtemCaseGateRecord {
   wait_seconds: number | null;
   decision_id: string | null;
   work_item_id: string | null;
+  /**
+   * On a waiting record: whether an open decision item of the gate exists for anyone (#1954).
+   * False: the gate reads waiting but no decision was filed, so nobody can answer it. Absent on an older API.
+   */
+  decision_filed?: boolean | null;
   /** False while the answer is on the decision but no `gate answered` event is on the case yet. */
   recorded_on_case: boolean;
   /** The first later event of the case: its kind, and `from` / `to` as the history stores them (a state's new value, a gate key and its outcome). */

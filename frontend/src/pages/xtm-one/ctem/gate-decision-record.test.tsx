@@ -313,6 +313,27 @@ describe("the gate cards read the record first", () => {
     expect(screen.queryByTestId("ctem-case-remediation-elsewhere")).toBeNull();
   });
 
+  it("a waiting gate with no decision filed says so on every card, never the Waiting for you list (#1954)", () => {
+    const lost = { status: "waiting" as const, asked_of: null, answered_at: null, answered_by: null, option: null, comment: null, surface: null, decision_id: null, work_item_id: null, next: null, decision_filed: false };
+    render(<CaseValidation caseId="c1" validations={[]} history={[ev({})]} gates={[rec(lost)]} />);
+    expect(screen.getByTestId("ctem-case-validation-not-filed").textContent).toContain("No validation decision was filed");
+    expect(screen.queryByTestId("ctem-case-validation-elsewhere")).toBeNull();
+    render(<CaseAnalystReview caseId="c1" pkg={null} history={[ev({ from: "ctem.analyst_review" })]} gates={[rec({ ...lost, key: "ctem.analyst_review" })]} />);
+    expect(screen.getByTestId("ctem-case-analyst-review-not-filed").textContent).toContain("No review decision was filed");
+    expect(screen.queryByTestId("ctem-case-analyst-review-elsewhere")).toBeNull();
+    render(<CaseRemediationDecision caseId="c1" history={[ev({ from: "ctem.remediation.decision" })]} gates={[rec({ ...lost, key: "ctem.remediation.decision" })]} />);
+    expect(screen.getByTestId("ctem-case-remediation-not-filed").textContent).toContain("No remediation decision was filed");
+    expect(screen.queryByTestId("ctem-case-remediation-elsewhere")).toBeNull();
+    expect(screen.queryByText(/Waiting for you list/)).toBeNull();
+  });
+
+  it("a waiting gate whose decision exists but is not readable keeps the Waiting for you sentence", () => {
+    const filed = { status: "waiting" as const, answered_at: null, answered_by: null, option: null, comment: null, surface: null, next: null, decision_filed: true };
+    render(<CaseValidation caseId="c1" validations={[]} history={[ev({})]} gates={[rec(filed)]} />);
+    expect(screen.getByTestId("ctem-case-validation-elsewhere")).toBeTruthy();
+    expect(screen.queryByTestId("ctem-case-validation-not-filed")).toBeNull();
+  });
+
   it("an older API without records keeps the event line", () => {
     render(<CaseValidation caseId="c1" validations={[]} history={[ev({ to: "answered", reason: USER, evidence: "A" })]} />);
     expect(screen.getByTestId("ctem-case-validation-gate")).toBeTruthy();
