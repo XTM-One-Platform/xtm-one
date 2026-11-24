@@ -416,11 +416,11 @@ SCREENS_TECH_STACK: tuple[dict, ...] = (
 #: The asset records that run them (``POST /organization-context/assets/records/batch``, stable external ids).
 SCREENS_ASSETS: tuple[dict, ...] = (
     {"name": "fw-paris-01", "category": "network_device", "criticality": "very_high", "internet_facing": "yes",
-     "tech_stack": ["FortiOS"], "source": "lab", "external_id": "lab-screens-fw-paris-01"},
+     "products": ["FortiOS"], "source": "lab", "external_id": "lab-screens-fw-paris-01"},
     {"name": "vpn-gw-01", "category": "network_device", "criticality": "very_high", "internet_facing": "yes",
-     "tech_stack": ["Connect Secure"], "source": "lab", "external_id": "lab-screens-vpn-gw-01"},
+     "products": ["Connect Secure"], "source": "lab", "external_id": "lab-screens-vpn-gw-01"},
     {"name": "app-portal-01", "category": "host", "criticality": "very_high", "internet_facing": "yes",
-     "tech_stack": ["Tomcat"], "source": "lab", "external_id": "lab-screens-app-portal-01"},
+     "products": ["Tomcat"], "source": "lab", "external_id": "lab-screens-app-portal-01"},
     {"name": "fs-paris-01", "category": "host", "criticality": "very_high", "internet_facing": "no",
-     "tech_stack": ["Windows Server"], "source": "lab", "external_id": "lab-screens-fs-paris-01"},
+     "products": ["Windows Server"], "source": "lab", "external_id": "lab-screens-fs-paris-01"},
 )

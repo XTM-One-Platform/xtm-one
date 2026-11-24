@@ -49,7 +49,7 @@ const newPort: CtemSignal = {
     outcome: "case",
     reason_code: "in_scope",
     reason_params: { criticality: "high", threshold: "high", confidence: "high" },
-    reconcile: { assets: ["portal"], primary_assets_named: [], tech_stack: [] },
+    reconcile: { assets: ["portal"], primary_assets_named: [], products: [] },
     scope: { criticality: "high", threshold: "high", sources: [] },
   },
   case_id: null,

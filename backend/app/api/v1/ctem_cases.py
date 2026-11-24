@@ -590,7 +590,7 @@ async def get_ctem_case(
         **rendered,
         **audit,
         "gates": gate_records,
-        # The versions the case's product runs on the assets (#1252), never a typed tech stack version.
+        # The versions the case's product runs on the assets (#1252), never a typed software version.
         "running_versions": _with_history(await case_versions.for_case(db, case), events),
         # The assets its visible issues name, with the version each runs from the inventory (#1176 slice 3b).
         "affected_assets": await case_versions.assets_for_case(db, case, rendered.get("issues") or []),

@@ -48,7 +48,7 @@ const leak: CtemSignal = {
     outcome: "case",
     reason_code: "in_scope",
     reason_params: { criticality: "high", threshold: "high", confidence: "medium" },
-    reconcile: { assets: [], primary_assets_named: [], tech_stack: [] },
+    reconcile: { assets: [], primary_assets_named: [], products: [] },
     scope: { criticality: "high", threshold: "high", sources: [{ from: "owned_domain", name: "corp.example", criticality: "high" }] },
   },
   case_id: null,
@@ -135,7 +135,7 @@ describe("credential-leak and third-party signals", () => {
         outcome: "case",
         reason_code: "in_scope",
         reason_params: { criticality: "high", threshold: "high", confidence: "medium" },
-        reconcile: { assets: [], primary_assets_named: ["Customer portal"], tech_stack: [] },
+        reconcile: { assets: [], primary_assets_named: ["Customer portal"], products: [] },
         scope: { criticality: "high", threshold: "high", sources: [] },
       },
     };

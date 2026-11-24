@@ -99,7 +99,7 @@ export function signalRuleFacts(
   const software = evidence?.software;
   const name = Array.isArray(software) ? software.find((s): s is string => typeof s === "string" && s.length > 0) : undefined;
   if (name) {
-    const products = decision?.reconcile?.tech_stack;
+    const products = decision?.reconcile?.products;
     facts.push({ key: "software", software: name, matched: Array.isArray(products) && products.length > 0, checked: Boolean(decision) });
   }
   const pir = evidence?.pir;
