@@ -17,7 +17,7 @@
  * - age: 1 point a day open, at most 10
  * A resolved case or an accepted risk scores 0: nothing to act on.
  */
-import type { CtemCasePriority, CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
+import { isOpenCaseState, type CtemCasePriority, type CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
 import type { CaseAttentionProfile } from "@/lib/organization-profile";
 
 export interface CaseAttentionWeights {
@@ -105,7 +105,7 @@ type AttentionInput = Pick<
 >;
 
 function isOpenCase(c: Pick<CtemCaseSummary, "state">): boolean {
-  return c.state === "needs_attention" || c.state === "in_progress";
+  return isOpenCaseState(c.state);
 }
 
 /** The date a case started: its creation, else its oldest issue. */

@@ -26,6 +26,7 @@ const LABELS = {
   grid: "Grid view",
   list: "List view",
   graph: "Graph view",
+  kanban: "Kanban view",
 } as const satisfies Record<ViewMode, string>;
 
 /** The graph view's glyph, through the design system's `<Icon>` (no new lucide import; UX r1 B4 on #979). */
@@ -33,10 +34,16 @@ function GraphGlyph({ className }: { className?: string }) {
   return <Icon name="network" size={16} className={className} aria-hidden />;
 }
 
+/** The Kanban view's glyph, through the design system's `<Icon>` (#1503). */
+function KanbanGlyph({ className }: { className?: string }) {
+  return <Icon name="columns-3" size={16} className={className} aria-hidden />;
+}
+
 const OPTIONS: readonly { key: ViewMode; icon: React.ElementType }[] = [
   { key: "grid", icon: LayoutGrid },
   { key: "list", icon: List },
   { key: "graph", icon: GraphGlyph },
+  { key: "kanban", icon: KanbanGlyph },
 ];
 
 const DEFAULT_MODES: readonly ViewMode[] = ["grid", "list"];

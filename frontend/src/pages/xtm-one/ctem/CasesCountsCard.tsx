@@ -33,8 +33,11 @@ import { profileFieldHref } from "@/lib/organization-profile-tabs";
  * its segment stays visible (at least 3:1 on the track, both themes).
  */
 const SEGMENT_FILL: Record<CtemCaseState, string> = {
-  needs_attention: "bg-feedback-warning-primary",
-  in_progress: "bg-feedback-info-primary",
+  new: "bg-feedback-warning-primary",
+  analyzing: "bg-feedback-info-primary",
+  waiting_decision: "bg-feedback-error-primary",
+  remediating: "bg-feedback-info-primary",
+  validating: "bg-feedback-info-primary",
   mitigated_watching: "bg-feedback-alert-primary",
   resolved: "bg-feedback-success-primary",
   accepted_risk: "bg-feedback-neutral-primary",
