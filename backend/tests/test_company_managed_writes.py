@@ -282,6 +282,8 @@ _NOT_WRITER_GATED = {
         # The dialog's and the write routes' read of whether a person may
         # write an item they can read (#1845): two clauses read, no write.
         "person_write_access",
+        # The detail read of whether a person may cancel (#1910): a read, no write.
+        "person_may_cancel",
         # The scheduler reopening items whose blockers are done: a
         # sweep, like the reaper.
         "release_satisfied_dependencies",

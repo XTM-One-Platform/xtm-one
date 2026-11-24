@@ -356,8 +356,12 @@ and `asset_groups` into row writes (`apply_profile_lists`). Row API, administrat
   version's lists are kept, so `save_version` applies no row write and the synced-row lock never judges a
   profile save), and name what they ignored in `ignored_row_fields`; a restore naming only row fields is a 422
   (the rows keep their own history, restored from `/changes/restore`). Links of crown jewels and asset groups
-  are judged against the records. `GET` also answers `row_counts` (`{assets_exposure, asset_groups}`, `null`
-  before the import). Ignore, not 422: an older client or agent keeps saving its profile fields during a rollout.
+  are judged against the records. `GET`, `PATCH`, `PUT` and the restore answer profile fields only, never the
+  `assets_exposure` or `asset_groups` list: `row_counts` (`{assets_exposure, asset_groups}`) names how many
+  there are, and a `PUT` that leaves a row list out keeps the stored one (before the import too). The payload
+  size does not grow with the inventory. Ignore, not 422: an older client or agent keeps saving its profile
+  fields during a rollout. A sync holding the organization's row lock never blocks or refuses a profile save
+  (`test_organization_context_save_during_sync_postgres.py`).
 - `GET /api/v1/organization-context/changes?entity_id=&since=&before_id=&limit=`: the change log, newest first;
   `POST /api/v1/organization-context/changes/restore` `{change_ids}`: a delete comes back, an update gets its
   `before` fields, a create goes.
