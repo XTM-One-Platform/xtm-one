@@ -21369,5 +21369,13 @@
   "The team or person who fixes its exposures, for example Payments team.": "露出を修正するチームまたは担当者 (例: 決済チーム)。",
   "A team name or an email address. CTEM cases on this row name the owner as the one to act. Left empty, the cases name no owner.": "チーム名またはメールアドレス。この行の CTEM ケースは、対応者としてこのオーナーを示します。空欄の場合、ケースにオーナーは示されません。",
   "The group of the business service this asset serves.": "このアセットが支えるビジネスサービスのグループ。",
-  "Groups gather the assets of one business service, so cases and briefings can be read per group. Left empty, the asset belongs to no group.": "グループは 1 つのビジネスサービスのアセットをまとめ、ケースやブリーフィングをグループ単位で確認できるようにします。空欄の場合、アセットはどのグループにも属しません。"
+  "Groups gather the assets of one business service, so cases and briefings can be read per group. Left empty, the asset belongs to no group.": "グループは 1 つのビジネスサービスのアセットをまとめ、ケースやブリーフィングをグループ単位で確認できるようにします。空欄の場合、アセットはどのグループにも属しません。",
+  "{count, plural, one {+# not in the inventory} other {+# not in the inventory}}": "{count, plural, other {インベントリ外 +#}}",
+  "This asset is in no asset group.": "このアセットはどのアセットグループにも属していません。",
+  "Asset group not found": "アセットグループが見つかりません",
+  "This asset group does not exist any more: its source may have removed it, or it was deleted.": "このアセットグループは存在しません。ソースによって削除されたか、削除された可能性があります。",
+  "Members last synced": "メンバーの最終同期",
+  "About this asset group": "このアセットグループについて",
+  "{count, plural, one {# more member its source names is not in the inventory yet} other {# more members its source names are not in the inventory yet}}": "{count, plural, other {ソースが示すメンバーのうち # 件はまだインベントリにありません}}",
+  "No asset of the inventory is in this group yet.": "このグループにはまだインベントリのアセットがありません。"
 }
