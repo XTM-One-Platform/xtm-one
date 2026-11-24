@@ -21595,5 +21595,9 @@
   "No person was needed: the policy allowed the step.": "担当者は不要でした。ポリシーがステップを許可しました。",
   "Nobody answered before the deadline: the step did not run.": "期限までに誰も回答しませんでした。ステップは実行されませんでした。",
   "The decision was withdrawn before an answer.": "回答前に決定が取り下げられました。",
-  "No answer": "回答なし"
+  "No answer": "回答なし",
+  "{product} rejected your sign-in token, so open exposures there may be missing.": "{product} がサインイントークンを拒否しました。未対応のエクスポージャーが表示されていない可能性があります。",
+  "{product} could not answer because the query was too large, so open exposures there may be missing.": "クエリが大きすぎるため {product} が応答できませんでした。未対応のエクスポージャーが表示されていない可能性があります。",
+  "{product} did not answer in time, so open exposures there may be missing.": "{product} が時間内に応答しませんでした。未対応のエクスポージャーが表示されていない可能性があります。",
+  "No {product} connection could be used for this read, so open exposures there may be missing.": "この読み込みに使える {product} の接続がありませんでした。未対応のエクスポージャーが表示されていない可能性があります。"
 }
