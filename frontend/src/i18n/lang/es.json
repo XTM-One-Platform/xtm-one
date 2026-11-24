@@ -21369,5 +21369,13 @@
   "The team or person who fixes its exposures, for example Payments team.": "El equipo o la persona que corrige sus exposiciones, por ejemplo Equipo de pagos.",
   "A team name or an email address. CTEM cases on this row name the owner as the one to act. Left empty, the cases name no owner.": "Un nombre de equipo o una dirección de correo. Los casos CTEM de esta fila designan a este propietario para actuar. Si se deja vacío, los casos no designan propietario.",
   "The group of the business service this asset serves.": "El grupo del servicio de negocio al que sirve este activo.",
-  "Groups gather the assets of one business service, so cases and briefings can be read per group. Left empty, the asset belongs to no group.": "Los grupos reúnen los activos de un mismo servicio de negocio, para leer los casos y los informes por grupo. Si se deja vacío, el activo no pertenece a ningún grupo."
+  "Groups gather the assets of one business service, so cases and briefings can be read per group. Left empty, the asset belongs to no group.": "Los grupos reúnen los activos de un mismo servicio de negocio, para leer los casos y los informes por grupo. Si se deja vacío, el activo no pertenece a ningún grupo.",
+  "{count, plural, one {+# not in the inventory} other {+# not in the inventory}}": "{count, plural, one {+# fuera del inventario} other {+# fuera del inventario}}",
+  "This asset is in no asset group.": "Este activo no pertenece a ningún grupo de activos.",
+  "Asset group not found": "Grupo de activos no encontrado",
+  "This asset group does not exist any more: its source may have removed it, or it was deleted.": "Este grupo de activos ya no existe: puede que su origen lo haya retirado o que se haya eliminado.",
+  "Members last synced": "Miembros sincronizados por última vez",
+  "About this asset group": "Acerca de este grupo de activos",
+  "{count, plural, one {# more member its source names is not in the inventory yet} other {# more members its source names are not in the inventory yet}}": "{count, plural, one {# miembro más que nombra su origen aún no está en el inventario} other {# miembros más que nombra su origen aún no están en el inventario}}",
+  "No asset of the inventory is in this group yet.": "Ningún activo del inventario está todavía en este grupo."
 }

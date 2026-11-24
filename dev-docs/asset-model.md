@@ -338,6 +338,12 @@ and `asset_groups` into row writes (`apply_profile_lists`). Row API, administrat
 - `GET /api/v1/organization-context/asset-groups/{id}/members?limit=&after_name=&after_id=` (any signed-in
   user): one keyset page of the group's member records by name, each with `via` (who put it there: `record`,
   `manual` or the group's source), the group itself (`member_count` comes from the list) and `next`.
+- `GET /api/v1/organization-context/asset-groups/{id}` (any signed-in user): the group's row with
+  `member_count` (distinct assets), `unresolved_members` and `members_synced_at`; 404 for an unknown id.
+- `GET /api/v1/organization-context/assets?group=<id>` (repeatable) keeps the canonical assets one of whose
+  records is a member of one of the groups (a value that is not an id keeps none); `GET .../assets/facets`
+  answers `group` as `{value: id, label: name, count}`; `GET .../assets/{id}` lists the asset's `groups`. The
+  group page `/ctem/inventory/asset-groups/:id` reads its members through that filter, paged on the server.
 - `PUT /api/v1/organization-context/crown-jewels/{name}/links` `{names}`: the records and groups a crown jewel
   covers; 404 for an unknown crown jewel, 422 naming what matches nothing.
 - `GET /api/v1/organization-context/changes?entity_id=&since=&before_id=&limit=`: the change log, newest first;
