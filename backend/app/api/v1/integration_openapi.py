@@ -761,6 +761,22 @@ async def replace_openapi_spec(
     return spec_response(row, integration)
 
 
+def _integration_server_url(integration: Integration, row: IntegrationOpenAPISpec) -> str | None:
+    """The server URL the integration already calls: its base URL, else the stored spec's server.
+
+    What a replacement document with no ``servers`` and no location of its own
+    (an uploaded file) resolves its relative OAuth URLs against.
+    """
+    try:
+        stored = decrypt_extra(integration).get("base_url")
+    except Exception:  # an unreadable config only loses the fallback
+        stored = None
+    for candidate in (stored, row.default_server_url):
+        if isinstance(candidate, str) and candidate.strip().lower().startswith(("http://", "https://")):
+            return candidate.strip()
+    return None
+
+
 async def replace_spec(
     integration: Integration, row: IntegrationOpenAPISpec, body: OpenAPIImportOptions
 ) -> dict[str, Any]:
@@ -773,6 +789,7 @@ async def replace_spec(
     previous_option = AuthOption.from_dict(row.auth_option)
     try:
         plan = await prepare_import(
+            server_url_fallback=_integration_server_url(integration, row),
             url=body.url,
             content=body.content,
             filename=body.filename,

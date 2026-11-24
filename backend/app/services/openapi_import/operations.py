@@ -117,6 +117,18 @@ _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "QUERY"})
 #: Methods that cannot carry a request body.
 _BODYLESS_METHODS = frozenset({"GET", "HEAD"})
 _METHOD_TOKEN_RE = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
+
+
+def method_access(method: object) -> str:
+    """``read`` or ``write`` for an imported operation, from its HTTP method.
+
+    The one rule for an imported operation's access: the method the spec
+    declares, never the generated tool name (a ``GET`` named ``create_...``
+    stays a read). What a read-only binding keeps and what listings report.
+    """
+    return "read" if str(method or "").upper() in _SAFE_METHODS else "write"
+
+
 _LOCATION_ORDER = {"path": 0, "query": 1, "querystring": 1, "header": 2, "cookie": 3}
 #: Sequential media types (OpenAPI 3.2 ``itemSchema``) → body encoding.
 _SEQUENTIAL_MEDIA = {
@@ -1231,7 +1243,7 @@ def _build_operation(
         summary=clean_text(op.get("summary") or op.get("description"), _SUMMARY_CHARS),
         tags=tags,
         deprecated=op.get("deprecated") is True,
-        tool_type="read" if method in _SAFE_METHODS else "write",
+        tool_type=method_access(method),
         sends_credential=sends_credential,
         security_schemes=schemes,
     )
@@ -1380,15 +1392,16 @@ def _is_v32(document: SpecDocument) -> bool:
         return False
 
 
-def auth_url_base(document: SpecDocument) -> str | None:
+def auth_url_base(document: SpecDocument, fallback: str | None = None) -> str | None:
     """What relative OAuth and OpenID Connect URLs resolve against.
 
     The first server (they usually sit beside the API), else the document's
-    own base URI.
+    own base URI, else *fallback*: the server URL an existing integration
+    already has, for a replacement uploaded as a file with no ``servers``.
     """
     base = document_base_uri(document)
     servers = _servers(document.data, document.version.family, base, [])
-    return servers[0]["url"] if servers else base
+    return servers[0]["url"] if servers else (base or fallback)
 
 
 def analyze_spec(
@@ -1396,11 +1409,15 @@ def analyze_spec(
     *,
     tool_prefix: str | None = None,
     discovery: dict[str, Any] | None = None,
+    server_url_fallback: str | None = None,
 ) -> SpecAnalysis:
     """Convert a parsed document (see the module docstring).
 
     *discovery* holds the fetched discovery documents of its OpenID Connect
     and OAuth2 metadata URLs (``discovery.fetch_discovery``).
+    *server_url_fallback* is what relative OAuth URLs resolve against when the
+    document names neither a server nor its own location (see
+    :func:`auth_url_base`).
     """
     data = document.data
     family = document.version.family
@@ -1418,7 +1435,7 @@ def analyze_spec(
         data,
         family=family,
         resolver=resolver,
-        url_base=default_server or base_uri,
+        url_base=default_server or base_uri or server_url_fallback,
         warnings=warnings,
         discovery=discovery,
     )

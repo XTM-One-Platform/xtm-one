@@ -293,6 +293,8 @@ def withhold_write_tools(
     of two refs, whose verb the name classifier cannot read) is a read and is
     kept: the declaration is the provider's own statement that no call of it
     changes anything, the one the in-flight repeat guard already trusts.
+    One declared :attr:`ToolDefinition.writes` (an imported ``POST`` whose
+    generated name reads as a read) is a write and is withheld.
     """
     return withhold_tools(
         defs,
@@ -300,8 +302,8 @@ def withhold_write_tools(
         {
             definition.name: read_only_refusal(definition.name, integration_label)
             for definition in defs
-            if not definition.read_only
-            and integration_tool_access(definition.base_name or definition.name) != "read"
+            if definition.writes
+            or (not definition.read_only and integration_tool_access(definition.base_name or definition.name) != "read")
         },
     )
 

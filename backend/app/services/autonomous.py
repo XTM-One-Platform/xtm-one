@@ -1820,6 +1820,16 @@ async def _run_autonomous_tick_inner() -> int:
                 logger.info("Fired %d timer(s)", timers_fired)
         except Exception as e:
             logger.error("Timer firing error: %s", format_exception_message(e), exc_info=True)
+        # The open work items that crossed their due date: work_item.past_due
+        # raised once each (#1662), so a fleet reacts before its weekly check.
+        try:
+            from app.services.work_item_past_due import raise_past_due_items
+
+            past_due = await raise_past_due_items()
+            if past_due:
+                logger.info("Raised work_item.past_due for %d item(s)", past_due)
+        except Exception as e:
+            logger.error("Past-due raise error: %s", format_exception_message(e), exc_info=True)
         # The CI completions a trigger filter could not judge (their enriched
         # facts timed out or the provider failed): read again, and triggered on
         # a match, so the last check of a head is never lost to a slow read.

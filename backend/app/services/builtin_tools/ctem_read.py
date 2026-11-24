@@ -25,6 +25,13 @@ XTM One mode only.
 ``get_ctem_case`` here also answers who opened the case (``opened_by``, the
 actor of its ``created`` event) and why each empty section is empty
 (``empty_sections``), so an agent reports a blank as a fact, not a guess.
+
+``list_ctem_assets`` (#1782) reads the live asset inventory the CTEM loop
+works on (the canonical assets every connected source imported), the same
+rows and counts as the inventory screen: a page of
+assets with their sources, and the counts by source and by category for the
+same filters, so a claim about the inventory is checked live, never read from
+code.
 """
 
 from __future__ import annotations
@@ -38,7 +45,9 @@ from app.tools.base import CallableToolExecutor, ToolDefinition
 from ._shared import logger
 
 CTEM_READ_GROUP = "ctem_read"
-CTEM_READ_TOOL_NAMES: tuple[str, ...] = ("list_ctem_signals", "list_ctem_cases", "get_ctem_case")
+CTEM_READ_TOOL_NAMES: tuple[str, ...] = ("list_ctem_signals", "list_ctem_cases", "get_ctem_case", "list_ctem_assets")
+#: The asset filters ``list_ctem_assets`` takes, as the asset list of the UI (``organization_asset_store``).
+_ASSET_FILTERS: tuple[str, ...] = ("source", "category", "subcategory", "criticality", "internet_facing")
 _SOURCE = f"builtin:{CTEM_READ_GROUP}"
 #: History events one ``get_ctem_case`` answer carries (as the case tools).
 _HISTORY_PAGE = 20
@@ -179,10 +188,45 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             logger.warning("CTEM case read failed", exc_info=True)
             return "Error: the case could not be read right now. Say so; do not guess it."
 
+    async def _assets(
+        source: str = "",
+        category: str = "",
+        subcategory: str = "",
+        criticality: str = "",
+        internet_facing: str = "",
+        query: str = "",
+        offset: int = 0,
+        limit: int = 50,
+    ) -> str:
+        from app.core.database import async_session
+        from app.services import organization_asset_store as asset_store
+
+        picked = dict(zip(_ASSET_FILTERS, (source, category, subcategory, criticality, internet_facing), strict=True))
+        filters = {
+            name: [v.strip() for v in str(value or "").split(",") if v.strip()] for name, value in picked.items()
+        }
+        try:
+            async with async_session() as db:
+                org = await asset_store.ensure_built(db)
+                if org is None:
+                    return _dump(
+                        {"total": 0, "assets": [], "by_source": {}, "by_category": {}, "note": "no inventory yet"}
+                    )
+                page = await asset_store.list_assets(
+                    db, org, q=str(query or ""), offset=_int(offset), limit=_int(limit) or 50, filters=filters
+                )
+                facets = await asset_store.asset_facets(db, org, q=str(query or ""), filters=filters)
+                await db.commit()
+        except Exception:
+            logger.warning("CTEM asset inventory read failed", exc_info=True)
+            return "Error: the asset inventory could not be read right now. Say so; do not guess it."
+        return _dump(asset_page(vars(page), facets))
+
     executor = CallableToolExecutor()
     executor.register("list_ctem_signals", signal_exec.handler("list_ctem_signals"))  # type: ignore[arg-type]
     executor.register("list_ctem_cases", case_exec.handler("list_ctem_cases"))  # type: ignore[arg-type]
     executor.register("get_ctem_case", _get)
+    executor.register("list_ctem_assets", _assets)
 
     by_name = {d.name: d for d in (*signal_defs, *case_defs)}
     definitions = [
@@ -196,13 +240,65 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             ),
             source=_SOURCE,
         ),
+        ToolDefinition(
+            name="list_ctem_assets",
+            description=(
+                "The live asset inventory: a page of assets and the counts by source and category for the same filters."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "source": {"type": "string", "description": "Comma-separated."},
+                    "category": {"type": "string"},
+                    "subcategory": {"type": "string"},
+                    "criticality": {"type": "string"},
+                    "internet_facing": {"type": "string"},
+                    "query": {"type": "string"},
+                    "offset": {"type": "integer"},
+                    "limit": {"type": "integer"},
+                },
+                "required": [],
+            },
+            source=_SOURCE,
+        ),
     ]
     return definitions, executor
+
+
+def asset_page(page: dict[str, Any], facets: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    """What ``list_ctem_assets`` answers: the page, then the counts by source and by category of the same filters."""
+    from app.services.ctem_signals import provider_name
+
+    by_source = {
+        str(f["value"]): {"name": provider_name(str(f["value"])), "assets": int(f["count"])}
+        for f in facets.get("source", [])
+    }
+    by_category = {str(f["value"]): int(f["count"]) for f in facets.get("category", [])}
+    items = page.get("items", [])
+    total = int(page.get("total", 0))
+    offset = int(page.get("offset", 0))
+    return {
+        "total": total,
+        "offset": offset,
+        "limit": int(page.get("limit", 0)),
+        "next_offset": offset + len(items) if offset + len(items) < total else None,
+        "by_source": by_source,
+        "by_category": by_category,
+        "assets": [{k: v for k, v in item.items() if k != "records"} for item in items],
+    }
+
+
+def _int(value: Any) -> int:
+    try:
+        return max(0, int(str(value or 0)))
+    except ValueError:
+        return 0
 
 
 __all__ = [
     "CTEM_READ_GROUP",
     "CTEM_READ_TOOL_NAMES",
+    "asset_page",
     "build_ctem_read_tools",
     "ctem_read_tools_for",
     "empty_sections",
