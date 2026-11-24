@@ -112,6 +112,8 @@ _TYPE_ARGUMENTS = {
     "list_hubspot_attachments": ("object_type",),
     "download_hubspot_file": ("object_type",),
     "upload_hubspot_attachment": ("object_type",),
+    "create_hubspot_note": ("object_type",),
+    "create_hubspot_task": ("object_type",),
     "get_hubspot_record_timeline": ("object_type",),
     "search_hubspot_engagements": ("associated_object_type",),
     "batch_get_hubspot_records": ("object_type",),

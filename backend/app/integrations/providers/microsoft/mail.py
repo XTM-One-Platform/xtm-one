@@ -54,7 +54,7 @@ from ._common import (
     _strip_html,
 )
 from ._draft_body import PREFER_HTML_BODY, html_draft_body
-from ._internet_headers import format_internet_headers
+from ._internet_headers import format_internet_headers, header_section
 from ._mail_window import next_page_token, page_params, pages_line, received_filter
 from ._message_type import PLAIN_MESSAGE, message_type
 from ._outlook import (
@@ -1188,6 +1188,49 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
             content="\n".join(parts),
             # An image reaches the model as pixels; readable text is inline above.
             files=[file_ref] if mime.startswith("image/") else [],
+        )
+
+    async def export_microsoft_email_mime(
+        message_id: str,
+        filename: str = "",
+        file_context: FileContext | None = None,
+    ) -> ToolResult | str:
+        """Export an email's raw MIME (Graph ``/me/messages/{id}/$value``) as a ``.eml`` file.
+
+        The file keeps the message exactly as Exchange holds it (every header,
+        every part); the answer carries its header section whole, never cut.
+        """
+        message_id = _clean_message_id(message_id)
+        if err := _validate_message_id(message_id, "export_microsoft_email_mime"):
+            return err
+        async with _client() as client:
+            resp, err = await _throttled_request(
+                client,
+                "get",
+                f"{_BASE_URL}/me/messages/{message_id}/$value",
+                _PROVIDER,
+                "export email MIME",
+                follow_redirects=True,
+            )
+        if err:
+            return err
+        data = (resp.content if resp is not None else b"") or b""
+        if not data:
+            return "Error: Microsoft returned an empty message."
+        if len(data) > _MS_MAX_FILE_BYTES:
+            return (
+                f"Error: the message is {round(len(data) / 1024 / 1024, 1)} MB, over the "
+                f"{_MS_MAX_FILE_BYTES // 1024 // 1024} MB download limit."
+            )
+        name = (filename or "").strip() or "message"
+        if not name.lower().endswith(".eml"):
+            name = f"{name}.eml"
+        file_ref = await keep_file(persist_file_fn, file_context, name, data, "message/rfc822")
+        headers = header_section(data)
+        return (
+            f"Raw MIME of email {message_id}: {name} (message/rfc822, {kilobytes(len(data))}).\n"
+            f"{kept_file_line(file_ref)}\n"
+            f"Header section, whole ({len(headers)} characters):\n{headers}"
         )
 
     async def get_microsoft_email(
@@ -2697,6 +2740,7 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
     executor.register("list_microsoft_emails", list_microsoft_emails)
     executor.register("get_microsoft_email", get_microsoft_email)
     executor.register("get_microsoft_attachment", get_microsoft_attachment)
+    executor.register("export_microsoft_email_mime", export_microsoft_email_mime)
     executor.register("search_microsoft_emails", search_microsoft_emails)
     executor.register("flag_microsoft_email", flag_microsoft_email)
     executor.register("unflag_microsoft_email", unflag_microsoft_email)
@@ -2855,6 +2899,33 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
             },
             source="integration:microsoft",
             priority=0,
+        ),
+        ToolDefinition(
+            name="export_microsoft_email_mime",
+            description=(
+                "Export an Outlook email's raw MIME as a .eml file kept in the conversation "
+                "(file_id and [[FILE:...]] marker), and return its header section whole, "
+                "never cut (Received, Authentication-Results, DKIM, ARC). Use it when "
+                "get_microsoft_email(include_headers=true) says headers were cut, or to hand "
+                "the original message on."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "message_id": {
+                        "type": "string",
+                        "description": "The email's Microsoft Graph message ID",
+                    },
+                    "filename": {
+                        "type": "string",
+                        "description": "Optional filename of the saved .eml (default message.eml)",
+                        "default": "",
+                    },
+                },
+                "required": ["message_id"],
+            },
+            source="integration:microsoft",
+            priority=1,
         ),
         ToolDefinition(
             name="search_microsoft_emails",

@@ -33,7 +33,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useBuiltinTools } from "@/hooks/useBuiltinTools";
 import { useAgents } from "@/hooks/api/useAgentApi";
 import {
-  useGeneralAssistantConfig, useUpdateGeneralAssistantConfig, useAvailableImageModels,
+  useGeneralAssistantConfig, useUpdateGeneralAssistantConfig, useAvailableImageModels, useMediaModelsInUse,
 } from "@/hooks/api/useSettingsApi";
 import { useBoundAgentRunStats } from "@/hooks/api/useAssignmentApi";
 import { ICON_MAP, PROVIDER_DISPLAY_NAMES } from "@/lib/constants";
@@ -66,6 +66,10 @@ export function BuiltinToolDetail({ toolId }: { toolId: string }) {
   const { byGroup } = useToolGateSummary();
 
   const tool = describe(toolId.replace(/^builtin-/, ""));
+  const isImageTool = tool.id === "files" || tool.id === "generate_image";
+  const { data: mediaModelsInUse } = useMediaModelsInUse(isImageTool && !!gaConfig && !gaConfig.image_model);
+  // With none saved, the model images really run on (a built-in or AI Gateway default).
+  const imageModelShown = gaConfig?.image_model || mediaModelsInUse?.image?.model || t_i18n("Auto (provider default)");
   // An agent still carrying a former id is bound to its group's page.
   const boundAgents = agents?.filter((a) => carries(a.builtin_tool_ids, tool.id)) || [];
   const boundAgentIds = new Set(boundAgents.map((a) => a.id));
@@ -109,7 +113,7 @@ export function BuiltinToolDetail({ toolId }: { toolId: string }) {
 
   const Icon = tool.icon;
   // Image generation is part of the ``files`` group.
-  const hasModelConfig = tool.id === "files" || tool.id === "generate_image";
+  const hasModelConfig = isImageTool;
   const gate = byGroup.get(tool.id);
 
   const tabs: { key: typeof tab; label: string; icon: React.ElementType }[] = [
@@ -167,7 +171,7 @@ export function BuiltinToolDetail({ toolId }: { toolId: string }) {
               {hasModelConfig && (
                 <div className="rounded-sm bg-elevation-hover p-3 space-y-1">
                   <div className="content-compact font-medium text-default-secondary">{t_i18n("Current Model")}</div>
-                  <p className="content-base text-default-secondary">{gaConfig?.image_model || t_i18n("Auto (provider default)")}</p>
+                  <p className="content-base text-default-secondary">{imageModelShown}</p>
                 </div>
               )}
             </CardContent>
@@ -278,7 +282,7 @@ export function BuiltinToolDetail({ toolId }: { toolId: string }) {
                   <div className="space-y-4">
                     <div className="rounded-sm bg-elevation-hover p-3 space-y-1">
                       <div className="content-compact font-medium text-default-secondary">{t_i18n("Image Generation Model")}</div>
-                      <p className="content-base text-default-secondary">{gaConfig?.image_model || t_i18n("Auto (provider default)")}</p>
+                      <p className="content-base text-default-secondary">{imageModelShown}</p>
                     </div>
                     <CompanyManagedBanner entityLabel="custom tool" />
                   </div>

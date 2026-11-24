@@ -9,6 +9,8 @@ version that fixes every member, and nothing changes without a declared version.
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import pytest
 
 from app.services import ctem_cases as cc
@@ -401,11 +403,18 @@ class _FakeOpenCti:
         return {"stixCoreRelationships": {"edges": []}}, None
 
 
+async def _octi_issues(headers: dict[str, str], stack: list[dict[str, str]]) -> list[Any]:
+    """The issues of one OpenCTI read of *stack* (the read must answer)."""
+    read = await source._read_opencti(cast(Any, None), "http://octi", headers, stack)
+    assert read is not None
+    return list(read.issues)
+
+
 @pytest.mark.asyncio
 async def test_the_opencti_read_takes_the_fixed_version_from_remediates(monkeypatch):
     fake = _FakeOpenCti()
     monkeypatch.setattr(source, "_graphql", fake)
-    issues = await source._read_opencti(None, "http://octi", {"Authorization": "Bearer user"}, _stack("9.0.90"))
+    issues = await _octi_issues({"Authorization": "Bearer user"}, _stack("9.0.90"))
     assert {(i.external_id, i.fixed_version) for i in issues if not i.not_affected} == {
         ("v1", "9.0.98"),
         ("v2", "9.0.99"),
@@ -419,7 +428,7 @@ async def test_the_opencti_read_takes_the_fixed_version_from_remediates(monkeypa
 async def test_a_restricted_user_gets_only_what_opencti_lets_them_read(monkeypatch):
     """KB 34 s.6.2: a user whose markings hide sw-98 and v2 sees no fix from it and no v2 member."""
     monkeypatch.setattr(source, "_graphql", _FakeOpenCti(visible={"sw-90", "sw-80", "v1", "v3", "sw-99"}))
-    issues = await source._read_opencti(None, "http://octi", {"Authorization": "Bearer restricted"}, _stack("9.0.90"))
+    issues = await _octi_issues({"Authorization": "Bearer restricted"}, _stack("9.0.90"))
     assert {i.external_id for i in issues} == {"v1", "v3"}
     v1 = next(i for i in issues if i.external_id == "v1")
     # sw-98 is hidden from this user, so the fix they can read is 9.0.99, never the hidden 9.0.98.
@@ -436,7 +445,7 @@ async def test_an_unreadable_remediates_read_keeps_the_issues(monkeypatch):
         return await fake(client, base_url, headers, query, variables)
 
     monkeypatch.setattr(source, "_graphql", _graphql)
-    issues = await source._read_opencti(None, "http://octi", {}, _stack())
+    issues = await _octi_issues({}, _stack())
     assert {i.external_id for i in issues} == {"v1", "v2", "v3"}
     assert all(i.fixed_version is None for i in issues)
 

@@ -621,6 +621,13 @@ class AvailableModelItem(BaseModel):
     access_restricted: bool = False
 
 
+class MediaModelsInUse(BaseModel):
+    """The image and speech models generation runs on for the caller; ``None`` when none can."""
+
+    image: AvailableModelItem | None = None
+    speech: AvailableModelItem | None = None
+
+
 # Why a provider that lists its decision models offered what it did:
 # "incomplete" is OpenAI's check still running or cut short, "unavailable" a
 # provider the caller may not use, so never asked.

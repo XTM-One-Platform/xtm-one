@@ -97,6 +97,23 @@ def test_the_prompts_make_the_case_the_record() -> None:
         assert "case_id" in assignment["prompt"] and "record_ctem_case_validation" in assignment["prompt"]
 
 
+def test_the_loop_raises_decisions_instead_of_notes() -> None:
+    """#1828: an SLA breach, contradicting answers, a re-plan and a no-option answer are decisions."""
+    for assignment in (CTEM_F1_CASE_ASSIGNMENT, CTEM_F2_CASE_ASSIGNMENT):
+        prompt = assignment["prompt"]
+        breach = prompt.split("On ctem_case.sla_breached:", 1)[1]
+        assert "needs_human decision keyed `ctem:remediation:`" in breach
+        assert "recommendation" in breach and "contradict" in breach
+        assert "`Verdict PHASE: proven affected | proven not affected | unproven`" in prompt
+    gates = [a for a in BUILTIN_ASSIGNMENTS if a["name"] == "Gate answered" and a["agent_slug"] in _ORCHESTRATORS]
+    assert {a["agent_slug"] for a in gates} == set(_ORCHESTRATORS)
+    for assignment in gates:
+        prompt = assignment["prompt"]
+        assert "file the review decision again under the same key with the new draft link" in prompt
+        assert "picks no option and decides nothing" in prompt
+        assert "file the same decision again under the same key" in prompt
+
+
 def test_no_open_item_lives_only_in_shared_state() -> None:
     for slug in _ORCHESTRATORS:
         persona = (_PERSONAS / f"{slug}.md").read_text()

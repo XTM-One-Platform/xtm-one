@@ -1494,6 +1494,9 @@ def _lookup_hint(cause: str) -> str:
     )
 
 
+_CHOSEN_TENANT_LEAD = " Note: this request went to the OpenAEV tenant "
+
+
 def _chosen_tenant_hint(scope: TenantScope) -> str:
     """Name the tenant a request went to, for a ``TENANT_ACCESS_DENIED`` answer."""
     if not scope.tenant_id:
@@ -1508,14 +1511,24 @@ def _chosen_tenant_hint(scope: TenantScope) -> str:
     else:
         origin = "chosen automatically; set the integration's Tenant field to use another one"
     return (
-        f" Note: this request went to the OpenAEV tenant {scope.tenant_id} ({origin}); "
+        f"{_CHOSEN_TENANT_LEAD}{scope.tenant_id} ({origin}); "
         "the integration's account must belong to it."
     )
 
 
 def _with_scope_hint(err: str | None, hint: str) -> str | None:
-    """Append *hint* to *err* only when *err* is a tenant-scope rejection."""
-    if err and hint and any(marker in err for marker in _TENANT_SCOPE_ERRORS):
+    """Append *hint* to *err* when *err* is a tenant-scope rejection or a not-found.
+
+    A not-found also names the tenant the request went to and how it was chosen
+    (#1792): two runs of one agent on two tenants (a delegated child on another
+    account than its parent) read "not found" as "absent" otherwise.
+    """
+    if not (err and hint):
+        return err
+    if any(marker in err for marker in _TENANT_SCOPE_ERRORS):
+        return f"{err}{hint}"
+    # Only the tenant the request went to; a failed lookup is no cause of a 404.
+    if hint.startswith(_CHOSEN_TENANT_LEAD) and is_not_found_error(err):
         return f"{err}{hint}"
     return err
 
@@ -1524,7 +1537,7 @@ async def _scope_path(headers: dict[str, str], path: str) -> tuple[str, str]:
     """Route *path* to the chosen tenant's twin; returns ``(path, hint)``.
 
     The hint explains a failed lookup (the path stays unscoped) or names the
-    tenant the path went to; ``_with_scope_hint`` adds it to tenant errors only.
+    tenant the path went to; ``_with_scope_hint`` adds it to tenant errors and not-founds.
     Headers without a resolver (read-only collectors such as
     ``ctem_metrics_collector``) are unscoped.
     """

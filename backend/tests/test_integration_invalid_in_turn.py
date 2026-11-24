@@ -21,9 +21,12 @@ from app.services import integration_invalid_notice as notice
 from app.services import integration_tools as it
 from app.services.integration_credentials import (
     INTEGRATION_INVALID_REASON,
+    INTEGRATION_NOT_CONNECTED_REASON,
     format_invalid_integration_prompt_note,
     format_unshared_oauth_prompt_note,
     invalid_config_binding,
+    not_connected_binding,
+    unavailable_integration_reasons,
     unavailable_integrations_notice,
 )
 
@@ -90,26 +93,73 @@ async def test_an_invalid_integration_is_reported_and_notified(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_a_valid_configuration_reports_nothing(monkeypatch):
+async def test_a_valid_configuration_is_not_reported_invalid(monkeypatch):
     integ = _integration("whatsapp", {"backend": "linked_device_gateway", "gateway_vendor": "whapi"})
     notify = AsyncMock()
     monkeypatch.setattr(notice, "notify_integration_invalid_once", notify)
     missing: list[dict] = []
     await it._report_invalid_config(integ, binding_key="whatsapp", missing_bindings=missing, context={})
+    # No credential with a complete configuration: not connected, never invalid.
+    assert [m["reason"] for m in missing] == [INTEGRATION_NOT_CONNECTED_REASON]
+    notify.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_no_row_reports_nothing(monkeypatch):
+    notify = AsyncMock()
+    monkeypatch.setattr(notice, "notify_integration_invalid_once", notify)
+    missing: list[dict] = []
+    await it._report_invalid_config(None, binding_key="x", missing_bindings=missing, context={})
     assert missing == []
     notify.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_no_row_or_no_config_reports_nothing(monkeypatch):
+async def test_an_unconnected_integration_is_said_not_silent(monkeypatch):
+    """A complete configuration with no credential (never signed in, expired,
+    revoked) yields no tool: the turn names it as not connected, owners are not
+    paged for a configuration that is fine."""
     notify = AsyncMock()
     monkeypatch.setattr(notice, "notify_integration_invalid_once", notify)
     missing: list[dict] = []
-    await it._report_invalid_config(None, binding_key="x", missing_bindings=missing, context={})
-    no_config = SimpleNamespace(id=uuid.uuid4(), provider="whatsapp", name="n", extra_config_enc=None)
-    await it._report_invalid_config(no_config, binding_key="x", missing_bindings=missing, context={})
-    assert missing == []
+    no_config = SimpleNamespace(id=uuid.uuid4(), provider="microsoft", name="Office mailbox", extra_config_enc=None)
+    await it._report_invalid_config(no_config, binding_key="microsoft", missing_bindings=missing, context={})
+    valid = _integration("whatsapp", {"backend": "linked_device_gateway", "gateway_vendor": "whapi"}, name="Ops")
+    await it._report_invalid_config(valid, binding_key="whatsapp", missing_bindings=missing, context={})
+    assert [m["reason"] for m in missing] == [INTEGRATION_NOT_CONNECTED_REASON] * 2
     notify.assert_not_awaited()
+    note = format_invalid_integration_prompt_note(missing)
+    assert '"Office mailbox", "Ops" are bound but yield no tools' in note
+    assert "no usable credential" in note
+    reasons = unavailable_integration_reasons(missing)
+    assert reasons["Office mailbox"].startswith("it holds no usable credential")
+
+
+@pytest.mark.asyncio
+async def test_no_stored_config_still_names_the_keys_its_provider_requires(monkeypatch):
+    """A legacy row with no extra config for a provider that requires keys is
+    invalid (keys named, owners notified), never 'not connected'."""
+    notify = AsyncMock(return_value=True)
+    monkeypatch.setattr(notice, "notify_integration_invalid_once", notify)
+    missing: list[dict] = []
+    legacy = SimpleNamespace(
+        id=uuid.uuid4(), provider="fortisiem", name="SIEM", user_id=uuid.uuid4(), extra_config_enc=None
+    )
+    await it._report_invalid_config(legacy, binding_key="fortisiem", missing_bindings=missing, context={})
+    assert [m["reason"] for m in missing] == [INTEGRATION_INVALID_REASON]
+    assert "base_url" in missing[0]["missing_keys"]
+    notify.assert_awaited_once()
+
+
+def test_an_unconnected_and_an_invalid_integration_are_both_said():
+    unconnected = not_connected_binding(
+        SimpleNamespace(id=uuid.uuid4(), provider="notion", name="Wiki"), binding_key="notion"
+    )
+    invalid = invalid_config_binding(_integration("whatsapp", {}), ["phone_number_id"])
+    note = format_invalid_integration_prompt_note([unconnected, invalid, dict(unconnected)])
+    assert note.count("Tool Availability Notice") == 2
+    assert note.count('"Wiki"') == 1
+    assert '"phone_number_id" missing' in note
 
 
 def test_the_notice_key_changes_with_the_missing_keys_only():
