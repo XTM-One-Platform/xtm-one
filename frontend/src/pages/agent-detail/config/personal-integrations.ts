@@ -25,21 +25,30 @@ export interface IntegrationLending {
 /**
  * The agent's personal integrations its people would not get otherwise:
  * bound by the agent, not company-managed and shared with none of the
- * agent's groups (an integration shared with one of them is already theirs).
+ * agent's groups or people (one shared with them is already theirs). An agent
+ * shared with no group and no person has none.
  */
 export function unsharedPersonalIntegrations(
   bindings: Record<string, string[]> | null,
   integrations: Integration[] | undefined,
   sharedGroupIds: string[] | null,
+  sharedUserIds: string[] | null = null,
 ): Integration[] {
-  if (!sharedGroupIds?.length || !bindings || !integrations) return [];
+  if (!isShared(sharedGroupIds, sharedUserIds) || !bindings || !integrations) return [];
+  const groups = sharedGroupIds ?? [];
+  const people = sharedUserIds ?? [];
   const boundIds = new Set(Object.values(bindings).flat());
   return integrations.filter(
     (integ) =>
       boundIds.has(integ.id) &&
       !integ.is_company_managed &&
-      !(integ.shared_group_ids ?? []).some((gid) => sharedGroupIds.includes(gid)),
+      !(integ.shared_group_ids ?? []).some((gid) => groups.includes(gid)) &&
+      !(integ.shared_user_ids ?? []).some((uid) => people.includes(uid)),
   );
+}
+
+function isShared(sharedGroupIds: string[] | null, sharedUserIds: string[] | null): boolean {
+  return !!sharedGroupIds?.length || !!sharedUserIds?.length;
 }
 
 /** What the banner needs of a personal integration. */
@@ -55,11 +64,12 @@ export function bannerPersonalIntegrations(
   bindings: Record<string, string[]> | null,
   integrations: Integration[] | undefined,
   sharedGroupIds: string[] | null,
+  sharedUserIds: string[] | null,
   fromAgent: PersonalIntegration[] | null | undefined,
 ): PersonalIntegration[] {
-  if (!sharedGroupIds?.length) return [];
+  if (!isShared(sharedGroupIds, sharedUserIds)) return [];
   if (fromAgent) return fromAgent;
-  return unsharedPersonalIntegrations(bindings, integrations, sharedGroupIds);
+  return unsharedPersonalIntegrations(bindings, integrations, sharedGroupIds, sharedUserIds);
 }
 
 /**

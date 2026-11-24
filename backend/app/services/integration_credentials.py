@@ -176,23 +176,32 @@ def lent_integration_ids(agent: Any) -> set[str]:
 
 
 async def shared_agent_personal_integrations(db: AsyncSession, agent: Any) -> list[dict[str, Any]]:
-    """The owner's personal integrations a group-shared *agent* binds that none
-    of its groups gets otherwise: ``{id, name, provider}`` each, in name order.
+    """The owner's personal integrations a shared *agent* binds that the people
+    it is shared with would not get otherwise: ``{id, name, provider}`` each,
+    in name order.
 
     The agent settings page reads them from the agent itself, because an
     editor who is not the owner cannot read the owner's personal rows: the
     banner that says what the people it is shared with get must still show
-    them its state (#8824). Company-managed rows and rows shared with one of
-    the agent's groups are left out (they are already the members').
+    them its state. An agent shared with no group and no person lists none.
+    Company-managed rows and rows shared with one of the agent's groups or
+    people are left out (they are already theirs).
     """
     groups = {str(g) for g in (getattr(agent, "shared_group_ids", None) or [])}
+    people = {str(u) for u in (getattr(agent, "shared_user_ids", None) or [])}
     owner = normalize_acting_user_id(getattr(agent, "user_id", None))
     bound = sorted(canonical_integration_ids(flatten_binding_ids(getattr(agent, "integration_bindings", None))))
-    if not groups or owner is None or not bound:
+    if not (groups or people) or owner is None or not bound:
         return []
     rows = (
         await db.execute(
-            select(Integration.id, Integration.name, Integration.provider, Integration.shared_group_ids).where(
+            select(
+                Integration.id,
+                Integration.name,
+                Integration.provider,
+                Integration.shared_group_ids,
+                Integration.shared_user_ids,
+            ).where(
                 Integration.id.in_([uuid.UUID(i) for i in bound]),
                 Integration.user_id == owner,
                 Integration.is_company_managed.is_(False),
@@ -204,6 +213,7 @@ async def shared_agent_personal_integrations(db: AsyncSession, agent: Any) -> li
             {"id": str(row.id), "name": row.name, "provider": row.provider}
             for row in rows
             if not groups & {str(g) for g in (row.shared_group_ids or [])}
+            and not people & {str(u) for u in (row.shared_user_ids or [])}
         ),
         key=lambda item: (item["name"] or "").lower(),
     )

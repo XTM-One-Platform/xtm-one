@@ -26,7 +26,10 @@ the agent-builder tool alike, so the two can never drift:
   :func:`derive_available_channel_types`;
 - the company-managed toggle: :func:`strip_personal_bindings` when an agent
   becomes company-managed, :func:`revert_company_managed_to_private` when it
-  goes back, and :func:`retain_agent_bindings`, which a duplicate also uses.
+  goes back, and :func:`retain_agent_bindings`, which a duplicate also uses;
+- who reaches an agent: when :func:`agent_audience` changes,
+  :func:`unlink_agent_from_lost_holders` takes it off the handover targets and
+  work-item rosters of the agents whose owner no longer reaches it.
 
 Refusals are ``HTTPException`` s; the agent-builder tool turns their ``detail``
 into the message it returns to the model.
@@ -37,8 +40,10 @@ from __future__ import annotations
 import uuid
 
 from fastapi import HTTPException
-from sqlalchemy import not_, select
+from sqlalchemy import Text as SAText
+from sqlalchemy import cast, not_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.api.v1.binding_access import (
     WHITELIST_BYPASS_REFUSED_DETAIL,
@@ -49,6 +54,7 @@ from app.api.v1.helpers import (
     bindable_knowledge_base_clause,
     parse_uuid_list,
     user_visible_filter,
+    visible_to_user_column_clause,
 )
 from app.channels.base import CHANNEL_TO_BOT_PROVIDER
 from app.core.utils import safe_uuid
@@ -306,6 +312,68 @@ def retain_agent_bindings(agent: Agent, keep: dict[str, set[str]]) -> dict[str, 
         _filter("work_item_owner_agent_ids")
 
     return dropped
+
+
+#: The agent columns naming other agents this agent hands work to.
+AGENT_REFERENCE_FIELDS = ("handover_agent_ids", "work_item_owner_agent_ids")
+
+
+def agent_audience(agent: Agent) -> tuple:
+    """What decides who reaches *agent*: compare it before and after a write
+    to know whether :func:`unlink_agent_from_lost_holders` has work to do."""
+    return (
+        canonical_id(agent.user_id),
+        bool(agent.is_company_managed),
+        bool(getattr(agent, "access_restricted", False)),
+        frozenset(str(g) for g in agent.shared_group_ids or []),
+        frozenset(str(u) for u in agent.shared_user_ids or []),
+    )
+
+
+async def unlink_agent_from_lost_holders(db: AsyncSession, agent: Agent) -> int:
+    """Take *agent* off the handover targets and work-item rosters of the
+    agents that may no longer name it, in place; returns how many changed.
+
+    A holder keeps it while the holder's owner still reaches it
+    (:func:`visible_to_user_column_clause`, the tiers a write adding it is
+    checked with: an administrator reaches every agent). A company-managed
+    holder also loses it as a handover target once *agent* is no longer
+    company-managed (:func:`validate_company_managed_bindings`). The handover
+    type and condition maps follow (:func:`retain_agent_bindings`).
+    """
+    target = str(agent.id)
+    # The query below reads the audience this request just wrote.
+    await db.flush()
+    target_row = aliased(Agent)
+    still_reached = (
+        select(target_row.id)
+        .where(target_row.id == agent.id, visible_to_user_column_clause(target_row, Agent.user_id))
+        # Each holder's own owner, never any agent's.
+        .correlate(Agent)
+        .exists()
+    )
+    holders = (
+        await db.execute(
+            select(Agent, still_reached).where(
+                Agent.id != agent.id,
+                or_(*(cast(getattr(Agent, field), SAText).contains(target) for field in AGENT_REFERENCE_FIELDS)),
+            )
+        )
+    ).all()
+    changed = 0
+    for holder, reached in holders:
+        lost = set(AGENT_REFERENCE_FIELDS) if not reached else set()
+        if holder.is_company_managed and not agent.is_company_managed:
+            lost.add("handover_agent_ids")
+        keep: dict[str, set[str]] = {}
+        for field in lost:
+            named = {canonical_id(i) for i in getattr(holder, field) or []}
+            if target in named:
+                keep[field] = {i for i in named if i and i != target}
+        if keep:
+            retain_agent_bindings(holder, keep)
+            changed += 1
+    return changed
 
 
 #: How a dropped binding is named in a copy's warnings (singular form).

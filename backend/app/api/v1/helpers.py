@@ -3463,7 +3463,10 @@ def visible_to_user_column_clause(model_cls: type[VisibilityQueryable], user_id_
 
     return or_(
         and_(
-            exists().where(User.id == user_id_column, User.role == "admin"),
+            # Correlated explicitly, as the group tier is: nested under another
+            # subquery, auto-correlation would add the table of
+            # *user_id_column* to this FROM and match any administrator.
+            exists().where(User.id == user_id_column, User.role == "admin").correlate_except(User),
             *([hidden] if (hidden := hidden_rows_excluded(model_cls)) is not None else []),
         ),
         shared_with_user_column_clause(model_cls, user_id_column),
