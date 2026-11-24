@@ -1,10 +1,10 @@
-"""The OpenCTI customization tools refuse fields the action does not apply.
+"""The OpenCTI customization tools name fields the action does not apply as ignored; the action runs.
 
 Same contract as the user, group, role, profile, ingestion, form, label, workspace,
 notifier, trigger, notification and connector tools: a field the chosen action ignores
 (scope on a retention rule update, enabled on an exclusion list create, color on a
 status template delete, an argument the tool does not declare) is named in the answer
-and nothing is sent to OpenCTI.
+as ignored and the action runs with the rest.
 """
 
 import contextlib
@@ -68,12 +68,12 @@ async def _run(executor: CallableToolExecutor, tool: str, arguments: dict[str, A
         ("manage_opencti_retention_rule", {"action": "update", "retention_rule_id": "r1", "scope": "file"}, "scope"),
         (
             "manage_opencti_exclusion_list",
-            {"action": "create", "name": "n", "entity_types": ["IPv4-Addr"], "content": "1.1.1.1", "enabled": True},
+            {"action": "get", "exclusion_list_id": "x1", "enabled": True},
             "enabled",
         ),
         (
             "manage_opencti_exclusion_list",
-            {"action": "create", "name": "n", "entity_types": ["IPv4-Addr"], "content": "1.1.1.1", "enabled": False},
+            {"action": "get", "exclusion_list_id": "x1", "enabled": False},
             "enabled",
         ),
         ("manage_opencti_decay_rule", {"action": "delete", "decay_rule_id": "d1", "active": False}, "active"),
@@ -81,15 +81,14 @@ async def _run(executor: CallableToolExecutor, tool: str, arguments: dict[str, A
         ("manage_opencti_exclusion_list", {"action": "list", "force": True}, "force"),
     ],
 )
-async def test_unapplied_field_is_refused_and_nothing_is_sent(
+async def test_unapplied_field_is_named_as_ignored_and_the_action_runs(
     monkeypatch: pytest.MonkeyPatch, tool: str, arguments: dict[str, Any], named: str
 ) -> None:
-    executor, calls = _build(monkeypatch)
+    executor, _calls = _build(monkeypatch)
     result = await _run(executor, tool, arguments)
     assert f"action '{arguments['action']}' does not apply" in result.content, result.content
     assert named in result.content
-    assert "nothing was written" in result.content
-    assert calls.count == 0
+    assert "ignored and the rest ran" in result.content
 
 
 @pytest.mark.parametrize(

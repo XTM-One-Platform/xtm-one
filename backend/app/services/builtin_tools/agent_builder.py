@@ -7418,6 +7418,9 @@ def build_agent_builder_tool(
             _result = f"Agent **{agent.name}** updated: {', '.join(updated)}."
             if _builtin_change:
                 _result += f" {_builtin_change}"
+            from app.services.tool_surface_timing import agent_change_line
+
+            _result += agent_change_line(updated)
             if text_read_back:
                 _result += f"\n{text_read_back}"
             if _share_lines:
@@ -12757,6 +12760,10 @@ def build_agent_builder_tool(
                 await _db.rollback()
                 return "Failed to create integration. Please try again."
             note = spec_tools.tools_line(spec_row) if spec_row is not None else ""
+            if spec_row is not None:
+                from app.services.tool_surface_timing import NEXT_TURN_LINE
+
+                note += NEXT_TURN_LINE
             if effective_auth == "oauth":
                 note += (
                     "\n  • Ready to connect with the platform's OAuth app." if on_admin_app else ""
@@ -13267,6 +13274,9 @@ def build_agent_builder_tool(
                     f"\n  • A2A direction: {wanted_direction}; the credentials and "
                     "targets of the previous direction were cleared."
                 )
+            from app.services.tool_surface_timing import integration_change_line
+
+            note += integration_change_line(updated)
             # Never echo credentials — only report which fields changed.
             changed = ", ".join(updated) or "nothing (the connected-account choice was already so)"
             return f"Integration **{integ.name}** updated: {changed}.{note}"
