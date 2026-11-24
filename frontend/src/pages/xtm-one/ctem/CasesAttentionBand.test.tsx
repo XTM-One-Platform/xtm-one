@@ -13,7 +13,7 @@ vi.mock("@/hooks/useAuth", () => ({ useAuth: () => auth }));
 vi.mock("@/hooks/api/useOrganizationContextApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useOrganizationContextApi")>()),
   useOrganizationContext: () => ({ data: undefined }),
-  useSaveOrganizationContext: () => ({ isPending: false, mutate: () => undefined }),
+  usePatchOrganizationContext: () => ({ isPending: false, mutate: () => undefined }),
 }));
 
 vi.mock("@/hooks/api/useAuthApi", async (importOriginal) => ({

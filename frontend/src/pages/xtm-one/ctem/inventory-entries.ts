@@ -67,6 +67,12 @@ export function deletableRows(rows: readonly RowRef[]): { ids: string[]; locked:
   return { ids, locked: rows.length - ids.length };
 }
 
+/** The software a delete removes (#1729): the ones typed by hand; a synced one stays, its sources own it. */
+export function softwareDeletable(rows: readonly { id: string; origin: string }[]): { ids: string[]; locked: number } {
+  const ids = rows.filter((row) => row.origin === "manual").map((row) => row.id);
+  return { ids, locked: rows.length - ids.length };
+}
+
 /** A new asset entered by hand, with the defaults for every field the dialog leaves out. */
 export function newAssetRow(patch: AssetPatch): AssetRow {
   return {

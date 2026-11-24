@@ -114,7 +114,8 @@ def test_the_spec_assignments_live_on_the_orchestrator() -> None:
         "Gate answered",
         "Loop reminder due",
     }
-    assert assignments["Weekly threat sweep"]["trigger_config"] == {"cron": "0 7 * * 1"}
+    # Staggered off the Monday 07:00 of the desks (#1832).
+    assert assignments["Weekly threat sweep"]["trigger_config"] == {"cron": "30 6 * * 1"}
     assert assignments["Re-test due"]["trigger_type"] == "work_item"
     assert assignments["Re-test due"]["trigger_config"] == {"correlation_prefix": "ctem:f1:retest:"}
 

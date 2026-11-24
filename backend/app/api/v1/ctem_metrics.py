@@ -562,22 +562,18 @@ def _payload_age_seconds(payload: Any) -> float | None:
 
 
 async def _profile_stamp(db: AsyncSession | None) -> str | None:
-    """The organization profile version a posture is built from, ``None`` when none is saved.
+    """The fingerprint of the organization profile inputs a posture is built from, ``None`` when none is saved.
 
-    The build reads the profile (software, assets and exposure, policy), so a
-    posture stamped with another version is stale whatever its age: a profile
-    saved, imported or synced shows on the next load (rebuilt in the background).
+    The build reads the software and the assets and groups of the profile
+    (``ctem_posture_inputs`` declares them), so a posture stamped with another
+    fingerprint is stale whatever its age: a change to those inputs shows on
+    the next load (rebuilt in the background). A save, an import or a sync that
+    leaves them as they were (a description, Owned domains, a PIR detail, a
+    sync writing the same rows) keeps the cached posture fresh.
     """
-    if db is None:
-        return None
-    from app.services import organization_context as org_context
+    from app.services.ctem_posture_inputs import posture_inputs_stamp
 
-    try:
-        row = await org_context.current_version(db)
-    except Exception as exc:  # an unreadable profile reads as none, never a 500
-        logger.info("CTEM organization profile version unreadable: %s", format_exception_message(exc))
-        return None
-    return None if row is None else f"{row.organization_id}:{row.version}"
+    return await posture_inputs_stamp(db)
 
 
 def _cached_is_fresh(payload: Any, *, profile_stamp: str | None) -> bool:

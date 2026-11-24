@@ -769,10 +769,13 @@ async def _ensure_trigger(
 #: patched, before its own PIR information is rewritten: on an update the score
 #: delivered is the one before the change (lab, 21 Nov 2026). The signal records it
 #: as the score at delivery; the fleet reads the live score from OpenCTI.
+#: OpenCTI renders the template through safeEjs, which refuses the whole notification
+#: ("Invalid javascript") when one expression does not parse: the tests parse and
+#: render every expression of both templates.
 PIR_WEBHOOK_TEMPLATE = (
     '{"notification_id": "<%= data[0].notification_id %>:<%= data[0].instance.id %>:'
     "<%= data[0].type %>:<%= data[0].message %>:"
-    "<%= JSON.stringify((data[0].instance.extensions || {})"
+    "<%= JSON.stringify(((data[0].instance.extensions || {})"
     "['extension-definition--ea279b3e-5c71-4632-ac08-831c66a786ba'] || {}).pir_information) %>\", "
     '"type": "<%= data[0].type %>", "message": "<%= data[0].message %>", '
     '"xtm_source": "pir_playbook", '

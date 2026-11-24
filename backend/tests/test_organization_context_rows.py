@@ -116,9 +116,9 @@ def test_a_hand_source_or_no_source_is_refused_for_sourced_sections(source: str)
         rows.plan_upsert(_profile(), "assets", source, [])
 
 
-def test_tech_stack_and_ai_systems_add_new_names_and_never_overwrite() -> None:
+def test_software_and_ai_systems_add_new_names_and_never_overwrite() -> None:
     base = _profile(tech_stack=[oc.TechStackEntry(product="Microsoft Defender", vendor="MS", cpe="cpe:x")])
-    plan = rows.plan_upsert(base, "tech_stack", "intune", rows.map_rows(_APPS, "intune_detected_app"))
+    plan = rows.plan_upsert(base, "software", "intune", rows.map_rows(_APPS, "intune_detected_app"))
     assert plan.unchanged == ["Microsoft Defender"] and plan.added == ["CrowdStrike Falcon"]
     assert _saved(plan).tech_stack[0].cpe == "cpe:x"
     ai = rows.plan_upsert(_profile(), "ai_systems", "", [{"name": "Copilot", "kind": "robot"}])
@@ -138,7 +138,7 @@ def test_remove_drops_the_sources_rows_only() -> None:
     assert [r.name for r in _saved(plan).assets_exposure] == ["b", "c"]
     assert [ext for ext, _ in plan.refused] == ["d-2"]
     with pytest.raises(rows.RowError):
-        rows.plan_remove(base, "tech_stack", "intune", ["x"])
+        rows.plan_remove(base, "software", "intune", ["x"])
 
 
 def test_a_batch_over_the_cap_and_an_unknown_format_are_refused() -> None:

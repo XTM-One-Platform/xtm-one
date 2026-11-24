@@ -83,10 +83,8 @@ class Category:
 
 #: The profile field the Software category reads before the store is built (#1495).
 SOFTWARE_FIELD = "tech_stack"
-#: The category of the organization's software (#1495): the Software entity, ``tech_stack`` its deprecated alias.
+#: The category of the organization's software (#1495): the Software entity. No alias (Sam, 24 Nov 2026).
 SOFTWARE = "software"
-#: Deprecated since #1495 (kept one release): ``tech_stack`` answers the ``software`` category.
-TECH_STACK_ALIAS = "tech_stack"
 #: The profile field the primary assets are stored under (#1591: OpenCRQ's primary assets, the stored key kept).
 PRIMARY_ASSETS_FIELD = "crown_jewels"
 #: The category of the organization's primary assets (#1591), in OpenCRQ's words.
@@ -94,7 +92,7 @@ PRIMARY_ASSETS = "primary_assets"
 #: Deprecated since #1591 (kept one release): ``crown_jewels`` answers the ``primary_assets`` category.
 CROWN_JEWELS_ALIAS = "crown_jewels"
 #: Each deprecated category name, to the category it answers.
-CATEGORY_ALIASES: dict[str, str] = {TECH_STACK_ALIAS: SOFTWARE, CROWN_JEWELS_ALIAS: PRIMARY_ASSETS}
+CATEGORY_ALIASES: dict[str, str] = {CROWN_JEWELS_ALIAS: PRIMARY_ASSETS}
 
 
 def _category_name(field: str) -> str:
