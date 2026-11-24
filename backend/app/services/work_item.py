@@ -781,6 +781,8 @@ def serialize_work_item(
         "needs_human": bool(getattr(item, "needs_human", None)) and item.status not in WORK_ITEM_TERMINAL_STATUSES,
         # The person a needs_human item waits for when not its user (#11893).
         "waits_for_user_id": (str(recipient) if (recipient := getattr(item, "waits_for_user_id", None)) else None),
+        # The groups a needs_human item waits for instead of one person (#1748).
+        "waits_for_group_ids": list(getattr(item, "waits_for_group_ids", None) or []) or None,
         # The decision asked of a person; None on a legacy item (#9437).
         "ask": getattr(item, "ask", None) or None,
         # What a decision card shows when its ask is missing or incomplete:
@@ -901,7 +903,10 @@ def _stored_recipient_clause(user_uuid: uuid.UUID) -> Any:
     wherever it was filed. The owner agent's person gets no standing grant
     here: the hand-off rules of #858 / #890 decide that.
     """
-    return WorkItem.waits_for_user_id == user_uuid
+    from app.services.work_item_recipient import group_member_clause
+
+    # A member of the groups a decision is addressed to reads it too (#1748).
+    return or_(WorkItem.waits_for_user_id == user_uuid, group_member_clause(user_uuid))
 
 
 def _writable_clause(
@@ -2284,7 +2289,7 @@ async def create_work_item(
                         if exc.reason == "archived":
                             message = str(exc).rstrip(".")
                 raise WorkspaceWriteRefusedError(message)
-        waits_for = await _resolved_recipient(
+        waits_for, waits_for_groups = await _resolved_recipients(
             db,
             needs_human=bool(needs_human),
             recipient=recipient,
@@ -2297,6 +2302,7 @@ async def create_work_item(
         item = WorkItem(
             user_id=user_uuid,
             waits_for_user_id=waits_for,
+            waits_for_group_ids=waits_for_groups,
             is_company_managed=is_company_managed,
             workspace_id=workspace_id,
             owner_agent_id=owner_uuid,
@@ -2718,7 +2724,7 @@ async def update_work_item(
 
         if recipient is not None or (human and not stored_human):
             # Who the decision waits for, resolved before anything is written (#11893).
-            item.waits_for_user_id = await _resolved_recipient(
+            item.waits_for_user_id, item.waits_for_group_ids = await _resolved_recipients(
                 db,
                 needs_human=bool(human),
                 recipient=recipient,
@@ -4825,6 +4831,42 @@ class WorkItemNotWaitingError(ValueError):
     """The item asks nothing of a person: there is nothing to answer."""
 
 
+def _not_waiting_message(item: Any) -> str:
+    """Why an answer is refused: who decided first and when (#1748), else the item no longer waits."""
+    answer = (getattr(item, "payload", None) or {}).get("answer")
+    if isinstance(answer, dict) and answer.get("answered_at"):
+        who = answer.get("answered_by") or "another person"
+        return f"already decided by {who} at {answer['answered_at']}"
+    return "this work item is not waiting for a person's answer"
+
+
+async def _refuse_decided_for_group_member(
+    db: Any, wid: uuid.UUID, uid: uuid.UUID, writer: CompanyManagedWriter
+) -> None:
+    """Raise the "already decided" refusal for a member of a group item someone else answered (#1748).
+
+    The answer clears ``needs_human``, so the row no longer matches the
+    recipient tier of :func:`answer_work_item` for the other members of its
+    groups (a concurrent second answer included, re-checked once it gets the
+    row lock): they would read "not found". A member of the groups the item
+    was addressed to reads who decided first and when instead. Returns when
+    the item is not such an answered group item, so the caller answers as before.
+    """
+    from app.services.work_item_recipient import group_member_clause
+
+    decided = (
+        await db.execute(select(WorkItem).where(WorkItem.id == wid, group_member_clause(uid)))
+    ).scalar_one_or_none()
+    if decided is None or getattr(decided, "needs_human", None):
+        return
+    answer = (getattr(decided, "payload", None) or {}).get("answer")
+    if not (isinstance(answer, dict) and answer.get("answered_at")):
+        return
+    if await _gate_write(db, writer, decided, "answer") is None:
+        return
+    raise WorkItemNotWaitingError(_not_waiting_message(decided))
+
+
 async def answer_work_item(
     work_item_id: str,
     *,
@@ -4873,11 +4915,13 @@ async def answer_work_item(
         item = (
             await db.execute(select(WorkItem).where(WorkItem.id == wid, answerable).with_for_update())
         ).scalar_one_or_none()
+        if item is None and uid is not None:
+            await _refuse_decided_for_group_member(db, wid, uid, writer)
         if item is None or await _gate_write(db, writer, item, "answer") is None:
             return None
         _refuse_scheduled(item, "answered")
         if not getattr(item, "needs_human", None) or item.status in WORK_ITEM_TERMINAL_STATUSES:
-            raise WorkItemNotWaitingError("this work item is not waiting for a person's answer")
+            raise WorkItemNotWaitingError(_not_waiting_message(item))
         ask = getattr(item, "ask", None) or {}
         label = None
         chosen = None
@@ -5876,6 +5920,41 @@ async def _resolved_recipient(
         workspace_id=workspace_id,
     )
     return found.user_id if found.user_id != item_user_id else None
+
+
+async def _resolved_recipients(
+    db: Any,
+    *,
+    needs_human: bool,
+    recipient: str | None,
+    acting_user_id: uuid.UUID | None,
+    agent_id: uuid.UUID | None,
+    item_user_id: uuid.UUID | None,
+    is_company_managed: bool,
+    workspace_id: uuid.UUID | None,
+) -> tuple[uuid.UUID | None, list[str] | None]:
+    """``(waits_for_user_id, waits_for_group_ids)`` a write stores (#11893, #1748).
+
+    A recipient naming groups (``group:<id>``, comma-separated) stores the group
+    ids and no person; anything else is :func:`_resolved_recipient`.
+    """
+    from app.services.work_item_recipient import _resolve_groups, group_refs
+
+    groups = group_refs(recipient) if needs_human else None
+    if groups:
+        found = await _resolve_groups(db, groups)
+        return None, list(found.group_ids)
+    person = await _resolved_recipient(
+        db,
+        needs_human=needs_human,
+        recipient=recipient,
+        acting_user_id=acting_user_id,
+        agent_id=agent_id,
+        item_user_id=item_user_id,
+        is_company_managed=is_company_managed,
+        workspace_id=workspace_id,
+    )
+    return person, None
 
 
 def _waits_for_person_clause(user_uuid: uuid.UUID, now: datetime):

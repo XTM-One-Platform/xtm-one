@@ -235,6 +235,10 @@ class WorkItem(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # The groups a ``needs_human`` item waits for instead of one person (#1748):
+    # UUID strings; any member at answer time answers, the first answer closes
+    # it for all. SQL NULL when it waits for a person or the administrators.
+    waits_for_group_ids: Mapped[list | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     # The decision a person is asked for, structured for the views:
     # ``{question, options?: [{key, label, effect?}], recommendation?,
     # deadline?}`` (``services.work_item_ask``). SQL NULL when none; a legacy

@@ -324,6 +324,12 @@ def work_item_opening(item: Any) -> Opening:
 
     # The pull requests and issues the item tracks, as link buttons, when its ask names no source (#1177).
     ask = with_reference_links(ask, getattr(item, "blocked_on_refs", None), getattr(item, "payload", None)) or ask
+    groups = [str(g) for g in (getattr(item, "waits_for_group_ids", None) or []) if g]
+    if groups:
+        # Addressed to groups (#1748): the row names the first, the ask carries them all
+        # (``recipient`` is one key of String(64)); the readers check every group.
+        ask = {**ask, "recipient_groups": groups}
+        return "work_item", ask, f"group:{groups[0]}", deadline_of(ask)
     recipient = owner_recipient(item.waits_for_user_id or item.user_id)
     return "work_item", ask, recipient, deadline_of(ask)
 
