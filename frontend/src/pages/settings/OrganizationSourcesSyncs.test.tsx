@@ -171,7 +171,7 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
   it.each([
     ["opencrq", "OpenCRQ", { crown_jewels: 9 }, "crown_jewels"],
     ["opencti", "OpenCTI", { assets_exposure: 12 }, "assets"],
-    ["openaev", "OpenAEV", { tech_stack: 4 }, "software"],
+    ["openaev", "OpenAEV", { software: 4 }, "software"],
   ] as const)("gives a %s source whose rows outlived their sync a menu: set up a sync, purge or hand over (#1940)", async (key, name, counts, section) => {
     const total = Object.values(counts).reduce((a, b) => a + b, 0);
     serve([], [source({ key, display_name: name, rows: counts, total, sync_ids: [] })]);

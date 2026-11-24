@@ -150,7 +150,7 @@ const rowStateOf = (row: Row): RowState => {
 const FIELD_IMPORT_SECTION: Record<SourcedSection, ImportSectionKey> = {
   assets_exposure: "assets",
   asset_groups: "asset_groups",
-  tech_stack: "software",
+  software: "software",
   crown_jewels: "crown_jewels",
 };
 
