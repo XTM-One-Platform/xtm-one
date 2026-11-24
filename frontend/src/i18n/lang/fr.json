@@ -11618,6 +11618,7 @@
   "Under the map": "Sous la carte",
   "Beside the map": "À côté de la carte",
   "{agent} claimed it and is working on it. If nothing moves, put it back in the queue.": "{agent} l'a pris en charge et y travaille. Si rien ne bouge, remettez-le dans la file.",
+  "{agent} claimed it and is working on it. If nothing moves, someone who can change it must put it back in the queue.": "{agent} l'a pris en charge et y travaille. Si rien ne bouge, une personne qui peut le modifier doit le remettre dans la file.",
   "{agent} has an inbox, but its filters leave this item out, so nothing picks it up automatically.": "{agent} a une boîte de réception, mais ses filtres excluent cet élément : rien ne le prend en charge automatiquement.",
   "A chat": "Une conversation",
   "A company-managed agent created it, so every member of the platform sees it. Only administrators and company-managed agents can change it.": "Un agent géré par l'entreprise l'a créé : tous les membres de la plateforme le voient. Seuls les administrateurs et les agents gérés par l'entreprise peuvent le modifier.",
@@ -11686,10 +11687,12 @@
   "No automatic pickup": "Aucune prise en charge automatique",
   "No description.": "Aucune description.",
   "No owner agent is set, so nothing routes it to anyone. Complete it yourself, or ask an agent to take it over.": "Aucun agent propriétaire n'est défini : rien ne l'achemine vers qui que ce soit. Terminez-le vous-même ou demandez à un agent de le reprendre.",
+  "No owner agent is set, so nothing routes it to anyone. Someone who can change it must complete it or assign an agent.": "Aucun agent propriétaire n'est défini : rien ne l'achemine vers qui que ce soit. Une personne qui peut le modifier doit le terminer ou lui assigner un agent.",
   "Nobody": "Personne",
   "Not picked up: filtered out": "Non pris en charge : filtré",
   "Not recorded: it was created before work items kept their origin.": "Non enregistré : il a été créé avant que les éléments de travail ne conservent leur origine.",
   "Nothing acts on a finished item. Put it back in the queue to have it done again.": "Rien ne traite un élément terminé. Remettez-le dans la file pour le faire refaire.",
+  "Nothing acts on a finished item. Someone who can change it must put it back in the queue to have it done again.": "Rien ne traite un élément terminé. Une personne qui peut le modifier doit le remettre dans la file pour le faire refaire.",
   "Nothing picks up a blocked item until someone puts it back in the queue.": "Rien ne prend en charge un élément bloqué tant que personne ne le remet dans la file.",
   "On behalf of": "Au nom de",
   "Owner agent": "Agent propriétaire",
@@ -21556,5 +21559,6 @@
   "OpenCRQ sync failed {timeAgo}": "Échec de la synchronisation OpenCRQ {timeAgo}",
   "Link supporting assets to primary assets": "Lier les actifs supports aux actifs primaires",
   "On by default. Off: primary assets are imported without their supporting assets.": "Activé par défaut. Désactivé : les actifs primaires sont importés sans leurs actifs supports.",
-  "Links each primary asset to the supporting assets OpenCRQ attaches to it, matched by OpenCRQ id or name. A link you add or remove by hand always wins.": "Lie chaque actif primaire aux actifs supports qu'OpenCRQ lui rattache, reconnus par leur identifiant OpenCRQ ou leur nom. Un lien ajouté ou retiré à la main l'emporte toujours."
+  "Links each primary asset to the supporting assets OpenCRQ attaches to it, matched by OpenCRQ id or name. A link you add or remove by hand always wins.": "Lie chaque actif primaire aux actifs supports qu'OpenCRQ lui rattache, reconnus par leur identifiant OpenCRQ ou leur nom. Un lien ajouté ou retiré à la main l'emporte toujours.",
+  "Read-only for you.": "En lecture seule pour vous."
 }
