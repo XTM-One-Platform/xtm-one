@@ -36,6 +36,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ctem_case import (
+    INCONCLUSIVE_RESULT,
     OPEN_STATES,
     REMEDIATION_KINDS,
     VALIDATION_RESULTS,
@@ -360,41 +361,9 @@ async def open_from_signal(
                 case.sla_due_at = due
         case.risk_scenario_ids = sorted(set(case.risk_scenario_ids or []) | set(scenarios))
     _link(db, signal, case, vertical=vertical, events=events, now=now, created=created)
-    if created and await _resolved_on_inventory(db, case, events=events, now=now):
-        return case
     if created and events is not None:
         events.add(CASE_OPENED, case_data(case), _event_id(CASE_OPENED, case, "open"))
     return case
-
-
-async def _resolved_on_inventory(
-    db: AsyncSession, case: CtemCase, *, events: PendingEvents | None, now: datetime
-) -> bool:
-    """Resolve a new upgrade case the inventory already shows fixed on every asset, before the loop starts.
-
-    The installed versions are read when the case opens, not after the review: a
-    case whose every asset runs the fixed version or later is not affected, so it
-    closes on that deterministic check (``fixed``, with the inventory as evidence)
-    and raises ``ctem_case.resolved`` instead of ``ctem_case.opened``. No threat
-    package is drafted and no gate reaches a person. An unknown or uncomparable
-    version, a platform without its fix, or a case that needs its validation
-    proof keeps the case open (doubt moves forward, #1606).
-    """
-    if case.remediation_kind != "upgrade" or not case.fixed_version or case.validation_plan:
-        return False
-    from app.services import ctem_case_versions as case_versions
-
-    running = await case_versions.for_case(db, case)
-    if not case_versions.all_on_fixed(running):
-        return False
-    assets = int((running or {}).get("assets_on_fixed") or 0)
-    evidence = f"{rules.FIXED_IN_INVENTORY}: {assets} asset(s) on {case.fixed_version} or later"
-    db.add(_transition(case, "resolved", now, reason="not affected at opening", evidence=evidence[:500]))
-    case.resolution_kind = "fixed"
-    if events is not None:
-        events.add(CASE_RESOLVED, case_data(case), _event_id(CASE_RESOLVED, case, "open"))
-        events.frame(case, "state", now)
-    return True
 
 
 def join_case(
@@ -467,6 +436,34 @@ def _transition(
 RUN_ORDER_MAX = 20
 
 
+def _upsert_validation(
+    validations: list[dict[str, Any]], entry: dict[str, Any]
+) -> tuple[list[dict[str, Any]], bool]:
+    """*validations* with *entry* written once per ``(provider, ref)`` (#1692), and whether it repeats.
+
+    The newest entry of the same reference is replaced when it is pending or
+    says the same outcome (the second answer is a repeat); any other outcome
+    (a pass after a fail, a re-test) is a new entry, so the history keeps it.
+    """
+    same = [
+        i
+        for i, v in enumerate(validations)
+        if isinstance(v, dict) and v.get("provider") == entry["provider"] and v.get("ref") == entry["ref"]
+    ]
+    if not same:
+        return [*validations, entry], False
+    last = validations[same[-1]]
+    repeat = (
+        last.get("result") == entry["result"]
+        and last.get("result") != "pending"
+        and bool(last.get("mitigation_only")) == bool(entry.get("mitigation_only"))
+    )
+    if last.get("result") != "pending" and not repeat:
+        return [*validations, entry], False
+    rest = [v for i, v in enumerate(validations) if i != same[-1]]
+    return [*rest, entry], repeat
+
+
 async def record_validation(
     db: AsyncSession,
     case: CtemCase,
@@ -504,7 +501,10 @@ async def record_validation(
     inconclusive unless ``conclusive`` is true. ``evidence_type`` (#1500):
     ``remediation`` (the fix in place: a version inventory showing every
     in-scope endpoint at or above the fixed build) or ``validation`` (a
-    detection or behaviour test). A patch or upgrade case resolves only on
+    detection or behaviour test). A pass that proves nothing is stored as
+    ``inconclusive`` (``reported_result`` keeps the word given), in the entry
+    and the history event (#1692); one entry per ``(provider, ref)`` replaces a
+    pending one, and the same outcome repeated only refreshes it. A patch or upgrade case resolves only on
     remediation evidence; when the writer does not say, a provider re-scan and
     a conclusive check (the fixed version read) count as remediation, anything
     else as validation, recorded and never resolving. The caller commits.
@@ -560,10 +560,19 @@ async def record_validation(
     order = [str(name).strip()[:120] for name in (run_order or []) if str(name).strip()][:RUN_ORDER_MAX]
     if order:
         entry["run_order"] = order
-    case.validations = [*(case.validations or []), entry][-50:]
+    if result in rules.PASSING_RESULTS and conclusive is False:
+        # A pass that proves nothing is stored, shown and measured as inconclusive (#1692).
+        entry["result"] = INCONCLUSIVE_RESULT
+        entry["reported_result"] = result
+    stored = entry["result"]
+    kept, repeat = _upsert_validation(case.validations or [], entry)
+    case.validations = kept[-50:]
     case.validation_plan = True
-    db.add(_event(case.id, actor, "validation", now, to_value=result, evidence=f"{entry['provider']}:{entry['ref']}"))
-    evidence = f"validation {entry['provider']} {entry['ref']}: {result}"
+    if repeat:
+        # The same outcome on the same reference again: the entry is refreshed, nothing moves (#1692).
+        return case
+    db.add(_event(case.id, actor, "validation", now, to_value=stored, evidence=f"{entry['provider']}:{entry['ref']}"))
+    evidence = f"validation {entry['provider']} {entry['ref']}: {stored}"
     if result in rules.PASSING_RESULTS and conclusive is False:
         pass  # inconclusive: recorded, the case keeps its state and its remediation (#1458)
     elif result in rules.PASSING_RESULTS:

@@ -3337,6 +3337,7 @@
   "Includes {count, plural, one {# pre-configured assignment} other {# pre-configured assignments}} (disabled by default)": "Includes {count, plural, one {# pre-configured assignment} other {# pre-configured assignments}} (disabled by default)",
   "Incorporating your message…": "Incorporating your message…",
   "Incomplete": "Incomplete",
+  "Inconclusive": "Inconclusive",
   "Increase priority": "Increase priority",
   "Indexing stalled: no embedding provider configured": "Indexing stalled: no embedding provider configured",
   "Inferred from the error text rather than read from a status code or an exception type: indicative, not authoritative.": "Inferred from the error text rather than read from a status code or an exception type: indicative, not authoritative.",

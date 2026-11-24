@@ -147,6 +147,7 @@ const VALIDATION_RESULT_LABEL: Record<string, string> = {
   exposed: "Exposed",
   failed: "Failed",
   pending: "Pending",
+  inconclusive: "Inconclusive",
 };
 
 /**
