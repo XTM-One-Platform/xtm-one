@@ -27,7 +27,10 @@ writes a short explanation and an order of fixes. It runs:
   next UTC day, never on every pass;
 * on the platform routing model, with a static instruction first (prompt
   caching) and no conversation content: findings carry check ids, severities,
-  categories, subject ids and measured values only.
+  categories, subject ids and measured values only. An agentic finding of a
+  module checker (``check_reports.py``, ``evidence.source`` ``module_checker``)
+  also carries the tool reads of its evidence and the checker's recommendation,
+  bounded, because its measured values live there (#1638).
 
 **Hard ceiling.** Before the call, the worst case (the prompt's estimated input
 plus the output cap, priced with the model's price row) is reserved on the day
@@ -60,6 +63,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.health_analysis import HealthAnalysisSpend, HealthModuleAnalysis
 from app.models.health_check import STATUS_OPEN, HealthCheckFinding
+from app.services.health.check_reports import AGENTIC_SEGMENT
+from app.services.health.check_reports import SOURCE as AGENTIC_SOURCE
 from app.services.health.settings import HealthAnalysisSettings
 
 logger = logging.getLogger(__name__)
@@ -74,6 +79,12 @@ MAX_FINDINGS = 60
 #: the findings JSON (ids, keys, numbers) measured at 2.2 characters per token in the
 #: lab (dev-docs section 6), so 3 under-reserved by a third.
 _CHARS_PER_TOKEN = 2
+#: The most evidence reads of one agentic finding the prompt carries.
+MAX_AGENTIC_READS = 5
+#: The longest JSON of one read's values the prompt carries (longer values are cut).
+MAX_VALUES_CHARS = 1200
+#: The longest recommendation of an agentic finding the prompt carries.
+MAX_RECOMMENDATION_CHARS = 400
 
 REFUSED_DISABLED = "disabled"
 REFUSED_AI_OFF = "ai_off"
@@ -89,7 +100,12 @@ SYSTEM_PROMPT = (
     "You are the analysis step of Platform Health, the built-in health suite of an "
     "XTM One platform. You receive the open findings of one module, each a measured "
     "fact from a deterministic check: its check id, severity, category, subject ids "
-    "and evidence values. Explain in at most 120 words what the findings say together, "
+    "and evidence values. A check id is an identifier, never the name of a component; "
+    "a registration_id subject is one registration of the module. A finding checked_by "
+    "module_checker carries the tool reads of the module's checker (tool, object ids, "
+    "values) and the checker's recommendation. Name a component, service or manager "
+    "only when it appears in the values; when they name none, say the evidence does not "
+    "name it. Explain in at most 120 words what the findings say together, "
     "then list the fixes in the order an administrator should apply them, one line "
     "each, starting with the critical ones. State only what the evidence shows; when "
     "two findings share a cause, say so. Plain text, no greeting, no markdown table."
@@ -134,19 +150,54 @@ async def open_findings(db: AsyncSession, module: str) -> list[HealthCheckFindin
     return sorted(rows, key=lambda r: (_SEVERITY_ORDER.get(r.severity, 3), r.check_id, r.id))
 
 
-def build_prompt(module: str, rows: list[HealthCheckFinding]) -> str:
-    """The variable part: the module and its findings as JSON, no free text a person wrote."""
-    findings = [
+def _agentic_check_name(check_id: str) -> str:
+    """``opencti.agentic.managers_running`` read as ``opencti.managers_running``: the segment is no component."""
+    module, sep, check = check_id.partition(f".{AGENTIC_SEGMENT}.")
+    return f"{module}.{check}" if sep else check_id
+
+
+def _bounded_values(values: Any) -> Any:
+    if not isinstance(values, dict):
+        return {}
+    text = json.dumps(values, sort_keys=True, separators=(",", ":"), default=str)
+    return values if len(text) <= MAX_VALUES_CHARS else {"cut": text[:MAX_VALUES_CHARS]}
+
+
+def _finding_entry(row: HealthCheckFinding) -> dict[str, Any]:
+    evidence = row.evidence or {}
+    entry: dict[str, Any] = {
+        "check": row.check_id,
+        "severity": row.severity,
+        "category": row.category,
+        "subject": row.subject or {},
+    }
+    if evidence.get("source") != AGENTIC_SOURCE:
+        entry["values"] = evidence.get("values")
+        entry["threshold"] = evidence.get("threshold")
+        return entry
+    reads = [c for c in evidence.get("checks") or [] if isinstance(c, dict)][:MAX_AGENTIC_READS]
+    entry["check"] = _agentic_check_name(row.check_id)
+    entry["checked_by"] = AGENTIC_SOURCE
+    entry["reads"] = [
         {
-            "check": row.check_id,
-            "severity": row.severity,
-            "category": row.category,
-            "subject": row.subject or {},
-            "values": (row.evidence or {}).get("values"),
-            "threshold": (row.evidence or {}).get("threshold"),
+            "tool": str(c.get("tool") or ""),
+            "object_ids": [str(i) for i in c.get("object_ids") or []][:20],
+            "values": _bounded_values(c.get("values")),
         }
-        for row in rows[:MAX_FINDINGS]
+        for c in reads
     ]
+    entry["recommendation"] = (row.recommendation or "")[:MAX_RECOMMENDATION_CHARS] or None
+    return entry
+
+
+def build_prompt(module: str, rows: list[HealthCheckFinding]) -> str:
+    """The variable part: the module and its findings as JSON, no free text a person wrote.
+
+    A deterministic finding carries its values and threshold; an agentic finding its
+    check name without the ``agentic`` segment, its tool reads and the checker's
+    recommendation (:func:`_finding_entry`).
+    """
+    findings = [_finding_entry(row) for row in rows[:MAX_FINDINGS]]
     payload = {"module": module, "open_findings": len(rows), "findings": findings}
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
 

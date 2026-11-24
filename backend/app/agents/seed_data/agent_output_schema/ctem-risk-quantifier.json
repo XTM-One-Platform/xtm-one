@@ -9,7 +9,7 @@
         "properties": {
           "name": {"type": "string"},
           "opencrq_id": {"type": "string", "description": "The OpenCRQ scenario id, empty for a draft."},
-          "asset": {"type": "string", "description": "The crown jewel or business service at risk."},
+          "asset": {"type": "string", "description": "The primary asset or business service at risk."},
           "currency": {"type": "string", "description": "ISO 4217 code of the figures as OpenCRQ prices them (the original currency)."},
           "expected_loss_before": {"type": "number"},
           "expected_loss_after": {"type": "number"},

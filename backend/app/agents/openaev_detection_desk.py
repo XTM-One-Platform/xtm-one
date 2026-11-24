@@ -314,7 +314,7 @@ DETECTION_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
         "prompt": (
             "Weekly validation plan. Read the organization context, the open gaps in shared state "
             f"{STATE_KEY} and the OpenAEV threat arsenal. Have the scenarios that cover the techniques "
-            "with no recent result built or reused against the crown jewel assets, and propose each "
+            "with no recent result built or reused against the primary assets, and propose each "
             f"launch as an approval keyed {LAUNCH_PREFIX} followed by the scenario id: a launch waits "
             "for a person. Check every collector for results in "
             "the last 14 days and name the silent ones. Answer with the run JSON."

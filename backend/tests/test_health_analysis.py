@@ -5,6 +5,7 @@ source is accepted, and the module imports nothing metered."""
 from __future__ import annotations
 
 import ast
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -43,6 +44,89 @@ def test_the_prompt_carries_ids_and_values_only():
     assert "agents.tool_errors" in prompt and '"rate":0.3' in prompt
     assert "Fix the tool" not in prompt  # no recommendation text
     assert '"source"' not in prompt
+
+
+def _agentic_row(values: dict[str, Any] | None = None):
+    row = _row(
+        "g",
+        "critical",
+        check_id="opencti.agentic.managers_running",
+        subject={"registration_id": "923854c5-4292-4eca-aa47-1ae2ea78842f"},
+        evidence={
+            "source": "module_checker",
+            "read_at": "2026-11-24T03:50:00+00:00",
+            "checks": [
+                {
+                    "tool": "get_opencti_managers",
+                    "arguments": {},
+                    "object_ids": ["PLAYBOOK_MANAGER"],
+                    "values": values
+                    if values is not None
+                    else {"PLAYBOOK_MANAGER": {"enabled": True, "running": False}},
+                    "read_at": "2026-11-24T03:50:00+00:00",
+                }
+            ],
+        },
+    )
+    row.recommendation = "Restart the platform node that should run PLAYBOOK_MANAGER."
+    return row
+
+
+def test_an_agentic_finding_carries_its_reads_and_recommendation():
+    prompt = analysis.build_prompt("opencti", [_agentic_row()])
+    assert '"check":"opencti.managers_running"' in prompt
+    assert "opencti.agentic." not in prompt and "agentic manager" not in prompt
+    assert '"checked_by":"module_checker"' in prompt
+    assert "get_opencti_managers" in prompt and "PLAYBOOK_MANAGER" in prompt
+    assert '"running":false' in prompt
+    assert "Restart the platform node that should run PLAYBOOK_MANAGER." in prompt
+    assert '"threshold"' not in prompt and '"read_at"' not in prompt
+
+
+def test_the_prompt_snapshot_of_both_finding_kinds():
+    payload = json.loads(analysis.build_prompt("opencti", [_row("a"), _agentic_row()]))
+    assert payload == {
+        "module": "opencti",
+        "open_findings": 2,
+        "findings": [
+            {
+                "check": "agents.tool_errors",
+                "severity": "warning",
+                "category": "performance",
+                "subject": {"agent_id": "a1"},
+                "values": {"rate": 0.3},
+                "threshold": 0.1,
+            },
+            {
+                "check": "opencti.managers_running",
+                "severity": "critical",
+                "category": "performance",
+                "subject": {"registration_id": "923854c5-4292-4eca-aa47-1ae2ea78842f"},
+                "checked_by": "module_checker",
+                "reads": [
+                    {
+                        "tool": "get_opencti_managers",
+                        "object_ids": ["PLAYBOOK_MANAGER"],
+                        "values": {"PLAYBOOK_MANAGER": {"enabled": True, "running": False}},
+                    }
+                ],
+                "recommendation": "Restart the platform node that should run PLAYBOOK_MANAGER.",
+            },
+        ],
+    }
+
+
+def test_agentic_values_are_bounded():
+    big = {f"MANAGER_{i}": "x" * 50 for i in range(100)}
+    prompt = analysis.build_prompt("opencti", [_agentic_row(big)])
+    reads = json.loads(prompt)["findings"][0]["reads"]
+    assert set(reads[0]["values"]) == {"cut"}
+    assert len(reads[0]["values"]["cut"]) == analysis.MAX_VALUES_CHARS
+
+
+def test_the_system_prompt_forbids_reading_a_check_id_as_a_component():
+    assert "never the name of a component" in analysis.SYSTEM_PROMPT
+    assert "only when it appears in the values" in analysis.SYSTEM_PROMPT
 
 
 def test_the_prompt_is_capped():

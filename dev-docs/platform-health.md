@@ -476,6 +476,14 @@ registration token. The `health_refresh_requested` answer comes with the Health 
   severities), at most once a day per module, plus on demand by an admin.
 - Platform routing (light) model, no conversation content in the prompt, prompt caching
   on the static part.
+- What one finding sends (`analysis.build_prompt`, #1638): a deterministic finding its check
+  id, severity, category, subject, `evidence.values` and `evidence.threshold`; an agentic
+  finding of a module checker (`evidence.source` `module_checker`, section 13.6) its check
+  name without the `agentic` segment, `checked_by: module_checker`, the tool, object ids and
+  values of its first 5 evidence reads (values over 1,200 characters cut) and the checker's
+  recommendation (400 characters). The static instruction says a check id is never a
+  component name and that a component is named only when the values name it, so an id such
+  as `opencti.agentic.managers_running` is never read as an "agentic manager".
 - Hard ceiling, tokens and dollars per day and per month, enforced by reservation before
   the call (the `budget.py` ledger, renamed). Over the ceiling the call is refused and the
   page says so. Test (e) forces an over-spend.
@@ -1071,7 +1079,7 @@ module's own objects, and generic integration health.
 | Check | Reads | Fail / warn (defaults) |
 |---|---|---|
 | `platform_version_licence` | platform version, licence expiry, settings sanity (base URL set) | licence under 30 days warn, 7 days fail; version behind the range XTM One supports fail; a missing setting warn |
-| `managers_running` | platform managers (rule engine, retention, expiration, history, notification, sync) | an enabled manager not running fail |
+| `managers_running` | `get_opencti_managers`: managers classed stream (continuous `running`) or cron (`running` only while a cycle executes; never judged on it), stream managers re-read 3 times 60 s apart (#1640); TASK_MANAGER by its effect in the background tasks | an enabled stream manager not running on all 3 reads fail; an unfinished background task with no execution for over 1 h warn, 6 h fail; absence of new objects is never evidence of a stopped manager |
 | `background_tasks` | background tasks: state, progress, errors | in progress over 24 h warn; any in error in 24 h warn, over 10 fail |
 | `workers_and_queues` | platform workers and the platform queues as a whole (total messages now and 1 h ago) | total over 100,000 and growing warn, over 1,000,000 fail; no worker consuming fail |
 | `streams` | live stream collections and their consumers: lag | lag over 1 h warn, 6 h fail |
@@ -1257,7 +1265,7 @@ source (13.4 scope).
   admin action, each run calls its module's tools and records a report with every check of
   its playbook (backend test, stubbed model and integrations,
   `tests/test_health_module_round_postgres.py`; lab retest at deploy).
-- (m) A stubbed module-native fault per module (OpenCTI: an enabled manager not running;
+- (m) A stubbed module-native fault per module (OpenCTI: an enabled stream manager not running on 3 reads;
   OpenAEV: a scheduled scenario whose start was missed; OpenCRQ: a failed job) yields a fail verdict and an open `<module>.agentic.<check>` finding with its
   recommendation; the next round with the fault removed resolves it.
 - (n) The seeded fleet: the orchestrator holds a `delegate` handover to each checker, each

@@ -199,17 +199,104 @@ async def test_background_tasks_count_the_running_and_the_failed(monkeypatch: py
     assert "Element not found" in out
 
 
-async def test_managers_name_an_enabled_manager_not_running(monkeypatch: pytest.MonkeyPatch) -> None:
-    modules = [
-        {"id": "RULE_ENGINE", "enable": True, "running": False, "warning": True},
-        {"id": "RETENTION_MANAGER", "enable": True, "running": True},
-        {"id": "SYNC_MANAGER", "enable": False, "running": False},
+class _SequenceGraphQL:
+    """Answers the managers query with one module list per read, the last one repeated."""
+
+    def __init__(self, reads: list[list[dict[str, Any]]]) -> None:
+        self.reads = reads
+        self.calls = 0
+
+    async def __call__(self, client, base_url, headers, query, variables=None):
+        modules = self.reads[min(self.calls, len(self.reads) - 1)]
+        self.calls += 1
+        return {"settings": {"platform_modules": modules}}, None
+
+
+def _healthy_modules() -> list[dict[str, Any]]:
+    """Every known manager enabled: stream managers running, cron managers idle between cycles."""
+    return [
+        {"id": mid, "enable": True, "running": kind == "stream", "warning": False}
+        for mid, kind in health_reads.MANAGER_KINDS.items()
     ]
-    fake = _FakeGraphQL({"HealthManagers": ({"settings": {"platform_modules": modules}}, None)})
+
+
+@pytest.fixture
+def _no_sleep(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    slept: list[float] = []
+
+    async def _sleep(seconds: float) -> None:
+        slept.append(seconds)
+
+    monkeypatch.setattr(health_reads.asyncio, "sleep", _sleep)
+    return slept
+
+
+def test_every_manager_is_classed_and_an_unknown_id_is_unknown() -> None:
+    kinds = health_reads.MANAGER_KINDS
+    assert set(kinds.values()) == {"stream", "cron"}
+    assert {m for m, k in kinds.items() if k == "stream"} == {
+        "RULE_ENGINE",
+        "HISTORY_MANAGER",
+        "SYNC_MANAGER",
+        "PUBLISHER_MANAGER",
+        "NOTIFICATION_MANAGER",
+        "ACTIVITY_MANAGER",
+        "PLAYBOOK_MANAGER",
+        "TELEMETRY_MANAGER",
+    }
+    for cron in ("TASK_MANAGER", "RETENTION_MANAGER", "EXPIRATION_SCHEDULER", "INGESTION_MANAGER"):
+        assert health_reads.manager_kind(cron) == "cron"
+    assert health_reads.manager_kind("SOME_FUTURE_MANAGER") == "unknown"
+
+
+async def test_idle_cron_managers_are_never_counted_down(
+    monkeypatch: pytest.MonkeyPatch, _no_sleep: list[float]
+) -> None:
+    """#1640: all managers enabled, stream running, cron idle: nothing is down, one read only."""
+    fake = _SequenceGraphQL([_healthy_modules()])
     out = await _call(monkeypatch, fake, "get_opencti_managers")
-    assert "Managers (3; 1 enabled and not running)" in out
-    assert "RULE_ENGINE [enabled, not running, warning]" in out
-    assert "SYNC_MANAGER [disabled, not running]" in out
+    assert "Enabled stream managers not running on all 3 reads: none." in out
+    assert "enabled and not running" not in out
+    assert "intermittent for cron managers" in out
+    assert "- TASK_MANAGER (cron) [enabled, not running]" in out
+    assert "- RULE_ENGINE (stream) [enabled, running]" in out
+    assert fake.calls == 1 and _no_sleep == []
+
+
+async def test_a_stream_manager_down_on_three_reads_is_named(
+    monkeypatch: pytest.MonkeyPatch, _no_sleep: list[float]
+) -> None:
+    down = [{**m, "running": False} if m["id"] == "RULE_ENGINE" else m for m in _healthy_modules()]
+    fake = _SequenceGraphQL([down, down, down])
+    out = await _call(monkeypatch, fake, "get_opencti_managers")
+    assert "Enabled stream managers not running on all 3 reads, 60 s apart: RULE_ENGINE." in out
+    assert fake.calls == 3 and _no_sleep == [60, 60]
+
+
+async def test_a_stream_manager_down_on_one_read_recovers_with_a_note(
+    monkeypatch: pytest.MonkeyPatch, _no_sleep: list[float]
+) -> None:
+    down = [{**m, "running": False} if m["id"] == "HISTORY_MANAGER" else m for m in _healthy_modules()]
+    fake = _SequenceGraphQL([down, _healthy_modules()])
+    out = await _call(monkeypatch, fake, "get_opencti_managers")
+    assert "Enabled stream managers not running on all 3 reads: none." in out
+    assert "Not running on the first read, running again within 2 reads: HISTORY_MANAGER." in out
+    assert fake.calls == 2
+
+
+async def test_a_disabled_or_unknown_manager_is_never_judged(
+    monkeypatch: pytest.MonkeyPatch, _no_sleep: list[float]
+) -> None:
+    modules = [
+        {"id": "SYNC_MANAGER", "enable": False, "running": False},
+        {"id": "SOME_FUTURE_MANAGER", "enable": True, "running": False, "warning": True},
+    ]
+    fake = _SequenceGraphQL([modules])
+    out = await _call(monkeypatch, fake, "get_opencti_managers")
+    assert "Enabled stream managers not running on all 3 reads: none." in out
+    assert "- SYNC_MANAGER (stream) [disabled, not running]" in out
+    assert "- SOME_FUTURE_MANAGER (unknown) [enabled, not running, warning]" in out
+    assert fake.calls == 1
 
 
 async def test_platform_queues_answer_totals_and_never_a_queue_name(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -6,7 +6,7 @@ Keep this section up to date - every assignment reads it. The Company Context kn
 - Sector: TO FILL IN (your sector)
 - Country/region: TO FILL IN (your country or region)
 - Stakeholder teams: TO FILL IN (e.g. CISO office, executive leadership, risk management, SOC)
-- Critical systems and crown jewels: TO FILL IN (e.g. payment platform, OT network, customer data in Salesforce)
+- Critical systems and primary assets: TO FILL IN (e.g. payment platform, OT network, customer data in Salesforce)
 - Operating countries and key supply-chain dependencies: TO FILL IN (e.g. manufacturing in Mexico, components from Taiwan)
 
 ## How you work

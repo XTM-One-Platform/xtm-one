@@ -160,6 +160,55 @@ class GitIgnore:
         return self._verdict(repo_path, is_dir=False)
 
 
+#: A ``.gitignore`` line read as a build-output directory: a plain name or path, no glob, no escape.
+_PLAIN_DIR = re.compile(r"^/?[A-Za-z0-9._@+-]+(?:/[A-Za-z0-9._@+-]+)*/?$")
+
+
+def build_output_patterns(root: str, files: Iterable[tuple[str, bytes]], tracked: Iterable[str]) -> list[str]:
+    """The directories a checkout's ``.gitignore`` files exclude, as ``fnmatch`` directory patterns of the workspace.
+
+    *root* is the checkout's workspace directory ("" at the workspace root), *files* its ``(repository path of a
+    .gitignore, its bytes)`` and *tracked* the repository paths its record holds. Only a plain rule (``build``,
+    ``__generated__/``, ``/licenses/``) becomes a pattern: a glob is left to :class:`GitIgnore`, a rule that would
+    cover a tracked file is dropped, and a file holding any ``!`` rule gives nothing (a re-include cannot be
+    expressed as a directory pattern). What a check builds there (``build/``, ``__generated__/``) then stays in its
+    container like ``node_modules/`` and never reaches the workspace's file limit (#1639).
+    """
+    import fnmatch
+
+    prefix = f"{root}/" if root else ""
+    candidates: list[str] = []
+    ordered = sorted(files, key=lambda item: (item[0].count("/"), item[0]))
+    for path, data in ordered[:MAX_GITIGNORE_FILES]:
+        if posixpath.basename(path) != GITIGNORE_NAME:
+            continue
+        base = posixpath.dirname(path)
+        here = f"{prefix}{base}/" if base else prefix
+        lines = [line.strip() for line in data[:MAX_GITIGNORE_BYTES].decode("utf-8", errors="replace").splitlines()]
+        rules = [line for line in lines if line and not line.startswith("#")]
+        if any(rule.startswith("!") for rule in rules):
+            continue
+        for rule in rules:
+            if not _PLAIN_DIR.match(rule):
+                continue
+            name = rule.strip("/")
+            if name in (".", "..") or any(part in (".", "..") for part in name.split("/")):
+                continue
+            if "/" in name or rule.startswith("/"):
+                candidates.append(f"{here}{name}/")
+            else:
+                candidates.extend((f"{here}{name}/", f"{here}*/{name}/"))
+    if not candidates:
+        return []
+    covered: set[str] = set()
+    for repo_path in tracked:
+        parts = f"{prefix}{repo_path}".split("/")
+        for depth in range(1, len(parts)):
+            directory = "/".join(parts[:depth]) + "/"
+            covered.update(p for p in candidates if p not in covered and fnmatch.fnmatchcase(directory, p))
+    return sorted({p for p in candidates if p not in covered})
+
+
 def gitignore_paths(repo_paths: Iterable[str]) -> list[str]:
     """The ``.gitignore`` files among *repo_paths*, the shallowest first, bounded by :data:`MAX_GITIGNORE_FILES`."""
     found = [p for p in repo_paths if posixpath.basename(p) == GITIGNORE_NAME]

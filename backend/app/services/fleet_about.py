@@ -212,7 +212,7 @@ LABEL_MCP_SERVER = "MCP server"
 PROFILE_LABELS = {
     "profile:sector": "Sector in the organization profile",
     "profile:regions": "Regions in the organization profile",
-    "profile:crown_jewels": "Crown jewels in the organization profile",
+    "profile:crown_jewels": "Primary assets in the organization profile",
     "profile:tech_stack": "Technology in the organization profile",
     "profile:ai_systems": "AI systems listed in the organization profile",
     "profile:tracked_organizations": "A tracked organization with monitoring on",

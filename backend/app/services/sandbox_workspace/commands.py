@@ -645,6 +645,49 @@ def linked_checkouts(manifests: Mapping[str, str], own: str, roots: Iterable[str
     return sorted(linked)
 
 
+async def build_output_ignores(workspace: Any, entries: dict[str, Any], roots: Iterable[str]) -> list[str]:
+    """The ignore patterns of a command: :data:`IGNORED_PATTERNS` plus the build-output directories of each staged checkout.
+
+    A checkout's own ``.gitignore`` names where its checks build (OpenCTI: ``build``, ``__generated__``,
+    ``coverage``): left out of the reconcile and the read-back like ``node_modules/``, those thousands of
+    untracked files stay in the container and never refuse a check's real writes at the file limit (#1639).
+    A checkout whose record or rules cannot be read adds nothing.
+    """
+    from app.services.sandbox_workspace.checkout import RECORD_NAME, CheckoutRecord, CheckoutRecordError
+    from app.services.sandbox_workspace.gitignore import build_output_patterns, gitignore_paths
+
+    patterns: list[str] = list(IGNORED_PATTERNS)
+    for root in roots:
+        if not root:
+            continue
+        record_entry = entries.get(f"{root}/{RECORD_NAME}")
+        if record_entry is None:
+            continue
+        try:
+            _entry, data = await workspace.read_entry(record_entry)
+            record = CheckoutRecord.from_json(data, path=root)
+        except (CheckoutRecordError, FileNotFoundError, ValueError):
+            continue
+        except Exception:
+            logger.warning("build output ignores: the record of %s could not be read", root, exc_info=True)
+            continue
+        rules: list[tuple[str, bytes]] = []
+        for repo_path in gitignore_paths(p for p in map(record.repo_path, entries) if p):
+            entry = entries.get(record.workspace_path(repo_path))
+            if entry is None:
+                continue
+            try:
+                _entry, rule_bytes = await workspace.read_entry(entry)
+            except Exception:
+                logger.warning("build output ignores: %s could not be read", entry.path, exc_info=True)
+                continue
+            rules.append((repo_path, rule_bytes))
+        for pattern in build_output_patterns(root, rules, record.files):
+            if pattern not in patterns:
+                patterns.append(pattern)
+    return patterns
+
+
 async def _linked_checkouts(workspace: Any, entries: dict[str, Any], cwd: str) -> list[str]:
     """:func:`linked_checkouts` of the command's manifests, read from the workspace; ``[]`` on any read error."""
     from app.services.sandbox_workspace.eviction import checkout_roots
@@ -1926,7 +1969,8 @@ async def _run_claimed(
     stage, stage_started = "upload", time.monotonic()
     try:
         await install_tool(sandbox)
-        ws_state = await reconcile(sandbox, workspace, entries, ignore=list(IGNORED_PATTERNS))
+        ignore = await build_output_ignores(workspace, entries, [staged_root, *linked] if staged_root else [])
+        ws_state = await reconcile(sandbox, workspace, entries, ignore=ignore)
         if command.install is not None:
             stage, stage_started = "install probe", time.monotonic()
             if await _needs_install(sandbox, command.install, ws_state.entries):
@@ -1998,6 +2042,8 @@ async def _run_claimed(
         "cache_key": cache_key,
         # Kept with the run so the result names it, whichever call (this one or poll_run) waits for the end.
         "cache_note": stale,
+        # The read-back leaves out what the reconcile left out: the checkout's build output too (#1639).
+        "ignore": [p for p in ignore if p not in IGNORED_PATTERNS],
     }
     await _remember_run(workspace, command.image, run)
     # Recorded: a sibling call now reads this run and queues behind it; the run itself holds no claim.
@@ -2784,7 +2830,10 @@ async def _wait_and_finish(
         if not lost:
             readback_started = time.monotonic()
             try:
-                scanned = await collect(sandbox, workspace, RemoteState(entries=dict(entries), bytes_read=bytes_read), ignore=list(IGNORED_PATTERNS))
+                ignore = [*IGNORED_PATTERNS, *(str(p) for p in run.get("ignore") or [])]
+                scanned = await collect(
+                    sandbox, workspace, RemoteState(entries=dict(entries), bytes_read=bytes_read), ignore=ignore
+                )
             except WorkspaceQuotaError as exc:
                 metrics.quota_refused("sandbox_run_command")
                 call.refused = str(exc)

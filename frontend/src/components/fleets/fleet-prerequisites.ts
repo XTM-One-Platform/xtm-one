@@ -69,7 +69,7 @@ export const PREREQUISITE_LABELS = [
   "MCP server",
   "Sector in the organization profile",
   "Regions in the organization profile",
-  "Crown jewels in the organization profile",
+  "Primary assets in the organization profile",
   "Technology in the organization profile",
   "AI systems listed in the organization profile",
   "A tracked organization with monitoring on",
