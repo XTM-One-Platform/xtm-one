@@ -47,7 +47,8 @@ export function OrganizationPirDetailsCard({ id: anchorId }: { id: string }) {
   const [draft, setDraft] = useState<Record<string, PirDetail> | null>(null);
 
   const profile = data?.profile;
-  const pirIds = profile?.pir_ids ?? [];
+  // A PIR saved twice is shown once (#11589).
+  const pirIds = [...new Set(profile?.pir_ids ?? [])];
   const names = profile?.pir_names ?? {};
   const stored = profile?.pir_details ?? {};
   const jewels = (profile?.crown_jewels ?? []).map((jewel) => jewel.name).filter(Boolean);
