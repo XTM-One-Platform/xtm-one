@@ -4493,7 +4493,7 @@
 <li><strong>Source</strong>: the platforms that hold this section, shown with their logo. A platform that is not connected or not readable with your account is shown greyed, with the reason.</li>
 <li><strong>Filters</strong>: each value is picked from the platform itself, never typed.</li>
 <li><strong>Mapping</strong>: each profile field with the platform attribute it reads, its fallback, and an example taken from the platform. The fields the platform does not provide are listed: rows keep what you typed for them.</li>
-<li><strong>Preview</strong>: the platform's own count, then the rows that would be new, updated, unchanged or skipped. Nothing is saved before <strong>Import</strong>.</li>
+<li><strong>Preview</strong>: the platform's own count, then the rows that would be new, updated, unchanged or skipped. Nothing is saved before <strong>Import</strong>. When the platform cannot be read, the preview says so with the reason: the permission the integration lacks (for example the CrowdStrike Falcon <em>Host groups: Read</em> scope), an integration that is not connected, an HTTP status or a timeout. A platform's own error text is never shown.</li>
 </ol>
 <table>
 <thead>
@@ -4520,6 +4520,11 @@
 <td>tags, name contains</td>
 </tr>
 <tr>
+<td>Asset groups</td>
+<td>Microsoft Intune (Entra device groups), Tanium (computer groups), CrowdStrike Falcon (host groups), ServiceNow (business services)</td>
+<td>name contains</td>
+</tr>
+<tr>
 <td>Tech stack</td>
 <td>OpenAEV</td>
 <td>security platform type</td>
@@ -4536,6 +4541,7 @@
 </tr>
 </tbody>
 </table>
+<p>An asset group read from a platform brings its members, kept in sync at every run: an asset leaving the group in the platform leaves it here, a member added by hand stays. A member the inventory does not hold yet is counted as not in the inventory. Intune groups are the Entra ID security groups that hold Intune devices (user groups are left out); the Intune integration then needs the Graph permissions <code>GroupMember.Read.All</code> and <code>Device.Read.All</code> besides <code>DeviceManagementManagedDevices.Read.All</code>. CrowdStrike needs the Host groups: Read scope. ServiceNow groups are the business services, their members the hardware CIs related to them in the CMDB. Import the assets of the same platform first: a group binds its members to the assets that platform brought.</p>
 <p>OpenCTI Systems carry a category, a criticality, an exposure, an environment, an owner and a platform from the OpenCTI release that ships OpenCTI-Platform/opencti#19943; the import reads them. On an older OpenCTI those filters are hidden and every System takes the type you pick on the filters step, which is otherwise used only for Systems with no category. The owner falls back to the System's author; the platform and the markings are kept as <code>platform:</code> and <code>marking:</code> tags.</p>
 <p>Every row of every list section (crown jewels, tech stack, AI systems, assets, asset groups) records where it comes from: its <strong>source</strong> (<code>manual</code> when typed, <code>csv</code>, <code>api</code>, <code>agent:&lt;agent id&gt;</code>, or the platform: <code>opencti</code>, <code>openaev</code>, <code>opencrq</code>), its id in that platform (<code>external_id</code>) and the sync that wrote it (<code>sync_id</code>). A crown jewel saved with only its OpenCRQ link, or an AI system with only its OpenAEV link, reads as a row of that platform.</p>
 <p>An import can run again with the same or other filters. A row a previous import from the same platform wrote is updated, never duplicated, and the fields a person added that the platform does not send (a crown jewel's business service and linked assets, an owner the platform leaves empty) are kept; a row typed by hand, uploaded as CSV or written through the API is never overwritten. Rows a previous import wrote that the platform no longer returns with these filters are listed as <strong>no longer in</strong> the platform: they are kept unless you switch on their removal. Each import is recorded with the platform, the filters and the time of the read. Scripts use <code>GET /api/v1/organization-context/import/options</code>, <code>POST /api/v1/organization-context/import/preview</code> and <code>POST /api/v1/organization-context/import/apply</code> (<code>remove_gone</code> removes the rows no longer in the platform).</p>
@@ -4734,7 +4740,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 24, 2026 02:44:08 UTC"><span class="timeago" datetime="2026-11-24T02:44:08+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 24, 2026 02:44:08 UTC">2026-11-24</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 24, 2026 02:51:23 UTC"><span class="timeago" datetime="2026-11-24T02:51:23+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 24, 2026 02:51:23 UTC">2026-11-24</span>
   </span>
 
     
