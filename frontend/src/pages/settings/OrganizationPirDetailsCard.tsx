@@ -4,7 +4,7 @@
  * Settings > Organization > Identity and risk: "PIR details" (#1773).
  * What the organization says about each PIR it follows (OpenCTI keeps the PIR itself):
  * the intelligence question, its owner, how often it is reviewed and the primary assets it
- * serves (the `crown_jewels` field). One row per PIR of `pir_ids`, the PIR by its last known name. Edit
+ * serves (the `primary_assets` field). One row per PIR of `pir_ids`, the PIR by its last known name. Edit
  * (administrators) opens the rows; Save sends `pir_details` alone through PATCH (#1738).
  */
 
@@ -51,7 +51,7 @@ export function OrganizationPirDetailsCard({ id: anchorId }: { id: string }) {
   const pirIds = [...new Set(profile?.pir_ids ?? [])];
   const names = profile?.pir_names ?? {};
   const stored = profile?.pir_details ?? {};
-  const jewels = (profile?.crown_jewels ?? []).map((jewel) => jewel.name).filter(Boolean);
+  const jewels = (profile?.primary_assets ?? []).map((jewel) => jewel.name).filter(Boolean);
   // Never the PIR id (#9615), and never the bare name the PIR chips already show (#11589): one titled line per PIR.
   const titleOf = (pirId: string, index: number) =>
     names[pirId] ? t_i18n("PIR: {name}", { name: names[pirId] }) : t_i18n("PIR {number}, name not available", { number: index + 1 });
@@ -122,7 +122,7 @@ export function OrganizationPirDetailsCard({ id: anchorId }: { id: string }) {
                     <SettingsReadField label={t_i18n("Question")} value={detail.question} wide />
                     <SettingsReadField label={t_i18n("Owner")} value={detail.owner} />
                     <SettingsReadField label={t_i18n("Review cadence")} value={cadenceText(detail.review_cadence)} />
-                    <SettingsReadField label={t_i18n("Primary assets served")} value={detail.crown_jewels.join(", ")} wide />
+                    <SettingsReadField label={t_i18n("Primary assets served")} value={detail.primary_assets.join(", ")} wide />
                   </SettingsReadGrid>
                 </div>
               );
@@ -193,11 +193,11 @@ export function OrganizationPirDetailsCard({ id: anchorId }: { id: string }) {
                       id={`${rowId}-jewels`}
                       aria-label={t_i18n("Primary assets served")}
                       aria-describedby={settingsFieldHintId(`${rowId}-jewels`)}
-                      options={[...new Set([...jewels, ...detail.crown_jewels])].map((name) => ({ value: name, label: name }))}
-                      selected={detail.crown_jewels}
+                      options={[...new Set([...jewels, ...detail.primary_assets])].map((name) => ({ value: name, label: name }))}
+                      selected={detail.primary_assets}
                       onToggle={(name) =>
                         setDetail(pirId, {
-                          crown_jewels: detail.crown_jewels.includes(name) ? detail.crown_jewels.filter((n) => n !== name) : [...detail.crown_jewels, name],
+                          primary_assets: detail.primary_assets.includes(name) ? detail.primary_assets.filter((n) => n !== name) : [...detail.primary_assets, name],
                         })
                       }
                       placeholder={t_i18n("None")}

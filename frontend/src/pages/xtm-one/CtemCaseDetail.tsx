@@ -785,9 +785,9 @@ export default function CtemCaseDetail() {
           label={t_i18n("Assets")}
           value={formatCount(intl.locale, kase.asset_count)}
           subtitle={
-            aggregatesRestricted || kase.crown_jewel_count == null
+            aggregatesRestricted || kase.primary_asset_count == null
               ? aggregatesSubtitle
-              : t_i18n("{count, plural, one {# primary asset} other {# primary assets}}", { count: kase.crown_jewel_count })
+              : t_i18n("{count, plural, one {# primary asset} other {# primary assets}}", { count: kase.primary_asset_count })
           }
         />
       </div>

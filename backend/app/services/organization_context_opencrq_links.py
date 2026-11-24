@@ -3,7 +3,7 @@
 """Supporting asset -> primary asset links from OpenCRQ (#1591, option ``link_supporting_assets``).
 
 OpenCRQ rates its PRIMARY assets (the business assets the profile lists as
-primary assets, named crown jewels before #1591) and links each to the
+primary assets, named primary assets before #1591) and links each to the
 SUPPORTING assets (the IT) underneath with ``support_to_primary`` links,
 each carrying one or more roles (``stores``, ``processes``...). The roles say
 which security needs the supporting asset inherits
@@ -12,7 +12,7 @@ which security needs the supporting asset inherits
 
 The OpenCRQ primary-asset sync, with its option ``link_supporting_assets``
 (on unless the sync's filters say ``"false"``), writes those links on
-``organization_crown_jewel_links`` with ``source="opencrq"``: the supporting
+``organization_primary_asset_links`` with ``source="opencrq"``: the supporting
 asset is the inventory record of the same OpenCRQ id (a record of source
 ``opencrq``), else the one record of the same name. Rules:
 
@@ -36,7 +36,7 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.organization_asset_record import OrganizationAssetRecord, OrganizationCrownJewelLink
+from app.models.organization_asset_record import OrganizationAssetRecord, OrganizationPrimaryAssetLink
 
 #: The sync filter that turns the link import off ("false"); absent or anything else: on.
 LINK_OPTION = "link_supporting_assets"
@@ -97,7 +97,7 @@ class WantedLink:
     """One OpenCRQ ``support_to_primary`` link as the sync wants it stored."""
 
     external_id: str
-    crown_jewel_key: str
+    primary_asset_key: str
     record_id: uuid.UUID
     roles: list[str]
     inherited_needs: dict[str, str]
@@ -139,7 +139,7 @@ def plan_links(
     links: list[dict[str, Any]],
     records_by_opencrq_id: dict[str, uuid.UUID],
     records_by_name: dict[str, list[uuid.UUID]],
-    stored: list[OrganizationCrownJewelLink],
+    stored: list[OrganizationPrimaryAssetLink],
 ) -> LinkPlan:
     """Plan the synced links (no I/O).
 
@@ -182,7 +182,7 @@ def plan_links(
             plan.kept_removed.append((jewel, label))
         elif (
             current.record_id != record_id
-            or current.crown_jewel_key != wanted.crown_jewel_key
+            or current.primary_asset_key != wanted.primary_asset_key
             or list(current.roles or []) != roles
             or current.source != source
         ):
@@ -195,19 +195,19 @@ async def apply_links(db: AsyncSession, organization_id: uuid.UUID, plan: LinkPl
     """Write *plan*; answers the rows written or removed."""
     if plan.delete:
         await db.execute(
-            delete(OrganizationCrownJewelLink).where(
-                OrganizationCrownJewelLink.organization_id == organization_id,
-                OrganizationCrownJewelLink.id.in_(plan.delete),
+            delete(OrganizationPrimaryAssetLink).where(
+                OrganizationPrimaryAssetLink.organization_id == organization_id,
+                OrganizationPrimaryAssetLink.id.in_(plan.delete),
             )
         )
     for wanted in plan.update:
         row = (
             (
                 await db.execute(
-                    select(OrganizationCrownJewelLink).where(
-                        OrganizationCrownJewelLink.organization_id == organization_id,
-                        OrganizationCrownJewelLink.source.in_(SYNC_SOURCES),
-                        OrganizationCrownJewelLink.external_id == wanted.external_id,
+                    select(OrganizationPrimaryAssetLink).where(
+                        OrganizationPrimaryAssetLink.organization_id == organization_id,
+                        OrganizationPrimaryAssetLink.source.in_(SYNC_SOURCES),
+                        OrganizationPrimaryAssetLink.external_id == wanted.external_id,
                     )
                 )
             )
@@ -216,15 +216,15 @@ async def apply_links(db: AsyncSession, organization_id: uuid.UUID, plan: LinkPl
         )
         if row is not None:
             row.record_id = wanted.record_id
-            row.crown_jewel_key = wanted.crown_jewel_key
+            row.primary_asset_key = wanted.primary_asset_key
             row.roles = wanted.roles
             row.inherited_needs = wanted.inherited_needs
             row.source = wanted.source
     for wanted in plan.add:
         db.add(
-            OrganizationCrownJewelLink(
+            OrganizationPrimaryAssetLink(
                 organization_id=organization_id,
-                crown_jewel_key=wanted.crown_jewel_key,
+                primary_asset_key=wanted.primary_asset_key,
                 record_id=wanted.record_id,
                 source=wanted.source,
                 external_id=wanted.external_id,
@@ -300,9 +300,9 @@ async def sync_links(
     stored = list(
         (
             await db.execute(
-                select(OrganizationCrownJewelLink).where(
-                    OrganizationCrownJewelLink.organization_id == organization_id,
-                    OrganizationCrownJewelLink.source.in_(SYNC_SOURCES),
+                select(OrganizationPrimaryAssetLink).where(
+                    OrganizationPrimaryAssetLink.organization_id == organization_id,
+                    OrganizationPrimaryAssetLink.source.in_(SYNC_SOURCES),
                 )
             )
         ).scalars()

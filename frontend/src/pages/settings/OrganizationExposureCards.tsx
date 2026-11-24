@@ -99,7 +99,7 @@ export const RECOMMENDED_POLICY: PrioritizationPolicy = {
   epss_min: 0.1,
   kev_always_in: true,
   internet_exposure_required: false,
-  min_crown_jewel_criticality: "",
+  min_primary_asset_criticality: "",
   exclusions: [],
   accepted_risks: [],
 };
@@ -109,7 +109,7 @@ const EMPTY_POLICY: PrioritizationPolicy = {
   epss_min: null,
   kev_always_in: true,
   internet_exposure_required: false,
-  min_crown_jewel_criticality: "",
+  min_primary_asset_criticality: "",
   exclusions: [],
   accepted_risks: [],
 };
@@ -1021,13 +1021,13 @@ export function OrganizationExposureCards({
               )}
               {pirList?.(true, current, update)}
               <SettingsField
-                id={`${fieldId}-min_crown_jewel_criticality`}
+                id={`${fieldId}-min_primary_asset_criticality`}
                 label={t_i18n("Minimum primary asset criticality")}
                 helper={t_i18n("Keep only findings on assets linked to a primary asset at this level or above.")}
                 info={t_i18n("The criticality of the primary asset a finding's asset is linked to: low, medium, high or critical. Example: High keeps a finding on a critical primary asset and drops one on a medium one. Read by the CTEM scope gate. Any: no criticality threshold.")}
               >
-                {select(POLICY_CRITICALITY_LABELS, policy.min_crown_jewel_criticality || ANY_CRITICALITY, "Minimum primary asset criticality", (v) =>
-                  patchPolicy({ min_crown_jewel_criticality: v === ANY_CRITICALITY ? "" : v }),
+                {select(POLICY_CRITICALITY_LABELS, policy.min_primary_asset_criticality || ANY_CRITICALITY, "Minimum primary asset criticality", (v) =>
+                  patchPolicy({ min_primary_asset_criticality: v === ANY_CRITICALITY ? "" : v }),
                 )}
               </SettingsField>
             </SettingsFieldGrid>
@@ -1060,7 +1060,7 @@ export function OrganizationExposureCards({
             <SettingsReadField label={t_i18n("PIR score minimum: threat activity")} value={String(policy.pir_min_score_threat ?? PIR_SCORE_DEFAULTS.pir_min_score_threat)} mono />
             <SettingsReadField
               label={t_i18n("Minimum primary asset criticality")}
-              value={policy.min_crown_jewel_criticality ? label(CRITICALITY_LABELS, policy.min_crown_jewel_criticality) : ""}
+              value={policy.min_primary_asset_criticality ? label(CRITICALITY_LABELS, policy.min_primary_asset_criticality) : ""}
             />
             <SettingsReadField label={t_i18n("Known exploited vulnerabilities always in")} value={policy.kev_always_in ? t_i18n("Yes") : t_i18n("No")} />
             <SettingsReadField label={t_i18n("Internet exposure required")} value={policy.internet_exposure_required ? t_i18n("Yes") : t_i18n("No")} />

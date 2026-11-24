@@ -18,7 +18,7 @@ grouping and the state rules live in ``services/ctem_cases.py``; the design is
   its member id only.
 
 No source content is stored (#11613): the name, CVE, scores, KEV, assets,
-crown jewels, priority and counts of a case are read at display time from the
+primary assets, priority and counts of a case are read at display time from the
 viewer's own source read (``services/ctem_cases_view.py``), so each viewer
 sees exactly what the source products show them, and an issue they cannot see
 is a "Restricted" row.

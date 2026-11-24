@@ -29,7 +29,7 @@ export interface CtemDecisionRecord {
   inputs?: { lens?: string; source_provider?: string; cves?: string[] } & Record<string, unknown>;
   reconcile?: {
     assets?: string[];
-    crown_jewels_named?: string[];
+    primary_assets_named?: string[];
     tech_stack?: string[];
     lenses?: string[];
     confidence?: string;

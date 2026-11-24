@@ -60,7 +60,7 @@ export interface CtemCaseSummary {
   aggregates_restricted?: boolean;
   aggregates_reason?: string | null;
   asset_count: number | null;
-  crown_jewel_count: number | null;
+  primary_asset_count: number | null;
   kev_count: number | null;
   max_cvss: number | null;
   max_epss: number | null;
@@ -149,7 +149,7 @@ export interface CtemCaseVisibleIssue {
   epss?: number | null;
   kev?: boolean;
   assets?: string[];
-  crown_jewels?: string[];
+  primary_assets?: string[];
   first_seen_at?: string | null;
   details_unavailable?: boolean;
   /** Version knowledge from the viewer's own OpenCTI read (CTEM-11, #946): the declared version, the fix and where it came from. */
@@ -596,7 +596,7 @@ export interface CtemCasesOverviewCase {
   state_since: string | null;
   waiting_on: { gate: string | null; by: string | null; since: string | null } | null;
   /** The primary asset the case touches among the issues the caller sees; null when none. */
-  crown_jewel: string | null;
+  primary_asset: string | null;
 }
 
 /** One CTEM phase of the overview: its open and waiting cases and the five that need attention first. */

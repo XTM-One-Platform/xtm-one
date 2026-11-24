@@ -131,7 +131,7 @@ async def test_every_tech_stack_row_becomes_a_software_and_the_downgrade_removes
                     id=agent_id,
                     user_id=user_id,
                     name="vuln",
-                    organization_context_categories=["tech_stack", "crown_jewels", "software"],
+                    organization_context_categories=["tech_stack", "primary_assets", "software"],
                 )
             )
             for oid, name in ((org, "Us"), (other, "Them")):
@@ -193,13 +193,13 @@ async def test_every_tech_stack_row_becomes_a_software_and_the_downgrade_removes
         assert chrome["id"] == synced and chrome["origin"] == "synced"
         assert chrome["cpe_override"] == "cpe:2.3:a:google:chrome:*"
         assert await _software(engine, other) == {}
-        assert await _selection(engine, agent_id) == ["software", "crown_jewels"], "tech_stack reads software"
+        assert await _selection(engine, agent_id) == ["software", "primary_assets"], "tech_stack reads software"
 
         await _migrate(engine, revision.downgrade)
         back = await _software(engine, org)
         assert sorted(back) == ["Google Chrome"], "the hand-typed software the revision added are gone"
         assert back["Google Chrome"]["cpe_override"] == "", "the override it set is cleared"
-        assert await _selection(engine, agent_id) == ["tech_stack", "crown_jewels"]
+        assert await _selection(engine, agent_id) == ["tech_stack", "primary_assets"]
 
 
 async def _selection(engine: AsyncEngine, agent_id: uuid.UUID) -> Any:

@@ -47,7 +47,7 @@ async def _system_prompt(monkeypatch, handover_context: dict | None) -> str:
         measured = _stub_turn(monkeypatch)
         with pytest.raises(_StopTurnError):
             await run_agent_chat(
-                session, str(user.id), agent, [], "Which crown jewel is mine?",
+                session, str(user.id), agent, [], "Which primary asset is mine?",
                 handover_context=handover_context, meter_quota=False, prebuilt_llm=_LLM,
             )
     (prompt,) = [text for text in measured if isinstance(text, str) and text.startswith(_PERSONA)]

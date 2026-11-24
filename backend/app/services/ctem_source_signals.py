@@ -55,7 +55,7 @@ def signal_of(issue: rules.SourceIssue, fix: rules.Remediation) -> SignalInput |
         "epss": issue.epss,
         "kev": issue.kev or None,
         "assets": list(issue.assets),
-        "crown_jewels": list(issue.crown_jewels),
+        "primary_assets": list(issue.primary_assets),
         "installed_version": issue.installed_version,
         "fixed_version": issue.fixed_version,
         "version_note": issue.version_note,
