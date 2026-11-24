@@ -244,6 +244,7 @@ async def apply_changes(
     organization: str = "",
     changes: list[dict[str, Any]] | None = None,
     agent_name: str = "",
+    based_on_version: int | None = None,
 ) -> dict[str, Any]:
     """Apply *changes* to *organization*'s profile at once, as a new version (the caller commits).
 
@@ -255,7 +256,9 @@ async def apply_changes(
     with source ``ai_draft``, authored by *author_user_id*, the agent and
     the basis kept per field in ``sources``, so Settings > Organization
     shows who changed what and can roll it back. Answers
-    ``{organization_id, organization, version, fields}``.
+    ``{organization_id, organization, version, fields}``. *based_on_version*
+    given and another version saved since refuses, nothing saved (#1676, the
+    guard of the Settings > Organization PUT, #1473).
     """
     from app.services import organizations as orgs
 
@@ -265,6 +268,12 @@ async def apply_changes(
             raise ProposalError(f"No active organization is named {organization!r} (or several are).")
         target = await orgs.ensure_primary(db)
     current = await org_context.current_version(db, target.id)
+    latest = current.version if current is not None else None
+    if based_on_version is not None and latest != based_on_version:
+        raise ProposalError(
+            f"the profile changed since version {based_on_version} (now version {latest}). "
+            "Read get_organization_context again and apply your change on the new version."
+        )
     data = orgs.parse_for(target, current.profile if current else {}).model_dump(mode="json")
     kept = validate_field_changes(target, data, list(changes or []))
     source = f"{AGENT_SOURCE_PREFIX}{agent_name}".strip()[:300] if agent_name.strip() else CHAT_SOURCE

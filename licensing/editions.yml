@@ -552,6 +552,7 @@ ee:
   - backend/app/api/v1/schemas/custom_dashboard.py
   - backend/app/services/organization_*_ai_draft.py
   - backend/app/services/organization_context_proposals.py
+  - backend/app/services/organization_context_agent_tools.py  # the profile's platform tools of the organization_context group
   - backend/app/services/organization_context_categories.py  # the organization context in each agent's prompt
   - backend/app/services/organization_context_injection.py
   - frontend/src/components/organization-context-*-select.tsx
