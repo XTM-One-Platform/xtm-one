@@ -21494,7 +21494,7 @@
   "waiting since {timeAgo}": "en attente depuis {timeAgo}",
   "Back to {stage}": "Retour à {stage}",
   "The cases could not be read. Try again in a moment.": "Les cas n'ont pas pu être lus. Réessayez dans un instant.",
-  "No case yet: cases appear when a signal matches your scope or open issues on your stack share a fix.": "Aucun cas pour l'instant : les cas apparaissent quand un signal correspond à votre périmètre ou que des problèmes ouverts de votre parc partagent un correctif.",
+  "No case yet: cases appear when a signal matches your scope or open issues on your software share a fix.": "Aucun cas pour l'instant : les cas apparaissent quand un signal correspond à votre périmètre ou que des problèmes ouverts de vos logiciels partagent un correctif.",
   "No decision waiting and no accepted risk.": "Aucune décision en attente et aucun risque accepté.",
   "No open case in {stage}: every case is in another phase or resolved.": "Aucun cas ouvert en {stage} : tous les cas sont dans une autre phase ou résolus.",
   "Open the decisions waiting": "Ouvrir les décisions en attente",

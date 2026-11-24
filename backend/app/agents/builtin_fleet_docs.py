@@ -44,7 +44,7 @@ _OPT_IN = (
 #: and the three single-product desks, as roles.
 CTEM_LOOP_DOC: dict[str, str] = {
     "purpose": (
-        "Run the whole CTEM loop on your stack, case by case: any change in exposure becomes a "
+        "Run the whole CTEM loop on your software, case by case: any change in exposure becomes a "
         "case, the case is validated, priced, decided once by you, mobilised and closed by a "
         "passing re-test. One fleet, every trigger path, every module in its role."
     ),
@@ -158,7 +158,7 @@ CTEM_VULN_PRIORITIZATION_DOC: dict[str, str] = {
     ),
     "triggers": (
         "- **New KEV or EPSS jump**: an OpenCTI creation or update of a Vulnerability.\n"
-        "- **Vulnerability on software we run**: an OpenCTI has relationship to a Vulnerability whose source is in the tech stack or the profile assets, checked before any model call.\n"
+        "- **Vulnerability on software we run**: an OpenCTI has relationship to a Vulnerability whose source is in the software inventory or the profile assets, checked before any model call.\n"
         "- **Vulnerability flagged in a PIR**: OpenCTI flags a Vulnerability in an organization PIR; the run starts when its live PIR score reaches the policy threshold (70 by default, Settings).\n"
         "- **Vulnerability sighted**: an OpenCTI sighting, triaged at a higher priority.\n"
         "- **Daily backlog pass**: every day at 06:00, re-ranks the open cases.\n"
@@ -360,7 +360,7 @@ OPENAEV_DETECTION_DESK_DOC: dict[str, str] = {
     ),
     "prerequisites": (
         "OpenAEV connected, with assets and at least one security platform collector, and the organization's "
-        "primary assets and tech stack in its profile. " + _OPT_IN
+        "primary assets and software in its profile. " + _OPT_IN
     ),
 }
 
@@ -740,7 +740,7 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
             "module": "opencti",
             "name": "Vulnerability on software we run",
             "filter": "Software, an infrastructure or a system in the profile has a vulnerability",
-            "detail": "Kept only when the source is in the tech stack or the profile assets",
+            "detail": "Kept only when the source is in the software inventory or the profile assets",
         },
         {
             "module": "opencti",
@@ -1240,7 +1240,7 @@ def _loop_gates() -> list[dict[str, Any]]:
 #: 1. CTEM loop, the generic fleet (CTEM-31, #1048): the triggers of the former
 #: threat response, posture and module desks under one case-driven loop.
 CTEM_LOOP_STRUCTURED: dict[str, Any] = {
-    "purpose_line": "The whole CTEM loop on your stack: any change in exposure, one case, closed on proof.",
+    "purpose_line": "The whole CTEM loop on your software: any change in exposure, one case, closed on proof.",
     "outcome_line": (
         "Cases validated, priced, decided once and closed by a re-test; posture, PIR answers, "
         "detection coverage and the risk register kept current."
