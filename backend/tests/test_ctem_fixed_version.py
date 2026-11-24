@@ -9,8 +9,6 @@ version that fixes every member, and nothing changes without a declared version.
 
 from __future__ import annotations
 
-from typing import Any, cast
-
 import pytest
 
 from app.services import ctem_cases as cc
@@ -287,6 +285,80 @@ def test_the_declared_version_matches_on_the_cpe_too():
     assert issue.not_affected is None and issue.version_note is None and issue.fixed_version == "9.0.98"
 
 
+def _multi(*versions: str) -> list[dict[str, object]]:
+    return [dict(_stack()[0], versions=list(versions))]
+
+
+def test_every_installed_version_gets_its_own_outcome_from_opencti() -> None:
+    # #1783: several versions run; each is checked against OpenCTI's Software of that version.
+    issues = source.opencti_issues(SOFTWARE, _multi("9.0.80", "9.0.90", "10.1.0"), RELATIONS, [], FIXES)
+    by_id = {i.external_id: i for i in issues}
+    assert by_id["v1"].version_outcomes == (
+        ("9.0.80", cc.VERSION_NOT_AFFECTED),
+        ("9.0.90", cc.VERSION_AFFECTED),
+        ("10.1.0", cc.VERSION_UNKNOWN),
+    )
+    assert by_id["v1"].installed_version is None and by_id["v1"].not_affected is None
+    assert by_id["v1"].version_note == "version not known to OpenCTI: 10.1.0; fixed version unknown"
+    assert by_id["v1"].declared_version_known is True
+
+
+def test_an_issue_no_installed_version_holds_is_not_affected() -> None:
+    issues = source.opencti_issues(SOFTWARE, _multi("9.0.80", "9.0.90"), RELATIONS, [], FIXES)
+    by_id = {i.external_id: i for i in issues}
+    # v3 is held by 9.0.80 only: affected; v1 and v2 by 9.0.90 only: affected too.
+    assert all(i.not_affected is None for i in issues)
+    assert dict(by_id["v3"].version_outcomes) == {"9.0.80": "affected", "9.0.90": "not_affected"}
+    only_80 = source.opencti_issues(SOFTWARE, _multi("9.0.80"), RELATIONS, [], FIXES)
+    assert {i.external_id for i in only_80 if i.not_affected} == {"v1", "v2"}
+
+
+def test_the_fix_is_searched_above_the_highest_exposed_version() -> None:
+    issues = source.opencti_issues(SOFTWARE, _multi("9.0.80", "9.0.90"), RELATIONS, [], FIXES)
+    v1 = next(i for i in issues if i.external_id == "v1")
+    assert v1.fixed_version == "9.0.98"
+    # The upgrade members with a fix fold on one target; v3 (exposed on 9.0.80 only) has no fix in OpenCTI.
+    assert set(cc.group_issues(issues).groups) == {"upgrade:apache/tomcat@9.0.99", "upgrade:apache/tomcat@latest"}
+
+
+def test_the_case_view_lists_each_version_outcome_and_reads_it_back() -> None:
+    from types import SimpleNamespace
+
+    from app.services import ctem_cases_view as view_mod
+    from app.services import ctem_version_match as matching
+
+    issue = next(
+        i
+        for i in source.opencti_issues(SOFTWARE, _multi("9.0.80", "9.0.90"), RELATIONS, [], FIXES)
+        if i.external_id == "v1"
+    )
+    assert view_mod._issue_from_json(view_mod._issue_json(issue)) == issue
+    row = SimpleNamespace(source="opencti", external_id="v1", open=True)
+    shown = view_mod._visible_issue(row, issue)  # type: ignore[arg-type]
+    assert shown["version_outcomes"] == [
+        {"version": "9.0.80", "outcome": "not_affected"},
+        {"version": "9.0.90", "outcome": "affected"},
+    ]
+    affected = matching.affected_from_outcomes([shown])
+    assert affected == "9.0.90 per OpenCTI; not affected: 9.0.80"
+    match = matching.version_match(
+        {"versions": [{"version": "9.0.90", "asset_count": 2}]},
+        product_label="Apache Tomcat",
+        fixed_version="9.0.98",
+        affected=affected,
+    )
+    assert match["blind"] is False and "affected range unknown" not in matching.blind_reasons(match)
+
+
+def test_no_version_placed_by_opencti_keeps_the_range_unknown() -> None:
+    from app.services import ctem_version_match as matching
+
+    assert matching.affected_from_outcomes([]) is None
+    assert matching.affected_from_outcomes([{"version_outcomes": [{"version": "1.0", "outcome": "unknown"}]}]) is None
+    closed = [{"open": False, "version_outcomes": [{"version": "1.0", "outcome": "affected"}]}]
+    assert matching.affected_from_outcomes(closed) is None
+
+
 def test_without_a_declared_version_every_has_counts_and_latest_stays():
     issues = source.opencti_issues(SOFTWARE, _stack(), RELATIONS, [], [])
     assert {i.external_id for i in issues} == {"v1", "v2", "v3"}
@@ -329,18 +401,11 @@ class _FakeOpenCti:
         return {"stixCoreRelationships": {"edges": []}}, None
 
 
-async def _octi_issues(headers: dict[str, str], stack: list[dict[str, str]]) -> list[Any]:
-    """The issues of one OpenCTI read of *stack* (the read must answer)."""
-    read = await source._read_opencti(cast(Any, None), "http://octi", headers, stack)
-    assert read is not None
-    return list(read.issues)
-
-
 @pytest.mark.asyncio
 async def test_the_opencti_read_takes_the_fixed_version_from_remediates(monkeypatch):
     fake = _FakeOpenCti()
     monkeypatch.setattr(source, "_graphql", fake)
-    issues = await _octi_issues({"Authorization": "Bearer user"}, _stack("9.0.90"))
+    issues = await source._read_opencti(None, "http://octi", {"Authorization": "Bearer user"}, _stack("9.0.90"))
     assert {(i.external_id, i.fixed_version) for i in issues if not i.not_affected} == {
         ("v1", "9.0.98"),
         ("v2", "9.0.99"),
@@ -354,7 +419,7 @@ async def test_the_opencti_read_takes_the_fixed_version_from_remediates(monkeypa
 async def test_a_restricted_user_gets_only_what_opencti_lets_them_read(monkeypatch):
     """KB 34 s.6.2: a user whose markings hide sw-98 and v2 sees no fix from it and no v2 member."""
     monkeypatch.setattr(source, "_graphql", _FakeOpenCti(visible={"sw-90", "sw-80", "v1", "v3", "sw-99"}))
-    issues = await _octi_issues({"Authorization": "Bearer restricted"}, _stack("9.0.90"))
+    issues = await source._read_opencti(None, "http://octi", {"Authorization": "Bearer restricted"}, _stack("9.0.90"))
     assert {i.external_id for i in issues} == {"v1", "v3"}
     v1 = next(i for i in issues if i.external_id == "v1")
     # sw-98 is hidden from this user, so the fix they can read is 9.0.99, never the hidden 9.0.98.
@@ -371,7 +436,7 @@ async def test_an_unreadable_remediates_read_keeps_the_issues(monkeypatch):
         return await fake(client, base_url, headers, query, variables)
 
     monkeypatch.setattr(source, "_graphql", _graphql)
-    issues = await _octi_issues({}, _stack())
+    issues = await source._read_opencti(None, "http://octi", {}, _stack())
     assert {i.external_id for i in issues} == {"v1", "v2", "v3"}
     assert all(i.fixed_version is None for i in issues)
 

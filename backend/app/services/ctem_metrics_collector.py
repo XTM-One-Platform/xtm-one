@@ -460,21 +460,13 @@ query CtemTopVulns {
 # Software observables matching the organization profile's software inventory (by CPE or
 # product name), the anchor of the tailored KEV count (Software -has-> Vulnerability).
 _OCTI_STACK_SOFTWARE = """
-query CtemStackSoftware($filters: FilterGroup, $first: Int, $after: ID) {
-  stixCyberObservables(types: ["Software"], filters: $filters, first: $first, after: $after) {
-    pageInfo { hasNextPage endCursor }
+query CtemStackSoftware($filters: FilterGroup, $first: Int) {
+  stixCyberObservables(types: ["Software"], filters: $filters, first: $first) {
     edges { node { id ... on Software { name vendor cpe } } }
   }
 }
 """
-#: Most Software observables one stack lookup keeps (past it the read is incomplete, never failed).
 _STACK_SOFTWARE_CAP = 500
-#: Names or CPEs per OR filter of a stack lookup (#1811): Elasticsearch refuses a
-#: query past its maxClauseCount (7182 on a production tenant), which one filter
-#: carrying a whole synced software inventory exceeds.
-_STACK_FILTER_CHUNK = 200
-#: Stack lookup batches sent to OpenCTI at once.
-_STACK_LOOKUP_CONCURRENCY = 4
 # Most matched software ids a funnel layer link carries in its OpenCTI filter.
 _FUNNEL_LINK_IDS_CAP = 50
 
@@ -930,7 +922,7 @@ def _vendors_agree(a: str, b: str) -> bool:
     return not a or not b or a == b
 
 
-def _stack_matches(node: dict, stack: list[dict[str, str]]) -> str | None:
+def _stack_matches(node: dict[str, Any], stack: list[dict[str, Any]]) -> str | None:
     """The stack product a Software observable stands for, or ``None``.
 
     A CPE equal to the entry's wins; otherwise the product name must match
@@ -951,78 +943,11 @@ def _stack_matches(node: dict, stack: list[dict[str, str]]) -> str | None:
     return None
 
 
-def _stack_filter_batches(stack: list[dict[str, str]]) -> list[dict[str, Any]]:
-    """The OR filter groups a stack lookup sends: names then CPEs, :data:`_STACK_FILTER_CHUNK` values each."""
-    names = sorted({e["product"] for e in stack if e.get("product")})
-    cpes = sorted({e["cpe"] for e in stack if e.get("cpe")})
-    batches: list[dict[str, Any]] = []
-    for key, values in ((["name"], names), (["cpe"], cpes)):
-        for start in range(0, len(values), _STACK_FILTER_CHUNK):
-            batches.append(_fg([{"key": key, "values": values[start : start + _STACK_FILTER_CHUNK]}], mode="or"))
-    return batches
-
-
-async def _read_stack_software(
-    client: httpx.AsyncClient,
-    base_url: str,
-    headers: dict[str, str],
-    query: str,
-    stack: list[dict[str, str]],
-    *,
-    cap: int = _STACK_SOFTWARE_CAP,
-    graphql: Any = None,
-) -> tuple[list[dict[str, Any]], bool, str | None]:
-    """The Software observables *query* finds for *stack*, read in batches under the clause limit.
-
-    Answers ``(nodes, complete, error)``: the nodes deduplicated by id in batch
-    order, at most *cap*; ``complete`` False when the cap stopped the read (the
-    caller then resolves nothing from it); ``error`` the first failure, with no
-    node. *query* takes ``$filters``, ``$first`` and ``$after`` and answers
-    ``stixCyberObservables`` with its ``pageInfo``. *graphql* is the caller's
-    GraphQL sender (its module's ``_graphql``), this module's by default.
-    """
-    send = graphql or _graphql
-
-    async def one(filters: dict[str, Any]) -> tuple[list[dict[str, Any]], str | None, bool]:
-        nodes: list[dict[str, Any]] = []
-        after: str | None = None
-        while len(nodes) < cap:
-            variables = {"filters": filters, "first": cap, "after": after}
-            data, err = await send(client, base_url, headers, query, variables)
-            if err:
-                return [], err, False
-            conn = (data or {}).get("stixCyberObservables") or {}
-            nodes.extend((e or {}).get("node") or {} for e in conn.get("edges") or [])
-            info = conn.get("pageInfo") or {}
-            after = info.get("endCursor")
-            if not info.get("hasNextPage") or not after:
-                return nodes, None, True
-        return nodes, None, False
-
-    batches = _stack_filter_batches(stack)
-    found: dict[str, dict[str, Any]] = {}
-    complete = True
-    for start in range(0, len(batches), _STACK_LOOKUP_CONCURRENCY):
-        window = batches[start : start + _STACK_LOOKUP_CONCURRENCY]
-        for nodes, err, done in await asyncio.gather(*(one(f) for f in window)):
-            if err:
-                return [], False, err
-            complete = complete and done
-            for node in nodes:
-                node_id = node.get("id")
-                if node_id and node_id not in found:
-                    found[node_id] = node
-        if len(found) >= cap:
-            more = len(found) > cap or start + _STACK_LOOKUP_CONCURRENCY < len(batches)
-            return list(found.values())[:cap], complete and not more, None
-    return list(found.values()), complete, None
-
-
 async def _octi_kev_tailored(
     client: httpx.AsyncClient,
     base_url: str,
     headers: dict[str, str],
-    stack: list[dict[str, str]],
+    stack: list[dict[str, Any]],
     user_id: str,
 ) -> dict[str, Any] | None:
     """Known-exploited vulnerabilities restricted to the organization's software inventory.
@@ -1032,13 +957,25 @@ async def _octi_kev_tailored(
     (the card then stays generic), ``{"kev_tailored_count": 0, ...}`` when the
     stack matches no software or no known-exploited vulnerability.
     """
-    software, _complete, err = await _read_stack_software(client, base_url, headers, _OCTI_STACK_SOFTWARE, stack)
+    cpes = sorted({e["cpe"] for e in stack if e["cpe"]})
+    names = sorted({e["product"] for e in stack})
+    filters = [{"key": ["name"], "values": names}]
+    if cpes:
+        filters.append({"key": ["cpe"], "values": cpes})
+    data, err = await _graphql(
+        client,
+        base_url,
+        headers,
+        _OCTI_STACK_SOFTWARE,
+        {"filters": _fg(filters, mode="or"), "first": _STACK_SOFTWARE_CAP},
+    )
     if err:
         logger.info("CTEM OpenCTI stack software unavailable for user %s: %s", user_id, err)
         return None
     ids: list[str] = []
     matched: list[str] = []
-    for node in software:
+    for edge in ((data or {}).get("stixCyberObservables") or {}).get("edges") or []:
+        node = (edge or {}).get("node") or {}
         label = _stack_matches(node, stack)
         if label and node.get("id"):
             ids.append(node["id"])
@@ -1095,7 +1032,7 @@ async def _octi_kev_tailored(
     }
 
 
-async def _organization_software(db: AsyncSession | None) -> list[dict[str, str]]:
+async def _organization_software(db: AsyncSession | None) -> list[dict[str, Any]]:
     """What the primary organization runs, as the CVE matcher reads it (#1495), ``[]`` when nothing.
 
     The Software entities of the asset store (synced and hand-typed), with the
