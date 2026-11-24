@@ -188,6 +188,20 @@ async def test_the_list_without_an_organization_is_empty_never_404(api, monkeypa
     assert body["cases"] == []
     assert body["counts"] == dict.fromkeys(CASE_STATES, 0)
     assert body["details_unavailable"] == []
+    assert body["details_unavailable_reasons"] == {}
+
+
+async def test_the_list_says_why_a_product_did_not_answer(api: SimpleNamespace) -> None:
+    """#1852: each product of details_unavailable carries the reason of this viewer's read."""
+    view = api.views[str(api.user.id)]
+    view.missing = ["opencti", "openaev"]
+    view.reasons = {"opencti": "too_large"}
+    async with api.client as client:
+        response = await client.get("/api/v1/ctem-cases")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["details_unavailable"] == ["opencti", "openaev"]
+    assert body["details_unavailable_reasons"] == {"opencti": "too_large", "openaev": "unavailable"}
 
 
 async def test_the_list_filters_by_state(api):

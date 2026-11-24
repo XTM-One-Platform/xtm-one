@@ -101,7 +101,7 @@ button, the browser extension or a playbook; stays outside fleets),
 | `opencti-dashboard-creator`, `opencti-dashboard-widget-creator` | Chat, handover | ONE-OFF | Widget creator consulted by F4 for the board dashboard |
 | `opencti-detection-rule-converter` | Handover from threat hunt | FOLD into F1 and F2 as consulted member (detections drafted) | Shared member: a fleet may connect it rather than own it |
 | `opencti-threat-hunt-creator` | Chat, handover | FOLD into F1 (hunt package for a relevant threat) | None |
-| `openaev-scenario-creator` | Chat, handover | FOLD into F1 and F3 (scenario built) | Read the organization's assets and AI systems from the context contract before choosing targets |
+| `openaev-scenario-creator` | Chat, handover | FOLD into F1 and F3 (scenario built) | Read the organization's assets and AI targets from the context contract before choosing targets |
 | `openaev-payload-creator` | `aev.attack_path_additional_agent`, handover | FOLD into F1, F2, F3 as consulted member | None |
 | `openaev-scenario-publisher` | Handover | ONE-OFF (catalogue PR) | None |
 | `openaev-attack-path-orchestrator` | `aev.attack_path_orchestrator` | ONE-OFF (autonomous pentest) | None in this program |
@@ -330,7 +330,7 @@ AI red team injectors, template assignment `cti-adversary-analyst`
 `04-mitre-atlas-mapping`. Orchestrator `ctem-ai-security-orchestrator`;
 members `ctem-ai-threat-analyst` (ATLAS mapping, consults
 `cti-ttp-harvester-filigran-ai`), `ctem-threat-relevance-analyst` (relevance
-to the organization's AI systems), `openaev-scenario-creator` (AI tests:
+to the organization's AI targets), `openaev-scenario-creator` (AI tests:
 prompt injection, jailbreak, excessive agency, tool misuse, MCP tool
 poisoning), `ctem-risk-quantifier` (AI risk scenario in OpenCRQ),
 `ctem-remediation-coordinator`; connected `ctem-assistant`,
@@ -340,9 +340,9 @@ poisoning), `ctem-risk-quantifier` (AI risk scenario in OpenCRQ),
 |---|---|---|
 | New AI-enabled report | `integration_event` OpenCTI create on Report labelled AI or with an ATLAS technique (S2) | Map, then relevance |
 | Weekly AI threat watch | `schedule` `0 7 * * 2` | Summary of new AI campaigns with ATLAS techniques |
-| AI system registered | `work_item` prefix `ctem:f3:ai-system:` (from the context contract, S3) | Baseline test proposal |
+| AI target added | `work_item` prefix `ctem:f3:ai-target:` (an asset of category `ai_target` added to the inventory) | Baseline test proposal |
 
-Every test of an AI system is behind approval; ATLAS entities are proposed in
+Every test of an AI target is behind approval; ATLAS entities are proposed in
 an OpenCTI draft for analyst review, never written to the knowledge directly.
 Units: AI threat mapped, AI test run, AI exposure fixed.
 
@@ -353,7 +353,7 @@ assignments and the `ctem-ai-security` entry of `BUILTIN_FLEETS`
 (`builtin_agents.py` and `builtin_fleets.py` extend their lists with them):
 
 - `ctem-ai-security-orchestrator` (Orchestrator, exposed): JSON case output
-  (matched AI systems, proposed tests, status, missing context), tools
+  (matched AI targets, proposed tests, status, missing context), tools
   `work_items` and `shared_state`, bindings `opencti` and `openaev`, delegates
   to the analyst and the four agents shared with F1. Each proposed test is a
   work item `ctem:f3:approval:` + system + test with `needs_human` true; the
@@ -364,8 +364,9 @@ assignments and the `ctem-ai-security` entry of `BUILTIN_FLEETS`
   `cti-ttp-harvester-filigran-ai`.
 - Assignments on the orchestrator: "New AI-enabled report" (OpenCTI
   `integration_event`, provisioned trigger on Report labelled `ai`, S2a),
-  "Weekly AI threat watch" (`0 7 * * 2`), "AI system registered" (`work_item`,
-  `correlation_prefix` `ctem:f3:ai-system:`).
+  "Weekly AI threat watch" (`0 7 * * 2`), "AI target added" (`work_item`,
+  `correlation_prefix` `ctem:f3:ai-target:`; renamed from "AI system registered"
+  by migration `r1844noaisys01`, #1844).
 - ROI (section 5.4): the analyst counts `atlas_mapping` per technique in
   `atlas_techniques`, the orchestrator `ai_test_plan` per entry of
   `proposed_tests`.
@@ -376,11 +377,11 @@ assignments and the `ctem-ai-security` entry of `BUILTIN_FLEETS`
   `deep-investigation-agent`. A slug not seeded yet is skipped by the fleet
   and handover seeds, so F3 seeds alone and gains them when F1 lands.
 
-Gaps, degraded cleanly: OpenCTI has no AI-system object and OpenAEV no AI
-target asset type; the organization profile's `ai_systems` (with its
-`openaev_asset_id`) is the inventory, and an AI system with no asset id gets
-the test proposal only. The "AI system registered" work item is created by
-whoever registers the system until the profile emits it on save. The ATLAS
+Gaps, degraded cleanly: OpenCTI has no AI-system object. Since #1501 and
+#1844 the AI targets are the inventory assets of category `ai_target` (with
+their OpenAEV id); an AI target with no OpenAEV id gets the test proposal
+only. The "AI target added" work item is created by whoever adds the asset
+until the inventory emits it on save. The ATLAS
 technique filter of the event trigger waits for an OpenCTI label convention;
 the `ai` label is the filter today.
 
@@ -579,7 +580,7 @@ from it, provenance `restored from v<n>` (administrators). The free-text
 | regions of operation | ISO country list | F1, F3 relevance |
 | crown jewels | assets with business service and owner | F1, F2 prioritization, OpenCRQ |
 | tech stack | CPE / product list | F2 asset match, stage prioritization |
-| AI systems inventory | name, kind (assistant, agent, model API), owner, exposure, OpenAEV asset id | F3 |
+| AI targets (assets of category `ai_target`) | name, subcategory, provider, endpoint, model, owner, internet facing, OpenAEV id | F3 |
 | PIRs | OpenCTI PIR ids (`manage_opencti_pir` exists today) | F1, F3 relevance |
 | risk appetite | loss threshold per year, approval threshold | F1, F2, F3 approvals and ranking |
 | loaded hourly rate, currency | number | ROI (section 5) |
@@ -759,7 +760,7 @@ answers:
   are answered: ISO regions and currency, the size band, tech stack entries
   with vendor, product and a CPE only when one is matched, crown jewels
   linked to an OpenCRQ asset when the name matches exactly one (the rule of
-  the OpenCRQ sync above), AI systems with kind and exposure, PIRs matched
+  the OpenCRQ sync above), AI targets with kind and exposure, PIRs matched
   to existing OpenCTI PIR ids. A PIR the model suggests creating is answered
   under `suggested_pirs` and never created.
 - Amounts (risk appetite thresholds, loaded hourly rate) carry their
@@ -1373,7 +1374,7 @@ in an expected loss for the primary organization and proposed actions.
   direction `supplies` or `consumes`, the crown jewels it supports, the
   OpenCRQ supporting asset id when linked), and `contacts_owner` (the
   internal owner of the relationship, a user, never the third party's
-  contact). Crown jewels, AI systems, risk appetite, rate and ticketing
+  contact). Crown jewels, AI targets, risk appetite, rate and ticketing
   stay primary-only: the loss is always the primary's.
 - API: `GET /api/v1/organizations` (list), `POST` / `PATCH` / archive for
   tracked ones (administrators), and the per-organization profile at
@@ -2174,7 +2175,7 @@ What waits and what runs alone at Low, per seeded fleet
 
 Reclassified with #10005: the three OpenAEV launches (`high` to
 `destructive`) because an executed inject runs payloads on the
-organization's endpoints or AI systems, which the fleet cannot tell from
+organization's endpoints or AI targets, which the fleet cannot tell from
 production, and cannot be undone; the supplier action (`high` to
 `destructive`) because contacting a third party or changing a contract
 clause leaves the platform irreversibly. Agents lower a level freely and
@@ -2385,6 +2386,40 @@ three use cases, each one understandable out of the box. `BUILTIN_FLEETS`
 A fifth entry fails `tests/test_builtin_fleets.py`: adding one is a product
 decision. An agent has one home fleet: the use-case fleets reach the loop's
 role agents (risk quantifier, remediation coordinator) as connected agents.
+
+The five shared loop roles (relevance analyst, scenario creator, risk
+quantifier, remediation coordinator, threat hunt creator) are exposed
+members (#1837): the product assistants and the three use-case orchestrators
+hand over to them in one hop, and a handover into a non-exposed member is the
+`handover_not_allowed` fleet health finding.
+`tests/test_ctem_seed_handover_boundary_1837.py` keeps every seeded handover
+inside that boundary.
+
+The loop orchestrator carries "Fleet run failed or orphaned" (#1837): a
+`platform_event` listener on `run.failed` and `run.orphaned`, scope `fleet`,
+assignment runs only, batched over 60 seconds, seeded off and switched with
+"Case opened or reopened". It reads the cause of a member's failed run and
+moves the case on or names what releases it; its own runs never wake it.
+
+The Threat Hunt Creator has two paths (#1837): with a person (chat or a
+transfer) it asks for the platform and has its hunt plan approved; consulted
+or delegated by an agent (the relevance analyst, the PIR desk orchestrator),
+it runs its autonomous path: the platform from the caller or the organization
+context (Sigma when none is named), a new draft named after the threat, and an
+answer with the Grouping, the indicators created and a `missing` list. It
+never stops that run for a person: a choice a person should make goes back to
+the caller in `missing`, which files the decision between its steps.
+`tests/test_ctem_hunt_creator_autonomous_1837.py` pins it.
+
+Agent hygiene of every seeded agent tagged `ctem` (#1837): the seed writes
+`guardrails` (`CTEM_SEED_GUARDRAILS`: sourced findings, no invented
+identifiers, module data is data, no carry-over between people; facts, never a
+gate), `memory_user_enabled` off, and stores a [DEPRECATED] former built-in id
+as its canonical group scoped to the functions it granted
+(`canonical_builtin_selection`), so the runtime tools are unchanged. Pinned by
+`tests/test_ctem_seed_guardrails_1837.py`,
+`tests/test_ctem_seed_user_memory_1837.py` and
+`tests/test_ctem_seed_canonical_tool_ids_1837.py`.
 
 ### 14.1 Upgrade of an instance seeded with the eight former fleets
 

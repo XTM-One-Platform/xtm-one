@@ -764,7 +764,7 @@ async def run_general_chat(
     # --- Integration tools ---
     if ga_integration_bindings:
         try:
-            from app.services.integration_tools import build_integration_tools
+            from app.services.integration_tools import BindingBasis, ToolBindings, build_integration_tools
 
             # Integration tool building can refresh expiring OAuth tokens
             # (network round-trips) — surface the phase (P2.1).
@@ -786,7 +786,15 @@ async def run_general_chat(
             }
             integ_defs, integ_exec = await build_integration_tools(
                 db,
-                ga_integration_bindings,
+                ToolBindings(
+                    ga_integration_bindings,
+                    basis=(
+                        BindingBasis.CALLER_CHECKED
+                        if session_integration_ids is not None
+                        else BindingBasis.ADMIN_CONFIGURED
+                    ),
+                    reason="the session selection the user may use, else the General Assistant's own bindings",
+                ),
                 context=_ga_build_context,
             )
             # Told to the model below, never a silent absence (#9898).

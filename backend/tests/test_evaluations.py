@@ -212,7 +212,7 @@ async def test_a_trigger_refuses_a_model_no_provider_of_the_owner_would_answer(m
     try:
         async with sm() as s:
             admin = await _admin(s)
-            owner = User(email="o@x.io", full_name="Owner", hashed_password="x", role="user")
+            owner = User(email="o@x.io", full_name="Owner", hashed_password="x", role="admin")
             s.add(owner)
             await s.flush()
             await seed_provider(s, ["owner-model", "owner-extra"], users=[owner])
@@ -346,7 +346,7 @@ async def test_a_launch_waiting_for_callbacks_needs_a_resume_secret(monkeypatch,
 async def _owner_admin_and_providers(s) -> tuple[User, User]:
     """An admin and an owner, each with a restricted provider of their own, and an open one."""
     admin = await _admin(s)
-    owner = User(email="o@x.io", full_name="Owner", hashed_password="x", role="user")
+    owner = User(email="o@x.io", full_name="Owner", hashed_password="x", role="admin")
     s.add(owner)
     await s.flush()
     await seed_provider(s, ["owner-model"], users=[owner])

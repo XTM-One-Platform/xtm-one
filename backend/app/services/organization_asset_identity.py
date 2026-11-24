@@ -29,7 +29,7 @@ call; the store of later slices persists what it answers.
    version across sources, with its sources and first and last seen; an
    unknown version is ``unknown``, never empty.
 4. **Sections** (:func:`dedupe_section`): asset groups and the name-keyed
-   sections (software, crown jewels, AI systems, PIRs, tracked
+   sections (software, crown jewels, PIRs, tracked
    organizations) use the same matching with their own identifiers.
 """
 

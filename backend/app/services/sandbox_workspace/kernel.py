@@ -489,11 +489,11 @@ async def _start_remote_kernel(sandbox: Any, *, idle: float) -> None:
     from opensandbox.models.execd import RunCommandOpts
     from opensandbox.models.filesystem import WriteEntry
 
-    from app.services.code_interpreter import _build_sandbox_wrapper, _resolve_allowed_modules
+    from app.services.code_interpreter import _build_sandbox_wrapper, _opensandbox_allowed_modules
 
     await sandbox.files.create_directories([WriteEntry(path=REMOTE_KERNEL_DIR, mode=700)])
     await sandbox.files.write_file(
-        REMOTE_KERNEL_SCRIPT, _build_sandbox_wrapper(_resolve_allowed_modules(), kernel=True).encode("utf-8")
+        REMOTE_KERNEL_SCRIPT, _build_sandbox_wrapper(_opensandbox_allowed_modules(), kernel=True).encode("utf-8")
     )
     await sandbox.commands.run(
         f"python {REMOTE_KERNEL_SCRIPT} {secrets.token_hex(16)} {int(idle)} {REMOTE_KERNEL_DIR}",
@@ -595,6 +595,7 @@ async def execute_in_remote_kernel(
                 usage_type="code_interpreter",
                 user_id=user_id,
                 egress_allow_list=settings.opensandbox_network_allow_list,
+                open_egress=settings.code_interpreter_open_egress,
                 resource=settings.sandbox_resources("python"),
                 env={"MPLBACKEND": "Agg", "COPILOT_MAX_IMAGES": str(MAX_IMAGES), WORKSPACE_ENV: REMOTE_WORKSPACE},
             )

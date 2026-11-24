@@ -113,9 +113,14 @@ def test_fleet_desks_are_reached_through_the_orchestrator_only(fleet):
     chatty = [
         m["agent"] for m in desks if not agents[m["agent"]].get("disable_chat") and m["agent"] not in answers_people
     ]
-    exposed = [m["agent"] for m in desks if m.get("exposed")]
+    # A desk is exposed only when a seeded agent outside the fleet hands over to it (#1837):
+    # the loop's shared roles are reached in one hop by the product assistants and the
+    # use-case orchestrators, and a hidden target would be handover_not_allowed.
+    home = {m["agent"] for m in fleet.get("members", [])}
+    reached = {t for a in BUILTIN_AGENTS if a["slug"] not in home for t in a.get("handover_agent_slugs") or []}
+    exposed = [m["agent"] for m in desks if m.get("exposed") and m["agent"] not in reached]
     assert not chatty, f"set disable_chat on the fleet desks: {chatty}"
-    assert not exposed, f"expose the orchestrator only, not: {exposed}"
+    assert not exposed, f"expose the orchestrator and the handover targets only, not: {exposed}"
 
 
 @pytest.mark.parametrize("fleet", BUILTIN_FLEETS, ids=lambda f: f["slug"])
