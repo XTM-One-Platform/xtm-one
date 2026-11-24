@@ -6317,7 +6317,7 @@ PROVIDER_CATALOG = {
             {
                 "event": "risk_scenario_recomputed",
                 "label": "Risk scenarios recomputed",
-                "description": "Triggers when a CRQ simulation or the re-pricing of risk scenarios finishes in OpenCRQ. Carries the scenarios the re-pricing moved. Uses polling (every minute).",
+                "description": "Triggers when a CRQ simulation or the re-pricing of risk scenarios finishes in OpenCRQ. Uses polling (every minute).",
                 "mechanism": "polling",
                 "filter_keys": _OPENCRQ_FILTER_KEYS,
             },
