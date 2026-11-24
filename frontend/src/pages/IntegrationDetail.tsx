@@ -41,7 +41,7 @@ import { SetupGuideDialog } from "@/components/ui/setup-guide-dialog";
 import { isA2AProvider } from "@/hooks/api/useA2AApi";
 import { useA2ADirection } from "@/hooks/api/useA2AClientApi";
 import { A2AUnavailableNotice } from "@/components/ui/a2a-unavailable-notice";
-import { resolveVariant, variantValue } from "@/lib/catalog-variants";
+import { resolveVariant, setupGuideFor, variantValue } from "@/lib/catalog-variants";
 import { OverviewTab } from "./integration-detail/OverviewTab";
 import { ConfigTab } from "./integration-detail/ConfigTab";
 import { ActivityTab } from "./integration-detail/ActivityTab";
@@ -113,7 +113,10 @@ export default function IntegrationDetail() {
   const baseUrl = authConfig?.base_url ?? platformOrigin();
   const a2aDirection = useA2ADirection(integration);
   const setupGuide = catalogEntry
-    ? resolveVariant(catalogEntry, variantValue(catalogEntry, integration?.extra_config, a2aDirection)).setup_guide
+    ? setupGuideFor(
+        resolveVariant(catalogEntry, variantValue(catalogEntry, integration?.extra_config, a2aDirection)),
+        integration?.auth_type,
+      )
     : undefined;
   // Served by the backend from its one list of registration-only providers,
   // already scoped to XTM One mode.

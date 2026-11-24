@@ -81,7 +81,7 @@ import { formatShortDateTimeIntl, formatTimeAgo } from "@/lib/relative-time";
 import { cn } from "@/lib/utils";
 import {
   FLEET_IMPACT_KIND_LABELS,
-  PICKUP_EXPLANATIONS,
+  pickupExplanation,
   PRIORITY_LABELS,
   STATUS_LABELS,
   VISIBILITY_EXPLANATIONS,
@@ -254,7 +254,7 @@ function WhoActs({ item, context }: { item: WorkItem; context: WorkItemContext }
           pullRequests={pickup.pull_requests}
         />
         <p className="min-w-0 flex-1">
-          {t_i18n(PICKUP_EXPLANATIONS[pickup.state], {
+          {t_i18n(pickupExplanation(pickup.state, item.can_write), {
             agent: agentWord,
             date: pickup.available_at ? formatShortDateTime(pickup.available_at) : "",
             count: waitingPullRequestCount(pickup),
@@ -457,6 +457,9 @@ function Body({ item, actions, onClose }: { item: WorkItem; actions: WorkItemAct
   const scheduled = isScheduledItem(item) ? item : null;
   const payload = visiblePayload(item.payload);
   const closable = canClose(item) && !!actions.close;
+  // Read but not writable for the reader (#1845): the write actions stay
+  // visible, disabled, with why, instead of answering "not found".
+  const lockedReason = item.can_write === false ? item.read_only_reason || t_i18n("Read-only for you.") : null;
   // An item waiting for the reader leads with its decision; the run notes
   // below it are history, folded until asked for.
   const deciding = !scheduled && waitsForAnswer(item);
@@ -553,35 +556,49 @@ function Body({ item, actions, onClose }: { item: WorkItem; actions: WorkItemAct
 
       <div className="flex flex-wrap items-center justify-end gap-2 border-t border-elevation-subtle pt-3">
         {actions.remove && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="mr-auto gap-1 text-feedback-error-primary"
-            disabled={actions.busy}
-            onClick={() => actions.remove?.(item)}
-          >
-            <Trash2 className="h-3.5 w-3.5" /> {t_i18n("Delete")}
-          </Button>
+          <Tip content={lockedReason} wrap="auto" wrapClassName="mr-auto inline-flex">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mr-auto gap-1 text-feedback-error-primary"
+              disabled={actions.busy || !!lockedReason}
+              onClick={() => actions.remove?.(item)}
+            >
+              <Trash2 className="h-3.5 w-3.5" /> {t_i18n("Delete")}
+            </Button>
+          </Tip>
         )}
         {scheduled && <ScheduleActions item={scheduled} />}
         {actions.requeue && canRequeue(item) && (
-          <Tip content={t_i18n(REQUEUE_EFFECT)} wrap="auto">
-            <Button variant="ghost" size="sm" className="gap-1" disabled={actions.busy} onClick={() => actions.requeue?.(item)}>
+          <Tip content={lockedReason ?? t_i18n(REQUEUE_EFFECT)} wrap="auto">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1"
+              disabled={actions.busy || !!lockedReason}
+              onClick={() => actions.requeue?.(item)}
+            >
               <RotateCcw className="h-3.5 w-3.5" aria-hidden /> {t_i18n("Put back in the queue")}
             </Button>
           </Tip>
         )}
         {closable && (
           <>
-            <Tip content={t_i18n(CLOSE_EFFECTS.cancelled)}>
-              <Button variant="ghost" size="sm" className="gap-1" onClick={() => actions.close?.(item, "cancelled")}>
+            <Tip content={lockedReason ?? t_i18n(CLOSE_EFFECTS.cancelled)} wrap="auto">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1"
+                disabled={!!lockedReason}
+                onClick={() => actions.close?.(item, "cancelled")}
+              >
                 <XCircle className="h-3.5 w-3.5" aria-hidden /> {t_i18n("Cancel work item")}
               </Button>
             </Tip>
             {/* Not on an item that waits for open dependencies: the row hides it too. */}
             {offersMarkDone(item) && (
-              <Tip content={t_i18n(CLOSE_EFFECTS.done)}>
-                <Button size="sm" className="gap-1" onClick={() => actions.close?.(item, "done")}>
+              <Tip content={lockedReason ?? t_i18n(CLOSE_EFFECTS.done)} wrap="auto">
+                <Button size="sm" className="gap-1" disabled={!!lockedReason} onClick={() => actions.close?.(item, "done")}>
                   <CheckCircle2 className="h-3.5 w-3.5" aria-hidden /> {t_i18n("Mark done")}
                 </Button>
               </Tip>

@@ -510,10 +510,11 @@ async def _check_runs(client: Any, base: str, token: str) -> list[Any]:
 
 async def _running_workflow_runs(
     client: Any, repo_base: str, sha: str, token: str
-) -> tuple[list[dict[str, Any]], list[str]]:
-    """The head's workflow runs not completed (queued, in progress, a re-run requested), and every run's event."""
+) -> tuple[list[dict[str, Any]], list[str], dict[int, str]]:
+    """The head's workflow runs not completed, every run's event, and the event of each run's check suite."""
     found: list[dict[str, Any]] = []
     events: list[str] = []
+    suites: dict[int, str] = {}
     seen = 0
     for page in range(1, MAX_CHECK_PAGES + 1):
         body = await _get(
@@ -530,8 +531,13 @@ async def _running_workflow_runs(
         seen += len(items)
         found.extend(r for r in items if isinstance(r, dict) and r.get("status") != "completed")
         events.extend(str(r.get("event") or "") for r in items if isinstance(r, dict))
+        suites.update(
+            (r["check_suite_id"], str(r.get("event") or ""))
+            for r in items
+            if isinstance(r, dict) and isinstance(r.get("check_suite_id"), int)
+        )
         if seen >= total or len(items) < CHECKS_PER_PAGE:
-            return found, events
+            return found, events, suites
     raise PermanentEnrichmentError(f"the commit has more than {MAX_CHECK_PAGES * CHECKS_PER_PAGE} workflow runs")
 
 
@@ -621,6 +627,64 @@ def with_running_workflows(checks: dict[str, Any], running: list[dict[str, Any]]
         "all_green": False,
         "names": [*checks["names"], *extra],
         **({"verdict": "pending"} if "verdict" in checks else {}),
+    }
+
+
+def reds_of_another_event(
+    check_runs: list[Any], suite_events: dict[int, str], required: frozenset[str] | None = None
+) -> list[str]:
+    """The reds a later run of the same check name, from a workflow of ANOTHER event, hid. Pure.
+
+    A branch pushed with an open pull request runs the same workflow twice on one
+    head, its ``push`` run and its ``pull_request`` run, with the same check names.
+    :func:`checks.latest_check_runs` keeps the highest id per (app, name), so the
+    later run's green superseded the other run's red and the head read green while
+    the pull request's own run was red (opencti #20153, 41cb354c). Here the latest
+    run stands per (app, event, name), the event read from the check run's suite in
+    *suite_events*: a red that is the latest of its own event is named. A re-run in
+    the same event still supersedes its red. *required* weighs as in
+    :func:`check_facts`.
+    """
+    by_event: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for run in check_runs:
+        if not isinstance(run, dict):
+            continue
+        suite = run.get("check_suite")
+        suite_id = suite.get("id") if isinstance(suite, dict) else None
+        event = suite_events.get(suite_id) if isinstance(suite_id, int) else None
+        if event is None:
+            continue
+        key = ((run.get("app") or {}).get("slug") or "", event, str(run.get("name") or ""))
+        kept = by_event.get(key)
+        if kept is None or _as_int(run.get("id")) > _as_int(kept.get("id")):
+            by_event[key] = run
+    latest_ids = {r.get("id") for r in gh_checks.latest_check_runs([r for r in check_runs if isinstance(r, dict)])}
+    return sorted(
+        {
+            str(run.get("name"))
+            for run in by_event.values()
+            if run.get("id") not in latest_ids
+            and run.get("status") == "completed"
+            and run.get("conclusion") in FAILED_CONCLUSIONS
+            and (not required or run.get("name") in required)
+        }
+    )
+
+
+def _as_int(value: Any) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def with_reds_of_another_event(checks: dict[str, Any], hidden: list[str]) -> dict[str, Any]:
+    """*checks* with each red :func:`reds_of_another_event` named counted as failed: never green. Pure."""
+    if not hidden:
+        return checks
+    return {
+        **checks,
+        "failed": checks["failed"] + len(hidden),
+        "failed_names": [*checks["failed_names"], *hidden],
+        "all_green": False,
+        **({"verdict": "failure"} if "verdict" in checks else {}),
     }
 
 
@@ -934,10 +998,19 @@ async def fetch(event_key: str, payload: dict, token: str, *, facets: frozenset[
                     statuses = await _statuses(client, base, token)
                 checks = with_commit_statuses(checks, statuses, contexts or None)
             if checks["all_green"]:
-                running, events = await _running_workflow_runs(client, repo_base, sha, token)
+                running, events, suite_events = await _running_workflow_runs(client, repo_base, sha, token)
                 if workflows_not_created(check_runs, events, _opened_at(pulls, sha)):
                     running = [*running, NOT_CREATED_WORKFLOWS]
                 checks = with_running_workflows(checks, running)
+                # The same check name run by a push and a pull_request workflow: a
+                # later green of one never hides a red of the other.
+                hidden = reds_of_another_event(check_runs, suite_events)
+                if hidden and branch is not None and contexts is None:
+                    # Weighed against the base's required checks: one read, on such a head only.
+                    contexts = await gh_checks.read_required_contexts(client, _headers(token), owner, name, branch)
+                if hidden and contexts:
+                    hidden = reds_of_another_event(check_runs, suite_events, contexts)
+                checks = with_reds_of_another_event(checks, hidden)
         if with_required:
             required = await _required(
                 client,
