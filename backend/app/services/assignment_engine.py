@@ -6300,7 +6300,13 @@ async def execute_assignment_run(
             # mirroring the tool / KB scoping model. Visibility runs as the
             # run's user (``is_admin=False``); a company-managed run with no
             # owner reaches company-managed runners only.
-            if settings.runners_enabled and "computer_use" in agent_builtin_tool_ids:
+            from app.a2a.partner_scope import withhold_runner_tools
+
+            if (
+                settings.runners_enabled
+                and "computer_use" in agent_builtin_tool_ids
+                and not withhold_runner_tools(composite)
+            ):
                 from app.api.v1.helpers import get_user_group_ids
                 from app.services.builtin_tools import build_computer_use_tools
 

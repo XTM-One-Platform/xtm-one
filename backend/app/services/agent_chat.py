@@ -4825,8 +4825,15 @@ async def run_agent_chat(
         # synthetic input on an enrolled machine. Runner targeting deliberately
         # runs as the acting user (``is_admin=False``): an agent reaches the
         # user's own + company-managed + group-shared runners, never another
-        # user's private machine, whatever the caller's role.
-        if _app_settings.runners_enabled and "computer_use" in agent_builtin_tool_ids:
+        # user's private machine, whatever the caller's role. A partner's A2A
+        # task never gets it (``partner_scope.withhold_runner_tools``).
+        from app.a2a.partner_scope import withhold_runner_tools
+
+        if (
+            _app_settings.runners_enabled
+            and "computer_use" in agent_builtin_tool_ids
+            and not withhold_runner_tools(composite)
+        ):
             from app.api.v1.helpers import get_user_group_ids
             from app.services.builtin_tools import build_computer_use_tools
 

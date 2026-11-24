@@ -21595,5 +21595,12 @@
   "No person was needed: the policy allowed the step.": "担当者は不要でした。ポリシーがステップを許可しました。",
   "Nobody answered before the deadline: the step did not run.": "期限までに誰も回答しませんでした。ステップは実行されませんでした。",
   "The decision was withdrawn before an answer.": "回答前に決定が取り下げられました。",
-  "No answer": "回答なし"
+  "No answer": "回答なし",
+  "Email changed": "メールアドレスを変更しました",
+  "The account now uses {email}.": "このアカウントは現在 {email} を使用しています。",
+  "Failed to change the email": "メールアドレスを変更できませんでした",
+  "The platform admin account's email is set by ADMIN_EMAIL and cannot be changed.": "プラットフォーム管理者アカウントのメールアドレスは ADMIN_EMAIL で設定され、変更できません。",
+  "New email": "新しいメールアドレス",
+  "The other platforms find this person's account by this address. Users cannot change it themselves. The old and the new address are notified, and reset links already sent stop working.": "他のプラットフォームはこのアドレスでこの人のアカウントを見つけます。ユーザーが自分で変更することはできません。旧アドレスと新アドレスの両方に通知され、送信済みのリセットリンクは無効になります。",
+  "Your email identifies you on the other platforms: an administrator changes it.": "メールアドレスは他のプラットフォームであなたを識別します。変更は管理者が行います。"
 }

@@ -198,14 +198,18 @@ async def revoke_invitation(token_hash: str) -> bool:
 
 
 async def create_password_reset(
-    *, user_id: Any, created_by_id: Any, ttl_hours: int
+    *, user_id: Any, created_by_id: Any, ttl_hours: int, email: str
 ) -> tuple[str, datetime]:
-    """Store a new password-reset token. Returns (raw_token, expires_at)."""
+    """Store a new password-reset token sent to *email*. Returns (raw_token, expires_at).
+
+    The token names the address it is sent to: once the account's email
+    changes, the link stops working (:func:`password_reset_addressed_to`)."""
     raw, token_hash = _new_token()
     now = datetime.now(UTC)
     expires_at = now + timedelta(hours=ttl_hours)
     payload = {
         "user_id": str(user_id),
+        "email": email.strip().lower(),
         "created_by_id": str(created_by_id) if created_by_id else None,
         "created_at": now.isoformat(),
         "expires_at": expires_at.isoformat(),
@@ -213,6 +217,15 @@ async def create_password_reset(
     r = await redis_client()
     await r.set(_RESET_PREFIX + token_hash, json.dumps(payload), ex=ttl_hours * 3600)
     return raw, expires_at
+
+
+def password_reset_addressed_to(data: dict, user: Any) -> bool:
+    """Whether the reset token *data* was sent to *user*'s current email.
+
+    A link sent before the account's email changed is refused. A token that
+    names no address (minted before tokens named one) is accepted."""
+    sent_to = data.get("email")
+    return sent_to is None or sent_to == (getattr(user, "email", None) or "").strip().lower()
 
 
 async def get_password_reset(raw_token: str) -> dict | None:

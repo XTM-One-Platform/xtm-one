@@ -21595,5 +21595,12 @@
   "No person was needed: the policy allowed the step.": "Aucune personne n'était nécessaire : la politique a autorisé l'étape.",
   "Nobody answered before the deadline: the step did not run.": "Personne n'a répondu avant l'échéance : l'étape n'a pas été lancée.",
   "The decision was withdrawn before an answer.": "La décision a été retirée avant toute réponse.",
-  "No answer": "Pas de réponse"
+  "No answer": "Pas de réponse",
+  "Email changed": "E-mail modifié",
+  "The account now uses {email}.": "Le compte utilise désormais {email}.",
+  "Failed to change the email": "Échec de la modification de l'e-mail",
+  "The platform admin account's email is set by ADMIN_EMAIL and cannot be changed.": "L'e-mail du compte administrateur de la plateforme est défini par ADMIN_EMAIL et ne peut pas être modifié.",
+  "New email": "Nouvel e-mail",
+  "The other platforms find this person's account by this address. Users cannot change it themselves. The old and the new address are notified, and reset links already sent stop working.": "Les autres plateformes retrouvent le compte de cette personne par cette adresse. Les utilisateurs ne peuvent pas la modifier eux-mêmes. L'ancienne et la nouvelle adresse sont prévenues, et les liens de réinitialisation déjà envoyés cessent de fonctionner.",
+  "Your email identifies you on the other platforms: an administrator changes it.": "Votre e-mail vous identifie sur les autres plateformes : un administrateur le modifie."
 }

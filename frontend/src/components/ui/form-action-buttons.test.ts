@@ -223,7 +223,7 @@ describe("form action buttons at 36 px, Cancel then primary", () => {
     const src = read("pages", "Profile.tsx");
     const edit = slice(src, '{editing ? (\n                  <div className="px-5 py-4 space-y-3">', '<InfoRow icon={Fingerprint}');
     expect(edit).not.toMatch(/content-caption|h-7|h-8|size="sm"/);
-    for (const id of ["profile-full-name", "profile-title", "profile-email", "profile-timezone", "profile-theme", "profile-language"]) {
+    for (const id of ["profile-full-name", "profile-title", "profile-timezone", "profile-theme", "profile-language"]) {
       expect(edit).toContain(`id="${id}"`);
       expect(edit).toContain(`aria-labelledby="${id}-label"`);
     }

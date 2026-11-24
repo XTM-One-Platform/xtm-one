@@ -1,6 +1,6 @@
 # ADR Verified Email Change for XTM One Users
 
-Status: Proposed
+Status: Proposed. Step 1 (the administrator change and the 422 on the preferences endpoint) is implemented
 Scope: `backend/` (account settings, user management, password reset, transactional email), `frontend/` (Profile page, user management)
 Reviewed in refinement: not yet
 

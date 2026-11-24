@@ -116,7 +116,6 @@ export default function Profile() {
   const [editing, setEditing] = useState(false);
   const [fullName, setFullName] = useState("");
   const [title, setTitle] = useState("");
-  const [email, setEmail] = useState("");
   const [timezone, setTimezone] = useState("");
   const [theme, setTheme] = useState<string>("dark");
   const [language, setLanguage] = useState<string>(LANGUAGE_AUTO);
@@ -140,7 +139,6 @@ export default function Profile() {
   const startEditing = () => {
     setFullName(user.full_name);
     setTitle(user.title ?? "");
-    setEmail(user.email);
     setTimezone(user.timezone ?? "");
     setTheme(effectiveTheme(user.theme));
     setLanguage(user.language ?? LANGUAGE_AUTO);
@@ -152,7 +150,6 @@ export default function Profile() {
       {
         full_name: fullName,
         title: title || undefined,
-        email: email !== user.email ? email : undefined,
         timezone: timezone || null,
         theme,
         language,
@@ -230,7 +227,7 @@ export default function Profile() {
           ) : (
             <div className="flex gap-2">
               <Button variant="secondary" onClick={() => setEditing(false)}>{t_i18n("Cancel")}</Button>
-              <Button className="gap-1.5" onClick={handleSave} disabled={updateProfile.isPending || !fullName.trim() || !email.trim()} aria-busy={updateProfile.isPending || undefined}>
+              <Button className="gap-1.5" onClick={handleSave} disabled={updateProfile.isPending || !fullName.trim()} aria-busy={updateProfile.isPending || undefined}>
                 {updateProfile.isPending && <Spinner size="sm" tone="inherit" />}{!updateProfile.isPending && <Save className="h-3.5 w-3.5" />}
                 {t_i18n("Save")}
               </Button>
@@ -264,11 +261,10 @@ export default function Profile() {
                   </div>
                 ) : null}
 
-                <InfoRow icon={Mail} label={t_i18n("Email")} editing={editing} fieldId="profile-email">
-                  {editing ? (
-                    <Input id="profile-email" aria-labelledby="profile-email-label" value={email} onChange={(e) => setEmail(e.target.value)} type="email" className="max-w-xs" />
-                  ) : (
-                    <span className="content-base">{user.email}</span>
+                <InfoRow icon={Mail} label={t_i18n("Email")} editing={editing}>
+                  <span className="content-base">{user.email}</span>
+                  {editing && (
+                    <p className="content-compact text-default-secondary">{t_i18n("Your email identifies you on the other platforms: an administrator changes it.")}</p>
                   )}
                 </InfoRow>
 

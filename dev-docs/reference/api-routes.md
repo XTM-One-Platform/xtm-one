@@ -49,7 +49,7 @@ The root `AGENTS.md` keeps one line per entry, because every agent session loads
 | `/api/v1/settings/model-announcements` | Model catalog change announcements (admin): settings, catalogs, preview, test |
 | `/api/v1/settings` | LLM providers, general assistant config, user preferences, SSO, OAuth defaults, Langfuse, disabled providers, tags, memory purge, workspace knowledge (`/workspace-knowledge`, admin), brand asset source (`/brand-asset-source`, `/brand-asset-source/sync`, admin) |
 | `/api/v1/auth` | Register, login, me, auth config |
-| `/api/v1/users` | User management (admin) |
+| `/api/v1/users` | User management (admin); `PUT /{user_id}/email` is the one way an email changes (`PUT /settings/preferences` answers 422 for a new address) |
 | `/api/v1/scim/v2` | SCIM 2.0 provisioning for an identity provider (Microsoft Entra): `ServiceProviderConfig`, `ResourceTypes`, `Schemas`, `Users`, `Groups`; a SCIM bearer token only, SCIM error bodies ([scim.md](../scim.md)) |
 | `/api/v1/scim/tokens` | SCIM tokens (admin): generate (raw token shown once), list, revoke |
 | `/api/v1/groups` | Group CRUD, membership management (admin); `/{id}/managers` elects and removes a group's managers (admin); `/managed` lists the groups the caller manages (any user); `PUT /{id}` takes the group's `kind` |

@@ -17,6 +17,7 @@ things hold, one class each:
 
 import asyncio
 import inspect
+import re
 import uuid
 from types import SimpleNamespace
 
@@ -333,3 +334,46 @@ class TestThePartnerGetsNoPlatformBuilderReach:
         assert actors == [str(admin.id)]
         assert {"create_agent", "update_agent", "delete_agent"} <= chatting
         assert flow_tools <= chatting and evaluation_tools <= chatting
+
+
+class TestThePartnerDrivesNoRunner:
+    """``computer_use`` drives the run-as identity's enrolled machines (shell,
+    files, screenshots, input): a partner's task never gets it, and the model is
+    told why rather than hearing "unknown tool"."""
+
+    def _suite(self) -> set[str]:
+        from app.services.builtin_tools import build_computer_use_tools
+
+        defs, _ = build_computer_use_tools(
+            user_id=None, is_admin=False, user_group_ids=[], agent_runner_ids=[], agent_runner_labels=[]
+        )
+        return {d.name for d in defs}
+
+    async def test_a_partner_task_withholds_the_suite(self):
+        from app.a2a.partner_scope import withhold_runner_tools
+        from app.tools.base import CompositeToolExecutor
+
+        composite = CompositeToolExecutor()
+        with partner_task_scope():
+            assert withhold_runner_tools(composite) is True
+        assert not set(composite.tool_names)
+        assert set(composite.withheld) == self._suite()
+
+    async def test_any_other_turn_keeps_it(self):
+        from app.a2a.partner_scope import withhold_runner_tools
+        from app.tools.base import CompositeToolExecutor
+
+        composite = CompositeToolExecutor()
+        assert withhold_runner_tools(composite) is False
+        assert not composite.withheld
+
+    def test_every_builder_of_an_agent_run_asks_first(self):
+        from app.services import agent_chat, assignment_engine
+
+        gate = re.compile(
+            r'runners_enabled\s+and "computer_use" in agent_builtin_tool_ids\s+and not withhold_runner_tools\(composite\)'
+        )
+        for module in (agent_chat, assignment_engine):
+            source = inspect.getsource(module)
+            assert source.count("build_computer_use_tools(") == 1, module.__name__
+            assert gate.search(source), module.__name__

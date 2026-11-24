@@ -177,6 +177,7 @@ delegation carries in its execution payload (`a2a_partner_task`). In it:
 | `list_runs`, `get_run` | The run history of the same partner's own tasks only (`a2a/partner_runs.py`): the runs its A2A tasks started and the runs those spawned through `parent_run_id`, each naming its partner task; the delivered result only for the run a task maps to, never a prompt, tool call or trace. Scoped by the partner principal (exposure and OAuth client, carried by the scope and by a delegation's `a2a_partner_principal` payload key), never by the run-as identity; any other run answers like an unknown id |
 | `list_work_items` | The tickets the same partner's own tasks filed only (`a2a/partner_runs.partner_work_items_clause`): the items whose `origin_run_id` is a run of that partner's run tree, on top of the desk's scope, so one call reads the status of every ticket the partner filed. Another partner's tickets and the run-as identity's other items are never listed |
 | `flow_builder`, the evaluation tools | Not wired |
+| `computer_use` (runners) | Not wired, withheld with its reason so the model is told why (`partner_scope.withhold_runner_tools`, called by the agent chat and the assignment builders): the suite would drive the run-as identity's enrolled machines. No exposure opts in |
 | Everything else | Unchanged, as the run-as user |
 
 A channel sender with no account gets the same builder surface.

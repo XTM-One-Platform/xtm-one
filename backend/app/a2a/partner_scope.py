@@ -32,6 +32,10 @@ and OAuth client), so the one read the anonymous builder lends a partner task,
 the run history of that same partner's own tasks (``a2a.partner_runs``), is
 scoped by the partner and never by the run-as identity's reach. A delegation
 carries it under ``PARTNER_PRINCIPAL_PAYLOAD_KEY``.
+
+Nor does a partner task drive the run-as identity's enrolled machines: the
+``computer_use`` suite is withheld (``withhold_runner_tools``), whatever the
+agent carries. No exposure opts in.
 """
 
 from __future__ import annotations
@@ -41,12 +45,17 @@ import uuid
 from collections.abc import Iterator, Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.tools.base import CompositeToolExecutor
 
 #: Sub-agent execution payload key: the delegating run answered a partner's task.
 PARTNER_TASK_PAYLOAD_KEY = "a2a_partner_task"
 #: Sub-agent execution payload key: the partner principal that sent that task.
 PARTNER_PRINCIPAL_PAYLOAD_KEY = "a2a_partner_principal"
+#: Why a partner task has no ``computer_use`` function, as the model is told.
+RUNNERS_WITHHELD_REASON = "an external A2A partner's task never drives an enrolled machine"
 
 
 @dataclass(frozen=True)
@@ -121,3 +130,21 @@ def queued_partner_principal(payload: Any) -> PartnerPrincipal | None:
 def queued_partner_task(payload: Any) -> bool:
     """Whether a queued sub-agent task was delegated by a run answering a partner's task."""
     return isinstance(payload, Mapping) and payload.get(PARTNER_TASK_PAYLOAD_KEY) is True
+
+
+def withhold_runner_tools(composite: CompositeToolExecutor) -> bool:
+    """Withhold the ``computer_use`` suite from a partner's task, and say whether it did.
+
+    The suite drives the run-as identity's enrolled machines (shell, files,
+    screenshots, input), a reach an external caller is never lent. Outside a
+    partner task nothing is recorded and the answer is ``False``: the builder
+    wires the suite as usual."""
+    if not in_partner_task():
+        return False
+    from app.services.builtin_tools import build_computer_use_tools
+
+    defs, _ = build_computer_use_tools(
+        user_id=None, is_admin=False, user_group_ids=[], agent_runner_ids=[], agent_runner_labels=[]
+    )
+    composite.withhold([d.name for d in defs], RUNNERS_WITHHELD_REASON)
+    return True

@@ -21595,5 +21595,12 @@
   "No person was needed: the policy allowed the step.": "No person was needed: the policy allowed the step.",
   "Nobody answered before the deadline: the step did not run.": "Nobody answered before the deadline: the step did not run.",
   "The decision was withdrawn before an answer.": "The decision was withdrawn before an answer.",
-  "No answer": "No answer"
+  "No answer": "No answer",
+  "Email changed": "Email changed",
+  "The account now uses {email}.": "The account now uses {email}.",
+  "Failed to change the email": "Failed to change the email",
+  "The platform admin account's email is set by ADMIN_EMAIL and cannot be changed.": "The platform admin account's email is set by ADMIN_EMAIL and cannot be changed.",
+  "New email": "New email",
+  "The other platforms find this person's account by this address. Users cannot change it themselves. The old and the new address are notified, and reset links already sent stop working.": "The other platforms find this person's account by this address. Users cannot change it themselves. The old and the new address are notified, and reset links already sent stop working.",
+  "Your email identifies you on the other platforms: an administrator changes it.": "Your email identifies you on the other platforms: an administrator changes it."
 }

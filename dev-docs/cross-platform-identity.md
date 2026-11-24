@@ -127,6 +127,20 @@ token.
   `ValueError`, which pydantic would wrap with the raw input), and every
   message and log line quotes a URL through `redact_url()`.
 
+## Who an incoming token acts as
+
+An incoming token acts as the XTM One account holding its `email`, compared
+case-insensitively (`deps._resolve_trusted_platform_jwt`), never by `sub`; an
+account no one holds is created with the `user` role. The account keeps its
+own role: a token naming an administrator's email acts as that administrator.
+This is an accepted trust delegation: registering a platform trusts it to say
+who its user is, so whoever controls the email of a platform user (that
+platform's administrators, its signing key) controls the XTM One account
+holding that email, and these tokens skip XTM One's two-factor and session
+limits. Register only platforms trusted at that level. Routes that rely on it
+for administrators include the invitation an access notice makes
+(`platform_access_notices.may_invite`).
+
 ## What XTM One publishes
 
 `GET /xtm/auth/metadata` (public, next to `/xtm/auth/jwks`, served under

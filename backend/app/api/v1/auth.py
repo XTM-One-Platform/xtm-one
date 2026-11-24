@@ -835,6 +835,7 @@ async def _dispatch_password_reset(user_id: uuid.UUID, email: str) -> None:
         user_id=user_id,
         created_by_id=None,
         ttl_hours=ttl_hours,
+        email=email,
     )
     # Reset link targets the frontend ``/reset-password`` route — use
     # ``frontend_url`` for split-origin deployments, fall back to
@@ -903,7 +904,7 @@ async def validate_password_reset(token: str, db: AsyncSession = Depends(get_db)
         return ValidatePasswordResetResponse(valid=False)
 
     user = await db.get(User, uuid.UUID(data["user_id"]))
-    if user is None or not user.is_active:
+    if user is None or not user.is_active or not token_store.password_reset_addressed_to(data, user):
         return ValidatePasswordResetResponse(valid=False)
     # SSO-only users cannot reset password — auth is managed by their IdP.
     if user.sso_provider and not user.hashed_password:
@@ -945,6 +946,11 @@ async def reset_password(
     user = await db.get(User, uuid.UUID(data["user_id"]))
     if user is None or not user.is_active:
         raise HTTPException(status_code=404, detail="Account not found")
+    # Sent to an address the account no longer has: the link is dead.
+    if not token_store.password_reset_addressed_to(data, user):
+        raise HTTPException(
+            status_code=410, detail="This reset link is invalid or has expired"
+        )
 
     # SSO-only users cannot set a local password. The token was already
     # consumed above — this branch should be unreachable in practice because

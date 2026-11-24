@@ -34,7 +34,7 @@ The same dialog lists the `Pending invitations`, with their role and expiry. Rev
 
 An account is either an administrator or a user. `Promote` and `Demote`, at the top of the user's page, switch the role. The change applies on the person's next request.
 
-The bootstrap administrator, the account set by `ADMIN_EMAIL` in the deployment, carries the `Platform Admin` badge. It cannot be demoted, disabled or deleted, its email cannot be changed from its profile, and every restart makes it an administrator again (see [Local accounts](../deployment/authentication.md#local-accounts)).
+The bootstrap administrator, the account set by `ADMIN_EMAIL` in the deployment, carries the `Platform Admin` badge. It cannot be demoted, disabled or deleted, its email cannot be changed, and every restart makes it an administrator again (see [Local accounts](../deployment/authentication.md#local-accounts)).
 
 When the platform has no account yet, the first account registered becomes an administrator.
 
@@ -50,6 +50,14 @@ When the platform has no account yet, the first account registered becomes an ad
 - the audit log entries of their own actions go with the account. The entry of the deletion, written under your name, stays.
 
 You cannot disable or delete your own account. Prefer `Disable` when you may need the account or its history again.
+
+## Email address
+
+People cannot change their own email address: the other Filigran platforms (OpenCTI, OpenAEV, OpenCRQ) find a person's account by it. The `Email` card of the user's page changes it, for local and SSO accounts alike, to an address no other account has and, when `Allowed Domains` is set, in one of those domains. The change applies at once:
+
+- when the platform sends email, the old and the new address are both told of the change, without a link;
+- password reset links already sent to the old address stop working;
+- the audit log records the old and the new address.
 
 ## Passwords
 
