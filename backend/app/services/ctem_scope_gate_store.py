@@ -24,7 +24,9 @@ signal that opened a case (``case_opened``) is never moved back. Design:
 from __future__ import annotations
 
 import logging
+import time
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -50,6 +52,9 @@ MAX_SCENARIOS = 50
 SCENARIO_ASSETS_PAGE = 500
 #: OpenCRQ tolerance ratio (expected loss over tolerance) read as scope criticality, highest first.
 _RATIO_CRITICALITY: tuple[tuple[float, str], ...] = ((1.0, "critical"), (0.5, "high"), (0.1, "medium"))
+#: Where one session keeps the link index and OpenCRQ reads of the per-signal path (#1591 S3), and for how long.
+_READ_CACHE_KEY = "ctem_scope_gate_reads"
+READ_CACHE_SECONDS = 300.0
 
 
 def facts_of(row: CtemSignal) -> gate.SignalFacts:
@@ -254,12 +259,34 @@ async def default_scenario_reader(db: AsyncSession) -> uuid.UUID | None:
     return owner
 
 
+async def _session_cached(db: AsyncSession, key: tuple[Any, ...], load: Callable[[], Awaitable[Any]]) -> Any:
+    """*load* answered once per session and *key* for :data:`READ_CACHE_SECONDS` (#1591 S3 review).
+
+    A listener records many signals in one session (``record_matches`` loops up
+    to 2000 matches): the link index and the OpenCRQ read are built once for the
+    pass, not once per signal. A session without ``info`` (a test double) loads
+    every time.
+    """
+    info = getattr(db, "info", None)
+    cache = info.setdefault(_READ_CACHE_KEY, {}) if isinstance(info, dict) else None
+    now = time.monotonic()
+    if cache is not None:
+        hit = cache.get(key)
+        if hit is not None and now - hit[0] < READ_CACHE_SECONDS:
+            return hit[1]
+    value = await load()
+    if cache is not None:
+        cache[key] = (now, value)
+    return value
+
+
 async def _scenarios_for(db: AsyncSession, row: Any) -> gate.ScenarioIndex:
-    """The OpenCRQ read of *row* when the caller passed none; never raises (the gate never fails on OpenCRQ)."""
+    """The OpenCRQ read of *row* when the caller passed none, once per session and reader; never raises."""
     try:
         async with db.begin_nested():
-            reader = scenario_reader(row, await default_scenario_reader(db))
-        return await read_scenarios(db, user_id=reader)
+            fallback = await _session_cached(db, ("fallback_reader",), lambda: default_scenario_reader(db))
+        reader = scenario_reader(row, fallback)
+        return await _session_cached(db, ("scenarios", reader), lambda: read_scenarios(db, user_id=reader))
     except Exception:
         logger.warning("CTEM scope gate: OpenCRQ reader not resolved", exc_info=True)
         return gate.ScenarioIndex(note="OpenCRQ not read: no OpenCRQ connection to read with")
@@ -294,7 +321,9 @@ async def evaluate(
     at = now or datetime.now(UTC)
     profile = profile if profile is not None else await _profile(db, row.organization_id)
     if primary_assets is None:
-        primary_assets = await _primary_assets(db, row.organization_id)
+        # Per-signal callers (listeners) share one index per session and organization (#1591 S3 review).
+        org_id = row.organization_id
+        primary_assets = await _session_cached(db, ("links", org_id), lambda: _primary_assets(db, org_id))
     if scenarios is None:
         # #1591 S3: the same OpenCRQ read on every path; a system signal reads with the OpenCRQ sync owner's.
         scenarios = await _scenarios_for(db, row)
@@ -513,22 +542,23 @@ async def recheck_held(
     ``updated_at`` moves past *since*, so the next call skips it. A signal the
     gate confirms waits for the case sweep (one case per fix key). The caller commits.
     """
-    rows = [
-        row
-        for row in (
+    # The held reasons are filtered in SQL before the limit: watchlist rows held for
+    # another reason never take the batch from the scope-held ones (#1591 S3 review).
+    rows = list(
+        (
             await db.execute(
                 select(CtemSignal)
                 .where(
                     CtemSignal.organization_id == organization_id,
                     CtemSignal.state == "watchlist",
                     CtemSignal.updated_at < since,
+                    CtemSignal.decision["reason_code"].as_string().in_(HELD_BY_SCOPE),
                 )
                 .order_by(CtemSignal.updated_at)
-                .limit(max(1, int(batch)) * 4)
+                .limit(max(1, int(batch)))
             )
         ).scalars()
-        if (row.decision or {}).get("reason_code") in HELD_BY_SCOPE
-    ][: max(1, int(batch))]
+    )
     return await _decide_again(db, rows, now=now)
 
 
