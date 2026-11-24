@@ -20970,6 +20970,8 @@
   "Unknown user": "不明なユーザー",
   "No schedule": "スケジュールなし",
   "No sync scheduled": "同期はスケジュールされていません",
+  "Rows from an earlier sync, none scheduled": "以前の同期の行、予定された同期なし",
+  "Set up a sync": "同期を設定",
   "Writes when the agent sends rows": "エージェントが行を送信したときに書き込みます",
   "Writes at each CSV import": "CSV インポートのたびに書き込みます",
   "Writes at each API call": "API 呼び出しのたびに書き込みます",

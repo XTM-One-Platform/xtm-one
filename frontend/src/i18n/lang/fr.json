@@ -20970,6 +20970,8 @@
   "Unknown user": "Utilisateur inconnu",
   "No schedule": "Sans planning",
   "No sync scheduled": "Aucune synchronisation planifiée",
+  "Rows from an earlier sync, none scheduled": "Lignes d'une synchronisation précédente, aucune planifiée",
+  "Set up a sync": "Configurer une synchronisation",
   "Writes when the agent sends rows": "Écrit quand l'agent envoie des lignes",
   "Writes at each CSV import": "Écrit à chaque import CSV",
   "Writes at each API call": "Écrit à chaque appel d'API",
