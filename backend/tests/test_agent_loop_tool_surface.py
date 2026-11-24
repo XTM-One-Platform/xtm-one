@@ -11,12 +11,12 @@ from app.tools.agent_loop import _build_tool_surface
 from app.tools.base import ToolDefinition
 
 
-def _tool(name: str, **extra: object) -> ToolDefinition:
+def _tool(name: str, *, execution_timeout: int = 0) -> ToolDefinition:
     return ToolDefinition(
         name=name,
         description=f"Tool {name}",
         input_schema={"type": "object", "properties": {"q": {"type": "string"}}},
-        **extra,
+        execution_timeout=execution_timeout,
     )
 
 
