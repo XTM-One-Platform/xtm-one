@@ -149,7 +149,7 @@ export function parseProfileCard(raw: string | null | undefined): ProfileCard | 
 
 /**
  * The link to the card that edits a field: its tab's path with `?card=<card>`, so a call to
- * action ("Map crown jewels to assets") opens the right tab scrolled to the right card, never the
+ * action ("Map primary assets to assets") opens the right tab scrolled to the right card, never the
  * first tab. An unknown field opens the first tab.
  */
 export function profileFieldHref(path: string): string {

@@ -13,9 +13,11 @@ By default, every agent also starts each chat and each run with a short block: t
 | Category | In the prompt | Read with the tool |
 |---|---|---|
 | Identity (name, sector, regions, size, risk appetite, currency) | Always, in the short block | The whole profile |
-| `primary_assets`, `software`, `shipped_products`, `ai_systems`, `pirs`, `assets_exposure`, `tracked_organizations` | Their size, in the short block; their rows only when preloaded | `category`, filtered by `query`, paged by `offset` and `limit` (up to 200 rows a page), so a list of any length is read whole |
+| `primary_assets`, `software`, `shipped_products`, `ai_systems`, `pirs`, `assets_exposure`, `tracked_organizations` | Their size, in the short block; their rows only when preloaded | `category`, filtered by `query`, paged by `offset` and `limit` (up to 200 rows a page), so a list of any length is read whole. `assets_exposure` reads the merged assets of **CTEM > Inventory** (one row per real asset, with its sources and merged records) and its `query` also takes `field:value` terms on `category`, `subcategory`, `criticality`, `internet_facing`, `os_family`, `source` and `group` |
 | `prioritization_policy` | Its number of rules, in the short block; the rules only when preloaded | One row per threshold you set, per exclusion and per accepted risk |
 | `enterprise_knowledge` | Its number of linked knowledge bases, never the content | Without `query`, the linked knowledge bases; with `query`, the passages that answer it, only from the knowledge bases the person the agent acts for can read |
+
+A vulnerability on a product named like one of your imported GitHub or GitLab repositories (a CPE product part or a plain name, case, `-` and `_` ignored) resolves to that repository in CTEM without a `shipped_products` row; forks are left out.
 
 `crown_jewels` and `tech_stack`, the former names of `primary_assets` and `software`, are still read for one release; a saved selection naming them was renamed on upgrade.
 

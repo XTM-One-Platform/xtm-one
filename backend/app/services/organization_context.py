@@ -1526,6 +1526,42 @@ async def current_profile(
     return row, await hydrated_profile(db, row)
 
 
+async def software_profile(
+    db: AsyncSession, organization_id: uuid.UUID | None = None
+) -> tuple[OrganizationContextVersion | None, OrganizationProfile]:
+    """:func:`current_profile` with its software read from the Software entities (#1495), for the CTEM gates.
+
+    The software the organization runs is the Software entities of the asset
+    store (synced from Intune, Defender, OpenAEV and the SBOMs, or typed by an
+    administrator), plus the profile rows typed before the move that no entity
+    carries (``organization_software_store.matcher_entries``, the CVE matcher's
+    reading). Read-only: the answer is never saved, a writer reads
+    :func:`current_version`. Before the store holds any software the profile
+    rows are answered as they are.
+    """
+    from app.services import organization_software_store as software_store
+
+    row, profile = await current_profile(db, organization_id)
+    if row is None or row.organization_id is None:
+        return row, profile
+    software = await software_store.matcher_software(db, row.organization_id)
+    if not software:
+        return row, profile
+    typed = [{"vendor": e.vendor, "product": e.product, "cpe": e.cpe, "version": e.version} for e in profile.tech_stack]
+    entries = [
+        TechStackEntry(
+            product=entry["product"][:200],
+            vendor=entry["vendor"][:200],
+            cpe=entry["cpe"][:300],
+            version=entry["version"][:100],
+            source="software",
+        )
+        for entry in software_store.matcher_entries(software, typed)
+    ]
+    # model_copy does not validate: the store may hold more software than a typed list may.
+    return row, profile.model_copy(update={"tech_stack": entries})
+
+
 async def list_versions(
     db: AsyncSession, *, limit: int = 20, organization_id: uuid.UUID | None = None
 ) -> list[OrganizationContextVersion]:

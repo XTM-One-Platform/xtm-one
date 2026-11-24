@@ -427,6 +427,7 @@ def resolve(
         ):
             out.products.append(entry.product)
     _resolve_shipped(profile, software, out)
+    _resolve_repositories(profile, software, out)
     if primary_assets is not None:
         refs = list(dict.fromkeys([*software, *out.products]))
         out.primary_assets = primary_assets.reach(refs, keys)
@@ -461,6 +462,45 @@ def _resolve_shipped(profile: OrganizationProfile, software: list[str], out: Res
     wanted = {r.lower() for r in out.repositories}
     for asset in profile.assets_exposure:
         if asset not in out.assets and stable_key(asset.name) in wanted:
+            out.assets.append(asset)
+
+
+def _repository_token(value: str) -> str:
+    """A repository or product name folded for comparison: lower case, ``-``, ``_`` and spaces dropped."""
+    return re.sub(r"[\s_\-.]+", "", value.strip().lower())
+
+
+def repository_match(asset: AssetEntry, ref: str) -> bool:
+    """Whether a software reference names an imported repository asset (harness gap x12-02, #1774).
+
+    The GitHub and GitLab imports write each repository as an asset of subcategory
+    ``code_repository`` named ``owner/name``: a CPE whose product part, or a plain
+    name, is the repository's name (case, ``-`` and ``_`` folded) names it. A fork
+    never does: the organization does not ship it.
+    """
+    if asset.subcategory != "code_repository" or "fork" in asset.tags:
+        return False
+    name = asset.name.rsplit("/", 1)[-1]
+    text = str(ref or "").strip()
+    named = _cpe_vendor_product(text)
+    wanted = _repository_token(named[1] if named else text)
+    return bool(wanted) and wanted == _repository_token(name)
+
+
+def _resolve_repositories(profile: OrganizationProfile, software: list[str], out: Resolution) -> None:
+    """A product the organization ships, read from its imported repositories with no typed row (#1774).
+
+    A repository a ``shipped_products`` row already resolved is left to it.
+    """
+    if not software:
+        return
+    known = {r.lower() for r in out.repositories}
+    for asset in profile.assets_exposure:
+        if asset.name.lower() in known or not any(repository_match(asset, ref) for ref in software):
+            continue
+        out.shipped.append({"product": asset.name.rsplit("/", 1)[-1], "by": "repository", "repositories": [asset.name]})
+        out.repositories.append(asset.name)
+        if asset not in out.assets:
             out.assets.append(asset)
 
 

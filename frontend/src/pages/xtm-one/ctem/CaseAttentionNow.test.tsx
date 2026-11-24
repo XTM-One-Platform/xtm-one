@@ -53,7 +53,7 @@ describe("CaseAttentionNow (#1176)", () => {
     render(kase({}));
     const why = screen.getByTestId("ctem-case-attention-why").textContent ?? "";
     expect(why).toContain("1 KEV on 4 assets");
-    expect(why).toContain("2 crown jewels touched");
+    expect(why).toContain("2 primary assets touched");
     expect(why).toContain("No owner");
     expect(why).toContain("Opened 3 days ago");
     expect(screen.getByTestId("ctem-cases-single-assign").textContent).toBe("Assign owner");
