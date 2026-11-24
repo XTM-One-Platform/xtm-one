@@ -14,7 +14,7 @@
 """Stale checkouts: what a full workspace holds, and which checkouts may go.
 
 Pure: no I/O. ``materialize_repository`` refused for the file limit reads the
-checkout roots the workspace holds (a directory with a ``.xtm-checkout.json``
+checkout roots the workspace holds (a directory with a ``.xtm-checkout``
 record) with :func:`footprints`, asks the provider whether each recorded ref
 still exists, and evicts in the same change set the checkouts that are
 :attr:`Footprint.evictable`: clean (no edit since the checkout, ``checkout.py``)
@@ -40,7 +40,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
-from app.services.sandbox_workspace.checkout import RECORD_NAME, CheckoutRecord, changes_since
+from app.services.sandbox_workspace.checkout import CheckoutRecord, changes_since, record_root
 from app.services.sandbox_workspace.checks import RUNS_DIR
 from app.services.sandbox_workspace.gitignore import GitIgnore
 from app.services.sandbox_workspace.paths import display, is_bytecode_cache, is_under
@@ -137,9 +137,8 @@ def _size(size: int) -> str:
 
 
 def checkout_roots(entries: Iterable[str]) -> list[str]:
-    """The directories holding a checkout record, sorted."""
-    suffix = "/" + RECORD_NAME
-    return sorted(path[: -len(suffix)] for path in entries if path.endswith(suffix))
+    """The directories holding a checkout record (under its current or legacy name), sorted, each once."""
+    return sorted({root for path in entries if (root := record_root(path))})
 
 
 def footprints(
@@ -196,7 +195,7 @@ def footprints(
             for p in (*changes.modified, *changes.added, *changes.removed, *stray)
             if not is_under(record.workspace_path(p), runs)
         }
-        mtime = getattr(entries.get(record.record_path), "mtime", None)
+        mtime = getattr(entries.get(record.record_path) or entries.get(record.legacy_record_path), "mtime", None)
         out.append(
             Footprint(
                 path=root,

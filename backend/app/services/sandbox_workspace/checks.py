@@ -188,7 +188,7 @@ GIT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/xtm-git.XXXXXX") || exit 1
 export GIT_DIR GIT_WORK_TREE
 trap 'rm -rf "$GIT_DIR"' EXIT
 g() { git -C "$top" -c user.name=xtm-one -c user.email=xtm-one@localhost -c init.defaultBranch=main "$@"; }
-g init -q && g add -A -- . ':!.xtm' ':!.xtm-checkout.json' ':(exclude,glob)**/node_modules/**' \\
+g init -q && g add -A -- . ':!.xtm' ':!.xtm-checkout' ':!.xtm-checkout.json' ':(exclude,glob)**/node_modules/**' \\
   ':(exclude,glob)**/.venv/**' ':(exclude,glob)**/.xtm/**' \\
   && g commit -q --allow-empty --no-verify -m checkout \\
   && g update-ref refs/remotes/origin/main HEAD && g update-ref refs/remotes/origin/master HEAD || exit 1

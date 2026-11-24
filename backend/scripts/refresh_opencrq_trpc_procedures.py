@@ -15,10 +15,14 @@ Usage::
     python backend/scripts/refresh_opencrq_trpc_procedures.py              # main
     python backend/scripts/refresh_opencrq_trpc_procedures.py --ref v1.2.0
     python backend/scripts/refresh_opencrq_trpc_procedures.py --check      # exit 1 if stale
+    python backend/scripts/refresh_opencrq_trpc_procedures.py --manifest trpc-procedures.json --commit <sha>
 
 The OpenCRQ repository is not public: the GitHub CLI (``gh``), signed in to an
-account that can read it, does the fetching. Stdlib only otherwise, so it runs
-on whatever python3 a bare checkout has.
+account that can read it, does the fetching. Where there is no ``gh`` (an agent
+sandbox), fetch ``back/trpc-procedures.json`` at the last commit that changed it
+with any authorised client and pass it with ``--manifest`` and that ``--commit``:
+nothing is fetched then. Stdlib only otherwise, so it runs on whatever python3 a
+bare checkout has.
 """
 
 from __future__ import annotations
@@ -61,19 +65,29 @@ def _pinned_commit() -> str | None:
     return json.loads(PINNED.read_text(encoding="utf-8")).get("pinnedFrom", {}).get("commit")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--ref", default="main", help="OpenCRQ branch, tag or commit to pin (default: main).")
     parser.add_argument("--check", action="store_true", help="Report without writing (exit 1 if stale).")
-    args = parser.parse_args()
-
-    history = json.loads(
-        _gh_api(f"repos/{REPO}/commits?path={MANIFEST_PATH}&sha={urllib.parse.quote(args.ref, safe='')}&per_page=1")
+    parser.add_argument(
+        "--manifest", type=Path, help=f"A copy of {MANIFEST_PATH} already fetched: no gh call (needs --commit)."
     )
-    if not history:
-        sys.exit(f"No commit on {args.ref} touches {MANIFEST_PATH}.")
-    commit = history[0]["sha"]
-    manifest = json.loads(_gh_api(f"repos/{REPO}/contents/{MANIFEST_PATH}?ref={commit}", raw=True))
+    parser.add_argument("--commit", help="With --manifest: the OpenCRQ commit the copy was read at (full SHA).")
+    args = parser.parse_args(argv)
+
+    if args.manifest is not None:
+        if not args.commit:
+            parser.error("--manifest needs --commit, the OpenCRQ commit the copy was read at.")
+        commit = args.commit
+        manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+    else:
+        history = json.loads(
+            _gh_api(f"repos/{REPO}/commits?path={MANIFEST_PATH}&sha={urllib.parse.quote(args.ref, safe='')}&per_page=1")
+        )
+        if not history:
+            sys.exit(f"No commit on {args.ref} touches {MANIFEST_PATH}.")
+        commit = history[0]["sha"]
+        manifest = json.loads(_gh_api(f"repos/{REPO}/contents/{MANIFEST_PATH}?ref={commit}", raw=True))
     if manifest.get("formatVersion") != MANIFEST_FORMAT:
         sys.exit(
             f"{MANIFEST_PATH} at {commit[:12]} is format {manifest.get('formatVersion')}, this script reads "

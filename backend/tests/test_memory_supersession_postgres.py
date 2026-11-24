@@ -360,13 +360,29 @@ async def test_invalidate_never_retires_another_users_or_the_shared_memory(monke
                 subject_key="doc:X",
                 user_id=world.other_user_id,
             )
+            await pm.persist_memory(
+                session,
+                agent_id=world.agent_id,
+                content="Shared: doc Y is in review.",
+                memory_type="state",
+                subject_key="doc:Y",
+            )
             await session.commit()
 
+        # A user who does not manage the agent retires nothing of its shared memory.
+        refused = await _call(world, "invalidate_memory", world.other_user_id, subject_key="doc:Y")
+        assert refused.startswith("Nothing retired")
+        assert "1 matching entry of the agent's shared memory stays active" in refused
+        assert all(entry.superseded_at is None for entry in await _entries(world))
+
+        # The agent's owner (world.user_id) retires the shared entry, never another user's own one.
         answer = await _call(world, "invalidate_memory", world.user_id, subject_key="doc:X")
 
-        assert answer.startswith("Nothing retired")
-        assert "1 matching entry of the agent's shared memory stays active" in answer
-        assert all(entry.superseded_at is None for entry in await _entries(world))
+        shared = await _entry(world, "Shared: doc X is in review.")
+        assert answer.startswith(f"Retired 1 memory entry ({shared.id}).")
+        assert shared.superseded_at is not None
+        assert (await _entry(world, "Theirs: doc X is in review.")).superseded_at is None
+        assert (await _entry(world, "Shared: doc Y is in review.")).superseded_at is None
 
 
 async def test_invalidate_needs_an_entry_or_a_subject(monkeypatch):

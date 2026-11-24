@@ -536,7 +536,7 @@ def node_lock_dir(command: ResolvedCommand, entries: dict[str, Any]) -> str | No
     that holds one: the workspace root installs every member and keeps the install state
     (``node_modules/.yarn-state.yml``) there, so a member's check probes and keys its install at the root.
     """
-    from app.services.sandbox_workspace.checkout import RECORD_NAME
+    from app.services.sandbox_workspace.checkout import held_record_path
 
     cwd = command.cwd.strip("/")
     prefix = f"{cwd}/" if cwd else ""
@@ -546,7 +546,7 @@ def node_lock_dir(command: ResolvedCommand, entries: dict[str, Any]) -> str | No
         return None
     where = cwd
     while where:
-        if f"{where}/{RECORD_NAME}" in entries:
+        if held_record_path(entries, where):
             return None
         where = posixpath.dirname(where)
         here = f"{where}/" if where else ""
@@ -564,7 +564,7 @@ def keep_vanished_checkouts(removals: list[str]) -> tuple[list[str], list[str]]:
     """*removals* without every checkout whose record is among them, and those checkout roots.
 
     A command's read-back lists as removed what the container no longer holds. A checkout whose
-    own record (``.xtm-checkout.json``) went with it was not removed by the command: the container
+    own record (``.xtm-checkout``) went with it was not removed by the command: the container
     lost its tree (a restart, a resumed run's stale baseline). Saving that removal deleted a whole
     checkout from the workspace (10,094 files after a resumed backend-unit run); it is kept instead,
     and the answer names it. A file removed inside a checkout whose record is still there stays a removal.
@@ -653,14 +653,15 @@ async def build_output_ignores(workspace: Any, entries: dict[str, Any], roots: I
     untracked files stay in the container and never refuse a check's real writes at the file limit (#1639).
     A checkout whose record or rules cannot be read adds nothing.
     """
-    from app.services.sandbox_workspace.checkout import RECORD_NAME, CheckoutRecord, CheckoutRecordError
+    from app.services.sandbox_workspace.checkout import CheckoutRecord, CheckoutRecordError, held_record_path
     from app.services.sandbox_workspace.gitignore import build_output_patterns, gitignore_paths
 
     patterns: list[str] = list(IGNORED_PATTERNS)
     for root in roots:
         if not root:
             continue
-        record_entry = entries.get(f"{root}/{RECORD_NAME}")
+        record_at = held_record_path(entries, root)
+        record_entry = entries.get(record_at) if record_at else None
         if record_entry is None:
             continue
         try:

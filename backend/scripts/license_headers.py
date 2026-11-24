@@ -767,7 +767,9 @@ def run(
 
 #: What the sandbox writes at the root of a checkout it took from the repository
 #: (``materialize_repository``): its ``sub_paths`` say which part of the tree it holds.
-CHECKOUT_RECORD = ".xtm-checkout.json"
+CHECKOUT_RECORD = ".xtm-checkout"
+#: Its name on a checkout written before the rename.
+LEGACY_CHECKOUT_RECORD = ".xtm-checkout.json"
 
 
 def checkout_scope(root: Path = REPO_ROOT) -> tuple[str, ...]:
@@ -775,8 +777,11 @@ def checkout_scope(root: Path = REPO_ROOT) -> tuple[str, ...]:
 
     A partial checkout lacks most of the tree: judged whole, every glob of the
     list would match nothing and every EE directory miss its ``copyright.md``."""
+    record = root / CHECKOUT_RECORD
+    if not record.is_file():
+        record = root / LEGACY_CHECKOUT_RECORD
     try:
-        payload = json.loads((root / CHECKOUT_RECORD).read_text(encoding="utf-8"))
+        payload = json.loads(record.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return ()
     subs = payload.get("sub_paths") if isinstance(payload, dict) else None
