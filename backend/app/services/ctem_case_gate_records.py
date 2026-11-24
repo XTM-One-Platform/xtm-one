@@ -41,7 +41,6 @@ REASON_KINDS: tuple[str, ...] = (
     "within_threshold",
     "above_threshold",
     "loss_unknown",
-    "safe_mode",
     "fleet_level",
     "person",
 )
@@ -99,8 +98,6 @@ def reason_kind(reason: str | None, outcome: str | None) -> dict[str, Any] | Non
         return {"kind": "above_threshold"}
     if "expected loss is unknown" in lowered:
         return {"kind": "loss_unknown"}
-    if "safe mode" in lowered or "read-only" in lowered:
-        return {"kind": "safe_mode"}
     return {"kind": "fleet_level"}
 
 
