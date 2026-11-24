@@ -21501,5 +21501,14 @@
   "Open cases in {stage}": "Ouvrir les cas en {stage}",
   "Cases by status": "Cas par statut",
   "{count, plural, one {# decision waiting} other {# decisions waiting}}": "{count, plural, one {# décision en attente} other {# décisions en attente}}",
-  "Needs attention first": "À traiter en premier"
+  "Needs attention first": "À traiter en premier",
+  "Asset deleted": "Actif supprimé",
+  "Asset group deleted": "Groupe d'actifs supprimé",
+  "Software deleted": "Logiciel supprimé",
+  "Delete the asset \"{name}\"?": "Supprimer l'actif « {name} » ?",
+  "Delete the asset group \"{name}\"?": "Supprimer le groupe d'actifs « {name} » ?",
+  "Delete the software \"{name}\"?": "Supprimer le logiciel « {name} » ?",
+  "This asset was entered by hand: it leaves the inventory and its asset groups.": "Cet actif a été saisi à la main : il quitte l'inventaire et ses groupes d'actifs.",
+  "This asset group was entered by hand: it is deleted and its assets stay in the inventory without it.": "Ce groupe d'actifs a été saisi à la main : il est supprimé et ses actifs restent dans l'inventaire sans lui.",
+  "This software was typed by hand: it is deleted and leaves the assets it was attached to.": "Ce logiciel a été saisi à la main : il est supprimé et quitte les actifs auxquels il était rattaché."
 }

@@ -21501,5 +21501,14 @@
   "Open cases in {stage}": "{stage}のケースを開く",
   "Cases by status": "ステータス別のケース",
   "{count, plural, one {# decision waiting} other {# decisions waiting}}": "{count, plural, other {判断待ち #件}}",
-  "Needs attention first": "優先して対応"
+  "Needs attention first": "優先して対応",
+  "Asset deleted": "アセットを削除しました",
+  "Asset group deleted": "アセットグループを削除しました",
+  "Software deleted": "ソフトウェアを削除しました",
+  "Delete the asset \"{name}\"?": "アセット「{name}」を削除しますか?",
+  "Delete the asset group \"{name}\"?": "アセットグループ「{name}」を削除しますか?",
+  "Delete the software \"{name}\"?": "ソフトウェア「{name}」を削除しますか?",
+  "This asset was entered by hand: it leaves the inventory and its asset groups.": "このアセットは手動で入力されました。インベントリとそのアセットグループから削除されます。",
+  "This asset group was entered by hand: it is deleted and its assets stay in the inventory without it.": "このアセットグループは手動で入力されました。削除され、そのアセットはグループなしでインベントリに残ります。",
+  "This software was typed by hand: it is deleted and leaves the assets it was attached to.": "このソフトウェアは手動で入力されました。削除され、関連付けられていたアセットから外れます。"
 }
