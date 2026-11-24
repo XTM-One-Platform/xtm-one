@@ -580,7 +580,7 @@ async def add_module_read_tools(
     provider, integration_id = target
     from app.services.health.run_as import configured_run_as, reaches_integration, run_as_needed_reason
     from app.services.integration_read_only import READ_ONLY_CONTEXT_KEY
-    from app.services.integration_tools import build_integration_tools
+    from app.services.integration_tools import BindingBasis, ToolBindings, build_integration_tools
 
     # The reads act as the "Run checks as" user alone (12.3): never the run's user, the
     # service account, the seed owner or an administrator by default.
@@ -603,7 +603,15 @@ async def add_module_read_tools(
         "user_id": str(reader),
         READ_ONLY_CONTEXT_KEY: frozenset({str(integration_id)}),
     }
-    definitions, executor = await build_integration_tools(db, {provider: str(integration_id)}, context=context)
+    definitions, executor = await build_integration_tools(
+        db,
+        ToolBindings(
+            {provider: str(integration_id)},
+            basis=BindingBasis.CALLER_CHECKED,
+            reason='the "Run checks as" user reaches the integration (reaches_integration)',
+        ),
+        context=context,
+    )
     kept = keep_allow_listed_reads(provider, definitions, executor)
     if kept:
         composite.add_tools(kept, executor)

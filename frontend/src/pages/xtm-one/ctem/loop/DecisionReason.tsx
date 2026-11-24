@@ -59,7 +59,7 @@ const REASON_SENTENCE = {
   risk_scenario_unreadable: "A risk scenario is required and OpenCRQ could not be read",
   criticality_unknown: "Criticality unknown, below the scope threshold {threshold}",
   below_scope_threshold: "Criticality {criticality} below the scope threshold {threshold}",
-  in_scope: "In scope: criticality {criticality} at or above {threshold}, confidence {confidence}",
+  in_scope: "In scope: criticality {criticality} (threshold {threshold}), confidence {confidence}",
   no_dependency: "No primary asset depends on this organization",
   account_disabled: "Not exposed: the account is disabled",
 } as const;

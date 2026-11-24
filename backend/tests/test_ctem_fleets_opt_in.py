@@ -35,6 +35,8 @@ _FLEET_ASSIGNMENTS = {
     ("ctem-vuln-prioritization-orchestrator", "Gate answered"),
     # The loop's own timer.due listener (#1574): seeded off, takes the case listener's switch.
     ("ctem-threat-response-orchestrator", "Loop reminder due"),
+    # The loop hears its members' failed and orphaned runs (#1837): seeded off, the case listener's switch.
+    ("ctem-threat-response-orchestrator", "Fleet run failed or orphaned"),
     # CTEM-08 (#919): the trigger rule on software we run, seeded off, after migration c9160fleetoptin1.
     ("ctem-vuln-prioritization-orchestrator", "Vulnerability on software we run"),
     # CTEM-08 (#919): the PIR score thresholds of the policy, seeded off, after migration c9160fleetoptin1.
@@ -44,7 +46,8 @@ _FLEET_ASSIGNMENTS = {
     ("ctem-threat-response-orchestrator", "Threat signal recorded"),
     ("ctem-ai-security-orchestrator", "New AI-enabled report"),
     ("ctem-ai-security-orchestrator", "Weekly AI threat watch"),
-    ("ctem-ai-security-orchestrator", "AI system registered"),
+    # Renamed from "AI system registered" in place by r1844noaisys01 (#1844).
+    ("ctem-ai-security-orchestrator", "AI target added"),
     ("ctem-posture-orchestrator", "Event refresh"),
     ("ctem-posture-orchestrator", "Monthly board report"),
     # F5 third-party risk (#9157 M5): seeded off, after migration c9160fleetoptin1.
@@ -95,6 +98,7 @@ _SEEDED_AFTER_C9160 = {
     ("ctem-threat-response-orchestrator", "Gate answered"),
     ("ctem-vuln-prioritization-orchestrator", "Gate answered"),
     ("ctem-threat-response-orchestrator", "Loop reminder due"),
+    ("ctem-threat-response-orchestrator", "Fleet run failed or orphaned"),
     ("ctem-vuln-prioritization-orchestrator", "OpenAEV results into cases"),
     ("ctem-vuln-prioritization-orchestrator", "Analyst review mark"),
     ("ctem-vuln-prioritization-orchestrator", "Vulnerability on software we run"),
@@ -373,4 +377,9 @@ def test_migration_switches_off_exactly_the_fleet_assignments():
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    assert set(module._FLEET_ASSIGNMENTS) == _FLEET_ASSIGNMENTS - _SEEDED_AFTER_C9160
+    # c9160fleetoptin1 is frozen: it names the trigger r1844noaisys01 later renamed in place.
+    renamed = {
+        ("ctem-ai-security-orchestrator", "AI target added"): ("ctem-ai-security-orchestrator", "AI system registered")
+    }
+    expected = {renamed.get(k, k) for k in _FLEET_ASSIGNMENTS - _SEEDED_AFTER_C9160}
+    assert set(module._FLEET_ASSIGNMENTS) == expected

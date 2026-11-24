@@ -43,7 +43,6 @@ def test_currency_and_hourly_rate_are_asked_together():
     profile = _profile(
         crown_jewels=[{"name": "SCADA"}],
         tech_stack=[{"product": "Windows"}],
-        ai_systems=[{"name": "Bot"}],
         pir_ids=["pir-1"],
     )
     assert onboarding.next_group(profile) == ["currency", "loaded_hourly_rate"]
@@ -102,12 +101,11 @@ def test_onboarding_skipped_keeps_contract_paths_only():
 def test_the_step_names_the_next_question_and_the_completion():
     text = onboarding.render_step(_profile(), version=3, saved=["sector"])
     assert "Saved as version 3: sector." in text
-    assert "4 of 13 fields filled" in text
+    assert "4 of 12 fields filled" in text
     assert "crown_jewels:" in text
     full = {
         "crown_jewels": [{"name": "SCADA"}],
         "tech_stack": [{"product": "Windows"}],
-        "ai_systems": [{"name": "Bot"}],
         "pir_ids": ["pir-1"],
         "currency": "EUR",
         "loaded_hourly_rate": 90,

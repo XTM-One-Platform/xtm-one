@@ -50,6 +50,7 @@ from app.services.element_scope import (
     parse_scope_enforcement,
     queued_task_scope,
 )
+from app.services.integration_tools import BindingBasis, ToolBindings
 
 _BACKEND = Path(__file__).resolve().parents[1]
 _ROOT = _BACKEND.parent
@@ -299,7 +300,7 @@ async def _builder_kwargs(monkeypatch, provider: str, scope: dict) -> dict:
     monkeypatch.setitem(integration_tools.PROVIDER_TOOLS, provider, _record)
     await integration_tools.build_integration_tools(
         _IntegrationDb(row),
-        {provider: [integration_id]},
+        ToolBindings({provider: [integration_id]}, basis=BindingBasis.CALLER_CHECKED, reason="test"),
         context={"source": "test", "element_scope": scope},
     )
     [kwargs] = seen

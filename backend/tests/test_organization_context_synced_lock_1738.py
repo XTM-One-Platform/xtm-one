@@ -189,8 +189,26 @@ async def test_a_put_without_rows_saves_while_a_sync_rewrites_them(monkeypatch: 
     )
     assert db.committed and answer.ignored_row_fields == []
     assert saved[-1].profile["owned_domains"] == ["example.com"]
-    # The answer names the records' rows, as GET does, not the stale stored list.
-    assert answer.profile["assets_exposure"][0]["name"] == "Laptop-1 renamed by Intune"
+    # #1752 slice 3b: the answer carries no row list, only the count read from the records, as GET does.
+    assert "assets_exposure" not in answer.profile and "asset_groups" not in answer.profile
+    assert answer.row_counts == {"asset_groups": 0, "assets_exposure": 1}
+
+
+@pytest.mark.asyncio
+async def test_a_put_without_rows_keeps_the_stored_lists_before_the_import(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#1752 slice 3b: GET answers no row list, so a PUT that leaves them out never clears them."""
+    stored = {"assets_exposure": [_SYNCED], "asset_groups": [{"name": "dmz"}], "owned_domains": []}
+    saved = _store(monkeypatch, stored, [_SYNCED])
+    db: Any = _Db()
+    answer = await api.save_organization_context(
+        api.SaveOrganizationContextRequest(profile={"owned_domains": ["example.com"]}, based_on_version=1),
+        db=db,
+        admin=SimpleNamespace(id=uuid.uuid4()),
+    )
+    assert db.committed and saved[-1].profile["owned_domains"] == ["example.com"]
+    assert [a["name"] for a in saved[-1].profile["assets_exposure"]] == ["Laptop-1"]
+    assert [g["name"] for g in saved[-1].profile["asset_groups"]] == ["dmz"]
+    assert "assets_exposure" not in answer.profile
 
 
 @pytest.mark.asyncio

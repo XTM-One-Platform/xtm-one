@@ -38,6 +38,7 @@ from app.integrations.providers.opencrq.procedure_manifest import (
     reduce_schema,
 )
 from app.services.integration_read_only import withhold_write_tools
+from app.services.integration_tools import BindingBasis, ToolBindings
 from app.tools.base import CallableToolExecutor, ToolCall
 
 TOKEN = "https://demo.opencrq.io||test-token"
@@ -711,7 +712,7 @@ async def _built_kwargs(monkeypatch, provider: str, auth_type: str):
         return []
 
     monkeypatch.setitem(integration_tools.PROVIDER_TOOLS, provider, _record)
-    await integration_tools.build_integration_tools(_Db(), {provider: [integration_id]}, context={"source": "test"})
+    await integration_tools.build_integration_tools(_Db(), ToolBindings({provider: [integration_id]}, basis=BindingBasis.CALLER_CHECKED, reason="test"), context={"source": "test"})
     [kwargs] = seen
     return kwargs, manifest, integration_id
 
@@ -743,7 +744,7 @@ async def _built(monkeypatch, manifest):
     monkeypatch.setattr(integration_tools, "platforms_reached_internally", AsyncMock(return_value={}))
     monkeypatch.setattr(integration_tools, "_opencrq_manifest", AsyncMock(return_value=manifest))
     return await integration_tools.build_integration_tools(
-        _Db(), {"opencrq": [integration_id]}, context={"source": "test"}
+        _Db(), ToolBindings({"opencrq": [integration_id]}, basis=BindingBasis.CALLER_CHECKED, reason="test"), context={"source": "test"}
     )
 
 
@@ -779,7 +780,7 @@ async def _built_registered(monkeypatch, stored, served):
     )
     monkeypatch.setattr(integration_tools, "registered_procedure_manifest", AsyncMock(return_value=stored))
     return await integration_tools.build_integration_tools(
-        _Db(), {"opencrq": [integration_id]}, context={"source": "test"}
+        _Db(), ToolBindings({"opencrq": [integration_id]}, basis=BindingBasis.CALLER_CHECKED, reason="test"), context={"source": "test"}
     )
 
 
