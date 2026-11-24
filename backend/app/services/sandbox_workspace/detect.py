@@ -2299,17 +2299,14 @@ def _node(collector: _Collector, paths: frozenset[str], files: Mapping[str, byte
         _node_named_scripts(collector, directory, path, manager, scripts, used)
 
 
-#: How each Node package manager runs a binary of the checkout's dependencies.
-_NODE_EXEC = {"yarn": ("yarn",), "pnpm": ("pnpm", "exec"), "npm": ("npm", "exec", "--")}
-
-
 def _node_format_apply(collector: _Collector, directory: str, path: str, manager: str, script: str, body: str) -> None:
     """``node-format-apply``: the write mode of a ``format:check`` script that runs ``prettier --check``.
 
     The format kind runs the script (``pnpm run format:check``), whose argv names no formatter, so
     :func:`_apply_formatters` offered no write sibling and a red format check was fixed through a
     hand-written node script (gap no-format-write-check). The script's own prettier call is run in write
-    mode through the manager's binary runner, on the changed files by default like every prettier write.
+    mode through the manager's binary runner (:data:`_NODE_EXEC`: ``yarn prettier``, ``pnpm exec prettier``,
+    ``npx --no-install prettier``), on the changed files by default like every prettier write.
     """
     if _SHELL_CHARS & set(body):
         return  # a chained or piped script: its formatter call is not the whole command

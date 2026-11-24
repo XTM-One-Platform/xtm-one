@@ -85,6 +85,15 @@ def test_a_yarn_prettier_format_check_runs_the_binary_through_yarn() -> None:
     assert found.checks["node-format-apply"].argv == ("yarn", "prettier", "--write", "src")
 
 
+def test_an_npm_prettier_format_check_runs_the_binary_through_npx() -> None:
+    """npm runs the checkout's prettier with the same bin runner as every other npm check."""
+    manifest = '{"scripts": {"format:check": "prettier --list-different ."}}'
+    found = _detect({"package.json": manifest, "package-lock.json": "{}"})
+    apply = found.checks["node-format-apply"]
+    assert apply.argv == ("npx", "--no-install", "prettier", "--write")
+    assert apply.default_args == (".",)
+
+
 def test_a_jvm_spotless_check_gets_an_apply_sibling_on_the_whole_module() -> None:
     pom = "<project><build><plugins><plugin><artifactId>spotless-maven-plugin</artifactId></plugin></plugins></build></project>"
     found = _detect({"pom.xml": pom})
