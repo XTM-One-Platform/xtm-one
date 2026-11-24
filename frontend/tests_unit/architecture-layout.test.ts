@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+// @vitest-environment node
+import { describe, expect, it as test } from 'vitest';
 import {
   ARCH,
   layoutArchitecture,
@@ -432,7 +433,7 @@ const onBorder = (point: Point, node: LayoutNode): boolean => {
 // ---------------------------------------------------------------------------
 
 for (const [name, spec] of CASES) {
-  test.describe(`architecture router: ${name}`, () => {
+  describe(`architecture router: ${name}`, () => {
     const layout = layoutArchitecture(spec);
 
     test('routes every edge with finite geometry inside the canvas', () => {
@@ -553,7 +554,7 @@ for (const [name, spec] of CASES) {
 // Case-specific guarantees
 // ---------------------------------------------------------------------------
 
-test.describe('architecture router: specifics', () => {
+describe('architecture router: specifics', () => {
   test('an auto core tie is a straight chord when clear and elbows when a node is in the way', () => {
     const layout = layoutArchitecture(BLOCKED_CORE);
     expect(edgeBetween(layout, 'core', 'middle').points).toHaveLength(2);

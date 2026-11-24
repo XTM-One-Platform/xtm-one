@@ -29,7 +29,7 @@ import type { PresentationSpec, TemplateChrome } from '../src/types';
 // Both halves are checked against ONE table, `fixtures/chrome-pattern-cases.json`,
 // which `backend/tests/test_presentation_chrome.py` feeds to the Python side.
 // Pure TypeScript (no DOM), so it runs here without a page, like
-// `architecture-layout.spec.ts`. A case that renders differently on the two
+// `tests_unit/architecture-layout.test.ts`. A case that renders differently on the two
 // sides is a footer the tool result quotes one way and the screen draws another.
 // ---------------------------------------------------------------------------
 

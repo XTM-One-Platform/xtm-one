@@ -90,7 +90,9 @@ test.describe('Templates - chart series and brand hues in the design form', () =
     await expect
       .poll(() => slide.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--deck-chart-1').trim()))
       .toBe('#ff3fa4');
-    expect(await slide.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--deck-brand-1').trim())).toBe('#a64dff');
+    await expect
+      .poll(() => slide.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--deck-brand-1').trim()))
+      .toBe('#a64dff');
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
 
