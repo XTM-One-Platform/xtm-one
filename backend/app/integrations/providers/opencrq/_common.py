@@ -260,7 +260,10 @@ ASSET_CRITICALITIES = ["unknown", "low", "medium", "high", "very_high"]
 
 EVIDENCE_STATES = ["applicable", "dismissed"]
 
-JOB_STATUSES = ["queued", "running", "succeeded", "cancelled", "dlq"]
+#: OpenCRQ's ``JOB_STATUSES`` (module/src/modules/jobs/schema.ts). ``partial`` is a
+#: run that stopped at its own bound and handed the rest of its pass to a
+#: continuation: terminal, never ``succeeded``.
+JOB_STATUSES = ["queued", "running", "succeeded", "partial", "cancelled", "dlq"]
 
 #: Shared ``tenant_id`` input-schema fragment for tool definitions.
 TENANT_PROP = {
