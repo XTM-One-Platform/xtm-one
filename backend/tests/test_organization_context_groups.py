@@ -78,6 +78,32 @@ def test_group_rows_are_asset_group_entries(row: dict[str, Any], source: str, ta
     assert entry.tags == tags
 
 
+@pytest.mark.parametrize(
+    ("source", "error", "reason"),
+    [
+        (
+            "crowdstrike",
+            groups.missing_scope_message("crowdstrike", 401),
+            "CrowdStrike Falcon refused the group read (HTTP 401): it needs an API client with the "
+            "Host groups: Read and Hosts: Read scopes.",
+        ),
+        ("tanium", "tanium: no Tanium integration is connected", "No Tanium integration is connected."),
+        ("servicenow", "servicenow: HTTP 503", "ServiceNow answered with HTTP status 503."),
+        ("intune", "intune: ConnectTimeout", "Microsoft Intune did not answer in time."),
+        ("crowdstrike", "crowdstrike: KeyError", "CrowdStrike Falcon could not be reached."),
+        ("opencti", "OpenCTI: upstream 502 tenant 42", None),
+        ("servicenow", None, None),
+    ],
+)
+def test_preview_error_reason_names_the_cause_never_a_raw_body(
+    source: str, error: str | None, reason: str | None
+) -> None:
+    """UX round 1 B1 on #1627: the permission reaches the screen; the source key and raw text never do."""
+    assert imp.readable_error(source, error) == reason
+    plan = imp.ImportPlan(section="asset_groups", source=source, source_total=None, read=0, error=error)
+    assert plan.as_dict()["error_reason"] == reason
+
+
 def test_a_group_without_id_or_name_is_left_out() -> None:
     assert groups.tanium_group_row({"id": "", "name": "x"}) == {}
     assert groups.falcon_group_row({"id": "a", "name": " "}) == {}

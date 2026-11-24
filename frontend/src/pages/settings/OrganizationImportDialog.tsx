@@ -952,9 +952,13 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
       )}
       {preview.isError && <p className="content-compact text-feedback-error-primary">{t_i18n("The preview could not be made. Try again in a moment.")}</p>}
       {plan?.error && (
-        <p className="content-compact text-feedback-error-primary">
-          {t_i18n("{platform} could not be read. Nothing will be saved.", { platform: IMPORT_SOURCE_NAMES[plan.source] ?? plan.source })}
-        </p>
+        <div className="space-y-1" data-testid="org-import.read-error">
+          <p className="content-compact text-feedback-error-primary">
+            {t_i18n("{platform} could not be read. Nothing will be saved.", { platform: IMPORT_SOURCE_NAMES[plan.source] ?? plan.source })}
+          </p>
+          {/* The cause and what to grant (Design standards s.5): only the reasons the backend words itself, never a platform's raw text. */}
+          {plan.error_reason && <p className="content-compact text-default-secondary">{t_i18n("Reason: {reason}", { reason: plan.error_reason })}</p>}
+        </div>
       )}
       {plan && !plan.error && (
         <>

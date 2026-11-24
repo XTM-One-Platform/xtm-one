@@ -300,10 +300,47 @@ class ImportPlan:
             "sample": self.sample,
             "truncated": self.truncated,
             "error": self.error,
+            "error_reason": readable_error(self.source, self.error),
         }
 
 
 # ── Mapping (no I/O) ──────────────────────────────────────────────────
+
+
+_HTTP_STATUS = re.compile(r"HTTP (\d{3})")
+_EXCEPTION_NAME = re.compile(r"[A-Z][A-Za-z]+(Error|Exception|Timeout)")
+
+
+def readable_error(source: str, error: str | None) -> str | None:
+    """The reason a preview shows under "could not be read" (#1556, UX round 1 B1), or ``None``.
+
+    Only the forms the readers write themselves are answered: a refused read naming the permission,
+    an integration not connected or without a credential, an HTTP status, a timeout or an exception
+    name, each worded with the source's label. Any other text (a platform's own error body) is never
+    shown, as before.
+    """
+    if not error:
+        return None
+    from app.services.organization_context_groups import LABELS as GROUP_LABELS
+    from app.services.organization_context_sources import DISPLAY_NAMES
+
+    label = GROUP_LABELS.get(source) or DISPLAY_NAMES.get(source) or source
+    rest = error.strip()
+    for prefix in (f"{source}:", f"{label}:", f"{DISPLAY_NAMES.get(source, source)}:"):
+        if rest.startswith(prefix):
+            rest = rest[len(prefix) :].strip()
+            break
+    if "refused the" in rest and rest.startswith((label, DISPLAY_NAMES.get(source, label))):
+        return rest if rest.endswith(".") else f"{rest}."
+    if rest.startswith("no ") and "integration" in rest:
+        return f"{rest[0].upper()}{rest[1:]}."
+    if status := _HTTP_STATUS.fullmatch(rest):
+        return f"{label} answered with HTTP status {status.group(1)}."
+    if "Timeout" in rest and _EXCEPTION_NAME.fullmatch(rest):
+        return f"{label} did not answer in time."
+    if _EXCEPTION_NAME.fullmatch(rest) or rest == "no answer":
+        return f"{label} could not be reached."
+    return None
 
 
 def _yes_no(value: Any) -> str:

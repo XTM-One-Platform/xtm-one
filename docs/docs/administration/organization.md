@@ -184,7 +184,7 @@ The draft is a proposal, never a save. In **Settings > Organization**, open **Dr
 2. **Source**: the platforms that hold this section, shown with their logo. A platform that is not connected or not readable with your account is shown greyed, with the reason.
 3. **Filters**: each value is picked from the platform itself, never typed.
 4. **Mapping**: each profile field with the platform attribute it reads, its fallback, and an example taken from the platform. The fields the platform does not provide are listed: rows keep what you typed for them.
-5. **Preview**: the platform's own count, then the rows that would be new, updated, unchanged or skipped. Nothing is saved before **Import**.
+5. **Preview**: the platform's own count, then the rows that would be new, updated, unchanged or skipped. Nothing is saved before **Import**. When the platform cannot be read, the preview says so with the reason: the permission the integration lacks (for example the CrowdStrike Falcon *Host groups: Read* scope), an integration that is not connected, an HTTP status or a timeout. A platform's own error text is never shown.
 
 | Section | Platform | Filters |
 |---|---|---|
