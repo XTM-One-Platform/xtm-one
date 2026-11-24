@@ -21671,11 +21671,10 @@
   "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "Las personas que inician sesión mediante inicio de sesión único (SSO) se unen a este grupo automáticamente, en cada inicio de sesión. Los miembros añadidos a mano, por la asignación de grupos SAML o por SCIM se mantienen tal cual.",
   "Case opening": "Apertura de casos",
   "Case opening on": "Apertura de casos activada",
-  "Case opening paused": "Apertura de casos en pausa",
-  "Case opening is paused.": "La apertura de casos está en pausa.",
+  "Case opening off": "Apertura de casos desactivada",
+  "Case opening is off": "La apertura de casos está desactivada",
+  "Open a case for each confirmed signal": "Abrir un caso por cada señal confirmada",
+  "{count, plural, =0 {Off: no confirmed signal is waiting} one {Off: # confirmed signal is waiting} other {Off: # confirmed signals are waiting}}": "{count, plural, =0 {Desactivada: ninguna señal confirmada en espera} one {Desactivada: # señal confirmada en espera} other {Desactivada: # señales confirmadas en espera}}",
   "Case opening was not changed": "No se cambió la apertura de casos",
-  "Off: confirmed signals wait and open no case. On: every waiting signal opens its case at once.": "Desactivada: las señales confirmadas esperan y no abren ningún caso. Activada: cada señal en espera abre su caso de inmediato.",
-  "{count, plural, one {Case opening on: opening cases for # waiting signal} other {Case opening on: opening cases for # waiting signals}}": "{count, plural, one {Apertura de casos activada: abriendo casos para # señal en espera} other {Apertura de casos activada: abriendo casos para # señales en espera}}",
-  "{count, plural, =0 {No confirmed signal is waiting.} one {# confirmed signal is waiting.} other {# confirmed signals are waiting.}}": "{count, plural, =0 {Ninguna señal confirmada está en espera.} one {# señal confirmada está en espera.} other {# señales confirmadas están en espera.}}",
   "CTEM case opening turned on or off": "Apertura de casos CTEM activada o desactivada"
 }

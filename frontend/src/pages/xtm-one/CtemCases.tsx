@@ -49,7 +49,7 @@ import { CTEM_CASE_STATES, useCtemCaseOpening, useCtemCases, type CtemCaseOpened
 import { CasesBulkActions } from "./ctem/CasesBulkActions";
 import { CasesDeleteAction } from "./ctem/CasesDeleteAction";
 import { CasesFreshness } from "./ctem/CasesFreshness";
-import { CaseOpeningPausedState, CaseOpeningSwitch } from "./ctem/CaseOpeningSwitch";
+import { CaseOpeningOffEmptyState, CaseOpeningSwitch } from "./ctem/CaseOpeningSwitch";
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import { useFormatter } from "@/i18n";
 import { formatCount } from "@/lib/number-format";
@@ -129,7 +129,7 @@ export default function CtemCases() {
 
   // A product that could not be read never yields the all-clear sentence (#12139).
   const empty = useCasesEmptyLabel(data?.details_unavailable, data?.details_unavailable_reasons);
-  // #1951: while case opening is paused, the empty list says what waits (and offers Turn on).
+  // #1951: while case opening is off, the empty list adds one muted line under its usual sentence.
   const { data: opening } = useCtemCaseOpening();
   const paused = opening?.on === false;
   const rows = useMemo(() => applyCaseQuickFilters(cases, scope, toggles, now, meId), [cases, scope, toggles, now, meId]);
@@ -361,12 +361,7 @@ export default function CtemCases() {
         title={t_i18n("Cases")}
         info={t_i18n("Open issues grouped by the fix that closes them. You see the cases holding at least one issue you can see in OpenCTI or OpenAEV.")}
         infoLabel={t_i18n("About cases")}
-        actions={
-          <>
-            <CasesFreshness freshness={data?.freshness} now={now} />
-            <CaseOpeningSwitch />
-          </>
-        }
+        actions={<CasesFreshness freshness={data?.freshness} now={now} />}
       />
 
       {/* The scope is one choice among four: the shared SegmentedFilter radio, as Signals draws its
@@ -425,6 +420,8 @@ export default function CtemCases() {
           <>
             <CasesGroupByPill value={groupKey} onChange={setGroupKey} />
             <CasesViewsPill />
+            {/* #1951: administrators only, at the toolbar's 32 px like Group by and Views. */}
+            <CaseOpeningSwitch />
           </>
         }
         defaultSort={{ key: "priority", direction: "desc" }}
@@ -530,7 +527,7 @@ export default function CtemCases() {
         isError={isError}
         onRetry={() => void refetch()}
         emptyLabel={empty.label}
-        emptyContent={paused ? <CaseOpeningPausedState /> : undefined}
+        emptyContent={paused ? <CaseOpeningOffEmptyState label={empty.label} /> : undefined}
         noResultsLabel={t_i18n("No case matches these filters")}
         rowTestId="ctem-cases-row"
       />

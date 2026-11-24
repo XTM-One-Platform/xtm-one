@@ -126,12 +126,12 @@ A value that is not valid (a region that is not a country code, an amount that i
 
 ### Pause and resume CTEM case opening
 
-The **Case opening** switch sits on the header of **CTEM > Cases** and of **CTEM > Signals > Sources**, for administrators. It is on by default.
+The **Case opening** switch sits in the toolbar of **CTEM > Cases**, beside **Group by** and **Views**, and on the header of **CTEM > Signals > Sources**, for administrators. It is on by default. Hover it to see how many confirmed signals are waiting while it is off.
 
-- **Off**: a confirmed signal opens no case. It stays confirmed and waits; the Cases list says how many signals are waiting. Case deadlines, announcements and the stall reminder keep running, and a case can still be split by hand.
-- **On again**: every waiting signal opens (or joins) its case at once, without waiting for the next scheduled pass, and the Cases list fills while you watch. A message says how many signals are being opened.
+- **Off**: a confirmed signal opens no case. It stays confirmed and waits; an empty Cases list says case opening is off. Case deadlines, announcements and the stall reminder keep running, and a case can still be split by hand.
+- **On again**: every waiting signal opens (or joins) its case at once, without waiting for the next scheduled pass, and the Cases list fills while you watch.
 
-Other users see a **Case opening paused** badge while it is off. Every change is in the audit log.
+Other users do not see the switch. Every change is in the audit log.
 
 ## Crown jewels and business services
 
