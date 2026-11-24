@@ -34,7 +34,7 @@ Data and renames only; the downgrade names everything back (a profile that
 held both lists keeps the merged one under ``crown_jewels``).
 
 Revision ID: s1844primasset01
-Revises: s1495swfield01
+Revises: c1966caseown01
 Create Date: 2026-11-24 16:30:00.000000
 """
 
@@ -50,7 +50,7 @@ from app.core.migration_ddl import set_lock_timeout, terminate_lock_holders
 revision: str = "s1844primasset01"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "s1495swfield01"
+down_revision: str | Sequence[str] | None = "c1966caseown01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
