@@ -670,16 +670,20 @@ def carries_files(messages: Iterable[object]) -> bool:
 
 
 def _chain_input_rejection(failures: list[tuple[str, Exception]]) -> str | None:
-    reasons = [_refused_request(exc) for _, exc in failures]
-    if not reasons or None in reasons:
+    refusals = [_refused_request(exc) for _, exc in failures]
+    # A leg may name no field (Gemini, a stream's error event), but one must name the conversation:
+    # a 400 nobody places (a low credit balance) is no proof the input was refused.
+    if not refusals or None in refusals or not any(named for _, named in refusals):
         return None
+    reasons = [reason for reason, _ in refusals]
     # The wording with a number names the limit ("8000 pixels"): it tells the user what to change.
     return next((reason for reason in reasons if any(c.isdigit() for c in reason)), reasons[0])
 
 
-def _refused_request(exc: BaseException) -> str | None:
+def _refused_request(exc: BaseException) -> tuple[str, bool] | None:
     """The provider's message when *exc* refused the request itself (a 400 / 422 not about a parameter
-    or a tool), directly, as the gateway's ``502`` for an upstream 4xx, or as a stream's error event."""
+    or a tool), directly, as the gateway's ``502`` for an upstream 4xx, or as a stream's error event;
+    and whether the refusal named a field of the conversation."""
     from app.core.redaction import redact_secrets
 
     if isinstance(exc, ModelDeclinedError | ContextOverflowError) or _is_size_error(exc):
@@ -704,7 +708,7 @@ def _refused_request(exc: BaseException) -> str | None:
     if field is not None and not field.startswith(_INPUT_PATHS):
         return None
     reason = _RETRY_ADVICE.sub("", message[path.end() :] if path else message).strip().rstrip(".")
-    return _bounded(redact_secrets(reason), _LEG_TEXT_LIMIT) if reason else None
+    return (_bounded(redact_secrets(reason), _LEG_TEXT_LIMIT), field is not None) if reason else None
 
 
 def _provider_message(exc: BaseException) -> str | None:

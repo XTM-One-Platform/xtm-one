@@ -103,8 +103,30 @@ def test_the_same_refusals_on_a_turn_without_files_stay_a_provider_failure():
     assert "Please try again" in _friendly_error_message(error)
 
 
+# A refusal naming the image's place in the conversation, with no number in its wording.
+_NAMED_NO_LIMIT = "messages.0.content.0.image.source.base64.data: Could not process image"
+
+
 def test_the_provider_wording_is_quoted_without_its_retry_advice():
-    assert input_rejection(_chain(_gemini_refusal(), _openai_stream_refusal())) == "Unable to process input image"
+    error = _chain(_gemini_refusal(), _openai_stream_refusal(), _anthropic_refusal(_NAMED_NO_LIMIT))
+
+    assert input_rejection(error) == "Unable to process input image"
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        _anthropic_refusal("Your credit balance is too low to access the Anthropic API."),
+        _anthropic_refusal("Invalid request"),
+        _gateway_refusal("Unsupported parameter: 'temperature' is not supported with this model."),
+    ],
+    ids=["credit-balance", "bare-invalid", "gateway-param-unnamed"],
+)
+def test_refusals_that_name_no_field_of_the_conversation_are_not_an_input_rejection(refusal):
+    error = _chain(refusal, _gemini_refusal(), _openai_stream_refusal())
+
+    assert input_rejection(error) is None
+    assert "Please try again" in _friendly_error_message(error)
 
 
 def test_a_long_gemini_refusal_is_unwrapped_whole():
@@ -112,7 +134,7 @@ def test_a_long_gemini_refusal_is_unwrapped_whole():
     exc = _gemini_refusal(f',\n    "details": [{padding}]')
     assert len(exc.message) > 400
 
-    assert input_rejection(_chain(exc)) == "Unable to process input image"
+    assert input_rejection(_chain(exc, _anthropic_refusal(_NAMED_NO_LIMIT))) == "Unable to process input image"
 
 
 def test_one_leg_failing_otherwise_keeps_the_provider_failure():
