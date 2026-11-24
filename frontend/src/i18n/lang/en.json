@@ -20846,7 +20846,7 @@
   "Entered by hand": "Entered by hand",
   "{added} added, {updated} updated, {removed} removed": "{added} added, {updated} updated, {removed} removed",
   "View history": "View history",
-  "Remove or hand over the rows of {name}": "Remove or hand over the rows of {name}",
+  "Remove or hand over the rows": "Remove or hand over the rows",
   "Written by agent {name}": "Written by agent {name}",
   "Every enabled section sync": "Every enabled section sync",
   "No row yet": "No row yet",

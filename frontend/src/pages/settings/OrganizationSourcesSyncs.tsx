@@ -331,7 +331,7 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, onSetUpSync,
     if (canPurgeSource(row.source)) {
       items.push({
         id: "rows",
-        label: t_i18n("Remove or hand over the rows of {name}", { name }),
+        label: t_i18n("Remove or hand over the rows"),
         icon: TrashIcon,
         onSelect: () => setDeleting(row),
         destructive: true,

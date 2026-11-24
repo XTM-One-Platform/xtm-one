@@ -161,7 +161,7 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     const agent = all.find((row) => row.textContent?.includes("CISO Office"));
     if (!agent) throw new Error("agent row missing");
     fireEvent.pointerDown(within(agent).getByRole("button", { name: "Actions on CISO Office" }), { button: 0, ctrlKey: false });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove or hand over the rows of CISO Office" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove or hand over the rows" }));
     const dialog = await screen.findByTestId("organization-sources.delete");
     fireEvent.click(within(dialog).getByRole("radio", { name: /Purge the rows it wrote/ }));
     fireEvent.click(within(dialog).getByRole("button", { name: /^Purge/ }));
@@ -184,7 +184,7 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "Set up a sync" }));
     expect(onSetUpSync).toHaveBeenCalledWith({ section, source: key });
     fireEvent.pointerDown(within(row).getByRole("button", { name: `Actions on ${name}` }), { button: 0, ctrlKey: false });
-    fireEvent.click(await screen.findByRole("menuitem", { name: `Remove or hand over the rows of ${name}` }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove or hand over the rows" }));
     const dialog = await screen.findByTestId("organization-sources.delete");
     fireEvent.click(within(dialog).getByRole("button", { name: "Make the rows editable" }));
     await waitFor(() => expect(post).toHaveBeenCalledWith(`/organization-context/sources/${key}/rows`, { mode: "release" }));
@@ -205,7 +205,7 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     const [row] = await rows();
     fireEvent.pointerDown(within(row).getByRole("button", { name: /Actions on/ }), { button: 0, ctrlKey: false });
     expect(screen.queryByRole("menuitem", { name: "Set up a sync" })).toBeNull();
-    fireEvent.click(await screen.findByRole("menuitem", { name: /Remove or hand over the rows of/ }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove or hand over the rows" }));
     const dialog = await screen.findByTestId("organization-sources.delete");
     fireEvent.click(within(dialog).getByRole("radio", { name: /Purge the rows it wrote/ }));
     fireEvent.click(within(dialog).getByRole("button", { name: /^Purge/ }));
