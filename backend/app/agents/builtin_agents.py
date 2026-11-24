@@ -3646,6 +3646,10 @@ BUILTIN_KNOWLEDGE_BASES: list[dict] = [
             "organization."
         ),
         "tags": ["builtin", "company"],
+        # The platform seeds this collection, never its documents: they are the
+        # customer's, so agents and people with write access add, update and
+        # delete them (helpers.knowledge_base_content_lock, #1763).
+        "user_content": True,
         # The CTEM assistant, briefing and stage analysts read the organization
         # context of Settings (get_organization_context), never this knowledge
         # base (#11464); the seed removes their former binding.

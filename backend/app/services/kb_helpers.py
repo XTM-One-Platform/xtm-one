@@ -110,6 +110,27 @@ async def reset_changed_document(
     doc.embedding_next_retry_at = None
 
 
+async def apply_document_write_timeout(db: AsyncSession) -> None:
+    """Raise *db*'s ``statement_timeout`` for one document write transaction.
+
+    A document update deletes the document's old vectors and writes its new
+    source in one transaction; on a large document that runs past the 30 s pool
+    default (``core/database.py``) and is cancelled with SQLSTATE 57014, which
+    fails the same way on every retry. The bound is the KB write timeout
+    (``kb_sync_timeout_secs``), the one sync writes already run under;
+    ``is_local`` scopes it to the transaction, so the pooled connection gets
+    its default back at commit. A non-positive setting keeps the pool default.
+    """
+    seconds = int(getattr(app_settings, "kb_sync_timeout_secs", 0) or 0)
+    if seconds <= 0:
+        return
+    from sqlalchemy import text
+
+    # An int literal (never user input): SET LOCAL takes no bind parameter.
+    timeout_ms = min(seconds * 1000, 2_147_483_647)
+    await db.execute(text(f"SET LOCAL statement_timeout = {timeout_ms:d}"))
+
+
 async def bump_kb_revision(db: AsyncSession, *kb_ids: uuid.UUID | str) -> None:
     """Move the content revision of each knowledge base in *kb_ids*.
 
