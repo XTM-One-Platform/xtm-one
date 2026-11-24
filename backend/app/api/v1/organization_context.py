@@ -195,13 +195,14 @@ class OrganizationContextInjection(BaseModel):
 
 
 async def _injection(db: AsyncSession) -> OrganizationContextInjection:
-    from app.services.organization_context_categories import CATEGORY_NAMES
+    from app.services.organization_context_categories import available_names
     from app.services.organization_context_injection import platform_categories, platform_enabled
 
     return OrganizationContextInjection(
         enabled=await platform_enabled(db),
         categories=await platform_categories(db),
-        available_categories=list(CATEGORY_NAMES),
+        # Copilot mode offers none: the profile is its identity alone (#1690).
+        available_categories=list(available_names()),
     )
 
 

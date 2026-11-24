@@ -376,7 +376,7 @@ async def recheck_parked(
 ) -> dict[str, int]:
     """#1505: the unmatched signals decided before the organization's newest profile version, decided again.
 
-    A change to assets, groups, crown jewels, owned domains, tech stack or
+    A change to assets, groups, crown jewels, owned domains, software or
     shipped products writes a new profile version; every ``to_validate``
     signal last decided before it is decided again, *batch* per call, oldest
     first. Each is read with its recorder's OpenCRQ read. A signal the gate
@@ -427,7 +427,7 @@ def inventory_additions(profile: Any, rows: list[Any]) -> dict[str, list[Any]]:
     """#1505: the profile rows "Add to inventory" writes for the unmatched *rows*, nothing already there.
 
     A host or asset becomes an asset (``host`` when it is a hostname or an IP),
-    a software subject a tech stack product, an identity its email domain as
+    a software subject a software product, an identity its email domain as
     an owned domain. Any other subject kind (a vulnerability, a threat, a third
     party, code) is not an inventory row: it is left out. Only ``to_validate``
     signals count.

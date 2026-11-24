@@ -12,7 +12,7 @@ What each platform gives, read with a token minted for that administrator:
 
 - **OpenCTI**: the platform organization's name and first sector
   (``settings.platform_organization``), and the PIR ids (``pirs``);
-- **OpenAEV**: the security platforms (EDR, SIEM, ...) as tech stack entries;
+- **OpenAEV**: the security platforms (EDR, SIEM, ...) as software entries;
 - **OpenCRQ**: the primary assets (business assets) as crown jewels linked to
   their primary asset, criticality the highest of their security needs
   (``very_high`` -> ``critical``, none rated -> ``high``; #1591). Supporting
@@ -130,7 +130,7 @@ def opencti_facts(settings_data: dict, pirs_data: dict, facts: PlatformFacts) ->
 
 
 def openaev_facts(platforms: list[dict], facts: PlatformFacts) -> None:
-    """Map OpenAEV's security platforms onto the tech stack of *facts* (no I/O)."""
+    """Map OpenAEV's security platforms onto the software inventory of *facts* (no I/O)."""
     seen: set[str] = set()
     entries: list[TechStackEntry] = []
     for item in platforms[:MAX_ITEMS]:

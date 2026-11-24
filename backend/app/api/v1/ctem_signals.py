@@ -314,7 +314,7 @@ async def add_ctem_signals_to_inventory(
     """Declare the subjects of the selected unmatched signals in the organization profile, then decide them again.
 
     An administrator only: it writes one profile version (a host becomes an
-    asset, a software a tech stack product, an identity its email domain as an
+    asset, a software a software product, an identity its email domain as an
     owned domain). Only unmatched (``to_validate``) signals count; the others
     are left as they are. A signal the gate confirms opens its case at the
     next sweep, never one case per signal here. 422 when the profile would

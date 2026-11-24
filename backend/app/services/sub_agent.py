@@ -5199,6 +5199,7 @@ async def update_assignment_run(
         )
         wr = wr_result.scalar_one_or_none()
         if wr:
+            previous_status = wr.status
             wr.status = status
             wr.completed_at = datetime.now(UTC)
             if status in ("completed", "failed", "cancelled"):
@@ -5233,5 +5234,62 @@ async def update_assignment_run(
                         assignment_run_id,
                         format_exception_message(ser_err),
                     )
+            # A delegated child run (no assignment) ends here, never through the
+            # engine: it raises run.completed / run.failed itself. An assignment
+            # run is published by the engine at its own ending.
+            if wr.assignment_id is None and status in ("completed", "failed") and previous_status != status:
+                _publish_delegated_run_ended_after_commit(db, wr, status, error)
     except Exception as e:
         logger.warning("Failed to update AssignmentRun %s: %s", assignment_run_id, format_exception_message(e))
+
+
+def _publish_delegated_run_ended_after_commit(db: AsyncSession, run: Any, status: str, error: str | None) -> None:
+    """Raise ``run.completed`` / ``run.failed`` for a delegated child run once *db* commits.
+
+    The event carries ``parent_run_id`` (and the delegating run's agent in
+    scope), as an assignment run's does. A snapshot of the row is taken now:
+    the ORM object is expired by the commit. A rolled-back ending publishes
+    nothing. Never raises.
+    """
+    try:
+        from types import SimpleNamespace
+
+        from sqlalchemy import event as sa_event
+
+        snapshot = SimpleNamespace(
+            id=run.id,
+            agent_id=run.agent_id,
+            assignment_id=run.assignment_id,
+            parent_run_id=run.parent_run_id,
+            trigger_context=run.trigger_context,
+            user_id=run.user_id,
+            is_company_managed=run.is_company_managed,
+            stop_reason=getattr(run, "stop_reason", None),
+        )
+        name = f"run.{status}"
+        reason = status
+
+        def _after_commit(_session: Any) -> None:
+            try:
+                from app.services.assignment_engine import publish_run_event
+
+                task = asyncio.get_running_loop().create_task(
+                    publish_run_event(snapshot, name, reason=reason, error=error)
+                )
+                _DELEGATED_RUN_EVENT_TASKS.add(task)
+                task.add_done_callback(_DELEGATED_RUN_EVENT_TASKS.discard)
+            except RuntimeError:
+                logger.debug("%s of delegated run %s not published: no event loop", name, snapshot.id)
+
+        sa_event.listen(db.sync_session, "after_commit", _after_commit, once=True)
+    except Exception as exc:
+        logger.warning(
+            "run.%s of delegated run %s not scheduled: %s",
+            status,
+            getattr(run, "id", None),
+            format_exception_message(exc),
+        )
+
+
+# Strong references to the in-flight publishes, so a pending task is never collected.
+_DELEGATED_RUN_EVENT_TASKS: set[asyncio.Task[None]] = set()

@@ -145,7 +145,7 @@ THIRD_PARTY_RISK_AGENTS: list[dict] = [
 _COMMON = {
     "agent_slug": ORCHESTRATOR,
     **SEEDED_FLEET_OPT_IN,
-    "ai_label": True,
+    "ai_label": False,
     "notify_on_complete": False,
     "show_in_digest": True,
     "max_iterations": 120,

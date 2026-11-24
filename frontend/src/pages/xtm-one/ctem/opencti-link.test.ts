@@ -18,7 +18,7 @@ const EXPLOITABLE = {
   filterGroups: [],
 };
 
-/** The tailored exploitable filter: the tech stack AND the exploitable group. */
+/** The tailored exploitable filter: the software inventory AND the exploitable group. */
 const TAILORED_EXPLOITABLE = {
   mode: "and",
   filters: [

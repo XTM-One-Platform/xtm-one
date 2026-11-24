@@ -23,15 +23,17 @@ free text; the views had to show that text, or the whole description, and the
 person had to find the question in it. ``ask`` carries the decision itself, so
 a view renders it as a card with one button per option:
 
-``{"question": str, "context"?: str, "options": [{"key", "label", "effect"?}],
+``{"question": str, "context"?: str, "options": [{"key", "label", "effect"?, "keeps_waiting"?}],
 "recommendation"?: option key, "deadline"?: ISO-8601, "links"?: [{"label", "url"}]}``
 
 * ``question``: one sentence, required.
 * ``context``: 2 to 4 short plain lines for the reader (what the matter is,
   what was found, what each answer leads to) (#776).
 * ``options``: up to :data:`MAX_OPTIONS`; ``key`` short and unique (``A``,
-  ``merge``), ``label`` the button text, ``effect`` what choosing it does.
-  None at all: the person answers in free text.
+  ``merge``), ``label`` the button text, ``effect`` what choosing it does,
+  ``keeps_waiting`` true for an option that means "keep waiting": answering
+  with it records the answer and leaves the item blocked, never dispatched
+  (#1719). None at all: the person answers in free text.
 * ``recommendation``: the key of the option the agent recommends.
 * ``deadline``: when the answer is needed, normalized to ISO-8601 UTC.
 * ``links``: the sources the reader opens to decide (a Jira ticket, a pull
@@ -193,7 +195,12 @@ RECOMMENDED_EFFECT_MESSAGE = (
 )
 
 
-def _options(value: object) -> list[dict[str, str]]:
+def keeps_waiting(option: object) -> bool:
+    """Whether choosing *option* leaves its item waiting, answer recorded, no dispatch (#1719)."""
+    return isinstance(option, dict) and option.get("keeps_waiting") is True
+
+
+def _options(value: object) -> list[dict[str, Any]]:
     if value in (None, ""):
         return []
     if not isinstance(value, list):
@@ -212,12 +219,18 @@ def _options(value: object) -> list[dict[str, str]]:
         if key.casefold() in seen:
             raise ValueError(f"ask option key {key!r} is given twice")
         seen.add(key.casefold())
-        option = {"key": key, "label": label}
+        option: dict[str, Any] = {"key": key, "label": label}
         effect = _text(raw.get("effect"), MAX_EFFECT_CHARS)
         if _RECOMMENDED_LEAD.match(effect):
             raise ValueError(RECOMMENDED_EFFECT_MESSAGE)
         if effect:
             option["effect"] = effect
+        keeps = raw.get("keeps_waiting")
+        if keeps not in (None, False, True):
+            raise ValueError("ask.options[].keeps_waiting is true or false")
+        if keeps:
+            # Answering with it records the answer and leaves the item waiting (#1719).
+            option["keeps_waiting"] = True
         out.append(option)
     return out
 
@@ -689,7 +702,8 @@ def ask_lines(ask: object) -> list[str]:
     for option in ask.get("options") or []:
         mark = " (recommended)" if option.get("key") == recommended else ""
         effect = f": {option['effect']}" if option.get("effect") else ""
-        lines.append(f"    - [{option.get('key')}] {option.get('label')}{mark}{effect}")
+        stays = " (keeps it waiting)" if keeps_waiting(option) else ""
+        lines.append(f"    - [{option.get('key')}] {option.get('label')}{mark}{stays}{effect}")
     if ask.get("deadline"):
         lines.append(f"    - answer needed by {ask['deadline']}")
     for link in ask.get("links") or []:

@@ -1,6 +1,6 @@
 // The "Affected assets" card of a case (#1176 slice 3b): one row per asset the
 // visible issues name, with the version it runs from the asset inventory on an
-// upgrade case, "Version source: none yet" otherwise, never a tech stack ask.
+// upgrade case, "Version source: none yet" otherwise, never a software inventory ask.
 
 import { describe, expect, it } from "vitest";
 import { screen, within } from "@testing-library/react";

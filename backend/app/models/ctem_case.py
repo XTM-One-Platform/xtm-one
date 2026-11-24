@@ -4,7 +4,7 @@
 
 A case is one fix (upgrade a product to a fixed version, apply a course of
 action) and the open issues it closes, read from OpenCTI (vulnerabilities on
-the organization's tech stack) and OpenAEV (CVE findings on its assets). The
+the organization's software) and OpenAEV (CVE findings on its assets). The
 grouping and the state rules live in ``services/ctem_cases.py``; the design is
 ``dev-docs/ctem-cases.md``.
 
@@ -96,6 +96,8 @@ RESOLUTION_KINDS: tuple[str, ...] = ("not_exposed", "mitigated", "fixed", "accep
 CASE_SEVERITIES: tuple[str, ...] = ("P1", "P2", "P3")
 #: What a validation reference says.
 VALIDATION_RESULTS: tuple[str, ...] = ("passed", "not_exposed", "failed", "pending")
+#: The stored result of a pass that proves nothing (``conclusive`` false, #1458): never shown or counted as passed.
+INCONCLUSIVE_RESULT = "inconclusive"
 
 
 def _now() -> datetime:
@@ -154,7 +156,9 @@ class CtemCase(Base):
     sla_breached_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     #: ``[{integration, key, url, status, at}]``.
     tickets: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
-    #: ``[{provider, kind, ref, result, at, mitigation_only, note}]``, newest last.
+    #: ``[{provider, kind, ref, result, at, mitigation_only, note}]``, newest last; one entry per
+    #: ``(provider, ref)`` while it is pending or repeats its outcome; ``result`` ``inconclusive``
+    #: (with ``reported_result``) for a pass that proves nothing.
     validations: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
     #: True: the case resolves only on a passing validation reference.
     validation_plan: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

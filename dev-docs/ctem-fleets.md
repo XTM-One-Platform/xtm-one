@@ -1995,30 +1995,31 @@ each UI PR, the wireframes above are ASCII).
 risk) declare one gate per loop stage, from
 `app.agents.builtin_fleet_docs.CTEM_GATE_KEYS`:
 
-| Key | Stage | Impact | Tools paused |
-|---|---|---|---|
-| `ctem.validation.non_readonly` | Validate: create or launch an OpenAEV scenario or atomic test | destructive (high on third-party risk, which has no OpenAEV step) | every call that creates or starts a validation: scenario create, import, duplicate, launch, schedule_recurrence; simulation create, duplicate, status RUNNING; inject create, duplicate, trigger (and `add_openaev_inject_to_scenario`); atomic test create, duplicate, launch, relaunch, recurrence; the coverage request |
-| `ctem.analyst_review` | Review of the threat package before its security coverage is requested | low | the coverage request (`manage_opencti_security_coverage` action `create`) |
-| `ctem.remediation.decision` | Decide the remediation option and record it as an OpenCRQ treatment plan | high | the four treatment plan writes (CTEM-18) |
-| `ctem.mobilize` | Tickets, owners notified, prepared change handed over: one decision per case | destructive | the Jira and ServiceNow ticket tools |
-| `ctem.production_change` | A change applied on production through an integration | high | none |
-| `ctem.accept_risk` | Residual risk accepted beyond the policy cap | high | none |
-| `ctem.close_without_retest` | A case closed with no passing re-test | high | none |
+| Key | Stage | Impact |
+|---|---|---|
+| `ctem.validation.non_readonly` | Validate: create or launch an OpenAEV scenario or atomic test | destructive (high on third-party risk, which has no OpenAEV step) |
+| `ctem.analyst_review` | Review of the threat package before its security coverage is requested | low |
+| `ctem.remediation.decision` | Decide the remediation option and record it as an OpenCRQ treatment plan | high |
+| `ctem.mobilize` | Tickets, owners notified, prepared change handed over: one decision per case | destructive |
+| `ctem.production_change` | A change applied on production through an integration | high |
+| `ctem.accept_risk` | Residual risk accepted beyond the policy cap | high |
+| `ctem.close_without_retest` | A case closed with no passing re-test | high |
 
+No seeded gate names a tool or a grant (#1675, Sam, 24 Nov 2026): every tool
+is offered and runs when called; a gate that waits is one decision item the
+orchestrator files between two steps (`needs_human`, its ask card), and the
+Gate answered run reads the answer and sets the case's next state itself. The
+analyst review still offers `apply_opencti_draft` with Live writes off, by its
+key (`builtin_fleet_docs.GATE_OFFERED_TOOLS`), never paused.
 At the seeded level (Low) two gates wait per case (Sam, 23 Nov 2026): the
 OpenAEV validation (on the three fleets with the OpenAEV validation step) and
 `ctem.mobilize`; every other gate runs and the case records it as passed
-automatically. The reads (list, get, results, healthcheck, status reads) stay
-free. One decision per validation: the validation gate carries a grant
-(`DocGate.grant`, `fleet_autonomy._ValidationGrants`): the call a person
-approved covers the later calls of the same gate on the objects it named or
-created (scenario, simulation, inject or atomic test id, read from its
-arguments and its answer) within the turn, so the creation and the launch of
-that validation do not pause twice; a call that names a new target
-(`asset_ids`, `asset_group_ids`, `team_ids`), a new schedule (`recurrence*`,
-`start_date`) or another object asks again. The coverage request is under
-`ctem.analyst_review` alone (#1467): one decision, one gate key per call. Full human gates: every gate
-waits. Full autonomous: nothing waits. A pin (`wait` or `run`) moves one gate
+automatically. Reads and drafts are never a decision. One decision per
+validation: its ask names the scenario or atomic test, its targets, schedule
+and safe mode, and the answer covers creating and launching exactly that; a
+new target, schedule or object is a new decision, by the persona. The coverage
+request is under `ctem.analyst_review` alone (#1467). Full human gates: every
+gate waits. Full autonomous: nothing waits. A pin (`wait` or `run`) moves one gate
 either way on a built-in fleet too. The former keys (`ticket.create`,
 `openaev.*.launch`, `supplier.action`) are gone from these fleets: a ticket is
 the Mobilize action, so one Mobilize decision covers every ticket of its case.
@@ -2177,11 +2178,16 @@ By design XTM One enables no programmatic tool-level gate by default (#1467,
 Sam, 23 Nov 2026): a fleet's gates are instructions. The run prompt states
 the level and what waits (`fleet_autonomy_block`), the member asks once
 through a decision item with its ask card, and once a person answered it the
-run acts with no second pause. The platform pauses tool calls only for a fleet
-an administrator opted in (`Fleet.enforce_gates_at_tool_level`, off for every
-fleet and never written by the seed; `PUT /fleets/{id}/autonomy`
-`enforce_at_tool_level`, administrators only, audited in
-`autonomy_level_change`; `fleet_autonomy.fleet_enforces_at_tool_level`). On an
+run acts with no second pause. A built-in (seeded) fleet never pauses a tool
+call, on any deployment (#1675, Sam, 24 Nov 2026): the seed forces
+`Fleet.enforce_gates_at_tool_level` off at every boot, `PUT
+/fleets/{id}/autonomy` refuses `enforce_at_tool_level: true` on it (422, fork
+the fleet to enforce), `fleet_autonomy.fleet_enforces_at_tool_level` answers
+false for it whatever is stored, and a built-in member of a built-in fleet
+never gets an in-run approval card (`hitl_whitelist.seeded_fleet_member`, read
+by `resolve_approve_tool_calls`). The platform pauses tool calls only for a
+custom fleet an administrator opted in (`enforce_at_tool_level`, administrators
+only, audited in `autonomy_level_change`). On an
 opted-in fleet, a gate that names tools pauses those calls wherever a member of the fleet
 acts, not only in its automations: `execute_assignment_run` wraps its gate
 with `make_fleet_autonomy_gate`, and `run_agent_chat` (chat, channel threads

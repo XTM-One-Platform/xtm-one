@@ -13,7 +13,8 @@
 
 """CTEM signal tools (#826): record and list the changes in exposure that start the loop.
 
-``record_ctem_signal`` and ``list_ctem_signals`` act for the person the turn
+``record_ctem_signal``, ``record_ctem_signals`` (a sweep's rows in one call, #1726)
+and ``list_ctem_signals`` act for the person the turn
 or run acts for, through ``services/ctem_signals.py`` (the API's rules and
 shapes). XTM One mode only. Granted to the built-in CTEM agents of
 :data:`CTEM_SIGNAL_AGENT_SLUGS`: the orchestrators and analysts that see a
@@ -33,7 +34,9 @@ from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._shared import logger
 
-CTEM_SIGNAL_TOOL_NAMES: tuple[str, ...] = ("record_ctem_signal", "list_ctem_signals")
+CTEM_SIGNAL_TOOL_NAMES: tuple[str, ...] = ("record_ctem_signal", "record_ctem_signals", "list_ctem_signals")
+#: Rows one ``record_ctem_signals`` call takes; a sweep pages above it.
+MAX_BULK_SIGNALS = 100
 _SOURCE = "builtin:ctem_signals"
 #: The built-in agents that carry the tools.
 CTEM_SIGNAL_AGENT_SLUGS: frozenset[str] = frozenset(
@@ -147,6 +150,114 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
         scope: uuid.UUID | None = uuid.UUID(str(user_id))
     except ValueError:
         scope = None
+
+    def _input(
+        trigger_path: Any = "",
+        source_provider: Any = "",
+        subject_kind: Any = "",
+        subject_ref: Any = "",
+        lens: Any = "",
+        source_external_id: Any = "",
+        subject_label: Any = "",
+        observed_at: Any = "",
+        evidence: Any = None,
+        dedupe_key: Any = "",
+        **_ignored: Any,
+    ) -> Any:
+        """One row as a ``SignalInput``; :class:`SignalError` on a bad date."""
+        from app.services import ctem_signals as signals
+
+        try:
+            text = str(observed_at or "")
+            observed = datetime.fromisoformat(text.replace("Z", "+00:00")) if text else None
+        except ValueError:
+            raise signals.SignalError("observed_at must be an ISO-8601 date and time") from None
+        return signals.SignalInput(
+            trigger_path=str(trigger_path or ""),
+            lens=str(lens or ""),
+            source_provider=str(source_provider or ""),
+            source_external_id=str(source_external_id or "") or None,
+            subject_kind=str(subject_kind or ""),
+            subject_ref=str(subject_ref or ""),
+            subject_label=str(subject_label or "") or None,
+            observed_at=observed,
+            evidence=evidence if isinstance(evidence, dict) else {},
+            dedupe_key=str(dedupe_key or "") or None,
+        )
+
+    async def _record_many(signals: list[Any] | None = None) -> str:
+        """Every row in one session: one savepoint per row, one commit, one result per row.
+
+        A refused row is rolled back alone and named by its index; the others are kept.
+        A repeated dedupe key (in the batch or already stored) only moves last_seen_at.
+        """
+        from app.core.database import async_session
+        from app.services import ctem_case_loop, ctem_scope_gate_store
+        from app.services import ctem_signals as store
+        from app.services.ctem_loop_stream import publish_signal_update
+        from app.services.organizations import get_primary
+
+        rows_in = signals
+        if scope is None:
+            return "No user: no signal can be recorded."
+        if not isinstance(rows_in, list) or not rows_in:
+            return "signals must be a non-empty list of rows with record_ctem_signal's fields."
+        if len(rows_in) > MAX_BULK_SIGNALS:
+            return f"Refused: at most {MAX_BULK_SIGNALS} signals per call; send the rest in another call. Nothing was recorded."
+        results: list[dict[str, Any]] = []
+        written: list[Any] = []
+        pendings: list[Any] = []
+        try:
+            async with async_session() as db:
+                primary = await get_primary(db)
+                if primary is None:
+                    return "No organization is set up yet: no signal can be recorded."
+                for index, raw in enumerate(rows_in):
+                    if not isinstance(raw, dict):
+                        results.append({"index": index, "error": "not an object"})
+                        continue
+                    try:
+                        async with db.begin_nested():
+                            row, created = await store.record_signal(
+                                db,
+                                organization_id=primary.id,
+                                signal=_input(**raw),
+                                recorded_via="tool",
+                                recorded_by=str(scope),
+                            )
+                            pendings.append(await ctem_scope_gate_store.evaluate_after_record(db, row, created=created))
+                    except store.SignalError as exc:
+                        results.append({"index": index, "error": str(exc)})
+                        continue
+                    written.append(row)
+                    results.append(
+                        {
+                            "index": index,
+                            "created": created,
+                            "id": str(row.id),
+                            "dedupe_key": row.dedupe_key,
+                            "state": row.state,
+                            "seen_count": row.seen_count,
+                            "case_id": str(row.case_id) if row.case_id else None,
+                        }
+                    )
+                await db.commit()
+                for pending in pendings:
+                    await ctem_case_loop.publish_pending(pending)
+                for row in written:
+                    await publish_signal_update(db, row)
+        except Exception:
+            logger.warning("CTEM signal bulk record failed", exc_info=True)
+            return "Error: the signals could not be recorded right now. Say so; nothing was recorded."
+        refused = sum(1 for r in results if "error" in r)
+        return _dump(
+            {
+                "recorded": len(results) - refused,
+                "created": sum(1 for r in results if r.get("created")),
+                "refused": refused,
+                "results": results,
+            }
+        )
 
     async def _record(
         trigger_path: str = "",
@@ -277,6 +388,7 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
 
     executor = CallableToolExecutor()
     executor.register("record_ctem_signal", _record)
+    executor.register("record_ctem_signals", _record_many)
     executor.register("list_ctem_signals", _list)
     path_enum = {"type": "string", "enum": list(TRIGGER_PATHS)}
     lens_enum = {"type": "string", "enum": list(LENSES)}
@@ -302,6 +414,19 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                     "dedupe_key": {"type": "string"},
                 },
                 "required": ["trigger_path", "source_provider", "subject_kind", "subject_ref"],
+            },
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="record_ctem_signals",
+            description=(
+                f"Record up to {MAX_BULK_SIGNALS} signals in one call (a sweep): each row takes "
+                "record_ctem_signal's fields; one result per row, a bad row refused alone."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {"signals": {"type": "array", "items": {"type": "object"}}},
+                "required": ["signals"],
             },
             source=_SOURCE,
         ),

@@ -486,6 +486,7 @@ async def _ensure_assignment(db: AsyncSession, spec: FleetAssignmentSpec, agent:
         existing.show_in_digest = spec.show_in_digest
         existing.timeout_seconds = spec.timeout_seconds
         existing.max_iterations = spec.max_iterations
+        existing.ai_label = False
         existing.is_company_managed = True
         return False
     db.add(
@@ -499,6 +500,8 @@ async def _ensure_assignment(db: AsyncSession, spec: FleetAssignmentSpec, agent:
             trigger_config={},
             prompt=spec.prompt,
             enabled=True,
+            # Platform-seeded: no AI label prompt, so its items and notes carry no "[AI-generated]" prefix.
+            ai_label=False,
             show_in_digest=spec.show_in_digest,
             timeout_seconds=spec.timeout_seconds,
             max_iterations=spec.max_iterations,

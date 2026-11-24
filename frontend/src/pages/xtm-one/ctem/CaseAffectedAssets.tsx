@@ -5,7 +5,7 @@
  * section 4.2quater): one row per asset the caller's visible issues name, with
  * its open issues, KEV and highest CVSS, and for an upgrade case the version of
  * the product it runs, read from the asset inventory (Intune, Defender, an
- * SBOM, OpenAEV), never typed in the tech stack. When the versions do not come
+ * SBOM, OpenAEV), never typed in the software inventory. When the versions do not come
  * from the inventory the card says "Version source: none yet" and asks nothing
  * of the user. A row of an asset the inventory holds opens its overview
  * (CTEM > Inventory, `/ctem/inventory/assets/:id`: software, sources, SBOM);

@@ -31,17 +31,24 @@ message carries resolves (section 9, I.7).
 Fleet gates are a source of decisions 2 and 5, never a gate of their own: a
 gate of a fleet's approval catalog (`dev-docs/ctem-fleets.md` section 11) that
 waits at the fleet's autonomy level and pins is an instruction to the members
-(#1467): no tool call pauses unless an administrator opted the fleet in to
+(#1467): no tool call pauses unless an administrator opted a custom fleet in to
 tool-level enforcement (`Fleet.enforce_gates_at_tool_level`, off by default),
-in which case it pauses its tools through gate 2; it asks through gate 5 (a `needs_human` work item with an ask) when it has no
-tool, with the gate key as the decision's source. The CTEM loop fleets (#916,
+in which case it pauses its tools through gate 2; it asks through gate 5 (a
+`needs_human` work item with an ask), with the gate key as the decision's
+source. A built-in (seeded) fleet never uses gate 2 (#1675, Sam, 24 Nov 2026):
+its tools are always offered and authorized on every deployment, no seeded gate
+declares `tools` or `grant`, the seed forces `enforce_gates_at_tool_level`
+off, the API refuses turning it on, `fleet_enforces_at_tool_level` answers
+false whatever is stored, and a built-in member of a built-in fleet never gets
+an in-run approval card (`hitl_whitelist.seeded_fleet_member`). A seeded gate
+that waits is one decision item between steps; the agent reads the answer and
+decides the next state itself. The CTEM loop fleets (#916,
 CTEM-34) declare one key per loop stage (`ctem.validation.non_readonly`,
 `ctem.analyst_review`, `ctem.remediation.decision`, `ctem.mobilize`,
 `ctem.production_change`, `ctem.accept_risk`, `ctem.close_without_retest`);
 out of the box two gates wait per case, the OpenAEV validation (one decision
-per validation: a gate's `grant` lets the approved call cover the creation and
-the launch of the objects it named or created) and `ctem.mobilize` (one
-decision per case). A built-in
+per validation: its ask names the scenario, targets and schedule it covers)
+and `ctem.mobilize` (one decision per case). A built-in
 fleet takes pins and added gates in its customer layer, kept across seed
 upgrades. No CTEM-specific card, endpoint, table, bell kind or channel
 message; the G2 migration backfills them like any other.
@@ -88,7 +95,7 @@ widened):
 {
   "question": str,                       # one sentence, required
   "context"?: str,                       # 2 to 4 plain lines (#776)
-  "options"?: [{"key", "label", "effect"?, "kind"?}],
+  "options"?: [{"key", "label", "effect"?, "kind"?, "keeps_waiting"?}],
   "recommendation"?: option key,
   "deadline"?: ISO-8601 UTC,
   "links"?: [{"label", "url"}],          # source links (decision-card links work, #834)
@@ -99,6 +106,16 @@ widened):
 - `kind` on an option is new and optional: `approve`, `approve_always`,
   `reject`, `consent` or absent. It drives the push actions and the button
   tones; it never changes what the answer does (the source does).
+- `keeps_waiting: true` on a work item option (#1719) marks a "keep waiting"
+  answer: `answer_work_item` records it (`payload.answer`, a stamped
+  `ANSWERED ... (keeps waiting)` note) and leaves the item as it was, still
+  blocked on the person with its ask and blockers: no status change, no
+  dispatch to the owner's inbox. Any other option releases the item as before.
+- A work item that reaches `done` or `cancelled` (`complete_work_item`,
+  `update_work_item` status) no longer waits for a person (#1719): its
+  `needs_human` and ask are cleared in the same write, its open decision is
+  closed as cancelled, and the serializer and the tool read-backs never show a
+  finished item as waiting, a row finished before the fix included.
 - No options means a free-text answer. An answer always carries
   `{option?, text?}`; a decision with options accepts a text beside the option
   (a note), a decision without options needs the text.

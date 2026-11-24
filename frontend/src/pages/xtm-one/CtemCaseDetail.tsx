@@ -147,6 +147,7 @@ const VALIDATION_RESULT_LABEL: Record<string, string> = {
   exposed: "Exposed",
   failed: "Failed",
   pending: "Pending",
+  inconclusive: "Inconclusive",
 };
 
 /**
@@ -683,7 +684,7 @@ export default function CtemCaseDetail() {
         <StatCard icon={AssetsGlyph} label={t_i18n("Assets")} value={kase.asset_count} subtitle={t_i18n("{count, plural, one {# crown jewel} other {# crown jewels}}", { count: kase.crown_jewel_count })} />
       </div>
 
-      {/* The running versions come from the asset inventory, never typed by hand in the tech stack (#1252). */}
+      {/* The running versions come from the asset inventory, never typed by hand in the software inventory (#1252). */}
       {kase.remediation_kind === "upgrade" && (
         <CaseRunningVersions productLabel={kase.product_label} fixedVersion={kase.fixed_version} versions={kase.running_versions} />
       )}
