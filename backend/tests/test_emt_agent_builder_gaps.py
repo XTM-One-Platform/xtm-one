@@ -300,12 +300,12 @@ async def test_list_integration_tools_lists_each_openapi_integrations_imported_o
 
     result = await _call(executor, "list_integration_tools", provider="openapi")
     content = result.content
-    assert f"**CISO assistant** (`{CISO}`) - 3 tools (1 read, 2 write):" in content
+    assert f"**CISO assistant** (`{CISO}`) - 3 tools (2 read, 1 write):" in content
     assert "  - ciso_list_risks [read] `GET /risks`" in content
     assert "  - ciso_create_risk [write] `POST /risks`" in content
-    # The access is the one the read-only binding enforces (by name); a GET
-    # the name classifies as a write is flagged, since it is withheld.
-    assert "  - ciso_recompute_risks [write] `GET /risks/recompute` - a read by its method" in content
+    # The access is the one the read-only binding enforces: the HTTP method,
+    # never the generated name (a GET named recompute stays a read).
+    assert "  - ciso_recompute_risks [read] `GET /risks/recompute`" in content
     assert f"**Bare** (`{BARE}`): no imported operation" in content
     assert "has no tools" not in content
 

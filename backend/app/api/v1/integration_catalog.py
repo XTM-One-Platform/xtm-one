@@ -2192,6 +2192,10 @@ PROVIDER_CATALOG = {
                     "description": "Read the notes logged on records",
                 },
                 {
+                    "scope": "crm.objects.notes.write",
+                    "description": "Write notes on records (create_hubspot_note)",
+                },
+                {
                     "scope": "crm.objects.calls.read",
                     "description": "Read logged calls (direction, outcome, duration, notes)",
                 },
@@ -2202,6 +2206,10 @@ PROVIDER_CATALOG = {
                 {
                     "scope": "crm.objects.tasks.read",
                     "description": "Read tasks (type, status, notes)",
+                },
+                {
+                    "scope": "crm.objects.tasks.write",
+                    "description": "Create tasks on records (create_hubspot_task)",
                 },
                 {
                     "scope": "forms",
