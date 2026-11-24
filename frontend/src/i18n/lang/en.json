@@ -21598,6 +21598,8 @@
   "No {product} connection could be used for this read, so open exposures there may be missing.": "No {product} connection could be used for this read, so open exposures there may be missing.",
   "Read-only for you.": "Read-only for you.",
   "See the loop trace of {subject}": "See the loop trace of {subject}",
+  "Open in Signals": "Open in Signals",
+  "Open case": "Open case",
   "{count, plural, one {# signal} other {# signals}}": "{count, plural, one {# signal} other {# signals}}",
   "First seen {first}, last seen {last}": "First seen {first}, last seen {last}",
   "Filter the signals": "Filter the signals",

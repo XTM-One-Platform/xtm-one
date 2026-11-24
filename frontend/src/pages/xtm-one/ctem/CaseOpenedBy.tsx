@@ -17,6 +17,10 @@
  * one opens ("Show all N") into a one-row-height table of its signals, each
  * with its own loop trace button (the shared DataTable: ten rows a page,
  * searchable by subject), collapsed by default above five.
+ *
+ * Every loop trace button opens the shared trace sheet over the case (Sam,
+ * 24 Nov 2026): the case route keeps its pathname and carries `?signal=<id>`,
+ * so a reload reopens it and Back, Close or Escape return to the case.
  */
 import { useMemo, useState } from "react";
 import { Icon } from "@filigran/design-system";
@@ -32,6 +36,7 @@ import { formatDayIntl } from "@/lib/relative-time";
 import type { CtemCaseEvent } from "@/hooks/api/useCtemCasesApi";
 import { NO_SIGNAL_ORIGIN_LABEL, noSignalOrigin } from "./case-loop-reason";
 import { LoopTraceButton } from "./LoopTraceButton";
+import { LoopTraceSheet, useLoopTraceParam } from "./loop/LoopTraceSheet";
 import { SIGNAL_STATE_LABEL, decisionSentence } from "./loop/DecisionReason";
 import { signalProviderName } from "./loop/SignalLoopTrace";
 import {
@@ -57,6 +62,7 @@ export function CaseOpenedBy({ caseId, history }: { caseId: string; history?: re
   const { t_i18n } = useFormatter();
   const { data, isLoading, isError } = useCtemCaseSignals(caseId);
   const groups = useMemo(() => groupOpenedBySignals(data?.signals ?? []), [data]);
+  const trace = useLoopTraceParam();
 
   return (
     <Card data-testid="ctem-case-opened-by">
@@ -92,6 +98,7 @@ export function CaseOpenedBy({ caseId, history }: { caseId: string; history?: re
           </ul>
         )}
       </CardContent>
+      <LoopTraceSheet signalId={trace.signal} onClose={trace.close} showOpenInSignals currentCaseId={caseId} />
     </Card>
   );
 }

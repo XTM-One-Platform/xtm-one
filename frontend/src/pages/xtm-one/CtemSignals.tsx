@@ -33,7 +33,6 @@ import { cn } from "@/lib/utils";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { BackButton } from "@/components/ui/back-button";
 import { SegmentedFilter } from "@/components/ui/segmented-filter";
-import { SlideOver } from "@/components/ui/slide-over";
 import { SourceBadge } from "@/components/ui/source-badge";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { useAuth } from "@/hooks/useAuth";
@@ -54,7 +53,8 @@ import { useFormatter } from "@/i18n";
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import { DecisionReason, decisionSentence, SIGNAL_STATE_LABEL } from "./ctem/loop/DecisionReason";
 import { SignalSourcesPanel } from "./ctem/loop/SignalSourcesPanel";
-import { SignalTraceBody, signalProviderName } from "./ctem/loop/SignalLoopTrace";
+import { signalProviderName } from "./ctem/loop/SignalLoopTrace";
+import { LoopTraceSheet } from "./ctem/loop/LoopTraceSheet";
 import { SignalsSummaryStrip } from "./ctem/loop/SignalsSummaryStrip";
 import { connectedCount } from "./ctem/loop/signal-sources";
 import { readSignalsView, SIGNAL_SOURCES_PATH, SIGNALS_PARAMS, SIGNALS_PATH, SIGNALS_TABLE_URL_KEY, selectAllScope } from "./ctem/loop/signals-route";
@@ -379,29 +379,7 @@ function SignalsTab() {
       {/* The trace opens in the side sheet, out of the page flow: the table stays the page's last
           block, keeps its fit-to-viewport scroller and the open row in view, and the page never
           scrolls (UX r2 B1 on #1272; an inline card above the table dropped it out of its fit mode). */}
-      <SlideOver
-        open={!!view.signal}
-        onClose={() => setParam(SIGNALS_PARAMS.signal, null)}
-        label={t_i18n("Loop trace")}
-        width="w-[min(560px,45vw)]"
-      >
-        <div className="flex h-full min-h-0 flex-col" data-testid="ctem-loop-trace">
-          <div className="flex items-start justify-between gap-3 border-b border-elevation-subtle p-4">
-            <div className="flex min-w-0 flex-col gap-1">
-              <h2 className="title-sm">{t_i18n("Loop trace")}</h2>
-              <p className="content-compact text-default-secondary">{t_i18n("Where this signal is in the exposure management loop, and why.")}</p>
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => setParam(SIGNALS_PARAMS.signal, null)} data-testid="ctem-loop-trace-close">
-              <Icon name="x" size={16} aria-hidden />
-              {t_i18n("Close")}
-            </Button>
-          </div>
-          {/* The sheet's only scroller: the trace body. */}
-          <div className="min-h-0 flex-1 overflow-y-auto p-4" data-testid="ctem-loop-trace-scroll">
-            {view.signal && <SignalTraceBody id={view.signal} />}
-          </div>
-        </div>
-      </SlideOver>
+      <LoopTraceSheet signalId={view.signal} onClose={() => setParam(SIGNALS_PARAMS.signal, null)} />
       <DataTable
         rows={signals}
         layout="fixed"
