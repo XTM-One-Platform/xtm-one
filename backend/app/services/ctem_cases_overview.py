@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """The cases in motion, as the CTEM command center and the stage pages draw them (#1621).
 
 One read of the cases the caller sees, rolled up for the overview: the counts by
