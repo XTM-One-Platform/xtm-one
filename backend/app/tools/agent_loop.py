@@ -71,6 +71,7 @@ from collections.abc import (
     Iterable,
     Iterator,
     Mapping,
+    Sequence,
 )
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -2353,6 +2354,9 @@ class _ToolSurface:
     execution_timeouts: dict[str, int]
     send_guard_map: dict[str, SendGuard]
     read_back_map: dict[str, tuple[WriteReadBack, str]]
+    #: ORIGINAL names of the tools whose successful call reloads the surface
+    #: (``ToolDefinition.changes_tool_surface``, #1874).
+    surface_changing: frozenset[str] = frozenset()
 
 
 def _build_tool_surface(tools: list[ToolDefinition] | None) -> _ToolSurface:
@@ -2404,7 +2408,35 @@ def _build_tool_surface(tools: list[ToolDefinition] | None) -> _ToolSurface:
         execution_timeouts={td.name: td.execution_timeout for td in effective_tools or [] if td.execution_timeout > 0},
         send_guard_map={td.name: td.send_guard for td in effective_tools or [] if td.send_guard is not None},
         read_back_map=read_back_map,
+        surface_changing=frozenset(
+            name_map.get(td.name, td.name) for td in effective_tools or [] if td.changes_tool_surface
+        ),
     )
+
+
+def _surface_refresh_note(added: Sequence[str], removed: Sequence[str], *, gated: bool) -> str:
+    """The system note that tells the model its tool list changed inside the turn (#1874)."""
+    parts: list[str] = []
+    if added:
+        parts.append(f"added {', '.join(added[:_TRUNCATION_NOTICE_MAX_NAMES])}")
+        if len(added) > _TRUNCATION_NOTICE_MAX_NAMES:
+            parts[-1] += f" and {len(added) - _TRUNCATION_NOTICE_MAX_NAMES} more"
+    if removed:
+        parts.append(f"removed {', '.join(removed[:_TRUNCATION_NOTICE_MAX_NAMES])}")
+        if len(removed) > _TRUNCATION_NOTICE_MAX_NAMES:
+            parts[-1] += f" and {len(removed) - _TRUNCATION_NOTICE_MAX_NAMES} more"
+    load_hint = f" (through `{LOAD_TOOLS_TOOL_NAME}` when their group is not loaded)" if gated and added else ""
+    return (
+        "Note: the integration tools of this turn were reloaded after that change: "
+        f"{'; '.join(parts)}. The added tools can be called from the next step{load_hint}; "
+        "the removed ones no longer exist."
+    )
+
+
+_SURFACE_REFRESH_FAILED_NOTE = (
+    "Note: the integration tools could not be reloaded after that change; this turn keeps the "
+    "tool list it had, and the next turn reads the new one."
+)
 
 
 def _debited_tool_calls(
@@ -10509,6 +10541,7 @@ async def run_agent_loop(
         return _tool_execution_timeouts.get(canonical, 0) if canonical is not None else 0
 
     _tool_send_guard_map = _surface.send_guard_map
+    _surface_changing_tools = _surface.surface_changing
     _send_ledger = send_guard.SendLedger()
 
     async def _record_send(tc: ToolCall, result: Any) -> None:
@@ -10900,6 +10933,84 @@ async def run_agent_loop(
                 logger.info("Model cap change restored %d tool(s) under %d", len(_restored), cap)
                 messages.append(LLMMessage(role="system", content=_build_tool_restored_notice(_restored)))
         return cap
+
+    async def _refresh_tool_surface() -> LLMMessage | None:
+        """Reload the integration tools after a call changed them (#1874).
+
+        The caller's refresher rebuilds the integrations through its own allow
+        lists and narrowing and swaps the scoped executor's allowed set; the
+        loop then rebuilds every per-name map with ``_build_tool_surface`` and,
+        when the run is gated, a new gate over the new list with the groups
+        the model had loaded revealed again. A failure keeps the old surface.
+        """
+        nonlocal _surface, effective_tools, _tool_name_map, _tool_schema_map, _tool_coalescing_map
+        nonlocal _tool_execution_timeouts, _tool_send_guard_map, _tool_read_back_map, _surface_changing_tools
+        nonlocal tool_gate, _ungated_pool, _run_pauses
+        if tool_surface_refresher is None:
+            return None
+        try:
+            refreshed = await tool_surface_refresher.refresh()
+        except Exception:
+            logger.warning("Tool surface refresh failed; the turn keeps its tool list", exc_info=True)
+            return LLMMessage(role="system", content=_SURFACE_REFRESH_FAILED_NOTE)
+        if not refreshed.added and not refreshed.removed:
+            return None
+        _surface = _build_tool_surface(refreshed.tools)
+        effective_tools = _surface.effective_tools
+        _tool_name_map = _surface.name_map
+        _tool_schema_map = _surface.schema_map
+        _tool_coalescing_map = _surface.coalescing_map
+        _tool_execution_timeouts = _surface.execution_timeouts
+        _tool_send_guard_map = _surface.send_guard_map
+        _tool_read_back_map = _surface.read_back_map
+        _surface_changing_tools = _surface.surface_changing
+        _gated = False
+        if tool_gate is not None:
+            _revealed = sorted(tool_gate.revealed_group_ids)
+            _new_gate = (
+                build_tool_gate(
+                    effective_tools,
+                    enabled=True,
+                    min_tools=_progressive_min_tools,
+                    max_visible=provider_max_tools,
+                    resolver=_tool_name_map.resolver,
+                    on_demand=builtin_on_demand_groups(),
+                    withheld=_executor_withheld(executor),
+                    withheld_integrations=_executor_withheld_integrations(executor),
+                )
+                if effective_tools
+                else None
+            )
+            if _new_gate is not None:
+                try:
+                    _new_gate.preload_groups(_revealed)
+                except Exception:
+                    logger.warning("Tool surface refresh: loaded groups not carried over", exc_info=True)
+                tool_gate = _new_gate
+                _gated = True
+                effective_tools = [*(effective_tools or []), tool_gate.load_tools_definition]
+                if _catalog_message is not None:
+                    _catalog_message.content = tool_gate.catalog_prompt
+                _lf_update_trace_tools(_root_trace_ctx, tool_gate.visible_tools())
+            else:
+                tool_gate = None
+                if _catalog_message is not None:
+                    _catalog_message.content = (
+                        f"Note: every tool of this run is now offered directly; `{LOAD_TOOLS_TOOL_NAME}` is gone."
+                    )
+        if tool_gate is None:
+            _ungated_pool = list(effective_tools or [])
+            if effective_tools and len(effective_tools) > provider_max_tools:
+                effective_tools = sorted(effective_tools, key=tool_retention_key)[:provider_max_tools]
+        _run_pauses = _run_pause_names(effective_tools, _tool_name_map, wait_offered=_wait_definition is not None)
+        return LLMMessage(
+            role="system",
+            content=_surface_refresh_note(refreshed.added, refreshed.removed, gated=_gated),
+        )
+
+    # Set by a successful call of a ``changes_tool_surface`` tool; the refresh
+    # runs once at the end of that step.
+    _tool_surface_changed = False
 
     # Track whether we already injected the wind-down nudge
     wind_down_injected = False
@@ -17096,6 +17207,12 @@ async def run_agent_loop(
                     _tc_write_took_effect = (
                         _tc_is_write and not result.is_error and not getattr(result, "no_op", False)
                     )
+                    if (
+                        _tc_orig_name in _surface_changing_tools
+                        and not result.is_error
+                        and not getattr(result, "no_op", False)
+                    ):
+                        _tool_surface_changed = True
                     _track_tool_result(
                         tc.name,
                         is_error=result.is_error,
@@ -17577,6 +17694,12 @@ async def run_agent_loop(
                             and not getattr(result, "no_op", False)
                         ):
                             _effective_writes.append(_result_orig_name)
+                        if (
+                            _result_orig_name in _surface_changing_tools
+                            and not result.is_error
+                            and not getattr(result, "no_op", False)
+                        ):
+                            _tool_surface_changed = True
                         _track_tool_result(
                             tc.name,
                             is_error=result.is_error,
@@ -17662,6 +17785,15 @@ async def run_agent_loop(
                         _tool_name_map.get(tool_calls[_ci].name, tool_calls[_ci].name),
                         tool_calls[_ci].arguments,
                     )
+
+            # ── Tool surface refresh (#1874) ──────────────────────
+            # A call of this step changed an integration the run is bound to:
+            # the next request carries the reloaded tool list.
+            if _tool_surface_changed:
+                _tool_surface_changed = False
+                _surface_note = await _refresh_tool_surface()
+                if _surface_note is not None:
+                    messages.append(_surface_note)
 
             # Mixed wait+work: pause only after sibling tools have run.
             _early = await _after_sibling_tools()

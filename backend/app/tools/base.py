@@ -1462,6 +1462,10 @@ class ToolDefinition:
     #: out of the call's key (:func:`declared_cosmetic_arguments`). Never an
     #: argument that selects what the tool reads.
     cosmetic_arguments: tuple[str, ...] = ()
+    #: A successful call can change the integration tools of the running turn
+    #: (an integration's spec or credentials): the loop reloads its tool list
+    #: through the caller's refresher at the end of that step (#1874).
+    changes_tool_surface: bool = False
 
 
 def declared_cosmetic_arguments(definitions: Iterable[ToolDefinition] | None) -> dict[str, frozenset[str]]:

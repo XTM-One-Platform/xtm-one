@@ -5579,6 +5579,8 @@ async def run_agent_chat(
                 # is not collected twice.
                 context = {
                     **_refresh_context,
+                    # The agent's read-only bindings, read as the first build reads them.
+                    READ_ONLY_CONTEXT_KEY: read_only_integration_ids(agent, _refresh_bindings),
                     "missing_integration_bindings": [],
                     PLATFORM_NAMES_CONTEXT_KEY: [],
                     ATTACK_SOURCES_CONTEXT_KEY: [],
