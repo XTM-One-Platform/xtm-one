@@ -1058,7 +1058,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             onToggle={(name) => set({ asset_names: names.includes(name) ? names.filter((n) => n !== name) : [...names, name] })}
             placeholder={t_i18n("Link assets")}
             searchPlaceholder={t_i18n("Search...")}
-            emptyOptionsLabel={t_i18n("No asset yet: add them under Assets and exposure.")}
+            // The rows live in Inventory > Assets (UX r1 B1 on #1892); no empty hint while the row APIs still load (A1).
+            emptyOptionsLabel={linkGroups.isLoading || linkAssets.isLoading ? t_i18n("Loading...") : t_i18n("No asset yet: add them in Inventory > Assets.")}
             noMatchLabel={t_i18n("No match")}
           />
         );
