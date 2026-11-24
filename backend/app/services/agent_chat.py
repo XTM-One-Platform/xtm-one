@@ -740,7 +740,8 @@ async def _load_pipeline_tool_unbound(
         from app.services.integration_credentials import normalize_acting_user_id
 
         _acting = normalize_acting_user_id(user_id)
-        if integ is not None and _acting is not None and _acting != normalize_acting_user_id(agent.user_id):
+        _owner = normalize_acting_user_id(getattr(agent, "user_id", None))
+        if integ is not None and _acting is not None and _acting != _owner:
             from app.api.v1.helpers import get_user_group_ids
             from app.services.integration_credentials import lent_integration_ids
             from app.services.integration_tools import shadow_invisible_bindings
@@ -753,7 +754,7 @@ async def _load_pipeline_tool_unbound(
                 acting_user_id=str(_acting),
                 user_group_ids=await get_user_group_ids(db, _acting),
                 lent_ids=lent_integration_ids(agent),
-                lent_owner_id=agent.user_id,
+                lent_owner_id=_owner,
             )
             if not _pinned:
                 logger.info(
