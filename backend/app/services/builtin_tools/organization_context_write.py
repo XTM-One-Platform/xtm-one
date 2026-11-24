@@ -757,8 +757,8 @@ def build_organization_context_write_tools(
             description=(
                 "Change the organization profile now, as a new version authored by the administrator you act for: "
                 "field changes on your own organization or a tracked one. Read get_organization_context first and "
-                "send the whole new value of each field (a list replaces the list), with its basis. Each value is "
-                "validated like the Settings > Organization form; an admin can restore a past version. To leave the "
+                "send the whole new value of each field (a list replaces the list), with its basis, validated as "
+                "Settings > Organization does. To leave the "
                 "decision to an administrator instead, use propose_organization_context_change."
                 + SHARED_CONTEXT_CLAUSE
             ),
