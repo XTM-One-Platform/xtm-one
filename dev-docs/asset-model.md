@@ -351,6 +351,13 @@ and `asset_groups` into row writes (`apply_profile_lists`). Row API, administrat
   group page `/ctem/inventory/asset-groups/:id` reads its members through that filter, paged on the server.
 - `PUT /api/v1/organization-context/crown-jewels/{name}/links` `{names}`: the records and groups a crown jewel
   covers; 404 for an unknown crown jewel, 422 naming what matches nothing.
+- The profile API never writes a row once the records are imported (#1752): `PUT /api/v1/organization-context`
+  and `POST .../versions/{v}/restore` ignore `assets_exposure`, `asset_groups` and `ai_systems` (the stored
+  version's lists are kept, so `save_version` applies no row write and the synced-row lock never judges a
+  profile save), and name what they ignored in `ignored_row_fields`; a restore naming only row fields is a 422
+  (the rows keep their own history, restored from `/changes/restore`). Links of crown jewels and asset groups
+  are judged against the records. `GET` also answers `row_counts` (`{assets_exposure, asset_groups}`, `null`
+  before the import). Ignore, not 422: an older client or agent keeps saving its profile fields during a rollout.
 - `GET /api/v1/organization-context/changes?entity_id=&since=&before_id=&limit=`: the change log, newest first;
   `POST /api/v1/organization-context/changes/restore` `{change_ids}`: a delete comes back, an update gets its
   `before` fields, a create goes.
@@ -412,6 +419,11 @@ assets running a product.
   `category="tech_stack"` and `upsert_organization_rows(section="tech_stack")` are deprecated aliases of
   `software`, accepted for one release; stored category selections were renamed by `s1495swprofile01`,
   which also turned each profile tech stack row into a hand-typed Software (a hand CPE kept as the override).
+- `upsert_organization_rows(section="software")` (or its alias) writes Software entities, not profile rows:
+  a row whose vendor and product a software already carries is reported `unchanged` and never overwritten;
+  a new one becomes a hand-typed Software (`create_software`, its typed version stored as a version). Rows are
+  never removed by source (`remove_organization_rows` refuses the section). Before the organization has a
+  profile (no asset store yet), the rows land in the profile as before.
 
 ### 9.4 SBOM import
 

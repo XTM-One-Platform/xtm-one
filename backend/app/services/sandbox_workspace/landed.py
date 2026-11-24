@@ -282,7 +282,7 @@ async def replace_probe(session: Any, arguments: Mapping[str, Any]) -> str | boo
     import re
 
     from app.services.sandbox_workspace import reading, replacing
-    from app.services.sandbox_workspace.checkout import RECORD_NAME
+    from app.services.sandbox_workspace.checkout import is_record_name
 
     if replace_dry_run(arguments) or replace_key(arguments) is None:
         return None
@@ -305,7 +305,7 @@ async def replace_probe(session: Any, arguments: Mapping[str, Any]) -> str | boo
     for rel in sorted(entries):
         if (
             not reading.selected(rel, prefix, globs)
-            or rel.rsplit("/", 1)[-1] == RECORD_NAME
+            or is_record_name(rel)
             or reading.unread_binary(rel)
             or entries[rel].size > reading.MAX_GREP_FILE_BYTES
         ):

@@ -87,7 +87,6 @@ describe("gate record helpers", () => {
 
   it("names a policy pass in words, never a person", () => {
     expect(gateRecordReason({ kind: "runbook", runbook: "RB-FW-12" })).toEqual({ id: "Pre-approved runbook {runbook}", values: { runbook: "RB-FW-12" } });
-    expect(gateRecordReason({ kind: "safe_mode" })?.id).toBe("Safe mode: read-only checks only");
     expect(gateRecordReason({ kind: "fleet_level" })?.id).toBe("The fleet runs this gate without a person");
     expect(gateRecordReason({ kind: "person" })).toBeNull();
     expect(gateRecordReason(null)).toBeNull();

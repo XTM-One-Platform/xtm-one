@@ -179,6 +179,12 @@ ENGAGEMENT_SCOPES = {
 }
 _ALL_ENGAGEMENT_SCOPES = tuple(dict.fromkeys(s for scopes in ENGAGEMENT_SCOPES.values() for s in scopes))
 _RECORD_READ_SCOPES = ("crm.objects.contacts.read", "crm.objects.companies.read", "crm.objects.deals.read", "tickets")
+_RECORD_WRITE_SCOPES = (
+    "crm.objects.contacts.write",
+    "crm.objects.companies.write",
+    "crm.objects.deals.write",
+    "tickets",
+)
 _SCHEMA_SCOPES = ("crm.schemas.contacts.read", "crm.schemas.companies.read", "crm.schemas.deals.read")
 
 #: The private-app scopes each HubSpot tool may need: its description states them
@@ -220,6 +226,8 @@ TOOL_SCOPES: dict[str, tuple[str, ...]] = {
     "download_hubspot_file": ("files", "files.ui_hidden.read", *_ALL_ENGAGEMENT_SCOPES),
     "upload_hubspot_file": ("files",),
     "upload_hubspot_attachment": ("files", "crm.objects.contacts.write", "crm.objects.companies.write", "crm.objects.deals.write", "tickets"),
+    "create_hubspot_note": ("crm.objects.notes.write", *_RECORD_WRITE_SCOPES),
+    "create_hubspot_task": ("crm.objects.tasks.write", *_RECORD_WRITE_SCOPES),
     "get_hubspot_engagement": (*_ALL_ENGAGEMENT_SCOPES, "crm.objects.owners.read"),
     "search_hubspot_engagements": (*_ALL_ENGAGEMENT_SCOPES, "crm.objects.owners.read"),
     "get_hubspot_record_timeline": (
@@ -257,6 +265,8 @@ PER_OBJECT_TYPE_SCOPES = frozenset(
         "list_hubspot_attachments",
         "download_hubspot_file",
         "upload_hubspot_attachment",
+        "create_hubspot_note",
+        "create_hubspot_task",
         "get_hubspot_engagement",
         "search_hubspot_engagements",
         "get_hubspot_record_timeline",
@@ -278,6 +288,14 @@ def scopes_sentence(tool: str) -> str:
 
 def _refuse(text: str) -> ToolResult:
     return ToolResult(tool_call_id="", content=text, is_error=True)
+
+
+def _structured(text: str, records: list[dict[str, Any]]) -> ToolResult:
+    """A search answer whose records are its structured value, so a gate check can test it (``[]`` = none)."""
+    structured = [
+        {"id": r.get("id"), "properties": dict(r.get("properties") or {})} for r in records if isinstance(r, dict)
+    ]
+    return ToolResult(tool_call_id="", content=text, structured=structured)
 
 
 def _first_line(err: str) -> str:
@@ -1071,7 +1089,7 @@ class HubSpotActivity:
             if extra:
                 await self.prepare_labels(client, type_, [record_properties(r) for r in results], extra)
         if not results:
-            return f"No {type_} found{_range_text(start, end)}."
+            return _structured(f"No {type_} found{_range_text(start, end)}.", [])
         lines = [f"Found {total} {type_}{_range_text(start, end)}; showing {len(results)}:"]
         for obj in results:
             engagement = normalize_engagement(type_, obj, label=self.label)
@@ -1084,7 +1102,7 @@ class HubSpotActivity:
         text = "\n".join(lines) + format_pagination_hint(next_after)
         if err:
             text += f"\nStopped early: {_first_line(err)}"
-        return text
+        return _structured(text, results)
 
     # ── Tools: timeline ─────────────────────────────────────────────────
 

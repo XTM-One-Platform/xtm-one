@@ -1948,10 +1948,36 @@ def _normalize_hubspot_event(subscription_type: str) -> str:
     return subscription_type
 
 
-def _hubspot_object_type(subscription_type: str) -> str:
-    """Extract the object type from a subscriptionType (e.g. ``contact``)."""
+#: ``objectTypeId`` of the objects HubSpot reports through the generic
+#: ``object.*`` subscriptions (leads, and every standard type a generic
+#: subscription can name), as the crm_object_type scope names them.
+_HUBSPOT_OBJECT_TYPE_IDS: dict[str, str] = {
+    "0-1": "contact",
+    "0-2": "company",
+    "0-3": "deal",
+    "0-5": "ticket",
+    "0-7": "product",
+    "0-8": "line_item",
+    "0-14": "quote",
+    "0-136": "lead",
+}
+
+
+def _hubspot_object_type(subscription_type: str, object_type_id: object = None) -> str:
+    """Extract the object type from a subscriptionType (e.g. ``contact``).
+
+    A generic subscription (``object.creation``, ``object.propertyChange``...)
+    names the object by its ``objectTypeId``: ``0-136`` is ``lead``, a standard
+    id its type, and a custom object keeps its ``2-...`` id, as the Scope(s)
+    picker keys it.
+    """
     parts = subscription_type.rsplit(".", 1)
-    return parts[0] if len(parts) == 2 else "unknown"
+    if len(parts) != 2:
+        return "unknown"
+    type_id = str(object_type_id or "").strip()
+    if parts[0] == "object" and type_id:
+        return _HUBSPOT_OBJECT_TYPE_IDS.get(type_id, type_id)
+    return parts[0]
 
 
 def _signed_url(request: Request) -> str | None:
@@ -3761,7 +3787,7 @@ async def _handle_hubspot_webhook(
         for evt in events:
             subscription_type = evt.get("subscriptionType", "")
             event_key = _normalize_hubspot_event(subscription_type)
-            object_type = _hubspot_object_type(subscription_type)
+            object_type = _hubspot_object_type(subscription_type, evt.get("objectTypeId"))
             object_id = str(evt.get("objectId", ""))
 
             # Build normalised payload for this event
@@ -3770,6 +3796,7 @@ async def _handle_hubspot_webhook(
                     "event_type": event_key,
                     "subscription_type": subscription_type,
                     "object_type": object_type,
+                    "object_type_id": str(evt.get("objectTypeId") or ""),
                     "object_id": object_id,
                     "property_name": evt.get("propertyName", ""),
                     "property_value": evt.get("propertyValue", ""),
@@ -4496,7 +4523,7 @@ async def _handle_hubspot_assignment_webhook(
         for evt in events:
             subscription_type = evt.get("subscriptionType", "")
             event_key = _normalize_hubspot_event(subscription_type)
-            object_type = _hubspot_object_type(subscription_type)
+            object_type = _hubspot_object_type(subscription_type, evt.get("objectTypeId"))
             object_id = str(evt.get("objectId", ""))
 
             # Event filter
@@ -4516,6 +4543,7 @@ async def _handle_hubspot_assignment_webhook(
                     "event_type": event_key,
                     "subscription_type": subscription_type,
                     "object_type": object_type,
+                    "object_type_id": str(evt.get("objectTypeId") or ""),
                     "object_id": object_id,
                     "property_name": evt.get("propertyName", ""),
                     "property_value": evt.get("propertyValue", ""),

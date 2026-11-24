@@ -36,7 +36,13 @@ from datetime import date
 from typing import Any
 
 from app.services.ctem_primary_assets import PrimaryAssetIndex
-from app.services.organization_context import AssetEntry, OrganizationProfile, ShippedProduct
+from app.services.organization_context import (
+    AssetEntry,
+    OrganizationProfile,
+    ShippedProduct,
+    effective_criticality,
+    groups_of,
+)
 
 #: Version of the decision record; a reader keys on it.
 DECISION_VERSION = 1
@@ -517,6 +523,8 @@ def _confidence(facts: SignalFacts, related: list[RelatedSignal]) -> tuple[str, 
 def _jewels_of(profile: OrganizationProfile, resolution: Resolution) -> list[tuple[str, str]]:
     """``(name, criticality)`` of the crown jewels the resolved assets and groups run."""
     names = {a.name.lower() for a in resolution.assets} | {a.group.lower() for a in resolution.assets if a.group}
+    # #1773: the groups an asset joins by rule count as its groups too.
+    names |= {g.name.lower() for a in resolution.assets for g in groups_of(profile, a)}
     names |= {g.lower() for g in resolution.groups}
     named = {n.lower() for n in resolution.crown_jewels}
     linked = {str(h["primary_asset_key"]) for h in resolution.primary_assets}
@@ -687,6 +695,11 @@ def decide(
     for asset in resolution.assets:
         if asset.criticality in ASSET_TO_SCOPE:
             sources.append({"from": "asset", "name": asset.name, "criticality": ASSET_TO_SCOPE[asset.criticality]})
+            continue
+        # #1773: an asset of unknown criticality takes the one its groups give their members.
+        inherited = effective_criticality(profile, asset)
+        if inherited in ASSET_TO_SCOPE:
+            sources.append({"from": "asset_group", "name": asset.name, "criticality": ASSET_TO_SCOPE[inherited]})
     jewels = _jewels_of(profile, resolution)
     chains: dict[str, list[dict[str, Any]]] = {}
     for hit in resolution.primary_assets:

@@ -49,6 +49,11 @@ class OrganizationContextResponse(BaseModel):
     removed_rows: dict[str, list[str]] = {}
     #: The provenance a version keeps (a restore names the version it restored from, #1473).
     sources: dict[str, Any] | None = None
+    #: On a save or a restore: the row fields the request carried and the profile API ignored (#1752):
+    #: the asset and group rows are written through their own row API only.
+    ignored_row_fields: list[str] = []
+    #: How many asset rows and groups the records hold (#1752); ``None`` before their import.
+    row_counts: dict[str, int] | None = None
 
 
 class OrganizationContextVersionSummary(BaseModel):
@@ -139,9 +144,13 @@ def _response(
     removed_rows: dict[str, list[str]] | None = None,
     *,
     profile: org_context.OrganizationProfile | None = None,
+    ignored_row_fields: list[str] | None = None,
+    row_counts: dict[str, int] | None = None,
 ) -> OrganizationContextResponse:
     profile = profile if profile is not None else org_context.parse_profile(row.profile if row else {})
     return OrganizationContextResponse(
+        ignored_row_fields=ignored_row_fields or [],
+        row_counts=row_counts,
         version=row.version if row else None,
         source=row.source if row else None,
         created_at=row.created_at if row else None,
@@ -151,6 +160,17 @@ def _response(
         removed_rows=removed_rows or {},
         sources=row.sources if row else None,
     )
+
+
+async def _write_answer(
+    db: AsyncSession,
+    row: OrganizationContextVersion,
+    removed_rows: dict[str, list[str]],
+    ignored: list[str],
+) -> OrganizationContextResponse:
+    """The answer of a PUT or a restore: the rows read from the records, as GET and PATCH answer them (#1752)."""
+    profile = await org_context.hydrated_profile(db, row) if getattr(row, "organization_id", None) else None
+    return _response(row, removed_rows, profile=profile, ignored_row_fields=ignored)
 
 
 def _stale_base(based_on_version: int | None, current: OrganizationContextVersion | None) -> None:
@@ -179,7 +199,8 @@ async def get_organization_context(
     API, agent and import writes land there, never in a profile version.
     """
     row, profile = await org_context.current_profile(db)
-    return _response(row, profile=profile)
+    counts = await org_context.asset_list_counts(db, row.organization_id if row is not None else None)
+    return _response(row, profile=profile, row_counts=counts)
 
 
 class OrganizationContextInjection(BaseModel):
@@ -292,19 +313,26 @@ async def list_organization_context_versions(
 
 
 async def _checked_profile(
-    db: AsyncSession, admin: User, stored: dict[str, Any] | None, profile: org_context.OrganizationProfile
+    db: AsyncSession,
+    admin: User,
+    stored: dict[str, Any] | None,
+    profile: org_context.OrganizationProfile,
+    *,
+    links_against: org_context.OrganizationProfile | None = None,
 ) -> org_context.OrganizationProfile:
     """The checks every hand save runs (form PUT and restore, #1473): 422 on the first problem.
 
     Links between lists (``check_links``), the #1367 lock on synced rows, the
     ticketing target; then each PIR is stored with its OpenCTI name (#11589).
+    *links_against* (#1752) is the profile whose asset rows the links are judged
+    on: the records' rows once the profile API no longer writes them.
     """
     from app.services.ctem_ticketing import target_problem
     from app.services.organization_assets_import import check_links
     from app.services.organization_context_draft import name_saved_pirs
     from app.services.organization_context_locks import synced_edit_problems
 
-    problems = check_links(profile)
+    problems = check_links(profile if links_against is None else _with_rows(profile, links_against))
     if problems:
         raise HTTPException(status_code=422, detail=problems[0])
     # A synced row is read-only by hand on every surface: only its local fields change (#1367).
@@ -334,6 +362,41 @@ async def _lock_base(db: AsyncSession, current: OrganizationContextVersion | Non
 
 #: The fields a ``PATCH`` never sets: the asset and group rows have their own API since #1543.
 _ROW_FIELDS: frozenset[str] = frozenset({"assets_exposure", "asset_groups"})
+#: The row fields a ``PUT`` or a restore ignores once the records own the rows (#1752); ``ai_systems``
+#: is the derived alias of the ``ai_target`` assets (#1501).
+_IGNORED_ROW_FIELDS: tuple[str, ...] = ("assets_exposure", "asset_groups", "ai_systems")
+
+
+def _with_rows(
+    profile: org_context.OrganizationProfile, rows_from: org_context.OrganizationProfile
+) -> org_context.OrganizationProfile:
+    """*profile* with the asset and group rows of *rows_from*."""
+    return profile.model_copy(
+        update={"assets_exposure": rows_from.assets_exposure, "asset_groups": rows_from.asset_groups}
+    )
+
+
+async def _rows_owned_by_records(db: AsyncSession, current: OrganizationContextVersion | None) -> bool:
+    """Whether the asset records own the rows (#1543): then a profile save never writes them (#1752)."""
+    from app.services import organization_asset_records as records
+
+    organization_id = getattr(current, "organization_id", None) if current is not None else None
+    return organization_id is not None and await records.is_imported(db, organization_id)
+
+
+def _stored_rows(submitted: dict[str, Any], stored: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """*submitted* with the row fields of *stored* in place of its own; ``(profile, the row fields it carried)``.
+
+    The stored version's lists go back unchanged, so ``save_version`` sees no
+    list change and never rewrites a record: a sync running during the save
+    cannot turn it into a conflict or a lock refusal (#1752).
+    """
+    ignored = [name for name in _IGNORED_ROW_FIELDS if name in submitted]
+    kept = {k: v for k, v in submitted.items() if k not in _IGNORED_ROW_FIELDS}
+    for name in _ROW_FIELDS:
+        if name in stored:
+            kept[name] = stored[name]
+    return kept, ignored
 
 
 @router.patch("", response_model=OrganizationContextResponse)
@@ -396,20 +459,31 @@ async def save_organization_context(
     # settings form; #1432: the form sends the shipped products (an empty list clears
     # them), and a client that leaves the key out keeps the stored ones.
     # A save that does not send one keeps the stored value.
-    kept = [key for key in ("fx_rates", "shipped_products") if key not in submitted]
+    # #1773: the PIR details are set by API or an agent too; a form save that leaves them out keeps them.
+    kept = [key for key in ("fx_rates", "shipped_products", "pir_details") if key not in submitted]
     if kept:
         current = await org_context.current_version(db)
         for key in kept:
             if current is not None and (current.profile or {}).get(key):
                 submitted[key] = current.profile[key]
+    current = await org_context.current_version(db)
+    _stale_base(body.based_on_version, current)
+    ignored: list[str] = []
+    rows_from: org_context.OrganizationProfile | None = None
+    stored: dict[str, Any] | None
+    if await _rows_owned_by_records(db, current):
+        # #1752: the rows are the row API's alone. The request's row lists are ignored and the stored
+        # ones kept, so the save never rewrites a record and a sync running meanwhile never refuses it.
+        stored = org_context.parse_profile(current.profile if current else {}).model_dump(mode="json")
+        submitted, ignored = _stored_rows(submitted, stored)
+        rows_from = await org_context.hydrated_profile(db, current)
+    else:
+        stored = await _lock_base(db, current)
     try:
         profile = org_context.parse_profile(submitted)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
-    current = await org_context.current_version(db)
-    _stale_base(body.based_on_version, current)
-    stored = await _lock_base(db, current)
-    profile = await _checked_profile(db, admin, stored, profile)
+    profile = await _checked_profile(db, admin, stored, profile, links_against=rows_from)
     try:
         row = await org_context.save_version(
             db,
@@ -425,7 +499,7 @@ async def save_organization_context(
             status_code=409, detail="Another version was saved at the same time. Reload and save again."
         ) from None
     await db.refresh(row)
-    return _response(row, org_context.removed_rows(stored, profile.model_dump(mode="json")))
+    return await _write_answer(db, row, org_context.removed_rows(stored, profile.model_dump(mode="json")), ignored)
 
 
 @router.get("/versions/{version}", response_model=OrganizationContextResponse)
@@ -460,15 +534,34 @@ async def restore_organization_context_version(
         raise HTTPException(status_code=404, detail=f"Version {version} of the organization profile does not exist.")
     current = await org_context.current_version(db)
     _stale_base(body.based_on_version, current)
-    stored = await _lock_base(db, current) or org_context.parse_profile({}).model_dump(mode="json")
+    owned = await _rows_owned_by_records(db, current)
+    if owned:
+        # #1752: a restore brings back profile fields only; the rows keep their own history.
+        stored = org_context.parse_profile(current.profile if current else {}).model_dump(mode="json")
+    else:
+        stored = await _lock_base(db, current) or org_context.parse_profile({}).model_dump(mode="json")
     old = org_context.parse_profile(past.profile).model_dump(mode="json")
+    ignored: list[str] = []
+    rows_from: org_context.OrganizationProfile | None = None
     try:
         merged, fields = org_context.restored_profile(stored, old, body.fields)
+        if owned:
+            ignored = [name for name in fields if name in _IGNORED_ROW_FIELDS] if body.fields else []
+            fields = [name for name in fields if name not in _IGNORED_ROW_FIELDS]
+            merged, _ = _stored_rows(merged, stored)
+            if not fields:
+                raise ValueError(
+                    f"{', '.join(ignored)}: the asset rows keep their own history; restore them from the Inventory"
+                )
         profile = org_context.parse_profile(merged)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
+    if owned:
+        rows_from = await org_context.hydrated_profile(db, current)
     # A restore is a hand save: the same checks as PUT (links, synced-row lock, ticketing, PIR names).
-    profile = await _checked_profile(db, admin, stored if current is not None else None, profile)
+    profile = await _checked_profile(
+        db, admin, stored if current is not None else None, profile, links_against=rows_from
+    )
     basis = f"restored from v{version} by an administrator"
     sources = {name: {"source": f"restored from v{version}", "basis": basis} for name in fields}
     try:
@@ -480,7 +573,7 @@ async def restore_organization_context_version(
             status_code=409, detail="Another version was saved at the same time. Reload and restore again."
         ) from None
     await db.refresh(row)
-    return _response(row, org_context.removed_rows(stored, profile.model_dump(mode="json")))
+    return await _write_answer(db, row, org_context.removed_rows(stored, profile.model_dump(mode="json")), ignored)
 
 
 class EnterpriseKnowledgeLink(BaseModel):

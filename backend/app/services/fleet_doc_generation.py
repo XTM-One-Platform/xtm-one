@@ -72,6 +72,7 @@ from app.services.fleet_doc_findings import (
     GATES_PRINT_KEY,
     clean_findings,
     decided_points,
+    drop_bound_integrations,
     drop_contradicted,
     gates_print,
     member_key,
@@ -560,6 +561,15 @@ def automations_by_member(context: dict[str, Any]) -> dict[str, list[str]]:
         for key in (m.get("name"), m.get("agent")):
             if key:
                 out.setdefault(member_key(key), []).extend(n for n in names if n)
+    return out
+
+
+def integrations_by_member(context: dict[str, Any]) -> dict[str, list[str]]:
+    """Each member's bound provider keys (direct and template bindings), keyed by :func:`member_key` of its name."""
+    out: dict[str, list[str]] = {}
+    for use in context.get("tools") or []:
+        if isinstance(use, dict) and use.get("member"):
+            out.setdefault(member_key(use["member"]), []).extend(str(p) for p in use.get("integrations") or [] if p)
     return out
 
 
@@ -1574,6 +1584,8 @@ async def draft_fleet_documentation(
             draft = await _missing_sections(llm, model, context, {**current, **draft.sections}, missing, draft, budget)
     # A finding the configuration contradicts is dropped before storage, whatever the model wrote (#10536).
     draft.findings = drop_contradicted(draft.findings, automations_by_member(context))
+    # A missing integration the member is bound to (directly or through a template binding) is dropped too.
+    draft.findings = drop_bound_integrations(draft.findings, integrations_by_member(context))
     if whole:
         # Every home member with an empty role label (computed, never the model's): fleets of any size alike.
         draft.role_findings = role_findings(context.get("members"))

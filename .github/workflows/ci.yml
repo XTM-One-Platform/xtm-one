@@ -64,6 +64,9 @@ jobs:
     name: Backend lint
     runs-on: ubuntu-26.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
     defaults:
       run:
         working-directory: backend
@@ -100,6 +103,10 @@ jobs:
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: pytest tests/test_migration_integrity.py --noconftest -v --tb=short
 
+      - name: Stop the merge group at its first red job
+        if: failure() && github.event_name == 'merge_group'
+        uses: ./.github/actions/fail-fast
+
   # The ROI ledger's invariants (#12077, design 12.7 of dev-docs/roi-outcomes.md):
   # every figure a person or an agent reads comes from one ledger, so a change
   # that breaks one is refused on the pull request rather than in the merge
@@ -108,6 +115,9 @@ jobs:
     name: ROI ledger invariants
     runs-on: ubuntu-26.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v6
 
@@ -125,6 +135,10 @@ jobs:
           tests/test_roi_export_ledger.py
           tests/test_roi_ledger_end_state.py
 
+      - name: Stop the merge group at its first red job
+        if: failure() && github.event_name == 'merge_group'
+        uses: ./.github/actions/fail-fast
+
   # The built-in tool schema ceilings (tests/test_builtin_tool_groups.py,
   # app/services/builtin_tool_budget.py): a tool description that grows past
   # one is refused on the pull request rather than ejected from the merge queue
@@ -133,6 +147,9 @@ jobs:
     name: Tool schema budget
     runs-on: ubuntu-26.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v6
 
@@ -145,12 +162,19 @@ jobs:
           SECRET_KEY: "ci-test-secret-key-not-for-production"
         run: python -m pytest -m "not integration" -q --tb=short tests/test_builtin_tool_groups.py
 
+      - name: Stop the merge group at its first red job
+        if: failure() && github.event_name == 'merge_group'
+        uses: ./.github/actions/fail-fast
+
   # tsc, oxlint, knip and the i18n validator resolve the project's own
   # packages: these two jobs need their installs.
   frontend-lint:
     name: Frontend lint
     runs-on: ubuntu-26.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
     defaults:
       run:
         working-directory: frontend
@@ -183,10 +207,17 @@ jobs:
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: yarn validate:i18n
 
+      - name: Stop the merge group at its first red job
+        if: failure() && github.event_name == 'merge_group'
+        uses: ./.github/actions/fail-fast
+
   office-addin-lint:
     name: Office add-in lint
     runs-on: ubuntu-26.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
     defaults:
       run:
         working-directory: apps/microsoft-office
@@ -198,13 +229,24 @@ jobs:
       - run: npm ci
       - run: npm run check
 
+      - name: Stop the merge group at its first red job
+        if: failure() && github.event_name == 'merge_group'
+        uses: ./.github/actions/fail-fast
+
   secrets:
     name: Secret scan (betterleaks)
     runs-on: ubuntu-26.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v6
       - run: docker run --rm -v "$GITHUB_WORKSPACE:/repo" ghcr.io/betterleaks/betterleaks:v1.9.0 dir /repo --redact -v
+
+      - name: Stop the merge group at its first red job
+        if: failure() && github.event_name == 'merge_group'
+        uses: ./.github/actions/fail-fast
 
   # Sizes every suite from the merge group's own change (base_sha..sha), which
   # is safe only under ALLGREEN grouping; every other event runs everything.
@@ -214,10 +256,10 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-26.04
     timeout-minutes: 10
-    # actions: read fetches the shard weights the nightly runs published.
+    # actions: read fetches the shard weights the nightly runs published; write lets a red job cancel the run (.github/actions/fail-fast).
     permissions:
       contents: read
-      actions: read
+      actions: write
     outputs:
       backend-full: ${{ steps.select.outputs.backend-full }}
       unit-shards: ${{ steps.select.outputs.unit-shards }}
@@ -283,6 +325,10 @@ jobs:
           path: ${{ runner.temp }}/selection/
           retention-days: 7
 
+      - name: Stop the merge group at its first red job
+        if: failure() && github.event_name == 'merge_group'
+        uses: ./.github/actions/fail-fast
+
   # Every job collects the whole suite before its first test (about two
   # minutes on CI), so each job added pays that again. A shard's tests run on
   # the runner's two vCPUs: past about 15 minutes on a quiet runner, a busy one
@@ -306,6 +352,9 @@ jobs:
     if: github.event_name != 'pull_request' && needs.select.outputs.unit-shards != '[]'
     runs-on: ubuntu-26.04
     timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: write
     strategy:
       fail-fast: false
       matrix:
@@ -424,6 +473,10 @@ jobs:
         if: always()
         run: cat "$RUNNER_TEMP/pwsh-warm-up.log" 2>/dev/null || echo "no PowerShell on this runner"
 
+      - name: Stop the merge group at its first red job
+        if: failure() && github.event_name == 'merge_group'
+        uses: ./.github/actions/fail-fast
+
   # Tests marked `chromium` drive a real headless Chromium against loopback
   # servers: the browser tool holds every redirect hop to the outbound URL
   # policy in Chromium's own request interception, which a double
@@ -448,6 +501,9 @@ jobs:
     if: github.event_name != 'pull_request' && needs.select.outputs.chromium-shards != '[]'
     runs-on: ubuntu-26.04
     timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: write
     strategy:
       fail-fast: false
       matrix:
@@ -608,6 +664,10 @@ jobs:
           path: ${{ runner.temp }}/junit/
           retention-days: 14
 
+      - name: Stop the merge group at its first red job
+        if: failure() && github.event_name == 'merge_group'
+        uses: ./.github/actions/fail-fast
+
   # The frontend group of scripts/ci-local.sh runs every `run:` of
   # frontend-lint, of this job and of office-addin-lint, in order, plus the
   # tests of frontend-unit unsharded (`yarn test:unit`, before the build):
@@ -626,6 +686,9 @@ jobs:
     if: ${{ !cancelled() && (github.event_name == 'pull_request' || needs.select.outputs.frontend-build == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: write
     # The build runs with an explicit heap: at Node's default ~2 GB it died
     # (#9754).
     env:
@@ -653,6 +716,10 @@ jobs:
           node scripts/fds-migration/verify-classes.mjs
           node scripts/fds-migration/count-legacy.mjs --check
 
+      - name: Stop the merge group at its first red job
+        if: failure() && github.event_name == 'merge_group'
+        uses: ./.github/actions/fail-fast
+
   # `yarn test:unit` split between jobs: vitest's own --shard divides its 414
   # files (679 s on main, 5 Nov 2026, run 42090500694) by file, and the first
   # shard also runs the node:test half (about 35 s). Three shards keep each
@@ -665,6 +732,9 @@ jobs:
     if: github.event_name != 'pull_request' && needs.select.outputs.frontend-unit-mode != 'skip'
     runs-on: ubuntu-26.04
     timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: write
     strategy:
       fail-fast: false
       matrix:
@@ -704,6 +774,10 @@ jobs:
         timeout-minutes: 20
         run: xargs -a "$RUNNER_TEMP/selection/frontend-related.txt" yarn vitest related --run --shard=${{ matrix.shard }}
 
+      - name: Stop the merge group at its first red job
+        if: failure() && github.event_name == 'merge_group'
+        uses: ./.github/actions/fail-fast
+
   # The frontend ratchet gates, on every pull request. They scan the whole
   # tree (tests_unit/ and the top-level src/*.test.ts guards, the settings
   # form kit's), so the change that breaks one names no file of theirs; with
@@ -719,6 +793,9 @@ jobs:
     name: Frontend gates
     runs-on: ubuntu-26.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v6
 
@@ -735,6 +812,10 @@ jobs:
         timeout-minutes: 10
         run: yarn vitest run --project unit tests_unit/ src/*.test.ts src/i18n/ src/pages/settings/settings-form-kit.test.ts && yarn vitest run $(node scripts/source-scan-tests.mjs)
 
+      - name: Stop the merge group at its first red job
+        if: failure() && github.event_name == 'merge_group'
+        uses: ./.github/actions/fail-fast
+
   # The integration suite (2365 tests) ran 630 to 1127 s a shard on two shards
   # (green main runs 43242449940, 43236991020, 43236147709, 12 Nov 2026):
   # a pull request that changes the database waits on it, so four shards keep
@@ -747,6 +828,9 @@ jobs:
     # Capped on the test step, as the backend shards are: a step timeout
     # fails the run, a job timeout leaves it `cancelled`.
     timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: write
     strategy:
       fail-fast: false
       matrix:
@@ -874,6 +958,10 @@ jobs:
           done
           true
 
+      - name: Stop the merge group at its first red job
+        if: failure() && github.event_name == 'merge_group'
+        uses: ./.github/actions/fail-fast
+
   # The migration chain is checked only when the merge group changes what
   # it runs (migrations_reason, tests/selection.py): otherwise it is
   # main's, which passed.
@@ -883,6 +971,9 @@ jobs:
     if: github.event_name != 'pull_request' && needs.select.outputs.migrations == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: write
     services:
       postgres:
         image: pgvector/pgvector:pg17
@@ -1094,6 +1185,10 @@ jobs:
           python -m alembic -c alembic/alembic.ini upgrade head
           echo "Downgrade round-trip complete"
 
+      - name: Stop the merge group at its first red job
+        if: failure() && github.event_name == 'merge_group'
+        uses: ./.github/actions/fail-fast
+
   # Every nightly run measures the unit and Browser tool files on its own
   # reports and publishes the median of the last five nightly measures: every
   # later run's select job deals its shards by it, so the shards follow the
@@ -1181,7 +1276,7 @@ jobs:
           bad=$(echo "$NEEDS" | jq -r 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | "\(.key)=\(.value.result)"')
           if [ -n "$bad" ]; then
             for job in $bad; do
-              echo "::error::Job ${job%%=*} ended ${job#*=} (a cancelled job hit its timeout-minutes) - its log above has the cause."
+              echo "::error::Job ${job%%=*} ended ${job#*=} (cancelled: it hit its timeout-minutes, or the merge group stopped at its first red job) - its log above has the cause."
             done
             exit 1
           fi

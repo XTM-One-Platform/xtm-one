@@ -1318,6 +1318,10 @@ class ToolDefinition:
             tell from an unknown verb. A resumed turn repeating such a call
             its interrupted attempt had started runs it at once: the in-flight
             repeat guard holds back writes only (:func:`call_is_read_only`).
+        writes: The provider's own statement that the tool changes
+            something, whatever its name reads as (an imported ``POST``
+            operation named ``list_...``): a read-only binding withholds it
+            even when the name classifier would call it a read.
         read_only_call: For a tool that reads for some arguments and writes
             for others, the predicate on a call's arguments that is ``True``
             when that call changes nothing (``sandbox_run_command`` with a
@@ -1360,6 +1364,9 @@ class ToolDefinition:
     #: model sent them, while the round's other calls still run in parallel
     #: (#12182). A tool whose calls are independent leaves it ``False``.
     ordered_calls: bool = False
+    #: The tool's result is people's records (contacts, personnel): a
+    #: ``to_workset`` of it stores each item's reference, never the record.
+    personal_records: bool = False
     workspace_ingest: bool = False
     repository_archive: bool = False
     repository_file: bool = False
@@ -1387,6 +1394,10 @@ class ToolDefinition:
     #: are sent as links (:mod:`app.services.outbound_markers`). Empty: the
     #: body arguments of ``send_guard``.
     outbound_text: tuple[str, ...] = ()
+    #: The send tool delivers the ``[[FILE:id]]`` markers of its outbound
+    #: text itself (as file attachments): the outbound rewrite links every
+    #: other marker and leaves the file markers to the tool.
+    outbound_keeps_file_markers: bool = False
     #: A write tool's read-back: after it succeeds, the loop appends to its
     #: result the object as the system now shows it and the run's
     #: consistency anomalies (:mod:`app.tools.read_back`).
@@ -1396,6 +1407,7 @@ class ToolDefinition:
     replay_safe: bool = False
     cut_safe: bool = False
     read_only: bool = False
+    writes: bool = False
     read_only_call: Callable[[Mapping[str, Any]], bool] | None = field(default=None, compare=False, repr=False)
     #: A tool its name reads as a write that CHECKS the state another write
     #: changes (``sandbox_run_command`` runs a lint or a test suite on the
@@ -2642,8 +2654,10 @@ WORKSET_INGEST_GUIDE = (
 class WorksetIngestor(Protocol):
     """Where a ``to_workset`` call's result goes (``builtin_tools/workset.py``)."""
 
-    async def ingest(self, *, call: ToolCall, result: ToolResult, spec: object) -> ToolResult:
-        """The receipt the model gets instead of *result*'s content."""
+    async def ingest(
+        self, *, call: ToolCall, result: ToolResult, spec: object, personal_records: bool = False
+    ) -> ToolResult:
+        """The receipt the model gets instead of *result*'s content (*personal_records*: store references only)."""
         ...
 
 
@@ -3653,7 +3667,9 @@ class CompositeToolExecutor:
             result = await self._dispatch(inner, executor)
             if result.is_error:
                 return result
-            return await ingestor.ingest(call=inner, result=result, spec=spec)
+            return await ingestor.ingest(
+                call=inner, result=result, spec=spec, personal_records=definition.personal_records
+            )
         sink = self.workspace_sink
         if workspace_reference_keys(call.arguments):
             # ``$workspace:PATH`` arguments become the files' content here, the

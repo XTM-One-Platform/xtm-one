@@ -667,6 +667,34 @@ def drop_contradicted(
     return kept
 
 
+def _provider_words(provider: str) -> set[str]:
+    """The forms a provider key takes in a sentence: ``google_search`` -> ``google_search``, ``google search``."""
+    key = _norm(provider)
+    return {w for w in (key, key.replace("_", " "), key.replace("-", " ")) if len(w) >= 3}
+
+
+def drop_bound_integrations(
+    findings: list[dict[str, Any]], integrations_by_member: dict[str, list[str]]
+) -> list[dict[str, Any]]:
+    """*findings* without a ``missing_integration`` the member's bindings contradict, checked in code.
+
+    *integrations_by_member* maps :func:`member_key` of a member's name (and of its slug) to the provider
+    keys it is bound to, directly (``integration_bindings``) or through a template binding resolved per
+    user at run time (``integration_template_bindings``). A finding naming one of those providers in its
+    subject or its line is dropped: the member has the integration, the model misread it.
+    """
+    kept: list[dict[str, Any]] = []
+    for f in findings:
+        providers = integrations_by_member.get(member_key(f.get("member"))) or []
+        if f.get("kind") == "missing_integration" and providers:
+            text = _norm(f"{f.get('subject') or ''} {f.get('finding') or ''}")
+            words = {w for p in providers for w in _provider_words(p)}
+            if any(re.search(rf"(?<![\w-]){re.escape(w)}(?![\w-])", text) for w in words):
+                continue
+        kept.append(f)
+    return kept
+
+
 __all__ = [
     "DISMISSAL_DAYS",
     "FINDINGS_MAX",
@@ -681,6 +709,7 @@ __all__ = [
     "decided_points",
     "dismissal_print",
     "dismissal_record",
+    "drop_bound_integrations",
     "drop_contradicted",
     "facet_key",
     "facet_of",

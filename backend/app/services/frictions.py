@@ -509,31 +509,25 @@ def note_trigger_config_edit(tool: str, assignment_name: str, keys: Any, fix_app
     )
 
 
-#: The checkout record a ``materialize_repository`` tree carries (``sandbox_workspace/checkout.py``).
-_CHECKOUT_RECORD = ".xtm-checkout.json"
-
-
 def checkout_source_writes(written: Any, workspace_paths: Any) -> dict[str, list[str]]:
     """The *written* paths that fall in a checkout, grouped by checkout directory.
 
-    A checkout is a directory of *workspace_paths* holding a checkout record;
-    the record itself is not a source file, nor is a Python bytecode cache an
-    import wrote (#9518). Pure, for the code_interpreter read-back and its tests.
+    A checkout is a directory of *workspace_paths* holding a checkout record
+    (``sandbox_workspace/checkout.py``, current or legacy name); the record itself
+    is not a source file, nor is a Python bytecode cache an import wrote (#9518).
+    Pure, for the code_interpreter read-back and its tests.
     """
+    from app.services.sandbox_workspace.checkout import is_record_name, record_root
     from app.services.sandbox_workspace.paths import is_bytecode_cache
 
     roots = sorted(
-        {
-            path[: -len(_CHECKOUT_RECORD)].rstrip("/")
-            for path in workspace_paths or ()
-            if isinstance(path, str) and (path == _CHECKOUT_RECORD or path.endswith("/" + _CHECKOUT_RECORD))
-        },
+        {root for path in workspace_paths or () if isinstance(path, str) and (root := record_root(path)) is not None},
         key=len,
         reverse=True,
     )
     found: dict[str, list[str]] = {}
     for path in written or ():
-        if not isinstance(path, str) or path.endswith(_CHECKOUT_RECORD) or is_bytecode_cache(path):
+        if not isinstance(path, str) or is_record_name(path) or is_bytecode_cache(path):
             continue
         for root in roots:
             if root == "" or path.startswith(root + "/"):
