@@ -22,6 +22,7 @@ from app.integrations.providers.openaev._common import (
     _scope_path,
     _select_tenant,
 )
+from app.services.integration_tools import BindingBasis, ToolBindings
 from app.tools.base import CallableToolExecutor, ToolCall
 
 BASE = "https://demo.openaev.io"
@@ -1111,7 +1112,7 @@ async def _builder_kwargs(monkeypatch, provider: str, auth_type: str, value: str
 
     monkeypatch.setitem(integration_tools.PROVIDER_TOOLS, provider, _record)
     await integration_tools.build_integration_tools(
-        _Db(), {provider: [integration_id]}, context={"source": "test"}
+        _Db(), ToolBindings({provider: [integration_id]}, basis=BindingBasis.CALLER_CHECKED, reason="test"), context={"source": "test"}
     )
     [kwargs] = seen
     return kwargs, lookup, integration_id

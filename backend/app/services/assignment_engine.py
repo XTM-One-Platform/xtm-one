@@ -2684,7 +2684,7 @@ async def _activation_check_executor(
         READ_ONLY_CONTEXT_KEY,
         read_only_integration_ids,
     )
-    from app.services.integration_tools import build_integration_tools, flatten_bindings
+    from app.services.integration_tools import BindingBasis, ToolBindings, build_integration_tools, flatten_bindings
     from app.tools.base import CompositeToolExecutor
 
     composite = CompositeToolExecutor()
@@ -2757,7 +2757,17 @@ async def _activation_check_executor(
             SIGNATURE_CONTEXT_KEY: getattr(agent, "integration_signatures", None),
             LIVE_WRITES_CONTEXT_KEY: live_writes_overrides(agent, bindings),
         }
-        composite.add_tools(*await build_integration_tools(db, bindings, context=context))
+        composite.add_tools(
+            *await build_integration_tools(
+                db,
+                ToolBindings(
+                    bindings,
+                    basis=BindingBasis.UNCHECKED,
+                    reason="an assignment's activation check: the agent's bindings as bound",
+                ),
+                context=context,
+            )
+        )
     return composite
 
 
@@ -5818,6 +5828,8 @@ async def execute_assignment_run(
                     from app.services.integration_tools import (
                         ATTACK_SOURCES_CONTEXT_KEY,
                         PLATFORM_NAMES_CONTEXT_KEY,
+                        BindingBasis,
+                        ToolBindings,
                         build_integration_tools,
                     )
 
@@ -5895,7 +5907,11 @@ async def execute_assignment_run(
                     integration_context[ATTACK_SOURCES_CONTEXT_KEY] = _attack_sources
                     integ_defs, integ_exec = await build_integration_tools(
                         db,
-                        effective_bindings,
+                        ToolBindings(
+                            effective_bindings,
+                            basis=BindingBasis.UNCHECKED,
+                            reason="an assignment run: the agent's bindings as bound",
+                        ),
                         context=integration_context,
                     )
                     missing_bindings = integration_context.get(

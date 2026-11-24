@@ -402,13 +402,17 @@ async def check_connectivity(ctx: ProbeContext) -> ProbeResult:
             "arguments, so no request was sent. Use Test on an operation in the tools list."
         )
 
-    from app.services.integration_tools import build_integration_tools
+    from app.services.integration_tools import BindingBasis, ToolBindings, build_integration_tools
 
     label = f"{probe['execution'].get('method')} {probe['execution'].get('path')}"
     try:
         _defs, executor = await build_integration_tools(
             ctx.db,
-            {OPENAPI_PROVIDER: str(integration.id)},
+            ToolBindings(
+                {OPENAPI_PROVIDER: str(integration.id)},
+                basis=BindingBasis.CALLER_CHECKED,
+                reason="the connection probe of the integration being tested",
+            ),
             context={
                 "source": "connectivity_test",
                 "integration": integration.name,

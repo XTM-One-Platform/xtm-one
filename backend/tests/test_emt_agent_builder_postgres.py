@@ -41,7 +41,12 @@ from app.services.builtin_tool_aliases import alias_scoped_functions
 from app.services.builtin_tools import build_agent_builder_tool, build_sub_agent_tools
 from app.services.builtin_tools.handover import owned_target_resolver, resolve_owned_delegation_target
 from app.services.integration_read_only import READ_ONLY_CONTEXT_KEY, read_only_integration_ids
-from app.services.integration_tools import build_integration_tools, shadow_invisible_bindings
+from app.services.integration_tools import (
+    BindingBasis,
+    ToolBindings,
+    build_integration_tools,
+    shadow_invisible_bindings,
+)
 from app.tools.base import ToolCall
 from tests.scratch_database import ALL_TABLES, scratch_database
 
@@ -423,13 +428,13 @@ async def test_a_read_only_binding_refuses_its_write_tool() -> None:
         bindings = {"perk": [str(perk.id)]}
 
         async with sessions() as session:
-            writable, _ = await build_integration_tools(session, bindings, context={"source": "test"})
+            writable, _ = await build_integration_tools(session, ToolBindings(bindings, basis=BindingBasis.CALLER_CHECKED, reason="test"), context={"source": "test"})
         assert "create_perk_webhook" in {d.name for d in writable}
 
         async with sessions() as session:
             definitions, executor = await build_integration_tools(
                 session,
-                bindings,
+                ToolBindings(bindings, basis=BindingBasis.CALLER_CHECKED, reason="test"),
                 context={"source": "test", READ_ONLY_CONTEXT_KEY: frozenset({str(perk.id)})},
             )
         names = {d.name for d in definitions}
@@ -462,7 +467,7 @@ async def test_a_read_only_binding_keeps_its_lookup_tools() -> None:
         async with sessions() as session:
             definitions, executor = await build_integration_tools(
                 session,
-                {"greynoise": [str(greynoise.id)]},
+                ToolBindings({"greynoise": [str(greynoise.id)]}, basis=BindingBasis.CALLER_CHECKED, reason="test"),
                 context={"source": "test", READ_ONLY_CONTEXT_KEY: frozenset({str(greynoise.id)})},
             )
         names = {d.name for d in definitions}

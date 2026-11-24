@@ -24,6 +24,7 @@ from app.models.evaluation import (
     EvaluationResult,
     EvaluationRun,
 )
+from app.models.user import User
 from app.services.evaluation.resume_secret import stored_trigger_config
 from tests.evaluation_database import (
     _admin,
@@ -1914,6 +1915,45 @@ async def _a_resumed_episode(sm) -> tuple[uuid.UUID, uuid.UUID]:
         )
         await s.commit()
         return run_id, episode.id
+
+
+@pytest.mark.parametrize("change", [{"role": "user"}, {"is_active": False}], ids=["demoted", "deactivated"])
+async def test_a_resume_whose_owner_may_no_longer_run_it_judges_nothing(monkeypatch, change):
+    """The answer is judged as the evaluation's owner: an owner no longer an
+    active admin closes the episode with the launch's reason, and no judge runs."""
+    from app.services import evaluation_continuation as ec
+    from app.services import evaluation_engine as ee
+    from app.services.evaluation.launch import OWNER_CANNOT_RUN
+
+    sm, cleanup = await _make_db()
+    try:
+        run_id, episode_id = await _a_resumed_episode(sm)
+        async with sm() as s:
+            owner = User(email="owner@x.io", full_name="Owner", hashed_password="x", role="admin")
+            for column, value in change.items():
+                setattr(owner, column, value)
+            s.add(owner)
+            await s.flush()
+            run = await s.get(EvaluationRun, run_id)
+            (await s.get(Evaluation, run.evaluation_id)).user_id = owner.id
+            await s.commit()
+        judged: list[str] = []
+
+        async def _judge(*_args, **_kwargs):
+            judged.append("judge")
+            return {"score": 90, "sub_scores": {}, "evaluator_reasoning": "judged"}
+
+        monkeypatch.setattr(ee, "score_result", _judge)
+        async with sm() as s:
+            await ec.process_resume_episode(s, episode_id=str(episode_id))
+
+        async with sm() as s:
+            episode = await s.get(EvaluationEpisode, episode_id)
+        assert judged == []
+        assert (episode.status, episode.error) == ("failed", OWNER_CANNOT_RUN)
+        assert "The evaluation's owner may no longer run it" in [step["description"] for step in episode.steps]
+    finally:
+        await cleanup()
 
 
 async def _cancel_the_run(sm, run_id: uuid.UUID) -> None:
