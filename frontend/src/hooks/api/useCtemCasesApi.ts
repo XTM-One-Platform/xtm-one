@@ -55,9 +55,13 @@ export interface CtemCaseSummary {
   issue_count: number;
   open_issue_count: number;
   restricted_count: number;
-  asset_count: number;
-  crown_jewel_count: number;
-  kev_count: number;
+  /** Open members read without their details: then the detail aggregates are null, unknown for this reader, never 0. */
+  members_without_details?: number;
+  aggregates_restricted?: boolean;
+  aggregates_reason?: string | null;
+  asset_count: number | null;
+  crown_jewel_count: number | null;
+  kev_count: number | null;
   max_cvss: number | null;
   max_epss: number | null;
   first_seen_at: string | null;
@@ -163,6 +167,16 @@ export interface CtemCaseVisibleIssue {
   retest_status?: "open" | "not_reproduced" | "resolved" | null;
   last_tested_at?: string | null;
   retest_pending?: boolean;
+  /**
+   * A signal member (source "signal", #1936): what it is, so a row never shows its id. The name is
+   * the subject label, else its ref; absent on an API older than #1936.
+   */
+  trigger_path?: string;
+  trigger_path_label?: string | null;
+  lens?: string;
+  source_provider?: string;
+  source_name?: string;
+  subject_kind?: string;
 }
 
 /** A member issue the caller cannot see in its source product: nothing but the flag. */
@@ -178,6 +192,10 @@ export interface CtemCaseEvent {
   kind: string;
   /** The member it is about, or "Restricted" when the caller cannot see it. */
   issue: string | null;
+  /** The name of the signal the event is about, when the caller sees it (#1936); never the id. */
+  issue_label?: string | null;
+  /** The trigger path label of a signal member the caller sees, untranslated: the fallback when it has no name. */
+  issue_path_label?: string | null;
   from: string | null;
   to: string | null;
   reason: string | null;
@@ -433,6 +451,11 @@ export interface CtemCaseGateRecord {
   wait_seconds: number | null;
   decision_id: string | null;
   work_item_id: string | null;
+  /**
+   * On a waiting record: whether an open decision item of the gate exists for anyone (#1954).
+   * False: the gate reads waiting but no decision was filed, so nobody can answer it. Absent on an older API.
+   */
+  decision_filed?: boolean | null;
   /** False while the answer is on the decision but no `gate answered` event is on the case yet. */
   recorded_on_case: boolean;
   /** The first later event of the case: its kind, and `from` / `to` as the history stores them (a state's new value, a gate key and its outcome). */
@@ -721,12 +744,15 @@ export interface CtemCaseDeleteResult {
 
 /**
  * Delete cases, administrators only (POST /ctem-cases/bulk-delete, #1723): `dry_run` answers
- * what would go and writes nothing; the real delete refreshes every case read.
+ * what would go and writes nothing; the real delete refreshes every case read. A refusal
+ * (a 409 while a recompute holds the lock, a 500) is shown once, by the caller: the dialog
+ * line for the dry run, the "Delete failed" toast for the delete, never the global toast too.
  */
 export function useDeleteCtemCases() {
   const qc = useQueryClient();
   return useMutation<CtemCaseDeleteResult, Error, { case_ids: string[]; dry_run: boolean; reason?: string }>({
     mutationFn: (body) => api.post("/ctem-cases/bulk-delete", body),
+    meta: { suppressGlobalErrorToast: true },
     onSuccess: (result) => {
       if (!result.dry_run) void qc.invalidateQueries({ queryKey: ["ctem-cases"] });
     },
@@ -748,41 +774,5 @@ export function useSplitCtemCase() {
   return useMutation<CtemCaseDetail, Error, { title: string; issue_ids: string[]; reason?: string }>({
     mutationFn: (body) => api.post("/ctem-cases/split", body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ctem-cases"] }),
-  });
-}
-
-/** Whether case opening runs, and the confirmed signals that wait for their case (#1951). */
-export interface CtemCaseOpening {
-  vertical: string;
-  on: boolean;
-  waiting: number;
-}
-
-/** The answer of a change: `draining` when the waiting signals are opening their cases now. */
-export interface CtemCaseOpeningChange extends CtemCaseOpening {
-  changed: boolean;
-  draining: boolean;
-}
-
-/** GET /ctem-cases/opening: read by everyone who reads cases; polled while signals wait. */
-export function useCtemCaseOpening() {
-  return useQuery<CtemCaseOpening>({
-    queryKey: ["ctem-cases", "opening"],
-    queryFn: () => api.get("/ctem-cases/opening"),
-    retry: ctemCasesRetry,
-    // While cases open from the waiting signals the count falls: read it again every few seconds.
-    refetchInterval: (query) => (query.state.data?.on && query.state.data.waiting > 0 ? 3000 : REFETCH_INTERVAL_SLOW),
-  });
-}
-
-/** PUT /ctem-cases/opening, administrators only: pause or resume case opening. */
-export function useSetCtemCaseOpening() {
-  const qc = useQueryClient();
-  return useMutation<CtemCaseOpeningChange, Error, { on: boolean }>({
-    mutationFn: (body) => api.put("/ctem-cases/opening", body),
-    onSuccess: (data) => {
-      qc.setQueryData(["ctem-cases", "opening"], { vertical: data.vertical, on: data.on, waiting: data.waiting });
-      void qc.invalidateQueries({ queryKey: ["ctem-cases", "list"] });
-    },
   });
 }

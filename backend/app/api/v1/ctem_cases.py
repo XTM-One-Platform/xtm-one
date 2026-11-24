@@ -145,7 +145,11 @@ async def visible_case(
         return None
     case, rows, events = found
     rendered = view_of.hydrate(case, rows, events, await view_of.viewer_view(db, user_id, vertical))
-    return None if rendered is None else (found, rendered)
+    if rendered is None:
+        return None
+    # The list's asset-count rule on the single read (#1704): list and case read agree.
+    version_history.with_asset_count(rendered, events)
+    return found, rendered
 
 
 async def require_acts_on(db: AsyncSession, user: User, rows: list[Any], vertical: str) -> None:
@@ -224,6 +228,8 @@ async def list_ctem_cases(
         "vertical": vertical,
         "counts": {s: counts.get(s, 0) for s in CASE_STATES},
         "cases": rows,
+        # The open cases the caller sees none of (a count only): the list is never the org total.
+        "hidden_cases": view_of.hidden_case_count(cases, view),
         "details_unavailable": view.missing,
         # Why each of those products did not answer this viewer's read (#1852): rejected, too_large,
         # timeout, not_connected or unavailable, so the empty state says what failed.
@@ -386,12 +392,21 @@ class CaseBulkDelete(BaseModel):
 
 
 async def _delete(db: AsyncSession, admin: User, cases: list[Any], reason: str | None, dry_run: bool) -> dict[str, Any]:
+    from sqlalchemy.exc import DBAPIError
+
     from app.services import ctem_case_delete as case_delete
 
-    result = await case_delete.delete_cases(db, cases, actor=admin, reason=reason, dry_run=dry_run)
-    # A dry run writes nothing, so the commit is a no-op there.
-    await db.commit()
-    return result
+    try:
+        result = await case_delete.delete_cases(db, cases, actor=admin, reason=reason, dry_run=dry_run)
+        # A dry run writes nothing, so the commit is a no-op there.
+        await db.commit()
+    except DBAPIError as exc:
+        await db.rollback()
+        if case_delete.is_lock_wait(exc):
+            raise HTTPException(status_code=409, detail=case_delete.LOCK_BUSY_DETAIL) from exc
+        raise
+    # The released signals are decided again after the commit, outside this request (#1950).
+    return case_delete.hand_off_released(result)
 
 
 @router.post("/bulk-delete")
@@ -483,7 +498,11 @@ async def recompute_ctem_cases(
         raise HTTPException(status_code=429, detail="One recompute per minute: try again shortly")
     from app.services import ctem_cases_refresh as refresh
 
-    return await refresh.recompute_as(db, organization_id=organization_id, user_id=str(user.id), vertical=vertical)
+    answer = await refresh.recompute_as(db, organization_id=organization_id, user_id=str(user.id), vertical=vertical)
+    if answer.get("busy"):
+        # One recompute at a time per organization (#1953): never a second one queued behind it.
+        raise HTTPException(status_code=409, detail="A recompute of the cases is already running: try again shortly")
+    return answer
 
 
 async def recompute_slot(user_id: str, vertical: str) -> bool:
@@ -547,61 +566,6 @@ async def ctem_cases_overview(
     seen = [case.id for case, rows in cases if view_of.visible_members(rows, view)]
     history = await store.events_of(db, seen)
     return {"vertical": vertical, **overview.build(cases, view, history)}
-
-
-class CaseOpening(BaseModel):
-    """Turn CTEM case opening on or off (#1951)."""
-
-    on: bool
-    vertical: str | None = None
-
-
-@router.get("/opening")
-async def get_ctem_case_opening(
-    vertical: str | None = Query(default=None),
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
-) -> dict[str, Any]:
-    """Whether case opening runs, and how many confirmed signals wait for their case (#1951).
-
-    Answers ``{vertical, on, waiting}`` to anyone who reads CTEM cases.
-    """
-    _require_xtm_one()
-    from app.services import ctem_case_opening as case_opening
-
-    return await case_opening.state(db, normalize_vertical(vertical))
-
-
-@router.put("/opening")
-async def put_ctem_case_opening(
-    body: CaseOpening,
-    db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
-) -> dict[str, Any]:
-    """Pause or resume case opening, administrators only (#1951).
-
-    Off: no path opens a case; confirmed signals wait. On: a background drain opens the
-    cases of every waiting signal at once. One audit row and one
-    ``ctem_case.opening_changed`` event per change; the same value again changes nothing.
-    Answers ``{vertical, on, waiting, changed, draining}``.
-    """
-    _require_xtm_one()
-    from app.services import ctem_case_opening as case_opening
-    from app.services.platform_events import publish
-
-    vertical = normalize_vertical(body.vertical)
-    changed = await case_opening.set_opening(db, vertical=vertical, on=body.on, actor=admin)
-    await db.commit()
-    current = await case_opening.state(db, vertical)
-    if changed:
-        await publish(
-            case_opening.OPENING_CHANGED,
-            case_opening.event_data(vertical, body.on, admin, current["waiting"]),
-        )
-    draining = bool(body.on and current["waiting"])
-    if draining:
-        case_opening.start_drain(vertical)
-    return {**current, "changed": changed, "draining": draining}
 
 
 @router.get("/{case_id}")
