@@ -15,7 +15,8 @@ gate (``ctem_scope_gate``) -> case. Rules here, no model call:
   case (or ``mitigated_watching`` when only the mitigation is proven), a fail
   reopens a resolved or watched case. No manual recompute.
 - :func:`sweep`: the scheduled pass (``services/autonomous.py``): opens the
-  cases of confirmed signals still waiting, escalates every SLA breach once.
+  cases of confirmed signals still waiting, escalates every SLA breach once,
+  and raises every open case that waits on nobody (``ctem_case_stall``, #1736).
 
 Every opening, reopen, resolve and SLA breach raises a platform event
 (:data:`CASE_EVENTS`) once the caller has committed (:func:`publish_pending`),
@@ -54,7 +55,8 @@ CASE_OPENED = "ctem_case.opened"
 CASE_REOPENED = "ctem_case.reopened"
 CASE_RESOLVED = "ctem_case.resolved"
 CASE_SLA_BREACHED = "ctem_case.sla_breached"
-CASE_EVENTS: tuple[str, ...] = (CASE_OPENED, CASE_REOPENED, CASE_RESOLVED, CASE_SLA_BREACHED)
+CASE_STALLED = "ctem_case.stalled"
+CASE_EVENTS: tuple[str, ...] = (CASE_OPENED, CASE_REOPENED, CASE_RESOLVED, CASE_SLA_BREACHED, CASE_STALLED)
 
 #: SLA per severity when the decision record carries none (dev-docs/ctem-scope-gate.md section 4).
 DEFAULT_SLA_HOURS: dict[str, int] = {"P1": 24, "P2": 72, "P3": 720}
@@ -1184,7 +1186,7 @@ async def sweep(
 ) -> dict[str, int]:
     """The scheduled pass: open the cases of waiting confirmed signals, escalate SLA breaches. The caller commits."""
     now = now or datetime.now(UTC)
-    counts = {"opened": 0, "joined": 0, "skipped": 0, "sla_breached": 0, "announced": 0}
+    counts = {"opened": 0, "joined": 0, "skipped": 0, "sla_breached": 0, "announced": 0, "stalled": 0}
     waiting = (
         (
             await db.execute(
@@ -1242,6 +1244,10 @@ async def sweep(
             events.add(CASE_SLA_BREACHED, case_data(case), _event_id(CASE_SLA_BREACHED, case, "sla"))
             events.frame(case, "sla_breached", now)
     counts["announced"] = await announce_unannounced(db, events=events, now=now)
+    # #1736: an open case no gate and no reminder waits on is raised once per stall window.
+    from app.services.ctem_case_stall import sweep_stalled
+
+    counts["stalled"] = await sweep_stalled(db, events=events, now=now, actor=rules.SYSTEM_ACTOR)
     return counts
 
 
