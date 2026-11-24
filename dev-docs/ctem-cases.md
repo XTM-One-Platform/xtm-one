@@ -303,6 +303,16 @@ is unknown never leaves the scope on the inventory; an asset that falls back
 below the fix (or a new one running an old version) brings the case back
 through the usual reopen rule.
 
+**Read at opening, before the threat package.** The same check runs when
+`ctem_case_loop.open_from_signal` creates an upgrade case (no validation plan,
+a known fixed version): the installed versions are read from the inventory
+before any loop starts, so a case every asset already runs the fix of resolves
+at once (`fixed`, reason "not affected at opening", the inventory evidence with
+the asset count) and raises `ctem_case.resolved` instead of `ctem_case.opened`:
+no threat package is drafted and no gate reaches a person. Below the fix,
+unknown, uncomparable or `platform_unverified` keeps the case open and the
+loop starts as before (doubt moves forward, #1606).
+
 **On the case page.** An upgrade case draws a "Running versions" card
 (`frontend/src/pages/xtm-one/ctem/CaseRunningVersions.tsx`) from
 `running_versions`: one sentence with the distinct assets and versions, the

@@ -101,12 +101,15 @@ def wall_time_refusal(
 
     *effective_timeout* is the run's floored timeout in seconds (``None`` when
     the assignment's timeout is disabled). The wall time runs from the first
-    ``started_at``, which every resume keeps.
+    ``started_at``, which every resume keeps, less the time it waited for a
+    person (#1645): a HITL pause is not run time.
     """
+    from app.services.hitl_resume_clock import awaiting_human_seconds
+
     started = _aware(getattr(run, "started_at", None))
     if effective_timeout is None or effective_timeout <= 0 or started is None:
         return None
-    elapsed = ((now or datetime.now(UTC)) - started).total_seconds()
+    elapsed = ((now or datetime.now(UTC)) - started).total_seconds() - (awaiting_human_seconds(run) or 0.0)
     if elapsed <= effective_timeout:
         return None
     return (
