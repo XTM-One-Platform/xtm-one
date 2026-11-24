@@ -78,6 +78,9 @@ def _contract_paths(role: str) -> tuple[str, ...]:
     from app.services.organizations import TRACKED_CONTRACT_FIELDS
 
     if role == "primary":
+        if org_context.identity_only():
+            # Copilot mode (#1690): an agent proposes or writes the identity alone.
+            return tuple(path for path, _label in org_context.contract_fields())
         return (
             tuple(path for path, _label in org_context.CONTRACT_FIELDS)
             + PROPOSABLE_POLICY_PATHS

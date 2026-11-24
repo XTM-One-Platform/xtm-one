@@ -199,6 +199,7 @@ def render_summary(
     from app.services.organization_context import (
         CONTRACT_FIELDS,
         brief_notice_instruction,
+        identity_only,
         missing_fields,
         missing_for_run,
         parse_profile,
@@ -206,6 +207,7 @@ def render_summary(
 
     if row is None:
         return ""
+    identity = identity_only()
     profile = parse_profile(row.profile)
     facts: dict[str, Any] = {}
     if profile.name:
@@ -217,7 +219,8 @@ def render_summary(
     if profile.size:
         facts["size"] = profile.size
     appetite = profile.risk_appetite
-    if appetite.annual_loss_threshold is not None or appetite.approval_threshold is not None:
+    # Copilot mode (#1690): the identity alone, no risk appetite, currency, category index or CTEM field.
+    if not identity and (appetite.annual_loss_threshold is not None or appetite.approval_threshold is not None):
         currency = f" {profile.currency}" if profile.currency else ""
         facts["risk_appetite"] = {
             key: f"{value:g}{currency}"
@@ -227,15 +230,23 @@ def render_summary(
             )
             if value is not None
         }
-    if profile.currency:
+    if profile.currency and not identity:
         facts["currency"] = profile.currency
-    if profile.fx_rates:
+    if profile.fx_rates and not identity:
         # #1383: the reference rates an agent cites to convert a figure into the currency above.
         facts["fx_rates"] = [
             f"1 {r.from_currency} = {r.rate:g} {r.to_currency} ({r.as_of.isoformat()}, {_short(r.source, 60)})"
             for r in profile.fx_rates[:10]
         ]
     counts = category_counts(profile, tracked_count=tracked_count, asset_counts=asset_counts)
+    if identity:
+        run_missing = missing_fields(profile)
+        labels = dict(CONTRACT_FIELDS)
+        missing = [labels[path] for path in run_missing]
+        tail = "Not filled: " + (", ".join(missing) if missing else "none") + ". Never guess a missing field."
+        head = f"{SUMMARY_HEADER}\nThe organization you work for (profile version {row.version})."
+        body = wrap_untrusted(json.dumps(facts, ensure_ascii=False), "organization profile", stable=True)
+        return "\n".join([head, body, tail])[:SUMMARY_MAX_CHARS]
     head = (
         f"{SUMMARY_HEADER}\nThe organization you work for (profile version {row.version}). "
         "The rest is in the categories below: read only the one your work needs with "
@@ -273,6 +284,8 @@ async def render_preloaded_categories(db: AsyncSession, row: Any, names: list[st
     from app.services import organization_context_categories as cats
     from app.services.organization_context import hydrated_profile
 
+    # Copilot mode exposes no category (#1690): a stored selection is kept, never preloaded.
+    names = [name for name in names if name in cats.available_names()]
     if row is None or not names:
         return ""
     profile = await hydrated_profile(db, row)  # the asset and group rows from the records (#1543)

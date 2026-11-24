@@ -99,6 +99,19 @@ def refused_admin_bound_ids(requested, *, before=(), caller_is_admin: bool) -> l
     return sorted({t for t in (requested or ()) if t in ADMIN_BOUND_BUILTIN_TOOL_IDS and t not in already})
 
 
+#: Copilot mode (#1690): the profile is its identity alone, so a list section is never written.
+IDENTITY_ONLY_REFUSAL = (
+    "Refused: on this platform the organization profile is its identity alone (name, sector, regions, size). "
+    "Use update_organization_context for those fields; nothing was changed."
+)
+
+
+def _identity_only() -> bool:
+    from app.services.organization_context import identity_only
+
+    return identity_only()
+
+
 def build_organization_context_write_tools(
     *,
     user_id: str | None,
@@ -212,6 +225,8 @@ def build_organization_context_write_tools(
         from app.services import organization_context as org_context
         from app.services import organization_context_rows as org_rows
 
+        if _identity_only():
+            return IDENTITY_ONLY_REFUSAL
         try:
             async with async_session() as db:
                 person = await _admin(db)
@@ -369,6 +384,9 @@ def build_organization_context_write_tools(
         from app.services import organization_context as org_context
         from app.services import organization_context_import as imp
 
+        if _identity_only():
+            return IDENTITY_ONLY_REFUSAL
+
         if section not in imp.SECTION_SOURCES:
             return f"Not run: section must be one of {', '.join(imp.SECTION_SOURCES)}"
         try:
@@ -475,6 +493,8 @@ def build_organization_context_write_tools(
         from app.services import organization_context_sync as osync
         from app.services.audit import log_audit
 
+        if _identity_only():
+            return IDENTITY_ONLY_REFUSAL
         try:
             async with async_session() as db:
                 person = await _admin(db)
