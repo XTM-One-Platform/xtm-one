@@ -182,8 +182,11 @@ export function nextStepSentence(
   return sentence ? t_i18n(sentence, sentenceParams(decision, t_i18n, formatDay)) : null;
 }
 
+/** One input of the trace: a value on one line, or several lines drawn whole (the primary asset chains). */
+type DecisionInput = { label: string; value: string; lines?: string[] };
+
 /** The inputs the gate read, labelled, in the order the rule reads them; empty values are left out. */
-function decisionInputs(decision: CtemDecisionRecord | null | undefined, t_i18n: Translate): { label: string; value: string }[] {
+function decisionInputs(decision: CtemDecisionRecord | null | undefined, t_i18n: Translate): DecisionInput[] {
   if (!decision) return [];
   const level = (value: unknown) => String(levelLabel(value, t_i18n));
   const list = (value: unknown) => (Array.isArray(value) ? value.filter(Boolean).map(String).join(", ") : "");
@@ -201,16 +204,18 @@ function decisionInputs(decision: CtemDecisionRecord | null | undefined, t_i18n:
   // CTEM-29-UI: a leaked identity resolves through the owned domain it is on, not an asset.
   const domains = list((scope?.sources ?? []).filter((s) => s.from === "owned_domain").map((s) => s.name));
   const matched = list(reconcile.assets) || (decision.reconcile && !domains ? t_i18n("None matched") : "");
-  const rows: { label: string; value: string }[] = [
+  const reached = primaryAssetsRow(decision, t_i18n);
+  const rows: DecisionInput[] = [
     { label: t_i18n("Lenses"), value: lenses },
     { label: t_i18n("Confidence"), value: level(reconcile.confidence) },
     { label: t_i18n("Matched assets"), value: matched },
-    { label: t_i18n("Crown jewels"), value: list(reconcile.crown_jewels_named) },
+    // UX r1 B3 on #1796: the names the record matched, next to the primary assets reached below.
+    { label: t_i18n("Primary assets named"), value: list(reconcile.crown_jewels_named) },
     { label: t_i18n("Software"), value: list(reconcile.tech_stack) },
     { label: t_i18n("Owned domain"), value: domains },
     { label: t_i18n("Criticality"), value: criticalityAgainstThreshold(scope, t_i18n) },
     // #1591 S3: the primary assets reached and their chains, then the one threshold and where it comes from.
-    { label: t_i18n("Primary assets reached"), value: primaryAssetsRow(decision, t_i18n) },
+    { label: t_i18n("Primary assets reached"), value: reached.join("\n"), lines: reached },
     {
       label: t_i18n("Scope threshold"),
       value: thresholdWithSource(scope?.threshold ? level(scope.threshold) : "", thresholdSource(decision), t_i18n),
@@ -265,9 +270,20 @@ export function DecisionReason({
           {inputs.map((input) => (
             <div key={input.label} className="contents">
               <dt className="text-default-secondary">{input.label}</dt>
-              <dd className="min-w-0 truncate" title={input.value}>
-                {input.value}
-              </dd>
+              {input.lines ? (
+                // UX r1 B1 on #1796: every chain on its own line, wrapped, never cut.
+                <dd className="min-w-0 break-words">
+                  <ul className="flex flex-col" data-testid="ctem-decision-input-lines">
+                    {input.lines.map((line, index) => (
+                      <li key={`${index}-${line}`}>{line}</li>
+                    ))}
+                  </ul>
+                </dd>
+              ) : (
+                <dd className="min-w-0 truncate" title={input.value}>
+                  {input.value}
+                </dd>
+              )}
             </div>
           ))}
         </dl>
