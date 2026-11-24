@@ -119,8 +119,7 @@ async def _resolve_groups(db: Any, ids: list[str]) -> Recipient:
     from app.models.group import Group
 
     found = {
-        str(g)
-        for g in (await db.execute(select(Group.id).where(Group.id.in_([uuid.UUID(i) for i in ids])))).scalars()
+        str(g) for g in (await db.execute(select(Group.id).where(Group.id.in_([uuid.UUID(i) for i in ids])))).scalars()
     }
     missing = [i for i in ids if i not in found]
     if missing:

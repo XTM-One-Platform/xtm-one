@@ -5894,7 +5894,7 @@ async def _resolved_recipient(
 
 
 async def _resolved_recipients(
-    db: AsyncSession,
+    db: Any,
     *,
     needs_human: bool,
     recipient: str | None,
