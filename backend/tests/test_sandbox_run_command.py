@@ -507,7 +507,7 @@ async def test_a_declared_check_runs_in_its_cwd_with_the_report_parsed_and_the_o
     (container,) = api.containers.values()
     assert container.image == "python-dev"
     # Started detached through the helper, in the check's directory, with its timeout and the safe environment.
-    assert container.last_opts.background and container.last_opts.envs["CI"] == "1"
+    assert container.last_opts.background and container.last_opts.envs["CI"] == "true"
     assert container.launched[0][:2] == ["python", "-c"]
     assert outcome.run_id and outcome.command == command
     # What the command wrote under the workspace is saved; the report directory is not.

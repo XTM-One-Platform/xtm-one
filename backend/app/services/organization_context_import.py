@@ -57,7 +57,7 @@ from app.services.organization_context_microsoft import os_family
 
 logger = logging.getLogger(__name__)
 
-Section = Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"]
+Section = Literal["assets", "asset_groups", "ai_systems", "software", "crown_jewels", "pirs"]
 Source = Literal[
     "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
 ]
@@ -68,7 +68,7 @@ SECTION_SOURCES: dict[str, tuple[str, ...]] = {
     # #1556: Intune (Entra device groups), Tanium computer groups, Falcon host groups, ServiceNow services.
     "asset_groups": ("openaev", "intune", "tanium", "crowdstrike", "servicenow"),
     "ai_systems": ("openaev",),
-    "tech_stack": ("openaev",),
+    "software": ("openaev",),
     "crown_jewels": ("opencrq",),
     "pirs": ("opencti",),
 }
@@ -80,7 +80,7 @@ SECTION_FIELD: dict[str, str] = {
     "assets": "assets_exposure",
     "asset_groups": "asset_groups",
     "ai_systems": "assets_exposure",
-    "tech_stack": "tech_stack",
+    "software": "tech_stack",
     "crown_jewels": "crown_jewels",
     "pirs": "pir_ids",
 }
@@ -117,7 +117,7 @@ SOURCE_FILTERS: dict[tuple[str, str], tuple[str, ...]] = {
     ("asset_groups", "crowdstrike"): ("search",),
     ("asset_groups", "servicenow"): ("search",),
     ("ai_systems", "openaev"): ("tags", "search"),
-    ("tech_stack", "openaev"): ("type",),
+    ("software", "openaev"): ("type",),
     # link_supporting_assets (#1591, on unless "false") is read by the link import, not by the preview;
     # listed so the add and edit dialogs of the Inventory source show its switch (#1754).
     ("crown_jewels", "opencrq"): ("min_criticality", "tenant_id", "link_supporting_assets"),
@@ -364,7 +364,7 @@ def refused_section_message(source: str, section: str) -> str:
     """
     from app.services.organization_asset_store import ENDPOINT_SOFTWARE_FORMATS
 
-    if section in ("tech_stack", "software") and source in ENDPOINT_SOFTWARE_FORMATS:
+    if section == "software" and source in ENDPOINT_SOFTWARE_FORMATS:
         return (
             f"{source} cannot feed {section}: its software comes with the Assets import of {source} "
             "(each device or repository keeps its software, read in the CTEM Inventory Software tab)"
@@ -661,7 +661,7 @@ SOURCED_FIELDS: dict[str, tuple[str, str, int, tuple[str, ...]]] = {
     # #1501: the AI target assets, read and written like assets (the alias touches no other asset).
     "ai_systems": ("assets_exposure", "name", 5000, ("environment", "owner", "tech_stack", "group")),
     "crown_jewels": ("crown_jewels", "name", 200, ("owner", "business_service", "asset_names")),
-    "tech_stack": ("tech_stack", "product", 500, ("vendor", "cpe", "version")),
+    "software": ("tech_stack", "product", 500, ("vendor", "cpe", "version")),
 }
 #: Sections where a row of another source with the same name is a second record of the same thing:
 #: added beside it, never skipped; the canonical asset store merges the records (#1178, S3).
@@ -1242,7 +1242,7 @@ async def _read_openaev(
         read = await _openaev_search(base_url, headers, "/api/ai_targets/search", openaev_filter_group(filters), text)
         read.rows = [r for r in (openaev_ai_system(a) for a in read.rows) if r]
         return read
-    if section == "tech_stack":
+    if section == "software":
         read = await _openaev_search(base_url, headers, "/api/security_platforms/search", openaev_filter_group(filters))
         seen: set[str] = set()
         rows: list[TechStackEntry] = []
@@ -1677,7 +1677,7 @@ async def _openaev_options(db: AsyncSession, user_id: str, section: str) -> Filt
     if section == "assets":
         result.options.update(taxonomy_options(upper=True))
         result.options["platform"] = [_option(p) for p in OPENAEV_PLATFORMS]
-    if section == "tech_stack":
+    if section == "software":
         # OpenAEV's security platform types are the subcategories of its security_platform category.
         result.options["type"] = [_option(s.upper()) for s in ASSET_TAXONOMY["security_platform"]]
     wanted = set(SOURCE_FILTERS.get((section, "openaev"), ())) & {"tags", "asset_groups"}

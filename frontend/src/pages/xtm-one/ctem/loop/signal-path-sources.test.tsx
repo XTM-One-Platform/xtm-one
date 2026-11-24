@@ -28,7 +28,7 @@ vi.mock("@/hooks/api/useOrganizationContextApi", async (importOriginal) => ({
       },
     },
   }),
-  useSaveOrganizationContext: () => ({ isPending: false, mutate: (body: unknown) => state.saved.push(body) }),
+  usePatchOrganizationContext: () => ({ isPending: false, mutate: (body: unknown) => state.saved.push(body) }),
 }));
 
 const EXPOSURE: CtemSignalPath = {
@@ -105,20 +105,20 @@ describe("the sources side panel (#1445)", () => {
     const gti = screen.getAllByTestId("ctem-path-source")[1];
     fireEvent.click(within(gti).getByTestId("ctem-path-source-use"));
     expect(state.saved).toHaveLength(1);
-    const body = state.saved[0] as { profile: { signal_sources: unknown; attack_surface: { enabled: boolean } }; source: string };
-    expect(body.source).toBe("form");
-    expect(body.profile.signal_sources).toEqual({ excluded: {} });
-    // The rest of the profile is carried whole.
-    expect(body.profile.attack_surface.enabled).toBe(true);
+    const body = state.saved[0] as { fields: Record<string, unknown> };
+    expect(body.fields.signal_sources).toEqual({ excluded: {} });
+    // #1752: the changed field alone travels, never the rest of the profile or the asset rows.
+    expect(Object.keys(body.fields)).toEqual(["signal_sources"]);
   });
 
   it("takes one source off this path without turning its pass off", () => {
     open();
     const shodan = screen.getAllByTestId("ctem-path-source")[0];
     fireEvent.click(within(shodan).getByTestId("ctem-path-source-use"));
-    const body = state.saved[0] as { profile: { signal_sources: { excluded: Record<string, string[]> }; attack_surface: { enabled: boolean } } };
-    expect(body.profile.signal_sources.excluded.new_exposure).toEqual(["gti:pass", "shodan:pass"]);
-    expect(body.profile.attack_surface.enabled).toBe(true);
+    const body = state.saved[0] as { fields: { signal_sources: { excluded: Record<string, string[]> }; attack_surface?: unknown } };
+    expect(body.fields.signal_sources.excluded.new_exposure).toEqual(["gti:pass", "shodan:pass"]);
+    // The pass stays on: its field is not sent at all.
+    expect(body.fields.attack_surface).toBeUndefined();
   });
 
   it("shows a reader the same states without controls that write", () => {

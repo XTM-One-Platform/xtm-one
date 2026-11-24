@@ -45,7 +45,7 @@ def _inputs(script) -> set[str]:
         for key in ("apt_file", "req_file", "runtime_apt_file"):
             if entry.get(key):
                 files.add(f"{sandbox}/{entry[key]}")
-    files.update(f"{sandbox}/{name}" for name in script.TOOLCHAIN_INPUTS)
+    files.update(script.TOOLCHAIN_INPUTS)
     files.update(script.DEV_INPUTS)
     return files
 

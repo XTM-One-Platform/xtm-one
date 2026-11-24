@@ -69,7 +69,8 @@ jobs:
           if [ "$EVENT" = pull_request ] || [ "$EVENT" = merge_group ]; then
             files=$(git diff --name-only HEAD^1 HEAD)
             touches() { grep -qE "$1" <<< "$files"; }
-            touches '^(backend/sandbox/|\.github/workflows/sandbox-images\.yml$)' || sandbox=false
+            # Every toolchain image bakes the stores of .xtm-one/stores.py (#1858): a change to it builds them too.
+            touches '^(backend/sandbox/|\.github/workflows/sandbox-images\.yml$|\.xtm-one/stores\.py$)' || sandbox=false
             [ "$sandbox" = true ] || touches '^(backend/pyproject\.toml|backend/uv\.lock|\.xtm-one/stores\.py)$' || python_dev=false
             [ "$sandbox" = true ] || touches '^frontend/(package\.json|yarn\.lock|\.yarnrc\.yml)$' || nodejs_dev=false
           fi
@@ -625,6 +626,18 @@ jobs:
           docker run --rm --network none --entrypoint sh "$IMAGE" -c "$cmd"
           # The CI gate binaries every toolchain target carries (#11710).
           docker run --rm --network none --entrypoint sh "$IMAGE" -c 'shellcheck --version && betterleaks version && helm version --short'
+
+      # A stores = true check of any repository (#1858): postgres starts offline
+      # with the role and database the check names, the PG* variables set.
+      - name: Assert the stores runner serves a check offline
+        run: |
+          docker run --rm --network none -e PGUSER=app -e PGPASSWORD=admin -e PGDATABASE=postgres \
+            --entrypoint python "$IMAGE" /opt/stores/stores.py exec -- python -c "
+          import os, socket
+          assert os.environ['PGHOST'] == '127.0.0.1' and os.environ['PGUSER'] == 'app', os.environ
+          socket.create_connection(('127.0.0.1', int(os.environ['PGPORT'])), timeout=5).close()
+          print('ok: postgres for', os.environ['DATABASE_URL'].rsplit('@', 1)[-1])
+          "
 
       # cargo builds into CARGO_TARGET_DIR, never a target/ beside the crate:
       # the workspace would save it back and a commit from the checkout carry it.
