@@ -416,10 +416,12 @@ the Software tab and `GET /organization-context/software` replace it, and `GET /
 assets running a product.
 - `get_organization_context(category="software")` answers the organization's Software entities (synced and
   hand-typed, with versions, CPE and asset count) once the store holds one, and the profile rows before.
-  `category="tech_stack"` and `upsert_organization_rows(section="tech_stack")` are deprecated aliases of
-  `software`, accepted for one release; stored category selections were renamed by `s1495swprofile01`,
-  which also turned each profile tech stack row into a hand-typed Software (a hand CPE kept as the override).
-- `upsert_organization_rows(section="software")` (or its alias) writes Software entities, not profile rows:
+  The name `tech_stack` is retired with no alias (Sam, 24 Nov 2026): the category, the rows section, the
+  import and sync section and the outbound pairing are all `software`. `s1495swprofile01` turned each profile
+  tech stack row into a hand-typed Software (a hand CPE kept as the override) and renamed stored category
+  selections; `s1495swsection01` renames the saved syncs' section and any selection still naming it.
+  The profile list the rows are stored under keeps its key `tech_stack` until the profile field is dropped.
+- `upsert_organization_rows(section="software")` writes Software entities, not profile rows:
   a row whose vendor and product a software already carries is reported `unchanged` and never overwritten;
   a new one becomes a hand-typed Software (`create_software`, its typed version stored as a version). Rows are
   never removed by source (`remove_organization_rows` refuses the section). Before the organization has a
@@ -547,9 +549,8 @@ repository): an inventory asset, never a primary asset.
 - Inventory source (Sam, 24 Nov 2026): the `crown_jewels` section is in the `inventory` scope of
   `organization_context_sync.SECTION_SCOPES` (and `organization_context_sources.FIELD_SCOPES`), so
   `GET /organization-context/syncs?scope=inventory` and `/sources?scope=inventory` list the OpenCRQ primary-asset
-  sync next to the asset sources, on the same scheduler (no second one). Nothing is pre-provisioned (Sam,
-  24 Nov 2026): an administrator adds the OpenCRQ primary-asset source from Inventory > Sources like any other
-  source, and the Primary assets card names no source. Migration `n1883nodefsync01` deleted the daily source
-  older builds saved by themselves (create audit `details.default`) when no person had edited it since; the rows
-  it had imported stayed, as an administrator's delete in its default `leave` mode keeps them. Manual rows and
-  manual links still win over every run.
+  sync next to the asset sources, on the same scheduler (no second one). The scheduler tick
+  (`run_due_syncs`) first calls `ensure_default_primary_asset_sync`: when a company-managed OpenCRQ integration
+  is registered, no `crown_jewels`/`opencrq` sync exists and none was ever deleted (audit trail), it saves one,
+  daily at 06:00 UTC, links on, owned by the first active administrator who can read OpenCRQ. A source turned
+  off keeps its row, so it is never recreated. Manual rows and manual links still win over every run.

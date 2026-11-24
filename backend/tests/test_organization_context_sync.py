@@ -235,6 +235,77 @@ async def test_a_second_run_of_the_same_sync_is_skipped(monkeypatch, stubs):
     assert result["skipped"] and stubs["saved"] == []
 
 
+class _Found:
+    def __init__(self, hit: bool):
+        self.hit = hit
+
+    def first(self):
+        return (uuid.uuid4(),) if self.hit else None
+
+
+class _DefaultDb:
+    """Answers the two reads of the default source in order: existing sync, deleted by hand."""
+
+    def __init__(self, *, exists=False, deleted=False):
+        self.answers = [exists, deleted]
+        self.added: list = []
+
+    async def execute(self, _stmt):
+        return _Found(self.answers.pop(0))
+
+    def add(self, row):
+        self.added.append(row)
+
+    async def flush(self):
+        return None
+
+
+@pytest.mark.asyncio
+async def test_opencrq_connected_creates_the_daily_primary_asset_source_once(monkeypatch, stubs):
+    owner = _admin()
+
+    async def default_owner(_db):
+        return owner
+
+    monkeypatch.setattr(osync, "_default_owner", default_owner)
+    db = _DefaultDb()
+    row = await osync.ensure_default_primary_asset_sync(db)
+    assert db.added == [row]
+    assert (row.section, row.source, row.frequency, row.enabled) == ("crown_jewels", "opencrq", "daily", True)
+    assert row.owner_user_id == owner.id and row.next_run_at is not None and row.direction == "inbound"
+    # The supporting-asset links of #1591 are on by default: no filter turns them off.
+    from app.services import organization_context_opencrq_links as opencrq_links
+
+    assert opencrq_links.link_option_on(row.filters)
+    assert osync.in_scope(row.section, "inventory")
+    assert stubs["audit"][0]["action"] == "create" and stubs["audit"][0]["details"]["default"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "state",
+    [{"exists": True}, {"deleted": True}],
+    ids=["already-saved-or-turned-off", "deleted-by-an-administrator"],
+)
+async def test_the_default_primary_asset_source_is_never_forced(monkeypatch, stubs, state):
+    async def never(_db):
+        raise AssertionError("no owner is looked up when nothing is created")
+
+    monkeypatch.setattr(osync, "_default_owner", never)
+    db = _DefaultDb(**state)
+    assert await osync.ensure_default_primary_asset_sync(db) is None and db.added == []
+
+
+@pytest.mark.asyncio
+async def test_opencrq_not_connected_for_any_administrator_creates_nothing(monkeypatch, stubs):
+    async def nobody(_db):
+        return None
+
+    monkeypatch.setattr(osync, "_default_owner", nobody)
+    db = _DefaultDb()
+    assert await osync.ensure_default_primary_asset_sync(db) is None and db.added == []
+
+
 @pytest.mark.asyncio
 async def test_a_scheduled_primary_asset_run_counts_and_keeps_manual_rows(monkeypatch, stubs):
     # A manual primary asset survives a scheduled OpenCRQ run (#1591 rule: manual wins); the run counts what it added.
@@ -271,8 +342,39 @@ async def test_a_scheduled_primary_asset_run_counts_and_keeps_manual_rows(monkey
 
 
 @pytest.mark.asyncio
+async def test_run_due_syncs_creates_the_default_source_before_reading_due_ones(monkeypatch):
+    calls: list[str] = []
+
+    async def ensure(_db):
+        calls.append("ensure")
+        return SimpleNamespace()
+
+    class _Due:
+        def scalars(self):
+            return self
+
+        def all(self):
+            return []
+
+    class _TickDb:
+        async def commit(self):
+            calls.append("commit")
+
+        async def rollback(self):
+            calls.append("rollback")
+
+        async def execute(self, _stmt):
+            calls.append("due")
+            return _Due()
+
+    monkeypatch.setattr(osync, "ensure_default_primary_asset_sync", ensure)
+    assert await osync.run_due_syncs(_TickDb()) == 0
+    assert calls == ["ensure", "commit", "due"]
+
+
+@pytest.mark.asyncio
 async def test_sync_all_runs_every_section_sync_and_sums_them(monkeypatch, stubs):
-    members = [_sync(), _sync(section="tech_stack")]
+    members = [_sync(), _sync(section="software")]
     seen = []
 
     async def section_syncs(_db):
@@ -286,6 +388,6 @@ async def test_sync_all_runs_every_section_sync_and_sums_them(monkeypatch, stubs
     monkeypatch.setattr(osync, "run_sync", run_sync)
     everything = _sync(section="all", source="")
     totals = await osync.run_now(None, everything, trigger="schedule")
-    assert [s for s, _ in seen] == ["assets", "tech_stack"] and seen[0][1] == "schedule, sync all"
+    assert [s for s, _ in seen] == ["assets", "software"] and seen[0][1] == "schedule, sync all"
     assert (totals["runs"], totals["added"], totals["updated"], totals["version"]) == (2, 4, 2, 9)
     assert everything.last_result == totals
