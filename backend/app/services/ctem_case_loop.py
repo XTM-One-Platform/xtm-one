@@ -361,9 +361,41 @@ async def open_from_signal(
                 case.sla_due_at = due
         case.risk_scenario_ids = sorted(set(case.risk_scenario_ids or []) | set(scenarios))
     _link(db, signal, case, vertical=vertical, events=events, now=now, created=created)
+    if created and await _resolved_on_inventory(db, case, events=events, now=now):
+        return case
     if created and events is not None:
         events.add(CASE_OPENED, case_data(case), _event_id(CASE_OPENED, case, "open"))
     return case
+
+
+async def _resolved_on_inventory(
+    db: AsyncSession, case: CtemCase, *, events: PendingEvents | None, now: datetime
+) -> bool:
+    """Resolve a new upgrade case the inventory already shows fixed on every asset, before the loop starts.
+
+    The installed versions are read when the case opens, not after the review: a
+    case whose every asset runs the fixed version or later is not affected, so it
+    closes on that deterministic check (``fixed``, with the inventory as evidence)
+    and raises ``ctem_case.resolved`` instead of ``ctem_case.opened``. No threat
+    package is drafted and no gate reaches a person. An unknown or uncomparable
+    version, a platform without its fix, or a case that needs its validation
+    proof keeps the case open (doubt moves forward, #1606).
+    """
+    if case.remediation_kind != "upgrade" or not case.fixed_version or case.validation_plan:
+        return False
+    from app.services import ctem_case_versions as case_versions
+
+    running = await case_versions.for_case(db, case)
+    if not case_versions.all_on_fixed(running):
+        return False
+    assets = int((running or {}).get("assets_on_fixed") or 0)
+    evidence = f"{rules.FIXED_IN_INVENTORY}: {assets} asset(s) on {case.fixed_version} or later"
+    db.add(_transition(case, "resolved", now, reason="not affected at opening", evidence=evidence[:500]))
+    case.resolution_kind = "fixed"
+    if events is not None:
+        events.add(CASE_RESOLVED, case_data(case), _event_id(CASE_RESOLVED, case, "open"))
+        events.frame(case, "state", now)
+    return True
 
 
 def join_case(
