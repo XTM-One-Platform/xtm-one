@@ -19961,7 +19961,7 @@
   "A risk scenario is required and OpenCRQ could not be read": "A risk scenario is required and OpenCRQ could not be read",
   "Criticality unknown, below the scope threshold {threshold}": "Criticality unknown, below the scope threshold {threshold}",
   "Criticality {criticality} below the scope threshold {threshold}": "Criticality {criticality} below the scope threshold {threshold}",
-  "In scope: criticality {criticality} at or above {threshold}, confidence {confidence}": "In scope: criticality {criticality} at or above {threshold}, confidence {confidence}",
+  "In scope: criticality {criticality} (threshold {threshold}), confidence {confidence}": "In scope: criticality {criticality} (threshold {threshold}), confidence {confidence}",
   "Lenses": "Lenses",
   "Matched assets": "Matched assets",
   "Scope threshold": "Scope threshold",
@@ -21599,5 +21599,10 @@
   "{product} rejected your sign-in token, so open exposures there may be missing.": "{product} rejected your sign-in token, so open exposures there may be missing.",
   "{product} could not answer because the query was too large, so open exposures there may be missing.": "{product} could not answer because the query was too large, so open exposures there may be missing.",
   "{product} did not answer in time, so open exposures there may be missing.": "{product} did not answer in time, so open exposures there may be missing.",
-  "No {product} connection could be used for this read, so open exposures there may be missing.": "No {product} connection could be used for this read, so open exposures there may be missing."
+  "No {product} connection could be used for this read, so open exposures there may be missing.": "No {product} connection could be used for this read, so open exposures there may be missing.",
+  "See the loop trace of {subject}": "See the loop trace of {subject}",
+  "{count, plural, one {# signal} other {# signals}}": "{count, plural, one {# signal} other {# signals}}",
+  "First seen {first}, last seen {last}": "First seen {first}, last seen {last}",
+  "Filter the signals": "Filter the signals",
+  "No signal matches the filter.": "No signal matches the filter."
 }

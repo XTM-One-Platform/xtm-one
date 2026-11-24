@@ -7731,7 +7731,7 @@
   "{name} stopped this command and every process it started. Its output until then is shown above.": "{name} detuvo este comando y todos los procesos que había iniciado. Lo que había mostrado hasta entonces aparece arriba.",
   "This command was stopped with every process it started. Its output until then is shown above.": "Este comando se detuvo junto con todos los procesos que había iniciado. Lo que había mostrado hasta entonces aparece arriba.",
   "The folder is empty.": "La carpeta está vacía.",
-  "Show all {count}": "Mostrar los {count}",
+  "Show all {count}": "Mostrar las {count}",
   "{count} more not shown": "{count} más sin mostrar",
   "Enlarge the capture": "Ampliar la captura",
   "The machine holds this command for your decision - approve or reject it above the message box.": "La máquina retiene este comando hasta su decisión: apruébelo o recháselo encima del cuadro de mensaje.",
@@ -19961,7 +19961,7 @@
   "A risk scenario is required and OpenCRQ could not be read": "Se exige un escenario de riesgo y no se pudo leer OpenCRQ",
   "Criticality unknown, below the scope threshold {threshold}": "Criticidad desconocida, por debajo del umbral de alcance {threshold}",
   "Criticality {criticality} below the scope threshold {threshold}": "Criticidad {criticality} por debajo del umbral de alcance {threshold}",
-  "In scope: criticality {criticality} at or above {threshold}, confidence {confidence}": "En el alcance: criticidad {criticality}, de nivel {threshold} o superior, confianza {confidence}",
+  "In scope: criticality {criticality} (threshold {threshold}), confidence {confidence}": "En el alcance: criticidad {criticality} (umbral {threshold}), confianza {confidence}",
   "Lenses": "Perspectivas",
   "Matched assets": "Recursos vinculados",
   "Scope threshold": "Umbral de alcance",
@@ -21599,5 +21599,10 @@
   "{product} rejected your sign-in token, so open exposures there may be missing.": "{product} rechazó su token de inicio de sesión: pueden faltar exposiciones abiertas.",
   "{product} could not answer because the query was too large, so open exposures there may be missing.": "{product} no pudo responder porque la consulta era demasiado grande: pueden faltar exposiciones abiertas.",
   "{product} did not answer in time, so open exposures there may be missing.": "{product} no respondió a tiempo: pueden faltar exposiciones abiertas.",
-  "No {product} connection could be used for this read, so open exposures there may be missing.": "No se pudo usar ninguna conexión de {product} para esta lectura: pueden faltar exposiciones abiertas."
+  "No {product} connection could be used for this read, so open exposures there may be missing.": "No se pudo usar ninguna conexión de {product} para esta lectura: pueden faltar exposiciones abiertas.",
+  "See the loop trace of {subject}": "Ver la traza del bucle de {subject}",
+  "{count, plural, one {# signal} other {# signals}}": "{count, plural, one {# señal} other {# señales}}",
+  "First seen {first}, last seen {last}": "Visto por primera vez el {first}, por última vez el {last}",
+  "Filter the signals": "Filtrar las señales",
+  "No signal matches the filter.": "Ninguna señal coincide con el filtro."
 }
