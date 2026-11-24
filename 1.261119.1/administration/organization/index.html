@@ -3217,10 +3217,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#crown-jewels-and-business-services" class="md-nav__link">
+  <a href="#primary-assets-and-business-services" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Crown jewels and business services
+        Primary assets and business services
       
     </span>
   </a>
@@ -4059,10 +4059,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#crown-jewels-and-business-services" class="md-nav__link">
+  <a href="#primary-assets-and-business-services" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Crown jewels and business services
+        Primary assets and business services
       
     </span>
   </a>
@@ -4376,7 +4376,7 @@
 </tbody>
 </table>
 <p>A vulnerability on a product named like one of your imported GitHub or GitLab repositories (a CPE product part or a plain name, case, <code>-</code> and <code>_</code> ignored) resolves to that repository in CTEM without a <code>shipped_products</code> row; forks are left out.</p>
-<p><code>crown_jewels</code> and <code>tech_stack</code>, the former names of <code>primary_assets</code> and <code>software</code>, are still read for one release; a saved selection naming them was renamed on upgrade.</p>
+<p><code>primary_assets</code> and <code>tech_stack</code>, the former names of <code>primary_assets</code> and <code>software</code>, are still read for one release; a saved selection naming them was renamed on upgrade.</p>
 <p>The short block stays the same size whatever the length of the lists. An agent asked about a vulnerability reads the software inventory page by page, or narrows it to a vendor or a product with <code>query</code>.</p>
 <p>You choose at three levels, the most specific one winning:</p>
 <ul>
@@ -4384,8 +4384,8 @@
 <li><strong>An agent's Configuration &gt; General</strong>: <code>Organization context</code> is <code>Inherit</code> (follow the platform), <code>Always</code> or <code>Off</code>; <code>Preloaded organization categories</code> is <code>Inherit</code> or a list of its own.</li>
 <li><strong>An assignment's parameters</strong>: the same two fields, <code>Inherit</code> following the agent, then the platform.</li>
 </ul>
-<p>A preloaded category is loaded after the short block, capped, with the call that reads the rest. Each form shows the value in effect and where it comes from. <code>Off</code> on an agent or an assignment also removes the tool; the platform switch removes the short block only. A fleet run keeps its fuller profile block and does not repeat the short block. Every built-in agent inherits the platform default; the vulnerability and remediation agents of the exposure management fleets preload the software inventory, the crown jewels, the assets and exposure, and the prioritization policy.</p>
-<p>Agents cite the fields they used. For a field you have not filled, they name it in their output instead of guessing it: "the crown jewels are not set", for example. The profile is treated as information typed by a person, never as instructions to the agent.</p>
+<p>A preloaded category is loaded after the short block, capped, with the call that reads the rest. Each form shows the value in effect and where it comes from. <code>Off</code> on an agent or an assignment also removes the tool; the platform switch removes the short block only. A fleet run keeps its fuller profile block and does not repeat the short block. Every built-in agent inherits the platform default; the vulnerability and remediation agents of the exposure management fleets preload the software inventory, the primary assets, the assets and exposure, and the prioritization policy.</p>
+<p>Agents cite the fields they used. For a field you have not filled, they name it in their output instead of guessing it: "the primary assets are not set", for example. The profile is treated as information typed by a person, never as instructions to the agent.</p>
 <p>The profile also feeds other features:</p>
 <ul>
 <li>An OpenCTI trigger can take its filters from the profile's intelligence requirements, regions and sector. See <a href="../../usage/xtm-suite/opencti/#react-to-opencti-events">React to OpenCTI events</a>.</li>
@@ -4406,9 +4406,9 @@
 <li><code>update_organization_context</code> saves field changes at once, on your profile or a tracked organization's: the whole new value of each field with its basis. Each value is validated like this form. The change is a new saved version authored by the administrator the agent acts for, the agent's name and the basis kept per field, so <strong>Saved versions</strong> below can roll it back. Each save writes an audit log entry.</li>
 <li><code>propose_organization_context_change</code> records a proposal an administrator accepts or rejects here instead.</li>
 <li><code>list_organization_proposals</code> and <code>decide_organization_proposal</code> read the proposals and accept or reject a pending one, as the review on this page does: <code>accept</code> names the fields or organizations kept, an empty list rejects it (a proposal already applied with <code>update_organization_context</code>, for example). A decided proposal is refused, and each decision writes an audit log entry.</li>
-<li><code>list_organization_versions</code> lists the saved versions of the profile, newest first, with their source, author and crown jewel count; with <code>version</code> it reads that version's whole profile. <code>restore_organization_version</code> saves the next version with some fields (or every field) taken from a past one, with the same checks as the restore on this page, and answers the rows it drops; each restore writes an audit log entry.</li>
+<li><code>list_organization_versions</code> lists the saved versions of the profile, newest first, with their source, author and primary asset count; with <code>version</code> it reads that version's whole profile. <code>restore_organization_version</code> saves the next version with some fields (or every field) taken from a past one, with the same checks as the restore on this page, and answers the rows it drops; each restore writes an audit log entry.</li>
 <li><code>update_organization_context</code> and <code>restore_organization_version</code> take <code>based_on_version</code>, the version the agent read: when another version was saved since, nothing is saved and the agent is told to read the profile again.</li>
-<li><code>reconcile_organization_with_opencrq</code> runs the crown-jewel reconcile with OpenCRQ of this page: <code>apply</code> false (the default) answers the plan, <code>apply</code> true saves a version of the profile. Nothing is written to OpenCRQ: the assets read are its primary assets.</li>
+<li><code>reconcile_organization_with_opencrq</code> runs the primary-asset reconcile with OpenCRQ of this page: <code>apply</code> false (the default) answers the plan, <code>apply</code> true saves a version of the profile. Nothing is written to OpenCRQ: the assets read are its primary assets.</li>
 <li><code>upsert_organization_rows</code> adds or updates rows of one section without resending the list. Assets and asset groups are keyed on the source the rows come from and their <code>external_id</code> there; a row a person wrote (source <code>manual</code>, <code>csv</code> or <code>api</code>) is never updated or removed, and a field the source does not send (owner, environment, group) keeps the value a person set. Software products are added when their name is new and never overwritten. Rows are validated like the CSV import; a bad row is refused with its reason and the others go on. At most 500 rows per call.</li>
 <li><code>remove_organization_rows</code> removes the assets or asset groups a source synced, by <code>external_id</code> (a device retired from the source).</li>
 <li><code>run_organization_import</code> runs the import of <a href="#draft-the-profile-from-your-platforms">Draft the profile from your platforms</a> for one section and one platform, with the same rules.</li>
@@ -4438,7 +4438,7 @@
 </span></code></pre></div>
 <p><strong>In one click.</strong> On <strong>Settings &gt; Organization</strong>, <strong>Draft &gt; From a connected integration</strong> opens a dialog: pick a connected integration, turn on <strong>Keep the assets in sync every day</strong> if you want the scheduled assignment, then <strong>Open the chat</strong>. The chat opens with the agent and its preview instruction ready to send; nothing is saved until you confirm in the chat. The dialog calls <code>POST /api/v1/organization-context/fill-agent</code>, which, with an <code>integration_id</code>, creates that agent for you: bound to the integration read-only and to <strong>Organization Profile Editing</strong>, its persona and its first prompt written for the platform (Intune devices are mapped on the server, any other platform's devices are mapped by the agent with their own id as <code>external_id</code>). With <code>schedule</code> true it also creates the assignment <strong>Keep my assets in sync from <integration></integration></strong> (<code>cron</code> <code>0 6 * * *</code> by default, <code>timezone</code> optional). A second call for the same integration reuses the agent and the assignment. The call creates nothing when AI is off or unlicensed.</p>
 <h2 id="sources">Sources</h2>
-<p>At the top of <strong>Settings &gt; Organization</strong>, the <code>Sources</code> panel says who feeds the profile before the tabs say what it holds. It lists each connected platform (OpenCTI, OpenAEV, OpenCRQ) with its number of syncs, then the rows typed by hand, imported from CSV, written through the API or kept by an agent. Each source shows one chip per section it fills (crown jewels, software inventory, assets, asset groups) with its number of rows; a chip opens that section's tab, filtered on the source where its table has a <code>Source</code> filter. <code>Add a sync</code> opens the import stepper: pick a section and a platform, preview the rows, then turn on <code>Keep in sync</code>. With no source yet, the panel says where to start.</p>
+<p>At the top of <strong>Settings &gt; Organization</strong>, the <code>Sources</code> panel says who feeds the profile before the tabs say what it holds. It lists each connected platform (OpenCTI, OpenAEV, OpenCRQ) with its number of syncs, then the rows typed by hand, imported from CSV, written through the API or kept by an agent. Each source shows one chip per section it fills (primary assets, software inventory, assets, asset groups) with its number of rows; a chip opens that section's tab, filtered on the source where its table has a <code>Source</code> filter. <code>Add a sync</code> opens the import stepper: pick a section and a platform, preview the rows, then turn on <code>Keep in sync</code>. With no source yet, the panel says where to start.</p>
 <h2 id="edit-the-profile">Edit the profile</h2>
 <p>Select <code>Edit</code>, change what you need, then <code>Save</code>. <code>Cancel</code> drops your changes.</p>
 <p>Above the form, a box lists the fields not filled yet: the same list agents report. The fields are:</p>
@@ -4451,15 +4451,15 @@
 </ul>
 <p>The <strong>Priority intelligence requirements (PIRs)</strong> are not on this page: pick them on <strong>CTEM &gt; Inventory &gt; Exposure policy &gt; Prioritization policy</strong>, next to the two PIR score thresholds (<code>PIR score minimum: vulnerabilities</code> and <code>PIR score minimum: threat activity</code>). The list is picked from the PIRs of your connected OpenCTI: it filters the two PIR playbooks and raises the context score of a threat or a vulnerability flagged in one. Select <code>Edit</code> on the card, change the list, then <code>Save</code>.</p>
 <p>A value that is not valid (a region that is not a country code, an amount that is not a number) is refused, and the message names the field.</p>
-<h2 id="crown-jewels-and-business-services">Crown jewels and business services</h2>
-<p>The crown jewels are the assets that matter most to the business. Without them, agents cannot rank findings by business impact. In edit mode, <code>Add a crown jewel</code> adds a row with:</p>
+<h2 id="primary-assets-and-business-services">Primary assets and business services</h2>
+<p>The primary assets are the assets that matter most to the business. Without them, agents cannot rank findings by business impact. In edit mode, <code>Add a primary asset</code> adds a row with:</p>
 <ul>
-<li>the crown jewel's name;</li>
+<li>the primary asset's name;</li>
 <li>the <code>Business service</code> it supports;</li>
 <li>its <code>Owner</code>;</li>
 <li>its <code>Criticality</code>: <code>Low</code>, <code>Medium</code>, <code>High</code> (the default) or <code>Critical</code>.</li>
 </ul>
-<p>A link icon marks a crown jewel linked to an OpenCRQ asset.</p>
+<p>A link icon marks a primary asset linked to an OpenCRQ asset.</p>
 <h2 id="primary-assets-and-opencrq">Primary assets and OpenCRQ</h2>
 <p>OpenCRQ rates the same business assets as primary assets. With OpenCRQ connected as a company-managed integration, the primary assets are an Inventory source: <code>CTEM</code> &gt; <code>Inventory</code> &gt; <code>Sources</code> lists the OpenCRQ primary-asset sync next to the asset sources, with the same controls (enabled, schedule, last run with its counts, next run, <code>Run now</code>, errors). It is on and daily by default, and it links the supporting assets to their primary assets unless turned off.</p>
 <ul>
@@ -4484,14 +4484,14 @@
 <ul>
 <li>OpenCTI: your organization's name, its first sector and your priority intelligence requirements;</li>
 <li>OpenAEV: your security platforms (EDR, SIEM and others), as software inventory entries;</li>
-<li>OpenCRQ: the supporting assets rated high or very high, as crown jewels linked to their asset.</li>
+<li>OpenCRQ: the supporting assets rated high or very high, as primary assets linked to their asset.</li>
 </ul>
 <p>Only empty fields are filled: what a person typed always wins. Each filled field names the platform it came from, and a platform that is not connected or cannot be read is reported instead of failing the draft. Each platform is read with your own access. No model is involved.</p>
 <p>The draft is a proposal, never a save. In <strong>Settings &gt; Organization</strong>, open <strong>Draft &gt; From the platforms</strong>: the form opens on the proposed values, each one named with its platform, and nothing is saved until you select <strong>Save</strong>. A platform that could not be read is named with a link to <strong>Settings &gt; Integrations</strong>. Scripts use <code>POST /api/v1/organization-context/draft</code>.</p>
 <h2 id="import-one-section-from-a-platform">Import one section from a platform</h2>
 <p><strong>Settings &gt; Organization &gt; Import from the platforms</strong> imports one section of the profile from one connected platform, with no model call, in five steps:</p>
 <ol>
-<li><strong>What to import</strong>: assets, asset groups, software inventory, crown jewels or PIRs. AI targets come in with the assets (category <code>AI target</code>).</li>
+<li><strong>What to import</strong>: assets, asset groups, software inventory, primary assets or PIRs. AI targets come in with the assets (category <code>AI target</code>).</li>
 <li><strong>Source</strong>: the platforms that hold this section, shown with their logo. A platform that is not connected or not readable with your account is shown greyed, with the reason.</li>
 <li><strong>Filters</strong>: each value is picked from the platform itself, never typed.</li>
 <li><strong>Mapping</strong>: each profile field with the platform attribute it reads, its fallback, and an example taken from the platform. The fields the platform does not provide are listed: rows keep what you typed for them.</li>
@@ -4532,7 +4532,7 @@
 <td>security platform type</td>
 </tr>
 <tr>
-<td>Crown jewels</td>
+<td>Primary assets</td>
 <td>OpenCRQ</td>
 <td>lowest criticality, tenant</td>
 </tr>
@@ -4545,11 +4545,11 @@
 </table>
 <p>An asset group read from a platform brings its members, kept in sync at every run: an asset leaving the group in the platform leaves it here, a member added by hand stays. A member the inventory does not hold yet is counted as not in the inventory. Intune groups are the Entra ID security groups that hold Intune devices (user groups are left out); the Intune integration then needs the Graph permissions <code>GroupMember.Read.All</code> and <code>Device.Read.All</code> besides <code>DeviceManagementManagedDevices.Read.All</code>. CrowdStrike needs the Host groups: Read scope. ServiceNow groups are the business services, their members the hardware CIs related to them in the CMDB. Import the assets of the same platform first: a group binds its members to the assets that platform brought.</p>
 <p>OpenCTI Systems carry a category, a criticality, an exposure, an environment, an owner and a platform from the OpenCTI release that ships OpenCTI-Platform/opencti#19943; the import reads them. On an older OpenCTI those filters are hidden and every System takes the type you pick on the filters step, which is otherwise used only for Systems with no category. The owner falls back to the System's author; the platform and the markings are kept as <code>platform:</code> and <code>marking:</code> tags.</p>
-<p>Every row of every list section (crown jewels, software inventory, assets, asset groups) records where it comes from: its <strong>source</strong> (<code>manual</code> when typed, <code>csv</code>, <code>api</code>, <code>agent:&lt;agent id&gt;</code>, or the platform: <code>opencti</code>, <code>openaev</code>, <code>opencrq</code>), its id in that platform (<code>external_id</code>) and the sync that wrote it (<code>sync_id</code>). A crown jewel saved with only its OpenCRQ link reads as a row of that platform.</p>
-<p>An import can run again with the same or other filters. A row a previous import from the same platform wrote is updated, never duplicated, and the fields a person added that the platform does not send (a crown jewel's business service and linked assets, an owner the platform leaves empty) are kept; a row typed by hand, uploaded as CSV or written through the API is never overwritten. Rows a previous import wrote that the platform no longer returns with these filters are listed as <strong>no longer in</strong> the platform: they are kept unless you switch on their removal. Each import is recorded with the platform, the filters and the time of the read. Scripts use <code>GET /api/v1/organization-context/import/options</code>, <code>POST /api/v1/organization-context/import/preview</code> and <code>POST /api/v1/organization-context/import/apply</code> (<code>remove_gone</code> removes the rows no longer in the platform).</p>
+<p>Every row of every list section (primary assets, software inventory, assets, asset groups) records where it comes from: its <strong>source</strong> (<code>manual</code> when typed, <code>csv</code>, <code>api</code>, <code>agent:&lt;agent id&gt;</code>, or the platform: <code>opencti</code>, <code>openaev</code>, <code>opencrq</code>), its id in that platform (<code>external_id</code>) and the sync that wrote it (<code>sync_id</code>). A primary asset saved with only its OpenCRQ link reads as a row of that platform.</p>
+<p>An import can run again with the same or other filters. A row a previous import from the same platform wrote is updated, never duplicated, and the fields a person added that the platform does not send (a primary asset's business service and linked assets, an owner the platform leaves empty) are kept; a row typed by hand, uploaded as CSV or written through the API is never overwritten. Rows a previous import wrote that the platform no longer returns with these filters are listed as <strong>no longer in</strong> the platform: they are kept unless you switch on their removal. Each import is recorded with the platform, the filters and the time of the read. Scripts use <code>GET /api/v1/organization-context/import/options</code>, <code>POST /api/v1/organization-context/import/preview</code> and <code>POST /api/v1/organization-context/import/apply</code> (<code>remove_gone</code> removes the rows no longer in the platform).</p>
 <p>An asset is one real thing whatever the number of platforms that report it. When a platform sends an asset named like a row another source wrote (typed by hand, or read from another platform), the import adds it as a second record of that asset instead of skipping it, and the asset list shows it once, with each platform it comes from and, for every field, which source set the value. Records are joined on their serial number, cloud resource id, code repository path, device id, MAC address, fully qualified name or host name; an IP address alone never joins two records. An administrator can merge records the keys did not join, or keep apart two records they joined (<code>POST /api/v1/organization-context/assets/decisions</code>, removed with <code>DELETE</code> on the same path and the decision id); both are kept across syncs and written to the audit log. A row typed by hand needs an external id before it can be merged or kept apart, because without one it is known only by its position in the list.</p>
 <h2 id="keep-a-section-in-sync">Keep a section in sync</h2>
-<p>An import can also be saved as a <strong>sync</strong> that runs again on a schedule, so the profile follows the platform: on the import's preview, switch on <strong>Keep in sync</strong> and pick the schedule, then select <strong>Import and keep in sync</strong> (or <strong>Save the sync</strong> when nothing is new today). Only the sections the import feeds can be synced: assets, asset groups, software inventory, crown jewels and PIRs. The name, sector, regions, size, currency, risk appetite and the other typed fields are never synced.</p>
+<p>An import can also be saved as a <strong>sync</strong> that runs again on a schedule, so the profile follows the platform: on the import's preview, switch on <strong>Keep in sync</strong> and pick the schedule, then select <strong>Import and keep in sync</strong> (or <strong>Save the sync</strong> when nothing is new today). Only the sections the import feeds can be synced: assets, asset groups, software inventory, primary assets and PIRs. The name, sector, regions, size, currency, risk appetite and the other typed fields are never synced.</p>
 <p>A sync keeps the source, the filters, the batch type, the choice for the rows that left the platform (removed by default: a deletion upstream deletes the row in XTM One; switch it off to keep them), its exclusion list (<code>excluded_external_ids</code>: the platform's rows it never imports, a stored copy included) and a schedule:</p>
 <ul>
 <li><strong>Hourly</strong>, at a minute of the hour.</li>
@@ -4582,7 +4582,7 @@
 <p>Each sync has one direction and one master, never a free two-way merge:</p>
 <ul>
 <li><strong>Inbound</strong> (the default, and every sync saved before directions existed): the platform is the master. Its rows are read-only in XTM One and follow the platform.</li>
-<li><strong>Outbound</strong>: the XTM One list (typed, CSV, API or maintained by an agent) is the master. The platform rows this sync created are created, updated and deleted to match it. A platform row the sync did not create is never touched, except the criticality of a crown jewel already linked to it, which follows the profile.</li>
+<li><strong>Outbound</strong>: the XTM One list (typed, CSV, API or maintained by an agent) is the master. The platform rows this sync created are created, updated and deleted to match it. A platform row the sync did not create is never touched, except the criticality of a primary asset already linked to it, which follows the profile.</li>
 </ul>
 <p>An outbound run writes with the token of the administrator who saved the sync, like an inbound run, and every run is written to the audit log. A change of direction starts clean: the new direction does not take over the rows the previous one created.</p>
 <table>
@@ -4595,7 +4595,7 @@
 </thead>
 <tbody>
 <tr>
-<td>Crown jewels</td>
+<td>Primary assets</td>
 <td>OpenCRQ (supporting assets)</td>
 <td>Inbound, Outbound</td>
 </tr>
@@ -4681,7 +4681,7 @@
 </tr>
 <tr>
 <td>OpenCRQ</td>
-<td>Crown jewels</td>
+<td>Primary assets</td>
 <td>Supporting assets at or above the minimum criticality</td>
 <td>Inbound, Outbound</td>
 </tr>
@@ -4742,7 +4742,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 24, 2026 17:27:56 UTC"><span class="timeago" datetime="2026-11-24T17:27:56+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 24, 2026 17:27:56 UTC">2026-11-24</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 24, 2026 21:30:10 UTC"><span class="timeago" datetime="2026-11-24T21:30:10+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 24, 2026 21:30:10 UTC">2026-11-24</span>
   </span>
 
     
