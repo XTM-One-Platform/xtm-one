@@ -517,6 +517,8 @@ interface ImportPlan {
   sample: Record<string, unknown>[];
   truncated: boolean;
   error: string | null;
+  /** The cause of `error` worded for the administrator (the permission to grant), or null when it is not shown. */
+  error_reason?: string | null;
 }
 
 export interface ImportPreviewResponse {

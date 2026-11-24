@@ -345,5 +345,17 @@ describe("OrganizationImportDialog (#11780)", () => {
     await toPreview();
     expect(await screen.findByText("OpenCTI could not be read. Nothing will be saved.")).toBeTruthy();
     expect(screen.queryByText(/upstream 502/)).toBeNull();
+    expect(screen.queryByText(/^Reason:/)).toBeNull();
+  });
+
+  it("says why a source refused the read and which permission it needs (#1556, UX round 1 B1)", async () => {
+    const reason = "CrowdStrike Falcon refused the group read (HTTP 401): it needs an API client with the Host groups: Read and Hosts: Read scopes.";
+    const failed = plan({ new: 0, updated: 0, unchanged: 0, skipped: 0 });
+    post.mockResolvedValue({ ...failed, plan: { ...failed.plan, error: reason, error_reason: reason } });
+    open();
+    await toPreview();
+    const block = await screen.findByTestId("org-import.read-error");
+    expect(block.textContent).toContain("could not be read. Nothing will be saved.");
+    expect(block.textContent).toContain(`Reason: ${reason}`);
   });
 });
