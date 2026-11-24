@@ -659,6 +659,41 @@ _GITHUB_HEAD_FILTER_KEYS: dict[str, str] = {
 }
 
 
+# The Planhat data models the tools use: the OAuth Client's or the Private
+# App's permissions, in every Planhat guide.
+_PLANHAT_GUIDE_PERMISSIONS = [
+    {
+        "scope": "Companies",
+        "description": "Create, read, update companies with health scores, phases, and custom fields",
+    },
+    {
+        "scope": "Endusers",
+        "description": "Create, read, update contacts/end-user profiles",
+    },
+    {
+        "scope": "Conversations",
+        "description": "Read and create notes, email logs, call logs",
+    },
+    {
+        "scope": "Tasks",
+        "description": "Create, read, update tasks with statuses and due dates",
+    },
+    {
+        "scope": "Opportunities",
+        "description": "Create, read, update sales opportunities with stages and revenue",
+    },
+    {
+        "scope": "Licenses",
+        "description": "Read subscription/license data with MRR and renewal info",
+    },
+    {"scope": "Assets", "description": "Read product assets/instances"},
+    {
+        "scope": "Tickets",
+        "description": "Read support tickets with status and severity",
+    },
+]
+
+
 PROVIDER_CATALOG = {
     # --- Direct LLM-query integrations (query/evaluate external LLMs as tools) ---
     "anthropic": {
@@ -5913,48 +5948,45 @@ PROVIDER_CATALOG = {
         "scopes": "inclusive",
         "authorize_url": "https://ws.planhat.com/oauth/authorize",
         "token_url": "https://api.planhat.com/oauth/token",
+        # The catalog's guide covers both modes; the guide button of an
+        # integration (or of the form, once a mode is chosen) shows its mode's.
         "setup_guide": {
             "title": "Planhat Setup",
             "url": "https://help.planhat.com/en/articles/14060025-planhat-oauth-clients-overview",
             "steps": [
-                "OAuth (each person's own Planhat account and permissions): in Planhat, open App Center > New App > OAuth Client and name it '{APP_NAME}'.",
-                "Set the Redirect URL to {base_url}/api/oauth/callback and the permission levels of the data models the agents use (Companies, Endusers, Conversations, Tasks, Opportunities, Licenses, Assets).",
-                "Copy the Client ID (pk_...) and the Client Secret (sk_..., shown once) and paste them below, then save and click Authorize.",
-                "To let every person act with their own Planhat account, share the integration with 'Don't share my connected account' on: each person then authorizes their own account on it.",
-                "API key instead (one technical account for everyone): in Planhat, create a Private App named '{APP_NAME}', copy its API Access Token and paste it as the API key below.",
+                "Choose the authentication mode when you create the integration: OAuth, so the agent acts with each person's own Planhat account and role, or an API key, one technical account for everyone.",
+                "OAuth: in Planhat, open App Center > New App > OAuth Client named '{APP_NAME}', with the Redirect URL {base_url}/api/oauth/callback; paste its Client ID and Client Secret, save, then click Authorize.",
+                "API key: in Planhat, create a Private App named '{APP_NAME}' and paste its API Access Token as the API key.",
             ],
-            "permissions": [
-                {
-                    "scope": "Companies",
-                    "description": "Create, read, update companies with health scores, phases, and custom fields",
-                },
-                {
-                    "scope": "Endusers",
-                    "description": "Create, read, update contacts/end-user profiles",
-                },
-                {
-                    "scope": "Conversations",
-                    "description": "Read and create notes, email logs, call logs",
-                },
-                {
-                    "scope": "Tasks",
-                    "description": "Create, read, update tasks with statuses and due dates",
-                },
-                {
-                    "scope": "Opportunities",
-                    "description": "Create, read, update sales opportunities with stages and revenue",
-                },
-                {
-                    "scope": "Licenses",
-                    "description": "Read subscription/license data with MRR and renewal info",
-                },
-                {"scope": "Assets", "description": "Read product assets/instances"},
-                {
-                    "scope": "Tickets",
-                    "description": "Read support tickets with status and severity",
-                },
-            ],
-            "notes": "Two modes. OAuth: each person authorizes with their own Planhat account (Planhat's login, and so its SSO), and the agent reads and writes with the intersection of the OAuth Client's permissions and that person's Planhat role. The access token lasts about an hour and is refreshed automatically; the refresh token lasts one year, after which the person authorizes again. Creating an OAuth Client needs access to Planhat's App Center (usually a system admin). API key: a Private App's API Access Token, whose permissions are the Private App's whatever the person, and whose actions appear as the Private App's.",
+            "permissions": _PLANHAT_GUIDE_PERMISSIONS,
+            "notes": "OAuth: each person authorizes with their own Planhat account (Planhat's login, and so its SSO), and the agent reads and writes with the intersection of the OAuth Client's permissions and that person's Planhat role. API key: a Private App's API Access Token, whose permissions are the Private App's whatever the person, and whose actions appear as the Private App's.",
+        },
+        "auth_setup_guides": {
+            "oauth": {
+                "title": "Planhat OAuth Setup",
+                "url": "https://help.planhat.com/en/articles/14060025-planhat-oauth-clients-overview",
+                "steps": [
+                    "In Planhat, open App Center > New App > OAuth Client (it needs access to the App Center, usually a system admin's) and name it '{APP_NAME}'.",
+                    "Set the Redirect URL to {base_url}/api/oauth/callback.",
+                    "Set the permission levels of the data models the agents use (the list below). They are a ceiling: each person never gets more than their own Planhat role allows.",
+                    "Save, then copy the Client ID (pk_...) and the Client Secret (sk_..., shown only once).",
+                    "Paste them in the integration's Client ID and Client Secret, save, then click Authorize and approve the permissions on Planhat's consent screen.",
+                    "So that every person acts with their own Planhat account, share the integration (or make it company-managed) with 'Don't share my connected account' on: each person then clicks 'Connect your account' on the integration's page.",
+                ],
+                "permissions": _PLANHAT_GUIDE_PERMISSIONS,
+                "notes": "The sign-in is Planhat's own, so it goes through your company's SSO when Planhat has one. The agent reads and writes with the intersection of the OAuth Client's permissions and the person's Planhat role: a record the person cannot see in Planhat, the agent cannot see either. The access token lasts about an hour and is renewed automatically; the renewal expires after a year, when the person authorizes again. A new Client Secret disconnects everyone: they authorize again.",
+            },
+            "api_key": {
+                "title": "Planhat API Key Setup",
+                "url": "https://www.planhat.com/developers/api/authentication-limits",
+                "steps": [
+                    "In Planhat, open Settings > Private Apps and create a Private App named '{APP_NAME}'.",
+                    "Set the Private App's permissions on the data models the agents use (the list below).",
+                    "Copy its API Access Token (shown once) and paste it as the API key of the integration.",
+                ],
+                "permissions": _PLANHAT_GUIDE_PERMISSIONS,
+                "notes": "The token belongs to the Private App, not to a person: every agent acts with the Private App's permissions whoever asked, and Planhat records the actions as the Private App's. For each person's own account and role, use OAuth instead.",
+            },
         },
     },
     "metabase": {

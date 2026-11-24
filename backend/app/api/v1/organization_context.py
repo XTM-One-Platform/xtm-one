@@ -50,9 +50,15 @@ class OrganizationContextResponse(BaseModel):
     sources: dict[str, Any] | None = None
     #: On a save or a restore: the row fields the request carried and the profile API ignored (#1752):
     #: the asset and group rows are written through their own row API only.
-    ignored_row_fields: list[str] = []
+    ignored_row_fields: list[str] = Field(
+        default_factory=list,
+        description="Row fields the save or restore carried and ignored: rows are written through /assets and /asset-groups.",
+    )
     #: How many asset rows and groups the records hold (#1752); ``None`` before their import.
-    row_counts: dict[str, int] | None = None
+    row_counts: dict[str, int] | None = Field(
+        default=None,
+        description="Asset rows and groups held, keyed assets_exposure and asset_groups; the rows are read from /assets and /asset-groups.",
+    )
 
 
 class OrganizationContextVersionSummary(BaseModel):
@@ -147,6 +153,10 @@ def _response(
     row_counts: dict[str, int] | None = None,
 ) -> OrganizationContextResponse:
     profile = profile if profile is not None else org_context.parse_profile(row.profile if row else {})
+    # #1752 slice 3b: the profile API carries profile fields only. The asset and group rows are read
+    # through their own paged APIs (/assets, /asset-groups); the answer names how many there are.
+    if row_counts is None:
+        row_counts = {name: len(getattr(profile, name)) for name in sorted(_ROW_FIELDS)}
     return OrganizationContextResponse(
         ignored_row_fields=ignored_row_fields or [],
         row_counts=row_counts,
@@ -154,7 +164,7 @@ def _response(
         source=row.source if row else None,
         created_at=row.created_at if row else None,
         author_user_id=str(row.author_user_id) if row and row.author_user_id else None,
-        profile=profile.model_dump(mode="json"),
+        profile=profile.model_dump(mode="json", exclude=set(_ROW_FIELDS)),
         missing_fields=org_context.missing_fields(profile),
         removed_rows=removed_rows or {},
         sources=row.sources if row else None,
@@ -194,8 +204,9 @@ async def get_organization_context(
 ) -> OrganizationContextResponse:
     """The current profile (empty with every field missing before the first save).
 
-    The asset and group lists are read from the asset records (#1543): the row
-    API, agent and import writes land there, never in a profile version.
+    Profile fields only (#1752): no asset or group row, whatever the inventory
+    size; ``row_counts`` names how many there are. The rows are read and written
+    through ``/assets`` and ``/asset-groups``, never through a profile version.
     """
     row, profile = await org_context.current_profile(db)
     counts = await org_context.asset_list_counts(db, row.organization_id if row is not None else None)
@@ -361,9 +372,8 @@ async def _lock_base(db: AsyncSession, current: OrganizationContextVersion | Non
 
 #: The fields a ``PATCH`` never sets: the asset and group rows have their own API since #1543.
 _ROW_FIELDS: frozenset[str] = frozenset({"assets_exposure", "asset_groups"})
-#: The row fields a ``PUT`` or a restore ignores once the records own the rows (#1752); ``ai_systems``
-#: is the derived alias of the ``ai_target`` assets (#1501).
-_IGNORED_ROW_FIELDS: tuple[str, ...] = ("assets_exposure", "asset_groups", "ai_systems")
+#: The row fields a ``PUT`` or a restore ignores once the records own the rows (#1752).
+_IGNORED_ROW_FIELDS: tuple[str, ...] = ("assets_exposure", "asset_groups")
 
 
 def _with_rows(
@@ -478,6 +488,10 @@ async def save_organization_context(
         rows_from = await org_context.hydrated_profile(db, current)
     else:
         stored = await _lock_base(db, current)
+        # #1752 slice 3b: GET answers no asset or group row, so a save that leaves a row list out keeps the stored one.
+        for name in sorted(_ROW_FIELDS):
+            if name not in submitted and stored is not None and stored.get(name):
+                submitted[name] = stored[name]
     try:
         profile = org_context.parse_profile(submitted)
     except ValueError as exc:
@@ -2105,7 +2119,7 @@ class ImportSourcesResponse(BaseModel):
 
 
 class ImportRequest(BaseModel):
-    section: Literal["assets", "asset_groups", "ai_systems", "software", "crown_jewels", "pirs"]
+    section: Literal["assets", "asset_groups", "software", "crown_jewels", "pirs"]
     source: Literal[
         "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
     ]
@@ -2172,7 +2186,7 @@ class ImportFilterOptionsResponse(BaseModel):
 
 @router.get("/import/options", response_model=ImportFilterOptionsResponse)
 async def list_organization_import_options(
-    section: Literal["assets", "asset_groups", "ai_systems", "software", "crown_jewels", "pirs"],
+    section: Literal["assets", "asset_groups", "software", "crown_jewels", "pirs"],
     source: Literal[
         "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
     ],
@@ -2292,7 +2306,7 @@ async def apply_organization_import(
 
 class OrganizationSyncRequest(BaseModel):
     #: A section of the import, or ``all`` for the global schedule that runs every section sync.
-    section: Literal["assets", "asset_groups", "ai_systems", "software", "crown_jewels", "pirs", "all"]
+    section: Literal["assets", "asset_groups", "software", "crown_jewels", "pirs", "all"]
     source: Literal[
         "openaev",
         "opencti",

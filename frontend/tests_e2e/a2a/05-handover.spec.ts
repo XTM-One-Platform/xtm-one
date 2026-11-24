@@ -673,7 +673,7 @@ test.describe.serial('A2A handover from a tasked agent', () => {
     // were ever not offered, the scripted model answers `SCRIPT-ERROR: no
     // offered tool matches 'wait'` and it surfaces in the delegated artifact.
     await model.arm(childMark, [
-      { tool: 'wait', arguments: { duration: '30s', reason: 'hold the delegated work open' } },
+      { tool: 'wait', arguments: { duration: '20s', reason: 'hold the delegated work open' } },
       { text: 'Delegated child answer.' },
     ]);
 

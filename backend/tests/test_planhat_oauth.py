@@ -100,3 +100,52 @@ async def test_planhat_tools_send_the_oauth_access_token_as_bearer():
 
     headers = mock_req.call_args.kwargs["headers"]
     assert headers["Authorization"] == "Bearer oauth-access-token"
+
+
+class _EmptyResult:
+    def scalar_one_or_none(self):
+        return None
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return []
+
+
+class _EmptyDb:
+    async def execute(self, _stmt):
+        return _EmptyResult()
+
+
+@pytest.mark.asyncio
+async def test_the_catalog_serves_one_guide_per_mode_with_placeholders_filled(monkeypatch):
+    from app.api.v1 import integrations as integrations_api
+
+    async def _platform_settings(_db):
+        return SimpleNamespace(disabled_integration_providers=[])
+
+    async def _branding(_db):
+        return SimpleNamespace(name="XTM One")
+
+    monkeypatch.setattr("app.api.v1.platform_settings_helpers.get_platform_settings", _platform_settings)
+    monkeypatch.setattr("app.services.branding.get_branding", _branding)
+    user = SimpleNamespace(id=uuid.uuid4(), role="user")
+
+    items = await integrations_api.list_provider_catalog(
+        category="integration", include_disabled=False, user=user, db=_EmptyDb()
+    )
+
+    planhat = next(item for item in items if item.provider == "planhat")
+    assert planhat.setup_guide is not None
+    guides = planhat.auth_setup_guides or {}
+    assert set(guides) == {"oauth", "api_key"}
+    oauth_steps = " ".join(guides["oauth"].steps)
+    assert "App Center > New App > OAuth Client" in oauth_steps
+    assert "/api/oauth/callback" in oauth_steps
+    assert "{base_url}" not in oauth_steps and "{APP_NAME}" not in oauth_steps
+    assert "'XTM One'" in oauth_steps
+    assert "Private App" in " ".join(guides["api_key"].steps)
+    # A provider without per-mode guides serves none.
+    jira = next(item for item in items if item.provider == "jira")
+    assert jira.auth_setup_guides is None

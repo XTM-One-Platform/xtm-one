@@ -714,6 +714,23 @@ def _resolve_allowed_modules() -> frozenset[str]:
     return allow
 
 
+# The HTTP stack the OpenSandbox code interpreter gets back with
+# CODE_INTERPRETER_OPEN_EGRESS: its container's egress policy, not the import
+# hook, is then the network boundary.
+OPEN_EGRESS_MODULES: frozenset[str] = frozenset({"socket", "http", "urllib", "requests", "httpx", "aiohttp"})
+
+
+def _opensandbox_allowed_modules() -> frozenset[str]:
+    """The modules re-enabled in the OpenSandbox code interpreter: the admin's, plus the HTTP stack with open egress.
+
+    Never used by the local code interpreter, which shares the backend's network.
+    """
+    from app.core.config import settings
+
+    allow = _resolve_allowed_modules()
+    return allow | OPEN_EGRESS_MODULES if settings.code_interpreter_open_egress else allow
+
+
 def _build_sandbox_wrapper(allow: frozenset[str], *, kernel: bool = False) -> str:
     """Assemble the full sandbox wrapper script, applying *allow* to the blocklist.
 
@@ -1221,7 +1238,7 @@ async def _run_opensandbox(
             "mounted": [],
         }
 
-    wrapper_src = _build_sandbox_wrapper(_resolve_allowed_modules())
+    wrapper_src = _build_sandbox_wrapper(_opensandbox_allowed_modules())
     _egress_allow_list = settings.opensandbox_network_allow_list
 
     create_started = time.monotonic()
@@ -1233,6 +1250,7 @@ async def _run_opensandbox(
             usage_type="code_interpreter",
             user_id=user_id,
             egress_allow_list=_egress_allow_list,
+            open_egress=settings.code_interpreter_open_egress,
             resource=settings.sandbox_resources("python"),
             env={
                 "MPLBACKEND": "Agg",

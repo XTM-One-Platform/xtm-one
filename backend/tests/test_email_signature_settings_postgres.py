@@ -36,7 +36,7 @@ from app.models.user import User
 from app.services import email_signatures
 from app.services.email_signature_settings import SIGNATURE_CONTEXT_KEY
 from app.services.email_signatures import EmailSignature
-from app.services.integration_tools import build_integration_tools
+from app.services.integration_tools import BindingBasis, ToolBindings, build_integration_tools
 from app.tools.base import ToolCall
 from tests.scratch_database import ALL_TABLES, scratch_database
 
@@ -153,7 +153,7 @@ async def _send_as(scratch, agent_id, owner: User, sent: list[dict]) -> str:
         agent = await db.get(Agent, agent_id)
         _definitions, executor = await build_integration_tools(
             db,
-            agent.integration_bindings,
+            ToolBindings(agent.integration_bindings, basis=BindingBasis.CALLER_CHECKED, reason="test"),
             context={"user_id": str(owner.id), SIGNATURE_CONTEXT_KEY: agent.integration_signatures},
         )
     sent.clear()
@@ -273,7 +273,7 @@ async def test_a_run_signs_as_the_settings_say(_services):
         async with scratch.sessions() as db:
             agent = await db.get(Agent, world["first"].id)
             _definitions, executor = await build_integration_tools(
-                db, agent.integration_bindings, context={"user_id": str(owner.id)}
+                db, ToolBindings(agent.integration_bindings, basis=BindingBasis.CALLER_CHECKED, reason="test"), context={"user_id": str(owner.id)}
             )
         answer = await executor.execute_tool(ToolCall(id="c2", name="get_microsoft_email_signature", arguments={}))
         assert "no signature integration is available" in answer.content

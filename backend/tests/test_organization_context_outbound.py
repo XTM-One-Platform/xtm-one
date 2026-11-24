@@ -154,7 +154,8 @@ def _ai_profile(*rows: dict) -> oc.OrganizationProfile:
 def test_ai_target_assets_can_sync_outbound_to_openaev_and_endpoints_stay_out():
     """#1501: an AI system is an asset; its outbound sync writes OpenAEV AI targets only."""
     osync.validate(section="assets", source="openaev", direction="outbound", **OK)
-    osync.validate(section="ai_systems", source="openaev", direction="outbound", **OK)
+    with pytest.raises(osync.SyncRefusedError, match="section must be one of"):
+        osync.validate(section="ai_systems", source="openaev", direction="outbound", **OK)  # #1844: no alias
     profile = oc.parse_profile({"name": "Acme", "assets_exposure": [{"name": "laptop-1", "category": "host"}]})
     plan = outbound.plan_ai_target_outbound(profile, [], {})
     assert plan.create == [] and plan.platform == "openaev"

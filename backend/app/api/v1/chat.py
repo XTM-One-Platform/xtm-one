@@ -679,6 +679,13 @@ _CONVERSATION_OVERFLOW_MESSAGE = (
     "Try starting a new conversation or sending a shorter message."
 )
 
+# Every model refused the input itself: the same input fails the same way, so
+# the user is told what was refused (and its limit), never to try again.
+_INPUT_REJECTED_MESSAGE = (
+    "The AI model could not process your input: {reason}. Sending it again will "
+    "not help — change the attachment or the message, then send it."
+)
+
 
 def _friendly_error_message(exc: Exception) -> str:
     """Translate a raw LLM/provider exception into a user-friendly message.
@@ -690,11 +697,15 @@ def _friendly_error_message(exc: Exception) -> str:
     alone cannot reproduce it.
     """
     from app.llm.base import ContextOverflowError, overflow_friendly_message
+    from app.llm.router import input_rejection
 
     if isinstance(exc, ContextOverflowError):
         return overflow_friendly_message(exc)
 
     classification = classify_run_failure(exc)
+
+    if classification.cause is FailureCause.MODEL_REJECTED_REQUEST and (reason := input_rejection(exc)):
+        return _INPUT_REJECTED_MESSAGE.format(reason=reason)
 
     if classification.cause is FailureCause.CONTEXT_OVERFLOW:
         return (

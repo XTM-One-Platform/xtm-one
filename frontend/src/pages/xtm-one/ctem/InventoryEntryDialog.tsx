@@ -12,8 +12,10 @@ import { Textarea } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { MultiSelect } from "@/components/ui/multi-select";
+import { TagInput } from "@/components/ui/tag-input";
 import { SearchableSelect, type SelectOption } from "@/components/ui/searchable-select";
-import { SettingsField, settingsFieldLabelId } from "@/components/ui/settings-form";
+import { SettingsField, settingsFieldHintId, settingsFieldLabelId } from "@/components/ui/settings-form";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -25,12 +27,14 @@ import {
   useUpdateAssetGroups,
   useUpdateAssetRecords,
   isAssetNotFound,
+  type RowPatch,
   type RowsOutcome,
 } from "@/hooks/api/useOrganizationAssetsApi";
 import { useFormatter } from "@/i18n";
-import { ASSET_CRITICALITY_LABELS, parseTypeValue, typeOptions, typeValue } from "@/lib/asset-taxonomy";
+import { ASSET_CATEGORY_LABELS, ASSET_CRITICALITY_LABELS, parseTypeValue, typeOptions, typeValue } from "@/lib/asset-taxonomy";
 import { ENVIRONMENT_LABELS, EXPOSURE_LABELS } from "@/lib/organization-import-filters";
-import { fieldEditable, nameProblem, newAssetGroupRow, newAssetRow, rowPatches, type InventorySection, type RowRef } from "./inventory-entries";
+import type { GroupMembershipRule } from "@/lib/organization-profile";
+import { fieldEditable, membershipRuleOf, nameProblem, newAssetGroupRow, newAssetRow, rowPatches, type InventorySection, type RowRef } from "./inventory-entries";
 
 /** What the dialog does: create a row, change one (by id), or change the selected rows. */
 export type EntryDialogMode = { kind: "add" } | { kind: "update"; id: string } | { kind: "bulk"; rows: RowRef[] };
@@ -45,17 +49,31 @@ type Draft = Record<string, string>;
 type RowValues = RowRef & Record<string, unknown>;
 
 const text = (value: unknown) => (typeof value === "string" ? value : "");
+/** A list field of the draft (kept as JSON in the string draft). */
+const listOf = (value: string | undefined): string[] => {
+  try {
+    const parsed: unknown = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
+};
 
 function draftOf(section: InventorySection, row: RowValues | undefined, bulk: boolean): Draft {
   if (bulk) return { criticality: KEEP, internet_facing: KEEP, environment: KEEP, group: KEEP, owner: "" };
   if (section === "asset_groups") {
     const g = row ?? (newAssetGroupRow({}) as unknown as RowValues);
+    const rule = (g.membership_rule ?? {}) as Partial<GroupMembershipRule>;
     return {
       name: text(g.name),
       description: text(g.description),
+      criticality: text(g.criticality) || "unknown",
       environment: text(g.environment) || NONE,
       internet_facing: text(g.internet_facing) || "unknown",
       owner: text(g.owner),
+      rule_tags: JSON.stringify(rule.tags ?? []),
+      rule_categories: JSON.stringify(rule.categories ?? []),
+      rule_name_contains: rule.name_contains ?? "",
     };
   }
   const a = row ?? (newAssetRow({}) as unknown as RowValues);
@@ -71,15 +89,17 @@ function draftOf(section: InventorySection, row: RowValues | undefined, bulk: bo
 }
 
 /** The patch a draft sets: a kept bulk field and an untouched bulk owner set nothing. */
-function patchOf(section: InventorySection, draft: Draft, bulk: boolean): Record<string, string> {
-  const out: Record<string, string> = {};
+function patchOf(section: InventorySection, draft: Draft, bulk: boolean): RowPatch {
+  const out: RowPatch = {};
   const take = (key: string) => {
     const value = draft[key];
     if (value === undefined || value === KEEP || (bulk && key === "owner" && !value.trim())) return;
     out[key] = value === NONE ? "" : key === "owner" || key === "name" || key === "description" ? value.trim() : value;
   };
-  const keys = section === "asset_groups" ? ["name", "description", "environment", "internet_facing", "owner"] : ["name", "criticality", "environment", "internet_facing", "owner", "group"];
+  const keys = section === "asset_groups" ? ["name", "description", "criticality", "environment", "internet_facing", "owner"] : ["name", "criticality", "environment", "internet_facing", "owner", "group"];
   keys.forEach(take);
+  // The membership rule of a group (#1773): one value, set whole from its three fields.
+  if (section === "asset_groups" && !bulk) out.membership_rule = membershipRuleOf(listOf(draft.rule_tags), listOf(draft.rule_categories), draft.rule_name_contains ?? "");
   if (section === "assets_exposure" && draft.type && !bulk) Object.assign(out, parseTypeValue(draft.type));
   return out;
 }
@@ -239,7 +259,7 @@ function EntryForm({
   const onSubmit = () => {
     const patch = patchOf(section, draft, bulk);
     if (!bulk && !locked("name")) {
-      const problem = nameProblem(isGroup ? groups : [], patch.name ?? "", mode.kind === "update" ? mode.id : undefined);
+      const problem = nameProblem(isGroup ? groups : [], typeof patch.name === "string" ? patch.name : "", mode.kind === "update" ? mode.id : undefined);
       if (problem) {
         setError(problem === "empty" ? t_i18n("Give it a name.") : t_i18n("Another entry entered by hand already has this name."));
         return;
@@ -247,8 +267,9 @@ function EntryForm({
     }
     const onError = (e: Error) => setError(e.message);
     if (mode.kind === "add") {
-      const value = isGroup ? newAssetGroupRow(patch) : newAssetRow(patch);
-      const body = Object.fromEntries(Object.entries(value).filter(([, v]) => typeof v === "string")) as Record<string, string>;
+      const value = isGroup ? newAssetGroupRow(patch as never) : newAssetRow(patch as never);
+      // The strings of the new row, and a group's membership rule (#1773).
+      const body = Object.fromEntries(Object.entries(value).filter(([key, v]) => typeof v === "string" || key === "membership_rule")) as RowPatch;
       (isGroup ? createGroup : createAsset).mutate(body, { onSuccess: () => done(0), onError });
       return;
     }
@@ -260,10 +281,10 @@ function EntryForm({
       return;
     }
     // One write per row; the rows of one bulk form share a patch once the locked fields are left out.
-    const groupsOfPatch = new Map<string, { ids: string[]; patch: Record<string, string> }>();
+    const groupsOfPatch = new Map<string, { ids: string[]; patch: RowPatch }>();
     for (const p of patches) {
       const key = JSON.stringify(p.patch);
-      const entry = groupsOfPatch.get(key) ?? { ids: [], patch: p.patch as Record<string, string> };
+      const entry = groupsOfPatch.get(key) ?? { ids: [], patch: p.patch as RowPatch };
       entry.ids.push(p.id);
       groupsOfPatch.set(key, entry);
     }
@@ -358,11 +379,17 @@ function EntryForm({
             <Textarea id="entry-description" aria-labelledby={settingsFieldLabelId("entry-description")} rows={3} value={draft.description} onChange={(e) => set("description")(e.target.value)} disabled={locked("description")} />
           </SettingsField>
         )}
-        {!isGroup && (
+        {(!isGroup || !bulk) && (
           <SettingsField
             id="entry-criticality"
             label={t_i18n("Criticality")}
-            helper={locked("criticality") ? lockedHelper : t_i18n("How much harm a compromise of this asset would cause.")}
+            helper={
+              locked("criticality")
+                ? lockedHelper
+                : isGroup
+                  ? t_i18n("The criticality a member takes when it has none of its own.")
+                  : t_i18n("How much harm a compromise of this asset would cause.")
+            }
             info={t_i18n("Very high, high, medium or low, as in OpenAEV. CTEM agents read it to rank the cases on this asset. Left unknown, the agents cannot weigh its cases by criticality.")}
           >
             {select("criticality", translated(ASSET_CRITICALITY_LABELS))}
@@ -401,6 +428,59 @@ function EntryForm({
           >
             {select("group", Object.fromEntries(groupNames.map((g) => [g, g])), { none: true, sort: true })}
           </SettingsField>
+        )}
+        {isGroup && !bulk && (
+          <fieldset className="space-y-3 border-t border-elevation-subtle-soft pt-3" data-testid="ctem-entry-membership-rule">
+            <legend className="font-medium">{t_i18n("Membership rule")}</legend>
+            <p className="content-compact text-default-secondary">
+              {t_i18n("Assets also join the group when they match one of these, besides those naming it. Left empty, members are named one by one.")}
+            </p>
+            <SettingsField
+              id="entry-rule_tags"
+              label={t_i18n("Tags")}
+              helper={t_i18n("Assets carrying one of these tags, for example pci.")}
+              info={t_i18n("The tags of the inventory rows. An asset carrying one of them joins the group. Left empty, tags add no member.")}
+            >
+              <TagInput id="entry-rule_tags" value={listOf(draft.rule_tags)} onChange={(tags) => set("rule_tags")(JSON.stringify(tags))} disabled={locked("membership_rule")} />
+            </SettingsField>
+            <SettingsField
+              id="entry-rule_categories"
+              label={t_i18n("Categories")}
+              helper={t_i18n("Assets of one of these categories, for example {category}.", { category: t_i18n(ASSET_CATEGORY_LABELS.web_application) })}
+              info={t_i18n("The asset categories of the inventory. An asset of one of them joins the group. Left empty, categories add no member.")}
+            >
+              {/* UX round 1 B6: the closed category list, by its labels, never the raw keys. */}
+              <MultiSelect
+                id="entry-rule_categories"
+                aria-label={t_i18n("Categories")}
+                aria-describedby={settingsFieldHintId("entry-rule_categories")}
+                options={[
+                  ...Object.entries(ASSET_CATEGORY_LABELS).map(([value, label]) => ({ value, label: t_i18n(label) })),
+                  ...listOf(draft.rule_categories)
+                    .filter((value) => !(value in ASSET_CATEGORY_LABELS))
+                    .map((value) => ({ value, label: value })),
+                ]}
+                selected={listOf(draft.rule_categories)}
+                onToggle={(value) => {
+                  const current = listOf(draft.rule_categories);
+                  set("rule_categories")(JSON.stringify(current.includes(value) ? current.filter((v) => v !== value) : [...current, value]));
+                }}
+                disabled={locked("membership_rule")}
+                placeholder={t_i18n("None")}
+                searchPlaceholder={t_i18n("Search a category")}
+                emptyOptionsLabel={t_i18n("No category")}
+                noMatchLabel={t_i18n("No match")}
+              />
+            </SettingsField>
+            <SettingsField
+              id="entry-rule_name_contains"
+              label={t_i18n("Name contains")}
+              helper={t_i18n("Assets whose name holds this text, case ignored.")}
+              info={t_i18n("Example: payments. An asset whose name holds it joins the group. Left empty, the name adds no member.")}
+            >
+              <Input id="entry-rule_name_contains" aria-labelledby={settingsFieldLabelId("entry-rule_name_contains")} value={draft.rule_name_contains} onChange={(e) => set("rule_name_contains")(e.target.value)} disabled={locked("membership_rule")} maxLength={200} />
+            </SettingsField>
+          </fieldset>
         )}
         {error && (
           <p className="whitespace-pre-line content-compact text-feedback-error-tertiary" role="alert">

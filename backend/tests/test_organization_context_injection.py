@@ -417,7 +417,6 @@ def test_the_tool_is_built_only_when_the_cascade_keeps_it(source: str, needle: s
 COMPLETE = {
     **PROFILE,
     "tech_stack": [{"product": "Windows", "vendor": "Microsoft"}],
-    "ai_systems": [{"name": "Copilot"}],
     "risk_appetite": {"annual_loss_threshold": 2_000_000, "approval_threshold": 50_000},
     "loaded_hourly_rate": 120,
     "ticketing": {"integration": "jira", "project": "SEC"},

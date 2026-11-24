@@ -21,8 +21,8 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 const get = vi.mocked(api.get);
 const ZERO = { needs_attention: 0, in_progress: 0, resolved: 0, accepted_risk: 0 };
 
-function list(detailsUnavailable: string[]) {
-  return { vertical: "cyber", counts: ZERO, cases: [], details_unavailable: detailsUnavailable };
+function list(detailsUnavailable: string[], reasons?: Record<string, string>) {
+  return { vertical: "cyber", counts: ZERO, cases: [], details_unavailable: detailsUnavailable, details_unavailable_reasons: reasons };
 }
 
 afterEach(() => get.mockReset());
@@ -64,6 +64,28 @@ describe("CtemCases list empty state", () => {
     // The French catalog loads with the provider: give the first render more than the default second.
     expect(await screen.findByText(/^OpenCTI n'a pas pu être lu\s:\sdes expositions ouvertes peuvent manquer\.$/, undefined, { timeout: 5000 })).toBeTruthy();
     expect(screen.queryByText("Aucune exposition ouverte sur votre parc")).toBeNull();
+  });
+
+  // #1852: the reason of each failed read is said in plain words, never as a missing right.
+  it.each([
+    ["rejected", "OpenCTI rejected your sign-in token, so open exposures there may be missing."],
+    ["too_large", "OpenCTI could not answer because the query was too large, so open exposures there may be missing."],
+    ["timeout", "OpenCTI did not answer in time, so open exposures there may be missing."],
+    ["not_connected", "No OpenCTI connection could be used for this read, so open exposures there may be missing."],
+    ["unavailable", "OpenCTI could not be read, so open exposures there may be missing."],
+  ])("says why OpenCTI did not answer (%s)", async (reason, sentence) => {
+    get.mockResolvedValue(list(["opencti"], { opencti: reason }));
+    renderWithProviders(<MemoryRouter><CtemCases /></MemoryRouter>);
+    expect(await screen.findByText(sentence)).toBeTruthy();
+  });
+
+  it("names each product with its own reason", async () => {
+    get.mockResolvedValue(list(["opencti", "openaev"], { opencti: "too_large", openaev: "timeout" }));
+    renderWithProviders(<MemoryRouter><CasesBoard /></MemoryRouter>);
+    const empty = await screen.findByTestId("ctem-cases-board-empty");
+    expect(empty.textContent).toBe(
+      "OpenCTI could not answer because the query was too large, so open exposures there may be missing. OpenAEV did not answer in time, so open exposures there may be missing.",
+    );
   });
 
   it("agrees the French verb with two products", async () => {

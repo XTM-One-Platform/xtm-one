@@ -104,8 +104,6 @@ export const PROFILE_FIELD_CARD = {
   crown_jewels: "crown_jewels",
   shipped_products: "shipped_products",
   tech_stack: "tech_stack",
-  // #1501: the AI systems are the assets of category ai_target, edited on the asset list.
-  ai_systems: "assets_exposure",
   assets_exposure: "assets_exposure",
   asset_groups: "asset_groups",
   prioritization_policy: "prioritization_policy",

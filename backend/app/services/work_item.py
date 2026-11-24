@@ -909,6 +909,41 @@ def _stored_recipient_clause(user_uuid: uuid.UUID) -> Any:
     return or_(WorkItem.waits_for_user_id == user_uuid, group_member_clause(user_uuid))
 
 
+def _recipient_tier_applies(user_uuid: uuid.UUID | None, writer: CompanyManagedWriter) -> bool:
+    """Whether the decision recipient's write tier (#1910) may admit this write.
+
+    A person on the REST API only (no acting agent, no flow): the tier lets the
+    person a decision waits for cancel it or answer it, nothing else, and never
+    widens what an agent or a flow may write.
+    """
+    return user_uuid is not None and writer.agent_id is None and writer.flow_id is None
+
+
+async def _audit_recipient_write(
+    db: Any, user_uuid: uuid.UUID | None, item: WorkItem, *, action: str, summary: str
+) -> None:
+    """One audit row for a write admitted by the decision recipient's tier (#1910); never fails the write."""
+    from app.models.user import User
+    from app.services.audit import log_audit
+
+    try:
+        user = (await db.execute(select(User).where(User.id == user_uuid))).scalar_one_or_none()
+        if user is None:
+            return
+        await log_audit(
+            db,
+            user=user,
+            action=action,
+            entity_type="work_item",
+            entity_id=item.id,
+            entity_name=(item.title or "")[:255],
+            summary=summary[:1000],
+            details={"tier": "decision_recipient"},
+        )
+    except Exception as exc:
+        logger.warning("Could not audit the recipient's %s of work item %s: %s", action, item.id, exc)
+
+
 def _writable_clause(
     user_uuid: uuid.UUID | None,
     writable_workspace_ids: Sequence[uuid.UUID] | None = None,
@@ -3733,9 +3768,18 @@ async def complete_work_item(
         item = (
             await db.execute(select(WorkItem).where(WorkItem.id == wid, _writable_clause(uid, writable, writer)))
         ).scalar_one_or_none()
+        by_recipient = False
+        if item is None and status == "cancelled" and _recipient_tier_applies(uid, writer):
+            # The person a decision waits for may cancel it (#1910): that tier only.
+            item = (
+                await db.execute(select(WorkItem).where(WorkItem.id == wid, _stored_recipient_clause(uid)))
+            ).scalar_one_or_none()
+            by_recipient = item is not None
         if item is None or await _gate_write(db, writer, item, "complete") is None:
             return None
         _refuse_scheduled(item, "completed")
+        if by_recipient:
+            await _audit_recipient_write(db, uid, item, action="cancel", summary=f"Cancelled work item {item.title}")
         if writer_run_ids is not None and not take_over:
             _refuse_write_by_former_holder(item, writer_run_ids)
             await _refuse_drop_under_live_holder(db, item, holder_dropping_write(status, item.status), writer_run_ids)
@@ -4920,6 +4964,9 @@ async def answer_work_item(
         if item is None or await _gate_write(db, writer, item, "answer") is None:
             return None
         _refuse_scheduled(item, "answered")
+        by_recipient = (
+            await db.execute(select(WorkItem.id).where(WorkItem.id == wid, _writable_clause(uid, writable, writer)))
+        ).scalar_one_or_none() is None
         if not getattr(item, "needs_human", None) or item.status in WORK_ITEM_TERMINAL_STATUSES:
             raise WorkItemNotWaitingError(_not_waiting_message(item))
         ask = getattr(item, "ask", None) or {}
@@ -4950,6 +4997,11 @@ async def answer_work_item(
         said = f"[{key}] {label}" if key else ""
         if words:
             said = f"{said}: {words}" if said else words
+        if by_recipient and getattr(item, "needs_human", None):
+            # An answer the recipient tier admitted is audited with its person (#1910).
+            await _audit_recipient_write(
+                db, uid, item, action="answer", summary=f"Answered work item {item.title}: {said}"
+            )
         who = f" by {answered_by}" if answered_by else ""
         from app.services.decision_ask import keeps_waiting
 
@@ -5209,6 +5261,88 @@ async def get_work_item(
         **same_red,
         "read_only": not _writable(reader, item, policies),
     }
+
+
+#: Why a person reads an item they cannot change (#1845), by the read tier that admits it.
+READ_ONLY_IN_WORKSPACE = (
+    "Read-only for you: it is filed in the workspace {workspace}, where you can view items but not change them."
+)
+READ_ONLY_OTHER_PERSON = "Read-only for you: it was created in another person's chat."
+READ_ONLY_RECIPIENT = (
+    "Read-only for you: it belongs to another person; as the person it waits for you can answer or cancel it, "
+    "not change it otherwise."
+)
+
+
+async def person_write_access(work_item_id: str, *, user_id: str | None) -> tuple[bool, str | None] | None:
+    """Whether a person may change an item they read (#1845).
+
+    ``None`` when the item is not visible to them (the caller answers not
+    found); ``(True, None)`` when :func:`_writable_clause` admits them;
+    ``(False, reason)`` when they read it through a tier that grants no write
+    (a ``read_only`` workspace, the stored decision recipient, another
+    person's unfiled item), so a refused write is answered 403 with why,
+    never "not found".
+    """
+    from app.core.database import async_session
+    from app.models.workspace import Workspace
+
+    wid = safe_uuid(work_item_id)
+    if wid is None:
+        return None
+    uid = safe_uuid(user_id) if user_id else None
+    async with async_session() as db:
+        readable, writable = await _workspace_tiers(db, user_id)
+        item = (
+            await db.execute(select(WorkItem).where(WorkItem.id == wid, _visible_clause(uid, readable)))
+        ).scalar_one_or_none()
+        if item is None:
+            return None
+        writable_row = (
+            await db.execute(select(WorkItem.id).where(WorkItem.id == wid, _writable_clause(uid, writable)))
+        ).scalar_one_or_none()
+        if writable_row is not None:
+            return True, None
+        if await _is_stored_recipient(db, wid, uid):
+            return False, READ_ONLY_RECIPIENT
+        if item.workspace_id is None:
+            return False, READ_ONLY_OTHER_PERSON
+        if item.workspace_id in set(readable):
+            name = (
+                await db.execute(select(Workspace.name).where(Workspace.id == item.workspace_id))
+            ).scalar_one_or_none()
+            return False, READ_ONLY_IN_WORKSPACE.format(workspace=name or "(unnamed)")
+        return False, READ_ONLY_RECIPIENT
+
+
+async def _is_stored_recipient(db: Any, wid: uuid.UUID, uid: uuid.UUID | None) -> bool:
+    """Whether *uid* is the stored decision recipient of item *wid* (#901, #1910)."""
+    if uid is None:
+        return False
+    row = (
+        await db.execute(select(WorkItem.id).where(WorkItem.id == wid, _stored_recipient_clause(uid)))
+    ).scalar_one_or_none()
+    return row is not None
+
+
+async def person_may_cancel(work_item_id: str, *, user_id: str | None) -> bool:
+    """Whether a person may cancel an item: any write tier, or its decision recipient (#1910)."""
+    from app.core.database import async_session
+
+    wid = safe_uuid(work_item_id)
+    uid = safe_uuid(user_id) if user_id else None
+    if wid is None or uid is None:
+        return False
+    async with async_session() as db:
+        _readable, writable = await _workspace_tiers(db, user_id)
+        row = (
+            await db.execute(
+                select(WorkItem.id).where(
+                    WorkItem.id == wid, or_(_writable_clause(uid, writable), _stored_recipient_clause(uid))
+                )
+            )
+        ).scalar_one_or_none()
+    return row is not None
 
 
 async def list_visible_work_items_by_ids(ids: Sequence[str], *, user_id: str | None) -> list[dict]:

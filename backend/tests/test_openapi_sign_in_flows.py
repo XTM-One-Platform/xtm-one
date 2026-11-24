@@ -22,7 +22,7 @@ from app.core.config import settings
 from app.core.security import decrypt_json, decrypt_value, encrypt_value
 from app.integrations import client_certificate, oauth, oauth_device
 from app.integrations.client_certificate import client_ssl_context
-from app.services.integration_tools import build_integration_tools
+from app.services.integration_tools import BindingBasis, ToolBindings, build_integration_tools
 from app.tools.base import ToolCall
 from tests import test_openapi_integration_api as _harness
 from tests.client_certificates import make_client_certificate
@@ -113,7 +113,7 @@ async def test_password_grant_integration(api, monkeypatch):
         return httpx.Response(200, json={"name": "Alice"})
 
     seen = _mock_api(monkeypatch, handler)
-    _defs, executor = await build_integration_tools(api.db, {"openapi": created["id"]})
+    _defs, executor = await build_integration_tools(api.db, ToolBindings({"openapi": created["id"]}, basis=BindingBasis.CALLER_CHECKED, reason="test"))
     result = await executor.execute_tool(ToolCall(id="1", name="acme_accounts_get_me", arguments={}))
     assert not result.is_error, result.content
     token_request, api_request = seen
@@ -208,7 +208,7 @@ async def test_device_code_sign_in(api, monkeypatch, redis):
     assert decrypt_value(integration.refresh_token_enc) == "tv-refresh"
     assert redis.store == {}
 
-    _defs, executor = await build_integration_tools(api.db, {"openapi": created["id"]})
+    _defs, executor = await build_integration_tools(api.db, ToolBindings({"openapi": created["id"]}, basis=BindingBasis.CALLER_CHECKED, reason="test"))
     result = await executor.execute_tool(ToolCall(id="1", name="acme_accounts_get_me", arguments={}))
     assert not result.is_error, result.content
     assert seen[-1].headers["Authorization"] == "Bearer tv-token"
@@ -469,7 +469,7 @@ async def test_mutual_tls_integration(api, monkeypatch):
 
     monkeypatch.setattr(httpx, "AsyncClient", factory)
     monkeypatch.setattr("app.services.web_fetch._environment_proxies", lambda: False)
-    _defs, executor = await build_integration_tools(api.db, {"openapi": created["id"]})
+    _defs, executor = await build_integration_tools(api.db, ToolBindings({"openapi": created["id"]}, basis=BindingBasis.CALLER_CHECKED, reason="test"))
     result = await executor.execute_tool(ToolCall(id="1", name="acme_accounts_get_me", arguments={}))
     assert not result.is_error, result.content
     extra = decrypt_json(api.db.integrations[created["id"]].extra_config_enc)
@@ -515,7 +515,7 @@ async def test_an_unusable_stored_certificate_refuses_every_call(api, monkeypatc
         json.dumps({**extra, "client_certificate": certificate, "client_private_key": key, "client_private_key_password": "wrong"})
     )
     seen = _mock_api(monkeypatch, lambda r: httpx.Response(200, json={}))
-    _defs, executor = await build_integration_tools(api.db, {"openapi": created["id"]})
+    _defs, executor = await build_integration_tools(api.db, ToolBindings({"openapi": created["id"]}, basis=BindingBasis.CALLER_CHECKED, reason="test"))
     result = await executor.execute_tool(ToolCall(id="1", name="acme_accounts_get_me", arguments={}))
     assert result.is_error
     assert "client certificate cannot be used" in result.content
@@ -534,7 +534,7 @@ async def test_an_expired_certificate_says_so_instead_of_calling(api, monkeypatc
     created = _created(api, "legacy", api_key="k")
     _store_certificate(api, created["id"], *make_client_certificate(days=-3))
     seen = _mock_api(monkeypatch, lambda r: httpx.Response(200, json={}))
-    _defs, executor = await build_integration_tools(api.db, {"openapi": created["id"]})
+    _defs, executor = await build_integration_tools(api.db, ToolBindings({"openapi": created["id"]}, basis=BindingBasis.CALLER_CHECKED, reason="test"))
     result = await executor.execute_tool(ToolCall(id="1", name="acme_accounts_get_me", arguments={}))
     assert result.is_error
     assert "The certificate expired on" in result.content and "Replace the certificate" in result.content
@@ -550,7 +550,7 @@ async def test_a_certificate_near_its_end_is_logged_once_a_day(api, monkeypatch,
     _mock_api(monkeypatch, lambda r: httpx.Response(200, json={}))
     with caplog.at_level("WARNING", logger=provider.__name__):
         for _turn in range(3):
-            await build_integration_tools(api.db, {"openapi": created["id"]})
+            await build_integration_tools(api.db, ToolBindings({"openapi": created["id"]}, basis=BindingBasis.CALLER_CHECKED, reason="test"))
     warnings = [r for r in caplog.records if "expires on" in r.getMessage()]
     assert len(warnings) == 1
     assert created["id"] in warnings[0].getMessage()

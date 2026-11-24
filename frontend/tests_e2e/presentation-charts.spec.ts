@@ -12,7 +12,7 @@ import { slideChartBoxes, slidePictureBoxes, unzip } from './pptx-archive';
 // it, the legend, the tooltip under the pointer, the colours resolved from the
 // deck's tokens, the motion on slide entry - and the stills where motion has
 // no place (a preview, reduced motion). The pure formatting rules behind the
-// strings are pinned in `chart-format.spec.ts`; the export and the layout
+// strings are pinned in `tests_unit/chart-format.test.ts`; the export and the layout
 // check are server-side and have their own tests.
 //
 // The deck is a persisted presentation imported through the API from a bare

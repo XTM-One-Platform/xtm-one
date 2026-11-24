@@ -57,6 +57,8 @@ def test_process_resume_episode_without_final_output_keeps_resumed(monkeypatch):
             _ScalarResult(episode.run_id),
             _ScalarResult(None),
             _ScalarResult(episode),
+            # The evaluation, for its owner check (an ownerless one here).
+            _ScalarResult(None),
         ]
     )
 
@@ -107,6 +109,8 @@ def test_process_resume_episode_with_final_output_updates_run_progress(monkeypat
             _ScalarResult(episode.run_id),
             _ScalarResult(None),
             _ScalarResult(episode),
+            # The evaluation, for its owner check (an ownerless one here).
+            _ScalarResult(None),
             _ScalarResult(None),
             _ScalarResult(episode),
         ]

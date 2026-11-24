@@ -16,7 +16,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 /**
  * Settings > Organization: Assets & exposure, Prioritization policy and
  * Enterprise knowledge (#11543 S3). The same SettingsCard and DataTable
- * pattern as the primary assets, software inventory and AI systems cards: read mode
+ * pattern as the primary assets and software inventory cards: read mode
  * draws text, edit mode draws the controls, the page's Save writes them.
  */
 
