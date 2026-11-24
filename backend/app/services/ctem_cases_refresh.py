@@ -19,6 +19,14 @@ view never closes or shrinks a case, an outage writes nothing):
 Every recompute writes its freshness (when it ran, the products that did not
 answer) so the list shows "Updated 4 min ago" and, after an outage, a muted
 line instead of a toast. Rules only, no model call.
+
+One recompute at a time per organization and vertical, across pods (#1953):
+every path goes through :func:`recompute_as`, which takes
+:func:`recompute_lock`; a recompute that finds it held writes nothing and
+answers ``busy`` (the scheduled pass counts it skipped, the page open retries
+at its next open, the route answers 409). Concurrent recomputes upserted the
+same ``system`` signal rows and waited on each other until the statement
+timeout, so none of them wrote anything.
 """
 
 from __future__ import annotations
@@ -28,6 +36,8 @@ import json
 import logging
 import time
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
 
@@ -50,6 +60,9 @@ _PASS_SLOT = "ctem:cases:recompute-pass:{vertical}"  # noqa: S105 (a Redis key, 
 _VIEWERS = "ctem:cases:viewers:{vertical}"
 _FRESHNESS = "ctem:cases:freshness:{vertical}"
 _VIEWER_LAST = "ctem:cases:viewer-recompute:{user_id}:{vertical}"
+_RECOMPUTE_LOCK = "ctem:cases:recompute-lock:{organization_id}:{vertical}"
+#: The recompute lock frees itself after this long, should its holder die without releasing it.
+RECOMPUTE_LOCK_SECONDS = 10 * 60
 
 #: Background recomputes started on page open, kept referenced until they end.
 _running: set[asyncio.Task[Any]] = set()
@@ -177,15 +190,63 @@ async def freshness(vertical: str) -> dict[str, Any]:
         return empty
 
 
+# ── one recompute at a time ──────────────────────────────────────────────
+
+
+@asynccontextmanager
+async def recompute_lock(organization_id: uuid.UUID | str, vertical: str) -> AsyncIterator[bool]:
+    """Hold the organization's recompute lock for *vertical*; yields False when another holder has it.
+
+    A Redis key with a token and a TTL (:data:`RECOMPUTE_LOCK_SECONDS`), shared by
+    every pod. Without Redis the lock yields True: the recompute runs, as before.
+    """
+    key = _RECOMPUTE_LOCK.format(organization_id=organization_id, vertical=vertical)
+    token = uuid.uuid4().hex
+    client: Any = None
+    try:
+        client = await _redis()
+        taken = bool(await client.set(key, token, nx=True, ex=RECOMPUTE_LOCK_SECONDS))
+    except Exception:
+        logger.debug("CTEM cases refresh: recompute lock not taken, Redis unavailable")
+        client, taken = None, True
+    if client is None or not taken:
+        yield taken
+        return
+    try:
+        yield True
+    finally:
+        try:
+            held = await client.get(key)
+            if (held.decode() if isinstance(held, bytes) else held) == token:
+                await client.delete(key)
+        except Exception:  # the TTL frees it
+            logger.debug("CTEM cases refresh: recompute lock not released, Redis unavailable")
+
+
+def busy_answer(vertical: str) -> dict[str, Any]:
+    """The answer of a recompute that found another one running: nothing written."""
+    return {"vertical": vertical, "applied": False, "busy": True, "missing": [], "reasons": {}}
+
+
 # ── the two paths ────────────────────────────────────────────────────────
 
 
 async def recompute_as(db: AsyncSession, *, organization_id: uuid.UUID, user_id: str, vertical: str) -> dict[str, Any]:
-    """One source recompute as *user_id*, its freshness and the viewer's stamp recorded."""
+    """One source recompute as *user_id*, its freshness and the viewer's stamp recorded.
+
+    Answers :func:`busy_answer` without reading anything when another recompute
+    of the organization's cases runs (#1953).
+    """
     from app.services import ctem_cases_source as source
 
     now = datetime.now(UTC)
-    answer = await source.recompute_for_user(db, organization_id=organization_id, user_id=user_id, vertical=vertical)
+    async with recompute_lock(organization_id, vertical) as held:
+        if not held:
+            logger.info("CTEM cases recompute as %s skipped: another recompute is running", user_id)
+            return busy_answer(vertical)
+        answer = await source.recompute_for_user(
+            db, organization_id=organization_id, user_id=user_id, vertical=vertical
+        )
     await record_freshness(vertical, answer, now)
     try:
         client = await _redis()

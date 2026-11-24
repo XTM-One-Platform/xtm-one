@@ -19,6 +19,7 @@ import { useFormatter } from "@/i18n";
 import { AUDIT_PHASE_LABEL, AUTONOMY_LABEL, AUTONOMY_VARIANT, type AuditRow } from "@/lib/ctem-case-audit";
 import { CASE_FACT_ICON, CaseFactChip, CaseIcon, actorIcon, caseEventIcon } from "./case-icons";
 import { GateDecisionRecord, gateAnswererName, gateRecordOf } from "./GateDecisionRecord";
+import { eventIssueLabel } from "./case-issue-label";
 
 interface CaseEventDialogProps {
   /** The row shown; null closes the dialog. */
@@ -70,7 +71,8 @@ export function CaseEventDialog({
   const change = event && event.kind !== "gate" ? changeText(event) : null;
   const record = event?.kind === "gate" && event.from ? gateRecordOf(gates, event.from) : null;
   const note = event?.kind === "note" ? (event.reason ?? "").trim() || (event.headline ?? "").trim() : "";
-  const issue = event?.issue && event.issue !== "Restricted" ? event.issue : null;
+  // The member in words, never its id (#1936): a signal by its name, an issue by its CVE.
+  const issue = event ? eventIssueLabel(event, t_i18n) : null;
   const evidence = event && event.kind !== "gate" && event.kind !== "ticket" && event.kind !== "retest_requested" ? event.evidence : null;
   // Each thing said once (UX round 1 on #1708, B1): a gate row's record says what happened
   // and a note row's text sits under Note alone, so neither repeats it as a fact.

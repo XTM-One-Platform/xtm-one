@@ -313,7 +313,9 @@ export function GateDecisionRecord({
       </Link>
     </Field>
   ) : null;
-  const nextSentence = (GATE_CHIP_NEXT as Partial<Record<GateChip, string>>)[chip];
+  // A waiting gate with no decision filed has nothing to answer (#1954): the card's own line says what resumes it.
+  const nextSentence =
+    waiting && record.decision_filed === false ? null : (GATE_CHIP_NEXT as Partial<Record<GateChip, string>>)[chip];
   // The second step is named for what happened: nobody decided an expired or a cancelled gate (UX round 3 on #1708, B7).
   const outcomeStep = passed
     ? { label: t_i18n("Passed"), icon: CASE_FACT_ICON.decided }

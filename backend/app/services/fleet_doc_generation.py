@@ -1663,7 +1663,13 @@ async def regenerate_fleet_documentation(
     #11292) keeps its current text when it has one; the caller hands the list to
     :func:`app.services.fleet_doc_on_create.schedule_pending_sections` after its
     commit, which fills each one in the background.
+
+    Refused before the model call: a built-in fleet (422, its documentation is
+    the shipped one the seed writes, #1956).
     """
+    from app.services.fleet_docs import refuse_builtin_rewrite
+
+    refuse_builtin_rewrite(fleet)
     stored_version = int((_stored(fleet) or {}).get("version") or 0)
     if base_version is not None and base_version != stored_version:
         # Refused before the model call: a stale page never spends a generation.

@@ -24,6 +24,12 @@ they protect what a person reads, not the order of the work:
 
 Autonomous mode files no gate item, so nothing here holds it: the case moves
 from phase to phase by itself. Pure checks plus one read of the open items.
+
+One rule holds at the case write (#1954): a gate reaches ``waited`` only
+through its decision. :func:`waited_refusal` refuses a ``waited`` gate event
+while no open ``needs_human`` decision item keyed for that gate and case
+exists (:func:`open_gate_item_keys`), so a case never reads "waiting for a
+person" with nothing in anyone's Waiting for you list.
 """
 
 from __future__ import annotations
@@ -67,6 +73,59 @@ def gate_of(correlation_key: object) -> tuple[str, str] | None:
 def prerequisite_keys(case_id: str) -> list[str]:
     """The keys of the review and validation decisions a mobilize decision of *case_id* waits behind. Pure."""
     return [prefix + case_id for gate in MOBILIZE_PREREQUISITES for prefix in GATE_ITEM_PREFIXES[gate]]
+
+
+#: Keys a gate's decision may also be filed under, past ``GATE_ITEM_PREFIXES`` (the F1 launch key of a validation).
+_WAITED_EXTRA_PREFIXES: dict[str, tuple[str, ...]] = {"ctem.validation.non_readonly": _EXTRA_GATE_PREFIXES}
+
+
+def waited_item_keys(gate: str, case_id: str) -> list[str]:
+    """The decision item keys a ``waited`` event of *gate* on *case_id* may rest on; empty: any ``ctem:`` key of the case. Pure."""
+    prefixes = (*GATE_ITEM_PREFIXES.get(gate, ()), *_WAITED_EXTRA_PREFIXES.get(gate, ()))
+    return [prefix + case_id for prefix in prefixes]
+
+
+def waited_refusal(gate: str, case_id: str, open_keys: set[str]) -> str | None:
+    """Why a ``waited`` gate event of *case_id* is refused, else ``None``. Pure.
+
+    *open_keys* are the correlation keys of the open ``needs_human`` items of the
+    case (:func:`open_gate_item_keys`). A gate with keys of its own needs one of
+    them; a gate without (``ctem.production_change``, ``ctem.accept_risk``,
+    ``ctem.close_without_retest``) needs any open ``ctem:`` decision of the case.
+    """
+    keys = waited_item_keys(gate, case_id)
+    if keys and any(key in open_keys for key in keys):
+        return None
+    if not keys and any(key.startswith("ctem:") and key.endswith(case_id) for key in open_keys):
+        return None
+    named = ", ".join(keys) if keys else f"a ctem: key of the gate ending in {case_id}"
+    return (
+        f"the gate {gate} waits only on its decision, and no open decision item keyed {named} exists for this "
+        "case: file it first with create_work_item (that correlation_key, needs_human true, an ask with its "
+        "question, options and recommendation, addressed to the person or team who decides), then write the "
+        "gate outcome waited"
+    )
+
+
+async def open_gate_item_keys(db: Any, case_id: str) -> set[str]:
+    """The correlation keys of the open ``needs_human`` ``ctem:`` items of *case_id*, whoever reads them.
+
+    Read without the viewer's visibility on purpose: it answers whether a decision
+    exists (a key, never its content), the same read as the stall sweep
+    (``ctem_case_stall._waits_on_someone``).
+    """
+    from sqlalchemy import select
+
+    from app.models.work_item import WORK_ITEM_TERMINAL_STATUSES, WorkItem
+
+    rows = await db.execute(
+        select(WorkItem.correlation_key).where(
+            WorkItem.needs_human.is_(True),
+            WorkItem.status.not_in(WORK_ITEM_TERMINAL_STATUSES),
+            WorkItem.correlation_key.like("ctem:%" + case_id),
+        )
+    )
+    return {str(key) for key in rows.scalars().all() if key}
 
 
 def mobilize_blocked_message(waiting: list[str]) -> str:
@@ -159,7 +218,10 @@ __all__ = [
     "gate_of",
     "mobilize_before_review_warning",
     "mobilize_blocked_message",
+    "open_gate_item_keys",
     "prerequisite_keys",
     "refuse_question_change",
     "refuse_run_pointer",
+    "waited_item_keys",
+    "waited_refusal",
 ]

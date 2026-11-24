@@ -825,6 +825,12 @@ async def checkout_checks(session: WorkspaceSession, root: str, *, images: set[s
         if record is None or entry.size > detect.MAX_FILE_BYTES:
             continue
         files[rel] = await session.store.read_blob(record.id, entry.sha256)
+    # The repository files the manifests' scripts run: a check whose script file calls git runs in a repository.
+    for rel in detect.script_files(listing, files):
+        entry = listing[rel]
+        if record is None or rel in files or entry.size > detect.MAX_FILE_BYTES:
+            continue
+        files[rel] = await session.store.read_blob(record.id, entry.sha256)
     found = detect.detect(listing, files, images=images)
     return CheckoutChecks(found.checks, "detected", found.infra, has_checks_file=text is not None)
 

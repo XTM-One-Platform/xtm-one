@@ -407,6 +407,70 @@ async def test_a_gate_pass_is_written_on_the_case_and_an_unknown_gate_is_refused
     assert refused.startswith("Refused:") and env.db.commits == commits
 
 
+@pytest.mark.parametrize(
+    ("gate", "prefix"),
+    [
+        ("ctem.analyst_review", "ctem:review:"),
+        ("ctem.validation.non_readonly", "ctem:validation:"),
+        ("ctem.validation.non_readonly", "ctem:f2:validate:"),
+        ("ctem.remediation.decision", "ctem:remediation:"),
+        ("ctem.mobilize", "ctem:f1:case-mobilize:"),
+        ("ctem.mobilize", "ctem:f2:mobilize:"),
+        ("ctem.accept_risk", "ctem:accept-risk:"),
+    ],
+)
+async def test_a_waited_gate_needs_its_open_decision_item(
+    env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, gate: str, prefix: str
+) -> None:
+    """#1954: a gate reaches waited only through its decision; without one the write is refused, nothing written."""
+    from app.services import ctem_gate_order
+
+    open_keys: set[str] = set()
+
+    async def _open(_db: object, case_id: str) -> set[str]:
+        assert case_id == str(env.case.id)
+        return set(open_keys)
+
+    monkeypatch.setattr(ctem_gate_order, "open_gate_item_keys", _open)
+    commits = env.db.commits
+    refused = await env.call(
+        "update_ctem_case", case_id=str(env.case.id), state="analyzing", gate={"key": gate, "outcome": "waited"}
+    )
+    assert refused.startswith("Refused:") and "create_work_item" in refused
+    assert env.db.commits == commits and env.db.added == []
+    # Another gate's decision is not this gate's decision.
+    open_keys.add(f"ctem:other:{uuid.uuid4()}")
+    assert (
+        await env.call("update_ctem_case", case_id=str(env.case.id), gate={"key": gate, "outcome": "waited"})
+    ).startswith("Refused:")
+    open_keys.add(prefix + str(env.case.id))
+    body = json.loads(
+        await env.call("update_ctem_case", case_id=str(env.case.id), gate={"key": gate, "outcome": "waited"})
+    )
+    assert "updated" in body
+    written = [r for r in env.db.added if isinstance(r, CtemCaseEvent) and r.kind == "gate"]
+    assert [(g.from_value, g.to_value) for g in written] == [(gate, "waited")]
+
+
+async def test_a_pass_or_an_answer_needs_no_decision_item(
+    env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1954: only waited rests on a decision item; a pass or an answer is written as before."""
+    from app.services import ctem_gate_order
+
+    async def _never(_db: object, _case_id: str) -> set[str]:
+        raise AssertionError("read only for a waited gate")
+
+    monkeypatch.setattr(ctem_gate_order, "open_gate_item_keys", _never)
+    for outcome in ("passed_automatically", "answered"):
+        body = json.loads(
+            await env.call(
+                "update_ctem_case", case_id=str(env.case.id), gate={"key": "ctem.analyst_review", "outcome": outcome}
+            )
+        )
+        assert "updated" in body
+
+
 _REMEDIATION_OPTIONS = [
     {"key": "A", "label": "Disable HTTP/2", "cost": 6000, "expected_loss_before": 500, "expected_loss_after": 50},
     {"key": "B", "label": "Upgrade", "cost": 45000, "expected_loss_before": 500, "expected_loss_after": 10},

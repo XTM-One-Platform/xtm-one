@@ -106,7 +106,12 @@ export function CaseAnalystReview({
               onAnswered={() => items.refetch()}
             />
         )}
-        {waiting && !item && !items.isLoading && (
+        {waiting && !item && !items.isLoading && record?.decision_filed === false && (
+          <p className="text-default-secondary" data-testid="ctem-case-analyst-review-not-filed">
+            {t_i18n("No review decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case, or an analyst sets the review label on the Grouping in OpenCTI.")}
+          </p>
+        )}
+        {waiting && !item && !items.isLoading && record?.decision_filed !== false && (
           <p className="text-default-secondary" data-testid="ctem-case-analyst-review-elsewhere">
             {t_i18n("The review waits for an analyst: the decision is in their Waiting for you list, or they set the review label on the Grouping in OpenCTI.")}
           </p>

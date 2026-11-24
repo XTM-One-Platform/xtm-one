@@ -107,7 +107,12 @@ export function CaseRemediationDecision({
               onAnswered={() => items.refetch()}
             />
         )}
-        {waiting && !item && !items.isLoading && (
+        {waiting && !item && !items.isLoading && record?.decision_filed === false && (
+          <p className="text-default-secondary" data-testid="ctem-case-remediation-not-filed">
+            {t_i18n("No remediation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.")}
+          </p>
+        )}
+        {waiting && !item && !items.isLoading && record?.decision_filed !== false && (
           <p className="text-default-secondary" data-testid="ctem-case-remediation-elsewhere">
             {t_i18n("A person decides it: the decision is in their Waiting for you list.")}
           </p>
