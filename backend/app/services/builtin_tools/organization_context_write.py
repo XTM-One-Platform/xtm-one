@@ -771,7 +771,10 @@ def build_organization_context_write_tools(
                     },
                     "changes": {
                         "type": "array",
-                        "description": "Field changes: {field (contract path, e.g. tech_stack), value, basis}.",
+                        "description": (
+                            "Field changes: {field (path, dotted if nested, e.g. pir_details), value, basis, "
+                            "confirm (true: the current value is still right)}."
+                        ),
                         "items": {"type": "object"},
                     },
                     "based_on_version": {
