@@ -21501,5 +21501,14 @@
   "Open cases in {stage}": "Open cases in {stage}",
   "Cases by status": "Cases by status",
   "{count, plural, one {# decision waiting} other {# decisions waiting}}": "{count, plural, one {# decision waiting} other {# decisions waiting}}",
-  "Needs attention first": "Needs attention first"
+  "Needs attention first": "Needs attention first",
+  "Asset deleted": "Asset deleted",
+  "Asset group deleted": "Asset group deleted",
+  "Software deleted": "Software deleted",
+  "Delete the asset \"{name}\"?": "Delete the asset \"{name}\"?",
+  "Delete the asset group \"{name}\"?": "Delete the asset group \"{name}\"?",
+  "Delete the software \"{name}\"?": "Delete the software \"{name}\"?",
+  "This asset was entered by hand: it leaves the inventory and its asset groups.": "This asset was entered by hand: it leaves the inventory and its asset groups.",
+  "This asset group was entered by hand: it is deleted and its assets stay in the inventory without it.": "This asset group was entered by hand: it is deleted and its assets stay in the inventory without it.",
+  "This software was typed by hand: it is deleted and leaves the assets it was attached to.": "This software was typed by hand: it is deleted and leaves the assets it was attached to."
 }
