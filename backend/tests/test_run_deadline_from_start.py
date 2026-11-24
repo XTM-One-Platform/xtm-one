@@ -177,8 +177,8 @@ async def test_started_work_past_its_budget_is_a_plain_deadline():
 
 
 @pytest.mark.asyncio
-async def test_an_expired_before_start_run_fails_without_run_failed():
-    """deadline_exceeded_before_start: no model call, no run.failed, queue_wait_seconds recorded."""
+async def test_an_expired_before_start_run_ends_expired_not_started_without_run_failed():
+    """Expired, not started: skipped (never failed), no model call, no run.failed, queue wait recorded."""
     run = SimpleNamespace(
         id=uuid.uuid4(),
         status="pending",
@@ -187,6 +187,7 @@ async def test_an_expired_before_start_run_fails_without_run_failed():
         failure_cause=None,
         failure_determination=None,
         completed_at=None,
+        stop_reason=None,
     )
     execution = SimpleNamespace(
         payload={
@@ -208,7 +209,8 @@ async def test_an_expired_before_start_run_fails_without_run_failed():
         patch("app.services.assignment_engine.execute_assignment_run", AsyncMock()) as body,
     ):
         await assignment_adapter.AssignmentAdapter().on_dead_letter(SimpleNamespace(db=db), execution)
-    assert run.status == "failed"
+    assert run.status == "skipped"
+    assert run.stop_reason == assignment_adapter.EXPIRED_NOT_STARTED_STOP_REASON == "expired_not_started"
     assert run.failure_cause == FailureCause.DEADLINE_EXCEEDED_BEFORE_START.value
     assert run.trigger_context["queue"] == {"queue_wait_seconds": 1801.0, "started": False}
     assert "never started" in run.error
