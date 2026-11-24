@@ -130,7 +130,12 @@ export function CaseValidation({
               onAnswered={() => items.refetch()}
             />
         )}
-        {waiting && !item && !items.isLoading && (
+        {waiting && !item && !items.isLoading && record?.decision_filed === false && (
+          <p className="text-default-secondary" data-testid="ctem-case-validation-not-filed">
+            {t_i18n("No validation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.")}
+          </p>
+        )}
+        {waiting && !item && !items.isLoading && record?.decision_filed !== false && (
           <p className="text-default-secondary" data-testid="ctem-case-validation-elsewhere">
             {t_i18n("The validation waits for a person: the decision is in their Waiting for you list.")}
           </p>

@@ -126,6 +126,12 @@ async def gate_records(
         if event.get("kind") == "gate" and event.get("actor_type") == "agent" and event.get("actor"):
             ids["agent"].add(event["actor"])
     names = await _names(db, ids, viewer_id)
-    records = gates.resolve(history, decisions, names=names)
+    from app.services import ctem_gate_order
+    from app.services.ctem_case_audit import GATE_PHASE
+
+    # Whether each gate's decision exists at all, whoever may read it (#1954): keys only, never content.
+    open_keys = await ctem_gate_order.open_gate_item_keys(db, case_id)
+    filed = {gate: ctem_gate_order.waited_refusal(gate, case_id, open_keys) is None for gate in GATE_PHASE}
+    records = gates.resolve(history, decisions, names=names, filed=filed)
     gates.attach(history, records)
     return records
