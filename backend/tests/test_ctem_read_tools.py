@@ -206,6 +206,11 @@ def read(env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespa
 
     monkeypatch.setattr(ctem_case_versions, "for_case", _versions)
 
+    async def _sources(_db: Any, _org: Any) -> None:
+        return None
+
+    monkeypatch.setattr(ctem_case_versions, "inventory_sources", _sources)
+
     def _for(user_id: str) -> Any:
         _, executor = build_ctem_read_tools(user_id=user_id, agent_id=AGENT)
 
@@ -232,6 +237,26 @@ async def test_get_answers_the_case_with_who_opened_it_and_the_empty_reasons(rea
     # #1359: the signal rule that applied is said, never left to a guess.
     assert body["scope"]["applied"] == "own" and body["scope"]["acting_user"] == str(read.user_id)
     assert body["scope"]["reason"] == "not an administrator"
+
+
+def test_an_upgrade_no_asset_runs_names_the_inventory_sources_checked() -> None:
+    """#1736: the loop is told which imports answered nothing before it asks a person."""
+    rendered = {"remediation_kind": "upgrade"}
+    reason = empty_sections(rendered, None, ["defender", "intune"])["running_versions"]
+    assert "inventory sources checked: defender, intune" in reason
+    assert "before asking the asset owner" in reason
+    assert empty_sections(rendered, None, [])["running_versions"] == "no running version read for this upgrade"
+
+
+async def test_get_names_the_inventory_sources_when_no_asset_runs_the_product(
+    read: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _sources(_db: Any, _org: Any) -> list[str]:
+        return ["intune"]
+
+    monkeypatch.setattr(ctem_case_versions, "inventory_sources", _sources)
+    body = json.loads(await read.read_for(str(read.user_id))("get_ctem_case", case_id=str(read.case.id)))
+    assert "inventory sources checked: intune" in body["empty_sections"]["running_versions"]
 
 
 async def test_get_carries_the_running_versions_per_platform(
