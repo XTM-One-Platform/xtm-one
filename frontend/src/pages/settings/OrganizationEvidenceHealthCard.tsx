@@ -28,7 +28,7 @@ import {
 import { SettingsReadField, SettingsReadGrid } from "@/components/ui/settings-read-view";
 import { useToast } from "@/components/ui/toast";
 import { useIntegrations } from "@/hooks/api/useIntegrationApi";
-import { type OrganizationProfile, useOrganizationContext, useSaveOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
+import { useOrganizationContext, usePatchOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import {
@@ -73,7 +73,7 @@ export function OrganizationEvidenceHealthCard({ id: anchorId, fold }: Organizat
   const id = useId();
   const { isAdmin } = useAuth();
   const { data } = useOrganizationContext();
-  const save = useSaveOrganizationContext();
+  const save = usePatchOrganizationContext();
   const { data: integrations = [] } = useIntegrations();
   const [draft, setDraft] = useState<Draft | null>(null);
 
@@ -119,8 +119,9 @@ export function OrganizationEvidenceHealthCard({ id: anchorId, fold }: Organizat
     if (!profile || !next || blocked) return;
     const parsed = fromForm({ ...toForm(profile), evidence_health: { ...next } });
     if ("invalid" in parsed) return;
+    // #1752: the card's own field alone travels, never the asset rows.
     save.mutate(
-      { profile: parsed.profile as OrganizationProfile, source: "form" },
+      { fields: { evidence_health: parsed.profile.evidence_health }, based_on_version: data?.version ?? null },
       {
         onSuccess: () => {
           setDraft(null);

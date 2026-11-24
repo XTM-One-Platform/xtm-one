@@ -21566,5 +21566,14 @@
   "prompt {name}": "prompt {name}",
   "The agent searches and reads its documents for them, and adds to it where it may write.": "El agente busca y lee sus documentos para ellos, y añade contenido donde puede escribir.",
   "Its instructions and files guide the agent for them.": "Sus instrucciones y archivos guían al agente para ellos.",
-  "Its text is added to what the agent is told for them.": "Su texto se añade a lo que se le indica al agente para ellos."
+  "Its text is added to what the agent is told for them.": "Su texto se añade a lo que se le indica al agente para ellos.",
+  "Asset deleted": "Activo eliminado",
+  "Asset group deleted": "Grupo de activos eliminado",
+  "Software deleted": "Software eliminado",
+  "Delete the asset \"{name}\"?": "¿Eliminar el activo «{name}»?",
+  "Delete the asset group \"{name}\"?": "¿Eliminar el grupo de activos «{name}»?",
+  "Delete the software \"{name}\"?": "¿Eliminar el software «{name}»?",
+  "This asset was entered by hand: it leaves the inventory and its asset groups.": "Este activo se introdujo a mano: sale del inventario y de sus grupos de activos.",
+  "This asset group was entered by hand: it is deleted and its assets stay in the inventory without it.": "Este grupo de activos se introdujo a mano: se elimina y sus activos permanecen en el inventario sin él.",
+  "This software was typed by hand: it is deleted and leaves the assets it was attached to.": "Este software se introdujo a mano: se elimina y deja los activos a los que estaba asociado."
 }

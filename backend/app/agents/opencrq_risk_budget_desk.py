@@ -356,7 +356,8 @@ RISK_BUDGET_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
             "per dollar, against the treatment plans already open."
         ),
         "trigger_type": "schedule",
-        "trigger_config": {"cron": "0 7 * * 1"},
+        # Staggered off the Monday 07:00Z of the PIR answer (#1832).
+        "trigger_config": {"cron": "30 7 * * 1"},
         "prompt": (
             "Weekly investment review. Delegate to the Investment Analyst the what-if of the control "
             "upgrades on the scenarios with the highest expected annual loss, ranked by loss removed per "
@@ -374,7 +375,8 @@ RISK_BUDGET_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
             "removed, treatment plan and budget progress."
         ),
         "trigger_type": "schedule",
-        "trigger_config": {"cron": "0 8 1 * *"},
+        # After the monthly exposure briefing (0 8 1 * *), before the CTEM board report (#1832).
+        "trigger_config": {"cron": "0 10 1 * *"},
         "prompt": (
             "Monthly Board pack. Delegate to the Board Reporter the pack of the last month: the register's "
             f"expected annual loss trend from shared state {STATE_KEY} and OpenCRQ, the top controls by loss "

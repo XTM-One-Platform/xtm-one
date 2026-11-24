@@ -69,8 +69,10 @@ SHARED_AGENTS: tuple[str, ...] = (
     "indicator-decay-judge",
 )
 
-#: The entity types whose creation the trigger listens to.
-TRIGGER_ENTITY_TYPES: tuple[str, ...] = ("Report", "Intrusion-Set", "Campaign", "Vulnerability")
+#: The entity types whose creation the trigger listens to. Threat activity (Intrusion-Set,
+#: Campaign) flagged in a PIR is the CTEM loop's one trigger, "Threat activity flagged in a PIR"
+#: (#1832): one owner per entity type, so one entity is never triaged twice.
+TRIGGER_ENTITY_TYPES: tuple[str, ...] = ("Report", "Vulnerability")
 
 _TARGETS = ["xtm_one", "dev"]
 
@@ -237,8 +239,9 @@ PIR_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
         **_COMMON,
         "name": "PIR match created",
         "description": (
-            "An OpenCTI report, intrusion set, campaign or vulnerability flagged in one of the "
-            "organization's PIRs is created: triage it and file what matters in the PIR case."
+            "An OpenCTI report or vulnerability flagged in one of the organization's PIRs is "
+            "created: triage it and file what matters in the PIR case. Threat activity flagged in a "
+            "PIR is the CTEM loop's trigger."
         ),
         "trigger_type": "integration_event",
         "trigger_config": {
@@ -256,6 +259,8 @@ PIR_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
         "prompt": (
             "An OpenCTI {{trigger.entity_type}} was created: {{trigger.entity_name}} ({{trigger.entity_id}}). "
             "It is flagged in at least one of the organization's PIRs.\n"
+            "Triage each STIX id once: when the standing case of its PIR already holds this entity, "
+            "add nothing and answer that it was filed before.\n"
             "Run one triage of the PIR desk loop: delegate the scoring to the PIR Triage Analyst, "
             "file each match worth it in the standing case of its PIR, and when it is a top threat "
             "have the hunt package and the detections built. Answer with the run JSON."
