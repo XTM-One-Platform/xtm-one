@@ -4,7 +4,7 @@
 
 A case is one fix (upgrade a product to a fixed version, apply a course of
 action) and the open issues it closes, read from OpenCTI (vulnerabilities on
-the organization's software) and OpenAEV (CVE findings on its assets). The
+the organization's tech stack) and OpenAEV (CVE findings on its assets). The
 grouping and the state rules live in ``services/ctem_cases.py``; the design is
 ``dev-docs/ctem-cases.md``.
 
@@ -203,6 +203,7 @@ class CtemCaseEvent(Base):
     #: | attack_path (the OpenCRQ attack-path reach written by triage, #1289)
     #: | gate (a loop gate passed automatically, waited or answered, CTEM-34 #916)
     #: | treatment_plan (the OpenCRQ plan of the decision: to the id, reason the name, evidence the link, #1068)
+    #: | versions (the per-device running versions moved: to the summary, reason the lines, evidence the snapshot, #1694)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     #: The member id (``source:external_id``) an issue event is about, else ``None``.
     issue: Mapped[str | None] = mapped_column(String(220), nullable=True)

@@ -4,7 +4,7 @@
 
 The running version of an upgrade case comes from the asset inventory (the
 canonical asset store of #1178, ``organization_asset_software``), never from a
-version typed in the software inventory. An operating system case (``Microsoft Windows``)
+version typed in the tech stack. An operating system case (``Microsoft Windows``)
 also reads the assets' ``os_family`` and ``os_version`` fields, where Intune,
 Defender and OpenAEV put the OS (#1430). This module answers, for one case:
 
@@ -203,8 +203,13 @@ def running_versions(
     fixed_version: str | None,
     fixed_versions_by_platform: Mapping[str, str] | None = None,
     asset_platforms: Mapping[str, str | None] | None = None,
+    with_devices: bool = False,
 ) -> dict[str, Any] | None:
     """The running versions of the case's product (pure); ``None`` when no asset runs it.
+
+    *with_devices* adds ``devices``, ``{asset_id: {versions, status, sources}}`` for every
+    asset (uncapped): the per-device state :mod:`ctem_case_version_history` compares
+    between two recomputes (#1694); it is never served as is.
 
     *rows* hold one entry per (vendor, product, version) with ``vendor``,
     ``product``, ``version``, ``asset_ids``, ``sources`` and optionally
@@ -240,12 +245,14 @@ def running_versions(
     asset_status: dict[str, str] = {}
     asset_reason: dict[str, str] = {}
     asset_versions: dict[str, set[str]] = {}
+    asset_sources: dict[str, set[str]] = {}
     versions: list[dict[str, Any]] = []
     for entry in merged.values():
         status: str | None = None
         reason: str | None = None
         for asset in entry["assets"]:
             asset_versions.setdefault(asset, set()).add(entry["version"])
+            asset_sources.setdefault(asset, set()).update(entry["sources"])
         if resolver.known:
             status, reason = resolver.status(entry["version"], entry["platform"])
             for asset in entry["assets"]:
@@ -309,6 +316,15 @@ def running_versions(
         )
     else:
         answer["fixed_version_checked"] = list(FIXED_VERSION_SOURCES)
+    if with_devices:
+        answer["devices"] = {
+            asset: {
+                "versions": sorted(asset_versions[asset]),
+                "status": asset_status.get(asset),
+                "sources": sorted(asset_sources.get(asset, ())),
+            }
+            for asset in sorted(asset_versions)
+        }
     return answer
 
 
@@ -337,8 +353,12 @@ async def fixed_in_inventory(db: AsyncSession, case: Any) -> bool:
     return all_on_fixed(await for_case(db, case))
 
 
-async def for_case(db: AsyncSession, case: Any) -> dict[str, Any] | None:
-    """The running versions of an upgrade *case* (its product, its fixed version), else ``None``."""
+async def for_case(db: AsyncSession, case: Any, *, with_devices: bool = False) -> dict[str, Any] | None:
+    """The running versions of an upgrade *case* (its product, its fixed version), else ``None``.
+
+    *with_devices*: see :func:`running_versions`; an inventory that answers but where no
+    asset runs the product is then ``{"devices": {}}`` (``None`` stays "not read").
+    """
     if getattr(case, "remediation_kind", None) != "upgrade":
         return None
     return await read_running_versions(
@@ -347,6 +367,7 @@ async def for_case(db: AsyncSession, case: Any) -> dict[str, Any] | None:
         product_label=case.product_label,
         fixed_version=case.fixed_version,
         fixed_versions_by_platform=_case_platform_fixes(case),
+        with_devices=with_devices,
     )
 
 
@@ -363,6 +384,7 @@ async def read_running_versions(
     product_label: str | None,
     fixed_version: str | None,
     fixed_versions_by_platform: Mapping[str, str] | None = None,
+    with_devices: bool = False,
 ) -> dict[str, Any] | None:
     """:func:`running_versions` over the organization's asset software (one grouped read).
 
@@ -383,7 +405,7 @@ async def read_running_versions(
         logger.info("CTEM case running versions unavailable", exc_info=True)
         return None
     if not counted and not os_assets:
-        return None
+        return {"devices": {}} if with_devices else None
     rows: list[dict[str, Any]] = [
         {
             "vendor": vendor,
@@ -398,13 +420,17 @@ async def read_running_versions(
         a for row in rows if matches_case(product_label, row["vendor"], row["product"]) for a in row["asset_ids"]
     }
     rows += os_rows(os_assets, product_label=product_label, skip=counted_assets)
-    return running_versions(
+    answer = running_versions(
         rows,
         product_label=product_label,
         fixed_version=fixed_version,
         fixed_versions_by_platform=fixed_versions_by_platform,
         asset_platforms=platforms,
+        with_devices=with_devices,
     )
+    if answer is None and with_devices:
+        return {"devices": {}}
+    return answer
 
 
 def affected_assets(issues: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
@@ -509,7 +535,7 @@ async def assets_for_case(db: AsyncSession, case: Any, issues: Iterable[Mapping[
     asset, the versions of its product the inventory reports (``versions``,
     ``sources``, ``status`` against the fixed version) and ``version_source``
     ``inventory``; any other case, or an inventory that cannot be read, answers
-    ``version_source`` ``none``, never a version typed in the software inventory.
+    ``version_source`` ``none``, never a version typed in the tech stack.
     """
     answer = affected_assets(issues)
     answer["version_source"] = "none"

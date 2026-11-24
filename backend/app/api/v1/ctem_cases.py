@@ -34,6 +34,7 @@ from app.services import ctem_case_audit_view as case_audit_view
 from app.services import ctem_case_gate_records_view as case_gates_view
 from app.services import ctem_case_loop as case_loop
 from app.services import ctem_case_routing as case_routing
+from app.services import ctem_case_version_history as version_history
 from app.services import ctem_case_versions as case_versions
 from app.services import ctem_cases as rules
 from app.services import ctem_cases_overview as overview
@@ -129,6 +130,13 @@ async def _organization_id(db: AsyncSession) -> uuid.UUID:
     return primary.id
 
 
+def _with_history(running: dict[str, Any] | None, events: list[Any]) -> dict[str, Any] | None:
+    """*running* with ``history``: the per-device changes the recomputes recorded, newest first (#1694)."""
+    if running is None:
+        return None
+    return {**running, "history": version_history.history_of(events)}
+
+
 async def visible_case(
     db: AsyncSession, case_id: uuid.UUID, user_id: str, vertical: str
 ) -> tuple[Any, dict[str, Any]] | None:
@@ -200,6 +208,8 @@ async def list_ctem_cases(
     history = await store.events_of(db, [uuid.UUID(row["id"]) for row in rows])
     for row in rows:
         row.update(view_of.case_position(history.get(uuid.UUID(row["id"]), []), view))
+        # Issues that name no asset: the inventory count, else "unknown" with its reason (#1694).
+        version_history.with_asset_count(row, history.get(uuid.UUID(row["id"]), []))
     return {
         "vertical": vertical,
         "counts": {s: counts.get(s, 0) for s in CASE_STATES},
@@ -475,7 +485,7 @@ async def get_ctem_case(
     shown = await visible_case(db, case_id, str(user.id), vertical)
     if shown is None:
         raise HTTPException(status_code=404, detail="Case not found")
-    (case, _, _), rendered = shown
+    (case, _, events), rendered = shown
     # The audit trail (#1490): each event with its CTEM phase, autonomy class and actor, and the phases.
     audit = await case_audit_view.audit_trail(db, rendered.get("history") or [], viewer_id=user.id)
     # One resolved decision record per gate (#1518): the decision row joined with the gate events;
@@ -485,8 +495,8 @@ async def get_ctem_case(
         **rendered,
         **audit,
         "gates": gate_records,
-        # The versions the case's product runs on the assets (#1252), never a typed software version.
-        "running_versions": await case_versions.for_case(db, case),
+        # The versions the case's product runs on the assets (#1252), never a typed tech stack version.
+        "running_versions": _with_history(await case_versions.for_case(db, case), events),
         # The assets its visible issues name, with the version each runs from the inventory (#1176 slice 3b).
         "affected_assets": await case_versions.assets_for_case(db, case, rendered.get("issues") or []),
         "ticketing": await ticketing.ticketing_target(db),
