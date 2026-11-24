@@ -843,6 +843,58 @@ describe("OrganizationSection", () => {
     expect(screen.getByText("Retail threats (bbbb2222)")).toBeTruthy();
   });
 
+  it("draws no PIR details card on the profile: the details open from each PIR of the policy card (#1974)", async () => {
+    withPirs({ pirs: [{ id: "pir-1", name: "Ransomware on energy" }], unavailable: null }, { pir_ids: ["pir-1"] });
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    await screen.findByTestId("settings.organization.identity");
+    expect(screen.queryByTestId("settings.organization.pir-details")).toBeNull();
+    expect(screen.queryByText("PIR details")).toBeNull();
+  });
+
+  it("shows each PIR's completeness and saves its details from the dialog, the others kept (#1974)", async () => {
+    withPirs(
+      { pirs: [{ id: "pir-1", name: "Ransomware on energy" }, { id: "pir-2", name: "Retail threats" }], unavailable: null },
+      {
+        pir_ids: ["pir-1", "pir-2"],
+        pir_details: {
+          "pir-1": { question: "Who targets us?", owner: "CTI", review_cadence: "", crown_jewels: [] },
+          "pir-2": { question: "Which retail groups?", owner: "", review_cadence: "monthly", crown_jewels: ["Payments"] },
+        },
+      },
+    );
+    patch.mockResolvedValue({ ...CONTEXT, version: 4 });
+    renderPolicy();
+    const open = await screen.findByRole("button", { name: "Details of Ransomware on energy, 2 of 4 set" });
+    expect(screen.getByRole("button", { name: "Details of Retail threats, 3 of 4 set" })).toBeTruthy();
+    fireEvent.click(open);
+    const dialog = await screen.findByTestId("settings.organization.pir-details-dialog");
+    expect(within(dialog).getByText("PIR details: Ransomware on energy")).toBeTruthy();
+    const question = within(dialog).getByLabelText("Question") as HTMLInputElement;
+    expect(question.value).toBe("Who targets us?");
+    fireEvent.change(within(dialog).getByLabelText("Owner"), { target: { value: "SOC" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    const [, body] = patch.mock.calls[0] as [string, { fields: { pir_details: Record<string, { owner: string }> } }];
+    expect(body.fields.pir_details["pir-1"].owner).toBe("SOC");
+    expect(body.fields.pir_details["pir-2"]).toEqual({ question: "Which retail groups?", owner: "", review_cadence: "monthly", crown_jewels: ["Payments"] });
+    expect(Object.keys(body.fields)).toEqual(["pir_details"]);
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it("opens the same details read-only for a reader, with no Save (#1974)", async () => {
+    // A reader never reads the administrators-only PIR list: the name saved with the PIR names it.
+    withPirs({ pirs: [], unavailable: null }, { pir_ids: ["pir-1"], pir_names: { "pir-1": "Ransomware on energy" } });
+    renderWithProviders(
+      <MemoryRouter initialEntries={["/ctem/inventory/exposure"]}>
+        <OrganizationSection embed={{ cards: ["prioritization_policy"], readOnly: true }} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Details of Ransomware on energy, 0 of 4 set" }));
+    const dialog = await screen.findByTestId("settings.organization.pir-details-dialog");
+    expect(within(dialog).getByTestId("settings.organization.pir-details-read")).toBeTruthy();
+    expect(within(dialog).queryByRole("button", { name: "Save" })).toBeNull();
+  });
+
   it("shows eight PIRs, then +N more in place (#9615)", async () => {
     const ids = Array.from({ length: 11 }, (_, i) => `pir-${i}`);
     withPirs({ pirs: ids.map((id) => ({ id, name: `Name ${id}` })), unavailable: null, opencti_url: "" }, { pir_ids: ids });
