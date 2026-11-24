@@ -74,6 +74,9 @@ class ViewerView:
     #: The signal members (``signal:<id>``) this viewer may read, read fresh on
     #: every call and never cached: the signals API judges them, not a product.
     signals: set[str] = field(default_factory=set)
+    #: What each signal member of ``signals`` is (#1936): its name, path, lens and
+    #: source, read fresh with ``signals`` so a row never shows a bare id.
+    signal_details: dict[str, dict[str, Any]] = field(default_factory=dict)
     #: True when this viewer's own OpenCRQ read is available (#936): only then
     #: are the OpenCRQ asset names and scenario ids of a case's exploitation shown.
     opencrq: bool = False
@@ -209,7 +212,47 @@ async def viewer_view(db: Any, user_id: str, vertical: str, *, fresh: bool = Fal
     """
     view = await _product_view(db, user_id, vertical, fresh=fresh)
     seen = set(view.issues) | set(view.unavailable)
-    return replace(view, signals=await signal_members(db, user_id) | await source_signal_members(db, seen))
+    signals = await signal_members(db, user_id) | await source_signal_members(db, seen)
+    return replace(view, signals=signals, signal_details=await signal_details(db, signals))
+
+
+def signal_detail(signal: CtemSignal) -> dict[str, Any]:
+    """What a signal member is, as a case row names it (#1936): never its id as a label."""
+    from app.services.ctem_signals import PATH_CATALOG, provider_name
+
+    return {
+        "name": (signal.subject_label or signal.subject_ref or None),
+        "trigger_path": signal.trigger_path,
+        "trigger_path_label": PATH_CATALOG.get(signal.trigger_path, ("", ""))[0] or None,
+        "lens": signal.lens,
+        "source_provider": signal.source_provider,
+        "source_name": provider_name(signal.source_provider),
+        "subject_kind": signal.subject_kind,
+        "assets": [signal.subject_ref] if signal.subject_kind == "asset" and signal.subject_ref else [],
+        "first_seen_at": signal.first_seen_at.isoformat() if signal.first_seen_at else None,
+    }
+
+
+async def signal_details(db: Any, members: set[str]) -> dict[str, dict[str, Any]]:
+    """The details of the ``signal:<id>`` *members* a viewer may read, by member id (#1936).
+
+    Only the members already judged visible are read; an unreadable store answers
+    nothing and the row falls back to its trigger path label, never the id.
+    """
+    ids: list[uuid.UUID] = []
+    for member in members:
+        try:
+            ids.append(uuid.UUID(member.split(":", 1)[1]))
+        except (IndexError, ValueError):
+            continue
+    if not ids:
+        return {}
+    try:
+        rows = (await db.execute(select(CtemSignal).where(CtemSignal.id.in_(ids)))).scalars().all()
+    except Exception:
+        logger.info("CTEM cases: signal details unreadable", exc_info=True)
+        return {}
+    return {f"{SIGNAL_SOURCE}:{s.id}": signal_detail(s) for s in rows}
 
 
 async def source_signal_members(db: Any, seen: set[str]) -> set[str]:
@@ -301,9 +344,11 @@ def _member_id(row: CtemCaseIssue) -> str:
     return f"{row.source}:{row.external_id}"
 
 
-def _visible_issue(row: CtemCaseIssue, issue: rules.SourceIssue | None) -> dict[str, Any]:
-    if row.source == SIGNAL_SOURCE:  # the signal that opened or joined the case: its page holds the details
-        return {"source": row.source, "external_id": row.external_id, "open": row.open}
+def _visible_issue(
+    row: CtemCaseIssue, issue: rules.SourceIssue | None, signal: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    if row.source == SIGNAL_SOURCE:  # the signal that opened or joined the case: what it is, by name (#1936)
+        return {"source": row.source, "external_id": row.external_id, "open": row.open, **(signal or {})}
     if issue is None:  # seen before, its product does not answer now
         return {"source": row.source, "external_id": row.external_id, "open": row.open, "details_unavailable": True}
     return {
@@ -340,11 +385,27 @@ def _visible_issue(row: CtemCaseIssue, issue: rules.SourceIssue | None) -> dict[
     }
 
 
+def _member_label(member: str, view: ViewerView) -> str | None:
+    signal = view.signal_details.get(member)
+    if signal is not None:
+        return signal.get("name") or None
+    issue = view.issues.get(member)
+    return (issue.cve or issue.name or None) if issue is not None else None
+
+
 def visible_members(rows: list[CtemCaseIssue], view: ViewerView) -> list[CtemCaseIssue]:
     return [r for r in rows if view.sees(_member_id(r))]
 
 
 SEVERITY_PRIORITY: dict[str, str] = {"P1": "critical", "P2": "high", "P3": "medium"}
+
+#: The aggregates computed from member details: null for a viewer missing the details of an open member.
+DETAIL_AGGREGATES: tuple[str, ...] = ("asset_count", "crown_jewel_count", "kev_count", "max_cvss", "max_epss")
+#: Why they are null: the reader repeats it instead of reading "none".
+AGGREGATES_RESTRICTED_REASON = (
+    "unknown for this reader: some open issues of the case are not readable with their details "
+    "(outside your scope, or their product did not answer); this is not a zero"
+)
 
 
 def case_priority(severity: str | None, details: list[Any]) -> str:
@@ -361,6 +422,13 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         return None
     details = [view.issues[_member_id(r)] for r in visible if r.open and _member_id(r) in view.issues]
     agg = rules.aggregates(details)
+    # Open product members this viewer has no details of (hidden by scope, or seen before from a
+    # product that does not answer now): the detail aggregates would count only part of the case,
+    # so they are null with a reason, never a silent 0 a reader takes for "none". Signal members
+    # carry no issue details for anyone and never restrict them.
+    without_details = sum(1 for r in rows if r.open and r.source != SIGNAL_SOURCE and _member_id(r) not in view.issues)
+    if without_details:
+        agg = {**agg, **{key: None for key in DETAIL_AGGREGATES}}
     unavailable = sorted({r.source for r in visible if r.source != SIGNAL_SOURCE and _member_id(r) not in view.issues})
     return {
         "id": str(case.id),
@@ -385,6 +453,11 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         "issue_count": len(rows),
         "open_issue_count": sum(1 for r in rows if r.open),
         "restricted_count": len(rows) - len(visible),
+        # The open members read without their details, and whether the detail aggregates are
+        # therefore unknown for this viewer (null, never 0).
+        "members_without_details": without_details,
+        "aggregates_restricted": bool(without_details),
+        "aggregates_reason": AGGREGATES_RESTRICTED_REASON if without_details else None,
         "asset_count": agg["asset_count"],
         "crown_jewel_count": agg["crown_jewel_count"],
         "kev_count": agg["kev_count"],
@@ -418,6 +491,13 @@ def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
     issue = row.issue
     if issue is not None and not view.sees(issue):
         issue = RESTRICTED
+    # A member the viewer sees is named, never shown by its id (#1936): a signal by its subject,
+    # a product issue by its CVE or name.
+    label = _member_label(issue, view) if issue and issue != RESTRICTED else None
+    # A signal with no name falls back to its trigger path label, as its Issues row does
+    # (UX round 1 B2 on #1945).
+    signal = view.signal_details.get(issue) if issue and issue != RESTRICTED else None
+    path_label = signal.get("trigger_path_label") if signal is not None else None
     # A treatment plan's name and OpenCRQ link go to a viewer who reads OpenCRQ only (#1068).
     # A threat package's Grouping and coverage go to a viewer who reads OpenCTI only (#1115).
     hidden = (row.kind == "treatment_plan" and not view.opencrq) or (row.kind == "threat_package" and not view.opencti)
@@ -426,6 +506,8 @@ def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
         "actor": row.actor,
         "kind": row.kind,
         "issue": issue,
+        "issue_label": label,
+        "issue_path_label": path_label,
         "from": None if hidden else row.from_value,
         "to": None if hidden else row.to_value,
         "reason": None if hidden else row.reason,
@@ -663,7 +745,9 @@ def hydrate(
     return {
         **head,
         "keys": list(case.keys or []),
-        "issues": [_visible_issue(r, view.issues.get(_member_id(r))) for r in visible]
+        "issues": [
+            _visible_issue(r, view.issues.get(_member_id(r)), view.signal_details.get(_member_id(r))) for r in visible
+        ]
         + [{"restricted": True} for _ in range(restricted)],
         # The running-versions record (#1694) is served by the case read's ``running_versions.history``.
         "history": [_event(e, view) for e in events if e.kind != VERSIONS_KIND],
@@ -775,6 +859,16 @@ def list_for_viewer(
     rows.sort(key=lambda r: (_PRIORITY_RANK.get(r["priority"], 9), -r["open_issue_count"], r["id"]))
     start = max(0, offset)
     return rows[start : start + max(1, limit)], counts
+
+
+def hidden_case_count(cases: list[tuple[CtemCase, list[CtemCaseIssue]]], view: ViewerView) -> int:
+    """The open cases of the organization this viewer sees none of: a count only, never named.
+
+    Answered beside a list so its length is never read as the organization total.
+    """
+    from app.models.ctem_case import OPEN_STATES
+
+    return sum(1 for case, members in cases if case.state in OPEN_STATES and not visible_members(members, view))
 
 
 def names_asset(rows: list[CtemCaseIssue], view: ViewerView, asset: str) -> bool:

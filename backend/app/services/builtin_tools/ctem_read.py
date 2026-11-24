@@ -184,6 +184,10 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 rendered = view_of.hydrate(case, rows, events[:_HISTORY_PAGE], view)
                 if rendered is None:
                     return f"No case {case_id}."
+                from app.services import ctem_case_version_history as version_history
+
+                # The list's asset-count rule on the single read (#1704): list and case read agree.
+                version_history.with_asset_count(rendered, events)
                 running = await case_versions.for_case(db, case)
                 sources = (
                     await case_versions.inventory_sources(db, primary.id)

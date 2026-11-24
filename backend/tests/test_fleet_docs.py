@@ -104,24 +104,57 @@ async def test_a_save_over_a_newer_version_is_refused(fingerprint):
     assert fleet.documentation["sections"] == {"purpose": "v1"}
 
 
-async def test_a_built_in_fleet_regenerated_keeps_a_local_version_the_boot_never_overwrites(fingerprint):
-    """#9768 S2: Regenerate on a built-in fleet writes a local version; the seed keeps it, restore brings the shipped one back."""
+async def test_a_built_in_fleet_refuses_a_regenerate_and_a_version_restore(fingerprint):
+    """#1956: the seed writes a built-in fleet's documentation; nobody saves or restores a version there."""
     fleet = _fleet(is_builtin=True)
     await seed_documentation(None, fleet, {"purpose": "Shipped"})
-    await save_documentation(None, fleet, {"purpose": "Generated here"}, author=uuid.uuid4(), base_version=1)
-    assert fleet.documentation["local"] is True and fleet.documentation["version"] == 2
-    view = await documentation_view(None, fleet, can_edit=True)
-    assert view.editable is True and view.local is True
-
     await seed_documentation(None, fleet, {"purpose": "Shipped, revised"})
-    assert fleet.documentation["sections"] == {"purpose": "Generated here"}, "a boot never overwrites a local version"
-    assert fleet.documentation["shipped"]["sections"] == {"purpose": "Shipped, revised"}
+    stored = dict(fleet.documentation)
+    with pytest.raises(FleetActionRefusedError) as saved:
+        await save_documentation(None, fleet, {"purpose": "Generated here"}, author=uuid.uuid4(), base_version=2)
+    assert saved.value.status_code == 422
+    with pytest.raises(FleetActionRefusedError) as restored:
+        await fleet_docs.restore_documentation_version(None, fleet, 1, author=uuid.uuid4(), base_version=2)
+    assert restored.value.status_code == 422
+    assert fleet.documentation == stored
 
-    await fleet_docs.restore_shipped_documentation(None, fleet, author=uuid.uuid4())
-    assert fleet.documentation["sections"] == {"purpose": "Shipped, revised"}
-    assert fleet.documentation["version"] == 3
-    assert "local" not in fleet.documentation
-    assert (await documentation_view(None, fleet, can_edit=False)).local is False
+
+async def test_a_built_in_fleet_is_never_editable_nor_out_of_date(fingerprint):
+    """#1956: the seed owns the structure, so a seed change to a member never flags the shipped documentation."""
+    fleet = _fleet(is_builtin=True)
+    await seed_documentation(None, fleet, {"purpose": "Shipped"})
+    fingerprint["value"] = "2" * 16  # a persona the seed rewrote at boot
+    view = await documentation_view(None, fleet, can_edit=True)
+    assert view.out_of_date is False and view.editable is False and view.local is False
+
+    custom = _fleet()
+    await save_documentation(None, custom, {"purpose": "Why"}, author=uuid.uuid4(), base_version=0)
+    fingerprint["value"] = "3" * 16
+    assert (await documentation_view(None, custom, can_edit=True)).out_of_date is True
+
+
+async def test_the_boot_replaces_a_local_version_left_on_a_built_in_fleet(fingerprint):
+    """#1956: a local version an earlier build wrote gives way to the shipped one, kept in the history."""
+    fleet = _fleet(
+        is_builtin=True,
+        documentation={
+            "sections": {"purpose": "Generated here"},
+            "version": 1,
+            "updated_by": str(uuid.uuid4()),
+            "fingerprint": "0" * 16,
+            "local": True,
+            "shipped": {"sections": {"purpose": "Shipped"}, "structured": None},
+            "history": [],
+        },
+    )
+    await seed_documentation(None, fleet, {"purpose": "Shipped"})
+    doc = fleet.documentation
+    assert doc["sections"] == {"purpose": "Shipped"} and doc["updated_by"] == "seed" and doc["version"] == 2
+    assert "local" not in doc and doc["fingerprint"] == "f" * 16
+    assert doc["history"][0]["sections"] == {"purpose": "Generated here"}
+    assert (await documentation_view(None, fleet, can_edit=True)).out_of_date is False
+    await seed_documentation(None, fleet, {"purpose": "Shipped"})
+    assert fleet.documentation["version"] == 2, "the next boot writes nothing new"
 
 
 async def test_the_history_lists_the_current_then_the_kept_versions_and_a_kept_one_restores_as_next(fingerprint):
@@ -156,46 +189,29 @@ async def test_a_restore_is_refused_when_stale_current_or_not_kept(fingerprint):
     assert fleet.documentation["version"] == 2
 
 
-async def test_a_restore_on_a_built_in_fleet_is_a_local_version_that_keeps_the_shipped_copy(fingerprint):
-    fleet = _fleet(is_builtin=True)
-    await seed_documentation(None, fleet, {"purpose": "Shipped"})
-    await save_documentation(None, fleet, {"purpose": "Generated here"}, author=uuid.uuid4(), base_version=1)
-    await fleet_docs.restore_documentation_version(None, fleet, 1, author=uuid.uuid4(), base_version=2)
-    assert fleet.documentation["sections"] == {"purpose": "Shipped"}
-    assert fleet.documentation["local"] is True
-    assert fleet.documentation["shipped"]["sections"] == {"purpose": "Shipped"}
-
-
 async def test_a_restore_records_where_its_text_came_from_for_each_author_kind(fingerprint):
     """#9768 S2 UX r2 B1: a restore reads "Restored from ...", never "Generated by AI"."""
-    fleet = _fleet(is_builtin=True)
+    source = _fleet(is_builtin=True)
     author = uuid.uuid4()
-    await seed_documentation(None, fleet, {"purpose": "Shipped"})
-    await save_documentation(None, fleet, {"purpose": "Generated"}, author=author, base_version=1)
-    assert (await documentation_view(None, fleet, can_edit=True)).restored_from is None
-
-    await fleet_docs.restore_shipped_documentation(None, fleet, author=author)
-    assert (await documentation_view(None, fleet, can_edit=True)).restored_from == {"version": None, "author": "seed"}
-
-    await fleet_docs.restore_documentation_version(None, fleet, 2, author=author, base_version=3)
-    assert fleet.documentation["restored_from"] == {"version": 2, "author": "ai"}
-
-    await fleet_docs.restore_documentation_version(None, fleet, 1, author=author, base_version=4)
-    assert fleet.documentation["restored_from"] == {"version": 1, "author": "seed"}
-
-    # A restore of a restore keeps the author of the text it brings back.
-    await fleet_docs.restore_documentation_version(None, fleet, 3, author=author, base_version=5)
-    assert fleet.documentation["restored_from"] == {"version": 3, "author": "seed"}
-
-    history = {h.version: h.restored_from for h in fleet_docs.documentation_history(fleet)}
-    assert history[6] == {"version": 3, "author": "seed"} and history[2] is None and history[1] is None
-    assert history[4] == {"version": 2, "author": "ai"}
+    await seed_documentation(None, source, {"purpose": "Shipped"})
+    await fleet_docs.restore_shipped_documentation(None, source, author=author)
+    assert (await documentation_view(None, source, can_edit=True)).restored_from == {"version": None, "author": "seed"}
 
     fork = _fleet()
-    await fleet_docs.copy_documentation(None, fleet, fork)
+    await fleet_docs.copy_documentation(None, source, fork)
     await save_documentation(None, fork, {"purpose": "Mine"}, author=author, base_version=1)
+    assert (await documentation_view(None, fork, can_edit=True)).restored_from is None
     await fleet_docs.restore_documentation_version(None, fork, 1, author=author, base_version=2)
     assert fork.documentation["restored_from"] == {"version": 1, "author": "fork"}
+    await fleet_docs.restore_documentation_version(None, fork, 2, author=author, base_version=3)
+    assert fork.documentation["restored_from"] == {"version": 2, "author": "ai"}
+    # A restore of a restore keeps the author of the text it brings back.
+    await fleet_docs.restore_documentation_version(None, fork, 3, author=author, base_version=4)
+    assert fork.documentation["restored_from"] == {"version": 3, "author": "fork"}
+
+    history = {h.version: h.restored_from for h in fleet_docs.documentation_history(fork)}
+    assert history[5] == {"version": 3, "author": "fork"} and history[2] is None and history[1] is None
+    assert history[4] == {"version": 2, "author": "ai"}
 
 
 async def test_restore_shipped_is_refused_on_a_custom_fleet_or_without_a_shipped_copy(fingerprint):

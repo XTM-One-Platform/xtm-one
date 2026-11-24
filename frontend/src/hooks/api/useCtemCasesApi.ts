@@ -55,9 +55,13 @@ export interface CtemCaseSummary {
   issue_count: number;
   open_issue_count: number;
   restricted_count: number;
-  asset_count: number;
-  crown_jewel_count: number;
-  kev_count: number;
+  /** Open members read without their details: then the detail aggregates are null, unknown for this reader, never 0. */
+  members_without_details?: number;
+  aggregates_restricted?: boolean;
+  aggregates_reason?: string | null;
+  asset_count: number | null;
+  crown_jewel_count: number | null;
+  kev_count: number | null;
   max_cvss: number | null;
   max_epss: number | null;
   first_seen_at: string | null;
@@ -163,6 +167,16 @@ export interface CtemCaseVisibleIssue {
   retest_status?: "open" | "not_reproduced" | "resolved" | null;
   last_tested_at?: string | null;
   retest_pending?: boolean;
+  /**
+   * A signal member (source "signal", #1936): what it is, so a row never shows its id. The name is
+   * the subject label, else its ref; absent on an API older than #1936.
+   */
+  trigger_path?: string;
+  trigger_path_label?: string | null;
+  lens?: string;
+  source_provider?: string;
+  source_name?: string;
+  subject_kind?: string;
 }
 
 /** A member issue the caller cannot see in its source product: nothing but the flag. */
@@ -178,6 +192,10 @@ export interface CtemCaseEvent {
   kind: string;
   /** The member it is about, or "Restricted" when the caller cannot see it. */
   issue: string | null;
+  /** The name of the signal the event is about, when the caller sees it (#1936); never the id. */
+  issue_label?: string | null;
+  /** The trigger path label of a signal member the caller sees, untranslated: the fallback when it has no name. */
+  issue_path_label?: string | null;
   from: string | null;
   to: string | null;
   reason: string | null;
@@ -433,6 +451,11 @@ export interface CtemCaseGateRecord {
   wait_seconds: number | null;
   decision_id: string | null;
   work_item_id: string | null;
+  /**
+   * On a waiting record: whether an open decision item of the gate exists for anyone (#1954).
+   * False: the gate reads waiting but no decision was filed, so nobody can answer it. Absent on an older API.
+   */
+  decision_filed?: boolean | null;
   /** False while the answer is on the decision but no `gate answered` event is on the case yet. */
   recorded_on_case: boolean;
   /** The first later event of the case: its kind, and `from` / `to` as the history stores them (a state's new value, a gate key and its outcome). */

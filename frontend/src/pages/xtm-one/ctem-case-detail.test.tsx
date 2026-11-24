@@ -10,7 +10,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { renderWithProviders } from "@/testing/providers";
 import CtemCaseDetail from "./CtemCaseDetail";
 
-const state = vi.hoisted(() => ({ notFound: false }));
+const state = vi.hoisted(() => ({ notFound: false, aggregatesRestricted: false }));
 
 vi.mock("@/hooks/api/useAuthApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useAuthApi")>()),
@@ -45,12 +45,19 @@ vi.mock("@/hooks/api/useCtemCasesApi", async (importOriginal) => ({
             priority_basis: "",
             issue_count: 3,
             open_issue_count: 3,
-            restricted_count: 1,
-            asset_count: 2,
-            crown_jewel_count: 1,
-            kev_count: 1,
-            max_cvss: 9.8,
-            max_epss: 0.94,
+            ...(state.aggregatesRestricted
+              ? {
+                  restricted_count: 0,
+                  members_without_details: 1,
+                  aggregates_restricted: true,
+                  aggregates_reason: "members_without_details",
+                  asset_count: null,
+                  crown_jewel_count: null,
+                  kev_count: null,
+                  max_cvss: null,
+                  max_epss: null,
+                }
+              : { restricted_count: 1, asset_count: 2, crown_jewel_count: 1, kev_count: 1, max_cvss: 9.8, max_epss: 0.94 }),
             first_seen_at: null,
             details_unavailable: [],
             keys: [],
@@ -92,6 +99,17 @@ describe("CtemCaseDetail restricted members (#11613)", () => {
     page();
     expect(screen.getByText("CVE-2024-0001")).toBeInTheDocument();
     expect(screen.getByText("1 restricted")).toBeInTheDocument();
+  });
+
+  it("says why KEV, CVSS and assets are unknown when a member is read without details (UX round 1 on #1931, B1)", () => {
+    state.notFound = false;
+    state.aggregatesRestricted = true;
+    page();
+    expect(screen.getAllByText("Unknown: 1 open issue not readable with details")).toHaveLength(3);
+    expect(screen.getByText("1 without details")).toBeInTheDocument();
+    expect(screen.queryByText("All visible to you")).not.toBeInTheDocument();
+    expect(screen.queryByText("On the issues you can see")).not.toBeInTheDocument();
+    state.aggregatesRestricted = false;
   });
 
   it("answers a case the caller sees nothing of with the not-found page", () => {

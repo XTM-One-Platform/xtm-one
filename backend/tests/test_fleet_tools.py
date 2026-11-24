@@ -428,7 +428,9 @@ def _doc_fleet(*, builtin: bool = False, fingerprint: str | None = "old") -> Sim
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("builtin", [False, True])
-async def test_regenerate_saves_the_next_version_on_a_custom_or_builtin_fleet(monkeypatch, session, builtin):
+async def test_regenerate_saves_the_next_version_on_a_custom_fleet_and_refuses_a_builtin_one(
+    monkeypatch, session, builtin
+):
     from app.services import fleet_doc_generation as gen
 
     user = _caller(monkeypatch)
@@ -450,9 +452,14 @@ async def test_regenerate_saves_the_next_version_on_a_custom_or_builtin_fleet(mo
     monkeypatch.setattr(gen, "regenerate_fleet_documentation", _regenerate)
     monkeypatch.setattr("app.services.audit.log_audit", _audit)
     answer = await _call(str(user.id), "regenerate_fleet_documentation", fleet_id=str(fleet.id), section="purpose")
+    if builtin:
+        # #1956: the seed writes a built-in fleet's documentation; nothing is generated.
+        assert "is built in" in answer and "Nothing was generated." in answer, answer
+        assert calls == []
+        return
     assert answer.startswith("Fleet **Desk**: section `purpose` regenerated, saved as version 4."), answer
     assert "quota: estimate" in answer
-    assert ("local version" in answer) is builtin
+    assert "local version" not in answer
     assert calls == [(user.id, fleet, "purpose")]
     # The version commits before the running marker is cleared (#10817), then the tool runner's own commit.
     assert (session.commits, session.rollbacks) == (2, 0)

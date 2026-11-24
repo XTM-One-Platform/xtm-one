@@ -145,7 +145,11 @@ async def visible_case(
         return None
     case, rows, events = found
     rendered = view_of.hydrate(case, rows, events, await view_of.viewer_view(db, user_id, vertical))
-    return None if rendered is None else (found, rendered)
+    if rendered is None:
+        return None
+    # The list's asset-count rule on the single read (#1704): list and case read agree.
+    version_history.with_asset_count(rendered, events)
+    return found, rendered
 
 
 async def require_acts_on(db: AsyncSession, user: User, rows: list[Any], vertical: str) -> None:
@@ -224,6 +228,8 @@ async def list_ctem_cases(
         "vertical": vertical,
         "counts": {s: counts.get(s, 0) for s in CASE_STATES},
         "cases": rows,
+        # The open cases the caller sees none of (a count only): the list is never the org total.
+        "hidden_cases": view_of.hidden_case_count(cases, view),
         "details_unavailable": view.missing,
         # Why each of those products did not answer this viewer's read (#1852): rejected, too_large,
         # timeout, not_connected or unavailable, so the empty state says what failed.
@@ -483,7 +489,11 @@ async def recompute_ctem_cases(
         raise HTTPException(status_code=429, detail="One recompute per minute: try again shortly")
     from app.services import ctem_cases_refresh as refresh
 
-    return await refresh.recompute_as(db, organization_id=organization_id, user_id=str(user.id), vertical=vertical)
+    answer = await refresh.recompute_as(db, organization_id=organization_id, user_id=str(user.id), vertical=vertical)
+    if answer.get("busy"):
+        # One recompute at a time per organization (#1953): never a second one queued behind it.
+        raise HTTPException(status_code=409, detail="A recompute of the cases is already running: try again shortly")
+    return answer
 
 
 async def recompute_slot(user_id: str, vertical: str) -> bool:

@@ -1750,20 +1750,24 @@ async def regenerate_fleet_documentation_endpoint(
 
     The documentation is never typed by hand: this is its one write path
     besides the seed and the shipped restore. One section (``section``) or all;
-    on a built-in fleet the result is a local version the next boot keeps.
+    a built-in fleet is refused (422): the seed writes its documentation (#1956).
 
     The generation is recorded on the server while it runs (#10817): a reload,
     a second tab or a page opened again reads ``generating``; a click while one
     runs starts no second one and answers the documentation with ``generating``.
     """
     from app.services.fleet_doc_generation import FleetDocDraftError, check_section, regenerate_fleet_documentation
+    from app.services.fleet_docs import refuse_builtin_rewrite
 
     fleet = await _manageable_fleet(db, user, fleet_id)
     try:
-        # Refused before the claim (#393): a wrong name never shows as a failure on the About page.
+        # Refused before the claim (#393): a wrong name or a built-in fleet never shows as a failure on the About page.
+        refuse_builtin_rewrite(fleet)
         check_section(body.section)
     except FleetDocDraftError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
+    except FleetActionRefusedError as exc:
+        raise _refused(exc) from None
     # Read once: a rollback below expires ``fleet``, and reading its id again in
     # the async ``finally`` would lazy-load outside the greenlet (MissingGreenlet).
     doc_fleet_id = fleet.id

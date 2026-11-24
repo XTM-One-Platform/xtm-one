@@ -36,6 +36,7 @@ import {
   DEFAULT_EVIDENCE_HEALTH,
   EVIDENCE_HEALTH_BOUNDS,
   type EvidenceHealthPass,
+  evidenceHealthIntegrationChoice,
   evidenceHealthRuns,
   evidenceHealthSavedIntegration,
   fromForm,
@@ -84,6 +85,16 @@ export function OrganizationEvidenceHealthCard({ id: anchorId, fold }: Organizat
     integrations.find((integration) => integration.id === integrationId)?.name ?? t_i18n("Integration not found");
   const state = evidenceHealthRuns(pass, candidates.map((integration) => integration.id));
   const declared = pass.integration.trim();
+  const choice = evidenceHealthIntegrationChoice(pass, candidates.map((integration) => integration.id));
+  // None declared: name what the pass does, never "the single connected one" when several or none are connected.
+  const integrationText =
+    choice === "declared"
+      ? nameOf(declared)
+      : choice === "single"
+        ? t_i18n("The single connected one")
+        : choice === "several"
+          ? t_i18n("None picked: several are connected")
+          : t_i18n("No connected OpenCRQ integration");
 
   const statusText = state.runs
     ? t_i18n("On, reading {name}", { name: nameOf(state.integration) })
@@ -170,7 +181,7 @@ export function OrganizationEvidenceHealthCard({ id: anchorId, fold }: Organizat
             value={statusText}
             data-testid="settings.organization.evidence-health.status"
           />
-          <SettingsReadField label={t_i18n("OpenCRQ integration")} value={declared ? nameOf(declared) : t_i18n("The single connected one")} />
+          <SettingsReadField label={t_i18n("OpenCRQ integration")} value={integrationText} />
           <SettingsReadField
             label={t_i18n("Re-test delay")}
             value={t_i18n("{count, plural, one {# day} other {# days}}", { count: pass.max_age_days })}

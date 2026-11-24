@@ -52,6 +52,11 @@ Rules:
   collaboration instruction and organization scope). A change of either after
   the last save makes :func:`documentation_view` answer ``out_of_date``; the
   page offers a regenerate, never an automatic rewrite.
+* **Built-in fleets** (#1956): the seed owns their structure and their
+  documentation. Nobody regenerates or restores a version there
+  (:func:`refuse_builtin_rewrite`), the view is never editable nor out of date,
+  and a boot replaces a local version left by an earlier build with the
+  shipped one (history kept).
 
 Nothing here starts a run or calls a model: reading and saving are plain rows.
 """
@@ -636,22 +641,37 @@ def _stored(fleet: Fleet) -> dict[str, Any] | None:
     return doc if isinstance(doc, dict) and isinstance(doc.get("sections"), dict) else None
 
 
+def refuse_builtin_rewrite(fleet: Fleet) -> None:
+    """Refuse a regenerate or a version restore on a built-in fleet (#1956): the seed writes its documentation."""
+    if fleet.is_builtin:
+        raise FleetActionRefusedError(
+            422,
+            "A built-in fleet shows the documentation shipped with the platform, kept up to date at each update: "
+            "it is never regenerated or restored.",
+        )
+
+
 async def documentation_view(db: AsyncSession, fleet: Fleet, *, can_edit: bool) -> DocumentationView:
     """The documentation of *fleet* for a reader; *can_edit* is whether that reader manages the fleet.
 
-    ``editable`` means the reader may REGENERATE it (built-in fleets included,
-    as a local version); nobody edits it by hand (#9768 S2).
+    ``editable`` means the reader may REGENERATE it; nobody edits it by hand
+    (#9768 S2). A built-in fleet is never editable nor out of date: the seed
+    owns its structure and rewrites its documentation at each boot (#1956).
     """
-    editable = can_edit
+    editable = can_edit and not fleet.is_builtin
     doc = _stored(fleet)
     if doc is None:
         return DocumentationView(editable=editable)
     fingerprint = doc.get("fingerprint")
-    now = await current_fingerprint(db, fleet) if fingerprint else None
-    out_of_date = None if not fingerprint else fingerprint != now
+    if fleet.is_builtin:
+        out_of_date: bool | None = False if fingerprint else None
+    else:
+        now = await current_fingerprint(db, fleet) if fingerprint else None
+        out_of_date = None if not fingerprint else fingerprint != now
     findings: list[dict[str, Any]] = []
     dismissed: list[dict[str, Any]] = []
-    if editable:
+    # A manager of a built-in fleet still reads its suggestions (integrations and gates stay editable, #11948).
+    if can_edit:
         shown, held, _prints = await manager_suggestions(db, fleet)
         findings, dismissed = shown, [dismissed_view(d) for d in held]
     return DocumentationView(
@@ -914,13 +934,13 @@ async def save_documentation(
     *finding_prints* are the member prints those findings were drafted against; ``None`` keeps them.
 
     The one caller is the generator route and tool: nobody types the
-    documentation by hand. On a built-in fleet the result is a local version
-    (``local: true``) the next boot keeps; :func:`restore_shipped_documentation`
-    brings back the shipped one. *structured* replaces the stored structured
+    documentation by hand. *structured* replaces the stored structured
     parts; ``None`` keeps them (a one-section regenerate), ``{}`` clears them.
-    Refused: a stale *base_version* (409), an unknown section, a text too long
-    or an invalid structured part (422).
+    Refused: a built-in fleet (422, the seed writes it, #1956), a stale
+    *base_version* (409), an unknown section, a text too long or an invalid
+    structured part (422).
     """
+    refuse_builtin_rewrite(fleet)
     stored = _stored(fleet) or {}
     current = int(stored.get("version") or 0)
     if base_version is not None and base_version != current:
@@ -929,7 +949,6 @@ async def save_documentation(
         )
     cleaned = clean_sections(sections)
     kept = stored.get("structured") if structured is None else clean_structured(structured)
-    shipped = stored.get("shipped")
     _write(
         fleet,
         cleaned,
@@ -941,10 +960,6 @@ async def save_documentation(
         findings=findings,
         finding_prints=finding_prints,
     )
-    if fleet.is_builtin:
-        fleet.documentation["local"] = True
-        if shipped:
-            fleet.documentation["shipped"] = shipped
 
 
 async def restore_shipped_documentation(db: AsyncSession, fleet: Fleet, *, author: uuid.UUID) -> None:
@@ -1122,10 +1137,11 @@ async def restore_documentation_version(
     """Bring a kept version back as the next version, like the shipped restore; no model call (#9768 S2).
 
     The version shown now moves into the history, so a restore is undone by
-    restoring again. On a built-in fleet the result is a local version.
-    Refused: a stale *base_version* (409), a version that is not kept or is
-    the current one (404 / 422).
+    restoring again. Refused: a built-in fleet (422, #1956), a stale
+    *base_version* (409), a version that is not kept or is the current one
+    (404 / 422).
     """
+    refuse_builtin_rewrite(fleet)
     stored = _stored(fleet) or {}
     current = int(stored.get("version") or 0)
     if base_version is not None and base_version != current:
@@ -1144,7 +1160,6 @@ async def restore_documentation_version(
     )
     if kept is None or not kept["sections"]:
         raise FleetActionRefusedError(404, f"Version {version} of this documentation is not kept any more.")
-    shipped = stored.get("shipped")
     _write(
         fleet,
         {k: v for k, v in kept["sections"].items() if k in DOC_SECTIONS},
@@ -1154,10 +1169,6 @@ async def restore_documentation_version(
         structured=kept.get("structured") or None,
         restored_from={"version": version, "author": _source_author(kept)},
     )
-    if fleet.is_builtin:
-        fleet.documentation["local"] = True
-        if shipped:
-            fleet.documentation["shipped"] = shipped
 
 
 async def seed_documentation(
@@ -1165,9 +1176,11 @@ async def seed_documentation(
 ) -> None:
     """Write a built-in fleet's documentation from its seed entry; nothing when unchanged or absent.
 
-    The shipped copy is always stored (``shipped``) so it can be restored; a
-    local version (``local: true``, a regenerate on the built-in fleet) is never
-    overwritten by a boot.
+    The shipped copy is always stored (``shipped``). A version the seed did not
+    write (``local: true`` from a regenerate, or a restore, that an earlier
+    build allowed on a built-in fleet) is replaced by the shipped one as the
+    next version, kept in the history (#1956): a built-in fleet always shows
+    its shipped text, written by the seed.
     """
     if not sections:
         return
@@ -1175,12 +1188,14 @@ async def seed_documentation(
     parts = clean_structured(structured)
     shipped = {"sections": cleaned, "structured": parts}
     stored = _stored(fleet)
-    if stored is not None and stored.get("local"):
-        if stored.get("shipped") != shipped:
-            fleet.documentation = {**stored, "shipped": shipped}
-        return
     fingerprint = await current_fingerprint(db, fleet)
-    if stored is not None and stored.get("sections") == cleaned and (stored.get("structured") or None) == parts:
+    seeded = stored is not None and stored.get("updated_by") == "seed" and not stored.get("local")
+    if (
+        stored is not None
+        and seeded
+        and stored.get("sections") == cleaned
+        and (stored.get("structured") or None) == parts
+    ):
         # Same text: the seed also defines the structure, so the docs follow it.
         if stored.get("fingerprint") != fingerprint or stored.get("shipped") != shipped:
             fleet.documentation = {**stored, "fingerprint": fingerprint, "shipped": shipped}

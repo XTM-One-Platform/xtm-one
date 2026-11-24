@@ -225,9 +225,10 @@ async def test_two_users_with_different_visibility_share_cases_and_see_only_thei
     """#11613: Alice sees CVE-1 and CVE-2 in OpenCTI, Bob only CVE-1 (another group, other markings).
 
     One shared case. Bob's recompute (he cannot see CVE-2) neither closes nor
-    shrinks it; rendered for Bob, CVE-2 is a bare Restricted row and the
-    aggregates cover CVE-1 only; Carol (sees neither) does not see the case or
-    its count; Bob cannot split CVE-2 out; nothing of the source is stored.
+    shrinks it; rendered for Bob, CVE-2 is a bare Restricted row; Carol (sees neither) does not see the case or
+    its count; Bob cannot split CVE-2 out; nothing of the source is stored. Since #1930
+    Bob's detail aggregates are unknown (null with aggregates_restricted), never the
+    CVE-1-only figures a reader takes for the case's.
     """
     from app.services import ctem_cases_view as view_of
 
@@ -276,7 +277,10 @@ async def test_two_users_with_different_visibility_share_cases_and_see_only_thei
         assert for_alice is not None and for_bob is not None
         assert for_alice["restricted_count"] == 0 and for_alice["max_cvss"] == 10.0
         # CVE-2 and the signal it recorded are both restricted for Bob.
-        assert for_bob["restricted_count"] == 2 and for_bob["max_cvss"] == 9.8 and for_bob["kev_count"] == 0
+        assert for_bob["restricted_count"] == 2 and for_bob["members_without_details"] == 1
+        assert for_bob["aggregates_restricted"] is True
+        assert for_bob["max_cvss"] is None and for_bob["kev_count"] is None
+        assert for_alice["aggregates_restricted"] is False and for_alice["members_without_details"] == 0
         assert {"restricted": True} in for_bob["issues"]
         assert "CVE-2" not in str(for_bob) and "secret-host" not in str(for_bob) and "opencti:v2" not in str(for_bob)
         assert view_of.hydrate(case_id, rows, events, carol) is None

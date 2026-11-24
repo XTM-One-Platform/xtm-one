@@ -195,6 +195,10 @@ def inventory_asset_count(events: Iterable[Any]) -> dict[str, Any] | None:
 #: Why a case with no asset on its issues has no count.
 NO_COUNT_NOT_UPGRADE = "the visible issues name no asset and the fix names no product the inventory matches"
 NO_COUNT_NOT_READ = "the visible issues name no asset and the inventory was not read for this case yet"
+NO_COUNT_RESTRICTED = (
+    "some open issues of the case are not readable with their details for this reader and the "
+    "inventory holds no count for it: unknown, not zero"
+)
 
 
 def with_asset_count(row: dict[str, Any], events: Iterable[Any]) -> dict[str, Any]:
@@ -202,9 +206,12 @@ def with_asset_count(row: dict[str, Any], events: Iterable[Any]) -> dict[str, An
 
     ``issues``: the issues name the assets (unchanged count). ``inventory``: the latest
     snapshot counts the devices running the product (``asset_count_as_of``). ``unknown``:
-    ``asset_count`` is ``None`` with ``asset_count_reason``; never a silent 0.
+    ``asset_count`` is ``None`` with ``asset_count_reason``; never a silent 0. A row whose
+    ``aggregates_restricted`` is true (an open member read without its details) never counts
+    from the issues: the inventory count when there is one, else ``unknown``.
     """
-    if int(row.get("asset_count") or 0) > 0:
+    restricted = bool(row.get("aggregates_restricted"))
+    if not restricted and int(row.get("asset_count") or 0) > 0:
         row["asset_count_source"] = "issues"
         return row
     found = inventory_asset_count(events) if row.get("remediation_kind") == "upgrade" else None
@@ -215,7 +222,12 @@ def with_asset_count(row: dict[str, Any], events: Iterable[Any]) -> dict[str, An
         return row
     row["asset_count"] = None
     row["asset_count_source"] = "unknown"
-    row["asset_count_reason"] = NO_COUNT_NOT_UPGRADE if row.get("remediation_kind") != "upgrade" else NO_COUNT_NOT_READ
+    if restricted:
+        row["asset_count_reason"] = NO_COUNT_RESTRICTED
+    else:
+        row["asset_count_reason"] = (
+            NO_COUNT_NOT_UPGRADE if row.get("remediation_kind") != "upgrade" else NO_COUNT_NOT_READ
+        )
     return row
 
 
