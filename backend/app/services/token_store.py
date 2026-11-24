@@ -33,9 +33,6 @@ _RESET_PREFIX = "pwreset:"
 _EMAIL_CHANGE_PREFIX = "emailchange:"
 _EMAIL_CHANGE_ATTEMPTS_PREFIX = "emailchange-attempts:"
 
-#: Moves an invitation to its new key only while the old one still holds what
-#: was read: one script, so the invitation is never lost between the two keys
-#: and of two concurrent reissues exactly one wins.
 #: Deletes a key only while it still holds ARGV[1]: a pending email change
 #: replaced meanwhile by a newer request is left alone.
 DELETE_IF_EQUAL_LUA = """
@@ -45,6 +42,9 @@ end
 return 0
 """
 
+#: Moves an invitation to its new key only while the old one still holds what
+#: was read: one script, so the invitation is never lost between the two keys
+#: and of two concurrent reissues exactly one wins.
 REISSUE_INVITATION_LUA = """
 if redis.call('GET', KEYS[1]) ~= ARGV[1] then
     return 0
