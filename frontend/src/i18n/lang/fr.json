@@ -21547,5 +21547,14 @@
   "{count, plural, one {# case and its history} other {# cases and their history}}": "{count, plural, one {# cas et son historique} other {# cas et leur historique}}",
   "{count, plural, one {# open work item cancelled} other {# open work items cancelled}}": "{count, plural, one {# tâche ouverte annulée} other {# tâches ouvertes annulées}}",
   "{count, plural, one {# timer cancelled} other {# timers cancelled}}": "{count, plural, one {# minuteur annulé} other {# minuteurs annulés}}",
-  "{count, plural, one {# signal sent back to the scope gate} other {# signals sent back to the scope gate}}": "{count, plural, one {# signal renvoyé au filtre de périmètre} other {# signaux renvoyés au filtre de périmètre}}"
+  "{count, plural, one {# signal sent back to the scope gate} other {# signals sent back to the scope gate}}": "{count, plural, one {# signal renvoyé au filtre de périmètre} other {# signaux renvoyés au filtre de périmètre}}",
+  "Asset deleted": "Actif supprimé",
+  "Asset group deleted": "Groupe d'actifs supprimé",
+  "Software deleted": "Logiciel supprimé",
+  "Delete the asset \"{name}\"?": "Supprimer l'actif « {name} » ?",
+  "Delete the asset group \"{name}\"?": "Supprimer le groupe d'actifs « {name} » ?",
+  "Delete the software \"{name}\"?": "Supprimer le logiciel « {name} » ?",
+  "This asset was entered by hand: it leaves the inventory and its asset groups.": "Cet actif a été saisi à la main : il quitte l'inventaire et ses groupes d'actifs.",
+  "This asset group was entered by hand: it is deleted and its assets stay in the inventory without it.": "Ce groupe d'actifs a été saisi à la main : il est supprimé et ses actifs restent dans l'inventaire sans lui.",
+  "This software was typed by hand: it is deleted and leaves the assets it was attached to.": "Ce logiciel a été saisi à la main : il est supprimé et quitte les actifs auxquels il était rattaché."
 }
