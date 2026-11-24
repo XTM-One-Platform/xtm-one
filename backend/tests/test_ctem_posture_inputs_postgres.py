@@ -81,3 +81,31 @@ async def test_a_save_outside_the_inputs_keeps_the_stamp_and_an_asset_change_mov
         )
         await session.commit()
         assert await inputs.posture_inputs_stamp(session) != first
+
+
+async def test_the_stamp_reads_only_the_capped_page_the_build_reads(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import organization_context as org_context
+
+    async with _database() as sessions, sessions() as session:
+        org = Organization(id=uuid.uuid4(), name="A", role="primary", relationship=None)
+        session.add(org)
+        await session.flush()
+        await _version(session, org.id, 1, assets_exposure=[ASSET])
+        assert await records.ensure_records(session) == org.id
+        await session.commit()
+        monkeypatch.setattr(org_context, "PROFILE_ASSET_CAP", 1)
+        first = await inputs.posture_inputs_stamp(session)
+
+        # A record ordered after the cap (name_key, id): the build never reads it, the stamp stays.
+        await records.create_record(
+            session, org.id, {"name": "zz-01", "category": "host", "internet_facing": "yes"}, origin="form", actor="u"
+        )
+        await session.commit()
+        assert await inputs.posture_inputs_stamp(session) == first
+
+        # A record ordered inside the cap replaces the page the build reads: the stamp moves.
+        await records.create_record(
+            session, org.id, {"name": "aa-01", "category": "host", "internet_facing": "yes"}, origin="form", actor="u"
+        )
+        await session.commit()
+        assert await inputs.posture_inputs_stamp(session) != first

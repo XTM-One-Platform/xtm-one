@@ -25,7 +25,8 @@ this module does not declare.
 
 Cheap per request: the profile row is the one the version stamp already read;
 the asset records are hashed from the declared columns only (no row model, no
-``AssetEntry`` validation), the Software store from its matcher read.
+``AssetEntry`` validation) and only on the capped, ordered page the build reads
+(``PROFILE_ASSET_CAP`` by ``(name_key, id)``), the Software store from its matcher read.
 """
 
 from __future__ import annotations
@@ -109,13 +110,22 @@ def fingerprint(
     return f"{organization_id}:{digest}"
 
 
-async def _record_values(db: AsyncSession, organization_id: uuid.UUID) -> tuple[list[list[Any]], list[dict[str, Any]]]:
-    """The declared asset and group fields of the records, read column by column (no row model)."""
+async def _record_values(
+    db: AsyncSession, organization_id: uuid.UUID, *, cap: int
+) -> tuple[list[list[Any]], list[dict[str, Any]]]:
+    """The declared asset and group fields of the records, read column by column (no row model).
+
+    The records are the page the build reads (``organization_asset_records.profile_lists``
+    through ``organization_context.hydrated_profile``): the first *cap* ordered by
+    ``(name_key, id)``, so a record beyond the cap never moves the stamp and the read
+    stays bounded on a large inventory.
+    """
     from app.models.organization_asset_record import OrganizationAssetGroup, OrganizationAssetRecord
 
     rec = OrganizationAssetRecord
     columns = [getattr(rec, f) if f in _RECORD_COLUMNS else rec.fields[f].astext.label(f) for f in ASSET_FIELDS]
-    assets = [list(r) for r in (await db.execute(select(*columns).where(rec.organization_id == organization_id))).all()]
+    query = select(*columns).where(rec.organization_id == organization_id).order_by(rec.name_key, rec.id).limit(cap)
+    assets = [list(r) for r in (await db.execute(query)).all()]
     grp = OrganizationAssetGroup
     groups = [
         dict(zip(GROUP_FIELDS, r, strict=True))
@@ -151,7 +161,7 @@ async def posture_inputs_stamp(db: AsyncSession | None) -> str | None:
         raw = row.profile if isinstance(row.profile, Mapping) else {}
         organization_id = row.organization_id
         if organization_id is not None and await records.is_imported(db, organization_id):
-            assets, groups = await _record_values(db, organization_id)
+            assets, groups = await _record_values(db, organization_id, cap=org_context.PROFILE_ASSET_CAP)
         else:
             assets = list(raw.get("assets_exposure") or [])
             groups = list(raw.get("asset_groups") or [])
