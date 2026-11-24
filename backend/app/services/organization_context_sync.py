@@ -43,14 +43,14 @@ logger = logging.getLogger(__name__)
 #: The global schedule's section: it runs every other enabled sync in order.
 ALL_SECTIONS = "all"
 #: The sections a sync may keep up to date: the import's, never a typed field.
-SYNCABLE_SECTIONS: tuple[str, ...] = ("assets", "asset_groups", "tech_stack", "crown_jewels", "pirs")
+SYNCABLE_SECTIONS: tuple[str, ...] = ("assets", "asset_groups", "ai_systems", "software", "crown_jewels", "pirs")
 #: Where each section's syncs are configured (#1134 S2, Sam 22 Nov 2026): the business profile
 #: in Settings > Organization, the inventory in CTEM > Inventory. The global ``all`` schedule is in both.
 #: Primary assets (``crown_jewels``) are an Inventory source since they moved to Inventory > Business
 #: (#1690): their OpenCRQ sync is listed next to the asset sources (Sam, 24 Nov 2026).
 SECTION_SCOPES: dict[str, tuple[str, ...]] = {
     "profile": ("pirs",),
-    "inventory": ("assets", "asset_groups", "tech_stack", "crown_jewels"),
+    "inventory": ("assets", "asset_groups", "software", "ai_systems", "crown_jewels"),
 }
 #: The primary-asset source every platform with OpenCRQ connected gets by default: daily, links on.
 DEFAULT_PRIMARY_ASSET_SYNC: dict[str, Any] = {"section": "crown_jewels", "source": "opencrq", "frequency": "daily"}

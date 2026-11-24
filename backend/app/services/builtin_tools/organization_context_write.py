@@ -858,7 +858,7 @@ def build_organization_context_write_tools(
             description=(
                 "Add or update rows of one profile section without resending the list: assets and asset groups keyed "
                 "on source + external_id (rows a person wrote are never touched), new software as Software "
-                "entities (tech_stack: alias). "
+                "entities, AI systems by name. "
                 "Validated like the CSV import; preview first (apply false). "
                 "A rows_format other than profile maps a platform's raw objects."
                 + SHARED_CONTEXT_CLAUSE
@@ -911,7 +911,7 @@ def build_organization_context_write_tools(
                 "properties": {
                     "section": {
                         "type": "string",
-                        "enum": ["assets", "asset_groups", "tech_stack", "crown_jewels", "pirs"],
+                        "enum": ["assets", "asset_groups", "ai_systems", "software", "crown_jewels", "pirs"],
                     },
                     "source": {"type": "string", "enum": _import_sources},
                     "filters": {"type": "object", "description": "The filters the dialog offers for that source."},

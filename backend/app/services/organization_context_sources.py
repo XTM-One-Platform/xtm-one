@@ -37,7 +37,7 @@ from app.services.organization_context import AGENT_SOURCE_PREFIX, PLATFORM_SOUR
 #: The profile lists that carry a row source, with the section key the syncs and the UI use.
 SOURCED_FIELDS: dict[str, str] = {
     "crown_jewels": "crown_jewels",
-    "tech_stack": "tech_stack",
+    "tech_stack": "software",
     "assets_exposure": "assets",
     "asset_groups": "asset_groups",
 }
@@ -222,7 +222,7 @@ def sync_fields(section: str) -> tuple[str, ...]:
     """The profile fields a sync of *section* writes: its one row field, none for ``pirs`` or ``all``.
 
     A sync's purge or release is limited to them, so deleting the ``assets`` sync of a platform never
-    touches that platform's software or asset groups (review on #1278).
+    touches that platform's software, AI systems or asset groups (review on #1278).
     """
     return tuple(attr for attr, key in SOURCED_FIELDS.items() if key == section)
 

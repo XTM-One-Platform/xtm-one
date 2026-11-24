@@ -14,7 +14,7 @@
 """The categories of the organization context, and how an agent resolves them (#11533).
 
 The profile has a short identity (name, sector, regions, size, risk
-appetite) and long lists: the crown jewels, the software,
+appetite) and long lists: the crown jewels, the software, the AI systems,
 the PIRs, the tracked organizations. The identity is always in the prompt
 (``organization_context_injection``); a list is a CATEGORY: announced in the
 prompt with its size, preloaded only when the cascade selects it, and read
@@ -83,10 +83,8 @@ class Category:
 
 #: The profile field the Software category reads before the store is built (#1495).
 SOFTWARE_FIELD = "tech_stack"
-#: The category of the organization's software (#1495): the Software entity, ``tech_stack`` its deprecated alias.
+#: The category of the organization's software (#1495): the Software entity. No alias (Sam, 24 Nov 2026).
 SOFTWARE = "software"
-#: Deprecated since #1495 (kept one release): ``tech_stack`` answers the ``software`` category.
-TECH_STACK_ALIAS = "tech_stack"
 #: The profile field the primary assets are stored under (#1591: OpenCRQ's primary assets, the stored key kept).
 PRIMARY_ASSETS_FIELD = "crown_jewels"
 #: The category of the organization's primary assets (#1591), in OpenCRQ's words.
@@ -94,7 +92,7 @@ PRIMARY_ASSETS = "primary_assets"
 #: Deprecated since #1591 (kept one release): ``crown_jewels`` answers the ``primary_assets`` category.
 CROWN_JEWELS_ALIAS = "crown_jewels"
 #: Each deprecated category name, to the category it answers.
-CATEGORY_ALIASES: dict[str, str] = {TECH_STACK_ALIAS: SOFTWARE, CROWN_JEWELS_ALIAS: PRIMARY_ASSETS}
+CATEGORY_ALIASES: dict[str, str] = {CROWN_JEWELS_ALIAS: PRIMARY_ASSETS}
 
 
 def _category_name(field: str) -> str:
@@ -139,6 +137,12 @@ def available_names() -> tuple[str, ...]:
     return tuple(category.name for category in available())
 
 
+#: Deprecated since #1501 (kept one release): ``ai_systems`` reads the assets of category ``ai_target``.
+AI_SYSTEMS_ALIAS = Category(
+    "ai_systems", "assets_exposure", "AI systems (deprecated: the assets of category ai_target)"
+)
+
+
 def canonical_name(name: object) -> str:
     """*name* lower-cased, a deprecated alias read as the category it answers (``crown_jewels`` -> ``primary_assets``)."""
     wanted = str(name or "").strip().lower()
@@ -146,7 +150,10 @@ def canonical_name(name: object) -> str:
 
 
 def get(name: str) -> Category | None:
-    return _BY_NAME.get(canonical_name(name))
+    wanted = canonical_name(name)
+    if wanted == AI_SYSTEMS_ALIAS.name:
+        return AI_SYSTEMS_ALIAS
+    return _BY_NAME.get(wanted)
 
 
 def normalize_categories(value: object) -> list[str]:
@@ -215,6 +222,8 @@ def rows_of(profile: OrganizationProfile, category: Category) -> list[Any]:
     if category.field == "attack_surface":
         return attack_surface_rows(profile)
     values = getattr(profile, category.field, None) or []
+    if category is AI_SYSTEMS_ALIAS:
+        values = [v for v in values if getattr(v, "category", "") == "ai_target"]
     if category.field == "pir_ids":
         # #1773: each PIR with what the organization says about it, when it says something.
         rows: list[Any] = []
