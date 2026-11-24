@@ -322,6 +322,7 @@
     "tenants.getTenants"
   ],
   "list_opencrq_connectors": [
+    "connectors.getStreamState",
     "connectors.listConnectors",
     "tenants.getTenants"
   ],

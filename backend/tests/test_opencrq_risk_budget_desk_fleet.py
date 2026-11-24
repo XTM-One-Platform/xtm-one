@@ -68,6 +68,12 @@ def test_every_agent_works_with_opencrq_alone():
     assert set(orch["handover_type_slugs"]) == set(orch["handover_agent_slugs"])
 
 
+def test_the_reader_roles_bind_opencrq_read_only():
+    # They read the register and recommend; a person writes it in OpenCRQ (#1797).
+    for slug in (m3.REGISTER_ANALYST, m3.INVESTMENT_ANALYST, m3.BOARD_REPORTER):
+        assert _agents()[slug]["integration_template_read_only"] == ["opencrq"], slug
+
+
 def test_every_assignment_is_admin_opt_in_and_off():
     seeded = _assignments()
     assert [a["name"] for a in seeded] == [a["name"] for a in m3.RISK_BUDGET_DESK_ASSIGNMENTS]
