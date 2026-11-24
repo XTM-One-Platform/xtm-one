@@ -90,7 +90,7 @@ const GATE_CHIP_MEANING = {
  * ask did not list its option (`option.label` null) never reads the raw key.
  * @i18n-keys
  */
-export const GATE_OPTION_LABEL = {
+const GATE_OPTION_LABEL = {
   approve: "Approve",
   reject: "Reject",
   safe_only: "Run the read-only checks only",
@@ -255,7 +255,7 @@ function Field({
 /** A step of the record (Asked, Decided, Then): its heading and its facts. */
 function Step({ label, icon, testId, children }: { label: string; icon: IconName; testId: string; children: React.ReactNode }) {
   return (
-    <section className="flex min-w-0 flex-col gap-2 border-l-2 border-default-tertiary pl-3" data-testid={testId} aria-label={label}>
+    <section className="flex min-w-0 flex-col gap-2 border-l-2 border-elevation-subtle pl-3" data-testid={testId} aria-label={label}>
       <h4 className="flex items-center gap-1.5 font-medium">
         <CaseIcon name={icon} className="text-default-secondary" />
         {label}
@@ -378,7 +378,7 @@ export function GateDecisionRecord({
           )}
           {answered && record.comment && (
             <Field label={t_i18n("Comment")} icon={CASE_FACT_ICON.comment} testId={`${testId}-comment`} wide>
-              <blockquote className="whitespace-pre-line border-l-2 border-default-tertiary pl-2 italic">{record.comment}</blockquote>
+              <blockquote className="whitespace-pre-line border-l-2 border-elevation-subtle pl-2 italic">{record.comment}</blockquote>
             </Field>
           )}
           {record.work_item_id && (
