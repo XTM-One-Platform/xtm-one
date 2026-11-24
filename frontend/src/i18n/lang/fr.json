@@ -7731,7 +7731,7 @@
   "{name} stopped this command and every process it started. Its output until then is shown above.": "{name} a arrêté cette commande et tous les processus qu'elle avait lancés. Ce qu'elle avait affiché jusque-là apparaît ci-dessus.",
   "This command was stopped with every process it started. Its output until then is shown above.": "Cette commande a été arrêtée avec tous les processus qu'elle avait lancés. Ce qu'elle avait affiché jusque-là apparaît ci-dessus.",
   "The folder is empty.": "Le dossier est vide.",
-  "Show all {count}": "Tout afficher ({count})",
+  "Show all {count}": "Afficher les {count}",
   "{count} more not shown": "{count} de plus non affichés",
   "Enlarge the capture": "Agrandir la capture",
   "The machine holds this command for your decision - approve or reject it above the message box.": "La machine attend votre décision pour cette commande - approuvez-la ou refusez-la au-dessus de la zone de message.",
@@ -19964,7 +19964,7 @@
   "A risk scenario is required and OpenCRQ could not be read": "Un scénario de risque est exigé et OpenCRQ n’a pas pu être lu",
   "Criticality unknown, below the scope threshold {threshold}": "Criticité inconnue, sous le seuil de périmètre {threshold}",
   "Criticality {criticality} below the scope threshold {threshold}": "Criticité {criticality} sous le seuil de périmètre {threshold}",
-  "In scope: criticality {criticality} at or above {threshold}, confidence {confidence}": "Dans le périmètre : criticité {criticality}, au niveau {threshold} ou plus, confiance {confidence}",
+  "In scope: criticality {criticality} (threshold {threshold}), confidence {confidence}": "Dans le périmètre : criticité {criticality} (seuil {threshold}), confiance {confidence}",
   "Lenses": "Angles de vue",
   "Matched assets": "Ressources rattachées",
   "Scope threshold": "Seuil de périmètre",
@@ -21604,9 +21604,9 @@
   "{product} did not answer in time, so open exposures there may be missing.": "{product} n'a pas répondu à temps : des expositions ouvertes peuvent manquer.",
   "No {product} connection could be used for this read, so open exposures there may be missing.": "Aucune connexion {product} n'a pu servir à cette lecture : des expositions ouvertes peuvent manquer.",
   "Read-only for you.": "En lecture seule pour vous.",
-  "Auto join": "Adhésion automatique",
-  "Auto join updated": "Adhésion automatique mise à jour",
-  "Auto join could not be updated": "L'adhésion automatique n'a pas pu être mise à jour",
-  "Single sign-on users join this group": "Les utilisateurs SSO rejoignent ce groupe",
-  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "Les personnes qui se connectent par authentification unique (SSO) rejoignent ce groupe automatiquement, à chaque connexion. Les membres ajoutés à la main, par le mappage des groupes SAML ou par SCIM restent tels quels."
+  "See the loop trace of {subject}": "Voir la trace de la boucle de {subject}",
+  "{count, plural, one {# signal} other {# signals}}": "{count, plural, one {# signal} other {# signaux}}",
+  "First seen {first}, last seen {last}": "Vu pour la première fois le {first}, pour la dernière fois le {last}",
+  "Filter the signals": "Filtrer les signaux",
+  "No signal matches the filter.": "Aucun signal ne correspond au filtre."
 }
