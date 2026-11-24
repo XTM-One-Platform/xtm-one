@@ -386,9 +386,9 @@ class CaseBulkDelete(BaseModel):
 
 
 async def _delete(db: AsyncSession, admin: User, cases: list[Any], reason: str | None, dry_run: bool) -> dict[str, Any]:
-    from app.services import ctem_case_delete as case_delete
-
     from sqlalchemy.exc import DBAPIError
+
+    from app.services import ctem_case_delete as case_delete
 
     try:
         result = await case_delete.delete_cases(db, cases, actor=admin, reason=reason, dry_run=dry_run)
