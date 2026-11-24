@@ -82,11 +82,8 @@ export interface OrganizationContextResponse {
   source: string | null;
   created_at: string | null;
   author_user_id: string | null;
-  /** No asset or group row since #1752 slice 3b: they are read through `/assets` and `/asset-groups`. */
   profile: OrganizationProfile;
   missing_fields: string[];
-  /** How many asset and group rows the organization holds (#1752); the rows have their own paged APIs. */
-  row_counts?: { assets_exposure?: number; asset_groups?: number } | null;
 }
 
 const KEY = ["organization-context"] as const;
@@ -137,27 +134,6 @@ export function useSaveOrganizationContextInjection() {
   return useMutation<OrganizationContextInjection, Error, { enabled: boolean; categories?: string[] }>({
     mutationFn: (body) => api.put("/organization-context/injection", body),
     onSuccess: (saved) => qc.setQueryData([...KEY, "injection"], saved),
-  });
-}
-
-/** A fleet that reads a part of the profile, from its documented prerequisites (#9173, S2). */
-export interface OrganizationFieldReader {
-  fleet_id: string;
-  name: string;
-}
-
-/** A seeded agent whose persona reads a part of the profile (#10063 r1 A3). */
-export interface OrganizationAgentReader {
-  agent_id: string;
-  name: string;
-}
-
-/** Profile field ("sector", "crown_jewels", ...) -> the fleets, and the seeded agents, the reader can see that need it. */
-export function useOrganizationReaders(enabled = true) {
-  return useQuery<{ readers: Record<string, OrganizationFieldReader[]>; agents?: Record<string, OrganizationAgentReader[]> }>({
-    queryKey: [...KEY, "readers"],
-    queryFn: () => api.get("/organization-context/readers"),
-    enabled,
   });
 }
 
@@ -429,7 +405,7 @@ export function useDraftOrganizationContext() {
 }
 
 /** A profile section the platform import fills (#11780); one run imports one section. */
-export type ImportSectionKey = "assets" | "asset_groups" | "ai_systems" | "tech_stack" | "crown_jewels" | "pirs";
+export type ImportSectionKey = "assets" | "asset_groups" | "ai_systems" | "software" | "crown_jewels" | "pirs";
 /** The Filigran platforms, then the endpoint sources read through a Microsoft integration (#1251). */
 export type ImportSourceKey =
   | "openaev"
