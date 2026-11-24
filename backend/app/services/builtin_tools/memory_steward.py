@@ -41,7 +41,8 @@ from app.tools.base import CallableToolExecutor, ToolDefinition, ToolResult
 
 from ._shared import logger
 
-MEMORY_STEWARD_SUITE_ID = "memory_steward"
+#: Its functions belong to Platform Health's one internal group (#1943).
+MEMORY_STEWARD_SUITE_ID = "health_specialists"
 _SOURCE = f"builtin:{MEMORY_STEWARD_SUITE_ID}"
 _DEFAULT_LANES = 20
 _MAX_LANES = 100

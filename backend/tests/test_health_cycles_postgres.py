@@ -261,7 +261,9 @@ async def test_a_reseed_takes_the_non_consent_tool_groups_off_the_fleet_and_caps
         }
 
     assert all(not set(a.builtin_tool_ids) & fleet_seed.NON_CONSENT_TOOL_GROUPS for a in agents)
-    assert "health_diagnosis" in next(a for a in agents if a.health_role == "quality_analyst").builtin_tool_ids
+    assert (
+        fleet_seed.SPECIALISTS_GROUP in next(a for a in agents if a.health_role == "quality_analyst").builtin_tool_ids
+    )
     assert caps == {spec.name: spec.max_iterations for spec in fleet_seed.FLEET_ASSIGNMENTS}
     assert all(cap is not None for cap in caps.values())
 

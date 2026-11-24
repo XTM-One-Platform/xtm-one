@@ -93,7 +93,6 @@ def test_the_recommendation_store_bounds_its_text_and_confidence() -> None:
 #: Name fragments of a specific connector, feed or third-party source (section 13.4 scope,
 #: Sam, 22 Nov 2026): a module checker never reads or judges one.
 _OUT_OF_SCOPE = ("connector", "feed", "collector", "injector", "executor", "drata", "cve")
-_SKILLS_DIR = Path(module_analyst.__file__).resolve().parents[2] / "agents" / "seed_data" / "skill_content"
 
 
 @pytest.mark.parametrize("tool", sorted({t for tools in module_analyst.MODULE_CHECKER_TOOLS.values() for t in tools}))
@@ -105,7 +104,9 @@ def test_no_allow_listed_tool_reads_a_connector_or_a_third_party(tool: str) -> N
 @pytest.mark.parametrize("provider", module_analyst.MODULE_PROVIDERS)
 def test_no_playbook_check_names_a_connector_or_a_third_party(provider: str) -> None:
     """Test (o) of section 13.9, the playbooks half: the check ids of each seeded skill."""
-    text = (_SKILLS_DIR / f"health-{provider}-checks.md").read_text(encoding="utf-8")
+    from app.services.health.check_reports import module_playbook
+
+    text = module_playbook(provider)
     checks = re.findall(r"^\| `([a-z0-9_]+)` \|", text, flags=re.MULTILINE)
-    assert checks, f"no check table in health-{provider}-checks.md"
+    assert checks, f"no check table for {provider} in health-module-checks.md"
     assert not [c for c in checks if any(f in c for f in _OUT_OF_SCOPE)]

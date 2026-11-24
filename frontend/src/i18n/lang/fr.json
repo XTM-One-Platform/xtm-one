@@ -21679,5 +21679,8 @@
   "No remediation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.": "Aucune décision de remédiation n'a été déposée, personne ne peut donc encore y répondre. La flotte la dépose la prochaine fois qu'elle traite ce cas.",
   "PIR sources": "Sources des PIR",
   "The OpenCTI imports and syncs that keep the PIR list up to date.": "Les imports et synchronisations OpenCTI qui tiennent la liste des PIR à jour.",
-  "Wait for the prioritization policy to be saved.": "Attendez la fin de l'enregistrement de la politique de priorisation."
+  "Wait for the prioritization policy to be saved.": "Attendez la fin de l'enregistrement de la politique de priorisation.",
+  "Platform Health specialists": "Spécialistes de Platform Health",
+  "Platform Health's internal tools: diagnosis, experiments, sandbox, Flow Lab, memory and module checks": "Outils internes de Platform Health : diagnostic, expériences, bac à sable, Flow Lab, mémoire et contrôles des modules",
+  "The tools Platform Health's own specialists work with: quality diagnosis, experiments and evaluations on sandbox copies, the Flow Lab, memory consolidation, module checks and improvement proposals. Carried by the Platform Health fleet's agents alone, each scoped to the functions it uses; never offered on the Tools page, in an agent's configuration or in a chat. Every write refuses anyone but Platform Health.": "Les outils des spécialistes de Platform Health : diagnostic qualité, expériences et évaluations sur des copies en bac à sable, Flow Lab, consolidation de la mémoire, contrôles des modules et propositions d'amélioration. Portés par les seuls agents de la flotte Platform Health, chacun limité aux fonctions qu'il utilise ; jamais proposés sur la page Outils, dans la configuration d'un agent ni dans un chat. Toute écriture refuse tout appelant autre que Platform Health."
 }

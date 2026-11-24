@@ -30,17 +30,8 @@ def _no_flags(monkeypatch) -> None:
 
 
 def test_every_concierge_group_is_gated():
-    assert {
-        "health_sandbox",
-        "health_evaluation",
-        "improvement_proposals",
-        "memory_steward",
-        "health_orchestrator",
-        "health_diagnosis",
-        "health_experiments",
-        "flow_lab",
-        "health_modules",
-    } <= _CONCIERGE_GROUPS
+    # One group a person sees, one internal group the fleet carries (#1943).
+    assert {"health_orchestrator", "health_specialists"} == _CONCIERGE_GROUPS
 
 
 def test_the_offered_catalog_carries_the_concierge_groups_with_no_flag():
@@ -50,18 +41,17 @@ def test_the_offered_catalog_carries_the_concierge_groups_with_no_flag():
 
     assert set(_offered_builtin_tool_catalog()) >= _CONCIERGE_GROUPS
     assert set(build_builtin_tool_catalog()) >= _CONCIERGE_GROUPS
-    assert "memory_steward" in agent_builder._advertised_builtin_tool_ids()
+    assert "health_orchestrator" in agent_builder._advertised_builtin_tool_ids()
+    assert "health_specialists" not in agent_builder._advertised_builtin_tool_ids()
 
 
 def test_a_chat_turn_wires_the_concierge_groups_with_no_flag():
     from app.services.agent_chat import _add_platform_builder_tools
 
     composite = CompositeToolExecutor()
-    _add_platform_builder_tools(
-        composite, None, str(uuid.uuid4()), ["improvement_proposals", "health_sandbox", "health_evaluation"]
-    )
+    _add_platform_builder_tools(composite, None, str(uuid.uuid4()), ["health_specialists", "health_orchestrator"])
 
-    assert {"list_improvements", "propose_improvement"} <= set(composite.tool_names)
+    assert {"list_health_signals", "request_health_cycle"} <= set(composite.tool_names)
 
 
 def test_the_proposal_routes_are_served_with_no_flag():

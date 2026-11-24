@@ -389,21 +389,9 @@ AGENT_KEYED_BUILTIN_TOOL_IDS: frozenset[str] = frozenset(
         "deep_investigation",
         # The grounded STIX extraction: its own group, for agents built to extract.
         "stix_extractor",
-        # Platform Health's sandbox acts for its fleet agents, never on the General Assistant (#8255).
-        "health_sandbox",
-        "improvement_proposals",
-        "health_evaluation",
-        # The Quality Analyst and the Experimenter (#8259).
-        "health_diagnosis",
-        "health_experiments",
-        # The Platform Health's memory consolidation (#8258): only its own
-        # fleet agent carries it, never a chat session or the assistant.
-        "memory_steward",
-        # Platform Health's Flow Lab (#8260).
-        "flow_lab",
+        # Platform Health's one internal group (#1943): its fleet agents alone carry it.
+        "health_specialists",
         "health_orchestrator",
-        # Platform Health's Module Analyst (#101 S14).
-        "health_modules",
         # The write side of the organization profile (#11594): bound to an
         # agent by an administrator, wired for an administrator's turn alone.
         "organization_context",
