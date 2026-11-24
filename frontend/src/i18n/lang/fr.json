@@ -21595,5 +21595,10 @@
   "No person was needed: the policy allowed the step.": "Aucune personne n'était nécessaire : la politique a autorisé l'étape.",
   "Nobody answered before the deadline: the step did not run.": "Personne n'a répondu avant l'échéance : l'étape n'a pas été lancée.",
   "The decision was withdrawn before an answer.": "La décision a été retirée avant toute réponse.",
-  "No answer": "Pas de réponse"
+  "No answer": "Pas de réponse",
+  "Auto join": "Adhésion automatique",
+  "Auto join updated": "Adhésion automatique mise à jour",
+  "Auto join could not be updated": "L'adhésion automatique n'a pas pu être mise à jour",
+  "Single sign-on users join this group": "Les utilisateurs SSO rejoignent ce groupe",
+  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "Les personnes qui se connectent par authentification unique (SSO) rejoignent ce groupe automatiquement, à chaque connexion. Les membres ajoutés à la main, par le mappage des groupes SAML ou par SCIM restent tels quels."
 }
