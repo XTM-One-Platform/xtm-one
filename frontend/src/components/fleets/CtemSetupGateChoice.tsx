@@ -22,8 +22,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * approval card. Reducing approval names the actions that run alone first.
  */
 import { Icon } from "@filigran/design-system";
-import { useState, type KeyboardEvent } from "react";
+import { useState, type KeyboardEvent, type ReactNode } from "react";
 
+import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { OptionCard } from "@/components/ui/option-card";
 import { useToast } from "@/components/ui/toast";
@@ -38,14 +39,12 @@ import {
   ctemGateChoiceLevel,
   ctemGateChoiceOf,
   effectiveAutonomyLevel,
-  gateActionLabel,
-  gateNames,
   gatesWaitingAt,
   type CtemGateChoice,
 } from "./fleet-autonomy";
 import { FleetAutonomyStrip } from "./FleetAutonomyStrip";
 import { fleetRefusalMessage } from "./fleet-refusals";
-import { FleetGateMark } from "./FleetModuleMark";
+import { FleetGateList } from "./FleetGateList";
 
 type ChoiceIconProps = { className?: string };
 const AutonomousIcon = ({ className }: ChoiceIconProps) => <Icon name="zap" size={16} className={className} aria-hidden />;
@@ -67,15 +66,22 @@ export function CtemSetupGateChoice({ fleetId, level: storedLevel }: { fleetId: 
   const choice = picked ?? ctemGateChoiceOf(level, catalog);
   const recommendedWaits = gatesWaitingAt(catalog, CTEM_RECOMMENDED_LEVEL);
 
-  const descriptions: Record<CtemGateChoice, string> = {
+  const descriptions: Record<CtemGateChoice, ReactNode> = {
     autonomous: t_i18n("Nothing waits for a person. Every action is still logged and reported in Operations."),
     recommended:
-      recommendedWaits.length > 0
-        ? t_i18n(
-            "{count, plural, one {Waits for a decision: {names}. Every other gate runs and the case records it.} other {Wait for a decision: {names}. Every other gate runs and the case records it.}}",
-            { count: recommendedWaits.length, names: gateNames(recommendedWaits, t_i18n) },
-          )
-        : t_i18n("The level the CTEM loop is seeded with. Every gate that runs is recorded on the case."),
+      recommendedWaits.length > 0 ? (
+        <span className="block space-y-1">
+          <span className="block">
+            {t_i18n("{count, plural, one {This gate waits for a decision:} other {These # gates wait for a decision:}}", {
+              count: recommendedWaits.length,
+            })}
+          </span>
+          <FleetGateList gates={recommendedWaits} testId="ctem-loop-setup-gates-waiting" phrasing />
+          <span className="block">{t_i18n("Every other gate runs and the case records it.")}</span>
+        </span>
+      ) : (
+        t_i18n("The level the CTEM loop is seeded with. Every gate that runs is recorded on the case.")
+      ),
     custom: t_i18n("Pick the level yourself: the table shows what waits at each one. Per-action settings stay on the fleet page."),
   };
 
@@ -126,7 +132,16 @@ export function CtemSetupGateChoice({ fleetId, level: storedLevel }: { fleetId: 
             disabled={save.isPending}
             onSelect={() => select(key)}
             icon={CHOICE_ICONS[key]}
-            title={key === "recommended" ? t_i18n("{choice} (recommended)", { choice: t_i18n(CTEM_GATE_CHOICE_LABELS[key]) }) : t_i18n(CTEM_GATE_CHOICE_LABELS[key])}
+            title={
+              key === "recommended" ? (
+                <span className="flex flex-wrap items-center gap-2">
+                  {t_i18n(CTEM_GATE_CHOICE_LABELS[key])}
+                  <Badge variant="secondary">{t_i18n("Recommended")}</Badge>
+                </span>
+              ) : (
+                t_i18n(CTEM_GATE_CHOICE_LABELS[key])
+              )
+            }
             description={descriptions[key]}
           />
         ))}
@@ -151,15 +166,8 @@ export function CtemSetupGateChoice({ fleetId, level: storedLevel }: { fleetId: 
         }}
       >
         {freed.length > 0 && (
-          <div className="space-y-2" data-testid="ctem-loop-setup-gates-freed">
-            <ul className="space-y-1.5">
-              {freed.map((gate) => (
-                <li key={gate.key} className="flex items-center gap-2 content-compact">
-                  <FleetGateMark gate={gate} />
-                  <span className="min-w-0 truncate">{gateActionLabel(gate, t_i18n)}</span>
-                </li>
-              ))}
-            </ul>
+          <div className="space-y-2">
+            <FleetGateList gates={freed} testId="ctem-loop-setup-gates-freed" />
             <p className="content-compact text-default-secondary">{t_i18n("Every action stays logged and reported in Operations.")}</p>
           </div>
         )}

@@ -143,7 +143,7 @@ export function ctemGateWaitsByDefault(gate: Pick<FleetAutonomyGate, "impact">):
 
 /**
  * The gates step of the CTEM loop setup (#1087 item 4, #1830): one choice on the
- * CTEM gate catalog. Fully autonomous: nothing waits. Recommended: the seeded
+ * CTEM gate catalog. Full autonomous: nothing waits. Recommended: the seeded
  * level, so the destructive gates wait (Mobilize, and the OpenAEV validation on a
  * fleet with that step, #1339), named from the live catalog. Add gates: the
  * level choice. Each gate that waits is one decision item between steps (#1705),
@@ -156,9 +156,13 @@ export const CTEM_GATE_CHOICES: CtemGateChoice[] = ["autonomous", "recommended",
 /** The level the Recommended choice writes: the seeded one (`builtin_fleet_docs`, Low). */
 export const CTEM_RECOMMENDED_LEVEL: FleetAutonomyLevel = "low";
 
-/** @i18n-keys */
+/**
+ * The choice labels; the autonomous choice wears the level's own label (`AUTONOMY_LEVEL_LABELS.autonomous`),
+ * so one level has one name on the card and in the level strip under it (UX round 1 B4 on #1840).
+ * @i18n-keys
+ */
 export const CTEM_GATE_CHOICE_LABELS = {
-  autonomous: "Fully autonomous",
+  autonomous: "Full autonomous",
   recommended: "Recommended gates",
   custom: "Add gates",
 } as const;
