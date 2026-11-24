@@ -21556,5 +21556,9 @@
   "OpenCRQ sync failed {timeAgo}": "La sincronización de OpenCRQ falló {timeAgo}",
   "Link supporting assets to primary assets": "Vincular los activos de soporte a los activos principales",
   "On by default. Off: primary assets are imported without their supporting assets.": "Activado por defecto. Desactivado: los activos principales se importan sin sus activos de soporte.",
-  "Links each primary asset to the supporting assets OpenCRQ attaches to it, matched by OpenCRQ id or name. A link you add or remove by hand always wins.": "Vincula cada activo principal con los activos de soporte que OpenCRQ le asocia, reconocidos por su identificador de OpenCRQ o su nombre. Un vínculo añadido o eliminado a mano siempre prevalece."
+  "Links each primary asset to the supporting assets OpenCRQ attaches to it, matched by OpenCRQ id or name. A link you add or remove by hand always wins.": "Vincula cada activo principal con los activos de soporte que OpenCRQ le asocia, reconocidos por su identificador de OpenCRQ o su nombre. Un vínculo añadido o eliminado a mano siempre prevalece.",
+  "{product} rejected your sign-in token, so open exposures there may be missing.": "{product} rechazó su token de inicio de sesión: pueden faltar exposiciones abiertas.",
+  "{product} could not answer because the query was too large, so open exposures there may be missing.": "{product} no pudo responder porque la consulta era demasiado grande: pueden faltar exposiciones abiertas.",
+  "{product} did not answer in time, so open exposures there may be missing.": "{product} no respondió a tiempo: pueden faltar exposiciones abiertas.",
+  "No {product} connection could be used for this read, so open exposures there may be missing.": "No se pudo usar ninguna conexión de {product} para esta lectura: pueden faltar exposiciones abiertas."
 }
