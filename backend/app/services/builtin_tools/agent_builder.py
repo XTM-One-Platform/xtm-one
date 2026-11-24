@@ -5280,8 +5280,6 @@ def build_agent_builder_tool(
             line = f"- **{group.name}** (`{group.id}`) — {count} member{'' if count == 1 else 's'}"
             if str(group.id) in own_group_ids:
                 line += ", you are a member"
-            if group.auto_join:
-                line += ", auto join (single sign-on users join it)"
             if group.description:
                 line += f" — {group.description}"
             if members_listed:
@@ -15845,6 +15843,7 @@ def build_agent_builder_tool(
                 "required": ["integration_id"],
             },
             source="builtin:platform",
+            changes_tool_surface=True,
         ),
         ToolDefinition(
             name="delete_integration",
