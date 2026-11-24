@@ -17668,7 +17668,7 @@
   "Link assets": "資産をリンク",
   "Minimum primary asset criticality": "主要資産の最低重要度",
   "No accepted risk: every finding that passes the rules is ranked.": "受容したリスクはありません: ルールを通過したすべての検出結果が順位付けされます。",
-  "No asset yet: add them under Assets and exposure.": "資産がありません: 資産と露出で追加してください。",
+  "No asset yet: add them in Inventory > Assets.": "資産がありません: インベントリ > アセットで追加してください。",
   "No asset yet: the prioritization funnel cannot tell internet-facing findings apart.": "資産がありません: 優先順位付けファネルはインターネットに露出した検出結果を区別できません。",
   "No knowledge base linked: agents cannot follow your own procedures.": "リンクされたナレッジベースがありません: エージェントは自社の手順に従えません。",
   "No policy yet: findings rank as before.": "ポリシーがありません: 検出結果は従来どおりに順位付けされます。",
