@@ -1467,9 +1467,7 @@ async def may_manage_shared_memory(db: AsyncSession, *, agent_id: str, user_id: 
     aid, uid = safe_uuid(agent_id), safe_uuid(user_id)
     if aid is None or uid is None:
         return False
-    row = (
-        await db.execute(select(Agent.user_id, Agent.is_company_managed).where(Agent.id == aid))
-    ).one_or_none()
+    row = (await db.execute(select(Agent.user_id, Agent.is_company_managed).where(Agent.id == aid))).one_or_none()
     if row is None:
         return False
     role = (await db.execute(select(User.role).where(User.id == uid))).scalar_one_or_none()
@@ -1517,11 +1515,7 @@ async def retire_memories(
         AgentMemoryEntry.superseded_at.is_(None),
         *conditions,
     )
-    pool = (
-        _readable_by(AgentMemoryEntry, parsed_uid)
-        if include_shared
-        else _written_by(AgentMemoryEntry, parsed_uid)
-    )
+    pool = _readable_by(AgentMemoryEntry, parsed_uid) if include_shared else _written_by(AgentMemoryEntry, parsed_uid)
     result = await db.execute(
         update(AgentMemoryEntry)
         .where(*matching, pool)

@@ -1360,6 +1360,9 @@ class ToolDefinition:
     #: model sent them, while the round's other calls still run in parallel
     #: (#12182). A tool whose calls are independent leaves it ``False``.
     ordered_calls: bool = False
+    #: The tool's result is people's records (contacts, personnel): a
+    #: ``to_workset`` of it stores each item's reference, never the record.
+    personal_records: bool = False
     workspace_ingest: bool = False
     repository_archive: bool = False
     repository_file: bool = False
@@ -2642,8 +2645,10 @@ WORKSET_INGEST_GUIDE = (
 class WorksetIngestor(Protocol):
     """Where a ``to_workset`` call's result goes (``builtin_tools/workset.py``)."""
 
-    async def ingest(self, *, call: ToolCall, result: ToolResult, spec: object) -> ToolResult:
-        """The receipt the model gets instead of *result*'s content."""
+    async def ingest(
+        self, *, call: ToolCall, result: ToolResult, spec: object, personal_records: bool = False
+    ) -> ToolResult:
+        """The receipt the model gets instead of *result*'s content (*personal_records*: store references only)."""
         ...
 
 
@@ -3653,7 +3658,9 @@ class CompositeToolExecutor:
             result = await self._dispatch(inner, executor)
             if result.is_error:
                 return result
-            return await ingestor.ingest(call=inner, result=result, spec=spec)
+            return await ingestor.ingest(
+                call=inner, result=result, spec=spec, personal_records=definition.personal_records
+            )
         sink = self.workspace_sink
         if workspace_reference_keys(call.arguments):
             # ``$workspace:PATH`` arguments become the files' content here, the

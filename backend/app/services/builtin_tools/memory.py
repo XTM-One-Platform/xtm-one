@@ -437,9 +437,7 @@ def build_memory_store_tool(
                 # The person who manages the agent's memory (its owner, an
                 # administrator) retires its shared pool too, as the memory
                 # screen lets them delete it.
-                shared = await may_manage_shared_memory(
-                    mem_db, agent_id=agent_id, user_id=user_id or None
-                )
+                shared = await may_manage_shared_memory(mem_db, agent_id=agent_id, user_id=user_id or None)
                 outcome = await retire_memories(
                     mem_db,
                     agent_id=agent_id,

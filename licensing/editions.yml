@@ -50,6 +50,7 @@ ee:
   - backend/app/services/chat_*.py
   - backend/app/services/chat_commands/**
   - backend/app/services/code_interpreter.py
+  - backend/app/services/config_text_search.py
   - backend/app/services/health/**
   - backend/app/services/content_safety.py
   - backend/app/services/context_usage.py

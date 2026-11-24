@@ -2407,6 +2407,7 @@ def build_tools(
         # ── Contacts ──
         ToolDefinition(
             name="get_hubspot_contact",
+            personal_records=True,
             description=(
                 "Get a HubSpot contact by ID: name, email, company, lifecycle stage and lead status (labels, raw ID "
                 "alongside), owner (name, email, teams, assignment date), location, first and recent form conversion, "
@@ -2444,6 +2445,7 @@ def build_tools(
         ),
         ToolDefinition(
             name="search_hubspot_contacts",
+            personal_records=True,
             description=(
                 "Search, filter, and list HubSpot contacts. Each line: name, email, company, job title, lifecycle stage, "
                 "lead status, country, owner (name), created, last contacted, last activity, plus the properties named "

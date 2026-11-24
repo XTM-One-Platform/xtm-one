@@ -188,6 +188,7 @@ BUILTIN_GROUP_ALIASES: dict[str, tuple[str, tuple[str, ...]]] = {
             "update_prompt",
             "delete_prompt",
             "list_skills",
+            "search_config_text",
             "get_skill",
             "create_skill",
             "update_skill",
