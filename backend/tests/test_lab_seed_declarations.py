@@ -4570,7 +4570,7 @@ def test_lab_ctem_kev_tailored_narrows_the_cyber_kev_count_to_the_saved_stack(mo
         return stack
 
     monkeypatch.setattr(ctem_metrics, "build_posture_for_user", collect)
-    monkeypatch.setattr(ctem_metrics_collector, "_profile_tech_stack", read_stack)
+    monkeypatch.setattr(ctem_metrics_collector, "_organization_software", read_stack)
     assert module.tailored_ctem_posture({"LAB_CTEM_KEV_TAILORED": "on"}) is True
     facts, present = asyncio.run(ctem_metrics.build_posture_for_user(None, "u", "cyber"))
     assert present == {"opencti", "openaev"}

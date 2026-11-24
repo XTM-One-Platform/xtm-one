@@ -165,6 +165,9 @@ _WORK_ITEM_KEYS = (
     "blocked_reason",
     "blocked_on",
     "blocked_on_refs",
+    # true on the status change a person's answer made (answer_work_item):
+    # a decision listener hears the answer, not another release of the item.
+    "answered",
 )
 _FRICTION_KEYS = (
     "friction_id",

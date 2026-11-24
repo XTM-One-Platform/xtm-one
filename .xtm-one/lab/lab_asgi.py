@@ -350,8 +350,9 @@ def tailored_ctem_posture(environ: dict) -> bool:
     """``LAB_CTEM_KEV_TAILORED=on``: the cyber KEV count is narrowed to the saved tech stack; whether it is.
 
     Nothing answers OpenCTI here, so the collector's tailoring query (``_octi_kev_tailored``) never runs: the
-    saved profile's stack (``ctem_metrics_collector._profile_tech_stack``, the route's own reader) is matched by
-    ``ctem_sample.tailored_kev`` on the posture the other switches answer. No stack, no tailored count, as live.
+    saved organization software (``ctem_metrics_collector._organization_software``, the route's own reader,
+    #1495) is matched by ``ctem_sample.tailored_kev`` on the posture the other switches answer. No stack, no
+    tailored count, as live.
     """
     if environ.get("LAB_CTEM_KEV_TAILORED", "").strip().lower() != "on":
         return False
@@ -363,7 +364,7 @@ def tailored_ctem_posture(environ: dict) -> bool:
         stage_facts, present = await collector(db, user_id, vertical)
         if vertical != ctem_sample.VERTICAL or "opencti" not in present:
             return stage_facts, present
-        return tailor_kev(stage_facts, await ctem_metrics_collector._profile_tech_stack(db)), present
+        return tailor_kev(stage_facts, await ctem_metrics_collector._organization_software(db)), present
 
     # The posture route calls the collector by the name it imported, so the route module's attribute is the one used.
     ctem_metrics.build_posture_for_user = collect

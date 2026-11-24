@@ -136,6 +136,10 @@ class OrganizationAssetGroup(Base):
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
     row_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=text("1"))
+    #: Members the group's source named that no record of the inventory holds (#1556): counted, never dropped.
+    unresolved_members: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    #: When the group's source last answered its whole member list (``None``: never read).
+    members_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
     updated_by: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
     created_at: Mapped[datetime] = mapped_column(
