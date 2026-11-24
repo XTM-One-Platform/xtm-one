@@ -212,6 +212,9 @@ COMMON_SHARE = 0.25
 #: Files a free name may select before :data:`COMMON_SHARE` applies: a small suite keeps every hit.
 COMMON_FLOOR = 20
 _LITERAL = re.compile(r"""["']([A-Za-z_][A-Za-z0-9_]*)["']""")
+#: A file name or path in a string literal (``".xtm-checkout.json"``, ``"dev-docs/x.md"``): tests assert it inside
+#: longer text (a message), so it is searched as a free name, never only where quoted whole.
+_PATH_LITERAL = re.compile(r"""["']([A-Za-z0-9_.\-/]*[A-Za-z][A-Za-z0-9_.\-/]*)["']""")
 _QUOTED = re.compile(r"""(["'`])([A-Za-z_][A-Za-z0-9_]*)\1""")
 _PLAIN_WORD = re.compile(r"[a-z]+")
 _TEST_NAME = re.compile(r"(^test_.+\.py$)|(.+_test\.py$)|(.+\.(test|spec)\.(t|j)sx?$)|(.+\.(test|spec)\.m?js$)")
@@ -461,7 +464,26 @@ def _touched(path: str, text: str, lines: set[int], literals: set[str], defined:
     for n in lines:
         if 0 < n <= len(rows):
             literals.update(_LITERAL.findall(rows[n - 1]))
+            literals.update(p for p in _PATH_LITERAL.findall(rows[n - 1]) if path_literal(p))
     return out
+
+
+def _dotted_module(name: str) -> bool:
+    """Whether *name* is a module import path (``app.tool``): never too common to select by."""
+    return "." in name and all(part.isidentifier() for part in name.split("."))
+
+
+def path_literal(text: str) -> bool:
+    """Whether a string literal is a file name or path worth selecting tests by.
+
+    It holds a ``.``, ``-`` or ``/`` (an identifier-like literal is :data:`_LITERAL`'s),
+    :data:`MIN_LITERAL_CHARS` characters and four letters or digits. #1812 renamed
+    ``".xtm-checkout.json"``: the five tests asserting the old name in an error message
+    were not selected and failed in the merge queue.
+    """
+    if text.isidentifier() or len(text) < MIN_LITERAL_CHARS or not any(c in text for c in ".-/"):
+        return False
+    return sum(c.isalnum() for c in text) >= 4
 
 
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
@@ -720,7 +742,7 @@ def select_tests(
             found -= literal - quotes(text)
         hits = sorted({n for n in found if n in free or owners.get(n, set()) & seen} | seen)
         for name in hits:
-            if name in free and "." not in name:
+            if name in free and not _dotted_module(name):
                 counts[name] = counts.get(name, 0) + 1
         if hits:
             selected[path] = hits
@@ -1009,7 +1031,10 @@ async def affected_tests(
             + ", ".join(sorted(tops))
             + "."
         )
-    out.quoted_only = {n for names in quoted.values() for n in names} & (out.identifiers - definitions)
+    # A path literal is asserted inside longer text: it selects wherever it is written, quoted whole or not.
+    out.quoted_only = {n for names in quoted.values() for n in names if n.isidentifier()} & (
+        out.identifiers - definitions
+    )
     generic -= out.identifiers | {n for defined in out.scoped.values() for n in defined}
     if generic:
         shown = sorted(generic)[:8]

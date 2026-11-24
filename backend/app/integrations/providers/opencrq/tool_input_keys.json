@@ -12,6 +12,38 @@
       "closed": true
     }
   ],
+  "configure_opencrq_connector": [
+    {
+      "procedures": [
+        "integrations.configure"
+      ],
+      "fields": [
+        "source"
+      ],
+      "conditional": [],
+      "closed": false
+    },
+    {
+      "procedures": [
+        "opencti.configure"
+      ],
+      "fields": [
+        "streamId"
+      ],
+      "conditional": [],
+      "closed": false
+    },
+    {
+      "procedures": [
+        "opencti.setEnabled"
+      ],
+      "fields": [
+        "enabled"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
   "create_opencrq_asset_evidence": [
     {
       "procedures": [
@@ -57,14 +89,33 @@
         "primaryAssets.createPrimaryAsset"
       ],
       "fields": [
+        "availability",
+        "businessFunction",
         "businessValueCategoryIds",
+        "confidentiality",
         "description",
         "id",
+        "integrity",
+        "mtpdMinutes",
         "name",
         "organizationId",
-        "ownerId"
+        "ownerId",
+        "reference",
+        "rpoMinutes",
+        "rtoMinutes",
+        "traceability"
       ],
-      "conditional": [],
+      "conditional": [
+        "availability",
+        "businessFunction",
+        "confidentiality",
+        "integrity",
+        "mtpdMinutes",
+        "reference",
+        "rpoMinutes",
+        "rtoMinutes",
+        "traceability"
+      ],
       "closed": true
     }
   ],
@@ -658,6 +709,18 @@
         "offset",
         "startedTo",
         "statuses"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_primary_asset": [
+    {
+      "procedures": [
+        "primaryAssets.getPrimaryAsset"
+      ],
+      "fields": [
+        "id"
       ],
       "conditional": [],
       "closed": true
@@ -1439,6 +1502,38 @@
       "closed": true
     }
   ],
+  "run_opencrq_connector": [
+    {
+      "procedures": [
+        "connectors.reconnectStream"
+      ],
+      "fields": [
+        "source"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "connectors.resetState"
+      ],
+      "fields": [
+        "source"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "connectors.syncNow"
+      ],
+      "fields": [
+        "source"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
   "run_opencrq_crq_simulation": [
     {
       "procedures": [
@@ -1684,17 +1779,35 @@
         "primaryAssets.updatePrimaryAsset"
       ],
       "fields": [
+        "availability",
+        "businessFunction",
         "businessValueCategoryIds",
+        "confidentiality",
         "description",
         "id",
+        "integrity",
+        "mtpdMinutes",
         "name",
-        "ownerId"
+        "ownerId",
+        "reference",
+        "rpoMinutes",
+        "rtoMinutes",
+        "traceability"
       ],
       "conditional": [
+        "availability",
+        "businessFunction",
         "businessValueCategoryIds",
+        "confidentiality",
         "description",
+        "integrity",
+        "mtpdMinutes",
         "name",
-        "ownerId"
+        "ownerId",
+        "reference",
+        "rpoMinutes",
+        "rtoMinutes",
+        "traceability"
       ],
       "closed": true
     }

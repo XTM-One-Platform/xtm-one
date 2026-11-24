@@ -1,6 +1,7 @@
 """OpenCRQ asset inventory, dependency graph, and vulnerability tools.
 
 * ``list_opencrq_primary_assets``    - business (primary) assets of an org.
+* ``get_opencrq_primary_asset``      - every field of one primary asset.
 * ``list_opencrq_business_value_categories`` - closed catalogue a primary
   asset is classified into.
 * ``create/update_opencrq_primary_asset``, ``delete_opencrq_primary_assets``
@@ -49,6 +50,139 @@ from ._common import (
 logger = logging.getLogger(__name__)
 
 _SOURCE = "integration:opencrq"
+
+# A primary asset's native fields (OpenCRQ module/src/modules/primary-assets/constants.ts).
+# The four security needs share one scale, lowest first: the overall level OpenCRQ shows is
+# not stored, it is the highest of the criteria set.
+SECURITY_NEED_LEVELS = ("low", "medium", "high", "very_high")
+_SECURITY_NEED_CRITERIA = (
+    ("availability", "Availability"),
+    ("integrity", "Integrity"),
+    ("confidentiality", "Confidentiality"),
+    ("traceability", "Traceability"),
+)
+_REFERENCE_MAX_LENGTH = 64
+_BUSINESS_FUNCTION_MAX_LENGTH = 128
+# Ten years, OpenCRQ's PRIMARY_ASSET_DURATION_MAX_MINUTES.
+_DURATION_MAX_MINUTES = 10 * 365 * 24 * 60
+_DURATIONS = (("rtoMinutes", "RTO"), ("rpoMinutes", "RPO"), ("mtpdMinutes", "MTPD"))
+# Stands for an argument the call did not pass: an update leaves that field unchanged,
+# where an explicit null (or an empty string) clears it.
+_KEEP: Any = object()
+
+
+def _native_value(argument: str, value: Any, kind: str) -> tuple[Any, str | None]:
+    """The value OpenCRQ takes for one native field of a primary asset, or the refusal.
+
+    ``None`` and ``""`` are no value (sent as ``null``, which clears it on an update).
+    *kind* is ``level`` (a security need), ``minutes`` (a duration) or ``text:<max length>``.
+    """
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None, None
+    if kind == "level":
+        level = str(value).strip().lower()
+        if level not in SECURITY_NEED_LEVELS:
+            return None, (
+                f"{argument} must be one of: {', '.join(SECURITY_NEED_LEVELS)} (null or an empty string clears it)."
+            )
+        return level, None
+    if kind == "minutes":
+        minutes = value
+        if isinstance(minutes, float) and minutes.is_integer():
+            minutes = int(minutes)
+        if isinstance(minutes, str) and minutes.strip().isdigit():
+            minutes = int(minutes.strip())
+        if isinstance(minutes, bool) or not isinstance(minutes, int) or not 0 <= minutes <= _DURATION_MAX_MINUTES:
+            return None, (
+                f"{argument} must be a whole number of minutes from 0 to {_DURATION_MAX_MINUTES} "
+                "(10 years); null clears it."
+            )
+        return minutes, None
+    limit = int(kind.split(":", 1)[1])
+    text = str(value).strip()
+    if len(text) > limit:
+        return None, f"{argument} must be at most {limit} characters."
+    return text, None
+
+
+def _overall_security_need(asset: dict[str, Any]) -> str | None:
+    """The highest of the four security needs set on *asset*, ``None`` when none is."""
+    ranks = [
+        SECURITY_NEED_LEVELS.index(asset[key])
+        for key, _ in _SECURITY_NEED_CRITERIA
+        if asset.get(key) in SECURITY_NEED_LEVELS
+    ]
+    return SECURITY_NEED_LEVELS[max(ranks)] if ranks else None
+
+
+def _fmt_minutes(minutes: Any) -> str:
+    """A duration OpenCRQ stores in minutes, with its round unit when it has one."""
+    if not isinstance(minutes, int) or isinstance(minutes, bool):
+        return "not set"
+    if minutes and minutes % 1440 == 0:
+        return f"{minutes} min ({minutes // 1440} d)"
+    if minutes and minutes % 60 == 0:
+        return f"{minutes} min ({minutes // 60} h)"
+    return f"{minutes} min"
+
+
+def _fmt_security_needs(asset: dict[str, Any]) -> str:
+    """``A/I/C/T: high/high/very_high/medium (overall very_high, computed)``, on one line."""
+    levels = "/".join(
+        str(asset[key]) if asset.get(key) in SECURITY_NEED_LEVELS else "not set" for key, _ in _SECURITY_NEED_CRITERIA
+    )
+    overall = _overall_security_need(asset)
+    return f"A/I/C/T: {levels} (overall {overall or 'not set'}, computed)"
+
+
+def _fmt_durations(asset: dict[str, Any]) -> str:
+    """``RTO 240 min (4 h), RPO not set, MTPD 1440 min (1 d)``."""
+    return ", ".join(f"{label} {_fmt_minutes(asset.get(key))}" for key, label in _DURATIONS)
+
+
+def _fmt_primary_asset(asset: dict[str, Any], base_url: str, tenant: str) -> str:
+    """Every field of one primary asset as ``getPrimaryAsset`` answers it."""
+    organization = asset.get("organization") or {}
+    owner = asset.get("owner") or {}
+    lines = [
+        f"[PrimaryAsset] {_one_line(asset.get('name'), 200, 'unnamed')}",
+        f"ID: {asset.get('id')}",
+    ]
+    if organization.get("name") or asset.get("organizationId"):
+        lines.append(
+            f"Organization: {_one_line(organization.get('name'), 200, 'unnamed')} "
+            f"(id: {organization.get('id') or asset.get('organizationId')})"
+        )
+    lines.append(
+        f"Owner: {_one_line(owner.get('name'), 200, 'unnamed')} (id: {owner.get('id')})"
+        if owner.get("id")
+        else "Owner: none"
+    )
+    lines.append(f"Reference: {_one_line(asset.get('reference'), _REFERENCE_MAX_LENGTH) or 'not set'}")
+    lines.append(
+        f"Business function: {_one_line(asset.get('businessFunction'), _BUSINESS_FUNCTION_MAX_LENGTH) or 'not set'}"
+    )
+    if asset.get("description"):
+        lines.append(f"Description: {_one_line(asset['description'], 500)}")
+    categories = ", ".join(
+        _one_line(c.get("name"), 120) or _one_line(c.get("code"), 60)
+        for c in asset.get("businessValueCategories") or []
+    )
+    lines.append(f"Business value categories: {categories or 'none'}")
+    lines.append("Security needs (scale low < medium < high < very_high):")
+    for key, label in _SECURITY_NEED_CRITERIA:
+        value = asset.get(key)
+        lines.append(f"  {label}: {value if value in SECURITY_NEED_LEVELS else 'not set'}")
+    lines.append(f"  Overall level (computed, the highest criterion set): {_overall_security_need(asset) or 'not set'}")
+    for key, label in _DURATIONS:
+        lines.append(f"{label}: {_fmt_minutes(asset.get(key))}")
+    link = _grc_primary_asset_link(
+        base_url, tenant, organization.get("id") or asset.get("organizationId"), asset.get("id")
+    )
+    if link:
+        lines.append(link)
+    return "\n".join(lines)
+
 
 _LINK_TYPES = ["support_to_primary", "support_to_support"]
 
@@ -407,8 +541,13 @@ def register(
             )
             if categories:
                 entry += f" [{categories}]"
+            if a.get("reference"):
+                entry += f" ref {_one_line(a['reference'], _REFERENCE_MAX_LENGTH)}"
             if a.get("description"):
                 entry += f" - {_one_line(a['description'], 120)}"
+            entry += f"\n  {_fmt_security_needs(a)}; {_fmt_durations(a)}"
+            if a.get("businessFunction"):
+                entry += f"\n  Business function: {_one_line(a['businessFunction'], _BUSINESS_FUNCTION_MAX_LENGTH)}"
             lines.append(entry)
         return _quarantined(
             f"Primary assets ({len(assets)}):",
@@ -491,6 +630,26 @@ def register(
             "supporting asset (connector inventories and user edits)",
         )
 
+    async def get_opencrq_primary_asset(primary_asset_id: str = "", tenant_id: str = "") -> str:
+        if not primary_asset_id:
+            return "primary_asset_id is required (use list_opencrq_primary_assets to discover)."
+        tenant, err = await _resolve_tenant(base_url, headers, tenant_id)
+        if err or tenant is None:
+            return err or "No OpenCRQ tenant resolved."
+        asset, err = await _trpc(
+            base_url,
+            headers,
+            "primaryAssets.getPrimaryAsset",
+            "get primary asset",
+            input={"id": primary_asset_id},
+            tenant_id=tenant,
+        )
+        if err:
+            return err
+        if not asset:
+            return f"Primary asset {primary_asset_id} not found."
+        return _untrusted(_fmt_primary_asset(asset, base_url, tenant), "primary asset")
+
     async def search_opencrq_cves(query: str = "", tenant_id: str = "") -> str:
         query = (query or "").strip()
         if len(query) < 3:
@@ -520,6 +679,15 @@ def register(
         description: str = "",
         owner_user_id: str = "",
         business_value_category_ids: list[str] | None = None,
+        reference: str | None = None,
+        business_function: str | None = None,
+        availability: str | None = None,
+        integrity: str | None = None,
+        confidentiality: str | None = None,
+        traceability: str | None = None,
+        rto_minutes: int | None = None,
+        rpo_minutes: int | None = None,
+        mtpd_minutes: int | None = None,
         tenant_id: str = "",
     ) -> str:
         if not organization_id or not name:
@@ -530,21 +698,38 @@ def register(
                 "business_value_category_ids is required (one or more UUIDs, "
                 "use list_opencrq_business_value_categories to discover)."
             )
+        asset_id = str(uuid.uuid4())
+        payload: dict[str, Any] = {
+            "id": asset_id,
+            "organizationId": organization_id,
+            "name": name,
+            "description": description or None,
+            "ownerId": owner_user_id or None,
+            "businessValueCategoryIds": category_ids,
+        }
+        for argument, key, kind, value in (
+            ("reference", "reference", f"text:{_REFERENCE_MAX_LENGTH}", reference),
+            ("business_function", "businessFunction", f"text:{_BUSINESS_FUNCTION_MAX_LENGTH}", business_function),
+            ("availability", "availability", "level", availability),
+            ("integrity", "integrity", "level", integrity),
+            ("confidentiality", "confidentiality", "level", confidentiality),
+            ("traceability", "traceability", "level", traceability),
+            ("rto_minutes", "rtoMinutes", "minutes", rto_minutes),
+            ("rpo_minutes", "rpoMinutes", "minutes", rpo_minutes),
+            ("mtpd_minutes", "mtpdMinutes", "minutes", mtpd_minutes),
+        ):
+            native, refusal = _native_value(argument, value, kind)
+            if refusal:
+                return refusal
+            if native is not None:
+                payload[key] = native
         tenant, err = await _resolve_tenant(base_url, headers, tenant_id)
         if err:
             return err
-        asset_id = str(uuid.uuid4())
         _, err = await _trpc(
             base_url, headers, "primaryAssets.createPrimaryAsset",
             "create primary asset",
-            input={
-                "id": asset_id,
-                "organizationId": organization_id,
-                "name": name,
-                "description": description or None,
-                "ownerId": owner_user_id or None,
-                "businessValueCategoryIds": category_ids,
-            },
+            input=payload,
             mutation=True, tenant_id=tenant,
         )
         if err:
@@ -559,11 +744,38 @@ def register(
         description: str | None = None,
         owner_user_id: str | None = None,
         business_value_category_ids: list[str] | None = None,
+        reference: Any = _KEEP,
+        business_function: Any = _KEEP,
+        availability: Any = _KEEP,
+        integrity: Any = _KEEP,
+        confidentiality: Any = _KEEP,
+        traceability: Any = _KEEP,
+        rto_minutes: Any = _KEEP,
+        rpo_minutes: Any = _KEEP,
+        mtpd_minutes: Any = _KEEP,
         tenant_id: str = "",
     ) -> str:
         if not primary_asset_id:
             return "primary_asset_id is required."
         payload: dict = {"id": primary_asset_id}
+        # An argument not passed keeps the field; null (or "") clears it.
+        for argument, key, kind, value in (
+            ("reference", "reference", f"text:{_REFERENCE_MAX_LENGTH}", reference),
+            ("business_function", "businessFunction", f"text:{_BUSINESS_FUNCTION_MAX_LENGTH}", business_function),
+            ("availability", "availability", "level", availability),
+            ("integrity", "integrity", "level", integrity),
+            ("confidentiality", "confidentiality", "level", confidentiality),
+            ("traceability", "traceability", "level", traceability),
+            ("rto_minutes", "rtoMinutes", "minutes", rto_minutes),
+            ("rpo_minutes", "rpoMinutes", "minutes", rpo_minutes),
+            ("mtpd_minutes", "mtpdMinutes", "minutes", mtpd_minutes),
+        ):
+            if value is _KEEP:
+                continue
+            native, refusal = _native_value(argument, value, kind)
+            if refusal:
+                return refusal
+            payload[key] = native
         if name:
             payload["name"] = name
         if description is not None:
@@ -1478,6 +1690,7 @@ def register(
         "list_opencrq_supporting_assets", list_opencrq_supporting_assets
     )
     executor.register("get_opencrq_supporting_asset", get_opencrq_supporting_asset)
+    executor.register("get_opencrq_primary_asset", get_opencrq_primary_asset)
     executor.register(
         "create_opencrq_supporting_asset", create_opencrq_supporting_asset
     )
@@ -1516,6 +1729,56 @@ def register(
 
     _tenant_prop = TENANT_PROP
 
+    def _native_props(nullable: bool) -> dict[str, Any]:
+        """The schema of a primary asset's native fields; on an update each also takes null (clears it)."""
+        clears = " null or an empty string clears it; omit it to keep it." if nullable else ""
+
+        def kind(json_type: str) -> object:
+            return [json_type, "null"] if nullable else json_type
+
+        level = {
+            "type": kind("string"),
+            "enum": [*SECURITY_NEED_LEVELS, *([None] if nullable else [])],
+        }
+        minutes = {"type": kind("integer"), "minimum": 0, "maximum": _DURATION_MAX_MINUTES}
+        return {
+            "reference": {
+                "type": kind("string"),
+                "maxLength": _REFERENCE_MAX_LENGTH,
+                "description": f"The asset's own reference code, unique in its organization (max 64 characters).{clears}",
+            },
+            "business_function": {
+                "type": kind("string"),
+                "maxLength": _BUSINESS_FUNCTION_MAX_LENGTH,
+                "description": f"The business function the asset serves (max 128 characters).{clears}",
+            },
+            **{
+                criterion: {
+                    **level,
+                    "description": (
+                        f"{label} security need, on the scale low < medium < high < very_high. "
+                        "The overall level is not set: it is the highest of the four criteria."
+                        f"{clears}"
+                    ),
+                }
+                for criterion, label in _SECURITY_NEED_CRITERIA
+            },
+            **{
+                argument: {
+                    **minutes,
+                    "description": (
+                        f"{label} in whole minutes, 0 to {_DURATION_MAX_MINUTES} (10 years); "
+                        f"e.g. 240 = 4 hours, 1440 = 1 day.{clears}"
+                    ),
+                }
+                for argument, label in (
+                    ("rto_minutes", "Recovery time objective (RTO)"),
+                    ("rpo_minutes", "Recovery point objective (RPO)"),
+                    ("mtpd_minutes", "Maximum tolerable period of disruption (MTPD)"),
+                )
+            },
+        }
+
     return [
         ToolDefinition(
             name="list_opencrq_primary_assets",
@@ -1523,7 +1786,10 @@ def register(
                 "List the primary (business) assets of an OpenCRQ "
                 "organization - the business processes and information "
                 "targeted by risk scenarios - with their business value "
-                "categories."
+                "categories, reference, security needs (availability/integrity/"
+                "confidentiality/traceability and the computed overall level), "
+                "business function and RTO/RPO/MTPD. get_opencrq_primary_asset "
+                "reads one asset whole."
             ),
             input_schema={
                 "type": "object",
@@ -1574,6 +1840,29 @@ def register(
             source=_SOURCE,
         ),
         ToolDefinition(
+            name="get_opencrq_primary_asset",
+            description=(
+                "Get every field of one OpenCRQ primary (business) asset: "
+                "organization, owner, reference, business function, description, "
+                "business value categories, the four security needs (availability, "
+                "integrity, confidentiality, traceability; scale low < medium < high "
+                "< very_high) with the overall level computed as the highest of them, "
+                "and the RTO, RPO and MTPD in minutes."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "primary_asset_id": {
+                        "type": "string",
+                        "description": "Primary asset UUID (list_opencrq_primary_assets).",
+                    },
+                    **_tenant_prop,
+                },
+                "required": ["primary_asset_id"],
+            },
+            source=_SOURCE,
+        ),
+        ToolDefinition(
             name="get_opencrq_supporting_asset",
             description=(
                 "Get an OpenCRQ supporting asset's detail including its "
@@ -1616,7 +1905,9 @@ def register(
             description=(
                 "Create a primary (business) asset in an OpenCRQ "
                 "organization, classified into one or more business value "
-                "categories (list_opencrq_business_value_categories). "
+                "categories (list_opencrq_business_value_categories), with "
+                "optional reference, business function, security needs "
+                "(low < medium < high < very_high) and RTO/RPO/MTPD in minutes. "
                 "Confirm with the user before creating."
             ),
             input_schema={
@@ -1638,6 +1929,7 @@ def register(
                         "minItems": 1,
                         "description": "Business value category UUIDs.",
                     },
+                    **_native_props(nullable=False),
                     **_tenant_prop,
                 },
                 "required": [
@@ -1652,8 +1944,11 @@ def register(
             name="update_opencrq_primary_asset",
             description=(
                 "Update a primary (business) asset in OpenCRQ (name, "
-                "description, owner, business value categories). Fields you "
-                "omit are left unchanged. Confirm with the user before "
+                "description, owner, business value categories, reference, "
+                "business function, security needs on the scale low < medium < "
+                "high < very_high, RTO/RPO/MTPD in minutes). Fields you omit are "
+                "left unchanged; null clears a reference, business function, "
+                "security need or duration. Confirm with the user before "
                 "updating."
             ),
             input_schema={
@@ -1681,6 +1976,7 @@ def register(
                         "minItems": 1,
                         "description": "Replaces the asset's categories.",
                     },
+                    **_native_props(nullable=True),
                     **_tenant_prop,
                 },
                 "required": ["primary_asset_id"],
