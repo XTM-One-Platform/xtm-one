@@ -11878,6 +11878,10 @@ async def run_agent_loop(
     # Wait pauses are not "acting" time: Stage-1 / wall-clock "stop exploring"
     # nudges must not fire because the parent spent five minutes parked.
     _wait_paused_total = 0.0
+    # Children already ``pending`` (queued, never started) at an implicit park
+    # of this run: a final answer is only allowed to leave them behind once
+    # they stayed ``pending`` through one whole park (#1661).
+    _parked_pending_ids: set[str] = set()
     _last_round_was_wait = False
     # One-shot: set at a wait-budget hand-off when an interactive user opened
     # this turn and the model re-waited on background tasks it did NOT spawn
@@ -14630,12 +14634,19 @@ async def run_agent_loop(
                 elif _spawned_ids:
                     _live_spawned = list(_spawned_ids)
                 # A final answer while every open child is still ``pending``
-                # (queued, never started) ends the run instead of parking: the
-                # answer is delivered, nothing it said is waiting, and a child
-                # that never started may never start within this run's budget.
-                # The children are left to run on their own and named on the
+                # (queued, never started) parks once, as before: a child is
+                # ``pending`` for the moments before a worker picks it up, and
+                # a delegating run stays open until its child finishes. When
+                # the same children are still ``pending`` after that whole
+                # park, the run ends on its answer instead of parking again:
+                # a child that never started may never start within this run's
+                # budget. They are left to run on their own and named on the
                 # response (``pending_task_ids``) and the iteration outcome.
                 _never_started = never_started_task_ids(_live_spawned, _spawn_statuses, response.content or "")
+                _first_park_pending: list[str] = []
+                if _never_started and not set(_never_started) <= _parked_pending_ids:
+                    _first_park_pending = _never_started
+                    _never_started = []
                 if _never_started:
                     logger.info(
                         "Agent loop iter %d: final answer with %d never-started "
@@ -14803,6 +14814,9 @@ async def run_agent_loop(
                         _wait_paused_total += _implicit_result.elapsed
                         _waive_wait_round(WAIT_TOOL_NAME)
                         _forget_reads_after_pause()
+                        # Only a park that really paused counts as the one
+                        # chance a never-started child gets to start.
+                        _parked_pending_ids.update(_first_park_pending)
                     # Suppress next-round nudges only when the park REALLY
                     # paused — a refused park (steered, already-done) spent no
                     # time, so budget / wall-clock warnings must still fire.

@@ -1262,10 +1262,12 @@ async def test_loop_parks_on_tool_free_exit_while_spawned_tasks_run(
 async def test_final_answer_with_only_never_started_children_ends_the_run(
     monkeypatch: pytest.MonkeyPatch, _quiet_langfuse: None
 ) -> None:
-    """A final answer while the only open child never started ends the run.
+    """A child still never started after one whole park no longer holds the run.
 
-    No implicit wait is injected after the deliverable: the run returns its
-    answer at once and names the child it leaves running on its own.
+    The first final answer parks once (a child is ``pending`` for the moments
+    before a worker picks it up, and a delegating run stays open until its
+    child finishes). When the child is still ``pending`` after that park, the
+    next final answer ends the run and names the child left running on its own.
     """
     monkeypatch.setattr(wp, "MIN_GRANTED_WAIT_SECONDS", 0.05)
     monkeypatch.setattr(al, "MIN_GRANTED_WAIT_SECONDS", 0.05)
@@ -1274,7 +1276,12 @@ async def test_final_answer_with_only_never_started_children_ends_the_run(
         return False, dict.fromkeys(ids, "pending")
 
     definitions, executor = _dummy_executor()
-    llm = _ScriptedLLM([ChatResponse(content='{"verdict": "done"}', model="stub", stop_reason="stop")])  # type: ignore[no-untyped-call]
+    llm = _ScriptedLLM(  # type: ignore[no-untyped-call]
+        [
+            ChatResponse(content="Report: launched.", model="stub", stop_reason="stop"),
+            ChatResponse(content='{"verdict": "done"}', model="stub", stop_reason="stop"),
+        ]
+    )
     messages = [
         ChatMessage(role="user", content="do the work"),
         ChatMessage(
@@ -1302,10 +1309,10 @@ async def test_final_answer_with_only_never_started_children_ends_the_run(
         wait_condition=_condition,
     )
     assert response.content == '{"verdict": "done"}'
-    assert llm.call_count == 1
+    assert llm.call_count == 2
     assert response.stop_reason != "waiting_on_tasks"
     assert response.pending_task_ids == [_PENDING_TASK_ID]
-    assert not [m for m in messages if m.role == "tool" and m.name == "wait"]
+    assert len([m for m in messages if m.role == "tool" and m.name == "wait"]) == 1
 
 
 @pytest.mark.parametrize(
