@@ -204,7 +204,11 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     running = {**running, "history": version_history.history_of(events)}
                 match = (
                     matching.version_match(
-                        running, product_label=shown[0].product_label, fixed_version=shown[0].fixed_version
+                        running,
+                        product_label=shown[0].product_label,
+                        fixed_version=shown[0].fixed_version,
+                        # The running versions OpenCTI places as affected or not (#1783), never a range.
+                        affected=matching.affected_from_outcomes(shown[2].get("issues")),
                     )
                     if shown[0].remediation_kind == "upgrade"
                     else None

@@ -74,8 +74,8 @@ export const FUNNEL_LAYER_COPY: Record<CtemFunnelLayerKey, { name: string; defin
   },
   business_impact: {
     name: "Business impact",
-    definition: "On an asset that supports a crown jewel.",
-    cta: "Map crown jewels to assets",
+    definition: "On an asset that supports a primary asset.",
+    cta: "Map primary assets to assets",
   },
   policy: {
     name: "After policy",

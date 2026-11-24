@@ -188,6 +188,27 @@ async def receiver_secret(integration: Any) -> str | None:
     return secret
 
 
+async def webhook_secret_state(integration: Any) -> str:
+    """Whether *integration* holds a ``webhook_secret`` and where it came from, never its value.
+
+    ``"set (auto-generated)"`` on a platform-managed integration (:func:`receiver_secret` generated it,
+    the registration carries none), ``"set (entered by an administrator)"`` on any other,
+    ``"not set"`` without one, ``"unreadable"`` when the stored config cannot be read.
+    """
+    from app.core.security import configured_secret
+    from app.services.vault import reveal_json_field
+
+    try:
+        extra = await reveal_json_field(integration, "extra_config_enc") if integration.extra_config_enc else None
+    except Exception:  # unreadable config or vault secret: say so, never raise from a read
+        return "unreadable"
+    if not configured_secret((extra if isinstance(extra, dict) else {}).get("webhook_secret")):
+        return "not set"
+    if getattr(integration, "auth_type", None) == "platform_managed":
+        return "set (auto-generated)"
+    return "set (entered by an administrator)"
+
+
 async def deprovision_assignment(db: Any, assignment: Any) -> None:
     """Remove what was provisioned for *assignment* in its source platform (best effort)."""
     config = getattr(assignment, "trigger_config", None)

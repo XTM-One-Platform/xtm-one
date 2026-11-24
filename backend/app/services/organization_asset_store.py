@@ -771,6 +771,8 @@ def _summary(
 
 #: The asset fields the list filters on (``fields.<name>.value``), in the order the facets answer them.
 FILTER_FIELDS: tuple[str, ...] = ("category", "subcategory", "criticality", "internet_facing")
+#: Fields a list filters on with no facet in the sidebar: the agent read of the inventory (#1774).
+LIST_ONLY_FILTER_FIELDS: tuple[str, ...] = ("os_family",)
 
 
 def _field_value(name: str) -> Any:
@@ -828,7 +830,7 @@ def _asset_where(
                     )
                 )
             )
-        elif name in FILTER_FIELDS:
+        elif name in FILTER_FIELDS or name in LIST_ONLY_FILTER_FIELDS:
             where.append(_field_value(name).in_(wanted))
     return where
 

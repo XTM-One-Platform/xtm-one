@@ -326,6 +326,58 @@ def render_page(
     return "\n".join([head + ".", wrap_untrusted(json.dumps(page, ensure_ascii=False), "organization profile"), tail])
 
 
+#: The ``field:value`` terms an agent's query on the assets category filters on (#1774): the
+#: CTEM Inventory list's filters (``organization_asset_store``), ``source`` and ``group`` included.
+ASSET_QUERY_FIELDS: tuple[str, ...] = (
+    "category",
+    "subcategory",
+    "criticality",
+    "internet_facing",
+    "os_family",
+    "source",
+    "group",
+)
+
+
+def split_asset_query(query: str) -> tuple[dict[str, list[str]], str]:
+    """``(filters, name text)`` of an assets query: ``os_family:windows source:intune web`` (#1774).
+
+    A ``field:value`` term on a known field is a filter (a repeated field ORs its values,
+    fields AND); every other word stays the name substring.
+    """
+    filters: dict[str, list[str]] = {}
+    words: list[str] = []
+    for term in str(query or "").split():
+        name, sep, value = term.partition(":")
+        if sep and name.lower() in ASSET_QUERY_FIELDS and value:
+            filters.setdefault(name.lower(), []).append(value)
+        else:
+            words.append(term)
+    return filters, " ".join(words)
+
+
+def render_asset_page(rows: list[dict[str, Any]], *, total: int, query: str, offset: int, limit: int) -> str:
+    """One page of the merged CTEM Inventory assets as an agent reads it (#1774)."""
+    from app.services.content_safety import wrap_untrusted
+
+    scope = f" matching {query.strip()!r}" if query.strip() else ""
+    name = "assets_exposure (merged CTEM Inventory assets, one row per real asset)"
+    if not total:
+        return f"Category {name}: no row{scope}. Do not guess it."
+    if not rows:
+        return f"Category {name}: offset {offset} is past the {total} rows{scope}."
+    nxt = offset + len(rows)
+    tail = (
+        'More: get_organization_context(category="assets_exposure"'
+        + (f", query={query.strip()!r}" if scope else "")
+        + f", offset={nxt}, limit={limit})."
+        if nxt < total
+        else "End of the category."
+    )
+    head = f"Category {name}: rows {offset + 1}-{nxt} of {total}{scope}."
+    return "\n".join([head, wrap_untrusted(json.dumps(rows, ensure_ascii=False), "organization profile"), tail])
+
+
 def render_categories(counts: dict[str, int]) -> str:
     """What ``get_organization_context(category="*")`` answers: every category with its size."""
     lines = [
