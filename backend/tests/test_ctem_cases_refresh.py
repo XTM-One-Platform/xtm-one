@@ -27,6 +27,9 @@ class FakeRedis:
         self.kv[key] = value
         return True
 
+    async def delete(self, key: str) -> None:
+        self.kv.pop(key, None)
+
     async def zadd(self, key, mapping):
         self.z.setdefault(key, {}).update(mapping)
 
@@ -167,6 +170,66 @@ async def test_scheduled_pass_goes_on_when_one_identity_fails(redis, monkeypatch
     db = FakeDb()
     assert await refresh.scheduled_pass(db) == {"identities": 2, "applied": 1, "skipped": 1}
     assert db.rollbacks == 1
+
+
+@pytest.mark.asyncio
+async def test_two_concurrent_recomputes_of_one_organization_never_both_write(
+    redis: FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1953: the second recompute skips (busy) while the first runs; the lock frees at its end."""
+    import asyncio
+    from typing import Any, cast
+
+    import app.services.ctem_cases_source as source
+
+    no_db = cast(Any, None)
+    org = uuid.uuid4()
+    started, release = asyncio.Event(), asyncio.Event()
+    writes: list[str] = []
+
+    async def recompute_for_user(db: Any, *, organization_id: Any, user_id: str, vertical: str) -> dict[str, Any]:
+        started.set()
+        await release.wait()
+        writes.append(user_id)
+        return {"applied": True}
+
+    monkeypatch.setattr(source, "recompute_for_user", recompute_for_user)
+    first = asyncio.create_task(refresh.recompute_as(no_db, organization_id=org, user_id="a", vertical="cyber"))
+    await started.wait()
+    second = await refresh.recompute_as(no_db, organization_id=org, user_id="b", vertical="cyber")
+    # Another organization is never blocked by this one.
+    release.set()
+    other = await refresh.recompute_as(no_db, organization_id=uuid.uuid4(), user_id="c", vertical="cyber")
+    assert (await first)["applied"] is True
+    assert second["busy"] is True and second["applied"] is False
+    assert other["applied"] is True
+    assert sorted(writes) == ["a", "c"]
+    # A busy answer moves neither the freshness line nor the viewer's stamp.
+    assert "ctem:cases:viewer-recompute:b:cyber" not in redis.kv
+    # Released: the next pass runs.
+    assert not [k for k in redis.kv if k.startswith("ctem:cases:recompute-lock:")]
+    again = await refresh.recompute_as(no_db, organization_id=org, user_id="b", vertical="cyber")
+    assert again["applied"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_lock_another_holder_took_is_never_released_by_this_one(redis: FakeRedis) -> None:
+    org = uuid.uuid4()
+    key = f"ctem:cases:recompute-lock:{org}:cyber"
+    async with refresh.recompute_lock(org, "cyber") as held:
+        assert held is True
+        redis.kv[key] = "someone-else"  # expired and retaken by another pod
+    assert redis.kv[key] == "someone-else"
+
+
+@pytest.mark.asyncio
+async def test_the_recompute_runs_when_redis_is_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _down() -> None:
+        raise RuntimeError("no redis")
+
+    monkeypatch.setattr(refresh, "_redis", _down)
+    async with refresh.recompute_lock(uuid.uuid4(), "cyber") as held:
+        assert held is True
 
 
 @pytest.mark.asyncio

@@ -381,6 +381,16 @@ explained. A single-platform answer draws the card as before.
   credentials for it (`not_connected`) writes nothing on that shared line, so a
   scheduled-pass identity never shows an outage to a viewer whose own read
   answered.
+- One recompute at a time per organization and vertical, across pods (#1953):
+  every path takes the Redis lock `ctem:cases:recompute-lock:<org>:<vertical>`
+  (10 min TTL, released by its holder only) in `recompute_as`; a recompute that
+  finds it held reads and writes nothing and answers `busy` (the scheduled pass
+  counts it skipped, the page open retries at the next open, `POST /recompute`
+  answers 409). Its write phase reads nothing remote: the scope gate's OpenCRQ
+  scenarios, fallback reader and inventory links are read before the first
+  signal row is written (`ctem_scope_gate_store.prepare_system_reads`), and a
+  transaction-local `lock_timeout` of 5 s makes a row another writer holds (a
+  case delete) fail the pass fast; the next pass retries.
 - Every failed source read (#1852) records why per product
   (`SourceRead.reasons`): `rejected` (401, 403, AUTH_REQUIRED, Forbidden),
   `too_large` (too_many_clauses, DATABASE_ERROR), `timeout`, `not_connected`

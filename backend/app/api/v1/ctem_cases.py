@@ -483,7 +483,11 @@ async def recompute_ctem_cases(
         raise HTTPException(status_code=429, detail="One recompute per minute: try again shortly")
     from app.services import ctem_cases_refresh as refresh
 
-    return await refresh.recompute_as(db, organization_id=organization_id, user_id=str(user.id), vertical=vertical)
+    answer = await refresh.recompute_as(db, organization_id=organization_id, user_id=str(user.id), vertical=vertical)
+    if answer.get("busy"):
+        # One recompute at a time per organization (#1953): never a second one queued behind it.
+        raise HTTPException(status_code=409, detail="A recompute of the cases is already running: try again shortly")
+    return answer
 
 
 async def recompute_slot(user_id: str, vertical: str) -> bool:
