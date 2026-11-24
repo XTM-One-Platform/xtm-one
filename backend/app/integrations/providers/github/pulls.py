@@ -1324,7 +1324,7 @@ def register(
             )
             if refusal:
                 return refusal
-            refusal = await review_loop.review_loop_refusal(client, owner, name, number, headers, "merged")
+            refusal, loop_note = await review_loop.review_loop_check(client, owner, name, number, headers, "merged")
             if refusal:
                 return refusal
             # A repository whose PR CI skips its suites requires their full run
@@ -1406,7 +1406,7 @@ def register(
 
             async def _receipt(sha: str) -> str:
                 """The commit receipt, then the full CI runs the merge was gated on."""
-                return await _commit_receipt(sha) + gate_note
+                return await _commit_receipt(sha) + gate_note + loop_note
 
             async def _commit_receipt(sha: str) -> str:
                 """' Merge commit <sha>, signed ...' read from the commit itself.

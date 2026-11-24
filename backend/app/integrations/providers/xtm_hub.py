@@ -421,6 +421,18 @@ _ENTITY_TYPE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9-]{0,63}$")
 _MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 _MAX_NAME = 200
 _MAX_PUBLISH_SHORT_DESCRIPTION = 300
+#: The Hub publishes "{Product} {Type}: {meta_description}." as the page's meta
+#: description and refuses it outside these bounds (META_DESCRIPTION_TOO_SHORT /
+#: _TOO_LONG), with an en or em dash, or when it starts with the resource name.
+_META_DESCRIPTION_MIN = 120
+_META_DESCRIPTION_MAX = 160
+#: The prefix the Hub puts before the meta description, per library.
+_META_DESCRIPTION_PREFIX = {
+    "opencti_custom_dashboards": "OpenCTI Dashboard: ",
+    "opencti_custom_views": "OpenCTI Custom View: ",
+    "opencti_playbooks": "OpenCTI Playbook: ",
+    "openaev_scenarios": "OpenAEV Scenario: ",
+}
 _MAX_PUBLISH_DESCRIPTION = 20000
 
 
@@ -1047,6 +1059,24 @@ async def find_publishable_library(base_url: str, api_token: str, kind: str) -> 
     )
 
 
+def meta_description_published(kind: str, summary: str) -> str:
+    """The meta description the Hub publishes for *summary* in a *kind* library."""
+    text = summary.strip()
+    period = "" if text.endswith(".") else "."
+    return f"{_META_DESCRIPTION_PREFIX.get(kind, '')}{text}{period}"
+
+
+def _meta_description_facts(kind: str, summary: str) -> str:
+    """The length the Hub measured and its bounds, appended to its refusal."""
+    published = meta_description_published(kind, summary)
+    return (
+        f" The Hub publishes '{published}' ({len(published)} characters); it takes "
+        f"{_META_DESCRIPTION_MIN} to {_META_DESCRIPTION_MAX} characters with its prefix, "
+        "no en or em dash, and a text that does not start with the resource name. "
+        "Pass meta_description to set it apart from short_description."
+    )
+
+
 async def publish_hub_resource(
     base_url: str,
     api_token: str,
@@ -1062,8 +1092,12 @@ async def publish_hub_resource(
     content_type: str,
     use_cases: list[str] | None = None,
     entity_types: list[str] | None = None,
+    meta_description: str = "",
 ) -> tuple[dict[str, Any] | None, str | None]:
     """Publish one file as a new, inactive resource of a library.
+
+    *meta_description* is the summary the Hub turns into the page's meta
+    description; empty, the short description is sent in its place.
 
     ``({"id", "kind", "active"}, None)``, or ``(None, error)`` with a reason:
     the library must take this kind of resource and the token's user must hold
@@ -1112,8 +1146,9 @@ async def publish_hub_resource(
         "slug": slug,
         "short_description": short_description,
         "description": description,
-        # The Hub's meta description is required; the short description is it.
-        "meta_description": short_description,
+        # The Hub's meta description is required; the short description is
+        # its default when the caller gives none.
+        "meta_description": meta_description or short_description,
         # Always a draft: a person publishes it on the Hub. Tool approvals
         # are opt-in, so this is the step that keeps a human between an
         # agent (which reads Hub content) and a public catalog.
@@ -1134,6 +1169,8 @@ async def publish_hub_resource(
         upload=("sourceDocument", filename or f"{slug}.json", file_bytes, content_type),
     )
     if err:
+        if "META_DESCRIPTION" in err:
+            err += _meta_description_facts(kind, meta_description or short_description)
         return None, err
     created = (data or {}).get("createDocument")
     if not isinstance(created, dict) or not isinstance(created.get("id"), str):
@@ -1956,6 +1993,7 @@ def build_tools(
         product_version: str,
         use_case_ids: str = "",
         entity_types: str = "",
+        meta_description: str = "",
         file_context: FileContext | None = None,
     ) -> str:
         """Publish a file of the run as a new resource of one library."""
@@ -1977,6 +2015,9 @@ def build_tools(
                 "Error: short_description is required, at most "
                 f"{_MAX_PUBLISH_SHORT_DESCRIPTION} characters."
             )
+        meta = _one_line(meta_description, _MAX_PUBLISH_SHORT_DESCRIPTION + 1)
+        if len(meta) > _MAX_PUBLISH_SHORT_DESCRIPTION:
+            return f"Error: meta_description is one line, at most {_MAX_PUBLISH_SHORT_DESCRIPTION} characters."
         long_text = str(description or "").strip()
         if not long_text or len(long_text) > _MAX_PUBLISH_DESCRIPTION:
             return (
@@ -2015,6 +2056,7 @@ def build_tools(
             content_type=content_type,
             use_cases=use_cases,
             entity_types=types,
+            meta_description=meta,
         )
         if err or created is None:
             return err or _NOT_A_HUB
@@ -2410,6 +2452,15 @@ def build_tools(
                         "description": f"One line, max {_MAX_PUBLISH_SHORT_DESCRIPTION} characters",
                     },
                     "description": {"type": "string", "description": "Markdown"},
+                    "meta_description": {
+                        "type": "string",
+                        "description": (
+                            "Search summary (default short_description). Published as "
+                            "'OpenCTI Dashboard: TEXT.', "
+                            f"{_META_DESCRIPTION_MIN}-{_META_DESCRIPTION_MAX} characters with that prefix"
+                        ),
+                        "default": "",
+                    },
                     "product_version": {
                         "type": "string",
                         "description": "The OpenCTI / OpenAEV version it was made for, e.g. 6.8.0",

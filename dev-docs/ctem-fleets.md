@@ -2017,12 +2017,24 @@ orchestrator files between two steps (`needs_human`, its ask card), and the
 Gate answered run reads the answer and sets the case's next state itself. The
 analyst review still offers `apply_opencti_draft` with Live writes off, by its
 key (`builtin_fleet_docs.GATE_OFFERED_TOOLS`), never paused.
+Decisions the loop raises itself (#1828, prompts of `_case_assignment` and
+`_gate_answered_assignment`, no code enforcement): a re-plan answer on the
+review gate is followed, once the new draft is attached, by the same
+`ctem:review:<case_id>` decision filed again with the new draft link; an SLA
+breach, or two answered decisions of one case that contradict, files one
+`ctem:remediation:<case_id>` decision with options and a recommendation; an
+answer in the person's own words that picks no option and decides nothing is
+answered on the case and in the item's result, and the same decision is filed
+again. Each phase (scoping, validation, mobilization) ends on one case note
+`Verdict PHASE: proven affected | proven not affected | unproven` with its
+evidence; the newest verdict of a phase holds (no new column: the note is the
+canonical verdict until a product choice asks for a typed field).
 At the seeded level (Low) two gates wait per case (Sam, 23 Nov 2026): the
 OpenAEV validation (on the three fleets with the OpenAEV validation step) and
 `ctem.mobilize`; every other gate runs and the case records it as passed
 automatically. Reads and drafts are never a decision. One decision per
 validation: its ask names the scenario or atomic test, its targets, schedule
-and safe mode, and the answer covers creating and launching exactly that; a
+and what it will do to them, and the answer covers creating and launching exactly that; a
 new target, schedule or object is a new decision, by the persona. The coverage
 request is under `ctem.analyst_review` alone (#1467). Full human gates: every
 gate waits. Full autonomous: nothing waits. A pin (`wait` or `run`) moves one gate

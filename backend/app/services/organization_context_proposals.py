@@ -77,6 +77,17 @@ PROPOSABLE_PRODUCT_PATHS: tuple[str, ...] = ("shipped_products",)
 PROPOSABLE_KNOWLEDGE_PATHS: tuple[str, ...] = ("enterprise_knowledge",)
 #: What each PIR asks, its owner, cadence and crown jewels, by PIR id (#1773). Not a contract field.
 PROPOSABLE_PIR_PATHS: tuple[str, ...] = ("pir_details",)
+#: The row fields an agent never writes through the profile (#1752): the asset records own them (#1543),
+#: each with its own lock and history. Field -> the ``upsert_organization_rows`` section that writes it.
+ROW_FIELDS: dict[str, str] = {"assets_exposure": "assets", "asset_groups": "asset_groups", "ai_systems": "assets"}
+
+
+def row_field_refusal(path: str) -> str:
+    """Why *path* (a key of :data:`ROW_FIELDS`) is not written through the profile, naming the row tool."""
+    return (
+        f"'{path}' holds rows, not a profile field: write them with upsert_organization_rows "
+        f"(section {ROW_FIELDS[path]}) or remove_organization_rows; the profile keeps its own fields only."
+    )
 
 
 def _contract_paths(role: str) -> tuple[str, ...]:
@@ -144,6 +155,8 @@ def validate_field_changes(organization: Any, current: dict[str, Any], changes: 
         if not isinstance(raw, dict):
             raise ProposalError("Each change is an object with field, value and basis.")
         path = str(raw.get("field") or "").strip()
+        if path in ROW_FIELDS:
+            raise ProposalError(row_field_refusal(path))
         if path not in paths:
             raise ProposalError(f"'{path}' is not a field of this organization's profile ({', '.join(paths)}).")
         if path in seen:
@@ -408,6 +421,10 @@ async def decide(
         unknown = wanted - {p["field"] for p in proposal.proposals}
         if unknown:
             raise ProposalError(f"Not in this proposal: {', '.join(sorted(unknown))}.")
+        rows = sorted(wanted & set(ROW_FIELDS))
+        if rows:
+            # A proposal stored before #1752 may still name a row field: never applied through the profile.
+            raise ProposalError(row_field_refusal(rows[0]))
         current = await org_context.current_version(db, target.id)
         data = orgs.parse_for(target, current.profile if current else {}).model_dump(mode="json")
         sources: dict[str, dict[str, str]] = {}
@@ -506,12 +523,14 @@ __all__ = [
     "PROPOSABLE_EXPOSURE_PATHS",
     "PROPOSABLE_KNOWLEDGE_PATHS",
     "PROPOSABLE_POLICY_PATHS",
+    "ROW_FIELDS",
     "ProposalError",
     "apply_changes",
     "decide",
     "list_proposals",
     "propose",
     "render_for_agent",
+    "row_field_refusal",
     "store_tracked_draft",
     "validate_field_changes",
     "validate_new_tracked",

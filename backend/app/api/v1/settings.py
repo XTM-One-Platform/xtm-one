@@ -65,6 +65,7 @@ from app.api.v1.schemas.settings import (
     LLMProviderRequest,
     LLMProviderResponse,
     LLMProviderUpdateRequest,
+    MediaModelsInUse,
     ModelCatalogChangeSummary,
     OAuthDefaultRequest,
     OAuthDefaultResponse,
@@ -2927,6 +2928,45 @@ async def list_available_speech_models(
     gateway) serves behind the OpenAI speech API.
     """
     return await _models_for_capability(db, "speech", user)
+
+
+@router.get("/media-models-in-use", response_model=MediaModelsInUse)
+async def media_models_in_use(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """The image and speech models generation runs on for the caller, saved or resolved.
+
+    The resolvers generation uses answer, so a card with nothing saved names the
+    built-in or AI Gateway default that really runs (#1816). None while AI is off,
+    as the model lists: resolving may ask the gateway.
+    """
+    from app.llm import router as llm_router
+
+    if not await ai_state.is_ai_enabled(db):
+        return MediaModelsInUse()
+    image = speech = None
+    # Any failure is that card's "none": a 500 would take the whole Settings page down.
+    try:
+        provider, model = await llm_router.get_image_provider(db, user_id=user.id)
+        config_id = getattr(provider, "provider_config_id", None)
+        image = AvailableModelItem(
+            model=model, provider=provider.provider_name, provider_id=str(config_id) if config_id else None
+        )
+    except ValueError:
+        pass
+    except Exception as exc:
+        logger.warning("Image model in use not resolved: %s", format_exception_message(exc))
+    try:
+        target = await llm_router.get_speech_provider(db, user_id=user.id)
+        speech = AvailableModelItem(
+            model=target.model, provider=target.config.provider, provider_id=str(target.config.id)
+        )
+    except ValueError:
+        pass
+    except Exception as exc:
+        logger.warning("Speech model in use not resolved: %s", format_exception_message(exc))
+    return MediaModelsInUse(image=image, speech=speech)
 
 
 @router.get("/available-music-models", response_model=list[AvailableModelItem])

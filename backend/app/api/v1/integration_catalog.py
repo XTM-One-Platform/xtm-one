@@ -1130,7 +1130,7 @@ PROVIDER_CATALOG = {
             "Calendars.Read.Shared Calendars.ReadWrite.Shared "
             "Chat.Create Chat.Read Chat.ReadBasic Chat.ReadWrite Chat.ReadWrite.All Chat.ManageDeletion.All "
             "ChatMember.Read ChatMember.ReadWrite ChatMessage.Read ChatMessage.Send "
-            "Team.ReadBasic.All "
+            "Team.ReadBasic.All TeamMember.ReadWrite.All "
             "Channel.Create Channel.Delete.All Channel.ReadBasic.All "
             "ChannelMember.Read.All ChannelMember.ReadWrite.All "
             "ChannelMessage.Read.All ChannelMessage.ReadWrite ChannelMessage.Edit ChannelMessage.Send "
@@ -1145,6 +1145,9 @@ PROVIDER_CATALOG = {
             "OnlineMeetingArtifact.Read.All OnlineMeetingAiInsight.Read.All "
             "CallTranscripts.Read.All"
         ),
+        # Team member writes need admin consent in most tenants: a sign-in that
+        # does not obtain it keeps the integration usable (#1829).
+        "optional_scopes": "TeamMember.ReadWrite.All",
         "authorize_url": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
         "token_url": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
         "extra_fields": {
@@ -1219,6 +1222,14 @@ PROVIDER_CATALOG = {
                 {
                     "scope": "ChannelMember.Read.All",
                     "description": "List members of Teams channels",
+                },
+                {
+                    "scope": "ChannelMember.ReadWrite.All",
+                    "description": "Add and remove members of private and shared Teams channels",
+                },
+                {
+                    "scope": "TeamMember.ReadWrite.All",
+                    "description": "Add and remove members of Teams teams (admin consent)",
                 },
                 {
                     "scope": "ChannelMessage.Read.All",
