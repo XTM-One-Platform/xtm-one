@@ -1766,7 +1766,8 @@ BUILTIN_AGENTS: list[dict] = [
         "tags": ["builtin", "ctem", "exposure", "briefing"],
         "builtin_tool_ids": [],
         "integration_template_bindings": ["opencti", "openaev"],
-        # Stateless weekly compute - no memory tiers needed.
+        # Stateless weekly compute; a CTEM seed keeps no per-user memory (#1837).
+        "memory_user_enabled": False,
     },
     # ── Evaluation Agents (stateless, disable_chat=True) ────────────
     {
@@ -2115,6 +2116,8 @@ BUILTIN_AGENTS: list[dict] = [
         },
         "builtin_tool_ids": ["shared_state", "work_items"],
         "integration_template_bindings": ["opencti", "openaev", "opencrq"],
+        # A company-managed CTEM seed keeps no per-user memory (#1837).
+        "memory_user_enabled": False,
     },
     {
         "slug": "ctem-vuln-triage-analyst",
@@ -2141,6 +2144,7 @@ BUILTIN_AGENTS: list[dict] = [
         "builtin_tool_ids": [],
         # OpenAEV for the findings and assets a CVE already has there (#891).
         "integration_template_bindings": ["opencti", "openaev", "opencrq"],
+        "memory_user_enabled": False,
     },
 ]
 
@@ -2168,6 +2172,8 @@ _CTEM_ROLE_AGENT_BASE: dict = {
     "max_iterations": 100,
     "temperature": 0.2,
     "builtin_tool_ids": [],
+    # Shared by every person of the organization: no per-user memory (#1837).
+    "memory_user_enabled": False,
 }
 
 #: The leads of the roles the generic CTEM loop fleet folds in (CTEM-31, #1048):
@@ -2215,6 +2221,7 @@ CTEM_FLEET_AGENTS: list[dict] = [
         # (ctem:f1:<id> work items, needs_human for every environment write).
         "builtin_tool_ids": ["shared_state", "work_items", "generate_file"],
         "integration_template_bindings": ["opencti", "openaev", "opencrq"],
+        "memory_user_enabled": False,
     },
     {
         **_CTEM_ROLE_AGENT_BASE,
