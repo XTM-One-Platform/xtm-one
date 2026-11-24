@@ -19040,7 +19040,6 @@
   "Technology": "Tecnología",
   "About the organization profile": "Acerca del perfil de la organización",
   "{count, plural, one {# proposal} other {# proposals}}": "{count, plural, one {# propuesta} other {# propuestas}}",
-  "{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}": "{count, plural, one {# campo sin completar, señalado por cada agente que lo necesita} other {# campos sin completar, señalados por cada agente que los necesita}}",
   "Copy both": "Copiar ambos",
   "The partner pastes the client ID and the secret together, as one pair.": "El socio pega el ID de cliente y el secreto juntos, como un solo par.",
   "Last refused token request": "Última solicitud de token rechazada",
@@ -21676,5 +21675,10 @@
   "The OpenCTI imports and syncs that keep the PIR list up to date.": "Las importaciones y sincronizaciones de OpenCTI que mantienen al día la lista de PIR.",
   "Wait for the prioritization policy to be saved.": "Espere a que se guarde la política de priorización.",
   "Risk and response": "Riesgo y respuesta",
-  "Organization profile tabs": "Pestañas del perfil de la organización"
+  "Organization profile tabs": "Pestañas del perfil de la organización",
+  "Unsaved": "Sin guardar",
+  "{count, plural, one {# field not filled} other {# fields not filled}}": "{count, plural, one {# campo sin rellenar} other {# campos sin rellenar}}",
+  "{count, plural, one {# field not filled on this tab, reported by every agent that needs it} other {# fields not filled on this tab, reported by every agent that needs them}}": "{count, plural, one {# campo sin rellenar en esta pestaña, señalado por cada agente que lo necesita} other {# campos sin rellenar en esta pestaña, señalados por cada agente que los necesita}}",
+  "Every field of this tab is filled.": "Todos los campos de esta pestaña están rellenados.",
+  "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}": "{count, plural, one {# más en {tab}.} other {# más en {tab}.}}"
 }

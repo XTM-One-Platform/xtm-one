@@ -1515,6 +1515,42 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     );
   };
 
+  // Completeness and unsaved edits per tab, on the tab bar (UX r1 B1 on #1984, the #12329 contract): the missing
+  // count of each tab, and which tab holds the fields an open edit or a pending draft changed.
+  const unsavedTabs = new Set<ProfileTab>(draftTabs);
+  if (editing && form && saved) changedTabs(saved, withLists(form)).forEach((key) => unsavedTabs.add(key));
+  const missingOf = (key: ProfileTab) => missing.filter((path) => tabOfField(path) === key).length;
+  const tabTrailing = (key: ProfileTab) => {
+    const count = editing ? 0 : missingOf(key);
+    const unsaved = editing && unsavedTabs.has(key);
+    if (!count && !unsaved) return undefined;
+    return (
+      <>
+        {count > 0 && (
+          <Badge
+            variant="warning"
+            className="ml-1.5"
+            data-testid={`settings.organization.tab-${key}-missing`}
+          >
+            <span aria-hidden>{count}</span>
+            <span className="sr-only">{t_i18n("{count, plural, one {# field not filled} other {# fields not filled}}", { count })}</span>
+          </Badge>
+        )}
+        {unsaved && (
+          <span
+            className="ml-1.5 inline-flex items-center gap-1 content-compact text-default-secondary"
+            data-testid={`settings.organization.tab-${key}-unsaved`}
+          >
+            <Pencil className="h-3 w-3" aria-hidden /> {t_i18n("Unsaved")}
+          </span>
+        )}
+      </>
+    );
+  };
+  // The overview row counts the active tab and names the other tab's count, never one total on both tabs.
+  const missingHere = missingOf(tab);
+  const missingElsewhere = settingsTabs.filter((key) => key !== tab && missingOf(key) > 0);
+
   return (
     <div data-testid="settings.organization" className="space-y-4">
       {/* A short header (#12329): the title with its explanation in a bubble, the version line, Draft and Edit. */}
@@ -1582,7 +1618,13 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           decides and acts. Path routes (#10203), the tablist of the rest of Settings; Copilot mode has one tab, no bar. */}
       {full && settingsTabs.length > 1 && (
         <DetailTabs
-          tabs={settingsTabs.map((key) => ({ key, label: PROFILE_TAB_LABELS[key], to: profileTabPath(key), testId: `settings.organization.tab-${key}` }))}
+          tabs={settingsTabs.map((key) => ({
+            key,
+            label: PROFILE_TAB_LABELS[key],
+            to: profileTabPath(key),
+            trailing: tabTrailing(key),
+            testId: `settings.organization.tab-${key}`,
+          }))}
           active={tab}
           ariaLabel={t_i18n("Organization profile tabs")}
           testId="settings.organization.tabs"
@@ -1600,9 +1642,17 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       {full && missing.length > 0 && !editing && (
         <div data-testid="settings.organization.overview" className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-elevation-subtle px-3 py-2 content-base">
           <p>
-            {t_i18n("{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}", {
-              count: missing.length,
-            })}
+            {missingHere > 0
+              ? t_i18n("{count, plural, one {# field not filled on this tab, reported by every agent that needs it} other {# fields not filled on this tab, reported by every agent that needs them}}", {
+                  count: missingHere,
+                })
+              : t_i18n("Every field of this tab is filled.")}
+            {missingElsewhere.map((key) => (
+              <span key={key} data-testid={`settings.organization.overview-${key}`}>
+                {" "}
+                {t_i18n("{count, plural, one {# more on {tab}.} other {# more on {tab}.}}", { count: missingOf(key), tab: t_i18n(PROFILE_TAB_LABELS[key]) })}
+              </span>
+            ))}
           </p>
           <Button data-testid="settings.organization.continue-onboarding" variant="secondary" className="gap-1.5" disabled={drafting.isPending} onClick={startOnboarding}>
             {aiAvailable ? <MessageSquare className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}

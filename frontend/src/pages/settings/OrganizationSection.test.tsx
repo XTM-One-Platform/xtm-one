@@ -318,6 +318,20 @@ describe("OrganizationSection", () => {
     expect(missing.textContent).toContain("Loaded hourly rate");
   });
 
+  it("marks each tab with its own missing count and its own unsaved edits (UX r1 B1 on #1984)", async () => {
+    renderPage("risk");
+    await screen.findByTestId("settings.organization.overview");
+    // size on Organization, loaded_hourly_rate on Risk and response: one each, on its own tab.
+    expect(screen.getByTestId("settings.organization.tab-organization-missing").textContent).toContain("1 field not filled");
+    expect(screen.getByTestId("settings.organization.tab-risk-missing").textContent).toContain("1 field not filled");
+    fireEvent.click(screen.getByTestId("settings.organization.edit"));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Loaded hourly rate" }), { target: { value: "120" } });
+    // Only the tab whose field changed reads Unsaved; the count markers leave while the form is open.
+    await waitFor(() => expect(screen.getByTestId("settings.organization.tab-risk-unsaved")).toBeTruthy());
+    expect(screen.queryByTestId("settings.organization.tab-organization-unsaved")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.tab-risk-missing")).toBeNull();
+  });
+
   it("shows the primary assets on CTEM > Inventory with no Used by row above them (#1690, #1878)", async () => {
     renderPage("business");
     expect(await screen.findByText("Payments")).toBeTruthy();
@@ -327,8 +341,10 @@ describe("OrganizationSection", () => {
   it("counts the fields not filled Settings draws and opens the form on a missing field (#9173 S1c, #1690)", async () => {
     renderPage("risk");
     const overview = await screen.findByTestId("settings.organization.overview");
-    // size and loaded_hourly_rate; pir_ids is reported on CTEM > Inventory with the Prioritization policy (#1889).
-    expect(overview.textContent).toContain("2 fields not filled");
+    // loaded_hourly_rate here, size on Organization; pir_ids is reported on CTEM > Inventory with the Prioritization
+    // policy (#1889). The row counts this tab and names the other one (UX r1 B1 on #1984).
+    expect(overview.textContent).toContain("1 field not filled on this tab");
+    expect(screen.getByTestId("settings.organization.overview-organization").textContent).toContain("1 more on Organization.");
     expect(screen.queryByTestId("settings.save-bar")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Loaded hourly rate" }));
     const rate = await screen.findByRole("textbox", { name: "Loaded hourly rate" });

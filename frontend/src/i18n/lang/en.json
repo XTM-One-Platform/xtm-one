@@ -19040,7 +19040,6 @@
   "Technology": "Technology",
   "About the organization profile": "About the organization profile",
   "{count, plural, one {# proposal} other {# proposals}}": "{count, plural, one {# proposal} other {# proposals}}",
-  "{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}": "{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}",
   "Copy both": "Copy both",
   "The partner pastes the client ID and the secret together, as one pair.": "The partner pastes the client ID and the secret together, as one pair.",
   "Last refused token request": "Last refused token request",
@@ -21676,5 +21675,10 @@
   "The OpenCTI imports and syncs that keep the PIR list up to date.": "The OpenCTI imports and syncs that keep the PIR list up to date.",
   "Wait for the prioritization policy to be saved.": "Wait for the prioritization policy to be saved.",
   "Risk and response": "Risk and response",
-  "Organization profile tabs": "Organization profile tabs"
+  "Organization profile tabs": "Organization profile tabs",
+  "Unsaved": "Unsaved",
+  "{count, plural, one {# field not filled} other {# fields not filled}}": "{count, plural, one {# field not filled} other {# fields not filled}}",
+  "{count, plural, one {# field not filled on this tab, reported by every agent that needs it} other {# fields not filled on this tab, reported by every agent that needs them}}": "{count, plural, one {# field not filled on this tab, reported by every agent that needs it} other {# fields not filled on this tab, reported by every agent that needs them}}",
+  "Every field of this tab is filled.": "Every field of this tab is filled.",
+  "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}": "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}"
 }
