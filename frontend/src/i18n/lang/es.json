@@ -21547,5 +21547,10 @@
   "{count, plural, one {# case and its history} other {# cases and their history}}": "{count, plural, one {# caso y su historial} other {# casos y su historial}}",
   "{count, plural, one {# open work item cancelled} other {# open work items cancelled}}": "{count, plural, one {# tarea abierta cancelada} other {# tareas abiertas canceladas}}",
   "{count, plural, one {# timer cancelled} other {# timers cancelled}}": "{count, plural, one {# temporizador cancelado} other {# temporizadores cancelados}}",
-  "{count, plural, one {# signal sent back to the scope gate} other {# signals sent back to the scope gate}}": "{count, plural, one {# señal devuelta al filtro de alcance} other {# señales devueltas al filtro de alcance}}"
+  "{count, plural, one {# signal sent back to the scope gate} other {# signals sent back to the scope gate}}": "{count, plural, one {# señal devuelta al filtro de alcance} other {# señales devueltas al filtro de alcance}}",
+  "Synced from OpenCRQ {timeAgo}": "Sincronizado desde OpenCRQ {timeAgo}",
+  "Synced from OpenCRQ: not run yet": "Sincronizado desde OpenCRQ: aún no se ha ejecutado",
+  "OpenCRQ sync off": "Sincronización de OpenCRQ desactivada",
+  "OpenCRQ sync paused": "Sincronización de OpenCRQ en pausa",
+  "OpenCRQ sync failed {timeAgo}": "La sincronización de OpenCRQ falló {timeAgo}"
 }

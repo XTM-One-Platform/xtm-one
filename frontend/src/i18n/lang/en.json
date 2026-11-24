@@ -21547,5 +21547,10 @@
   "{count, plural, one {# case and its history} other {# cases and their history}}": "{count, plural, one {# case and its history} other {# cases and their history}}",
   "{count, plural, one {# open work item cancelled} other {# open work items cancelled}}": "{count, plural, one {# open work item cancelled} other {# open work items cancelled}}",
   "{count, plural, one {# timer cancelled} other {# timers cancelled}}": "{count, plural, one {# timer cancelled} other {# timers cancelled}}",
-  "{count, plural, one {# signal sent back to the scope gate} other {# signals sent back to the scope gate}}": "{count, plural, one {# signal sent back to the scope gate} other {# signals sent back to the scope gate}}"
+  "{count, plural, one {# signal sent back to the scope gate} other {# signals sent back to the scope gate}}": "{count, plural, one {# signal sent back to the scope gate} other {# signals sent back to the scope gate}}",
+  "Synced from OpenCRQ {timeAgo}": "Synced from OpenCRQ {timeAgo}",
+  "Synced from OpenCRQ: not run yet": "Synced from OpenCRQ: not run yet",
+  "OpenCRQ sync off": "OpenCRQ sync off",
+  "OpenCRQ sync paused": "OpenCRQ sync paused",
+  "OpenCRQ sync failed {timeAgo}": "OpenCRQ sync failed {timeAgo}"
 }
