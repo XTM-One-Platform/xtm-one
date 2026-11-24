@@ -101,7 +101,7 @@ button, the browser extension or a playbook; stays outside fleets),
 | `opencti-dashboard-creator`, `opencti-dashboard-widget-creator` | Chat, handover | ONE-OFF | Widget creator consulted by F4 for the board dashboard |
 | `opencti-detection-rule-converter` | Handover from threat hunt | FOLD into F1 and F2 as consulted member (detections drafted) | Shared member: a fleet may connect it rather than own it |
 | `opencti-threat-hunt-creator` | Chat, handover | FOLD into F1 (hunt package for a relevant threat) | None |
-| `openaev-scenario-creator` | Chat, handover | FOLD into F1 and F3 (scenario built) | Read the organization's assets and AI systems from the context contract before choosing targets |
+| `openaev-scenario-creator` | Chat, handover | FOLD into F1 and F3 (scenario built) | Read the organization's assets and AI targets from the context contract before choosing targets |
 | `openaev-payload-creator` | `aev.attack_path_additional_agent`, handover | FOLD into F1, F2, F3 as consulted member | None |
 | `openaev-scenario-publisher` | Handover | ONE-OFF (catalogue PR) | None |
 | `openaev-attack-path-orchestrator` | `aev.attack_path_orchestrator` | ONE-OFF (autonomous pentest) | None in this program |
@@ -325,7 +325,7 @@ AI red team injectors, template assignment `cti-adversary-analyst`
 `04-mitre-atlas-mapping`. Orchestrator `ctem-ai-security-orchestrator`;
 members `ctem-ai-threat-analyst` (ATLAS mapping, consults
 `cti-ttp-harvester-filigran-ai`), `ctem-threat-relevance-analyst` (relevance
-to the organization's AI systems), `openaev-scenario-creator` (AI tests:
+to the organization's AI targets), `openaev-scenario-creator` (AI tests:
 prompt injection, jailbreak, excessive agency, tool misuse, MCP tool
 poisoning), `ctem-risk-quantifier` (AI risk scenario in OpenCRQ),
 `ctem-remediation-coordinator`; connected `ctem-assistant`,
@@ -348,7 +348,7 @@ assignments and the `ctem-ai-security` entry of `BUILTIN_FLEETS`
 (`builtin_agents.py` and `builtin_fleets.py` extend their lists with them):
 
 - `ctem-ai-security-orchestrator` (Orchestrator, exposed): JSON case output
-  (matched AI systems, proposed tests, status, missing context), tools
+  (matched AI targets, proposed tests, status, missing context), tools
   `work_items` and `shared_state`, bindings `opencti` and `openaev`, delegates
   to the analyst and the four agents shared with F1. Each proposed test is a
   work item `ctem:f3:approval:` + system + test with `needs_human` true; the
@@ -574,7 +574,7 @@ from it, provenance `restored from v<n>` (administrators). The free-text
 | regions of operation | ISO country list | F1, F3 relevance |
 | crown jewels | assets with business service and owner | F1, F2 prioritization, OpenCRQ |
 | tech stack | CPE / product list | F2 asset match, stage prioritization |
-| AI systems inventory | name, kind (assistant, agent, model API), owner, exposure, OpenAEV asset id | F3 |
+| AI targets (assets of category `ai_target`) | name, subcategory, provider, endpoint, model, owner, internet facing, OpenAEV id | F3 |
 | PIRs | OpenCTI PIR ids (`manage_opencti_pir` exists today) | F1, F3 relevance |
 | risk appetite | loss threshold per year, approval threshold | F1, F2, F3 approvals and ranking |
 | loaded hourly rate, currency | number | ROI (section 5) |
@@ -754,7 +754,7 @@ answers:
   are answered: ISO regions and currency, the size band, tech stack entries
   with vendor, product and a CPE only when one is matched, crown jewels
   linked to an OpenCRQ asset when the name matches exactly one (the rule of
-  the OpenCRQ sync above), AI systems with kind and exposure, PIRs matched
+  the OpenCRQ sync above), AI targets with kind and exposure, PIRs matched
   to existing OpenCTI PIR ids. A PIR the model suggests creating is answered
   under `suggested_pirs` and never created.
 - Amounts (risk appetite thresholds, loaded hourly rate) carry their
@@ -1368,7 +1368,7 @@ in an expected loss for the primary organization and proposed actions.
   direction `supplies` or `consumes`, the crown jewels it supports, the
   OpenCRQ supporting asset id when linked), and `contacts_owner` (the
   internal owner of the relationship, a user, never the third party's
-  contact). Crown jewels, AI systems, risk appetite, rate and ticketing
+  contact). Crown jewels, AI targets, risk appetite, rate and ticketing
   stay primary-only: the loss is always the primary's.
 - API: `GET /api/v1/organizations` (list), `POST` / `PATCH` / archive for
   tracked ones (administrators), and the per-organization profile at
@@ -2169,7 +2169,7 @@ What waits and what runs alone at Low, per seeded fleet
 
 Reclassified with #10005: the three OpenAEV launches (`high` to
 `destructive`) because an executed inject runs payloads on the
-organization's endpoints or AI systems, which the fleet cannot tell from
+organization's endpoints or AI targets, which the fleet cannot tell from
 production, and cannot be undone; the supplier action (`high` to
 `destructive`) because contacting a third party or changing a contract
 clause leaves the platform irreversibly. Agents lower a level freely and
