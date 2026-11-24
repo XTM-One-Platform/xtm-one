@@ -233,6 +233,14 @@ class PlatformSettings(Base):
         JSON, nullable=False, default=list, server_default=text("'[]'::json")
     )
 
+    # --- XTM Hub signing key ──────────────────────────────────────────────
+    # The version of the Ed25519 key this instance signs its XTM Hub calls
+    # with, derived from SECRET_KEY (``core/xtm_hub_key.py``). A new version
+    # gives a new key, which the Hub learns only through a new registration.
+    xtm_hub_key_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+
     # --- Tool approval gate ────────────────────────────────────────
     # Platform-wide kill switch for the per-tool human approval gate.
     # Off means no tool call pauses for anyone; every call is still recorded
