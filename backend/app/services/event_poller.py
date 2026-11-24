@@ -202,6 +202,11 @@ _MAX_PAGES_PER_POLL = 5
 # not push the tick past the scheduler's 60 s interval. Every due assignment
 # still reads its first page, and one cut short reads on next tick.
 _POLL_TICK_BUDGET_SECONDS = 40.0
+# When a poll last read a page, a backlog or a catch-up included: the
+# ``event_poll:`` stamp is the interval gate and is written only once the poll
+# caught up, so ``delivery_mode`` reads this one too and never shows a stale
+# last poll while the pages keep creating runs (#1718).
+POLL_READ_KEY_PREFIX = "event_poll_read:"
 
 # Teams, Slack and Gmail cannot list the oldest first: a poll reads back to its
 # cursor, at most this far, and dispatches the oldest of what it read. Past it,
@@ -833,6 +838,8 @@ async def poll_integration_events(db: AsyncSession) -> int:
                             route=route,
                         )
                     triggered += dispatched
+                    if outcome in ("more", "caught_up", "seeded"):
+                        await redis.set(f"{POLL_READ_KEY_PREFIX}{wf.id}", str(datetime.now(UTC).timestamp()), ex=86400)
                     if outcome != "more":
                         break
                 if outcome == "refused":

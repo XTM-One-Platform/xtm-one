@@ -13,9 +13,11 @@ By default, every agent also starts each chat and each run with a short block: t
 | Category | In the prompt | Read with the tool |
 |---|---|---|
 | Identity (name, sector, regions, size, risk appetite, currency) | Always, in the short block | The whole profile |
-| `crown_jewels`, `tech_stack`, `shipped_products`, `ai_systems`, `pirs`, `assets_exposure`, `tracked_organizations` | Their size, in the short block; their rows only when preloaded | `category`, filtered by `query`, paged by `offset` and `limit` (up to 200 rows a page), so a list of any length is read whole |
+| `primary_assets`, `software`, `shipped_products`, `ai_systems`, `pirs`, `assets_exposure`, `tracked_organizations` | Their size, in the short block; their rows only when preloaded | `category`, filtered by `query`, paged by `offset` and `limit` (up to 200 rows a page), so a list of any length is read whole |
 | `prioritization_policy` | Its number of rules, in the short block; the rules only when preloaded | One row per threshold you set, per exclusion and per accepted risk |
 | `enterprise_knowledge` | Its number of linked knowledge bases, never the content | Without `query`, the linked knowledge bases; with `query`, the passages that answer it, only from the knowledge bases the person the agent acts for can read |
+
+`crown_jewels` and `tech_stack`, the former names of `primary_assets` and `software`, are still read for one release; a saved selection naming them was renamed on upgrade.
 
 The short block stays the same size whatever the length of the lists. An agent asked about a vulnerability reads the tech stack page by page, or narrows it to a vendor or a product with `query`.
 

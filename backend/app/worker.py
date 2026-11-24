@@ -511,6 +511,16 @@ async def shutdown(ctx: dict) -> None:
             "Worker shutdown: in-process tracing run cleanup failed", exc_info=True
         )
 
+    # Close the traces of the runs this stop cuts, as interrupted, before the
+    # flush and the dispatcher drain below: a run killed mid-turn otherwise
+    # leaves no trace at all (its trace is only written when its turn ends).
+    try:
+        from app.services.langfuse_tracing import close_open_traces_on_shutdown
+
+        await close_open_traces_on_shutdown("worker_stopped")
+    except Exception:
+        logger.debug("Open traces not closed on worker shutdown", exc_info=True)
+
     # Flush buffered Langfuse traces so OTEL-batched spans queued in the SDK's
     # background exporter are not lost when the worker stops (no-op when
     # Langfuse is disabled; never raises).

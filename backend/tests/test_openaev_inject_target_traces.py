@@ -66,6 +66,22 @@ class _Api:
                     },
                 ]
             ), None
+        if path == "/api/injects/status":
+            return _Resp({"status_name": "PENDING", "tracking_sent_date": "2026-11-23T16:28:01Z"}), None
+        if path == "/api/injects/i1":
+            return _Resp(
+                {
+                    "inject_id": "i1",
+                    "inject_content": {
+                        "expectations": [
+                            {"expectation_type": "DETECTION", "expectation_expiration_time": 21600},
+                            {"expectation_type": "PREVENTION", "expectation_expiration_time": 21600},
+                        ]
+                    },
+                }
+            ), None
+        if path == "/api/settings":
+            return _Resp({"runtime_settings": [{"key": "inject_execution_threshold_minutes", "value": "60"}]}), None
         raise AssertionError(path)
 
 
@@ -91,6 +107,30 @@ async def test_every_target_is_listed_with_its_terminal_trace(monkeypatch: pytes
     trace_reads = [c for c in api.calls if c[1] == "/api/injects/execution-traces"]
     assert {c[2]["targetId"] for c in trace_reads} == {"a1", "a2", "a3", "a4"}
     assert all(c[2]["injectId"] == "i1" and c[2]["targetType"] == "ASSETS" for c in trace_reads)
+
+
+async def test_execution_timeout_and_expectation_window_are_two_named_facts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The run ends at distribution + threshold; the 6 h expectation expiry is a scoring window."""
+    from app.integrations.providers.openaev import injects
+
+    monkeypatch.setattr(injects, "_api", _Api())
+    content = await _run({"action": "target_traces", "scope": "global", "inject_id": "i1"})
+    timeout = next(line for line in content.splitlines() if line.startswith("execution_timeout:"))
+    window = next(line for line in content.splitlines() if line.startswith("expectation_window:"))
+    assert "60 min after distribution" in timeout
+    assert "deadline 2026-11-23T17:28:01Z" in timeout
+    assert "DETECTION 6 h (expires 2026-11-23T22:28:01Z)" in window
+    assert "not the end of the execution" in window
+
+
+def test_timeout_line_without_threshold_or_distribution() -> None:
+    from app.integrations.providers.openaev.injects import _execution_timeout_line, _expectation_window_line
+
+    line = _execution_timeout_line(None, None)
+    assert "threshold not exposed" in line and "not distributed yet" in line
+    assert "no expiration time" in _expectation_window_line({"inject_content": "{}"}, None)
 
 
 async def test_target_traces_is_global_only() -> None:

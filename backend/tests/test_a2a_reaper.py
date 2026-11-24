@@ -176,7 +176,7 @@ class TestReaperScheduling:
         only flushes, so a loop that skipped it would roll the reap back
         at session close and the sweep would be a silent no-op."""
         committed = asyncio.Event()
-        calls = {"reap": 0, "commit": 0}
+        calls = {"resume": 0, "reap": 0, "commit": 0}
 
         class _Session:
             async def __aenter__(self):
@@ -193,8 +193,14 @@ class TestReaperScheduling:
             calls["reap"] += 1
             return 2
 
+        async def fake_resume(db):
+            # The tick resumes the handed-back tasks first (#1657).
+            calls["resume"] += 1
+            return []
+
         monkeypatch.setattr("app.core.database.async_session", lambda: _Session())
         monkeypatch.setattr("app.a2a.tasks.reap_stale_tasks", fake_reap)
+        monkeypatch.setattr("app.a2a.tasks.resume_handed_back_tasks", fake_resume)
 
         from app import main
 
@@ -205,7 +211,7 @@ class TestReaperScheduling:
             loop_task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await loop_task
-        assert calls == {"reap": 1, "commit": 1}
+        assert calls == {"resume": 1, "reap": 1, "commit": 1}
 
 
 @pytest.mark.integration
