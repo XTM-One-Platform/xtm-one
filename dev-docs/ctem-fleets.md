@@ -2377,6 +2377,14 @@ A fifth entry fails `tests/test_builtin_fleets.py`: adding one is a product
 decision. An agent has one home fleet: the use-case fleets reach the loop's
 role agents (risk quantifier, remediation coordinator) as connected agents.
 
+The five shared loop roles (relevance analyst, scenario creator, risk
+quantifier, remediation coordinator, threat hunt creator) are exposed
+members (#1837): the product assistants and the three use-case orchestrators
+hand over to them in one hop, and a handover into a non-exposed member is the
+`handover_not_allowed` fleet health finding.
+`tests/test_ctem_seed_handover_boundary_1837.py` keeps every seeded handover
+inside that boundary.
+
 ### 14.1 Upgrade of an instance seeded with the eight former fleets
 
 Three optional keys of a fleet entry, read by `app/agents/fleet_seed.py`:
