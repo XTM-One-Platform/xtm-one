@@ -46,6 +46,8 @@ const RESULT_TONE: Record<keyof typeof RESULT_LABEL, HotTone> = {
   not_exposed: "green",
   failed: "red",
   pending: "yellow",
+  // A pass that proves nothing (#1692): no verdict colour.
+  inconclusive: "neutral",
 };
 
 /** Product names and DS logos of the validation providers a case can carry. */
