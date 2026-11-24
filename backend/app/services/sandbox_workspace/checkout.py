@@ -15,7 +15,7 @@
 
 A checkout is a tree without a ``.git`` directory: nothing in the workspace
 said where it came from or what has changed in it since. The record,
-``<path>/.xtm-checkout.json``, holds the provider, the repository, the ref,
+``<path>/.xtm-checkout``, holds the provider, the repository, the ref,
 the commit the provider resolved it to when it names one, the ``sub_paths``
 kept and the sha256 and size of every file written. :func:`changes_since`
 compares the workspace manifest against it: the files modified, added or
@@ -47,14 +47,61 @@ from app.services.sandbox_workspace.gitignore import GitIgnore
 from app.services.sandbox_workspace.paths import WorkspacePathError, is_bytecode_cache, is_under, normalize
 from app.services.sandbox_workspace.reading import decode, is_text
 
-#: The record's file name, under the checkout's directory.
-RECORD_NAME = ".xtm-checkout.json"
+#: The record's file name, under the checkout's directory. It has no extension on purpose: a formatter's
+#: directory walk (``prettier --check .``) infers no parser for it and skips it, where the JSON name was
+#: formatted and failed the check (gap checkout-record-trips-format-check).
+RECORD_NAME = ".xtm-checkout"
+#: The name a record written before the rename carries: read, recognised and replaced at the next write.
+LEGACY_RECORD_NAME = ".xtm-checkout.json"
+#: Every name a checkout record may carry, the current one first.
+RECORD_NAMES = (RECORD_NAME, LEGACY_RECORD_NAME)
 #: The record's format version: a reader refuses a version it does not know.
 RECORD_VERSION = 1
 #: Directory names an install or a tool writes: a file under one, outside the scope, is never named (#10144).
 GENERATED_DIRS = frozenset(
     {"node_modules", ".venv", "site-packages", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
 )
+
+
+def is_record_name(name: str) -> bool:
+    """Whether *name* (a file name or a path) names a checkout record, under either name."""
+    return name.rsplit("/", 1)[-1] in RECORD_NAMES
+
+
+def record_root(path: str) -> str | None:
+    """The directory of the checkout record at *path* (``""`` at the workspace root), ``None`` when it is none."""
+    head, _sep, name = path.rpartition("/")
+    return head if name in RECORD_NAMES else None
+
+
+def record_paths(root: str) -> tuple[str, ...]:
+    """The paths a record of the checkout at *root* may sit at, the current name first."""
+    return tuple(f"{root}/{name}" if root else name for name in RECORD_NAMES)
+
+
+def held_record_path(entries: Iterable[str], root: str) -> str | None:
+    """The record path of the checkout at *root* that *entries* hold (the current name first), ``None`` when none."""
+    held = entries if isinstance(entries, Mapping | set | frozenset) else set(entries)
+    return next((path for path in record_paths(root) if path in held), None)
+
+
+async def read_record_bytes(session: Any, root: str) -> tuple[Any, bytes]:
+    """``session.get_bytes`` of the record of the checkout at *root*: the current name, else the legacy one.
+
+    Raises :class:`FileNotFoundError` when neither is held.
+    """
+    current, legacy = record_paths(root)
+    try:
+        return await session.get_bytes(current)
+    except FileNotFoundError:
+        return await session.get_bytes(legacy)
+
+
+async def write_record(session: Any, record: CheckoutRecord, *, operation: str) -> Any:
+    """Write *record* at its path and remove a legacy-named record of the same checkout, in one commit."""
+    return await session.put_tree(
+        [(record.record_path, record.to_json())], remove=[record.legacy_record_path], operation=operation
+    )
 
 
 def _shown(paths: tuple[str, ...] | list[str], limit: int) -> str:
@@ -128,6 +175,11 @@ class CheckoutRecord:
     def record_path(self) -> str:
         return f"{self.path}/{RECORD_NAME}"
 
+    @property
+    def legacy_record_path(self) -> str:
+        """Where a record written before the rename sits: removed by every write of the record."""
+        return f"{self.path}/{LEGACY_RECORD_NAME}"
+
     def workspace_path(self, repo_path: str) -> str:
         return f"{self.path}/{repo_path}"
 
@@ -149,7 +201,7 @@ class CheckoutRecord:
         out: list[str] = []
         for path in workspace_paths:
             repo_path = self.repo_path(path)
-            if repo_path and repo_path != RECORD_NAME and not self.tracks(repo_path):
+            if repo_path and repo_path not in RECORD_NAMES and not self.tracks(repo_path):
                 out.append(repo_path)
         return sorted(set(out))
 
@@ -276,7 +328,7 @@ def outside_baseline(
         if not text.startswith(prefix):
             continue
         repo_path = text[len(prefix) :]
-        if repo_path == RECORD_NAME or repo_path in known or any(is_under(repo_path, s) for s in subs):
+        if repo_path in RECORD_NAMES or repo_path in known or any(is_under(repo_path, s) for s in subs):
             continue
         if is_generated(repo_path):
             continue
@@ -454,13 +506,8 @@ def changes_since(
             return any(is_under(repo_path, w) for w in wanted)
         return record.tracks(repo_path)
 
-    suffix = "/" + RECORD_NAME
     nested = sorted(
-        {
-            rel[: -len(suffix)]
-            for rel in (record.repo_path(str(p)) for p in entries)
-            if rel is not None and rel.endswith(suffix)
-        }
+        {root for rel in (record.repo_path(str(p)) for p in entries) if rel is not None and (root := record_root(rel))}
     )
 
     def in_nested(repo_path: str) -> bool:
@@ -474,7 +521,7 @@ def changes_since(
     ignored = 0
     for workspace_path, entry in entries.items():
         repo_path = record.repo_path(str(workspace_path))
-        if repo_path is None or repo_path == RECORD_NAME:
+        if repo_path is None or repo_path in RECORD_NAMES:
             continue
         try:
             repo_path = normalize(repo_path)

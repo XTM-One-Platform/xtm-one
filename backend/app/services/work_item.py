@@ -96,6 +96,7 @@ from app.services.work_item_blocked_refs import (
     refuse_unobserved_deployment_refs,
 )
 from app.services.work_item_notify import normalize_notify_payload
+from app.services.work_item_past_due import carry_past_due_mark, clear_past_due_mark
 
 logger = logging.getLogger(__name__)
 
@@ -2759,19 +2760,27 @@ async def update_work_item(
             item.claimed_at = None
         if correlation_key is not None:
             item.correlation_key = normalize_correlation_key(correlation_key)
-        if due_at is not None:
-            item.due_at = _parse_due(due_at)
-        if not_before is not None:
-            item.not_before = _parse_due(not_before)
         if payload is not None:
             # The notify delivery state is the platform's: kept as stored.
             # A test item may only notify a test recipient.
-            item.payload = normalize_notify_payload(
-                payload,
+            # The work_item.past_due mark is the platform's too (#1662).
+            item.payload = carry_past_due_mark(
+                normalize_notify_payload(
+                    payload,
+                    item.payload,
+                    correlation_key=item.correlation_key,
+                    title=item.title,
+                ),
                 item.payload,
-                correlation_key=item.correlation_key,
-                title=item.title,
             )
+        if due_at is not None:
+            new_due = _parse_due(due_at)
+            if new_due != item.due_at:
+                # A new due date raises work_item.past_due once more when crossed (#1662).
+                clear_past_due_mark(item)
+            item.due_at = new_due
+        if not_before is not None:
+            item.not_before = _parse_due(not_before)
         if release_on is not None:
             if release_on in _KEPT_RELEASE_ON and not (
                 getattr(item, "blocked_on", None) if blockers is None else blockers

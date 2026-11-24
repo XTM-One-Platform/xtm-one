@@ -1829,7 +1829,7 @@ async def test_materialize_repository_checks_out_the_selected_tree_and_no_creden
     assert seen == [("acme/repo", "v1", True)], "fetched in memory, through the integration's own tool"
     (record,) = store.records.values()
     paths = sorted(store.files[record.id])
-    assert paths == ["repo/.xtm-checkout.json", "repo/src/app.py", "repo/src/lib/util.py"]
+    assert paths == ["repo/.xtm-checkout", "repo/src/app.py", "repo/src/lib/util.py"]
     assert "escape (not a regular file)" in result.content
     for blob in store.blobs.objects.values():
         assert TOKEN.encode() not in blob
@@ -1841,7 +1841,7 @@ async def test_materialize_repository_checks_out_the_selected_tree_and_no_creden
         timeout=60,
         workspace=composite.workspace_sink.session,
     )
-    assert run["stdout"].split() == ["['.xtm-checkout.json',", "'src']", "False"]
+    assert run["stdout"].split() == ["['.xtm-checkout',", "'src']", "False"]
 
 
 async def test_materialize_repository_passes_sub_paths_to_an_archive_tool_that_narrows(store):
@@ -2233,7 +2233,7 @@ async def test_create_github_commit_from_checkout_commits_exactly_what_the_sandb
     no_record = await composite.execute_tool(
         ToolCall(id="c4", name="create_github_commit", arguments={"repo": "acme/repo", "message": "feat: x", "from_checkout": "work"})
     )
-    assert "holds no .xtm-checkout.json" in no_record.content
+    assert "holds no .xtm-checkout:" in no_record.content
     both = await composite.execute_tool(
         ToolCall(id="c5", name="create_github_commit", arguments={"repo": "acme/repo", "message": "feat: x", "from_checkout": "repo", "files": [{"path": "a", "content": "b"}]})
     )
@@ -2309,7 +2309,7 @@ async def test_checkout_status_lists_what_changed_since_the_checkout(store):
     narrowed = await _call(composite, "sandbox_checkout_status", checkout="repo", paths=["src/lib"])
     assert narrowed.content.splitlines()[1:] == ["A src/lib/new.py", "D src/lib/util.py"]
     no_record = await _call(composite, "sandbox_checkout_status", checkout="work")
-    assert no_record.is_error and "holds no .xtm-checkout.json" in no_record.content
+    assert no_record.is_error and "holds no .xtm-checkout:" in no_record.content
 
 
 async def test_checkout_status_names_the_pre_push_guards_before_the_commit(store):
@@ -2367,7 +2367,8 @@ async def test_advance_checkout_says_a_record_it_could_not_write_and_never_raise
     async def broken(*args, **kwargs):
         raise RuntimeError("storage down")
 
-    monkeypatch.setattr(executor.session, "put_bytes", broken)
+    # The record is written with put_tree (it removes a legacy-named record in the same commit).
+    monkeypatch.setattr(executor.session, "put_tree", broken)
     said = await sink.advance_checkout(record, commit="9f8e7d6c", ref="feat/x", written={}, removed=[])
     assert "was not moved to the new commit (storage down)" in said
     assert await sink.advance_checkout(object(), commit="9f8e7d6c", ref="feat/x", written={}, removed=[]) == ""
@@ -2626,7 +2627,7 @@ async def test_checkout_rebase_needs_a_ref_and_a_record(store):
     no_ref = await _call(composite, "sandbox_checkout_rebase", checkout="repo", ref=" ")
     assert no_ref.is_error and "name the ref" in no_ref.content
     no_record = await _call(composite, "sandbox_checkout_rebase", checkout="work", ref="main")
-    assert no_record.is_error and "holds no .xtm-checkout.json" in no_record.content
+    assert no_record.is_error and "holds no .xtm-checkout:" in no_record.content
 
 
 async def test_checkout_rebase_follows_a_scope_the_ref_widens(store):

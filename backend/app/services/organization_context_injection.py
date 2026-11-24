@@ -203,6 +203,7 @@ def render_summary(
         missing_fields,
         missing_for_run,
         parse_profile,
+        rate_notice,
     )
 
     if row is None:
@@ -268,6 +269,11 @@ def render_summary(
         tail += " " + notice
     body = wrap_untrusted(json.dumps(facts, ensure_ascii=False), "organization profile", stable=True)
     block = "\n".join([head, body, index, tail])
+    # #1773: a currency without a reference rate into it is named, never left to a guessed rate
+    # (when the bounded block has room; get_organization_context always names it).
+    rates = rate_notice(profile)
+    if rates and len(block) + len(rates) + 1 <= SUMMARY_MAX_CHARS:
+        block += "\n" + rates
     if len(block) > SUMMARY_MAX_CHARS:  # bounded fields and a fixed index: never in practice
         block = block[: SUMMARY_MAX_CHARS - 3] + "..."
     return block

@@ -42,8 +42,10 @@ import { SegmentedFilter } from "@/components/ui/segmented-filter";
 import { caseWaitWho, caseWaitWhoLabel } from "./ctem/case-wait";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { useMe, useUserDirectoryByIds } from "@/hooks/api/useAuthApi";
-import { CTEM_CASE_STATES, useCtemCases, type CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
+import { useAuth } from "@/hooks/useAuth";
+import { CTEM_CASE_STATES, useCtemCases, type CtemCaseOpenedBy, type CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
 import { CasesBulkActions } from "./ctem/CasesBulkActions";
+import { CasesDeleteAction } from "./ctem/CasesDeleteAction";
 import { CasesFreshness } from "./ctem/CasesFreshness";
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import { useFormatter } from "@/i18n";
@@ -59,12 +61,22 @@ import {
 } from "./ctem/cases-shared";
 import { CTEM_STAGE_CONFIG, CTEM_STAGE_KEYS } from "@/lib/constants";
 
+/** The "Opened by" filter values (#1723), as `ctem_case_delete.origin` answers them. */
+const CASE_OPENED_BY = ["signal", "split", "legacy"] as const satisfies readonly CtemCaseOpenedBy[];
+/** Filter option labels. @i18n-keys */
+const CASE_OPENED_BY_LABEL = {
+  signal: "A signal",
+  split: "A split",
+  legacy: "Legacy",
+} as const satisfies Record<CtemCaseOpenedBy, string>;
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default function CtemCases() {
   const { t_i18n, intl } = useFormatter();
   const { data, isLoading, isError, refetch } = useCtemCases();
   const { data: me } = useMe();
+  const { isAdmin } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const setParam = (key: string, value: string | null) =>
     setSearchParams(
@@ -363,12 +375,19 @@ export default function CtemCases() {
           selected,
           onChange: setSelected,
           actions: (
-            <CasesBulkActions
-              cases={cases.filter((c) => selected.includes(c.id))}
-              onDone={() => setSelected([])}
-            />
+            <>
+              <CasesBulkActions
+                cases={cases.filter((c) => selected.includes(c.id))}
+                onDone={() => setSelected([])}
+              />
+              {/* Administrators only (#1723): the component draws nothing for anyone else. */}
+              <CasesDeleteAction caseIds={selected} onDone={() => setSelected([])} />
+            </>
           ),
         }}
+        // The row's Delete is an administrator's (#1723): no actions column for anyone else.
+        rowActions={isAdmin ? (c) => <CasesDeleteAction row caseIds={[c.id]} onDone={() => setSelected((s) => s.filter((id) => id !== c.id))} /> : undefined}
+        rowActionsWidth={48}
         groupBy={groupBy}
         view={{ value: view, onChange: (mode) => setView(mode === "kanban" ? "kanban" : "list"), modes: ["list", "kanban"] }}
         // The Kanban draws every row the filters keep, never one page of them.
@@ -415,6 +434,13 @@ export default function CtemCases() {
             options: (["critical", "high", "medium", "low"] as const).map((p) => ({ value: p, label: t_i18n(CASE_PRIORITY_LABEL[p]) })),
             // Ordinal scale: critical to low, never alphabetical (#12289).
             ordered: true,
+          },
+          {
+            // How the case came to be (#1723): "Legacy" keeps the cases a source read before signals built.
+            key: "opened_by",
+            label: "Opened by",
+            values: (c) => (c.opened_by ? [c.opened_by] : []),
+            options: CASE_OPENED_BY.map((o) => ({ value: o, label: t_i18n(CASE_OPENED_BY_LABEL[o]) })),
           },
           {
             key: "owner",

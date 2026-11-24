@@ -1318,6 +1318,10 @@ class ToolDefinition:
             tell from an unknown verb. A resumed turn repeating such a call
             its interrupted attempt had started runs it at once: the in-flight
             repeat guard holds back writes only (:func:`call_is_read_only`).
+        writes: The provider's own statement that the tool changes
+            something, whatever its name reads as (an imported ``POST``
+            operation named ``list_...``): a read-only binding withholds it
+            even when the name classifier would call it a read.
         read_only_call: For a tool that reads for some arguments and writes
             for others, the predicate on a call's arguments that is ``True``
             when that call changes nothing (``sandbox_run_command`` with a
@@ -1396,6 +1400,7 @@ class ToolDefinition:
     replay_safe: bool = False
     cut_safe: bool = False
     read_only: bool = False
+    writes: bool = False
     read_only_call: Callable[[Mapping[str, Any]], bool] | None = field(default=None, compare=False, repr=False)
     #: A tool its name reads as a write that CHECKS the state another write
     #: changes (``sandbox_run_command`` runs a lint or a test suite on the

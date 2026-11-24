@@ -208,6 +208,9 @@ _ROLE_BASE: dict[str, Any] = {
     "handover_agent_slugs": [],
     "handover_type_slugs": {},
     "integration_template_bindings": ["opencrq"],
+    # The three roles read the register and recommend; a person writes it in
+    # OpenCRQ. Their OpenCRQ binding is read-only, so no write tool is offered.
+    "integration_template_read_only": ["opencrq"],
     **_NO_MEMORY,
 }
 

@@ -26,6 +26,8 @@ export const CTEM_CASE_STATES = [
   "accepted_risk",
 ] as const;
 export type CtemCaseState = (typeof CTEM_CASE_STATES)[number];
+/** How a case came to be (`ctem_case_delete.origin`, #1723): a signal, a split, or a source read before signals. */
+export type CtemCaseOpenedBy = "signal" | "split" | "legacy";
 /** The statuses a case is still worked in (an SLA runs, a new signal joins it): backend OPEN_STATES. */
 export const CTEM_OPEN_CASE_STATES = ["new", "analyzing", "waiting_decision", "remediating", "validating"] as const;
 
@@ -64,6 +66,8 @@ export interface CtemCaseSummary {
   updated_at?: string | null;
   /** The signals that opened or joined the case (#1176). */
   signal_count?: number;
+  /** How the case came to be, read from its history (#1723): the list's "Opened by" filter. */
+  opened_by?: CtemCaseOpenedBy;
   /** Products that did not answer this read: their issues show without details. */
   details_unavailable: string[];
   /** The loop (#857): how the case started, its severity and SLA, its proof. */
@@ -688,6 +692,43 @@ export function useBulkUpdateCtemCases() {
   return useMutation<CtemCaseBulkResult, Error, CtemCaseUpdate & { case_ids: string[] }>({
     mutationFn: (body) => api.post("/ctem-cases/bulk", body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ctem-cases"] }),
+  });
+}
+
+/** What one case delete removes (`CaseDeletion.summary` in backend/app/services/ctem_case_delete.py, #1723). */
+interface CtemCaseDeletion {
+  id: string;
+  title: string;
+  state: CtemCaseState;
+  opened_by: CtemCaseOpenedBy;
+  members: number;
+  events: number;
+  /** Open work items of the case, cancelled with a note. */
+  work_items: string[];
+  /** Armed timers of the case, cancelled. */
+  timers: string[];
+  /** Signals of the case, sent back to the scope gate. */
+  signals: string[];
+}
+
+export interface CtemCaseDeleteResult {
+  dry_run: boolean;
+  count: number;
+  cases: CtemCaseDeletion[];
+  unknown: string[];
+}
+
+/**
+ * Delete cases, administrators only (POST /ctem-cases/bulk-delete, #1723): `dry_run` answers
+ * what would go and writes nothing; the real delete refreshes every case read.
+ */
+export function useDeleteCtemCases() {
+  const qc = useQueryClient();
+  return useMutation<CtemCaseDeleteResult, Error, { case_ids: string[]; dry_run: boolean; reason?: string }>({
+    mutationFn: (body) => api.post("/ctem-cases/bulk-delete", body),
+    onSuccess: (result) => {
+      if (!result.dry_run) void qc.invalidateQueries({ queryKey: ["ctem-cases"] });
+    },
   });
 }
 

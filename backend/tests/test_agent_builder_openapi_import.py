@@ -145,7 +145,8 @@ async def test_create_imports_the_spec_in_one_call(env):
     )
     assert not result.is_error, result.content
     assert "created successfully" in result.content
-    assert "Tools (2)" in result.content
+    assert "Tools (2: 2 read, 0 write)" in result.content
+    assert "[read] `GET /pet/{petId}`" in result.content
     integration, spec = _created(env)
     assert integration.provider == "openapi"
     assert integration.auth_type == "api_key"
@@ -269,6 +270,7 @@ async def test_update_replaces_the_spec(env, monkeypatch):
     integration.is_builtin = False
     env.spec = spec
     _stub_manageable(monkeypatch, integration)
+    before = len(env.sessions)
     result = await _call(
         executor,
         "update_integration",
@@ -278,7 +280,9 @@ async def test_update_replaces_the_spec(env, monkeypatch):
     assert not result.is_error, result.content
     assert "updated: openapi" in result.content
     assert spec.selected_operation_keys == ["GET /store/inventory"]
-    assert env.sessions[-1].commits == 1
+    # One commit for the update; the agent-account resync after it opens a
+    # session of its own that writes nothing.
+    assert sum(s.commits for s in env.sessions[before:]) == 1
 
 
 @pytest.mark.asyncio
@@ -370,11 +374,11 @@ async def test_update_attaches_a_first_spec_to_a_spec_less_integration(env, monk
     assert not result.is_error, result.content
     assert "updated: openapi" in result.content
     assert "Tools (" in result.content and "none selected" not in result.content
-    spec = next(o for o in env.sessions[-1].added if isinstance(o, IntegrationOpenAPISpec))
+    spec = next(o for s in env.sessions for o in s.added if isinstance(o, IntegrationOpenAPISpec))
     assert spec.integration_id == integration.id
     assert spec.active_tools and all(t["name"].startswith("pets_") for t in spec.active_tools)
     assert integration.api_key_enc == key_before
-    assert env.sessions[-1].commits == 1
+    assert sum(s.commits for s in env.sessions) == 1
 
 
 @pytest.mark.asyncio

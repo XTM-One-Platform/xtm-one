@@ -82,7 +82,7 @@ from app.services.sandbox_workspace import (
 from app.services.sandbox_workspace import checkout as checkouts
 from app.services.sandbox_workspace import landed as landing
 from app.services.sandbox_workspace import rebase as rebasing
-from app.services.sandbox_workspace.checkout import RECORD_NAME, build_record
+from app.services.sandbox_workspace.checkout import RECORD_NAME, build_record, is_record_name, read_record_bytes
 from app.services.sandbox_workspace.checks import MAX_ARGS, WHOLE_ARG, ChecksError
 from app.services.sandbox_workspace.detect import WORKFLOWS_DIR
 from app.services.sandbox_workspace.gitignore import GitIgnore, gitignore_paths
@@ -680,7 +680,7 @@ def build_sandbox_workspace_tools(
                     by_root.setdefault(max(holders, key=len), []).append(rel)
             notes: list[str] = []
             for root, paths in sorted(by_root.items()):
-                _entry, data = await session.get_bytes(f"{root}/{RECORD_NAME}")
+                _entry, data = await read_record_bytes(session, root)
                 record = checkouts.CheckoutRecord.from_json(data, path=root)
                 notes.append(checkouts.outside_record_note(record, paths))
             return "".join(notes)
@@ -1067,7 +1067,7 @@ def build_sandbox_workspace_tools(
             rel
             for rel in sorted(entries)
             if reading.selected(rel, prefix, globs)
-            and rel.rsplit("/", 1)[-1] != RECORD_NAME
+            and not is_record_name(rel)
             and not reading.unread_binary(rel)
         ]
         # The budget of sandbox_grep: a file it searches is a file a replace changes, and every
@@ -1228,7 +1228,7 @@ def build_sandbox_workspace_tools(
             for rel in sorted(entries)
             if reading.selected(rel, prefix, globs)
             and rel != module
-            and rel.rsplit("/", 1)[-1] != RECORD_NAME
+            and not is_record_name(rel)
             and not rel.startswith(codemod.STAGING_DIR + "/")
             and not reading.unread_binary(rel)
             and entries[rel].size <= reading.MAX_TEXT_FILE_BYTES
@@ -1830,7 +1830,11 @@ def build_sandbox_workspace_tools(
         evicted: list[eviction.Footprint] = []
         try:
             plan = await session.put_tree(
-                files_out, under=destination, replace=replace_scopes, operation="materialize_repository"
+                files_out,
+                under=destination,
+                replace=replace_scopes,
+                remove=[record.legacy_record_path],
+                operation="materialize_repository",
             )
         except WorkspaceUnavailableError as exc:
             metrics.operation("materialize_repository", "refused")
@@ -1943,7 +1947,7 @@ def build_sandbox_workspace_tools(
         records: dict[str, checkouts.CheckoutRecord] = {}
         for root in eviction.checkout_roots(entries):
             try:
-                _entry, data = await session.get_bytes(f"{root}/{RECORD_NAME}")
+                _entry, data = await read_record_bytes(session, root)
                 records[root] = checkouts.CheckoutRecord.from_json(data, path=root)
             except (FileNotFoundError, ValueError, WorkspaceUnavailableError):
                 continue
@@ -2081,7 +2085,7 @@ def build_sandbox_workspace_tools(
                 f"{record.repository}@{base or 'default branch'} has no file under {', '.join(new)}: nothing was written."
             )
         held = await session.entries(refresh=True)
-        record_entry = held.get(record.record_path)
+        record_entry = held.get(record.record_path) or held.get(record.legacy_record_path)
         writes: list[tuple[str, bytes]] = []
         kept: list[str] = []
         stale: list[str] = []
@@ -2107,7 +2111,10 @@ def build_sandbox_workspace_tools(
 
         async def _write_without(remove: list[str]) -> Any:
             return await session.put_tree(
-                grow_files, under=record.path, remove=remove, operation="materialize_repository"
+                grow_files,
+                under=record.path,
+                remove=[*remove, record.legacy_record_path],
+                operation="materialize_repository",
             )
 
         evicted: list[eviction.Footprint] = []
@@ -2577,7 +2584,7 @@ def build_sandbox_workspace_tools(
                     f"{', '.join(sorted(extra)[: rebasing.MAX_LISTED])}.{grow}"
                 )
             held = await session.entries(refresh=True)
-            since = getattr(held.get(record.record_path), "mtime", None)
+            since = getattr(held.get(record.record_path) or held.get(record.legacy_record_path), "mtime", None)
             unread: list[str] = []
             for repo_path in outside.changed:
                 got = await _base_bytes(record, repo_path)
@@ -2660,7 +2667,7 @@ def build_sandbox_workspace_tools(
         ours: dict[str, str] = {}
         for workspace_path, entry in (await session.entries(refresh=True)).items():
             repo_path = record.repo_path(str(workspace_path))
-            if repo_path is None or repo_path == RECORD_NAME:
+            if repo_path is None or is_record_name(repo_path):
                 continue
             try:
                 repo_path = normalize(repo_path)
@@ -2775,7 +2782,12 @@ def build_sandbox_workspace_tools(
         rebase_writes = [*writes.items(), (RECORD_NAME, moved.to_json())]
         evicted: list[eviction.Footprint] = []
         try:
-            await session.put_tree(rebase_writes, under=record.path, remove=removals, operation="checkout_rebase")
+            await session.put_tree(
+                rebase_writes,
+                under=record.path,
+                remove=[*removals, record.legacy_record_path],
+                operation="checkout_rebase",
+            )
         except QuotaExceededError as exc:
             # Over the file limit: as materialize_repository does, the clean
             # checkouts of a gone ref, an ended run or past the idle TTL go in
@@ -4215,7 +4227,7 @@ def build_sandbox_workspace_tools(
                 "Check a repository out into the sandbox workspace, on the server, with the connected "
                 "integration's credential (the sandbox stays offline): the tree at ref, optionally only "
                 "sub_paths, under path (default: the repository name). Re-running it replaces that tree. "
-                "No .git directory and no credential is written. A checkout record (.xtm-checkout.json under path: "
+                "No .git directory and no credential is written. A checkout record (.xtm-checkout under path: "
                 "repository, ref, commit, the hash of every file) is written with it, so "
                 "create_github_commit(from_checkout=path) commits exactly what the sandbox changed."
             ),
