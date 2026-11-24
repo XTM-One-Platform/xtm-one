@@ -152,6 +152,35 @@ export interface CtemCaseEvent {
   to: string | null;
   reason: string | null;
   evidence: string | null;
+  /**
+   * The audit trail (#1490): the CTEM phase the event belongs to, its autonomy class, who acted
+   * (and the agent's name when the viewer may see it), one sentence for a note, the task, run and
+   * item ids a note names. Absent on an API older than #1494.
+   */
+  phase?: string;
+  autonomy?: string;
+  actor_type?: "person" | "agent" | "system";
+  actor_name?: string | null;
+  headline?: string | null;
+  refs?: { kind: "task" | "run" | "item"; id: string; full: boolean }[];
+  /** A waiting gate: its later answer, null while it still waits. */
+  answer?: { at: string | null; outcome: string | null; by: string | null; option: string | null } | null;
+  /** The answer of a gate: since when it waited. */
+  waited_since?: string | null;
+}
+
+/** One CTEM phase of a case (#1490): when it was entered and left, its time and counts. */
+export interface CtemCasePhase {
+  phase: string;
+  entered_at: string | null;
+  exited_at: string | null;
+  seconds: number;
+  events: number;
+  runs: number;
+  /** Gates of the phase still waiting for a person. */
+  waiting: number;
+  current: boolean;
+  autonomy?: Record<string, number>;
 }
 
 /**
@@ -245,15 +274,6 @@ export interface CtemCaseRunningVersion {
   sources: string[];
   /** Against the fixed version, when one is known. */
   status?: "below_fixed" | "fixed" | "not_comparable";
-  /** The asset's os_family (#1572); null when the inventory does not know it. */
-  platform?: string | null;
-  /** The first asset ids of the row; more_asset_ids counts the rest (#1572). */
-  asset_ids?: string[];
-  more_asset_ids?: number;
-  /** "fix not known for this platform" when no fixed version applies to the row's platform (#1572). */
-  status_reason?: string;
-  /** The fixed version of the row's platform, when the remediation names one (#1572). */
-  fixed_version?: string;
 }
 
 /** The versions an upgrade case's product runs on the organization's assets, read from the asset inventory (#1252). */
@@ -272,14 +292,6 @@ export interface CtemCaseRunningVersions {
   assets_not_comparable?: number;
   /** With no fixed version: the sources the fixed version was looked for in. */
   fixed_version_checked?: string[];
-  /** {platform: version} when the remediation names platforms (#1572). */
-  fixed_versions?: Record<string, string>;
-  /** A generic fixed version over assets of several platforms: never read as fixed (#1572). */
-  platform_unverified?: boolean;
-  assets_fix_not_known_for_platform?: number;
-  /** Distinct assets running more than one version: counted in each of their rows (#1572). */
-  assets_multi_version?: number;
-  platforms?: string[];
 }
 
 /** One asset a case's visible issues name (#1176 slice 3b), with the version it runs when the inventory knows it. */
@@ -309,6 +321,9 @@ export interface CtemCaseDetail extends CtemCaseSummary {
   keys: string[];
   issues: CtemCaseIssue[];
   history: CtemCaseEvent[];
+  /** The phases of the audit trail in CTEM order (#1490); absent on an API older than #1494. */
+  phases?: CtemCasePhase[];
+  current_phase?: string | null;
   /** Absent on an API older than #936. */
   exploitation?: CtemCaseExploitation[];
   /** Null before triage read it; absent on an API older than #1289. */
