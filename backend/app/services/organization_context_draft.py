@@ -13,8 +13,10 @@ What each platform gives, read with a token minted for that administrator:
 - **OpenCTI**: the platform organization's name and first sector
   (``settings.platform_organization``), and the PIR ids (``pirs``);
 - **OpenAEV**: the security platforms (EDR, SIEM, ...) as tech stack entries;
-- **OpenCRQ**: the supporting assets rated ``high`` or ``very_high`` as crown
-  jewels linked to their asset (``very_high`` -> ``critical``).
+- **OpenCRQ**: the primary assets (business assets) as crown jewels linked to
+  their primary asset, criticality the highest of their security needs
+  (``very_high`` -> ``critical``, none rated -> ``high``; #1591). Supporting
+  assets are the IT under them, never crown jewels.
 
 Rules: only an EMPTY field of the current profile is filled (what a person
 typed always wins); every filled field names the platform it came from; a
@@ -143,19 +145,25 @@ def openaev_facts(platforms: list[dict], facts: PlatformFacts) -> None:
 
 
 def opencrq_facts(assets: list[dict], facts: PlatformFacts) -> None:
-    """Map OpenCRQ's high and very-high supporting assets onto crown jewels (no I/O)."""
-    from app.services.organization_context_opencrq import _asset_name
+    """Map OpenCRQ's PRIMARY assets onto crown jewels (no I/O, #1591)."""
+    from app.services.organization_context_import import opencrq_primary_asset
 
     seen: set[str] = set()
     jewels: list[CrownJewel] = []
     for asset in assets:
-        criticality = FROM_OPENCRQ.get(str(asset.get("criticality") or "").lower())
-        name = _asset_name(asset)
-        asset_id = str(asset.get("id") or "")
-        if not criticality or not name or not asset_id or name.casefold() in seen:
+        row = opencrq_primary_asset(asset)
+        if row is None or row.name.casefold() in seen:
             continue
-        seen.add(name.casefold())
-        jewels.append(CrownJewel(name=name[:200], criticality=criticality, opencrq_asset_id=asset_id[:100]))
+        seen.add(row.name.casefold())
+        jewels.append(
+            CrownJewel(
+                name=row.name,
+                business_service=row.business_service,
+                owner=row.owner,
+                criticality=row.criticality,
+                opencrq_asset_id=row.external_id[:100],
+            )
+        )
     # The most critical first, so a cut at 200 keeps them.
     jewels.sort(key=lambda j: j.criticality != "critical")
     if jewels:
@@ -328,7 +336,7 @@ async def _read_openaev(db: AsyncSession, user_id: str, facts: PlatformFacts) ->
 
 async def _read_opencrq(db: AsyncSession, user_id: str, tenant_id: str, facts: PlatformFacts) -> None:
     from app.integrations.providers.opencrq._common import _resolve_tenant
-    from app.services.organization_context_opencrq import _list_assets, _opencrq_connection
+    from app.services.organization_context_opencrq import _list_primary_assets, _opencrq_connection
 
     connection = await _opencrq_connection(db, user_id)
     if isinstance(connection, str):
@@ -339,7 +347,7 @@ async def _read_opencrq(db: AsyncSession, user_id: str, tenant_id: str, facts: P
     if err:
         facts.unavailable.append(f"OpenCRQ: {err}")
         return
-    assets, err = await _list_assets(base_url, headers, tenant or "")
+    assets, err = await _list_primary_assets(base_url, headers, tenant or "")
     if err:
         facts.unavailable.append(f"OpenCRQ: {err}")
         return
