@@ -21424,5 +21424,13 @@
   "Mitigated, watching needs a passing validation of the mitigation: set it from the case page.": "Mitigated, watching needs a passing validation of the mitigation: set it from the case page.",
   "Resolving a case needs evidence: set it from the case page.": "Resolving a case needs evidence: set it from the case page.",
   "Accepting risk needs a reason and an expiry date: set it from the case page.": "Accepting risk needs a reason and an expiry date: set it from the case page.",
-  "Remediating needs an owner: assign the case first.": "Remediating needs an owner: assign the case first."
+  "Remediating needs an owner: assign the case first.": "Remediating needs an owner: assign the case first.",
+  "{count, plural, one {+# not in the inventory} other {+# not in the inventory}}": "{count, plural, one {+# not in the inventory} other {+# not in the inventory}}",
+  "This asset is in no asset group.": "This asset is in no asset group.",
+  "Asset group not found": "Asset group not found",
+  "This asset group does not exist any more: its source may have removed it, or it was deleted.": "This asset group does not exist any more: its source may have removed it, or it was deleted.",
+  "Members last synced": "Members last synced",
+  "About this asset group": "About this asset group",
+  "{count, plural, one {# more member its source names is not in the inventory yet} other {# more members its source names are not in the inventory yet}}": "{count, plural, one {# more member its source names is not in the inventory yet} other {# more members its source names are not in the inventory yet}}",
+  "No asset of the inventory is in this group yet.": "No asset of the inventory is in this group yet."
 }
