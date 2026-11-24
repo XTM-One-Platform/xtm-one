@@ -425,6 +425,44 @@ async def test_a_split_of_an_issue_the_caller_cannot_see_is_refused(api, monkeyp
     assert api.db.commits == 0
 
 
+async def test_a_case_delete_is_refused_to_a_non_administrator(api):
+    """#1723: DELETE and bulk-delete need an administrator (require_admin answers 403)."""
+    api.user.role = "user"
+    api.user.is_admin = False
+    async with api.client as client:
+        one = await client.delete(f"/api/v1/ctem-cases/{api.case.id}")
+        many = await client.post("/api/v1/ctem-cases/bulk-delete", json={"opened_by": "legacy"})
+    assert one.status_code == 403 and many.status_code == 403
+    assert api.db.commits == 0
+
+
+async def test_a_bulk_delete_as_administrator_answers_the_dry_run(api, monkeypatch):
+    """#1723: the route selects with the filter and answers the service's dry run with the unknown ids."""
+    from app.services import ctem_case_delete as case_delete
+
+    api.user.is_admin = True
+    calls: dict = {}
+
+    async def _select(_db, **kw):
+        calls["select"] = kw
+        return [api.case], []
+
+    async def _delete(_db, cases, **kw):
+        calls["delete"] = kw
+        return {"dry_run": kw["dry_run"], "count": len(cases), "cases": [{"id": str(cases[0].id)}]}
+
+    monkeypatch.setattr(case_delete, "select_cases", _select)
+    monkeypatch.setattr(case_delete, "delete_cases", _delete)
+    async with api.client as client:
+        refused = await client.post("/api/v1/ctem-cases/bulk-delete", json={})
+        response = await client.post("/api/v1/ctem-cases/bulk-delete", json={"opened_by": "legacy"})
+    assert refused.status_code == 422
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body == {"dry_run": True, "count": 1, "cases": [{"id": str(api.case.id)}], "unknown": []}
+    assert calls["select"]["opened_by"] == "legacy" and calls["delete"]["actor"] is api.user
+
+
 async def test_an_expiry_without_an_offset_is_read_as_utc(api):
     until = (NOW + timedelta(days=30)).replace(tzinfo=None, microsecond=0)
     due = (NOW + timedelta(days=7)).replace(tzinfo=None, microsecond=0)

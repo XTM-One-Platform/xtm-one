@@ -350,6 +350,60 @@ async def merge_ctem_cases(
     return shown[1]
 
 
+class CaseBulkDelete(BaseModel):
+    """Cases to delete (#1723): named by id, selected by a filter, or both (a named case must match it)."""
+
+    case_ids: list[uuid.UUID] = Field(default_factory=list, max_length=200)
+    states: list[CaseState] = Field(default_factory=list)
+    #: ``legacy``: built by a source read before signals; ``signal``; ``split``.
+    opened_by: Literal["legacy", "signal", "split"] | None = None
+    vertical: str | None = Field(default=None, max_length=40)
+    reason: str | None = Field(default=None, max_length=500)
+    #: ``true`` (default) answers what would be deleted and writes nothing.
+    dry_run: bool = True
+
+
+async def _delete(db: AsyncSession, admin: User, cases: list[Any], reason: str | None, dry_run: bool) -> dict[str, Any]:
+    from app.services import ctem_case_delete as case_delete
+
+    result = await case_delete.delete_cases(db, cases, actor=admin, reason=reason, dry_run=dry_run)
+    # A dry run writes nothing, so the commit is a no-op there.
+    await db.commit()
+    return result
+
+
+@router.post("/bulk-delete")
+async def bulk_delete_ctem_cases(
+    body: CaseBulkDelete,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Delete 1 to 200 cases, administrators only (#1723); ``dry_run`` (default) writes nothing.
+
+    Each case goes with its members and history; its open work items and armed
+    timers are cancelled, its signals go back to the scope gate, its fix key is
+    free for a fresh case. One audit row per case. Answers ``{dry_run, count,
+    cases: [summary], unknown}``.
+    """
+    _require_xtm_one()
+    from app.services import ctem_case_delete as case_delete
+
+    if not body.case_ids and not (body.states or body.opened_by or body.vertical):
+        raise HTTPException(
+            status_code=422, detail="Name the cases (case_ids) or a filter (states, opened_by, vertical)"
+        )
+    cases, unknown = await case_delete.select_cases(
+        db,
+        organization_id=await _organization_id(db),
+        case_ids=body.case_ids,
+        states=body.states,
+        opened_by=body.opened_by,
+        vertical=body.vertical,
+    )
+    result = await _delete(db, admin, cases, body.reason, body.dry_run)
+    return {**result, "unknown": unknown}
+
+
 class ThreatPackageRepair(BaseModel):
     #: ``true`` (default) answers what the repair would correct and writes nothing.
     dry_run: bool = True
@@ -503,6 +557,24 @@ async def get_ctem_case(
         # The fleet that runs the case (#1390): {slug, name, active}; active false = no active fleet owns it.
         "owner_fleet": await case_routing.owner_view(db, case),
     }
+
+
+@router.delete("/{case_id}")
+async def delete_ctem_case(
+    case_id: uuid.UUID,
+    dry_run: bool = Query(default=False),
+    reason: str | None = Query(default=None, max_length=500),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Delete one case, administrators only (#1723), as ``bulk-delete`` does; 404 when unknown."""
+    _require_xtm_one()
+    from app.services import ctem_case_delete as case_delete
+
+    cases, _unknown = await case_delete.select_cases(db, organization_id=await _organization_id(db), case_ids=[case_id])
+    if not cases:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return await _delete(db, admin, cases, reason, dry_run)
 
 
 @router.patch("/{case_id}")
