@@ -32,6 +32,7 @@ import hashlib
 import json
 import logging
 import random
+import re
 import threading
 import time
 import uuid
@@ -42,6 +43,7 @@ from functools import lru_cache, partial
 from pathlib import Path
 from typing import Any, ClassVar
 
+import openai
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -60,6 +62,7 @@ from app.llm.base import (
     ContextOverflowError,
     ModelDeclinedError,
     StreamUsageSink,
+    gateway_error_envelope,
     provider_max_tools,
     usage_sink_of,
 )
@@ -76,6 +79,7 @@ from app.llm.mistral_provider import MistralProvider
 from app.llm.model_capabilities import decline_fallback_models
 from app.llm.model_limits import resolve_provider_max_output_tokens
 from app.llm.ollama_provider import OllamaProvider
+from app.llm.openai_compat import gateway_upstream_refusal
 from app.llm.openai_provider import OpenAIProvider
 from app.llm.openrouter_provider import OpenRouterProvider
 from app.llm.provider_access import (
@@ -87,6 +91,7 @@ from app.llm.provider_access import (
     provider_routing,
     usable_model_ids,
 )
+from app.llm.provider_errors import error_body, error_status
 from app.llm.runway_provider import RunwayProvider
 from app.llm.seedance_provider import SeedanceProvider
 from app.llm.tei_embedding_provider import TEIEmbeddingProvider
@@ -578,16 +583,24 @@ class AllProvidersFailedError(Exception):
         self.content_declined = any(leg.kind == "declined" for leg in self.legs) and all(
             leg.kind == "declined" for leg in self.legs[:-1]
         )
+        # Every leg refused the input itself (an image too large): what the refusal said.
+        self.input_rejected = _chain_input_rejection(failures)
         providers = ", ".join(name for name, _ in failures)
         clauses = "; ".join(f"{leg.label}: {leg.outcome()}" for leg in self.legs)
         message = f"All configured AI providers failed ({providers})"
         message += f": {clauses}. " if clauses else ". "
-        message += (
-            "The content was declined; retrying the same content will not help: "
-            "rephrase it, or ask your administrator for a fallback model that accepts it."
-            if self.content_declined
-            else "Please try again — if the issue persists, contact your administrator."
-        )
+        if self.content_declined:
+            message += (
+                "The content was declined; retrying the same content will not help: "
+                "rephrase it, or ask your administrator for a fallback model that accepts it."
+            )
+        elif self.input_rejected:
+            message += (
+                f"Every model refused the input ({self.input_rejected}); "
+                "retrying the same input will not help: change it and send it again."
+            )
+        else:
+            message += "Please try again — if the issue persists, contact your administrator."
         # Two legs on one provider share its outage and its account: say there
         # was no real fallback, or the chain reads as if it had one.
         self.single_provider = len(failures) > 1 and len({name for name, _ in failures}) == 1
@@ -629,6 +642,86 @@ def is_request_too_large_error(exc: Exception) -> bool:
     if isinstance(exc, AllProvidersFailedError):
         return bool(exc.failures) and _is_size_error(exc.failures[-1][1])
     return _is_size_error(exc)
+
+
+# A refusal of the input names it; a refused parameter (temperature, a tool
+# schema) is configuration, and changing the input would not help.
+_INPUT_MEDIUM = re.compile(r"\b(?:image|pdf|document|file|audio|video|attachment)s?\b", re.IGNORECASE)
+# 4xx answering something other than the input: credentials, model, timeout, size, throttle.
+_NOT_INPUT_STATUSES = frozenset({401, 403, 404, 408, 413, 429})
+# The field path a 400 leads with (``messages.0.content.1.image.source.base64.data: ``);
+# only a path into the conversation points at the input, not one into ``tools``.
+_FIELD_PATH = re.compile(r"^[\w\[\]]+(?:\.[\w\[\]]+)+:\s*")
+_INPUT_PATHS = ("messages", "input", "contents")
+# Gemini's "Please retry or report in ...": retrying the same input cannot help.
+_RETRY_ADVICE = re.compile(r"[.\s]*\bplease retry\b.*$", re.IGNORECASE | re.DOTALL)
+_NAMED_LIMIT = re.compile(
+    r"\d[\d,.]*\s*(?:px|pixels?|[kmg]i?b|bytes|pages?|tokens?|seconds?|minutes?)\b", re.IGNORECASE
+)
+
+
+def input_rejection(exc: BaseException) -> str | None:
+    """What the refusal said when every model refused the request's input, else ``None``.
+
+    Takes a raw provider error or an :class:`AllProvidersFailedError` (every leg refused).
+    """
+    if isinstance(exc, AllProvidersFailedError):
+        return exc.input_rejected
+    return _refused_input(exc)
+
+
+def _chain_input_rejection(failures: list[tuple[str, Exception]]) -> str | None:
+    reasons = [_refused_input(exc) for _, exc in failures]
+    if not reasons or None in reasons:
+        return None
+    # The wording that names a limit ("8000 pixels") tells the user what to change.
+    return next((reason for reason in reasons if _NAMED_LIMIT.search(reason)), reasons[0])
+
+
+def _refused_input(exc: BaseException) -> str | None:
+    """The provider's message when *exc* refused the request's input, else ``None``."""
+    from app.core.redaction import redact_secrets
+
+    if isinstance(exc, ModelDeclinedError | ContextOverflowError) or _is_size_error(exc):
+        return None
+    upstream = gateway_upstream_refusal(exc)
+    if upstream is not None:
+        status, message = upstream
+    else:
+        status, message = error_status(exc) or exception_status_code(exc), _provider_message(exc)
+    if status is None:
+        # Only a stream's error event comes without a status (openai.APIError proper).
+        if not isinstance(exc, openai.APIError) or isinstance(
+            exc, openai.APIStatusError | openai.APIConnectionError | openai.APIResponseValidationError
+        ):
+            return None
+    elif not 400 <= status < 500 or status in _NOT_INPUT_STATUSES:
+        return None
+    message = (message or "").strip()
+    path = _FIELD_PATH.match(message)
+    if path is not None and not path.group(0).startswith(_INPUT_PATHS):
+        return None
+    if not _INPUT_MEDIUM.search(message):
+        return None
+    reason = _RETRY_ADVICE.sub("", message[path.end() :] if path else message).strip().rstrip(".")
+    return _bounded(redact_secrets(reason), _LEG_TEXT_LIMIT) if reason else None
+
+
+def _provider_message(exc: BaseException) -> str | None:
+    """The provider's own message, whole: unwrapped from the JSON Gemini nests it in, or botocore's ``Error``."""
+    message = gateway_error_envelope(error_body(exc)).get("message")
+    if not isinstance(message, str) or not message:
+        response = getattr(exc, "response", None)
+        error = response.get("Error") if isinstance(response, Mapping) else None
+        message = error.get("Message") if isinstance(error, Mapping) else getattr(exc, "message", None)
+    if not isinstance(message, str) or not message:
+        return format_exception_message(exc)
+    try:
+        nested = json.loads(message)
+    except (ValueError, RecursionError):
+        return message
+    text = gateway_error_envelope(nested).get("message")
+    return text if isinstance(text, str) and text else message
 
 
 def _code_of_413(exc: BaseException) -> str | None:
@@ -785,6 +878,9 @@ def is_provider_unavailable_error(exc: BaseException) -> bool:
     in ``services/failure_causes.py``, which decides no charge; this function
     stays the coarse billing floor.
     """
+    # A model refused the input: it answered, even as the gateway's 502.
+    if input_rejection(exc) is not None:
+        return False
     if isinstance(exc, AllProvidersFailedError):
         # The wrapper's own message names the providers, not the reason. Classify
         # on the LAST failure in the chain, the same shape
