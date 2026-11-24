@@ -1735,7 +1735,9 @@ class ChatResponse:
             * ``"cancelled"`` / ``"timeout"`` — runtime aborts.
 
         pending_task_ids: Background task ids still in flight when
-            ``stop_reason`` is ``waiting_on_tasks``.
+            ``stop_reason`` is ``waiting_on_tasks``, or the never-started
+            children a final answer left running on their own
+            (``agent_loop.never_started_task_ids``).
         _provider_extra: Opaque provider data carried to ChatMessage.
         trace_metadata: Facts only the provider knows about the REQUEST this
             answers (Anthropic: ``thinking_replay``), merged by the

@@ -5113,6 +5113,24 @@ def collect_pending_wait_task_ids(messages: list[ChatMessage]) -> list[str]:
     return found
 
 
+def never_started_task_ids(live_ids: list[str], statuses: dict[str, str], answer: str) -> list[str]:
+    """The open children a tool-free final answer may leave behind, or ``[]``.
+
+    Non-empty only when every id of *live_ids* reads ``pending`` in *statuses*
+    (queued, never started: a running, unknown or unread child keeps the park)
+    and *answer* is a deliverable, not a "waiting for" narration. The run then
+    ends on its answer instead of parking on implicit waits for a child that
+    may not start within its budget; the child keeps running on its own.
+    """
+    if not live_ids or not (answer or "").strip():
+        return []
+    if any(statuses.get(tid) != "pending" for tid in live_ids):
+        return []
+    if _WAITING_NARRATION_RE.search(answer[-600:]):
+        return []
+    return list(live_ids)
+
+
 def collect_spawned_task_ids(messages: list[ChatMessage]) -> list[str]:
     """Task ids spawned in the CURRENT turn via ``spawn_background_task``.
 
@@ -14589,6 +14607,7 @@ async def run_agent_loop(
                 # Implicit wait (or a wait-budget hand-off) keeps the parent
                 # in the loop. No extra system-prompt text.
                 _live_spawned: list[str] = []
+                _spawn_statuses: dict[str, str] = {}
                 _spawned_ids = collect_spawned_task_ids(messages)
                 if _spawned_ids and wait_condition is not None:
                     try:
@@ -14610,6 +14629,23 @@ async def run_agent_loop(
                         ]
                 elif _spawned_ids:
                     _live_spawned = list(_spawned_ids)
+                # A final answer while every open child is still ``pending``
+                # (queued, never started) ends the run instead of parking: the
+                # answer is delivered, nothing it said is waiting, and a child
+                # that never started may never start within this run's budget.
+                # The children are left to run on their own and named on the
+                # response (``pending_task_ids``) and the iteration outcome.
+                _never_started = never_started_task_ids(_live_spawned, _spawn_statuses, response.content or "")
+                if _never_started:
+                    logger.info(
+                        "Agent loop iter %d: final answer with %d never-started "
+                        "background task(s); ending the run instead of parking",
+                        iteration + 1,
+                        len(_never_started),
+                    )
+                    response.pending_task_ids = list(_never_started)
+                    _iter_outcome["detached_task_ids"] = list(_never_started)
+                    _live_spawned = []
                 if (
                     _live_spawned
                     and _wait_definition is not None
