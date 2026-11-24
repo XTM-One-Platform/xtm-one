@@ -1629,6 +1629,7 @@ def build_tools(
         # ── 7. Contacts ───────────────────────────────────────────────────
         ToolDefinition(
             name="list_ses_contacts",
+            personal_records=True,
             description="List the contacts in a contact list.",
             input_schema={
                 "type": "object",
@@ -1644,6 +1645,7 @@ def build_tools(
         ),
         ToolDefinition(
             name="get_ses_contact",
+            personal_records=True,
             description="Get a contact's per-topic subscription preferences.",
             input_schema={
                 "type": "object",

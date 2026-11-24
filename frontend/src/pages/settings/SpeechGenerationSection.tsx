@@ -10,7 +10,8 @@
  * Speech, Vertex AI Chirp...). The voices are the chosen model's
  * (`/settings/speech-voices`): an ElevenLabs account's cloned voices come first.
  * "Auto" leaves the choice to the platform: a voice generator first, else the
- * first provider with a built-in speech model. Opening the picker asks the
+ * first provider with a built-in speech model, else the AI Gateway's default;
+ * the card names the model it lands on. Opening the picker asks the
  * providers again for their models and voices.
  */
 import { useEffect, useId, useState } from "react";
@@ -26,6 +27,7 @@ import { ModelListRefreshing, ModelSelect } from "@/components/ui/model-select";
 import { SearchableSelect, type SelectOption } from "@/components/ui/searchable-select";
 import {
   useAvailableSpeechModels,
+  useMediaModelsInUse,
   useSpeechVoices,
   useUpdateGeneralAssistantConfig,
 } from "@/hooks/api/useSettingsApi";
@@ -74,6 +76,9 @@ export function SpeechGenerationSection({
   }, [envLocked]);
   const options: AvailableModel[] = speechModels ?? [];
   const current = gaConfig?.speech_model || null;
+  // With none saved, the model speech really runs on (a built-in or AI Gateway default).
+  const { data: inUse } = useMediaModelsInUse(!!gaConfig && !current);
+  const automatic = !current ? inUse?.speech ?? null : null;
   const draftChoice = parseModelChoice(draft || "");
   const draftMatch = draftChoice.model
     ? options.find((m) => m.model === draftChoice.model && (m.provider_id ?? null) === draftChoice.providerId)
@@ -138,7 +143,7 @@ export function SpeechGenerationSection({
           ) : null}
         </div>
       </div>
-      {options.length > 0 || current ? (
+      {options.length > 0 || current || automatic ? (
         <div className="space-y-3">
           <div className="flex items-center justify-between rounded-sm bg-elevation-default p-3.5">
             <div className="flex items-center gap-3">
@@ -146,22 +151,32 @@ export function SpeechGenerationSection({
                 <AudioLines className="h-4 w-4 text-accent" />
               </div>
               <div>
-                <p className="content-base font-medium">{current ?? t_i18n("Auto (provider default)")}</p>
+                <p className="content-base font-medium">
+                  {current ?? automatic?.model ?? t_i18n("Auto (provider default)")}
+                </p>
                 <span className="content-compact text-default-secondary">
                   {current
                     ? currentVoice
                       ? t_i18n("Speech Provider: {provider}, voice {voice}", { provider: configuredProvider, voice: currentVoice })
                       : t_i18n("Speech Provider: {provider}", { provider: configuredProvider })
-                    : t_i18n("A voice generator such as ElevenLabs speaks first, else the first provider with a built-in speech model.")}
+                    : automatic
+                      ? t_i18n("Speech Provider: {provider}", {
+                          provider: providerDisplayName(automatic.provider, automatic.provider_id ?? null, providers),
+                        })
+                      : t_i18n("A voice generator such as ElevenLabs speaks first, else the first provider with a built-in speech model.")}
                 </span>
               </div>
             </div>
-            {current && (
+            {current ? (
               <Badge variant="success" className="content-caption">
                 <Check className="mr-1 h-3 w-3" />
                 {t_i18n("Active")}
               </Badge>
-            )}
+            ) : automatic ? (
+              <Badge variant="secondary" className="content-caption">
+                {t_i18n("Automatic")}
+              </Badge>
+            ) : null}
           </div>
           {editing && (
             <div className="space-y-3">

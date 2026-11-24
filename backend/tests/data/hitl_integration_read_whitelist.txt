@@ -1058,6 +1058,9 @@ jira:list_jira_sprints
 jira:list_jira_worklogs
 jira:search_jira_issues
 jira:search_jira_users
+kubernetes:list_kubernetes_namespaces
+kubernetes:list_kubernetes_nodes
+kubernetes:list_kubernetes_services
 letsignit:get_letsignit_signature
 letsignit:get_letsignit_user
 linkedin:get_linkedin_comments
@@ -1107,6 +1110,7 @@ metabase:read_metabase_segment
 metabase:run_metabase_question
 metabase:search_metabase
 metabase:validate_metabase_native_query
+microsoft:export_microsoft_email_mime
 microsoft:get_microsoft_attachment
 microsoft:get_microsoft_calendar_event
 microsoft:get_microsoft_channel_meeting_recordings
@@ -1140,6 +1144,7 @@ microsoft:list_microsoft_emails
 microsoft:list_microsoft_event_occurrences
 microsoft:list_microsoft_flagged_emails
 microsoft:list_microsoft_folder_by_url
+microsoft:list_microsoft_list_columns
 microsoft:list_microsoft_list_items
 microsoft:list_microsoft_meeting_recordings
 microsoft:list_microsoft_meeting_transcripts

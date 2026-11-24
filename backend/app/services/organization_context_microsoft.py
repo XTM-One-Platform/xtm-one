@@ -65,6 +65,11 @@ _APP_CONCURRENCY = 8
 #: Retries of a throttled (429) or unavailable (503) call; the wait is the server's Retry-After, capped.
 _RETRIES = 4
 _MAX_WAIT_S = 30.0
+#: The answer of a call still throttled after every retry.
+_THROTTLED = "throttled, retry later"
+#: Concurrency of the second pass over the devices whose apps read stayed throttled:
+#: lower than the first pass, so the tenant's rate limit has room.
+_APP_RETRY_CONCURRENCY = 2
 
 # ── Mapping (no I/O) ──────────────────────────────────────────────────
 
@@ -427,7 +432,10 @@ async def _get_json(client: Any, url: str, headers: dict[str, str], source: str)
     """GET *url*, waiting out 429 and 503 with Retry-After (bounded); answers (json, error)."""
     for attempt in range(_RETRIES + 1):
         resp = await client.get(url, headers=headers)
-        if resp.status_code in (429, 503) and attempt < _RETRIES:
+        if resp.status_code in (429, 503):
+            if attempt >= _RETRIES:
+                # Still throttled after every wait: said as such, so a caller can read it again later.
+                return None, f"{source}: {_THROTTLED}"
             try:
                 wait = float(resp.headers.get("Retry-After") or 2**attempt)
             except ValueError:
@@ -440,7 +448,7 @@ async def _get_json(client: Any, url: str, headers: dict[str, str], source: str)
             detail = _error_detail(resp)
             return None, f"{source}: HTTP {resp.status_code}" + (f" ({detail})" if detail else "")
         return resp.json(), ""
-    return None, f"{source}: throttled, retry later"
+    return None, f"{source}: {_THROTTLED}"
 
 
 def _error_detail(resp: Any) -> str:
@@ -509,11 +517,17 @@ async def read_intune(token: str, filters: dict[str, Any], *, limit: int, client
         result.rows = [intune_device_row(d, include_owner=include_owner) for d in devices]
         result.total, result.truncated = len(devices), cut
         sem = asyncio.Semaphore(_APP_CONCURRENCY)
+        throttled: list[dict[str, Any]] = []
 
-        async def apps_of(row: dict[str, Any]) -> None:
+        async def apps_of(row: dict[str, Any], *, last_pass: bool = False) -> None:
             async with sem:
                 url = f"{GRAPH_BETA}/deviceManagement/managedDevices/{row['external_id']}/detectedApps"
                 apps, app_cut, app_err = await _paged(http, url, headers, INTUNE, MAX_APPS_PER_DEVICE)
+            if app_err and not last_pass and app_err.endswith(_THROTTLED):
+                # Read again at the end of the run, slower, instead of keeping
+                # its old software (95 devices left unread on a tenant, 24 Nov 2026).
+                throttled.append(row)
+                return
             if app_err:
                 logger.info("Intune detected apps of %s unreadable: %s", row["external_id"], app_err)
                 result.software_unread.add(row["external_id"])
@@ -525,6 +539,10 @@ async def read_intune(token: str, filters: dict[str, Any], *, limit: int, client
             result.software_cut += int(app_cut)
 
         await asyncio.gather(*(apps_of(r) for r in result.rows if r["external_id"]))
+        if throttled:
+            logger.info("Intune: reading the detected apps of %d throttled devices again", len(throttled))
+            sem = asyncio.Semaphore(_APP_RETRY_CONCURRENCY)
+            await asyncio.gather(*(apps_of(r, last_pass=True) for r in throttled))
         return result
     except Exception as exc:  # reported, never guessed
         logger.warning("Intune read failed: %s", format_exception_message(exc))

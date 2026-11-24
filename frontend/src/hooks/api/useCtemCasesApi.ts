@@ -83,6 +83,8 @@ export interface CtemCaseSummary {
   phase?: CtemStageKey | null;
   /** The gate the case waits on now: its key, who (a user id, a role or a policy, as the loop wrote it) and since when (#1503). */
   waiting_on?: { gate: string | null; by: string | null; since: string | null } | null;
+  /** When the case sweep found the case waiting on nobody, while nothing moved it since (#1736); null otherwise. */
+  stalled_since?: string | null;
 }
 
 /** Where a synced ticket stands against its case (backend ctem_case_loop.TICKET_SYNC_STATES, #917). */
@@ -127,8 +129,6 @@ interface CtemCaseValidation {
   at: string;
   mitigation_only?: boolean;
   note?: string | null;
-  /** CTEM-12: only read-only injects ran (true), a non-read-only one ran (false); absent when unknown. */
-  safe_mode?: boolean;
   /** CTEM-12: the target asset groups in the order they were tested. */
   run_order?: string[];
 }
@@ -399,7 +399,6 @@ type CtemCaseGateReasonKind =
   | "within_threshold"
   | "above_threshold"
   | "loss_unknown"
-  | "safe_mode"
   | "fleet_level"
   | "person";
 

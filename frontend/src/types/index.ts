@@ -606,6 +606,12 @@ export interface AvailableModel {
   access_restricted?: boolean;
 }
 
+/** The image and speech models generation runs on for the caller; `null` when none can. */
+export interface MediaModelsInUse {
+  image: AvailableModel | null;
+  speech: AvailableModel | null;
+}
+
 /** Why a provider that lists its decision models offered what it did. */
 export type DecisionListingStatus = "listed" | "empty" | "incomplete" | "failed" | "unavailable";
 

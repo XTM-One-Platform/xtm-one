@@ -419,7 +419,11 @@ def build_memory_store_tool(
         entry_id: str | None = None, subject_key: str | None = None
     ) -> str:
         from app.core.database import async_session
-        from app.services.persistent_memory import normalize_subject_key, retire_memories
+        from app.services.persistent_memory import (
+            may_manage_shared_memory,
+            normalize_subject_key,
+            retire_memories,
+        )
 
         entry_id = (entry_id or "").strip() or None
         subject = normalize_subject_key(subject_key)
@@ -430,12 +434,17 @@ def build_memory_store_tool(
             )
         try:
             async with async_session() as mem_db:
+                # The person who manages the agent's memory (its owner, an
+                # administrator) retires its shared pool too, as the memory
+                # screen lets them delete it.
+                shared = await may_manage_shared_memory(mem_db, agent_id=agent_id, user_id=user_id or None)
                 outcome = await retire_memories(
                     mem_db,
                     agent_id=agent_id,
                     user_id=user_id if user_id else None,
                     entry_id=entry_id,
                     subject_key=subject,
+                    include_shared=shared,
                 )
                 await mem_db.commit()
         except Exception as e:
@@ -507,10 +516,12 @@ def build_memory_store_tool(
             "Retire memory entries that no longer hold: an observation of an "
             "object that has changed since, a fact that is no longer true. Name "
             "one entry (entry_id, as search_memory lists it) or a subject "
-            "(subject_key: every active entry on it). A retired entry is kept "
-            "and searchable, flagged superseded, and no longer reaches your "
-            "context. To record what replaces it, call store_memory with "
-            "supersedes instead."
+            "(subject_key: every active entry on it). Your own entries are "
+            "retired, and the agent's shared entries too when the person you "
+            "act for manages the agent's memory (its owner, an administrator). "
+            "A retired entry is kept and searchable, flagged superseded, and "
+            "no longer reaches your context. To record what replaces it, call "
+            "store_memory with supersedes instead."
         ),
         input_schema={
             "type": "object",
@@ -587,8 +598,9 @@ def _retirement_answer(outcome, *, entry_id: str | None, subject_key: str | None
         noun, verb = ("entry", "stays") if outcome.left_shared == 1 else ("entries", "stay")
         answer += (
             f" {outcome.left_shared} matching {noun} of the agent's shared memory "
-            f"{verb} active: this session retires only its own memory. A newer state "
-            "entry on the same subject is the one you are shown."
+            f"{verb} active: only the agent's owner or an administrator retires "
+            "the shared memory (from their session, or the agent's memory screen). "
+            "A newer state entry on the same subject is the one you are shown."
         )
     return answer
 

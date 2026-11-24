@@ -1454,6 +1454,28 @@ class MemoryRetirement(NamedTuple):
     left_shared: int
 
 
+async def may_manage_shared_memory(db: AsyncSession, *, agent_id: str, user_id: str | None) -> bool:
+    """Whether *user_id* may retire the agent-level pool of *agent_id*.
+
+    The rule of the memory screen (``api/v1/agent_memory._can_manage_memory``):
+    the owner of a private agent, an administrator for a company-managed one
+    (an administrator for any agent). Everyone else retires only their own pool.
+    """
+    from app.models.agent import Agent
+    from app.models.user import User
+
+    aid, uid = safe_uuid(agent_id), safe_uuid(user_id)
+    if aid is None or uid is None:
+        return False
+    row = (await db.execute(select(Agent.user_id, Agent.is_company_managed).where(Agent.id == aid))).one_or_none()
+    if row is None:
+        return False
+    role = (await db.execute(select(User.role).where(User.id == uid))).scalar_one_or_none()
+    if role == "admin":
+        return True
+    return not row.is_company_managed and row.user_id == uid
+
+
 async def retire_memories(
     db: AsyncSession,
     *,
@@ -1461,12 +1483,15 @@ async def retire_memories(
     user_id: str | None,
     entry_id: str | None = None,
     subject_key: str | None = None,
+    include_shared: bool = False,
 ) -> MemoryRetirement:
     """Retire the writer's active entries that no longer hold.
 
     The entry *entry_id* names, or every active entry on *subject_key*
     (both given: the entry, if it is on that subject), in the writer's own
-    pool only (``_written_by``). A retired entry is kept and searchable,
+    pool (``_written_by``), plus the agent-level pool when *include_shared*
+    (the caller checked :func:`may_manage_shared_memory`). Another user's
+    entries are never retired. A retired entry is kept and searchable,
     flagged superseded with no successor, and never reaches a prompt again.
     Retiring changes nothing a retirement already did. Flushes; the caller
     commits.
@@ -1490,16 +1515,17 @@ async def retire_memories(
         AgentMemoryEntry.superseded_at.is_(None),
         *conditions,
     )
+    pool = _readable_by(AgentMemoryEntry, parsed_uid) if include_shared else _written_by(AgentMemoryEntry, parsed_uid)
     result = await db.execute(
         update(AgentMemoryEntry)
-        .where(*matching, _written_by(AgentMemoryEntry, parsed_uid))
+        .where(*matching, pool)
         .values(superseded_at=datetime.now(UTC), superseded_by_id=None)
         .returning(AgentMemoryEntry.id)
         .execution_options(synchronize_session=False)
     )
     retired = [str(row_id) for row_id in result.scalars().all()]
     left_shared = 0
-    if parsed_uid is not None:
+    if parsed_uid is not None and not include_shared:
         left_shared = (
             await db.execute(
                 select(func.count())

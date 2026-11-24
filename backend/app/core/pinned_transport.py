@@ -68,6 +68,24 @@ async def system_resolve(host: str, port: int) -> list:
     return await anyio.getaddrinfo(host, port, type=socket.SOCK_STREAM)
 
 
+class PolicyRefusal(httpcore.ConnectError):
+    """A connection the address check refused: no attempt was made, so a retry
+    would only be refused again (``is_policy_refusal`` finds it under httpx's
+    own ``ConnectError``)."""
+
+
+def is_policy_refusal(exc: BaseException) -> bool:
+    """Whether *exc*, or an exception it was raised from, is a ``PolicyRefusal``."""
+    current: BaseException | None = exc
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        if isinstance(current, PolicyRefusal):
+            return True
+        visited.add(id(current))
+        current = current.__cause__ or current.__context__
+    return False
+
+
 def _parse_address(address: str) -> IPAddress | None:
     try:
         # A scoped IPv6 address (``fe80::1%eth0``) is judged without its zone.
@@ -102,7 +120,7 @@ class _PinningBackend(httpcore.AsyncNetworkBackend):
             # A connection opened outside a request this transport sent has
             # no URL to judge: refused rather than waved through.
             logger.warning("Refused a connection to %s outside a checked request", _log_host(host))
-            raise httpcore.ConnectError(self._refusal)
+            raise PolicyRefusal(self._refusal)
         literal = _parse_address(host)
         if literal is not None:
             addresses = [literal]
@@ -127,7 +145,7 @@ class _PinningBackend(httpcore.AsyncNetworkBackend):
                     address,
                     reason,
                 )
-                raise httpcore.ConnectError(self._refusal)
+                raise PolicyRefusal(self._refusal)
         return await self._connect_first(addresses, port, timeout, local_address, socket_options)
 
     async def _connect_first(
@@ -206,7 +224,7 @@ class _PinningBackend(httpcore.AsyncNetworkBackend):
         timeout: float | None = None,
         socket_options: Iterable[httpcore.SOCKET_OPTION] | None = None,
     ) -> httpcore.AsyncNetworkStream:
-        raise httpcore.ConnectError(self._refusal)
+        raise PolicyRefusal(self._refusal)
 
     async def sleep(self, seconds: float) -> None:
         await self._inner.sleep(seconds)
