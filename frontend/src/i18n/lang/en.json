@@ -21679,5 +21679,14 @@
   "No remediation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.": "No remediation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.",
   "PIR sources": "PIR sources",
   "The OpenCTI imports and syncs that keep the PIR list up to date.": "The OpenCTI imports and syncs that keep the PIR list up to date.",
-  "Wait for the prioritization policy to be saved.": "Wait for the prioritization policy to be saved."
+  "Wait for the prioritization policy to be saved.": "Wait for the prioritization policy to be saved.",
+  "Case opening": "Case opening",
+  "Case opening: {state}": "Case opening: {state}",
+  "Case opening on": "Case opening on",
+  "Case opening off": "Case opening off",
+  "Case opening is off": "Case opening is off",
+  "Open a case for each confirmed signal": "Open a case for each confirmed signal",
+  "{count, plural, =0 {Off: no confirmed signal is waiting} one {Off: # confirmed signal is waiting} other {Off: # confirmed signals are waiting}}": "{count, plural, =0 {Off: no confirmed signal is waiting} one {Off: # confirmed signal is waiting} other {Off: # confirmed signals are waiting}}",
+  "Case opening was not changed": "Case opening was not changed",
+  "CTEM case opening turned on or off": "CTEM case opening turned on or off"
 }
