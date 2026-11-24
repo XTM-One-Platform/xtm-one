@@ -4881,9 +4881,15 @@ async def execute_assignment_run(
         original_status = run.status
 
         # Mark as running. A resume keeps the first ``started_at``: the
-        # run's wall time is read across its resumes.
+        # run's wall time is read across its resumes. A HITL resume keeps it
+        # too, and its pause is counted apart (#1645), never as queue time.
+        from app.services import hitl_resume_clock
+
+        _hitl_resume = original_status == "awaiting_human"
+        if _hitl_resume:
+            hitl_resume_clock.close_pause(run)
         run.status = "running"
-        run.started_at = (run.started_at if _resuming else None) or datetime.now(UTC)
+        run.started_at = (run.started_at if (_resuming or _hitl_resume) else None) or datetime.now(UTC)
         await db.commit()
         await _publish_run_status(
             str(run.user_id),
@@ -7584,12 +7590,16 @@ async def execute_assignment_run(
                 and (run.human_input_response or run.approval_decisions)
             ):
                 from app.core.redaction import restore_known_secrets
+                from app.services.hitl_resume_clock import restamp_prompt_clock
                 from app.tools.base import ToolCall
 
                 restored = []
                 # Stored with each secret variable value as its marker:
                 # the model and the tools get the values back, resolved above.
                 for m in restore_known_secrets(run.messages):
+                    if m.get("role") == "system" and isinstance(m.get("content"), str):
+                        # The clock of the pause is stale by its length (#1645).
+                        m = {**m, "content": restamp_prompt_clock(m["content"])}
                     tc_list = None
                     if m.get("tool_calls"):
                         tc_list = [
@@ -8386,6 +8396,9 @@ async def execute_assignment_run(
 
                 # --- Assignment paused for human input ---
                 run.status = "awaiting_human"
+                from app.services.hitl_resume_clock import mark_paused
+
+                mark_paused(run)
                 # Persist the trace id while the run waits (possibly days)
                 # for a human response — the resumed execution opens a new
                 # trace and overwrites it on completion/failure.

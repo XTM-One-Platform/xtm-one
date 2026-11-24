@@ -218,6 +218,67 @@ async def test_a_signal_that_is_not_a_new_case_opens_nothing(state, outcome, cas
     assert await loop.open_from_signal(FakeSession(), signal, now=NOW) is None
 
 
+# --- Installed versions read at opening, before the threat package --------------
+
+
+def _upgrade_signal() -> SimpleNamespace:
+    evidence = {"affected_package": "lodash", "fixed_version": "4.17.21"}
+    return _signal(trigger_path="code_flaw", subject_kind="code", subject_ref="lodash", evidence=evidence)
+
+
+@pytest.mark.asyncio
+async def test_an_upgrade_case_every_asset_already_runs_the_fix_of_resolves_at_opening(monkeypatch):
+    """The inventory is read when the case opens: no loop, no review, no gate for a case nobody is exposed to."""
+
+    async def on_fixed(_db, _case):
+        return {"fixed_version": "4.17.21", "assets_on_fixed": 3, "assets_below_fixed": 0, "assets_not_comparable": 0}
+
+    monkeypatch.setattr("app.services.ctem_case_versions.for_case", on_fixed)
+    db = FakeSession()
+    events = loop.PendingEvents()
+    case = await loop.open_from_signal(db, _upgrade_signal(), events=events, now=NOW)
+    assert case is not None and case.state == "resolved" and case.resolution_kind == "fixed"
+    [state] = db.events("state")
+    assert state.from_value == "new" and state.to_value == "resolved"
+    assert state.evidence.startswith(rules.FIXED_IN_INVENTORY) and "3 asset(s) on 4.17.21" in state.evidence
+    assert [name for name, _, _ in events.items] == [loop.CASE_RESOLVED]  # never opened: the loop does not start
+
+
+@pytest.mark.parametrize(
+    "running",
+    [
+        None,  # no asset reports the product: unknown, never discarded
+        {"fixed_version": "4.17.21", "assets_on_fixed": 2, "assets_below_fixed": 1, "assets_not_comparable": 0},
+        {"fixed_version": "4.17.21", "assets_on_fixed": 2, "assets_below_fixed": 0, "assets_not_comparable": 1},
+        {"fixed_version": "4.17.21", "assets_on_fixed": 2, "platform_unverified": True},
+    ],
+)
+@pytest.mark.asyncio
+async def test_an_upgrade_case_with_an_asset_below_or_unknown_opens_and_starts_the_loop(monkeypatch, running):
+    async def read(_db, _case):
+        return running
+
+    monkeypatch.setattr("app.services.ctem_case_versions.for_case", read)
+    db = FakeSession()
+    events = loop.PendingEvents()
+    case = await loop.open_from_signal(db, _upgrade_signal(), events=events, now=NOW)
+    assert case is not None and case.state == "new" and case.resolution_kind is None
+    assert db.events("state") == []
+    assert [name for name, _, _ in events.items] == [loop.CASE_OPENED]
+
+
+@pytest.mark.asyncio
+async def test_a_case_that_needs_its_validation_proof_is_not_resolved_on_the_inventory(monkeypatch):
+    async def on_fixed(_db, _case):
+        raise AssertionError("the inventory is not read for a case that needs its proof")
+
+    monkeypatch.setattr("app.services.ctem_case_versions.for_case", on_fixed)
+    signal = _upgrade_signal()
+    signal.trigger_path = "proven_exploitable"  # its case carries a validation plan
+    case = await loop.open_from_signal(FakeSession(), signal, now=NOW)
+    assert case is not None and case.validation_plan and case.fixed_version == "4.17.21" and case.state == "new"
+
+
 @pytest.mark.parametrize(
     "path,kind",
     [

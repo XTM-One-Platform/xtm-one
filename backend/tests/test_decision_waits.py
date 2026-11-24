@@ -42,9 +42,15 @@ def test_expired_tool_approval_rejects() -> None:
 
 
 def test_release_is_off_at_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 0 turns the timed release off; a tool approval still never holds (#1647).
     monkeypatch.setattr(settings, "human_gate_queue_release_hours", 0)
-    clause = dw.released_wait_clause(AssignmentRun)
-    assert str(clause.compile(dialect=postgresql.dialect())) == "false"
+    dialect: Any = postgresql.dialect
+    compiled: Any = dw.released_wait_clause(AssignmentRun).compile(
+        dialect=dialect(), compile_kwargs={"literal_binds": True}
+    )
+    sql = str(compiled)
+    assert "decisions.created_at <=" not in sql
+    assert "'tool_approval'" in sql
 
 
 def test_release_reads_the_open_decision_and_spares_chat_runs(monkeypatch: pytest.MonkeyPatch) -> None:

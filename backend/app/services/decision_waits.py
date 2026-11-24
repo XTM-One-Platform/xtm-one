@@ -15,6 +15,8 @@
 
 A run paused for a person stays resumable as it always was, but:
 
+- a run paused on a tool approval never holds its assignment (#1647): the
+  gate asks before the tool runs, so later triggers run at once;
 - past ``HUMAN_GATE_QUEUE_RELEASE_HOURS`` (default 4 h) of waiting, a run
   that a schedule, an event or a delivery started stops holding its
   assignment: :func:`holds_assignment` leaves it out of the overlap guard and
@@ -36,7 +38,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, exists, false, not_, or_, select
+from sqlalchemy import ColumnElement, and_, exists, not_, or_, select
 
 from app.core.config import settings
 from app.core.utils import format_exception_message
@@ -47,6 +49,9 @@ logger = logging.getLogger(__name__)
 #: ``trigger_context["type"]`` of a run a person started from a chat: its
 #: pause never releases the assignment (section 7: "off for chat-started runs").
 CHAT_STARTED_TRIGGER_TYPES: frozenset[str] = frozenset({"chat_handover"})
+#: Decision kinds whose pause releases its assignment at once (not after
+#: ``release_hours``): a tool approval stops the loop before the tool runs.
+RELEASED_AT_ONCE_KINDS: frozenset[str] = frozenset({"tool_approval"})
 #: What a run reads when its decision expires with no default option.
 NO_ANSWER = "No answer before the deadline"
 #: The surface an expiry is recorded under.
@@ -64,12 +69,23 @@ def release_hours() -> float:
 
 
 def released_wait_clause(model: Any, now: datetime | None = None) -> ColumnElement[bool]:
-    """SQL: a run of *model* (``AssignmentRun`` or an alias) whose pause no longer holds its assignment."""
+    """SQL: a run of *model* (``AssignmentRun`` or an alias) whose pause no longer holds its assignment.
+
+    A pause on a tool approval (:data:`RELEASED_AT_ONCE_KINDS`) never holds:
+    the gate asks before the tool runs, so nothing is half written, and the
+    answer resumes the run as before. Any other pause holds until
+    :func:`release_hours`. A chat-started run always holds.
+    """
     hours = release_hours()
-    if hours <= 0:
-        return false()
-    cutoff = (now or datetime.now(UTC)) - timedelta(hours=hours)
     run_type = model.trigger_context["type"].as_string()
+    open_decision = and_(
+        Decision.source_type == "run",
+        Decision.source_id == model.id,
+        Decision.status == "open",
+    )
+    released: list[ColumnElement[bool]] = [Decision.kind.in_(sorted(RELEASED_AT_ONCE_KINDS))]
+    if hours > 0:
+        released.append(Decision.created_at <= (now or datetime.now(UTC)) - timedelta(hours=hours))
     return and_(
         model.status == "awaiting_human",
         or_(
@@ -77,14 +93,7 @@ def released_wait_clause(model: Any, now: datetime | None = None) -> ColumnEleme
             run_type.is_(None),
             run_type.not_in(sorted(CHAT_STARTED_TRIGGER_TYPES)),
         ),
-        exists(
-            select(Decision.id).where(
-                Decision.source_type == "run",
-                Decision.source_id == model.id,
-                Decision.status == "open",
-                Decision.created_at <= cutoff,
-            )
-        ),
+        exists(select(Decision.id).where(open_decision, or_(*released))),
     )
 
 
