@@ -50,9 +50,15 @@ class OrganizationContextResponse(BaseModel):
     sources: dict[str, Any] | None = None
     #: On a save or a restore: the row fields the request carried and the profile API ignored (#1752):
     #: the asset and group rows are written through their own row API only.
-    ignored_row_fields: list[str] = []
+    ignored_row_fields: list[str] = Field(
+        default_factory=list,
+        description="Row fields the save or restore carried and ignored: rows are written through /assets and /asset-groups.",
+    )
     #: How many asset rows and groups the records hold (#1752); ``None`` before their import.
-    row_counts: dict[str, int] | None = None
+    row_counts: dict[str, int] | None = Field(
+        default=None,
+        description="Asset rows and groups held, keyed assets_exposure and asset_groups; the rows are read from /assets and /asset-groups.",
+    )
 
 
 class OrganizationContextVersionSummary(BaseModel):
@@ -198,8 +204,9 @@ async def get_organization_context(
 ) -> OrganizationContextResponse:
     """The current profile (empty with every field missing before the first save).
 
-    The asset and group lists are read from the asset records (#1543): the row
-    API, agent and import writes land there, never in a profile version.
+    Profile fields only (#1752): no asset or group row, whatever the inventory
+    size; ``row_counts`` names how many there are. The rows are read and written
+    through ``/assets`` and ``/asset-groups``, never through a profile version.
     """
     row, profile = await org_context.current_profile(db)
     counts = await org_context.asset_list_counts(db, row.organization_id if row is not None else None)
