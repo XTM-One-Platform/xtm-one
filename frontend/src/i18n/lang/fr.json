@@ -21542,5 +21542,6 @@
   "A person put the step on hold.": "Une personne a mis l'étape en attente.",
   "No person was needed: the policy allowed the step.": "Aucune personne n'était nécessaire : la politique a autorisé l'étape.",
   "Nobody answered before the deadline: the step did not run.": "Personne n'a répondu avant l'échéance : l'étape n'a pas été lancée.",
-  "The decision was withdrawn before an answer.": "La décision a été retirée avant toute réponse."
+  "The decision was withdrawn before an answer.": "La décision a été retirée avant toute réponse.",
+  "No answer": "Pas de réponse"
 }

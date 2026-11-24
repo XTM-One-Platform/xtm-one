@@ -21542,5 +21542,6 @@
   "A person put the step on hold.": "担当者がステップを保留にしました。",
   "No person was needed: the policy allowed the step.": "担当者は不要でした。ポリシーがステップを許可しました。",
   "Nobody answered before the deadline: the step did not run.": "期限までに誰も回答しませんでした。ステップは実行されませんでした。",
-  "The decision was withdrawn before an answer.": "回答前に決定が取り下げられました。"
+  "The decision was withdrawn before an answer.": "回答前に決定が取り下げられました。",
+  "No answer": "回答なし"
 }
