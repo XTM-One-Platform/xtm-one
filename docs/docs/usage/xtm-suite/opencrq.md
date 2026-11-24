@@ -23,16 +23,12 @@ The `OpenCRQ Assistant` explores frameworks and control capabilities, analyzes c
 
 The tools follow the OpenCRQ instance you connect: a tool the instance cannot serve is hidden from your agents, and a field the instance does not accept is refused before anything is sent. See [OpenCRQ tools](../resources/integrations.md#opencrq-tools).
 
-## Crown jewels and OpenCRQ assets
+## Primary assets and OpenCRQ
 
-The [organization profile](../../administration/organization.md) lists your crown jewels, the assets that matter most to the business. OpenCRQ lists the same assets as supporting assets, with their own criticality. An administrator keeps the two in line from `Settings` > `Organization` with `Check against OpenCRQ`, which shows what would change before anything is written, then `Apply`:
+The [organization profile](../../administration/organization.md) lists your primary assets, the business assets that matter most. OpenCRQ rates the same primary assets and links them to their supporting assets. XTM One keeps them in sync on a schedule: `CTEM` > `Inventory` > `Sources` lists OpenCRQ as the source of the primary assets, daily by default, with its last run, its counts and `Run now`.
 
-- A crown jewel whose name matches exactly one OpenCRQ supporting asset is linked to it.
-- A linked crown jewel sets the criticality of its OpenCRQ asset: the profile is where the business says what matters.
-- An OpenCRQ supporting asset rated very high that no crown jewel names is added to the profile as a critical crown jewel.
-- A name that matches several assets, or a crown jewel linked to an asset OpenCRQ no longer holds, is reported and never changed.
-
-Applying saves a new version of the organization profile when the crown jewels change.
+- An OpenCRQ primary asset is added or updated on each run, and its supporting assets are linked to it unless the link option is off.
+- A primary asset, or a link, added or edited by hand is never overwritten by the sync.
 
 ## OpenCRQ MCP server
 

@@ -28,6 +28,7 @@ from app.api.v1 import integrations as integrations_api
 from app.core.database import get_db
 from app.core.security import decrypt_json, encrypt_value
 from app.integrations import base_url_policy
+from app.integrations import http as integration_http
 from app.integrations.base_url_policy import (
     REFUSED_DETAIL,
     BaseURLRefusedError,
@@ -483,12 +484,14 @@ async def test_a_rebound_answer_is_refused_at_connect_time(monkeypatch, connects
 
 async def test_a_tool_call_connects_to_an_allowed_private_host_at_the_address_checked(monkeypatch, connects):
     monkeypatch.setattr(web_fetch.socket, "getaddrinfo", _Resolver("192.168.1.20"))
+    monkeypatch.setattr(integration_http, "_CONNECT_BASE_DELAY", 0.0)
 
     result = await _call(_tools({"base_url": "https://onprem.acme.test"}))
 
-    # The double refuses the socket; the attempt went to the checked address.
+    # The double refuses the socket: a connection never established is
+    # retried twice, and every attempt went to the checked address.
     assert result.is_error is True
-    assert connects == [("192.168.1.20", 443)]
+    assert connects == [("192.168.1.20", 443)] * 3
 
 
 async def test_a_bundle_spec_server_still_gets_the_credential_without_a_base_url(monkeypatch):
