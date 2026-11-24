@@ -84,8 +84,9 @@ export function profileCardHref(card: ProfileCard, params: URLSearchParams = new
 
 /**
  * Every field of the profile (a form key or a contract path) and the card that edits it.
- * pir_names travels with pir_ids; posture_target is set on the CTEM governance page and
- * only carried by the form, so it opens the exposure tab, where the policy lives.
+ * pir_names travels with pir_ids, edited on the Prioritization policy beside the PIR score thresholds (#1889);
+ * posture_target is set on the CTEM governance page and only carried by the form, so it opens the exposure tab,
+ * where the policy lives.
  */
 export const PROFILE_FIELD_CARD = {
   name: "identity",
@@ -99,8 +100,8 @@ export const PROFILE_FIELD_CARD = {
   annual_loss_threshold: "risk_appetite",
   approval_threshold: "risk_appetite",
   ticketing: "ticketing",
-  pir_ids: "ticketing",
-  pir_names: "ticketing",
+  pir_ids: "prioritization_policy",
+  pir_names: "prioritization_policy",
   crown_jewels: "crown_jewels",
   shipped_products: "shipped_products",
   tech_stack: "tech_stack",
