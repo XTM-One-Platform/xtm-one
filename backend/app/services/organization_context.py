@@ -3,7 +3,7 @@
 """The organization profile: one structured, versioned context every agent reads.
 
 The contract is ``dev-docs/ctem-fleets.md`` section 6 (#8987): sector,
-regions, size, crown jewels, software, AI systems inventory, PIRs, risk
+regions, size, crown jewels, software, PIRs, risk
 appetite, loaded hourly rate and currency, ticketing target. It replaces
 the free-text ``company-context`` knowledge base as the source agents
 reason from: a stage analyst ranks by the crown jewels it reads here and
@@ -168,9 +168,6 @@ EXPOSURE_FIELDS: tuple[str, ...] = (
 #: Profile fields read by a CTEM page only (#11547 S2e), never dumped into the
 #: always-on block and not contract fields, like the parts above.
 PAGE_ONLY_FIELDS: tuple[str, ...] = ("posture_target",)
-#: Profile parts read like fields but derived from another (#1501: ``ai_systems`` is the assets of
-#: category ai_target): readers, prerequisite checks and the contract name them, nothing stores them.
-DERIVED_FIELDS: tuple[str, ...] = ("ai_systems",)
 
 _Strict = ConfigDict(extra="forbid", str_strip_whitespace=True)
 #: The most assets the profile model holds; the records hold more (#1543), the readers get this many.
@@ -333,41 +330,6 @@ AI_TARGET_PROVIDERS: tuple[str, ...] = (
     "agent_http",
     "xtm_one",
 )
-#: The kind of a profile AI system (before #1501) -> the OpenAEV ``ai_target`` subcategory it is.
-#: ``assistant`` and ``embedded`` have none: the row keeps its kind as the tag ``ai_kind:<kind>``.
-AI_KIND_SUBCATEGORY: dict[str, str] = {"agent": "ai_agent", "model_api": "llm_model"}
-#: A profile AI system's exposure (before #1501) -> the asset's ``internet_facing``.
-AI_EXPOSURE_FACING: dict[str, str] = {"public": "yes", "internal": "no", "partner": "unknown"}
-
-
-class AiSystem(BaseModel):
-    """A profile AI system as saved before #1501, read only to move it into the assets.
-
-    ``openaev_asset_id`` is the id before #1134, read as an OpenAEV row (see :class:`CrownJewel`).
-    """
-
-    model_config = _Strict
-
-    name: str = Field(min_length=1, max_length=200)
-    kind: Literal["assistant", "agent", "model_api", "embedded"] = "assistant"
-    owner: str = Field(default="", max_length=200)
-    exposure: Literal["internal", "partner", "public"] = "internal"
-    openaev_asset_id: str = Field(default="", max_length=100)
-    source: str = Field(default="manual", max_length=80)
-    external_id: str = Field(default="", max_length=200)
-    sync_id: str = Field(default="", max_length=64)
-
-    @model_validator(mode="before")
-    @classmethod
-    def _legacy_openaev(cls, data: Any) -> Any:
-        return _legacy_platform_id(data, "openaev_asset_id", "openaev")
-
-    @model_validator(mode="after")
-    def _openaev_id_follows(self) -> AiSystem:
-        self.source = self.source.strip().lower() or "manual"
-        if self.source == "openaev" and self.external_id:
-            self.openaev_asset_id = self.external_id[:100]
-        return self
 
 
 def _names(value: list[str], *, limit: int = 200) -> list[str]:
@@ -1032,8 +994,6 @@ class OrganizationProfile(BaseModel):
     #: What the organization ships, with its source repositories (#1432). Not a contract
     #: field: a vendor-free organization ships nothing; the software is what it runs.
     shipped_products: list[ShippedProduct] = Field(default_factory=list, max_length=200)
-    #: No ``ai_systems`` list since #1501: an AI system is an asset of category ``ai_target``
-    #: (``assets_exposure``); a profile saved before reads its rows there (:func:`ai_system_asset`).
     pir_ids: list[str] = Field(default_factory=list, max_length=100)
     #: The last known OpenCTI name of each PIR in ``pir_ids``, saved with it so the
     #: profile names a PIR even when OpenCTI cannot be read or deleted it (#9615).
@@ -1084,36 +1044,6 @@ class OrganizationProfile(BaseModel):
     #: (``services/organization_onboarding.py``, #11224). Not a contract field:
     #: ``missing_fields`` still reports them; the onboarding no longer asks.
     onboarding_skipped: list[str] = Field(default_factory=list, max_length=20)
-
-    @property
-    def ai_systems(self) -> list[AssetEntry]:
-        """The AI systems: the assets of category ``ai_target`` (#1501; read-only, never dumped)."""
-        return ai_target_assets(self)
-
-    @model_validator(mode="before")
-    @classmethod
-    def _ai_systems_into_assets(cls, data: Any) -> Any:
-        """A profile saved before #1501: its ``ai_systems`` rows become ``ai_target`` assets, nothing lost.
-
-        A row an asset of the same source and id already carries (an OpenAEV AI target imported both
-        ways) is not added twice; a typed row named like an AI target asset is the same thing.
-        """
-        if not isinstance(data, dict) or "ai_systems" not in data:
-            return data
-        data = dict(data)
-        legacy = data.pop("ai_systems") or []
-        assets = list(data.get("assets_exposure") or [])
-        for raw in legacy if isinstance(legacy, list) else []:
-            try:
-                AiSystem.model_validate(raw)
-            except ValueError as exc:
-                # Never dropped in silence: a bad row is refused and named, as before #1501.
-                raise ValueError(f"ai_systems: {exc}") from None
-            row = ai_system_asset(raw)
-            if row is not None and not _carried(assets, row):
-                assets.append(row)
-        data["assets_exposure"] = assets
-        return data
 
     @model_validator(mode="before")
     @classmethod
@@ -1179,57 +1109,8 @@ class OrganizationProfile(BaseModel):
         return self
 
 
-def ai_system_asset(raw: Any) -> dict[str, Any] | None:
-    """A profile AI system saved before #1501 as an ``ai_target`` asset row (``None`` when unreadable).
-
-    The kind becomes the OpenAEV subcategory where one exists (:data:`AI_KIND_SUBCATEGORY`), else the
-    tag ``ai_kind:<kind>``; the exposure sets ``internet_facing`` (:data:`AI_EXPOSURE_FACING`) and stays
-    as the tag ``exposure:<value>``; owner, source, id and sync are kept.
-    """
-    if isinstance(raw, AiSystem):
-        raw = raw.model_dump()
-    if not isinstance(raw, dict):
-        return None
-    try:
-        system = AiSystem.model_validate(raw)
-    except ValueError:
-        return None
-    tags = [f"exposure:{system.exposure}"]
-    subcategory = AI_KIND_SUBCATEGORY.get(system.kind, "")
-    if not subcategory:
-        tags.insert(0, f"ai_kind:{system.kind}")
-    return {
-        "name": system.name,
-        "category": "ai_target",
-        "subcategory": subcategory,
-        "internet_facing": AI_EXPOSURE_FACING[system.exposure],
-        "owner": system.owner,
-        "tags": tags,
-        "source": system.source,
-        "external_id": system.external_id,
-        "sync_id": system.sync_id,
-    }
-
-
-def _carried(assets: list[Any], row: dict[str, Any]) -> bool:
-    """Whether *assets* already hold *row*: the same source and id, or an AI target of the same name."""
-    for asset in assets:
-        data = asset.model_dump() if isinstance(asset, BaseModel) else asset
-        if not isinstance(data, dict):
-            continue
-        source = str(data.get("source") or "manual").strip().lower()
-        if row["external_id"] and source == row["source"] and str(data.get("external_id") or "") == row["external_id"]:
-            return True
-        if (
-            data.get("category") == "ai_target"
-            and str(data.get("name") or "").strip().casefold() == row["name"].casefold()
-        ):
-            return True
-    return False
-
-
 def ai_target_assets(profile: OrganizationProfile) -> list[AssetEntry]:
-    """The AI systems of *profile*: its assets of category ``ai_target`` (#1501)."""
+    """The assets of category ``ai_target`` of *profile* (the AI targets OpenAEV tests)."""
     return [asset for asset in profile.assets_exposure if asset.category == "ai_target"]
 
 
@@ -1242,7 +1123,6 @@ CONTRACT_FIELDS: tuple[tuple[str, str], ...] = (
     ("size", "organization size"),
     ("crown_jewels", "primary assets and business services"),
     ("tech_stack", "software"),
-    ("ai_systems", "AI systems inventory"),
     ("pir_ids", "priority intelligence requirements (PIRs)"),
     ("risk_appetite.annual_loss_threshold", "risk appetite: annual loss threshold"),
     ("risk_appetite.approval_threshold", "risk appetite: approval threshold"),
@@ -1598,32 +1478,20 @@ def restored_profile(
 ) -> tuple[dict[str, Any], list[str]]:
     """*current* with *fields* taken from *past* (every field of *past* when empty); ``(profile, fields)``.
 
-    ``ValueError`` names a field the profile does not have. ``ai_systems`` (#1501, a derived field)
-    restores the ``ai_target`` assets of *past* in place of the current ones, the other assets kept;
-    *past* is a parsed profile, so a version saved before #1501 already carries them as assets.
+    ``ValueError`` names a field the profile does not have.
     """
     known = set(OrganizationProfile.model_fields)
     wanted = [f for f in dict.fromkeys(str(f).strip() for f in fields) if f] or sorted(known)
-    unknown = [f for f in wanted if f not in known and f not in DERIVED_FIELDS]
+    unknown = [f for f in wanted if f not in known]
     if unknown:
         raise ValueError(f"not a field of the organization profile: {', '.join(unknown)}")
     restored = dict(current)
     for name in wanted:
-        if name == "ai_systems":
-            restored["assets_exposure"] = [
-                *(a for a in restored.get("assets_exposure") or [] if not _is_ai_target_row(a)),
-                *(a for a in past.get("assets_exposure") or [] if _is_ai_target_row(a)),
-            ]
-        elif name in past:
+        if name in past:
             restored[name] = past[name]
         else:
             restored.pop(name, None)
     return restored, wanted
-
-
-def _is_ai_target_row(row: Any) -> bool:
-    """Whether a dumped asset row is an AI system (category ``ai_target``, #1501)."""
-    return isinstance(row, dict) and row.get("category") == "ai_target"
 
 
 async def save_version(
@@ -1903,26 +1771,6 @@ def _drop_typed_provenance(row: dict[str, Any]) -> None:
             row.pop(key, None)
 
 
-def _ai_block_row(asset: AssetEntry) -> dict[str, Any]:
-    """An AI target asset as the always-on block names an AI system (#1501)."""
-    row: dict[str, Any] = {"name": asset.name, "subcategory": asset.subcategory, "owner": asset.owner}
-    row["internet_facing"] = asset.internet_facing
-    if asset.source not in HAND_SOURCES:
-        row["source"] = asset.source
-    return {k: v for k, v in row.items() if v not in ("", None) or k == "name"}
-
-
-def _insert_before(data: dict[str, Any], before: str, key: str, value: Any) -> dict[str, Any]:
-    """*data* with *key* set just before *before* (at the end when *before* is absent)."""
-    out: dict[str, Any] = {}
-    for k, v in data.items():
-        if k == before:
-            out[key] = value
-        out[k] = v
-    out.setdefault(key, value)
-    return out
-
-
 def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     """The profile as dumped before #11543: the parts it added left out, an empty crown jewel link too.
 
@@ -1944,10 +1792,6 @@ def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     for key in ("crown_jewels", "tech_stack"):
         for row in dumped.get(key) or []:
             _drop_typed_provenance(row)
-    # #1501: the always-on block keeps naming the AI systems, now the assets of category ai_target,
-    # at the place the list had (the block of a profile without any reads as before).
-    ai_rows = [_ai_block_row(asset) for asset in ai_target_assets(profile)]
-    dumped = _insert_before(dumped, "pir_ids", "ai_systems", ai_rows)
     if not dumped.get("fx_rates"):
         # #1383: a profile with no reference rate dumps as before.
         dumped.pop("fx_rates", None)

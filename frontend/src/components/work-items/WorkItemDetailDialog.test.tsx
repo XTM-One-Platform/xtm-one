@@ -304,6 +304,17 @@ describe("the work item detail", () => {
     expect(document.body.textContent).toContain("Complete it yourself, or ask an agent to take it over.");
   });
 
+  // #1910: the decision recipient may cancel, and nothing else.
+  it("enables Cancel alone for the decision recipient", () => {
+    const close = vi.fn();
+    const reason = "Read-only for you: it belongs to another person.";
+    openDialog(item({ can_write: false, can_cancel: true, read_only_reason: reason }), { close, remove: vi.fn() });
+    expect((screen.getByRole("button", { name: "Cancel work item" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "Delete" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByText("Cancel work item"));
+    expect(close).toHaveBeenCalledWith(expect.objectContaining({ can_cancel: true }), "cancelled");
+  });
+
   it("keeps the write actions enabled when the reader may change the item", () => {
     openDialog(item({ can_write: true, read_only_reason: null }), { close: vi.fn() });
     expect((screen.getByRole("button", { name: "Cancel work item" }) as HTMLButtonElement).disabled).toBe(false);

@@ -4126,6 +4126,7 @@ def build_agent_builder_tool(
         prompt: str = "",
         task_id: str = "",
         file_ids: list[str] | str | None = None,
+        dry_run: bool = False,
         file_context: FileContext | None = None,
     ) -> str:
         """Run an agent once on a prompt and hand back its answer.
@@ -4143,9 +4144,14 @@ def build_agent_builder_tool(
         ``file_ids`` ride on the run's message as a chat message's
         attachments do (images as vision blocks): files of the caller's turn or
         rows the caller owns, at most ``MAX_TURN_FILES``.
+
+        ``dry_run`` (#1911): the run's reads run live and every write is logged
+        and answered that it was not executed (a ``dry_run`` sandbox session),
+        so an agent that sends or writes can be smoke-tested safely.
         """
         from app.core.database import async_session as _builder_session
         from app.services.sub_agent import (
+            RUN_DRY_RUN_KEY,
             RUN_ONCE_TRIGGER_TYPE,
             create_sub_agent_task,
             get_task_result,
@@ -4178,6 +4184,8 @@ def build_agent_builder_tool(
             wanted = [file_ids] if isinstance(file_ids, str) else list(file_ids or [])
             wanted = [str(raw).strip() for raw in wanted if str(raw or "").strip()]
             extra_metadata: dict = {"origin": "run_agent_once"}
+            if dry_run is True or (isinstance(dry_run, str) and dry_run.strip().lower() == "true"):
+                extra_metadata[RUN_DRY_RUN_KEY] = True
             task_files = None
             if wanted:
                 if len(wanted) > MAX_TURN_FILES:
@@ -13760,6 +13768,11 @@ def build_agent_builder_tool(
                         "type": "array",
                         "items": {"type": "string"},
                         "description": "Attached as in a chat message, at most 30",
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "Reads run, writes are logged and not executed",
+                        "default": False,
                     },
                 },
                 "required": [],

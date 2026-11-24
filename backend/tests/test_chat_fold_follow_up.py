@@ -83,7 +83,9 @@ def _answers(*texts: str):
 
 async def _send(env, content: str = "summarise the risks", **kw) -> _FakeConnection:
     conn = _FakeConnection(str(env.conv.id), {"content": content}, env.timeline, **kw)
-    await asyncio.wait_for(_run_connection(conn, env.user_id), 5)
+    # No wall-clock budget: the scripted turn ends by itself, and a budget
+    # expires on a loaded xdist worker wherever the turn is (#1915).
+    await _run_connection(conn, env.user_id)
     return conn
 
 
@@ -119,7 +121,7 @@ async def test_a_rest_turn_follows_up_a_fold_taken_as_it_stores_its_reply(
     _patch_general_chat(monkeypatch, _answers("final answer"))
     folded = _fold_while_the_reply_is_stored(monkeypatch)
 
-    await asyncio.wait_for(_rest_send(ws_env), 5)
+    await _rest_send(ws_env)
 
     assert folded == [True]
     assert [(c.texts, c.lock_free) for c in follow_ups] == [([LATE], True)]
@@ -127,7 +129,7 @@ async def test_a_rest_turn_follows_up_a_fold_taken_as_it_stores_its_reply(
 
 async def test_a_stopped_turn_follows_nothing_up(monkeypatch, ws_env, follow_ups):  # noqa: F811
     async def _run(_db, _uid, _history, _content, **kwargs):
-        await asyncio.wait_for(kwargs["cancel_event"].wait(), 2)
+        await kwargs["cancel_event"].wait()
         return ("cancelled mid-run", None)
 
     _patch_general_chat(monkeypatch, _run)
@@ -197,7 +199,7 @@ async def test_a_rest_turn_stopped_during_its_persistence_follows_nothing_up(
     _patch_general_chat(monkeypatch, _answers("final answer"))
     folded = _stop_while_the_reply_is_stored(monkeypatch, _stop)
 
-    await asyncio.wait_for(_rest_send(ws_env), 5)
+    await _rest_send(ws_env)
 
     assert folded == [True]
     assert follow_ups == []
@@ -275,14 +277,11 @@ async def test_a_rest_turn_follows_up_only_for_an_account_still_allowed_to_chat(
     if session:
         user.web_session = SimpleNamespace(claims={"iat": _ISSUED_AT})
 
-    await asyncio.wait_for(
-        chat_module.send_message(
-            conversation_id=str(ws_env.conv.id),
-            body=chat_module.SendMessageRequest(content="summarise the risks"),
-            user=user,
-            db=_FakeSession(ws_env.conv, ws_env.timeline),
-        ),
-        5,
+    await chat_module.send_message(
+        conversation_id=str(ws_env.conv.id),
+        body=chat_module.SendMessageRequest(content="summarise the risks"),
+        user=user,
+        db=_FakeSession(ws_env.conv, ws_env.timeline),
     )
 
     assert folded == [True]
@@ -326,7 +325,7 @@ async def test_a_fold_the_bridge_queued_after_the_loop_is_followed_up(
             # The leftover check has emptied the queue: the bridge, still
             # running, queues this fold where no loop reads it.
             assert await chat_turn_guard.fold_into_inflight_turn(str(ws_env.conv.id), LATE)
-            await asyncio.wait_for(bridged.wait(), 2)
+            await bridged.wait()
         return admitted
 
     monkeypatch.setattr(chat_module, "_admit_leftover_steers", _admit)
@@ -359,7 +358,7 @@ async def test_a_stopped_bridge_queues_the_batch_it_holds():
             queued.append("batch")
 
     task = asyncio.create_task(_bridge())
-    await asyncio.wait_for(took.wait(), 2)
+    await took.wait()
     await chat_turn_guard.stop_bridge(task, stop)
 
     assert queued == ["batch"]
