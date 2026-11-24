@@ -102,26 +102,19 @@ export function OrganizationFxRatesCard({ id: anchorId }: { id: string }) {
         rates.length === 0 ? (
           <p className="text-default-secondary">{t_i18n("No reference rate")}</p>
         ) : (
-          <table className="w-full content-compact" data-testid="settings.organization.fx-rates.table">
-            <thead>
-              <tr className="text-left text-default-secondary">
-                <th className="py-1 pr-3 font-normal">{t_i18n("Conversion")}</th>
-                <th className="py-1 pr-3 font-normal">{t_i18n("Rate")}</th>
-                <th className="py-1 pr-3 font-normal">{t_i18n("As of")}</th>
-                <th className="py-1 font-normal">{t_i18n("Source")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rates.map((rate) => (
-                <tr key={`${rate.from_currency}-${rate.to_currency}-${rate.as_of}`} className="border-t border-elevation-subtle-soft">
-                  <td className="py-1 pr-3 font-mono">{`${rate.from_currency} → ${rate.to_currency}`}</td>
-                  <td className="py-1 pr-3 font-mono">{rate.rate}</td>
-                  <td className="py-1 pr-3 font-mono">{rate.as_of}</td>
-                  <td className="py-1 break-words">{rate.source}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <ul className="content-compact" data-testid="settings.organization.fx-rates.list">
+            {rates.map((rate) => (
+              <li
+                key={`${rate.from_currency}-${rate.to_currency}-${rate.as_of}`}
+                className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-t border-elevation-subtle-soft py-1.5 first:border-t-0"
+              >
+                <span className="font-mono">{`${rate.from_currency} → ${rate.to_currency}`}</span>
+                <span className="font-mono">{rate.rate}</span>
+                <span className="text-default-secondary">{t_i18n("As of")} <span className="font-mono">{rate.as_of}</span></span>
+                <span className="min-w-0 break-words text-default-secondary">{rate.source}</span>
+              </li>
+            ))}
+          </ul>
         )
       ) : (
         <div className="space-y-3">
