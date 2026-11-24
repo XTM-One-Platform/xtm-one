@@ -78,6 +78,40 @@ def test_openaev_findings_join_the_opencti_case_by_cve():
     assert [i.member_id for i in grouping.no_known_fix] == ["openaev:f-2"]
 
 
+def test_a_vendor_foreign_node_of_the_same_name_never_joins_the_entry_case():
+    """#1693: a node whose CPE names another vendor does not carry its CVEs into the entry's case."""
+    stack = [{"product": "Chrome", "vendor": "Google", "cpe": "", "label": "Google Chrome"}]
+    software = [
+        {"id": "sw-g", "name": "chrome", "vendor": "", "cpe": "cpe:2.3:a:google:chrome:142.0:*:*:*:*:*:*:*"},
+        {"id": "sw-m", "name": "chrome", "vendor": "", "cpe": "cpe:2.3:a:microsoft:chrome:1.0:*:*:*:*:*:*:*"},
+        {"id": "sw-x", "name": "Chrome", "vendor": "Microsoft Corporation", "cpe": ""},
+    ]
+    relations = [
+        _rel("sw-g", "v-g", "CVE-2026-10"),
+        _rel("sw-m", "v-e", "CVE-2026-11"),
+        _rel("sw-x", "v-x", "CVE-2026-12"),
+    ]
+    issues = source.opencti_issues(software, stack, relations, [])
+    assert [i.external_id for i in issues] == ["v-g"]
+
+
+def test_a_cve_shared_by_two_stack_products_is_one_issue_and_one_case_per_product():
+    """#1693: a Chromium CVE OpenCTI links to Chrome and Edge fans out to both products' cases."""
+    stack = [
+        {"product": "Chrome", "vendor": "Google", "cpe": "", "label": "Google Chrome"},
+        {"product": "Edge", "vendor": "Microsoft", "cpe": "", "label": "Microsoft Edge"},
+    ]
+    software = [
+        {"id": "sw-c", "name": "chrome", "vendor": "google", "cpe": ""},
+        {"id": "sw-e", "name": "edge", "vendor": "", "cpe": "cpe:2.3:a:microsoft:edge:*:*:*:*:*:*:*:*"},
+    ]
+    relations = [_rel("sw-c", "v-1", "CVE-2026-20"), _rel("sw-e", "v-1", "CVE-2026-20")]
+    issues = source.opencti_issues(software, stack, relations, [])
+    assert sorted(i.product for i in issues) == ["Chrome", "Edge"]
+    grouping = rules.group_issues(issues)
+    assert set(grouping.groups) == {"upgrade:google/chrome@latest", "upgrade:microsoft/edge@latest"}
+
+
 def test_openaev_finding_lifecycle_is_read_when_present_and_absent_otherwise():
     findings = [
         {

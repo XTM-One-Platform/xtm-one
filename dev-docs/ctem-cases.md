@@ -89,7 +89,7 @@ in one line (section 7.3).
 
 | Source | What counts as an open issue | Read |
 |---|---|---|
-| OpenCTI | A Vulnerability related by `has` to a Software observable matching the organization tech stack (the match already used by the tailored KEV, `ctem_metrics_collector._stack_matches`), and passing the prioritization policy of #11543 when one is set | GraphQL, per-user credentials (as the posture) |
+| OpenCTI | A Vulnerability related by `has` to a Software observable matching the organization tech stack (the match already used by the tailored KEV, `ctem_metrics_collector._stack_matches`: CPE equal, else the product name with agreeing vendors, a side's vendor being its `vendor` or else the vendor its CPE names, #1693; a CVE OpenCTI links to several stack products is one issue, so one case, per product), and passing the prioritization policy of #11543 when one is set | GraphQL, per-user credentials (as the posture) |
 | OpenAEV | A finding of type `cve` on an asset or asset group, not older than the validation window | `/api/findings/search`, per-user credentials |
 
 Without a tech stack in the profile, OpenCTI contributes nothing (no case from
