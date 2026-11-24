@@ -189,6 +189,8 @@ async def test_a_put_without_rows_saves_while_a_sync_rewrites_them(monkeypatch: 
     )
     assert db.committed and answer.ignored_row_fields == []
     assert saved[-1].profile["owned_domains"] == ["example.com"]
+    # The answer names the records' rows, as GET does, not the stale stored list.
+    assert answer.profile["assets_exposure"][0]["name"] == "Laptop-1 renamed by Intune"
 
 
 @pytest.mark.asyncio

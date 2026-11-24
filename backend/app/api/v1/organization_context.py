@@ -162,6 +162,17 @@ def _response(
     )
 
 
+async def _write_answer(
+    db: AsyncSession,
+    row: OrganizationContextVersion,
+    removed_rows: dict[str, list[str]],
+    ignored: list[str],
+) -> OrganizationContextResponse:
+    """The answer of a PUT or a restore: the rows read from the records, as GET and PATCH answer them (#1752)."""
+    profile = await org_context.hydrated_profile(db, row) if getattr(row, "organization_id", None) else None
+    return _response(row, removed_rows, profile=profile, ignored_row_fields=ignored)
+
+
 def _stale_base(based_on_version: int | None, current: OrganizationContextVersion | None) -> None:
     """409 when *based_on_version* is given and another version was saved since (#1473)."""
     if based_on_version is None:
@@ -487,7 +498,7 @@ async def save_organization_context(
             status_code=409, detail="Another version was saved at the same time. Reload and save again."
         ) from None
     await db.refresh(row)
-    return _response(row, org_context.removed_rows(stored, profile.model_dump(mode="json")), ignored_row_fields=ignored)
+    return await _write_answer(db, row, org_context.removed_rows(stored, profile.model_dump(mode="json")), ignored)
 
 
 @router.get("/versions/{version}", response_model=OrganizationContextResponse)
@@ -561,7 +572,7 @@ async def restore_organization_context_version(
             status_code=409, detail="Another version was saved at the same time. Reload and restore again."
         ) from None
     await db.refresh(row)
-    return _response(row, org_context.removed_rows(stored, profile.model_dump(mode="json")), ignored_row_fields=ignored)
+    return await _write_answer(db, row, org_context.removed_rows(stored, profile.model_dump(mode="json")), ignored)
 
 
 class EnterpriseKnowledgeLink(BaseModel):
