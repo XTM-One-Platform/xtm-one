@@ -680,18 +680,29 @@ async def _sync_user_groups(
     }
     current_saml_group_ids = set(saml_memberships.keys())
     all_group_ids = set(membership_by_group.keys())
+    # A group with auto join on keeps every person who signs in (#1901): a
+    # SAML-sourced membership of such a group (one the mapping wrote before
+    # the switch was turned on) is never removed as stale.
+    kept_auto_join: set[uuid.UUID] = set()
+    if current_saml_group_ids:
+        result = await db.execute(
+            select(Group.id).where(Group.id.in_(current_saml_group_ids), Group.auto_join.is_(True))
+        )
+        kept_auto_join = set(result.scalars().all())
 
     if not group_names:
         # No groups in assertion — remove all SAML-sourced memberships
-        for membership in saml_memberships.values():
+        # except those of auto-join groups.
+        removed = [m for gid, m in saml_memberships.items() if gid not in kept_auto_join]
+        for membership in removed:
             await db.delete(membership)
-        if saml_memberships:
+        if removed:
             logger.info(
                 "SAML group sync for %s: removed %d SAML memberships (no groups in assertion)",
                 user.email,
-                len(saml_memberships),
+                len(removed),
             )
-        return bool(saml_memberships)
+        return bool(removed)
 
     # Resolve group IDs — find existing groups by name (or old UUID name)
     result = await db.execute(select(Group).where(Group.name.in_(group_names)))
@@ -726,8 +737,9 @@ async def _sync_user_groups(
     for gid in to_add:
         db.add(GroupMember(group_id=gid, user_id=user.id, source="saml"))
 
-    # Remove stale SAML memberships (only SAML-sourced ones)
-    to_remove = current_saml_group_ids - target_group_ids
+    # Remove stale SAML memberships (only SAML-sourced ones, never those of
+    # an auto-join group)
+    to_remove = current_saml_group_ids - target_group_ids - kept_auto_join
     for gid in to_remove:
         await db.delete(saml_memberships[gid])
 

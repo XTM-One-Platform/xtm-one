@@ -153,6 +153,31 @@ async def test_the_saml_mapping_never_removes_or_takes_over_an_auto_join_members
         assert await _memberships(scratch.sessions, dana.id) == {"Everyone": "auto_join", "Analysts": "saml"}
 
 
+async def test_auto_join_turned_on_after_the_mapping_keeps_the_saml_membership() -> None:
+    """The mapping wrote a "saml" row, then an admin turned auto join on: an
+    assertion that no longer names the group never removes it."""
+    async with _scratch("autojoinlate") as scratch:
+        dana = _user("dana")
+        async with scratch.sessions() as db:
+            everyone = Group(name="Everyone")
+            db.add_all([dana, everyone, Group(name="Analysts")])
+            await db.flush()
+            db.add(GroupMember(group_id=everyone.id, user_id=dana.id, source="saml"))
+            await db.commit()
+        async with scratch.sessions() as db:
+            group = (await db.execute(select(Group).where(Group.name == "Everyone"))).scalar_one()
+            group.auto_join = True
+            await db.commit()
+
+        for names in (["Analysts"], []):
+            async with scratch.sessions() as db:
+                user = await db.get(User, dana.id)
+                assert await join_auto_join_groups(db, user, provider="SAML") == set()
+                await _sync_user_groups(db, user, names, auto_create=False)
+                await db.commit()
+            assert (await _memberships(scratch.sessions, dana.id))["Everyone"] == "saml"
+
+
 async def test_the_toggle_is_written_and_audited_with_its_previous_value():
     async with _scratch("autojointoggle") as scratch:
         admin = _user("admin", role="admin")
