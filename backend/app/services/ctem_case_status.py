@@ -64,11 +64,41 @@ GATE_REFUSED: dict[str, str] = {
     "ctem.close_without_retest": "closing without a re-test",
 }
 
-#: Words of an option (its key or its label) that refuse the step the gate asked for.
-_REFUSAL_WORDS: frozenset[str] = frozenset(
-    {"reject", "rejected", "refuse", "refused", "decline", "declined", "deny", "denied", "defer", "deferred"}
+#: Whole answers (an option key or label, normalized, option letter dropped) that refuse the
+#: step the gate asked for. Matched on the WHOLE answer, never a token: remediation keys are
+#: free-form treatment names, so ``deny_list_ip`` or ``defer_to_window`` select a treatment (#1654 review).
+_REFUSAL_ANSWERS: frozenset[str] = frozenset(
+    {
+        "no",
+        "none",
+        "stop",
+        "skip",
+        "cancel",
+        "reject",
+        "rejected",
+        "reject it",
+        "refuse",
+        "refused",
+        "decline",
+        "declined",
+        "deny",
+        "denied",
+        "defer",
+        "deferred",
+        "defer it",
+        "do not run",
+        "do not run it",
+        "dont run",
+        "dont run it",
+        "don t run",
+        "don t run it",
+        "do not apply",
+        "do not apply it",
+        "not now",
+        "no go",
+        "nogo",
+    }
 )
-_REFUSAL_PHRASES: tuple[str, ...] = ("do not run", "dont run", "do not apply", "not now", "no go")
 
 #: Ticket statuses that say the change is in flight, and the one that says it landed.
 TICKET_ACTIVE = ("open", "in_progress")
@@ -129,14 +159,15 @@ def after_triage(case: CtemCase, at: datetime, *, actor: str, what: str) -> Ctem
 
 
 def refuses(option: str | None) -> bool:
-    """True when the option chosen at a gate (its key or label) refuses the step: reject, do_not_run, defer..."""
-    text = " ".join("".join(c if c.isalnum() else " " for c in (option or "").casefold()).split())
-    if not text:
-        return False
-    if text in ("no", "none", "stop", "skip", "cancel") or _REFUSAL_WORDS.intersection(text.split()):
-        return True
-    padded = f" {text} "
-    return any(f" {phrase} " in padded for phrase in _REFUSAL_PHRASES)
+    """True when the option chosen at a gate (its key or label) refuses the step: reject, do_not_run, defer...
+
+    The whole answer is matched, after a leading option letter ("C: Do not run it"); a key or
+    label that only contains a refusal word (``deny_list_ip``) is not a refusal.
+    """
+    words = "".join(c if c.isalnum() else " " for c in (option or "").casefold()).split()
+    if len(words) > 1 and len(words[0]) == 1 and words[0].isalpha():
+        words = words[1:]
+    return " ".join(words) in _REFUSAL_ANSWERS
 
 
 def after_gate(

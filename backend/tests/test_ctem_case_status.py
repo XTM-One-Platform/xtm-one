@@ -145,6 +145,15 @@ def test_an_approving_answer_takes_the_next_step(option: str) -> None:
     assert moved is not None and case.state == "validating"
 
 
+@pytest.mark.parametrize("option", ["deny_list_ip", "defer_to_window", "reject_inbound_smb", "B: Deny list the IP"])
+def test_a_treatment_key_holding_a_refusal_word_takes_the_next_step(option: str) -> None:
+    case = _case("waiting_decision")
+    moved = status.after_gate(
+        case, T0, key="ctem.remediation.decision", outcome="answered", by="x", actor=AGENT, option=option
+    )
+    assert moved is not None and case.state == "remediating"
+
+
 def test_a_refusal_never_moves_a_case_not_waiting_on_it() -> None:
     case = _case("remediating")
     assert (
