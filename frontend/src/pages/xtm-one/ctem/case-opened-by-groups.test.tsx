@@ -4,7 +4,8 @@
 // table where every signal keeps a labelled loop trace button.
 
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemSignal } from "@/hooks/api/useCtemSignalsApi";
 
@@ -64,7 +65,7 @@ describe("groupOpenedBySignals", () => {
 describe("CaseOpenedBy compact", () => {
   it("draws one collapsed group line with a count, the decision once and +N more", () => {
     current = [...thirty, ...otherPath];
-    renderWithProviders(<CaseOpenedBy caseId="c1" />);
+    renderWithProviders(<MemoryRouter><CaseOpenedBy caseId="c1" /></MemoryRouter>);
     const group = screen.getByTestId("ctem-case-opened-by-group");
     expect(within(group).getByTestId("ctem-case-opened-by-group-count")).toHaveTextContent("30 signals");
     expect(within(group).getAllByText(/In scope: criticality High \(threshold High\), confidence Low/)).toHaveLength(1);
@@ -76,37 +77,41 @@ describe("CaseOpenedBy compact", () => {
 
   it("expands to every signal, each with a labelled loop trace button naming its subject", () => {
     current = [...thirty];
-    renderWithProviders(<CaseOpenedBy caseId="c1" />);
+    renderWithProviders(<MemoryRouter><CaseOpenedBy caseId="c1" /></MemoryRouter>);
     const toggle = screen.getByTestId("ctem-case-opened-by-toggle");
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     const table = screen.getByTestId("ctem-case-opened-by-table");
-    expect(within(table).getAllByTestId("ctem-case-opened-by-signal")).toHaveLength(30);
+    // Ten rows a page; the pager reaches the other twenty.
+    expect(within(table).getAllByTestId("ctem-case-opened-by-signal")).toHaveLength(10);
     const buttons = within(table).getAllByTestId("ctem-case-loop-trace-button");
-    expect(buttons).toHaveLength(30);
+    expect(buttons).toHaveLength(10);
     expect(buttons[0]).toHaveTextContent("Loop trace");
     expect(buttons[0].getAttribute("href")).toMatch(/\/ctem\/signals\?signal=sig-/);
-    expect(screen.getByRole("link", { name: "See the loop trace of CVE-2026-10000" })).toBeInTheDocument();
+    expect(within(table).getAllByRole("link", { name: /^See the loop trace of CVE-2026-/ })).toHaveLength(10);
   });
 
-  it("filters the expanded table above ten signals", () => {
+  it("filters the expanded table above ten signals", async () => {
     current = [...thirty];
-    renderWithProviders(<CaseOpenedBy caseId="c1" />);
+    renderWithProviders(<MemoryRouter><CaseOpenedBy caseId="c1" /></MemoryRouter>);
     fireEvent.click(screen.getByTestId("ctem-case-opened-by-toggle"));
-    fireEvent.change(screen.getByTestId("ctem-case-opened-by-filter"), { target: { value: "10007" } });
-    expect(within(screen.getByTestId("ctem-case-opened-by-table")).getAllByTestId("ctem-case-opened-by-signal")).toHaveLength(1);
+    const search = within(screen.getByTestId("ctem-case-opened-by-table")).getByRole("search", { name: "Filter the signals" });
+    fireEvent.change(search.querySelector("input") as HTMLInputElement, { target: { value: "10007" } });
+    await waitFor(() =>
+      expect(within(screen.getByTestId("ctem-case-opened-by-table")).getAllByTestId("ctem-case-opened-by-signal")).toHaveLength(1),
+    );
   });
 
   it("opens a group of four or five by default and keeps the detail of one to three", () => {
     current = thirty.slice(0, 4);
-    renderWithProviders(<CaseOpenedBy caseId="c1" />);
+    renderWithProviders(<MemoryRouter><CaseOpenedBy caseId="c1" /></MemoryRouter>);
     expect(screen.getByTestId("ctem-case-opened-by-table")).toBeInTheDocument();
   });
 
   it("draws the loop trace of a single signal as a button, never a bare link", () => {
     current = [thirty[0]];
-    renderWithProviders(<CaseOpenedBy caseId="c1" />);
+    renderWithProviders(<MemoryRouter><CaseOpenedBy caseId="c1" /></MemoryRouter>);
     const button = screen.getByTestId("ctem-case-loop-trace-button");
     expect(button).toHaveTextContent("See the loop trace");
     expect(button).toHaveAccessibleName("See the loop trace of CVE-2026-10000");

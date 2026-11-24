@@ -12,8 +12,6 @@ import type { CtemSignal } from "@/hooks/api/useCtemSignalsApi";
 /** A group up to this size keeps the per-signal detail; above it, the group starts collapsed. */
 export const OPENED_BY_DETAIL_MAX = 3;
 export const OPENED_BY_COLLAPSE_ABOVE = 5;
-/** The expanded table shows a filter box above this many signals. */
-export const OPENED_BY_FILTER_ABOVE = 10;
 
 export interface OpenedByGroup {
   key: string;

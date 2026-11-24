@@ -15,14 +15,14 @@
  * ("+N more" past the first few) and the loop trace of its newest signal as a
  * button. A group of up to three signals keeps the per-signal detail; a larger
  * one opens ("Show all N") into a one-row-height table of its signals, each
- * with its own loop trace button, collapsed by default above five and
- * filterable above ten.
+ * with its own loop trace button (the shared DataTable: ten rows a page,
+ * searchable by subject), collapsed by default above five.
  */
 import { useMemo, useState } from "react";
 import { Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToneBadge } from "@/components/ui/tone-badge";
 import { useCtemCaseSignals, type CtemSignal } from "@/hooks/api/useCtemSignalsApi";
@@ -36,7 +36,6 @@ import { signalProviderName } from "./loop/SignalLoopTrace";
 import {
   OPENED_BY_COLLAPSE_ABOVE,
   OPENED_BY_DETAIL_MAX,
-  OPENED_BY_FILTER_ABOVE,
   groupOpenedBySignals,
   signalSubject,
   type OpenedByGroup,
@@ -180,58 +179,43 @@ function SignalGroup({ group }: { group: OpenedByGroup }) {
   );
 }
 
-/** The signals of a group, one row height each, scrolling past ten rows, filterable above ten. */
+/**
+ * The signals of a group in the shared DataTable (dev-docs/reference/data-tables.md):
+ * one-line rows, sortable, searchable by subject, ten rows a page.
+ */
 function SignalTable({ id, signals }: { id: string; signals: CtemSignal[] }) {
   const { t_i18n, intl } = useFormatter();
-  const [filter, setFilter] = useState("");
-  const needle = filter.trim().toLowerCase();
-  const rows = needle ? signals.filter((s) => signalSubject(s).toLowerCase().includes(needle)) : signals;
+  const firstSeen = (s: CtemSignal) => s.first_seen_at ?? s.observed_at;
+  const columns: DataTableColumn<CtemSignal>[] = [
+    { key: "subject", header: "Subject", cell: (s) => signalSubject(s), sortValue: (s) => signalSubject(s) },
+    {
+      key: "first_seen",
+      header: "First seen",
+      width: 120,
+      hideable: true,
+      cell: (s) => (firstSeen(s) ? formatDayIntl(intl, firstSeen(s) as string) : ""),
+      sortValue: (s) => firstSeen(s) ?? "",
+    },
+    { key: "state", header: "State", width: 140, hideable: true, cell: (s) => t_i18n(SIGNAL_STATE_LABEL[s.state] ?? s.state) },
+  ];
 
   return (
-    <div id={id} className="flex min-w-0 flex-col gap-2" data-testid="ctem-case-opened-by-table">
-      {signals.length > OPENED_BY_FILTER_ABOVE && (
-        <Input
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder={t_i18n("Filter the signals")}
-          aria-label={t_i18n("Filter the signals")}
-          className="max-w-xs"
-          data-testid="ctem-case-opened-by-filter"
-        />
-      )}
-      <div className="max-h-[22rem] overflow-y-auto rounded-sm border border-elevation-subtle-soft">
-        <table className="w-full table-fixed content-compact">
-          <thead className="sticky top-0 bg-elevation-default text-left text-default-secondary">
-            <tr>
-              <th className="px-2 py-1.5 font-medium">{t_i18n("Subject")}</th>
-              <th className="w-28 px-2 py-1.5 font-medium">{t_i18n("First seen")}</th>
-              <th className="w-32 px-2 py-1.5 font-medium">{t_i18n("State")}</th>
-              <th className="w-36 px-2 py-1.5">
-                <span className="sr-only">{t_i18n("Loop trace")}</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((s) => (
-              <tr key={s.id} className="h-10 border-t border-elevation-subtle-soft" data-testid="ctem-case-opened-by-signal">
-                <td className="truncate px-2" title={signalSubject(s)}>
-                  {signalSubject(s)}
-                </td>
-                <td className="truncate px-2 text-default-secondary">
-                  {s.first_seen_at ?? s.observed_at ? formatDayIntl(intl, (s.first_seen_at ?? s.observed_at) as string) : ""}
-                </td>
-                <td className="truncate px-2 text-default-secondary">{t_i18n(SIGNAL_STATE_LABEL[s.state] ?? s.state)}</td>
-                <td className="px-2 text-right">
-                  <LoopTraceButton signalId={s.id} subject={signalSubject(s)} compact />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {rows.length === 0 && (
-          <p className="px-2 py-3 content-compact text-default-secondary">{t_i18n("No signal matches the filter.")}</p>
-        )}
-      </div>
+    <div id={id} className="min-w-0" data-testid="ctem-case-opened-by-table">
+      <DataTable
+        rows={signals}
+        columns={columns}
+        rowKey={(s) => s.id}
+        layout="fixed"
+        defaultPageSize={10}
+        searchFields={(s) => [signalSubject(s)]}
+        searchPlaceholder={t_i18n("Filter the signals")}
+        noFilters="one group of signals of one path and decision: the subject search is the only narrowing"
+        emptyLabel={t_i18n("No signal matches the filter.")}
+        noResultsLabel={t_i18n("No signal matches the filter.")}
+        rowActions={(s) => <LoopTraceButton signalId={s.id} subject={signalSubject(s)} compact />}
+        rowActionsWidth={140}
+        rowTestId="ctem-case-opened-by-signal"
+      />
     </div>
   );
 }
