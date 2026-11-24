@@ -182,6 +182,37 @@ async def test_the_member_page_is_a_keyset_by_name_and_a_record_lists_its_groups
     assert groups == [{"id": str(group), "name": "All", "source": "openaev", "via": "openaev"}]
 
 
+async def test_the_asset_list_filters_and_counts_by_group_and_an_asset_names_its_groups() -> None:
+    async with _database() as sessions, sessions() as session:
+        org = await _primary(session, [_asset(f"srv-{i}", f"a{i}") for i in range(4)])
+        web = await _group(session, org, "Web", "g6")
+        db_group = await _group(session, org, "Databases", "g7")
+        await records.sync_group_members(
+            session, org, "openaev", {"g6": ["a0", "a1"], "g7": ["a1", "a2", "gone"]}, member_source="openaev"
+        )
+        await session.commit()
+        in_web = await store.list_assets(session, org, filters={"group": [str(web)]})
+        in_either = await store.list_assets(session, org, filters={"group": [str(web), str(db_group)]})
+        not_an_id = await store.list_assets(session, org, filters={"group": ["not-a-uuid"]})
+        facets = await store.asset_facets(session, org)
+        narrowed = await store.asset_facets(session, org, filters={"group": [str(web)]}, q="srv-0")
+        shared = next(a for a in in_either.items if a["name"] == "srv-1")
+        detail = await store.get_asset(session, org, uuid.UUID(shared["id"]))
+        one = await records.group_detail(session, org, await records.get_group(session, org, db_group))
+    assert [a["name"] for a in in_web.items] == ["srv-0", "srv-1"]
+    assert in_either.total == 3
+    assert not_an_id.total == 0
+    assert facets["group"] == [
+        {"value": str(db_group), "count": 2, "label": "Databases"},
+        {"value": str(web), "count": 2, "label": "Web"},
+    ]
+    # The group facet skips its own pick and applies the search.
+    assert narrowed["group"] == [{"value": str(web), "count": 1, "label": "Web"}]
+    assert detail is not None
+    assert [g["name"] for g in detail["groups"]] == ["Databases", "Web"]
+    assert one["member_count"] == 2 and one["unresolved_members"] == 1 and one["name"] == "Databases"
+
+
 async def test_the_largest_page_still_reads_the_extra_row_that_says_more_exist(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(records, "GROUP_MEMBERS_PAGE_MAX", 2)
     async with _database() as sessions, sessions() as session:
