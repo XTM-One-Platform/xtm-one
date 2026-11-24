@@ -298,6 +298,15 @@ export interface CtemCaseRunningVersion {
   sources: string[];
   /** Against the fixed version, when one is known. */
   status?: "below_fixed" | "fixed" | "not_comparable";
+  /** The asset's os_family (#1572); null when the inventory does not know it. */
+  platform?: string | null;
+  /** The first asset ids of the row; more_asset_ids counts the rest (#1572). */
+  asset_ids?: string[];
+  more_asset_ids?: number;
+  /** "fix not known for this platform" when no fixed version applies to the row's platform (#1572). */
+  status_reason?: string;
+  /** The fixed version of the row's platform, when the remediation names one (#1572). */
+  fixed_version?: string;
 }
 
 /** The versions an upgrade case's product runs on the organization's assets, read from the asset inventory (#1252). */
@@ -316,6 +325,14 @@ export interface CtemCaseRunningVersions {
   assets_not_comparable?: number;
   /** With no fixed version: the sources the fixed version was looked for in. */
   fixed_version_checked?: string[];
+  /** {platform: version} when the remediation names platforms (#1572). */
+  fixed_versions?: Record<string, string>;
+  /** A generic fixed version over assets of several platforms: never read as fixed (#1572). */
+  platform_unverified?: boolean;
+  assets_fix_not_known_for_platform?: number;
+  /** Distinct assets running more than one version: counted in each of their rows (#1572). */
+  assets_multi_version?: number;
+  platforms?: string[];
 }
 
 /** One asset a case's visible issues name (#1176 slice 3b), with the version it runs when the inventory knows it. */
@@ -536,61 +553,6 @@ interface CtemLoopMeasures {
   case_to_passing_retest: CtemLoopDuration;
   closed_on_proof: { share: number | null; proven: number; resolved: number };
   case_count: number;
-}
-
-/** One open case a phase card lists (`GET /ctem-cases/overview`, #1621). */
-export interface CtemCasesOverviewCase {
-  id: string;
-  title: string;
-  state: CtemCaseState;
-  priority: CtemCasePriority;
-  created_at: string | null;
-  updated_at: string | null;
-  state_since: string | null;
-  waiting_on: { gate: string | null; by: string | null; since: string | null } | null;
-  /** The crown jewel the case touches among the issues the caller sees; null when none. */
-  crown_jewel: string | null;
-}
-
-/** One CTEM phase of the overview: its open and waiting cases and the five that need attention first. */
-interface CtemCasesOverviewPhase {
-  open: number;
-  waiting: number;
-  counts: Record<CtemCaseState, number>;
-  top: CtemCasesOverviewCase[];
-}
-
-/** A case waiting for a decision, with the gate it waits on. */
-export interface CtemCasesOverviewWait {
-  case_id: string;
-  title: string;
-  phase: CtemStageKey | null;
-  gate: string | null;
-  since: string | null;
-}
-
-/**
- * The cases in motion for the command center and the stage pages (#1621): the same
- * visibility as the list, so every count equals the list it links to.
- */
-export interface CtemCasesOverview {
-  vertical: string;
-  counts: Record<CtemCaseState, number>;
-  open: number;
-  phases: Record<CtemStageKey, CtemCasesOverviewPhase>;
-  no_phase_open: number;
-  waiting: { count: number; oldest: CtemCasesOverviewWait | null; oldest_hours: number | null; cases: CtemCasesOverviewWait[] };
-  funnel: { in_case: number; resolved_window_days: number; resolved_recent: number };
-}
-
-export function useCtemCasesOverview() {
-  return useQuery<CtemCasesOverview>({
-    queryKey: ["ctem-cases", "overview"],
-    queryFn: () => api.get("/ctem-cases/overview"),
-    retry: ctemCasesRetry,
-    refetchInterval: (query) => ctemCasesPollInterval(query.state.status, query.state.error),
-    throwOnError: false,
-  });
 }
 
 export function useCtemLoopMeasures() {
