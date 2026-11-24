@@ -218,7 +218,8 @@ async def read_scenarios(db: AsyncSession, *, user_id: uuid.UUID | None) -> gate
 async def _profile(db: AsyncSession, organization_id: uuid.UUID) -> Any:
     from app.services import organization_context as org_context
 
-    _row, profile = await org_context.current_profile(db, organization_id)  # assets from the records (#1543)
+    # Assets from the records (#1543), software from the Software entities (#1495).
+    _row, profile = await org_context.software_profile(db, organization_id)
     return profile
 
 

@@ -247,7 +247,8 @@ async def _primary_profile(db: Any) -> Any:
     primary = await get_primary(db)
     if primary is None:
         return None
-    row, profile = await org_context.current_profile(db, primary.id)  # assets from the records (#1543)
+    # Assets from the records (#1543), software from the Software entities (#1495).
+    row, profile = await org_context.software_profile(db, primary.id)
     return profile if row else None
 
 
