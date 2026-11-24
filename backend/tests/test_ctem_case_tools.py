@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 
 from app.core.config import settings
-from app.models.ctem_case import CtemCase, CtemCaseEvent, CtemCaseIssue
+from app.models.ctem_case import CASE_STATES, CtemCase, CtemCaseEvent, CtemCaseIssue
 from app.services import ctem_cases as rules
 from app.services import ctem_cases_store as store
 from app.services import ctem_cases_view as view_of
@@ -40,7 +40,7 @@ def _case(**kw) -> CtemCase:
         "remediation_kind": "upgrade",
         "keys": ["upgrade:apache/tomcat@9.0.98"],
         "pinned_issues": [],
-        "state": "needs_attention",
+        "state": "new",
         "state_since": NOW,
     }
     base.update(kw)
@@ -142,14 +142,8 @@ def test_the_case_tools_are_defined(env: SimpleNamespace) -> None:
 
 
 async def test_list_answers_the_cases_and_every_state_count(env):
-    body = json.loads(await env.call("list_ctem_cases", state="needs_attention", limit=500))
-    assert body["counts"] == {
-        "needs_attention": 1,
-        "in_progress": 0,
-        "mitigated_watching": 0,
-        "resolved": 0,
-        "accepted_risk": 0,
-    }
+    body = json.loads(await env.call("list_ctem_cases", state="new", limit=500))
+    assert body["counts"] == {state: int(state == "new") for state in CASE_STATES}
     assert body["cases"][0]["title"] == "Upgrade Apache Tomcat to 9.0.98"
     assert body["cases"][0]["max_cvss"] == 9.8
 
@@ -160,13 +154,13 @@ async def test_an_agent_of_a_user_who_sees_no_issue_neither_lists_reads_nor_chan
     listed = json.loads(await other("list_ctem_cases"))
     assert listed["cases"] == [] and set(listed["counts"].values()) == {0}
     assert "No case" in await other("get_ctem_case", case_id=str(env.case.id))
-    assert "No case" in await other("update_ctem_case", case_id=str(env.case.id), state="in_progress")
-    assert env.case.state == "needs_attention" and env.db.commits == 0
+    assert "No case" in await other("update_ctem_case", case_id=str(env.case.id), state="remediating")
+    assert env.case.state == "new" and env.db.commits == 0
 
 
 async def test_an_agent_cannot_name_an_owner_who_sees_none_of_the_issues(env):
     answer = await env.call(
-        "update_ctem_case", case_id=str(env.case.id), state="in_progress", owner_user_id=str(uuid.uuid4())
+        "update_ctem_case", case_id=str(env.case.id), state="remediating", owner_user_id=str(uuid.uuid4())
     )
     assert answer.startswith("Refused: the owner must be able to see") and env.db.commits == 0
 
@@ -186,9 +180,9 @@ async def test_get_shows_where_the_issues_came_from(env):
 async def test_an_agent_starts_a_case_and_the_event_names_it(env):
     owner = str(env.user_id)
     body = json.loads(
-        await env.call("update_ctem_case", case_id=str(env.case.id), state="in_progress", owner_user_id=owner)
+        await env.call("update_ctem_case", case_id=str(env.case.id), state="remediating", owner_user_id=owner)
     )
-    assert body["updated"]["state"] == "in_progress" and body["updated"]["owner_user_id"] == owner
+    assert body["updated"]["state"] == "remediating" and body["updated"]["owner_user_id"] == owner
     events = [r for r in env.db.added if isinstance(r, CtemCaseEvent) and r.kind == "state"]
     assert events and events[0].actor == AGENT and env.db.commits == 1
 
@@ -202,7 +196,7 @@ async def test_an_agent_never_accepts_risk(env):
         reason="compensating control",
     )
     assert answer.startswith("Refused: only a person accepts risk")
-    assert env.case.state == "needs_attention" and env.db.commits == 0
+    assert env.case.state == "new" and env.db.commits == 0
 
 
 async def test_resolving_needs_evidence(env):
@@ -298,7 +292,7 @@ async def test_safe_mode_of_an_intrusive_inject_is_corrected_and_its_pass_is_inc
             inject_class="intrusive",
         )
     )
-    assert body["updated"]["state"] == "needs_attention"
+    assert body["updated"]["state"] == "new"
     assert "intrusive" in body["warning"] and "inconclusive" in body["inconclusive"]
     assert env.case.validations[-1]["safe_mode"] is False and env.case.validations[-1]["conclusive"] is False
 
@@ -323,7 +317,7 @@ async def test_a_requested_id_with_no_template_is_never_recorded_negative(
             not_tested=["CVE-2026-2"],
         )
     )
-    assert body["updated"]["state"] == "needs_attention" and body["not_tested"] == ["CVE-2026-2"]
+    assert body["updated"]["state"] == "new" and body["not_tested"] == ["CVE-2026-2"]
     entry = env.case.validations[-1]
     assert entry["conclusive"] is False and "not tested" in entry["note"]
 
@@ -360,7 +354,7 @@ async def test_a_ticket_reference_is_written_once_and_updated_in_place(env: Simp
             url="https://j/ITS-12",
         )
     )
-    assert first["updated"]["state"] == "needs_attention"
+    assert first["updated"]["state"] == "remediating"  # a ticket in flight: the remediation is under way (#1503)
     await env.call("record_ctem_case_ticket", case_id=str(env.case.id), integration="jira", key="ITS-12", status="done")
     assert len(env.case.tickets) == 1
     assert (env.case.tickets[0]["status"], env.case.tickets[0]["url"]) == ("done", "https://j/ITS-12")
@@ -408,7 +402,7 @@ async def test_a_gate_pass_is_written_on_the_case_and_an_unknown_gate_is_refused
             gate={"key": "ctem.remediation.decision", "outcome": "passed_automatically", "by": "level low"},
         )
     )
-    assert body["updated"]["state"] == "needs_attention"
+    assert body["updated"]["state"] == "remediating"  # the decision gate passed: remediation decided (#1503)
     gates = [r for r in env.db.added if isinstance(r, CtemCaseEvent) and r.kind == "gate"]
     assert [(g.from_value, g.to_value, g.reason) for g in gates] == [
         ("ctem.remediation.decision", "passed_automatically", "level low")

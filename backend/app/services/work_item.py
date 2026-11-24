@@ -4438,7 +4438,10 @@ async def settle_inbox_work_item(
             elif gated and not ready:
                 path = f"{draft_names} waits for its UX round: blocked on it, not on its merge, not done"
             elif not ready:
-                path = f"{draft_names} is a draft: blocked with a reason, not on its merge, not done"
+                path = (
+                    f"{draft_names} is a draft: blocked until its CI completion or closing releases it by "
+                    "itself, not on its merge, not done"
+                )
             else:
                 path = f"waiting on the merge of {ready_names}; {draft_names} is a draft, not parked on its merge; not done"
             item.claim_notes = [

@@ -814,9 +814,34 @@ def blocked_why(item: Any) -> dict | None:
         parts.append(reason)
     if get("needs_human"):
         parts.append("a person (needs_human)")
+    bound = bound_pull_request_wait(item)
+    if bound:
+        parts.insert(0, bound)
     if not parts:
         return {"text": "No reason given", "missing": True}
     return {"text": "Waits for: " + "; ".join(parts), "missing": False}
+
+
+def bound_pull_request_wait(item: Any) -> str | None:
+    """What releases a blocked *item* parked on its own open pull requests alone, ``None`` otherwise.
+
+    The inbox finalizer parks an item on a draft it names with a reason only
+    (#10692): the CI completion or the closing of that pull request hands it
+    back (``work_item_pull_requests.parked_without_release``). Said in words,
+    so a reader never takes it for a free-text block (#1617). Pure.
+    """
+    from app.services.work_item_pull_requests import is_draft, pull_request_bindings
+
+    get = item.get if isinstance(item, dict) else (lambda key, default=None: getattr(item, key, default))
+    if get("status") != "blocked" or get("blocked_on") or get("needs_human"):
+        return None
+    if open_refs(get("blocked_on_refs")):
+        return None
+    bound = [b for b in pull_request_bindings(get("payload")) if b.get("state", "open") == "open"]
+    if not bound:
+        return None
+    names = ", ".join(f"{b['repo']}#{b['number']}{' (draft)' if is_draft(b) else ''}" for b in bound)
+    return f"the CI completion or closing of {names}, released by itself"
 
 
 # -- The matcher -----------------------------------------------------------------

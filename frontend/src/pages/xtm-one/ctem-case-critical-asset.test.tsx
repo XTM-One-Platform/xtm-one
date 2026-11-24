@@ -29,7 +29,7 @@ vi.mock("@/hooks/api/useCtemCasesApi", async (importOriginal) => ({
       remediation_kind: "version",
       product_label: "ingress-nginx",
       fixed_version: null,
-      state: "in_progress",
+      state: "remediating",
       state_since: null,
       owner_user_id: null,
       due_at: null,
