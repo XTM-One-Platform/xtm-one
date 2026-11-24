@@ -24,6 +24,7 @@ the loop (``dev-docs/ctem-signals.md`` section 6).
 
 from __future__ import annotations
 
+import functools
 import json
 import uuid
 from datetime import UTC, datetime
@@ -349,13 +350,15 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
         since_at = _since(since)
         if since and since_at is None:
             return "since must be an ISO-8601 date or time, e.g. 2026-11-20 or 2026-11-20T08:00:00Z."
-        filters = {
-            "state": state or None,
-            "trigger_path": trigger_path or None,
-            "lens": lens or None,
-            "source_provider": source_provider or None,
-            "since": since_at,
-        }
+        # The same filters for the page and the organization-wide count below.
+        listed = functools.partial(
+            signals.list_signals,
+            state=state or None,
+            trigger_path=trigger_path or None,
+            lens=lens or None,
+            source_provider=source_provider or None,
+            since=since_at,
+        )
         try:
             async with async_session() as db:
                 primary = await get_primary(db)
@@ -376,21 +379,19 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                     if row is None:
                         return "No such signal in your scope."
                     return _dump({"total": 1, "signals": [signals.to_dict(row)], "scope": scope_block})
-                rows, total, counts = await signals.list_signals(
+                rows, total, counts = await listed(
                     db,
                     organization_id=primary.id,
                     recorded_by=None if bypass else str(scope),
-                    **filters,
                     limit=max(1, min(int(limit or 20), 50)),
                     offset=max(0, int(offset or 0)),
                 )
                 if not bypass:
                     # A count only, no content: how many the same filters match beyond the person's own.
-                    _, org_total, _ = await signals.list_signals(
+                    _, org_total, _ = await listed(
                         db,
                         organization_id=primary.id,
                         recorded_by=None,
-                        **filters,
                         limit=1,
                         offset=0,
                     )

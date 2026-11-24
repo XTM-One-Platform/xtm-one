@@ -27,8 +27,8 @@ actor of its ``created`` event) and why each empty section is empty
 (``empty_sections``), so an agent reports a blank as a fact, not a guess.
 
 ``list_ctem_assets`` (#1782) reads the live asset inventory the CTEM loop
-works on (the canonical assets imported from OpenAEV, OpenCTI, OpenCRQ and the
-other sources), the same rows and counts as the inventory screen: a page of
+works on (the canonical assets every connected source imported), the same
+rows and counts as the inventory screen: a page of
 assets with their sources, and the counts by source and by category for the
 same filters, so a claim about the inventory is checked live, never read from
 code.
@@ -202,12 +202,16 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         from app.services import organization_asset_store as asset_store
 
         picked = dict(zip(_ASSET_FILTERS, (source, category, subcategory, criticality, internet_facing), strict=True))
-        filters = {name: [v.strip() for v in str(value or "").split(",") if v.strip()] for name, value in picked.items()}
+        filters = {
+            name: [v.strip() for v in str(value or "").split(",") if v.strip()] for name, value in picked.items()
+        }
         try:
             async with async_session() as db:
                 org = await asset_store.ensure_built(db)
                 if org is None:
-                    return _dump({"total": 0, "assets": [], "by_source": {}, "by_category": {}, "note": "no inventory yet"})
+                    return _dump(
+                        {"total": 0, "assets": [], "by_source": {}, "by_category": {}, "note": "no inventory yet"}
+                    )
                 page = await asset_store.list_assets(
                     db, org, q=str(query or ""), offset=_int(offset), limit=_int(limit) or 50, filters=filters
                 )
@@ -239,7 +243,7 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         ToolDefinition(
             name="list_ctem_assets",
             description=(
-                "The live asset inventory by source (openaev, ...) and category: a page and counts by source and category."
+                "The live asset inventory: a page of assets and the counts by source and category for the same filters."
             ),
             input_schema={
                 "type": "object",

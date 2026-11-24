@@ -141,7 +141,8 @@ def test_a_signal_names_its_provider_product() -> None:
         case_id=None,
         recorded_via="tool",
     )
-    assert to_dict(signal)["source"] == {"provider": "aikido", "name": "Aikido Security", "external_id": "42"}
+    source = to_dict(signal)["source"]  # type: ignore[arg-type]
+    assert source == {"provider": "aikido", "name": "Aikido Security", "external_id": "42"}
 
 
 def test_since_reads_a_date_or_a_time_as_utc() -> None:
