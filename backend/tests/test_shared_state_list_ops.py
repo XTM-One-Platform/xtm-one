@@ -588,6 +588,51 @@ async def test_tool_passes_unset_keys_and_reads_back_the_keys_removed(monkeypatc
     assert "unset_keys must be a list" in bad.content and len(calls) == 1
 
 
+@pytest.mark.asyncio
+async def test_tool_archives_the_top_level_keys_unset_keys_removes_before_the_write(monkeypatch):
+    calls: list[dict] = []
+
+    async def _get(**kwargs):
+        return {"key": kwargs["key"], "value": {"a": {"long": "L"}, "b": [1], "keep": 1}, "notes": []}
+
+    async def _upsert(**kwargs):
+        calls.append(kwargs)
+        return {"key": kwargs["key"], "value": {"keep": 1}, "notes": [], "unset_keys": ["a", "b"]}
+
+    monkeypatch.setattr(shared_state_service, "get_state", _get)
+    monkeypatch.setattr(shared_state_service, "upsert_state", _upsert)
+    _, executor = build_shared_state_tools(SimpleNamespace(), str(uuid.uuid4()), str(uuid.uuid4()))
+    result = await _call(
+        executor, "set_shared_state", key="gaps", unset_keys=["a", "b", "missing"], archive_key="gaps-archive"
+    )
+    assert not result.is_error, result.content
+    assert [c["key"].endswith("gaps-archive") for c in calls] == [True, False], result.content
+    entry = calls[0]["append"]["entries"][0]
+    assert entry["fields"] == {"a": {"long": "L"}, "b": [1]}
+    assert entry["unset_keys"] == ["a", "b"] and entry["source_key"] == "gaps"
+    assert calls[1]["unset_keys"] == ["a", "b", "missing"]
+    assert "Archived 2 key(s) (a, b)" in result.content
+
+
+@pytest.mark.asyncio
+async def test_tool_writes_nothing_when_the_unset_keys_archive_is_refused(monkeypatch):
+    calls: list[dict] = []
+
+    async def _get(**kwargs):
+        return {"key": kwargs["key"], "value": {"a": 1}, "notes": []}
+
+    async def _upsert(**kwargs):
+        calls.append(kwargs)
+        raise ValueError("too large")
+
+    monkeypatch.setattr(shared_state_service, "get_state", _get)
+    monkeypatch.setattr(shared_state_service, "upsert_state", _upsert)
+    _, executor = build_shared_state_tools(SimpleNamespace(), str(uuid.uuid4()), str(uuid.uuid4()))
+    result = await _call(executor, "set_shared_state", key="gaps", unset_keys=["a"], archive_key="gaps-archive")
+    assert "Nothing was written" in result.content
+    assert len(calls) == 1 and calls[0]["key"].endswith("gaps-archive")
+
+
 def test_write_at_path_writes_a_scalar_or_a_list_under_the_path():
     assert shared_state_service.write_at_path({"a": {"b": {"x": 1}}}, ["a", "b"], "text") == {"a": {"b": "text"}}
     assert shared_state_service.write_at_path({}, ["a"], [1, 2]) == {"a": [1, 2]}
@@ -615,7 +660,7 @@ async def test_tool_accepts_a_scalar_value_json_with_a_path_only(monkeypatch):
 @pytest.mark.parametrize(
     ("update_json", "archive_key", "expected"),
     [
-        ('{"entries": {"match": {"key": "a"}, "set": {"x": 1}}}', "other", "needs update_json patches with 'unset'"),
+        ('{"entries": {"match": {"key": "a"}, "set": {"x": 1}}}', "other", "this write drops nothing"),
         ('{"entries": {"match": {"key": "a"}, "unset": ["x"]}}', "watches", "another key"),
     ],
 )
