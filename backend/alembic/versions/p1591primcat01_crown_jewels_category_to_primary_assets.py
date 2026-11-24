@@ -9,7 +9,7 @@ duplicates dropped. The profile key ``crown_jewels`` itself is not touched.
 Data only, no DDL. The downgrade names ``crown_jewels`` again.
 
 Revision ID: p1591primcat01
-Revises: v1591pallinks01
+Revises: w1665intreason01
 Create Date: 2026-11-24 05:00:00.000000
 """
 
@@ -24,7 +24,7 @@ from app.core.migration_ddl import set_lock_timeout
 revision: str = "p1591primcat01"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "v1591pallinks01"
+down_revision: str | Sequence[str] | None = "w1665intreason01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
