@@ -15882,6 +15882,7 @@
   "Try again, or reload the item if it changed.": "もう一度お試しください。項目が変更された場合は再読み込みしてください。",
   "Or answer in your own words": "または自由に回答する",
   "Only an administrator can answer a company-managed work item.": "会社管理の作業項目に回答できるのは管理者のみです。",
+  "Only an administrator or a member of a group with View and decide can answer this decision.": "この決定に回答できるのは、管理者または「表示と決定」権限を持つグループのメンバーのみです。",
   "An agent waits for your decision on this work item.": "エージェントがこの作業項目についてあなたの判断を待っています。",
   "Decision needed: {title}": "判断が必要です: {title}",
   "This card is incomplete: its agent is asked to rewrite it.": "このカードは不完全です。担当エージェントに書き直しを依頼しています。",
