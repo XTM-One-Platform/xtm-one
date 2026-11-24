@@ -12548,9 +12548,27 @@ interface WidgetPresentation {
 }
 
 /** A live platform widget's data, as the viewer may read it, or the reason it has none. */
+/**
+ * A data source refreshed on the server (`dashboard_refresh.py`): the snapshot
+ * shown, read with its publisher's access, every `every` (`server`) or when
+ * someone asks (`manual`).
+ */
+export interface WidgetSnapshot {
+  mode: "server" | "manual";
+  every: string | null;
+  refreshed_at: string | null;
+  publisher: string | null;
+}
+
 export type WidgetData =
-  | ({ status: "ok"; fetched_at: string; open_url: string | null; presentation?: WidgetPresentation | null } & (WidgetChartData | WidgetStudioData))
-  | { status: "error"; code: WidgetDataErrorCode; open_url: string | null };
+  | ({
+      status: "ok";
+      fetched_at: string;
+      open_url: string | null;
+      presentation?: WidgetPresentation | null;
+      snapshot?: WidgetSnapshot | null;
+    } & (WidgetChartData | WidgetStudioData))
+  | { status: "error"; code: WidgetDataErrorCode; open_url: string | null; snapshot?: WidgetSnapshot | null };
 
 // ---------------------------------------------------------------------------
 // Platform widget editors: one form, described by each platform's adapter

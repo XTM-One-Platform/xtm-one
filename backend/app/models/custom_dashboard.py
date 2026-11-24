@@ -161,6 +161,37 @@ class CustomDashboardPublication(Base):
     )
 
 
+class CustomDashboardSourceSnapshot(Base):
+    """What a data source refreshed on the server read last (``dashboard_refresh``).
+
+    A source whose ``refreshMode`` is ``server`` is read again every
+    ``refresh`` by the platform, whoever has the page open, and ``manual`` when
+    someone asks; viewers are shown this snapshot. It is read with the access
+    of its publisher - the person who last set the source (decision D1 of
+    ``dev-docs/dashboard-studio-next.md``) - as a published link is read with
+    its publisher's. ``source_key`` is the digest of the source as it was
+    read: a source changed since is read again, by its new publisher.
+    """
+
+    __tablename__ = "custom_dashboard_source_snapshots"
+    __table_args__ = (UniqueConstraint("dashboard_id", "source_id", name="uq_custom_dashboard_source_snapshot"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    dashboard_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("custom_dashboards.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_id: Mapped[str] = mapped_column(String(60), nullable=False)
+    publisher_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    source_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    #: ``{"status": "ok", "shape", "data", "fetched_at"}`` or ``{"status": "error", "code"}``; none before the first read.
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: When the scheduler reads it again; far in the future for a ``manual`` source.
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
 class CustomDashboardPublicLink(Base):
     """The published link of one dashboard: anyone holding the URL sees it, without signing in.
 

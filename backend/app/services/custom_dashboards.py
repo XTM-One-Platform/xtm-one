@@ -332,6 +332,15 @@ async def check_platform_integrations(db: AsyncSession, user_id: uuid.UUID | Non
             )
 
 
+async def _sync_refreshed_sources(db: AsyncSession, dashboard: CustomDashboard, spec: dict, writer_id: uuid.UUID | None) -> None:
+    """The snapshots of the sources refreshed on the server, after a save (``dashboard_refresh.sync_snapshots``)."""
+    from app.core.feature_flags import is_feature_enabled
+    from app.services.dashboard_refresh import sync_snapshots
+
+    if is_feature_enabled("DASHBOARD_STUDIO"):
+        await sync_snapshots(db, dashboard, spec, writer_id)
+
+
 def _write(dashboard: CustomDashboard, spec: dict) -> None:
     """Store the validated working definition *spec* in the native form (``dashboard_native``)."""
     from app.services.dashboard_native import to_native
@@ -464,6 +473,7 @@ async def save_dashboard(
         _stamp_origin(dashboard, conversation_id, assignment_run_id)
         await _follow_author(db, dashboard.id, user_id)
     await db.flush()
+    await _sync_refreshed_sources(db, dashboard, spec, user_id)
     await record_dashboard_version(
         db, dashboard, source=source, author_id=user_id, summary=summary, restored_from_revision=restored_from_revision
     )
@@ -508,6 +518,7 @@ async def edit_dashboard(
         # Moving widgets reads nothing new; any other change does.
         await _follow_author(db, dashboard.id, acting_user_id)
     await db.flush()
+    await _sync_refreshed_sources(db, dashboard, spec, acting_user_id)
     await record_dashboard_version(
         db,
         dashboard,

@@ -18,8 +18,10 @@ One entry point, :func:`read_source`, for every type of the definition
 ``dashboard_live``, ``assignment`` the answer of the assignment's last
 completed run the viewer may see, ``variable`` the value of a variable the
 viewer may read (never a secret one), ``ask`` the answer of the question the
-viewer last asked the agent (:func:`ask_agent`), ``derived`` another source's
-result through ``dashboard_pipeline``.
+viewer last asked the agent (:func:`ask_agent`), ``integration`` the answer of a
+read tool of an integration the viewer may use, called with fixed arguments,
+``knowledge`` a table kept in a knowledge base document the viewer reads,
+``derived`` another source's result through ``dashboard_pipeline``.
 
 The answer is ``{"status": "ok", "shape", "data", "fetched_at"}`` or
 ``{"status": "error", "code"}`` with a fixed code (:data:`ERROR_CODES`): the
@@ -279,15 +281,22 @@ async def read_source(
     tokens: dict | None = None,
     fresh: bool = False,
     marking_ceiling: tuple[str, ...] = (),
+    use_snapshots: bool = True,
 ) -> dict:
     """One data source of *definition* as *user_id* sees it, *tokens* put in (see the module docstring); *fresh*,
-    a platform read again rather than its answer kept a minute; under a published link's *marking_ceiling*."""
+    a platform read again rather than its answer kept a minute; under a published link's *marking_ceiling*.
+
+    A source refreshed on the server (``refreshMode`` ``server`` / ``manual``) of a stored dashboard
+    (*dashboard_id*) is its snapshot, read with its publisher's access (``dashboard_refresh``); the scheduler
+    reading it passes *use_snapshots* off, and a published link's ceiling always reads it as the link does.
+    """
     from app.services.dashboard_tokens import TokensWaitingError
 
     try:
         return await _read_source(
-            db, user_id, definition, source_id, range_key, dashboard_id, depth, tokens or {}, fresh, marking_ceiling
-        )
+            db, user_id, definition, source_id, range_key, dashboard_id, depth, tokens or {}, fresh, marking_ceiling,
+            use_snapshots and not marking_ceiling,
+        )  # fmt: skip
     except TokensWaitingError:
         return _error("waiting")
 
@@ -303,6 +312,7 @@ async def _read_source(
     tokens: dict,
     fresh: bool = False,
     marking_ceiling: tuple[str, ...] = (),
+    use_snapshots: bool = False,
 ) -> dict:
     from app.services.dashboard_definition import MAX_CHAIN_DEPTH, optional_tokens
     from app.services.dashboard_live import read_widget_data, request_for
@@ -313,6 +323,12 @@ async def _read_source(
         return _error("unsupported")
     options = source.get("options") if isinstance(source.get("options"), dict) else {}
     kind = source.get("type")
+    if use_snapshots and dashboard_id is not None:
+        from app.services.dashboard_refresh import snapshot_of
+
+        snapshot = await snapshot_of(db, dashboard_id, source_id, source)
+        if snapshot is not None:
+            return snapshot
     if kind == "static":
         return _ok(str(options.get("shape")), options.get("data") or {})
     if kind == "platform":
@@ -333,10 +349,15 @@ async def _read_source(
         return await _variable(db, user_id, options)
     if kind == "ask":
         return await _ask(dashboard_id, source_id, user_id, options)
+    if kind == "integration":
+        return await _integration(db, user_id, options, fresh=fresh)
+    if kind == "knowledge":
+        return await _knowledge(db, user_id, options)
     if kind == "derived":
         parent = await _read_source(
-            db, user_id, definition, str(options.get("extends")), range_key, dashboard_id, depth + 1, tokens, fresh, marking_ceiling
-        )
+            db, user_id, definition, str(options.get("extends")), range_key, dashboard_id, depth + 1, tokens, fresh, marking_ceiling,
+            use_snapshots,
+        )  # fmt: skip
         if parent.get("status") != "ok":
             return parent
         steps = put_in_filters(options.get("steps") or [], tokens)
@@ -348,6 +369,188 @@ async def _read_source(
         # A derived result is not what the module draws: its presentation stays with its parent.
         return {**parent, "shape": shape, "data": data, "presentation": None}
     return _error("unsupported")
+
+
+# ── An integration's read tool ───────────────────────────────────────────────
+
+#: How long a read tool may take before the source answers ``timeout``.
+INTEGRATION_TIMEOUT_SECONDS = 30
+
+
+async def _read_tool(db: AsyncSession, user_id: uuid.UUID, integration_id: object, tool: str):
+    """The integration *user_id* may use with their own credential and its read tool *tool*:
+    ``(definition, executor)``; :class:`LiveError` (a fixed code) otherwise."""
+    from fastapi import HTTPException
+
+    from app.api.v1.helpers import get_user_integration
+    from app.services.integration_tools import BindingBasis, ToolBindings, build_integration_tools
+    from app.services.integration_user_credentials import usable_credential_holder
+    from app.services.tool_classification import definition_tool_type
+
+    try:
+        integration = await get_user_integration(db, user_id, str(integration_id), await _group_ids(db, user_id))
+        await usable_credential_holder(db, integration, user_id)
+    except HTTPException as exc:
+        raise LiveError("integration_unavailable" if exc.status_code == 404 else "access_denied") from None
+    if integration.status not in ("connected", "configured"):
+        raise LiveError("integration_unavailable")
+    definitions, executor = await build_integration_tools(
+        db,
+        ToolBindings({integration.provider: str(integration.id)}, basis=BindingBasis.CALLER_CHECKED, reason="the dashboard reader's own integration access"),
+        context={"source": "dashboard", "integration": integration.name, "credential_user_id": str(user_id)},
+    )
+    definition = next((d for d in definitions if d.name == tool), None)
+    if definition is None:
+        raise LiveError("integration_unavailable")
+    if definition_tool_type(definition) != "read":
+        # A dashboard only reads: a tool that may change something is never called from one.
+        raise LiveError("unsupported")
+    return definition, executor
+
+
+async def _integration(db: AsyncSession, user_id: uuid.UUID, options: dict, *, fresh: bool = False) -> dict:
+    import asyncio
+
+    from app.services.dashboard_live import _cache_get, _cache_set, _enforce_rate, _Slot
+    from app.tools.agent_loop import validate_tool_arguments
+    from app.tools.base import ToolCall
+
+    tool = str(options.get("tool") or "")
+    arguments = options.get("arguments") if isinstance(options.get("arguments"), dict) else {}
+    key = "dash:integration:" + hashlib.sha256(
+        json.dumps([str(user_id), str(options.get("integration_id")), tool, arguments, options.get("shape"), options.get("path")], sort_keys=True, default=str).encode()
+    ).hexdigest()
+    if not fresh:
+        cached = await _cache_get(key)
+        if cached is not None:
+            return cached
+    try:
+        definition, executor = await _read_tool(db, user_id, options.get("integration_id"), tool)
+        if validate_tool_arguments(tool, arguments, definition.input_schema):
+            raise LiveError("invalid_result")
+        await _enforce_rate(user_id)
+        async with _Slot(str(user_id)):
+            result = await asyncio.wait_for(
+                executor.execute_tool(ToolCall(id="dashboard", name=tool, arguments=arguments)), timeout=INTEGRATION_TIMEOUT_SECONDS
+            )
+    except LiveError as exc:
+        return _error(exc.code)
+    except TimeoutError:
+        return _error("timeout")
+    except Exception as exc:
+        logger.warning("Integration source failed (%s): %r", tool, str(exc)[:200])
+        return _error("upstream_error")
+    if result.is_error:
+        logger.info("Integration source %s answered an error: %s", tool, str(result.content)[:200])
+        return _error("upstream_error")
+    try:
+        answer = _ok(str(options.get("shape") or "rows"), answer_data(result.content, str(options.get("shape") or "rows"), options.get("path")))
+    except LiveError as exc:
+        return _error(exc.code)
+    await _cache_set(key, answer)
+    return answer
+
+
+# ── A table kept in a knowledge base ─────────────────────────────────────────
+
+_MD_RULE = re.compile(r"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?$")
+_NUMBER = re.compile(r"^-?\d+(?:\.\d+)?$")
+
+
+def _cell(value: str) -> Any:
+    text = value.strip()
+    if _NUMBER.match(text):
+        return float(text) if "." in text else int(text)
+    return text
+
+
+def _rows_of(header: list[str], lines: list[list[str]]) -> list[dict]:
+    return [{name: _cell(cells[i]) if i < len(cells) else "" for i, name in enumerate(header)} for cells in lines]
+
+
+def table_value(text: str, table_format: str = "auto") -> Any:
+    """What a document's table holds: JSON as written, or the rows of JSON lines, CSV or a Markdown table.
+
+    :class:`LiveError` ``invalid_result`` when it is none of them.
+    """
+    import csv
+    import io
+
+    body = text.strip()
+    if table_format in ("auto", "json"):
+        try:
+            return _json_in(body)
+        except LiveError:
+            if table_format == "json":
+                raise
+    lines = [line for line in body.splitlines() if line.strip()]
+    if table_format in ("auto", "jsonl") and lines:
+        try:
+            values = [json.loads(line) for line in lines]
+            if all(isinstance(v, dict) for v in values):
+                return values
+        except ValueError:
+            pass
+        if table_format == "jsonl":
+            raise LiveError("invalid_result")
+    if table_format in ("auto", "markdown"):
+        table = [line.strip() for line in lines if line.strip().startswith("|")]
+        if len(table) >= 2 and _MD_RULE.match(table[1]):
+            split = [[c.strip() for c in row.strip("|").split("|")] for row in table]
+            return _rows_of(split[0], [r for r in split[2:]])
+        if table_format == "markdown":
+            raise LiveError("invalid_result")
+    if table_format in ("auto", "csv") and len(lines) >= 2 and "," in lines[0]:
+        parsed = list(csv.reader(io.StringIO("\n".join(lines))))
+        return _rows_of([h.strip() for h in parsed[0]], parsed[1:])
+    raise LiveError("invalid_result")
+
+
+async def _readable_document(db: AsyncSession, user_id: uuid.UUID, options: dict):
+    """The knowledge base document *user_id* reads, or :class:`LiveError`."""
+    from fastapi import HTTPException
+    from sqlalchemy import select
+
+    from app.api.v1.helpers import get_user_knowledge_base
+    from app.models.knowledge_base import KnowledgeDocument
+
+    try:
+        kb = await get_user_knowledge_base(db, user_id, str(options.get("knowledge_base_id")), await _group_ids(db, user_id))
+    except HTTPException:
+        raise LiveError("access_denied") from None
+    document = (
+        await db.execute(
+            select(KnowledgeDocument).where(
+                KnowledgeDocument.id == uuid.UUID(str(options.get("document_id"))), KnowledgeDocument.knowledge_base_id == kb.id
+            )
+        )
+    ).scalar_one_or_none()
+    if document is None:
+        raise LiveError("access_denied")
+    return document
+
+
+async def _knowledge(db: AsyncSession, user_id: uuid.UUID, options: dict) -> dict:
+    from app.services.kb_sections import SectionError, find_section
+
+    try:
+        document = await _readable_document(db, user_id, options)
+        text = document.content or ""
+        if options.get("section"):
+            try:
+                heading = find_section(text, options["section"])
+            except SectionError:
+                return _error("invalid_result")
+            text = text[heading.start : heading.end]
+            # The heading line is the section's name, not a row.
+            text = text.split("\n", 1)[1] if "\n" in text else ""
+        shape = str(options.get("shape") or "rows")
+        value = _at_path(table_value(text, str(options.get("format") or "auto")), options.get("path"))
+        return _ok(shape, closed_static_data(shape, _as_shape_input(shape, value)), document.updated_at if getattr(document, "updated_at", None) else None)
+    except LiveError as exc:
+        return _error(exc.code)
+    except (TypeError, ValueError, KeyError, AttributeError):
+        return _error("invalid_result")
 
 
 # ── Asking an agent ──────────────────────────────────────────────────────────
@@ -479,6 +682,20 @@ async def check_source_references(db: AsyncSession, user_id: uuid.UUID | None, p
             agent = await _visible_agent(db, user_id, options.get("agent_id"))
             if agent is None or agent.enabled is False or getattr(agent, "disable_chat", False):
                 raise DashboardSpecError(f"Data source '{sid}': agent_id is not an agent you can chat with.")
+        elif kind == "integration":
+            try:
+                await _read_tool(db, user_id, options.get("integration_id"), str(options.get("tool") or ""))
+            except LiveError as exc:
+                reason = {
+                    "unsupported": "it is not a tool that only reads",
+                    "access_denied": "you cannot use this integration with your own account",
+                }.get(exc.code, "it is not a tool of an integration you can use")
+                raise DashboardSpecError(f"Data source '{sid}': tool '{options.get('tool')}': {reason}.") from None
+        elif kind == "knowledge":
+            try:
+                await _readable_document(db, user_id, options)
+            except LiveError:
+                raise DashboardSpecError(f"Data source '{sid}': document_id is not a document of a knowledge base you read.") from None
         elif kind == "variable":
             if _variables_disabled():
                 raise DashboardSpecError(f"Data source '{sid}': custom variables are disabled on this platform.")

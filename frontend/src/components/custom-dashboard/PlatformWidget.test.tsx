@@ -3,7 +3,7 @@
 // and the placeholder outside a stored dashboard or with the studio off.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { QueryClient } from "@tanstack/react-query";
 
 import { renderWithProviders } from "@/testing/providers";
@@ -142,6 +142,38 @@ describe("PlatformWidget", () => {
     api.post.mockResolvedValue({ status: "error", code, open_url: null } satisfies WidgetData);
     draw(NUMBER, "number");
     expect(await screen.findByText(sentence)).toBeTruthy();
+  });
+
+  it("says whose access read a snapshot refreshed on the server, and refreshes it on request", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-23T10:05:00Z"));
+    const snapshot = { mode: "server", every: "15m", refreshed_at: "2026-10-23T10:00:00Z", publisher: "Alice" } as const;
+    api.post.mockResolvedValue({
+      status: "ok", shape: "number", data: { value: 7, change: null }, fetched_at: "2026-10-23T10:00:00Z", open_url: null, snapshot,
+    } satisfies WidgetData);  // prettier-ignore
+    const dashboard = normalizeDashboard({
+      version: 2,
+      title: "Board",
+      dataSources: { sev: { type: "static", options: { shape: "number", data: { value: 7 } } } },
+      visualizations: { big: { type: "xtm.singlevalue", title: "Open findings", dataSources: { primary: "sev" } } },
+      layout: {
+        tabs: { items: [{ layoutId: "main", label: "Main" }] },
+        layoutDefinitions: { main: { structure: [{ item: "big", position: { x: 0, y: 0, w: 4, h: 3 } }] } },
+      },
+    });
+    renderWithProviders(<CustomDashboardView dashboard={dashboard} dashboardId={ID} revision={2} />, new QueryClient({ defaultOptions: { queries: { retry: false } } }));
+    expect(await screen.findByText("Data read 5m ago with Alice's access.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh now" }));
+    await waitFor(() => expect(api.post.mock.calls.map(([path]) => String(path))).toContain(`/custom-dashboards/${ID}/data-sources/sev/refresh`));
+    vi.useRealTimers();
+  });
+
+  it("says a snapshot not read yet waits for the server, not for an agent", async () => {
+    api.post.mockResolvedValue({
+      status: "error", code: "running", open_url: null, snapshot: { mode: "server", every: "15m", refreshed_at: null, publisher: "Alice" },
+    } satisfies WidgetData);  // prettier-ignore
+    draw(NUMBER, "number");
+    expect(await screen.findByText("Read on the server in a moment.")).toBeTruthy();
   });
 
   it("draws a type it does not chart as a link to the platform", async () => {

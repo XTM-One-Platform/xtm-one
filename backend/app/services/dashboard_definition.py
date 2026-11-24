@@ -272,11 +272,30 @@ def refresh_seconds(value: str | None) -> int | None:
     return int(match.group(1)) * {"s": 1, "m": 60, "h": 3600}[match.group(2)]
 
 
+#: Where a source is read: ``live`` (unset) by each viewer's page, with their access, every ``refresh`` while it is
+#: open; ``server`` by the platform every ``refresh`` whoever watches, ``manual`` when someone asks - both kept as a
+#: snapshot read with the publisher's access (``dashboard_refresh``).
+REFRESH_MODES = ("live", "server", "manual")
+#: The shortest ``refresh`` of a source read on the server.
+MIN_SERVER_REFRESH_SECONDS = 300
+#: The sources a server refresh reads: those that read without a person pressing anything and without an agent.
+SERVER_REFRESH_TYPES = ("platform", "integration", "knowledge", "variable", "derived")
+
+
 class _Refreshed(_Model):
     """Read again every ``refresh`` (``delay``: after the last answer; ``interval``: on a fixed beat)."""
 
     refresh: Annotated[str | None, Field(default=None, max_length=8)]
     refresh_type: Annotated[Literal["delay", "interval"], Field(default="delay", alias="refreshType")]
+    refresh_mode: Annotated[Literal[REFRESH_MODES] | None, Field(default=None, alias="refreshMode")]  # type: ignore[valid-type]
+
+    @model_validator(mode="after")
+    def _server(self) -> _Refreshed:
+        if self.refresh_mode == "server":
+            seconds = refresh_seconds(self.refresh)
+            if seconds is None or seconds < MIN_SERVER_REFRESH_SECONDS:
+                raise ValueError("a source refreshed on the server says how often, every 5 minutes at least: refresh '15m'")
+        return self
 
     @field_validator("refresh")
     @classmethod
@@ -373,6 +392,54 @@ class DerivedSourceOptions(_Refreshed):
     steps: Annotated[list[Step], Field(default_factory=list, max_length=MAX_STEPS)]
 
 
+class IntegrationSourceOptions(_Refreshed):
+    """A read tool of an integration, called with fixed arguments, its answer read as a shape (at ``path``).
+
+    Only a tool that reads (``tool_classification``) is called; the reader is the viewer, through an
+    integration they may use with their own credential, as the integration's Test does.
+    """
+
+    integration_id: uuid.UUID
+    tool: Annotated[str, Field(min_length=1, max_length=200, pattern=r"^[A-Za-z0-9_.:-]+$")]
+    arguments: FreeObject
+    shape: Shape = "rows"
+    path: Annotated[str | None, Field(default=None, max_length=600)]
+
+    @field_validator("arguments")
+    @classmethod
+    def _bounded(cls, value: dict) -> dict:
+        return _bounded_object(value, "arguments")  # type: ignore[return-value]
+
+    @field_validator("path")
+    @classmethod
+    def _path(cls, value: str | None) -> str | None:
+        if value is not None and not PATH_RE.match(value):
+            raise ValueError("path is up to 10 keys or indexes joined by '.', like 'data.items'")
+        return value
+
+
+#: How a knowledge base document's table is written; ``auto`` tries JSON, JSON lines, CSV, then a Markdown table.
+TABLE_FORMATS = ("auto", "json", "jsonl", "csv", "markdown")
+
+
+class KnowledgeSourceOptions(_Refreshed):
+    """A table kept in a knowledge base document (whole, or one heading section), read as a shape."""
+
+    knowledge_base_id: uuid.UUID
+    document_id: uuid.UUID
+    section: Annotated[str | None, Field(default=None, max_length=300)]
+    format: Literal[TABLE_FORMATS] = "auto"  # type: ignore[valid-type]
+    shape: Shape = "rows"
+    path: Annotated[str | None, Field(default=None, max_length=600)]
+
+    @field_validator("path")
+    @classmethod
+    def _path(cls, value: str | None) -> str | None:
+        if value is not None and not PATH_RE.match(value):
+            raise ValueError("path is up to 10 keys or indexes joined by '.', like 'response.findings'")
+        return value
+
+
 class PlatformDataSource(_Model):
     type: Literal["platform"]
     name: Annotated[str | None, Field(default=None, max_length=80)]
@@ -403,6 +470,18 @@ class VariableDataSource(_Model):
     options: VariableSourceOptions
 
 
+class IntegrationDataSource(_Model):
+    type: Literal["integration"]
+    name: Annotated[str | None, Field(default=None, max_length=80)]
+    options: IntegrationSourceOptions
+
+
+class KnowledgeDataSource(_Model):
+    type: Literal["knowledge"]
+    name: Annotated[str | None, Field(default=None, max_length=80)]
+    options: KnowledgeSourceOptions
+
+
 class DerivedDataSource(_Model):
     type: Literal["derived"]
     name: Annotated[str | None, Field(default=None, max_length=80)]
@@ -410,11 +489,18 @@ class DerivedDataSource(_Model):
 
 
 DataSource = Annotated[
-    PlatformDataSource | StaticDataSource | AssignmentDataSource | AskDataSource | VariableDataSource | DerivedDataSource,
+    PlatformDataSource
+    | StaticDataSource
+    | AssignmentDataSource
+    | AskDataSource
+    | VariableDataSource
+    | IntegrationDataSource
+    | KnowledgeDataSource
+    | DerivedDataSource,
     Field(discriminator="type"),
 ]
 #: The sources that read something of the platform's with the viewer's access (checked against the writer too).
-REFERENCE_SOURCE_TYPES = ("platform", "assignment", "ask", "variable")
+REFERENCE_SOURCE_TYPES = ("platform", "assignment", "ask", "variable", "integration", "knowledge")
 
 
 # ── Visualizations and inputs ────────────────────────────────────────────────
@@ -928,6 +1014,13 @@ class Definition(_Model):
                     if len(seen) > MAX_CHAIN_DEPTH + 1:
                         raise ValueError(f"dataSources.{sid}: a chain stacks at most {MAX_CHAIN_DEPTH} derived sources")
                     current = self.data_sources[parent]
+        for sid, source in self.data_sources.items():
+            mode = getattr(source.options, "refresh_mode", None)
+            if mode in ("server", "manual") and source.type not in SERVER_REFRESH_TYPES:
+                raise ValueError(
+                    f"dataSources.{sid}: a source of type '{source.type}' is not refreshed on the server "
+                    f"(refreshMode server or manual: {', '.join(SERVER_REFRESH_TYPES)})"
+                )
         for iid, item in self.inputs.items():
             sid = item.data_sources.get("primary")
             if sid is not None and sid not in self.data_sources:

@@ -21831,5 +21831,22 @@
   "AI is turned off on this platform: start from an empty dashboard and build it by hand.": "このプラットフォームでは AI が無効です。空のダッシュボードから始めて手作業で作成してください。",
   "Sent as your first message when the studio opens, beside the dashboard it builds.": "スタジオが開くと、作成中のダッシュボードの横で最初のメッセージとして送信されます。",
   "Start from an empty dashboard": "空のダッシュボードから始める",
-  "The dashboard as an OpenCTI manifest: OpenCTI and OpenAEV widgets as their platform stores them, and under x_xtm_one what XTM One adds - its own widgets, data sources, inputs, tabs. It is checked when you save.": "OpenCTI マニフェストとしてのダッシュボード: OpenCTI と OpenAEV のウィジェットは各プラットフォームの保存形式のまま、x_xtm_one の下には XTM One が追加するもの(独自のウィジェット、データソース、入力、タブ)が入ります。保存時に検証されます。"
+  "The dashboard as an OpenCTI manifest: OpenCTI and OpenAEV widgets as their platform stores them, and under x_xtm_one what XTM One adds - its own widgets, data sources, inputs, tabs. It is checked when you save.": "OpenCTI マニフェストとしてのダッシュボード: OpenCTI と OpenAEV のウィジェットは各プラットフォームの保存形式のまま、x_xtm_one の下には XTM One が追加するもの(独自のウィジェット、データソース、入力、タブ)が入ります。保存時に検証されます。",
+  "Tool that reads": "読み取りツール",
+  "Section (optional)": "セクション(任意)",
+  "Table written as": "テーブルの形式",
+  "Every": "間隔",
+  "Read with your access and shown to everyone who opens the dashboard, even those who could not read it themselves.": "あなたのアクセス権で読み取られ、ダッシュボードを開くすべての人に表示されます(自分では読み取れない人にも)。",
+  "Integration tool": "連携ツール",
+  "Knowledge base table": "ナレッジベースのテーブル",
+  "On the page, with each viewer's access": "ページ上で、各閲覧者のアクセス権で",
+  "On the server, every…": "サーバー上で、一定間隔ごとに…",
+  "On the server, when asked": "サーバー上で、要求時に",
+  "5 minutes": "5分",
+  "15 minutes": "15分",
+  "6 hours": "6時間",
+  "JSON lines": "JSON Lines",
+  "Markdown table": "Markdown テーブル",
+  "Read on the server in a moment.": "まもなくサーバーで読み取られます。",
+  "Refresh now": "今すぐ更新"
 }

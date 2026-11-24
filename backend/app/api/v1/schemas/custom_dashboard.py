@@ -258,6 +258,9 @@ class WidgetDataResponse(BaseModel):
     open_url: str | None = None
     #: How the widget's module draws it (``dashboard_live.presentation_of``): ``{"view", "options"}``.
     presentation: dict | None = None
+    #: A source refreshed on the server (``dashboard_refresh``): ``{"mode", "every", "refreshed_at", "publisher"}`` -
+    #: the snapshot shown, read with its publisher's access.
+    snapshot: dict | None = None
 
 
 class PlatformSchemaRequest(BaseModel):

@@ -103,7 +103,7 @@ export type PlatformView = (typeof PLATFORM_VIEWS)[number];
 export const DATA_VIEWS = [...PLATFORM_VIEWS, "text"] as const;
 export type DataView = (typeof DATA_VIEWS)[number];
 /** The data sources XTM One reads itself (`dashboard_definition.DataSource`, less `platform`). */
-const DATA_SOURCE_TYPES = ["static", "assignment", "ask", "variable", "derived"] as const;
+const DATA_SOURCE_TYPES = ["static", "assignment", "ask", "variable", "integration", "knowledge", "derived"] as const;
 type DataSourceType = (typeof DATA_SOURCE_TYPES)[number];
 
 /** The colours a widget may ask for, by meaning (`DASHBOARD_TONES`, read by

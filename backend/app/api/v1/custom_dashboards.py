@@ -416,6 +416,49 @@ async def _source_data(
     )
 
 
+#: A source refreshed on the server is read again on request at most this often (seconds).
+REFRESH_NOW_FLOOR_SECONDS = 30
+
+
+@router.post(
+    "/{dashboard_id}/data-sources/{source_id}/refresh",
+    response_model=WidgetDataResponse,
+)
+async def refresh_data_source(
+    dashboard_id: str,
+    source_id: str,
+    body: WidgetDataRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Refresh now: read a source refreshed on the server again, as its publisher (``dashboard_refresh``).
+
+    Read access to the dashboard is enough, as for the page's own refresh: the
+    read is the publisher's, whoever presses the button, and it is made at most
+    every 30 seconds. A live source answers 404 (its page reads it itself).
+    """
+    from datetime import UTC, datetime
+
+    from app.core.database import async_session
+    from app.models.custom_dashboard import CustomDashboardSourceSnapshot
+    from app.services.dashboard_definition import upgrade
+    from app.services.dashboard_refresh import refresh_row, snapshot_row_id
+
+    dashboard, _tier = await _load(db, user, dashboard_id)
+    row_id = await snapshot_row_id(db, dashboard.id, source_id)
+    if row_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This data source is not refreshed on the server.")
+    row = await db.get(CustomDashboardSourceSnapshot, row_id)
+    recent = row is not None and row.refreshed_at is not None and (
+        datetime.now(UTC) - row.refreshed_at
+    ).total_seconds() < REFRESH_NOW_FLOOR_SECONDS
+    if not recent:
+        await refresh_row(async_session, row_id)
+        if row is not None:
+            await db.refresh(row)
+    return await _source_data(db, user, dashboard.id, upgrade(dashboard.spec), source_id, body)
+
+
 @router.post(
     "/{dashboard_id}/data-sources/{source_id}/ask",
     response_model=WidgetDataResponse,

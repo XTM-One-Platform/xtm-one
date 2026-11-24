@@ -470,7 +470,9 @@ def build_dashboard_studio_tools(
             description=(
                 f"Read a data source before saving it, as the user sees it: its shape and a sample, empty, or the "
                 f"error and what to do. Any type: platform {{source: {sources}, integration_id, native, range?}}, static, "
-                "assignment, ask, variable, derived (with dashboard_id, a derived source may extend the dashboard's)."
+                "assignment, ask, variable, integration {integration_id, tool (one that only reads), arguments, shape, "
+                "path}, knowledge {knowledge_base_id, document_id, section?, format, shape, path}, derived (with "
+                "dashboard_id, a derived source may extend the dashboard's). It is read live, as the user."
             ),
             input_schema={
                 "type": "object",

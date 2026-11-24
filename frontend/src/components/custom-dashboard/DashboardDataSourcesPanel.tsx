@@ -19,8 +19,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *
  * - New data source: its type picked on tiles - a platform widget (first, as
  *   in the modules' editors), written in the dashboard (static), an
- *   assignment's last answer, a question to an agent, a variable, another
- *   source through steps (derived) - then a form for it. Saved as one edit,
+ *   assignment's last answer, a question to an agent, a variable, a read
+ *   tool of an integration, a table kept in a knowledge base document, another
+ *   source through steps (derived) - then a form for it, and where it is read:
+ *   on the page with each viewer's access, or on the server - every so often or
+ *   when asked - with the access of the person who sets it (`dashboard_refresh`). Saved as one edit,
  *   validated server-side: the reason of a refusal is shown with the field it
  *   is about. A platform widget is drawn at once: its visualization, in its
  *   module's own view, is placed with it in the same edit.
@@ -42,6 +45,8 @@ import { OverflowMenu, type OverflowMenuItem } from "@/components/ui/overflow-me
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useAgents } from "@/hooks/api/useAgentApi";
 import { useAssignments } from "@/hooks/api/useAssignmentApi";
+import { useIntegrations, useIntegrationTools } from "@/hooks/api/useIntegrationApi";
+import { useKnowledgeBases, useKnowledgeDocuments } from "@/hooks/api/useKnowledgeBaseApi";
 import { platformFormsQuery, usePlatformForms, usePreviewPlatformWidget } from "@/hooks/api/useCustomDashboardApi";
 import { useVariables } from "@/hooks/api/useVariableApi";
 import { useToast } from "@/components/ui/toast";
@@ -70,6 +75,8 @@ const TYPE_LABELS = {
   assignment: "Assignment answer",
   ask: "Question to an agent",
   variable: "Variable",
+  integration: "Integration tool",
+  knowledge: "Knowledge base table",
   derived: "Derived (steps on a source)",
 } as const;
 type SourceType = keyof typeof TYPE_LABELS;
@@ -80,8 +87,25 @@ const TYPE_ICONS: Record<SourceType, string> = {
   assignment: "calendar-clock",
   ask: "message-circle-question-mark",
   variable: "variable",
+  integration: "plug",
+  knowledge: "book-open",
   derived: "git-branch",
 };
+/** The sources the server may read on its own (`dashboard_definition.SERVER_REFRESH_TYPES`). */
+const SERVER_REFRESHED: readonly SourceType[] = ["platform", "integration", "knowledge", "variable", "derived"];
+/** Where a source is read. @i18n-keys */
+const REFRESH_MODE_LABELS = {
+  live: "On the page, with each viewer's access",
+  server: "On the server, every…",
+  manual: "On the server, when asked",
+} as const;
+type RefreshMode = keyof typeof REFRESH_MODE_LABELS;
+/** How often the server reads it (at least every 5 minutes). @i18n-keys */
+const REFRESH_EVERY_LABELS = { "5m": "5 minutes", "15m": "15 minutes", "1h": "Hour", "6h": "6 hours", "24h": "Day" } as const;
+type RefreshEvery = keyof typeof REFRESH_EVERY_LABELS;
+/** How a knowledge base document's table is written. @i18n-keys */
+const TABLE_FORMAT_LABELS = { auto: "Detect", json: "JSON", jsonl: "JSON lines", csv: "CSV", markdown: "Markdown table" } as const;
+type TableFormat = keyof typeof TABLE_FORMAT_LABELS;
 /** What a view's name looks like (`xtm.column`, `xtm.outcomematrix`). */
 const VIEW_NAME = /^xtm\.[a-z][a-z0-9.]{0,40}$/;
 /** A platform widget whose answer names no view of its module's is drawn by its shape. */
@@ -200,6 +224,17 @@ function NewSourceDialog({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [platform, setPlatform] = useState<PlatformOptions | null>(null);
+  const [integrationId, setIntegrationId] = useState("");
+  const [tool, setTool] = useState("");
+  const [kbId, setKbId] = useState("");
+  const [section, setSection] = useState("");
+  const [tableFormat, setTableFormat] = useState<TableFormat>("auto");
+  const [refreshMode, setRefreshMode] = useState<RefreshMode>("live");
+  const [every, setEvery] = useState<RefreshEvery>("15m");
+  const integrations = useIntegrations();
+  const tools = useIntegrationTools(integrationId, open && type === "integration");
+  const knowledgeBases = useKnowledgeBases();
+  const documents = useKnowledgeDocuments(open && type === "knowledge" ? kbId : "");
   const assignments = useAssignments();
   const agents = useAgents();
   const variables = useVariables({ enabled: open && type === "variable" });
@@ -209,19 +244,22 @@ function NewSourceDialog({
     setType(next);
     setTarget("");
     setError(null);
-    setShape(next === "variable" ? "text" : next === "static" ? "number" : "text");
+    setShape(next === "variable" ? "text" : next === "static" ? "number" : next === "integration" || next === "knowledge" ? "rows" : "text");
+    setRefreshMode("live");
     setJson(
       next === "static"
         ? JSON.stringify(STATIC_TEMPLATES.number, null, 2)
         : next === "derived"
           ? JSON.stringify([{ op: "head", count: 10 }], null, 2)
-          : "",
+          : next === "integration"
+            ? "{}"
+            : "",
     );
   };
 
   const build = (): { ok: true; value: Record<string, unknown> } | { ok: false; error: string } => {
     if (type === "platform" && !platform) return { ok: false, error: t_i18n("Choose an integration to read through.") };
-    const parsed = type === "static" || type === "derived" ? parseSource(json) : null;
+    const parsed = type === "static" || type === "derived" || type === "integration" ? parseSource(json) : null;
     if (parsed && !parsed.ok) return { ok: false, error: t_i18n("This is not valid JSON: {reason}", { reason: parsed.error }) };
     const value = parsed?.ok ? parsed.value : undefined;
     const answer = { shape, ...(path.trim() ? { path: path.trim() } : {}) };
@@ -230,10 +268,22 @@ function NewSourceDialog({
       assignment: { assignment_id: target, ...answer },
       ask: { agent_id: target, question, ...answer },
       variable: { variable_id: target, shape: shape === "number" ? "number" : "text" },
+      integration: { integration_id: integrationId, tool, arguments: value ?? {}, ...answer },
+      knowledge: {
+        knowledge_base_id: kbId,
+        document_id: target,
+        format: tableFormat,
+        ...(section.trim() ? { section: section.trim() } : {}),
+        ...answer,
+      },
       derived: { extends: target, steps: value },
       platform: { ...platform },
     };
-    return { ok: true, value: { type, ...(name.trim() ? { name: name.trim() } : {}), options: options[type] } };
+    const refresh =
+      SERVER_REFRESHED.includes(type) && refreshMode !== "live"
+        ? { refreshMode, ...(refreshMode === "server" ? { refresh: every } : {}) }
+        : {};
+    return { ok: true, value: { type, ...(name.trim() ? { name: name.trim() } : {}), options: { ...options[type], ...refresh } } };
   };
 
   /** The view a platform widget is drawn with: its module's (the preset its answer carries), else its shape's. */
@@ -321,6 +371,56 @@ function NewSourceDialog({
               options={sources.map((source) => ({ value: source.id, label: source.name ? `${source.name} (${source.id})` : source.id }))}
             />
           )}
+          {type === "integration" && (
+            <>
+              <Choice
+                label={t_i18n("Integration")}
+                value={integrationId}
+                onChange={(next) => {
+                  setIntegrationId(next);
+                  setTool("");
+                }}
+                options={(integrations.data ?? [])
+                  .filter((row) => row.status === "connected" || row.status === "configured")
+                  .map((row) => ({ value: row.id, label: row.name }))}
+              />
+              <Choice
+                label={t_i18n("Tool that reads")}
+                value={tool}
+                onChange={setTool}
+                // A tool that may change something is never called from a dashboard: the server refuses it.
+                options={(tools.data?.tools ?? []).filter((t) => t.tool_type !== "write").map((t) => ({ value: t.name, label: t.name }))}
+              />
+            </>
+          )}
+          {type === "knowledge" && (
+            <>
+              <Choice
+                label={t_i18n("Knowledge base")}
+                value={kbId}
+                onChange={(next) => {
+                  setKbId(next);
+                  setTarget("");
+                }}
+                options={(knowledgeBases.data ?? []).map((kb) => ({ value: kb.id, label: kb.name }))}
+              />
+              <Choice
+                label={t_i18n("Document")}
+                value={target}
+                onChange={setTarget}
+                options={(documents.data ?? []).map((doc) => ({ value: doc.id, label: doc.filename }))}
+              />
+              <Field label={t_i18n("Section (optional)")}>
+                <Input value={section} onChange={(event) => setSection(event.target.value.slice(0, 300))} placeholder="Weekly" className="h-8" aria-label={t_i18n("Section (optional)")} />
+              </Field>
+              <Choice
+                label={t_i18n("Table written as")}
+                value={tableFormat}
+                onChange={(next) => setTableFormat(next as TableFormat)}
+                options={(Object.keys(TABLE_FORMAT_LABELS) as TableFormat[]).map((key) => ({ value: key, label: t_i18n(TABLE_FORMAT_LABELS[key]) }))}
+              />
+            </>
+          )}
           {type !== "derived" && type !== "platform" && (
             <Choice
               label={t_i18n("Shape")}
@@ -332,7 +432,7 @@ function NewSourceDialog({
               options={shapes.map((key) => ({ value: key, label: t_i18n(SHAPE_LABELS[key]) }))}
             />
           )}
-          {(type === "assignment" || type === "ask") && (
+          {(type === "assignment" || type === "ask" || type === "integration" || type === "knowledge") && (
             <Field label={t_i18n("Path in a JSON answer (optional)")}>
               <Input
                 value={path}
@@ -357,8 +457,31 @@ function NewSourceDialog({
           </Field>
         )}
         {type === "platform" && <PlatformSourceEditor dashboardId={dashboard.id} onChange={setPlatform} />}
-        {(type === "static" || type === "derived") && (
-          <Field label={type === "static" ? t_i18n("Data") : t_i18n("Steps")}>
+        {SERVER_REFRESHED.includes(type) && (
+          <div className="grid gap-x-3 gap-y-5 sm:grid-cols-2" data-testid="dashboard.sources.refresh">
+            <Choice
+              label={t_i18n("Read")}
+              value={refreshMode}
+              onChange={(next) => setRefreshMode(next as RefreshMode)}
+              options={(Object.keys(REFRESH_MODE_LABELS) as RefreshMode[]).map((key) => ({ value: key, label: t_i18n(REFRESH_MODE_LABELS[key]) }))}
+            />
+            {refreshMode === "server" && (
+              <Choice
+                label={t_i18n("Every")}
+                value={every}
+                onChange={(next) => setEvery(next as RefreshEvery)}
+                options={(Object.keys(REFRESH_EVERY_LABELS) as RefreshEvery[]).map((key) => ({ value: key, label: t_i18n(REFRESH_EVERY_LABELS[key]) }))}
+              />
+            )}
+            {refreshMode !== "live" && (
+              <p className="content-caption text-default-secondary sm:col-span-2">
+                {t_i18n("Read with your access and shown to everyone who opens the dashboard, even those who could not read it themselves.")}
+              </p>
+            )}
+          </div>
+        )}
+        {(type === "static" || type === "derived" || type === "integration") && (
+          <Field label={type === "static" ? t_i18n("Data") : type === "integration" ? t_i18n("Arguments") : t_i18n("Steps")}>
             <CodeEditor value={json} language="json" onChange={setJson} className="min-h-40" ariaLabel={t_i18n("Data")} />
           </Field>
         )}

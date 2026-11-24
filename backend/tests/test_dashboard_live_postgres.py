@@ -197,7 +197,7 @@ async def test_an_admin_reading_the_dashboard_does_not_borrow_the_owners_private
     assert read.status_code == 200
     assert read.json() == {
         "status": "error", "shape": None, "data": None, "code": "integration_unavailable", "fetched_at": None, "open_url": None,
-        "presentation": None,
+        "presentation": None, "snapshot": None,
     }  # fmt: skip
     assert platform == []
 

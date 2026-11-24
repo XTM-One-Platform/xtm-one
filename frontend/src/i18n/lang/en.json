@@ -21831,5 +21831,22 @@
   "AI is turned off on this platform: start from an empty dashboard and build it by hand.": "AI is turned off on this platform: start from an empty dashboard and build it by hand.",
   "Sent as your first message when the studio opens, beside the dashboard it builds.": "Sent as your first message when the studio opens, beside the dashboard it builds.",
   "Start from an empty dashboard": "Start from an empty dashboard",
-  "The dashboard as an OpenCTI manifest: OpenCTI and OpenAEV widgets as their platform stores them, and under x_xtm_one what XTM One adds - its own widgets, data sources, inputs, tabs. It is checked when you save.": "The dashboard as an OpenCTI manifest: OpenCTI and OpenAEV widgets as their platform stores them, and under x_xtm_one what XTM One adds - its own widgets, data sources, inputs, tabs. It is checked when you save."
+  "The dashboard as an OpenCTI manifest: OpenCTI and OpenAEV widgets as their platform stores them, and under x_xtm_one what XTM One adds - its own widgets, data sources, inputs, tabs. It is checked when you save.": "The dashboard as an OpenCTI manifest: OpenCTI and OpenAEV widgets as their platform stores them, and under x_xtm_one what XTM One adds - its own widgets, data sources, inputs, tabs. It is checked when you save.",
+  "Tool that reads": "Tool that reads",
+  "Section (optional)": "Section (optional)",
+  "Table written as": "Table written as",
+  "Every": "Every",
+  "Read with your access and shown to everyone who opens the dashboard, even those who could not read it themselves.": "Read with your access and shown to everyone who opens the dashboard, even those who could not read it themselves.",
+  "Integration tool": "Integration tool",
+  "Knowledge base table": "Knowledge base table",
+  "On the page, with each viewer's access": "On the page, with each viewer's access",
+  "On the server, every…": "On the server, every…",
+  "On the server, when asked": "On the server, when asked",
+  "5 minutes": "5 minutes",
+  "15 minutes": "15 minutes",
+  "6 hours": "6 hours",
+  "JSON lines": "JSON lines",
+  "Markdown table": "Markdown table",
+  "Read on the server in a moment.": "Read on the server in a moment.",
+  "Refresh now": "Refresh now"
 }

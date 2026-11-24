@@ -21831,5 +21831,22 @@
   "AI is turned off on this platform: start from an empty dashboard and build it by hand.": "L'IA est désactivée sur cette plateforme : partez d'un tableau de bord vide et construisez-le à la main.",
   "Sent as your first message when the studio opens, beside the dashboard it builds.": "Envoyé comme votre premier message à l'ouverture du studio, à côté du tableau de bord qu'il construit.",
   "Start from an empty dashboard": "Partir d'un tableau de bord vide",
-  "The dashboard as an OpenCTI manifest: OpenCTI and OpenAEV widgets as their platform stores them, and under x_xtm_one what XTM One adds - its own widgets, data sources, inputs, tabs. It is checked when you save.": "Le tableau de bord sous forme de manifest OpenCTI : les widgets OpenCTI et OpenAEV tels que leur plateforme les stocke, et sous x_xtm_one ce qu'XTM One ajoute - ses propres widgets, ses sources de données, ses entrées, ses onglets. Il est vérifié à l'enregistrement."
+  "The dashboard as an OpenCTI manifest: OpenCTI and OpenAEV widgets as their platform stores them, and under x_xtm_one what XTM One adds - its own widgets, data sources, inputs, tabs. It is checked when you save.": "Le tableau de bord sous forme de manifest OpenCTI : les widgets OpenCTI et OpenAEV tels que leur plateforme les stocke, et sous x_xtm_one ce qu'XTM One ajoute - ses propres widgets, ses sources de données, ses entrées, ses onglets. Il est vérifié à l'enregistrement.",
+  "Tool that reads": "Outil de lecture",
+  "Section (optional)": "Section (facultatif)",
+  "Table written as": "Tableau écrit en",
+  "Every": "Toutes les",
+  "Read with your access and shown to everyone who opens the dashboard, even those who could not read it themselves.": "Lu avec vos accès et montré à tous ceux qui ouvrent le tableau de bord, même à ceux qui ne pourraient pas le lire eux-mêmes.",
+  "Integration tool": "Outil d'intégration",
+  "Knowledge base table": "Tableau d'une base de connaissances",
+  "On the page, with each viewer's access": "Sur la page, avec les accès de chaque lecteur",
+  "On the server, every…": "Sur le serveur, toutes les…",
+  "On the server, when asked": "Sur le serveur, à la demande",
+  "5 minutes": "5 minutes",
+  "15 minutes": "15 minutes",
+  "6 hours": "6 heures",
+  "JSON lines": "Lignes JSON",
+  "Markdown table": "Tableau Markdown",
+  "Read on the server in a moment.": "Lu sur le serveur dans un instant.",
+  "Refresh now": "Actualiser maintenant"
 }

@@ -21831,5 +21831,22 @@
   "AI is turned off on this platform: start from an empty dashboard and build it by hand.": "La IA está desactivada en esta plataforma: empieza con un panel vacío y constrúyelo a mano.",
   "Sent as your first message when the studio opens, beside the dashboard it builds.": "Se envía como tu primer mensaje cuando se abre el estudio, junto al panel que construye.",
   "Start from an empty dashboard": "Empezar con un panel vacío",
-  "The dashboard as an OpenCTI manifest: OpenCTI and OpenAEV widgets as their platform stores them, and under x_xtm_one what XTM One adds - its own widgets, data sources, inputs, tabs. It is checked when you save.": "El panel como manifiesto de OpenCTI: los widgets de OpenCTI y OpenAEV tal como su plataforma los guarda, y bajo x_xtm_one lo que añade XTM One: sus propios widgets, fuentes de datos, entradas y pestañas. Se comprueba al guardar."
+  "The dashboard as an OpenCTI manifest: OpenCTI and OpenAEV widgets as their platform stores them, and under x_xtm_one what XTM One adds - its own widgets, data sources, inputs, tabs. It is checked when you save.": "El panel como manifiesto de OpenCTI: los widgets de OpenCTI y OpenAEV tal como su plataforma los guarda, y bajo x_xtm_one lo que añade XTM One: sus propios widgets, fuentes de datos, entradas y pestañas. Se comprueba al guardar.",
+  "Tool that reads": "Herramienta de lectura",
+  "Section (optional)": "Sección (opcional)",
+  "Table written as": "Tabla escrita como",
+  "Every": "Cada",
+  "Read with your access and shown to everyone who opens the dashboard, even those who could not read it themselves.": "Se lee con tu acceso y se muestra a todos los que abren el panel, incluso a quienes no podrían leerlo por sí mismos.",
+  "Integration tool": "Herramienta de integración",
+  "Knowledge base table": "Tabla de una base de conocimiento",
+  "On the page, with each viewer's access": "En la página, con el acceso de cada lector",
+  "On the server, every…": "En el servidor, cada…",
+  "On the server, when asked": "En el servidor, cuando se pida",
+  "5 minutes": "5 minutos",
+  "15 minutes": "15 minutos",
+  "6 hours": "6 horas",
+  "JSON lines": "Líneas JSON",
+  "Markdown table": "Tabla Markdown",
+  "Read on the server in a moment.": "Se leerá en el servidor en un momento.",
+  "Refresh now": "Actualizar ahora"
 }

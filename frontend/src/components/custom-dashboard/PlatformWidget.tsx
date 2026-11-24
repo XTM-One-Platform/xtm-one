@@ -26,7 +26,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 import { lazy, Suspense, useEffect, useMemo } from "react";
 import { Spinner } from "@filigran/design-system";
-import { ExternalLink, MessageCircleQuestion, Radar } from "lucide-react";
+import { ExternalLink, MessageCircleQuestion, Radar, RefreshCw } from "lucide-react";
 
 import { useWidgetSize } from "@/components/dashboard-grid/widget-size-context";
 import { AiActionGate } from "@/components/ui/ai-disabled";
@@ -34,11 +34,11 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDashboardAccess } from "@/hooks/api/dashboard-access";
-import { useAskDataSource, useDataSourceData, useWidgetData } from "@/hooks/api/useCustomDashboardApi";
+import { useAskDataSource, useDataSourceData, useRefreshSnapshot, useWidgetData } from "@/hooks/api/useCustomDashboardApi";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useFormatter } from "@/i18n";
 import { safeExternalUrl, timeAgo } from "@/lib/utils";
-import type { WidgetDataErrorCode } from "@/types";
+import type { WidgetDataErrorCode, WidgetSnapshot } from "@/types";
 
 import { accentStyle } from "./charts/colors";
 import { presentedOptions } from "./definition";
@@ -201,7 +201,8 @@ function LiveWidget({ widget, dashboardId }: { widget: PlatformDashboardWidget |
       <Card className="flex h-full min-h-28 flex-col justify-center gap-2 border-dashed p-5" data-error-code={code}>
         <span className="flex items-center gap-2 content-compact text-default-secondary">
           {code === "running" && <Spinner size="sm" tone="inherit" />}
-          {t_i18n(ERROR_MESSAGES[code], { platform })}
+          {/* A source refreshed on the server that was not read yet waits for the platform, not for an agent. */}
+          {code === "running" && data?.snapshot ? t_i18n("Read on the server in a moment.") : t_i18n(ERROR_MESSAGES[code], { platform })}
         </span>
         {asks && widget.kind === "data" && code !== "running" && <AskButton sourceId={widget.sourceId} />}
         <OpenLink href={safeExternalUrl(data?.open_url)} platform={platform} />
@@ -250,11 +251,15 @@ function LiveWidget({ widget, dashboardId }: { widget: PlatformDashboardWidget |
         </Suspense>
       </div>
       {asks && widget.kind === "data" && <AskButton sourceId={widget.sourceId} again />}
-      {footer && (
-        <span className="mt-auto min-w-0 truncate content-caption text-default-secondary">
-          {widget.kind === "platform" ? `${platform} · ` : null}
-          {t_i18n("Updated {when}", { when: timeAgo(data.fetched_at, locale) })}
-        </span>
+      {data.snapshot ? (
+        <SnapshotLine widget={widget} snapshot={data.snapshot} />
+      ) : (
+        footer && (
+          <span className="mt-auto min-w-0 truncate content-caption text-default-secondary">
+            {widget.kind === "platform" ? `${platform} · ` : null}
+            {t_i18n("Updated {when}", { when: timeAgo(data.fetched_at, locale) })}
+          </span>
+        )
       )}
     </Card>
   );
@@ -280,4 +285,37 @@ export function DataWidget({ widget }: { widget: DataDashboardWidget }) {
     );
   }
   return <LiveWidget widget={widget} dashboardId={live.dashboardId} />;
+}
+
+/**
+ * A widget drawing a source refreshed on the server says whose access read it
+ * and when (decision D1), and offers Refresh now on the page of a signed-in
+ * viewer; a published link's snapshot says it on its own page.
+ */
+function SnapshotLine({ widget, snapshot }: { widget: DashboardWidget; snapshot: WidgetSnapshot }) {
+  const { t_i18n, locale } = useFormatter();
+  const { dashboardId } = useDashboardLive() ?? {};
+  const access = useDashboardAccess();
+  const refresh = useRefreshSnapshot(dashboardId);
+  const sourceId = widget.kind === "data" || widget.kind === "platform" ? widget.sourceId : undefined;
+  if (!snapshot.refreshed_at) return null;
+  return (
+    <span className="mt-auto flex min-w-0 items-center gap-1 content-caption text-default-secondary" data-testid="widget.snapshot">
+      <span className="min-w-0 truncate">
+        {t_i18n("Data read {time} with {name}'s access.", { time: timeAgo(snapshot.refreshed_at, locale), name: snapshot.publisher ?? "?" })}
+      </span>
+      {access.kind === "session" && sourceId && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6 shrink-0 px-0"
+          aria-label={t_i18n("Refresh now")}
+          disabled={refresh.isPending}
+          onClick={() => refresh.mutate(sourceId)}
+        >
+          <RefreshCw className={refresh.isPending ? "h-3 w-3 animate-spin" : "h-3 w-3"} />
+        </Button>
+      )}
+    </span>
+  );
 }
