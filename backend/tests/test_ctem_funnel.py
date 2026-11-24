@@ -83,7 +83,7 @@ def test_exploitable_without_its_count_is_not_available():
 
 
 @pytest.mark.parametrize(
-    "key,category", [("exposed", "assets"), ("business_impact", "crown_jewels"), ("policy", "prioritization_policy")]
+    "key,category", [("exposed", "assets"), ("business_impact", "primary_assets"), ("policy", "prioritization_policy")]
 )
 def test_organization_layers_are_not_configured_until_their_fields_exist(key, category):
     layer = _layer(build_funnel(known=100, relevant=50, exploitable_known=9, exploitable_relevant=5), key)

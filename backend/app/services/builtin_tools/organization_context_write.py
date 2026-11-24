@@ -911,7 +911,7 @@ def build_organization_context_write_tools(
                 "properties": {
                     "section": {
                         "type": "string",
-                        "enum": ["assets", "asset_groups", "software", "crown_jewels", "pirs"],
+                        "enum": ["assets", "asset_groups", "software", "primary_assets", "pirs"],
                     },
                     "source": {"type": "string", "enum": _import_sources},
                     "filters": {"type": "object", "description": "The filters the dialog offers for that source."},
@@ -1016,7 +1016,7 @@ def build_organization_context_write_tools(
             name=ORGANIZATION_VERSIONS_TOOL,
             description=(
                 "The saved versions of your organization's profile, newest first (version, source, author, "
-                "crown jewel count, provenance); with version, that version's whole profile."
+                "primary asset count, provenance); with version, that version's whole profile."
             ),
             input_schema={
                 "type": "object",

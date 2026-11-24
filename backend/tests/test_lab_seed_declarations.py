@@ -2637,7 +2637,7 @@ def test_the_lab_answers_the_opencrq_sync_plan_from_its_fixture(monkeypatch):
     assert dry.applied is False and dry.errors == [] and dry.version == 3
     assert {kind: len(dry.plan[kind]) for kind in kinds} == dict.fromkeys(kinds, 1)
     assert dry.plan["pushed_to_opencrq"] == []  # #1591: nothing is written to OpenCRQ
-    assert dry.plan["not_in_opencrq"] == [{"crown_jewel": "Legacy billing", "opencrq_asset_id": "lab-asset-retired"}]
+    assert dry.plan["not_in_opencrq"] == [{"primary_asset": "Legacy billing", "opencrq_asset_id": "lab-asset-retired"}]
     assert dry.plan["ambiguous"] == ["Data warehouse"]
     assert sync(False).plan == dry.plan
 

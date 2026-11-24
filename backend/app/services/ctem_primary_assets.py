@@ -8,8 +8,8 @@ follow: software named by a signal -> the inventory assets that run it (the
 asset's software list, the software an endpoint source such as Intune,
 Defender or OpenAEV reports per device, and the operating system family the
 device reports) -> the asset groups they belong to -> the primary assets
-(crown jewels) the record or the group supports through
-``organization_crown_jewel_links`` (sources ``manual``, ``opencrq``, ``rule``;
+(primary assets) the record or the group supports through
+``organization_primary_asset_links`` (sources ``manual``, ``opencrq``, ``rule``;
 a person's removal of a synced link is a tombstone and reaches nothing).
 
 :func:`load_index` reads it once per organization (only the assets that
@@ -155,13 +155,13 @@ async def load_index(db: AsyncSession, organization_id: uuid.UUID) -> PrimaryAss
         OrganizationAssetGroup,
         OrganizationAssetGroupMember,
         OrganizationAssetRecord,
-        OrganizationCrownJewelLink,
+        OrganizationPrimaryAssetLink,
     )
 
-    link = OrganizationCrownJewelLink
+    link = OrganizationPrimaryAssetLink
     rows = (
         await db.execute(
-            select(link.record_id, link.group_id, link.crown_jewel_key, link.source, link.roles, link.via).where(
+            select(link.record_id, link.group_id, link.primary_asset_key, link.source, link.roles, link.via).where(
                 link.organization_id == organization_id, link.removed.is_(False)
             )
         )
@@ -249,25 +249,25 @@ async def asset_primary_assets(
         OrganizationAssetGroup,
         OrganizationAssetGroupMember,
         OrganizationAssetRecord,
-        OrganizationCrownJewelLink,
+        OrganizationPrimaryAssetLink,
     )
 
     rec, link, member, grp = (
         OrganizationAssetRecord,
-        OrganizationCrownJewelLink,
+        OrganizationPrimaryAssetLink,
         OrganizationAssetGroupMember,
         OrganizationAssetGroup,
     )
     direct = (
         await db.execute(
-            select(link.crown_jewel_key, link.source, link.roles, link.via, rec.name)
+            select(link.primary_asset_key, link.source, link.roles, link.via, rec.name)
             .join(rec, rec.id == link.record_id)
             .where(link.organization_id == organization_id, rec.asset_id == asset_id, link.removed.is_(False))
         )
     ).all()
     grouped = (
         await db.execute(
-            select(link.crown_jewel_key, link.source, link.roles, link.via, grp.name)
+            select(link.primary_asset_key, link.source, link.roles, link.via, grp.name)
             .join(grp, grp.id == link.group_id)
             .join(member, member.group_id == grp.id)
             .join(rec, rec.id == member.record_id)

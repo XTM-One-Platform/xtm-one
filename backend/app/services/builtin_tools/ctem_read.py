@@ -253,7 +253,7 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         dataclasses.replace(
             by_name["get_ctem_case"],
             description=(
-                "Read one CTEM case: its fix, member issues (source product and id), assets, crown jewels, "
+                "Read one CTEM case: its fix, member issues (source product and id), assets, primary assets, "
                 "latest history, who opened it, and why each empty section is empty."
             ),
             source=_SOURCE,

@@ -44,7 +44,7 @@ PROFILE = {
     "sub_sector": "electricity distribution",
     "regions": ["FR", "DE"],
     "size": "1001-5000",
-    "crown_jewels": [
+    "primary_assets": [
         {"name": "Billing", "criticality": "medium"},
         {"name": "SCADA", "criticality": "critical"},
     ],
@@ -116,7 +116,7 @@ def test_basic_block_names_the_identity_and_indexes_every_category() -> None:
             continue
         assert f"- {category.name} (" in text, f"{category.name} missing from the index"
     assert "- primary_assets (" in text and "): 2 rows;" in text
-    assert "- crown_jewels (" not in text, "#1591: the deprecated alias is never announced"
+    assert "- primary_assets (" not in text, "#1591: the deprecated alias is never announced"
     assert ": 1 row;" in text
     assert "- tracked_organizations (tracked organizations): 3 rows" in text
     assert "- software (" in text and "): not filled" in text
@@ -139,7 +139,7 @@ def test_the_index_is_generated_from_the_model() -> None:
     # The object fields read as a category (#11543, #1691): their rules or settings are their rows.
     assert {c.field for c in cats.CATEGORIES if c.field} == list_fields | {"prioritization_policy", "attack_surface"}
     assert {"primary_assets", "software", "pirs", "tracked_organizations"} <= set(cats.CATEGORY_NAMES)
-    assert "crown_jewels" not in cats.CATEGORY_NAMES, "#1591: a deprecated alias, never a category of its own"
+    assert "primary_assets" not in cats.CATEGORY_NAMES, "#1591: a deprecated alias, never a category of its own"
     assert "tech_stack" not in cats.CATEGORY_NAMES, "#1495: retired, no alias"
     assert {"assets_exposure", "prioritization_policy", "enterprise_knowledge"} <= set(cats.CATEGORY_NAMES)
 
@@ -153,7 +153,7 @@ def test_the_basic_block_cap_holds_whatever_the_list_lengths() -> None:
         **PROFILE,
         "name": "N" * 200,
         "regions": ["FR", "DE", "US", "GB", "JP", "AU", "SG", "SA", "ES", "IT"] * 3,
-        "crown_jewels": [{"name": f"Jewel {i} " + "x" * 150, "criticality": "high"} for i in range(200)],
+        "primary_assets": [{"name": f"Jewel {i} " + "x" * 150, "criticality": "high"} for i in range(200)],
         "tech_stack": [{"product": f"Product {i}", "vendor": "Vendor", "cpe": "cpe:2.3:a:v:p:1"} for i in range(500)],
         "pir_ids": [f"pir-{i}" for i in range(100)],
         "pir_names": {f"pir-{i}": "P" * 250 for i in range(100)},
@@ -181,9 +181,9 @@ def test_the_basic_block_cap_holds_whatever_the_list_lengths() -> None:
         (["pirs"], ["software"], [], []),
         # #1495: tech_stack is retired with no alias (Sam, 24 Nov 2026): a stored selection naming it drops it.
         (["pirs"], ["tech_stack"], None, []),
-        # #1591: a stored selection naming the deprecated crown_jewels reads as primary_assets.
-        (["pirs"], [], ["crown_jewels"], ["primary_assets"]),
-        (["crown_jewels", "primary_assets"], None, None, ["primary_assets"]),
+        # #1591: a stored selection naming the deprecated primary_assets reads as primary_assets.
+        (["pirs"], [], ["primary_assets"], ["primary_assets"]),
+        (["primary_assets", "primary_assets"], None, None, ["primary_assets"]),
         ([], ["tech_stack", "gone_from_the_model", "software"], None, ["software"]),
     ],
 )
@@ -205,7 +205,7 @@ def test_check_categories_reads_lists_strings_and_refuses_unknown_names() -> Non
     assert check_categories("inherit") is None
     assert check_categories("none") == []
     assert check_categories("Software, primary_assets") == ["software", "primary_assets"]
-    assert check_categories("crown_jewels") == ["primary_assets"], "#1591: the deprecated alias answers primary_assets"
+    assert check_categories("primary_assets") == ["primary_assets"], "#1591: the deprecated alias answers primary_assets"
     with pytest.raises(ValueError, match="tech_stack unknown"):
         check_categories("Tech_Stack, software")
     with pytest.raises(ValueError, match="software"):

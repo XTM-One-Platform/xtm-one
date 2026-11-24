@@ -41,7 +41,7 @@ def test_pir_details_are_settable_and_read_with_the_pir() -> None:
                         "question": "Who targets our payment rails?",
                         "owner": "CTI lead",
                         "review_cadence": "quarterly",
-                        "crown_jewels": ["Payments"],
+                        "primary_assets": ["Payments"],
                     }
                 },
                 "basis": "PIR workshop",
@@ -61,7 +61,7 @@ def test_pir_details_are_settable_and_read_with_the_pir() -> None:
         "question": "Who targets our payment rails?",
         "owner": "CTI lead",
         "review_cadence": "quarterly",
-        "crown_jewels": ["Payments"],
+        "primary_assets": ["Payments"],
     }
     assert rows[1] == {"id": "p2", "name": ""}
 

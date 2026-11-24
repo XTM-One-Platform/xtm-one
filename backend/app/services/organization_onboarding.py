@@ -38,7 +38,7 @@ ONBOARDING_GROUPS: tuple[tuple[str, ...], ...] = (
     ("sector",),
     ("regions",),
     ("size",),
-    ("crown_jewels",),
+    ("primary_assets",),
     ("tech_stack",),
     ("pir_ids",),
     ("currency", "loaded_hourly_rate"),
@@ -52,8 +52,8 @@ FIELD_HINTS: dict[str, str] = {
     "sector": "the sector, e.g. Finance, Energy, Technology (text; sub_sector optional)",
     "regions": 'the countries of operation (list of ISO 3166-1 alpha-2 codes, e.g. ["FR", "US"])',
     "size": "the number of employees (one of 1-50, 51-250, 251-1000, 1001-5000, 5001-20000, 20000+)",
-    "crown_jewels": (
-        "the crown jewels and the business services they carry (list of {name, business_service, owner, "
+    "primary_assets": (
+        "the primary assets and the business services they carry (list of {name, business_service, owner, "
         "criticality: low|medium|high|critical})"
     ),
     "tech_stack": "the main products in use (list of {product, vendor})",

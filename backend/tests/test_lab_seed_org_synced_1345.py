@@ -43,7 +43,7 @@ def test_saves_one_disabled_sync_per_section_and_synced_rows_with_their_sync_id(
 
     posted = [c[2] for c in calls if c[:2] == ("POST", "/organization-context/syncs")]
     assert [(p["section"], p["source"]) for p in posted] == [
-        ("crown_jewels", "opencrq"),
+        ("primary_assets", "opencrq"),
         ("software", "openaev"),
     ]
     assert all(p["enabled"] is False and p["source"] in SECTION_SOURCES[p["section"]] for p in posted)
@@ -51,7 +51,7 @@ def test_saves_one_disabled_sync_per_section_and_synced_rows_with_their_sync_id(
     (profile,) = [c[2]["profile"] for c in calls if c[0] == "PUT"]
     assert profile["name"] == "Lab sample organization"
     parsed = org_context.parse_profile(profile)
-    for section, sync in (("crown_jewels", "sync-1"), ("tech_stack", "sync-2")):
+    for section, sync in (("primary_assets", "sync-1"), ("tech_stack", "sync-2")):
         rows = getattr(parsed, section)
         synced = [r for r in rows if r.external_id]
         typed = [r for r in rows if not r.external_id]
@@ -62,13 +62,13 @@ def test_saves_one_disabled_sync_per_section_and_synced_rows_with_their_sync_id(
 
 def test_keeps_an_existing_sync_of_the_section_and_source():
     calls: list = []
-    existing = [{"id": "kept-1", "section": "crown_jewels", "source": "opencrq"}]
+    existing = [{"id": "kept-1", "section": "primary_assets", "source": "opencrq"}]
     ns = _lab_namespace(*NAMES, api=_api(calls, existing))
     ns["seed_org_synced"]("t", BASE)
     posted = [c[2]["section"] for c in calls if c[:2] == ("POST", "/organization-context/syncs")]
     assert posted == ["software"]
     (profile,) = [c[2]["profile"] for c in calls if c[0] == "PUT"]
-    assert {r.get("sync_id") for r in profile["crown_jewels"] if r.get("external_id")} == {"kept-1"}
+    assert {r.get("sync_id") for r in profile["primary_assets"] if r.get("external_id")} == {"kept-1"}
 
 
 def test_raises_when_the_read_back_lost_the_sync_ids():
@@ -85,7 +85,7 @@ def test_raises_when_the_read_back_lost_the_sync_ids():
         return answer
 
     ns = _lab_namespace(*NAMES, api=lossy)
-    with pytest.raises(RuntimeError, match="GET /organization-context answers crown_jewels"):
+    with pytest.raises(RuntimeError, match="GET /organization-context answers primary_assets"):
         ns["seed_org_synced"]("t", BASE)
 
 

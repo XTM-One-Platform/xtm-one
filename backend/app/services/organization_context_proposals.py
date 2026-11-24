@@ -75,7 +75,7 @@ PROPOSABLE_PRODUCT_PATHS: tuple[str, ...] = ("shipped_products",)
 #: The knowledge bases of the organization's procedures (#11543), linked by an agent as by the form (#1691).
 #: Linking grants nothing: a reader only searches the linked bases it can read already.
 PROPOSABLE_KNOWLEDGE_PATHS: tuple[str, ...] = ("enterprise_knowledge",)
-#: What each PIR asks, its owner, cadence and crown jewels, by PIR id (#1773). Not a contract field.
+#: What each PIR asks, its owner, cadence and primary assets, by PIR id (#1773). Not a contract field.
 PROPOSABLE_PIR_PATHS: tuple[str, ...] = ("pir_details",)
 #: The row fields an agent never writes through the profile (#1752): the asset records own them (#1543),
 #: each with its own lock and history. Field -> the ``upsert_organization_rows`` section that writes it.

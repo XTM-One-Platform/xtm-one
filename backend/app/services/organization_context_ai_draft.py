@@ -124,7 +124,7 @@ class Evidence:
     texts: dict[str, str] = field(default_factory=dict)
     #: platform facts already mapped to profile fields (the deterministic draft's).
     platform_values: dict[str, Any] = field(default_factory=dict)
-    #: OpenCRQ supporting assets the crown jewels may link to: lower-cased name -> asset ids.
+    #: OpenCRQ supporting assets the primary assets may link to: lower-cased name -> asset ids.
     opencrq_assets: dict[str, list[str]] = field(default_factory=dict)
     #: OpenCTI PIR ids that exist, the only ones a proposal may name.
     known_pir_ids: list[str] = field(default_factory=list)
@@ -282,7 +282,7 @@ async def read_platforms(db: AsyncSession, user_id: uuid.UUID, tenant_id: str, e
     for platform, values in by_platform.items():
         evidence.texts[platform] = json.dumps(values, default=str)
     evidence.known_pir_ids = list(facts.pir_ids)
-    for jewel in facts.crown_jewels:
+    for jewel in facts.primary_assets:
         if jewel.opencrq_asset_id:
             evidence.opencrq_assets.setdefault(jewel.name.casefold(), []).append(jewel.opencrq_asset_id)
 
@@ -317,7 +317,7 @@ Rules:
 - Fields and their types:
   name: string; sector, sub_sector: string; regions: ISO 3166-1 alpha-2 codes;
   size: one of "1-50","51-250","251-1000","1001-5000","5001-20000","20000+" (employees);
-  crown_jewels: [{"name","business_service","owner","criticality": low|medium|high|critical}];
+  primary_assets: [{"name","business_service","owner","criticality": low|medium|high|critical}];
   tech_stack: [{"vendor","product","cpe"}] (cpe only when you are sure of it, else "");
   pir_ids: ids from the known PIR list only (a PIR worth creating goes to suggested_pirs);
   risk_appetite.annual_loss_threshold, risk_appetite.approval_threshold, loaded_hourly_rate: numbers in the
@@ -396,7 +396,7 @@ def _is_empty(path: str, value: Any) -> bool:
     return value is None or value == "" or value == [] or value == {}
 
 
-def _link_crown_jewels(value: Any, evidence: Evidence) -> Any:
+def _link_primary_assets(value: Any, evidence: Evidence) -> Any:
     """Link a jewel to the OpenCRQ asset its name matches exactly once (the OpenCRQ sync rule)."""
     if not isinstance(value, list):
         return value
@@ -433,8 +433,8 @@ def parse_proposals(
             notes.append(f"'{path}' left out: its source '{source}' was not given")
             continue
         value = raw.get("value")
-        if path == "crown_jewels":
-            value = _link_crown_jewels(value, evidence)
+        if path == "primary_assets":
+            value = _link_primary_assets(value, evidence)
         if path == "pir_ids" and isinstance(value, list):
             unknown = [p for p in value if str(p) not in evidence.known_pir_ids]
             if unknown:

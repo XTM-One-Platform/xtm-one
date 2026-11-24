@@ -8,7 +8,7 @@ from app.services import fleet_setup_status as s
 from app.services.organization_setup_prompt import STEPS
 
 _FULL_PROFILE = s.ProfileFacts(
-    saved=True, crown_jewels=3, tech_stack=5, ticketing_target=True, scope_min_criticality="high"
+    saved=True, primary_assets=3, tech_stack=5, ticketing_target=True, scope_min_criticality="high"
 )
 _LOOP_ON = s.LoopFleetFacts(
     fleet_id="f1",
@@ -60,13 +60,13 @@ def test_a_step_already_in_place_reads_ready_and_is_still_resumed_on() -> None:
 @pytest.mark.parametrize(
     "profile",
     [
-        s.ProfileFacts(saved=True, crown_jewels=0, tech_stack=4),
-        s.ProfileFacts(saved=True, crown_jewels=2, tech_stack=0),
-        s.ProfileFacts(saved=False, crown_jewels=2, tech_stack=4),
+        s.ProfileFacts(saved=True, primary_assets=0, tech_stack=4),
+        s.ProfileFacts(saved=True, primary_assets=2, tech_stack=0),
+        s.ProfileFacts(saved=False, primary_assets=2, tech_stack=4),
     ],
-    ids=["no-crown-jewel", "no-tech-stack", "never-saved"],
+    ids=["no-primary-asset", "no-tech-stack", "never-saved"],
 )
-def test_the_organization_step_needs_a_saved_profile_with_crown_jewels_and_a_tech_stack(
+def test_the_organization_step_needs_a_saved_profile_with_primary_assets_and_a_tech_stack(
     profile: s.ProfileFacts,
 ) -> None:
     assert _states(_status(profile=profile))["organization"] == s.STEP_TODO

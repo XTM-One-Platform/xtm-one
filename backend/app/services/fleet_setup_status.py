@@ -45,7 +45,7 @@ LOOP_MODULES: tuple[str, ...] = ("opencti", "openaev", "opencrq")
 DEGRADED_WITHOUT: dict[str, str] = {
     "opencti": "no threat or vulnerability signals from intelligence; cases start only from other sources",
     "openaev": "no validation or re-test; cases close on ticket evidence instead of a passing test",
-    "opencrq": "no risk figures; the scope gate reads crown jewels only and decisions carry no expected loss",
+    "opencrq": "no risk figures; the scope gate reads primary assets only and decisions carry no expected loss",
 }
 
 STEP_DONE = "done"
@@ -64,7 +64,7 @@ class ProfileFacts:
     """What the Organization step needs from the saved profile."""
 
     saved: bool = False
-    crown_jewels: int = 0
+    primary_assets: int = 0
     tech_stack: int = 0
     ticketing_target: bool = False
     scope_min_criticality: str = ""
@@ -143,10 +143,10 @@ def setup_status(
     connected = [m for m in LOOP_MODULES if m in set(modules)]
     live: dict[str, tuple[bool, dict[str, Any]]] = {
         "organization": (
-            profile.saved and profile.crown_jewels > 0 and profile.tech_stack > 0,
+            profile.saved and profile.primary_assets > 0 and profile.tech_stack > 0,
             {
                 "saved": profile.saved,
-                "crown_jewels": profile.crown_jewels,
+                "primary_assets": profile.primary_assets,
                 "tech_stack": profile.tech_stack,
                 "ticketing_target": profile.ticketing_target,
                 "scope_min_criticality": profile.scope_min_criticality,

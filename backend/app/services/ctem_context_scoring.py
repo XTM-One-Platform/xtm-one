@@ -38,11 +38,11 @@ from app.services.ctem_scoring import band
 #: The context fields each stage is judged against, by contract path
 #: (``organization_context.CONTRACT_FIELDS``).
 STAGE_CONTEXT_FIELDS: dict[str, tuple[str, ...]] = {
-    "scoping": ("crown_jewels", "tech_stack", "sector", "regions"),
+    "scoping": ("primary_assets", "tech_stack", "sector", "regions"),
     "discovery": ("pir_ids", "sector", "regions"),
-    "prioritization": ("tech_stack", "crown_jewels", "pir_ids"),
-    "validation": ("crown_jewels", "tech_stack"),
-    "remediation": ("crown_jewels", "risk_appetite.approval_threshold", "ticketing"),
+    "prioritization": ("tech_stack", "primary_assets", "pir_ids"),
+    "validation": ("primary_assets", "tech_stack"),
+    "remediation": ("primary_assets", "risk_appetite.approval_threshold", "ticketing"),
 }
 
 #: Every field a stage reads, in contract order, for the "partial" notice.

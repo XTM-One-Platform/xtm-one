@@ -29,7 +29,7 @@ call; the store of later slices persists what it answers.
    version across sources, with its sources and first and last seen; an
    unknown version is ``unknown``, never empty.
 4. **Sections** (:func:`dedupe_section`): asset groups and the name-keyed
-   sections (software, crown jewels, PIRs, tracked
+   sections (software, primary assets, PIRs, tracked
    organizations) use the same matching with their own identifiers.
 """
 
@@ -793,7 +793,7 @@ SECTION_IDENTITY: dict[
     "assets": (DEFAULT_KEY_ORDER, _asset_ids, WEAK_KINDS),
     "asset_groups": (("external_reference", "name"), _group_ids, frozenset()),
     "tech_stack": (("cpe", "product", "name"), _tech_ids, frozenset()),
-    "crown_jewels": (("platform_id", "name"), _platform_ids("opencrq_asset_id"), frozenset()),
+    "primary_assets": (("platform_id", "name"), _platform_ids("opencrq_asset_id"), frozenset()),
     "pirs": (("platform_id", "name"), _platform_ids("id"), frozenset()),
     "tracked_organizations": (("name",), _name_ids, frozenset()),
 }

@@ -440,7 +440,7 @@ _INTEGRATIONS = "/integrations"
 _PROFILE_FIELD_TAB: dict[str, tuple[str, str]] = {
     "sector": ("identity", "identity"),
     "regions": ("identity", "identity"),
-    "crown_jewels": ("business", "crown_jewels"),
+    "primary_assets": ("business", "primary_assets"),
     "tracked_organizations": ("business", "tracked_organizations"),
     "tech_stack": ("technology", "tech_stack"),
 }
@@ -463,7 +463,7 @@ _NEEDS_OPENCRQ = _prereq("integration:opencrq", "OpenCRQ connected for you", _IN
 _NEEDS_SECTOR = _prereq("profile:sector", "Sector in the organization profile", profile_fix_route("sector"))
 _NEEDS_REGIONS = _prereq("profile:regions", "Regions in the organization profile", profile_fix_route("regions"))
 _NEEDS_JEWELS = _prereq(
-    "profile:crown_jewels", "Primary assets in the organization profile", profile_fix_route("crown_jewels")
+    "profile:primary_assets", "Primary assets in the organization profile", profile_fix_route("primary_assets")
 )
 _NEEDS_TECH = _prereq("profile:tech_stack", "Technology in the organization profile", profile_fix_route("tech_stack"))
 _SWITCHED_ON = _prereq("manual", "An administrator switches each automation on", "")

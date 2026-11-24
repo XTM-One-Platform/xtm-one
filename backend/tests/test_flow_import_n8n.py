@@ -254,7 +254,7 @@ def test_an_or_condition_chains_on_the_false_branch():
         _webhook_flow(
             {
                 "leftValue": "={{ $json.body.asset }}",
-                "rightValue": "crown-jewel",
+                "rightValue": "primary-asset",
                 "operator": {"type": "string", "operation": "contains"},
             },
             combinator="or",

@@ -818,10 +818,10 @@ async def _signal_members(db: AsyncSession, *, organization_id: uuid.UUID, user_
             external_id=str(s.id),
             name=(s.subject_label or s.subject_ref or s.trigger_path)[:300],
             assets=(s.subject_ref,) if s.subject_kind == "asset" else (),
-            crown_jewels=tuple(
+            primary_assets=tuple(
                 str(j.get("name"))
                 for j in ((s.decision or {}).get("scope") or {}).get("sources") or []
-                if isinstance(j, dict) and j.get("from") == "crown_jewel" and j.get("name")
+                if isinstance(j, dict) and j.get("from") == "primary_asset" and j.get("name")
             ),
             first_seen_at=s.first_seen_at,
         )
