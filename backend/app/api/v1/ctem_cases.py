@@ -399,11 +399,8 @@ async def _delete(db: AsyncSession, admin: User, cases: list[Any], reason: str |
         if case_delete.is_lock_wait(exc):
             raise HTTPException(status_code=409, detail=case_delete.LOCK_BUSY_DETAIL) from exc
         raise
-    released = result.pop("released_signals", [])
     # The released signals are decided again after the commit, outside this request (#1950).
-    case_delete.schedule_decide_released(released)
-    result["released"] = len(released)
-    return result
+    return case_delete.hand_off_released(result)
 
 
 @router.post("/bulk-delete")

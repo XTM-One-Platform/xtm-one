@@ -299,6 +299,19 @@ def schedule_decide_released(signal_ids: list[uuid.UUID]) -> asyncio.Task[int] |
     return task
 
 
+def hand_off_released(result: dict[str, Any]) -> dict[str, Any]:
+    """After the commit of :func:`delete_cases`: schedule the re-decision of its released signals.
+
+    Every caller (the REST route, the ``delete_ctem_cases`` agent tool) calls it once the
+    delete committed. It drops the ids from *result* and answers it with ``released``
+    (their count), so no caller leaves released signals ``new`` or echoes thousands of ids.
+    """
+    released = result.pop("released_signals", [])
+    schedule_decide_released(released)
+    result["released"] = len(released)
+    return result
+
+
 async def delete_cases(
     db: AsyncSession,
     cases: list[CtemCase],
