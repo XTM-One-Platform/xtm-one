@@ -89,7 +89,7 @@ const SOURCE_SCHEDULE_LABELS = {
 /** The rows a plan touches, per section, as ICU plurals (UX r1 B6). @i18n-keys */
 const SECTION_COUNT_LABELS = {
   crown_jewels: "{count, plural, one {# crown jewel} other {# crown jewels}}",
-  tech_stack: "{count, plural, one {# tech stack entry} other {# tech stack entries}}",
+  tech_stack: "{count, plural, one {# software entry} other {# software entries}}",
   ai_systems: "{count, plural, one {# AI system} other {# AI systems}}",
   assets_exposure: "{count, plural, one {# asset} other {# assets}}",
   asset_groups: "{count, plural, one {# asset group} other {# asset groups}}",

@@ -33,7 +33,7 @@ export const SYNC_SECTION_LABELS = {
   assets: "Assets",
   asset_groups: "Asset groups",
   ai_systems: "AI systems",
-  tech_stack: "Tech stack",
+  tech_stack: "Software",
   crown_jewels: "Crown jewels",
   pirs: "PIRs",
 } as const satisfies Record<ImportSectionKey | "all", string>;

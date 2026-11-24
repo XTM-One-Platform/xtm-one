@@ -447,7 +447,7 @@ describe("OrganizationSection", () => {
     expect(screen.getAllByRole("combobox", { name: "Criticality" })).toHaveLength(1);
   });
 
-  it("reads the tech stack rows as text on CTEM > Inventory and edits a row as fields (#1178)", async () => {
+  it("reads the software rows as text on CTEM > Inventory and edits a row as fields (#1178)", async () => {
     const base = get.getMockImplementation()!;
     get.mockImplementation(async (path: string) =>
       path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: [{ product: "CrowdStrike Falcon", vendor: "CrowdStrike", cpe: "" }] } } : base(path),
@@ -457,7 +457,7 @@ describe("OrganizationSection", () => {
     // CPE and Version (CTEM-11, #928) are both empty: each reads Not set.
     expect(within(tech).getAllByText("Not set")).toHaveLength(2);
     expect(within(tech).queryByRole("textbox")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /Edit Tech stack/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Edit Software/ }));
     fireEvent.click(await screen.findByText("CrowdStrike Falcon"));
     expect(await screen.findByRole("textbox", { name: "CPE (optional)" })).toBeTruthy();
   });
@@ -496,7 +496,7 @@ describe("OrganizationSection", () => {
     renderPage("technology");
     // Read mode names the row that needs attention on the card header.
     expect((await screen.findByTestId("settings.organization.attention-tech_stack")).textContent).toBe("1 needs attention");
-    fireEvent.click(screen.getByRole("button", { name: /Edit Tech stack/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Edit Software/ }));
     const bar = await screen.findByTestId("settings.organization.list-save-bar");
     // 25 rows a page, never the 150.
     expect(screen.getAllByTestId("settings.organization.tech-row")).toHaveLength(25);
@@ -610,7 +610,7 @@ describe("OrganizationSection", () => {
     renderPage("technology");
     // Paste a list waits for the card's Edit.
     expect(screen.queryByTestId("settings.organization.paste-tech_stack")).toBeNull();
-    fireEvent.click(await screen.findByRole("button", { name: /Edit Tech stack/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Edit Software/ }));
     const bar = await screen.findByTestId("settings.organization.list-save-bar");
     fireEvent.click(screen.getByTestId("settings.organization.paste-tech_stack"));
     const dialog = await screen.findByTestId("settings.organization.paste-dialog");
@@ -644,7 +644,7 @@ describe("OrganizationSection", () => {
     ]);
   });
 
-  it("reads and pastes the version the organization runs on a tech stack row, and saves it only when set (CTEM-11, #928)", async () => {
+  it("reads and pastes the version the organization runs on a software row, and saves it only when set (CTEM-11, #928)", async () => {
     const base = get.getMockImplementation()!;
     const tech = [{ product: "Jira", vendor: "Atlassian", cpe: "", version: "9.12.2" }];
     get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: tech } } : base(path)));
@@ -652,7 +652,7 @@ describe("OrganizationSection", () => {
     renderPage("technology");
     const row = (await screen.findByText("Jira")).closest("tr")!;
     expect(within(row).getByText("9.12.2")).toBeTruthy();
-    fireEvent.click(await screen.findByRole("button", { name: /Edit Tech stack/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Edit Software/ }));
     const bar = await screen.findByTestId("settings.organization.list-save-bar");
     fireEvent.click(screen.getByTestId("settings.organization.paste-tech_stack"));
     const dialog = await screen.findByTestId("settings.organization.paste-dialog");
@@ -675,7 +675,7 @@ describe("OrganizationSection", () => {
     const tech = Array.from({ length: 60 }, (_, i) => ({ product: `Product ${String(i).padStart(3, "0")}`, vendor: "Vendor", cpe: "" }));
     get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: tech } } : base(path)));
     renderPage("technology");
-    fireEvent.click(await screen.findByRole("button", { name: /Edit Tech stack/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Edit Software/ }));
     const editor = await screen.findByTestId("settings.organization.list-editor");
     fireEvent.click(screen.getByRole("button", { name: "Add a product" }));
     const product = await screen.findByRole("textbox", { name: "Product" });
@@ -696,7 +696,7 @@ describe("OrganizationSection", () => {
         : base(path),
     );
     renderPage("technology");
-    fireEvent.click(await screen.findByRole("button", { name: /Edit Tech stack/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Edit Software/ }));
     await screen.findByTestId("settings.organization.list-save-bar");
     const marks = screen.getAllByRole("img", { name: "Vendor is empty" });
     expect(marks).toHaveLength(1);
@@ -1217,7 +1217,7 @@ describe("OrganizationSection", () => {
     await draftFromPlatforms();
     const panel = await screen.findByTestId("settings.organization.draft");
     expect(panel.textContent).toContain("Priority intelligence requirements (PIRs) from OpenCTI");
-    expect(panel.textContent).toContain("Tech stack from OpenAEV");
+    expect(panel.textContent).toContain("Software from OpenAEV");
     expect(panel.textContent).toContain("OpenCRQ could not be read");
     // The backend's error text is never shown as is.
     expect(panel.textContent).not.toContain("tenant id");

@@ -492,7 +492,7 @@ function ruleFactRow(fact: SignalRuleFact, t_i18n: ReturnType<typeof useFormatte
   }
   return {
     label: t_i18n("Source software"),
-    value: fact.checked ? t_i18n("{software}, not in the tech stack", { software: fact.software }) : fact.software,
+    value: fact.checked ? t_i18n("{software}, not in your software inventory", { software: fact.software }) : fact.software,
   };
 }
 

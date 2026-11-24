@@ -61,7 +61,7 @@ describe("CompanyContextNotice on the home dashboard", () => {
   it("names the empty fields when the context is partial, with the link", () => {
     notice({ state: "partial", missing_fields: ["tech_stack", "crown_jewels"] });
     expect(screen.getByText("Your organization context is incomplete")).toBeTruthy();
-    expect(screen.getByTestId("ctem-context-partial").textContent).toContain("Tech stack, Crown jewels and business services");
+    expect(screen.getByTestId("ctem-context-partial").textContent).toContain("Software, Crown jewels and business services");
     expect(screen.getByRole("link", { name: "Complete organization context" })).toBeTruthy();
   });
 
@@ -120,7 +120,7 @@ describe("CompanyContextNotice on a brief", () => {
     auth.dismissed = ["tech_stack"];
     notice({ state: "partial", missing_fields: ["tech_stack"] }, "brief");
     expect(screen.getByText("Organization context incomplete")).toBeTruthy();
-    expect(screen.getByTestId("ctem-context-partial").textContent).toContain("Missing: Tech stack. The analysis would be sharper with them.");
+    expect(screen.getByTestId("ctem-context-partial").textContent).toContain("Missing: Software. The analysis would be sharper with them.");
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.queryByRole("link")).toBeNull();
   });

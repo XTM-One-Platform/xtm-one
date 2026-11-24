@@ -103,7 +103,7 @@ describe("CtemStageDetail header", () => {
     page();
     expect(screen.getByTestId("ctem-score-quantitative").textContent).toContain("64");
     expect(screen.getByTestId("ctem-score-qualitative").textContent).toContain("50");
-    expect(screen.getByTestId("ctem-context-partial").textContent).toContain("Tech stack");
+    expect(screen.getByTestId("ctem-context-partial").textContent).toContain("Software");
     expect(screen.queryByText(/Company context is sharpening/)).toBeNull();
   });
 

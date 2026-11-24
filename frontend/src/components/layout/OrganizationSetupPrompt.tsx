@@ -38,7 +38,7 @@ export { ORGANIZATION_SETUP_PATH } from "./organization-setup-path";
 
 /** @i18n-keys */
 const WHY_TEXTS = [
-  "The loop ranks every signal against your crown jewels, tech stack and scope threshold.",
+  "The loop ranks every signal against your crown jewels, software and scope threshold.",
   "Connect your modules and security stack, choose which actions wait for a person, then preview the runs.",
   "Each step saves on its own and can be skipped; nothing runs until the last step.",
 ] as const;

@@ -63,7 +63,7 @@ describe("PrioritizationFunnel", () => {
     // What a layer removed leaves as a branch, labelled with its count and reason.
     const relevant = screen.getByTestId("ctem-flow-label-relevant");
     expect(relevant.textContent).toContain("3.7K");
-    expect(relevant.textContent).toContain("not in your tech stack");
+    expect(relevant.textContent).toContain("not in your software");
     expect(screen.getByTestId("ctem-flow-label-exploitable").textContent).toContain("not exploitable");
     expect(screen.getByText("89 CVE findings on your assets (OpenAEV)")).toBeTruthy();
     expect(screen.getByTestId("ctem-funnel-needs-action").textContent).toBe("21 vulnerabilities need action");

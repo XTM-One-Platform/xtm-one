@@ -590,7 +590,7 @@ then the existing AI assessment and facts grid unchanged.
   section read error (inline error with Retry, the rest of the page loads),
   no source configured (setup row: "Add your tech stack" to Settings >
   Organization and "Connect OpenAEV" to Integrations, A9), data but no open
-  issue (positive state "No open exposure on your stack", last grouping
+  issue (positive state "No open exposure on your software", last grouping
   time). The positive state is an all-clear only when every product
   answered: when the list carries `details_unavailable`, the line names the
   products instead ("OpenAEV could not be read, so open exposures there may
@@ -693,7 +693,7 @@ then the existing AI assessment and facts grid unchanged.
   button's tooltip (A7). Every action is reachable by Tab.
 - States: loading (table skeleton, toolbar mounted), read error (table error
   with Retry), empty (no source: the setup row of 7.1; sources but no case:
-  "No open exposure on your stack", or the products that could not be read
+  "No open exposure on your software", or the products that could not be read
   when `details_unavailable` is not empty, #12139), no results (filters match nothing, with
   "Clear all filters").
 
