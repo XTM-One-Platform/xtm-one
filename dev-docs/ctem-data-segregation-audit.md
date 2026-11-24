@@ -65,7 +65,7 @@ Before: `ctem_cases`, `ctem_case_issues`, `ctem_case_events` were keyed by
 `organization_id` and `vertical`. `POST /recompute` (admin-only) built them
 from the admin's JWT; `GET /ctem-cases`, `GET /{id}`, `PATCH /{id}` and the
 tools `list/get/create/update_ctem_case` needed only a signed-in user. Any
-user read CVEs, issue names, assets, crown jewels, CVSS / EPSS / KEV, case
+user read CVEs, issue names, assets, primary assets, CVSS / EPSS / KEV, case
 counts by state and history of the admin's view, and could change a case's
 state and owner. Live since #11592, #11605, #11609 (13 Nov 2026).
 
@@ -83,7 +83,7 @@ source products are the only judge):
   viewer's own source read (their JWT), cached per user for 5 minutes: a case
   with no visible issue is absent from the list and the counts and a 404; an
   issue they cannot see is a bare `{"restricted": true}` row; priority,
-  scores, assets and crown jewels are computed on the visible issues; a
+  scores, assets and primary assets are computed on the visible issues; a
   history line about a hidden issue says "Restricted".
 - Recompute merges (`ctem_cases.plan_recompute`): it adds and reopens what the
   caller sees open and closes a member only when the caller's read confirms

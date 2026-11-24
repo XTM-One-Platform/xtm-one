@@ -18,7 +18,7 @@ that viewer is what they see.
   member issues is visible to them (absent from lists and counts, 404 on
   read); otherwise every visible issue in full, every other member as a
   ``{"restricted": true}`` row (the OpenCTI "Restricted" pattern), the
-  priority, scores, assets and crown jewels computed on the visible issues
+  priority, scores, assets and primary assets computed on the visible issues
   only, the member count total with the restricted count, and the history
   with "Restricted" in place of an issue the viewer cannot see.
 """
@@ -124,7 +124,7 @@ class ViewerView:
 def _issue_json(issue: rules.SourceIssue) -> dict[str, Any]:
     out = asdict(issue)
     out["assets"] = list(issue.assets)
-    out["crown_jewels"] = list(issue.crown_jewels)
+    out["primary_assets"] = list(issue.primary_assets)
     out["first_seen_at"] = issue.first_seen_at.isoformat() if issue.first_seen_at else None
     return out
 
@@ -132,7 +132,7 @@ def _issue_json(issue: rules.SourceIssue) -> dict[str, Any]:
 def _issue_from_json(data: dict[str, Any]) -> rules.SourceIssue:
     data = dict(data)
     data["assets"] = tuple(data.get("assets") or ())
-    data["crown_jewels"] = tuple(data.get("crown_jewels") or ())
+    data["primary_assets"] = tuple(data.get("primary_assets") or ())
     seen = data.get("first_seen_at")
     data["first_seen_at"] = datetime.fromisoformat(seen) if seen else None
     data["version_outcomes"] = tuple(tuple(pair) for pair in data.get("version_outcomes") or ())
@@ -360,7 +360,7 @@ def _visible_issue(
         "epss": issue.epss,
         "kev": issue.kev,
         "assets": list(issue.assets),
-        "crown_jewels": list(issue.crown_jewels),
+        "primary_assets": list(issue.primary_assets),
         "first_seen_at": issue.first_seen_at.isoformat() if issue.first_seen_at else None,
         "open": row.open,
         # The version knowledge of this viewer's own OpenCTI read (CTEM-11, #946; shown by #928).
@@ -400,7 +400,7 @@ def visible_members(rows: list[CtemCaseIssue], view: ViewerView) -> list[CtemCas
 SEVERITY_PRIORITY: dict[str, str] = {"P1": "critical", "P2": "high", "P3": "medium"}
 
 #: The aggregates computed from member details: null for a viewer missing the details of an open member.
-DETAIL_AGGREGATES: tuple[str, ...] = ("asset_count", "crown_jewel_count", "kev_count", "max_cvss", "max_epss")
+DETAIL_AGGREGATES: tuple[str, ...] = ("asset_count", "primary_asset_count", "kev_count", "max_cvss", "max_epss")
 #: Why they are null: the reader repeats it instead of reading "none".
 AGGREGATES_RESTRICTED_REASON = (
     "unknown for this reader: some open issues of the case are not readable with their details "
@@ -459,7 +459,7 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         "aggregates_restricted": bool(without_details),
         "aggregates_reason": AGGREGATES_RESTRICTED_REASON if without_details else None,
         "asset_count": agg["asset_count"],
-        "crown_jewel_count": agg["crown_jewel_count"],
+        "primary_asset_count": agg["primary_asset_count"],
         "kev_count": agg["kev_count"],
         "max_cvss": agg["max_cvss"],
         "max_epss": agg["max_epss"],

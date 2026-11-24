@@ -53,7 +53,7 @@ function primaryAssetsReached(decision: CtemDecisionRecord | null | undefined): 
   const out: PrimaryAssetReached[] = [];
   const seen = new Set<string>();
   for (const source of sources) {
-    if (source.from !== "crown_jewel") continue;
+    if (source.from !== "primary_asset") continue;
     const key = keyOf(source.name);
     const chains = Array.isArray(source.chain) ? source.chain.filter(isHit) : hits.filter((h) => h.primary_asset_key === key);
     if (chains.length === 0) continue;

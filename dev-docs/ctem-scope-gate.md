@@ -16,7 +16,7 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
   A new sighting of a known signal re-runs it only when the signal is
   unmatched (`to_validate`). A failure leaves the signal `new`; it never
   refuses the signal.
-- After a profile change (assets, groups, crown jewels, owned domains, tech
+- After a profile change (assets, groups, primary assets, owned domains, tech
   stack, shipped products): the autonomous tick decides again the unmatched
   signals last decided before the newest profile version, 500 per tick
   (`recheck_parked`). A signal it confirms opens its case at the next case
@@ -49,7 +49,7 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
    external id lower-cased.
 2. **Resolution** to the organization profile: assets (`assets_exposure`,
    including the rows imported from OpenAEV and OpenCRQ, by name or external
-   id), asset groups, crown jewels (by name or `opencrq_asset_id`), and the
+   id), asset groups, primary assets (by name or `opencrq_asset_id`), and the
    tech stack for software (a product name, or the product part of a CPE),
    which adds the assets that run that product.
    **Threat subjects** (#1720, a campaign, an intrusion set, a malware): the
@@ -93,7 +93,7 @@ The scope criticality is the highest of:
 
 - the resolved assets' criticality (OpenAEV scale, `very_high` read as
   `critical`);
-- the crown jewels they run (a crown jewel's `asset_names` holds the asset or
+- the primary assets they run (a primary asset's `asset_names` holds the asset or
   its group) or that the subject names;
 - the OpenCRQ risk scenarios that hold the asset (through
   `listDerivedSupportingAssets`, joined on the OpenCRQ asset id or name).
@@ -108,7 +108,7 @@ Then, in order, each check stops at the first that fails, with its reason:
 | An unexpired accepted risk on the subject, a CVE or a product (and its scope) | watchlist, owner and expiry named |
 | CVE-bearing signal: `kev_always_in` and a KEV flag pass; else `cvss_min`, `epss_min` (an unscored value passes, noted) | watchlist, the score and minimum named |
 | `internet_exposure_required`: an internet-facing asset, or the outside lens | watchlist |
-| `min_crown_jewel_criticality` | watchlist |
+| `min_primary_asset_criticality` | watchlist |
 | `require_risk_scenario`: a risk scenario holds the subject | watchlist, or "OpenCRQ not read" with why |
 | criticality at or above `scope_min_criticality` | watchlist, the criticality and threshold named |
 
@@ -116,9 +116,9 @@ All pass: outcome `case`, state `confirmed`, with a severity.
 
 ### 3.1 Primary assets reached through the inventory (#1591, S3)
 
-`services/ctem_primary_assets.py` reads, once per organization and decision pass, the inventory assets that reach a primary asset through `organization_crown_jewel_links` (sources `manual`, `opencrq`, `rule`; a removed link reaches nothing): directly, or as a member of a linked asset group. For each it keeps what the asset runs: its own software list, its OS family (Intune, Defender) and the installed software endpoint sources report (`organization_asset_software`). A signal's software (names, CPEs, matched tech stack products) or subject key reaching such an asset adds the primary asset to `crown_jewels` with its chain (`scope.sources[].chain`: software, asset, through, through_kind, source, roles) and to `reconcile.primary_assets`; `reconcile.inventory_links_read` says the index was read. The legacy name list (`asset_names`) is still read for one release.
+`services/ctem_primary_assets.py` reads, once per organization and decision pass, the inventory assets that reach a primary asset through `organization_primary_asset_links` (sources `manual`, `opencrq`, `rule`; a removed link reaches nothing): directly, or as a member of a linked asset group. For each it keeps what the asset runs: its own software list, its OS family (Intune, Defender) and the installed software endpoint sources report (`organization_asset_software`). A signal's software (names, CPEs, matched tech stack products) or subject key reaching such an asset adds the primary asset to `primary_assets` with its chain (`scope.sources[].chain`: software, asset, through, through_kind, source, roles) and to `reconcile.primary_assets`; `reconcile.inventory_links_read` says the index was read. The legacy name list (`asset_names`) is still read for one release.
 
-Every path decides with the same index and the same OpenCRQ read: a `system` signal recorded by a listener reads OpenCRQ with the owner of the enabled OpenCRQ primary-asset sync. The per-signal path (`evaluate_after_record`, called in a loop by intake such as `record_matches`) builds the index once per session and organization and the OpenCRQ read once per session and reader, kept 5 minutes in `session.info`; the batch paths pass theirs in. `recheck_held` filters the held reasons in SQL before its batch limit, so watchlist rows held for another reason never starve them. After a sync that wrote links or changed a device's software, `recheck_held` decides again the watchlist signals held by `crown_jewel_below_policy`, `criticality_unknown` or `below_scope_threshold` (500 per call, idempotent); the case sweep then opens one case per fix key. `scope.threshold_source` says whether `scope_min_criticality` is the policy's or the default.
+Every path decides with the same index and the same OpenCRQ read: a `system` signal recorded by a listener reads OpenCRQ with the owner of the enabled OpenCRQ primary-asset sync. The per-signal path (`evaluate_after_record`, called in a loop by intake such as `record_matches`) builds the index once per session and organization and the OpenCRQ read once per session and reader, kept 5 minutes in `session.info`; the batch paths pass theirs in. `recheck_held` filters the held reasons in SQL before its batch limit, so watchlist rows held for another reason never starve them. After a sync that wrote links or changed a device's software, `recheck_held` decides again the watchlist signals held by `primary_asset_below_policy`, `criticality_unknown` or `below_scope_threshold` (500 per call, idempotent); the case sweep then opens one case per fix key. `scope.threshold_source` says whether `scope_min_criticality` is the policy's or the default.
 
 OpenCRQ Dependency Rule links come through `assetDependencies.getSupportToPrimaryLinksByPrimaryAssetId` (field `source: rule`, `ruleId`) and are stored with source `rule`; an OpenCRQ supporting asset is matched to an inventory record by its OpenCRQ id, then by name or device hostname.
 
@@ -143,12 +143,12 @@ severity; the case step sets the case's due date from it.
 
 | Field | Default | Meaning |
 |---|---|---|
-| `scope_min_criticality` | `high` | The threshold X, on the crown-jewel scale `low` to `critical` |
+| `scope_min_criticality` | `high` | The threshold X, on the primary-asset scale `low` to `critical` |
 | `require_risk_scenario` | `false` | A case also needs an OpenCRQ risk scenario; off so the loop works without OpenCRQ |
 | `sla_hours.p1`, `.p2`, `.p3` | 24, 72, 720 | Hours to fix a case of each severity |
 
 The existing fields (`cvss_min`, `epss_min`, `kev_always_in`,
-`internet_exposure_required`, `min_crown_jewel_criticality`, `exclusions`,
+`internet_exposure_required`, `min_primary_asset_criticality`, `exclusions`,
 `accepted_risks`) are honoured as section 3 says. The defaults are open
 product choices, configurable per organization.
 
@@ -160,7 +160,7 @@ Stored as `decision` on the signal (version 1), with the state:
 {
   "version": 1,
   "inputs": {"trigger_path", "lens", "subject": {"kind", "ref"}, "source_provider", "verdict", "cves", "related_signals": [{"id", "lens", "provider", "verdict"}]},
-  "reconcile": {"keys", "assets", "asset_groups", "crown_jewels_named", "tech_stack", "lenses", "confidence", "proven", "contradicted_by"},
+  "reconcile": {"keys", "assets", "asset_groups", "primary_assets_named", "tech_stack", "lenses", "confidence", "proven", "contradicted_by"},
   "scope": {"criticality", "sources": [{"from", "name", "criticality"}], "threshold", "require_risk_scenario", "opencrq": {"connected", "note"}, "risk_scenarios": [{"id", "name"}]},
   "policy_checks": [{"rule", "value", "threshold", "passed"}],
   "severity": "P1 | P2 | P3 | null",
@@ -168,7 +168,7 @@ Stored as `decision` on the signal (version 1), with the state:
   "outcome": "case | watchlist | to_validate | discarded",
   "state": "confirmed | watchlist | to_validate | discarded",
   "reason": "one line",
-  "reason_code": "in_scope | below_scope_threshold | criticality_unknown | no_risk_scenario | risk_scenario_unreadable | crown_jewel_below_policy | internet_exposure_required | score_below_policy | accepted_risk | excluded_by_policy | subject_unresolved | contradicted_by_signals | contradicted_by_evidence | no_dependency | account_disabled",
+  "reason_code": "in_scope | below_scope_threshold | criticality_unknown | no_risk_scenario | risk_scenario_unreadable | primary_asset_below_policy | internet_exposure_required | score_below_policy | accepted_risk | excluded_by_policy | subject_unresolved | contradicted_by_signals | contradicted_by_evidence | no_dependency | account_disabled",
   "reason_params": {"criticality", "threshold", "confidence", "minimum", "score", "value", "owner", "until", "kind", "count"},
   "decided_at": "ISO-8601"
 }
@@ -176,8 +176,8 @@ Stored as `decision` on the signal (version 1), with the state:
 
 Third parties and identities (CTEM-29): a `third_party` subject resolves to the
 profile asset row that names the tracked organization and, through a crown
-jewel's `asset_names`, to that crown jewel; a crown jewel named in
-`evidence.crown_jewels` and OpenCRQ supporting assets in
+jewel's `asset_names`, to that primary asset; a primary asset named in
+`evidence.primary_assets` and OpenCRQ supporting assets in
 `evidence.opencrq_asset_ids` count too. Unresolved, it goes to the watchlist
 (`no_dependency`), never to "to validate". An `identity` subject
 (`name@domain`) resolves when its domain, or a parent of it, is one of the

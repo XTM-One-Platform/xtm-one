@@ -15,7 +15,7 @@
 
 A ``core`` tool (``ToolDefinition.core``) built for every agent run and
 turn, whatever the agent's built-in selection and deny list: an analyst ranks
-by the crown jewels, the regions and the risk appetite it reads here, and
+by the primary assets, the regions and the risk appetite it reads here, and
 names the fields that are not filled instead of guessing them (#8987). The
 one thing that removes it is an explicit ``organization_context_mode`` off on
 the agent or the assignment (``organization_context_injection.tools_enabled``,
@@ -256,8 +256,7 @@ def build_organization_context_tool(
             "currency, ticketing target, and the fields not filled. Read it before ranking, "
             "scoping or estimating; cite the fields you used and name the missing ones, never guess them. "
             'Long lists are categories: category="*" lists them with their sizes; category="software" (any listed name) '
-            "reads one by page (query filters the rows, offset/limit page it, so a list of any length is read whole). "
-            'category="crown_jewels" is a deprecated alias of "primary_assets".'
+            "reads one by page (query filters the rows, offset/limit page it, so a list of any length is read whole)."
         ),
         input_schema={
             "type": "object",
