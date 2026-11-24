@@ -2893,6 +2893,8 @@ _CASE_EVENT_NAMES: tuple[str, ...] = (
     "ctem_case.validation_finished",
     # #917: the case's ticket reached done in the declared ticketing system.
     "ctem_case.retest_requested",
+    # #1736: the case waits on nobody (no open gate, no armed reminder) past the stall window.
+    "ctem_case.stalled",
 )
 
 # ── A person's answer to a waiting gate resumes the case (#1388) ──
@@ -2961,7 +2963,13 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: di
             "move the case's work item to its next step. "
             "On ctem_case.retest_requested (its ticket reached done): add a note to that work "
             "item and run the case's re-test; write it with record_ctem_case_validation (kind "
-            "retest): the case closes on the re-test, never on the ticket. Never keep an "
+            "retest): the case closes on the re-test, never on the ticket. "
+            "On ctem_case.stalled (the case waits on nobody: no open gate item, no armed reminder): "
+            "add a note to that work item, re-read the case and run the loop again from its next step. "
+            "Every run ends on exactly one of: a needs_human work item keyed `ctem:` and ending with the "
+            "case id, with an ask card addressed to a named person or team and a deadline; an armed "
+            "`ctem-loop-reminder:` timer for the case id (arm_timer); or a terminal case state. A next "
+            "step written only as prose leaves the case waiting on nobody. Never keep an "
             "open item only in shared state. End with the case id, its state and the next step."
         ),
     }
