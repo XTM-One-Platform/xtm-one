@@ -376,7 +376,19 @@ explained. A single-platform answer draws the card as before.
   `updated_at`, and `missing` with `missing_at` while a product did not answer);
   the list header shows "Updated 4 min ago" (exact time on hover) and, after an
   outage, a muted line "OpenAEV did not answer at 13:40, cases unchanged." with
-  a link to the integrations.
+  a link to the integrations. An outage is a product failure only (#1852): a
+  recompute identity whose token a product rejected (`rejected`) or that has no
+  credentials for it (`not_connected`) writes nothing on that shared line, so a
+  scheduled-pass identity never shows an outage to a viewer whose own read
+  answered.
+- Every failed source read (#1852) records why per product
+  (`SourceRead.reasons`): `rejected` (401, 403, AUTH_REQUIRED, Forbidden),
+  `too_large` (too_many_clauses, DATABASE_ERROR), `timeout`, `not_connected`
+  (no credentials for the reader), `unavailable` (anything else). The viewer
+  view caches it (an older cache reads `unavailable`); its log lines name the
+  user id, and the read binds `ctem_read_user_id` / `ctem_read_provider` and
+  drops the integration fields an earlier token resolution left on the log
+  context.
 - A recompute never builds a case (#1529). The two ways into a case are a signal
   the scope gate kept (`ctem_case_loop.open_from_signal`) and a split by a
   person or an agent (`create_manual_case`, `create_ctem_case`);
@@ -632,7 +644,12 @@ then the existing AI assessment and facts grid unchanged.
   products instead ("OpenAEV could not be read, so open exposures there may
   be missing.") with a warning icon (#12139). The API sends product ids
   ("openaev"); the line shows their display names (CTEM_PRODUCT_INFO) and
-  agrees the verb through an ICU plural on the product count.
+  agrees the verb through an ICU plural on the product count. With
+  `details_unavailable_reasons` (#1852) each product says why in plain words,
+  never as a missing right: "OpenCTI rejected your sign-in token", "could not
+  answer because the query was too large", "did not answer in time", "No
+  OpenCTI connection could be used for this read"; a product with no known
+  reason keeps the plural sentence.
 
 ### 7.2 Cases list `/ctem/cases`
 
