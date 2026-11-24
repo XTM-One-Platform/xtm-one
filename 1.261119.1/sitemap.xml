@@ -2,382 +2,382 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/development/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/administration/ai-governance/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/administration/editions-and-licensing/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/administration/emergency-stop-api/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/administration/emergency-stop/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/administration/health/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/administration/intents/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/administration/introduction/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/administration/organization/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/administration/prompt-safety/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/administration/running-without-ai/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/administration/settings/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/administration/users-and-groups/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/administration/channels/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/administration/channels/agent-accounts/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/administration/channels/discord/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/administration/channels/google-chat/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/administration/channels/microsoft-teams/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/administration/channels/slack/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/administration/channels/telegram/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/administration/channels/whatsapp-backends/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/administration/channels/whatsapp/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/deployment/authentication/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/deployment/backup-and-restore/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/deployment/chat-approvals-in-clients/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/deployment/configuration/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/deployment/data-flow/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/deployment/installation/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/deployment/monitoring/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/deployment/overview/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/deployment/scim-provisioning/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/deployment/secret-vaults/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/deployment/security-headers/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/deployment/telemetry/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/deployment/troubleshooting/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/deployment/upgrade/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/deployment/xtm-suite-integration/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/agent-budgets/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/agentic-flow/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/agents/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/ai-catalog/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/assignments/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/chat-api/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/chat/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/create-agent/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/custom-dashboards/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/files/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/getting-started/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/health/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/home-dashboard/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/mobile-companion/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/my-profile/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/office-add-in/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/platform-insights/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/presentations/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/reports/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/sandbox-workspace/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/scheduled-work-items/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/video-studio/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/web-widget/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/webhook-triggers/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/work-history/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/workspaces/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/foundations/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/foundations/containers-and-scopes/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/foundations/data-model/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/foundations/dates-and-status/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/foundations/deduplication/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/foundations/relationships-and-nesting/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/foundations/trust-and-confidence/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/resources/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/resources/agent-to-agent/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/resources/browser-profiles/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/resources/connect-mcp-server/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/resources/integrations/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/resources/knowledge-bases/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/resources/mcp-catalogs/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/resources/mcp-servers/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/resources/platform-mcp-servers/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/resources/platform-tools-mcp-server/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/resources/prompts/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/resources/relays/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/resources/runners/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/resources/sharing-and-access/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/resources/skills/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/resources/templates/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/resources/tools/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/resources/variables/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/xtm-suite/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/xtm-suite/common-experience/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/xtm-suite/indicator-decay/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/xtm-suite/openaev/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/xtm-suite/opencrq/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
     <url>
          <loc>https://xtm-one-platform.github.io/xtm-one/latest/usage/xtm-suite/opencti/</loc>
-         <lastmod>2026-11-23</lastmod>
+         <lastmod>2026-11-24</lastmod>
     </url>
 </urlset>
