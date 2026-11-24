@@ -134,6 +134,7 @@ from app.services.evaluation_continuation import (
     fail_orphaned_episodes,
 )
 from app.services.failure_causes import FailureClassification
+from app.services.integration_credentials import normalize_acting_user_id
 from app.services.prompt_versioning import DEFAULT_PERSONA_SNAPSHOT_MARKER
 from app.services.run_ledger import (
     CHAIN_KEY,
@@ -315,15 +316,28 @@ class IntegrationToolsBundle(tuple):
     """An evaluation's integration tools, built once for its entries: the pair
     ``(definitions, executor)`` it always was, and on ``context`` what the build collected
     for the agent's built-in tools (``integration_tools.PLATFORM_NAMES_CONTEXT_KEY``,
-    ``ATTACK_SOURCES_CONTEXT_KEY``), which an evaluated run reads as a chat run does."""
+    ``ATTACK_SOURCES_CONTEXT_KEY``), which an evaluated run reads as a chat run does.
+
+    ``bindings`` / ``acting_user_id``: what it was built from and for whom, which
+    ``integration_tools.prebuilt_tools_refusal`` checks before a turn uses it."""
 
     context: Mapping[str, list]
+    bindings: Mapping[str, str] | None
+    acting_user_id: str | None
 
     def __new__(
-        cls, definitions: list[ToolDefinition], executor: ToolExecutor, context: Mapping[str, list] | None = None
+        cls,
+        definitions: list[ToolDefinition],
+        executor: ToolExecutor,
+        context: Mapping[str, list] | None = None,
+        *,
+        bindings: Mapping[str, str] | None = None,
+        acting_user_id: str | None = None,
     ) -> Self:
         bundle = super().__new__(cls, (definitions, executor))
         bundle.context = context if context is not None else MappingProxyType({})
+        bundle.bindings = bindings
+        bundle.acting_user_id = acting_user_id
         return bundle
 
 
@@ -2509,17 +2523,16 @@ async def _build_evaluation_integration_tools(
     agent: Agent,
     evaluation: Evaluation | None = None,
 ) -> IntegrationToolsBundle | None:
-    """Build and filter integration tools for evaluation mode.
+    """Build and filter integration tools for evaluation mode, once per run.
 
-    As in agent_chat and assignment_engine: flatten_bindings, template
-    bindings resolved against the acting user (evaluation owner, else agent
-    owner), then build_integration_tools + filter_integration_tools. The
-    bundle is reused across a run's dataset entries.
+    The bindings are resolved for the acting user (the evaluation owner, else
+    the agent owner) by ``resolve_agent_integration_bindings``, the resolution
+    every chat turn runs: a person who is not the agent's owner never gets an
+    integration they may not use. ``run_agent_chat`` refuses a bundle
+    its own resolution would not give (``prebuilt_tools_refusal``).
     """
     from app.services.builtin_tools import filter_integration_tools
-    from app.services.integration_tools import build_integration_tools, flatten_bindings
-
-    effective_bindings = flatten_bindings(agent.integration_bindings or {})
+    from app.services.integration_tools import build_integration_tools, resolve_agent_integration_bindings
 
     # Some providers (``platform_managed``) need an acting user to resolve
     # credentials: the evaluation owner, else the agent owner so ownerless
@@ -2535,61 +2548,26 @@ async def _build_evaluation_integration_tools(
 
     # An unparseable acting user id degrades to no acting user (as in
     # ``shadow_invisible_bindings``) instead of crashing tool setup.
-    acting_user_uuid: uuid.UUID | None = None
-    if acting_user_id:
-        try:
-            acting_user_uuid = uuid.UUID(acting_user_id)
-        except (ValueError, TypeError):
-            logger.warning(
-                "Evaluation integration tools: unparseable acting user id %r "
-                "(evaluation=%s, agent=%s) — degrading to no acting user "
-                "context",
-                acting_user_id,
-                evaluation_id,
-                agent.name,
-            )
-            acting_user_id = None
-    if acting_user_uuid and agent.integration_template_bindings:
-        from app.models.integration import Integration
-        from app.services.integration_tools import (
-            pick_template_integration,
-            template_candidate_filter,
+    if acting_user_id and normalize_acting_user_id(acting_user_id) is None:
+        logger.warning(
+            "Evaluation integration tools: unparseable acting user id %r "
+            "(evaluation=%s, agent=%s) — degrading to no acting user "
+            "context",
+            acting_user_id,
+            evaluation_id,
+            agent.name,
         )
-        from app.services.integration_user_credentials import connected_for_clause
+        acting_user_id = None
 
-        # One grants / role lookup for every provider below. An evaluation is
-        # non-interactive: a company automation when its agent is company-managed.
-        _candidates = await template_candidate_filter(
-            db,
-            acting_user_uuid,
-            company_automation=bool(getattr(agent, "is_company_managed", False)),
-        )
-        for _tmpl_provider in agent.integration_template_bindings:
-            if _tmpl_provider in effective_bindings:
-                continue
-
-            # Candidates: the acting user's own integrations plus company-wide
-            # ones (``is_company_managed`` / legacy ``platform_managed``).
-            # Company-managed integrations keep a real owner, so the explicit
-            # company-wide clause is what makes them reachable for other
-            # users. A colleague's personal integration is never eligible.
-            _tmpl_result = await db.execute(
-                select(Integration)
-                .where(
-                    Integration.provider == _tmpl_provider,
-                    _candidates,
-                    connected_for_clause(acting_user_uuid),
-                )
-                .order_by(Integration.created_at, Integration.id)
-            )
-            _picked, _ = pick_template_integration(
-                list(_tmpl_result.scalars().all()),
-                acting_user_uuid,
-                provider=_tmpl_provider,
-                context=f"evaluation={evaluation_id} agent={agent.name}",
-            )
-            if _picked is not None:
-                effective_bindings[_tmpl_provider] = str(_picked.id)
+    # An evaluation is non-interactive: a company automation when its agent is
+    # company-managed.
+    resolved = await resolve_agent_integration_bindings(
+        db,
+        agent,
+        acting_user_id,
+        company_automation=bool(getattr(agent, "is_company_managed", False)),
+    )
+    effective_bindings = resolved.bindings
 
     if not effective_bindings:
         logger.info(
@@ -2614,13 +2592,14 @@ async def _build_evaluation_integration_tools(
     collected: dict[str, list] = {PLATFORM_NAMES_CONTEXT_KEY: [], ATTACK_SOURCES_CONTEXT_KEY: []}
     integ_defs, integ_exec = await build_integration_tools(
         db,
-        effective_bindings,
+        resolved.tool_bindings,
         context={
             **collected,
             "source": "evaluation",
             "agent": agent.name,
             "agent_id": str(agent.id),
             "user_id": acting_user_id,
+            "binding_origin_map": resolved.origins,
             # Same boundaries as the agent's chat runs.
             "element_scope": agent_run_scope(
                 getattr(agent, "integration_element_bindings", None),
@@ -2676,7 +2655,9 @@ async def _build_evaluation_integration_tools(
         len(filtered_defs),
     )
 
-    return IntegrationToolsBundle(filtered_defs, integ_exec, collected)
+    return IntegrationToolsBundle(
+        filtered_defs, integ_exec, collected, bindings=dict(effective_bindings), acting_user_id=acting_user_id
+    )
 
 
 async def score_result(
@@ -3343,6 +3324,16 @@ async def execute_evaluation_run(
         if not evaluation:
             run.status = "failed"
             run.error = "Evaluation not found"
+            run.completed_at = datetime.now(UTC)
+            await db.commit()
+            return
+        # Its entries act as the evaluation's owner: checked when the run
+        # starts or resumes, as at launch.
+        from app.services.evaluation.launch import owner_refusal
+
+        if (refused := await owner_refusal(db, evaluation)) is not None:
+            run.status = "failed"
+            run.error = refused
             run.completed_at = datetime.now(UTC)
             await db.commit()
             return

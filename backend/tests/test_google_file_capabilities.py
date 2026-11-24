@@ -28,6 +28,7 @@ import pytest
 
 from app.integrations.providers import google
 from app.llm.base import FileRef
+from app.services.integration_tools import BindingBasis, ToolBindings
 from app.tools.base import CallableToolExecutor, FileContext, ToolCall, ToolResult
 from tests.integration_file_fakes import HOSTILE_FILE_NAMES, assert_name_only_inside, fenced_and_open
 
@@ -738,7 +739,7 @@ async def test_dispatcher_hands_google_the_file_persistence_callback(monkeypatch
 
     await it.build_integration_tools(
         _Db(),
-        {"google": [str(integration_id)]},
+        ToolBindings({"google": [str(integration_id)]}, basis=BindingBasis.CALLER_CHECKED, reason="test"),
         context={"user_id": str(uuid.uuid4()), "conversation_id": str(uuid.uuid4())},
     )
 

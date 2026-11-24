@@ -31,6 +31,7 @@ from app.services.email_signatures import (
     SignaturePlan,
     email_sender_providers,
 )
+from app.services.integration_tools import BindingBasis, ToolBindings
 from app.tools.base import CallableToolExecutor, ToolCall
 
 SIGNED = SignaturePlan(integration_id=str(uuid.uuid4()), integration_name="Signatures")
@@ -384,11 +385,11 @@ async def test_each_sender_gets_its_own_plan_through_the_same_kwargs(monkeypatch
 
     await it.build_integration_tools(
         _Db(),
-        {
+        ToolBindings({
             "google": [str(first.id), str(second.id)],
             "fake_signatures": [str(signatures.id)],
             "slack": [str(chat.id)],
-        },
+        }, basis=BindingBasis.CALLER_CHECKED, reason="test"),
         context={SIGNATURE_CONTEXT_KEY: {str(second.id): {"signature_mode": "off"}}},
     )
     google_plans = [kwargs["signature_plan"] for kwargs in by_provider["google"]]
