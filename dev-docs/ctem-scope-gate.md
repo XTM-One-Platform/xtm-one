@@ -52,6 +52,14 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
    id), asset groups, crown jewels (by name or `opencrq_asset_id`), and the
    tech stack for software (a product name, or the product part of a CPE),
    which adds the assets that run that product.
+   **Threat subjects** (#1720, a campaign, an intrusion set, a malware): the
+   software they reach is read from the evidence lists `targets`, `uses`,
+   `targeted_software`, `targeted_products`, from `relationships`
+   (`{relationship_type, target}` of type `targets`, `uses` or `has`) and
+   from the scorer's `matched_fields` (`tech_stack (Microsoft 365, GitHub)`),
+   then matched to the tech stack like any software reference.
+   `reconcile.software_refs` lists every reference tried; an unresolved
+   subject carries `reason_params` `{keys, software}`, the counts tried.
    **Shipped products** (`shipped_products`, what the organization ships,
    apart from the tech stack it runs): a software reference or a CPE of the
    evidence (`software`, `cpe`; the OpenCTI vulnerability listener copies
@@ -105,14 +113,6 @@ Then, in order, each check stops at the first that fails, with its reason:
 | criticality at or above `scope_min_criticality` | watchlist, the criticality and threshold named |
 
 All pass: outcome `case`, state `confirmed`, with a severity.
-
-### 3.1 Primary assets reached through the inventory (#1591, S3)
-
-`services/ctem_primary_assets.py` reads, once per organization and decision pass, the inventory assets that reach a primary asset through `organization_crown_jewel_links` (sources `manual`, `opencrq`, `rule`; a removed link reaches nothing): directly, or as a member of a linked asset group. For each it keeps what the asset runs: its own software list, its OS family (Intune, Defender) and the installed software endpoint sources report (`organization_asset_software`). A signal's software (names, CPEs, matched tech stack products) or subject key reaching such an asset adds the primary asset to `crown_jewels` with its chain (`scope.sources[].chain`: software, asset, through, through_kind, source, roles) and to `reconcile.primary_assets`; `reconcile.inventory_links_read` says the index was read. The legacy name list (`asset_names`) is still read for one release.
-
-Every path decides with the same index and the same OpenCRQ read: a `system` signal recorded by a listener reads OpenCRQ with the owner of the enabled OpenCRQ primary-asset sync. After a sync that wrote links or changed a device's software, `recheck_held` decides again the watchlist signals held by `crown_jewel_below_policy`, `criticality_unknown` or `below_scope_threshold` (500 per call, idempotent); the case sweep then opens one case per fix key. `scope.threshold_source` says whether `scope_min_criticality` is the policy's or the default.
-
-OpenCRQ Dependency Rule links come through `assetDependencies.getSupportToPrimaryLinksByPrimaryAssetId` (field `source: rule`, `ruleId`) and are stored with source `rule`; an OpenCRQ supporting asset is matched to an inventory record by its OpenCRQ id, then by name or device hostname.
 
 ## 4. Severity and SLA
 
