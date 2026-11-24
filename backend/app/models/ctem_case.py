@@ -4,7 +4,7 @@
 
 A case is one fix (upgrade a product to a fixed version, apply a course of
 action) and the open issues it closes, read from OpenCTI (vulnerabilities on
-the organization's tech stack) and OpenAEV (CVE findings on its assets). The
+the organization's software) and OpenAEV (CVE findings on its assets). The
 grouping and the state rules live in ``services/ctem_cases.py``; the design is
 ``dev-docs/ctem-cases.md``.
 
