@@ -105,7 +105,7 @@ def test_a_bad_field_is_refused_and_named(patch, where):
 def test_an_agent_reads_no_profile_as_every_field_missing_and_no_guess():
     text = oc.render_for_agent(None)
     assert "No organization profile is saved yet" in text
-    assert "crown jewels" in text and "loaded hourly rate" in text
+    assert "primary assets" in text and "loaded hourly rate" in text
     assert "Do not guess" in text
 
 
