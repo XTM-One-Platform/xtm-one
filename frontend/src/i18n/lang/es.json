@@ -21595,5 +21595,17 @@
   "No person was needed: the policy allowed the step.": "No hizo falta ninguna persona: la política permitió el paso.",
   "Nobody answered before the deadline: the step did not run.": "Nadie respondió antes del plazo: el paso no se ejecutó.",
   "The decision was withdrawn before an answer.": "La decisión se retiró antes de una respuesta.",
-  "No answer": "Sin respuesta"
+  "No answer": "Sin respuesta",
+  "CTEM access": "Acceso CTEM",
+  "CTEM access updated": "Acceso CTEM actualizado",
+  "CTEM access could not be updated": "No se pudo actualizar el acceso CTEM",
+  "What the members may do on the signals and cases the platform records. Administrators keep full access.": "Lo que los miembros pueden hacer con las señales y los casos que registra la plataforma. Los administradores conservan el acceso completo.",
+  "No CTEM access": "Sin acceso CTEM",
+  "View signals and cases": "Ver señales y casos",
+  "View and decide": "Ver y decidir",
+  "Members see only the signals they record themselves.": "Los miembros solo ven las señales que registran ellos mismos.",
+  "Members read every signal and case of the organization, read only.": "Los miembros leen todas las señales y casos de la organización, solo lectura.",
+  "Members also triage signals, change cases (owner, due date, state, accepted risk) and answer the case decisions. Their agents get the same reach.": "Los miembros también clasifican señales, modifican casos (responsable, fecha límite, estado, riesgo aceptado) y responden a las decisiones de los casos. Sus agentes tienen el mismo alcance.",
+  "Notify the members of case decisions": "Notificar a los miembros las decisiones de casos",
+  "Off: the members can still answer from the case page, without a notification.": "Desactivado: los miembros pueden seguir respondiendo desde la página del caso, sin notificación."
 }

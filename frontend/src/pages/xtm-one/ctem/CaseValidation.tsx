@@ -11,6 +11,7 @@
  */
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { WorkItemDecisionCard } from "@/components/work-items/WorkItemDecisionCard";
+import { mayAnswerCaseGate } from "@/lib/ctem-access";
 import type { CtemCaseEvent, CtemCaseGateRecord, CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
 import { useWorkItems } from "@/hooks/api/useWorkItemApi";
 import { useAuth } from "@/hooks/useAuth";
@@ -62,7 +63,7 @@ export function CaseValidation({
   personName?: (id: string) => string | null;
 }) {
   const { t_i18n, intl } = useFormatter();
-  const { isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
   const rows = latestValidations(validations);
   const gate = latestGate(history, VALIDATION_GATE);
   // The decision record wins over the case event: an answered decision never reads as waiting (#1518).
@@ -124,7 +125,7 @@ export function CaseValidation({
           </div>
         )}
         {waiting && item && (
-          <WorkItemDecisionCard item={item} canAnswer={!item.is_company_managed || isAdmin} onAnswered={() => items.refetch()} />
+          <WorkItemDecisionCard item={item} canAnswer={mayAnswerCaseGate(item, user, Boolean(isAdmin))} onAnswered={() => items.refetch()} />
         )}
         {waiting && !item && !items.isLoading && (
           <p className="text-default-secondary" data-testid="ctem-case-validation-elsewhere">

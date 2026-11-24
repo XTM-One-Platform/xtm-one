@@ -15,6 +15,7 @@ import { Icon } from "@filigran/design-system";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CASE_SECTION_ICON, CaseCardTitleText } from "./case-icons";
 import { WorkItemDecisionCard } from "@/components/work-items/WorkItemDecisionCard";
+import { mayAnswerCaseGate } from "@/lib/ctem-access";
 import type { CtemCaseEvent, CtemCaseGateRecord, CtemCaseThreatPackage } from "@/hooks/api/useCtemCasesApi";
 import { useWorkItems } from "@/hooks/api/useWorkItemApi";
 import { useAuth } from "@/hooks/useAuth";
@@ -42,7 +43,7 @@ export function CaseAnalystReview({
   personName?: (id: string) => string | null;
 }) {
   const { t_i18n, intl } = useFormatter();
-  const { isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
   const gate = latestGate(history, REVIEW_GATE);
   // The decision record wins over the case event: an answered decision never reads as waiting (#1518).
   const record = gateRecordOf(gates, REVIEW_GATE);
@@ -100,7 +101,7 @@ export function CaseAnalystReview({
           </div>
         )}
         {waiting && item && (
-          <WorkItemDecisionCard item={item} canAnswer={!item.is_company_managed || isAdmin} onAnswered={() => items.refetch()} />
+          <WorkItemDecisionCard item={item} canAnswer={mayAnswerCaseGate(item, user, Boolean(isAdmin))} onAnswered={() => items.refetch()} />
         )}
         {waiting && !item && !items.isLoading && (
           <p className="text-default-secondary" data-testid="ctem-case-analyst-review-elsewhere">

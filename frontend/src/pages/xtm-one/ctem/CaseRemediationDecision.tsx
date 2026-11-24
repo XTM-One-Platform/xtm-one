@@ -14,6 +14,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CASE_SECTION_ICON, CaseCardTitleText } from "./case-icons";
 import { WorkItemDecisionCard } from "@/components/work-items/WorkItemDecisionCard";
+import { mayAnswerCaseGate } from "@/lib/ctem-access";
 import type { CtemCaseEvent, CtemCaseGateRecord } from "@/hooks/api/useCtemCasesApi";
 import { useWorkItems } from "@/hooks/api/useWorkItemApi";
 import { useAuth } from "@/hooks/useAuth";
@@ -47,7 +48,7 @@ export function CaseRemediationDecision({
   personName?: (id: string) => string | null;
 }) {
   const { t_i18n, intl } = useFormatter();
-  const { isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
   const gate = latestGate(history, REMEDIATION_GATE);
   // The decision record wins over the case event: an answered decision never reads as waiting (#1518).
   const record = gateRecordOf(gates, REMEDIATION_GATE);
@@ -101,7 +102,7 @@ export function CaseRemediationDecision({
           </div>
         )}
         {waiting && item && (
-          <WorkItemDecisionCard item={item} canAnswer={!item.is_company_managed || isAdmin} onAnswered={() => items.refetch()} />
+          <WorkItemDecisionCard item={item} canAnswer={mayAnswerCaseGate(item, user, Boolean(isAdmin))} onAnswered={() => items.refetch()} />
         )}
         {waiting && !item && !items.isLoading && (
           <p className="text-default-secondary" data-testid="ctem-case-remediation-elsewhere">
