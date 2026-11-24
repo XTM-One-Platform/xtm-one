@@ -21595,5 +21595,9 @@
   "No person was needed: the policy allowed the step.": "No hizo falta ninguna persona: la política permitió el paso.",
   "Nobody answered before the deadline: the step did not run.": "Nadie respondió antes del plazo: el paso no se ejecutó.",
   "The decision was withdrawn before an answer.": "La decisión se retiró antes de una respuesta.",
-  "No answer": "Sin respuesta"
+  "No answer": "Sin respuesta",
+  "{product} rejected your sign-in token, so open exposures there may be missing.": "{product} rechazó su token de inicio de sesión: pueden faltar exposiciones abiertas.",
+  "{product} could not answer because the query was too large, so open exposures there may be missing.": "{product} no pudo responder porque la consulta era demasiado grande: pueden faltar exposiciones abiertas.",
+  "{product} did not answer in time, so open exposures there may be missing.": "{product} no respondió a tiempo: pueden faltar exposiciones abiertas.",
+  "No {product} connection could be used for this read, so open exposures there may be missing.": "No se pudo usar ninguna conexión de {product} para esta lectura: pueden faltar exposiciones abiertas."
 }

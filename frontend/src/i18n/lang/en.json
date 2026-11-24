@@ -21595,5 +21595,9 @@
   "No person was needed: the policy allowed the step.": "No person was needed: the policy allowed the step.",
   "Nobody answered before the deadline: the step did not run.": "Nobody answered before the deadline: the step did not run.",
   "The decision was withdrawn before an answer.": "The decision was withdrawn before an answer.",
-  "No answer": "No answer"
+  "No answer": "No answer",
+  "{product} rejected your sign-in token, so open exposures there may be missing.": "{product} rejected your sign-in token, so open exposures there may be missing.",
+  "{product} could not answer because the query was too large, so open exposures there may be missing.": "{product} could not answer because the query was too large, so open exposures there may be missing.",
+  "{product} did not answer in time, so open exposures there may be missing.": "{product} did not answer in time, so open exposures there may be missing.",
+  "No {product} connection could be used for this read, so open exposures there may be missing.": "No {product} connection could be used for this read, so open exposures there may be missing."
 }
