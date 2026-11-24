@@ -76,6 +76,26 @@ async def test_every_kind_of_marker_is_resolved_and_none_is_left_raw():
     assert "[[" not in out
 
 
+async def test_a_tool_that_sends_files_keeps_its_file_markers() -> None:
+    """``outbound_keeps_file_markers``: file markers are left to the tool, the others linked."""
+    file_id = uuid.uuid4()
+    text = f"Deck [[PRESENTATION:{DECK}]] [[FILE:{file_id}]]"
+
+    async def _file(_db: object, text: str, base: str, **scope: object) -> str:
+        raise AssertionError("file markers are not resolved for this tool")
+
+    async def _links(_db: object, text: str, **scope: object) -> str:
+        return text.replace(f"[[PRESENTATION:{DECK}]]", "<deck>")
+
+    with (
+        patch("app.channels.base.resolve_channel_file_markers", _file),
+        patch("app.services.platform_chat_artifacts.markers_as_links", _links),
+    ):
+        out = await markers_as_outbound_links(None, text, keep_file_markers=True)
+    assert out == f"Deck <deck> [[FILE:{file_id}]]"
+    assert not has_artifact_marker(f"[[FILE:{file_id}]]", keep_file_markers=True)
+
+
 async def test_text_without_a_marker_is_returned_as_is():
     assert await markers_as_outbound_links(None, "plain [link](x)") == "plain [link](x)"
 
