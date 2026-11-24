@@ -954,6 +954,11 @@ async def list_provider_catalog(
             continue
 
         guide = _resolve_guide(val.get("setup_guide"))
+        auth_guides = {
+            mode: resolved
+            for mode, mode_guide in (val.get("auth_setup_guides") or {}).items()
+            if (resolved := _resolve_guide(mode_guide)) is not None
+        } or None
         # The facets one selector value changes; guides resolved like the base.
         variants = {
             value: ProviderCatalogVariant(
@@ -1029,6 +1034,7 @@ async def list_provider_catalog(
                     "supports_webhook_management", False
                 ),
                 setup_guide=guide,
+                auth_setup_guides=auth_guides,
                 has_oauth_defaults=key in providers_with_defaults,
                 has_oauth_extra_config=providers_with_defaults.get(key, False),
                 is_custom=bool(val.get("is_custom", False)),

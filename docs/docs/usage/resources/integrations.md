@@ -18,6 +18,8 @@ If you have permission, `New Integration` starts a new connection. Credentials a
 
 Opening an integration shows a header with the connection status and the actions that make sense for it — a setup guide for provider prerequisites, `Test connection` to validate the live connection, `Authorize` or `Re-authorize` to resolve OAuth state, and delete. The detail page itself is organized into `Overview`, `Configuration`, and `Activity` tabs.
 
+A provider whose authentication modes are set up apart (Planhat: OAuth or an API key) has one setup guide per mode: the creation page shows the guide of the mode you pick, and an integration's page the guide of the mode it uses. The catalog card shows a guide that covers every mode.
+
 When an integration is built on an open-source project, its setup guide credits that project under the title: its name links to the project's repository, followed by its author and its license. The Nova integration, for example, credits NOVA by Thomas Roccia, released under the MIT license; see [Prompt safety (Nova)](../../administration/prompt-safety.md).
 
 Some integrations add pages of their own after those three tabs — the `API Spec` of an integration imported from an OpenAPI or Swagger document, or the rules of the Nova integration, which only administrators see. These pages are tabs of the integration: open the integration from `Tools & Integrations > Integrations` to reach them. Integrations are never listed one by one in the left navigation. Anyone who opens such a page from a link without being allowed to see it is told it is not available to them, with a way back to the `Overview`.
@@ -489,7 +491,7 @@ A Kubernetes integration lets an agent answer "what does this cluster expose" wi
 
 ### Planhat: each person's own account and permissions
 
-A Planhat integration connects in one of two ways, chosen with `Authentication mode` when you create it.
+A Planhat integration connects in one of two ways, chosen with `Authentication mode` when you create it. Its `Setup guide` button shows the steps of the mode chosen: the OAuth Client in Planhat's App Center for OAuth, the Private App for an API key.
 
 - **OAuth: each person's own account.** A Planhat admin opens `App Center > New App > OAuth Client` in Planhat, sets its Redirect URL to the callback shown in the setup guide (`<your XTM One address>/api/oauth/callback`), and grants the data models the agents use. Paste the Client ID (`pk_...`) and the Client Secret (`sk_...`) in the integration, save, and click `Authorize`. The sign-in is Planhat's own, so it goes through your company's SSO when Planhat is set up with one.
 - **What the agent can do.** With OAuth, the agent reads and writes with the permissions both the OAuth Client and the person's Planhat role allow: a record the person cannot see in Planhat, the agent cannot see either.
