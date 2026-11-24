@@ -50,7 +50,7 @@ export function isCtemSignalTrigger(triggerType: string, config: TriggerConfig |
   const events = eventsOf(config);
   if (events.length === 0 || !events.every((e) => (CTEM_SIGNAL_EVENTS as readonly string[]).includes(e))) return false;
   const raw = config as Record<string, unknown>;
-  if (raw.once === true || raw.expires_at || raw.scope === "all") return false;
+  if (raw.once === true || raw.expires_at || (raw.scope !== undefined && raw.scope !== "own")) return false;
   const filter = (raw.filter ?? {}) as Record<string, unknown>;
   return Object.entries(filter).every(
     ([key, value]) =>

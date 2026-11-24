@@ -13366,6 +13366,7 @@
   "Add filter": "Add filter",
   "Each filter names a field of the event and the value it must have. Without a filter, every event of this kind in scope starts a run.": "Each filter names a field of the event and the value it must have. Without a filter, every event of this kind in scope starts a run.",
   "This agent's objects": "This agent's objects",
+  "Objects of this agent's fleet": "Objects of this agent's fleet",
   "Every object": "Every object",
   "One-off watch": "One-off watch",
   "The first matching event starts one run, then the trigger stops. Save the trigger again to watch for the next one.": "The first matching event starts one run, then the trigger stops. Save the trigger again to watch for the next one.",
