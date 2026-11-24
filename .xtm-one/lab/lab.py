@@ -6086,6 +6086,36 @@ def seed_ctem_screens(token: str, base: str) -> dict[str, dict[str, str]]:
     }
 
 
+def seed_ctem_gates(token: str, base: str) -> dict[str, dict[str, str]]:
+    """The gate decision records of the first CTEM case (#1628), read back. May raise.
+
+    The recompute writes no gate work item, decision row or ``gate`` event, and no API writes a decision in a
+    chosen state: ``seed_ctem_gates.py`` writes them through the backend's own models (one gate answered,
+    waiting, expired, cancelled and passed automatically), with its interpreter and environment. Read back on
+    ``GET /ctem-cases/{id}``: its ``gates`` carry at least the answered, waiting and passed records. A restart
+    finds the gate items by their keys and writes nothing.
+    """
+    admin = _created(api("GET", "/auth/me", token))
+    listed = api("GET", "/ctem-cases?vertical=cyber&limit=50", token)
+    cases = listed.get("cases") if isinstance(listed, dict) else None
+    if not cases:
+        raise RuntimeError(f"no CTEM case to seed the gates on: {str(listed)[:300]}")
+    case_id = str(cases[0]["id"])
+    out = ROOT / "ctem_gates.json"
+    process = subprocess.run(
+        [sys.executable, str(CHECKOUT / ".xtm-one" / "lab" / "seed_ctem_gates.py"), admin, case_id, str(out)],
+        cwd=CHECKOUT / "backend", env=seed_script_env(), capture_output=True, text=True, timeout=120,
+    )
+    if process.returncode != 0:
+        raise RuntimeError(f"seed_ctem_gates.py exited with {process.returncode}: {stderr_summary(process.stderr)}")
+    case = api("GET", f"/ctem-cases/{case_id}", token)
+    statuses = {g.get("key"): g.get("status") for g in (case.get("gates") or [])} if isinstance(case, dict) else {}
+    wanted = {"answered", "waiting", "passed_automatically"}
+    if not wanted <= set(statuses.values()):
+        raise RuntimeError(f"the CTEM case gates read back {statuses}")
+    return {f"CTEM case gates ({len(statuses)})": {"id": case_id, "url": f"{base}/ctem/cases/{case_id}"}}
+
+
 def seed_ctem_screens_scope(token: str) -> None:
     """Declare the scope the screens issues land in (#1529): tech stack products and the assets running them.
 
@@ -7874,6 +7904,11 @@ def seed_entities() -> None:
             seeded.update(seed_ctem_screens(token, base))
         except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
             skipped["CTEM cases and scored stages"] = str(exc)[:600]
+        try:
+            # After seed_ctem_screens (the cases): the case page's gate records (#1628).
+            seeded.update(seed_ctem_gates(token, base))
+        except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+            skipped["CTEM case gates"] = str(exc)[:600]
     if mode == "xtm_one" and lab_switch("LAB_ORG_CONTEXT", LAB_ORG_CONTEXT_STATES) != "default":
         # After seed_org_ai_draft_stub (the lab profile, or none under missing).
         try:

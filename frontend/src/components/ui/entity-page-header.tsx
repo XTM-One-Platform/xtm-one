@@ -73,17 +73,43 @@ export function EntityHeaderWideOnly({ children }: { children: ReactNode }) {
  *  1280 px; hidden at 1280 px and above, where they are buttons. Renders
  *  nothing without an item. `always`: shown at every width, for a page whose
  *  row lost room to a docked panel (the page then leaves the wide-only
- *  buttons out). */
-export function EntityHeaderMoreActions({ items, always = false }: { items: OverflowMenuItem[]; always?: boolean }) {
+ *  buttons out). `menuOnly`: rows that have no button in the wide row (a
+ *  rare or destructive action): the menu then stays at 1280 px and above
+ *  with those rows alone, so they are reachable at every width (#1508 UX
+ *  round 1 B1); below 1280 px they follow `items` in the one menu. */
+export function EntityHeaderMoreActions({
+  items,
+  always = false,
+  menuOnly = [],
+}: {
+  items: OverflowMenuItem[];
+  always?: boolean;
+  menuOnly?: OverflowMenuItem[];
+}) {
   const { t_i18n } = useFormatter();
-  if (items.length === 0) return null;
+  const all = [...items, ...menuOnly];
+  if (all.length === 0) return null;
+  if (!always && menuOnly.length > 0) {
+    return (
+      <>
+        <span className="contents xl:hidden" data-testid="entity-page-header-more-actions" data-widths="below-xl">
+          <OverflowMenu label={t_i18n("More actions")} items={all} />
+        </span>
+        <span className="hidden xl:contents" data-testid="entity-page-header-more-actions-wide" data-widths="xl">
+          <OverflowMenu label={t_i18n("More actions")} items={menuOnly} />
+        </span>
+      </>
+    );
+  }
+  const shown = always ? all : items;
+  if (shown.length === 0) return null;
   return (
     <span
       className={always ? "contents" : "contents xl:hidden"}
       data-testid="entity-page-header-more-actions"
       data-widths={always ? "all" : "below-xl"}
     >
-      <OverflowMenu label={t_i18n("More actions")} items={items} />
+      <OverflowMenu label={t_i18n("More actions")} items={shown} />
     </span>
   );
 }

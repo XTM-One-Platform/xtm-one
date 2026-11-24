@@ -30,7 +30,7 @@ import { useOrganizationContextInjection } from "@/hooks/api/useOrganizationCont
 import { useFormatter } from "@/i18n";
 import { ORGANIZATION_CONTEXT_CATEGORY_LABELS, organizationContextCategoriesEffective } from "@/lib/constants";
 
-/** The category label a person reads ("Tech stack"), the name itself for a category the frontend does not know yet. */
+/** The category label a person reads ("Software"), the name itself for a category the frontend does not know yet. */
 function useCategoryLabel(): (name: string) => string {
   const { t_i18n } = useFormatter();
   return (name) => {
@@ -39,7 +39,7 @@ function useCategoryLabel(): (name: string) => string {
   };
 }
 
-/** The sentence under the field and in the read view: "Tech stack, Crown jewels, from the agent", "None, set here"... */
+/** The sentence under the field and in the read view: "Software, Crown jewels, from the agent", "None, set here"... */
 export function useOrganizationContextCategoriesLabel(
   scope: "agent" | "assignment",
   value: string[] | null | undefined,
@@ -87,7 +87,7 @@ export function OrganizationContextCategoriesSelect({
         id={id}
         label={t_i18n("Preloaded organization categories")}
         info={t_i18n(
-          "Categories of the organization profile loaded into the prompt after the short block, for example Tech stack or Crown jewels. Inherit follows the agent, then the platform list in Settings > Organization; Choose sets this list, and an empty list preloads nothing: every category stays one get_organization_context call away.",
+          "Categories of the organization profile loaded into the prompt after the short block, for example Software or Crown jewels. Inherit follows the agent, then the platform list in Settings > Organization; Choose sets this list, and an empty list preloads nothing: every category stays one get_organization_context call away.",
         )}
         helper={t_i18n(
           "Categories of the profile loaded into the prompt; every other one stays one get_organization_context call away. In effect: {effective}.",

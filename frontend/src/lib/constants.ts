@@ -1786,7 +1786,7 @@ export function organizationContextEffective(
 /** @i18n-keys */
 export const ORGANIZATION_CONTEXT_CATEGORY_LABELS = {
   crown_jewels: "Crown jewels",
-  tech_stack: "Tech stack",
+  software: "Software",
   ai_systems: "AI systems inventory",
   pirs: "Priority intelligence requirements (PIRs)",
   tracked_organizations: "Tracked organizations",

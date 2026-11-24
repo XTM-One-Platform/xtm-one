@@ -60,6 +60,7 @@ _LABELS: dict[str, str] = {
     "asset_groups": "asset groups",
     "shipped_products": "shipped products",
     "prioritization_policy": "prioritization policy",
+    "tech_stack": "software: vendor, product, type, versions, CPE, asset count",
     ENTERPRISE_KNOWLEDGE: "procedures and reference documents, read by query",
 }
 #: Rows a page answers by default, and at most.
@@ -78,7 +79,17 @@ class Category:
     label: str
 
 
+#: The profile field the Software category reads before the store is built (#1495).
+SOFTWARE_FIELD = "tech_stack"
+#: The category of the organization's software (#1495): the Software entity, ``tech_stack`` its deprecated alias.
+SOFTWARE = "software"
+#: Deprecated since #1495 (kept one release): ``tech_stack`` answers the ``software`` category.
+TECH_STACK_ALIAS = "tech_stack"
+
+
 def _category_name(field: str) -> str:
+    if field == SOFTWARE_FIELD:
+        return SOFTWARE
     # ``pir_ids`` is read as ``pirs``: a category names what it lists.
     return field[: -len("_ids")] + "s" if field.endswith("_ids") else field
 
@@ -106,8 +117,14 @@ AI_SYSTEMS_ALIAS = Category(
 )
 
 
-def get(name: str) -> Category | None:
+def canonical_name(name: object) -> str:
+    """*name* lower-cased, a deprecated alias read as the category it answers (``tech_stack`` -> ``software``)."""
     wanted = str(name or "").strip().lower()
+    return SOFTWARE if wanted == TECH_STACK_ALIAS else wanted
+
+
+def get(name: str) -> Category | None:
+    wanted = canonical_name(name)
     if wanted == AI_SYSTEMS_ALIAS.name:
         return AI_SYSTEMS_ALIAS
     return _BY_NAME.get(wanted)
@@ -117,7 +134,7 @@ def normalize_categories(value: object) -> list[str]:
     """A stored list, deduplicated, unknown names dropped (a category removed from the model)."""
     if not isinstance(value, list | tuple):
         return []
-    return [name for name in dict.fromkeys(str(v).strip().lower() for v in value) if name in _BY_NAME]
+    return [name for name in dict.fromkeys(canonical_name(v) for v in value) if name in _BY_NAME]
 
 
 def check_categories(value: object) -> list[str] | None:
@@ -137,7 +154,7 @@ def check_categories(value: object) -> list[str] | None:
         value = [part for part in (p.strip() for p in text.split(",")) if part]
     if not isinstance(value, list | tuple):
         raise ValueError("organization_context_categories must be a list of category names")
-    names = [str(v).strip().lower() for v in value]
+    names = [canonical_name(v) for v in value]
     unknown = [name for name in names if name not in _BY_NAME]
     if unknown:
         raise ValueError(
@@ -275,7 +292,7 @@ def render_categories(counts: dict[str, int]) -> str:
     """What ``get_organization_context(category="*")`` answers: every category with its size."""
     lines = [
         "Organization context categories (read one by name, e.g. "
-        'get_organization_context(category="tech_stack"), narrow it with query=, page it with offset= and limit=, up to '
+        'get_organization_context(category="software"), narrow it with query=, page it with offset= and limit=, up to '
         f"{MAX_PAGE} rows a page):"
     ]
     lines += [index_line(category, counts.get(category.name, 0)) for category in CATEGORIES]

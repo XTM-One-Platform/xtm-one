@@ -893,6 +893,10 @@ _EXEMPT_OPERATOR_CONTROL = {
     # re-stamps them as never set up. It only removes future AI work, as Pause
     # all does, so AI off must not block it. No model call.
     "unset_fleet_automations",
+    # Reset a built-in fleet to its factory state (#1508): automations off,
+    # bindings and customer settings cleared. It only removes future AI work and
+    # makes no model call, so AI off must not block it.
+    "reset_fleet_to_factory",
     # The same two on several fleets at once, plus the admins' every-fleet Pause
     # switch and a bulk autonomy level (#9769 S3): no model call, a level change
     # only decides which future tool calls wait for a person.

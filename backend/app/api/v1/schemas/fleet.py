@@ -727,6 +727,43 @@ class FleetEnableResponse(BaseModel):
     estimate: FleetEnableEstimateResponse | None = None
 
 
+class FleetResetRequest(BaseModel):
+    """Reset a built-in fleet to its factory state (#1508). ``dry_run`` answers the counts
+    for the confirmation dialog; a real reset needs ``confirm_name``, the fleet's name typed."""
+
+    dry_run: bool = False
+    confirm_name: str | None = Field(default=None, max_length=200)
+
+
+class FleetResetResponse(BaseModel):
+    """What a reset changed (or, on a dry run, would change)."""
+
+    fleet_id: str
+    dry_run: bool
+    #: Automations switched off or re-stamped as never set up.
+    automations: int
+    #: Automations whose run-as user is cleared.
+    run_as_cleared: int
+    #: Integrations, knowledge bases, skills, MCP servers and custom tools unbound from the members.
+    bindings: int
+    #: Approval pins removed.
+    pins: int
+    #: Gates a person added, removed.
+    gates: int
+    #: The level the fleet moves back to, ``null`` when it is already there.
+    autonomy_level: str | None = None
+    #: Member agents whose configuration is rewritten from the seed.
+    agents: int
+    #: Fleet settings put back to their default, by name.
+    settings: list[str]
+    #: Whether a local documentation version is replaced by the shipped one.
+    documentation: bool
+    #: Automations an emergency stop holds, left as they are.
+    held_by_stop: list[str]
+    #: The fleet's automations after the call.
+    automations_state: FleetAutomationsResponse
+
+
 FleetBulkActionName = Literal["pause", "resume", "set_autonomy"]
 
 #: The most fleets one bulk call acts on by id; the emergency switch (``all_fleets``) has no cap.
