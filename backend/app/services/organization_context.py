@@ -1172,10 +1172,30 @@ def _value(profile: OrganizationProfile, path: str) -> Any:
     return value
 
 
+#: The identity fields: in Copilot mode the profile is these alone (#1690). Copilot has
+#: no CTEM loop, so its agents need who the company is and nothing else; the other
+#: fields stay stored untouched, so switching the mode never loses data.
+IDENTITY_FIELDS: frozenset[str] = frozenset({"name", "sector", "sub_sector", "regions", "size"})
+
+
+def identity_only() -> bool:
+    """Whether the profile is read and reported as its identity alone: a Copilot-like platform (#1690)."""
+    from app.core.config import settings
+
+    return bool(settings.is_copilot_like)
+
+
+def contract_fields() -> tuple[tuple[str, str], ...]:
+    """The contract fields of this platform's mode: :data:`CONTRACT_FIELDS`, the identity alone in Copilot mode."""
+    if identity_only():
+        return tuple(field for field in CONTRACT_FIELDS if field[0] in IDENTITY_FIELDS)
+    return CONTRACT_FIELDS
+
+
 def missing_fields(profile: OrganizationProfile) -> list[str]:
-    """The contract fields *profile* leaves empty, by path, in contract order."""
+    """The contract fields *profile* leaves empty, by path, in contract order (the identity alone in Copilot mode)."""
     missing: list[str] = []
-    for path, _label in CONTRACT_FIELDS:
+    for path, _label in contract_fields():
         value = _value(profile, path)
         if path == "ticketing":
             empty = not (value.integration and value.project)
@@ -1836,8 +1856,9 @@ def render_for_agent(
 
     from app.services.content_safety import wrap_untrusted
 
+    identity = identity_only()
     if row is None:
-        every = missing_for_run([path for path, _label in CONTRACT_FIELDS], ctem_work=ctem_work)
+        every = missing_for_run([path for path, _label in contract_fields()], ctem_work=ctem_work)
         labels = dict(CONTRACT_FIELDS)
         return (
             "No organization profile is saved yet. Every field is missing: "
@@ -1854,9 +1875,11 @@ def render_for_agent(
         if value not in ("", [], None)
         and not (isinstance(value, dict) and not any(value.values()))
         and key != "onboarding_skipped"
+        # Copilot mode: the identity alone reaches an agent (#1690).
+        and (not identity or key in IDENTITY_FIELDS)
     }
     labels = dict(CONTRACT_FIELDS)
-    exposure = exposure_line(profile, asset_counts)
+    exposure = "" if identity else exposure_line(profile, asset_counts)
     lines = [
         f"Organization profile, version {row.version} (saved {row.created_at:%Y-%m-%d %H:%M} UTC, source {row.source}).",
         "Cite the fields you used. Fields not filled: "
