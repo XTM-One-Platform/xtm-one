@@ -669,6 +669,8 @@ function DataTableView<T>({
   // The lead and box widths at which the one-row toolbar's full labels ran past its box.
   const [toolbarRow, setToolbarRow] = useState<HTMLDivElement | null>(null);
   const [fullLabelsOverflow, setFullLabelsOverflow] = useState<{ lead: number; box: number } | null>(null);
+  // The lead and box widths at which the one-row toolbar still ran past its box once compact.
+  const [compactOverflow, setCompactOverflow] = useState<{ lead: number; box: number } | null>(null);
 
   // A typed search reaches the state after a pause, so the URL (and a server query) follow the words, not the keys.
   const [searchText, setSearchText] = useState(state.search);
@@ -1267,12 +1269,25 @@ function DataTableView<T>({
   // wraps, so the right group (total, page size, export) never runs past the box
   // (the Cases list at 1080 ended at 1167 px with two rows selected, UX r2 B6 on #11666).
   const selectionShown = Boolean(selection) && selected.length > 0;
-  const toolbarWraps = !filtersInPill || leadCrowds || selectionShown;
-  // Before paint: a one-row toolbar drawn with its full labels that runs past its box records
-  // the lead and box widths, so the next render draws the compact controls (no flash).
+  // A compact one-row toolbar that still ran past its box at this lead width or a wider one
+  // and this box width or a narrower one wraps too: the page's own controls (the Case opening
+  // switch) count in the row, and the Cases list in ja at 1080 ran 21 px past it (UX r3 B1 on #1963).
+  const compactCrowds =
+    filtersInPill &&
+    compactToolbar &&
+    boxWidth !== null &&
+    compactOverflow !== null &&
+    leadWidth >= compactOverflow.lead &&
+    boxWidth <= compactOverflow.box;
+  const toolbarWraps = !filtersInPill || leadCrowds || selectionShown || compactCrowds;
+  // Before paint: a one-row toolbar that runs past its box records the lead and box widths, so
+  // the next render draws the compact controls, and a compact row that still runs past it wraps
+  // its right group to its own line (no flash).
   useLayoutEffect(() => {
-    if (!toolbarRow || !filtersInPill || toolbarWraps || compactToolbar || boxWidth === null) return;
-    if (toolbarRow.scrollWidth > toolbarRow.clientWidth + 1) setFullLabelsOverflow({ lead: leadWidth, box: boxWidth });
+    if (!toolbarRow || !filtersInPill || toolbarWraps || boxWidth === null) return;
+    if (toolbarRow.scrollWidth <= toolbarRow.clientWidth + 1) return;
+    if (compactToolbar) setCompactOverflow({ lead: leadWidth, box: boxWidth });
+    else setFullLabelsOverflow({ lead: leadWidth, box: boxWidth });
   }, [toolbarRow, filtersInPill, toolbarWraps, compactToolbar, boxWidth, leadWidth]);
   // A card list (`renderGrid`) has no header row: its page box is the first control of the
   // toolbar, never a row of its own above the cards (Sam on /operations/shared-state, 14 Nov 2026).
