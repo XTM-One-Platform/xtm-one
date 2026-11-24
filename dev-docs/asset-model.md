@@ -416,10 +416,12 @@ the Software tab and `GET /organization-context/software` replace it, and `GET /
 assets running a product.
 - `get_organization_context(category="software")` answers the organization's Software entities (synced and
   hand-typed, with versions, CPE and asset count) once the store holds one, and the profile rows before.
-  `category="tech_stack"` and `upsert_organization_rows(section="tech_stack")` are deprecated aliases of
-  `software`, accepted for one release; stored category selections were renamed by `s1495swprofile01`,
-  which also turned each profile tech stack row into a hand-typed Software (a hand CPE kept as the override).
-- `upsert_organization_rows(section="software")` (or its alias) writes Software entities, not profile rows:
+  The name `tech_stack` is retired with no alias (Sam, 24 Nov 2026): the category, the rows section, the
+  import and sync section and the outbound pairing are all `software`. `s1495swprofile01` turned each profile
+  tech stack row into a hand-typed Software (a hand CPE kept as the override) and renamed stored category
+  selections; `s1495swsection01` renames the saved syncs' section and any selection still naming it.
+  The profile list the rows are stored under keeps its key `tech_stack` until the profile field is dropped.
+- `upsert_organization_rows(section="software")` writes Software entities, not profile rows:
   a row whose vendor and product a software already carries is reported `unchanged` and never overwritten;
   a new one becomes a hand-typed Software (`create_software`, its typed version stored as a version). Rows are
   never removed by source (`remove_organization_rows` refuses the section). Before the organization has a

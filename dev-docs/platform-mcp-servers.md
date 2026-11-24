@@ -260,7 +260,7 @@ catalog, platform settings.
 | Compliance assessments | `list_opencrq_compliance_assessments`, `get_opencrq_compliance_assessment`, `create_opencrq_compliance_assessment`, `manage_opencrq_compliance_assessment`, `update_opencrq_requirement_answer` |
 | Risk & attack outcomes | `list_opencrq_risk_scenarios`, `get_opencrq_risk_scenario`, `create_opencrq_risk_scenario`, `update_opencrq_risk_scenario`, `delete_opencrq_risk_scenarios`, `update_opencrq_risk_tolerance`, `get_opencrq_scenario_exposure`, `get_opencrq_cve_exploitation`, `list_opencrq_attack_outcomes`, `get_opencrq_attack_outcome` |
 | CRQ | `get_opencrq_financial_summary`, `run_opencrq_crq_simulation`, `get_opencrq_crq_run`, `list_opencrq_crq_run_history`, `get_opencrq_crq_what_if`, `get_opencrq_tef_input`, `update_opencrq_tef_input`, `list_opencrq_loss_drivers`, `get_opencrq_loss_driver`, `update_opencrq_loss_estimates`, `get_opencrq_financial_profile`, `update_opencrq_financial_profile` |
-| Assets & vulnerabilities | `list_opencrq_primary_assets`, `create_opencrq_primary_asset`, `update_opencrq_primary_asset`, `delete_opencrq_primary_assets`, `list_opencrq_business_value_categories`, `list_opencrq_supporting_assets`, `get_opencrq_supporting_asset`, `create_opencrq_supporting_asset`, `update_opencrq_supporting_asset`, `delete_opencrq_supporting_assets`, `reset_opencrq_supporting_asset_to_connectors`, `list_opencrq_asset_dependencies`, `create_opencrq_asset_dependency`, `update_opencrq_asset_dependency_roles`, `delete_opencrq_asset_dependencies`, `create_opencrq_asset_evidence`, `update_opencrq_evidence_state`, `delete_opencrq_asset_evidence`, `reset_opencrq_evidence_state`, `get_opencrq_evidence`, `list_opencrq_cve_evidences`, `list_opencrq_unique_findings`, `search_opencrq_cves`, `list_opencrq_cves`, `get_opencrq_cve` |
+| Assets & vulnerabilities | `list_opencrq_primary_assets`, `get_opencrq_primary_asset`, `create_opencrq_primary_asset`, `update_opencrq_primary_asset`, `delete_opencrq_primary_assets`, `list_opencrq_business_value_categories`, `list_opencrq_supporting_assets`, `get_opencrq_supporting_asset`, `create_opencrq_supporting_asset`, `update_opencrq_supporting_asset`, `delete_opencrq_supporting_assets`, `reset_opencrq_supporting_asset_to_connectors`, `list_opencrq_asset_dependencies`, `create_opencrq_asset_dependency`, `update_opencrq_asset_dependency_roles`, `delete_opencrq_asset_dependencies`, `create_opencrq_asset_evidence`, `update_opencrq_evidence_state`, `delete_opencrq_asset_evidence`, `reset_opencrq_evidence_state`, `get_opencrq_evidence`, `list_opencrq_cve_evidences`, `list_opencrq_unique_findings`, `search_opencrq_cves`, `list_opencrq_cves`, `get_opencrq_cve` |
 | MITRE ATT&CK | `list_opencrq_mitre_tactics`, `search_opencrq_mitre_techniques`, `get_opencrq_mitre_technique`, `list_opencrq_mitre_mitigations` |
 | Job tracking (read) | `list_opencrq_jobs`, `get_opencrq_job` |
 | Findings & posture (read) | `get_opencrq_findings_summary`, `get_opencrq_top_vulnerabilities`, `list_opencrq_findings`, `get_opencrq_cve_finding`, `get_opencrq_asset_posture`, `get_opencrq_technique_test_posture`, `get_opencrq_control_validation` |
@@ -282,7 +282,8 @@ invitations, tenant/organization lifecycle), service accounts, engine
 settings tools - both reads and writes (CRQ / threat
 relevance settings), job
 cancel/retry, integration/connector configuration and status
-(`list_opencrq_connectors`, `list_opencrq_connector_syncs`), platform
+(`list_opencrq_connectors`, `list_opencrq_connector_syncs`,
+`configure_opencrq_connector`, `run_opencrq_connector`), platform
 settings.
 These tools remain available to agents through the regular OpenCRQ
 integration.

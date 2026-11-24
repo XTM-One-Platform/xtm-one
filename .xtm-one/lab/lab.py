@@ -1718,7 +1718,7 @@ LAB_ORG_SYNCED_ROWS = {
         {"name": "Customer data lake", "criticality": "high", "external_id": "lab-opencrq-asset-2"},
         {"name": "Internal wiki", "criticality": "low"},
     )),
-    "tech_stack": ("openaev", (
+    "software": ("openaev", (
         {"vendor": "Microsoft", "product": "Exchange Server", "external_id": "lab-openaev-software-1"},
         {"vendor": "Fortinet", "product": "FortiOS", "external_id": "lab-openaev-software-2"},
         {"vendor": "Atlassian", "product": "Confluence Data Center"},
@@ -8273,15 +8273,17 @@ def seed_org_synced(token: str, base: str) -> dict[str, str]:
     current = api("GET", "/organization-context", token)
     profile = dict((current.get("profile") if isinstance(current, dict) else None) or LAB_ORG_PROFILE)
     expected: dict[str, set[tuple[str, str]]] = {}
+    # The sync section ``software`` (#1495) still fills the profile list ``tech_stack``.
+    fields = {"software": "tech_stack"}
     for section, (source, rows) in LAB_ORG_SYNCED_ROWS.items():
         sync = syncs.get((section, source)) or _created(api("POST", "/organization-context/syncs", token, {
             "section": section, "source": source, "frequency": "daily", "hour": 6, "minute": 0,
             "timezone": "UTC", "enabled": False,
         }))
-        profile[section] = [
+        profile[fields.get(section, section)] = [
             {**row, "source": source, "sync_id": sync} if row.get("external_id") else dict(row) for row in rows
         ]
-        expected[section] = {(str(row["external_id"]), sync) for row in rows if row.get("external_id")}
+        expected[fields.get(section, section)] = {(str(row["external_id"]), sync) for row in rows if row.get("external_id")}
     saved = api("PUT", "/organization-context", token, {"profile": profile, "source": "form"})
     version = saved.get("version") if isinstance(saved, dict) else None
     read = api("GET", "/organization-context", token)
