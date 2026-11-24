@@ -132,8 +132,23 @@ async def pass_identities(db: AsyncSession, vertical: str) -> list[str]:
 # ── freshness ────────────────────────────────────────────────────────────
 
 
+def outage_products(answer: dict[str, Any]) -> list[str]:
+    """The products of a recompute's ``missing`` that did not answer as a product (#1852).
+
+    A product that rejected one identity's token, or one the identity has no
+    credentials for, is that identity's failure, not an outage: the shared
+    freshness line every viewer reads never names it.
+    """
+    from app.services.ctem_cases_source import IDENTITY_REASONS
+
+    reasons = answer.get("reasons") or {}
+    return [p for p in answer.get("missing") or [] if reasons.get(p) not in IDENTITY_REASONS]
+
+
 async def record_freshness(vertical: str, answer: dict[str, Any], at: datetime) -> None:
     """Keep when the cases were last recomputed and, after an outage, which product did not answer."""
+    if not answer.get("applied") and not outage_products(answer):
+        return  # only this identity could not read: the shared line keeps what it said
     try:
         client = await _redis()
         key = _FRESHNESS.format(vertical=vertical)
@@ -144,7 +159,7 @@ async def record_freshness(vertical: str, answer: dict[str, Any], at: datetime) 
             current["missing"] = []
             current["missing_at"] = None
         else:
-            current["missing"] = list(answer.get("missing") or [])
+            current["missing"] = outage_products(answer)
             current["missing_at"] = at.isoformat()
         await client.set(key, json.dumps(current))
     except Exception:

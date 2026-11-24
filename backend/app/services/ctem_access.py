@@ -138,6 +138,23 @@ async def signal_reader(db: Any, user: object) -> str | None:
     return str(getattr(user, "id", user))
 
 
+async def gate_recipient(db: Any) -> str | None:
+    """The work item ``recipient`` a case gate of a company fleet waits for (#1748).
+
+    ``group:<id>`` for every group granting ``decide`` with ``ctem_notify`` on,
+    comma-separated; ``None`` when there is none (today's routing applies).
+    """
+    try:
+        rows = await db.execute(
+            select(Group.id).where(Group.ctem_access == "decide", Group.ctem_notify.is_(True)).order_by(Group.name)
+        )
+        ids = [str(r) for r in rows.scalars().all()]
+    except Exception:  # unreadable: today's routing, never a widening
+        logger.warning("CTEM access: decide groups unreadable", exc_info=True)
+        return None
+    return ",".join(f"group:{i}" for i in ids) or None
+
+
 async def signal_writer(db: Any, user: object) -> str | None:
     """The ``recorded_by`` filter of a signal write (triage): ``None`` with decide, else the person's own signals."""
     if await may_decide(db, user):
