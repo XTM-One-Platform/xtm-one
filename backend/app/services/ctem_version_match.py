@@ -109,6 +109,37 @@ def version_match(
     return match
 
 
+def affected_from_outcomes(issues: Any) -> str | None:
+    """The affected versions OpenCTI placed, in words, from the case's open issues (pure, #1783).
+
+    *issues* are the case view's issue rows; each may carry ``version_outcomes``
+    ({``version``, ``outcome``}). ``None`` when OpenCTI placed no running
+    version (all unknown, or no outcome): the range stays unknown. No range
+    is computed: the outcome of each version is OpenCTI's ``has`` relation.
+    """
+    affected: set[str] = set()
+    not_affected: set[str] = set()
+    unknown: set[str] = set()
+    for issue in issues or ():
+        if not isinstance(issue, Mapping) or issue.get("open") is False:
+            continue
+        for row in issue.get("version_outcomes") or ():
+            if not isinstance(row, Mapping) or not _clean(row.get("version")):
+                continue
+            version, outcome = _clean(row.get("version")), _clean(row.get("outcome"))
+            {"affected": affected, "not_affected": not_affected}.get(outcome, unknown).add(version)
+    not_affected -= affected
+    unknown -= affected | not_affected
+    if not affected and not not_affected:
+        return None
+    parts = [f"{', '.join(sorted(affected))} per OpenCTI" if affected else "none of the running versions per OpenCTI"]
+    if not_affected:
+        parts.append(f"not affected: {', '.join(sorted(not_affected))}")
+    if unknown:
+        parts.append(f"not known to OpenCTI: {', '.join(sorted(unknown))}")
+    return "; ".join(parts)
+
+
 def blind_reasons(match: Mapping[str, Any]) -> list[str]:
     """What is unknown, in words: ``running version unknown``, ``affected range unknown``."""
     reasons: list[str] = []
