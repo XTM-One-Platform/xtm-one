@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -27,7 +28,15 @@ from tests.scratch_database import ALL_TABLES, scratch_database
 pytestmark = pytest.mark.integration
 
 
-async def _seed(session, *, trigger_type: str, paused_hours: float, deadline: datetime | None = None, ask=None):
+async def _seed(
+    session: Any,
+    *,
+    trigger_type: str,
+    paused_hours: float,
+    deadline: datetime | None = None,
+    ask: Any = None,
+    kind: str | None = None,
+) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
     user = User(id=uuid.uuid4(), email=f"f3-{uuid.uuid4().hex[:8]}@test.local", full_name="F3", hashed_password="x")
     session.add(user)
     await session.flush()
@@ -76,6 +85,8 @@ async def _seed(session, *, trigger_type: str, paused_hours: float, deadline: da
         session.add(decision)
     decision.created_at = datetime.now(UTC) - timedelta(hours=paused_hours)
     decision.deadline = deadline
+    if kind is not None:
+        decision.kind = kind
     if ask is not None:
         decision.ask = ask
     await session.commit()
@@ -114,6 +125,56 @@ async def test_chat_started_run_is_unaffected(_four_hours) -> None:
             assignment_id, _, _ = await _seed(session, trigger_type="chat_handover", paused_hours=48)
         async with db.sessions() as session:
             assert await ae.has_active_run(session, assignment_id) is True
+
+
+async def test_event_run_paused_on_a_tool_approval_frees_its_assignment_at_once(_four_hours: None) -> None:
+    # #1647: the approval gate asks before the tool runs; later events of the assignment run.
+    async with scratch_database("f3wait", tables=ALL_TABLES, extensions=("vector",)) as db:
+        async with db.sessions() as session:
+            assignment_id, run_id, _ = await _seed(
+                session, trigger_type="platform_event", paused_hours=0, kind="tool_approval"
+            )
+        async with db.sessions() as session:
+            assert await ae.has_active_run(session, assignment_id) is False
+            run = await session.get(AssignmentRun, run_id)
+            assert run.status == "awaiting_human"
+
+
+async def test_chat_started_tool_approval_still_holds(_four_hours: None) -> None:
+    async with scratch_database("f3wait", tables=ALL_TABLES, extensions=("vector",)) as db:
+        async with db.sessions() as session:
+            assignment_id, _, _ = await _seed(
+                session, trigger_type="chat_handover", paused_hours=0, kind="tool_approval"
+            )
+        async with db.sessions() as session:
+            assert await ae.has_active_run(session, assignment_id) is True
+
+
+async def test_re_ask_after_a_rollout_keeps_the_release_clock(_four_hours: None) -> None:
+    # #1647: a run that leaves its pause unanswered and asks the same question again
+    # keeps the first asking time, so the 4 h release does not restart.
+    async with scratch_database("f3wait", tables=ALL_TABLES, extensions=("vector",)) as db:
+        async with db.sessions() as session:
+            assignment_id, run_id, first_id = await _seed(session, trigger_type="schedule", paused_hours=5)
+        async with db.sessions() as session:
+            first = await session.get(Decision, first_id)
+            asked_at = first.created_at
+            run = await session.get(AssignmentRun, run_id)
+            run.status = "running"
+            await session.flush()
+            run.status = "awaiting_human"
+            await session.commit()
+        async with db.sessions() as session:
+            reopened = (
+                await session.execute(
+                    select(Decision).where(
+                        Decision.source_type == "run", Decision.source_id == run_id, Decision.status == "open"
+                    )
+                )
+            ).scalar_one()
+            assert reopened.id != first_id
+            assert reopened.created_at == asked_at
+            assert await ae.has_active_run(session, assignment_id) is False
 
 
 async def _expire_and_read(db, monkeypatch, **seed):

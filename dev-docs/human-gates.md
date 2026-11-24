@@ -234,8 +234,15 @@ replaces the bare status filter of the overlap guard (`has_active_run`,
 counts: an `awaiting_human` run whose open `decisions` row is older than
 `HUMAN_GATE_QUEUE_RELEASE_HOURS` (default 4, 0 turns it off) no longer holds
 its assignment, unless its `trigger_context.type` is chat-started
-(`chat_handover`). The wait is read from the decision row, so no column is
-added. `expire_overdue_decisions` runs on the autonomous tick: an open run
+(`chat_handover`). A pause on a tool approval (decision kind `tool_approval`,
+`RELEASED_AT_ONCE_KINDS`) never holds a non-chat run's assignment, whatever
+the hours: the gate asks before the tool runs, so nothing is half written,
+and the answer resumes the run as before (#1647). The wait is read from the
+decision row, so no column is added; a run that leaves its pause unanswered
+and asks the same question of the same kind again (a rollout re-entry) keeps
+the first asking time on its new decision row
+(`decision_hooks.carried_asked_at`), so the release clock does not restart.
+`expire_overdue_decisions` runs on the autonomous tick: an open run
 decision past its `deadline` becomes `expired` (an `expired` event, surface
 `deadline`), and the run resumes with the ask's recommendation as its answer,
 else "No answer before the deadline"; a tool approval resumes with every call
