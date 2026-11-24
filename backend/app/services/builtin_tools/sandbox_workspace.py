@@ -1886,10 +1886,7 @@ def build_sandbox_workspace_tools(
             f"Checked {repository}@{ref or 'default branch'} out into {display(destination)}/: "
             f"{len(tree.files):,} file(s), {format_size(size)}"
             + (f" (under {', '.join(subs)})" if subs else "")
-            + "".join(
-                f", {w.sub_path} widened to {w.directory}/ (the directory {', '.join(w.checks)} run from)"
-                for w in tree.widened
-            )
+            + "".join(f", {w.sub_path} widened to {w.directory}/ ({w.words()})" for w in tree.widened)
             + "".join(f", {d} added (a declared check of the checkout reads it: needs)" for d in tree.needed)
             + "".join(f", {d}/ added (a requirements file under them installs from it)" for d in tree.dependencies)
             + "".join(f", {d}/ added (a Maven module under them builds against it)" for d in tree.reactor)
@@ -2154,10 +2151,7 @@ def build_sandbox_workspace_tools(
         return (
             f"Grew the checkout at {display(record.path)}/ by {', '.join(new)} at {checkouts.origin(record)}: "
             f"{len(writes):,} file(s) written, {format_size(size)}"
-            + "".join(
-                f", {w.sub_path} widened to {w.directory}/ (the directory {', '.join(w.checks)} run from)"
-                for w in tree.widened
-            )
+            + "".join(f", {w.sub_path} widened to {w.directory}/ ({w.words()})" for w in tree.widened)
             + "".join(f", {d} added (a declared check of the checkout reads it: needs)" for d in tree.needed)
             + (
                 f"; {len(stale):,} stale file(s) an earlier checkout left there, untouched since, were "
@@ -2827,8 +2821,7 @@ def build_sandbox_workspace_tools(
         )
         if tree.widened:
             answer += "".join(
-                f"{w.sub_path} widened to {w.directory}/ (the directory {', '.join(w.checks)} run from at the ref).\n"
-                for w in tree.widened
+                f"{w.sub_path} widened to {w.directory}/ ({w.words()} at the ref).\n" for w in tree.widened
             )
         if base_note:
             answer += base_note + "\n"
