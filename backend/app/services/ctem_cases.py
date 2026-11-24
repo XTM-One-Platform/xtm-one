@@ -263,6 +263,10 @@ class CaseSnapshot:
     #: An upgrade case whose product the asset inventory shows on the fixed version or later on every
     #: asset that runs it (#1252): it leaves the open cases even while its issues stay open at source.
     fixed_in_inventory: bool = False
+    #: The evidence of the decision that resolved the case when a person or an agent resolved it (a gate
+    #: answered not exploitable, a passing re-test), ``None`` for a resolution recompute made (#1646): such
+    #: a closure holds while the case's issues stay as they were, whatever their state at source.
+    decided_closure: str | None = None
 
 
 @dataclass
@@ -394,8 +398,14 @@ def plan_recompute(
             plan.new_state = "resolved"
             plan.evidence = CLOSED_AT_SOURCE
         elif any_open and case.state == "resolved":
-            plan.new_state = "new"
-            plan.reason = "reopened: issues open again at source"
+            if case.decided_closure is None:
+                plan.new_state = "new"
+                plan.reason = "reopened: issues open again at source"
+            elif plan.add or plan.reopen or case.id in retarget:
+                # A decided closure reopens only on a changed issue: a new CVE or asset, an issue that closed
+                # and came back, or a moved fixed version; the event names the decision it overrides (#1646).
+                plan.new_state = "new"
+                plan.reason = f"reopened: issues changed since the closure decision ({case.decided_closure})"[:500]
         plans.append(plan)
     return plans
 

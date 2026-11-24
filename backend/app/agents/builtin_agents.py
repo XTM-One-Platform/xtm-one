@@ -3111,6 +3111,17 @@ CTEM_F1_THREAT_SIGNAL = "Threat signal recorded"
 CTEM_F1_THREAT_SIGNAL_VERDICTS: tuple[str, ...] = ("to_validate",)
 #: Threat signals assessed at once (one run per signal, ordered by the signal id).
 CTEM_F1_THREAT_SIGNAL_CONCURRENCY = 5
+#: The relevance score from which a threat is relevant (#1678).
+CTEM_RELEVANCE_MIN_SCORE = 50
+#: The one relevance rule of the threat response seed (#1678): the analyst persona, the
+#: orchestrator persona and the prompts below read it word for word. Its PIR half is the floor of
+#: the threat signal run (event field pir_floor_met, services/ctem_trigger_rules.pir_floor_met).
+CTEM_RELEVANCE_RULE = (
+    f"A threat is relevant when its relevance score reaches {CTEM_RELEVANCE_MIN_SCORE} of 100, or when an "
+    "organization PIR flags it with a PIR score at or above the prioritization policy's "
+    "pir_min_score_threat; a PIR flag below that threshold is one factor of the score, never "
+    "relevance by itself."
+)
 _LISTEN_ONLY_PROMPT = (
     "This assignment only listens: its filter drops every OpenCTI delivery, the platform records "
     "the threat signal and the 'Threat signal recorded' assignment assesses it. If a delivery "
@@ -3186,6 +3197,9 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
             "filter": {
                 "trigger_path": "relevant_threat",
                 "source_provider": "opencti",
+                # The relevance floor (#1678): only a threat an organization PIR flags at or
+                # above the policy threshold starts a run; the rest waits for the weekly sweep.
+                "pir_floor_met": True,
                 "any": [
                     {"verdict": {"exists": False}},
                     {"verdict": {"in": list(CTEM_F1_THREAT_SIGNAL_VERDICTS)}},
@@ -3201,7 +3215,8 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
             "A relevant threat signal from OpenCTI is in the trigger below (signal_id, verdict). "
             "Read it with list_ctem_signals signal_id, then read the entity it names in OpenCTI. "
             "Score its relevance against the organization profile (get_organization_context: "
-            "sector, regions, technology, PIRs) and stop with the reason when it is not relevant. "
+            "sector, regions, technology, PIRs) with this rule: " + CTEM_RELEVANCE_RULE + " Read the "
+            "live PIR score in OpenCTI before relying on it, and stop with the reason when it is not relevant. "
             "When it is, name the profile entry it touches (a sector, a region, a technology, a "
             "primary asset or a PIR) and what is missing for the scope gate to confirm it, unless an "
             "open case already covers it (list_ctem_cases); once confirmed, the case loop opens "
@@ -3222,7 +3237,8 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
             "Weekly sweep: list the intrusion sets, campaigns and reports "
             "created in OpenCTI in the last 7 days. Skip those an open CTEM case "
             "(list_ctem_cases) or an open ctem:f1 work item already covers. "
-            "Ask the Threat Relevance Analyst to score the rest in one batch, and record each relevant one with "
+            "Ask the Threat Relevance Analyst to score the rest in one batch (" + CTEM_RELEVANCE_RULE + "), "
+            "and record each relevant one with "
             "record_ctem_signal (trigger_path relevant_threat). End with a short "
             "summary: threats reviewed, relevant, signals recorded."
         ),

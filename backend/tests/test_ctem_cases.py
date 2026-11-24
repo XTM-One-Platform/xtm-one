@@ -156,6 +156,53 @@ def test_a_resolved_case_reopens_when_its_issues_return():
     assert plan.reopen == ["opencti:v1"] and plan.add == ["opencti:v2"]
 
 
+def test_a_decided_closure_holds_while_its_issues_stay_open_unchanged() -> None:
+    """#1646: a gate answered not exploitable; the same open issues never reopen the case."""
+    case = _case("resolved", {"opencti:v1": True}, decided_closure="gate close_not_exploitable")
+    (plan,) = cc.plan_recompute([case], [_cti("v1", "CVE-1")])
+    assert plan.new_state is None
+    assert plan.add == [] and plan.reopen == []
+
+
+def test_a_decided_closure_reopens_on_a_new_issue_and_names_the_decision() -> None:
+    case = _case("resolved", {"opencti:v1": True}, decided_closure="gate close_not_exploitable")
+    (plan,) = cc.plan_recompute([case], [_cti("v1", "CVE-1"), _cti("v2", "CVE-2")])
+    assert plan.new_state == "new"
+    assert plan.add == ["opencti:v2"]
+    assert "gate close_not_exploitable" in (plan.reason or "")
+
+
+def test_a_decided_closure_reopens_when_a_closed_issue_returns() -> None:
+    case = _case("resolved", {"opencti:v1": True, "opencti:v2": False}, decided_closure="ticket ITS-1 done")
+    (plan,) = cc.plan_recompute([case], [_cti("v1", "CVE-1"), _cti("v2", "CVE-2")])
+    assert plan.new_state == "new"
+    assert plan.reopen == ["opencti:v2"]
+
+
+def test_only_a_resolution_recompute_did_not_write_is_a_decided_closure() -> None:
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from app.services.ctem_cases_store import _decided_closures
+
+    def state(to: str, evidence: str | None) -> SimpleNamespace:
+        return SimpleNamespace(kind="state", to_value=to, evidence=evidence, reason=None)
+
+    by_gate, by_source, reopened_then_source = uuid4(), uuid4(), uuid4()
+    out = _decided_closures(
+        {
+            by_gate: [state("resolved", "gate close_not_exploitable")],
+            by_source: [state("resolved", cc.CLOSED_AT_SOURCE)],
+            reopened_then_source: [
+                state("resolved", "gate close_not_exploitable"),
+                state("new", None),
+                state("resolved", cc.FIXED_IN_INVENTORY),
+            ],
+        }
+    )
+    assert out == {by_gate: "gate close_not_exploitable"}
+
+
 def test_a_case_fixed_on_every_asset_resolves_while_its_issues_stay_open_at_source() -> None:
     """#1252: the inventory shows no asset below the fix, the case leaves the open cases."""
     case = _case(members={"opencti:v1": True}, fixed_in_inventory=True)

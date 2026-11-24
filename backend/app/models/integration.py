@@ -249,6 +249,13 @@ class Integration(Base):
     # Display only: ``status`` keeps deciding whether the tools can run.
     connection_test_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
+    # Why the status last left ``connected`` (the refresh sweep's verdict,
+    # #1665) and when that verdict was recorded; both NULL on rows from before
+    # them. Read only while ``status`` is ``error`` / ``reauthorize``
+    # (``app.services.integration_status``): a reconnect makes them history.
+    status_reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    status_reason_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Whether this integration's tools pause for human approval.
     #
     # A single toggle for the whole integration, not per tool: there are ~2,350

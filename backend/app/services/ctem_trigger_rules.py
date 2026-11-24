@@ -155,6 +155,25 @@ def threshold_for(policy: Any, kind: str) -> int:
     return int(policy.pir_min_score_threat)
 
 
+#: The evidence key and event field (#1678): a relevant threat signal whose delivery named a PIR
+#: score at or above the policy's ``pir_min_score_threat``. The seeded threat signal run filters on it.
+PIR_FLOOR_KEY = "pir_floor_met"
+
+
+def pir_floor_met(pirs: object, threshold: int) -> bool:
+    """Whether one PIR match (``[{pir_id, score_at_delivery}]``) reaches *threshold*. Pure.
+
+    The score is the one at delivery, possibly the previous one (see
+    ``ctem_signal_listeners._pir_matches``): the run it starts reads the live
+    score before acting. No PIR match is below the floor.
+    """
+    for pir in pirs if isinstance(pirs, list) else []:
+        score = pir.get("score_at_delivery") if isinstance(pir, Mapping) else None
+        if isinstance(score, int | float) and not isinstance(score, bool) and score >= threshold:
+            return True
+    return False
+
+
 def pir_drop_reason(kind: str, threshold: int, live_scores: Mapping[str, float | None]) -> str | None:
     """Why the PIR score rule drops a delivery, from the live score per PIR (``None``: the run starts).
 

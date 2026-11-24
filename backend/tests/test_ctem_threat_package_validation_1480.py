@@ -393,15 +393,54 @@ def test_grouping_page_reads_validated_only_when_the_review_approved(
         assert (shown["state"], shown["coverage_requested"]) == (state, requested)
 
 
-def test_replanned_package_is_neither_drafted_coverage_nor_overdue() -> None:
+@pytest.mark.parametrize("option", ["Rework the package", "Reject"])
+def test_package_recorded_before_the_answer_is_stopped_by_it(option: str) -> None:
     case_id = uuid.uuid4()
     events = [
         _gate(case_id, "waited", NOW),
-        _gate(case_id, "answered", NOW + timedelta(minutes=1), option="Rework the package"),
-        _stored(case_id, GROUPING, DRAFT_URL, NOW + timedelta(minutes=2)),
+        _stored(case_id, GROUPING, DRAFT_URL, NOW + timedelta(minutes=1)),
+        _gate(case_id, "answered", NOW + timedelta(minutes=2), option=option),
     ]
     shown = _shown(events, view_of.ViewerView(opencti=True), sla_due_at=NOW, now=NOW + timedelta(hours=1))
-    assert (shown["state"], shown["coverage_drafted"], shown["draft_overdue"]) == ("replan", False, False)
+    stopped = "replan" if option.startswith("Rework") else "rejected"
+    assert (shown["state"], shown["coverage_drafted"], shown["draft_overdue"]) == (stopped, False, False)
+    assert shown["coverage_requested"] is False
+
+
+@pytest.mark.parametrize("url", [DRAFT_URL, None], ids=["draft-page", "no-page"])
+@pytest.mark.parametrize("option", ["Retry in draft", "Rework the package", "Reject"])
+def test_package_recorded_after_a_stopping_answer_reads_drafted(option: str, url: str | None) -> None:
+    """#1677: the loop re-planned under the answer and drafted a new package 27 s later."""
+    case_id = uuid.uuid4()
+    events = [
+        _gate(case_id, "waited", NOW),
+        _gate(case_id, "answered", NOW + timedelta(minutes=1), option=option),
+        _stored(case_id, GROUPING, url, NOW + timedelta(minutes=1, seconds=27)),
+    ]
+    assert view_of.review_outcome(events) in (view_of.REVIEW_REPLAN, view_of.REVIEW_REJECTED)
+    assert view_of.package_review(events) is None
+    for view in (view_of.ViewerView(opencti=True), view_of.ViewerView(opencti=False)):
+        shown = _shown(events, view, now=NOW + timedelta(hours=1))
+        assert (shown["state"], shown["coverage_drafted"], shown["coverage_requested"]) == ("drafted", True, False)
+
+
+def test_grouping_page_recorded_after_a_replan_answer_stays_stopped() -> None:
+    case_id = uuid.uuid4()
+    events = [
+        _gate(case_id, "answered", NOW, option="Rework the package"),
+        _live_package(case_id, NOW + timedelta(minutes=1)),
+    ]
+    shown = _shown(events, view_of.ViewerView(opencti=True), now=NOW + timedelta(hours=1))
+    assert (shown["state"], shown["coverage_drafted"], shown["coverage_requested"]) == ("replan", False, False)
+
+
+def test_package_recorded_at_the_answer_time_is_stopped() -> None:
+    case_id = uuid.uuid4()
+    events = [
+        _gate(case_id, "answered", NOW, option="Rework the package"),
+        _stored(case_id, GROUPING, DRAFT_URL, NOW),
+    ]
+    assert view_of.package_review(events) == view_of.REVIEW_REPLAN
 
 
 def test_waiting_review_past_the_sla_is_overdue() -> None:

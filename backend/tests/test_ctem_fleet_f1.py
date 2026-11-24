@@ -186,6 +186,7 @@ def _signal_event(**overrides):
         "subject_kind": "threat",
         "verdict": "to_validate",
         "case_id": None,
+        "pir_floor_met": True,
         **overrides,
     }
 
@@ -200,6 +201,7 @@ def _signal_event(**overrides):
         ({"verdict": "discarded"}, False),
         ({"trigger_path": "new_vulnerability"}, False),
         ({"source_provider": "manual"}, False),
+        ({"pir_floor_met": False}, False),  # below the relevance floor (#1678): the weekly sweep's
     ],
 )
 def test_the_threat_signal_filter_keeps_the_signals_no_case_loop_owns(overrides, runs):

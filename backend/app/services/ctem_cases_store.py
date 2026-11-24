@@ -173,6 +173,8 @@ async def apply_recompute(
         for c in cases
         if c.state in (*OPEN_STATES, "resolved") and await ctem_case_versions.fixed_in_inventory(db, c)
     }
+    # A resolved case closed by a decision holds while its issues stay as they were (#1646).
+    decided = _decided_closures(await events_of(db, [c.id for c in cases if c.state == "resolved"]))
     snapshots = [
         rules.CaseSnapshot(
             id=str(c.id),
@@ -183,6 +185,7 @@ async def apply_recompute(
             members={f"{r.source}:{r.external_id}": r.open for r in members[c.id] if r.source != "signal"},
             validation_plan=bool(getattr(c, "validation_plan", False)),
             fixed_in_inventory=c.id in fixed_in_inventory,
+            decided_closure=decided.get(c.id),
         )
         for c in cases
     ]
@@ -613,6 +616,26 @@ async def list_cases(
     cases = await _scope_cases(db, organization_id, vertical)
     members = await _members(db, [c.id for c in cases])
     return [(c, members[c.id]) for c in cases]
+
+
+#: The evidence of the resolutions recompute itself writes: they are not a decision (#1646).
+_RECOMPUTE_EVIDENCE = (rules.CLOSED_AT_SOURCE, rules.FIXED_IN_INVENTORY)
+
+
+def _decided_closures(history: dict[uuid.UUID, list[CtemCaseEvent]]) -> dict[uuid.UUID, str]:
+    """Per resolved case, the evidence of the decision that resolved it (#1646); absent when recompute did.
+
+    *history* is oldest first: the newest transition to ``resolved`` is the closure in force. A
+    resolution a person, an agent or a gate wrote carries its own evidence (a gate answer, a ticket,
+    a passing re-test), never the evidence recompute writes.
+    """
+    out: dict[uuid.UUID, str] = {}
+    for case_id, rows in history.items():
+        closure = next((r for r in reversed(rows) if r.kind == "state" and r.to_value == "resolved"), None)
+        if closure is None or (closure.evidence or "") in _RECOMPUTE_EVIDENCE:
+            continue
+        out[case_id] = (closure.evidence or closure.reason or "resolved by a decision").strip()[:200]
+    return out
 
 
 async def events_of(db: AsyncSession, case_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[CtemCaseEvent]]:

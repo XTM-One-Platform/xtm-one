@@ -31,7 +31,9 @@ was read from, so one read tells a fleet orchestrator everything the seeded
 * ``not_picked_up``: an open, due item no inbox will take: no owner, an owner
   with no work-item inbox, or an owner whose inboxes all filter it out (its
   correlation prefix or priority), read with the dispatch's own rule
-  (:func:`app.services.work_item_context.pickup_state`).
+  (:func:`app.services.work_item_context.pickup_state`). An item its owner's
+  enabled ``platform_event`` assignment hears on ``work_item.*`` events through a
+  ``correlation_key`` filter is worked by that listener and left out.
 * ``decision_card_not_readable``: an open item waiting for a person whose ask
   is missing, incomplete or holds ids and timestamps
   (:func:`app.services.work_item_ask_backfill.card_unreadable`, #776).
@@ -525,7 +527,9 @@ async def _not_picked_up(db: AsyncSession, scope: Any, now: datetime) -> list[uu
 
     rows = (
         await db.execute(
-            select(WorkItem.id, WorkItem.owner_agent_id, WorkItem.not_before, WorkItem.payload)
+            select(
+                WorkItem.id, WorkItem.owner_agent_id, WorkItem.not_before, WorkItem.payload, WorkItem.correlation_key
+            )
             .where(scope, WorkItem.status == "open", WorkItem.action_mode.is_(None))
             .order_by(WorkItem.created_at.desc())
             .limit(NOT_PICKED_UP_SCAN)
@@ -540,16 +544,65 @@ async def _not_picked_up(db: AsyncSession, scope: Any, now: datetime) -> list[uu
             "payload": payload or {},
             "scheduled": None,
         }
-        for wid, owner, not_before, payload in rows
+        for wid, owner, not_before, payload, _key in rows
     ]
     if not items:
         return []
     inboxes = await pickup_inboxes(db, items)
-    return [
-        row[0]
+    stranded = [
+        row
         for row, item in zip(rows, items, strict=True)
         if pickup_state(item, inboxes.get(row[0], []), now) in STRANDED_PICKUP_STATES
     ]
+    listeners = await _work_item_listeners(db, {row[1] for row in stranded if row[1]})
+    return [row[0] for row in stranded if not _heard_by_listener(row[1], row[4], listeners)]
+
+
+async def _work_item_listeners(db: AsyncSession, owners: set[uuid.UUID]) -> dict[uuid.UUID, list[Any]]:
+    """Per owner, the ``correlation_key`` match values of its enabled ``platform_event``
+    assignments that hear ``work_item.*`` events on a filtered key.
+
+    Such an assignment works the items its key filter names (a seeded CTEM loop's
+    ``ctem:f1:case:`` item is moved by its "Gate answered" listener), so an open item
+    it hears is not stranded though no work-item inbox takes it.
+    """
+    from app.models.assignment import Assignment
+    from app.services.integration_event_filters import trigger_filter
+
+    if not owners:
+        return {}
+    rows = (
+        await db.execute(
+            select(Assignment.agent_id, Assignment.trigger_config).where(
+                Assignment.agent_id.in_(list(owners)),
+                Assignment.enabled.is_(True),
+                Assignment.trigger_type == "platform_event",
+            )
+        )
+    ).all()
+    out: dict[uuid.UUID, list[Any]] = {}
+    for agent_id, config in rows:
+        event = (config or {}).get("event") if isinstance(config, dict) else None
+        events = [event] if isinstance(event, str) else list(event or [])
+        if not any(isinstance(e, str) and e.startswith("work_item.") for e in events):
+            continue
+        key_match = trigger_filter(config).get("correlation_key")
+        if key_match is not None:
+            out.setdefault(agent_id, []).append(key_match)
+    return out
+
+
+def _heard_by_listener(owner: uuid.UUID | None, key: str | None, listeners: dict[uuid.UUID, list[Any]]) -> bool:
+    """Whether an event listener of *owner* filters on a key that *key* matches.
+
+    An item with no owner or no key is never heard: it stays stranded.
+    """
+    from app.services.integration_event_filters import field_matches
+
+    if owner is None or not key:
+        return False
+    item = {"correlation_key": key}
+    return any(field_matches(item, "correlation_key", match) for match in listeners.get(owner, []))
 
 
 async def _wait_graph_findings(db: AsyncSession, scope: Any, now: datetime) -> list[FleetFinding]:

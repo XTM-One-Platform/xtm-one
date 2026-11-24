@@ -42,7 +42,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Table, event, update
+from sqlalchemy import Table, event, select, update
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
@@ -203,6 +203,40 @@ def _close_open(session: Session, source_type: str, source_id: uuid.UUID, values
     return [row[0] for row in result]
 
 
+def carried_asked_at(previous: Any, kind: str, ask: dict[str, Any]) -> datetime | None:
+    """The asking time a new decision keeps from *previous*, the source's latest decision (pure).
+
+    A source that leaves its pause unanswered and asks the same question again
+    (a run re-entering ``awaiting_human`` after a rollout) keeps the first
+    asking time, so the queue release clock (``decision_waits``) does not
+    restart (#1647). An answered or expired decision, another kind or another
+    question starts a new clock.
+    """
+    if previous is None or previous.status not in ("open", "cancelled") or previous.kind != kind:
+        return None
+    before = previous.ask if isinstance(previous.ask, dict) else {}
+    if str(before.get("question") or "") != str(ask.get("question") or ""):
+        return None
+    asked_at = previous.created_at
+    return asked_at if isinstance(asked_at, datetime) else None
+
+
+def _latest(session: Session, source_type: str, source_id: uuid.UUID) -> Any:
+    table = Decision.__table__
+    if not isinstance(table, Table):  # pragma: no cover - a mapped class always has one
+        raise TypeError("decisions is not a table")
+    return (
+        session.connection()
+        .execute(
+            select(table.c.status, table.c.kind, table.c.ask, table.c.created_at)
+            .where(table.c.source_type == source_type, table.c.source_id == source_id)
+            .order_by(table.c.created_at.desc())
+            .limit(1)
+        )
+        .first()
+    )
+
+
 def _apply(session: Session, source_type: str, source_id: Any, transition: Transition, opener: Any) -> None:
     if transition is None or source_id is None or not _store_ready(session):
         return
@@ -210,9 +244,12 @@ def _apply(session: Session, source_type: str, source_id: Any, transition: Trans
     now = datetime.now(UTC)
     surface = answer_surface.get()
     if transition[0] == "open":
+        kind, ask, recipient, deadline = opener()
+        asked_at = (
+            carried_asked_at(_latest(session, source_type, sid), kind, ask) if source_type == "run" else None
+        ) or now
         for closed in _close_open(session, source_type, sid, {"status": "cancelled"}):
             session.add(DecisionEvent(decision_id=closed, event="cancelled", detail={"reason": "asked again"}))
-        kind, ask, recipient, deadline = opener()
         decision = Decision(
             id=uuid.uuid4(),
             source_type=source_type,
@@ -222,7 +259,7 @@ def _apply(session: Session, source_type: str, source_id: Any, transition: Trans
             recipient=recipient,
             status="open",
             deadline=deadline,
-            created_at=now,
+            created_at=asked_at,
             updated_at=now,
         )
         session.add(decision)
