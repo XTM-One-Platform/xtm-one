@@ -2,7 +2,7 @@
 
 Non-regression first: a profile saved before #11543 parses, dumps and renders
 for an agent exactly as before; then the new parts, the CSV import (preview,
-per-row errors, primary asset links, merge) and the knowledge search scoped to
+per-row errors, crown jewel links, merge) and the knowledge search scoped to
 the knowledge bases the caller can read.
 """
 
@@ -28,10 +28,10 @@ LEGACY = {
     "sub_sector": "",
     "regions": ["FR"],
     "size": "1001-5000",
-    "primary_assets": [
+    "crown_jewels": [
         {"name": "SCADA", "business_service": "Grid", "owner": "OT", "criticality": "critical", "opencrq_asset_id": ""}
     ],
-    "tech_stack": [{"product": "Windows Server 2019", "vendor": "Microsoft", "cpe": ""}],
+    "software": [{"product": "Windows Server 2019", "vendor": "Microsoft", "cpe": ""}],
     "pir_ids": ["pir-1"],
     "pir_names": {"pir-1": "Ransomware"},
     "risk_appetite": {"annual_loss_threshold": 2000000.0, "approval_threshold": None},
@@ -204,7 +204,7 @@ def test_an_empty_legacy_type_was_a_host_and_a_category_or_subcategory_word_is_r
 def test_a_legacy_profile_moves_its_asset_group_rows_to_asset_groups_losing_nothing():
     stored = {
         **LEGACY,
-        "primary_assets": [{**LEGACY["primary_assets"][0], "asset_names": ["DMZ", "db-1"]}],
+        "crown_jewels": [{**LEGACY["crown_jewels"][0], "asset_names": ["DMZ", "db-1"]}],
         "assets_exposure": [
             {
                 "name": "DMZ",
@@ -247,7 +247,7 @@ def test_a_legacy_profile_moves_its_asset_group_rows_to_asset_groups_losing_noth
 def test_the_profile_round_trips_assets_links_policy_and_knowledge():
     data = {
         **LEGACY,
-        "primary_assets": [{**LEGACY["primary_assets"][0], "asset_names": ["DMZ", "web-1", "web-1"]}],
+        "crown_jewels": [{**LEGACY["crown_jewels"][0], "asset_names": ["DMZ", "web-1", "web-1"]}],
         "assets_exposure": [
             {"name": "web-1", "group": "DMZ", "environment": "production", "tech_stack": ["nginx"]},
         ],
@@ -256,14 +256,14 @@ def test_the_profile_round_trips_assets_links_policy_and_knowledge():
             "cvss_min": 7.5,
             "epss_min": 0.2,
             "internet_exposure_required": True,
-            "min_primary_asset_criticality": "high",
+            "min_crown_jewel_criticality": "high",
             "exclusions": [{"kind": "tag", "value": "lab", "reason": "test systems"}],
             "accepted_risks": [{"subject": "CVE-2024-0001", "owner": "CISO", "expires_on": "2027-01-31"}],
         },
         "enterprise_knowledge": [{"knowledge_base_id": "8a0b3c1e-0000-4000-8000-000000000001", "kind": "patch_policy"}],
     }
     profile = oc.parse_profile(data)
-    assert profile.primary_assets[0].asset_names == ["DMZ", "web-1"]
+    assert profile.crown_jewels[0].asset_names == ["DMZ", "web-1"]
     assert profile.prioritization_policy.accepted_risks[0].expires_on == date(2027, 1, 31)
     again = oc.parse_profile(json.loads(json.dumps(profile.model_dump(mode="json"))))
     assert again == profile
@@ -296,7 +296,7 @@ def test_links_to_unknown_assets_or_groups_are_named():
     profile = oc.parse_profile(
         {
             **LEGACY,
-            "primary_assets": [{"name": "SCADA", "asset_names": ["ghost"]}],
+            "crown_jewels": [{"name": "SCADA", "asset_names": ["ghost"]}],
             "assets_exposure": [{"name": "web-1", "group": "nowhere"}],
         }
     )
@@ -308,7 +308,7 @@ def test_links_to_unknown_assets_or_groups_are_named():
 # ── CSV import ──────────────────────────────────────────────────────────────
 
 CSV = (
-    b"name,type,environment,internet_facing,owner,group,tech_stack,tags,primary_assets\n"
+    b"name,type,environment,internet_facing,owner,group,tech_stack,tags,crown_jewels\n"
     b"DMZ,asset_group,production,yes,Network,,,,SCADA\n"
     b"web-1,host,production,y,Web team,DMZ,nginx;OpenSSL,dmz|web,SCADA;Billing\n"
     b"db-1,database,PRODUCTION,no,DBA,,PostgreSQL,,\n"
@@ -337,7 +337,7 @@ def test_the_csv_preview_parses_rows_names_errors_and_links_without_writing():
     assert [(e.line, e.name) for e in preview.errors] == [(5, "bad-1"), (6, "bad-2"), (7, "web-1")]
     assert "internet_facing" in preview.errors[1].message
     assert preview.links == {"SCADA": ["DMZ", "web-1"]}
-    assert preview.unknown_primary_assets == ["Billing"]
+    assert preview.unknown_crown_jewels == ["Billing"]
     assert profile.assets_exposure == []
     good = b"name,type,internet_facing\nDMZ,asset_group,yes\nweb-1,host,yes\n"
     merged = imp.merge_assets(profile, imp.parse_assets_csv(good, profile))
@@ -375,7 +375,7 @@ def test_the_csv_merge_upserts_by_name_keeps_other_rows_and_adds_the_links():
             ],
         }
     )
-    good = b"name,internet_facing,primary_assets\nweb-1,yes,SCADA\ndb-1,no,\n"
+    good = b"name,internet_facing,crown_jewels\nweb-1,yes,SCADA\ndb-1,no,\n"
     preview = imp.parse_assets_csv(good, profile)
     assert preview.errors == []
     assert preview.replaced == ["web-1"]
@@ -384,9 +384,9 @@ def test_the_csv_merge_upserts_by_name_keeps_other_rows_and_adds_the_links():
     assert (merged.assets_exposure[0].category, merged.assets_exposure[0].subcategory) == ("host", "workstation")
     assert [g.name for g in merged.asset_groups] == ["DMZ"]
     assert merged.assets_exposure[1].owner == ""
-    assert merged.primary_assets[0].asset_names == ["web-1"]
+    assert merged.crown_jewels[0].asset_names == ["web-1"]
     assert imp.check_links(merged) == []
-    assert oc.legacy_dump(merged)["tech_stack"] == LEGACY["tech_stack"]
+    assert oc.legacy_dump(merged)["software"] == LEGACY["software"]
 
 
 @pytest.mark.parametrize(
