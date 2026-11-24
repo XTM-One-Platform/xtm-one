@@ -288,6 +288,26 @@ def _as_sentence(text: str) -> str:
     return text if text.endswith(".") else f"{text}."
 
 
+async def _granted_kb_locks(db: Any, kb_ids: list[str]) -> dict[str, str]:
+    """``{kb_id: lock}`` for the content-locked KBs among *kb_ids*.
+
+    The rule the run applies when it builds the write tools
+    (``helpers.content_locked_knowledge_base_ids``), so get_agent shows a write
+    grant the run would strip as such instead of ``[writable]``.
+    """
+    from sqlalchemy import select
+
+    from app.api.v1.helpers import content_locked_knowledge_base_ids
+    from app.core.utils import safe_uuid
+    from app.models.knowledge_base import KnowledgeBase
+
+    uuids = [u for k in kb_ids if (u := safe_uuid(k))]
+    if not uuids:
+        return {}
+    rows = (await db.execute(select(KnowledgeBase).where(KnowledgeBase.id.in_(uuids)))).scalars().all()
+    return await content_locked_knowledge_base_ids(db, list(rows))
+
+
 #: The ``tool_slug`` argument of create_integration / update_integration.
 _TOOL_SLUG_SCHEMA: dict = {
     "type": "string",
@@ -4917,10 +4937,14 @@ def build_agent_builder_tool(
             # inline from the two fields (not via the model property) so the line
             # is correct for any agent shape the loader returns.
             _kb_perms = getattr(agent, "knowledge_base_permissions", None) or {}
+            # A write grant on a content-locked KB (built-in, read-only,
+            # package-installed, workspace) is stripped from the run's write
+            # scope: label it with its lock, never [writable] (#1763).
+            _kb_locks = await _granted_kb_locks(_db, [k for k in kb_id_list if _kb_perms.get(k) == "write"])
             _writable_kb_count = sum(
                 1
                 for k in (agent.knowledge_base_ids or [])
-                if _kb_perms.get(str(k)) == "write"
+                if _kb_perms.get(str(k)) == "write" and str(k) not in _kb_locks
             )
 
             def _fmt_kbs() -> str:
@@ -4930,7 +4954,11 @@ def build_agent_builder_tool(
                 for i in kb_id_list:
                     label = f"{kb_names[i]} (`{i}`)" if i in kb_names else f"`{i}`"
                     if _kb_perms.get(i) == "write":
-                        label += " [writable]"
+                        label += (
+                            f" [write grant unused: content locked ({_kb_locks[i]})]"
+                            if i in _kb_locks
+                            else " [writable]"
+                        )
                     items.append(label)
                 suffix = (
                     f" ({_writable_kb_count} writable)" if _writable_kb_count else ""
@@ -12083,6 +12111,124 @@ def build_agent_builder_tool(
                 return f"Failed to delete document `{document_id}`. Please try again."
             return f"Document **{doc_name}** deleted from **{kb.name}**."
 
+    # ── update_kb_document ────────────────────────────────────────────
+
+    async def _update_kb_document(
+        knowledge_base_id: str,
+        document_id: str,
+        content: str = "",
+        append: bool = False,
+    ) -> str:
+        """Replace or extend a document of any KB the caller may write (#1763).
+
+        The add_kb_document / delete_kb_document gate (caller rights, then the
+        KB's own locks), so a document of another office's knowledge base the
+        caller manages is edited here without the agent holding a write grant
+        on it; ``update_knowledge_document`` stays the agent's own-grant tool.
+        """
+        import hashlib
+
+        from sqlalchemy import select
+
+        from app.core.database import async_session as _builder_session
+        from app.models.knowledge_base import KnowledgeBase, KnowledgeDocument
+        from app.services.kb_helpers import (
+            apply_document_write_timeout,
+            bump_kb_revision,
+            enqueue_document_processing,
+            log_kb_activity,
+            reset_changed_document,
+        )
+
+        try:
+            uid = uuid.UUID(user_id)
+        except (ValueError, AttributeError):
+            return "Updating documents is not available for anonymous users."
+        kb_uuid, id_err = _validate_id_arg(knowledge_base_id, "knowledge_base_id")
+        if id_err:
+            return id_err
+        doc_uuid, doc_err = _validate_id_arg(document_id, "document_id")
+        if doc_err:
+            return doc_err
+        normalized_mode = "append" if append else "replace"
+        if not content:
+            return "'content' is required: the new source, or the text appended. Nothing was changed."
+        if "\x00" in content:
+            return "The content contains NUL bytes and cannot be stored as text. Nothing was changed."
+
+        async with _builder_session() as _db:
+            kb, perm_err = await _load_manageable_entity_for_builder(
+                _db,
+                KnowledgeBase,
+                uid,
+                kb_uuid,
+                action="update documents in",
+                entity_label="knowledge base",
+            )
+            if perm_err is not None or kb is None:
+                return perm_err or f"Knowledge base `{knowledge_base_id}` not found."
+            if write_err := await writable_knowledge_base_error(_db, kb, content_action="update its documents"):
+                return _as_sentence(write_err)
+
+            doc = (
+                await _db.execute(
+                    select(KnowledgeDocument).where(
+                        KnowledgeDocument.id == doc_uuid,
+                        KnowledgeDocument.knowledge_base_id == kb.id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if not doc:
+                return f"Document `{document_id}` not found in this knowledge base."
+
+            previous = doc.content or ""
+            new_content = f"{previous}\n\n{content}" if append and previous else content
+            if new_content == previous and doc.status == "ready":
+                return (
+                    f"No change: **{doc.filename}** in **{kb.name}** already holds "
+                    "exactly this content and is fully indexed."
+                )
+
+            # Same write as update_knowledge_document: old vectors go, the
+            # document is re-embedded from the new source, under the KB write
+            # timeout (a large document passes the 30 s pool default).
+            await apply_document_write_timeout(_db)
+            await reset_changed_document(_db, doc, kb=kb)
+            doc.content = new_content
+            doc.content_hash = hashlib.sha256(new_content.encode()).hexdigest()
+            await bump_kb_revision(_db, kb.id)
+            await log_kb_activity(
+                _db,
+                kb.id,
+                "document_updated",
+                details=(f"Agent updated document '{doc.filename}' ({normalized_mode}, {len(new_content)} characters)"),
+                source_type=doc.source_type,
+                document_count=1,
+            )
+            doc_id_str, doc_name, kb_name = str(doc.id), doc.filename, kb.name
+            try:
+                await _db.commit()
+            except Exception as e:
+                logger.error(
+                    "Agent builder update_kb_document failed for doc %s: %s",
+                    document_id,
+                    format_exception_message(e),
+                    exc_info=True,
+                )
+                await _db.rollback()
+                return f"Failed to update document `{document_id}` ({type(e).__name__}). Nothing was changed."
+        enqueued = await enqueue_document_processing(doc_id_str)
+        state = (
+            "re-embedding queued: 'pending', not searchable until 'ready'"
+            if enqueued
+            else "re-embedding could not be queued: the recovery sweep re-embeds it"
+        )
+        return (
+            f"Document **{doc_name}** (`{doc_id_str}`, kept) updated in **{kb_name}** "
+            f"({normalized_mode}): {len(previous)} -> {len(new_content)} characters; "
+            f"{state}."
+        )
+
     # ── Integrations (catalog / get / create / update / delete) ───────
 
     async def _list_platform_events(search: str = "") -> str:
@@ -13316,6 +13462,7 @@ def build_agent_builder_tool(
     executor.register("list_kb_documents", _list_kb_documents)
     executor.register("get_kb_document", _get_kb_document)
     executor.register("delete_kb_document", _delete_kb_document)
+    executor.register("update_kb_document", _update_kb_document)
 
     from app.services.openapi_import import builder_tools as _spec_tools
 
@@ -16461,17 +16608,9 @@ def build_agent_builder_tool(
         ToolDefinition(
             name="get_kb_document",
             description=(
-                "Fetch a SINGLE knowledge-base document by its exact ID and "
-                "return its FULL, de-chunked content plus processing status. "
-                "This is a deterministic exact-match get (NOT semantic) — use "
-                "it to read back a specific document by id, e.g. when using a "
-                "knowledge base as a case-file / work-queue store (pairs with "
-                "list_kb_documents to enumerate and delete_kb_document to "
-                "consume). Unlike search_knowledge (which returns similar "
-                "fragments ranked by relevance), this returns the whole "
-                "document reassembled, and reports the embedding processing "
-                "status so you can detect a not-yet-indexed document "
-                "(write-then-read)."
+                "Fetch ONE knowledge-base document by exact id: its FULL "
+                "de-chunked content and embedding status (a not-yet-indexed "
+                "document is reported). Exact get, not semantic search."
             ),
             input_schema={
                 "type": "object",
@@ -16511,6 +16650,24 @@ def build_agent_builder_tool(
                     },
                 },
                 "required": ["knowledge_base_id", "document_id"],
+            },
+            source="builtin:platform",
+        ),
+        ToolDefinition(
+            name="update_kb_document",
+            description=(
+                "Replace (or append to) a document of a knowledge base you may add "
+                "documents to, then re-embed it; it keeps its id."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "knowledge_base_id": {"type": "string"},
+                    "document_id": {"type": "string"},
+                    "content": {"type": "string"},
+                    "append": {"type": "boolean", "default": False},
+                },
+                "required": ["knowledge_base_id", "document_id", "content"],
             },
             source="builtin:platform",
         ),

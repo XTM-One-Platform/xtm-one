@@ -2029,6 +2029,7 @@ def build_kb_document_update_tool(
 
             from app.core.database import async_session
             from app.services.kb_helpers import (
+                apply_document_write_timeout,
                 bump_kb_revision,
                 enqueue_document_processing,
                 log_kb_activity,
@@ -2082,6 +2083,9 @@ def build_kb_document_update_tool(
                 # nothing for this document rather than its previous content;
                 # get_knowledge_document still reads the new text.
                 stage = "writing the new source"
+                # The vector delete and the new source of a large document run
+                # past the 30 s pool default: the write gets the KB write bound.
+                await apply_document_write_timeout(write_db)
                 await reset_changed_document(write_db, doc, kb=kb)
                 doc.content = new_content
                 doc.content_hash = hashlib.sha256(
