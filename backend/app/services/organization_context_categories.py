@@ -275,6 +275,7 @@ def tracked_rows(organizations: list[Any]) -> list[dict[str, Any]]:
             "relationship": o.relationship,
             "criticality": o.criticality,
             "monitoring": o.monitoring,
+            "opencti_organization_id": getattr(o, "opencti_organization_id", None),
         }
         for o in organizations
         if getattr(o, "role", None) == "tracked"

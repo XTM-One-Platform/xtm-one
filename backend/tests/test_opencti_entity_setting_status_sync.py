@@ -110,9 +110,9 @@ async def test_get_by_type_reads_an_opencti_without_the_field() -> None:
 
 
 @pytest.mark.asyncio
-async def test_the_setting_is_refused_on_an_action_that_does_not_apply_it() -> None:
-    content, calls = await _run(
+async def test_the_setting_is_named_as_ignored_on_an_action_that_does_not_apply_it() -> None:
+    content, _calls = await _run(
         {"action": "list", "sync_workflow_status_by_name": True}, available=["enforce_reference"]
     )
-    assert "sync_workflow_status_by_name" in content
-    assert not calls
+    assert "does not apply sync_workflow_status_by_name" in content
+    assert "ignored and the rest ran" in content

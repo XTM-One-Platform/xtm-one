@@ -598,7 +598,7 @@ async def test_group_create_sends_confidence_level(monkeypatch):
     assert "group_confidence_level: 50" in result.content
 
 
-async def test_group_update_refuses_an_ignored_field_and_writes_nothing(monkeypatch):
+async def test_group_update_names_an_ignored_field_and_writes_the_rest(monkeypatch):
     from app.integrations.providers.opencti import access
 
     executor, _ = _build()
@@ -609,9 +609,9 @@ async def test_group_update_refuses_an_ignored_field_and_writes_nothing(monkeypa
         "manage_opencti_group",
         {"action": "update", "group_id": "g1", "name": "x", "confidence_level": 50},
     )
-    assert result.is_error, result.content
-    assert "confidence_level" in result.content and "nothing was written" in result.content
-    assert fake.calls == []
+    assert not result.is_error, result.content
+    assert "does not apply confidence_level" in result.content and "ignored" in result.content
+    assert fake.writes(), result.content
 
 
 async def test_group_update_rejects_out_of_range_confidence(monkeypatch):
@@ -676,28 +676,53 @@ async def test_user_get_shows_own_and_effective_confidence(monkeypatch):
     assert "effective_confidence_level: 60 (overrides: Report 80), source: User 'feed'" in result.content
 
 
-async def test_user_update_refuses_ignored_fields_and_writes_nothing(monkeypatch):
+async def test_user_update_names_ignored_fields_and_writes_the_rest(monkeypatch):
     from app.integrations.providers.opencti import access
 
     executor, _ = _build()
     fake = _ConfidenceOpenCTI()
     monkeypatch.setattr(access, "_graphql", fake)
-    for args in (
-        {"action": "update", "user_id": "u1", "name": "x", "group_ids": ["g1"]},
-        {"action": "update", "user_id": "u1", "max_confidence_level": 50},
+    result = await _run(
+        executor, "manage_opencti_user", {"action": "update", "user_id": "u1", "name": "x", "group_ids": ["g1"]}
+    )
+    assert not result.is_error, result.content
+    assert "does not apply group_ids" in result.content and "ignored" in result.content
+    assert fake.writes(), result.content
+
+
+async def test_user_update_names_an_undeclared_field(monkeypatch):
+    from app.integrations.providers.opencti import access
+
+    executor, _ = _build()
+    fake = _ConfidenceOpenCTI()
+    monkeypatch.setattr(access, "_graphql", fake)
+    result = await _run(
+        executor, "manage_opencti_user", {"action": "update", "user_id": "u1", "max_confidence_level": 50}
+    )
+    assert "does not apply max_confidence_level" in result.content, result.content
+
+
+async def test_user_update_refuses_max_confidence_with_inherit(monkeypatch):
+    from app.integrations.providers.opencti import access
+
+    executor, _ = _build()
+    fake = _ConfidenceOpenCTI()
+    monkeypatch.setattr(access, "_graphql", fake)
+    result = await _run(
+        executor,
+        "manage_opencti_user",
         {"action": "update", "user_id": "u1", "max_confidence": 50, "inherit_confidence": True},
-    ):
-        result = await _run(executor, "manage_opencti_user", args)
-        assert result.is_error, (args, result.content)
-        assert "othing was written" in result.content, result.content
+    )
+    assert result.is_error, result.content
+    assert "othing was written" in result.content, result.content
     assert fake.writes() == []
 
 
 @pytest.mark.parametrize(
     ("tool", "args", "named"),
     [
-        # Reads and relation actions refuse a field they do not apply, as create and
-        # update do: the answer must never read as proof the field was taken.
+        # Reads and relation actions name a field they do not apply as ignored, as
+        # create and update do: the answer must never read as proof the field was taken.
         ("manage_opencti_user", {"action": "list", "user_id": "u1"}, "user_id"),
         ("manage_opencti_user", {"action": "get", "user_id": "u1", "max_confidence": 50}, "max_confidence"),
         ("manage_opencti_user", {"action": "delete", "user_id": "u1", "name": "x"}, "name"),
@@ -722,16 +747,23 @@ async def test_user_update_refuses_ignored_fields_and_writes_nothing(monkeypatch
         ),
     ],
 )
-async def test_access_tools_refuse_unapplied_fields_on_every_action(monkeypatch, tool, args, named):
+async def test_access_tools_name_unapplied_fields_on_every_action(monkeypatch, tool, args, named):
     from app.integrations.providers.opencti import access
 
     executor, _ = _build()
     fake = _ConfidenceOpenCTI()
-    monkeypatch.setattr(access, "_graphql", fake)
+
+    async def lenient(*args, **kw):
+        # The action now runs: any document it sends is answered empty.
+        try:
+            return await fake(*args, **kw)
+        except AssertionError:
+            return {}, None
+
+    monkeypatch.setattr(access, "_graphql", lenient)
     result = await _run(executor, tool, args)
-    assert result.is_error, result.content
-    assert named in result.content and "nothing was written" in result.content, result.content
-    assert fake.calls == []
+    assert f"does not apply {named}" in result.content, result.content
+    assert "ignored and the rest ran" in result.content, result.content
 
 
 async def test_access_tools_accept_the_fields_each_action_applies(monkeypatch):
