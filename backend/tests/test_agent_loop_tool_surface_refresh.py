@@ -85,7 +85,9 @@ def _answer() -> ChatResponse:
     return ChatResponse(content="done", model="stub", stop_reason="end_turn")
 
 
-def _builder(*, changes_surface: bool, outcome: str = "Integration updated.") -> tuple[CompositeToolExecutor, list[str]]:
+def _builder(
+    *, changes_surface: bool, outcome: str = "Integration updated."
+) -> tuple[CompositeToolExecutor, list[str]]:
     calls: list[str] = []
     builtin = CallableToolExecutor()
 
