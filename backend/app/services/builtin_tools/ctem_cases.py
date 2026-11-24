@@ -317,6 +317,24 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 refused = await _view_only(db, rows, vertical)
                 if refused:
                     return refused
+                if isinstance(gate, dict) and str(gate.get("outcome") or "") == "waited":
+                    from app.agents.builtin_fleet_docs import CTEM_GATE_KEYS
+                    from app.services import ctem_gate_order
+
+                    if str(gate.get("key") or "").strip() not in CTEM_GATE_KEYS:
+                        raise rules.CaseRuleError(
+                            f"unknown gate {str(gate.get('key') or '')!r}: one of {', '.join(CTEM_GATE_KEYS)}"
+                        )
+
+                    # A gate waits only on its decision (#1954): no open decision item, no waited event,
+                    # checked before any write of this call so a refusal changes nothing.
+                    refusal = ctem_gate_order.waited_refusal(
+                        str(gate.get("key") or "").strip(),
+                        str(case.id),
+                        await ctem_gate_order.open_gate_item_keys(db, str(case.id)),
+                    )
+                    if refusal:
+                        raise rules.CaseRuleError(refusal)
                 owner = _uuid(owner_user_id)
                 if owner and owner != case.owner_user_id:
                     owner_view = await view_of.viewer_view(db, str(owner), vertical)
@@ -799,7 +817,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     db, cases, actor=user, reason=reason or f"by agent {agent_id}", dry_run=bool(dry_run)
                 )
                 await db.commit()
-                return _dump({**result, "unknown": unknown})
+                # Same hand-off as the REST route: released signals decided again after the commit (#1950).
+                return _dump({**case_delete.hand_off_released(result), "unknown": unknown})
         except Exception:
             logger.warning("CTEM case delete failed", exc_info=True)
             return "Error: the cases could not be deleted right now. Say so; nothing was changed."

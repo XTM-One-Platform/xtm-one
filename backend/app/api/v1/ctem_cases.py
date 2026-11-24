@@ -392,12 +392,21 @@ class CaseBulkDelete(BaseModel):
 
 
 async def _delete(db: AsyncSession, admin: User, cases: list[Any], reason: str | None, dry_run: bool) -> dict[str, Any]:
+    from sqlalchemy.exc import DBAPIError
+
     from app.services import ctem_case_delete as case_delete
 
-    result = await case_delete.delete_cases(db, cases, actor=admin, reason=reason, dry_run=dry_run)
-    # A dry run writes nothing, so the commit is a no-op there.
-    await db.commit()
-    return result
+    try:
+        result = await case_delete.delete_cases(db, cases, actor=admin, reason=reason, dry_run=dry_run)
+        # A dry run writes nothing, so the commit is a no-op there.
+        await db.commit()
+    except DBAPIError as exc:
+        await db.rollback()
+        if case_delete.is_lock_wait(exc):
+            raise HTTPException(status_code=409, detail=case_delete.LOCK_BUSY_DETAIL) from exc
+        raise
+    # The released signals are decided again after the commit, outside this request (#1950).
+    return case_delete.hand_off_released(result)
 
 
 @router.post("/bulk-delete")

@@ -451,6 +451,11 @@ export interface CtemCaseGateRecord {
   wait_seconds: number | null;
   decision_id: string | null;
   work_item_id: string | null;
+  /**
+   * On a waiting record: whether an open decision item of the gate exists for anyone (#1954).
+   * False: the gate reads waiting but no decision was filed, so nobody can answer it. Absent on an older API.
+   */
+  decision_filed?: boolean | null;
   /** False while the answer is on the decision but no `gate answered` event is on the case yet. */
   recorded_on_case: boolean;
   /** The first later event of the case: its kind, and `from` / `to` as the history stores them (a state's new value, a gate key and its outcome). */
@@ -739,12 +744,15 @@ export interface CtemCaseDeleteResult {
 
 /**
  * Delete cases, administrators only (POST /ctem-cases/bulk-delete, #1723): `dry_run` answers
- * what would go and writes nothing; the real delete refreshes every case read.
+ * what would go and writes nothing; the real delete refreshes every case read. A refusal
+ * (a 409 while a recompute holds the lock, a 500) is shown once, by the caller: the dialog
+ * line for the dry run, the "Delete failed" toast for the delete, never the global toast too.
  */
 export function useDeleteCtemCases() {
   const qc = useQueryClient();
   return useMutation<CtemCaseDeleteResult, Error, { case_ids: string[]; dry_run: boolean; reason?: string }>({
     mutationFn: (body) => api.post("/ctem-cases/bulk-delete", body),
+    meta: { suppressGlobalErrorToast: true },
     onSuccess: (result) => {
       if (!result.dry_run) void qc.invalidateQueries({ queryKey: ["ctem-cases"] });
     },

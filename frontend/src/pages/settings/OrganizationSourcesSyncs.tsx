@@ -12,7 +12,8 @@
  * (or why there is none) and the state. Row actions: Run now, Edit, Pause or Resume, View
  * history, Delete with the choice of what becomes of the rows it wrote (keep them owned by the
  * source, make them editable by hand, or purge them, with the dry-run counts); a source with no
- * sync offers Make editable and Purge for an agent, a partner or a CSV import, nothing by hand.
+ * sync offers Make editable and Purge for every kind but rows entered by hand (the backend's rule,
+ * #1940), and a platform whose rows outlived their sync also offers Set up a sync.
  */
 import { useState } from "react";
 import { Alert, Chip, Icon, Radio, RadioGroup, Spinner } from "@filigran/design-system";
@@ -40,6 +41,8 @@ import {
   useRunOrganizationSyncs,
   useUpdateOrganizationSync,
   type OrganizationSource,
+  type ImportSectionKey,
+  type ImportSourceKey,
   type OrganizationSync,
   type OrganizationSyncScope,
   type RowsPlan,
@@ -143,8 +146,25 @@ const rowStateOf = (row: Row): RowState => {
   return stateOf(row.sync);
 };
 
-/** Agent, partner or CSV rows can be purged or handed over; hand, API and platform rows go through their own path. */
-const canPurgeSource = (source: OrganizationSource) => source.kind === "agent" || source.kind === "csv";
+/** The section of the import a profile field is fed by (the reverse of SECTION_FIELD). */
+const FIELD_IMPORT_SECTION: Record<SourcedSection, ImportSectionKey> = {
+  assets_exposure: "assets",
+  asset_groups: "asset_groups",
+  software: "software",
+  crown_jewels: "crown_jewels",
+};
+
+/**
+ * Every source but rows entered by hand can be purged or handed over (#1940): the backend's plan_rows refuses only
+ * the hand source, and stays the one authority. A source with no row has nothing to change.
+ */
+const canPurgeSource = (source: OrganizationSource) => source.kind !== "manual" && source.total > 0;
+
+/** What "Set up a sync" preselects in the import: the platform and the section its rows feed. */
+export interface SyncPreset {
+  section: ImportSectionKey;
+  source: ImportSourceKey;
+}
 
 interface Props {
   /**
@@ -154,13 +174,18 @@ interface Props {
   scope?: OrganizationSyncScope;
   /** Opens the step-by-step import (platform, section, filters with a live preview, schedule, review). */
   onAddSource?: () => void;
+  /**
+   * Opens the same import preselected on a platform and a section (#1940): offered as "Set up a sync" on a platform
+   * source with no sync. Without it the action is not drawn.
+   */
+  onSetUpSync?: (preset: SyncPreset) => void;
   /** The link of a section chip, the source's key and display label given; `null` renders the chip as plain text. */
   sectionHref?: (field: SourcedSection, source: ChipSource) => string | null;
   /** Actions are off while the page is in edit. */
   disabled?: boolean;
 }
 
-export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref = sourceSectionHref, disabled = false }: Props) {
+export function OrganizationSourcesSyncs({ scope = "", onAddSource, onSetUpSync, sectionHref = sourceSectionHref, disabled = false }: Props) {
   const { t_i18n, locale, intl } = useFormatter();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -201,6 +226,10 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
   };
 
   const kindOf = (row: Row): OrganizationSource["kind"] => (row.sync ? "platform" : row.source.kind);
+
+  /** The schedule words of a source with no sync: a platform with rows kept those of a deleted sync (#1940). */
+  const sourceScheduleText = (source: OrganizationSource): string =>
+    source.kind === "platform" && source.total > 0 ? t_i18n("Rows from an earlier sync, none scheduled") : t_i18n(SOURCE_SCHEDULE_LABELS[source.kind]);
 
   /** The sections a row feeds, with their row counts (a sync: its own section). */
   const fieldsOf = (row: Row): { field: SourcedSection; count: number }[] => {
@@ -275,6 +304,13 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
   const setEnabled = (sync: OrganizationSync, enabled: boolean) =>
     update.mutate({ id: sync.id, body: bodyOf(sync, { enabled }) }, { onError: reportFailure(t_i18n("The sync could not be saved")) });
 
+  /** The import a platform source with no sync is set up from: its platform and the first section its rows feed. */
+  const presetOf = (row: Row): SyncPreset | null => {
+    if (row.sync || row.source.kind !== "platform" || !(row.source.key in IMPORT_SOURCE_NAMES)) return null;
+    const [first] = fieldsOf(row);
+    return first ? { section: FIELD_IMPORT_SECTION[first.field], source: row.source.key as ImportSourceKey } : null;
+  };
+
   const menuOf = (row: Row): OverflowMenuItem[] => {
     const name = nameOf(row);
     if (row.sync) {
@@ -289,8 +325,21 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
         { id: "delete", label: t_i18n("Delete {name}", { name }), icon: TrashIcon, onSelect: () => setDeleting(row), destructive: true, separatorBefore: true, disabled },
       ];
     }
-    if (!canPurgeSource(row.source)) return [];
-    return [{ id: "rows", label: t_i18n("Remove or hand over the rows of {name}", { name }), icon: TrashIcon, onSelect: () => setDeleting(row), destructive: true, disabled }];
+    const items: OverflowMenuItem[] = [];
+    const preset = presetOf(row);
+    if (preset && onSetUpSync) items.push({ id: "set-up-sync", label: t_i18n("Set up a sync"), icon: PlusIcon, onSelect: () => onSetUpSync(preset), disabled });
+    if (canPurgeSource(row.source)) {
+      items.push({
+        id: "rows",
+        label: t_i18n("Remove or hand over the rows"),
+        icon: TrashIcon,
+        onSelect: () => setDeleting(row),
+        destructive: true,
+        separatorBefore: items.length > 0,
+        disabled,
+      });
+    }
+    return items;
   };
 
   const columns: DataTableColumn<Row>[] = [
@@ -400,10 +449,10 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
         row.sync ? (
           <TruncatedText text={scheduleLabel(row.sync)} lines={2} className="w-max max-w-[12rem]" />
         ) : (
-          <span className="text-default-secondary">{t_i18n(SOURCE_SCHEDULE_LABELS[row.source.kind])}</span>
+          <span className="text-default-secondary">{sourceScheduleText(row.source)}</span>
         ),
       sortValue: (row) => row.sync?.frequency ?? "",
-      csv: (row) => (row.sync ? scheduleLabel(row.sync) : ""),
+      csv: (row) => (row.sync ? scheduleLabel(row.sync) : sourceScheduleText(row.source)),
     },
     {
       key: "last_run",
@@ -600,6 +649,7 @@ const PencilIcon = () => <Icon name="pencil" size={16} aria-hidden />;
 const PauseIcon = () => <Icon name="circle-stop" size={16} aria-hidden />;
 const HistoryIcon = () => <Icon name="history" size={16} aria-hidden />;
 const TrashIcon = () => <Icon name="trash-2" size={16} aria-hidden />;
+const PlusIcon = () => <Icon name="plus" size={16} aria-hidden />;
 
 /** The rows a plan touches, per section, in one line: "1,186 assets, 2 asset groups". */
 function usePlanLine() {

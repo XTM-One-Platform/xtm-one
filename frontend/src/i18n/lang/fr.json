@@ -20847,7 +20847,7 @@
   "Entered by hand": "Saisi à la main",
   "{added} added, {updated} updated, {removed} removed": "{added} ajoutés, {updated} mis à jour, {removed} supprimés",
   "View history": "Voir l'historique",
-  "Remove or hand over the rows of {name}": "Supprimer ou reprendre les lignes de {name}",
+  "Remove or hand over the rows": "Supprimer ou reprendre les lignes",
   "Written by agent {name}": "Écrit par l'agent {name}",
   "Every enabled section sync": "Toutes les synchronisations de section actives",
   "No row yet": "Aucune ligne pour l'instant",
@@ -20971,6 +20971,8 @@
   "Unknown user": "Utilisateur inconnu",
   "No schedule": "Sans planning",
   "No sync scheduled": "Aucune synchronisation planifiée",
+  "Rows from an earlier sync, none scheduled": "Lignes d'une synchronisation précédente, aucune planifiée",
+  "Set up a sync": "Configurer une synchronisation",
   "Writes when the agent sends rows": "Écrit quand l'agent envoie des lignes",
   "Writes at each CSV import": "Écrit à chaque import CSV",
   "Writes at each API call": "Écrit à chaque appel d'API",
@@ -21671,5 +21673,8 @@
   "Auto join updated": "Adhésion automatique mise à jour",
   "Auto join could not be updated": "L'adhésion automatique n'a pas pu être mise à jour",
   "Single sign-on users join this group": "Les utilisateurs SSO rejoignent ce groupe",
-  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "Les personnes qui se connectent par authentification unique (SSO) rejoignent ce groupe automatiquement, à chaque connexion. Les membres ajoutés à la main, par le mappage des groupes SAML ou par SCIM restent tels quels."
+  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "Les personnes qui se connectent par authentification unique (SSO) rejoignent ce groupe automatiquement, à chaque connexion. Les membres ajoutés à la main, par le mappage des groupes SAML ou par SCIM restent tels quels.",
+  "No review decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case, or an analyst sets the review label on the Grouping in OpenCTI.": "Aucune décision de revue n'a été déposée, personne ne peut donc encore y répondre. La flotte la dépose la prochaine fois qu'elle traite ce cas, ou un analyste pose le libellé de revue sur le regroupement dans OpenCTI.",
+  "No validation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.": "Aucune décision de validation n'a été déposée, personne ne peut donc encore y répondre. La flotte la dépose la prochaine fois qu'elle traite ce cas.",
+  "No remediation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.": "Aucune décision de remédiation n'a été déposée, personne ne peut donc encore y répondre. La flotte la dépose la prochaine fois qu'elle traite ce cas."
 }

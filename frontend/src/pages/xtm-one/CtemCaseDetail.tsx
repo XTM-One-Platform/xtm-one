@@ -86,6 +86,7 @@ import { EntityHeaderMoreActions, EntityPageHeader } from "@/components/ui/entit
 import type { OverflowMenuItem } from "@/components/ui/overflow-menu";
 import { caseActionDef, caseHeaderActions, type CaseActionId } from "./ctem/case-actions";
 import { useCaseActionDialogs } from "./ctem/CasesBulkActions";
+import { useCaseDelete } from "./ctem/CasesDeleteAction";
 
 /** A table row: the issue and its place, so restricted rows keep a stable key. */
 interface IssueRow {
@@ -278,6 +279,8 @@ export default function CtemCaseDetail() {
     mergeTargets,
     onMerged: (targetId) => navigate(`/ctem/cases/${targetId}`),
   });
+  // Delete, administrators only, last row of More actions (#1950): the list's dry run and challenge, then back to the list.
+  const caseDelete = useCaseDelete(kase ? [kase.id] : [], () => navigate("/ctem/cases"));
   const [picked, setPicked] = useState<string[]>([]);
   const [splitTitle, setSplitTitle] = useState("");
   const [dialog, setDialog] = useState<DialogKind>(null);
@@ -651,7 +654,7 @@ export default function CtemCaseDetail() {
   // (secondary first), every other case action in the More actions menu, disabled with its reason
   // when the state refuses it. Before remediation a person starts it (with an owner, #1503); in
   // remediation or validation they resolve it.
-  const header = caseHeaderActions(kase.state);
+  const header = caseHeaderActions(kase.state, true, caseDelete.allowed);
   const primaryKind = header.buttons[header.buttons.length - 1] as "start" | "resolve" | "reopen";
   const primary = { label: t_i18n(caseActionDef(primaryKind).label), kind: primaryKind };
   const runAction = (action: CaseActionId) => {
@@ -669,6 +672,14 @@ export default function CtemCaseDetail() {
       separatorBefore: action === "merge",
     };
   });
+  if (header.canDelete)
+    moreActions.push({
+      id: "ctem-case-delete",
+      label: t_i18n("Delete"),
+      onSelect: caseDelete.ask,
+      destructive: true,
+      separatorBefore: true,
+    });
 
   const dialogTitle: Record<Exclude<DialogKind, null>, string> = {
     start: t_i18n("Start this case"),
@@ -730,6 +741,7 @@ export default function CtemCaseDetail() {
       />
 
       {caseActions.dialogs}
+      {caseDelete.dialog}
 
       {/* Why now, created, age, last change and due (#1176): the same explained score as the Cases list. */}
       <CaseAttentionNow c={kase} now={now} onChanged={() => void refetch()} />

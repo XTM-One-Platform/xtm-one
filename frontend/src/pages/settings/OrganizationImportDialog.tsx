@@ -459,6 +459,12 @@ interface Props {
    * Organization the business profile ones (PIRs). Every section when omitted.
    */
   sections?: readonly ImportSectionKey[];
+  /**
+   * The section and platform picked when the dialog opens (#1940): "Set up a sync" on a platform source whose rows
+   * outlived their sync opens the import on that platform and the section its rows feed.
+   */
+  initialSection?: ImportSectionKey;
+  initialSource?: ImportSourceKey;
 }
 
 /**
@@ -468,7 +474,7 @@ interface Props {
 export const INVENTORY_IMPORT_SECTIONS = ["assets", "asset_groups", "software", "primary_assets"] as const satisfies readonly ImportSectionKey[];
 export const PROFILE_IMPORT_SECTIONS = ["pirs"] as const satisfies readonly ImportSectionKey[];
 
-export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, quickSetupPending, sections: offered }: Props) {
+export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, quickSetupPending, sections: offered, initialSection, initialSource }: Props) {
   const { t_i18n } = useFormatter();
   const f = useNumberFormat();
   const { toast } = useToast();
@@ -481,8 +487,8 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
   const meLabel = me?.email || me?.full_name || t_i18n("you");
 
   const [step, setStep] = useState<Step>("section");
-  const [section, setSection] = useState<ImportSectionKey | null>(null);
-  const [source, setSource] = useState<ImportSourceKey | null>(null);
+  const [section, setSection] = useState<ImportSectionKey | null>(initialSection ?? null);
+  const [source, setSource] = useState<ImportSourceKey | null>(initialSection ? (initialSource ?? null) : null);
   const [filters, setFilters] = useState<Record<string, string | string[]>>({});
   // The batch's type on OpenAEV's taxonomy (#11781): the fallback of a row the source gives no category.
   const [batchType, setBatchType] = useState("generic_asset");

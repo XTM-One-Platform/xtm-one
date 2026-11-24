@@ -559,3 +559,10 @@ repository): an inventory asset, never a primary asset.
   older builds saved by themselves (create audit `details.default`) when no person had edited it since; the rows
   it had imported stayed, as an administrator's delete in its default `leave` mode keeps them. Manual rows and
   manual links still win over every run.
+  Rows a deleted sync left (`leave`, the migration above included) keep their platform source and are listed in
+  Sources and syncs as that platform with no sync (#1940): its schedule cell reads "Rows from an earlier sync,
+  none scheduled" and its menu offers "Set up a sync" (the import preselected on that platform and the section the
+  rows feed; the new sync takes the rows back, since `plan_rows` and the import count an unstamped row of the same
+  source as the sync's) and "Remove or hand over the rows" (`POST /organization-context/sources/{source}/rows`).
+  The table offers that purge or release for every source but rows entered by hand; `plan_rows` refusing the
+  hand source stays the one authority.
