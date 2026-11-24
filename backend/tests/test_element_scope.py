@@ -304,12 +304,19 @@ async def test_a_pipeline_stage_tool_is_built_under_the_run_scope():
     result.scalar_one_or_none = MagicMock(return_value=integration)
     db = MagicMock(execute=AsyncMock(return_value=result))
     seen: list[dict] = []
-    agent = SimpleNamespace(id=uuid.uuid4(), name="Triage")
-    with patch("app.services.integration_tools.build_integration_tools", new=_recording_builder(seen)):
+    owner = uuid.uuid4()
+    agent = SimpleNamespace(id=uuid.uuid4(), name="Triage", user_id=owner)
+    # The owner may use the pin (the visibility check reads the database:
+    # ``test_pipeline_integration_access`` covers it).
+    with (
+        patch("app.services.integration_tools.build_integration_tools", new=_recording_builder(seen)),
+        patch("app.services.integration_tools.shadow_invisible_bindings", new=AsyncMock(return_value=[])),
+        patch("app.api.v1.helpers.get_user_group_ids", new=AsyncMock(return_value=[])),
+    ):
         loaded = await _load_pipeline_tool_standalone(
             db,
             {"source": "integration", "provider": "github", "tool_name": "get_github_file", "integration_id": str(integration.id)},
-            str(uuid.uuid4()),
+            str(owner),
             agent,
             None,
             element_scope=SCOPE,

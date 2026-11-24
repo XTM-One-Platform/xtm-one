@@ -764,13 +764,14 @@ async def _load_pipeline_tool_unbound(
         # owner too: a pin copied from another agent names its owner's
         # integration. A run with no person is checked as the agent's owner
         # when it is the owner's own (*owner_run*), and keeps no pin
-        # otherwise. A pin withheld is replaced by the fallback below.
+        # otherwise. A pin withheld is replaced by the fallback below, unless
+        # each integration of the provider is a different API.
         from app.services.integration_credentials import normalize_acting_user_id
 
         _acting = normalize_acting_user_id(user_id)
-        _check_as = _acting if _acting is not None else (
-            normalize_acting_user_id(agent.user_id) if owner_run else None
-        )
+        _owner = normalize_acting_user_id(getattr(agent, "user_id", None))
+        _check_as = _acting if _acting is not None else (_owner if owner_run else None)
+        _withheld_pin = False
         if integ is not None and _check_as is not None:
             from app.api.v1.helpers import get_user_group_ids
             from app.services.integration_credentials import lent_integration_ids
@@ -784,17 +785,25 @@ async def _load_pipeline_tool_unbound(
                 acting_user_id=str(_check_as),
                 user_group_ids=await get_user_group_ids(db, _check_as),
                 lent_ids=lent_integration_ids(agent),
-                lent_owner_id=agent.user_id,
+                lent_owner_id=_owner,
             )
             if not _pinned:
                 logger.info(
-                    "Pipeline LOAD: pinned integration %s withheld for user %s, picking theirs",
+                    "Pipeline LOAD: pinned integration %s withheld for user %s",
                     integ.id,
                     _check_as,
                 )
-                integ = None
+                _withheld_pin = True
         elif integ is not None and not owner_run:
             logger.info("Pipeline LOAD: pinned integration %s withheld from a run with no person", integ.id)
+            _withheld_pin = True
+        if _withheld_pin:
+            from app.services.openapi_import.service import provider_resolves_per_user
+
+            if not provider_resolves_per_user(provider):
+                # Each integration of the provider is a different API: none
+                # of the person's own stands in for the pinned one.
+                return None
             integ = None
         _owner_run_pin = integ is not None and _acting is None
 
