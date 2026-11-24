@@ -77,6 +77,21 @@ def test_a_visible_signal_member_is_named_never_shown_by_its_id() -> None:
     assert issue["first_seen_at"] == NOW.isoformat()
     # The history row names the same signal.
     assert rendered["history"][0]["issue_label"] == "O365 Device Code Phishing Campaign"
+    assert rendered["history"][0]["issue_path_label"] == "Relevant new threat or actor"
+
+
+def test_a_nameless_signal_event_carries_its_path_label_never_its_id() -> None:
+    """A signal with no name reads as its trigger path in History (UX round 1 B2 on #1945)."""
+    case = _case()
+    signal = _signal(subject_label=None, subject_ref=None)
+    member = f"signal:{signal.id}"
+    rows = [CtemCaseIssue(case_id=case.id, source="signal", external_id=str(signal.id), open=True)]
+    events = [CtemCaseEvent(case_id=case.id, at=NOW, actor="system", kind="signal", issue=member)]
+    view = view_of.ViewerView(signals={member}, signal_details={member: view_of.signal_detail(signal)})
+    rendered = view_of.hydrate(case, rows, events, view)
+    assert rendered is not None
+    event = rendered["history"][0]
+    assert event["issue_label"] is None and event["issue_path_label"] == "Relevant new threat or actor"
 
 
 def test_a_signal_about_an_asset_names_it_as_its_asset() -> None:
@@ -95,6 +110,7 @@ def test_a_hidden_signal_member_stays_restricted_with_nothing_of_it() -> None:
     assert rendered is not None
     assert {"restricted": True} in rendered["issues"] and rendered["restricted_count"] == 1
     assert rendered["history"][0]["issue"] == "Restricted" and rendered["history"][0]["issue_label"] is None
+    assert rendered["history"][0]["issue_path_label"] is None
     assert "secret campaign" not in str(rendered) and str(hidden.id) not in str(rendered)
 
 

@@ -190,6 +190,8 @@ export interface CtemCaseEvent {
   issue: string | null;
   /** The name of the signal the event is about, when the caller sees it (#1936); never the id. */
   issue_label?: string | null;
+  /** The trigger path label of a signal member the caller sees, untranslated: the fallback when it has no name. */
+  issue_path_label?: string | null;
   from: string | null;
   to: string | null;
   reason: string | null;

@@ -64,14 +64,15 @@ export function memberKev(issue: CtemCaseVisibleIssue): boolean | null {
 
 /**
  * The member a history event is about, in words: the API's `issue_label` (the signal's name or
- * the issue's CVE), else "A signal" for a signal member; null when nothing nameable remains, so
- * the id is never drawn. "Restricted" stays the caller's own concern.
+ * the issue's CVE), else "Signal: <path label>" for a signal member, the same fallback as its
+ * Issues row (UX round 1 B2 on #1945); null when nothing nameable remains, so the id is never
+ * drawn and the caller drops the suffix. "Restricted" stays the caller's own concern.
  */
-export function eventIssueLabel(event: Pick<CtemCaseEvent, "issue" | "issue_label">, t: Translate): string | null {
+export function eventIssueLabel(event: Pick<CtemCaseEvent, "issue" | "issue_label" | "issue_path_label">, t: Translate): string | null {
   const issue = event.issue;
   if (!issue || issue === "Restricted") return null;
   if (event.issue_label && !UUID_PATTERN.test(event.issue_label)) return event.issue_label;
-  if (issue.startsWith("signal:")) return t("A signal");
+  if (issue.startsWith("signal:")) return event.issue_path_label ? t("Signal: {path}", { path: t(event.issue_path_label) }) : null;
   const id = issue.includes(":") ? issue.slice(issue.indexOf(":") + 1) : issue;
   return UUID_PATTERN.test(id) ? null : id;
 }

@@ -50,7 +50,9 @@ describe("case issue labels", () => {
   it("names the signal of a History event, never its id", () => {
     const issue = `signal:${ID}`;
     expect(eventIssueLabel({ issue, issue_label: "O365 Device Code Phishing Campaign" }, t)).toBe("O365 Device Code Phishing Campaign");
-    expect(eventIssueLabel({ issue, issue_label: null }, t)).toBe("A signal");
+    // No name: the same fallback as the Issues row, else no suffix at all (UX round 1 B2 on #1945).
+    expect(eventIssueLabel({ issue, issue_label: null, issue_path_label: "Relevant new threat or actor" }, t)).toBe("Signal: Relevant new threat or actor");
+    expect(eventIssueLabel({ issue, issue_label: null }, t)).toBeNull();
     expect(eventIssueLabel({ issue: `opencti:${ID}`, issue_label: null }, t)).toBeNull();
     expect(eventIssueLabel({ issue: "Restricted", issue_label: null }, t)).toBeNull();
     expect(eventIssueLabel({ issue: "opencti:CVE-2024-1234", issue_label: "CVE-2024-1234" }, t)).toBe("CVE-2024-1234");

@@ -501,7 +501,11 @@ export default function CtemCaseDetail() {
                 </ToneBadge>
               )}
             </span>
-            {signalCaption(r.issue, t_i18n) && <IssueCaption text={signalCaption(r.issue, t_i18n) ?? ""} />}
+            {/* The path caption takes its cell's own 26rem width, not the 9rem cap of the Fixed
+                version caption (UX round 1 B3 on #1945). */}
+            {signalCaption(r.issue, t_i18n) && (
+              <TruncatedText text={signalCaption(r.issue, t_i18n) ?? ""} className="content-compact text-default-secondary" />
+            )}
           </span>
         ) : (
           // The issue, then "Open in <Module>" on the entity it came from (#1357): an OpenCTI
@@ -804,6 +808,9 @@ export default function CtemCaseDetail() {
             framed={false}
             rows={issueRows}
             columns={columns}
+            // One row height for the table (UX round 1 B1 on #1945): a signal row holds its chips
+            // and its path caption, so every row takes the two-line height.
+            rowLines={2}
             rowKey={(r) => r.key}
             selection={{
               selected: picked,

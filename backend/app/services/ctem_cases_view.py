@@ -474,6 +474,10 @@ def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
     # A member the viewer sees is named, never shown by its id (#1936): a signal by its subject,
     # a product issue by its CVE or name.
     label = _member_label(issue, view) if issue and issue != RESTRICTED else None
+    # A signal with no name falls back to its trigger path label, as its Issues row does
+    # (UX round 1 B2 on #1945).
+    signal = view.signal_details.get(issue) if issue and issue != RESTRICTED else None
+    path_label = signal.get("trigger_path_label") if signal is not None else None
     # A treatment plan's name and OpenCRQ link go to a viewer who reads OpenCRQ only (#1068).
     # A threat package's Grouping and coverage go to a viewer who reads OpenCTI only (#1115).
     hidden = (row.kind == "treatment_plan" and not view.opencrq) or (row.kind == "threat_package" and not view.opencti)
@@ -483,6 +487,7 @@ def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
         "kind": row.kind,
         "issue": issue,
         "issue_label": label,
+        "issue_path_label": path_label,
         "from": None if hidden else row.from_value,
         "to": None if hidden else row.to_value,
         "reason": None if hidden else row.reason,
