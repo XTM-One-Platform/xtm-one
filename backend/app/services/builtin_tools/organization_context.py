@@ -252,7 +252,7 @@ def build_organization_context_tool(
         name=ORGANIZATION_CONTEXT_TOOL,
         description=(
             "Read the organization profile: sector, regions, size, primary assets and business "
-            "services, software, AI systems, PIRs, risk appetite, loaded hourly rate and "
+            "services, software, PIRs, risk appetite, loaded hourly rate and "
             "currency, ticketing target, and the fields not filled. Read it before ranking, "
             "scoping or estimating; cite the fields you used and name the missing ones, never guess them. "
             'Long lists are categories: category="*" lists them with their sizes; category="software" (any listed name) '

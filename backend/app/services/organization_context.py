@@ -3,7 +3,7 @@
 """The organization profile: one structured, versioned context every agent reads.
 
 The contract is ``dev-docs/ctem-fleets.md`` section 6 (#8987): sector,
-regions, size, crown jewels, software, AI systems inventory, PIRs, risk
+regions, size, crown jewels, software, PIRs, risk
 appetite, loaded hourly rate and currency, ticketing target. It replaces
 the free-text ``company-context`` knowledge base as the source agents
 reason from: a stage analyst ranks by the crown jewels it reads here and

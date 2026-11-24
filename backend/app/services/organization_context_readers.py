@@ -37,7 +37,8 @@ PROFILE_CHECK_FIELDS: dict[str, str] = {
     "profile:regions": "regions",
     "profile:crown_jewels": "crown_jewels",
     "profile:tech_stack": "tech_stack",
-    "profile:ai_systems": "ai_systems",
+    # The AI security fleet needs AI targets: the assets of category ai_target (#1844).
+    "profile:ai_targets": "assets_exposure",
 }
 
 

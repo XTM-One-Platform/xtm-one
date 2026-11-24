@@ -194,12 +194,12 @@ CTEM_VULN_PRIORITIZATION_DOC: dict[str, str] = {
 
 CTEM_AI_SECURITY_DOC: dict[str, str] = {
     "purpose": (
-        "Watch the threats aimed at AI systems and at AI-enabled tradecraft, map them to MITRE "
-        "ATLAS, and test the organization's own AI systems behind approval."
+        "Watch the threats aimed at AI targets and at AI-enabled tradecraft, map them to MITRE "
+        "ATLAS, and test the organization's own AI targets behind approval."
     ),
     "use_case": (
         "A report labelled AI lands in OpenCTI. The fleet maps it to ATLAS techniques in an "
-        "OpenCTI draft, checks which of the organization's AI systems it reaches, proposes "
+        "OpenCTI draft, checks which of the organization's AI targets it reaches, proposes "
         "OpenAEV AI tests (prompt injection, jailbreak, excessive agency, tool misuse, MCP tool "
         "poisoning) and tracks the exposure until it is fixed."
     ),
@@ -210,14 +210,14 @@ CTEM_AI_SECURITY_DOC: dict[str, str] = {
     ),
     "flow": (
         "1. ATLAS mapping in an OpenCTI draft, for an analyst's review.\n"
-        "2. Relevance to the organization's AI systems.\n"
+        "2. Relevance to the organization's AI targets.\n"
         "3. AI tests proposed, each behind approval.\n"
         "4. Exposure priced in OpenCRQ, fixes drafted, tracked to closure."
     ),
     "objects_created": ("OpenCTI drafts of ATLAS entities, approval work items, OpenAEV AI tests (after approval)."),
     "prerequisites": (
-        "OpenCTI and OpenAEV connected, and the organization's AI systems listed in its profile "
-        "(an AI system without an OpenAEV asset gets the proposal only). " + _OPT_IN
+        "OpenCTI and OpenAEV connected, and the organization's AI targets listed as assets "
+        "(an AI target not in OpenAEV gets the proposal only). " + _OPT_IN
     ),
 }
 
@@ -441,7 +441,6 @@ _PROFILE_FIELD_TAB: dict[str, tuple[str, str]] = {
     "crown_jewels": ("business", "crown_jewels"),
     "tracked_organizations": ("business", "tracked_organizations"),
     "tech_stack": ("technology", "tech_stack"),
-    "ai_systems": ("technology", "ai_systems"),
 }
 
 
@@ -736,7 +735,7 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
 }
 
 CTEM_AI_SECURITY_STRUCTURED: dict[str, Any] = {
-    "purpose_line": "Watch the threats aimed at AI systems, map them to MITRE ATLAS and test your own AI behind approval.",
+    "purpose_line": "Watch the threats aimed at AI, map them to MITRE ATLAS and test your own AI targets behind approval.",
     "outcome_line": "AI threats mapped to ATLAS, AI tests run after approval, AI exposures fixed.",
     "triggers": [
         {"module": "opencti", "name": "New AI-enabled report", "filter": "A report labelled ai is created"},
@@ -755,7 +754,7 @@ CTEM_AI_SECURITY_STRUCTURED: dict[str, Any] = {
     ],
     "steps": [
         {"title": "ATLAS mapping", "detail": "In an OpenCTI draft, for an analyst's review."},
-        {"title": "Relevance", "detail": "Which of the organization's AI systems it reaches."},
+        {"title": "Relevance", "detail": "Which of the organization's AI targets it reaches."},
         {
             "title": "AI tests",
             "detail": "Prompt injection, jailbreak, excessive agency, tool misuse, MCP tool poisoning.",
@@ -778,7 +777,7 @@ CTEM_AI_SECURITY_STRUCTURED: dict[str, Any] = {
     "prerequisites": [
         _NEEDS_OPENCTI,
         _NEEDS_OPENAEV,
-        _prereq("profile:ai_systems", "AI systems listed in the organization profile", profile_fix_route("ai_systems")),
+        _prereq("profile:ai_targets", "AI target assets in the inventory", "/ctem/inventory"),
         _SWITCHED_ON,
     ],
     "quota": [

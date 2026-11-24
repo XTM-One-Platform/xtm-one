@@ -36,6 +36,9 @@ from sqlalchemy import select
 
 from app.services.organization_context_readers import PROFILE_CHECK_FIELDS as _PROFILE_FIELDS
 
+#: The prerequisite met by an asset of category ai_target, not by a whole field (#1844).
+AI_TARGETS_CHECK = "profile:ai_targets"
+
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -126,7 +129,12 @@ async def evaluate_prerequisites(
                     profile = parse_profile(row.profile if row is not None else None)
                 except ValueError:
                     profile = parse_profile(None)
-            met = cache[check] = bool(getattr(profile, _PROFILE_FIELDS[check]))
+            if check == AI_TARGETS_CHECK:
+                from app.services.organization_context import ai_target_assets
+
+                met = cache[check] = bool(ai_target_assets(profile))
+            else:
+                met = cache[check] = bool(getattr(profile, _PROFILE_FIELDS[check]))
         elif check == "profile:tracked_organizations":
             met = cache[check] = await _tracked_monitored(db)
         elif check == "automations:enabled" and fleet is not None:
@@ -214,7 +222,7 @@ PROFILE_LABELS = {
     "profile:regions": "Regions in the organization profile",
     "profile:crown_jewels": "Primary assets in the organization profile",
     "profile:tech_stack": "Technology in the organization profile",
-    "profile:ai_systems": "AI systems listed in the organization profile",
+    "profile:ai_targets": "AI target assets in the inventory",
     "profile:tracked_organizations": "A tracked organization with monitoring on",
 }
 

@@ -859,7 +859,7 @@ def build_organization_context_write_tools(
             description=(
                 "Add or update rows of one profile section without resending the list: assets and asset groups keyed "
                 "on source + external_id (rows a person wrote are never touched), new software as Software "
-                "entities, AI systems by name (tech_stack: alias). "
+                "entities (tech_stack: alias). "
                 "Validated like the CSV import. Preview first (apply false): counts and refusals with "
                 "reasons. A rows_format other than profile maps a platform's raw objects on the server."
                 + SHARED_CONTEXT_CLAUSE

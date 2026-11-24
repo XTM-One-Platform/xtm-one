@@ -24,7 +24,7 @@ Data only, no DDL, a no-op on re-run. The downgrade is a no-op: the rows are
 assets, which every version reads.
 
 Revision ID: r1844noaisys01
-Revises: x1735noailabel01
+Revises: c1748ctemgrp01
 Create Date: 2026-11-24 11:00:00.000000
 """
 
@@ -40,7 +40,7 @@ from app.core.migration_ddl import set_lock_timeout
 revision: str = "r1844noaisys01"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "x1735noailabel01"
+down_revision: str | Sequence[str] | None = "c1748ctemgrp01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
