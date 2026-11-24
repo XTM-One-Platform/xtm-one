@@ -304,12 +304,13 @@ async def test_a_pipeline_stage_tool_is_built_under_the_run_scope():
     result.scalar_one_or_none = MagicMock(return_value=integration)
     db = MagicMock(execute=AsyncMock(return_value=result))
     seen: list[dict] = []
-    agent = SimpleNamespace(id=uuid.uuid4(), name="Triage")
+    owner = uuid.uuid4()
+    agent = SimpleNamespace(id=uuid.uuid4(), name="Triage", user_id=owner)
     with patch("app.services.integration_tools.build_integration_tools", new=_recording_builder(seen)):
         loaded = await _load_pipeline_tool_standalone(
             db,
             {"source": "integration", "provider": "github", "tool_name": "get_github_file", "integration_id": str(integration.id)},
-            str(uuid.uuid4()),
+            str(owner),
             agent,
             None,
             element_scope=SCOPE,

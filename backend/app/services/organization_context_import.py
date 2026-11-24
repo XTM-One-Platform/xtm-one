@@ -3,7 +3,7 @@
 """Import one section of the organization profile from one connected platform (#11780).
 
 The no-model path of Settings > Organization: the administrator picks a
-section (assets, asset groups, AI systems, software, crown jewels, PIRs),
+section (assets, asset groups, software, crown jewels, PIRs),
 a source platform able to feed it (OpenAEV, OpenCTI, OpenCRQ), the filters
 that source supports, and gets a preview before anything is written: the
 source's own count of matching entities, then what the profile would gain
@@ -57,7 +57,7 @@ from app.services.organization_context_microsoft import os_family
 
 logger = logging.getLogger(__name__)
 
-Section = Literal["assets", "asset_groups", "ai_systems", "software", "crown_jewels", "pirs"]
+Section = Literal["assets", "asset_groups", "software", "crown_jewels", "pirs"]
 Source = Literal[
     "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
 ]
@@ -67,19 +67,14 @@ SECTION_SOURCES: dict[str, tuple[str, ...]] = {
     "assets": ("openaev", "opencti", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"),
     # #1556: Intune (Entra device groups), Tanium computer groups, Falcon host groups, ServiceNow services.
     "asset_groups": ("openaev", "intune", "tanium", "crowdstrike", "servicenow"),
-    "ai_systems": ("openaev",),
     "software": ("openaev",),
     "crown_jewels": ("opencrq",),
     "pirs": ("opencti",),
 }
-#: Deprecated since #1501 (kept one release): ``ai_systems`` reads and writes the assets of category
-#: ``ai_target``; an import of it touches no other asset.
-AI_SYSTEMS_ALIAS = "ai_systems"
 #: section -> the profile field it writes.
 SECTION_FIELD: dict[str, str] = {
     "assets": "assets_exposure",
     "asset_groups": "asset_groups",
-    "ai_systems": "assets_exposure",
     "software": "tech_stack",
     "crown_jewels": "crown_jewels",
     "pirs": "pir_ids",
@@ -116,7 +111,6 @@ SOURCE_FILTERS: dict[tuple[str, str], tuple[str, ...]] = {
     ("asset_groups", "tanium"): ("search",),
     ("asset_groups", "crowdstrike"): ("search",),
     ("asset_groups", "servicenow"): ("search",),
-    ("ai_systems", "openaev"): ("tags", "search"),
     ("software", "openaev"): ("type",),
     # link_supporting_assets (#1591, on unless "false") is read by the link import, not by the preview;
     # listed so the add and edit dialogs of the Inventory source show its switch (#1754).
@@ -369,7 +363,7 @@ def refused_section_message(source: str, section: str) -> str:
             f"{source} cannot feed {section}: its software comes with the Assets import of {source} "
             "(each device or repository keeps its software, read in the CTEM Inventory Software tab)"
         )
-    feeds = [name for name, sources in SECTION_SOURCES.items() if source in sources and name != AI_SYSTEMS_ALIAS]
+    feeds = [name for name, sources in SECTION_SOURCES.items() if source in sources]
     return f"{source} cannot feed {section}" + (f": it feeds {', '.join(feeds)}" if feeds else "")
 
 
@@ -531,7 +525,7 @@ def openaev_asset_group(group: dict[str, Any]) -> AssetGroupEntry | None:
     )
 
 
-def openaev_ai_system(asset: dict[str, Any]) -> AssetEntry | None:
+def openaev_ai_target(asset: dict[str, Any]) -> AssetEntry | None:
     """An OpenAEV AI target as an asset of category ``ai_target``, every field kept (#1501; no forced kind)."""
     if not _lower(asset.get("asset_category")):
         asset = {**asset, "asset_category": "ai_target"}
@@ -658,14 +652,12 @@ def opencrq_jewel(asset: dict[str, Any], min_level: str) -> CrownJewel | None:
 SOURCED_FIELDS: dict[str, tuple[str, str, int, tuple[str, ...]]] = {
     "assets": ("assets_exposure", "name", 5000, ("environment", "owner", "tech_stack", "group")),
     "asset_groups": ("asset_groups", "name", 500, ("environment", "owner", "tech_stack", "description")),
-    # #1501: the AI target assets, read and written like assets (the alias touches no other asset).
-    "ai_systems": ("assets_exposure", "name", 5000, ("environment", "owner", "tech_stack", "group")),
     "crown_jewels": ("crown_jewels", "name", 200, ("owner", "business_service", "asset_names")),
     "software": ("tech_stack", "product", 500, ("vendor", "cpe", "version")),
 }
 #: Sections where a row of another source with the same name is a second record of the same thing:
 #: added beside it, never skipped; the canonical asset store merges the records (#1178, S3).
-MULTI_SOURCE_SECTIONS: frozenset[str] = frozenset({"assets", "ai_systems"})
+MULTI_SOURCE_SECTIONS: frozenset[str] = frozenset({"assets"})
 #: Fields kept from the stored row whatever the source sends: the source never owns them.
 _ALWAYS_LOCAL: frozenset[str] = frozenset({"business_service", "asset_names"})
 
@@ -753,12 +745,7 @@ def _merge_sourced(
     """
     attr, name_key, cap, local = SOURCED_FIELDS[section]
     current: list[Any] = list(getattr(draft, attr))
-    if section == AI_SYSTEMS_ALIAS:
-        # The alias merges into the assets and must never treat the other assets of the source as gone.
-        others = [r for r in current if r.category != "ai_target"]
-        current = [r for r in current if r.category == "ai_target"]
-    else:
-        others = []
+    others: list[Any] = []
     by_key = {(r.source, r.external_id): i for i, r in enumerate(current) if r.external_id}
     multi = section in MULTI_SOURCE_SECTIONS
     names = {getattr(r, name_key).casefold() for r in current if not multi or r.source == source}
@@ -1211,7 +1198,7 @@ async def _read_openaev(
         )
         if targets.error:
             return ReadResult(error=targets.error)
-        read.rows += [r for r in (openaev_ai_system(a) for a in targets.rows) if r]
+        read.rows += [r for r in (openaev_ai_target(a) for a in targets.rows) if r]
         read.truncated = read.truncated or targets.truncated
         if read.total is not None and targets.total is not None:
             read.total += targets.total
@@ -1236,11 +1223,6 @@ async def _read_openaev(
             read.error = err
             return read
         read.members, read.members_source = members, "openaev"
-        return read
-    if section == AI_SYSTEMS_ALIAS:
-        # #1501: OpenAEV's AI targets (``/api/ai_targets``), as assets of category ai_target.
-        read = await _openaev_search(base_url, headers, "/api/ai_targets/search", openaev_filter_group(filters), text)
-        read.rows = [r for r in (openaev_ai_system(a) for a in read.rows) if r]
         return read
     if section == "software":
         read = await _openaev_search(base_url, headers, "/api/security_platforms/search", openaev_filter_group(filters))

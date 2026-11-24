@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 
 /**
  * The Remove action of an editable table row (a settings row editor: primary assets, tech
- * stack, AI systems, departments): one ghost icon button of 32 px with a 16 px trash glyph,
+ * stack, departments): one ghost icon button of 32 px with a 16 px trash glyph,
  * so every row editor of a page draws the same row action (UX r1 B1 on #10853). The label
  * names what goes ("Remove the department"), already translated by the caller.
  */

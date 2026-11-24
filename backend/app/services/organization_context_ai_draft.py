@@ -75,7 +75,7 @@ AMOUNT_FIELDS: frozenset[str] = frozenset(
 )
 #: The contract paths that hold rows (#1752): the asset records own them, an import or the Inventory
 #: writes them, never a profile save; the draft never proposes them.
-ROW_PATHS: frozenset[str] = frozenset({"ai_systems", "assets_exposure", "asset_groups"})
+ROW_PATHS: frozenset[str] = frozenset({"assets_exposure", "asset_groups"})
 CONTRACT_PATHS: tuple[str, ...] = tuple(path for path, _label in CONTRACT_FIELDS if path not in ROW_PATHS)
 
 

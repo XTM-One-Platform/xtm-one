@@ -659,7 +659,7 @@ async def list_integration_operations(
     drawer can offer a real picker + a typed parameters form. Declared
     before ``/{flow_id}`` so the literal path is not swallowed by it.
     """
-    from app.services.integration_tools import build_integration_tools
+    from app.services.integration_tools import BindingBasis, ToolBindings, build_integration_tools
 
     integration = (
         await db.execute(
@@ -681,7 +681,11 @@ async def list_integration_operations(
     try:
         definitions, _executor = await build_integration_tools(
             db,
-            {integration.provider: str(integration.id)},
+            ToolBindings(
+                {integration.provider: str(integration.id)},
+                basis=BindingBasis.CALLER_CHECKED,
+                reason="visible to the caller and usable_credential_holder",
+            ),
             context={"source": "flow_operations", "credential_user_id": str(user.id)},
         )
     except Exception:  # pragma: no cover — a broken provider must not 500 the drawer

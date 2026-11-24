@@ -305,7 +305,7 @@ person may read); the runs, findings and hours saved of the page follow it.
   `tests/test_ctem_context_scoring.py`): each stage reads a set of context
   fields (scoping: crown jewels, tech stack, sector, regions; discovery: PIRs,
   sector, regions; prioritization: tech stack, crown jewels, PIRs; validation:
-  crown jewels, tech stack, AI systems; remediation: crown jewels, approval
+  crown jewels, tech stack, AI targets; remediation: crown jewels, approval
   threshold, ticketing). `C` is the share filled. The evidence `E` is the
   quantitative score `Q`, except Prioritization with a tech stack:
   `E = (Q + T) / 2`, `T = max(0, 100 - 20 x known-exploited CVEs in the

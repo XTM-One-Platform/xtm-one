@@ -4,7 +4,6 @@ import logging
 import time
 import uuid
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -863,9 +862,25 @@ def _make_eval_agent(**overrides) -> SimpleNamespace:
     return SimpleNamespace(**defaults)
 
 
-def _mock_integration_tool_build(monkeypatch, tool_defs):
-    """Mock only the DB-bound builder; flatten/filter helpers run for real."""
+def _mock_integration_tool_build(monkeypatch, tool_defs, *, resolved=None):
+    """Mock the DB-bound resolver and builder; the filter helpers run for real.
+
+    The resolver gives the agent's direct bindings, or *resolved*; what the
+    builder hands it lands in ``captured`` with the build's context.
+    """
     captured: dict[str, object] = {}
+
+    async def _resolve(_db, agent, acting_user_id, *, company_automation=False, scope_headers=None):
+        captured["acting_user_id"] = acting_user_id
+        captured["company_automation"] = company_automation
+        bindings = (
+            dict(resolved)
+            if resolved is not None
+            else integration_tools.flatten_bindings(agent.integration_bindings or {})
+        )
+        return integration_tools.AgentIntegrationBindings(
+            bindings, dict.fromkeys(bindings, integration_tools.DIRECT_BINDING_ORIGIN), []
+        )
 
     async def _mock_build_integration_tools(
         _db, bindings, *, context=None, channel_bot_mode=False
@@ -875,6 +890,7 @@ def _mock_integration_tool_build(monkeypatch, tool_defs):
         captured.update(context or {})
         return list(tool_defs), "executor"
 
+    monkeypatch.setattr(integration_tools, "resolve_agent_integration_bindings", _resolve)
     monkeypatch.setattr(
         "app.services.integration_tools.build_integration_tools",
         _mock_build_integration_tools,
@@ -901,11 +917,16 @@ def test_build_evaluation_integration_tools_passes_evaluation_user_id(monkeypatc
     assert bundle == (tool_defs, "executor")
     assert captured["source"] == "evaluation"
     assert captured["agent"] == "Eval Agent"
+    # The bindings are resolved for the evaluation owner, not the agent owner.
+    assert captured["acting_user_id"] == str(evaluation_user_id)
     assert captured["user_id"] == str(evaluation_user_id)
     # Real flatten_bindings output: single-element list -> plain provider key.
     assert captured["bindings"] == {
         "opencti": agent.integration_bindings["opencti"][0]
     }
+    # What the bundle was built from and for whom, checked by the turn.
+    assert bundle.bindings == captured["bindings"]
+    assert bundle.acting_user_id == str(evaluation_user_id)
 
 
 def test_an_evaluated_run_gets_what_the_build_collects_for_the_built_in_tools(monkeypatch):
@@ -944,6 +965,7 @@ def test_build_evaluation_integration_tools_falls_back_to_agent_owner_user_id(mo
     )
 
     assert bundle == (tool_defs, "executor")
+    assert captured["acting_user_id"] == str(agent_owner_id)
     assert captured["user_id"] == str(agent_owner_id)
 
 
@@ -971,6 +993,7 @@ def test_build_evaluation_integration_tools_handles_ownerless_agent_and_evaluati
     )
 
     assert bundle == (tool_defs, "executor")
+    assert captured["acting_user_id"] is None
     assert captured["user_id"] is None
 
 
@@ -993,85 +1016,55 @@ def test_build_evaluation_integration_tools_degrades_on_malformed_acting_user_id
 
     bundle = asyncio.run(
         ee._build_evaluation_integration_tools(
-            _FakeSession([]),  # no execute expected: template resolution skipped
+            _FakeSession([]),
             agent,
             evaluation=evaluation,
         )
     )
 
     assert bundle == (tool_defs, "executor")
+    assert captured["acting_user_id"] is None
     assert captured["user_id"] is None
 
 
-def test_build_evaluation_integration_tools_resolves_template_bindings_with_fallback(
-    monkeypatch,
+@pytest.mark.parametrize("company_managed", [False, True])
+def test_build_evaluation_integration_tools_builds_what_the_resolver_gives(
+    monkeypatch, company_managed
 ):
-    """Template bindings resolve against the acting user, including the
-    agent-owner fallback (assignment_engine parity), not only evaluation.user_id."""
-    agent_owner_id = uuid.uuid4()
-    template_integration = SimpleNamespace(
-        id=uuid.uuid4(),
-        user_id=agent_owner_id,
-        is_company_managed=False,
-    )
-    agent = _make_eval_agent(
-        user_id=agent_owner_id,
-        integration_bindings={},
-        integration_template_bindings=["opencti"],
-    )
-    evaluation = SimpleNamespace(id=uuid.uuid4(), user_id=None)
-
-    tool_defs = [_integration_tool_def("opencti_search", "opencti")]
-    captured = _mock_integration_tool_build(monkeypatch, tool_defs)
-    candidates = AsyncMock(
-        side_effect=lambda _db, acting, **_: integration_tools.template_candidate_clause(acting)
-    )
-    monkeypatch.setattr(integration_tools, "template_candidate_filter", candidates)
+    """The tools come from the shared resolution only: a binding it
+    withheld is never built, a template it resolved is. An evaluation is a
+    company automation exactly when its agent is company-managed."""
+    template_id = str(uuid.uuid4())
+    agent = _make_eval_agent(is_company_managed=company_managed)
+    tool_defs = [_integration_tool_def("jira_search", "jira")]
+    captured = _mock_integration_tool_build(monkeypatch, tool_defs, resolved={"jira": template_id})
 
     bundle = asyncio.run(
         ee._build_evaluation_integration_tools(
-            _FakeSession([_EntriesResult([template_integration])]),
+            _FakeSession([]),
             agent,
-            evaluation=evaluation,
+            evaluation=SimpleNamespace(id=uuid.uuid4(), user_id=uuid.uuid4()),
         )
     )
 
     assert bundle == (tool_defs, "executor")
-    assert captured["user_id"] == str(agent_owner_id)
-    assert captured["bindings"] == {"opencti": str(template_integration.id)}
-    # Candidates come from the one filter that honours access_restricted.
-    assert candidates.await_args.args[1] == agent_owner_id
-    # A personal agent's evaluation is not a company automation.
-    assert candidates.await_args.kwargs == {"company_automation": False}
+    assert captured["bindings"] == {"jira": template_id}
+    assert captured["company_automation"] is company_managed
 
 
-def test_build_evaluation_integration_tools_loads_the_candidate_filter_once(monkeypatch):
-    """The acting user's grants and role are read once, not once per provider."""
-    agent_owner_id = uuid.uuid4()
-    rows = [
-        SimpleNamespace(id=uuid.uuid4(), user_id=agent_owner_id, is_company_managed=False)
-        for _ in range(2)
-    ]
-    agent = _make_eval_agent(
-        user_id=agent_owner_id,
-        integration_bindings={},
-        integration_template_bindings=["opencti", "github"],
-    )
-    _mock_integration_tool_build(monkeypatch, [_integration_tool_def("opencti_search", "opencti")])
-    candidates = AsyncMock(
-        side_effect=lambda _db, acting, **_: integration_tools.template_candidate_clause(acting)
-    )
-    monkeypatch.setattr(integration_tools, "template_candidate_filter", candidates)
+def test_build_evaluation_integration_tools_builds_nothing_when_everything_is_withheld(monkeypatch):
+    captured = _mock_integration_tool_build(monkeypatch, [], resolved={})
 
-    asyncio.run(
+    bundle = asyncio.run(
         ee._build_evaluation_integration_tools(
-            _FakeSession([_EntriesResult([rows[0]]), _EntriesResult([rows[1]])]),
-            agent,
-            evaluation=SimpleNamespace(id=uuid.uuid4(), user_id=None),
+            _FakeSession([]),
+            _make_eval_agent(),
+            evaluation=SimpleNamespace(id=uuid.uuid4(), user_id=uuid.uuid4()),
         )
     )
 
-    assert candidates.await_count == 1
+    assert bundle is None
+    assert "bindings" not in captured
 
 
 def test_build_evaluation_integration_tools_applies_allowed_tools_filter(monkeypatch):
