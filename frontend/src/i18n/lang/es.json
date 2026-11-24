@@ -15882,6 +15882,7 @@
   "Try again, or reload the item if it changed.": "Inténtalo de nuevo, o recarga el elemento si ha cambiado.",
   "Or answer in your own words": "O responde con tus propias palabras",
   "Only an administrator can answer a company-managed work item.": "Solo un administrador puede responder a un elemento de trabajo gestionado por la empresa.",
+  "Only an administrator or a member of a group with View and decide can answer this decision.": "Solo un administrador o un miembro de un grupo con «Ver y decidir» puede responder a esta decisión.",
   "An agent waits for your decision on this work item.": "Un agente espera tu decisión sobre este elemento de trabajo.",
   "Decision needed: {title}": "Decisión pendiente: {title}",
   "This card is incomplete: its agent is asked to rewrite it.": "Esta tarjeta está incompleta: se pide a su agente que la reescriba.",

@@ -3,8 +3,9 @@
 import { useState, useMemo } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  UsersRound, Trash2, X, Users, Pencil, FileText, Gauge, Save, Zap, Key, UserCog, Sparkles, ShieldCheck,
+  UsersRound, Trash2, X, Users, Pencil, FileText, Gauge, Save, Zap, Key, UserCog, Sparkles,
 } from "lucide-react";
+import { Icon } from "@filigran/design-system";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { userSelectOption } from "@/components/ui/entity-select-options";
@@ -181,7 +182,7 @@ function GroupCtemAccessCard({ group, groupId }: { group: NonNullable<ReturnType
     <Card data-testid="group-ctem-access">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <ShieldCheck className="h-4 w-4" />
+          <Icon name="shield-check" size={16} aria-hidden />
           {t_i18n("CTEM access")}
         </CardTitle>
         <CardDescription>

@@ -15882,6 +15882,7 @@
   "Try again, or reload the item if it changed.": "Try again, or reload the item if it changed.",
   "Or answer in your own words": "Or answer in your own words",
   "Only an administrator can answer a company-managed work item.": "Only an administrator can answer a company-managed work item.",
+  "Only an administrator or a member of a group with View and decide can answer this decision.": "Only an administrator or a member of a group with View and decide can answer this decision.",
   "An agent waits for your decision on this work item.": "An agent waits for your decision on this work item.",
   "Decision needed: {title}": "Decision needed: {title}",
   "This card is incomplete: its agent is asked to rewrite it.": "This card is incomplete: its agent is asked to rewrite it.",
