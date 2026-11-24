@@ -2047,9 +2047,11 @@ def render_for_agent(
         "",
         wrap_untrusted(json.dumps(filled, ensure_ascii=False, indent=1), "organization profile"),
     ]
-    if exposure:
-        lines.append(exposure)
+    # #1773: the rate notice comes before the exposure line, so the block of a profile
+    # without rows stays a prefix of the block of the same profile with rows.
     notice = "" if identity else rate_notice(profile)
     if notice:
         lines.append(notice)
+    if exposure:
+        lines.append(exposure)
     return "\n".join(lines)
