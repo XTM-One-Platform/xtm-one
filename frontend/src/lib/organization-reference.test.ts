@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   emptyRateRow,
   missingRateInto,
+  pirDetailFilled,
   pirDetailProblem,
   pirDetailsOf,
   provenanceOf,
@@ -47,6 +48,12 @@ describe("PIR details (#1773)", () => {
     expect(pirDetailsOf(["a", "b"], details)).toEqual({
       a: { question: "Who targets us?", owner: "CTI", review_cadence: "monthly", crown_jewels: ["Pay"] },
     });
+  });
+
+  it("counts the fields of a PIR detail that are set (#1974)", () => {
+    expect(pirDetailFilled(undefined)).toBe(0);
+    expect(pirDetailFilled({ question: " ", owner: "CTI", review_cadence: "", crown_jewels: [] })).toBe(1);
+    expect(pirDetailFilled({ question: "Q", owner: "CTI", review_cadence: "monthly", crown_jewels: ["Pay"] })).toBe(4);
   });
 
   it("bounds the question as the server does", () => {

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * The reference exchange rates and the PIR details of the organization profile (#1773):
+ * The reference exchange rates and the PIR details of the organization profile (#1773; the
+ * details are edited from each PIR of the Prioritization policy card since #1974):
  * the form rows, their checks and the profile values a save sends. The server's
  * contract is `FxRate` and `PirDetail` in backend/app/services/organization_context.py;
  * these checks mirror it so the form marks a bad row before the save, never after.
@@ -138,6 +139,15 @@ export function pirDetailsOf(pirIds: readonly string[], details: Record<string, 
     if (!pirDetailEmpty(clean)) kept[id] = clean;
   }
   return kept;
+}
+
+/** The fields of a PIR detail, in the order the details dialog shows them. */
+export const PIR_DETAIL_FIELDS = 4;
+
+/** How many of the four fields of *detail* are set (question, owner, review cadence, primary assets served). */
+export function pirDetailFilled(detail: PirDetail | undefined): number {
+  if (!detail) return 0;
+  return [detail.question.trim(), detail.owner.trim(), detail.review_cadence, detail.crown_jewels.length > 0 ? "x" : ""].filter(Boolean).length;
 }
 
 /** Why a PIR detail cannot be saved (an English message), or `null`. */
