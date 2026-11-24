@@ -350,7 +350,7 @@ def test_tech_stack_dedup_on_cpe_and_name() -> None:
         {"product": "NGINX", "vendor": "", "cpe": "", "source": "manual"},
         {"product": "nginx", "vendor": "Other", "cpe": "", "source": "opencti", "external_id": "x9"},
     ]
-    groups = ident.dedupe_section("tech_stack", rows)
+    groups = ident.dedupe_section("software", rows)
     assert len(groups) == 2  # a different vendor of the same product name stays apart
     merged = next(g for g in groups if len(g.records) == 2)
     assert merged.sources == ["manual", "openaev"]

@@ -31,7 +31,7 @@ LEGACY = {
     "crown_jewels": [
         {"name": "SCADA", "business_service": "Grid", "owner": "OT", "criticality": "critical", "opencrq_asset_id": ""}
     ],
-    "tech_stack": [{"product": "Windows Server 2019", "vendor": "Microsoft", "cpe": ""}],
+    "software": [{"product": "Windows Server 2019", "vendor": "Microsoft", "cpe": ""}],
     "pir_ids": ["pir-1"],
     "pir_names": {"pir-1": "Ransomware"},
     "risk_appetite": {"annual_loss_threshold": 2000000.0, "approval_threshold": None},
@@ -386,7 +386,7 @@ def test_the_csv_merge_upserts_by_name_keeps_other_rows_and_adds_the_links():
     assert merged.assets_exposure[1].owner == ""
     assert merged.crown_jewels[0].asset_names == ["web-1"]
     assert imp.check_links(merged) == []
-    assert oc.legacy_dump(merged)["tech_stack"] == LEGACY["tech_stack"]
+    assert oc.legacy_dump(merged)["software"] == LEGACY["software"]
 
 
 @pytest.mark.parametrize(

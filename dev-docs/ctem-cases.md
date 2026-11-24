@@ -263,7 +263,26 @@ same way.
   when they name none (an OpenCTI-only case), the device count of the case's
   latest `versions` snapshot, with `asset_count_source` `issues`, `inventory`
   (and `asset_count_as_of`) or `unknown`: then `asset_count` is `null` with
-  `asset_count_reason`, never a silent 0.
+  `asset_count_reason`, never a silent 0. The single case read
+  (`GET /ctem/cases/{id}`, `get_ctem_case`) applies the same rule
+  (`version_history.with_asset_count` on the hydrated case), so the list row
+  and the case read answer the same `asset_count`, source and marker.
+- scope-limited aggregates: `summary()` counts the open product members the
+  viewer reads WITHOUT their details (outside their scope, or seen before from
+  a product that does not answer now) as `members_without_details`. When it is
+  above 0, `asset_count`, `crown_jewel_count`, `kev_count`, `max_cvss` and
+  `max_epss` are `null` with `aggregates_restricted: true` and
+  `aggregates_reason` (`ctem_cases_view.AGGREGATES_RESTRICTED_REASON`), and
+  `with_asset_count` never counts from the issues then (inventory count, else
+  `unknown` with `NO_COUNT_RESTRICTED`). A 0 is a real 0 only when every open
+  product member was read with its details. Chosen basis: the viewer's own
+  read, marked; no link-based count is computed, because the ids of members a
+  viewer cannot read are never served (ids-only rule of the case loop). Signal
+  members carry no issue details for anyone and never restrict. The list
+  answers `hidden_cases` (API top level; `scope.hidden_cases` in
+  `list_ctem_cases`): the open cases the viewer sees none of, a count only, so
+  a page is never read as the organization total. Tests:
+  `tests/test_ctem_case_scope_limited_aggregates.py`.
 - where the per-platform fix comes from (slice 2 of #1572): the OpenCTI reader
   reads each Software that `remediates` the vulnerability with its `cpe`;
   `ctem_fixed_version.platform_of_software` takes the platform from the CPE
@@ -381,6 +400,16 @@ explained. A single-platform answer draws the card as before.
   credentials for it (`not_connected`) writes nothing on that shared line, so a
   scheduled-pass identity never shows an outage to a viewer whose own read
   answered.
+- One recompute at a time per organization and vertical, across pods (#1953):
+  every path takes the Redis lock `ctem:cases:recompute-lock:<org>:<vertical>`
+  (10 min TTL, released by its holder only) in `recompute_as`; a recompute that
+  finds it held reads and writes nothing and answers `busy` (the scheduled pass
+  counts it skipped, the page open retries at the next open, `POST /recompute`
+  answers 409). Its write phase reads nothing remote: the scope gate's OpenCRQ
+  scenarios, fallback reader and inventory links are read before the first
+  signal row is written (`ctem_scope_gate_store.prepare_system_reads`), and a
+  transaction-local `lock_timeout` of 5 s makes a row another writer holds (a
+  case delete) fail the pass fast; the next pass retries.
 - Every failed source read (#1852) records why per product
   (`SourceRead.reasons`): `rejected` (401, 403, AUTH_REQUIRED, Forbidden),
   `too_large` (too_many_clauses, DATABASE_ERROR), `timeout`, `not_connected`
@@ -995,7 +1024,10 @@ section 5, #1359) for the signal members of a case, read by the case view's
 rule (`ctem_cases_view.signal_members`, the admin flag alone); under `own`,
 `hidden_by_scope` counts the case-bound signals the person does not see:
 across the organization for `list_ctem_cases`, bound to that case alone for
-`get_ctem_case` (its note then says "on this case").
+`get_ctem_case` (its note then says "on this case"). `list_ctem_cases` also
+answers `scope.hidden_cases`, the open cases the person sees none of; a `null`
+aggregate on a case means unknown for this reader, never none (section on
+scope-limited aggregates above).
 Tests: `tests/test_ctem_read_tools.py`.
 
 ### 8.1bis Signals and cases on any agent: the `ctem` group

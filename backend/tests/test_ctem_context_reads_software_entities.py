@@ -16,7 +16,7 @@ from app.services import organization_context as oc
 
 
 def _profile(software: list[dict[str, str]]) -> oc.OrganizationProfile:
-    return oc.parse_profile({"name": "Acme", "tech_stack": software})
+    return oc.parse_profile({"name": "Acme", "software": software})
 
 
 async def test_synced_software_fills_the_context_field(monkeypatch):
@@ -25,7 +25,7 @@ async def test_synced_software_fills_the_context_field(monkeypatch):
 
     monkeypatch.setattr(oc, "software_profile", _software_profile)
     out = await ctem_metrics._with_context(None, {"stages": []})
-    assert "tech_stack" not in out["context"]["missing_fields"]
+    assert "software" not in out["context"]["missing_fields"]
 
 
 async def test_no_software_at_all_is_still_missing(monkeypatch):
@@ -34,7 +34,7 @@ async def test_no_software_at_all_is_still_missing(monkeypatch):
 
     monkeypatch.setattr(oc, "software_profile", _software_profile)
     out = await ctem_metrics._with_context(None, {"stages": []})
-    assert "tech_stack" in out["context"]["missing_fields"]
+    assert "software" in out["context"]["missing_fields"]
 
 
 async def test_no_saved_profile_reads_missing(monkeypatch):

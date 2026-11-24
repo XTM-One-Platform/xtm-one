@@ -293,6 +293,23 @@ async def _scenarios_for(db: AsyncSession, row: Any) -> gate.ScenarioIndex:
         return gate.ScenarioIndex(note="OpenCRQ not read: no OpenCRQ connection to read with")
 
 
+async def prepare_system_reads(db: AsyncSession, organization_id: uuid.UUID) -> None:
+    """Take the gate's reads of a ``system`` signal now, before any signal row is written (#1953).
+
+    The OpenCRQ risk scenarios (a remote read), the fallback reader and the
+    inventory link index land in the session cache, so a recompute that gates
+    the signals it records reads nothing remote while it holds their row
+    locks. Never raises: an unread value is read again by :func:`evaluate`.
+    """
+    try:
+        async with db.begin_nested():
+            fallback = await _session_cached(db, ("fallback_reader",), lambda: default_scenario_reader(db))
+        await _session_cached(db, ("scenarios", fallback), lambda: read_scenarios(db, user_id=fallback))
+        await _session_cached(db, ("links", organization_id), lambda: _primary_assets(db, organization_id))
+    except Exception:
+        logger.warning("CTEM scope gate: reads not prepared for %s", organization_id, exc_info=True)
+
+
 def dismissed(row: CtemSignal) -> bool:
     """A signal a person dismissed (#1505): no pass of the gate moves it back, only a restore."""
     return row.state == "discarded" and (row.decision or {}).get("reason_code") == DISMISSED_CODE
@@ -577,7 +594,7 @@ def inventory_additions(profile: Any, rows: list[Any]) -> dict[str, list[Any]]:
     signals count.
     """
     have_assets = {gate.stable_key(a.name) for a in profile.assets_exposure}
-    have_products = {e.product.strip().lower() for e in profile.tech_stack}
+    have_products = {e.product.strip().lower() for e in profile.software}
     have_domains = {d.lower() for d in profile.owned_domains}
     assets: list[str] = []
     products: list[str] = []
@@ -630,7 +647,7 @@ async def add_to_inventory(
             }
             for name in added["assets"]
         ]
-        data["tech_stack"] = list(data.get("tech_stack") or []) + [
+        data["software"] = list(data.get("software") or []) + [
             {"product": name, "source": INVENTORY_SOURCE} for name in added["products"]
         ]
         data["owned_domains"] = list(data.get("owned_domains") or []) + added["domains"]
@@ -638,7 +655,7 @@ async def add_to_inventory(
         basis = f"added from the CTEM Signals page by {actor}"[:500]
         touched = [
             f
-            for f, key in (("assets_exposure", "assets"), ("tech_stack", "products"), ("owned_domains", "domains"))
+            for f, key in (("assets_exposure", "assets"), ("software", "products"), ("owned_domains", "domains"))
             if added[key]
         ]
         saved = await org_context.save_version(

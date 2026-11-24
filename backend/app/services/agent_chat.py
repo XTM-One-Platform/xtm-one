@@ -5069,7 +5069,16 @@ async def run_agent_chat(
             composite.add_tools(cs_defs, cs_exec)
             from app.services.builtin_tools import build_friction_tools
 
-            composite.add_tools(*build_friction_tools(user_id, str(agent.id), run_id=parent_run_id))
+            composite.add_tools(
+                *build_friction_tools(
+                    user_id,
+                    str(agent.id),
+                    run_id=parent_run_id,
+                    # The trace supervision grant reaches the supervised agents' frictions too (#1928).
+                    supervision_target_agent_ids=agent.trace_supervision_target_agent_ids,
+                    allow_cross_agent="inspect_agent_traces" in agent_builtin_tool_ids,
+                )
+            )
             if user_id:
                 from app.services.builtin_tools import build_timer_tools
 

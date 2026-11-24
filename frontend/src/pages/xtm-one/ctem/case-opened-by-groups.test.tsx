@@ -9,6 +9,12 @@ import { MemoryRouter } from "react-router-dom";
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemSignal } from "@/hooks/api/useCtemSignalsApi";
 
+// The trace body reads its signal from the API; the sheet around it is under test in case-loop-trace-in-place.test.tsx.
+vi.mock("./loop/SignalLoopTrace", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./loop/SignalLoopTrace")>()),
+  SignalTraceBody: ({ id }: { id: string }) => <p data-testid="trace-body">{id}</p>,
+}));
+
 const inScope = { reason_code: "in_scope", outcome: "case_opened", reason_params: { criticality: "high", threshold: "high", confidence: "low" } };
 
 function signal(i: number, over: Partial<CtemSignal> = {}): CtemSignal {
@@ -88,8 +94,10 @@ describe("CaseOpenedBy compact", () => {
     const buttons = within(table).getAllByTestId("ctem-case-loop-trace-button");
     expect(buttons).toHaveLength(10);
     expect(buttons[0]).toHaveTextContent("Loop trace");
-    expect(buttons[0].getAttribute("href")).toMatch(/\/ctem\/signals\?signal=sig-/);
-    expect(within(table).getAllByRole("link", { name: /^See the loop trace of CVE-2026-/ })).toHaveLength(10);
+    // A real button that opens the trace on the case, never a link to the Signals page (Sam, 24 Nov 2026).
+    expect(buttons[0].tagName).toBe("BUTTON");
+    expect(buttons[0].getAttribute("href")).toBeNull();
+    expect(within(table).getAllByRole("button", { name: /^See the loop trace of CVE-2026-/ })).toHaveLength(10);
   });
 
   it("sizes the loop trace column for the longest locale label (fr, 196 px measured)", () => {

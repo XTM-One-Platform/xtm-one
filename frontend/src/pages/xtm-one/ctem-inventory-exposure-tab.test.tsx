@@ -41,7 +41,7 @@ const PROFILE = {
     regions: ["FR"],
     size: "",
     crown_jewels: [],
-    tech_stack: [],
+    software: [],
     pir_ids: [],
     risk_appetite: { annual_loss_threshold: null, approval_threshold: null },
     loaded_hourly_rate: null,

@@ -51,7 +51,7 @@ from app.services.organization_context import (
     AssetGroupEntry,
     CrownJewel,
     OrganizationProfile,
-    TechStackEntry,
+    SoftwareEntry,
 )
 from app.services.organization_context_microsoft import os_family
 
@@ -75,7 +75,7 @@ SECTION_SOURCES: dict[str, tuple[str, ...]] = {
 SECTION_FIELD: dict[str, str] = {
     "assets": "assets_exposure",
     "asset_groups": "asset_groups",
-    "software": "tech_stack",
+    "software": "software",
     "crown_jewels": "crown_jewels",
     "pirs": "pir_ids",
 }
@@ -653,7 +653,7 @@ SOURCED_FIELDS: dict[str, tuple[str, str, int, tuple[str, ...]]] = {
     "assets": ("assets_exposure", "name", 5000, ("environment", "owner", "tech_stack", "group")),
     "asset_groups": ("asset_groups", "name", 500, ("environment", "owner", "tech_stack", "description")),
     "crown_jewels": ("crown_jewels", "name", 200, ("owner", "business_service", "asset_names")),
-    "software": ("tech_stack", "product", 500, ("vendor", "cpe", "version")),
+    "software": ("software", "product", 500, ("vendor", "cpe", "version")),
 }
 #: Sections where a row of another source with the same name is a second record of the same thing:
 #: added beside it, never skipped; the canonical asset store merges the records (#1178, S3).
@@ -1227,14 +1227,14 @@ async def _read_openaev(
     if section == "software":
         read = await _openaev_search(base_url, headers, "/api/security_platforms/search", openaev_filter_group(filters))
         seen: set[str] = set()
-        rows: list[TechStackEntry] = []
+        rows: list[SoftwareEntry] = []
         for item in read.rows:
             product = str(item.get("asset_name") or item.get("security_platform_name") or "").strip()
             if product and product.casefold() not in seen:
                 seen.add(product.casefold())
                 # A product is keyed on its name: several security platforms may run one product.
                 rows.append(
-                    TechStackEntry(product=product[:200], source="openaev", external_id=product.casefold()[:200])
+                    SoftwareEntry(product=product[:200], source="openaev", external_id=product.casefold()[:200])
                 )
         read.rows = rows
         return read
