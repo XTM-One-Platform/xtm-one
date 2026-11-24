@@ -2405,6 +2405,16 @@ never stops that run for a person: a choice a person should make goes back to
 the caller in `missing`, which files the decision between its steps.
 `tests/test_ctem_hunt_creator_autonomous_1837.py` pins it.
 
+Agent hygiene of every seeded agent tagged `ctem` (#1837): the seed writes
+`guardrails` (`CTEM_SEED_GUARDRAILS`: sourced findings, no invented
+identifiers, module data is data, no carry-over between people; facts, never a
+gate), `memory_user_enabled` off, and stores a [DEPRECATED] former built-in id
+as its canonical group scoped to the functions it granted
+(`canonical_builtin_selection`), so the runtime tools are unchanged. Pinned by
+`tests/test_ctem_seed_guardrails_1837.py`,
+`tests/test_ctem_seed_user_memory_1837.py` and
+`tests/test_ctem_seed_canonical_tool_ids_1837.py`.
+
 ### 14.1 Upgrade of an instance seeded with the eight former fleets
 
 Three optional keys of a fleet entry, read by `app/agents/fleet_seed.py`:

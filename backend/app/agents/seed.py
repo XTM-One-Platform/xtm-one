@@ -316,6 +316,9 @@ def _sync_agent_fields(
     agent.description = data.get("description")
     agent.icon = data.get("icon", "Bot")
     agent.persona = _resolve_seed_content("agent_persona", data.get("persona", data["slug"]))
+    # Seed mechanics, not customer layer (#1837): the definition's guardrails, facts the
+    # agent decides with; a definition without any leaves the field empty.
+    agent.guardrails = data.get("guardrails") or None
     agent.output_format = data.get("output_format", "markdown")
     agent.output_schema = with_builtin_roi_unit(data["slug"], _resolve_seed_schema(data.get("output_schema")))
     # A seeded agent a fleet calls with its own output_schema accepts it (#1837): without the
