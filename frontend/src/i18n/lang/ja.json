@@ -21424,5 +21424,18 @@
   "Mitigated, watching needs a passing validation of the mitigation: set it from the case page.": "「緩和済み・監視中」には緩和策の検証合格が必要です。ケースページから設定してください。",
   "Resolving a case needs evidence: set it from the case page.": "ケースの解決には証拠が必要です。ケースページから設定してください。",
   "Accepting risk needs a reason and an expiry date: set it from the case page.": "リスク受容には理由と有効期限が必要です。ケースページから設定してください。",
-  "Remediating needs an owner: assign the case first.": "「修正中」には担当者が必要です。先にケースを割り当ててください。"
+  "Remediating needs an owner: assign the case first.": "「修正中」には担当者が必要です。先にケースを割り当ててください。",
+  "{state}: {count, plural, one {# case} other {# cases}}, {share}%": "{state}: {count, plural, other {#件のケース}}、{share}%",
+  "Waiting for a decision: {count}, oldest {age}": "判断待ち: {count}件、最古 {age}",
+  "Waiting for a decision: {count}": "判断待ち: {count}件",
+  "No open case": "オープンなケースなし",
+  "{count, plural, one {# open case} other {# open cases}}, {waiting} waiting": "{count, plural, other {#件のオープンケース}}、{waiting}件が判断待ち",
+  "No accepted risk": "受容されたリスクなし",
+  "{count, plural, one {# accepted risk} other {# accepted risks}}": "{count, plural, other {受容されたリスク #件}}",
+  "In a case": "ケース内",
+  "Vulnerabilities an open case carries, among the ones you can see.": "オープンなケースが扱う脆弱性 (閲覧できるものに限る)。",
+  "{count, plural, one {# case resolved in the last {days} days} other {# cases resolved in the last {days} days}}": "{count, plural, other {過去{days}日間に解決されたケース #件}}",
+  "In a case, {count}, {resolved} resolved in {days} d": "ケース内 {count}、{days}日間で{resolved}件解決",
+  "{resolved} resolved in {days} d": "{days}日間で{resolved}件解決",
+  "Signals that opened a case, all time. Cases built from your stack's vulnerabilities are counted in Cases.": "ケースを開いたシグナル (全期間)。スタックの脆弱性から作成されたケースは「ケース」で数えられます。"
 }
