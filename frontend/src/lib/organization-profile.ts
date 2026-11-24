@@ -472,7 +472,7 @@ export const FIELD_LABELS = {
   regions: "Regions of operation",
   size: "Organization size",
   crown_jewels: "Crown jewels and business services",
-  tech_stack: "Tech stack",
+  tech_stack: "Software",
   ai_systems: "AI systems inventory",
   pir_ids: "Priority intelligence requirements (PIRs)",
   "risk_appetite.annual_loss_threshold": "Risk tolerance per scenario",

@@ -60,8 +60,8 @@ export const FUNNEL_LAYER_COPY: Record<CtemFunnelLayerKey, { name: string; defin
   },
   relevant: {
     name: "Relevant to you",
-    definition: "Vulnerabilities of the software in your tech stack, matched on CPE, or on product and vendor.",
-    cta: "Add your tech stack",
+    definition: "Vulnerabilities of your software, matched on CPE, or on product and vendor.",
+    cta: "Add your software",
   },
   exploitable: {
     name: "Exploitable",
@@ -88,7 +88,7 @@ export const FUNNEL_LAYER_COPY: Record<CtemFunnelLayerKey, { name: string; defin
   open_issues: {
     name: "Cases",
     definition: "Open cases: the issues above grouped by the fix they share, needing attention or in progress.",
-    cta: "Add your tech stack",
+    cta: "Add your software",
   },
 };
 
@@ -250,7 +250,7 @@ const FLOW_WIDE_FROM = 1000;
 
 /** The reason a layer removed what it removed, in plain words (catalog keys). */
 export const FLOW_REASON: Partial<Record<CtemFunnelLayerKey, string>> = {
-  relevant: "not in your tech stack",
+  relevant: "not in your software",
   exploitable: "not exploitable",
   exposed: "not exposed",
   business_impact: "low business impact",

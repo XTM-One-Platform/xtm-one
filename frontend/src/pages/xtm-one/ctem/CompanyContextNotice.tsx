@@ -134,7 +134,7 @@ export function CompanyContextNotice({
     >
       <span data-testid={testId} data-placement="dashboard">
         {missing
-          ? t_i18n("This analysis and its qualitative score need your organization context: crown jewels, tech stack, sector and risk priorities, set in Settings.")
+          ? t_i18n("This analysis and its qualitative score need your organization context: crown jewels, software, sector and risk priorities, set in Settings.")
           : t_i18n("Missing: {fields}. Fill them in Settings to sharpen the analysis and the qualitative score.", { fields })}
       </span>
     </DashboardNotice>

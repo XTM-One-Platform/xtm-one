@@ -97,7 +97,13 @@ blocked.
   repository (an infrastructure chart) that reaches production only through
   the next run of a release workflow. An optional ``title_contains`` keeps only
   the runs whose display title holds it (``"refs/tags/"``: the tag build of a
-  release workflow that also runs for a push on main, #34). The polling fallback reads it through
+  release workflow that also runs for a push on main, #34). An optional ``carries`` (``<sha>`` or
+  ``owner/name@<sha>``, stored as ``carries_sha`` and ``carries_repo``, the reference's repository
+  when no repository is named) waits for the release of a merge:
+  only a run whose display title names a commit of ``carries_repo`` that is ``carries_sha`` or a
+  descendant of it releases the item (a release that runs in another repository, its title
+  ``Release <ref> at <sha>``); an older run moves ``after`` past it, so a release of the exact
+  commit cancelled by a newer push never strands the item (#1634). The polling fallback reads it through
   the provider's :data:`~app.integrations.reference_state.WorkflowRunReader`
   (:func:`_poll_workflow_run`); the release note names the run. A run that succeeded
   before the item was blocked sends no delivery any more: the write that blocks it
@@ -130,7 +136,13 @@ _BRANCH_RE = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
 #: The longest ``title_contains`` a ``workflow_run`` reference may give.
 MAX_TITLE_CONTAINS_CHARS = 200
 #: What the workflow run stage remembers of a reference (with ``state`` and ``at``).
-_WORKFLOW_RUN_KEPT = ("run_id", "run_url", "run_at")
+_WORKFLOW_RUN_KEPT = ("run_id", "run_url", "run_at", "run_commit")
+#: A commit named in a release run's display title (``Release refs/heads/main at <sha>``).
+_TITLE_SHA_RE = re.compile(r"\b([0-9a-f]{40})\b")
+#: Older runs of a ``carries_sha`` reference skipped in one read, at most (#1634); the
+#: position reached is kept as ``carry_after`` (outside the reference key), so the next
+#: read resumes past the runs already skipped.
+MAX_CARRY_SKIPS = 5
 #: A commit a deployment reference may name.
 _SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
 #: What the deploy stage remembers of a reference (with ``state`` and ``at``);
@@ -321,9 +333,35 @@ def _normalize_workflow_run_ref(entry: dict, repo: str) -> dict:
                 f"{MAX_TITLE_CONTAINS_CHARS} characters, got {title!r}"
             )
         out["title_contains"] = title
-    for key in ("state", "at", *_WORKFLOW_RUN_KEPT):
+    out.update(_carries(entry, repo))
+    for key in ("state", "at", "carry_after", *_WORKFLOW_RUN_KEPT):
         if isinstance(entry.get(key), str | int) and not isinstance(entry.get(key), bool):
             out[key] = entry[key]
+    return out
+
+
+def _carries(entry: dict[str, Any], repo: str) -> dict[str, str]:
+    """``carries_sha`` and ``carries_repo`` of a workflow_run reference's ``carries`` (#1634).
+
+    ``carries`` reads ``<sha>`` or ``owner/name@<sha>``; the stored fields are kept on a rewrite.
+    """
+    raw = entry.get("carries")
+    if raw is None or raw == "":
+        sha, carries_repo = entry.get("carries_sha"), entry.get("carries_repo")
+        if sha is None or sha == "":
+            return {}
+        raw = f"{carries_repo}@{sha}" if isinstance(carries_repo, str) and carries_repo else sha
+    if not isinstance(raw, str):
+        raise BlockedRefError(f"blocked_on_refs: carries must be a commit, or owner/name@ then a commit, got {raw!r}")
+    named, _, sha = raw.strip().lower().rpartition("@")
+    if not _SHA_RE.match(sha) or (named and (named.count("/") != 1 or " " in named)):
+        raise BlockedRefError(
+            "blocked_on_refs: carries must be a commit, or owner/name@ then a commit (7 to 40 hexadecimal characters), "
+            f"got {raw!r}"
+        )
+    out = {"carries_sha": sha}
+    if named and named != repo:
+        out["carries_repo"] = named
     return out
 
 
@@ -336,6 +374,7 @@ def _ref_key(ref: dict) -> tuple:
             ref.get("branch"),
             ref.get("after"),
             ref.get("title_contains"),
+            ref.get("carries_sha"),
         )
     return (ref.get("repo"), ref.get("kind"), ref.get("number") or ref.get("sha"))
 
@@ -376,8 +415,9 @@ def unobserved_deployment_message(repo: str) -> str:
         f"blocked_on_refs: the platform does not observe the deployments of {repo}, so a "
         f"deployment reference on it would never release the item. Wait instead on a "
         f'workflow_run reference ({{"repo": "{repo}", "kind": "workflow_run", '
-        f'"workflow": "release.yml", "branch": "main"}}, with the file name of its release '
-        f"workflow), or set blocked_reason "
+        f'"workflow": "release.yml", "branch": "main", "carries": "{repo}@" followed by the merge commit}}, '
+        f"with the repository and file name of its release workflow; carries releases it only on a run "
+        f"whose title names that commit or a later one), or set blocked_reason "
         f"(what to check, who releases it) with a dated not_before for the re-check"
     )
 
@@ -443,7 +483,10 @@ def ref_label(ref: dict) -> str:
     if ref.get("kind") == "workflow_run":
         on = f" on {ref['branch']}" if ref.get("branch") else ""
         titled = f" titled '*{ref['title_contains']}*'" if ref.get("title_contains") else ""
-        return f"a successful {ref['repo']} {ref.get('workflow')} run{on}{titled} after {ref.get('after')}"
+        carrying = ""
+        if ref.get("carries_sha"):
+            carrying = f" carrying {ref.get('carries_repo') or ref['repo']}@{str(ref['carries_sha'])[:7]}"
+        return f"a successful {ref['repo']} {ref.get('workflow')} run{on}{titled}{carrying} after {ref.get('after')}"
     if ref.get("kind") == "deployment":
         if ref.get("number"):
             return f"deployment of {ref['repo']}#{ref['number']}"
@@ -1838,6 +1881,45 @@ def schedule_release_check(release: dict) -> None:
 # -- The workflow run stage --------------------------------------------------------
 
 
+def run_commit(run: dict[str, Any]) -> str | None:
+    """The commit a release run's display title names (``Release <ref> at <sha>``), else ``None``. Pure."""
+    match = _TITLE_SHA_RE.search(str(run.get("display_title") or "").lower())
+    return match.group(1) if match else None
+
+
+def _one_second_later(value: object) -> str | None:
+    """*value* (a run's ``created_at``) plus one second, ``YYYY-MM-DDTHH:MM:SSZ``; ``None`` when unreadable."""
+    stamp = _host_stamp(value) if isinstance(value, str) else None
+    if stamp is None:
+        return None
+    return _stamp(datetime.fromisoformat(stamp.replace("Z", "+00:00")) + timedelta(seconds=1))
+
+
+async def _carrying_run(ref: dict[str, Any], run: dict[str, Any], provider: str, token: str) -> bool | None:
+    """Whether *run* releases a commit that is ``carries_sha`` or a descendant of it.
+
+    ``False`` when its title names no commit or an older one, ``None`` when the
+    containment cannot be read (#1634).
+    """
+    from app.integrations.reference_state import commit_containment_readers
+
+    commit = run_commit(run)
+    if commit is None:
+        return False
+    merge_sha = str(ref.get("carries_sha") or "")
+    if same_commit(merge_sha, commit):
+        return True
+    reader = commit_containment_readers().get(provider)
+    if reader is None:
+        return None
+    repo = str(ref.get("carries_repo") or ref.get("repo") or "")
+    try:
+        return await reader(repo, merge_sha, commit, token)
+    except Exception as exc:
+        logger.info("Release of %s not read: %s", ref_label(ref), format_exception_message(exc))
+        return None
+
+
 def workflow_run_note(ref: dict, run: dict, now: datetime) -> str:
     """The note of an item a successful workflow run released. Pure."""
     url = f" ({run['url']})" if run.get("url") else ""
@@ -1867,6 +1949,7 @@ async def _apply_workflow_run(item_id: uuid.UUID, key: tuple, run: dict, now: da
                     ("run_id", run.get("id")),
                     ("run_url", run.get("url")),
                     ("run_at", run.get("created_at")),
+                    ("run_commit", run.get("run_commit")),
                 ):
                     if value is not None:
                         ref[field] = value
@@ -1938,32 +2021,57 @@ async def _poll_workflow_run(
     """Read one ``workflow_run`` reference through the providers' readers and apply a successful run.
 
     False when the read budget (*max_reads* per pass or delivery) left the reference
-    unread, so the item is not stamped polled.
+    unread, so the item is not stamped polled. A ``carries_sha`` reference reads the
+    next run while the one found does not carry the merge (:func:`_carrying_run`),
+    from ``carry_after`` when an earlier read skipped older runs, and records the
+    position it reached when it ends without a carrying run (:func:`_record_carry_after`).
     """
     key = _ref_key(ref)
     for provider, reader in readers.items():
         token = tokens.get((provider, str(user_id)))
         if not token:
             continue
-        read_key = (provider, str(user_id), *key)
-        if read_key not in seen:
-            if counts["read"] >= max_reads:
-                return False
-            counts["read"] += 1
-            try:
-                seen[read_key] = await reader(
-                    str(ref["repo"]),
-                    str(ref["workflow"]),
-                    str(ref["after"]),
-                    ref.get("branch"),
-                    ref.get("title_contains"),
-                    token,
-                )
-            except Exception as exc:
-                _note_read_failure(counts, ref, exc, item_id)
-                seen[read_key] = None
-        run = seen[read_key]
+        after = str(ref.get("carry_after") or ref["after"])
+        start = after
+        run: dict[str, Any] | None = None
+        for _ in range(MAX_CARRY_SKIPS + 1):
+            read_key = (provider, str(user_id), *key, after)
+            if read_key not in seen:
+                if counts["read"] >= max_reads:
+                    return False
+                counts["read"] += 1
+                try:
+                    seen[read_key] = await reader(
+                        str(ref["repo"]),
+                        str(ref["workflow"]),
+                        after,
+                        ref.get("branch"),
+                        ref.get("title_contains"),
+                        token,
+                    )
+                except Exception as exc:
+                    _note_read_failure(counts, ref, exc, item_id)
+                    seen[read_key] = None
+            run = seen[read_key]
+            if run is None or not ref.get("carries_sha"):
+                break
+            carried = await _carrying_run(ref, run, provider, token)
+            if carried is True:
+                run = {**run, "run_commit": run_commit(run)}
+                break
+            if carried is None:
+                # Unreadable: wait for the next pass rather than release on a guess.
+                run = None
+                break
+            # An older commit's release: the next successful run may carry the merge.
+            later = _one_second_later(run.get("created_at"))
+            if later is None:
+                run = None
+                break
+            after, run = later, None
         if run is None:
+            if ref.get("carries_sha") and after != start:
+                await _record_carry_after(item_id, key, after)
             continue
         try:
             outcome = await _apply_workflow_run(item_id, key, run, datetime.now(UTC))
@@ -1979,6 +2087,43 @@ async def _poll_workflow_run(
             counts[outcome] = counts.get(outcome, 0) + 1
         return True
     return True
+
+
+async def _record_carry_after(item_id: uuid.UUID, key: tuple, after: str) -> None:
+    """Keep *after* as ``carry_after`` on the ``workflow_run`` reference *key* of one item (#1634).
+
+    The runs before it are older commits' releases already skipped: without it a
+    reference with more of them than one read skips would re-read the same ones on
+    every pass and never reach the carrying release. Best-effort.
+    """
+    from app.core.database import async_session
+
+    try:
+        async with async_session() as db:
+            item = (
+                await db.execute(select(WorkItem).where(WorkItem.id == item_id).with_for_update())
+            ).scalar_one_or_none()
+            if item is None or item.status != "blocked" or not item.blocked_on_refs:
+                return
+            refs: list[dict] = []
+            moved = False
+            for ref in item.blocked_on_refs:
+                ref = dict(ref)
+                if (
+                    ref.get("kind") == "workflow_run"
+                    and _ref_key(ref) == key
+                    and not _satisfied(ref)
+                    and str(ref.get("carry_after") or ref.get("after") or "") < after
+                ):
+                    ref["carry_after"] = after
+                    moved = True
+                refs.append(ref)
+            if not moved:
+                return
+            item.blocked_on_refs = refs
+            await db.commit()
+    except Exception as exc:
+        logger.info("Carry position of work item %s not kept: %s", item_id, format_exception_message(exc))
 
 
 async def _poll_branch_successors(

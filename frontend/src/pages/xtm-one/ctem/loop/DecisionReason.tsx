@@ -205,7 +205,7 @@ function decisionInputs(decision: CtemDecisionRecord | null | undefined, t_i18n:
     { label: t_i18n("Confidence"), value: level(reconcile.confidence) },
     { label: t_i18n("Matched assets"), value: matched },
     { label: t_i18n("Crown jewels"), value: list(reconcile.crown_jewels_named) },
-    { label: t_i18n("Tech stack"), value: list(reconcile.tech_stack) },
+    { label: t_i18n("Software"), value: list(reconcile.tech_stack) },
     { label: t_i18n("Owned domain"), value: domains },
     { label: t_i18n("Criticality"), value: criticalityAgainstThreshold(scope, t_i18n) },
     { label: t_i18n("Scope threshold"), value: level(scope?.threshold) },

@@ -93,7 +93,7 @@ export function PostureExplainDialog({
           </p>
           <p>
             <span className="font-semibold text-default-primary">{t_i18n("In your context")}</span>{" "}
-            {t_i18n("is the qualitative adjustment: each measured stage score weighed by the share of the organization context it reads that you filled in (40% plus 60% of that share). Prioritization also averages in the known-exploited vulnerabilities of your declared tech stack.")}
+            {t_i18n("is the qualitative adjustment: each measured stage score weighed by the share of the organization context it reads that you filled in (40% plus 60% of that share). Prioritization also averages in the known-exploited vulnerabilities of your software.")}
           </p>
           {contextMissing && <p data-testid="ctem-posture-explain-no-context">{t_i18n("Add your organization context in Settings to get the posture in your context.")}</p>}
           <p>

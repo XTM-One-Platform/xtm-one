@@ -145,13 +145,13 @@ test("the cases layer is the exact count of open cases and leads to the Cases li
   assert.deepEqual(funnel.layers.slice(0, -1), SAMPLE_FUNNEL.layers.slice(0, -1));
 });
 
-test("zero open cases with a tech stack is a live 0, the exact count", () => {
+test("zero open cases with a software is a live 0, the exact count", () => {
   const layer = casesLayer(withCasesLayer(SAMPLE_FUNNEL, { open: 0, total: 0 }));
   assert.equal(layer.state, "live");
   assert.equal(layer.count, 0);
 });
 
-test("without a tech stack, OpenAEV or any case, the cases layer is not configured, never an invented 0", () => {
+test("without a software, OpenAEV or any case, the cases layer is not configured, never an invented 0", () => {
   const bare: CtemFunnel = {
     ...SAMPLE_FUNNEL,
     layers: SAMPLE_FUNNEL.layers.map((layer) => {

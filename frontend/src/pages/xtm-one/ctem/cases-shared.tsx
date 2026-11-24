@@ -94,7 +94,7 @@ export function CasePriorityChip({ priority }: { priority: CtemCasePriority }) {
 export function useCasesEmptyLabel(detailsUnavailable: readonly string[] | undefined): { label: string; unread: boolean } {
   const { t_i18n, intl } = useFormatter();
   const products = detailsUnavailable ?? [];
-  if (products.length === 0) return { label: t_i18n("No open exposure on your stack"), unread: false };
+  if (products.length === 0) return { label: t_i18n("No open exposure on your software"), unread: false };
   // The API sends product ids ("openaev"): show their display names.
   const names = products.map((p) => CTEM_PRODUCT_INFO[p]?.name ?? p);
   return {

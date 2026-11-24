@@ -147,7 +147,7 @@ const LIST_KEYS = ["crown_jewels", "shipped_products", "tech_stack"] as const;
 const LIST_TITLES = {
   crown_jewels: "Crown jewels and business services",
   shipped_products: "Shipped products",
-  tech_stack: "Tech stack",
+  tech_stack: "Software",
 } as const;
 type ListKey = (typeof LIST_KEYS)[number];
 /** The exposure tables edited in their own card (#12256 slice 2). @i18n-keys */
@@ -215,10 +215,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // The whole page, or only the cards an embedding page names.
   const full = !embed;
   const show = (card: ProfileCard) => !embed || embed.cards.includes(card);
-  // On CTEM > Inventory the card edits the hand-declared products only, while the Tech stack list also counts the
+  // On CTEM > Inventory the card edits the hand-declared software only, while the Software list also counts the
   // software of the assets: its empty text says so instead of claiming nothing is matched (UX round 1 on #1254, B4).
   const techEmptyLabel = embed
-    ? t_i18n("No product declared by hand. The Tech stack list also counts the software of your assets.")
+    ? t_i18n("No software declared by hand. The Software list also counts the software of your assets.")
     : t_i18n("No product yet: vulnerabilities cannot be matched to what you run.");
   const fieldId = useId();
   const nf = useNumberFormat();
@@ -1554,7 +1554,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                 <div className="max-w-xs space-y-1 content-compact">
                   <p>
                     {t_i18n(
-                      "What every agent and fleet reads before it ranks, scopes or estimates: your sector, regions, crown jewels, tech stack, AI systems, intelligence requirements, risk appetite and costs. Agents cite the fields they used and name the ones not filled, never guess them. Each save is a new version.",
+                      "What every agent and fleet reads before it ranks, scopes or estimates: your sector, regions, crown jewels, software, AI systems, intelligence requirements, risk appetite and costs. Agents cite the fields they used and name the ones not filled, never guess them. Each save is a new version.",
                     )}
                   </p>
                   <p data-testid="settings.organization.shared">{t_i18n("Shared context: the whole profile is visible to every user and every agent of this XTM One platform.")}</p>
@@ -2236,10 +2236,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             tabIndex={-1}
             data-testid="settings.organization.tech-stack"
             icon={Server}
-            title={t_i18n("Tech stack")}
+            title={t_i18n("Software")}
             description={
               embed
-                ? t_i18n("The products you declare by hand. The Tech stack list adds the software of your assets.")
+                ? t_i18n("The software you declare by hand. The Software list adds the software of your assets.")
                 : t_i18n("The products you run, matched against vulnerabilities.")
             }
             action={

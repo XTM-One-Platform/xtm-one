@@ -876,7 +876,7 @@ export default function CtemCommandCenter({
       id: "triage-kev", source: "module", stage: "prioritization", icon: ShieldAlert, tone: "text-feedback-error-primary",
       title: t_i18n("Triage {count, plural, one {{shown} known-exploited exposure} other {{shown} known-exploited exposures}}", { count: kevShown as number, shown: formatCompactNumber(kevShown as number) }),
       reason: kevTailored !== null && kevProducts.length > 0
-        ? t_i18n("Known-exploited and affects {products} in your tech stack", { products: intl.formatList(kevProducts, { type: "conjunction" }) })
+        ? t_i18n("Known-exploited and affects {products} in your software", { products: intl.formatList(kevProducts, { type: "conjunction" }) })
         : t_i18n("Actively exploited in the wild - remediate first (KEV SLA)"),
       tailored: kevTailored !== null,
       cta: "Triage",
@@ -1128,7 +1128,7 @@ export default function CtemCommandCenter({
           const postureBand = CTEM_BAND_CONFIG[posture?.posture_band ?? "unknown"] ?? CTEM_BAND_CONFIG.unknown;
           const orgBand = CTEM_BAND_CONFIG[qualitativePosture.band] ?? CTEM_BAND_CONFIG.unknown;
           const kevTrend = seriesChange(kevHistory);
-          const kevLabel = kevTailored !== null ? t_i18n("Known-exploited in your tech stack") : t_i18n("Known-exploited exposures");
+          const kevLabel = kevTailored !== null ? t_i18n("Known-exploited in your software") : t_i18n("Known-exploited exposures");
           const scoreCells: CtemHeaderStat[] = live
             ? [
                 {

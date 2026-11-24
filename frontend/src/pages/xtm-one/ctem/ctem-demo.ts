@@ -111,7 +111,7 @@ const DEMO_STAGE_LIST: CtemStage[] = [
     secondary_products: ["openaev"],
     missing_products: [],
     products_present: ["opencti", "openaev"],
-    methodology: "Exposure containment, weighed against exploitability, observed activity, PIRs and your tech stack.",
+    methodology: "Exposure containment, weighed against exploitability, observed activity, PIRs and your software.",
     facts: [
       f("Known-exploited (KEV)", 47),
       f("Critical CVEs", 213),
