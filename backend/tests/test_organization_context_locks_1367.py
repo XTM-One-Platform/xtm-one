@@ -26,15 +26,7 @@ def _profile() -> dict[str, Any]:
                     "sync_id": "s-1",
                 },
                 {"name": "build-01", "category": "host", "criticality": "low"},
-            ],
-            "ai_systems": [
-                {
-                    "name": "Copilot",
-                    "kind": "assistant",
-                    "exposure": "internal",
-                    "source": "openaev",
-                    "external_id": "a-1",
-                }
+                {"name": "Copilot", "category": "ai_target", "source": "openaev", "external_id": "a-1"},
             ],
         }
     ).model_dump(mode="json")
@@ -55,9 +47,9 @@ def test_a_synced_field_changed_by_hand_is_refused_with_the_row_and_field():
 
 
 def test_a_synced_ai_system_renamed_by_hand_is_refused():
-    # #1501: the profile AI system is the third asset (category ai_target), locked like any synced asset.
+    # #1501: an AI target is an asset (category ai_target), locked like any synced asset.
     stored = _profile()
-    assert stored["assets_exposure"][2]["category"] == "ai_target" and "ai_systems" not in stored
+    assert stored["assets_exposure"][2]["category"] == "ai_target"
     incoming = copy.deepcopy(stored)
     incoming["assets_exposure"][2]["name"] = "Renamed"
     assert synced_edit_problems(stored, incoming)

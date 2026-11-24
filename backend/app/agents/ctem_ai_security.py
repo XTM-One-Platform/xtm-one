@@ -266,8 +266,14 @@ AI_SECURITY_FLEET: dict = {
         {"agent": THREAT_ANALYST, "role_label": "ATLAS mapping", "parent": ORCHESTRATOR},
     ],
     "connected": [
-        {"agent": "ctem-threat-relevance-analyst", "collaboration_instruction": "Relevance to the organization's AI targets"},
-        {"agent": "openaev-scenario-creator", "collaboration_instruction": "Builds the AI tests, launched only after approval"},
+        {
+            "agent": "ctem-threat-relevance-analyst",
+            "collaboration_instruction": "Relevance to the organization's AI targets",
+        },
+        {
+            "agent": "openaev-scenario-creator",
+            "collaboration_instruction": "Builds the AI tests, launched only after approval",
+        },
         {"agent": "ctem-risk-quantifier", "collaboration_instruction": "AI risk scenario in OpenCRQ"},
         {"agent": "ctem-remediation-coordinator", "collaboration_instruction": "Fixes ticketed after approval, then re-tested"},
         {"agent": "cti-ttp-harvester-filigran-ai", "collaboration_instruction": "TTP extraction consulted by the ATLAS mapping"},

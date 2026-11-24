@@ -525,7 +525,7 @@ def openaev_asset_group(group: dict[str, Any]) -> AssetGroupEntry | None:
     )
 
 
-def openaev_ai_system(asset: dict[str, Any]) -> AssetEntry | None:
+def openaev_ai_target(asset: dict[str, Any]) -> AssetEntry | None:
     """An OpenAEV AI target as an asset of category ``ai_target``, every field kept (#1501; no forced kind)."""
     if not _lower(asset.get("asset_category")):
         asset = {**asset, "asset_category": "ai_target"}
@@ -1198,7 +1198,7 @@ async def _read_openaev(
         )
         if targets.error:
             return ReadResult(error=targets.error)
-        read.rows += [r for r in (openaev_ai_system(a) for a in targets.rows) if r]
+        read.rows += [r for r in (openaev_ai_target(a) for a in targets.rows) if r]
         read.truncated = read.truncated or targets.truncated
         if read.total is not None and targets.total is not None:
             read.total += targets.total

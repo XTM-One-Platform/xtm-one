@@ -20,7 +20,9 @@ async def test_each_check_is_evaluated_once_in_order_and_manual_is_never_evaluat
         return False
 
     async def current_version(_db):
-        return SimpleNamespace(profile={"sector": "Finance", "ai_systems": []})
+        return SimpleNamespace(
+            profile={"sector": "Finance", "assets_exposure": [{"name": "laptop-1", "category": "host"}]}
+        )
 
     monkeypatch.setattr(fleet_about, "_integration_connected", connected)
     monkeypatch.setattr(fleet_about, "_tracked_monitored", tracked)
@@ -31,7 +33,8 @@ async def test_each_check_is_evaluated_once_in_order_and_manual_is_never_evaluat
         {"check": "integration:openaev", "label": "OpenAEV", "fix_route": "/integrations"},
         {"check": "integration:opencti", "label": "OpenCTI again", "fix_route": "/integrations"},
         {"check": "profile:sector", "label": "Sector", "fix_route": "/settings/organization/profile"},
-        {"check": "profile:ai_systems", "label": "AI systems", "fix_route": "/settings/organization/profile"},
+        # #1844: met by an asset of category ai_target only; a host asset does not count.
+        {"check": "profile:ai_targets", "label": "AI targets", "fix_route": "/ctem/inventory"},
         {"check": "profile:tracked_organizations", "label": "Tracked", "fix_route": ""},
         {"check": "manual", "label": "Switch it on", "fix_route": ""},
     ]

@@ -36,7 +36,6 @@ FULL = {
         {"name": "SCADA", "business_service": "Grid operations", "owner": "OT", "criticality": "critical"}
     ],
     "tech_stack": [{"product": "Windows Server 2019", "vendor": "Microsoft", "cpe": "cpe:2.3:o:microsoft:windows_server_2019:-:*:*:*:*:*:*:*"}],
-    "ai_systems": [{"name": "Support bot", "kind": "assistant", "exposure": "public"}],
     "pir_ids": ["pir-1", "pir-1", " "],
     "risk_appetite": {"annual_loss_threshold": 2_000_000, "approval_threshold": 50_000},
     "loaded_hourly_rate": 95,
@@ -93,7 +92,8 @@ def test_a_zero_threshold_is_a_value_not_a_missing_field():
         ({"size": "huge"}, "size"),
         ({"loaded_hourly_rate": -1}, "loaded_hourly_rate"),
         ({"crown_jewels": [{"name": "x", "criticality": "extreme"}]}, "crown_jewels"),
-        ({"ai_systems": [{"name": "x", "exposure": "everywhere"}]}, "ai_systems"),
+        # #1844: no alias; a stored ai_systems key is refused, the migration moved it to the assets.
+        ({"ai_systems": [{"name": "x"}]}, "ai_systems"),
         ({"unknown_field": 1}, "unknown_field"),
     ],
 )
@@ -110,15 +110,15 @@ def test_an_agent_reads_no_profile_as_every_field_missing_and_no_guess():
 
 
 def test_an_agent_reads_the_filled_fields_quarantined_and_the_missing_ones_named():
-    partial = {k: v for k, v in FULL.items() if k not in ("ai_systems", "loaded_hourly_rate")}
+    partial = {k: v for k, v in FULL.items() if k not in ("size", "loaded_hourly_rate")}
     text = oc.render_for_agent(_row(partial))
     assert "version 3" in text
-    assert "Fields not filled: AI systems inventory, loaded hourly rate." in text
+    assert "Fields not filled: organization size, loaded hourly rate." in text
     assert "Cite the fields you used" in text
     assert "UNTRUSTED" in text
     assert "Grid operations" in text
     # An empty field is not shown as data.
-    assert '"ai_systems"' not in text
+    assert '"size"' not in text
 
 
 def test_a_complete_profile_says_none_missing():
@@ -198,7 +198,7 @@ async def test_a_member_of_a_fleet_that_is_not_ctem_is_not_told_the_ctem_only_fi
         return fleet_runs.FleetRunDefaults(fleet_id=uuid.uuid4())
 
     async def _current(_db: object) -> object:
-        return _row({k: v for k, v in FULL.items() if k not in ("loaded_hourly_rate", "ai_systems")}, version=4)
+        return _row({k: v for k, v in FULL.items() if k not in ("loaded_hourly_rate", "size")}, version=4)
 
     async def _not_ctem(_db: object, _fleet_id: object) -> bool:
         return False
@@ -207,7 +207,7 @@ async def test_a_member_of_a_fleet_that_is_not_ctem_is_not_told_the_ctem_only_fi
     monkeypatch.setattr(oc, "current_version", _current)
     monkeypatch.setattr(oc, "ctem_fleet", _not_ctem)
     text = await oc.fleet_run_context(None, uuid.uuid4())  # type: ignore[arg-type]
-    assert "Fields not filled: AI systems inventory." in text
+    assert "Fields not filled: organization size." in text
     assert "loaded hourly rate" not in text
     assert "Organization context incomplete" not in text
     # The same fleet run of an agent holding CTEM tools keeps the notice (#1384).
@@ -215,8 +215,8 @@ async def test_a_member_of_a_fleet_that_is_not_ctem_is_not_told_the_ctem_only_fi
         id=uuid.uuid4(), slug="ctem-risk-quantifier", is_builtin=False, builtin_tool_ids=["ctem_read"]
     )
     text = await oc.fleet_run_context(None, agent.id, agent=agent)  # type: ignore[arg-type]
-    assert "Fields not filled: AI systems inventory, loaded hourly rate." in text
-    assert "Organization context incomplete: missing AI systems inventory, loaded hourly rate." in text
+    assert "Fields not filled: organization size, loaded hourly rate." in text
+    assert "Organization context incomplete: missing organization size, loaded hourly rate." in text
 
 
 async def test_a_fleet_member_run_without_a_profile_names_every_field(monkeypatch):

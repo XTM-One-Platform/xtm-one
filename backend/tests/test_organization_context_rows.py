@@ -116,13 +116,14 @@ def test_a_hand_source_or_no_source_is_refused_for_sourced_sections(source: str)
         rows.plan_upsert(_profile(), "assets", source, [])
 
 
-def test_tech_stack_and_ai_systems_add_new_names_and_never_overwrite() -> None:
+def test_tech_stack_adds_new_names_and_never_overwrites() -> None:
     base = _profile(tech_stack=[oc.TechStackEntry(product="Microsoft Defender", vendor="MS", cpe="cpe:x")])
     plan = rows.plan_upsert(base, "tech_stack", "intune", rows.map_rows(_APPS, "intune_detected_app"))
     assert plan.unchanged == ["Microsoft Defender"] and plan.added == ["CrowdStrike Falcon"]
     assert _saved(plan).tech_stack[0].cpe == "cpe:x"
-    ai = rows.plan_upsert(_profile(), "ai_systems", "", [{"name": "Copilot", "kind": "robot"}])
-    assert ai.refused and "kind" in ai.refused[0][1]
+    # #1844: ai_systems is no section; AI targets are assets.
+    with pytest.raises(rows.RowError):
+        rows.plan_upsert(_profile(), "ai_systems", "", [{"name": "Copilot"}])
 
 
 def test_remove_drops_the_sources_rows_only() -> None:

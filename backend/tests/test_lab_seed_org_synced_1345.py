@@ -39,20 +39,19 @@ def test_saves_one_disabled_sync_per_section_and_synced_rows_with_their_sync_id(
     calls: list = []
     ns = _lab_namespace(*NAMES, api=_api(calls))
     answer = ns["seed_org_synced"]("t", BASE)
-    assert answer == {"id": "version 2, 5 synced rows in 3 sections", "url": f"{BASE}/settings/organization"}
+    assert answer == {"id": "version 2, 4 synced rows in 2 sections", "url": f"{BASE}/settings/organization"}
 
     posted = [c[2] for c in calls if c[:2] == ("POST", "/organization-context/syncs")]
     assert [(p["section"], p["source"]) for p in posted] == [
         ("crown_jewels", "opencrq"),
         ("tech_stack", "openaev"),
-        ("ai_systems", "openaev"),
     ]
     assert all(p["enabled"] is False and p["source"] in SECTION_SOURCES[p["section"]] for p in posted)
 
     (profile,) = [c[2]["profile"] for c in calls if c[0] == "PUT"]
     assert profile["name"] == "Lab sample organization"
     parsed = org_context.parse_profile(profile)
-    for section, sync in (("crown_jewels", "sync-1"), ("tech_stack", "sync-2"), ("ai_systems", "sync-3")):
+    for section, sync in (("crown_jewels", "sync-1"), ("tech_stack", "sync-2")):
         rows = getattr(parsed, section)
         synced = [r for r in rows if r.external_id]
         typed = [r for r in rows if not r.external_id]
@@ -67,7 +66,7 @@ def test_keeps_an_existing_sync_of_the_section_and_source():
     ns = _lab_namespace(*NAMES, api=_api(calls, existing))
     ns["seed_org_synced"]("t", BASE)
     posted = [c[2]["section"] for c in calls if c[:2] == ("POST", "/organization-context/syncs")]
-    assert posted == ["tech_stack", "ai_systems"]
+    assert posted == ["tech_stack"]
     (profile,) = [c[2]["profile"] for c in calls if c[0] == "PUT"]
     assert {r.get("sync_id") for r in profile["crown_jewels"] if r.get("external_id")} == {"kept-1"}
 
