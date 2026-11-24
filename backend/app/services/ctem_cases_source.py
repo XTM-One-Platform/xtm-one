@@ -36,6 +36,7 @@ from typing import Any
 
 import httpx
 import structlog
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.utils import format_exception_message
@@ -66,6 +67,9 @@ REASON_NOT_CONNECTED = "not_connected"  # no credentials could be resolved for t
 REASON_UNAVAILABLE = "unavailable"  # anything else
 #: Reasons that belong to one identity, never to the product: one user's failure is not an outage.
 IDENTITY_REASONS = frozenset({REASON_REJECTED, REASON_NOT_CONNECTED})
+
+#: How long the recompute's write phase waits for a row another writer holds (#1953).
+WRITE_LOCK_TIMEOUT = "5s"
 
 #: The integration fields ``integration_tools._get_token`` binds on the log context; a read
 #: of another product must not carry them (#1852: the OpenCTI line named the OpenAEV integration).
@@ -818,10 +822,10 @@ async def _signal_members(db: AsyncSession, *, organization_id: uuid.UUID, user_
             external_id=str(s.id),
             name=(s.subject_label or s.subject_ref or s.trigger_path)[:300],
             assets=(s.subject_ref,) if s.subject_kind == "asset" else (),
-            primary_assets=tuple(
+            crown_jewels=tuple(
                 str(j.get("name"))
                 for j in ((s.decision or {}).get("scope") or {}).get("sources") or []
-                if isinstance(j, dict) and j.get("from") == "primary_asset" and j.get("name")
+                if isinstance(j, dict) and j.get("from") == "crown_jewel" and j.get("name")
             ),
             first_seen_at=s.first_seen_at,
         )
@@ -860,6 +864,13 @@ async def recompute_for_user(
     if read.missing:
         answer["applied"] = False
         return answer
+    # #1953: the write phase reads nothing remote and waits briefly for a row lock. The gate's remote
+    # reads are taken before the first signal row is written; a row another writer holds (a case
+    # delete) fails this pass fast, and the next pass retries, instead of a statement timeout.
+    from app.services import ctem_scope_gate_store as gate_store
+
+    await gate_store.prepare_system_reads(db, organization_id)
+    await db.execute(text("SELECT set_config('lock_timeout', :timeout, true)"), {"timeout": WRITE_LOCK_TIMEOUT})
     pending = PendingEvents()
     counts = await store.apply_recompute(
         db,

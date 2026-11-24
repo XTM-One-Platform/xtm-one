@@ -55,9 +55,13 @@ export interface CtemCaseSummary {
   issue_count: number;
   open_issue_count: number;
   restricted_count: number;
-  asset_count: number;
-  primary_asset_count: number;
-  kev_count: number;
+  /** Open members read without their details: then the detail aggregates are null, unknown for this reader, never 0. */
+  members_without_details?: number;
+  aggregates_restricted?: boolean;
+  aggregates_reason?: string | null;
+  asset_count: number | null;
+  crown_jewel_count: number | null;
+  kev_count: number | null;
   max_cvss: number | null;
   max_epss: number | null;
   first_seen_at: string | null;
@@ -145,7 +149,7 @@ export interface CtemCaseVisibleIssue {
   epss?: number | null;
   kev?: boolean;
   assets?: string[];
-  primary_assets?: string[];
+  crown_jewels?: string[];
   first_seen_at?: string | null;
   details_unavailable?: boolean;
   /** Version knowledge from the viewer's own OpenCTI read (CTEM-11, #946): the declared version, the fix and where it came from. */
@@ -163,6 +167,16 @@ export interface CtemCaseVisibleIssue {
   retest_status?: "open" | "not_reproduced" | "resolved" | null;
   last_tested_at?: string | null;
   retest_pending?: boolean;
+  /**
+   * A signal member (source "signal", #1936): what it is, so a row never shows its id. The name is
+   * the subject label, else its ref; absent on an API older than #1936.
+   */
+  trigger_path?: string;
+  trigger_path_label?: string | null;
+  lens?: string;
+  source_provider?: string;
+  source_name?: string;
+  subject_kind?: string;
 }
 
 /** A member issue the caller cannot see in its source product: nothing but the flag. */
@@ -178,6 +192,10 @@ export interface CtemCaseEvent {
   kind: string;
   /** The member it is about, or "Restricted" when the caller cannot see it. */
   issue: string | null;
+  /** The name of the signal the event is about, when the caller sees it (#1936); never the id. */
+  issue_label?: string | null;
+  /** The trigger path label of a signal member the caller sees, untranslated: the fallback when it has no name. */
+  issue_path_label?: string | null;
   from: string | null;
   to: string | null;
   reason: string | null;
@@ -573,7 +591,7 @@ export interface CtemCasesOverviewCase {
   state_since: string | null;
   waiting_on: { gate: string | null; by: string | null; since: string | null } | null;
   /** The primary asset the case touches among the issues the caller sees; null when none. */
-  primary_asset: string | null;
+  crown_jewel: string | null;
 }
 
 /** One CTEM phase of the overview: its open and waiting cases and the five that need attention first. */

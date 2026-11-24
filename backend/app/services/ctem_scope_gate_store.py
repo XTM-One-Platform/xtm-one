@@ -248,7 +248,7 @@ async def default_scenario_reader(db: AsyncSession) -> uuid.UUID | None:
         await db.execute(
             select(sync.owner_user_id)
             .where(
-                sync.section == "primary_assets",
+                sync.section == "crown_jewels",
                 sync.source == "opencrq",
                 sync.enabled.is_(True),
                 sync.owner_user_id.is_not(None),
@@ -291,6 +291,23 @@ async def _scenarios_for(db: AsyncSession, row: Any) -> gate.ScenarioIndex:
     except Exception:
         logger.warning("CTEM scope gate: OpenCRQ reader not resolved", exc_info=True)
         return gate.ScenarioIndex(note="OpenCRQ not read: no OpenCRQ connection to read with")
+
+
+async def prepare_system_reads(db: AsyncSession, organization_id: uuid.UUID) -> None:
+    """Take the gate's reads of a ``system`` signal now, before any signal row is written (#1953).
+
+    The OpenCRQ risk scenarios (a remote read), the fallback reader and the
+    inventory link index land in the session cache, so a recompute that gates
+    the signals it records reads nothing remote while it holds their row
+    locks. Never raises: an unread value is read again by :func:`evaluate`.
+    """
+    try:
+        async with db.begin_nested():
+            fallback = await _session_cached(db, ("fallback_reader",), lambda: default_scenario_reader(db))
+        await _session_cached(db, ("scenarios", fallback), lambda: read_scenarios(db, user_id=fallback))
+        await _session_cached(db, ("links", organization_id), lambda: _primary_assets(db, organization_id))
+    except Exception:
+        logger.warning("CTEM scope gate: reads not prepared for %s", organization_id, exc_info=True)
 
 
 def dismissed(row: CtemSignal) -> bool:
@@ -464,7 +481,7 @@ async def recheck_parked(
 ) -> dict[str, int]:
     """#1505: the unmatched signals decided before the organization's newest profile version, decided again.
 
-    A change to assets, groups, primary assets, owned domains, software or
+    A change to assets, groups, crown jewels, owned domains, software or
     shipped products writes a new profile version; every ``to_validate``
     signal last decided before it is decided again, *batch* per call, oldest
     first. Each is read with its recorder's OpenCRQ read. A signal the gate
@@ -523,7 +540,7 @@ async def _decide_again(db: AsyncSession, rows: list[CtemSignal], *, now: dateti
 
 
 #: The watchlist reasons an inventory link or a software change can lift (#1591 S3).
-HELD_BY_SCOPE: tuple[str, ...] = ("primary_asset_below_policy", "criticality_unknown", "below_scope_threshold")
+HELD_BY_SCOPE: tuple[str, ...] = ("crown_jewel_below_policy", "criticality_unknown", "below_scope_threshold")
 
 
 async def recheck_held(
@@ -537,7 +554,7 @@ async def recheck_held(
     """#1591 S3: the watchlist signals held for scope, decided before *since*, decided again.
 
     Run after a primary-asset link sync or an endpoint software change completes:
-    a signal held by ``primary_asset_below_policy``, ``criticality_unknown`` or
+    a signal held by ``crown_jewel_below_policy``, ``criticality_unknown`` or
     ``below_scope_threshold`` whose decision predates the change is decided
     again, *batch* per call, oldest first. Idempotent: a decided signal's
     ``updated_at`` moves past *since*, so the next call skips it. A signal the

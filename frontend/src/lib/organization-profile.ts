@@ -16,7 +16,7 @@ export interface ProfileLike {
   sub_sector: string;
   regions: string[];
   size: string;
-  primary_assets: ({
+  crown_jewels: ({
     name: string;
     business_service: string;
     owner: string;
@@ -89,7 +89,7 @@ export interface CaseAttentionProfile {
   priority_medium: number;
   priority_low: number;
   kev: number;
-  primary_asset: number;
+  crown_jewel: number;
   overdue: number;
   due_soon: number;
   due_soon_days: number;
@@ -165,6 +165,19 @@ export function evidenceHealthRuns(pass: EvidenceHealthPass, connected: readonly
   if (!ids.length || (pass.enabled === false && declared)) return { runs: false, integration: "" };
   if (declared) return ids.includes(declared) ? { runs: true, integration: declared } : { runs: false, integration: "" };
   return ids.length === 1 ? { runs: true, integration: ids[0] } : { runs: false, integration: "" };
+}
+
+/**
+ * Which integration the pass reads, as the card names it: the declared one, else the single connected one;
+ * with none declared, `several` when more than one is connected (the pass waits for a pick) and `none` when none is.
+ */
+export function evidenceHealthIntegrationChoice(
+  pass: EvidenceHealthPass,
+  connected: readonly string[],
+): "declared" | "single" | "several" | "none" {
+  if ((pass.integration ?? "").trim()) return "declared";
+  const count = new Set(connected.filter(Boolean)).size;
+  return count === 1 ? "single" : count > 1 ? "several" : "none";
 }
 
 /**
@@ -369,7 +382,7 @@ export interface PrioritizationPolicy {
   epss_min: number | null;
   kev_always_in: boolean;
   internet_exposure_required: boolean;
-  min_primary_asset_criticality: string;
+  min_crown_jewel_criticality: string;
   exclusions: { kind: string; value: string; reason: string }[];
   accepted_risks: { subject: string; scope: string; owner: string; expires_on: string; reason: string }[];
   /** CTEM-08: the live PIR score (0 to 100) a flagged vulnerability must reach before a fleet run starts. Backend default 70. */
@@ -489,7 +502,7 @@ export const FIELD_LABELS = {
   sector: "Sector",
   regions: "Regions of operation",
   size: "Organization size",
-  primary_assets: "Primary assets and business services",
+  crown_jewels: "Primary assets and business services",
   software: "Software",
   pir_ids: "Priority intelligence requirements (PIRs)",
   "risk_appetite.annual_loss_threshold": "Risk tolerance per scenario",
@@ -654,7 +667,7 @@ export function toForm(profile: ProfileLike): ProfileForm {
     // The reference rates and the PIR details have their own cards (#1773): carried whole so no other save resets them.
     ...(profile.pir_details ? { pir_details: profile.pir_details } : {}),
     ...(profile.fx_rates ? { fx_rates: profile.fx_rates } : {}),
-    primary_assets: profile.primary_assets.map((jewel) => ({ ...jewel })),
+    crown_jewels: profile.crown_jewels.map((jewel) => ({ ...jewel })),
     software: profile.software.map((entry) => ({ ...entry })),
     shipped_products: (profile.shipped_products ?? []).map((entry) => ({ ...entry, repositories: [...entry.repositories] })),
     annual_loss_threshold: numberText(profile.risk_appetite.annual_loss_threshold),
@@ -740,7 +753,7 @@ export function fromForm(form: ProfileForm): { profile: ProfileLike } | { invali
         pir_names: pirNamesOf(form.pir_ids, form.pir_names ?? {}),
         ...(form.pir_details ? { pir_details: form.pir_details } : {}),
         ...(form.fx_rates ? { fx_rates: form.fx_rates } : {}),
-        primary_assets: form.primary_assets.filter((jewel) => jewel.name.trim()),
+        crown_jewels: form.crown_jewels.filter((jewel) => jewel.name.trim()),
         // An empty version is left out: the saved shape of a profile that never declares one stays the same.
         software: form.software
           .filter((entry) => entry.product.trim())

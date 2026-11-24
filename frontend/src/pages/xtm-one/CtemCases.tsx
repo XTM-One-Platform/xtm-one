@@ -197,12 +197,12 @@ export default function CtemCases() {
       defaultHidden: true,
     },
     {
-      key: "primary_assets",
+      key: "crown_jewels",
       header: "Primary assets",
       align: "right",
-      cell: (c) => formatCount(intl.locale, c.primary_asset_count),
-      sortValue: (c) => c.primary_asset_count,
-      csv: (c) => c.primary_asset_count,
+      cell: (c) => formatCount(intl.locale, c.crown_jewel_count),
+      sortValue: (c) => c.crown_jewel_count,
+      csv: (c) => c.crown_jewel_count,
       firstSort: "desc",
       hideBelow: "6xl",
       hideable: true,
@@ -487,9 +487,10 @@ export default function CtemCases() {
             ],
           },
           {
-            key: "primary_assets",
+            key: "crown_jewels",
             label: "Primary assets",
-            values: (c) => [c.primary_asset_count > 0 ? "yes" : "no"],
+            // Null is unknown for this reader: in neither option, never "No primary asset".
+            values: (c) => (c.crown_jewel_count == null ? [] : [c.crown_jewel_count > 0 ? "yes" : "no"]),
             options: [
               { value: "yes", label: t_i18n("Touches a primary asset") },
               { value: "no", label: t_i18n("No primary asset") },
@@ -498,7 +499,7 @@ export default function CtemCases() {
           {
             key: "kev",
             label: "KEV",
-            values: (c) => [c.kev_count > 0 ? "yes" : "no"],
+            values: (c) => (c.kev_count == null ? [] : [c.kev_count > 0 ? "yes" : "no"]),
             options: [
               { value: "yes", label: t_i18n("Has a KEV issue") },
               { value: "no", label: t_i18n("No KEV issue") },
