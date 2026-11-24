@@ -147,10 +147,11 @@ async def test_off_removes_the_seeded_check_and_default_brings_it_back():
     assert record["mode"] == "off" and fleet.health_check == record
     assert db.rows == [] and len(db.deleted) == 1
     assert await set_fleet_health_check(db, fleet, "default", actor="person") is None
-    # The check comes back with its answer listener (#1406).
+    # The check comes back with its answer listener (#1406) and its overdue items listener (#1662).
     assert fleet.health_check is None and [r.name for r in db.rows] == [
         "Weekly fleet health check",
         "Fleet health answered",
+        "Overdue work items",
     ]
 
 
