@@ -696,7 +696,7 @@ export function useBulkUpdateCtemCases() {
 }
 
 /** What one case delete removes (`CaseDeletion.summary` in backend/app/services/ctem_case_delete.py, #1723). */
-export interface CtemCaseDeletion {
+interface CtemCaseDeletion {
   id: string;
   title: string;
   state: CtemCaseState;
