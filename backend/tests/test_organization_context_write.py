@@ -60,6 +60,7 @@ def test_the_group_carries_the_update_and_the_proposal_tools():
         module.ORGANIZATION_VERSIONS_TOOL,
         module.ORGANIZATION_RESTORE_TOOL,
         "reconcile_organization_with_opencrq",
+        "link_tracked_organization_to_opencti",
     }
     assert all(d.source == f"builtin:{ORGANIZATION_CONTEXT_WRITE_GROUP}" for d in defs)
     assert executor.handler(ORGANIZATION_UPDATE_TOOL) is not None

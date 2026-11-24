@@ -53,7 +53,9 @@ types (``fromTypes``; a sighting's ``sighting_of_ref``).
 (``services/organization_context.py``, #8987) the trigger derives its filters
 from, read again at every check so a profile change repairs the trigger.
 ``pir_ids`` adds OpenCTI's ``pir_score`` filter on the profile's PIRs (an
-entity flagged in one of them with at least ``pir_min_score``). ``regions``
+entity flagged in one of them with at least ``pir_min_score``); ``pir_ids``
+in ``provision`` (OpenCTI ids) keeps a subset of them, an id the profile
+does not hold being an error naming it. ``regions``
 and ``sector`` resolve to OpenCTI's Country entities (alpha-2 or alpha-3
 alias) and Sector entity (name or alias), and add one OR group: a container
 holding one of them (``objects``) or a relationship pointing at one
@@ -206,6 +208,10 @@ def read_provision_spec(trigger_config: Any) -> dict[str, Any] | None:
             f'e.g. ["pir_ids"] (any of {list(DERIVABLE_CONTEXT_FIELDS)}): the values come from the profile'
         )
     context_fields = _str_list(context, "organization_context")
+    # A subset of the profile PIRs (by OpenCTI id): naming it implies pir_ids.
+    pir_subset = _str_list(raw.get("pir_ids"), "pir_ids")
+    if pir_subset and "pir_ids" not in context_fields:
+        context_fields = [*context_fields, "pir_ids"]
     not_derivable = [f for f in context_fields if f not in DERIVABLE_CONTEXT_FIELDS]
     if not_derivable:
         raise ProvisionSpecError(
@@ -263,6 +269,7 @@ def read_provision_spec(trigger_config: Any) -> dict[str, Any] | None:
         "event_types": event_types,
         "organization_context": context_fields,
         "pir_min_score": pir_min_score,
+        "pir_subset": pir_subset,
         "mode": mode,
         "organizations": organizations,
         # Filled from the tracked organizations by :func:`with_tracked_organizations`.
@@ -288,7 +295,13 @@ def derive_from_organization_context(spec: dict[str, Any], profile: Any) -> tupl
     declared = spec.get("organization_context", [])
     if "pir_ids" in declared:
         pir_ids = sorted(getattr(profile, "pir_ids", None) or [])
-        if pir_ids:
+        subset = spec.get("pir_subset") or []
+        absent = [pid for pid in subset if pid not in pir_ids]
+        if subset and not absent:
+            pir_ids = list(subset)
+        if absent:
+            missing.append(f"pir_ids {absent} (absent from the profile PIRs)")
+        elif pir_ids:
             derived["pir_ids"] = pir_ids
         else:
             missing.append("pir_ids")
@@ -756,10 +769,13 @@ async def _ensure_trigger(
 #: patched, before its own PIR information is rewritten: on an update the score
 #: delivered is the one before the change (lab, 21 Nov 2026). The signal records it
 #: as the score at delivery; the fleet reads the live score from OpenCTI.
+#: OpenCTI renders the template through safeEjs, which refuses the whole notification
+#: ("Invalid javascript") when one expression does not parse: the tests parse and
+#: render every expression of both templates.
 PIR_WEBHOOK_TEMPLATE = (
     '{"notification_id": "<%= data[0].notification_id %>:<%= data[0].instance.id %>:'
     "<%= data[0].type %>:<%= data[0].message %>:"
-    "<%= JSON.stringify((data[0].instance.extensions || {})"
+    "<%= JSON.stringify(((data[0].instance.extensions || {})"
     "['extension-definition--ea279b3e-5c71-4632-ac08-831c66a786ba'] || {}).pir_information) %>\", "
     '"type": "<%= data[0].type %>", "message": "<%= data[0].message %>", '
     '"xtm_source": "pir_playbook", '

@@ -41,14 +41,17 @@ CONFIG = HERE.parent / "app" / "core" / "config.py"
 # the platform key the app default names them under.
 CUSTOM_TOOLS = {"sandbox-python": "python", "sandbox-nodejs": "nodejs"}
 
-# The build inputs of the toolchain images (images=toolchain): one Dockerfile
-# whose stages are toolchain-python, -node, -jvm, -rust and -dbt, and the apt
-# files it copies. Published together under manifest["toolchain"]["version"].
+# The build inputs of the toolchain images (images=toolchain), paths from the
+# repository root: one Dockerfile whose stages are toolchain-python, -node,
+# -jvm, -rust and -dbt, the apt files it copies and the stores runner it bakes
+# under /opt/stores (a new pin there is refused by an older image's runner).
+# Published together under manifest["toolchain"]["version"].
 TOOLCHAIN = "sandbox-toolchain"
 TOOLCHAIN_INPUTS = (
-    "Dockerfile.sandbox.toolchain",
-    "apt.sandbox.toolchain.runtime.txt",
-    "apt.sandbox.toolchain.rust.txt",
+    "backend/sandbox/Dockerfile.sandbox.toolchain",
+    "backend/sandbox/apt.sandbox.toolchain.runtime.txt",
+    "backend/sandbox/apt.sandbox.toolchain.rust.txt",
+    ".xtm-one/stores.py",
 )
 
 # The build inputs of the dev images (images=dev), paths from the repository
@@ -94,7 +97,7 @@ def input_hashes() -> dict[str, str]:
 
 def toolchain_hash() -> str:
     """The SHA-256 of the toolchain images' build inputs."""
-    return _digest([(name, (HERE / name).read_bytes()) for name in TOOLCHAIN_INPUTS])
+    return _digest([(name, (REPO_ROOT / name).read_bytes()) for name in TOOLCHAIN_INPUTS])
 
 
 def dev_hash() -> str:

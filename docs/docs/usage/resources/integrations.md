@@ -478,6 +478,15 @@ A Mattermost integration lets an agent post in the channels a SOC team watches a
 - **Channels and people.** Channels can be created, archived and restored, members added; users listed, looked up by email, invited to a team by email or deactivated.
 - The token reads only the channels its account is a member of. A read-only binding keeps the reading tools; posting and every change ask for approval unless whitelisted.
 
+### Kubernetes: a read-only view of a cluster's services
+
+A Kubernetes integration lets an agent answer "what does this cluster expose" without a shell: the `kubectl get svc -A` read, and the node addresses a node port is reached on.
+
+- **Connecting.** Create a service account bound to a ClusterRole that grants only `get` and `list` on `services`, `namespaces` and `nodes`, create a token for it, paste the token in the API Key field and set *base_url* to the API server URL (the `server` of your kubeconfig). When the API server's certificate is signed by the cluster's own CA, paste that CA (PEM) in *ca_cert*: the certificate is verified against it, never skipped.
+- **Services.** `list_kubernetes_services` lists every service of the cluster, or of one namespace, with its type, cluster IP, ports with their node ports and target ports, external IPs and load balancer addresses; `service_type` keeps one type (for example `NodePort` or `LoadBalancer`).
+- **Namespaces and nodes.** `list_kubernetes_namespaces` lists the namespaces; `list_kubernetes_nodes` lists the nodes, whether they are ready or cordoned, and their internal and external addresses.
+- Every tool is a read: nothing is written to the cluster.
+
 ### Zendesk: remediation and incident tickets
 
 A Zendesk integration lets an agent open and follow tickets in the help desk the remediation teams already work from.

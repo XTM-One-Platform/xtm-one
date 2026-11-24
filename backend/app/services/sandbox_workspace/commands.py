@@ -145,7 +145,8 @@ IGNORED_PATTERNS = (
 )
 #: Variables every command gets on top of the container's own.
 SAFE_ENV = {
-    "CI": "1",
+    # "true", as GitHub Actions sets it: a script testing CI === 'true' (OpenCRQ's db:check) skipped on "1" (#1858).
+    "CI": "true",
     "NO_COLOR": "1",
     "TERM": "dumb",
     "PYTHONDONTWRITEBYTECODE": "1",
