@@ -111,6 +111,8 @@ from app.integrations.providers.infoblox import build_tools as infoblox_tools
 from app.integrations.providers.intel471 import build_tools as intel471_tools
 from app.integrations.providers.intune import build_tools as intune_tools
 from app.integrations.providers.jira import build_tools as jira_tools
+from app.integrations.providers.kubernetes import build_tools as kubernetes_tools
+from app.integrations.providers.kubernetes import encode_ca_segment as kubernetes_ca_segment
 from app.integrations.providers.letsignit import build_tools as letsignit_tools
 from app.integrations.providers.linkedin import build_tools as linkedin_tools
 from app.integrations.providers.logrhythm import build_tools as logrhythm_tools
@@ -1099,6 +1101,7 @@ PROVIDER_TOOLS = {
     "zendesk": zendesk_tools,
     "mattermost": mattermost_tools,
     "anyrun": anyrun_tools,
+    "kubernetes": kubernetes_tools,
 }
 
 #: Provider → the hosts it serves media from (its module's ``MEDIA_HOSTS``,
@@ -3621,6 +3624,31 @@ async def _get_token(
             f"{workspace_url}||{databricks_client_id}||{warehouse_id}"
             f"||{databricks_secret}"
         )
+
+    # --- Kubernetes (service account token, API server URL, optional CA) ---
+    # ``base_url||ca_segment||token``: the CA PEM rides base64url-encoded
+    # (``encode_ca_segment``) so it never holds ``||``; the token is the greedy
+    # last segment. A missing base URL keeps the delimiters, and the builder
+    # then answers no tools rather than reaching a wrong host.
+    if provider == "kubernetes":
+        k8s_extra: dict = {}
+        if integ.extra_config_enc:
+            try:
+                k8s_extra = await _reveal_extra(integ)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to decrypt extra_config for '%s' (kubernetes): %s",
+                    integ.name,
+                    format_exception_message(exc),
+                )
+        k8s_url = str(k8s_extra.get("base_url") or "").strip().rstrip("/")
+        if not k8s_url:
+            logger.warning(
+                "Integration '%s' (kubernetes) has no base_url. Edit the integration and set the API server URL.",
+                integ.name,
+            )
+        k8s_token = (await reveal_field(integ, "api_key_enc")) or ""
+        return f"{k8s_url}||{kubernetes_ca_segment(k8s_extra.get('ca_cert'))}||{k8s_token}"
 
     # --- Supabase (Management API personal access token, optional project) ---
     # The provider needs ``project_ref||database_segment||access_token``; the
