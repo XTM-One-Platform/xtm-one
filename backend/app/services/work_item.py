@@ -4840,6 +4840,33 @@ def _not_waiting_message(item: Any) -> str:
     return "this work item is not waiting for a person's answer"
 
 
+async def _refuse_decided_for_group_member(
+    db: Any, wid: uuid.UUID, uid: uuid.UUID, writer: CompanyManagedWriter
+) -> None:
+    """Raise the "already decided" refusal for a member of a group item someone else answered (#1748).
+
+    The answer clears ``needs_human``, so the row no longer matches the
+    recipient tier of :func:`answer_work_item` for the other members of its
+    groups (a concurrent second answer included, re-checked once it gets the
+    row lock): they would read "not found". A member of the groups the item
+    was addressed to reads who decided first and when instead. Returns when
+    the item is not such an answered group item, so the caller answers as before.
+    """
+    from app.services.work_item_recipient import group_member_clause
+
+    decided = (
+        await db.execute(select(WorkItem).where(WorkItem.id == wid, group_member_clause(uid)))
+    ).scalar_one_or_none()
+    if decided is None or getattr(decided, "needs_human", None):
+        return
+    answer = (getattr(decided, "payload", None) or {}).get("answer")
+    if not (isinstance(answer, dict) and answer.get("answered_at")):
+        return
+    if await _gate_write(db, writer, decided, "answer") is None:
+        return
+    raise WorkItemNotWaitingError(_not_waiting_message(decided))
+
+
 async def answer_work_item(
     work_item_id: str,
     *,
@@ -4888,6 +4915,8 @@ async def answer_work_item(
         item = (
             await db.execute(select(WorkItem).where(WorkItem.id == wid, answerable).with_for_update())
         ).scalar_one_or_none()
+        if item is None and uid is not None:
+            await _refuse_decided_for_group_member(db, wid, uid, writer)
         if item is None or await _gate_write(db, writer, item, "answer") is None:
             return None
         _refuse_scheduled(item, "answered")
