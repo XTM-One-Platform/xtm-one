@@ -265,14 +265,60 @@ async def test_invalidate_memory_answers_with_what_it_retired(tools, monkeypatch
     retired = [str(uuid.uuid4()), str(uuid.uuid4())]
     retire = AsyncMock(return_value=pm.MemoryRetirement(retired, 1))
     monkeypatch.setattr(pm, "retire_memories", retire)
+    monkeypatch.setattr(pm, "may_manage_shared_memory", AsyncMock(return_value=False))
 
     answer = await _run("invalidate_memory", subject_key="ticket:42")
 
     assert retire.await_args.kwargs["subject_key"] == "ticket:42"
     assert retire.await_args.kwargs["entry_id"] is None
+    assert retire.await_args.kwargs["include_shared"] is False
     assert answer.startswith(f"Retired 2 memory entries ({', '.join(retired)}).")
     assert "1 matching entry of the agent's shared memory stays active" in answer
+    assert "only the agent's owner or an administrator retires the shared memory" in answer
     tools.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_invalidate_memory_retires_the_shared_pool_for_its_manager(tools, monkeypatch):
+    retired = [str(uuid.uuid4())]
+    retire = AsyncMock(return_value=pm.MemoryRetirement(retired, 0))
+    monkeypatch.setattr(pm, "retire_memories", retire)
+    monkeypatch.setattr(pm, "may_manage_shared_memory", AsyncMock(return_value=True))
+
+    answer = await _run("invalidate_memory", entry_id=retired[0])
+
+    assert retire.await_args.kwargs["include_shared"] is True
+    assert answer.startswith(f"Retired 1 memory entry ({retired[0]}).")
+    assert "stays active" not in answer
+
+
+class _Rows:
+    def __init__(self, *, one=None, scalar=None):
+        self._one, self._scalar = one, scalar
+
+    def one_or_none(self):
+        return self._one
+
+    def scalar_one_or_none(self):
+        return self._scalar
+
+
+def _db(agent_row, role):
+    return SimpleNamespace(execute=AsyncMock(side_effect=[_Rows(one=agent_row), _Rows(scalar=role)]))
+
+
+@pytest.mark.asyncio
+async def test_who_may_retire_the_shared_pool():
+    owner, other = uuid.uuid4(), uuid.uuid4()
+    agent_id = str(uuid.uuid4())
+    private = SimpleNamespace(user_id=owner, is_company_managed=False)
+    managed = SimpleNamespace(user_id=owner, is_company_managed=True)
+
+    assert await pm.may_manage_shared_memory(_db(private, "user"), agent_id=agent_id, user_id=str(owner))
+    assert not await pm.may_manage_shared_memory(_db(private, "user"), agent_id=agent_id, user_id=str(other))
+    assert not await pm.may_manage_shared_memory(_db(managed, "user"), agent_id=agent_id, user_id=str(owner))
+    assert await pm.may_manage_shared_memory(_db(managed, "admin"), agent_id=agent_id, user_id=str(other))
+    assert not await pm.may_manage_shared_memory(SimpleNamespace(), agent_id=agent_id, user_id=None)
 
 
 @pytest.mark.asyncio
