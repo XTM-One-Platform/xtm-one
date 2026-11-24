@@ -17,7 +17,7 @@
  */
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { landOnCard } from "@/lib/land-on-card";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Bot, Building2, Coins, Import, Link2, Lock, MessageSquare, Package, Pencil, Plus, RefreshCw, Server, Shield, Sparkles, Ticket } from "lucide-react";
 import { TagInput } from "@/components/ui/tag-input";
 
@@ -66,9 +66,7 @@ import {
   type ProfileSource,
   useDraftOrganizationContext,
   useOrganizationContext,
-  useOrganizationSyncs,
   useOrganizationPirs,
-  useOrganizationReaders,
   usePatchOrganizationContext,
   useSaveOrganizationContext,
 } from "@/hooks/api/useOrganizationContextApi";
@@ -92,7 +90,6 @@ import {
   unreadablePlatform,
 } from "@/lib/organization-profile";
 import { distinctName, OrganizationPirsView, pirLabels, PirsUnreadable, usePirText } from "./OrganizationPirs";
-import { OrganizationUsedBy } from "./OrganizationUsedBy";
 import { OrganizationTicketingSync } from "./OrganizationTicketingSync";
 import { type BulkField, type ListEditColumn, ListSaveBar, OrganizationListEditor } from "./OrganizationListEditor";
 import { OrganizationListPasteDialog } from "./OrganizationListPasteDialog";
@@ -102,7 +99,6 @@ import { TrackedOrganizations } from "./TrackedOrganizations";
 import { OrganizationSourcesSyncs } from "./OrganizationSourcesSyncs";
 import { useSyncedRemoval } from "./OrganizationSyncedRemoval";
 import { ProviderLogo } from "@/components/ui/provider-logo";
-import { formatTimeAgo } from "@/lib/relative-time";
 import { columnEditable, LOCAL_FIELDS, SOURCE_KIND_LABELS, sourceKind, sourcePlatform, type Provenance } from "@/lib/organization-provenance";
 import { OrganizationContextInjectionCard } from "./OrganizationContextInjectionCard";
 import { OrganizationCrownJewelsRestoreDialog } from "./OrganizationCrownJewelsRestoreDialog";
@@ -182,7 +178,7 @@ const AMOUNT_INPUT_CLASS = "[&_input]:pr-36";
 
 /**
  * The cards of the profile one page mounts alone (#1178, Sam 22 Nov 2026): CTEM > Inventory edits the software inventory,
- * the assets and exposure, the asset groups, the policy and the outside lens with the same cards,
+ * the AI systems, the assets and exposure, the asset groups, the policy and the outside lens with the same cards,
  * the same per-card edit and the same Save as Settings, nothing stored twice. Without it the whole profile page.
  */
 export type OrganizationEmbed = {
@@ -214,10 +210,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const save = useSaveOrganizationContext();
   // #1752: a card saves its own fields alone (PATCH); the asset rows never travel with them.
   const patch = usePatchOrganizationContext();
-  // Primary assets are an Inventory source (#1754, Sam 24 Nov 2026): the OpenCRQ sync is configured and run in
-  // CTEM > Inventory > Sources; the card only names it and its last sync, never a second OpenCRQ action.
-  const { data: inventorySyncs } = useOrganizationSyncs("inventory", !reader);
-  const opencrqJewelSync = (Array.isArray(inventorySyncs) ? inventorySyncs : []).find((entry) => entry.section === "crown_jewels" && entry.source === "opencrq");
+  // Primary assets are an Inventory source (#1754): their sources are configured and run in CTEM > Inventory > Sources
+  // like every other source, nothing is pre-provisioned and the card names none of them (Sam, 24 Nov 2026, #1883).
   const drafting = useDraftOrganizationContext();
   const [form, setForm] = useState<ProfileForm | null>(null);
   // The draft the form was opened from: the save is then recorded with source "draft".
@@ -270,11 +264,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const [exposureEdit, setExposureEdit] = useState<{ card: ExposureCard; form: ProfileForm } | null>(null);
   // The list whose "Paste a list" dialog is open (slice 2).
   const [pasteFor, setPasteFor] = useState<ListKey | null>(null);
-  // Read mode only (#9173 S2): the fleets that need each part, from their documented prerequisites,
-  // and the seeded agents whose persona reads it (#10063 r1 A3).
-  const readers = useOrganizationReaders(!editing);
-  const usedBy = editing ? undefined : readers.data?.readers;
-  const usedByAgents = editing ? undefined : readers.data?.agents;
   const saved = data ? toForm(data.profile) : null;
   const current = form ?? saved;
   const listCard = LIST_KEYS.find((key) => listEdits[key] !== undefined && !editing) ?? null;
@@ -790,7 +779,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     );
   };
   /**
-   * The two lists (primary assets, software inventory) read on the shared DataTable (data
+   * The three lists (primary assets, software inventory, AI systems) read on the shared DataTable (data
    * tables slice 9): search, filters, sort, CSV and the pager. In edit they keep all of it on the
    * list editor (#12256, OrganizationListEditor): one row open at a time, the order frozen.
    */
@@ -1324,23 +1313,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       : t_i18n("Scenarios above {amount} per year are flagged for approval", { amount: money(value) });
   };
 
-  // The OpenCRQ source of the primary assets, named on the card as the asset lists name theirs (#1754).
-  // The line is true to the sync's state (UX round 1 B1, #1818): off, paused or a failed last run is never called "Synced".
-  // The cause (the run's error or the pause reason) goes in a Tip, so a long reason never widens the card header.
-  const opencrqSourceError = opencrqJewelSync?.enabled && !opencrqJewelSync.paused_reason ? opencrqJewelSync.last_result?.error || "" : "";
-  const opencrqSourceCause = opencrqJewelSync?.enabled ? opencrqJewelSync.paused_reason || opencrqSourceError : "";
-  const opencrqSourceLine = !opencrqJewelSync
-    ? null
-    : !opencrqJewelSync.enabled
-      ? t_i18n("OpenCRQ sync off")
-      : opencrqJewelSync.paused_reason
-        ? t_i18n("OpenCRQ sync paused")
-        : !opencrqJewelSync.last_run_at
-          ? t_i18n("Synced from OpenCRQ: not run yet")
-          : opencrqSourceError
-            ? t_i18n("OpenCRQ sync failed {timeAgo}", { timeAgo: formatTimeAgo(intl, opencrqJewelSync.last_run_at) })
-            : t_i18n("Synced from OpenCRQ {timeAgo}", { timeAgo: formatTimeAgo(intl, opencrqJewelSync.last_run_at) });
-
   // The fields not filled that Settings still draws (#1690): the Business, Technology and Exposure fields are
   // reported on CTEM > Inventory, and Copilot mode reports none (Sam: "we don't care").
   const missing = xtmOne ? (data?.missing_fields ?? []).filter((path) => { const owner = tabOfField(path); return owner !== null && !isInventoryTab(owner); }) : [];
@@ -1438,7 +1410,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                 <div className="max-w-xs space-y-1 content-compact">
                   <p>
                     {t_i18n(
-                      "What every agent and fleet reads before it ranks, scopes or estimates: your sector, regions, primary assets, software, intelligence requirements, risk appetite and costs. Agents cite the fields they used and name the ones not filled, never guess them. Each save is a new version.",
+                      "What every agent and fleet reads before it ranks, scopes or estimates: your sector, regions, primary assets, software, AI systems, intelligence requirements, risk appetite and costs. Agents cite the fields they used and name the ones not filled, never guess them. Each save is a new version.",
                     )}
                   </p>
                   <p data-testid="settings.organization.shared">{t_i18n("Shared context: the whole profile is visible to every user and every agent of this XTM One platform.")}</p>
@@ -1591,7 +1563,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             title={t_i18n("Identity")}
             description={t_i18n("Who you are, where you operate and how large you are.")}
           >
-            <OrganizationUsedBy fields={["sector", "regions"]} readers={usedBy} agents={usedByAgents} />
             {!editing ? (
               <SettingsReadGrid data-testid="settings.organization.identity">
                 <SettingsReadField label={t_i18n("Organization name")} info={help("name").info} value={current.name.trim()} />
@@ -1670,7 +1641,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             title={t_i18n("Risk appetite and costs")}
             description={t_i18n("Pick the currency first: every amount below is in it. The risk quantifier compares scenarios with the thresholds; the ROI figures use the hourly rate.")}
           >
-            <OrganizationUsedBy fields={["risk_appetite", "currency", "loaded_hourly_rate"]} readers={usedBy} agents={usedByAgents} />
             {!editing ? (
               <SettingsReadGrid data-testid="settings.organization.risk">
                 <SettingsReadField label={t_i18n(FIELD_LABELS.currency)} info={help("currency").info} mono value={current.currency} />
@@ -1708,7 +1678,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             title={t_i18n("Ticketing and intelligence")}
             description={t_i18n("Where agents open tickets and which OpenCTI PIRs they follow.")}
           >
-            <OrganizationUsedBy fields={["ticketing", "pir_ids"]} readers={usedBy} agents={usedByAgents} />
             {!editing ? (
               <SettingsReadGrid data-testid="settings.organization.ticketing">
                 <SettingsReadField
@@ -1878,32 +1847,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             action={
               <>
                 {attention("crown_jewels")}
-                {/* The OpenCRQ source of the list (#1754): its icon and last sync, as the asset lists name theirs. It is run and configured
-                    in Sources, so every state of the line links there (UX round 2 B1, #1818): the line is the only place a failed or paused sync shows. */}
-                {opencrqSourceLine && (
-                  <span data-testid="settings.organization.primary-assets-source" className="inline-flex min-w-0 items-center gap-1.5 content-compact text-default-secondary">
-                    <ProviderLogo provider="opencrq" decorative className="h-4 w-4 shrink-0" />
-                    {opencrqSourceCause ? (
-                      <Tip content={opencrqSourceCause}>
-                        <Link
-                          to="/ctem/inventory/sources"
-                          className={`whitespace-nowrap rounded-sm underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus ${opencrqSourceError ? "text-feedback-error-primary" : "text-feedback-warning-primary"}`}
-                          data-testid="settings.organization.primary-assets-source-cause"
-                        >
-                          {opencrqSourceLine}
-                        </Link>
-                      </Tip>
-                    ) : (
-                      <Link
-                        to="/ctem/inventory/sources"
-                        className="whitespace-nowrap rounded-sm underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
-                        data-testid="settings.organization.primary-assets-source-link"
-                      >
-                        {opencrqSourceLine}
-                      </Link>
-                    )}
-                  </span>
-                )}
                 {!reader && !listOpen("crown_jewels") && (
                   // An icon button: a third labelled action wraps the card title at 1080 (UX round 1 B1, #1567).
                   <Tip content={editing || cardOpen ? t_i18n("Save or cancel the edit first.") : t_i18n("Restore from a past version")} wrap="auto">
@@ -1933,7 +1876,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               </>
             }
           >
-            <OrganizationUsedBy fields={["crown_jewels"]} readers={usedBy} agents={usedByAgents} />
             {listEditor("crown_jewels", {
               columns: jewelEdit,
               filters: [valueFilter("criticality", "Criticality", CRITICALITY_LABELS, (v: Jewel) => v.criticality, true)], // ordinal scale (#12289)
@@ -2054,7 +1996,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               </>
             }
           >
-            <OrganizationUsedBy fields={["tech_stack"]} readers={usedBy} agents={usedByAgents} />
             {listEditor("tech_stack", {
               columns: techEdit,
               filters: [{ key: "vendor", label: "Vendor", values: (v: Tech) => [v.vendor.trim()] }],
