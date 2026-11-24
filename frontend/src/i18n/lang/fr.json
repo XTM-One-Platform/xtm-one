@@ -21603,5 +21603,10 @@
   "{product} could not answer because the query was too large, so open exposures there may be missing.": "{product} n'a pas pu répondre car la requête était trop volumineuse : des expositions ouvertes peuvent manquer.",
   "{product} did not answer in time, so open exposures there may be missing.": "{product} n'a pas répondu à temps : des expositions ouvertes peuvent manquer.",
   "No {product} connection could be used for this read, so open exposures there may be missing.": "Aucune connexion {product} n'a pu servir à cette lecture : des expositions ouvertes peuvent manquer.",
-  "Read-only for you.": "En lecture seule pour vous."
+  "Read-only for you.": "En lecture seule pour vous.",
+  "Auto join": "Adhésion automatique",
+  "Auto join updated": "Adhésion automatique mise à jour",
+  "Auto join could not be updated": "L'adhésion automatique n'a pas pu être mise à jour",
+  "Single sign-on users join this group": "Les utilisateurs SSO rejoignent ce groupe",
+  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "Les personnes qui se connectent par authentification unique (SSO) rejoignent ce groupe automatiquement, à chaque connexion. Les membres ajoutés à la main, par le mappage des groupes SAML ou par SCIM restent tels quels."
 }
