@@ -269,6 +269,28 @@ describe("the work item detail", () => {
     expect(screen.queryByText("Put back in the queue")).toBeNull();
   });
 
+  // #1845: an item the reader may read but not change keeps its write
+  // actions visible, disabled, with the reason the server gives.
+  it("disables the write actions on an item the reader cannot change, with why", () => {
+    const close = vi.fn();
+    const remove = vi.fn();
+    const reason = "Read-only for you: it was created in another person's chat.";
+    openDialog(item({ can_write: false, read_only_reason: reason }), { close, remove, requeue: vi.fn() });
+    for (const name of ["Mark done", "Cancel work item", "Delete"]) {
+      const button = screen.getByRole("button", { name });
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+      expect(button.closest("[aria-disabled='true']")).not.toBeNull();
+    }
+    fireEvent.click(screen.getByText("Cancel work item"));
+    expect(close).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it("keeps the write actions enabled when the reader may change the item", () => {
+    openDialog(item({ can_write: true, read_only_reason: null }), { close: vi.fn() });
+    expect((screen.getByRole("button", { name: "Cancel work item" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   // UX round 1 of #9890, B1: an always-enabled button is never wrapped in a
   // focusable span that reports it disabled (two tab stops, refused clicks).
   it("leaves the always-enabled actions out of any aria-disabled wrapper", () => {
