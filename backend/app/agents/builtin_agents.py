@@ -3342,6 +3342,42 @@ CTEM_F1_ASSIGNMENTS.append(
     }
 )
 
+#: The loop orchestrator hears its fleet's failed and orphaned runs (#1837, fleet-design-practices
+#: step 3): a burst is one run reading the list, its own runs never wake it (platform_events).
+CTEM_LOOP_RUN_HEALTH = "Fleet run failed or orphaned"
+CTEM_LOOP_RUN_HEALTH_WINDOW_SECONDS = 60
+CTEM_F1_ASSIGNMENTS.append(
+    {
+        **_F1_RUN,
+        "name": CTEM_LOOP_RUN_HEALTH,
+        "description": (
+            "A run of a CTEM loop member failed, or ended without finishing while holding work "
+            "items: the cause is read and the case it served is moved on or handed back."
+        ),
+        "trigger_type": "platform_event",
+        "trigger_config": {
+            "event": ["run.failed", "run.orphaned"],
+            # Assignment runs only: a delegated child run's failure is its parent's answer.
+            "filter": {"assignment_id": {"exists": True}},
+            "scope": "fleet",
+            "batch_window_seconds": CTEM_LOOP_RUN_HEALTH_WINDOW_SECONDS,
+        },
+        INHERIT_SWITCH_FROM_KEY: CTEM_F1_CASE_ASSIGNMENT["name"],
+        "max_iterations": 40,
+        "timeout_seconds": 600,
+        "prompt": (
+            "Runs of your fleet failed or ended without finishing: the trigger below lists them "
+            "(run_id, agent_id, assignment_id, work_item_ids, error or reason). For each, read the "
+            "work items it held with get_work_item and the case each one serves with get_ctem_case. "
+            "A cause in your remit (a wrong input, a step to run again): run the step again once and "
+            "note it on the case. A cause outside it (a credential, an integration down, a person's "
+            "decision): one note on the case naming the cause and what releases it, the work item "
+            "left to its owner. Never run a step twice for one failure. End with one line per run: "
+            "the run, the case, what you did."
+        ),
+    }
+)
+
 BUILTIN_ASSIGNMENTS.extend(CTEM_F1_ASSIGNMENTS)
 
 # Seeded switched off and left to an administrator: the seed never

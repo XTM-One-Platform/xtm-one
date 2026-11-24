@@ -68,6 +68,8 @@ CTEM_LOOP_DOC: dict[str, str] = {
         "or stops on a rejection.\n"
         "- **Loop reminder due**: a reminder the loop set on a case is due; the person a gate still waits "
         "on is reminded once.\n"
+        "- **Fleet run failed or orphaned**: a member's run failed or ended without finishing; the "
+        "orchestrator reads the cause and moves the case on or names what releases it.\n"
         "- **New relevant threat** and **Threat activity flagged in a PIR**: the OpenCTI intake; each "
         "delivery records a relevant threat signal, with no run of its own.\n"
         "- **Threat signal recorded**: a threat signal an organization PIR flags at or above the policy "
@@ -1149,6 +1151,13 @@ CTEM_LOOP_STRUCTURED: dict[str, Any] = {
         *(t for t in OPENCTI_PIR_DESK_STRUCTURED["triggers"] if t["module"] != "schedule"),
         *(t for t in OPENAEV_DETECTION_DESK_STRUCTURED["triggers"] if t["module"] == "openaev"),
         *(t for t in OPENCRQ_RISK_BUDGET_DESK_STRUCTURED["triggers"] if t["module"] == "opencrq"),
+        # The loop orchestrator hears its members' failed and orphaned runs (#1837).
+        {
+            "module": "platform",
+            "name": "Fleet run failed or orphaned",
+            "filter": "A member's run fails or ends without finishing",
+            "detail": "One run per minute of failures",
+        },
     ],
     "steps": [
         {"title": "Signal", "detail": "Any trigger path; reconcile and the scope gate open a case or watch it."},
@@ -1209,6 +1218,12 @@ CTEM_LOOP_STRUCTURED: dict[str, Any] = {
             for q in OPENCRQ_RISK_BUDGET_DESK_STRUCTURED["quota"]
             if q["trigger"] in {"Scenario re-priced", "Finding re-scored", "Control validation ingested"}
         ),
+        {
+            "trigger": "Fleet run failed or orphaned",
+            "basis": "One run per minute of member failures",
+            "runs_min": 0,
+            "runs_max": 10,
+        },
     ],
 }
 
