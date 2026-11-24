@@ -219,7 +219,7 @@ _EXPOSURE_BRIEFING_PROMPT = (
     "fraud (phishing, brand abuse, leaked credentials/cards, takedowns). Frame "
     "the entire briefing for THAT vertical.\n\n"
     "Then call `get_organization_context` once: rank findings and next steps by "
-    "the sector, regions, crown jewels, tech stack and PIRs it returns, and say "
+    "the sector, regions, primary assets, tech stack and PIRs it returns, and say "
     "which fields you used. When a field is not filled, do not guess it: the "
     "briefing stays generic on that point (an administrator fills the profile in "
     "Settings > Organization).\n\n"
@@ -325,7 +325,7 @@ _STAGE_DEFS: list[dict] = [
         "name": "CTEM Scoping Analyst",
         "icon": "Crosshair",
         "focus": "how completely the exposure surface is defined and in scope",
-        "cyber": "asset coverage of the attack surface - the share of endpoints carrying an active OpenAEV agent (target >90%) and the count of UNPROTECTED endpoints to close (below ~85% coverage validation is unreliable); OpenCTI observables/CVEs are the intel-side surface. Call out crown-jewel assets lacking coverage",
+        "cyber": "asset coverage of the attack surface - the share of endpoints carrying an active OpenAEV agent (target >90%) and the count of UNPROTECTED endpoints to close (below ~85% coverage validation is unreliable); OpenCTI observables/CVEs are the intel-side surface. Call out primary assets lacking coverage",
         "fimi": "information-space coverage - narratives, channels, languages and events (especially elections) tracked in OpenCTI",
         "fraud": "brand & asset coverage - monitored brands/organizations, watched domains, and impersonation personas",
     },
@@ -419,7 +419,7 @@ def _stage_prompt(d: dict) -> str:
         f"- fraud: {d['fraud']}.\n\n"
         "Ground the analysis in the ORGANIZATION CONTEXT: call "
         "get_organization_context (the profile saved in Settings, the only "
-        "source of company context) for the tech stack, crown jewels, sector, "
+        "source of company context) for the tech stack, primary assets, sector, "
         "PIRs and risk appetite, and judge what is actually relevant (e.g. "
         "whether a tracked CVE affects software they run, which assets matter "
         "most, which narratives/brands are in scope). Name the fields it "
@@ -2223,7 +2223,7 @@ CTEM_FLEET_AGENTS: list[dict] = [
         "name": "Threat Relevance Analyst",
         "description": (
             "Scores a threat or a vulnerability against the organization "
-            "profile (sector, regions, tech stack, crown jewels, PIRs) and "
+            "profile (sector, regions, tech stack, primary assets, PIRs) and "
             "says whether it is relevant, with the evidence of each factor."
         ),
         "icon": "Target",
@@ -2240,7 +2240,7 @@ CTEM_FLEET_AGENTS: list[dict] = [
         "name": "Risk Quantifier",
         "description": (
             "Prices an exposure in expected loss from the OpenCRQ scenarios "
-            "covering the crown jewels it reaches: the loss before and after "
+            "covering the primary assets it reaches: the loss before and after "
             "the fix, and the loss avoided against the risk appetite."
         ),
         "icon": "Scale",
@@ -2303,7 +2303,7 @@ assessment is reported as not assessed yet, with the date of the last one.
 3. When a stage is stale or a question needs a fresh read, delegate the stage \
 to its analyst in your fleet; the briefing goes to the Exposure Briefing \
 Analyst.
-4. Use the organization context (sector, crown jewels, tech stack, risk \
+4. Use the organization context (sector, primary assets, tech stack, risk \
 appetite) to say why a gap matters to this organization. A field the profile \
 does not hold is named as missing, never guessed.
 
@@ -3203,7 +3203,7 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
             "Score its relevance against the organization profile (get_organization_context: "
             "sector, regions, technology, PIRs) and stop with the reason when it is not relevant. "
             "When it is, name the profile entry it touches (a sector, a region, a technology, a "
-            "crown jewel or a PIR) and what is missing for the scope gate to confirm it, unless an "
+            "primary asset or a PIR) and what is missing for the scope gate to confirm it, unless an "
             "open case already covers it (list_ctem_cases); once confirmed, the case loop opens "
             "the case. End with the relevance verdict, the signal id and the case id when one exists."
         ),
