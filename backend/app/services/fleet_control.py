@@ -497,12 +497,17 @@ async def enable_fleet(
         raise FleetActionRefusedError(409, ENABLE_NOTHING_TO_ENABLE)
     if plan.missing:
         raise FleetActionRefusedError(400, missing_refusal(plan.missing))
-    from app.services.fleets import is_fleet_health_answered, is_fleet_health_check
+    from app.services.fleets import is_fleet_health_answered, is_fleet_health_check, is_fleet_past_due_listener
 
     for assignment, agent in targets:
-        # The weekly health check (#11700) and its answer listener (#1406) read the
-        # fleet as the person who enabled it, never as the seed owner.
-        seeded_health = is_fleet_health_check(assignment) or is_fleet_health_answered(assignment)
+        # The weekly health check (#11700), its answer listener (#1406) and the overdue
+        # items listener (#1662) read the fleet as the person who enabled it, never as
+        # the seed owner.
+        seeded_health = (
+            is_fleet_health_check(assignment)
+            or is_fleet_health_answered(assignment)
+            or is_fleet_past_due_listener(assignment)
+        )
         if is_fleet_automation(agent, assignment) or (seeded_health and assignment.run_as_user_id is None):
             assignment.run_as_user_id = run_as_user_id
         await resume_assignment(

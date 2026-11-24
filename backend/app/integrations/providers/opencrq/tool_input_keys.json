@@ -978,6 +978,18 @@
       "closed": true
     }
   ],
+  "list_opencrq_connectors": [
+    {
+      "procedures": [
+        "connectors.getStreamState"
+      ],
+      "fields": [
+        "source"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
   "list_opencrq_crq_run_history": [
     {
       "procedures": [

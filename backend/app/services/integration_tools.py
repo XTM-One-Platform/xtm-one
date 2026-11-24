@@ -7493,6 +7493,46 @@ def pick_template_integration(
     )
 
 
+#: Background task metadata key: the per-user (template) picks of the run that
+#: spawned the task, ``{provider: integration id}``. The task's turn takes the
+#: same row when it is among its own eligible candidates, so a delegated child
+#: never reaches the platform as another account than its parent (#1792).
+INHERITED_TEMPLATE_PICKS_KEY = "inherited_template_picks"
+
+_TEMPLATE_ORIGINS = (TEMPLATE_ORIGIN_OWN, TEMPLATE_ORIGIN_COMPANY_FALLBACK)
+
+
+def template_picks(effective_bindings: dict[str, str], binding_origin_map: dict[str, str]) -> dict[str, str]:
+    """The providers a run bound through a per-user (template) binding, with the row each resolved to."""
+    return {
+        provider: str(integration_id)
+        for provider, integration_id in effective_bindings.items()
+        if "#" not in provider and binding_origin_map.get(provider) in _TEMPLATE_ORIGINS
+    }
+
+
+def inherited_template_picks(value: object) -> dict[str, str]:
+    """The inherited picks a task's metadata carries, malformed entries dropped."""
+    if not isinstance(value, dict):
+        return {}
+    return {k: v for k, v in value.items() if isinstance(k, str) and isinstance(v, str) and k and v}
+
+
+def inherited_template_candidate(candidates: list[Integration], inherited_id: str | None) -> Integration | None:
+    """The candidate the spawning run picked, when the child may use it too.
+
+    Only a row already in *candidates* (the child's own eligible set, foreign
+    personal rows dropped) is returned: inheriting never widens what the child
+    may use, it only stops two eligible rows from splitting parent and child.
+    """
+    if not inherited_id:
+        return None
+    for integ in candidates:
+        if str(integ.id) == str(inherited_id):
+            return integ
+    return None
+
+
 async def resolve_template_integration(
     db: AsyncSession,
     provider: str,
@@ -7501,8 +7541,13 @@ async def resolve_template_integration(
     *,
     acting_user_id: uuid.UUID | str | None,
     context: str = "",
+    inherited_id: str | None = None,
 ) -> tuple[Integration | None, str | None]:
     """Resolve one per-user (template) binding, ownership-aware.
+
+    *inherited_id* is the row the run that spawned this turn picked for the
+    provider (:data:`INHERITED_TEMPLATE_PICKS_KEY`): taken first when it is
+    still eligible here, so parent and child use one account.
 
     Like :func:`pick_template_integration` but routed through
     :func:`resolve_integration_by_scope`, so a provider with a ``scope_config``
@@ -7517,6 +7562,9 @@ async def resolve_template_integration(
     if not candidates:
         return None, None
 
+    inherited = inherited_template_candidate(candidates, inherited_id)
+    if inherited is not None:
+        return classify_template_pick(inherited, acting_user_id, provider=provider, context=context)
     integ = await resolve_integration_by_scope(
         db, provider, candidates, scope_headers, acting_user_id=acting_user_id
     )

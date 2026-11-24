@@ -69,6 +69,7 @@ from app.services.declarative_http_executor import (
     spec_is_read,
     validate_execution_spec,
 )
+from app.services.openapi_import.operations import method_access
 from app.services.openapi_import.schema import clean_text
 from app.services.openapi_import.security import (
     AUTH_TYPE_CLIENT_CREDENTIALS,
@@ -341,6 +342,11 @@ def build_tools(
                 # A read operation offers to_workspace_path: a large answer
                 # (a task log, an export) lands whole in the sandbox workspace.
                 workspace_ingest=not errors and not runtime.certificate_error and spec_is_read(spec),
+                # The access is the spec's HTTP method, never the generated
+                # name: a GET named ``create_...`` is a read, kept under a
+                # read-only binding (``integration_read_only.withhold_write_tools``).
+                read_only=method_access(spec.get("method")) == "read",
+                writes=method_access(spec.get("method")) == "write",
             )
         )
     return definitions

@@ -490,6 +490,47 @@ READS = {
         ("connectors.getStreamState",),
         ("opencti live stream: not_configured", "Reached the live tail: no"),
     ),
+    "list_opencrq_connector_syncs_stream_missing_capability": Read(
+        "list_opencrq_connector_syncs",
+        {"source": "opencti"},
+        # getStreamState.missingCapability: the capability the OpenCTI token lacks (#1797)
+        [_sent("connectors.getStreamState", {"source": "opencti"})],
+        ("connectors.getStreamState",),
+        ("Missing capability: the OpenCTI token lacks the TAXIIAPI_SETCOLLECTIONS capability to create the stream",),
+        overrides={
+            "connectors.getStreamState": {
+                **_fixture("connectors.getStreamState")[1],
+                "missingCapability": "TAXIIAPI_SETCOLLECTIONS",
+            },
+        },
+    ),
+    "list_opencrq_connectors_stream_missing_capability": Read(
+        "list_opencrq_connectors",
+        {},
+        # listConnectors lacks the capability: one getStreamState read adds it to the opencti row (#1797)
+        [_sent("connectors.listConnectors"), _sent("connectors.getStreamState", {"source": "opencti"})],
+        ("connectors.listConnectors",),
+        (
+            "- opencti (threat_intel, live_stream): not_configured (no live stream and service "
+            "account selected in this tenant; the OpenCTI token lacks the TAXIIAPI_SETCOLLECTIONS "
+            "capability to create the stream)",
+        ),
+        overrides={
+            "connectors.listConnectors": [
+                {
+                    "source": "opencti",
+                    "domain": "threat_intel",
+                    "mechanism": "live_stream",
+                    "state": "not_configured",
+                    "tenantConfigured": False,
+                },
+            ],
+            "connectors.getStreamState": {
+                **_fixture("connectors.getStreamState")[1],
+                "missingCapability": "TAXIIAPI_SETCOLLECTIONS",
+            },
+        },
+    ),
 }
 
 

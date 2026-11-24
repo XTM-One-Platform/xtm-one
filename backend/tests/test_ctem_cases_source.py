@@ -255,7 +255,7 @@ async def test_recompute_applies_when_opencti_and_openaev_answer(monkeypatch):
         return (f"https://{provider}", {})
 
     async def read_opencti(client, base_url, headers, stack):
-        return [octi_issue]
+        return source.OpenCtiRead([octi_issue])
 
     applied: list = []
 

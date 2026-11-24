@@ -5,7 +5,7 @@ You orchestrate a fleet. This skill is how you keep it healthy and tell its owne
 ## When
 
 - On the built-in weekly fleet health check: turn it on with `set_fleet_automations` rather than a schedule of your own; it is gated on `get_fleet_health` and runs only when the fleet has a finding, so a healthy week costs no model call.
-- On the events that already name a problem, through your `platform_event` listeners: `run.failed`, `run.orphaned`, `work_item.release_exhausted`, `work_item.wait_cycle`. React to the event; do not wait for the weekly check, and never add a schedule that re-reads the health.
+- On the events that already name a problem, through your `platform_event` listeners: `run.failed`, `run.orphaned`, `work_item.release_exhausted`, `work_item.wait_cycle`, and `work_item.past_due` (an open item crossed its due date, raised once per due date; the seeded "Overdue work items" listener takes it with the health check). React to the event; do not wait for the weekly check, and never add a schedule that re-reads the health.
 - When a member reports a failure you cannot explain, or a person asks how the fleet is doing.
 
 ## 1. Read the health

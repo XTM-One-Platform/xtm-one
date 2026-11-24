@@ -803,17 +803,19 @@ async def _with_context(db: AsyncSession, payload: dict[str, Any]) -> dict[str, 
 
     Applied on every read, never cached: a context saved in Settings shows on
     the next load without a posture rebuild. The organization context of
-    Settings is the only company context read (#11464).
+    Settings is the only company context read (#11464). Its software is the
+    Software entities' (#1495, ``software_profile``): a synced inventory fills
+    the field with no profile row typed.
     """
     from app.services import organization_context as org_context
 
     has_profile = False
     missing: list[str] = []
     try:
-        row = await org_context.current_version(db)
+        row, profile = await org_context.software_profile(db)
         if row is not None:
             has_profile = True
-            missing = org_context.missing_fields(org_context.parse_profile(row.profile))
+            missing = org_context.missing_fields(profile)
     except Exception as exc:  # an unreadable profile reads as missing, never a 500
         logger.info("CTEM organization context unreadable: %s", format_exception_message(exc))
         has_profile = False

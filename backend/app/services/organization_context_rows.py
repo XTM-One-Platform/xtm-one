@@ -374,6 +374,54 @@ def plan_record_remove(
     return plan
 
 
+#: Sections whose rows are Software entities of the asset store since #1495 (``tech_stack``: deprecated alias).
+SOFTWARE_SECTIONS: frozenset[str] = frozenset({"software", "tech_stack"})
+
+
+def software_key(vendor: Any, product: Any) -> tuple[str, str]:
+    """A software key as ``organization_software`` indexes it (case-folded vendor and product)."""
+    return name_key(vendor), name_key(product)
+
+
+def plan_software_upsert(source: str, rows: list[Any], *, existing: set[tuple[str, str]]) -> RowPlan:
+    """What upserting *rows* into the organization's Software entities does (no I/O, #1495).
+
+    A row is ``{product, vendor, cpe, version}``. A software whose vendor and product
+    already exist is reported unchanged and never overwritten (its sources, or the
+    administrator, own it); a new one is planned in ``writes`` as a hand-typed
+    software (``origin`` ``manual``) the caller creates. *existing* holds the keys
+    of the stored software (:func:`software_key`).
+    """
+    source = source.strip().lower()
+    check_call("software", source, len(rows))
+    plan = RowPlan(section="software", source=source)
+    seen: set[tuple[str, str]] = set()
+    for index, raw in enumerate(rows):
+        label = _row_label(raw, index)
+        if not isinstance(raw, dict):
+            plan.refused.append((label, "not an object"))
+            continue
+        try:
+            row = TechStackEntry.model_validate(raw)
+        except ValidationError as exc:
+            plan.refused.append((label, _first_error(exc)))
+            continue
+        except ValueError as exc:
+            plan.refused.append((label, str(exc)))
+            continue
+        key = software_key(row.vendor, row.product)
+        if key in seen:
+            plan.refused.append((row.product, "sent twice in this call"))
+            continue
+        seen.add(key)
+        if key in existing:
+            plan.unchanged.append(row.product)
+            continue
+        plan.added.append(row.product)
+        plan.writes.append({"vendor": row.vendor, "product": row.product, "cpe": row.cpe, "version": row.version})
+    return plan
+
+
 def basis(plan: RowPlan, agent_name: str) -> str:
     """The provenance a saved row change keeps: what changed, from where, by which agent."""
     counts = f"{len(plan.added)} added, {len(plan.updated)} updated, {len(plan.removed)} removed"
