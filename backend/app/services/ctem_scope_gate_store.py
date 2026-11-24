@@ -390,8 +390,12 @@ async def evaluate_after_record(db: AsyncSession, row: CtemSignal, *, created: b
         return pending
     verdict = signals.verdict_of(row.state)
     try:
-        async with db.begin_nested():
-            await ctem_case_loop.open_from_signal(db, row, events=pending)
+        # #1951: nothing opens while an administrator paused case opening; the signal waits confirmed.
+        from app.services import ctem_case_opening
+
+        if await ctem_case_opening.is_on(db, "cyber"):
+            async with db.begin_nested():
+                await ctem_case_loop.open_from_signal(db, row, events=pending)
     except Exception:
         pending.items.clear()
         logger.warning("CTEM case not opened for signal %s; the sweep retries", getattr(row, "id", "?"), exc_info=True)
