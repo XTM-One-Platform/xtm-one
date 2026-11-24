@@ -21668,5 +21668,14 @@
   "Auto join updated": "Adhésion automatique mise à jour",
   "Auto join could not be updated": "L'adhésion automatique n'a pas pu être mise à jour",
   "Single sign-on users join this group": "Les utilisateurs SSO rejoignent ce groupe",
-  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "Les personnes qui se connectent par authentification unique (SSO) rejoignent ce groupe automatiquement, à chaque connexion. Les membres ajoutés à la main, par le mappage des groupes SAML ou par SCIM restent tels quels."
+  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "Les personnes qui se connectent par authentification unique (SSO) rejoignent ce groupe automatiquement, à chaque connexion. Les membres ajoutés à la main, par le mappage des groupes SAML ou par SCIM restent tels quels.",
+  "Case opening": "Ouverture des cas",
+  "Case opening on": "Ouverture des cas activée",
+  "Case opening paused": "Ouverture des cas en pause",
+  "Case opening is paused.": "L'ouverture des cas est en pause.",
+  "Case opening was not changed": "L'ouverture des cas n'a pas été modifiée",
+  "Off: confirmed signals wait and open no case. On: every waiting signal opens its case at once.": "Désactivée : les signaux confirmés attendent et n'ouvrent aucun cas. Activée : chaque signal en attente ouvre son cas immédiatement.",
+  "{count, plural, one {Case opening on: opening cases for # waiting signal} other {Case opening on: opening cases for # waiting signals}}": "{count, plural, =0 {Ouverture des cas activée : aucun signal en attente} one {Ouverture des cas activée : ouverture des cas pour # signal en attente} other {Ouverture des cas activée : ouverture des cas pour # signaux en attente}}",
+  "{count, plural, =0 {No confirmed signal is waiting.} one {# confirmed signal is waiting.} other {# confirmed signals are waiting.}}": "{count, plural, =0 {Aucun signal confirmé n'est en attente.} one {# signal confirmé est en attente.} other {# signaux confirmés sont en attente.}}",
+  "CTEM case opening turned on or off": "Ouverture des cas CTEM activée ou désactivée"
 }

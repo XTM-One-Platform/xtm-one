@@ -21668,5 +21668,14 @@
   "Auto join updated": "自動参加を更新しました",
   "Auto join could not be updated": "自動参加を更新できませんでした",
   "Single sign-on users join this group": "SSO ユーザーはこのグループに参加します",
-  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "シングルサインオン (SSO) でサインインしたユーザーは、サインインのたびにこのグループへ自動的に参加します。手動、SAML グループマッピング、SCIM で追加されたメンバーはそのまま保持されます。"
+  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "シングルサインオン (SSO) でサインインしたユーザーは、サインインのたびにこのグループへ自動的に参加します。手動、SAML グループマッピング、SCIM で追加されたメンバーはそのまま保持されます。",
+  "Case opening": "ケースの起票",
+  "Case opening on": "ケースの起票をオンにしました",
+  "Case opening paused": "ケースの起票は一時停止中",
+  "Case opening is paused.": "ケースの起票は一時停止中です。",
+  "Case opening was not changed": "ケースの起票は変更されませんでした",
+  "Off: confirmed signals wait and open no case. On: every waiting signal opens its case at once.": "オフ: 確認済みシグナルは待機し、ケースを起票しません。オン: 待機中の各シグナルがすぐにケースを起票します。",
+  "{count, plural, one {Case opening on: opening cases for # waiting signal} other {Case opening on: opening cases for # waiting signals}}": "{count, plural, other {ケースの起票をオンにしました: 待機中の # 件のシグナルのケースを起票しています}}",
+  "{count, plural, =0 {No confirmed signal is waiting.} one {# confirmed signal is waiting.} other {# confirmed signals are waiting.}}": "{count, plural, =0 {待機中の確認済みシグナルはありません。} other {# 件の確認済みシグナルが待機中です。}}",
+  "CTEM case opening turned on or off": "CTEM ケースの起票のオンまたはオフ"
 }
