@@ -70,6 +70,7 @@ function renderPage(tab?: string) {
 
 const get = vi.mocked(api.get);
 const put = vi.mocked(api.put);
+const patch = vi.mocked(api.patch);
 const post = vi.mocked(api.post);
 const postForm = vi.mocked(api.postForm);
 
@@ -103,6 +104,7 @@ beforeEach(() => {
     if (path === "/organizations") return [];
     if (path === "/integrations") return [];
     if (path === "/organization-context/pirs") return { pirs: [{ id: "pir-1", name: "Ransomware on energy" }], unavailable: null };
+    if (path === "/organization-context/readers") return READERS;
     if (path === "/organization-context/import/sources") return { sections: [] };
     if (path === "/organization-context/attack-surface/providers") return { providers: ["shodan"] };
     // The Sources and syncs table of the Knowledge and sources tab (#1276).
@@ -110,6 +112,22 @@ beforeEach(() => {
     throw new Error(`unexpected GET ${path}`);
   });
 });
+
+const READERS = {
+  readers: {
+    sector: [{ fleet_id: "f-1", name: "Threat response" }],
+    regions: [{ fleet_id: "f-1", name: "Threat response" }],
+    crown_jewels: [
+      { fleet_id: "f-1", name: "Threat response" },
+      { fleet_id: "f-2", name: "Vulnerability prioritization" },
+    ],
+  },
+  agents: {
+    risk_appetite: [{ agent_id: "a-1", name: "Risk Quantifier" }],
+    currency: [{ agent_id: "a-1", name: "Risk Quantifier" }],
+    pir_ids: [{ agent_id: "a-2", name: "Threat Relevance Analyst" }],
+  },
+};
 
 describe("OrganizationSection primary asset widths at 1080 (#1174 UX r2 B1 and B2)", () => {
   // The primary assets table measures 810 px in its 72rem card at 1080; Assets and Source step aside there.
@@ -127,16 +145,43 @@ describe("OrganizationSection primary asset widths at 1080 (#1174 UX r2 B1 and B
   });
 });
 
-describe("OrganizationSection without reader rows (#1878)", () => {
-  it("shows no Used by or Read by agents row on any card, in read mode or in edit, and never asks who reads the profile", async () => {
+describe("OrganizationSection used by (#9173 S2)", () => {
+  it("names the fleets reading each part, once per card, linked to the fleet page, and only in read mode", async () => {
     renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
-    expect((await screen.findByTestId("settings.organization.identity")).textContent).toContain("Acme");
-    expect(screen.queryByText("Used by")).toBeNull();
-    expect(screen.queryByText("Read by agents")).toBeNull();
+    // The first tab holds three of the cards that name their readers (#12329).
+    await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(3));
+    const [identity, risk, intelligence] = screen.getAllByTestId("settings.organization.used-by");
+    // The seeded agents reading the risk appetite and the PIRs (#10063 r1 A3), once each, linked to the agent page.
+    expect(risk.dataset.fields).toBe("risk_appetite currency loaded_hourly_rate");
+    expect(within(risk).queryByTestId("settings.organization.used-by.fleets")).toBeNull();
+    expect(within(risk).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["/agents/a-1"]);
+    expect(within(intelligence).getAllByRole("link").map((a) => a.textContent)).toEqual(["Threat Relevance Analyst"]);
+    expect(identity.dataset.fields).toBe("sector regions");
+    expect(within(identity).getAllByRole("link").map((a) => a.textContent)).toEqual(["Threat response"]);
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
-    expect(await screen.findByTestId("settings.save-bar")).toBeTruthy();
-    expect(screen.queryByText("Used by")).toBeNull();
-    expect(get.mock.calls.map(([path]) => path)).not.toContain("/organization-context/readers");
+    await waitFor(() => expect(screen.queryByTestId("settings.organization.used-by")).toBeNull());
+  });
+
+  it("lays every line on one shared label grid, so the chips start at the same column on every card (#10166 UX r1 B1)", async () => {
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(3));
+    for (const block of screen.getAllByTestId("settings.organization.used-by")) {
+      expect(block.dataset.layout).toBe("label-grid");
+      expect(block.dataset.align).toBe("start");
+      for (const row of block.querySelectorAll<HTMLElement>("[data-row]")) {
+        // Each line is a display-contents row: its label and its chip list are direct cells of the block's grid.
+        expect(row.dataset.row).toBe("contents");
+        expect(Array.from(row.children).map((cell) => (cell as HTMLElement).dataset.cell)).toEqual(["label", "chips"]);
+        // Both labels sit in every label cell (same column width on every card); only the row's own one is exposed.
+        const label = row.querySelector<HTMLElement>("[data-cell='label']")!;
+        expect(Array.from(label.querySelectorAll<HTMLElement>("[data-label]")).map((el) => el.dataset.label)).toEqual(["fleets", "agents"]);
+        expect(label.querySelectorAll("[data-label]:not([aria-hidden='true'])")).toHaveLength(1);
+        // #10166 UX r2 B1: each label is laid out in the chip's box and the grid aligns cells at the start,
+        // so the label text centres on the first chip row.
+        for (const el of label.querySelectorAll<HTMLElement>("[data-label]")) expect(el.dataset.box).toBe("chip-row");
+        expect(row.querySelector<HTMLElement>("[data-cell='chips'] [data-slot='badge']")!.dataset.box).toBe("chip-row");
+      }
+    }
   });
 });
 
@@ -146,6 +191,7 @@ describe("OrganizationSection identity header and threshold previews (#9173 S2)"
       if (path === "/organization-context") return { ...CONTEXT, profile: { ...CONTEXT.profile, ...profile } };
       if (path === "/organizations" || path === "/integrations") return [];
       if (path === "/organization-context/pirs") return { pirs: [], unavailable: null };
+      if (path === "/organization-context/readers") return READERS;
       throw new Error(`unexpected GET ${path}`);
     });
 
@@ -294,10 +340,12 @@ describe("OrganizationSection", () => {
     expect(missing.textContent).toContain("Loaded hourly rate");
   });
 
-  it("shows the primary assets on CTEM > Inventory with no Used by row above them (#1690, #1878)", async () => {
+  it("names the fleets reading the primary assets on CTEM > Inventory, linked to the fleet page (#1690)", async () => {
     renderPage("business");
+    await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(1));
+    const [jewels] = screen.getAllByTestId("settings.organization.used-by");
+    expect(within(jewels).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["/fleets/f-1", "/fleets/f-2"]);
     expect(await screen.findByText("Payments")).toBeTruthy();
-    expect(screen.queryByText("Used by")).toBeNull();
   });
 
   it("counts the fields not filled Settings draws and opens the form on a missing field (#9173 S1c, #1690)", async () => {
@@ -432,11 +480,11 @@ describe("OrganizationSection", () => {
     await screen.findByDisplayValue(long);
   });
 
-  it("edits one list card alone, counts its changes, undoes a removal and saves the profile with that list changed (#12256)", async () => {
+  it("edits one list card alone, counts its changes, undoes a removal and patches that list alone (#12256, #1752)", async () => {
     const base = get.getMockImplementation()!;
     const tech = Array.from({ length: 150 }, (_, i) => ({ product: `Product ${String(i).padStart(3, "0")}`, vendor: i === 7 ? "" : "Vendor", cpe: "" }));
     get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: tech } } : base(path)));
-    put.mockResolvedValue({ ...CONTEXT, version: 4 });
+    patch.mockResolvedValue({ ...CONTEXT, version: 4 });
     renderPage("technology");
     // Read mode names the row that needs attention on the card header.
     expect((await screen.findByTestId("settings.organization.attention-tech_stack")).textContent).toBe("1 needs attention");
@@ -460,12 +508,15 @@ describe("OrganizationSection", () => {
     fireEvent.keyDown(product, { key: "Enter" });
     expect(bar.textContent).toContain("1 added");
     fireEvent.click(save);
-    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
-    const [, body] = put.mock.calls[0] as [string, { profile: { tech_stack: { product: string }[]; crown_jewels: unknown[] }; source: string }];
-    expect(body.source).toBe("form");
-    expect(body.profile.tech_stack).toHaveLength(151);
-    expect(body.profile.tech_stack[150].product).toBe("Jira");
-    expect(body.profile.crown_jewels).toEqual(CONTEXT.profile.crown_jewels);
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    expect(put).not.toHaveBeenCalled();
+    const [path, body] = patch.mock.calls[0] as [string, { fields: Record<string, unknown> & { tech_stack: { product: string }[] }; based_on_version: number }];
+    expect(path).toBe("/organization-context");
+    // The network check of #1752: the card's own list alone travels, never another field or an asset row.
+    expect(Object.keys(body.fields)).toEqual(["tech_stack"]);
+    expect(body.based_on_version).toBe(CONTEXT.version);
+    expect(body.fields.tech_stack).toHaveLength(151);
+    expect(body.fields.tech_stack[150].product).toBe("Jira");
   });
 
   it("edits one exposure card alone, keeps the others in read mode and saves the profile with that card changed (#12256 slice 2)", async () => {
@@ -550,7 +601,7 @@ describe("OrganizationSection", () => {
     const base = get.getMockImplementation()!;
     const tech = [{ product: "Jira", vendor: "Atlassian", cpe: "" }, { product: "Slack", vendor: "", cpe: "" }];
     get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: tech } } : base(path)));
-    put.mockResolvedValue({ ...CONTEXT, version: 4 });
+    patch.mockResolvedValue({ ...CONTEXT, version: 4 });
     renderPage("technology");
     // Paste a list waits for the card's Edit.
     expect(screen.queryByTestId("settings.organization.paste-tech_stack")).toBeNull();
@@ -579,9 +630,9 @@ describe("OrganizationSection", () => {
     fireEvent.click(within(bulk).getByTestId("settings.organization.bulk-apply"));
     expect(bar.textContent).toContain("1 added, 1 edited");
     fireEvent.click(within(bar).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
-    const [, body] = put.mock.calls[0] as [string, { profile: { tech_stack: { product: string; vendor: string }[] } }];
-    expect(body.profile.tech_stack).toEqual([
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    const [, body] = patch.mock.calls[0] as [string, { fields: { tech_stack: { product: string; vendor: string }[] } }];
+    expect(body.fields.tech_stack).toEqual([
       { product: "Jira", vendor: "Atlassian", cpe: "" },
       { product: "Slack", vendor: "Acme", cpe: "" },
       { product: "Notion", vendor: "Acme", cpe: "" },
@@ -592,7 +643,7 @@ describe("OrganizationSection", () => {
     const base = get.getMockImplementation()!;
     const tech = [{ product: "Jira", vendor: "Atlassian", cpe: "", version: "9.12.2" }];
     get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: tech } } : base(path)));
-    put.mockResolvedValue({ ...CONTEXT, version: 4 });
+    patch.mockResolvedValue({ ...CONTEXT, version: 4 });
     renderPage("technology");
     const row = (await screen.findByText("Jira")).closest("tr")!;
     expect(within(row).getByText("9.12.2")).toBeTruthy();
@@ -604,9 +655,9 @@ describe("OrganizationSection", () => {
     fireEvent.click(within(dialog).getByTestId("settings.organization.paste-add"));
     await waitFor(() => expect(screen.queryByTestId("settings.organization.paste-dialog")).toBeNull());
     fireEvent.click(within(bar).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
-    const [, body] = put.mock.calls[0] as [string, { profile: { tech_stack: Record<string, string>[] } }];
-    expect(body.profile.tech_stack).toEqual([
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    const [, body] = patch.mock.calls[0] as [string, { fields: { tech_stack: Record<string, string>[] } }];
+    expect(body.fields.tech_stack).toEqual([
       { product: "Jira", vendor: "Atlassian", cpe: "", version: "9.12.2" },
       { product: "nginx", vendor: "F5", cpe: "", version: "1.25.3" },
       // No version typed: none saved, so a profile that never declares one keeps its shape.

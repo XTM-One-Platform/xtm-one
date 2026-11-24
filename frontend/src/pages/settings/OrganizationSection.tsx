@@ -68,6 +68,8 @@ import {
   useOrganizationContext,
   useOrganizationSyncs,
   useOrganizationPirs,
+  useOrganizationReaders,
+  usePatchOrganizationContext,
   useSaveOrganizationContext,
 } from "@/hooks/api/useOrganizationContextApi";
 import { useFormatter } from "@/i18n";
@@ -90,6 +92,7 @@ import {
   unreadablePlatform,
 } from "@/lib/organization-profile";
 import { distinctName, OrganizationPirsView, pirLabels, PirsUnreadable, usePirText } from "./OrganizationPirs";
+import { OrganizationUsedBy } from "./OrganizationUsedBy";
 import { OrganizationTicketingSync } from "./OrganizationTicketingSync";
 import { type BulkField, type ListEditColumn, ListSaveBar, OrganizationListEditor } from "./OrganizationListEditor";
 import { OrganizationListPasteDialog } from "./OrganizationListPasteDialog";
@@ -209,6 +212,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // In the reader's locale, as every date next to a DataTable (data-table-locale-dates gate).
   const savedAt = data?.created_at ? intl.formatDate(new Date(data.created_at), { dateStyle: "medium", timeStyle: "short" }) : "";
   const save = useSaveOrganizationContext();
+  // #1752: a card saves its own fields alone (PATCH); the asset rows never travel with them.
+  const patch = usePatchOrganizationContext();
   // Primary assets are an Inventory source (#1754, Sam 24 Nov 2026): the OpenCRQ sync is configured and run in
   // CTEM > Inventory > Sources; the card only names it and its last sync, never a second OpenCRQ action.
   const { data: inventorySyncs } = useOrganizationSyncs("inventory", !reader);
@@ -265,6 +270,11 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const [exposureEdit, setExposureEdit] = useState<{ card: ExposureCard; form: ProfileForm } | null>(null);
   // The list whose "Paste a list" dialog is open (slice 2).
   const [pasteFor, setPasteFor] = useState<ListKey | null>(null);
+  // Read mode only (#9173 S2): the fleets that need each part, from their documented prerequisites,
+  // and the seeded agents whose persona reads it (#10063 r1 A3).
+  const readers = useOrganizationReaders(!editing);
+  const usedBy = editing ? undefined : readers.data?.readers;
+  const usedByAgents = editing ? undefined : readers.data?.agents;
   const saved = data ? toForm(data.profile) : null;
   const current = form ?? saved;
   const listCard = LIST_KEYS.find((key) => listEdits[key] !== undefined && !editing) ?? null;
@@ -451,17 +461,21 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     }
     const parsed = fromForm(next);
     if ("invalid" in parsed) return;
-    save.mutate({ profile: parsed.profile as OrganizationProfile, source: "form" }, {
+    const field = exposureEdit.card === "accepted_risks" ? "prioritization_policy" : exposureEdit.card;
+    const options = {
       onSuccess: () => {
         stopExposureEdit();
         toast({ title: t_i18n("Organization profile saved"), variant: "success" });
       },
-      onError: (err) => {
+      onError: (err: Error) => {
         const issue = exposureIssueFromRefusal(next, err.message);
         if (issue) setRefusedIssue(issue);
         else toast({ title: t_i18n("The organization profile was not saved"), description: err.message, variant: "error" });
       },
-    });
+    };
+    // The asset and group tables are rows: they keep their own write; every other card patches its field alone.
+    if (field === "assets_exposure" || field === "asset_groups") save.mutate({ profile: parsed.profile as OrganizationProfile, source: "form" }, options);
+    else patch.mutate({ fields: { [field]: parsed.profile[field] }, based_on_version: data.version ?? null }, options);
   };
   // One list card in edit (#12256): the other cards stay as they read; the form is not opened.
   const startListEdit = (key: ListKey) => {
@@ -480,7 +494,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     const parsed = fromForm({ ...toForm(data.profile), [key]: committedValues(listEdits[key]!.rows as EditRow<unknown>[]) });
     if ("invalid" in parsed) return;
     const kept = committedValues(listEdits[key]!.rows as EditRow<Provenance>[]);
-    save.mutate({ profile: parsed.profile as OrganizationProfile, source: "form" }, {
+    patch.mutate({ fields: { [key]: parsed.profile[key] }, based_on_version: data.version ?? null }, {
       onSuccess: () => {
         // The synced rows removed with "Exclude from this sync" go on their sync's exclusions (#1134).
         synced.commit(kept);
@@ -1577,6 +1591,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             title={t_i18n("Identity")}
             description={t_i18n("Who you are, where you operate and how large you are.")}
           >
+            <OrganizationUsedBy fields={["sector", "regions"]} readers={usedBy} agents={usedByAgents} />
             {!editing ? (
               <SettingsReadGrid data-testid="settings.organization.identity">
                 <SettingsReadField label={t_i18n("Organization name")} info={help("name").info} value={current.name.trim()} />
@@ -1655,6 +1670,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             title={t_i18n("Risk appetite and costs")}
             description={t_i18n("Pick the currency first: every amount below is in it. The risk quantifier compares scenarios with the thresholds; the ROI figures use the hourly rate.")}
           >
+            <OrganizationUsedBy fields={["risk_appetite", "currency", "loaded_hourly_rate"]} readers={usedBy} agents={usedByAgents} />
             {!editing ? (
               <SettingsReadGrid data-testid="settings.organization.risk">
                 <SettingsReadField label={t_i18n(FIELD_LABELS.currency)} info={help("currency").info} mono value={current.currency} />
@@ -1692,6 +1708,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             title={t_i18n("Ticketing and intelligence")}
             description={t_i18n("Where agents open tickets and which OpenCTI PIRs they follow.")}
           >
+            <OrganizationUsedBy fields={["ticketing", "pir_ids"]} readers={usedBy} agents={usedByAgents} />
             {!editing ? (
               <SettingsReadGrid data-testid="settings.organization.ticketing">
                 <SettingsReadField
@@ -1916,6 +1933,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               </>
             }
           >
+            <OrganizationUsedBy fields={["crown_jewels"]} readers={usedBy} agents={usedByAgents} />
             {listEditor("crown_jewels", {
               columns: jewelEdit,
               filters: [valueFilter("criticality", "Criticality", CRITICALITY_LABELS, (v: Jewel) => v.criticality, true)], // ordinal scale (#12289)
@@ -2036,6 +2054,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               </>
             }
           >
+            <OrganizationUsedBy fields={["tech_stack"]} readers={usedBy} agents={usedByAgents} />
             {listEditor("tech_stack", {
               columns: techEdit,
               filters: [{ key: "vendor", label: "Vendor", values: (v: Tech) => [v.vendor.trim()] }],

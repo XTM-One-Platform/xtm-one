@@ -13141,6 +13141,9 @@
   "No orchestrator": "オーケストレーターなし",
   "Fleets": "フリート",
   "Fleets row": "フリート行",
+  "Fleets that read this part of the profile": "プロファイルのこの部分を読むフリート",
+  "Read by agents": "読み取るエージェント",
+  "Agents that read this part of the profile": "プロファイルのこの部分を読むエージェント",
   "Fleets need the agentic AI licence": "フリートにはエージェント型 AI ライセンスが必要です",
   "Fleets group agents around an orchestrator and a workspace. They are part of the agentic AI features of the Enterprise Edition.": "フリートは、オーケストレーターとワークスペースを中心にエージェントをまとめます。Enterprise Edition のエージェント型 AI 機能の一部です。",
   "New fleet": "新しいフリート",
@@ -21557,5 +21560,14 @@
   "Link supporting assets to primary assets": "サポート資産を主要資産にリンク",
   "On by default. Off: primary assets are imported without their supporting assets.": "既定でオン。オフ: 主要資産はサポート資産なしでインポートされます。",
   "Links each primary asset to the supporting assets OpenCRQ attaches to it, matched by OpenCRQ id or name. A link you add or remove by hand always wins.": "OpenCRQ が各主要資産に関連付けるサポート資産を、OpenCRQ ID または名前で照合してリンクします。手動で追加または削除したリンクが常に優先されます。",
-  "Lets the agent record, list, dismiss, restore and re-check CTEM signals, and open, read and manage CTEM cases: owner, due date, notes, state, validation, tickets and remediation decisions. It acts for the person the turn or run acts for, with the rights of the CTEM pages: an administrator or a member of a group with the CTEM decide right reads and acts on every signal and case, a view right reads them and every change is refused, anyone else works on the signals they recorded and the cases they can see.": "エージェントが CTEM シグナルを記録、一覧表示、却下、復元、再評価し、CTEM ケースを作成、閲覧、管理できるようにします（担当者、期限、メモ、状態、検証、チケット、修復の判断）。ターンまたは実行が代理する人物として、CTEM ページと同じ権限で動作します。管理者または CTEM の決定権を持つグループのメンバーはすべてのシグナルとケースを閲覧して操作でき、閲覧権では閲覧のみで変更はすべて拒否され、それ以外の人は自分が記録したシグナルと閲覧できるケースを扱います。"
+  "Lets the agent record, list, dismiss, restore and re-check CTEM signals, and open, read and manage CTEM cases: owner, due date, notes, state, validation, tickets and remediation decisions. It acts for the person the turn or run acts for, with the rights of the CTEM pages: an administrator or a member of a group with the CTEM decide right reads and acts on every signal and case, a view right reads them and every change is refused, anyone else works on the signals they recorded and the cases they can see.": "エージェントが CTEM シグナルを記録、一覧表示、却下、復元、再評価し、CTEM ケースを作成、閲覧、管理できるようにします（担当者、期限、メモ、状態、検証、チケット、修復の判断）。ターンまたは実行が代理する人物として、CTEM ページと同じ権限で動作します。管理者または CTEM の決定権を持つグループのメンバーはすべてのシグナルとケースを閲覧して操作でき、閲覧権では閲覧のみで変更はすべて拒否され、それ以外の人は自分が記録したシグナルと閲覧できるケースを扱います。",
+  "Asset deleted": "アセットを削除しました",
+  "Asset group deleted": "アセットグループを削除しました",
+  "Software deleted": "ソフトウェアを削除しました",
+  "Delete the asset \"{name}\"?": "アセット「{name}」を削除しますか?",
+  "Delete the asset group \"{name}\"?": "アセットグループ「{name}」を削除しますか?",
+  "Delete the software \"{name}\"?": "ソフトウェア「{name}」を削除しますか?",
+  "This asset was entered by hand: it leaves the inventory and its asset groups.": "このアセットは手動で入力されました。インベントリとそのアセットグループから削除されます。",
+  "This asset group was entered by hand: it is deleted and its assets stay in the inventory without it.": "このアセットグループは手動で入力されました。削除され、そのアセットはグループなしでインベントリに残ります。",
+  "This software was typed by hand: it is deleted and leaves the assets it was attached to.": "このソフトウェアは手動で入力されました。削除され、関連付けられていたアセットから外れます。"
 }
