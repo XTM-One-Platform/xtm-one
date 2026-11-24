@@ -126,6 +126,7 @@ def test_a_budget_too_small_for_any_knowledge_renders_nothing():
 def _agent() -> Agent:
     return Agent(
         name="Mail Desk",
+        user_id=uuid.uuid4(),
         memory_short_term_enabled=True,
         memory_medium_term_enabled=True,
         memory_persistent_enabled=True,

@@ -219,7 +219,9 @@ Agents have a three-tier memory system:
 2. **Redis medium-term** (30d TTL): LLM-consolidated summary, auto-updated after 5 new entries
 3. **PostgreSQL persistent** (durable): Consolidated memories and extracted facts stored with vector embeddings in `agent_memory_entries`
 
-When Redis consolidation occurs, the result is automatically persisted to PostgreSQL. Agents can semantically search their own persistent memory via the `search_memory` tool.
+When Redis consolidation occurs, the result is automatically persisted to PostgreSQL, in the scope of the lane it consolidated. Agents can semantically search their own persistent memory via the `search_memory` tool.
+
+An assignment run's tiers 1-2 are the lane of the user it acts as (`assignment_memory_scope`: `run.user_id`, else the agent's owner), the lane that user's chat with the agent reads too; its consolidation persists in that user's scope, never in the agent-level pool every user reads. Only the designated agent-level writer inside a trusted autonomous run writes that pool. The memory write routes (clear, maintain, edit, delete, import) require `can_manage()`: a `read_only` grantee reads the memory and changes none of it.
 
 **State entries and supersession**. An entry describing an object that changes (a document, a deck, a ticket) used to stay in every prompt after the object changed. The rules live in `services/persistent_memory.py`, the one write funnel being `persist_memory()`:
 

@@ -50,6 +50,10 @@ Some entries describe something that changes: what a document's footer says, how
 
 Entries that name no subject behave as they always did. In a conversation, the agent replaces and retires only the memory it keeps for you: the memory it shares with every user of the agent stays as it is for the others, and the newer entry is the one you are shown.
 
+What an assignment run remembers is kept for the user the run acts as, with the memory of that user's conversations with the agent: the next runs as that user, and that user's conversations, read it; nobody else's do.
+
+On the `Memory` tab, clearing the memory, `Optimize`, and editing or deleting an entry are for the people who can manage the agent: its owner, an administrator, or a user it is shared with to configure. A user it is shared with read-only sees the memory and changes none of it.
+
 ## What an assignment or a roster may name
 
 An assignment whose trigger listens to an integration reads that integration's events with its credentials, so when you save it, the integration it names must be one you can see: yours, one shared with you or one of your groups, or a company-wide one. Admins may name any. Otherwise the save is refused with the same answer whether the integration exists or not. Editing anything else, or saving the trigger again with the integration it already names, is never refused, even if that integration is no longer visible to you. The agent builder tools apply the same rule; when strict admin access for agent tools is on, an administrator's agent may name only the integrations the administrator sees as their own, shared with them or company-wide.

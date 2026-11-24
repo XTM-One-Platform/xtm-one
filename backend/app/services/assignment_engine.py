@@ -104,8 +104,10 @@ from app.services.assignment_helpers import (
     _publish_run_status,
     _render_prompt,
     _warn_unresolved_placeholders,
+    assignment_memory_scope,
     resolve_assignment_kb_access,
     select_best_result_summary,
+    store_assignment_agent_memory,
 )
 from app.services.assignment_pause import (
     OWNER_DEACTIVATED_RESUME_ERROR,
@@ -9096,6 +9098,7 @@ async def execute_assignment_run(
                     _agent_medium: bool = agent.memory_medium_term_enabled,
                     _agent_company: bool = agent.is_company_managed,
                     _user_id: str | None = str(run.user_id) if run.user_id else None,
+                    _agent_scope: str | None = assignment_memory_scope(run.user_id, agent.user_id),
                     _user_enabled: bool = agent.memory_user_enabled,
                     _summary: str = loop_result.content,
                     _assignment_name: str = assignment.name,
@@ -9109,33 +9112,17 @@ async def execute_assignment_run(
                     # ``trigger_assignment(continues_run=...)`` enforces.
                     if _agent_short:
                         try:
-                            from app.services.agent_memory import (
-                                consolidate_memory,
-                                store_short_term_memory,
-                            )
-
-                            counter = await store_short_term_memory(
-                                _agent_id,
+                            await store_assignment_agent_memory(
+                                agent_id=_agent_id,
+                                scope_id=_agent_scope,
                                 source=_assignment_name,
                                 summary=_summary,
-                                source_type="assignment",
+                                consolidate=_agent_medium,
+                                llm=_llm,
+                                model=_model,
+                                is_company_managed=_agent_company,
+                                background_tasks=_background_tasks,
                             )
-                            if counter >= 5 and _agent_medium:
-                                # Keep a strong reference: asyncio only holds
-                                # weak refs, so a bare create_task can be GC'd
-                                # mid-run once the parent task completes.
-                                _consolidate_task = asyncio.create_task(
-                                    consolidate_memory(
-                                        _agent_id,
-                                        _llm,
-                                        is_company_managed=_agent_company,
-                                        model=_model,
-                                    )
-                                )
-                                _background_tasks.add(_consolidate_task)
-                                _consolidate_task.add_done_callback(
-                                    _background_tasks.discard
-                                )
                         except Exception as mem_err:
                             logger.warning(
                                 "Failed to store agent memory (agent=%s): %s",

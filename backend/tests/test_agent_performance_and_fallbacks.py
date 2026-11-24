@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -647,6 +648,7 @@ async def test_load_memory_context_truncates_combined_oversized_memory(
 
     agent = Agent(
         name="BigMemory",
+        user_id=uuid.uuid4(),
         memory_short_term_enabled=True,
         memory_medium_term_enabled=True,
         memory_persistent_enabled=False,
