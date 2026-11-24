@@ -14,8 +14,24 @@ vi.mock("@/lib/api", async (importOriginal) => ({ ...(await importOriginal<objec
 vi.mock("@/hooks/useFeatureFlag", () => ({ useFeatureFlag: () => true }));
 // The chat rail has its own tests: here it says what it was told.
 vi.mock("@/components/custom-dashboard/DashboardStudioRail", () => ({
-  DashboardStudioRail: ({ focusedWidget }: { focusedWidget: { id: string } | null }) => (
-    <div data-testid="rail">rail:{focusedWidget?.id ?? "none"}</div>
+  DashboardStudioRail: ({
+    focusedWidget,
+    autoSendMessage,
+    initialAgentId,
+    onSaved,
+  }: {
+    focusedWidget: { id: string } | null;
+    autoSendMessage?: string | null;
+    initialAgentId?: string | null;
+    onSaved?: (revision: number, focusWidgetId: string | null) => void;
+  }) => (
+    <>
+      <div data-testid="rail">rail:{focusedWidget?.id ?? "none"}</div>
+      <div data-testid="rail-launch">{JSON.stringify({ send: autoSendMessage ?? null, agent: initialAgentId })}</div>
+      <button type="button" onClick={() => onSaved?.(4, "note")}>
+        agent saved note
+      </button>
+    </>
   ),
   DashboardStudioHandle: () => <div data-testid="handle" />,
 }));
@@ -47,9 +63,9 @@ function serve(canManage: boolean, spec: object = { title: "Threat board", widge
   return dashboard;
 }
 
-function draw() {
+function draw(state?: object) {
   return renderWithProviders(
-    <MemoryRouter initialEntries={[`/dashboards/${ID}/studio`]}>
+    <MemoryRouter initialEntries={[{ pathname: `/dashboards/${ID}/studio`, state }]}>
       <Routes>
         <Route path="/dashboards/:id/studio" element={<DashboardStudio />} />
       </Routes>
@@ -60,6 +76,26 @@ function draw() {
 describe("DashboardStudio", () => {
   beforeEach(() => {
     for (const fn of Object.values(api)) fn.mockReset();
+  });
+
+  it("hands the rail the create dialog's brief and agent, once", async () => {
+    serve(true);
+    draw({ send: "Build this dashboard:\n\nCritical detections", agentId: "ag1" });
+    await waitFor(() =>
+      expect(JSON.parse(screen.getByTestId("rail-launch").textContent ?? "")).toEqual({
+        send: "Build this dashboard:\n\nCritical detections",
+        agent: "ag1",
+      }),
+    );
+  });
+
+  it("follows the agent: the widget a dashboard tool saved is selected", async () => {
+    serve(true);
+    draw();
+    expect(await screen.findByText("Hello")).toBeTruthy();
+    expect(screen.getByTestId("rail").textContent).toBe("rail:none");
+    fireEvent.click(screen.getByRole("button", { name: "agent saved note" }));
+    await waitFor(() => expect(screen.getByTestId("rail").textContent).toBe("rail:note"));
   });
 
   it("picks a widget, tells the rail, and saves its heading as an upsert", async () => {

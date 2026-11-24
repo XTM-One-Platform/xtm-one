@@ -14036,7 +14036,6 @@
   "Does not end with": "Ne se termine pas par",
   "Partially Vulnerable": "Partiellement vulnérable",
   "Cover the layout": "Couvrir la disposition",
-  "An empty dashboard, to fill in the studio with widgets of your platforms and of your agents.": "Un tableau de bord vide, à remplir dans le studio avec les widgets de vos plateformes et de vos agents.",
   "It holds shapes, lines, icons, images or markdown, which only an absolute layout draws. Remove them first.": "Il contient des formes, des traits, des icônes, des images ou du markdown, que seule une disposition absolue affiche. Retirez-les d'abord.",
   "Replace the image": "Remplacer l'image",
   "Ask for a widget - a live OpenCTI, OpenAEV or OpenCRQ figure, a chart, a list, a note - and the page updates as soon as it is saved. The assistant knows which widget you selected.": "Demandez un widget - un chiffre en direct d'OpenCTI, OpenAEV ou OpenCRQ, un graphique, une liste, une note - et la page se met à jour dès qu'il est enregistré. L'assistant sait quel widget vous avez sélectionné.",
@@ -21821,5 +21820,16 @@
   "Waits for the remediation to be applied": "Attend l'application de la remédiation",
   "Waits for the validation to finish": "Attend la fin de la validation",
   "Watches whether the exposure comes back": "Surveille si l'exposition revient",
-  "Last run by {agent}, {when}": "Dernière exécution par {agent}, {when}"
+  "Last run by {agent}, {when}": "Dernière exécution par {agent}, {when}",
+  "Build the dashboard \"{title}\":": "Construis le tableau de bord « {title} » :",
+  "Build this dashboard:": "Construis ce tableau de bord :",
+  "Untitled dashboard": "Tableau de bord sans titre",
+  "Say what the dashboard should show and your assistant builds it with you in the studio: it finds the data in your platforms and integrations, adds the widgets and places them. You can also start from an empty dashboard and fill it by hand.": "Dites ce que le tableau de bord doit montrer et votre assistant le construit avec vous dans le studio : il trouve les données dans vos plateformes et vos intégrations, ajoute les widgets et les place. Vous pouvez aussi partir d'un tableau de bord vide et le remplir à la main.",
+  "What should it show?": "Que doit-il montrer ?",
+  "The figures and charts you want, where the data comes from (OpenCTI, OpenAEV, an integration, a knowledge base), the period...": "Les chiffres et graphiques voulus, d'où viennent les données (OpenCTI, OpenAEV, une intégration, une base de connaissances), la période...",
+  "No assistant can build dashboards yet. Turn on Custom Dashboards in an agent's tools (or in the General Assistant's tools) and it will be offered here.": "Aucun assistant ne peut encore construire de tableaux de bord. Activez Custom Dashboards dans les outils d'un agent (ou dans ceux de l'Assistant général) et il sera proposé ici.",
+  "AI is turned off on this platform: start from an empty dashboard and build it by hand.": "L'IA est désactivée sur cette plateforme : partez d'un tableau de bord vide et construisez-le à la main.",
+  "Sent as your first message when the studio opens, beside the dashboard it builds.": "Envoyé comme votre premier message à l'ouverture du studio, à côté du tableau de bord qu'il construit.",
+  "Start from an empty dashboard": "Partir d'un tableau de bord vide",
+  "The dashboard as an OpenCTI manifest: OpenCTI and OpenAEV widgets as their platform stores them, and under x_xtm_one what XTM One adds - its own widgets, data sources, inputs, tabs. It is checked when you save.": "Le tableau de bord sous forme de manifest OpenCTI : les widgets OpenCTI et OpenAEV tels que leur plateforme les stocke, et sous x_xtm_one ce qu'XTM One ajoute - ses propres widgets, ses sources de données, ses entrées, ses onglets. Il est vérifié à l'enregistrement."
 }

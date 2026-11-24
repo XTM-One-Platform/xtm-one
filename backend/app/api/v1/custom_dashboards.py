@@ -508,13 +508,18 @@ async def replace_custom_dashboard_definition(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Write the whole definition (the source editor), validated like an agent's, at the revision read."""
+    """Write the whole definition (the source editor), validated like an agent's, at the revision read.
+
+    The manifest the editor shows (``dashboard_native``), or a version 2 definition.
+    """
+    from app.services.dashboard_native import is_native
+
     dashboard, tier = await _load(db, user, dashboard_id, need="edit", for_update=True)
     try:
         await save_dashboard(
             db,
             user_id=user.id,
-            spec_payload={**body.definition, "version": 2},
+            spec_payload=body.definition if is_native(body.definition) else {**body.definition, "version": 2},
             dashboard=dashboard,
             expected_revision=body.revision,
             source="manual",

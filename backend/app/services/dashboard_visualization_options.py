@@ -13,8 +13,8 @@
 
 """The options of a dashboard visualization that draws data, by type, and the dynamic options grammar.
 
-A data visualization (``dashboard_definition.DATA_TYPES``) carries Splunk
-Dashboard Studio's options under their Splunk names (``stackMode``,
+A data visualization (``dashboard_definition.DATA_TYPES``) carries its
+options under their camelCase names (``stackMode``,
 ``legendDisplay``, ``majorValue``, ``columnFormat``...). Each family has a
 closed model here: an unknown key, an enum outside its list, a number out of
 bounds or a malformed colour is refused with the field's path, like the rest of
@@ -195,7 +195,7 @@ class TrellisOptions(BaseModel):
 
 
 class _Options(BaseModel):
-    """Every data visualization's options: Splunk's camelCase names, nothing else."""
+    """Every data visualization's options: their camelCase names, nothing else."""
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, alias_generator=to_camel, populate_by_name=True)
 

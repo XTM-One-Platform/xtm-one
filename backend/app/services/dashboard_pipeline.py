@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""A derived data source's steps: Splunk's chain search, on the closed shapes.
+"""A derived data source's steps, applied one after another on the closed shapes.
 
 A ``derived`` data source reads another one (``extends``) and passes its
 result through a short list of steps, each a closed operation on the closed

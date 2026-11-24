@@ -14,8 +14,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * The studio's Inputs panel: the dashboard's inputs and its tokens, like
- * Splunk Dashboard Studio's inputs and token manager.
+ * The studio's Inputs panel: the dashboard's inputs and its tokens: the
+ * inputs and the token manager.
  *
  * - Inputs: create one (time range, dropdown, multiselect, text, number, an
  *   entity of a platform searched with the viewer's access, or a button

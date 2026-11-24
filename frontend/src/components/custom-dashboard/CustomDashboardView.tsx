@@ -45,6 +45,7 @@ import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type Rea
 import { AlertTriangle, Maximize2, X } from "lucide-react";
 
 import { DashboardGrid } from "@/components/dashboard-grid/DashboardGrid";
+import { OPENCTI_GRID_ROWS } from "@/components/dashboard-grid/layout";
 import { WidgetSizeContext } from "@/components/dashboard-grid/widget-size-context";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -413,6 +414,7 @@ export function CustomDashboardView({
         title={t_i18n("Rearrange the dashboard")}
         editing={Boolean(editing)}
         minWidth={DASHBOARD_GRID_MIN_WIDTH}
+        rows={OPENCTI_GRID_ROWS}
         hideEditBar={editing?.embedded}
         onChange={(next) => {
           if (!next || !editing) return;

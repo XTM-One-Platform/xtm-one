@@ -14,8 +14,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * A dashboard's scheduled exports, like Splunk Dashboard Studio's "Schedule
- * PDF delivery": each an assignment on one of your agents (`schedule.ts`),
+ * A dashboard's scheduled exports (a scheduled PDF
+ * delivery): each an assignment on one of your agents (`schedule.ts`),
  * whose run emails the dashboard as a PDF or a PNG to people with an account
  * who may open it - each receiving it rendered with their own access. The
  * dialog lists this dashboard's schedules (pause, send now, delete) and adds

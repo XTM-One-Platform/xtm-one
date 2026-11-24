@@ -17,7 +17,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * A version 2 dashboard definition read as widget records, tab by tab.
  *
  * The definition (`backend/app/services/dashboard_definition.py`) keeps data
- * sources, visualizations and layouts apart, like Splunk Dashboard Studio. The
+ * sources, visualizations and layouts apart. The
  * renderer draws widgets, so each visualization placed in a tab becomes the
  * record `normalizeWidget` reads: a content type (`xtm.<kind>`) its kind with
  * its options as fields; a data type on a platform source a `platform` widget;
@@ -436,9 +436,10 @@ export const VISUALIZATION_TYPES_BY_SHAPE: Record<string, string[]> = {
 };
 
 /** The rows a new visualization of a type takes on the grid (`dashboard_grid._VIEW_ROWS`). */
+/** The rows (OpenCTI's) a new visualization of `type` takes. */
 function rowsOf(type: string): number {
-  if (type === "xtm.singlevalue") return 6;
-  return type === "xtm.answer" || type === "xtm.table" || type === "xtm.list" ? 8 : 9;
+  if (type === "xtm.singlevalue") return 3;
+  return 4;
 }
 
 /**

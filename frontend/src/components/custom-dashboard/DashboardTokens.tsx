@@ -15,7 +15,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 import { Icon } from "@filigran/design-system";
 /**
- * The inputs of a dashboard page, like Splunk Dashboard Studio's.
+ * The inputs of a dashboard page.
  *
  * `InputControl` draws one input: time range, dropdown (its choices written
  * or read from a data source, with the page's tokens: cascading), multiselect,

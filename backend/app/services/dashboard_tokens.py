@@ -13,7 +13,7 @@
 
 """Tokens of a dashboard: the values its inputs set, put into its data sources.
 
-Like Splunk Dashboard Studio, a definition refers to a token as ``$name$``
+A definition refers to a token as ``$name$``
 (``$name|s$`` and the other filters are the page's: they say how a value is
 written into text or a URL). The page holds the tokens - inputs, buttons,
 defaults, computed expressions, the viewer's environment, a source's result -
@@ -28,8 +28,8 @@ bounded). The server puts them into the source, never into query text:
   or JSON fields;
 - a platform source's ``range``: a range key, or the token holding one.
 
-A source that uses a token with no value waits (code ``waiting``), as a
-Splunk search waits for its input - but for an optional token (an entity
+A source that uses a token with no value waits (code ``waiting``) until
+its input is set - but for an optional token (an entity
 input that is not required): a filter whose values are only such tokens, none
 set, is left out, as OpenAEV reads a dashboard parameter nobody picked.
 """

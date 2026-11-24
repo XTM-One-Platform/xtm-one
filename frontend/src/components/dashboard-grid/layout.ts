@@ -19,6 +19,20 @@ export const GRID_MARGIN = 16;
 /** Tallest a widget may be, in rows. */
 export const MAX_WIDGET_HEIGHT = 40;
 
+/** A grid's rows: their height and the gap between widgets, in pixels. */
+export interface GridRows {
+  rowHeight: number;
+  margin: number;
+}
+/** The platform's own dashboards (the CTEM command center, the Copilot dashboard). */
+export const DEFAULT_GRID_ROWS: GridRows = { rowHeight: GRID_ROW_HEIGHT, margin: GRID_MARGIN };
+/**
+ * OpenCTI's grid (`DASHBOARD_GRID_CONFIG`: 62 px rows, 20 px margins), the one
+ * custom dashboards use (`backend/app/services/dashboard_grid.py`), so an
+ * OpenCTI widget sits where it sat in OpenCTI.
+ */
+export const OPENCTI_GRID_ROWS: GridRows = { rowHeight: 62, margin: 20 };
+
 export interface WidgetSpec {
   /** Default place and size, in grid units. */
   x: number;

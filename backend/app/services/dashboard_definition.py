@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""The definition of a custom dashboard (version 2): Splunk Dashboard Studio's split.
+"""The definition of a custom dashboard (version 2): data sources, visualizations and layout kept apart.
 
 A dashboard is stored as one JSON definition::
 
@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import re
 import uuid
 from typing import Annotated, Any, Literal
@@ -72,6 +73,8 @@ from app.services.dashboard_canvas import (
 from app.services.dashboard_grid import GRID_COLUMNS, MAX_ROWS, fill_layouts, reflow, width_columns, width_of
 from app.services.dashboard_pipeline import MAX_STEPS, Step
 from app.services.dashboard_visualization_options import validate_options
+
+logger = logging.getLogger(__name__)
 
 DEFINITION_VERSION = 2
 
@@ -313,7 +316,7 @@ class PlatformSourceOptions(_Refreshed):
 
 
 class StaticSourceOptions(_Model):
-    """Data written in the definition (Splunk's test data): one of the closed shapes."""
+    """Data written in the definition (sample or test data): one of the closed shapes."""
 
     shape: Shape
     data: dict
@@ -364,7 +367,7 @@ class VariableSourceOptions(_Refreshed):
 
 
 class DerivedSourceOptions(_Refreshed):
-    """Another source's result through closed steps (Splunk's chain search, ``dashboard_pipeline``)."""
+    """Another source's result through closed steps (a chain of steps, ``dashboard_pipeline``)."""
 
     extends: ElementId
     steps: Annotated[list[Step], Field(default_factory=list, max_length=MAX_STEPS)]
@@ -1077,11 +1080,23 @@ def _upgrade_types(definition: dict) -> dict:
 
 
 def upgrade(spec: object) -> dict:
-    """A stored dashboard as a definition: a version 2 one as it is, a version 1 one converted.
+    """A stored dashboard as the working definition: a version 2 one as it is, a manifest (version 3,
+    ``dashboard_native``) read back, a version 1 one converted.
 
     A legacy validation view becomes its replacement (:data:`LEGACY_TYPES`). Never
     validates: what was stored is read; a write validates what it writes.
     """
+    from app.services.dashboard_native import is_native
+
+    if is_native(spec):
+        from app.services.dashboard_native import NativeFormatError, from_native
+
+        try:
+            return _upgrade_types(from_native(spec))  # type: ignore[arg-type]
+        except NativeFormatError as exc:
+            # Only XTM One writes a stored manifest; one it cannot read is shown empty, never a crash of the page.
+            logger.error("A stored dashboard manifest could not be read: %s", exc)
+            return {**upgrade({}), "title": str((spec.get("x_xtm_one") or {}).get("title") or "Dashboard")}  # type: ignore[union-attr]
     if is_definition(spec):
         return _upgrade_types(copy.deepcopy(spec))  # type: ignore[arg-type]
     spec = spec if isinstance(spec, dict) else {}

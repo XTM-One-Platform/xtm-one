@@ -157,6 +157,7 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
     ),
     BuiltinToolGroup(
         id="custom_dashboards",
+        default_on=True,
         name="Custom Dashboards",
         tagline="Build pages of widgets for the user and keep them up to date",
         detail="Compose a dashboard the user opens on the web and on their phone - scores, stage progress, decisions waiting for them, agent activity, follow-up questions - from the data the agent gathered. The agent picks typed widgets and fills their values; the platform draws them with its design system, so a dashboard has no HTML, no colour and no link outside the platform an agent could write. Widgets are refreshed one at a time by id, and a scheduled assignment can keep the same dashboard current.",

@@ -86,7 +86,7 @@ test("a definition is read tab by tab, each visualization as the widget it draws
 
 test("an absolute layout's pixels are no grid cell: its widgets are placed in rows", () => {
   const [later] = normalizeDashboard(definition()).tabs[1].widgets;
-  assert.deepEqual(later.layout, { x: 0, y: 0, w: 12, h: 4 });
+  assert.deepEqual(later.layout, { x: 0, y: 0, w: 12, h: 2 });
 });
 
 test("the defaults go under each visualization's own options, global then by type", () => {
@@ -291,7 +291,7 @@ test("a new visualization of a source is placed below the others in the tab name
   assert.deepEqual(layout.layoutDefinitions.main.structure[layout.layoutDefinitions.main.structure.length - 1], {
     item: "viz_unused",
     type: "block",
-    position: { x: 0, y: 16, w: 6, h: 8 },
+    position: { x: 0, y: 16, w: 6, h: 4 },
   });
   // An unknown layout falls back to the first tab's.
   assert.equal(addVisualizationOperations(sourcesDefinition(), "kev", "xtm.singlevalue", "", "ghost").operations[1].path, "layout");

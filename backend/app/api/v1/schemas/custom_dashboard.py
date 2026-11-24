@@ -79,6 +79,9 @@ class CustomDashboardResponse(CustomDashboardSummaryResponse):
     """
 
     spec: dict
+    #: The stored form: an OpenCTI manifest, OpenCTI and OpenAEV widgets in their platform's own shape and
+    #: what XTM One adds under ``x_xtm_one`` (``dashboard_native``). What the source editor shows and writes.
+    manifest: dict = Field(default_factory=dict)
     #: The visualizations that have a widget form (``dashboard_definition.widget_view``): what
     #: the studio's inspector edits and sends back as an ``upsert``.
     widgets: list[dict] = Field(default_factory=list)
@@ -135,6 +138,7 @@ class CustomDashboardVersionResponse(BaseModel):
     author_name: str | None = None
     created_at: str | None = None
     spec: dict | None = None
+    manifest: dict | None = None
 
 
 class DashboardRestoreRequest(BaseModel):

@@ -22,11 +22,13 @@ change by an agent, a colleague or a restore can be taken back.
 
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 import sqlalchemy as sa
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, event
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.database import Base
 from app.models.visibility import VisibilityColumns
@@ -200,3 +202,33 @@ class CustomDashboardPublicLink(Base):
     snapshot_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     #: The dashboard's revision the snapshot was read for: an edit reads it again.
     snapshot_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+# ── Dashboards stored before the native form ─────────────────────────────────
+
+
+def _read_stored_spec(target: Any) -> None:
+    """A row stored before today's form (version 1 or 2, rows of 36 px) loads as today's manifest.
+
+    Committed, not dirty: loading a row never writes it back; its next save
+    stores the manifest (``dashboard_native.current_form``).
+    """
+    from app.services.dashboard_native import current_form
+
+    spec = target.__dict__.get("spec")
+    read = current_form(spec)
+    if read is not spec:
+        set_committed_value(target, "spec", read)
+
+
+@event.listens_for(CustomDashboard, "load")
+@event.listens_for(CustomDashboardVersion, "load")
+def _load_spec(target: Any, _context: Any) -> None:
+    _read_stored_spec(target)
+
+
+@event.listens_for(CustomDashboard, "refresh")
+@event.listens_for(CustomDashboardVersion, "refresh")
+def _refresh_spec(target: Any, _context: Any, attrs: Any) -> None:
+    if attrs is None or "spec" in attrs:
+        _read_stored_spec(target)

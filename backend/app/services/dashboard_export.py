@@ -22,7 +22,7 @@ visualization alone. The page says when every widget has read its data
 (``dashboardReady``).
 
 The PDF holds a picture of each tab - a tab taller than ``PAGE_HEIGHT`` over
-several pages - like Splunk Dashboard Studio's download, not a print of the
+several pages - rather than a print of the
 page: the grid places its widgets in pixels from the width it measured, and
 Chrome's print pass lays the page out again at another width, which shrank
 and cut the grid.

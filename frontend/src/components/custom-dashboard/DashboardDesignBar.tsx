@@ -14,8 +14,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * The Dashboard Studio's toolbar, above the stage in edit mode - Splunk
- * Dashboard Studio's: undo and redo; a chart (on sample data of its own,
+ * The Dashboard Studio's toolbar, above the stage in edit mode:
+ * undo and redo; a chart (on sample data of its own,
  * `viz-config.addChart`) or an input to add on every tab; on a canvas, the
  * elements to add (rectangle, ellipse, line, icon, image, markdown),
  * layering, alignment and distribution of the selection, duplication (with

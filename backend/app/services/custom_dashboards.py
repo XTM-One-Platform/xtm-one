@@ -115,10 +115,23 @@ def serialize_dashboard(dashboard: CustomDashboard, *, include_spec: bool = True
     if include_spec:
         payload["spec"] = upgrade(dashboard.spec)
         payload["widgets"] = widget_view(payload["spec"])
+        payload["manifest"] = dashboard_manifest(dashboard.spec, payload["spec"])
     payload["user_id"] = str(dashboard.user_id) if dashboard.user_id else None
     payload["is_company_managed"] = bool(dashboard.is_company_managed)
     payload["is_shared"] = bool(dashboard.shared_user_ids or dashboard.shared_group_ids)
     return payload
+
+
+def dashboard_manifest(spec: object, working: dict | None = None) -> dict:
+    """A stored dashboard in the native form (``dashboard_native``): as stored, or written from an older form.
+
+    *working* is the definition already read from *spec*, when the caller has it.
+    """
+    from app.services.dashboard_native import is_native, to_native
+
+    if is_native(spec):
+        return spec  # type: ignore[return-value]
+    return to_native(working if working is not None else upgrade(spec))
 
 
 def sharing_fields(dashboard: CustomDashboard) -> dict:
@@ -320,7 +333,10 @@ async def check_platform_integrations(db: AsyncSession, user_id: uuid.UUID | Non
 
 
 def _write(dashboard: CustomDashboard, spec: dict) -> None:
-    dashboard.spec = spec
+    """Store the validated working definition *spec* in the native form (``dashboard_native``)."""
+    from app.services.dashboard_native import to_native
+
+    dashboard.spec = to_native(spec)
     dashboard.title = str(spec["title"])
     dashboard.widget_count = visualization_count(spec)
 
@@ -420,8 +436,13 @@ async def save_dashboard(
     (the owner of a new dashboard). Raises ``DashboardSpecError`` before
     anything is written; the revision written is kept as a version.
     """
-    spec = validate_definition(spec_payload) if is_definition(spec_payload) else from_widgets(spec_payload)
-    previous = dashboard.spec if dashboard is not None else None
+    from app.services.dashboard_native import from_native, is_native
+
+    if is_native(spec_payload):
+        spec = validate_definition(from_native(spec_payload))  # type: ignore[arg-type]
+    else:
+        spec = validate_definition(spec_payload) if is_definition(spec_payload) else from_widgets(spec_payload)
+    previous = upgrade(dashboard.spec) if dashboard is not None else None
     changed = check_platform_widgets_allowed(previous, spec)
     await check_platform_integrations(db, user_id, changed)
     await check_source_references(db, user_id, previous, spec)
@@ -469,7 +490,7 @@ async def edit_dashboard(
     kept as a version.
     """
     _check_revision(dashboard, expected_revision)
-    current = dashboard.spec if isinstance(dashboard.spec, dict) else {}
+    current = upgrade(dashboard.spec)
     spec = apply_definition_operations(current, operations, title=title, subtitle=subtitle)
     layout_only = (
         title is None
@@ -697,8 +718,8 @@ async def restore_dashboard_version(
 
 
 def _version_text(version: CustomDashboardVersion) -> str:
-    """A version's definition as the compare shows it: indented JSON, keys in the definition's order."""
-    return json.dumps(upgrade(version.spec), indent=2, ensure_ascii=False, default=str)
+    """A version as the compare shows it: its manifest as indented JSON, keys in the stored order."""
+    return json.dumps(dashboard_manifest(version.spec), indent=2, ensure_ascii=False, default=str)
 
 
 def _diff_versions(left: CustomDashboardVersion, right: CustomDashboardVersion) -> dict:
@@ -745,6 +766,7 @@ def serialize_version(version: CustomDashboardVersion, *, include_spec: bool = F
     }
     if include_spec:
         payload["spec"] = upgrade(version.spec)
+        payload["manifest"] = dashboard_manifest(version.spec, payload["spec"])
     return payload
 
 

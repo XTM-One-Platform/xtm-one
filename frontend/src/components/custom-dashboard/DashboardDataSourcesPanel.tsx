@@ -14,7 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * The studio's Data sources panel, like Splunk's: every data source of the
+ * The studio's Data sources panel: every data source of the
  * dashboard, what uses it (an unused one greyed), and what may be done to it.
  *
  * - New data source: its type picked on tiles - a platform widget (first, as

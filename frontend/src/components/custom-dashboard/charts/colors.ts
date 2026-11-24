@@ -20,7 +20,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * palette is the platform's entity colours (themed for light and dark, distinct
  * hues, ordered so neighbours never share a hue family), the named colours are
  * its feedback and brand tokens. A definition may still name a colour as a hex
- * value, as Splunk's do: it is data, taken only in its strict `#rgb` /
+ * value: it is data, taken only in its strict `#rgb` /
  * `#rrggbb` form, never a CSS expression. A gradient between two colours is a
  * `color-mix`, so it follows the theme too.
  *

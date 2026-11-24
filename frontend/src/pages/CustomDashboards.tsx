@@ -339,8 +339,10 @@ export default function CustomDashboards() {
   const chosen = selectable.filter((dashboard) => selected.has(dashboard.id));
   const allChosen = selectable.length > 0 && chosen.length === selectable.length;
 
+  // With the studio, the create dialog: a brief, then the studio builds it in view.
+  // Without it, the chat, where the dashboard lands as a card.
   const buildWithAssistant = () =>
-    ask(t_i18n("Build me a dashboard of what I should look at first this morning."));
+    studio ? setCreating(true) : ask(t_i18n("Build me a dashboard of what I should look at first this morning."));
 
   return (
     <div className="space-y-6">

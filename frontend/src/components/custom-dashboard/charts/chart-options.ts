@@ -236,7 +236,7 @@ export interface SingleValueOptions {
   radialBackgroundColor: unknown;
 }
 
-/** The single value's defaults (Splunk's): the last point of the first series, its delta, its sparkline. */
+/** The single value's defaults: the last point of the first series, its delta, its sparkline. */
 const SINGLE_VALUE_DEFAULTS = {
   sparklineValues: "> primary | seriesByIndex(1)",
   majorValue: "> sparklineValues | lastPoint()",

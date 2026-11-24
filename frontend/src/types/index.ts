@@ -12244,6 +12244,8 @@ export interface CustomDashboardSummary {
 export interface CustomDashboard extends CustomDashboardSummary {
   /** The definition (version 2): data sources, visualizations, inputs, tabs and their layouts. */
   spec: unknown;
+  /** The stored form: an OpenCTI manifest, platform widgets in their own shape, the rest under `x_xtm_one`. */
+  manifest?: Record<string, unknown>;
   /** Its visualizations as widgets, in reading order: what a reader of widgets draws. */
   widgets: Record<string, unknown>[];
   /** Whether the caller may rearrange, refine and share it (owner, `config`

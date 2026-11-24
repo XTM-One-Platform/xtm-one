@@ -23,7 +23,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * - Centre: the stage, the dashboard as everyone sees it - live platform
  *   widgets drawn with the viewer's own access - where a click picks a widget.
  * - Right: the picked visualization's configuration panel
- *   (`VisualizationConfig`, Splunk's: general, data source, data display,
+ *   (`VisualizationConfig`: general, data source, data display,
  *   coloring, interactions, visibility, position, source), each field a step
  *   of the designer's history - for a reader, the inspector
  *   (`DashboardInspector`), read-only - and the Packs panel (`DashboardPacksPanel`):
@@ -44,11 +44,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *   fullscreen.
  *
  * The rail is out unless the URL folds it (`?studio=0`), on the conversation
- * the URL names (`?c=`). Only those who may edit the dashboard get the rail
+ * the URL names (`?c=`). The "Create a dashboard" dialog hands the page a
+ * brief to send and the agent to send it to (`DashboardStudioLaunch`, the
+ * navigation state, read once). When a dashboard tool saves, the stage
+ * follows it: the widget it added or changed is selected and scrolled into
+ * view once that revision has loaded. Only those who may edit the dashboard get the rail
  * and the inspector's controls; others see the stage. Behind `DASHBOARD_STUDIO`.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Braces, History, LayoutGrid, Maximize, Minimize, PanelRightClose, PanelRightOpen, Send } from "lucide-react";
 
 import {
@@ -100,6 +104,13 @@ import type { CustomDashboardOperation } from "@/types";
 const STUDIO_PARAM = "studio";
 const STUDIO_CONVERSATION_PARAM = "c";
 
+/** What the "Create a dashboard" dialog hands the studio: the brief to send the assistant, and who answers. */
+export interface DashboardStudioLaunch {
+  send?: string;
+  /** An agent id, or `null` for the General Assistant. */
+  agentId?: string | null;
+}
+
 /** The dashboard's visualizations as stored widgets (the response's `widgets`): what an upsert starts from. */
 function storedWidgets(widgets: unknown): Record<string, unknown>[] {
   return Array.isArray(widgets) ? widgets.filter((w): w is Record<string, unknown> => !!w && typeof w === "object") : [];
@@ -110,6 +121,7 @@ export default function DashboardStudio() {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const { data, isLoading, isError } = useCustomDashboard(id);
   const update = useQueuedDashboardEdit(id, data?.revision);
@@ -148,6 +160,15 @@ export default function DashboardStudio() {
   const [studioOpen, setStudioOpen] = useState(() => searchParams.get(STUDIO_PARAM) !== "0");
   const [studioConvId, setStudioConvId] = useState<string | null>(() => searchParams.get(STUDIO_CONVERSATION_PARAM));
   const [primed, setPrimed] = useState<string | null>(null);
+  // The dialog's brief is sent once: the launch state leaves the history
+  // entry, so a reload or a return to this page never sends it again.
+  const launch = (location.state ?? null) as DashboardStudioLaunch | null;
+  const [autoSend, setAutoSend] = useState<string | null>(launch?.send ?? null);
+  const [initialAgentId] = useState(() => (launch && "agentId" in launch ? launch.agentId : undefined));
+  useEffect(() => {
+    if (location.state) navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location.pathname, location.search, location.state, navigate]);
+  const clearAutoSend = useCallback(() => setAutoSend(null), []);
   const [panel, setPanel] = useState<"widget" | "data" | "inputs" | "packs">("widget");
   // The settings panel folds away to give the canvas the whole width; asking for one of its tabs unfolds it.
   const [panelOpen, setPanelOpen] = useState(true);
@@ -178,7 +199,26 @@ export default function DashboardStudio() {
     () => (selected ? { id: selected.id, label: selected.title || selected.id } : null),
     [selected],
   );
-  const onSaved = useCallback(() => undefined, []);
+  // Follow the pen: the widget a dashboard tool added or changed, once its revision is on the stage.
+  const [follow, setFollow] = useState<{ revision: number; widgetId: string } | null>(null);
+  const onSaved = useCallback((revision: number, widgetId: string | null) => {
+    if (widgetId) setFollow({ revision, widgetId });
+  }, []);
+  useEffect(() => {
+    if (!follow || !dashboard || (data?.revision ?? 0) < follow.revision) return;
+    const home = dashboard.tabs.find((candidate) => candidate.widgets.some((w) => w.id === follow.widgetId));
+    setFollow(null);
+    if (!home) return;
+    setTabId(home.id);
+    setSelectedId(follow.widgetId);
+    // After the tab switch has drawn the widget.
+    window.requestAnimationFrame(() => {
+      const element = Array.from(stage.current?.querySelectorAll<HTMLElement>("[data-widget-id]") ?? []).find(
+        (candidate) => candidate.dataset.widgetId === follow.widgetId,
+      );
+      element?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    });
+  }, [follow, dashboard, data?.revision, setSelectedId]);
   const editing = Boolean(data?.can_manage) && mode === "edit";
   const tab = dashboard?.tabs.find((candidate) => candidate.id === tabId) ?? dashboard?.tabs[0];
   const canvasLayoutId = editing && tab?.type === "absolute" ? tab.id : null;
@@ -254,6 +294,9 @@ export default function DashboardStudio() {
             onCollapse={() => setStudioOpen(false)}
             primedMessage={primed}
             onPrimedMessageApplied={() => setPrimed(null)}
+            autoSendMessage={autoSend}
+            onAutoSendApplied={clearAutoSend}
+            initialAgentId={initialAgentId}
           />
         ) : (
           <DashboardStudioHandle onOpen={() => setStudioOpen(true)} />

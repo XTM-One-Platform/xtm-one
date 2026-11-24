@@ -22,7 +22,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * screen; the picker offers the assistants carrying the dashboard tools
  * (`useToolAgents("custom_dashboards")`); a save the dashboard tools report
  * from inside their execution (`dashboard_saved`) refreshes the page at once
- * (`useChatApi`'s `handleToolProgress`) and the host learns which revision landed.
+ * (`useChatApi`'s `handleToolProgress`) and the host learns which revision landed
+ * and which widget it added or changed (`focus_widget_id`), so the stage can
+ * follow the agent. The "Create a dashboard" dialog's brief arrives as
+ * `autoSendMessage`, sent once with the agent it picked (`initialAgentId`).
  */
 import { useCallback, useMemo } from "react";
 
@@ -43,13 +46,18 @@ export interface DashboardStudioRailProps {
   dashboard: CustomDashboard;
   /** The selected widget: its id and what to call it ("Exposure score"). */
   focusedWidget: { id: string; label: string } | null;
-  /** A dashboard tool saved a revision of THIS dashboard. */
-  onSaved?: (revision: number) => void;
+  /** A dashboard tool saved a revision of THIS dashboard; `focusWidgetId` is the widget it added or changed. */
+  onSaved?: (revision: number, focusWidgetId: string | null) => void;
   initialConversationId: string | null;
   onConversationChange: (id: string | null) => void;
   onCollapse: () => void;
   primedMessage?: string | null;
   onPrimedMessageApplied?: () => void;
+  /** The first message, sent once when the panel can start the conversation (the create dialog's brief). */
+  autoSendMessage?: string | null;
+  onAutoSendApplied?: () => void;
+  /** Who answers it: an agent id, `null` for the General Assistant, absent for the rail's own default. */
+  initialAgentId?: string | null;
   className?: string;
 }
 
@@ -61,7 +69,8 @@ export function DashboardStudioRail({ dashboard, focusedWidget, onSaved, ...rail
   const onToolProgress = useCallback(
     (frame: ToolProgressFrame) => {
       if (frame.event !== DASHBOARD_SAVED_EVENT || frame.dashboard_id !== dashboard.id) return;
-      if (typeof frame.revision === "number") onSaved?.(frame.revision);
+      if (typeof frame.revision !== "number") return;
+      onSaved?.(frame.revision, typeof frame.focus_widget_id === "string" ? frame.focus_widget_id : null);
     },
     [onSaved, dashboard.id],
   );

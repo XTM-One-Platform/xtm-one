@@ -14036,7 +14036,6 @@
   "Does not end with": "で終わらない",
   "Partially Vulnerable": "一部脆弱",
   "Cover the layout": "レイアウト全体を覆う",
-  "An empty dashboard, to fill in the studio with widgets of your platforms and of your agents.": "スタジオでプラットフォームとエージェントのウィジェットを配置する空のダッシュボード。",
   "It holds shapes, lines, icons, images or markdown, which only an absolute layout draws. Remove them first.": "図形・線・アイコン・画像・Markdown は絶対配置でしか表示できません。先に削除してください。",
   "Replace the image": "画像を置き換える",
   "Ask for a widget - a live OpenCTI, OpenAEV or OpenCRQ figure, a chart, a list, a note - and the page updates as soon as it is saved. The assistant knows which widget you selected.": "ウィジェットを依頼してください。OpenCTI、OpenAEV、OpenCRQ のライブ数値、グラフ、リスト、メモなど。保存されるとすぐにページが更新されます。アシスタントは選択中のウィジェットを把握しています。",
@@ -21821,5 +21820,16 @@
   "Waits for the remediation to be applied": "修復の適用待ち",
   "Waits for the validation to finish": "検証の完了待ち",
   "Watches whether the exposure comes back": "露出の再発を監視中",
-  "Last run by {agent}, {when}": "{agent} による最終実行、{when}"
+  "Last run by {agent}, {when}": "{agent} による最終実行、{when}",
+  "Build the dashboard \"{title}\":": "ダッシュボード「{title}」を作成してください:",
+  "Build this dashboard:": "このダッシュボードを作成してください:",
+  "Untitled dashboard": "無題のダッシュボード",
+  "Say what the dashboard should show and your assistant builds it with you in the studio: it finds the data in your platforms and integrations, adds the widgets and places them. You can also start from an empty dashboard and fill it by hand.": "ダッシュボードに表示したい内容を伝えると、アシスタントがスタジオで一緒に作成します。プラットフォームや連携からデータを探し、ウィジェットを追加して配置します。空のダッシュボードから始めて手作業で作成することもできます。",
+  "What should it show?": "何を表示しますか?",
+  "The figures and charts you want, where the data comes from (OpenCTI, OpenAEV, an integration, a knowledge base), the period...": "必要な数値やグラフ、データの取得元(OpenCTI、OpenAEV、連携、ナレッジベース)、期間など...",
+  "No assistant can build dashboards yet. Turn on Custom Dashboards in an agent's tools (or in the General Assistant's tools) and it will be offered here.": "ダッシュボードを作成できるアシスタントはまだありません。エージェントのツール(または汎用アシスタントのツール)で Custom Dashboards を有効にすると、ここに表示されます。",
+  "AI is turned off on this platform: start from an empty dashboard and build it by hand.": "このプラットフォームでは AI が無効です。空のダッシュボードから始めて手作業で作成してください。",
+  "Sent as your first message when the studio opens, beside the dashboard it builds.": "スタジオが開くと、作成中のダッシュボードの横で最初のメッセージとして送信されます。",
+  "Start from an empty dashboard": "空のダッシュボードから始める",
+  "The dashboard as an OpenCTI manifest: OpenCTI and OpenAEV widgets as their platform stores them, and under x_xtm_one what XTM One adds - its own widgets, data sources, inputs, tabs. It is checked when you save.": "OpenCTI マニフェストとしてのダッシュボード: OpenCTI と OpenAEV のウィジェットは各プラットフォームの保存形式のまま、x_xtm_one の下には XTM One が追加するもの(独自のウィジェット、データソース、入力、タブ)が入ります。保存時に検証されます。"
 }

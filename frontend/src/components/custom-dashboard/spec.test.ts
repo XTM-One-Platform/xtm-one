@@ -197,10 +197,10 @@ test("a stored layout is kept, a missing or off-grid one is placed below in rows
     widgets.map((w) => [w.id, w.layout]),
     [
       ["placed", { x: 6, y: 0, w: 6, h: 3 }],
-      ["half", { x: 0, y: 3, w: 6, h: 4 }],
-      ["off", { x: 6, y: 3, w: 6, h: 4 }],
-      ["figures", { x: 0, y: 7, w: 12, h: 4 }],
-      ["float", { x: 0, y: 11, w: 12, h: 4 }],
+      ["half", { x: 0, y: 3, w: 6, h: 2 }],
+      ["off", { x: 6, y: 3, w: 6, h: 2 }],
+      ["figures", { x: 0, y: 5, w: 12, h: 2 }],
+      ["float", { x: 0, y: 7, w: 12, h: 2 }],
     ],
   );
 });

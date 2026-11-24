@@ -320,7 +320,8 @@ async def test_two_versions_are_compared_by_whoever_reads_the_dashboard() -> Non
         ("add", '"title": "Board brief v2",'),
     ]
     assert (body["added"], body["removed"]) == (1, 1)
-    assert '-  "title": "Board brief",' in body["unified_diff"]
+    # The compare shows the stored manifest: the title is XTM One's, under its extension key.
+    assert '-    "title": "Board brief",' in body["unified_diff"]
     assert (unknown.status_code, malformed.status_code, hidden.status_code) == (404, 422, 404)
 
 

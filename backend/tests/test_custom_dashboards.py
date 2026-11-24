@@ -424,7 +424,7 @@ def test_build_dashboard_saves_the_user_dashboard_and_returns_its_marker(session
     assert (row.title, row.widget_count, row.revision) == ("Today", 2, 1)
     assert session.committed is True
     assert result.content.endswith(f"[[DASHBOARD:{row.id}]]")
-    assert "  - score [xtm.score, 0,0 12x7] Exposure score\n  - decision [xtm.decision, 0,7 12x7]" in result.content
+    assert "  - score [xtm.score, 0,0 12x3] Exposure score\n  - decision [xtm.decision, 0,3 12x3]" in result.content
 
 
 def test_the_marker_is_the_one_the_channels_read():
@@ -523,8 +523,8 @@ def test_the_suite_is_a_known_builtin_tool_id_everywhere():
 
     assert "custom_dashboards" in _VALID_BUILTIN_TOOL_IDS
     assert "custom_dashboards" in GENERAL_ASSISTANT_BUILTIN_TOOL_IDS
-    # Opt-in: a platform's assistants gain it when an admin switches it on.
-    assert "custom_dashboards" not in DEFAULT_GA_BUILTIN_TOOL_IDS
+    # On by default, as the deck and video tools: the Dashboard Studio needs an assistant out of the box.
+    assert "custom_dashboards" in DEFAULT_GA_BUILTIN_TOOL_IDS
     names = [tool["name"] for tool in build_builtin_tool_catalog()["custom_dashboards"]]
     assert names == ["build_dashboard", "edit_dashboard", "get_dashboard", "list_dashboards"]
 
@@ -644,3 +644,19 @@ def test_a_dashboard_card_never_depends_on_the_model_writing_its_marker():
     assert append_markers("Done.", [a, b, a]) == f"Done.\n\n[[DASHBOARD:{a}]]\n\n[[DASHBOARD:{b}]]"
     assert append_markers("", [a]) == f"[[DASHBOARD:{a}]]"
     assert append_markers("Nothing built.", []) == "Nothing built."
+
+
+def test_the_studio_follows_the_widget_a_save_added_or_named():
+    from app.services.builtin_tools.custom_dashboard import _focus_widget
+
+    # The last visualization a save added wins, whatever the operations said.
+    assert _focus_widget(["a", "b"], ["a", "b", "c", "d"], [{"op": "upsert", "widget": {"id": "a"}}]) == "d"
+    # Otherwise the last operation naming a visualization that still exists.
+    assert _focus_widget(["a", "b"], ["a", "b"], [{"op": "upsert", "widget": {"id": "a"}}, {"op": "move", "id": "b"}]) == "b"
+    assert _focus_widget(["a"], ["a"], [{"op": "set", "path": "visualizations.a", "value": {}}]) == "a"
+    assert _focus_widget(["a", "b"], ["a", "b"], [{"op": "layout", "items": [{"id": "a"}, {"id": "b"}]}]) == "b"
+    # A removal, a data source edit or an id that is gone names nothing.
+    assert _focus_widget(["a", "b"], ["a"], [{"op": "remove", "id": "b"}]) is None
+    assert _focus_widget(["a"], ["a"], [{"op": "set", "path": "dataSources.ds_a", "value": {}}]) is None
+    assert _focus_widget(["a"], ["a"], [{"op": "move", "id": "zz"}]) is None
+    assert _focus_widget(["a"], ["a"], "not a list") is None

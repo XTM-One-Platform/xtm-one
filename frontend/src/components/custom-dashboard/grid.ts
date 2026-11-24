@@ -44,35 +44,35 @@ export interface GridCell {
 
 const WIDTH_COLUMNS: Record<DashboardWidth, number> = { full: 12, half: 6, third: 4 };
 
-/** Rows a widget of a kind takes without a layout (the server's `_KIND_ROWS`). */
+/** Rows (OpenCTI's: 62 px, 20 px gaps) a widget of a kind takes without a layout (the server's `_KIND_ROWS`). */
 const KIND_ROWS: Record<string, number> = {
-  score: 7,
-  stats: 4,
-  stages: 5,
-  decision: 7,
-  feed: 8,
-  callout: 4,
-  ranked_list: 7,
-  steps: 7,
-  checklist: 7,
-  progress: 5,
-  prompts: 4,
-  text: 4,
+  score: 3,
+  stats: 2,
+  stages: 2,
+  decision: 3,
+  feed: 4,
+  callout: 2,
+  ranked_list: 3,
+  steps: 3,
+  checklist: 3,
+  progress: 2,
+  prompts: 2,
+  text: 2,
 };
 const VIEW_ROWS: Record<string, number> = {
-  number: 6,
-  list: 8,
-  table: 8,
-  map: 12,
-  choroplethsvg: 12,
-  linkgraph: 12,
-  networkgraph: 12,
-  sankey: 12,
-  parallel: 10,
-  timeline: 10,
-  treemap: 10,
+  number: 3,
+  list: 4,
+  table: 4,
+  map: 5,
+  choroplethsvg: 5,
+  linkgraph: 5,
+  networkgraph: 5,
+  sankey: 5,
+  parallel: 4,
+  timeline: 4,
+  treemap: 4,
 };
-const SIZE_ROWS = { s: 6, m: 8, l: 10 } as const;
+const SIZE_ROWS = { s: 3, m: 4, l: 5 } as const;
 
 /** A stored `layout` when it fits the grid, else `undefined`. */
 export function readCell(value: unknown): GridCell | undefined {
@@ -89,18 +89,18 @@ export function readCell(value: unknown): GridCell | undefined {
 /** The rows `widget` takes without a layout. */
 function defaultRows(widget: DashboardWidget): number {
   if (widget.kind === "platform") {
-    if (!widget.view) return 4;
+    if (!widget.view) return 2;
     return VIEW_ROWS[widget.view] ?? SIZE_ROWS[widget.size];
   }
-  if (widget.kind === "data") return widget.view ? (VIEW_ROWS[widget.view] ?? SIZE_ROWS.m) : 4;
-  if (widget.kind === "input") return 3;
-  return KIND_ROWS[widget.kind] ?? 6;
+  if (widget.kind === "data") return widget.view ? (VIEW_ROWS[widget.view] ?? SIZE_ROWS.m) : 2;
+  if (widget.kind === "input") return 1;
+  return KIND_ROWS[widget.kind] ?? 3;
 }
 
 /** The smallest a widget still reads at: a chart or a table needs room. */
 function minimumSize(widget: DashboardWidget): { minW: number; minH: number } {
-  if ((widget.kind === "platform" || widget.kind === "data") && widget.view && widget.view !== "number") return { minW: 3, minH: 4 };
-  return { minW: 2, minH: 2 };
+  if ((widget.kind === "platform" || widget.kind === "data") && widget.view && widget.view !== "number") return { minW: 3, minH: 2 };
+  return { minW: 2, minH: 1 };
 }
 
 /** Every widget with a place: the placed ones keep theirs, the others go below them, in order. */
@@ -124,9 +124,9 @@ export function placeWidgets<W extends DashboardWidget>(widgets: readonly (W & {
   });
 }
 
-/** Pixels from the top of a cell `rows` high to its bottom (20 px rows, 16 px gaps). */
+/** Pixels from the top of a cell `rows` high to its bottom (OpenCTI's 62 px rows, 20 px gaps). */
 function cellHeight(rows: number): number {
-  return rows * 20 + (rows - 1) * 16;
+  return rows * 62 + (rows - 1) * 20;
 }
 
 /** The height of a platform widget's chart: its cell less the heading, padding and footer; stacked, by `size`. */

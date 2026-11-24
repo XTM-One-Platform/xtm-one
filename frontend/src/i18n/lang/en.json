@@ -14036,7 +14036,6 @@
   "Does not end with": "Does not end with",
   "Partially Vulnerable": "Partially Vulnerable",
   "Cover the layout": "Cover the layout",
-  "An empty dashboard, to fill in the studio with widgets of your platforms and of your agents.": "An empty dashboard, to fill in the studio with widgets of your platforms and of your agents.",
   "It holds shapes, lines, icons, images or markdown, which only an absolute layout draws. Remove them first.": "It holds shapes, lines, icons, images or markdown, which only an absolute layout draws. Remove them first.",
   "Replace the image": "Replace the image",
   "Ask for a widget - a live OpenCTI, OpenAEV or OpenCRQ figure, a chart, a list, a note - and the page updates as soon as it is saved. The assistant knows which widget you selected.": "Ask for a widget - a live OpenCTI, OpenAEV or OpenCRQ figure, a chart, a list, a note - and the page updates as soon as it is saved. The assistant knows which widget you selected.",
@@ -21821,5 +21820,16 @@
   "Waits for the remediation to be applied": "Waits for the remediation to be applied",
   "Waits for the validation to finish": "Waits for the validation to finish",
   "Watches whether the exposure comes back": "Watches whether the exposure comes back",
-  "Last run by {agent}, {when}": "Last run by {agent}, {when}"
+  "Last run by {agent}, {when}": "Last run by {agent}, {when}",
+  "Build the dashboard \"{title}\":": "Build the dashboard \"{title}\":",
+  "Build this dashboard:": "Build this dashboard:",
+  "Untitled dashboard": "Untitled dashboard",
+  "Say what the dashboard should show and your assistant builds it with you in the studio: it finds the data in your platforms and integrations, adds the widgets and places them. You can also start from an empty dashboard and fill it by hand.": "Say what the dashboard should show and your assistant builds it with you in the studio: it finds the data in your platforms and integrations, adds the widgets and places them. You can also start from an empty dashboard and fill it by hand.",
+  "What should it show?": "What should it show?",
+  "The figures and charts you want, where the data comes from (OpenCTI, OpenAEV, an integration, a knowledge base), the period...": "The figures and charts you want, where the data comes from (OpenCTI, OpenAEV, an integration, a knowledge base), the period...",
+  "No assistant can build dashboards yet. Turn on Custom Dashboards in an agent's tools (or in the General Assistant's tools) and it will be offered here.": "No assistant can build dashboards yet. Turn on Custom Dashboards in an agent's tools (or in the General Assistant's tools) and it will be offered here.",
+  "AI is turned off on this platform: start from an empty dashboard and build it by hand.": "AI is turned off on this platform: start from an empty dashboard and build it by hand.",
+  "Sent as your first message when the studio opens, beside the dashboard it builds.": "Sent as your first message when the studio opens, beside the dashboard it builds.",
+  "Start from an empty dashboard": "Start from an empty dashboard",
+  "The dashboard as an OpenCTI manifest: OpenCTI and OpenAEV widgets as their platform stores them, and under x_xtm_one what XTM One adds - its own widgets, data sources, inputs, tabs. It is checked when you save.": "The dashboard as an OpenCTI manifest: OpenCTI and OpenAEV widgets as their platform stores them, and under x_xtm_one what XTM One adds - its own widgets, data sources, inputs, tabs. It is checked when you save."
 }

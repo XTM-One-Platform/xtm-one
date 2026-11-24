@@ -97,7 +97,7 @@ _SIGNED_OUT = "Dashboards can only be built for a signed-in user."
 #: A widget's place on the dashboard's 12-column grid.
 _LAYOUT_SCHEMA: dict = {
     "type": "object",
-    "description": "Place on the 12-column grid: x 0-11, w 1-12 (x + w <= 12), y >= 0, h 1-40 rows of 36 px.",
+    "description": "Place on the 12-column grid: x 0-11, w 1-12 (x + w <= 12), y >= 0, h 1-40 rows of 82 px (a 62 px row and its gap).",
     "properties": {
         "x": {"type": "integer"},
         "y": {"type": "integer"},
@@ -131,6 +131,42 @@ def _optional_revision(value: object) -> tuple[int | None, str | None]:
     return (revision, None) if revision >= 1 else (None, "revision must be 1 or more.")
 
 
+def _visualization_ids(spec: object) -> list[str]:
+    """The ids of a definition's visualizations, in their stored order."""
+    from app.services.dashboard_definition import upgrade
+
+    return list(upgrade(spec).get("visualizations") or {})
+
+
+def _focus_widget(before: list[str], after: list[str], operations: object = None) -> str | None:
+    """The widget the studio's stage should move to after a save, or ``None``.
+
+    The last visualization the save added; else the last one an operation
+    named (an upsert, a move, a ``set`` of ``visualizations.ID``, a layout)
+    that still exists. A removal or a whole rewrite names none.
+    """
+    added = [vid for vid in after if vid not in set(before)]
+    if added:
+        return added[-1]
+    kept = set(after)
+    for op in reversed(operations if isinstance(operations, list) else []):
+        if not isinstance(op, dict):
+            continue
+        named: object = None
+        if op.get("op") == "upsert" and isinstance(op.get("widget"), dict):
+            named = op["widget"].get("id")
+        elif op.get("op") == "move":
+            named = op.get("id")
+        elif op.get("op") == "set" and isinstance(op.get("path"), str) and op["path"].startswith("visualizations."):
+            named = op["path"].split(".", 1)[1]
+        elif op.get("op") == "layout" and isinstance(op.get("items"), list) and op["items"]:
+            last = op["items"][-1]
+            named = last.get("id") if isinstance(last, dict) else None
+        if isinstance(named, str) and named in kept:
+            return named
+    return None
+
+
 def _summarize(spec: dict) -> str:
     """One line per visualization: its id, type and place, and its heading - the agent's edit map."""
     from app.services.dashboard_studio import outline
@@ -140,8 +176,9 @@ def _summarize(spec: dict) -> str:
 
 def _saved(dashboard, *, verb: str) -> ToolResult:
     from app.services.custom_dashboards import DASHBOARD_MARKER
+    from app.services.dashboard_definition import upgrade
 
-    spec = dashboard.spec or {}
+    spec = upgrade(dashboard.spec)
     return ToolResult(
         tool_call_id="",
         content=(
@@ -214,9 +251,18 @@ def build_custom_dashboard_tools(
                 return _error("dashboard_id must be the id a previous call returned (omit it to create one).")
 
         if definition is not None:
-            payload = {**definition, "version": 2, "title": title} if isinstance(definition, dict) else definition
-            if subtitle and isinstance(payload, dict):
-                payload["description"] = subtitle
+            from app.services.dashboard_native import EXTENSION, is_native
+
+            if is_native(definition):
+                # A manifest (what the source editor shows): its title and description live in the extension.
+                extension = {**definition[EXTENSION], "title": title}  # type: ignore[index]
+                if subtitle:
+                    extension["description"] = subtitle
+                payload = {**definition, EXTENSION: extension}  # type: ignore[dict-item]
+            else:
+                payload = {**definition, "version": 2, "title": title} if isinstance(definition, dict) else definition
+                if subtitle and isinstance(payload, dict):
+                    payload["description"] = subtitle
         else:
             payload = {"title": title, "widgets": widgets}
             if subtitle:
@@ -283,6 +329,7 @@ def build_custom_dashboard_tools(
                 if found is None:
                     return _error(f"No dashboard `{dashboard_id}` you can edit was found.")
                 dashboard = found[0]
+                before = _visualization_ids(dashboard.spec)
                 await edit_dashboard(
                     own_db,
                     dashboard,
@@ -295,9 +342,12 @@ def build_custom_dashboard_tools(
                 )
                 result = _saved(dashboard, verb="Updated")
                 saved_id, saved_revision = dashboard.id, dashboard.revision
+                focus = _focus_widget(before, _visualization_ids(dashboard.spec), operations)
                 await own_db.commit()
                 _record(saved_id)
-                await emit_tool_event(DASHBOARD_SAVED_EVENT, dashboard_id=str(saved_id), revision=saved_revision)
+                await emit_tool_event(
+                    DASHBOARD_SAVED_EVENT, dashboard_id=str(saved_id), revision=saved_revision, focus_widget_id=focus
+                )
                 return result
         except DashboardSpecError as exc:
             return _error(str(exc))
@@ -545,6 +595,7 @@ def build_custom_dashboard_tools(
                 if found is None:
                     return _error(f"No dashboard `{dashboard_id}` you can edit was found.")
                 dashboard = found[0]
+                before = _visualization_ids(dashboard.spec)
                 inserted = await insert_pack_widgets(
                     own_db, user_id=user_uuid, dashboard=dashboard, pack=found_pack[0], widget_ids=widget_ids,
                     bindings={str(k): str(v) for k, v in (bindings or {}).items()}, after=after,
@@ -552,9 +603,12 @@ def build_custom_dashboard_tools(
                 )  # fmt: skip
                 result = _saved(dashboard, verb=f"Inserted {len(inserted)} widgets into")
                 saved_id, saved_revision = dashboard.id, dashboard.revision
+                focus = _focus_widget(before, _visualization_ids(dashboard.spec))
                 await own_db.commit()
                 _record(saved_id)
-                await emit_tool_event(DASHBOARD_SAVED_EVENT, dashboard_id=str(saved_id), revision=saved_revision)
+                await emit_tool_event(
+                    DASHBOARD_SAVED_EVENT, dashboard_id=str(saved_id), revision=saved_revision, focus_widget_id=focus
+                )
                 return result
         except (PackError, DashboardSpecError) as exc:
             return _error(str(exc))
@@ -786,7 +840,7 @@ def build_custom_dashboard_tools(
     widget_help = (
         "Widgets (each needs 'kind' plus that kind's keys; unknown keys are rejected). Every widget also takes "
         f"'id' (a short stable handle like 'score', for later edits), 'title' (its heading), 'layout' "
-        "({x, y, w, h} on a 12-column grid of 36 px rows; omitted: placed below the others), 'width' "
+        "({x, y, w, h} on a 12-column grid of 82 px rows; omitted: placed below the others), 'width' "
         f"({'|'.join(DASHBOARD_WIDTHS)}: how wide a widget without a layout is; phones stack every widget) and 'link' "
         f"({action}, shown beside the heading):\n"
         f"- score: label, value (number), max, unit, trend {{direction: up|down|flat, label, tone}}, series "
@@ -889,7 +943,8 @@ def build_custom_dashboard_tools(
                                     "setTimeRange) and containerOptions.visibility (showConditions / hideConditions naming "
                                     "expressions.conditions.ID {name, value: 'isSet($t$)'}, hideWhenNoData), layout (tabs + layoutDefinitions with "
                                     "structure [{item, position {x, y, w, h}}]), defaults, expressions. "
-                                    "get_dashboard shows one."
+                                    "get_dashboard shows one. The dashboard's stored manifest (platform widgets in their "
+                                    "platform's shape, the rest under x_xtm_one, as the source editor shows it) is accepted too."
                                 ),
                             }
                         }

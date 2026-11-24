@@ -229,7 +229,7 @@ describe("DashboardDataSourcesPanel", () => {
     expect(operations[1].value.layoutDefinitions.main.structure.at(-1)).toEqual({
       item: "viz_spare",
       type: "block",
-      position: { x: 0, y: 8, w: 6, h: 6 },
+      position: { x: 0, y: 8, w: 6, h: 3 },
     });
   });
 });
