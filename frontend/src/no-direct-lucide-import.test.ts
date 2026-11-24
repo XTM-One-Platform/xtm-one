@@ -91,7 +91,7 @@ const PENDING: Record<string, number> = {
   "src/pages/prompt-detail": 2,
   "src/pages/public": 7,
   "src/pages/relay-group-detail": 5,
-  "src/pages/settings": 48,
+  "src/pages/settings": 47,
   "src/pages/skill-detail": 5,
   "src/pages/template-detail": 3,
   "src/pages/xtm-one": 27,
