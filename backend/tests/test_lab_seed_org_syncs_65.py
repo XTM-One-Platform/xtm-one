@@ -45,7 +45,7 @@ def _source(name: str) -> str:
 
 @pytest.mark.parametrize(
     ("section", "source"),
-    [("assets", "opencti"), ("assets", "openaev"), ("asset_groups", "openaev"), ("tech_stack", "openaev")],
+    [("assets", "opencti"), ("assets", "openaev"), ("asset_groups", "openaev"), ("software", "openaev")],
 )
 def test_the_fixture_reads_rows_through_the_real_mappers(monkeypatch, section, source):
     module, imp = _asgi(monkeypatch, {})

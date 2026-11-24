@@ -51,9 +51,8 @@ from app.services.organization_context import (
 ROW_SECTIONS: dict[str, tuple[str, type[BaseModel], int]] = {
     "assets": ("assets_exposure", AssetEntry, 5000),
     "asset_groups": ("asset_groups", AssetGroupEntry, 500),
-    # #1495: the organization's software; ``tech_stack`` is its deprecated name, accepted for one release.
+    # #1495: the organization's software, written as Software entities (no ``tech_stack`` alias).
     "software": ("tech_stack", TechStackEntry, 500),
-    "tech_stack": ("tech_stack", TechStackEntry, 500),
     # Deprecated alias since #1501 (one release): an AI system is an asset of category ai_target.
     "ai_systems": ("assets_exposure", AssetEntry, 5000),
     # #1432: what the organization ships, keyed on the product like the software.
@@ -186,7 +185,7 @@ def plan_upsert(profile: OrganizationProfile, section: str, source: str, rows: l
     draft = profile.model_copy(deep=True)
     current: list[Any] = list(getattr(draft, attr))
     sourced = section in SOURCED_SECTIONS
-    name_key = "product" if section in ("software", "tech_stack", "shipped_products") else "name"
+    name_key = "product" if section in ("software", "shipped_products") else "name"
     by_key = {(r.source, r.external_id): i for i, r in enumerate(current) if sourced and r.external_id}
     by_name = {getattr(r, name_key).casefold(): r for r in current}
     seen: set[Any] = set()
@@ -374,8 +373,8 @@ def plan_record_remove(
     return plan
 
 
-#: Sections whose rows are Software entities of the asset store since #1495 (``tech_stack``: deprecated alias).
-SOFTWARE_SECTIONS: frozenset[str] = frozenset({"software", "tech_stack"})
+#: Sections whose rows are Software entities of the asset store since #1495.
+SOFTWARE_SECTIONS: frozenset[str] = frozenset({"software"})
 
 
 def software_key(vendor: Any, product: Any) -> tuple[str, str]:

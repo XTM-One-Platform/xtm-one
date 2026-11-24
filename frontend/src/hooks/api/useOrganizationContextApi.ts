@@ -426,7 +426,7 @@ export function useDraftOrganizationContext() {
 }
 
 /** A profile section the platform import fills (#11780); one run imports one section. */
-export type ImportSectionKey = "assets" | "asset_groups" | "ai_systems" | "tech_stack" | "crown_jewels" | "pirs";
+export type ImportSectionKey = "assets" | "asset_groups" | "ai_systems" | "software" | "crown_jewels" | "pirs";
 /** The Filigran platforms, then the endpoint sources read through a Microsoft integration (#1251). */
 export type ImportSourceKey =
   | "openaev"
