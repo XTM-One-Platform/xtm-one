@@ -261,6 +261,28 @@ def sync_provenance(plan: Any, sync: OrganizationContextSync, owner: User) -> di
     return sources
 
 
+def _links_changed(links: Any) -> bool:
+    """Whether a primary-asset link sync summary wrote anything (#1591 S3)."""
+    return isinstance(links, dict) and any(int(links.get(k) or 0) for k in ("added", "updated", "removed"))
+
+
+async def _recheck_held_signals(db: AsyncSession) -> dict[str, int] | dict[str, str]:
+    """#1591 S3: decide again the watchlist signals held for scope; never fails the sync."""
+    from app.services import ctem_scope_gate_store
+    from app.services.organizations import get_primary
+
+    try:
+        primary = await get_primary(db)
+        if primary is None:
+            return {}
+        async with db.begin_nested():
+            await db.flush()
+            return await ctem_scope_gate_store.recheck_held(db, organization_id=primary.id, since=datetime.now(UTC))
+    except Exception as exc:
+        logger.warning("CTEM held signals not decided again after the sync", exc_info=True)
+        return {"error": format_exception_message(exc)[:300]}
+
+
 async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: str) -> dict[str, Any]:
     """Run one section sync now and record its result on the row (the caller commits).
 
@@ -331,6 +353,9 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
         if not plan.error and plan.software:
             # An endpoint source (#1251): the software follows its devices even when no device row changed.
             result["software_changed"] = await imp.store_endpoint_software(db, plan, user_id=owner.id)
+        if not plan.error and (_links_changed(result.get("links")) or result.get("software_changed")):
+            # #1591 S3: a link or a device's software changed: the watchlist signals held for scope are decided again.
+            result["ctem_rechecked"] = await _recheck_held_signals(db)
         if plan.software_rows:
             result["software_rows"] = plan.software_rows
         if plan.software_error:

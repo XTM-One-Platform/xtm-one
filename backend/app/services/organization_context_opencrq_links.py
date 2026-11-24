@@ -101,6 +101,12 @@ class WantedLink:
     record_id: uuid.UUID
     roles: list[str]
     inherited_needs: dict[str, str]
+    #: ``opencrq`` for a link a person made in OpenCRQ, ``rule`` for one a Dependency Rule made (#1591 S3).
+    source: str = "opencrq"
+
+
+#: The link sources this sync writes and owns.
+SYNC_SOURCES: tuple[str, ...] = ("opencrq", "rule")
 
 
 @dataclass
@@ -167,7 +173,8 @@ def plan_links(
                 continue
             record_id = matches[0]
         roles = canonical_roles(link.get("roles"))
-        wanted = WantedLink(link_id, _key(jewel)[:200], record_id, roles, inherited_needs(roles))
+        source = "rule" if str(link.get("source") or "") == "rule" or link.get("ruleId") else "opencrq"
+        wanted = WantedLink(link_id, _key(jewel)[:200], record_id, roles, inherited_needs(roles), source)
         current = by_external.get(link_id)
         if current is None:
             plan.add.append(wanted)
@@ -177,6 +184,7 @@ def plan_links(
             current.record_id != record_id
             or current.crown_jewel_key != wanted.crown_jewel_key
             or list(current.roles or []) != roles
+            or current.source != source
         ):
             plan.update.append(wanted)
     plan.delete = [row.id for row in stored if row.external_id not in seen and not row.removed]
@@ -198,7 +206,7 @@ async def apply_links(db: AsyncSession, organization_id: uuid.UUID, plan: LinkPl
                 await db.execute(
                     select(OrganizationCrownJewelLink).where(
                         OrganizationCrownJewelLink.organization_id == organization_id,
-                        OrganizationCrownJewelLink.source == "opencrq",
+                        OrganizationCrownJewelLink.source.in_(SYNC_SOURCES),
                         OrganizationCrownJewelLink.external_id == wanted.external_id,
                     )
                 )
@@ -211,13 +219,14 @@ async def apply_links(db: AsyncSession, organization_id: uuid.UUID, plan: LinkPl
             row.crown_jewel_key = wanted.crown_jewel_key
             row.roles = wanted.roles
             row.inherited_needs = wanted.inherited_needs
+            row.source = wanted.source
     for wanted in plan.add:
         db.add(
             OrganizationCrownJewelLink(
                 organization_id=organization_id,
                 crown_jewel_key=wanted.crown_jewel_key,
                 record_id=wanted.record_id,
-                source="opencrq",
+                source=wanted.source,
                 external_id=wanted.external_id,
                 roles=wanted.roles,
                 inherited_needs=wanted.inherited_needs,
@@ -274,21 +283,26 @@ async def sync_links(
                 OrganizationAssetRecord.source,
                 OrganizationAssetRecord.external_id,
                 OrganizationAssetRecord.name_key,
+                OrganizationAssetRecord.fields["hostname"].astext,
             ).where(OrganizationAssetRecord.organization_id == organization_id)
         )
     ).all()
     by_opencrq: dict[str, uuid.UUID] = {}
     by_name: dict[str, list[uuid.UUID]] = {}
-    for record_id, source, external_id, name_key in rows:
+    for record_id, source, external_id, name_key, hostname in rows:
         if source == "opencrq" and external_id:
             by_opencrq[str(external_id)] = record_id
         by_name.setdefault(_key(name_key), []).append(record_id)
+        # #1591 S3: an OpenCRQ supporting asset named by a device's hostname (Intune, Defender) matches it too.
+        host = _key(hostname)
+        if host and host != _key(name_key):
+            by_name.setdefault(host, []).append(record_id)
     stored = list(
         (
             await db.execute(
                 select(OrganizationCrownJewelLink).where(
                     OrganizationCrownJewelLink.organization_id == organization_id,
-                    OrganizationCrownJewelLink.source == "opencrq",
+                    OrganizationCrownJewelLink.source.in_(SYNC_SOURCES),
                 )
             )
         ).scalars()
