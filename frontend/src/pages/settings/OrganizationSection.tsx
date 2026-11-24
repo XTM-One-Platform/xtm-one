@@ -6,7 +6,7 @@
  * of a fleet run). An administrator fills it once; each save is a new
  * version. The overview names how complete it is and the fields not filled,
  * the same list the agents report instead of guessing; a missing field opens
- * the form on it. The crown jewels reconcile with OpenCRQ's supporting assets:
+ * the form on it. The primary assets reconcile with OpenCRQ's supporting assets:
  * "Check against OpenCRQ" shows the plan, "Apply" writes it. Administrators
  * only. Built on the settings form kit (#9173, S1c). Five real tabs (#12329):
  * every card sits in one tab (lib/organization-profile-tabs.ts), the tab is a
@@ -141,7 +141,7 @@ const COUNTRY_CODES = Object.keys(ISO_3166_NUMERIC);
 const LIST_KEYS = ["crown_jewels", "shipped_products", "tech_stack"] as const;
 /** @i18n-keys */
 const LIST_TITLES = {
-  crown_jewels: "Crown jewels and business services",
+  crown_jewels: "Primary assets and business services",
   shipped_products: "Shipped products",
   tech_stack: "Software",
 } as const;
@@ -164,16 +164,16 @@ const MISSING_TARGET: Record<string, string> = {
 };
 
 /**
- * The fixed columns of the crown jewels table, read and edit (UX r2 B1 and B2 on #1174). Below a
+ * The fixed columns of the primary assets table, read and edit (UX r2 B1 and B2 on #1174). Below a
  * 72rem card (1080) Assets and Source step aside, so Business service and Owner keep about 150 px
  * each, their headers whole and their inputs usable on a synced row. Business service and Owner
  * share what is left; OpenCRQ holds its header and the sort mark.
  */
 export const JEWEL_WIDTHS = { select: 32, name: 240, criticality: 120, assets: 200, opencrq: 112, source: 112, actions: 96 } as const;
-/** The card width below which Assets and Source of the crown jewels table go to the Columns pill. */
+/** The card width below which Assets and Source of the primary assets table go to the Columns pill. */
 const JEWEL_STEP_ASIDE = "6xl" as const;
 
-/** The values of the crown jewels' OpenCRQ filter. @i18n-keys */
+/** The values of the primary assets' OpenCRQ filter. @i18n-keys */
 const OPENCRQ_LINK_LABELS = { linked: "Linked to OpenCRQ", not_linked: "Not linked to OpenCRQ" } as const;
 /** The OpenCRQ assets read, counted by criticality, when none reaches the check's threshold (#1558). @i18n-keys */
 const OPENCRQ_COUNT_LABELS = {
@@ -191,7 +191,7 @@ const OPENCRQ_COUNT_LABELS = {
 const AMOUNT_INPUT_CLASS = "[&_input]:pr-36";
 
 /**
- * The cards of the profile one page mounts alone (#1178, Sam 22 Nov 2026): CTEM > Inventory edits the tech stack,
+ * The cards of the profile one page mounts alone (#1178, Sam 22 Nov 2026): CTEM > Inventory edits the software inventory,
  * the AI systems, the assets and exposure, the asset groups, the policy and the outside lens with the same cards,
  * the same per-card edit and the same Save as Settings, nothing stored twice. Without it the whole profile page.
  */
@@ -223,7 +223,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const savedAt = data?.created_at ? intl.formatDate(new Date(data.created_at), { dateStyle: "medium", timeStyle: "short" }) : "";
   const save = useSaveOrganizationContext();
   const sync = useOpenCrqSync();
-  // One mechanism for OpenCRQ (#1134 S2): once crown jewels sync from OpenCRQ, the card's OpenCRQ
+  // One mechanism for OpenCRQ (#1134 S2): once primary assets sync from OpenCRQ, the card's OpenCRQ
   // button runs that sync (its filters, links and direction), never a second set of rules.
   const { data: profileSyncs } = useOrganizationSyncs("profile", !reader);
   const opencrqJewelSync = (Array.isArray(profileSyncs) ? profileSyncs : []).find((entry) => entry.section === "crown_jewels" && entry.source === "opencrq");
@@ -234,7 +234,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const [draft, setDraft] = useState<OrganizationDraftResponse | null>(null);
   const [draftFailed, setDraftFailed] = useState(false);
   const [plan, setPlan] = useState<OpenCrqSyncResponse | null>(null);
-  // "Restore from a past version" on the crown-jewel card (#1558).
+  // "Restore from a past version" on the primary-asset card (#1558).
   const [restoreOpen, setRestoreOpen] = useState(false);
   // The amount field the last Save refused: marked aria-invalid (the Input adapter draws the error border) until edited.
   const [invalidField, setInvalidField] = useState<AmountField | null>(null);
@@ -730,7 +730,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       {
         onSuccess: (result) => {
           setPlan(result.applied ? null : result);
-          if (result.applied) toast({ title: t_i18n("Crown jewels synchronized with OpenCRQ"), variant: "success" });
+          if (result.applied) toast({ title: t_i18n("Primary assets synchronized with OpenCRQ"), variant: "success" });
         },
         onError: (err) => toast({ title: t_i18n("OpenCRQ could not be read"), description: err.message, variant: "error" }),
       },
@@ -824,7 +824,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     );
   };
   /**
-   * The three lists (crown jewels, tech stack, AI systems) read on the shared DataTable (data
+   * The three lists (primary assets, software inventory, AI systems) read on the shared DataTable (data
    * tables slice 9): search, filters, sort, CSV and the pager. In edit they keep all of it on the
    * list editor (#12256, OrganizationListEditor): one row open at a time, the order frozen.
    */
@@ -901,7 +901,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const jewelColumns: DataTableColumn<JewelRow>[] = [
     {
       key: "name",
-      header: "Crown jewel",
+      header: "Primary asset",
       width: readWidth(JEWEL_WIDTHS.name),
       cell: ({ value }) => readCell(value.name),
       interactive: true,
@@ -942,7 +942,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       csv: ({ value }) => value.criticality,
     },
     {
-      // The crown jewel > asset link is edited on the crown jewel row (#11543 S3, placement rule).
+      // The primary asset > asset link is edited on the primary asset row (#11543 S3, placement rule).
       key: "assets",
       header: "Assets",
       hideable: true,
@@ -1060,7 +1060,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // The values a free-text field already holds in its list, offered as it is typed (slice 2): 150 rows stay consistent.
   const suggestId = (key: ListKey, field: string) => `${fieldId}-${key}-${field}-suggestions`;
   const jewelEdit: ListEditColumn<Jewel>[] = [
-    { key: "name", header: "Crown jewel", width: readWidth(JEWEL_WIDTHS.name), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("Crown jewel", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
+    { key: "name", header: "Primary asset", width: readWidth(JEWEL_WIDTHS.name), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("Primary asset", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
     { key: "business_service", header: "Business service", hideable: true, read: (v) => readCell(v.business_service), edit: (v, set) => editText("Business service", v.business_service, (business_service) => set({ business_service })), sortValue: (v) => v.business_service.toLowerCase(), firstSort: "asc" },
     { key: "owner", header: "Owner", hideable: true, read: (v) => readCell(v.owner), edit: (v, set) => editText("Owner", v.owner, (owner) => set({ owner }), false, "Owner", suggestId("crown_jewels", "owner")), sortValue: (v) => v.owner.toLowerCase(), firstSort: "asc" },
     { key: "criticality", header: "Criticality", hideable: true, headerClassName: "w-44", width: readWidth(120), read: (v) => readCell(v.criticality ? optionLabel(CRITICALITY_LABELS, v.criticality) : ""), edit: (v, set) => pick(CRITICALITY_LABELS, v.criticality, "Criticality", (criticality) => set({ criticality })), sortValue: (v) => Object.keys(CRITICALITY_LABELS).indexOf(v.criticality), firstSort: "desc" },
@@ -1150,14 +1150,14 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const header = (label: string) => [label, t_i18n(label)];
   const PASTE = {
     crown_jewels: {
-      title: "Paste crown jewels",
+      title: "Paste primary assets",
       example: "Customer portal, Online sales, Jane Doe, critical",
-      fieldLabels: { name: "Crown jewel", business_service: "Business service", owner: "Owner", criticality: "Criticality" },
+      fieldLabels: { name: "Primary asset", business_service: "Business service", owner: "Owner", criticality: "Criticality" },
       spec: {
         fields: ["name", "business_service", "owner", "criticality"],
         empty: { name: "", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" },
         name: "name",
-        headers: { name: header("Crown jewel"), business_service: header("Business service"), owner: header("Owner"), criticality: header("Criticality"), opencrq_asset_id: header("OpenCRQ") },
+        headers: { name: header("Primary asset"), business_service: header("Business service"), owner: header("Owner"), criticality: header("Criticality"), opencrq_asset_id: header("OpenCRQ") },
         choices: { criticality: choiceWords(CRITICALITY_LABELS) },
         identity: LIST_RULES.crown_jewels.identity,
       } as PasteSpec<Jewel>,
@@ -1457,7 +1457,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             {t_i18n(PROFILE_TAB_LABELS.knowledge)}
             <InfoTip
               label={t_i18n("About the knowledge and sources")}
-              content={t_i18n("The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.")}
+              content={t_i18n("The procedures and reference documents agents search, the organization context they preload, and the sources that feed the primary assets and PIRs.")}
             />
           </h3>
         </div>
@@ -1474,7 +1474,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                 <div className="max-w-xs space-y-1 content-compact">
                   <p>
                     {t_i18n(
-                      "What every agent and fleet reads before it ranks, scopes or estimates: your sector, regions, crown jewels, software, AI systems, intelligence requirements, risk appetite and costs. Agents cite the fields they used and name the ones not filled, never guess them. Each save is a new version.",
+                      "What every agent and fleet reads before it ranks, scopes or estimates: your sector, regions, primary assets, software, AI systems, intelligence requirements, risk appetite and costs. Agents cite the fields they used and name the ones not filled, never guess them. Each save is a new version.",
                     )}
                   </p>
                   <p data-testid="settings.organization.shared">{t_i18n("Shared context: the whole profile is visible to every user and every agent of this XTM One platform.")}</p>
@@ -1907,9 +1907,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             data-anchor="card"
             {...cardFold("crown_jewels", current.crown_jewels.length)}
             tabIndex={-1}
-            data-testid="settings.organization.crown-jewels"
+            data-testid="settings.organization.primary-assets"
             icon={Shield}
-            title={t_i18n("Crown jewels and business services")}
+            title={t_i18n("Primary assets and business services")}
             description={t_i18n("What the business cannot lose, ranked by criticality.")}
             action={
               <>
@@ -1929,7 +1929,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                           onSuccess: (result) =>
                             result.last_result?.error
                               ? toast({ title: t_i18n("The OpenCRQ sync failed"), description: result.last_result.error, variant: "error" })
-                              : toast({ title: t_i18n("Crown jewels synchronized with OpenCRQ"), variant: "success" }),
+                              : toast({ title: t_i18n("Primary assets synchronized with OpenCRQ"), variant: "success" }),
                           onError: (err) => toast({ title: t_i18n("OpenCRQ could not be read"), description: err.message, variant: "error" }),
                         })
                       }
@@ -1952,7 +1952,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                       variant="secondary"
                       size="icon"
                       aria-label={t_i18n("Restore from a past version")}
-                      data-testid="settings.organization.crown-jewels-restore"
+                      data-testid="settings.organization.primary-assets-restore"
                       disabled={editing || cardOpen !== null}
                       onClick={() => setRestoreOpen(true)}
                     >
@@ -1968,7 +1968,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                     className="gap-1.5"
                     onClick={() => addListRow("crown_jewels", { name: "", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" })}
                   >
-                    <Plus className="h-3.5 w-3.5" /> {t_i18n("Add a crown jewel")}
+                    <Plus className="h-3.5 w-3.5" /> {t_i18n("Add a primary asset")}
                   </Button>
                 )}
               </>
@@ -1981,11 +1981,11 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               searchFields: (v) => [v.name, v.business_service, v.owner],
               rowLabel: (v) => v.name,
               storageKey: "settings-organization-crown-jewels",
-              rowTestId: "settings.organization.crown-jewel-row",
-              emptyLabel: t_i18n("No crown jewel yet: agents cannot rank by business impact."),
+              rowTestId: "settings.organization.primary-asset-row",
+              emptyLabel: t_i18n("No primary asset yet: agents cannot rank by business impact."),
             }) ??
               (current.crown_jewels.length === 0 ? (
-                <p className="text-default-secondary">{t_i18n("No crown jewel yet: agents cannot rank by business impact.")}</p>
+                <p className="text-default-secondary">{t_i18n("No primary asset yet: agents cannot rank by business impact.")}</p>
               ) : (
                 <DataTable
                   rows={current.crown_jewels.map((value, index) => ({ index, value }))}
@@ -1995,11 +1995,11 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                   searchFields={(row) => [row.value.name, row.value.business_service, row.value.owner]}
                   searchPlaceholder={t_i18n("Search...")}
                   filters={jewelFilters}
-                  exportName="crown-jewels"
+                  exportName="primary-assets"
                   urlKey="ocj_"
-                  storageKey="settings-organization-crown-jewels"
-                  emptyLabel={t_i18n("No crown jewel yet: agents cannot rank by business impact.")}
-                  rowTestId="settings.organization.crown-jewel-row"
+                  storageKey="settings-organization-primary-assets"
+                  emptyLabel={t_i18n("No primary asset yet: agents cannot rank by business impact.")}
+                  rowTestId="settings.organization.primary-asset-row"
                 />
               ))}
             {plan && (
@@ -2015,7 +2015,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                     {ratedCounts && <p className="text-default-secondary">{t_i18n("By criticality: {counts}", { counts: ratedCounts })}</p>}
                   </div>
                 ) : planEmpty ? (
-                  <p>{t_i18n("The crown jewels and OpenCRQ already agree.")}</p>
+                  <p>{t_i18n("The primary assets and OpenCRQ already agree.")}</p>
                 ) : (
                   <ul className="list-disc space-y-1 pl-5">
                     {plan.plan.linked.map((row) => (
@@ -2025,7 +2025,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                       <li key={`p-${row.opencrq_asset_id}`}>{t_i18n("Set {name} to {criticality} in OpenCRQ", { name: row.name, criticality: criticalityLabel(row.criticality) })}</li>
                     ))}
                     {plan.plan.pulled_from_opencrq.map((row) => (
-                      <li key={`u-${row.opencrq_asset_id}`}>{t_i18n("Add {name} from OpenCRQ as a crown jewel", { name: row.name })}</li>
+                      <li key={`u-${row.opencrq_asset_id}`}>{t_i18n("Add {name} from OpenCRQ as a primary asset", { name: row.name })}</li>
                     ))}
                     {plan.plan.ambiguous.map((name) => (
                       <li key={`a-${name}`}>{t_i18n("{name} matches several OpenCRQ assets: link it by hand", { name })}</li>
@@ -2078,7 +2078,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             <OrganizationCrownJewelsRestoreDialog open={restoreOpen} onOpenChange={setRestoreOpen} currentVersion={data?.version ?? null} />
           </SettingsCard>
 
-          {/* What the organization ships (#1432), apart from the tech stack it runs: CTEM resolves a vulnerability on one to its repositories. */}
+          {/* What the organization ships (#1432), apart from the software inventory it runs: CTEM resolves a vulnerability on one to its repositories. */}
           <SettingsCard
             id={`${fieldId}-shipped_products`}
             className={SECTION_BAR_ANCHOR_CLASS}

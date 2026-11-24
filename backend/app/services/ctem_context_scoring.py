@@ -14,7 +14,7 @@ Formula (documented in the PR and pinned by ``tests/test_ctem_context_scoring.py
    ones an analyst needs to judge that stage for the organization. The stage's
    context coverage ``C`` is the share of them the profile fills (0 to 1).
 2. The stage's evidence score ``E`` is its quantitative score ``Q``, except
-   for Prioritization when the tech stack narrowed the known-exploited count
+   for Prioritization when the software narrowed the known-exploited count
    (``kev_tailored_count``): ``E = (Q + T) / 2`` with
    ``T = max(0, 100 - 20 * kev_tailored_count)`` (each known-exploited CVE in
    software the organization runs costs 20 points).

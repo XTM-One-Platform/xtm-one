@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * The editing model of a list of the organization profile (crown jewels, tech stack, AI
+ * The editing model of a list of the organization profile (primary assets, software inventory, AI
  * systems, assets, asset groups, accepted risks, enterprise knowledge; #12256): the rows of
  * an open edit with their state (new, edited, removed), the values Save writes, and the
  * checks a row "needs attention" for. Pure, so the page and its tests share it.
@@ -207,7 +207,7 @@ export const LIST_RULES = {
     ],
     identity: (value: Tech) => (value.product.trim() ? `${value.product.trim()}\u0000${value.vendor.trim()}` : ""),
   },
-  // What the organization ships (#1432): identified as the tech stack is, by product and vendor.
+  // What the organization ships (#1432): identified as the software inventory is, by product and vendor.
   shipped_products: {
     check: (value: Shipped): ListIssue[] => [
       ...(value.product.trim() ? [] : [LIST_ISSUES.emptyName]),

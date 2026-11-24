@@ -117,7 +117,9 @@ interface CtemCaseValidation {
   provider: string;
   kind: string;
   ref: string;
-  result: "passed" | "not_exposed" | "failed" | "pending";
+  /** "inconclusive" (#1692): a pass that proves nothing, the word given kept in `reported_result`. */
+  result: "passed" | "not_exposed" | "failed" | "pending" | "inconclusive";
+  reported_result?: "passed" | "not_exposed";
   at: string;
   mitigation_only?: boolean;
   note?: string | null;
@@ -565,7 +567,7 @@ export interface CtemCasesOverviewCase {
   updated_at: string | null;
   state_since: string | null;
   waiting_on: { gate: string | null; by: string | null; since: string | null } | null;
-  /** The crown jewel the case touches among the issues the caller sees; null when none. */
+  /** The primary asset the case touches among the issues the caller sees; null when none. */
   crown_jewel: string | null;
 }
 

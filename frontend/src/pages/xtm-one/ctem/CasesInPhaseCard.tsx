@@ -9,7 +9,7 @@
  * its equal heights. Counts by status, each a link to the list on that phase and
  * status; the decisions waiting, each a link to its case; the five cases that
  * need attention first (waiting first, then priority, then the oldest status)
- * with their priority, age, last change and the crown jewel they touch; a link
+ * with their priority, age, last change and the primary asset they touch; a link
  * to the phase's list. Governance & Risk carries no case phase: the card counts
  * the decisions waiting and the risks accepted, across phases, under its own
  * title "Decisions and accepted risks" (#1624, UX B2).
@@ -120,7 +120,7 @@ export function CasesInPhaseCard({ stage, backTo }: { stage: CtemStageKey | "gov
     governance ? casesListHref({ state }) : `${casesListHref({ phase: stage })}&state=${state}`;
 
   const empty = !anyCase
-    ? t_i18n("No case yet: cases appear when a signal matches your scope or open issues on your stack share a fix.")
+    ? t_i18n("No case yet: cases appear when a signal matches your scope or open issues on your software share a fix.")
     : governance
       ? t_i18n("No decision waiting and no accepted risk.")
       : t_i18n("No open case in {stage}: every case is in another phase or resolved.", { stage: stageLabel });

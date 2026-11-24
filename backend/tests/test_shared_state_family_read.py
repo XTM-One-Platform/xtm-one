@@ -9,12 +9,15 @@ where the path resolves in one call and counts the others.
 from __future__ import annotations
 
 import uuid
+from typing import Any
+
+import pytest
 
 import app.services.builtin_tools as builtin_tools_module
 from app.tools.base import ToolCall
 
 
-def _executor():
+def _executor() -> Any:
     _defs, executor = builtin_tools_module.build_shared_state_tools(None, str(uuid.uuid4()), str(uuid.uuid4()))
     return executor
 
@@ -63,3 +66,36 @@ async def test_a_long_part_is_cut_with_the_exact_read_named(monkeypatch):
     )
     text = result.content if hasattr(result, "content") else str(result)
     assert "get_shared_state(key='ev-1', path='by_id.g1') reads it whole" in text
+
+
+async def test_a_family_read_applies_where_json_and_fields_to_each_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    """where_json and fields filter the list under the path in each key (#1760)."""
+    from app.services import shared_state
+
+    states = [
+        {"key": "g", "status": "active", "value": {"gaps": [{"id": "a", "n": 1}, {"id": "b", "n": 2}]}},
+        {"key": "g:low", "status": "active", "value": {"gaps": [{"id": "c", "n": 3, "what": "long"}]}},
+        {"key": "g:low-2", "status": "active", "value": {"gaps": [{"id": "d", "n": 4}]}},
+    ]
+
+    async def _list_states(**kwargs: Any) -> list[dict[str, Any]]:
+        return [s for s in states if str(s["key"]).startswith(str(kwargs["key_prefix"]))]
+
+    monkeypatch.setattr(shared_state, "list_states", _list_states)
+    result = await _executor().execute_tool(
+        ToolCall(
+            id="d",
+            name="get_shared_state",
+            arguments={
+                "key": "g*",
+                "path": "gaps",
+                "where_json": '[{"id": "b"}, {"id": "c"}]',
+                "fields": ["id"],
+            },
+        )
+    )
+    text = result.content if hasattr(result, "content") else str(result)
+    assert "found in 3 of 3 active key(s); where_json matched 2 item(s) in 2 key(s)" in text
+    assert '[{"id": "b"}]' in text and '[{"id": "c"}]' in text
+    assert '"a"' not in text and '"d"' not in text and "long" not in text
+    assert "`g:low-2`" not in text

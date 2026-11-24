@@ -21,7 +21,7 @@ export interface ProfileLike {
     owner: string;
     criticality: string;
     opencrq_asset_id: string;
-    /** The assets and asset groups (by name) the crown jewel runs on (#11543, groups apart since #11781). */
+    /** The assets and asset groups (by name) the primary asset runs on (#11543, groups apart since #11781). */
     asset_names?: string[];
   } & Provenance)[];
   /** `version`: the version the organization runs, optional (CTEM-11, #894): cases then name the version to reach. */
@@ -454,7 +454,7 @@ export interface ProfileForm extends Omit<ProfileLike, "risk_appetite" | "loaded
 }
 
 /**
- * The criticality levels in words, shared by the crown jewels and the tracked
+ * The criticality levels in words, shared by the primary assets and the tracked
  * organizations. Criticality-specific keys: the bare "Medium" key is
  * translated in its time sense elsewhere (fr "Moyen terme"). @i18n-keys
  */
@@ -471,7 +471,7 @@ export const FIELD_LABELS = {
   sector: "Sector",
   regions: "Regions of operation",
   size: "Organization size",
-  crown_jewels: "Crown jewels and business services",
+  crown_jewels: "Primary assets and business services",
   tech_stack: "Software",
   ai_systems: "AI systems inventory",
   pir_ids: "Priority intelligence requirements (PIRs)",
@@ -738,7 +738,7 @@ export function fromForm(form: ProfileForm): { profile: ProfileLike } | { invali
           // The sync settings travel with the target: a save never resets them to the defaults (#917).
           ...(form.ticketing.sync ? { sync: cleanTicketingSync(form.ticketing.sync) } : {}),
         },
-        // Rows left blank in the editors are dropped, as the crown jewels' are (#11543 S3).
+        // Rows left blank in the editors are dropped, as the primary assets' are (#11543 S3).
         ...(form.assets_exposure ? { assets_exposure: form.assets_exposure.filter((asset) => asset.name.trim()) } : {}),
         ...(form.asset_groups ? { asset_groups: form.asset_groups.filter((group) => group.name.trim()) } : {}),
         ...(form.prioritization_policy

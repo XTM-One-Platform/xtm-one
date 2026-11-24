@@ -219,7 +219,7 @@ _EXPOSURE_BRIEFING_PROMPT = (
     "fraud (phishing, brand abuse, leaked credentials/cards, takedowns). Frame "
     "the entire briefing for THAT vertical.\n\n"
     "Then call `get_organization_context` once: rank findings and next steps by "
-    "the sector, regions, primary assets, tech stack and PIRs it returns, and say "
+    "the sector, regions, primary assets, software and PIRs it returns, and say "
     "which fields you used. When a field is not filled, do not guess it: the "
     "briefing stays generic on that point (an administrator fills the profile in "
     "Settings > Organization).\n\n"
@@ -345,7 +345,7 @@ _STAGE_DEFS: list[dict] = [
         "name": "CTEM Prioritization Analyst",
         "icon": "Target",
         "focus": "whether attention is focused on what matters most",
-        "cyber": "which exposures to fix FIRST: weigh known-exploited (CISA KEV) and high-EPSS CVEs, indicator sightings (threats actually observed vs merely theoretical) and Priority Intelligence Requirements, and judge each against the organization's tech stack (get_organization_context) - a critical CVE in software they don't run is not a priority",
+        "cyber": "which exposures to fix FIRST: weigh known-exploited (CISA KEV) and high-EPSS CVEs, indicator sightings (threats actually observed vs merely theoretical) and Priority Intelligence Requirements, and judge each against the organization's software inventory (get_organization_context) - a critical CVE in software they don't run is not a priority",
         "fimi": "attribution focus - the share of channels attributed to a threat actor, narratives targeting imminent high-stakes events, and amplification",
         "fraud": "containment - live phishing infrastructure, leaked card/credential volume, and how much fraud is neutralized vs. still active",
     },
@@ -419,7 +419,7 @@ def _stage_prompt(d: dict) -> str:
         f"- fraud: {d['fraud']}.\n\n"
         "Ground the analysis in the ORGANIZATION CONTEXT: call "
         "get_organization_context (the profile saved in Settings, the only "
-        "source of company context) for the tech stack, primary assets, sector, "
+        "source of company context) for the software, primary assets, sector, "
         "PIRs and risk appetite, and judge what is actually relevant (e.g. "
         "whether a tracked CVE affects software they run, which assets matter "
         "most, which narratives/brands are in scope). Name the fields it "
@@ -2082,7 +2082,7 @@ BUILTIN_AGENTS: list[dict] = [
     # once they are seeded, the seed skips a slug it does not know.
     {
         "slug": "ctem-vuln-prioritization-orchestrator",
-        # Vulnerability and exposure work reads the whole tech stack (#11533),
+        # Vulnerability and exposure work reads the whole software inventory (#11533),
         # the assets with their exposure and the prioritization policy (#11543).
         "organization_context_categories": ["software", "primary_assets", "assets_exposure", "prioritization_policy"],
         "persona": "ctem-vuln-prioritization-orchestrator",
@@ -2118,13 +2118,13 @@ BUILTIN_AGENTS: list[dict] = [
     },
     {
         "slug": "ctem-vuln-triage-analyst",
-        # Vulnerability and exposure work reads the whole tech stack (#11533),
+        # Vulnerability and exposure work reads the whole software inventory (#11533),
         # the assets with their exposure and the prioritization policy (#11543).
         "organization_context_categories": ["software", "primary_assets", "assets_exposure", "prioritization_policy"],
         "persona": "ctem-vuln-triage-analyst",
         "name": "Vuln Triage Analyst",
         "description": (
-            "Matches a CVE to the organization's tech stack and assets and "
+            "Matches a CVE to the organization's software inventory and assets and "
             "scores it (EPSS, KEV, threat citation, asset criticality); a CVE "
             "in software the organization does not run is closed not applicable."
         ),
@@ -2223,7 +2223,7 @@ CTEM_FLEET_AGENTS: list[dict] = [
         "name": "Threat Relevance Analyst",
         "description": (
             "Scores a threat or a vulnerability against the organization "
-            "profile (sector, regions, tech stack, primary assets, PIRs) and "
+            "profile (sector, regions, software, primary assets, PIRs) and "
             "says whether it is relevant, with the evidence of each factor."
         ),
         "icon": "Target",
@@ -2251,7 +2251,7 @@ CTEM_FLEET_AGENTS: list[dict] = [
     {
         **_CTEM_ROLE_AGENT_BASE,
         "slug": "ctem-remediation-coordinator",
-        # Vulnerability and exposure work reads the whole tech stack (#11533),
+        # Vulnerability and exposure work reads the whole software inventory (#11533),
         # the assets with their exposure and the prioritization policy (#11543).
         "organization_context_categories": ["software", "primary_assets", "assets_exposure", "prioritization_policy"],
         "persona": "ctem-remediation-coordinator",
@@ -2303,7 +2303,7 @@ assessment is reported as not assessed yet, with the date of the last one.
 3. When a stage is stale or a question needs a fresh read, delegate the stage \
 to its analyst in your fleet; the briefing goes to the Exposure Briefing \
 Analyst.
-4. Use the organization context (sector, primary assets, tech stack, risk \
+4. Use the organization context (sector, primary assets, software, risk \
 appetite) to say why a gap matters to this organization. A field the profile \
 does not hold is named as missing, never guessed.
 
@@ -2734,7 +2734,7 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
         "name": "New KEV or EPSS jump",
         "description": (
             "Triages a vulnerability that enters the CISA KEV list or whose EPSS "
-            "score crosses 0.5, against the organization's tech stack."
+            "score crosses 0.5, against the organization's software inventory."
         ),
         "trigger_type": "integration_event",
         "trigger_config": {
@@ -2756,7 +2756,7 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
         "description": (
             "Triages a vulnerability that OpenCTI links to a Software, Infrastructure or "
             "System the organization runs, whatever its KEV or EPSS: the source must name a "
-            "tech stack product or an asset of the profile, checked before any model call."
+            "software product or an asset of the profile, checked before any model call."
         ),
         "trigger_type": "integration_event",
         "trigger_config": {
@@ -2773,7 +2773,7 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
         },
         "prompt": _CTEM_F2_TRIAGE_PROMPT.format(
             priority=(
-                "The relationship's source is in the organization's tech stack or assets (checked "
+                "The relationship's source is in the organization's software inventory or assets (checked "
                 "before this run): the CVE concerns software we run; triage it on its own scores."
             )
         ),
@@ -2893,6 +2893,8 @@ _CASE_EVENT_NAMES: tuple[str, ...] = (
     "ctem_case.validation_finished",
     # #917: the case's ticket reached done in the declared ticketing system.
     "ctem_case.retest_requested",
+    # #1736: the case waits on nobody (no open gate, no armed reminder) past the stall window.
+    "ctem_case.stalled",
 )
 
 # ── A person's answer to a waiting gate resumes the case (#1388) ──
@@ -2961,7 +2963,13 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: di
             "move the case's work item to its next step. "
             "On ctem_case.retest_requested (its ticket reached done): add a note to that work "
             "item and run the case's re-test; write it with record_ctem_case_validation (kind "
-            "retest): the case closes on the re-test, never on the ticket. Never keep an "
+            "retest): the case closes on the re-test, never on the ticket. "
+            "On ctem_case.stalled (the case waits on nobody: no open gate item, no armed reminder): "
+            "add a note to that work item, re-read the case and run the loop again from its next step. "
+            "Every run ends on exactly one of: a needs_human work item keyed `ctem:` and ending with the "
+            "case id, with an ask card addressed to a named person or team and a deadline; an armed "
+            "`ctem-loop-reminder:` timer for the case id (arm_timer); or a terminal case state. A next "
+            "step written only as prose leaves the case waiting on nobody. Never keep an "
             "open item only in shared state. End with the case id, its state and the next step."
         ),
     }
@@ -3646,6 +3654,10 @@ BUILTIN_KNOWLEDGE_BASES: list[dict] = [
             "organization."
         ),
         "tags": ["builtin", "company"],
+        # The platform seeds this collection, never its documents: they are the
+        # customer's, so agents and people with write access add, update and
+        # delete them (helpers.knowledge_base_content_lock, #1763).
+        "user_content": True,
         # The CTEM assistant, briefing and stage analysts read the organization
         # context of Settings (get_organization_context), never this knowledge
         # base (#11464); the seed removes their former binding.

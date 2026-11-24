@@ -13,13 +13,15 @@ By default, every agent also starts each chat and each run with a short block: t
 | Category | In the prompt | Read with the tool |
 |---|---|---|
 | Identity (name, sector, regions, size, risk appetite, currency) | Always, in the short block | The whole profile |
-| `primary_assets`, `software`, `shipped_products`, `ai_systems`, `pirs`, `assets_exposure`, `tracked_organizations` | Their size, in the short block; their rows only when preloaded | `category`, filtered by `query`, paged by `offset` and `limit` (up to 200 rows a page), so a list of any length is read whole |
+| `primary_assets`, `software`, `shipped_products`, `ai_systems`, `pirs`, `assets_exposure`, `tracked_organizations` | Their size, in the short block; their rows only when preloaded | `category`, filtered by `query`, paged by `offset` and `limit` (up to 200 rows a page), so a list of any length is read whole. `assets_exposure` reads the merged assets of **CTEM > Inventory** (one row per real asset, with its sources and merged records) and its `query` also takes `field:value` terms on `category`, `subcategory`, `criticality`, `internet_facing`, `os_family`, `source` and `group` |
 | `prioritization_policy` | Its number of rules, in the short block; the rules only when preloaded | One row per threshold you set, per exclusion and per accepted risk |
 | `enterprise_knowledge` | Its number of linked knowledge bases, never the content | Without `query`, the linked knowledge bases; with `query`, the passages that answer it, only from the knowledge bases the person the agent acts for can read |
 
+A vulnerability on a product named like one of your imported GitHub or GitLab repositories (a CPE product part or a plain name, case, `-` and `_` ignored) resolves to that repository in CTEM without a `shipped_products` row; forks are left out.
+
 `crown_jewels` and `tech_stack`, the former names of `primary_assets` and `software`, are still read for one release; a saved selection naming them was renamed on upgrade.
 
-The short block stays the same size whatever the length of the lists. An agent asked about a vulnerability reads the tech stack page by page, or narrows it to a vendor or a product with `query`.
+The short block stays the same size whatever the length of the lists. An agent asked about a vulnerability reads the software inventory page by page, or narrows it to a vendor or a product with `query`.
 
 You choose at three levels, the most specific one winning:
 
@@ -27,7 +29,7 @@ You choose at three levels, the most specific one winning:
 - **An agent's Configuration > General**: `Organization context` is `Inherit` (follow the platform), `Always` or `Off`; `Preloaded organization categories` is `Inherit` or a list of its own.
 - **An assignment's parameters**: the same two fields, `Inherit` following the agent, then the platform.
 
-A preloaded category is loaded after the short block, capped, with the call that reads the rest. Each form shows the value in effect and where it comes from. `Off` on an agent or an assignment also removes the tool; the platform switch removes the short block only. A fleet run keeps its fuller profile block and does not repeat the short block. Every built-in agent inherits the platform default; the vulnerability and remediation agents of the exposure management fleets preload the tech stack, the crown jewels, the assets and exposure, and the prioritization policy.
+A preloaded category is loaded after the short block, capped, with the call that reads the rest. Each form shows the value in effect and where it comes from. `Off` on an agent or an assignment also removes the tool; the platform switch removes the short block only. A fleet run keeps its fuller profile block and does not repeat the short block. Every built-in agent inherits the platform default; the vulnerability and remediation agents of the exposure management fleets preload the software inventory, the crown jewels, the assets and exposure, and the prioritization policy.
 
 Agents cite the fields they used. For a field you have not filled, they name it in their output instead of guessing it: "the crown jewels are not set", for example. The profile is treated as information typed by a person, never as instructions to the agent.
 
@@ -58,7 +60,7 @@ Reading the profile needs nothing. Changing it is the **Organization Profile Edi
 - `list_organization_versions` lists the saved versions of the profile, newest first, with their source, author and crown jewel count; with `version` it reads that version's whole profile. `restore_organization_version` saves the next version with some fields (or every field) taken from a past one, with the same checks as the restore on this page, and answers the rows it drops; each restore writes an audit log entry.
 - `update_organization_context` and `restore_organization_version` take `based_on_version`, the version the agent read: when another version was saved since, nothing is saved and the agent is told to read the profile again.
 - `reconcile_organization_with_opencrq` runs the crown-jewel reconcile with OpenCRQ of this page: `apply` false (the default) answers the plan, `apply` true saves a version of the profile. Nothing is written to OpenCRQ: the assets read are its primary assets.
-- `upsert_organization_rows` adds or updates rows of one section without resending the list. Assets and asset groups are keyed on the source the rows come from and their `external_id` there; a row a person wrote (source `manual`, `csv` or `api`) is never updated or removed, and a field the source does not send (owner, environment, group) keeps the value a person set. Tech stack products and AI systems are added when their name is new and never overwritten. Rows are validated like the CSV import; a bad row is refused with its reason and the others go on. At most 500 rows per call.
+- `upsert_organization_rows` adds or updates rows of one section without resending the list. Assets and asset groups are keyed on the source the rows come from and their `external_id` there; a row a person wrote (source `manual`, `csv` or `api`) is never updated or removed, and a field the source does not send (owner, environment, group) keeps the value a person set. Software products and AI systems are added when their name is new and never overwritten. Rows are validated like the CSV import; a bad row is refused with its reason and the others go on. At most 500 rows per call.
 - `remove_organization_rows` removes the assets or asset groups a source synced, by `external_id` (a device retired from the source).
 - `run_organization_import` runs the import of [Draft the profile from your platforms](#draft-the-profile-from-your-platforms) for one section and one platform, with the same rules.
 - `list_organization_syncs`, `create_organization_sync` and `run_organization_sync` read, add and run now the scheduled syncs of **Settings > Organization > Syncs** (see [Keep a section in sync](#keep-a-section-in-sync)). A sync an agent creates is saved with the administrator the agent acts for as its owner: its runs read the platform with that administrator's token, exactly as a sync saved in the dialog. The agent previews the import with `run_organization_import` first; `create_organization_sync` refuses what the scheduler could not run (an unknown section, a platform that cannot feed it, an unknown time zone) and a second **Sync all** schedule.
@@ -79,7 +81,7 @@ then upsert them into the assets with upsert_organization_rows, source intune,
 rows_format intune_device. Show me the preview first; apply only when I say so.
 ```
 
-With `rows_format` `intune_device` the platform maps each device itself: the Intune device id is the `external_id`, the operating system gives the category (Windows, macOS and Linux devices are workstations, laptops when Intune says so; iOS and Android devices are smartphones, iPads tablets), and the operating system and compliance state become tags (`os:windows`, `compliance:noncompliant`). The primary user's name becomes the owner only when you pass `include_owner` true. With `intune_detected_app`, detected apps are reduced to the security products among them (Defender, CrowdStrike, SentinelOne and the like), added to the tech stack.
+With `rows_format` `intune_device` the platform maps each device itself: the Intune device id is the `external_id`, the operating system gives the category (Windows, macOS and Linux devices are workstations, laptops when Intune says so; iOS and Android devices are smartphones, iPads tablets), and the operating system and compliance state become tags (`os:windows`, `compliance:noncompliant`). The primary user's name becomes the owner only when you pass `include_owner` true. With `intune_detected_app`, detected apps are reduced to the security products among them (Defender, CrowdStrike, SentinelOne and the like), added to the software inventory.
 
 **On a schedule.** To keep the assets in sync, give the same agent an assignment with a schedule trigger (for example `0 6 * * *`, every day at 06:00) and a prompt such as:
 
@@ -104,7 +106,7 @@ run it once now with run_organization_sync and report the counts.
 
 ## Sources
 
-At the top of **Settings > Organization**, the `Sources` panel says who feeds the profile before the tabs say what it holds. It lists each connected platform (OpenCTI, OpenAEV, OpenCRQ) with its number of syncs, then the rows typed by hand, imported from CSV, written through the API or kept by an agent. Each source shows one chip per section it fills (crown jewels, tech stack, AI systems, assets, asset groups) with its number of rows; a chip opens that section's tab, filtered on the source where its table has a `Source` filter. `Add a sync` opens the import stepper: pick a section and a platform, preview the rows, then turn on `Keep in sync`. With no source yet, the panel says where to start.
+At the top of **Settings > Organization**, the `Sources` panel says who feeds the profile before the tabs say what it holds. It lists each connected platform (OpenCTI, OpenAEV, OpenCRQ) with its number of syncs, then the rows typed by hand, imported from CSV, written through the API or kept by an agent. Each source shows one chip per section it fills (crown jewels, software inventory, AI systems, assets, asset groups) with its number of rows; a chip opens that section's tab, filtered on the source where its table has a `Source` filter. `Add a sync` opens the import stepper: pick a section and a platform, preview the rows, then turn on `Keep in sync`. With no source yet, the panel says where to start.
 
 ## Edit the profile
 
@@ -145,11 +147,11 @@ OpenCRQ lists the same assets as supporting assets, each with its own criticalit
 
 Once crown jewels are kept in sync from OpenCRQ (see [Keep a section in sync](#keep-a-section-in-sync)), the card shows `Sync with OpenCRQ now` instead: it runs that sync at once, with its own filters and rules, so there is one mechanism for OpenCRQ, not two. OpenCRQ is read with your own OpenCRQ access. See [XTM One in OpenCRQ](../usage/xtm-suite/opencrq.md).
 
-## Tech stack
+## Software
 
-The tech stack lists the products you run, so that agents can match vulnerabilities to them. `Add a product` adds a row with the `Product`, its `Vendor` and, optionally, its `CPE`: the standard product identifier that vulnerability records use, which makes the match exact.
+The software inventory lists the products you run, so that agents can match vulnerabilities to them. `Add a product` adds a row with the `Product`, its `Vendor` and, optionally, its `CPE`: the standard product identifier that vulnerability records use, which makes the match exact.
 
-When your assets carry their installed software (from a sync or an import), the tech stack agents read is built from it: one entry per product, with each version seen and the number of assets running it, and the sources that report it. The rows you typed stay: a product no asset reports (a SaaS application, a cloud service) keeps its own entry, and a CPE you typed wins over the one a source reports. `GET /api/v1/organization-context/software` answers the same list (the CTEM > Inventory > Software tab), and `GET /api/v1/organization-context/assets/by-software?product=` lists the assets running a product.
+When your assets carry their installed software (from a sync or an import), the software inventory agents read is built from it: one entry per product, with each version seen and the number of assets running it, and the sources that report it. The rows you typed stay: a product no asset reports (a SaaS application, a cloud service) keeps its own entry, and a CPE you typed wins over the one a source reports. `GET /api/v1/organization-context/software` answers the same list (the CTEM > Inventory > Software tab), and `GET /api/v1/organization-context/assets/by-software?product=` lists the assets running a product.
 
 ### Software from an SBOM
 
@@ -174,7 +176,7 @@ Scripts list the saved versions, newest first, with `GET /api/v1/organization-co
 XTM One can propose a profile from what your connected platforms already hold:
 
 - OpenCTI: your organization's name, its first sector and your priority intelligence requirements;
-- OpenAEV: your security platforms (EDR, SIEM and others), as tech stack entries;
+- OpenAEV: your security platforms (EDR, SIEM and others), as software inventory entries;
 - OpenCRQ: the supporting assets rated high or very high, as crown jewels linked to their asset.
 
 Only empty fields are filled: what a person typed always wins. Each filled field names the platform it came from, and a platform that is not connected or cannot be read is reported instead of failing the draft. Each platform is read with your own access. No model is involved.
@@ -185,7 +187,7 @@ The draft is a proposal, never a save. In **Settings > Organization**, open **Dr
 
 **Settings > Organization > Import from the platforms** imports one section of the profile from one connected platform, with no model call, in five steps:
 
-1. **What to import**: assets, asset groups, AI systems, tech stack, crown jewels or PIRs.
+1. **What to import**: assets, asset groups, AI systems, software inventory, crown jewels or PIRs.
 2. **Source**: the platforms that hold this section, shown with their logo. A platform that is not connected or not readable with your account is shown greyed, with the reason.
 3. **Filters**: each value is picked from the platform itself, never typed.
 4. **Mapping**: each profile field with the platform attribute it reads, its fallback, and an example taken from the platform. The fields the platform does not provide are listed: rows keep what you typed for them.
@@ -197,7 +199,7 @@ The draft is a proposal, never a save. In **Settings > Organization**, open **Dr
 | Assets | OpenAEV | asset groups, tags, category, subcategory, criticality, platform |
 | Asset groups, AI systems | OpenAEV | tags, name contains |
 | Asset groups | Microsoft Intune (Entra device groups), Tanium (computer groups), CrowdStrike Falcon (host groups), ServiceNow (business services) | name contains |
-| Tech stack | OpenAEV | security platform type |
+| Software | OpenAEV | security platform type |
 | Crown jewels | OpenCRQ | lowest criticality, tenant |
 | PIRs | OpenCTI | the PIRs to import |
 
@@ -205,7 +207,7 @@ An asset group read from a platform brings its members, kept in sync at every ru
 
 OpenCTI Systems carry a category, a criticality, an exposure, an environment, an owner and a platform from the OpenCTI release that ships OpenCTI-Platform/opencti#19943; the import reads them. On an older OpenCTI those filters are hidden and every System takes the type you pick on the filters step, which is otherwise used only for Systems with no category. The owner falls back to the System's author; the platform and the markings are kept as `platform:` and `marking:` tags.
 
-Every row of every list section (crown jewels, tech stack, AI systems, assets, asset groups) records where it comes from: its **source** (`manual` when typed, `csv`, `api`, `agent:<agent id>`, or the platform: `opencti`, `openaev`, `opencrq`), its id in that platform (`external_id`) and the sync that wrote it (`sync_id`). A crown jewel saved with only its OpenCRQ link, or an AI system with only its OpenAEV link, reads as a row of that platform.
+Every row of every list section (crown jewels, software inventory, AI systems, assets, asset groups) records where it comes from: its **source** (`manual` when typed, `csv`, `api`, `agent:<agent id>`, or the platform: `opencti`, `openaev`, `opencrq`), its id in that platform (`external_id`) and the sync that wrote it (`sync_id`). A crown jewel saved with only its OpenCRQ link, or an AI system with only its OpenAEV link, reads as a row of that platform.
 
 An import can run again with the same or other filters. A row a previous import from the same platform wrote is updated, never duplicated, and the fields a person added that the platform does not send (a crown jewel's business service and linked assets, an owner the platform leaves empty) are kept; a row typed by hand, uploaded as CSV or written through the API is never overwritten. Rows a previous import wrote that the platform no longer returns with these filters are listed as **no longer in** the platform: they are kept unless you switch on their removal. Each import is recorded with the platform, the filters and the time of the read. Scripts use `GET /api/v1/organization-context/import/options`, `POST /api/v1/organization-context/import/preview` and `POST /api/v1/organization-context/import/apply` (`remove_gone` removes the rows no longer in the platform).
 
@@ -213,7 +215,7 @@ An asset is one real thing whatever the number of platforms that report it. When
 
 ## Keep a section in sync
 
-An import can also be saved as a **sync** that runs again on a schedule, so the profile follows the platform: on the import's preview, switch on **Keep in sync** and pick the schedule, then select **Import and keep in sync** (or **Save the sync** when nothing is new today). Only the sections the import feeds can be synced: assets, asset groups, AI systems, tech stack, crown jewels and PIRs. The name, sector, regions, size, currency, risk appetite and the other typed fields are never synced.
+An import can also be saved as a **sync** that runs again on a schedule, so the profile follows the platform: on the import's preview, switch on **Keep in sync** and pick the schedule, then select **Import and keep in sync** (or **Save the sync** when nothing is new today). Only the sections the import feeds can be synced: assets, asset groups, AI systems, software inventory, crown jewels and PIRs. The name, sector, regions, size, currency, risk appetite and the other typed fields are never synced.
 
 A sync keeps the source, the filters, the batch type, the choice for the rows that left the platform (removed by default: a deletion upstream deletes the row in XTM One; switch it off to keep them), its exclusion list (`excluded_external_ids`: the platform's rows it never imports, a stored copy included) and a schedule:
 
@@ -266,7 +268,7 @@ An outbound run writes with the token of the administrator who saved the sync, l
 | PIRs | OpenCTI | Inbound (outbound planned) |
 | Assets | OpenCTI | Inbound: Systems are owned by OpenCTI connectors |
 | Assets of category AI target | OpenAEV (AI targets) | Inbound, Outbound: XTM One-owned AI target assets are created and updated in OpenAEV |
-| Tech stack | OpenAEV | Inbound: the software inventory is read from OpenAEV agents |
+| Software | OpenAEV | Inbound: the software inventory is read from OpenAEV agents |
 
 ### What each platform feeds
 
@@ -277,7 +279,7 @@ The source x section x direction matrix, read from the platform APIs the syncs c
 | OpenAEV | Assets | Endpoints (`POST /api/endpoints/search`): name, category and subcategory, criticality, exposure, and since #1134 S4 the freshness: **last seen** (`asset_last_seen`) and **status** (`asset_status`: active, inactive, agentless, or stale when unseen past the tenant's threshold) | Inbound |
 | OpenAEV | Asset groups | Asset groups (`POST /api/asset_groups/search`) | Inbound |
 | OpenAEV | Assets of category AI target | AI targets (`POST /api/ai_targets/search`) | Inbound, Outbound |
-| OpenAEV | Tech stack | Security platforms (`POST /api/security_platforms/search`) | Inbound |
+| OpenAEV | Software | Security platforms (`POST /api/security_platforms/search`) | Inbound |
 | OpenCTI | Assets | Systems, with the OpenAEV taxonomy when OpenCTI carries it | Inbound |
 | OpenCTI | PIRs | Priority intelligence requirements | Inbound |
 | OpenCRQ | Crown jewels | Supporting assets at or above the minimum criticality | Inbound, Outbound |

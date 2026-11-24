@@ -354,6 +354,12 @@ and `asset_groups` into row writes (`apply_profile_lists`). Row API, administrat
 - `GET /api/v1/organization-context/changes?entity_id=&since=&before_id=&limit=`: the change log, newest first;
   `POST /api/v1/organization-context/changes/restore` `{change_ids}`: a delete comes back, an update gets its
   `before` fields, a create goes.
+- `PATCH /api/v1/organization-context` `{fields, based_on_version}` (administrators, #1738): the next profile
+  version with those top-level fields set, every other field as stored; 422 for `assets_exposure`,
+  `asset_groups` or an unknown field, 409 on a stale base. The settings cards that edit non-row fields (owned
+  domains, address ranges, outside lens) use it, so no asset row travels with them. `PUT` and the version
+  restore judge the synced-row lock (#1367) against the profile `GET` answered (rows from the records), never
+  the stored version JSON: a sync that moved `last_seen` since no longer refuses a save that did not touch it.
 
 Group memberships kept in sync (#1556): a group source answers each group's members (OpenAEV: static and
 dynamic, a dynamic group stored as its resolved members), and `organization_asset_records.sync_group_members`
@@ -526,3 +532,11 @@ repository): an inventory asset, never a primary asset.
   never created. A manual link is never touched; a synced link a person removes through
   `PUT /crown-jewels/{name}/links` becomes a tombstone the sync never adds back; a link OpenCRQ dropped is deleted
   at the next sync. The sync's run result carries the link summary under `links`. Migration `v1591pallinks01`.
+- Inventory source (Sam, 24 Nov 2026): the `crown_jewels` section is in the `inventory` scope of
+  `organization_context_sync.SECTION_SCOPES` (and `organization_context_sources.FIELD_SCOPES`), so
+  `GET /organization-context/syncs?scope=inventory` and `/sources?scope=inventory` list the OpenCRQ primary-asset
+  sync next to the asset sources, on the same scheduler (no second one). The scheduler tick
+  (`run_due_syncs`) first calls `ensure_default_primary_asset_sync`: when a company-managed OpenCRQ integration
+  is registered, no `crown_jewels`/`opencrq` sync exists and none was ever deleted (audit trail), it saves one,
+  daily at 06:00 UTC, links on, owned by the first active administrator who can read OpenCRQ. A source turned
+  off keeps its row, so it is never recreated. Manual rows and manual links still win over every run.

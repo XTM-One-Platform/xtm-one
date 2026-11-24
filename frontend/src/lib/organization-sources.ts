@@ -14,7 +14,7 @@ export type SourcedSection = (typeof SOURCED_SECTIONS)[number];
 
 /** The section names on a chip. @i18n-keys */
 export const SOURCED_SECTION_LABELS = {
-  crown_jewels: "Crown jewels",
+  crown_jewels: "Primary assets",
   tech_stack: "Software",
   ai_systems: "AI systems",
   assets_exposure: "Assets",
@@ -50,7 +50,7 @@ const SECTION_CARD: Record<SourcedSection, ProfileCard> = {
 
 /**
  * The link of a section chip: the section's tab (on the Inventory when it moved there), landed on its card and
- * filtered on the source. `null` when the section's list cannot filter on a source (Tech stack, AI systems and
+ * filtered on the source. `null` when the section's list cannot filter on a source (Software, AI systems and
  * Asset groups of the Inventory): the chip then reads as plain text.
  */
 export function sourceSectionHref(section: SourcedSection, source: ChipSource): string | null {

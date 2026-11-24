@@ -43,7 +43,7 @@ SOURCED_FIELDS: dict[str, str] = {
 }
 #: Where each field is configured (the scopes of ``organization_context_sync.SECTION_SCOPES``).
 FIELD_SCOPES: dict[str, str] = {
-    "crown_jewels": "profile",
+    "crown_jewels": "inventory",
     "tech_stack": "inventory",
     "assets_exposure": "inventory",
     "asset_groups": "inventory",
@@ -222,7 +222,7 @@ def sync_fields(section: str) -> tuple[str, ...]:
     """The profile fields a sync of *section* writes: its one row field, none for ``pirs`` or ``all``.
 
     A sync's purge or release is limited to them, so deleting the ``assets`` sync of a platform never
-    touches that platform's tech stack, AI systems or asset groups (review on #1278).
+    touches that platform's software, AI systems or asset groups (review on #1278).
     """
     return tuple(attr for attr, key in SOURCED_FIELDS.items() if key == section)
 

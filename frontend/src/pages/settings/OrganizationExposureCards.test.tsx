@@ -183,7 +183,7 @@ describe("OrganizationExposureCards (#11543 S3)", () => {
     fireEvent.change(threat, { target: { value: "90" } });
     expect(last!.prioritization_policy?.pir_min_score_threat).toBe(90);
     // Every field of the policy card explains itself (#1000 UX round 1 B1):
-    // CVSS, EPSS, both PIR scores, crown jewel criticality, KEV, Internet exposure.
+    // CVSS, EPSS, both PIR scores, primary asset criticality, KEV, Internet exposure.
     const card2 = screen.getByTestId("settings.organization.prioritization-policy");
     expect(within(card2).getAllByRole("img", { name: "About this field" })).toHaveLength(7);
   });

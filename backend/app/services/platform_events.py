@@ -482,6 +482,16 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
         ),
         "filter_keys": _CTEM_CASE_KEYS,
     },
+    "ctem_case.stalled": {
+        "description": (
+            "An open CTEM case waits on nobody (#1736): no open gate work item of the case, no armed "
+            "ctem-loop-reminder timer and no case activity for CTEM_CASE_STALL_HOURS; raised by the case sweep "
+            "once per stall window. Re-run the loop and end it on an ask to a named person with a due date, "
+            "an armed reminder, or a terminal state. Payload: case_id, vertical, state, trigger_path. Heard only "
+            "by readers of the case."
+        ),
+        "filter_keys": _CTEM_CASE_KEYS,
+    },
     "ctem_case.validation_finished": {
         "description": (
             "An OpenAEV result a CTEM case waits on arrived (a simulation it references finished, a finding it "
@@ -552,6 +562,7 @@ VIEWER_CHECKED_EVENTS: frozenset[str] = frozenset(
         "ctem_case.reopened",
         "ctem_case.resolved",
         "ctem_case.sla_breached",
+        "ctem_case.stalled",
         "ctem_case.validation_finished",
         "ctem_case.retest_requested",
         "ctem_signal.recorded",

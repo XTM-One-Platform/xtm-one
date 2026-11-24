@@ -457,7 +457,7 @@ query CtemTopVulns {
 }
 """
 
-# Software observables matching the organization profile's tech stack (by CPE or
+# Software observables matching the organization profile's software inventory (by CPE or
 # product name), the anchor of the tailored KEV count (Software -has-> Vulnerability).
 _OCTI_STACK_SOFTWARE = """
 query CtemStackSoftware($filters: FilterGroup, $first: Int) {
@@ -922,7 +922,7 @@ def _vendors_agree(a: str, b: str) -> bool:
     return not a or not b or a == b
 
 
-def _stack_matches(node: dict, stack: list[dict[str, str]]) -> str | None:
+def _stack_matches(node: dict[str, Any], stack: list[dict[str, Any]]) -> str | None:
     """The stack product a Software observable stands for, or ``None``.
 
     A CPE equal to the entry's wins; otherwise the product name must match
@@ -947,10 +947,10 @@ async def _octi_kev_tailored(
     client: httpx.AsyncClient,
     base_url: str,
     headers: dict[str, str],
-    stack: list[dict[str, str]],
+    stack: list[dict[str, Any]],
     user_id: str,
 ) -> dict[str, Any] | None:
-    """Known-exploited vulnerabilities restricted to the organization's tech stack.
+    """Known-exploited vulnerabilities restricted to the organization's software inventory.
 
     Resolves the Software observables matching *stack* (bounded), then counts
     the KEV vulnerabilities related to them. ``None`` when OpenCTI cannot answer
@@ -1032,7 +1032,7 @@ async def _octi_kev_tailored(
     }
 
 
-async def _organization_software(db: AsyncSession | None) -> list[dict[str, str]]:
+async def _organization_software(db: AsyncSession | None) -> list[dict[str, Any]]:
     """What the primary organization runs, as the CVE matcher reads it (#1495), ``[]`` when nothing.
 
     The Software entities of the asset store (synced and hand-typed), with the
@@ -1098,7 +1098,7 @@ def _exposed_basis(inputs: dict[str, Any], tailored: dict[str, Any]) -> tuple[in
     """The funnel's last live layer before Exposed: ``(count, OpenCTI filter)``, ``None`` without a countable filter.
 
     The same choice :func:`~app.services.ctem_funnel.build_funnel` makes:
-    the tailored layers when the profile has a tech stack, else the known ones.
+    the tailored layers when the profile has a software, else the known ones.
     A known-layer filter of ``None`` means every vulnerability.
     """
 
@@ -2407,7 +2407,7 @@ async def build_posture_for_user(
     # providers' live collection CONCURRENTLY: OpenCTI and OpenAEV are independent
     # platforms, each on its own httpx client, so a cyber/fraud build costs about
     # max(OpenCTI, OpenAEV) instead of their sum.
-    # The organization profile's tech stack (cyber): read in the same DB phase,
+    # The organization profile's software inventory (cyber): read in the same DB phase,
     # it narrows the KEV count to what the organization runs (#11213).
     stack = await _organization_software(db) if vertical == VERTICAL_CYBER else []
     asset_rows = await _profile_asset_rows(db) if vertical == VERTICAL_CYBER else None
