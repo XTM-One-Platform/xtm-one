@@ -21086,6 +21086,7 @@
   "CTEM Read": "CTEM Read",
   "Read the CTEM signals and cases the person you act for can see, read-only": "Read the CTEM signals and cases the person you act for can see, read-only",
   "Lets the agent list the CTEM signals with their evidence, list the CTEM cases with their counts by state, and read one case with its issues, history, who opened it and why each empty section is empty. It acts for the person the turn or run acts for, with the same rules as the CTEM pages: a case they cannot see does not exist for the agent, an issue they cannot see is a Restricted row. It writes nothing. XTM One mode only.": "Lets the agent list the CTEM signals with their evidence, list the CTEM cases with their counts by state, and read one case with its issues, history, who opened it and why each empty section is empty. It acts for the person the turn or run acts for, with the same rules as the CTEM pages: a case they cannot see does not exist for the agent, an issue they cannot see is a Restricted row. It writes nothing. XTM One mode only.",
+  "CTEM Repair": "CTEM Repair",
   "Typed by a person": "Typed by a person",
   "Endpoint manager": "Endpoint manager",
   "Any other source": "Any other source",
@@ -21516,5 +21517,7 @@
   "Open cases in {stage}": "Open cases in {stage}",
   "Cases by status": "Cases by status",
   "{count, plural, one {# decision waiting} other {# decisions waiting}}": "{count, plural, one {# decision waiting} other {# decisions waiting}}",
-  "Needs attention first": "Needs attention first"
+  "Needs attention first": "Needs attention first",
+  "Read the attack surface passes and run the CTEM repairs, administrators": "Read the attack surface passes and run the CTEM repairs, administrators",
+  "Lets the agent read the latest attack surface passes (what each read covered, hosts observed, signals per path), discard the new-host signals raised without a complete previous read, and correct the threat packages stored with a Grouping page whose Grouping is not live. A repair defaults to a dry run that writes nothing and answers the counts and the ids. It acts for the person the turn or run acts for, who must be an administrator, as on the REST routes. XTM One mode only.": "Lets the agent read the latest attack surface passes (what each read covered, hosts observed, signals per path), discard the new-host signals raised without a complete previous read, and correct the threat packages stored with a Grouping page whose Grouping is not live. A repair defaults to a dry run that writes nothing and answers the counts and the ids. It acts for the person the turn or run acts for, who must be an administrator, as on the REST routes. XTM One mode only."
 }

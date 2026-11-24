@@ -981,6 +981,27 @@ across the organization for `list_ctem_cases`, bound to that case alone for
 `get_ctem_case` (its note then says "on this case").
 Tests: `tests/test_ctem_read_tools.py`.
 
+### 8.2 Administrator repairs: the `ctem_repair` group
+
+Three administrator routes have agent tools in the built-in group
+`ctem_repair` (`backend/app/services/builtin_tools/ctem_repair.py`), the same
+service functions and answers as the routes:
+
+| Tool | Route |
+| --- | --- |
+| `list_ctem_attack_surface_passes` | `GET /ctem-signals/attack-surface/passes` |
+| `repair_ctem_attack_surface_new_hosts` | `POST /ctem-signals/attack-surface/repair-new-hosts` |
+| `repair_ctem_threat_packages` | `POST /ctem-cases/threat-packages/repair` |
+
+The group is wired for the built-in CTEM case agents (section 8) and for any
+agent it is bound to, through `ctem_repair_tools_for` in `agent_chat` and
+`assignment_engine`, in XTM One mode only. It acts for the person the turn or
+run acts for, who must be an administrator, as on the routes; anyone else gets
+that fact and nothing runs. A repair defaults to a dry run that writes nothing
+and answers the counts and the ids; `dry_run` false applies it. There is no
+approval card: the agent reads the dry run and decides.
+Tests: `tests/test_ctem_repair_tools.py`.
+
 ## 9. UX decisions (round 1, 13 Nov 2026)
 
 1. Command center widget: in the default layout right after Act now, as a
