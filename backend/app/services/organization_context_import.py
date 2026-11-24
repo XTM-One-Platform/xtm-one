@@ -58,11 +58,13 @@ from app.services.organization_context_microsoft import os_family
 logger = logging.getLogger(__name__)
 
 Section = Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"]
-Source = Literal["openaev", "opencti", "opencrq", "intune", "defender", "github", "gitlab"]
+Source = Literal[
+    "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
+]
 
 #: section -> the platforms that can feed it, in the order the dialog lists them.
 SECTION_SOURCES: dict[str, tuple[str, ...]] = {
-    "assets": ("openaev", "opencti", "intune", "defender", "github", "gitlab"),
+    "assets": ("openaev", "opencti", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"),
     "asset_groups": ("openaev",),
     "ai_systems": ("openaev",),
     "tech_stack": ("openaev",),
@@ -101,14 +103,16 @@ SOURCE_FILTERS: dict[tuple[str, str], tuple[str, ...]] = {
     # Microsoft endpoint sources (#1251): devices, OS and software with versions.
     ("assets", "intune"): ("operating_system", "compliance", "ownership", "last_seen_days", "include_owner"),
     ("assets", "defender"): ("os_platform", "health_status", "exposure_level", "last_seen_days"),
+    # Endpoint and CMDB sources (#1556): devices with their identity keys, Tanium software with versions.
+    ("assets", "tanium"): ("operating_system", "last_seen_days", "skip_software"),
+    ("assets", "crowdstrike"): ("platform", "last_seen_days", "filter_query"),
+    ("assets", "servicenow"): ("ci_class", "operational_status", "query"),
     # Code sources: repositories as source_code assets, their SBOM as software.
     ("assets", "github"): ("organizations", "include_archived", "include_forks", "skip_dependencies"),
     ("assets", "gitlab"): ("groups", "include_archived", "include_forks", "skip_dependencies"),
     ("asset_groups", "openaev"): ("tags", "search"),
     ("ai_systems", "openaev"): ("tags", "search"),
     ("tech_stack", "openaev"): ("type",),
-    # The sync's filter link_supporting_assets (#1591, on unless "false") is read by the link import; its
-    # switch in the import dialog comes with the primary-assets UI slice.
     ("crown_jewels", "opencrq"): ("min_criticality", "tenant_id"),
     ("pirs", "opencti"): ("pir_ids",),
 }
@@ -197,9 +201,10 @@ class ReadResult:
     findings: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     #: Name and identity key per repository id (#1331, slice 4): the asset a dependency match lands on.
     repositories: dict[str, dict[str, str]] = field(default_factory=dict)
-    #: Ids of this source whose stored rows belong to another layer (#1591: OpenCRQ supporting assets an older
-    #: build imported as crown jewels): removed by the import whoever wrote them, never kept as gone.
-    superseded: set[str] = field(default_factory=set)
+    #: An asset group source (#1556): member asset ids per group ``external_id``, each group read whole.
+    members: dict[str, list[str]] = field(default_factory=dict)
+    #: The source whose asset records those member ids name.
+    members_source: str = ""
 
 
 @dataclass
@@ -224,9 +229,6 @@ class ImportPlan:
     excluded: list[str] = field(default_factory=list)
     #: Stored rows of an excluded id, removed by this plan whatever ``remove_gone`` says.
     excluded_removed: list[str] = field(default_factory=list)
-    #: Stored rows of a superseded layer (#1591: crown jewels an older build imported from OpenCRQ supporting
-    #: assets), removed by this plan whatever ``remove_gone`` says.
-    superseded: list[str] = field(default_factory=list)
     #: The sync writing the plan, stamped as ``sync_id`` on its rows (empty: a one-off import).
     sync_id: str = ""
     #: Rows that took the batch type (no category in the source).
@@ -252,6 +254,9 @@ class ImportPlan:
     organization_id: uuid.UUID | None = None
     writes: list[dict[str, Any]] = field(default_factory=list)
     remove_refs: list[tuple[str, str]] = field(default_factory=list)
+    #: Group memberships the source answered (#1556), written by :func:`apply_record_import`.
+    members: dict[str, list[str]] = field(default_factory=dict)
+    members_source: str = ""
 
     @property
     def on_records(self) -> bool:
@@ -259,8 +264,8 @@ class ImportPlan:
 
     @property
     def has_writes(self) -> bool:
-        """A record plan that writes or removes at least one row."""
-        return bool(self.writes or self.remove_refs)
+        """A record plan that writes or removes at least one row, or re-reads group memberships."""
+        return bool(self.writes or self.remove_refs or self.members)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -281,7 +286,6 @@ class ImportPlan:
             "skipped": self.skipped[:SAMPLE_SIZE],
             "gone": self.gone[:SAMPLE_SIZE],
             "gone_kept": self.gone_kept[:SAMPLE_SIZE],
-            "superseded": self.superseded[:SAMPLE_SIZE],
             "excluded": self.excluded[:SAMPLE_SIZE],
             "remove_gone": self.remove_gone,
             "batch_typed": self.batch_typed,
@@ -528,50 +532,18 @@ def opencti_system(node: dict[str, Any], batch_type: str) -> AssetEntry | None:
     )
 
 
-#: The four security needs of an OpenCRQ primary asset (``SECURITY_NEED_CRITERIA``), rated on :data:`OPENCRQ_LEVELS`.
-OPENCRQ_SECURITY_NEEDS: tuple[str, ...] = ("availability", "integrity", "confidentiality", "traceability")
+def opencrq_jewel(asset: dict[str, Any], min_level: str) -> CrownJewel | None:
+    """An OpenCRQ supporting asset at or above *min_level* as a crown jewel."""
+    from app.services.organization_context_opencrq import _asset_name
 
-
-def primary_asset_level(asset: dict[str, Any]) -> str:
-    """The highest security need of an OpenCRQ primary asset; ``""`` when none is rated (#1591)."""
-    rated = [str(asset.get(need) or "").lower() for need in OPENCRQ_SECURITY_NEEDS]
-    levels = [OPENCRQ_LEVELS.index(level) for level in rated if level in OPENCRQ_LEVELS]
-    return OPENCRQ_LEVELS[max(levels)] if levels else ""
-
-
-def opencrq_primary_asset(asset: dict[str, Any], min_level: str = "") -> CrownJewel | None:
-    """An OpenCRQ PRIMARY asset (a business asset) as a profile primary asset row (#1591).
-
-    The criticality is the highest of its four security needs (``very_high`` ->
-    ``critical``); a primary asset with no need rated yet is ``high``, since
-    OpenCRQ lists only what the business named as a primary asset. Its business
-    function is the row's business service and its owner the owner. A
-    *min_level* drops a primary asset whose rated needs all fall below it;
-    one with no need rated is always kept. Supporting assets (the IT under a
-    primary asset) are never rows of this section: they are inventory assets,
-    linked to their primary asset by the link sync.
-    """
-    name = str(asset.get("name") or "").strip()
-    asset_id = str(asset.get("id") or "").strip()
+    level = str(asset.get("criticality") or "").lower()
+    if level not in OPENCRQ_LEVELS or OPENCRQ_LEVELS.index(level) < OPENCRQ_LEVELS.index(min_level):
+        return None
+    name = _asset_name(asset)
+    asset_id = str(asset.get("id") or "")
     if not name or not asset_id:
         return None
-    level = primary_asset_level(asset)
-    if level and min_level in OPENCRQ_LEVELS and OPENCRQ_LEVELS.index(level) < OPENCRQ_LEVELS.index(min_level):
-        return None
-    owner = asset.get("owner") if isinstance(asset.get("owner"), dict) else {}
-    return CrownJewel(
-        name=name[:200],
-        business_service=str(asset.get("businessFunction") or "").strip()[:200],
-        owner=str((owner or {}).get("name") or "").strip()[:200],
-        criticality=FROM_OPENCRQ[level] if level else "high",  # type: ignore[arg-type]
-        source="opencrq",
-        external_id=asset_id[:200],
-    )
-
-
-def opencrq_jewel(asset: dict[str, Any], min_level: str) -> CrownJewel | None:
-    """Alias of :func:`opencrq_primary_asset` kept for one release (#1591): it reads PRIMARY assets now."""
-    return opencrq_primary_asset(asset, min_level)
+    return CrownJewel(name=name[:200], criticality=FROM_OPENCRQ[level], source="opencrq", external_id=asset_id[:200])  # type: ignore[arg-type]
 
 
 # ── Merge (no I/O) ────────────────────────────────────────────────────
@@ -631,8 +603,6 @@ def plan_import(
         repositories=read.repositories,
     )
     draft = profile.model_copy(deep=True)
-    if section in SOURCED_FIELDS and read.superseded and not read.error:
-        _drop_superseded(draft, section, source, read.superseded, plan)
     if section in SOURCED_FIELDS:
         _merge_sourced(draft, section, read.rows, source, plan, {str(i) for i in excluded_ids or [] if str(i)})
     elif section == "pirs":
@@ -642,24 +612,6 @@ def plan_import(
     ]
     plan.profile = draft
     return plan
-
-
-def _drop_superseded(
-    draft: OrganizationProfile, section: str, source: str, superseded: set[str], plan: ImportPlan
-) -> None:
-    """Remove the rows of *source* keyed on a *superseded* id (#1591), listed in ``superseded`` of the plan.
-
-    A typed row merely linked to such an id (``source`` manual) is not a row of
-    *source* and stays.
-    """
-    attr, name_key, _cap, _local = SOURCED_FIELDS[section]
-    current: list[Any] = list(getattr(draft, attr))
-    dropped = [r for r in current if r.source == source and r.external_id and r.external_id in superseded]
-    if not dropped:
-        return
-    plan.superseded = [getattr(r, name_key) for r in dropped]
-    gone = {id(r) for r in dropped}
-    setattr(draft, attr, [r for r in current if id(r) not in gone])
 
 
 def _merge_sourced(
@@ -796,6 +748,8 @@ def plan_record_import(
         findings=read.findings,
         repositories=read.repositories,
         organization_id=organization_id,
+        members={} if read.error else read.members,
+        members_source=read.members_source,
     )
     excluded = {str(i) for i in excluded_ids or [] if str(i)}
     _attr, name_attr, _cap, local = SOURCED_FIELDS[section]
@@ -966,6 +920,15 @@ async def source_statuses(db: AsyncSession, *, user_id: uuid.UUID) -> dict[str, 
             logger.warning("Organization import: %s status unreadable: %s", source, format_exception_message(exc))
             available, reason, code = False, "unreadable", ""
         statuses[source] = SourceStatus(source=source, available=available, reason=reason, reason_code=code)
+    from app.services import organization_context_endpoints as endpoints
+
+    for source in endpoints.SOURCES:
+        try:
+            available, reason, code = await endpoints.connection_status(db, str(user_id), source)
+        except Exception as exc:
+            logger.warning("Organization import: %s status unreadable: %s", source, format_exception_message(exc))
+            available, reason, code = False, "unreadable", ""
+        statuses[source] = SourceStatus(source=source, available=available, reason=reason, reason_code=code)
     from app.services import organization_context_code as code_sources
 
     for source in code_sources.SOURCES:
@@ -1059,23 +1022,35 @@ async def _openaev_inventory(
     return read
 
 
-async def _openaev_group_members(
+async def _openaev_members_by_group(
     base_url: str, headers: dict[str, Any], group_ids: list[str]
-) -> tuple[list[str], str | None]:
-    """Every asset id of the given groups, static members and dynamic matches alike."""
+) -> tuple[dict[str, list[str]], str | None]:
+    """The asset ids of each group, static members and dynamic matches alike (a dynamic group resolved)."""
     from app.integrations.providers.openaev._common import _api
 
-    members: list[str] = []
+    out: dict[str, list[str]] = {}
     for group_id in group_ids:
         resp, err = await _api(
             base_url, headers, "get", f"/api/asset_groups/{group_id}", "read asset group", retry_transient=True
         )
         if err or resp is None:
-            return [], f"OpenAEV asset group {group_id}: {err or 'no answer'}"
+            return {}, f"OpenAEV asset group {group_id}: {err or 'no answer'}"
         data = resp.json() if resp is not None else {}
-        for key in ("asset_group_assets", "asset_group_dynamic_assets"):
-            members.extend(str(a) for a in (data.get(key) or []) if a)
-    return list(dict.fromkeys(members)), None
+        ids = [
+            str(a) for key in ("asset_group_assets", "asset_group_dynamic_assets") for a in (data.get(key) or []) if a
+        ]
+        out[group_id] = list(dict.fromkeys(ids))
+    return out, None
+
+
+async def _openaev_group_members(
+    base_url: str, headers: dict[str, Any], group_ids: list[str]
+) -> tuple[list[str], str | None]:
+    """Every asset id of the given groups, static members and dynamic matches alike."""
+    by_group, err = await _openaev_members_by_group(base_url, headers, group_ids)
+    if err:
+        return [], err
+    return list(dict.fromkeys(m for ids in by_group.values() for m in ids)), None
 
 
 async def _read_openaev(
@@ -1129,6 +1104,14 @@ async def _read_openaev(
         )
         read = await _openaev_search(base_url, headers, "/api/asset_groups/search", group, text)
         read.rows = [r for r in (openaev_asset_group(g) for g in read.rows) if r]
+        if read.error or not read.rows:
+            return read
+        # #1556: each group's members, kept in sync as memberships of the OpenAEV asset records.
+        members, err = await _openaev_members_by_group(base_url, headers, [r.external_id for r in read.rows])
+        if err:
+            read.error = err
+            return read
+        read.members, read.members_source = members, "openaev"
         return read
     if section == AI_SYSTEMS_ALIAS:
         # #1501: OpenAEV's AI targets (``/api/ai_targets``), as assets of category ai_target.
@@ -1255,15 +1238,8 @@ async def _read_opencti(
 
 
 async def _read_opencrq(db: AsyncSession, user_id: str, filters: dict[str, Any]) -> ReadResult:
-    """OpenCRQ PRIMARY assets as profile primary asset rows (#1591), every organization of the tenant.
-
-    ``min_criticality`` (empty: every primary asset) drops a primary asset whose
-    rated security needs all fall below it. The ids of the tenant's supporting
-    assets go in ``superseded``: rows an older build imported from them
-    (the wrong layer, before #1591) are removed by the import.
-    """
     from app.integrations.providers.opencrq._common import _resolve_tenant
-    from app.services.organization_context_opencrq import _list_assets, _list_primary_assets, _opencrq_connection
+    from app.services.organization_context_opencrq import _list_assets, _opencrq_connection
 
     connection = await _opencrq_connection(db, user_id)
     if isinstance(connection, str):
@@ -1272,15 +1248,15 @@ async def _read_opencrq(db: AsyncSession, user_id: str, filters: dict[str, Any])
     tenant, err = await _resolve_tenant(base_url, headers, str(filters.get("tenant_id") or ""))
     if err:
         return ReadResult(error=f"OpenCRQ: {err}")
-    primary, err = await _list_primary_assets(base_url, headers, tenant or "")
+    assets, err = await _list_assets(base_url, headers, tenant or "")
     if err:
         return ReadResult(error=f"OpenCRQ: {err}")
-    level = str(filters.get("min_criticality") or "")
-    rows = [j for j in (opencrq_primary_asset(a, level) for a in primary) if j]
+    level = str(filters.get("min_criticality") or "high")
+    if level not in OPENCRQ_LEVELS:
+        level = "high"
+    rows = [j for j in (opencrq_jewel(a, level) for a in assets) if j]
     rows.sort(key=lambda j: ("critical", "high", "medium", "low").index(j.criticality))
-    supporting, err = await _list_assets(base_url, headers, tenant or "")
-    superseded = set() if err else {str(a.get("id")) for a in supporting if a.get("id")}
-    return ReadResult(rows=rows, total=len(rows), superseded=superseded)
+    return ReadResult(rows=rows, total=len(rows))
 
 
 async def _read_microsoft(db: AsyncSession, user_id: str, source: str, filters: dict[str, Any]) -> ReadResult:
@@ -1305,6 +1281,28 @@ async def _read_microsoft(db: AsyncSession, user_id: str, source: str, filters: 
     result.software_rows = sum(len(v) for v in result.software.values())
     result.software_unread = {k for k in read.software_unread if k in kept}
     result.software_error = read.software_error if result.software_unread else ""
+    return result
+
+
+async def _read_endpoint(db: AsyncSession, user_id: str, source: str, filters: dict[str, Any]) -> ReadResult:
+    """Devices from Tanium, CrowdStrike Falcon or ServiceNow CMDB (#1556), read with the source's integration."""
+    from app.services import organization_context_endpoints as endpoints
+
+    token, reason = await endpoints.credential(db, user_id, source)
+    if not token:
+        return ReadResult(error=f"{source}: {reason}")
+    read = await endpoints.READERS[source](token, filters, limit=MAX_ROWS)
+    result = ReadResult(total=read.total, truncated=read.truncated, error=read.error)
+    if read.error:
+        return result
+    for row in read.rows:
+        try:
+            result.rows.append(AssetEntry.model_validate(row))
+        except ValueError as exc:  # one bad device never stops the others
+            logger.info("Organization import: %s device %s refused: %s", source, row.get("external_id"), exc)
+    kept = {r.external_id for r in result.rows}
+    result.software = {k: v for k, v in read.software.items() if k in kept}
+    result.software_rows = sum(len(v) for v in result.software.values())
     return result
 
 
@@ -1389,6 +1387,8 @@ async def read_source(
             return await _read_opencti(db, str(user_id), section, filters, batch_type)
         if source in ("intune", "defender"):
             return await _read_microsoft(db, str(user_id), source, filters)
+        if source in ("tanium", "crowdstrike", "servicenow"):
+            return await _read_endpoint(db, str(user_id), source, filters)
         if source in ("github", "gitlab"):
             return await _read_code(db, str(user_id), source, filters)
         return await _read_opencrq(db, str(user_id), filters)
@@ -1613,6 +1613,12 @@ async def _code_options(db: AsyncSession, user_id: str, source: str) -> FilterOp
         return FilterOptions(options=switches, unavailable={owners: "unreadable"})
 
 
+def _endpoint_options(source: str) -> FilterOptions:
+    from app.services.organization_context_endpoints import FILTER_VALUES
+
+    return FilterOptions(options={key: [_option(v) for v in values] for key, values in FILTER_VALUES[source].items()})
+
+
 def _microsoft_options(source: str) -> FilterOptions:
     return FilterOptions(
         options={key: [_option(v) for v in values] for key, values in MICROSOFT_FILTER_VALUES[source].items()}
@@ -1630,6 +1636,8 @@ async def filter_options(db: AsyncSession, *, user_id: uuid.UUID, section: str, 
             return await _openaev_options(db, str(user_id), section)
         if source in ("intune", "defender"):
             return _microsoft_options(source)
+        if source in ("tanium", "crowdstrike", "servicenow"):
+            return _endpoint_options(source)
         if source in ("github", "gitlab"):
             return await _code_options(db, str(user_id), source)
         return await _opencrq_options(db, str(user_id))
@@ -1755,6 +1763,17 @@ async def apply_record_import(db: AsyncSession, plan: ImportPlan, *, actor: str)
                 db, plan.organization_id, plan.section, plan.remove_refs, origin=origin, actor=actor
             )
         )
+    if plan.section == "asset_groups" and plan.members and plan.members_source:
+        # #1556: the source's memberships, after its group rows exist; a hand membership is never touched.
+        synced = await records.sync_group_members(
+            db,
+            plan.organization_id,
+            plan.source,
+            plan.members,
+            member_source=plan.members_source,
+            sync_id=plan.sync_id,
+        )
+        count += synced.added + synced.removed
     return count
 
 

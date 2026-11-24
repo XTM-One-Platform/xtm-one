@@ -211,7 +211,13 @@ def group_row(group: OrganizationAssetGroup) -> dict[str, Any]:
 
 
 def group_out(group: OrganizationAssetGroup) -> dict[str, Any]:
-    return {**group_row(group), "id": str(group.id), "row_version": group.row_version}
+    return {
+        **group_row(group),
+        "id": str(group.id),
+        "row_version": group.row_version,
+        "unresolved_members": int(group.unresolved_members or 0),
+        "members_synced_at": group.members_synced_at.isoformat() if group.members_synced_at else None,
+    }
 
 
 def _source_record(record: OrganizationAssetRecord) -> identity.SourceRecord:
@@ -505,6 +511,154 @@ async def group_member_counts(db: AsyncSession, organization_id: uuid.UUID) -> d
     return {g: int(n) for g, n in rows}
 
 
+@dataclass
+class MembershipResult:
+    """What one group membership sync wrote: rows added and removed, members the inventory lacks."""
+
+    added: int = 0
+    removed: int = 0
+    unresolved: int = 0
+    groups: int = 0
+
+
+async def sync_group_members(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    source: str,
+    members: Mapping[str, Sequence[str]],
+    *,
+    member_source: str,
+    sync_id: str = "",
+) -> MembershipResult:
+    """Set the memberships *source* owns in its groups to the members it answered (#1556).
+
+    *members* maps a group's ``external_id`` in *source* to the ``external_id``
+    of its member assets in *member_source* (a dynamic group: its resolved
+    members), read whole; a group missing from it is left untouched. A member
+    binds to the record of *member_source* with that id, so it lands on the
+    merged asset whatever source created it; one no record holds is counted on
+    the group (``unresolved_members``), never dropped silently. Only the rows
+    *source* wrote change: a hand membership or a record's own ``group`` stays.
+    """
+    result = MembershipResult()
+    if not members:
+        return result
+    groups = _as_map(
+        (
+            await db.execute(
+                select(OrganizationAssetGroup.external_id, OrganizationAssetGroup.id).where(
+                    OrganizationAssetGroup.organization_id == organization_id,
+                    OrganizationAssetGroup.source == source,
+                    OrganizationAssetGroup.external_id.in_(list(members)),
+                )
+            )
+        ).all()
+    )
+    wanted_ids = sorted({str(m) for external_id in groups for m in members[external_id] if str(m)})
+    records: dict[str, uuid.UUID] = {}
+    for start in range(0, len(wanted_ids), 1000):
+        records.update(
+            _as_map(
+                (
+                    await db.execute(
+                        select(OrganizationAssetRecord.external_id, OrganizationAssetRecord.id).where(
+                            OrganizationAssetRecord.organization_id == organization_id,
+                            OrganizationAssetRecord.source == member_source,
+                            OrganizationAssetRecord.external_id.in_(wanted_ids[start : start + 1000]),
+                        )
+                    )
+                ).all()
+            )
+        )
+    member = OrganizationAssetGroupMember
+    now = datetime.now(UTC)
+    for external_id, group_id in groups.items():
+        named = list(dict.fromkeys(str(m) for m in members[external_id] if str(m)))
+        wanted = {records[m] for m in named if m in records}
+        stored = {
+            r: s
+            for r, s in (
+                await db.execute(select(member.record_id, member.source).where(member.group_id == group_id))
+            ).all()
+        }
+        gone = [r for r, s in stored.items() if s == source and r not in wanted]
+        if gone:
+            await db.execute(delete(member).where(member.group_id == group_id, member.record_id.in_(gone)))
+        for record_id in wanted:
+            if record_id not in stored:
+                db.add(member(group_id=group_id, record_id=record_id, source=source, sync_id=sync_id[:64]))
+                result.added += 1
+            elif stored[record_id] == source:
+                await db.execute(
+                    update(member)
+                    .where(member.group_id == group_id, member.record_id == record_id, member.sync_id != sync_id[:64])
+                    .values(sync_id=sync_id[:64])
+                )
+        unresolved = len([m for m in named if m not in records])
+        await db.execute(
+            update(OrganizationAssetGroup)
+            .where(OrganizationAssetGroup.id == group_id)
+            .values(unresolved_members=unresolved, members_synced_at=now)
+        )
+        result.removed += len(gone)
+        result.unresolved += unresolved
+        result.groups += 1
+    await db.flush()
+    return result
+
+
+GROUP_MEMBERS_PAGE_MAX = 1000
+"""Largest member page a caller shows; it may ask for one row more to tell a last page."""
+
+
+async def group_members(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    group_id: uuid.UUID,
+    *,
+    limit: int = 100,
+    after: tuple[str, uuid.UUID] | None = None,
+) -> list[tuple[OrganizationAssetRecord, str]]:
+    """One keyset page of a group's member records with who put each there, by name then id.
+
+    Pass the last ``(name_key, id)`` as *after*; served by the members' primary
+    key and the records' ``(organization_id, name_key)`` order. *limit* is capped
+    at ``GROUP_MEMBERS_PAGE_MAX + 1`` so a caller showing the largest page can
+    still read the one extra row that says another page exists.
+    """
+    member, rec = OrganizationAssetGroupMember, OrganizationAssetRecord
+    query = (
+        select(rec, member.source)
+        .join(member, member.record_id == rec.id)
+        .where(member.group_id == group_id, rec.organization_id == organization_id)
+    )
+    if after is not None:
+        query = query.where(or_(rec.name_key > after[0], and_(rec.name_key == after[0], rec.id > after[1])))
+    query = query.order_by(rec.name_key, rec.id).limit(max(1, min(limit, GROUP_MEMBERS_PAGE_MAX + 1)))
+    return [(r, str(s)) for r, s in (await db.execute(query)).all()]
+
+
+async def record_groups(
+    db: AsyncSession, organization_id: uuid.UUID, record_ids: Sequence[uuid.UUID]
+) -> list[dict[str, str]]:
+    """The groups the given records belong to (an asset's records), each once, by name."""
+    if not record_ids:
+        return []
+    member, grp = OrganizationAssetGroupMember, OrganizationAssetGroup
+    rows = (
+        await db.execute(
+            select(grp.id, grp.name, grp.source, member.source)
+            .join(member, member.group_id == grp.id)
+            .where(grp.organization_id == organization_id, member.record_id.in_(list(record_ids)))
+            .order_by(grp.name_key, grp.id)
+        )
+    ).all()
+    out: dict[uuid.UUID, dict[str, str]] = {}
+    for group_id, name, group_source, via in rows:
+        out.setdefault(group_id, {"id": str(group_id), "name": str(name), "source": str(group_source), "via": str(via)})
+    return list(out.values())
+
+
 async def _link_crown_jewels(db: AsyncSession, organization_id: uuid.UUID, jewels: Iterable[Any]) -> None:
     """The crown jewels' ``asset_names`` as links to the records and groups of those names."""
     for jewel in jewels:
@@ -516,13 +670,7 @@ async def _link_crown_jewels(db: AsyncSession, organization_id: uuid.UUID, jewel
 async def set_crown_jewel_links(
     db: AsyncSession, organization_id: uuid.UUID, crown_jewel: str, names: Iterable[Any]
 ) -> list[str]:
-    """Replace the links of *crown_jewel* with the records and groups *names* name; answer the names found none.
-
-    A person's write (#1591): the manual links are replaced; a link a sync wrote
-    (``source`` opencrq or rule) whose record *names* leaves out is marked
-    ``removed``, so the sync never adds it back, and one *names* keeps is kept
-    (restored if it was removed). Manual wins over the sync either way.
-    """
+    """Replace the links of *crown_jewel* with the records and groups *names* name; answer the names found none."""
     jewel_key = _key(crown_jewel)[:200]
     if not jewel_key:
         return []
@@ -530,25 +678,10 @@ async def set_crown_jewel_links(
         delete(OrganizationCrownJewelLink).where(
             OrganizationCrownJewelLink.organization_id == organization_id,
             OrganizationCrownJewelLink.crown_jewel_key == jewel_key,
-            OrganizationCrownJewelLink.source == "manual",
         )
     )
     keys = {_key(n)[:200]: str(n) for n in names if _key(n)}
-    synced = list(
-        (
-            await db.execute(
-                select(OrganizationCrownJewelLink).where(
-                    OrganizationCrownJewelLink.organization_id == organization_id,
-                    OrganizationCrownJewelLink.crown_jewel_key == jewel_key,
-                    OrganizationCrownJewelLink.source != "manual",
-                )
-            )
-        ).scalars()
-    )
     if not keys:
-        for link in synced:
-            link.removed = True
-        await db.flush()
         return []
     groups = (
         await db.execute(
@@ -565,10 +698,6 @@ async def set_crown_jewel_links(
         )
     ).all()
     found: set[str] = set()
-    kept_records = {record_id for _name_key, record_id in records}
-    synced_records = {link.record_id for link in synced if link.record_id is not None}
-    for link in synced:
-        link.removed = link.record_id not in kept_records
     for name_key, group_id in groups:
         found.add(name_key)
         db.add(
@@ -576,8 +705,6 @@ async def set_crown_jewel_links(
         )
     for name_key, record_id in records:
         found.add(name_key)
-        if record_id in synced_records:
-            continue  # the synced link stands for it, kept above
         db.add(
             OrganizationCrownJewelLink(organization_id=organization_id, crown_jewel_key=jewel_key, record_id=record_id)
         )

@@ -335,11 +335,22 @@ and `asset_groups` into row writes (`apply_profile_lists`). Row API, administrat
   `(source, external_id)`): `{created, updated, removed, unchanged}`; a row equal to its record is not written.
 - `POST`, `PATCH /{id}`, `DELETE /{id}` on `/api/v1/organization-context/asset-groups`: the same for groups; a
   deleted group's records stay and lose the group.
+- `GET /api/v1/organization-context/asset-groups/{id}/members?limit=&after_name=&after_id=` (any signed-in
+  user): one keyset page of the group's member records by name, each with `via` (who put it there: `record`,
+  `manual` or the group's source), the group itself (`member_count` comes from the list) and `next`.
 - `PUT /api/v1/organization-context/crown-jewels/{name}/links` `{names}`: the records and groups a crown jewel
   covers; 404 for an unknown crown jewel, 422 naming what matches nothing.
 - `GET /api/v1/organization-context/changes?entity_id=&since=&before_id=&limit=`: the change log, newest first;
   `POST /api/v1/organization-context/changes/restore` `{change_ids}`: a delete comes back, an update gets its
   `before` fields, a create goes.
+
+Group memberships kept in sync (#1556): a group source answers each group's members (OpenAEV: static and
+dynamic, a dynamic group stored as its resolved members), and `organization_asset_records.sync_group_members`
+sets the memberships that source owns to that answer at every import or sync run: added and removed, a hand
+(`manual`) membership and a record's own `group` (`record`) left as they are. A member binds to the record of
+the member source with that id, so it lands on the merged asset whatever source created it; one no record holds
+is counted on the group (`unresolved_members`, "not in the inventory"), never dropped silently.
+`members_synced_at` is the last whole read. A group absent from the answer keeps its memberships.
 
 The agent row tools write the records too: `upsert_organization_rows` and `remove_organization_rows` on
 `assets` or `asset_groups` plan against the records the call addresses (`organization_context_rows.
@@ -473,27 +484,3 @@ OpenCRQ-Platform/opencrq#3152 closed the three divergences: `security_platform` 
 accepted (section 1), an asset carries groups and tags (sections 5 and 6), and an owner sent as a name is resolved
 to a tenant member (section 4). The OpenCRQ tools of XTM One (`create_opencrq_supporting_asset`,
 `update_opencrq_supporting_asset`) send all of them.
-
-### Primary assets and supporting assets
-
-OpenCRQ holds two layers. A **primary asset** is a business asset (a service, a process, a dataset) rated on four
-security needs (availability, integrity, confidentiality, traceability); the profile lists them as `crown_jewels`
-(the name before primary assets). A **supporting asset** is the IT underneath (a server, an application, a
-repository): an inventory asset, never a primary asset.
-
-- Import (`organization_context_import._read_opencrq`): the crown-jewel section reads OpenCRQ primary assets
-  (`primaryAssets.getPrimaryAssets` per organization), criticality = the highest rated need, `min_criticality`
-  empty by default (every primary asset). Rows an older build imported from supporting assets are superseded at
-  the next sync (`ReadResult.superseded`); a row a person typed is kept.
-- Outbound: XTM One no longer pushes crown jewels to OpenCRQ supporting assets; OpenCRQ is the source.
-- Links (`organization_context_opencrq_links`): the OpenCRQ primary-asset sync, option `link_supporting_assets`
-  in its filters (on unless `"false"`), imports the OpenCRQ `support_to_primary` links onto
-  `organization_crown_jewel_links`: `source` (`manual`, `opencrq`, `rule`), `external_id` (the OpenCRQ link id),
-  `roles` (OpenCRQ `link-roles.ts`: stores, processes, reads, transmits, administers, monitors,
-  supports_availability, performs, unknown), `inherited_needs` (need to `full` / `lower` / `none`, the strongest of
-  the roles; `unknown` inherits everything), `via` (the supporting asset a `depends_on` chain goes through, written
-  by the signals slice), `removed`. The supporting asset is the inventory record of source `opencrq` with the same
-  id, else the single record of the same name; none or several are reported (`not_in_inventory`, `ambiguous`),
-  never created. A manual link is never touched; a synced link a person removes through
-  `PUT /crown-jewels/{name}/links` becomes a tombstone the sync never adds back; a link OpenCRQ dropped is deleted
-  at the next sync. The sync's run result carries the link summary under `links`. Migration `v1591pallinks01`.

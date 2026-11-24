@@ -32,18 +32,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import (
-    BigInteger,
-    Boolean,
-    DateTime,
-    ForeignKey,
-    Identity,
-    Index,
-    Integer,
-    String,
-    UniqueConstraint,
-    text,
-)
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Identity, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -147,6 +136,10 @@ class OrganizationAssetGroup(Base):
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
     row_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=text("1"))
+    #: Members the group's source named that no record of the inventory holds (#1556): counted, never dropped.
+    unresolved_members: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    #: When the group's source last answered its whole member list (``None``: never read).
+    members_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
     updated_by: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
     created_at: Mapped[datetime] = mapped_column(
@@ -191,21 +184,8 @@ class OrganizationAssetGroupMember(Base):
     )
 
 
-#: Where a primary-asset link comes from (#1591): a person, the OpenCRQ link sync, or a rule.
-LINK_SOURCES: tuple[str, ...] = ("manual", "opencrq", "rule")
-
-
 class OrganizationCrownJewelLink(Base):
-    """A primary asset (crown jewel, by its name, lower-cased) a record or a group supports.
-
-    Since #1591 a link carries where it comes from (``source``: ``manual``,
-    ``opencrq`` or ``rule``), the OpenCRQ link it mirrors (``external_id``),
-    the roles the supporting asset plays (OpenCRQ ``link-roles.ts``), the
-    security needs it inherits from them, and ``via`` (the supporting asset a
-    ``depends_on`` chain goes through). A ``removed`` row is a person's
-    removal of a synced link: the sync never adds it back (a manual link or
-    removal wins over the sync).
-    """
+    """A crown jewel (by its name, lower-cased) running on an asset record or a group."""
 
     __tablename__ = "organization_crown_jewel_links"
     __table_args__ = (
@@ -223,19 +203,6 @@ class OrganizationCrownJewelLink(Base):
     group_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organization_asset_groups.id", ondelete="CASCADE"), nullable=True
     )
-    source: Mapped[str] = mapped_column(String(80), nullable=False, default="manual", server_default="manual")
-    #: The OpenCRQ ``support_to_primary`` link id a synced link mirrors (empty: not synced).
-    external_id: Mapped[str] = mapped_column(String(200), nullable=False, default="", server_default="")
-    #: The roles of the supporting asset (``stores``, ``processes``...); empty on a manual link.
-    roles: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
-    #: Security need -> ``full`` / ``lower`` / ``none``: what the roles make the record inherit.
-    inherited_needs: Mapped[dict[str, str]] = mapped_column(
-        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
-    )
-    #: The supporting asset a ``depends_on`` chain goes through (empty: a direct link).
-    via: Mapped[str] = mapped_column(String(200), nullable=False, default="", server_default="")
-    #: A person removed this synced link: kept as a tombstone, the sync never adds it back.
-    removed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now, server_default=text("now()")
     )
