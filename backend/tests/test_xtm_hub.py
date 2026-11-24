@@ -1507,3 +1507,53 @@ async def test_an_agent_asking_to_publish_active_still_publishes_inactive(monkey
     assert operations["variables"]["input"]["status"] == "draft"
     assert "active" not in operations["variables"]["input"]
     assert "(inactive: only its publishers see it" in answer
+
+
+_META = "Track ransomware groups, their leak sites and their victims by sector and country, refreshed every hour."
+
+
+@pytest.mark.asyncio
+async def test_publishing_sends_the_meta_description_apart_from_the_short_one(
+    monkeypatch: pytest.MonkeyPatch, client_kwargs: Any
+) -> None:
+    fake = _PublishingHub({"XtmOneHubLibrary": _DASHBOARDS_LIBRARY, "XtmOneHubUploader": _UPLOADER})
+    _install(monkeypatch, fake)
+    executor, file_id = _publishing_executor()
+    await _publish(executor, file_id=file_id, **{**_PUBLISH_ARGS, "meta_description": _META})
+    sent = json.loads(_multipart(fake.uploads[0])["operations"][1])["variables"]["input"]
+    assert sent["meta_description"] == _META
+    assert sent["short_description"] == "Track ransomware groups"
+
+
+@pytest.mark.asyncio
+async def test_a_meta_description_refusal_names_the_length_and_bounds(
+    monkeypatch: pytest.MonkeyPatch, client_kwargs: Any
+) -> None:
+    refused = _answer(200, {"errors": [{"message": "META_DESCRIPTION_TOO_SHORT"}]})
+    fake = _PublishingHub({"XtmOneHubLibrary": _DASHBOARDS_LIBRARY, "XtmOneHubUploader": _UPLOADER}, created=refused)
+    _install(monkeypatch, fake)
+    executor, file_id = _publishing_executor()
+    answer = await _publish(executor, file_id=file_id, **_PUBLISH_ARGS)
+    published = "OpenCTI Dashboard: Track ransomware groups."
+    assert answer.startswith(hub._REFUSED)
+    assert "META_DESCRIPTION_TOO_SHORT" in answer
+    assert f"'{published}' ({len(published)} characters)" in answer
+    assert "120 to 160 characters" in answer
+    assert "Pass meta_description" in answer
+
+
+def test_the_publish_tool_states_the_meta_description_bounds() -> None:
+    definitions = hub.build_tools(f"{_BASE}||{_TOKEN}", CallableToolExecutor())
+    (definition,) = [d for d in definitions if d.name == "publish_xtm_hub_resource"]
+    meta = definition.input_schema["properties"]["meta_description"]
+    assert "120-160 characters" in meta["description"]
+    assert "meta_description" not in definition.input_schema["required"]
+
+
+def test_the_published_meta_description_matches_the_hub_rule() -> None:
+    assert hub.meta_description_published("openaev_scenarios", "Phishing drill.") == (
+        "OpenAEV Scenario: Phishing drill."
+    )
+    assert hub.meta_description_published("opencti_custom_views", " Malware view ") == (
+        "OpenCTI Custom View: Malware view."
+    )

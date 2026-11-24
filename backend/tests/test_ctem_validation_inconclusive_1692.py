@@ -17,7 +17,6 @@ import pytest
 from app.models.ctem_case import CtemCase, CtemCaseEvent
 from app.services import ctem_case_loop as loop
 from app.services import ctem_cases as rules
-from app.services import ctem_inject_effects as effects_of
 
 NOW = datetime(2026, 11, 24, 6, 0, tzinfo=UTC)
 
@@ -64,7 +63,7 @@ async def _record(db: _Session, case: CtemCase, result: str, *, at: datetime = N
 @pytest.mark.asyncio
 async def test_an_inconclusive_pass_is_stored_and_logged_as_inconclusive() -> None:
     db, case = _Session(), _case()
-    await _record(db, case, "passed", inject_class=effects_of.UNKNOWN)
+    await _record(db, case, "passed", conclusive=False)
     entry = case.validations[-1]
     assert entry["result"] == "inconclusive" and entry["reported_result"] == "passed"
     assert entry["conclusive"] is False and rules.passing(entry) is False

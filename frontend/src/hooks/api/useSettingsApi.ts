@@ -22,6 +22,7 @@ import type {
   LLMProviderAccess,
   LLMProviderDeletionImpact,
   AvailableModel,
+  MediaModelsInUse,
   AvailableDecisionModels,
   GeneralAssistantConfig,
   SpeechVoicesResponse,
@@ -59,6 +60,7 @@ function invalidateModelQueries(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ["available-models"] });
   qc.invalidateQueries({ queryKey: ["available-embedding-models"] });
   qc.invalidateQueries({ queryKey: ["available-image-models"] });
+  qc.invalidateQueries({ queryKey: ["media-models-in-use"] });
   qc.invalidateQueries({ queryKey: ["available-decision-models"] });
 }
 
@@ -302,6 +304,15 @@ export function useVideoModelStatus(enabled: boolean) {
   });
 }
 
+/** The image and speech models generation runs on: asked only while a card has none saved, since resolving may ask the gateway. */
+export function useMediaModelsInUse(enabled: boolean) {
+  return useQuery<MediaModelsInUse>({
+    queryKey: ["media-models-in-use"],
+    queryFn: () => api.get("/settings/media-models-in-use"),
+    enabled,
+  });
+}
+
 /** The speech models of the configured providers. */
 export function useAvailableSpeechModels() {
   return useQuery<AvailableModel[]>({
@@ -409,6 +420,10 @@ export function useUpdateGeneralAssistantConfig() {
       api.put<GeneralAssistantConfig>("/settings/general-assistant", data),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ["general-assistant-config"] });
+      // An image or speech change drops it, so a model just cleared never shows the cached answer that named it.
+      if (Object.entries(variables).some(([key, value]) => value !== undefined && /^(image|speech)_/.test(key))) {
+        qc.removeQueries({ queryKey: ["media-models-in-use"] });
+      }
       if (variables.agent_default_model !== undefined) {
         qc.invalidateQueries({ queryKey: MODEL_ANNOUNCEMENTS_QUERY_KEY });
       }
