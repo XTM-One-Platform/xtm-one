@@ -18,7 +18,7 @@
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { landOnCard } from "@/lib/land-on-card";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Bot, Building2, Coins, Import, Link2, Lock, MessageSquare, Package, Pencil, Plus, RefreshCw, Server, Shield, Sparkles } from "lucide-react";
+import { Bot, Building2, Coins, Import, Link2, Lock, MessageSquare, Package, Pencil, Plus, RefreshCw, Server, Shield, Sparkles, Ticket } from "lucide-react";
 import { TagInput } from "@/components/ui/tag-input";
 
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +39,7 @@ import {
   type SettingsCardFold,
   SettingsField,
   SettingsFieldGrid,
+  SettingsGroupTitle,
   SettingsSaveBar,
   settingsFieldHintId,
   settingsFieldLabelId,
@@ -69,6 +70,7 @@ import {
   usePatchOrganizationContext,
   useSaveOrganizationContext,
 } from "@/hooks/api/useOrganizationContextApi";
+import { useAssetGroups, useCanonicalAssets } from "@/hooks/api/useOrganizationAssetsApi";
 import { useFormatter } from "@/i18n";
 import {
   type AmountField,
@@ -177,7 +179,7 @@ const AMOUNT_INPUT_CLASS = "[&_input]:pr-36";
 
 /**
  * The cards of the profile one page mounts alone (#1178, Sam 22 Nov 2026): CTEM > Inventory edits the software inventory,
- * the AI systems, the assets and exposure, the asset groups, the policy and the outside lens with the same cards,
+ * the assets and exposure, the asset groups, the policy and the outside lens with the same cards,
  * the same per-card edit and the same Save as Settings, nothing stored twice. Without it the whole profile page.
  */
 export type OrganizationEmbed = {
@@ -209,6 +211,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const save = useSaveOrganizationContext();
   // #1752: a card saves its own fields alone (PATCH); the asset rows never travel with them.
   const patch = usePatchOrganizationContext();
+  // The names a primary asset links to, read on the row APIs (#1752 slice 3b), never from the profile.
+  const linkGroups = useAssetGroups({ throwOnError: false });
+  const linkAssets = useCanonicalAssets({ offset: 0, limit: 200 });
   // Primary assets are an Inventory source (#1754): their sources are configured and run in CTEM > Inventory > Sources
   // like every other source, nothing is pre-provisioned and the card names none of them (Sam, 24 Nov 2026, #1883).
   const drafting = useDraftOrganizationContext();
@@ -436,10 +441,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       ? edit.form.prioritization_policy
         ? { ...base, prioritization_policy: { ...(base.prioritization_policy ?? edit.form.prioritization_policy), accepted_risks: edit.form.prioritization_policy.accepted_risks } }
         : base
-      : edit.card === "prioritization_policy"
-        ? // The PIR list is edited on the Prioritization policy card (#1889).
-          { ...base, prioritization_policy: edit.form.prioritization_policy, pir_ids: edit.form.pir_ids, pir_names: edit.form.pir_names }
-        : { ...base, [edit.card]: edit.form[edit.card] };
+      : { ...base, [edit.card]: edit.form[edit.card] };
   const exposureDirty = (edit: { card: ExposureCard; form: ProfileForm }) =>
     saved !== null && JSON.stringify(exposureSaved(edit, saved)) !== JSON.stringify(saved);
   const saveExposure = () => {
@@ -450,9 +452,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       setCheckExposure(true);
       return;
     }
-    // The names OpenCTI gives now are saved with the PIRs, as the whole form's Save does (#9615).
-    const live = Object.fromEntries((pirs.data?.pirs ?? []).map((pir) => [pir.id, pir.name]));
-    const parsed = fromForm({ ...next, pir_names: { ...(next.pir_names ?? {}), ...live } });
+    const parsed = fromForm(next);
     if ("invalid" in parsed) return;
     const field = exposureEdit.card === "accepted_risks" ? "prioritization_policy" : exposureEdit.card;
     const options = {
@@ -466,13 +466,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         else toast({ title: t_i18n("The organization profile was not saved"), description: err.message, variant: "error" });
       },
     };
-    // The asset and group tables are rows: they keep their own write; every other card patches its field alone.
-    if (field === "assets_exposure" || field === "asset_groups") save.mutate({ profile: parsed.profile as OrganizationProfile, source: "form" }, options);
-    else {
-      // The Prioritization policy carries the PIR list with it (#1889).
-      const withPirs = field === "prioritization_policy" ? { pir_ids: parsed.profile.pir_ids, pir_names: parsed.profile.pir_names } : {};
-      patch.mutate({ fields: { [field]: parsed.profile[field], ...withPirs }, based_on_version: data.version ?? null }, options);
-    }
+    // The asset and group rows are written through their own row APIs on CTEM > Inventory (#1752 slice 3b): never here.
+    if (field === "assets_exposure" || field === "asset_groups") return;
+    patch.mutate({ fields: { [field]: parsed.profile[field] }, based_on_version: data.version ?? null }, options);
   };
   // One list card in edit (#12256): the other cards stay as they read; the form is not opened.
   const startListEdit = (key: ListKey) => {
@@ -514,19 +510,11 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     setRefusedIssue(null);
     setExposureEdit((prev) => (prev ? { ...prev, form: { ...prev.form, ...patch } } : prev));
   };
-  // A PIR OpenCTI no longer has, taken out from the read view: the Prioritization policy card opens in
-  // edit without it (#1889), Save writes it.
+  // A PIR OpenCTI no longer has, taken out from the read view: the form opens without it, Save writes it.
   const removePir = (id: string) => {
     if (!data) return;
-    if (form) {
-      setForm({ ...form, pir_ids: form.pir_ids.filter((pir) => pir !== id) });
-      return;
-    }
-    if (cardOpen) return;
-    const base = toForm(data.profile);
-    setCheckExposure(false);
-    setRefusedIssue(null);
-    setExposureEdit({ card: "prioritization_policy", form: { ...base, pir_ids: base.pir_ids.filter((pir) => pir !== id) } });
+    const base = form ?? toForm(data.profile);
+    setForm({ ...base, pir_ids: base.pir_ids.filter((pir) => pir !== id) });
   };
   const stopEditing = () => {
     setFocusAfter({ targets: [byTestId("settings.organization.edit")] });
@@ -795,7 +783,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     );
   };
   /**
-   * The three lists (primary assets, software inventory, AI systems) read on the shared DataTable (data
+   * The two lists (primary assets, software inventory) read on the shared DataTable (data
    * tables slice 9): search, filters, sort, CSV and the pager. In edit they keep all of it on the
    * list editor (#12256, OrganizationListEditor): one row open at a time, the order frozen.
    */
@@ -1046,7 +1034,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       read: (v) => readCell((v.asset_names ?? []).join(", ")),
       edit: (v, set) => {
         const names = v.asset_names ?? [];
-        const options = [...(current?.asset_groups ?? []), ...(current?.assets_exposure ?? [])].filter((asset) => asset.name.trim()).map((asset) => ({ value: asset.name, label: asset.name }));
+        // The groups and assets come from their row APIs (#1752 slice 3b): the profile answers no row.
+        const options = [...(linkGroups.data?.items ?? []), ...(linkAssets.data?.items ?? [])].filter((asset) => asset.name.trim()).map((asset) => ({ value: asset.name, label: asset.name }));
         return (
           <MultiSelect
             aria-label={t_i18n("Assets")}
@@ -1058,7 +1047,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             onToggle={(name) => set({ asset_names: names.includes(name) ? names.filter((n) => n !== name) : [...names, name] })}
             placeholder={t_i18n("Link assets")}
             searchPlaceholder={t_i18n("Search...")}
-            emptyOptionsLabel={t_i18n("No asset yet: add them under Assets and exposure.")}
+            // The rows live in Inventory > Assets (UX r1 B1 on #1892); no empty hint while the row APIs still load (A1).
+            emptyOptionsLabel={linkGroups.isLoading || linkAssets.isLoading ? t_i18n("Loading...") : t_i18n("No asset yet: add them in Inventory > Assets.")}
             noMatchLabel={t_i18n("No match")}
           />
         );
@@ -1332,88 +1322,12 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // The fields not filled that Settings still draws (#1690): the Business, Technology and Exposure fields are
   // reported on CTEM > Inventory, and Copilot mode reports none (Sam: "we don't care").
   const missing = xtmOne ? (data?.missing_fields ?? []).filter((path) => { const owner = tabOfField(path); return owner !== null && !isInventoryTab(owner); }) : [];
-  /**
-   * The PIR list on the Prioritization policy card (#1889): it filters the PIR playbooks beside the two PIR
-   * score thresholds. Read mode: the names as wrapped chips linked to OpenCTI (#9615); edit: the picker.
-   */
-  const pirList = (pirEditing: boolean, pirForm: ProfileForm, pirUpdate: (patch: Partial<ProfileForm>) => void) =>
-    !pirEditing ? (
-      <SettingsReadField
-        label={t_i18n("Priority intelligence requirements (PIRs)")}
-        info={help("pir_ids").info}
-        wide
-        value={
-          <OrganizationPirsView
-            pirs={savedPirs}
-            list={pirs.data}
-            unreadable={pirsUnreadable}
-            retrying={pirs.isFetching}
-            onRetry={() => void pirs.refetch()}
-            onRemove={removePir}
-          />
-        }
-      />
-    ) : (
-      <SettingsField
-        id={`${fieldId}-pir_ids`}
-        label={t_i18n("Priority intelligence requirements (PIRs)")}
-        wide
-        {...help("pir_ids")}
-        helper={
-          pirs.data?.unavailable === "not_connected"
-            ? t_i18n("The PIRs of OpenCTI could not be listed: the saved ones are kept.")
-            : t_i18n(FIELD_HELP.pir_ids.helper)
-        }
-      >
-        <div className="flex flex-col gap-1.5">
-          {pirsLoading ? (
-            // The picker waits for the names: its chips would otherwise read a placeholder (#11589).
-            <div
-              className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-sm border border-elevation-subtle-soft px-2 py-1.5"
-              role="status"
-              aria-busy="true"
-              aria-label={t_i18n("Loading the PIR names")}
-              data-testid="settings.organization.pirs-loading"
-            >
-              {savedPirs.slice(0, 8).map((pir) => (
-                <Skeleton key={pir.id} className="h-6 w-32 rounded-sm" />
-              ))}
-            </div>
-          ) : (
-            <MultiSelect
-              id={`${fieldId}-pir_ids`}
-              aria-label={t_i18n("Priority intelligence requirements (PIRs)")}
-              aria-describedby={settingsFieldHintId(`${fieldId}-pir_ids`)}
-              options={pirOptions}
-              selected={pirForm.pir_ids}
-              onToggle={(id) => pirUpdate({ pir_ids: pirForm.pir_ids.includes(id) ? pirForm.pir_ids.filter((p) => p !== id) : [...pirForm.pir_ids, id] })}
-              placeholder={t_i18n("Pick the PIRs")}
-              searchPlaceholder={t_i18n("Search a PIR")}
-              emptyOptionsLabel={pirsEmptyLabel}
-              noMatchLabel={t_i18n("No matching PIR")}
-            />
-          )}
-          {/* Edit mode says it too, with Retry, as read mode does (#11589). */}
-          {pirsUnreadable && <PirsUnreadable retrying={pirs.isFetching} onRetry={() => void pirs.refetch()} />}
-          {/* The picker's chips cut a long label at 250 px and take no title (library Chip):
-              a PIR OpenCTI no longer has is also written out whole here (UX round 1 B2). */}
-          {missingPirs.length > 0 && (
-            <ul className="flex flex-col gap-0.5 content-compact text-default-secondary" data-testid="settings.organization.pirs-missing" aria-label={t_i18n("PIR no longer in OpenCTI")}>
-              {missingPirs.map((pir) => (
-                <li key={pir.id} className="break-words">{pirText(pir)}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </SettingsField>
-    );
   /** The exposure cards a tab draws (#12329): the exposure tab three, the knowledge tab one. */
   const exposureCards = (cards: readonly (typeof EXPOSURE_SECTIONS)[number][]) =>
     current && (
       <OrganizationExposureCards
         cards={cards}
         readOnly={reader}
-        pirList={pirList}
         current={!editing && exposureEdit ? exposureEdit.form : current}
         editing={editing}
         fieldId={fieldId}
@@ -1441,10 +1355,11 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         fold={(section) =>
           cardFold(
             section,
+            // The profile API answers counts, never the rows (#1752 slice 3b).
             section === "assets_exposure"
-              ? (current.assets_exposure ?? []).length
+              ? (data?.row_counts?.assets_exposure ?? 0)
               : section === "asset_groups"
-                ? (current.asset_groups ?? []).length
+                ? (data?.row_counts?.asset_groups ?? 0)
                 : section === "enterprise_knowledge"
                   ? (current.enterprise_knowledge ?? []).length
                   : null,
@@ -1502,7 +1417,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                 <div className="max-w-xs space-y-1 content-compact">
                   <p>
                     {t_i18n(
-                      "What every agent and fleet reads before it ranks, scopes or estimates: your sector, regions, primary assets, software, AI systems, intelligence requirements, risk appetite and costs. Agents cite the fields they used and name the ones not filled, never guess them. Each save is a new version.",
+                      "What every agent and fleet reads before it ranks, scopes or estimates: your sector, regions, primary assets, software, intelligence requirements, risk appetite and costs. Agents cite the fields they used and name the ones not filled, never guess them. Each save is a new version.",
                     )}
                   </p>
                   <p data-testid="settings.organization.shared">{t_i18n("Shared context: the whole profile is visible to every user and every agent of this XTM One platform.")}</p>
@@ -1761,23 +1676,15 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             )}
           </SettingsCard>
 
-          {/* One section for the ticketing system and how CTEM cases sync with it (#1889, #917): the PIR list
-              moved to the Prioritization policy of CTEM > Inventory. Part of the profile form, read by the next sync. */}
           <SettingsCard
             id={`${fieldId}-ticketing`}
             className={SECTION_BAR_ANCHOR_CLASS}
             data-anchor="card"
             tabIndex={-1}
-            icon={RefreshCw}
-            title={t_i18n("CTEM case sync")}
-            description={
-              current.ticketing.integration
-                ? t_i18n("How CTEM cases open, update and close their tickets. A change applies to the next sync.")
-                : t_i18n("No ticketing connected: cases stay in XTM One. Set the ticketing integration and project to sync them.")
-            }
-            data-testid="settings.organization.ticketing-sync-group"
+            icon={Ticket}
+            title={t_i18n("Ticketing and intelligence")}
+            description={t_i18n("Where agents open tickets and which OpenCTI PIRs they follow.")}
           >
-            <div className="space-y-4">
             {!editing ? (
               <SettingsReadGrid data-testid="settings.organization.ticketing">
                 <SettingsReadField
@@ -1789,6 +1696,22 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                   label={t_i18n("Ticketing project")}
                   info={help("ticketing_project").info}
                   value={current.ticketing.project ? (projectOptions.find((p) => p.id === current.ticketing.project)?.name ?? current.ticketing.project) : ""}
+                />
+                <SettingsReadField
+                  label={t_i18n("Priority intelligence requirements (PIRs)")}
+                  info={help("pir_ids").info}
+                  wide
+                  value={
+                    // Read mode (#9615): the names as wrapped chips linked to OpenCTI, no search, no remove cross, no chevron.
+                    <OrganizationPirsView
+                      pirs={savedPirs}
+                      list={pirs.data}
+                      unreadable={pirsUnreadable}
+                      retrying={pirs.isFetching}
+                      onRetry={() => void pirs.refetch()}
+                      onRemove={removePir}
+                    />
+                  }
                 />
               </SettingsReadGrid>
             ) : (
@@ -1839,8 +1762,68 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                   />
                 )}
               </SettingsField>
+              <SettingsField
+                id={`${fieldId}-pir_ids`}
+                label={t_i18n("Priority intelligence requirements (PIRs)")}
+                wide
+                {...help("pir_ids")}
+                helper={
+                  pirs.data?.unavailable === "not_connected"
+                    ? t_i18n("The PIRs of OpenCTI could not be listed: the saved ones are kept.")
+                    : t_i18n(FIELD_HELP.pir_ids.helper)
+                }
+              >
+                <div className="flex flex-col gap-1.5">
+                  {pirsLoading ? (
+                    // The picker waits for the names: its chips would otherwise read a placeholder (#11589).
+                    <div
+                      className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-sm border border-elevation-subtle-soft px-2 py-1.5"
+                      role="status"
+                      aria-busy="true"
+                      aria-label={t_i18n("Loading the PIR names")}
+                      data-testid="settings.organization.pirs-loading"
+                    >
+                      {savedPirs.slice(0, 8).map((pir) => (
+                        <Skeleton key={pir.id} className="h-6 w-32 rounded-sm" />
+                      ))}
+                    </div>
+                  ) : (
+                    <MultiSelect
+                      id={`${fieldId}-pir_ids`}
+                      aria-label={t_i18n("Priority intelligence requirements (PIRs)")}
+                      aria-describedby={settingsFieldHintId(`${fieldId}-pir_ids`)}
+                      options={pirOptions}
+                      selected={current.pir_ids}
+                      onToggle={(id) => update({ pir_ids: current.pir_ids.includes(id) ? current.pir_ids.filter((p) => p !== id) : [...current.pir_ids, id] })}
+                      placeholder={t_i18n("Pick the PIRs")}
+                      searchPlaceholder={t_i18n("Search a PIR")}
+                      emptyOptionsLabel={pirsEmptyLabel}
+                      noMatchLabel={t_i18n("No matching PIR")}
+                    />
+                  )}
+                  {/* Edit mode says it too, with Retry, as read mode does (#11589). */}
+                  {pirsUnreadable && <PirsUnreadable retrying={pirs.isFetching} onRetry={() => void pirs.refetch()} />}
+                  {/* The picker's chips cut a long label at 250 px and take no title (library Chip):
+                      a PIR OpenCTI no longer has is also written out whole here (UX round 1 B2). */}
+                  {missingPirs.length > 0 && (
+                    <ul className="flex flex-col gap-0.5 content-compact text-default-secondary" data-testid="settings.organization.pirs-missing" aria-label={t_i18n("PIR no longer in OpenCTI")}>
+                      {missingPirs.map((pir) => (
+                        <li key={pir.id} className="break-words">{pirText(pir)}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </SettingsField>
             </SettingsFieldGrid>
             )}
+            {/* How CTEM cases sync with the target (#917): part of the profile form, read by the next sync. */}
+            <div className="space-y-3 border-t border-elevation-subtle-soft pt-4" data-testid="settings.organization.ticketing-sync-group">
+              <SettingsGroupTitle icon={RefreshCw}>{t_i18n("CTEM case sync")}</SettingsGroupTitle>
+              <p className="content-compact text-default-secondary">
+                {current.ticketing.integration
+                  ? t_i18n("How CTEM cases open, update and close their tickets. A change applies to the next sync.")
+                  : t_i18n("No ticketing connected: cases stay in XTM One. Set the ticketing integration above to sync them.")}
+              </p>
               <OrganizationTicketingSync
                 idPrefix={`${fieldId}-ticketing-sync`}
                 sync={current.ticketing.sync}
@@ -2057,7 +2040,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             {missingIn("exposure")}
             {/* The field changes proposed outside the form, the loop trace's scope proposal first among them (CTEM-30). */}
             {full && <OrganizationProposalsCard />}
-            {exposureCards((["assets_exposure", "asset_groups", "prioritization_policy"] as const).filter(show))}
+            {/* The asset and group tables are CTEM > Inventory's, on the row APIs (#1752 slice 3b). */}
+            {exposureCards((["prioritization_policy"] as const).filter(show))}
             {/* Owned domains, address ranges and the outside lens pass (CTEM-26 slice 2, #1140). */}
             {show("outside_lens") && <OrganizationOutsideLensCard id={`${fieldId}-outside_lens`} fold={cardFold("outside_lens", null)} />}
             {/* The OpenCRQ evidence health pass, on by default (#1344): the signal sources' Turn on lands here. */}

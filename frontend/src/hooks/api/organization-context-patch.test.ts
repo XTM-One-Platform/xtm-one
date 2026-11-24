@@ -51,11 +51,11 @@ for (const [path, fields] of Object.entries(CARDS)) {
   });
 }
 
-test("the settings list and policy cards patch their field; only the asset tables keep the profile write", () => {
+test("the settings list and policy cards patch their field; the asset rows are never written from settings", () => {
   const section = read("../../pages/settings/OrganizationSection.tsx");
   assert.match(section, /patch\.mutate\(\{ fields: \{ \[key\]: parsed\.profile\[key\] \}/);
-  // The Prioritization policy card carries the PIR list with its field (#1889); every other card patches its field alone.
-  assert.match(section, /patch\.mutate\(\{ fields: \{ \[field\]: parsed\.profile\[field\], \.\.\.withPirs \}/);
-  assert.match(section, /const withPirs = field === "prioritization_policy" \? \{ pir_ids: parsed\.profile\.pir_ids, pir_names: parsed\.profile\.pir_names \} : \{\};/);
-  assert.match(section, /if \(field === "assets_exposure" \|\| field === "asset_groups"\) save\.mutate/);
+  assert.match(section, /patch\.mutate\(\{ fields: \{ \[field\]: parsed\.profile\[field\] \}/);
+  // The asset and group rows are written through their row APIs on CTEM > Inventory (#1752 slice 3b).
+  assert.match(section, /if \(field === "assets_exposure" \|\| field === "asset_groups"\) return;/);
+  assert.doesNotMatch(section, /field === "asset_groups"\) save\.mutate/);
 });
