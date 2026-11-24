@@ -220,6 +220,50 @@ async def test_deleting_a_group_keeps_its_assets_without_the_group() -> None:
     assert records.record_row(after).get("group") in ("", None)
 
 
+async def test_a_hand_delete_refuses_a_synced_record_alone_and_skips_it_in_a_batch() -> None:
+    """#1729: a person deletes hand-entered records only; a sync's record would come back on its next run."""
+    async with _database() as sessions, sessions() as session:
+        org = await _primary(session, [SYNCED, {**HAND, "external_id": "h-1"}])
+        rows = {r.name: r.id for r in await records.asset_rows(session, org)}
+        with pytest.raises(records.RecordError, match="kept in sync"):
+            await records.delete_records(session, org, [rows["laptop-01"]], origin="form", actor="form:u")
+        await session.rollback()
+        gone = await records.delete_records(
+            session, org, [rows["laptop-01"], rows["web-02"]], origin="form", actor="form:u"
+        )
+        await session.commit()
+        names = [a for a, _n in await _assets(session)]
+    assert gone == [rows["web-02"]]
+    assert names == ["laptop-01"]
+
+
+async def test_a_sync_still_deletes_its_own_records() -> None:
+    async with _database() as sessions, sessions() as session:
+        org = await _primary(session, [SYNCED])
+        synced_id = (await records.asset_rows(session, org, source="intune"))[0].id
+        gone = await records.delete_records(session, org, [synced_id], origin="sync:s", actor="sync:s")
+        await session.commit()
+    assert gone == [synced_id]
+
+
+async def test_a_hand_delete_refuses_a_synced_group_and_removes_a_hand_one() -> None:
+    async with _database() as sessions, sessions() as session:
+        org = await _primary(session, [SYNCED])
+        synced = await records.upsert_group(
+            session, org, {"name": "Linux", "source": "openaev", "external_id": "g-1"}, origin="sync:s", actor="sync:s"
+        )
+        hand = await records.upsert_group(session, org, {"name": "DMZ"}, origin="form", actor="form:u")
+        await session.commit()
+        with pytest.raises(records.RecordError, match="kept in sync"):
+            await records.delete_group(session, org, synced.id, origin="form", actor="form:u")
+        await session.rollback()
+        await records.delete_group(session, org, hand.id, origin="form", actor="form:u")
+        await records.delete_group(session, org, synced.id, origin="sync:s", actor="sync:s")
+        await session.commit()
+        left = await records.groups_out(session, org)
+    assert left == []
+
+
 async def test_the_agent_row_path_plans_writes_and_removes_records_only_where_they_differ() -> None:
     from app.services import organization_context_rows as org_rows
 
@@ -413,7 +457,8 @@ async def test_on_2000_assets_one_row_write_stays_under_500_ms_and_a_bulk_delete
         timings: dict[str, float] = {name: min(values) for name, values in runs.items()}
         ids = [r.id for r in await records.asset_rows(session, org, limit=50)]
         started = time.perf_counter()
-        await records.delete_records(session, org, ids, origin="form", actor="form:u")
+        # The fleet is synced (intune): its sync deletes them, a person's delete would skip them (#1729).
+        await records.delete_records(session, org, ids, origin="sync:s", actor="sync:s")
         await session.commit()
         timings["bulk_delete_50"] = time.perf_counter() - started
     print("timings #1543:", {k: round(v * 1000) for k, v in timings.items()})  # noqa: T201 - pasted in the PR
