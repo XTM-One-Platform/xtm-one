@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from app.models.general_assistant_config import (
@@ -38,7 +39,7 @@ _MIN_FUNCTIONS = {
     "web": 3,
     "design": 12,
     "cti": 6,
-    "coordination": 24,
+    "coordination": 25,
     "generate_report": 3,
     "deep_investigation": 2,
     "memory_steward": 3,
@@ -60,9 +61,33 @@ def test_one_group_per_catalog_id():
     # steward, 22 with its quality diagnosis and experiments, 23 with its Flow
     # Lab, 24 with its orchestrator, 25 with organization profile editing (#11594), 26 with
     # the grounded STIX extraction, its own group so Threat Intelligence never carries it,
-    # 27 with user administration (#250).
-    assert len(_IDS) == len(set(_IDS)) == 27
+    # 27 with user administration (#250), 28 with the Module Analyst's (#101 S14),
+    # 29 with the read-only CTEM signals and cases (#1337), 30 with the CTEM repairs (#1778).
+    assert len(_IDS) == len(set(_IDS)) == 30
     assert set(_IDS) == set(catalog)
+
+
+def test_every_group_text_is_in_every_catalog():
+    """``useBuiltinTools`` renders name, tagline, detail and category through
+    ``t_i18n``: a key missing from a catalog shows the English text in that
+    locale, silently (#877 dropped the Health Modules keys in a merge)."""
+    lang = Path(__file__).resolve().parents[2] / "frontend/src/i18n/lang"
+    for locale in ("en", "fr", "es", "ja"):
+        catalog = json.loads((lang / f"{locale}.json").read_text(encoding="utf-8"))
+        missing = sorted(
+            {
+                key
+                for group in BUILTIN_TOOL_GROUPS
+                for key in (
+                    None if group.named_after_platform else group.name,
+                    group.tagline,
+                    group.detail,
+                    group.category,
+                )
+                if key and key not in catalog
+            }
+        )
+        assert not missing, f"{locale}.json lacks built-in tool group keys: {missing}"
 
 
 def test_audience_flags_match_the_backend_sets():
@@ -78,7 +103,7 @@ def test_health_only_groups_are_the_specialists_suites():
     from app.services.health.fleet_seed import FLEET_AGENTS
 
     health_only = {g.id for g in BUILTIN_TOOL_GROUPS if g.health_only}
-    assert health_only == {"memory_steward", "health_diagnosis", "health_experiments", "flow_lab"}
+    assert health_only == {"memory_steward", "health_diagnosis", "health_experiments", "flow_lab", "health_modules"}
     for group in BUILTIN_TOOL_GROUPS:
         if group.health_only:
             assert group.gate == "health" and group.agent_keyed, group.id
@@ -136,6 +161,7 @@ def test_every_function_is_stamped_with_its_group_source():
     group that lists it, the narrowest grant.
     """
     from app.services import builtin_tools as bt
+    from app.services.builtin_tools.health_modules import build_health_module_tools
     from app.services.builtin_tools.roi import build_roi_tools
 
     owner: dict[str, str] = {}
@@ -162,6 +188,7 @@ def test_every_function_is_stamped_with_its_group_source():
         "health_diagnosis": bt.build_health_diagnosis_tools("")[0],
         "health_experiments": bt.build_health_experiment_tools("")[0],
         "flow_lab": bt.build_flow_lab_tools("")[0],
+        "health_modules": build_health_module_tools("")[0],
     }
     for group_id, definitions in built.items():
         for definition in definitions:

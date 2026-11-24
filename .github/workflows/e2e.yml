@@ -99,6 +99,10 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-26.04
     timeout-minutes: 10
+    # actions: read fetches the shard weights the nightly runs published; write lets a red job cancel the run (.github/actions/fail-fast).
+    permissions:
+      contents: read
+      actions: write
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
       run: ${{ steps.select.outputs.run }}
@@ -118,6 +122,30 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
+
+      # The seconds every shard of this run deals the spec files by: the
+      # nightly table when it passes its checks, else the committed
+      # tests_e2e/shard-timings.json. Handed to the shards as an artifact, so
+      # all of them deal by the same table (backend/scripts/shard_weights.py).
+      - name: Fetch the nightly shard weights
+        uses: ./.github/actions/fetch-shard-weights
+        with:
+          workflow: e2e.yml
+          artifact: e2e-shard-weights
+          path: ${{ runner.temp }}/nightly-weights
+
+      - name: Pick the shard weights
+        working-directory: backend
+        run: |
+          latest=$(find "$RUNNER_TEMP/nightly-weights" -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1)
+          python scripts/shard_weights.py pick --kind e2e ${latest:+--candidate "$latest/e2e.json"} \
+            --out "$RUNNER_TEMP/shard-weights/e2e.json" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: shard-weights
+          path: ${{ runner.temp }}/shard-weights/
+          retention-days: 7
 
       - name: Select the projects
         id: select
@@ -146,6 +174,10 @@ jobs:
           python -m tests.selection e2e "${scope[@]}" --matrix "$MATRIX" \
             --github-output "$GITHUB_OUTPUT" --summary "$GITHUB_STEP_SUMMARY"
 
+      - name: Stop the merge group at its first red job
+        if: failure() && github.event_name == 'merge_group'
+        uses: ./.github/actions/fail-fast
+
   # One stack per job, each running its share of the spec files exactly as the
   # whole suite ran before: one Playwright worker against its own platform,
   # database and scripted model. The files are dealt by their CI timings
@@ -162,6 +194,9 @@ jobs:
     if: github.event_name != 'pull_request' && needs.select.outputs.run == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: write
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
@@ -437,6 +472,11 @@ jobs:
             exit 1
           }
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: shard-weights
+          path: ${{ runner.temp }}/shard-weights
+
       - name: Run E2E tests
         working-directory: frontend
         env:
@@ -445,6 +485,7 @@ jobs:
           E2E_USER_EMAIL: ${{ secrets.E2E_USER_EMAIL }}
           E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
           E2E_SHARD: ${{ matrix.shard }}
+          E2E_SHARD_TIMINGS: ${{ runner.temp }}/shard-weights/e2e.json
         run: yarn test:e2e --project=${{ matrix.project }}
 
       # Where the disk stands at its fullest - the image, the stack's data,
@@ -496,6 +537,10 @@ jobs:
             | grep -E 'Agent loop iter|"level": "(warning|error|critical)"' | tail -n 400 || true
           echo "::endgroup::"
 
+      - name: Stop the merge group at its first red job
+        if: failure() && github.event_name == 'merge_group'
+        uses: ./.github/actions/fail-fast
+
   # The check the rest of the repository reads: one status for the whole suite,
   # under the name the single job used to carry. Required, so it runs even when
   # the run is cancelled: skipped, it would count as passed. On a pull request
@@ -506,7 +551,7 @@ jobs:
   e2e:
     name: E2E (Playwright / Chromium)
     if: always() && github.event_name != 'pull_request'
-    needs: [select, shard]
+    needs: [select, shard, shard-weights]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -515,7 +560,13 @@ jobs:
           SELECT: ${{ needs.select.result }}
           RUN: ${{ needs.select.outputs.run }}
           SHARDS: ${{ needs.shard.result }}
+          # Nightly only: a run whose weights failed to publish is red, not silently stale.
+          PUBLISH: ${{ needs.shard-weights.result }}
         run: |
+          if [ "$PUBLISH" = failure ] || [ "$PUBLISH" = cancelled ]; then
+            echo "::error::Publishing the shard weights ended $PUBLISH - its job above has the cause."
+            exit 1
+          fi
           if [ "$SELECT" != success ]; then
             echo "::error::The E2E selection ended $SELECT - its job above has the cause."
             exit 1
@@ -529,6 +580,65 @@ jobs:
             exit 1
           fi
           echo "All E2E shards passed."
+
+  # Every nightly run measures the spec files on its own reports and publishes
+  # the median of the last five nightly measures: every later run's select job
+  # deals the shards by it, so they follow the suite as it grows, with no table
+  # to refresh by hand. Only a nightly run on main is read, and it publishes
+  # only from green shards; a manual run publishes too, to check this job, but
+  # nothing reads its copy.
+  shard-weights:
+    name: Publish the shard weights
+    needs: shard
+    if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.shard.result == 'success'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: test-results-*
+          path: ${{ runner.temp }}/results
+
+      - name: Fetch the earlier nightly measures
+        uses: ./.github/actions/fetch-shard-weights
+        with:
+          workflow: e2e.yml
+          artifact: e2e-shard-weights-measured
+          path: ${{ runner.temp }}/earlier
+          runs: "4"
+
+      - name: Measure this run and take the median
+        working-directory: backend
+        run: |
+          # shellcheck disable=SC2046 # one argument per report; the paths hold no space
+          python scripts/shard_weights.py measure --kind e2e --out "$RUNNER_TEMP/measured/e2e.json" \
+            $(find "$RUNNER_TEMP/results" -name timings.json)
+          # shellcheck disable=SC2046 # one argument per earlier table; the paths hold no space
+          python scripts/shard_weights.py median --kind e2e --out "$RUNNER_TEMP/weights/e2e.json" \
+            "$RUNNER_TEMP/measured/e2e.json" $(find "$RUNNER_TEMP/earlier" -name e2e.json)
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: e2e-shard-weights-measured
+          path: ${{ runner.temp }}/measured/
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: e2e-shard-weights
+          path: ${{ runner.temp }}/weights/
+          retention-days: 30
 
   # A red nightly run reaches nobody, and it is the full pass that catches
   # what the queue's selection missed: it opens an issue, or comments on the

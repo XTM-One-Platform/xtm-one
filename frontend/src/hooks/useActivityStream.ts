@@ -57,6 +57,8 @@ export function useActivityStream() {
         title?: string;
         presenter_name?: string;
         presentation_id?: string;
+        signal_id?: string;
+        case_id?: string;
       } | null = null;
       try {
         parsed = JSON.parse(event.data as string);
@@ -100,6 +102,27 @@ export function useActivityStream() {
         }
         // The Operations → Executions cross-flow feed.
         qc.invalidateQueries({ queryKey: ["flow-runs-global"] });
+        return;
+      }
+
+      // CTEM loop frames (#838, dev-docs/ctem-loop-visibility.md section 5):
+      // ids and states only, routed to the signal queries alone so a busy
+      // pipeline does not refresh every query of the page; the re-read applies
+      // the viewer's visibility.
+      if (parsed?.type === "ctem_signal_update") {
+        qc.invalidateQueries({ queryKey: ["ctem-signals", "recent"] });
+        qc.invalidateQueries({ queryKey: ["ctem-signals", "list"] });
+        if (parsed.signal_id) qc.invalidateQueries({ queryKey: ["ctem-signals", "signal", parsed.signal_id] });
+        return;
+      }
+      // A case opened, joined, validated or past its SLA (CTEM-03-UI, #892):
+      // the board, Act now and the case page re-read through the API.
+      if (parsed?.type === "ctem_case_update") {
+        qc.invalidateQueries({ queryKey: ["ctem-cases", "list"] });
+        if (parsed.case_id) {
+          qc.invalidateQueries({ queryKey: ["ctem-cases", "case", parsed.case_id] });
+          qc.invalidateQueries({ queryKey: ["ctem-signals", "case", parsed.case_id] });
+        }
         return;
       }
 

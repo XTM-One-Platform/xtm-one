@@ -131,7 +131,7 @@ export function FlowCard({ flow, userId }: { flow: FlowSummary; userId?: string 
   const { t_i18n } = useFormatter();
   const navigate = useNavigate();
   const isShared = isEntityShared(flow, userId);
-  const href = `/flows/${flow.id}/builder`;
+  const href = `/flows/library/${flow.id}`;
 
   return (
     <Card
@@ -330,7 +330,7 @@ export default function LibraryTab() {
         name: t_i18n("Untitled flow"),
         description: "",
       });
-      navigate(`/flows/${flow.id}/builder`);
+      navigate(`/flows/library/${flow.id}`);
     } catch (err) {
       toast({
         title: t_i18n("Could not create the flow"),
@@ -408,7 +408,7 @@ export default function LibraryTab() {
           t_i18n("Everything in the file was imported cleanly."),
         variant: notes.length ? "info" : "success",
       });
-      navigate(`/flows/${flow.id}/builder`);
+      navigate(`/flows/library/${flow.id}`);
     } catch (err) {
       toast({
         title: t_i18n("Import failed"),
@@ -429,7 +429,7 @@ export default function LibraryTab() {
                 id: "edit",
                 label: t_i18n("Open in builder"),
                 icon: Pencil,
-                onSelect: () => navigate(`/flows/${flow.id}/builder`),
+                onSelect: () => navigate(`/flows/library/${flow.id}`),
               },
               {
                 id: "duplicate",
@@ -520,7 +520,7 @@ export default function LibraryTab() {
           items={filtered}
           columns={columns}
           rowKey={(f) => f.id}
-          rowHref={(f) => `/flows/${f.id}/builder`}
+          rowHref={(f) => `/flows/library/${f.id}`}
           defaultSortKey="updated"
           storageKey="flows"
           search={{ value: search, onChange: setSearch, placeholder: t_i18n("Search flows...") }}

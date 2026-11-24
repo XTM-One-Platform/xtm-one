@@ -1,4 +1,8 @@
-"""Single-product seeded fleet M2: the OpenAEV detection validation desk (#10575, epic #8975)."""
+"""Single-product seeded fleet M2: the OpenAEV detection validation desk (#10575, epic #8975).
+
+Since CTEM-31 (#1048) the desk is the Validation desk role of the generic CTEM loop
+fleet: its agents and automations are unchanged, its fleet row is retired.
+"""
 
 from __future__ import annotations
 
@@ -6,8 +10,12 @@ from pathlib import Path
 
 from app.agents import openaev_detection_desk as m2
 from app.agents.builtin_agents import ADMIN_OPT_IN_BUILTIN_ASSIGNMENTS, BUILTIN_AGENTS, BUILTIN_ASSIGNMENTS
-from app.agents.builtin_fleet_docs import BUILTIN_FLEET_DOCS, BUILTIN_FLEET_STRUCTURED
-from app.agents.builtin_fleets import BUILTIN_FLEETS
+from app.agents.builtin_fleet_docs import (
+    BUILTIN_FLEET_STRUCTURED,
+    OPENAEV_DETECTION_DESK_DOC,
+    OPENAEV_DETECTION_DESK_STRUCTURED,
+)
+from app.agents.builtin_fleets import BUILTIN_FLEETS, CTEM_LOOP_SLUG, RETIRED_FLEET_SUCCESSORS
 from app.agents.builtin_roi_units import BUILTIN_ROI_EXEMPT, BUILTIN_ROI_UNITS, EXEMPT_ORCHESTRATOR
 from app.agents.fleet_opt_in import ENABLED_BY_DEFAULT_ALLOWLIST
 from app.services import openaev_trigger_provisioning as prov
@@ -26,12 +34,16 @@ def _assignments() -> list[dict]:
     return [a for a in BUILTIN_ASSIGNMENTS if a["agent_slug"] == m2.ORCHESTRATOR]
 
 
-def test_the_fleet_is_seeded_in_xtm_one_and_dev_never_in_copilot():
+def test_the_desk_is_a_role_of_the_generic_loop_seeded_in_xtm_one_and_dev_never_in_copilot():
     from app.agents import fleet_seed
 
-    assert m2.DETECTION_DESK_FLEET in BUILTIN_FLEETS
-    assert m2.FLEET_SLUG in [f["slug"] for f in fleet_seed.fleets_for_mode("xtm_one")]
-    assert m2.FLEET_SLUG in [f["slug"] for f in fleet_seed.fleets_for_mode("dev")]
+    assert m2.DETECTION_DESK_FLEET not in BUILTIN_FLEETS
+    assert RETIRED_FLEET_SUCCESSORS[m2.FLEET_SLUG] == CTEM_LOOP_SLUG
+    loop = next(f for f in fleet_seed.fleets_for_mode("dev") if f["slug"] == CTEM_LOOP_SLUG)
+    roles = {m["agent"]: m for m in loop["members"]}
+    assert set(roles) >= _NEW
+    role = roles[m2.ORCHESTRATOR]["role_label"]
+    assert role == "Validation desk"
     assert fleet_seed.fleets_for_mode("copilot") == []
     for slug in _NEW:
         assert _agents()[slug]["platform_targets"] == ["xtm_one", "dev"]
@@ -108,23 +120,27 @@ def test_one_analysis_counts_one_simulation_and_each_closed_gap_one_retest():
     assert roi.count_units(BUILTIN_ROI_UNITS[m2.COVERAGE_REPORTER], report) == 2
 
 
-def test_the_simulation_launch_is_the_only_gate_and_it_waits_at_low():
-    structured = BUILTIN_FLEET_STRUCTURED[m2.FLEET_SLUG]
-    assert [g["key"] for g in structured["gates"]] == ["openaev.simulation.launch"]
-    assert structured["gates"][0]["impact"] == "destructive"
-    names = {r["name"] for r in gated_tool_rules("low", structured["gates"])}
-    assert names == {"manage_openaev_simulation", "manage_openaev_atomic_testing"}
+def test_in_the_loop_a_simulation_launch_is_the_validation_decision_never_a_tool_pause() -> None:
+    # Sam, 23 Nov 2026 (#1339): out of the box two CTEM gates wait, ctem.mobilize and the
+    # OpenAEV validation. Sam, 24 Nov 2026 (#1675): the wait is a decision item, no tool pauses.
+    gates = BUILTIN_FLEET_STRUCTURED[CTEM_LOOP_SLUG]["gates"]
+    validation = next(g for g in gates if g["key"] == "ctem.validation.non_readonly")
+    assert "tools" not in validation
+    assert gated_tool_rules("low", gates) == []
+    assert gated_tool_rules("full_gates", gates) == []
 
 
 def test_the_seeded_documentation_names_every_automation():
-    triggers = BUILTIN_FLEET_DOCS[m2.FLEET_SLUG]["triggers"]
+    triggers = OPENAEV_DETECTION_DESK_DOC["triggers"]
     for a in m2.DETECTION_DESK_ASSIGNMENTS:
         assert f"**{a['name']}**" in triggers
-    structured = BUILTIN_FLEET_STRUCTURED[m2.FLEET_SLUG]
+    structured = OPENAEV_DETECTION_DESK_STRUCTURED
     assert [t["name"] for t in structured["triggers"]] == [a["name"] for a in m2.DETECTION_DESK_ASSIGNMENTS]
-    assert {p["check"] for p in structured["prerequisites"]} >= {"integration:openaev", "manual"}
+    loop = BUILTIN_FLEET_STRUCTURED[CTEM_LOOP_SLUG]
+    assert "Simulation finished" in {t["name"] for t in loop["triggers"]}
+    assert {p["check"] for p in loop["prerequisites"]} >= {"integration:openaev", "manual"}
     for section in ("purpose", "use_case", "flow", "objects_created", "prerequisites"):
-        assert BUILTIN_FLEET_DOCS[m2.FLEET_SLUG][section].strip(), section
+        assert OPENAEV_DETECTION_DESK_DOC[section].strip(), section
 
 
 def test_the_gap_sorting_covers_prevention_detection_and_logging_and_root_causes():

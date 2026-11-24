@@ -165,7 +165,7 @@ administrator.
 
 #11213 (slice 2): the KEV row is tailored when the primary organization
 profile lists a `tech_stack`. `build_posture_for_user` (cyber) reads the
-profile in its DB phase (`_profile_tech_stack`), and in the network phase
+profile in its DB phase (`_organization_software` since #1495, the Software entities plus the profile rows no entity carries), and in the network phase
 `_octi_kev_tailored` resolves the OpenCTI `Software` observables matching the
 stack (CPE equal, else product name with the vendor when both name one; at
 most 500) and counts the KEV vulnerabilities related to them
@@ -211,7 +211,7 @@ to the run it started and the run to its outcome when the run records it
 (C1 slice 1 handover rule). A legend row under the title names the dot
 colours (module event, automation run, outcome, needs attention) and the
 dashed link ("started"). Hover gives a card with the run name, agent, time
-and outcome; click opens `/runs/:id`. The 7 d / 30 d toggle is a 32 px
+and outcome; click opens `/operations/executions/:id`. The 7 d / 30 d toggle is a 32 px
 segmented control. The card is sized to its lanes (no empty band).
 "All executions" opens `/operations/executions`. Replaces Live Activity,
 Latest Results & Digests and Fleet timeline on the first two screens; their
@@ -227,14 +227,17 @@ pending. Click opens
 `/ctem/:stage`, which already holds every figure, the AI assessment, the score
 trend, the owner, the module links and the stage agents; v2 adds to that page
 the facts and viz the v1 card shows that the page does not (parity rows S1-S9
-of section 6). The stage page keeps its shared `EntityPageHeader` (back link
-"Back to Command Center" first, the posture gauge as leading, the methodology
-as description, vertical and sample badges, "Owned by", the open-in-module
-action); no breadcrumb. The header stays within the 140 px budget at 1440
-(round 2 B1): an 88 px ring gauge and a 2 px gap under the 36 px back link,
-about 130 px measured from the back link to the bottom of the owner line.
-Its captions move from `text-[11px]` to the 12 px
-caption class (round 1 A4).
+of section 6). The stage page, like every CTEM page, draws the CTEM header
+band (`ctem/CtemPageHeader.tsx`, #11660): the shared `LocationBackButton`
+"Back to Command Center" first, at the content edge above the band and outside
+its border, the same component, size and spacing (`space-y-1`) as the back link
+of `EntityPageHeader` (Sam, 22 Nov 2026: no CTEM-only caption link inside the
+band); inside the band the breadcrumb line holds only the current page
+("Stage 1 of 5") and its extras (vertical chip, analyst), then the title with
+its "i"; the stat cells (STAGE SCORE, ORGANIZATION) stretch over the band's
+content height, so their hairlines run top to bottom and their figures centre
+on the title's axis, at the narrow, medium and wide layouts. Captions use the
+12 px caption class (round 1 A4).
 A stage with no source connected shows "Connect <module>" instead of a score
 (never a greyed sample on a connected instance). Governance & Risk: live
 OpenCRQ figures when registered, else "OpenCRQ not connected" with Connect /
@@ -394,7 +397,7 @@ from Customize (the widget stays in the registry and in saved layouts).
 | X2 | Vertical switcher (cyber, FIMI, fraud) | Value band top line | n/a |
 | X3 | `DashboardNotices` region | Kept above the value band | n/a |
 | X4 | Auto-generation of a missing briefing on first open | Kept, unchanged | n/a |
-| X5 | Deep links: `/ctem/:stage`, `/briefing`, `/agents/:id`, `/agents/new`, `/operations/executions`, `/operations/executions?filter=digests`, `/runs/:id`, `/integrations`, `/integrations/new?provider=`, `/settings/platform#xtm-hub`, `/chat`, `/flows/fleets`, module deep links (`ctemDeepLink`, `ctemBestDeepLink`) | All kept; added `/value`, `/value/methodology`, `/operations/work-items` | n/a |
+| X5 | Deep links: `/ctem/:stage`, `/briefing`, `/agents/:id`, `/agents/new`, `/operations/executions`, `/operations/executions?filter=digests`, `/operations/executions/:id`, `/integrations`, `/integrations/new?provider=`, `/settings/platform#xtm-hub`, `/chat`, `/flows/fleets`, module deep links (`ctemDeepLink`, `ctemBestDeepLink`) | All kept; added `/value`, `/value/methodology`, `/operations/work-items` | n/a |
 
 Stage page parity rows (what the v1 stage card shows, kept on `/ctem/:stage`;
 most already exist on the page, V4 adds the missing ones):

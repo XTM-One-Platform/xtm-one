@@ -249,6 +249,8 @@ STACK_IMAGES: dict[str, tuple[str, ...]] = {
     "jvm": ("toolchain-jvm",),
     "rust": ("toolchain-rust",),
     "dbt": ("toolchain-dbt", "toolchain-python"),
+    # helm is a binary of every toolchain image (Dockerfile.sandbox.toolchain, toolchain-base), never of a -dev one.
+    "helm": ("toolchain-python", "toolchain-node", "toolchain-jvm", "toolchain-rust", "toolchain-dbt"),
 }
 #: ``package.json`` script names per kind, preferred first.
 _NODE_SCRIPTS = (
@@ -264,6 +266,19 @@ _NODE_SCRIPTS = (
 #: (``check:bundle-size``, ``i18n:check``) is otherwise met in CI only. The words of
 #: :data:`_SCRIPT_SKIP` leave a script out.
 _NODE_SCRIPT_VERBS = frozenset({"generate", "extract", "compile", "check", "test", "validate", "verify"})
+#: A hyphenated script name (``i18n-checker``, ``generate-i18n-checker-constant``, ``check-licenses``)
+#: is read the same way, its segments split on ``-`` too, a gate noun counting as its verb.
+_NODE_SCRIPT_NOUNS = frozenset({"checker", "validator", "verifier"})
+_NODE_SCRIPT_SPLIT = re.compile(r"[:-]")
+#: A script that reaches a URL (``swagger-typescript-api --path=http://localhost:8080``) needs a
+#: service the sandbox does not run: it is not offered.
+_NODE_SCRIPT_URL = re.compile(r"https?://")
+#: A script whose body runs a code generator (``"relay": "relay-compiler relay.config.json"``,
+#: ``"build:types": "graphql-codegen ..."``) is a check whatever its name: a narrow checkout carries
+#: no generated sources (``src/generated``, ``__generated__``), so the types or unit check needs it first.
+_NODE_CODEGEN = re.compile(
+    r"(?:^|[\s;&|(])(?:graphql-codegen|gql-gen|relay-compiler|openapi-typescript|orval|prisma\s+generate|buf\s+generate)(?=\s|$|[;&|)])"
+)
 #: A unit script that is a Node wrapper of its own (``node test/run.mjs``), and the loader files beside
 #: it the Node test runner is given with ``--import`` by the ``node-unit-file`` check.
 _NODE_WRAPPER = re.compile(r"^(?:\./)?[\w./-]+\.m?js$")
@@ -778,6 +793,60 @@ def workspace_dependency_dirs(manifests: Mapping[str, bytes], sub_paths: Iterabl
     return sorted(d for d in found if not any(d != o and d.startswith(o + "/") for o in found))[:MAX_DEPENDENCY_DIRS]
 
 
+#: An ESLint flat configuration, a workspace's own included (``eslint.config.ts``, ``local.eslint.config.ts``).
+_LINT_CONFIG = re.compile(r"^([\w-]+\.)*eslint\.config\.(js|cjs|mjs|ts|cts|mts)$")
+#: A bare module specifier a configuration imports (``from 'eslint-rules/src/rules'``, ``import('x')``, ``require('x')``).
+_BARE_IMPORT = re.compile(
+    r"(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+|\brequire\s*\(\s*)[\"'`]((?:@[\w.-]+/)?[\w][\w.-]*)(?:/[^\"'`]*)?[\"'`]"
+)
+
+
+def is_lint_config(path: str) -> bool:
+    """Whether *path* is an ESLint flat configuration whose imports :func:`lint_config_member_dirs` follows."""
+    return bool(_LINT_CONFIG.match(posixpath.basename(path)))
+
+
+def lint_config_member_dirs(
+    configs: Mapping[str, bytes], manifests: Mapping[str, bytes], sub_paths: Iterable[str]
+) -> list[str]:
+    """The workspace member directories an ESLint configuration of a narrow checkout imports by package name.
+
+    ``import { linguiRules } from 'eslint-rules/src/rules'`` in the root
+    ``eslint.config.ts`` or a member's ``local.eslint.config.ts`` resolves to
+    the sibling member named ``eslint-rules`` through the workspace link, with
+    no ``workspace:`` dependency declaring it: a checkout of ``front`` keeps the
+    configuration and fails on a missing module. *configs* maps the
+    configurations read in or above the sub_paths (:func:`is_lint_config`) to
+    their content, *manifests* every ``package.json`` of the repository. Each
+    bare specifier whose package name is a member's ``name`` adds that
+    member's directory when it is not the root, under a sub_path or holding
+    one; :data:`MAX_DEPENDENCY_DIRS` at most, sorted.
+    """
+    wanted = [s.strip("/") for s in sub_paths if s and s.strip("/")]
+
+    def kept(path: str) -> bool:
+        return any(path == s or path.startswith(s + "/") for s in wanted)
+
+    by_name: dict[str, str] = {}
+    for path, data in sorted(manifests.items()):
+        if posixpath.basename(path) != "package.json" or _skipped(path):
+            continue
+        name = _json(data).get("name")
+        directory = posixpath.dirname(path)
+        if isinstance(name, str) and directory and name not in by_name:
+            by_name[name] = directory
+    found: set[str] = set()
+    for path, data in sorted(configs.items()):
+        if not is_lint_config(path) or _skipped(path):
+            continue
+        for name in _BARE_IMPORT.findall(_text(data[:MAX_REQUIREMENTS_BYTES])):
+            member_dir = by_name.get(name)
+            if not member_dir or kept(member_dir) or any(s.startswith(member_dir + "/") for s in wanted):
+                continue
+            found.add(member_dir)
+    return sorted(d for d in found if not any(d != o and d.startswith(o + "/") for o in found))[:MAX_DEPENDENCY_DIRS]
+
+
 #: A Relay ``src`` larger than this is not added to a narrow checkout (OpenCTI's front is about 24 MB).
 MAX_RELAY_SOURCE_BYTES = 64 * 1024 * 1024
 #: The ``src`` of a ``relay.config.js`` / ``.ts`` (``src: './src'``); a JSON config is parsed.
@@ -1136,6 +1205,55 @@ class Widening:
     directory: str
     checks: tuple[str, ...]
 
+    def words(self) -> str:
+        """Why it was widened, for the answer: the checks run from the directory, or the package it sits in."""
+        if self.checks:
+            return f"the directory {', '.join(self.checks)} run from"
+        return "the package it sits in"
+
+
+#: Bytes of a package (its files, ``node_modules`` and build output aside) a sub_path inside it is widened to at most.
+MAX_PACKAGE_WIDEN_BYTES = 64 * 1024 * 1024
+
+
+def widen_to_package_roots(
+    sub_paths: Iterable[str], sizes: Mapping[str, int], *, max_bytes: int = MAX_PACKAGE_WIDEN_BYTES
+) -> tuple[list[str], list[Widening]]:
+    """*sub_paths* with each one strictly inside a JavaScript package replaced by the package's directory.
+
+    A unit or type check of ``front/src/x`` runs from the package root ``front/`` and loads what lies
+    there (``front/config.ts``, a static asset a test imports, the modules an alias names): a checkout of
+    ``front/src/x`` alone fails at collection, and a repository without ``.xtm-one/checks.toml`` declares
+    no check directory for :func:`widen_to_check_dirs` to widen to. The nearest directory above the
+    sub_path holding a ``package.json`` wins, never the repository root (that is the whole tree), and only
+    while the package's files (directories a build or an install writes aside) stay within *max_bytes*.
+    *sizes* maps every regular file of the repository to its size. Order is kept, and a sub_path left
+    under a widened one is dropped. Returns the sub_paths and what was widened.
+    """
+    wanted = [s.strip("/") for s in sub_paths if s and s.strip("/")]
+    roots = {posixpath.dirname(p) for p in sizes if posixpath.basename(p) == "package.json" and not _skipped(p)}
+    roots.discard("")
+    weights: dict[str, int] = {}
+
+    def weight(root: str) -> int:
+        if root not in weights:
+            weights[root] = sum(
+                size for path, size in sizes.items() if path.startswith(root + "/") and not _skipped(path)
+            )
+        return weights[root]
+
+    widened: list[Widening] = []
+    result: list[str] = []
+    for sub in wanted:
+        holder = next((d for d in _ancestors(posixpath.dirname(sub)) if d in roots), None)
+        if holder is not None and weight(holder) <= max_bytes:
+            widened.append(Widening(sub, holder, ()))
+            sub = holder
+        if sub not in result:
+            result.append(sub)
+    kept = [s for s in result if not any(s != o and s.startswith(o + "/") for o in result)]
+    return kept, widened
+
 
 def widen_to_check_dirs(sub_paths: Iterable[str], specs: Mapping[str, CheckSpec]) -> tuple[list[str], list[Widening]]:
     """*sub_paths* with each one strictly inside a declared check's ``cwd`` replaced by that directory.
@@ -1412,6 +1530,9 @@ def classify(tokens: list[str]) -> tuple[str, str] | None:
         return classify(rest[1:])
     if tool in ("python", "python3") and rest and rest[0].endswith(".py"):
         return classify(rest)
+    if tool == "manage.py":
+        # Django's own runner (`python manage.py test`): the project's unit tests.
+        return ("python", "unit") if words[:1] == ["test"] else None
     if tool.endswith(".py") and len(tool) > 3:
         # A repository script (`uv run plugin/scripts/flow_lint.py`, `python scripts/lint_docs.py`): its
         # name says the kind, as a package.json script name does; a PEP 723 header carries its dependencies.
@@ -1660,15 +1781,17 @@ def _workflows(collector: _Collector, files: Mapping[str, bytes], infra: list[In
                         continue
                     parsed = _command(line, cwd, dirs)
                     found = classify(parsed[2]) if parsed else None
+                    if parsed and not found:
+                        # `pip install black isort --user` is no check (a user install), but installs the tools.
+                        tools.extend(_installed(parsed[2], parsed[0], dirs))
                     if parsed and found:
                         stack, kind = found
                         runs_on = collector.stack_of(parsed[0]) if stack == "make" else ""
                         argv = parsed[1]
                         if stack == "python" and kind == "install":
                             tools.extend(_installed(parsed[2], parsed[0], dirs))
-                        elif stack == "python" and kind in _TOOL_KINDS and tools and parsed[2][:2] == ["uv", "run"] and argv[:2] != ["sh", "-c"]:
-                            # The tool runs where the job's earlier steps installed it: an ephemeral uv environment.
-                            argv = ["uv", "run", "--no-project", *_relative_tools(tools, parsed[0]), *_tool_words(parsed[2])]
+                        else:
+                            argv = _with_job_tools(stack, kind, argv, parsed[2], tools, parsed[0])
                         source = f"{path} job {job_id}: {line}"
                         kind = _second_tool_kind(collector, parsed[0], stack, kind, parsed[2], f"{path} job {job_id}: ")
                         if collector.add(parsed[0], stack, kind, argv, source, runs_on=runs_on, env=step_env) and job_python:
@@ -1743,6 +1866,9 @@ def _circleci(collector: _Collector, files: Mapping[str, bytes], infra: list[Inf
             job_python = _minor(pinned.group(1)) if pinned else ""
             if job_python and job_python not in collector.workflow_pythons:
                 collector.workflow_pythons.append(job_python)
+            # A job image named after its tool (alpine/flake8) carries it; the toolchain image does not.
+            image_tool = re.sub(r"[:@].*$", "", str(images[0].get("image") or "")).rsplit("/", 1)[-1] if images else ""
+            tools: list[str] = ["--with", image_tool] if image_tool in _IMAGE_TOOLS else []
             home = str(job.get("working_directory") or _CIRCLECI_HOME).rstrip("/")
             if not home.startswith(("~", "/")):
                 home = f"~/{home}"  # a relative job directory is below the home directory
@@ -1777,13 +1903,21 @@ def _circleci(collector: _Collector, files: Mapping[str, bytes], infra: list[Inf
                         )
                     parsed = _command(line, cwd, dirs)
                     found = classify(parsed[2]) if parsed else None
+                    if parsed and not found:
+                        # `pip install black isort --user` is no check (a user install), but installs the tools.
+                        tools.extend(_installed(parsed[2], parsed[0], dirs))
                     if parsed and found:
                         stack, kind = found
                         runs_on = collector.stack_of(parsed[0]) if stack == "make" else ""
+                        argv = parsed[1]
+                        if stack == "python" and kind == "install":
+                            tools.extend(_installed(parsed[2], parsed[0], dirs))
+                        else:
+                            argv = _with_job_tools(stack, kind, argv, parsed[2], tools, parsed[0])
                         source = f"{path} job {job_id}: {line}"
                         kind = _second_tool_kind(collector, parsed[0], stack, kind, parsed[2], f"{path} job {job_id}: ")
                         if (
-                            collector.add(parsed[0], stack, kind, parsed[1], source, runs_on=runs_on, env=step_env)
+                            collector.add(parsed[0], stack, kind, argv, source, runs_on=runs_on, env=step_env)
                             and job_python
                         ):
                             collector.pythons[(parsed[0], stack, kind)] = job_python
@@ -1834,6 +1968,42 @@ def _minor(version: str) -> str:
     return f"{match.group(1)}.{match.group(2)}" if match else ""
 
 
+def _with_job_tools(stack: str, kind: str, argv: list[str], tokens: list[str], tools: list[str], cwd: str) -> list[str]:
+    """*argv*, run in an ephemeral uv environment holding the *tools* its job installed before it.
+
+    A lint, format or types line runs where the job's earlier steps installed its tool: ``pip install
+    black isort --user`` then ``black --check .`` (OpenAEV-Platform/injectors on CircleCI) gives
+    ``uv run --no-project --with black --with isort black --check .``, since the toolchain image carries
+    no black (gap sandbox-toolchain-python-missing-formatters). A ``uv run`` line drops its own prefix;
+    a ``poetry run`` line, a shell line or a line with no install before it is kept as written. A bare
+    types line is kept too: a type checker reads the project's own packages, which ``--no-project``
+    leaves out.
+    """
+    if stack != "python" or kind not in _TOOL_KINDS or not tools or argv[:2] == ["sh", "-c"] or not tokens:
+        return argv
+    if tokens[:2] != ["uv", "run"]:
+        if kind not in _BARE_TOOL_KINDS or posixpath.basename(tokens[0]) in _RUNNERS:
+            return argv
+        # A bare tool the job did not name in an install (`pip install -U certifi`, or a project's own
+        # `-r requirements.txt` the install check already installs) is kept as written.
+        named = {_requirement_name(tools[i + 1]) for i in range(0, len(tools) - 1, 2) if tools[i] == "--with"}
+        if _tool_name(tokens) not in named:
+            return argv
+    return ["uv", "run", "--no-project", *_relative_tools(tools, cwd), *_tool_words(tokens)]
+
+
+#: The check kinds whose bare tool line (``black --check .``) runs with the tools its job installed.
+_BARE_TOOL_KINDS = ("lint", "format")
+#: Launchers a bare line names first: their own environment, never wrapped in another one.
+_RUNNERS = frozenset({"uv", "uvx", "poetry", "pipx", "tox", "nox", "pre-commit", "make"})
+#: Python tools a CircleCI job image is named after (``alpine/flake8``): the job runs them bare, installed by the image.
+_IMAGE_TOOLS = frozenset({"flake8", "black", "isort", "pylint", "ruff"})
+#: The ``uv run`` options whose value is a package or a requirements file, never the command.
+_UV_WITH_OPTIONS = frozenset({"--with", "--with-requirements", "--with-editable"})
+#: What a job's ``pip install`` upgrades for itself, never a tool a check runs (``pip3 install -U pip certifi``).
+_PIP_SELF = frozenset({"pip", "setuptools", "wheel"})
+
+
 def _installed(tokens: list[str], cwd: str, dirs: frozenset[str]) -> list[str]:
     """The ``uv run --with`` arguments of a ``pip install`` / ``uv pip install`` of named tools.
 
@@ -1856,9 +2026,27 @@ def _installed(tokens: list[str], cwd: str, dirs: frozenset[str]) -> list[str]:
                 out += ["--with-requirements", target]
         elif word in ("-e", "--editable") or word in _PIP_VALUE_OPTIONS:
             next(rest, None)
-        elif not word.startswith(("-", ".", "/")) and "/" not in word and "$" not in word:
+        elif (
+            not word.startswith(("-", ".", "/"))
+            and "/" not in word
+            and "$" not in word
+            and _requirement_name(word) not in _PIP_SELF
+        ):
             out += ["--with", word]
     return out
+
+
+#: Where a requirement's name ends: its extras (``black[jupyter]``), a version specifier or a marker.
+_REQUIREMENT_NAME_END = re.compile(r"[\[=<>~!;@\s]")
+
+
+def _requirement_name(requirement: str) -> str:
+    """The package name of a pip requirement, lower case: ``black==24.1.0`` and ``flake8>=6`` give ``black``, ``flake8``.
+
+    A version-pinned install (``pip install black==24.1.0``) keeps its pin in ``--with``, which uv reads as a
+    requirement, but the tool a line runs is matched by name alone.
+    """
+    return _REQUIREMENT_NAME_END.split(requirement, maxsplit=1)[0].lower()
 
 
 def _relative_tools(tools: list[str], cwd: str) -> list[str]:
@@ -2389,7 +2577,9 @@ def _mapping(value: object) -> dict[str, object]:
 
 
 def _node_named_scripts(collector: _Collector, directory: str, path: str, manager: str, scripts: dict, used: set[str]) -> None:
-    """The namespaced generator and gate scripts of a manifest (:data:`_NODE_SCRIPT_VERBS`), one check each.
+    """The namespaced or hyphenated generator and gate scripts of a manifest (:data:`_NODE_SCRIPT_VERBS`), one check each.
+
+    A script that runs a code generator (:data:`_NODE_CODEGEN`) is one too, namespaced or not.
 
     Named ``node-<script>`` (``check:bundle-size`` gives ``node-check-bundle-size``, a member's
     ``i18n:check`` gives ``front:node-i18n-check``), listed after the kinds and run after the install
@@ -2400,10 +2590,17 @@ def _node_named_scripts(collector: _Collector, directory: str, path: str, manage
     for script in sorted(scripts):
         body = scripts[script]
         lowered = script.lower()
-        segments = lowered.split(":")
-        if script in used or not isinstance(body, str) or len(segments) < 2 or not _NODE_SCRIPT_VERBS & set(segments):
+        segments = set(_NODE_SCRIPT_SPLIT.split(lowered))
+        if script in used or not isinstance(body, str):
             continue
-        if any(word in lowered for word in _SCRIPT_SKIP) or "no test specified" in body:
+        codegen = bool(_NODE_CODEGEN.search(body))
+        if not codegen and (len(segments) < 2 or not (_NODE_SCRIPT_VERBS | _NODE_SCRIPT_NOUNS) & segments):
+            continue
+        if (
+            any(word in lowered for word in _SCRIPT_SKIP)
+            or "no test specified" in body
+            or _NODE_SCRIPT_URL.search(body)
+        ):
             continue
         kind = re.sub(r"[^a-z0-9]+", "-", lowered).strip("-")
         if not kind or kind.endswith("install") or kind in KINDS:
@@ -2472,6 +2669,16 @@ def _python(collector: _Collector, paths: frozenset[str], files: Mapping[str, by
                 report="junit",
                 report_path=".xtm/pytest.xml",
             )
+        elif _has(paths, directory, "manage.py"):
+            # A Django project with no pytest: its tests run through Django's runner (a database
+            # the CI services start is named in the listing's services part).
+            collector.add(
+                directory,
+                "python",
+                "unit",
+                [*prefix, "python", "manage.py", "test", "--noinput"],
+                f"{source} (manage.py test)",
+            )
 
 
 def _roots(paths: Iterable[str], names: tuple[str, ...]) -> list[str]:
@@ -2520,6 +2727,18 @@ def _dbt(collector: _Collector, paths: frozenset[str]) -> None:
         collector.add(directory, "dbt", "parse", ["dbt", "parse"], f"{source} (needs a profile: profiles.yml or DBT_PROFILES_DIR)")
         if any(_has(paths, a, ".sqlfluff") for a in _ancestors(directory)):
             collector.add(directory, "dbt", "lint", ["sqlfluff", "lint", "."], f"{source} (sqlfluff)")
+
+
+def _helm(collector: _Collector, paths: frozenset[str]) -> None:
+    """``helm-lint`` and ``helm-parse`` (``helm template``) for every chart root (a ``Chart.yaml``; subcharts under it are its own).
+
+    Both read the chart offline; a chart whose ``dependencies`` are not vendored under ``charts/``
+    needs ``helm dependency build`` first, which fetches from the chart repositories.
+    """
+    for directory in _roots(paths, ("Chart.yaml",)):
+        source = _join(directory, "Chart.yaml")
+        collector.add(directory, "helm", "lint", ["helm", "lint", "."], source)
+        collector.add(directory, "helm", "parse", ["helm", "template", "xtm-check", "."], f"{source} (helm template)")
 
 
 def _make(collector: _Collector, files: Mapping[str, bytes]) -> None:
@@ -2626,6 +2845,8 @@ def _write_argv(argv: tuple[str, ...]) -> tuple[tuple[str, ...], str]:
     check option, ``prettier --check`` gets ``--write``, ``spotless:check`` becomes ``spotless:apply``.
     """
     for index, token in enumerate(argv):
+        if index and argv[index - 1] in _UV_WITH_OPTIONS:
+            continue  # `uv run --with black --with isort isort --check-only`: a package, not the tool run
         if token in _JVM_APPLY_GOALS:
             return (*argv[:index], _JVM_APPLY_GOALS[token], *argv[index + 1 :]), "spotless"
         tool = posixpath.basename(token)
@@ -2671,6 +2892,54 @@ def _apply_formatters(collector: _Collector) -> None:
         )
 
 
+#: The lockfile-only update of each Node package manager's locked install, by the install's argv head.
+_RELOCK_ARGV = {
+    ("yarn", "install", "--immutable"): ("yarn", "install", "--mode=update-lockfile"),
+    ("yarn", "install", "--frozen-lockfile"): ("yarn", "install", "--ignore-scripts"),
+    ("pnpm", "install", "--frozen-lockfile"): ("pnpm", "install", "--lockfile-only"),
+    ("npm", "ci"): ("npm", "install", "--package-lock-only", "--ignore-scripts"),
+}
+
+
+def _relock_argv(argv: tuple[str, ...]) -> tuple[str, ...]:
+    """The lockfile update of a locked Node install *argv*, ``()`` when it is none (a pinned pnpm keeps its runner)."""
+    runner: tuple[str, ...] = ()
+    head = argv
+    if argv[:1] == ("corepack",) and len(argv) > 1 and argv[1].startswith("pnpm@"):
+        runner, head = argv[:2], ("pnpm", *argv[2:])
+    for locked, relock in _RELOCK_ARGV.items():
+        if head[: len(locked)] == locked:
+            relocked = (*relock, *(a for a in head[len(locked) :] if a != "--immutable"))
+            return (*runner, *relocked[1:]) if runner else relocked
+    return ()
+
+
+def _node_relock(collector: _Collector) -> None:
+    """A ``<dir>:node-relock`` check next to every locked Node install (``--immutable``, ``--frozen-lockfile``, ``npm ci``).
+
+    A dependency or pin bump needs its lockfile regenerated, and the install check refuses a lock that
+    no longer matches: the lock was edited by hand. The relock runs the same manager in lock-update mode
+    (``yarn install --mode=update-lockfile``, ``pnpm install --lockfile-only``, ``npm install
+    --package-lock-only``), needs no install first, and is not an install, so the lockfile it rewrites is
+    the change ``from_checkout`` commits.
+    """
+    for (directory, stack, kind), spec in list(collector.found.items()):
+        key = (directory, stack, "relock")
+        if stack != "node" or kind != "install" or key in collector.found or len(collector.found) >= MAX_CHECKS:
+            continue
+        argv = _relock_argv(spec.argv)
+        if not argv:
+            continue
+        collector.found[key] = replace(
+            spec,
+            name=f"{directory}:node-relock" if directory else "node-relock",
+            argv=argv,
+            default_args=(),
+            description=f"lockfile update of {spec.name}: rewrites the lock after a manifest change"[:200],
+            install_first=False,
+        )
+
+
 def _compose(files: Mapping[str, bytes], infra: list[Infra]) -> None:
     for path in sorted(p for p in files if _COMPOSE.match(posixpath.basename(p))):
         services = _yaml(files[path]).get("services")
@@ -2698,11 +2967,13 @@ def detect(paths: Iterable[str], files: Mapping[str, bytes], *, images: Iterable
     _jvm(collector, listing, files)
     _rust(collector, listing)
     _dbt(collector, listing)
+    _helm(collector, listing)
     _make(collector, files)
     _script_tests(collector, listing)
     _apply_pythons(collector)
     _apply_pnpm(collector, files)
     _apply_formatters(collector)
+    _node_relock(collector)
     _actions_lint(collector, listing)
     _compose(files, infra)
     unique = list(dict.fromkeys(row for row in infra if row.name))[:MAX_INFRA]

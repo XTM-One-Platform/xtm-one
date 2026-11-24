@@ -69,6 +69,24 @@ def first_line(body: str | None) -> str:
     return next((line.strip() for line in (body or "").splitlines() if line.strip()), "")
 
 
+def _normalised(body: str | None) -> str:
+    """*body* as compared for a duplicate: line ends unified, trailing spaces and outer blank lines dropped."""
+    return "\n".join(line.rstrip() for line in (body or "").strip().splitlines())
+
+
+def already_posted(stored: str | None, body: str | None) -> bool:
+    """Whether the *stored* comment is *body* posted before (attachment lines appended after it allowed).
+
+    The first line is only a pre-filter: a review-loop header such as ``UX-LOOP round=3 verdict=APPROVE``
+    repeats across heads and carried verdicts, so a comment that shares it alone is not a duplicate.
+    """
+    wanted = _normalised(body)
+    if not wanted or first_line(stored) != first_line(body):
+        return False
+    have = _normalised(stored)
+    return have == wanted or have.startswith(wanted + "\n")
+
+
 async def _resolve_issue_id(
     client: httpx.AsyncClient, owner: str, name: str, number: int, headers: dict[str, str]
 ) -> tuple[int | None, str | None]:
@@ -560,9 +578,11 @@ def register(
         """Add a comment to an issue or pull request, with files of the run attached (:mod:`.attachments`).
 
         ``dedupe_first_line``: the comments already on it are read server side and,
-        when one opens with the same first non-empty line as ``body``, nothing is
-        committed or posted and that comment is named instead (a retried run never
-        posts a verdict twice, and no prior comment body enters the context).
+        when one opens with the same first non-empty line as ``body`` and holds the
+        same body (:func:`already_posted`), nothing is committed or posted and that
+        comment is named instead (a retried run never posts a verdict twice, and no
+        prior comment body enters the context). A comment that shares only the first
+        line, a verdict header of an older round for example, does not stop the post.
         """
         if e := _common.repo_error(repo):
             return e
@@ -652,7 +672,7 @@ def register(
             return f"{updated}\nBody diff:\n{diff}" if diff else updated
 
     async def _comment_with_first_line(client: Any, repo: str, issue_number: int, body: str) -> tuple[str, str | None]:
-        """The comment of ``issue_number`` that opens with ``body``'s first line, as an answer line, or ``""``."""
+        """The comment of ``issue_number`` that already holds ``body`` (:func:`already_posted`), as an answer line, or ``""``."""
         wanted = first_line(body)
         if not wanted:
             return "", None
@@ -669,11 +689,11 @@ def register(
                 return "", err
             comments = resp.json() or []
             for comment in comments:
-                if first_line(comment.get("body")) == wanted:
+                if already_posted(comment.get("body"), body):
                     author = (comment.get("user") or {}).get("login", "?")
                     return (
-                        f"Not posted: comment by {author} on {comment.get('created_at', '?')} already opens with "
-                        f"this first line: {comment.get('html_url', '')}"
+                        f"Not posted: comment by {author} on {comment.get('created_at', '?')} already holds "
+                        f"this body: {comment.get('html_url', '')}"
                     ), None
             if len(comments) < _COMMENT_PAGE:
                 return "", None
@@ -1409,7 +1429,7 @@ def register(
                     "attachment_file_ids": attachments.SCHEMA,
                     "dedupe_first_line": {
                         "type": "boolean",
-                        "description": "Post nothing when a comment already opens with body's first line; names it",
+                        "description": "Post nothing when a comment already holds this body (same first line, same text); names it",
                     },
                 },
                 "required": ["repo", "issue_number", "body"],

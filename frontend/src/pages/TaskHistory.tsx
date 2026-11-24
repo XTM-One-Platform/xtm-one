@@ -21,7 +21,7 @@ import { DataTable, TOOLBAR_CONTROL_HEIGHT, type DataTableColumn } from "@/compo
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { RowRemoveButton } from "@/components/ui/row-remove-button";
-import { storedPageSize, type DataTableState } from "@/lib/data-table-state";
+import { clearFilterParams, storedPageSize, type DataTableState } from "@/lib/data-table-state";
 import type { SortDirection } from "@/lib/table-rows";
 import { useViewMode } from "@/hooks/useViewMode";
 import type { ExecutionRunSort } from "@/hooks/api/useAssignmentApi";
@@ -227,7 +227,7 @@ export default function TaskHistory({
 
   // --- Run type: assignments, flows, or both interleaved ---
   // The flow feed follows the `FLOW_BUILDER` feature flag: every card in it
-  // deep-links into `/flows/<id>/builder`, which redirects home while the
+  // deep-links into `/flows/library/<id>`, which redirects home while the
   // builder is hidden. A stale `?type=flows` URL falls back to "all" rather
   // than rendering a feed that cannot exist — with both halves disabled the
   // page would otherwise show an empty state and a pager over nothing.
@@ -943,7 +943,7 @@ export default function TaskHistory({
 
   const itemKey = (item: ExecutionItem) => item.run.id;
   const openItem = (item: ExecutionItem) =>
-    navigate(item.kind === "flow" ? `/flows/${item.run.flow_id}/builder?run=${item.run.id}` : `/runs/${item.run.id}`);
+    navigate(item.kind === "flow" ? `/flows/library/${item.run.flow_id}?run=${item.run.id}` : `/operations/executions/${item.run.id}`);
 
   // layout="fixed" with the widths of EXECUTION_COLUMN_WIDTHS: the Run title takes what is
   // left and the long texts truncate with the DS tooltip, so the list never scrolls
@@ -1284,6 +1284,15 @@ export default function TaskHistory({
           toolbar={hideHeader ? cleanupButton : undefined}
           filterPills={morePills}
           externalFilterCount={moreFilterCount}
+          // A Status chosen on the toolbar narrows the list too: Clear all shows for it (UX r1 B1 on #1004).
+          toolbarFilterActive={selectedStatuses.length > 0}
+          // Clear all clears what the count counts, the status and search too, in one write (#1001).
+          onClearAll={() =>
+            setSearchParams(
+              (prev) => clearFilterParams(prev, ["status", "type", "filter", "review", "agent", ...(lockedFleet ? [] : ["fleet"])]),
+              { replace: true },
+            )
+          }
           view={{ value: viewMode, onChange: setViewMode }}
           // One scroller, inside the list: the cards scroll in their box, the page does not
           // (UX r1 B2 on #11894; the table body already fits the viewport).

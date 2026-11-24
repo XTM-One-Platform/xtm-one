@@ -61,18 +61,19 @@ describe("DashboardNotices work-item notice", () => {
     expect(screen.getByText(/Waiting for you since .*: pick a pricing tier/)).toBeTruthy();
   });
 
-  it("Review opens the Waiting for me list when several items wait, so every one is reachable", () => {
+  it("Review opens the Waiting for me list on All when several items wait, so every one it counted is listed", () => {
+    // The count spans every segment (company-managed items included): Mine would hide them.
     waiting.data = { count: 4, oldest: OLDEST };
     renderNotices();
     fireEvent.click(screen.getByText("4 work items are waiting for you"));
-    expect(screen.getByTestId("location").textContent).toBe("/operations/work-items?view=waiting");
+    expect(screen.getByTestId("location").textContent).toBe("/tasks/work-items?view=waiting&vis=all");
   });
 
   it("Review opens the item itself when it is the only one waiting", () => {
     waiting.data = { count: 1, oldest: OLDEST };
     renderNotices();
     fireEvent.click(screen.getByText("1 work item is waiting for you"));
-    expect(screen.getByTestId("location").textContent).toBe("/operations/work-items?item=item-1");
+    expect(screen.getByTestId("location").textContent).toBe("/tasks/work-items/item-1");
   });
 
   it("Review is a button of its own beside the copy, never nested in the notice's button", () => {
@@ -81,7 +82,7 @@ describe("DashboardNotices work-item notice", () => {
     const review = screen.getByRole("button", { name: "Review" });
     expect(review.parentElement?.closest("button")).toBeNull();
     fireEvent.click(review);
-    expect(screen.getByTestId("location").textContent).toBe("/operations/work-items?view=waiting");
+    expect(screen.getByTestId("location").textContent).toBe("/tasks/work-items?view=waiting&vis=all");
   });
 
   it("draws a count of 1,000 or more compact, the exact count on hover (#10476)", () => {

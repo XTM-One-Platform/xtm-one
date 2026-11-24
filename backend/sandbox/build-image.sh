@@ -11,11 +11,9 @@
 # The image name picks the entry in sandbox-images.json; the tag is yours (the
 # version the app's OPENSANDBOX_IMAGES points at, or a throwaway name in CI).
 #
-# If BUILDX_CACHE_DIR is set, builds via `docker buildx build --load` with a
-# local layer cache at that path instead of a plain `docker build`. Nothing
-# sets it any more: sandbox-images.yml builds cold (its layer caches filled the
-# repository's cache quota), and local dev gets a plain build, which already
-# reuses Docker's own local image-layer cache across runs.
+# A plain `docker build`: it reuses Docker's own local layer cache across runs,
+# and sandbox-images.yml builds cold (its layer caches filled the repository's
+# cache quota).
 set -uo pipefail
 
 cd "$(dirname "$0")" || exit 1
@@ -34,14 +32,7 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 _build() {
-    if [ -n "${BUILDX_CACHE_DIR:-}" ]; then
-        docker buildx build --load \
-          --cache-from "type=local,src=${BUILDX_CACHE_DIR}" \
-          --cache-to "type=local,dest=${BUILDX_CACHE_DIR}-new,mode=max" \
-          "$@"
-    else
-        docker build "$@"
-    fi
+    docker build "$@"
 }
 
 # nodejs has no entry in sandbox-images.json (single fixed build, no

@@ -130,7 +130,9 @@ def test_the_gateway_sends_the_incident_request_instead_of_refusing_it():
                 usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
             )
 
-    provider.client = SimpleNamespace(chat=SimpleNamespace(completions=_Completions()))
+    client = SimpleNamespace(chat=SimpleNamespace(completions=_Completions()))
+    client.with_options = lambda **_options: client  # the chat client: no SDK retry
+    provider.client = client
     messages = [ChatMessage(role="user", content="hello")]
 
     response = asyncio.run(provider.chat(messages, model="claude-opus-5-5", tools=_tools_of(122_840, provider)))

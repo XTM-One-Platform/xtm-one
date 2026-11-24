@@ -480,6 +480,39 @@ async def test_audit_logs_pass_graph_error_through_unchanged(monkeypatch):
     assert result == graph_err
 
 
+@pytest.mark.asyncio
+async def test_audit_logs_name_a_user_target_by_upn(monkeypatch):
+    # A "Reset user password" event carries the target user's UPN and no display name.
+    event = {
+        "activityDateTime": "2026-11-20T10:00:00Z",
+        "activityDisplayName": "Reset user password",
+        "result": "success",
+        "category": "UserManagement",
+        "initiatedBy": {"user": {"userPrincipalName": "admin@contoso.com"}},
+        "targetResources": [
+            {"id": "u-1", "displayName": None, "userPrincipalName": "jane@contoso.com"},
+            {"id": "u-2", "displayName": None},
+        ],
+    }
+    _patch_request(monkeypatch, resp=_FakeResp(200, {"value": [event]}))
+    result = await _handlers()["list_entra_audit_logs"](activity="Reset user password")
+    assert "target: jane@contoso.com (+1 more)" in result
+
+
+@pytest.mark.asyncio
+async def test_get_user_selects_and_shows_last_password_change(monkeypatch):
+    user = {
+        "id": "u-1",
+        "displayName": "Jane",
+        "userPrincipalName": "jane@contoso.com",
+        "lastPasswordChangeDateTime": "2026-11-01T08:00:00Z",
+    }
+    calls = _patch_request(monkeypatch, resp=_FakeResp(200, user))
+    result = await _handlers()["get_entra_user"](user_id="jane@contoso.com")
+    assert "lastPasswordChangeDateTime" in calls[0]["params"]["$select"].split(",")
+    assert "last password change: " in result
+
+
 # ---------------------------------------------------------------------------
 # Secret/password reveal gating (no accidental credential leak to transcript)
 # ---------------------------------------------------------------------------

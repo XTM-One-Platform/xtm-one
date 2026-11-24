@@ -34,6 +34,12 @@ literal, such as ``export const fr: Catalog = {...}``) is edited in place by
 :mod:`tscatalog`: only the lines of the keys named change, and the values set
 there are strings.
 
+A gettext catalog (``.po`` / ``.pot``) is edited in place by :mod:`pocatalog`,
+keyed by msgid (``msgctxt`` + U+0004 + msgid for an entry with a context): only
+the entries named change, the values set are strings, a plural entry is read
+and never set (#1284). ``fr.po`` and any ``.po`` under a ``fr`` locale
+directory (``locales/fr/messages.po``) get the French typography check.
+
 In a JSON file, a key of ``set``, ``remove`` or ``get`` that starts with ``/``
 and is not itself a top-level key of the file is a JSON Pointer (RFC 6901) to a
 nested value: ``/a/b`` is the member ``b`` of the object under ``a``, ``/list/0``
@@ -51,7 +57,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.services.sandbox_workspace import tscatalog
+from app.services.sandbox_workspace import pocatalog, tscatalog
 from app.services.sandbox_workspace.jsonmerge import MAX_JSON_MERGE_BYTES, _dump, _DuplicateKeyError, _layout, _pairs
 
 #: Files one call changes at most.
@@ -75,7 +81,9 @@ _PLAIN_SPACE_BEFORE_MARK = re.compile(
     r"(?:(?<=[^\W_])|(?<=[$\u20ac%\u00bb\"'\u2019)\]}\u2026*.])) ([?!;:])(?=\Z|[\s}\"'\u00bb)\]])"
 )
 #: A French locale file name: fr.json, fr-FR.json, fr_CA.json.
-_FRENCH_FILE = re.compile(r"fr(?:[-_][A-Za-z]{2,4})?\.json", re.IGNORECASE)
+_FRENCH_FILE = re.compile(r"fr(?:[-_][A-Za-z]{2,4})?\.(?:json|po)", re.IGNORECASE)
+#: A French locale directory holding a gettext catalog: locales/fr/messages.po.
+_FRENCH_DIR = re.compile(r"fr(?:[-_][A-Za-z]{2,4})?", re.IGNORECASE)
 
 
 class JsonKeysError(ValueError):
@@ -130,8 +138,10 @@ class FileChange:
 
 
 def is_french_catalog(path: str) -> bool:
-    """True for a French locale file (``fr.json``, ``fr-FR.json``, ``fr_CA.json``)."""
-    return bool(_FRENCH_FILE.fullmatch(posixpath.basename(path)))
+    """True for a French locale file (``fr.json``, ``fr-FR.json``, ``fr.po``, ``fr/messages.po``)."""
+    if _FRENCH_FILE.fullmatch(posixpath.basename(path)):
+        return True
+    return pocatalog.is_po_catalog(path) and bool(_FRENCH_DIR.fullmatch(posixpath.basename(posixpath.dirname(path))))
 
 
 def _no_break_space_for(mark: str) -> str:
@@ -385,6 +395,9 @@ def change_keys(
         if tscatalog.is_script_catalog(path):
             out.append(_change_script(path, text, sets, renames, removes, gets, places))
             continue
+        if pocatalog.is_po_catalog(path):
+            out.append(_change_po(path, text, sets, renames, removes, gets, places, fix_spacing))
+            continue
         try:
             value = json.loads(text, object_pairs_hook=_pairs)
         except _DuplicateKeyError as exc:
@@ -499,6 +512,71 @@ def _change_script(
             change.absent.append(key)
     for key in gets:
         change.values[key] = catalog.value(key) if key in catalog else _MISSING
+    if change.modified:
+        change.text = catalog.render()
+    return change
+
+
+def _change_po(
+    path: str,
+    text: str,
+    sets: dict[str, Any],
+    renames: dict[str, Any],
+    removes: list[str],
+    gets: list[str],
+    places: dict[str, tuple[str, str]],
+    fix_spacing: bool,
+) -> FileChange:
+    """The :func:`change_keys` steps on a gettext catalog, edited entry by entry."""
+    try:
+        catalog = pocatalog.PoCatalog(text)
+    except pocatalog.PoCatalogError as exc:
+        raise JsonKeysError(f"{path} {exc}") from None
+    change = FileChange(path=path, text=text)
+    french = is_french_catalog(path)
+    change.spacing_fixed = french and fix_spacing
+    try:
+        for old, new in renames.items():
+            if old not in catalog:
+                raise JsonKeysError(f"{path} has no msgid {json.dumps(old, ensure_ascii=False)} to rename.")
+            if new in catalog and new != old:
+                raise JsonKeysError(f"{path} already has the msgid {json.dumps(new, ensure_ascii=False)}.")
+            if new != old:
+                catalog.rename(old, new)
+                change.renamed.append(f"{old} -> {new}")
+        for values in (sets.get("*", {}), sets.get(path, {})):
+            for key, new_value in values.items():
+                if not isinstance(new_value, str):
+                    raise JsonKeysError(
+                        f"{path} is a gettext catalog: the msgstr of {json.dumps(key, ensure_ascii=False)} "
+                        "must be a string."
+                    )
+                if french:
+                    new_value, marks = _spaced(new_value, fix_spacing)
+                    if marks:
+                        change.spacing.append((key, " ".join(dict.fromkeys(marks))))
+                if key not in catalog:
+                    change.added.append(key)
+                    side, anchor = places.get(key, (None, None))
+                    if anchor is not None and anchor not in catalog:
+                        raise JsonKeysError(
+                            f"{path} has no msgid {json.dumps(anchor, ensure_ascii=False)} to place "
+                            f"{json.dumps(key, ensure_ascii=False)} {side}."
+                        )
+                    catalog.add(key, new_value, side, anchor)
+                elif catalog.value(key) != new_value:
+                    catalog.set_value(key, new_value)
+                    change.changed.append(key)
+        for key in removes:
+            if key in catalog:
+                catalog.remove(key)
+                change.removed.append(key)
+            else:
+                change.absent.append(key)
+        for key in gets:
+            change.values[key] = catalog.value(key) if key in catalog else _MISSING
+    except pocatalog.PoCatalogError as exc:
+        raise JsonKeysError(f"{path}: {exc}") from None
     if change.modified:
         change.text = catalog.render()
     return change

@@ -20,7 +20,13 @@ records the results through :func:`record_results`:
 
 * a failing result opens (or refreshes) the finding of its check and subject,
   whose id is stable (:func:`finding_key`), so a failure seen on every pass is
-  one row;
+  one row; it opens only on the :data:`OPEN_AFTER_FAILS`-th failing read in a
+  row (#958): before, the row is ``pending``, not scored, not listed, never
+  alerted, and a passing read deletes it, so one read caught by a restart opens
+  nothing;
+* a failing result marked ``in_grace`` (a restart of XTM One or of a module,
+  :func:`in_startup_grace`, :func:`apply_grace`) counts towards nothing: it
+  refreshes an open finding but never opens one;
 * a passing result counts towards resolving an open finding: two passes in a
   row resolve it (:data:`RESOLVE_AFTER_PASSES`);
 * a dismissed finding stays silent until its dismissal expires, then reopens
@@ -49,7 +55,7 @@ import json
 import logging
 import uuid
 from collections.abc import Awaitable, Callable, Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -62,6 +68,7 @@ from app.models.health_check import (
     MODULES,
     STATUS_DISMISSED,
     STATUS_OPEN,
+    STATUS_PENDING,
     STATUS_RESOLVED,
     HealthCheckFinding,
     HealthScoreDay,
@@ -71,6 +78,16 @@ logger = logging.getLogger(__name__)
 
 #: Consecutive passing reads that resolve an open finding.
 RESOLVE_AFTER_PASSES = 2
+#: Consecutive failing reads that open a finding (#958): symmetric with the resolve.
+OPEN_AFTER_FAILS = 2
+#: After the XTM One process starts, its availability checks open nothing for this long (#958):
+#: workers and dependencies are still booting.
+STARTUP_GRACE = timedelta(minutes=10)
+#: After a module restarts (version changed, or heartbeat back after a gap), its availability
+#: checks open nothing for this long (#958).
+RESTART_GRACE = timedelta(minutes=10)
+#: When this process started (the startup grace is measured from it).
+PROCESS_STARTED_AT = datetime.now(UTC)
 #: Days of score history kept (7, 30 and 90 day views).
 HISTORY_DAYS = 90
 #: The penalty per open finding of each severity.
@@ -92,6 +109,21 @@ class CheckResult:
     evidence: dict[str, Any] = field(default_factory=dict)
     recommendation: str = ""
     doc_link: str = ""
+    #: Read during a restart grace (#958): a failure here never opens a finding.
+    in_grace: bool = False
+
+
+def in_startup_grace(now: datetime, *, started_at: datetime | None = None) -> bool:
+    """Whether *now* falls in the startup grace of this XTM One process."""
+    since = now - (started_at or PROCESS_STARTED_AT)
+    return timedelta(0) <= since < STARTUP_GRACE
+
+
+def apply_grace(results: Sequence[CheckResult], in_grace: Callable[[CheckResult], bool]) -> list[CheckResult]:
+    """*results* with every failing ``availability`` result *in_grace* says is in a restart marked ``in_grace``."""
+    return [
+        replace(r, in_grace=True) if r.failing and r.category == "availability" and in_grace(r) else r for r in results
+    ]
 
 
 CheckFunction = Callable[[AsyncSession, datetime], Awaitable[Sequence[CheckResult]]]
@@ -132,6 +164,11 @@ def finding_key(check_id: str, subject: dict[str, str]) -> str:
     return hashlib.sha256(body.encode()).hexdigest()
 
 
+def dismissal_live(row: HealthCheckFinding, now: datetime) -> bool:
+    """Whether *row*'s dismissal still holds at *now* (no expiry, or an expiry ahead)."""
+    return _dismissal_live(row, now)
+
+
 def _dismissal_live(row: HealthCheckFinding, now: datetime) -> bool:
     record = row.dismissal or {}
     until = record.get("until")
@@ -143,50 +180,77 @@ def _dismissal_live(row: HealthCheckFinding, now: datetime) -> bool:
         return False
 
 
-async def record_results(db: AsyncSession, results: Iterable[CheckResult], *, now: datetime) -> dict[str, int]:
-    """Apply one pass's results to the finding store; counts of ``opened``, ``updated``, ``resolved``."""
+async def record_results(
+    db: AsyncSession, results: Iterable[CheckResult], *, now: datetime, opened_ids: list[str] | None = None
+) -> dict[str, int]:
+    """Apply one pass's results to the finding store; counts of ``opened``, ``updated``, ``resolved``.
+
+    A finding opens on the :data:`OPEN_AFTER_FAILS`-th failing read in a row; a
+    failing read ``in_grace`` never counts towards it. The id of every finding
+    opened or reopened is appended to *opened_ids* when given.
+    """
     counts = {"opened": 0, "updated": 0, "resolved": 0}
     for result in results:
         key = finding_key(result.check_id, result.subject)
         row = await db.get(HealthCheckFinding, key)
         if result.failing:
             if row is None:
-                db.add(
-                    HealthCheckFinding(
-                        id=key,
-                        check_id=result.check_id,
-                        module=result.module,
-                        subject=dict(result.subject),
-                        category=result.category,
-                        severity=result.severity,
-                        status=STATUS_OPEN,
-                        evidence=dict(result.evidence),
-                        recommendation=result.recommendation,
-                        doc_link=result.doc_link,
-                        pass_streak=0,
-                        first_seen=now,
-                        last_seen=now,
-                    )
+                if result.in_grace:
+                    continue
+                row = HealthCheckFinding(
+                    id=key,
+                    check_id=result.check_id,
+                    module=result.module,
+                    subject=dict(result.subject),
+                    category=result.category,
+                    severity=result.severity,
+                    status=STATUS_PENDING,
+                    evidence=dict(result.evidence),
+                    recommendation=result.recommendation,
+                    doc_link=result.doc_link,
+                    pass_streak=0,
+                    fail_streak=0,
+                    first_seen=now,
+                    last_seen=now,
                 )
-                counts["opened"] += 1
-                continue
-            row.severity, row.category = result.severity, result.category
-            row.evidence, row.last_seen, row.pass_streak = dict(result.evidence), now, 0
-            row.recommendation, row.doc_link = result.recommendation, result.doc_link
-            if row.status == STATUS_DISMISSED and _dismissal_live(row, now):
-                continue
-            if row.status != STATUS_OPEN:
-                row.status, row.resolved_at, row.dismissal = STATUS_OPEN, None, None
-                counts["opened"] += 1
-            else:
+                db.add(row)
+            if row.status == STATUS_OPEN:
+                _refresh(row, result, now)
                 counts["updated"] += 1
-        elif row is not None and row.status == STATUS_OPEN:
+                continue
+            if row.status == STATUS_DISMISSED and _dismissal_live(row, now):
+                _refresh(row, result, now)
+                continue
+            if result.in_grace:
+                continue
+            _refresh(row, result, now)
+            row.fail_streak = (row.fail_streak or 0) + 1
+            if row.fail_streak >= OPEN_AFTER_FAILS:
+                row.status, row.resolved_at, row.dismissal = STATUS_OPEN, None, None
+                row.opened_at, row.alerted_at, row.fail_streak = now, None, 0
+                counts["opened"] += 1
+                if opened_ids is not None:
+                    opened_ids.append(key)
+        elif row is None:
+            continue
+        elif row.status == STATUS_OPEN:
             row.pass_streak += 1
             if row.pass_streak >= RESOLVE_AFTER_PASSES:
                 row.status, row.resolved_at = STATUS_RESOLVED, now
                 counts["resolved"] += 1
+        elif row.status == STATUS_PENDING:
+            # Fail, pass: the failure was not sustained, nothing is kept.
+            await db.delete(row)
+        else:
+            row.fail_streak = 0
     await db.flush()
     return counts
+
+
+def _refresh(row: HealthCheckFinding, result: CheckResult, now: datetime) -> None:
+    row.severity, row.category = result.severity, result.category
+    row.evidence, row.last_seen, row.pass_streak = dict(result.evidence), now, 0
+    row.recommendation, row.doc_link = result.recommendation, result.doc_link
 
 
 async def close_out(db: AsyncSession, check_id: str, read: Sequence[CheckResult]) -> list[CheckResult]:
@@ -249,7 +313,11 @@ async def dismiss_finding(
 
 
 async def restore_finding(db: AsyncSession, finding_id: str) -> HealthCheckFinding:
-    """Bring a dismissed finding back to the open list (its dismissal cleared); the next pass resolves it if it passes."""
+    """Bring a dismissed finding back to the open list (its dismissal cleared); the next pass resolves it if it passes.
+
+    A restore starts a new open episode (``opened_at`` now, not alerted): the immediate alert
+    waits for the alert window again instead of mailing at once (#958).
+    """
     row = await db.get(HealthCheckFinding, finding_id)
     if row is None:
         raise LookupError("Health finding not found")
@@ -257,6 +325,7 @@ async def restore_finding(db: AsyncSession, finding_id: str) -> HealthCheckFindi
         raise ValueError("Only a dismissed finding can be restored.")
     row.status = STATUS_OPEN
     row.dismissal = None
+    row.opened_at, row.alerted_at = datetime.now(UTC), None
     await db.flush()
     return row
 
@@ -330,7 +399,10 @@ async def run_pass(db: AsyncSession, *, now: datetime, checks: Sequence[Check] |
 
     Each check runs in its own savepoint, so a check that raises undoes only
     its own writes: the results recorded by the checks before it in the same
-    pass are kept and committed with the pass.
+    pass are kept and committed with the pass. Once committed, the alert emails
+    go out (``alerts.send_alerts``, off by default): the immediate email of a
+    critical finding open for the alert window, the daily digest; a failure
+    there is logged and never fails the pass.
     """
     totals = {"checks": 0, "opened": 0, "updated": 0, "resolved": 0}
     for check in checks if checks is not None else registered_checks():
@@ -350,6 +422,13 @@ async def run_pass(db: AsyncSession, *, now: datetime, checks: Sequence[Check] |
             totals[key] += value
     await rollup_day(db, now.date())
     await db.commit()
+    try:
+        from app.services.health.alerts import send_alerts
+
+        await send_alerts(db, now=now)
+    except Exception:
+        logger.exception("Platform Health alert emails failed")
+        await db.rollback()
     return totals
 
 

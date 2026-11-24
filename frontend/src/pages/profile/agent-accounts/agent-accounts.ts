@@ -483,8 +483,8 @@ export function sendOriginLinks(origin: AgentAccountSendOrigin | null | undefine
   const hrefs: Record<SendOriginLink["key"], string | null> = {
     agent: origin.agent_id ? `/agents/${encodeURIComponent(origin.agent_id)}` : null,
     conversation: origin.conversation_id ? `/chat?c=${encodeURIComponent(origin.conversation_id)}` : null,
-    run: origin.run_id ? `/runs/${encodeURIComponent(origin.run_id)}` : null,
-    assignment: origin.assignment_id ? `/assignments/${encodeURIComponent(origin.assignment_id)}` : null,
+    run: origin.run_id ? `/operations/executions/${encodeURIComponent(origin.run_id)}` : null,
+    assignment: origin.assignment_id ? `/agents/assignments/${encodeURIComponent(origin.assignment_id)}` : null,
   };
   return (Object.keys(SEND_ORIGIN_LINK_LABELS) as SendOriginLink["key"][]).flatMap((key) => {
     const href = hrefs[key];

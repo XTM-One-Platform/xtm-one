@@ -43,6 +43,7 @@ EXPECTED_TOOLS = {
     # Tenancy / catalog
     "list_opencrq_tenants",
     "list_opencrq_organizations",
+    "get_opencrq_organization",
     "list_opencrq_frameworks",
     "get_opencrq_framework",
     "list_opencrq_framework_requirements",
@@ -68,6 +69,8 @@ EXPECTED_TOOLS = {
     "delete_opencrq_risk_scenarios",
     "update_opencrq_risk_tolerance",
     "get_opencrq_scenario_exposure",
+    "get_opencrq_cve_exploitation",
+    "get_opencrq_attack_path_reach",
     "list_opencrq_attack_outcomes",
     "get_opencrq_attack_outcome",
     "get_opencrq_financial_summary",
@@ -334,6 +337,10 @@ SMOKE_CALLS = [
     # Risk (new)
     ("delete_opencrq_risk_scenarios", {"risk_scenario_ids": []}),
     ("get_opencrq_scenario_exposure", {"risk_scenario_id": ""}),
+    ("get_opencrq_cve_exploitation", {"risk_scenario_id": "", "cve_id": "CVE-2024-3094"}),
+    ("get_opencrq_cve_exploitation", {"risk_scenario_id": "s", "cve_id": "log4shell"}),
+    ("get_opencrq_attack_path_reach", {"supporting_asset_id": ""}),
+    ("get_opencrq_attack_path_reach", {"supporting_asset_id": "not-a-uuid"}),
     ("get_opencrq_attack_outcome", {"attack_outcome_id": ""}),
     ("update_opencrq_risk_tolerance", {}),
     ("update_opencrq_risk_tolerance", {"risk_scenario_id": "s", "organization_id": "o", "clear": True}),
@@ -1362,6 +1369,15 @@ def test_asset_subcategories_cover_every_category_once():
     assert ASSET_SUBCATEGORIES["generic_asset"] == ()
 
 
+def test_the_opencrq_taxonomy_is_the_profile_taxonomy():
+    # xtm-one #1233: one taxonomy, source_code included, so a profile asset pushes as is.
+    from app.services.organization_context import ASSET_TAXONOMY
+
+    assert list(ASSET_TAXONOMY) == ASSET_CATEGORIES
+    assert dict(ASSET_TAXONOMY) == ASSET_SUBCATEGORIES
+    assert "code_repository" in ASSET_SUBCATEGORIES["source_code"]
+
+
 async def test_evidence_dismissal_sends_type_code_and_reason():
     with _recorded_trpc(opencrq_assets) as calls:
         await _run(
@@ -1574,10 +1590,12 @@ async def test_control_capabilities_list_pages_past_the_first_forty():
     with _recorded_trpc(opencrq_frameworks, answers):
         first = await _run("list_opencrq_control_capabilities")
         rest = await _run("list_opencrq_control_capabilities", offset=40)
-    assert first.startswith("Control capabilities (45):\n")
+    # The page is announced before the rows, so a reader that stops early knows it did.
+    assert first.startswith("Control capabilities (45; page 1 of 2, next offset 40):\n")
     assert first.count("[ControlCapability]") == 40
     assert "Capability 39 (CC-39)" in first and "Capability 40" not in first
     assert first.endswith("Showing 1-40 of 45; call again with offset=40 for the next ones.")
+    assert rest.startswith("Control capabilities (45; page 2 of 2, last page):\n")
     assert rest.count("[ControlCapability]") == 5
     assert "Capability 39" not in rest and "Capability 44 (CC-44)" in rest
     assert rest.endswith("Showing 41-45 of 45.")
@@ -1604,6 +1622,122 @@ async def test_control_capabilities_list_refuses_a_negative_offset():
 
 def test_control_capabilities_list_declares_its_offset():
     assert _tool_properties("list_opencrq_control_capabilities")["offset"]["minimum"] == 0
+
+
+async def test_control_capabilities_read_page_by_page_reaches_every_row() -> None:
+    # A reader that follows "next offset" until the last page reads all 51 capabilities.
+    answers = {"controlCapabilities.getControlCapabilities": _capabilities(51)}
+    seen, offset = 0, 0
+    with _recorded_trpc(opencrq_frameworks, answers):
+        while True:
+            out = await _run("list_opencrq_control_capabilities", offset=offset)
+            seen += out.count("[ControlCapability]")
+            header = out.split("\n", 1)[0]
+            if "next offset" not in header:
+                break
+            offset = int(header.rsplit("next offset ", 1)[1].rstrip("):"))
+    assert seen == 51 and offset == 40
+
+
+# ── Control what-if: an empty answer says why ──
+
+
+def _latest_run(profile: list[str] | None) -> dict[str, object]:
+    run: dict[str, object] = {"id": "r-9", "createdAt": "2026-11-20T10:00:00.000Z"}
+    if profile is not None:
+        run["profile"] = profile
+    return run
+
+
+async def test_what_if_empty_after_price_runs_names_the_levers_recompute() -> None:
+    answers = {
+        "crqIndicators.getWhatIfResults": [],
+        "crqIndicators.getLatestRun": _latest_run([]),
+    }
+    with _recorded_trpc(opencrq_crq, answers) as calls:
+        out = await _run("get_opencrq_crq_what_if", risk_scenario_id="s-1")
+    assert [c["procedure"] for c in calls] == [
+        "crqIndicators.getWhatIfResults",
+        "crqIndicators.getLatestRun",
+    ]
+    assert calls[1]["input"] == {"riskScenarioId": "s-1"}
+    assert "computed the baseline only" in out and "r-9" in out
+    assert 'run_opencrq_crq_simulation(risk_scenario_id, family="levers")' in out
+    assert "run a CRQ simulation first" not in out
+
+
+async def test_what_if_empty_after_a_techniques_run_names_what_it_computed() -> None:
+    answers = {
+        "crqIndicators.getWhatIfResults": [],
+        "crqIndicators.getLatestRun": _latest_run(["techniques"]),
+    }
+    with _recorded_trpc(opencrq_crq, answers):
+        out = await _run("get_opencrq_crq_what_if", risk_scenario_id="s-1")
+    assert "computed techniques only" in out and 'family="levers"' in out
+
+
+async def test_what_if_empty_after_a_levers_run_says_no_control_acts_and_not_run_again() -> None:
+    answers = {
+        "crqIndicators.getWhatIfResults": [],
+        "crqIndicators.getLatestRun": _latest_run(["techniques", "levers", "plans"]),
+    }
+    with _recorded_trpc(opencrq_crq, answers):
+        out = await _run("get_opencrq_crq_what_if", risk_scenario_id="s-1")
+    assert "found no control acting on this scenario's techniques" in out
+    assert "Running again changes nothing" in out
+    assert "family=" not in out
+
+
+async def test_what_if_empty_without_any_run_asks_for_a_first_simulation() -> None:
+    answers: dict[str, object] = {"crqIndicators.getWhatIfResults": [], "crqIndicators.getLatestRun": None}
+    with _recorded_trpc(opencrq_crq, answers):
+        out = await _run("get_opencrq_crq_what_if", risk_scenario_id="s-1")
+    assert "has no CRQ run yet" in out
+
+
+async def test_what_if_empty_with_an_unstated_profile_does_not_guess() -> None:
+    answers = {
+        "crqIndicators.getWhatIfResults": [],
+        "crqIndicators.getLatestRun": _latest_run(None),
+    }
+    with _recorded_trpc(opencrq_crq, answers):
+        out = await _run("get_opencrq_crq_what_if", risk_scenario_id="s-1")
+    assert "does not say which figures it computed" in out and 'family="levers"' in out
+
+
+async def test_what_if_rows_skip_the_latest_run_read() -> None:
+    answers = {"crqIndicators.getWhatIfResults": [{"controlId": "c-1", "aleReductionMean": 5}]}
+    with _recorded_trpc(opencrq_crq, answers) as calls:
+        await _run("get_opencrq_crq_what_if", risk_scenario_id="s-1")
+    assert "crqIndicators.getLatestRun" not in [c["procedure"] for c in calls]
+
+
+async def test_simulation_with_family_enqueues_the_family_recompute() -> None:
+    answers = {"crqIndicators.enqueueFamilyRecompute": {"jobId": "j-1"}}
+    with _recorded_trpc(opencrq_crq, answers) as calls:
+        out = await _run("run_opencrq_crq_simulation", risk_scenario_id="s-1", family="levers")
+    assert calls == [
+        {
+            "procedure": "crqIndicators.enqueueFamilyRecompute",
+            "input": {"riskScenarioId": "s-1", "family": "levers"},
+            "mutation": True,
+        }
+    ]
+    assert "control upgrade what-ifs" in out and "j-1" in out and "get_opencrq_crq_what_if" in out
+
+
+async def test_simulation_without_family_stays_a_full_simulation() -> None:
+    with _recorded_trpc(opencrq_crq, {"crqIndicators.enqueueSimulation": {"jobId": "j-2"}}) as calls:
+        out = await _run("run_opencrq_crq_simulation", risk_scenario_id="s-1")
+    assert calls[0]["procedure"] == "crqIndicators.enqueueSimulation"
+    assert calls[0]["input"] == {"riskScenarioId": "s-1"}
+    assert "get_opencrq_crq_run" in out
+
+
+async def test_simulation_refuses_an_unknown_family() -> None:
+    with _recorded_trpc(opencrq_crq) as calls:
+        result = await _execute("run_opencrq_crq_simulation", risk_scenario_id="s-1", family="plans")
+    assert calls == [] and "family" in result.content
 
 
 async def test_crq_settings_read_as_labelled_values():

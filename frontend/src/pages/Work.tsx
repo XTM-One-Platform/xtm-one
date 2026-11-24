@@ -45,7 +45,7 @@ const RECENT_VIDEOS = { limit: RECENT_WINDOW, offset: 0 };
 /** Where a file is opened from the hub: its conversation or run, else the list. */
 function fileHref(file: RepositoryFile): string {
   if (file.context === "conversation" && file.conversation_id) return `/chat?c=${file.conversation_id}`;
-  if (file.context === "run" && file.assignment_run_id) return `/runs/${file.assignment_run_id}`;
+  if (file.context === "run" && file.assignment_run_id) return `/operations/executions/${file.assignment_run_id}`;
   return "/files";
 }
 
@@ -114,15 +114,15 @@ export default function Work() {
   );
 
   const resources = hubCards(useNavGroup("work"), {
+    /* Work items, value and workspaces: a page of tabs over lists the menu row opens, no card (#775). */
+    "/tasks": null,
     "/operations": {
-      description: "Every assignment run, background task and work item: what your agents did, are doing, and are waiting on.",
+      description: "Every assignment run and background task: what your agents did and are doing.",
       items: runItems,
       isLoading: runs.isLoading,
       count: runCount.data?.count,
-      detailTo: (item) => `/runs/${item.id}`,
+      detailTo: (item) => `/operations/executions/${item.id}`,
     },
-    /* A report over the work above, not a collection: a menu row, no card. */
-    "/value": null,
     "/presentations": {
       description: "Decks and pages your agents generated: yours, shared with you, and published to the company. Present, share, export.",
       items: deckItems,

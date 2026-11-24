@@ -39,7 +39,7 @@ BUILTIN_AGENT_PROFILE_FIELDS: dict[str, tuple[str, ...]] = {
         "risk_appetite",
     ),
     "ctem-threat-relevance-analyst": ("sector", "regions", "crown_jewels", "tech_stack", "pir_ids"),
-    "ctem-risk-quantifier": ("crown_jewels", "risk_appetite", "currency"),
+    "ctem-risk-quantifier": ("crown_jewels", "risk_appetite", "currency", "fx_rates"),
     "ctem-remediation-coordinator": ("crown_jewels", "tech_stack", "risk_appetite", "ticketing"),
     "ctem-vuln-prioritization-orchestrator": ("ticketing",),
     "ctem-vuln-triage-analyst": ("sector", "regions", "crown_jewels", "tech_stack", "risk_appetite"),
@@ -57,19 +57,20 @@ BUILTIN_AGENT_PROFILE_FIELDS: dict[str, tuple[str, ...]] = {
     "opencti-pir-desk-orchestrator": ("sector", "regions", "pir_ids"),
     "opencti-pir-triage-analyst": ("sector", "regions", "pir_ids"),
     "openaev-detection-desk-orchestrator": ("crown_jewels", "tech_stack"),
-    "opencrq-risk-desk-orchestrator": ("risk_appetite", "currency"),
+    "opencrq-risk-desk-orchestrator": ("risk_appetite", "currency", "fx_rates"),
 }
 
 #: The words a persona uses for each field (lower case), checked by the test above.
 PROFILE_FIELD_WORDS: dict[str, str] = {
     "sector": "sector",
     "regions": "region",
-    "crown_jewels": "crown jewel",
-    "tech_stack": "tech stack",
+    "crown_jewels": "primary asset",
+    "tech_stack": "software",
     "ai_systems": "ai system",
     "pir_ids": "pir",
     "risk_appetite": "risk appetite",
     "currency": "currency",
+    "fx_rates": "reference exchange rate",
     "loaded_hourly_rate": "hourly rate",
     "ticketing": "ticketing",
 }

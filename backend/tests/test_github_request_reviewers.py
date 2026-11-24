@@ -43,9 +43,11 @@ class _GitHub:
         self.rest_logins = rest_logins
         self.graphql_reviewers = graphql_reviewers
         self.calls: list[tuple[str, str, Any]] = []
+        self.kwargs: list[dict[str, Any]] = []
 
     async def __call__(self, client, method, url, provider, action, **kwargs):
         self.calls.append((method, url, kwargs.get("json")))
+        self.kwargs.append(kwargs)
         if url.endswith("/graphql"):
             if self.graphql_reviewers is None:
                 return httpx.Response(502, json={}), "Error: GitHub server error (502)."
@@ -100,3 +102,36 @@ async def test_a_failed_graphql_read_keeps_the_rest_verdict():
         out = await _tool("request_github_reviewers")(repo="o/r", number=7, reviewers=["copilot"])
     assert "NOT confirmed by GitHub: copilot-pull-request-reviewer[bot]" in out
     assert "Confirmed reviewers: none" in out
+
+
+@pytest.mark.asyncio
+async def test_the_review_request_is_retried_on_the_404_of_a_just_created_pull_request():
+    gh = _GitHub(["octocat"], None)
+    with patch(_SAFE_REQUEST, new=gh):
+        await _tool("request_github_reviewers")(repo="o/r", number=7, reviewers=["octocat"])
+    sent = gh.kwargs[0]
+    assert 404 in sent["retry_statuses"]
+    assert {502, 503, 504} <= set(sent["retry_statuses"])
+    assert 0 < sent["max_total_seconds"] <= 30
+
+
+@pytest.mark.asyncio
+async def test_safe_request_retries_a_listed_404_then_answers_the_success(monkeypatch):
+    from app.integrations import http as integration_http
+
+    monkeypatch.setattr(integration_http.asyncio, "sleep", _no_self_action)
+    answers = iter([httpx.Response(404, json={"message": "Not Found"}), httpx.Response(201, json={})])
+    transport = httpx.MockTransport(lambda request: next(answers))
+    async with httpx.AsyncClient(transport=transport) as client:
+        resp, err = await integration_http.safe_request(
+            client,
+            "post",
+            "https://api.github.com/repos/o/r/pulls/7/requested_reviewers",
+            "github",
+            "request reviewers",
+            json={"reviewers": ["octocat"]},
+            retry_statuses=frozenset({404}),
+            max_total_seconds=15.0,
+        )
+    assert err is None
+    assert resp.status_code == 201

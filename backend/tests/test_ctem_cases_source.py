@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
+from typing import Any
 
 import httpx
 import pytest
@@ -77,6 +78,58 @@ def test_openaev_findings_join_the_opencti_case_by_cve():
     assert [i.member_id for i in grouping.no_known_fix] == ["openaev:f-2"]
 
 
+def test_a_vendor_foreign_node_of_the_same_name_never_joins_the_entry_case():
+    """#1693: a node whose CPE names another vendor does not carry its CVEs into the entry's case."""
+    stack = [{"product": "Chrome", "vendor": "Google", "cpe": "", "label": "Google Chrome"}]
+    software = [
+        {"id": "sw-g", "name": "chrome", "vendor": "", "cpe": "cpe:2.3:a:google:chrome:142.0:*:*:*:*:*:*:*"},
+        {"id": "sw-m", "name": "chrome", "vendor": "", "cpe": "cpe:2.3:a:microsoft:chrome:1.0:*:*:*:*:*:*:*"},
+        {"id": "sw-x", "name": "Chrome", "vendor": "Microsoft Corporation", "cpe": ""},
+    ]
+    relations = [
+        _rel("sw-g", "v-g", "CVE-2026-10"),
+        _rel("sw-m", "v-e", "CVE-2026-11"),
+        _rel("sw-x", "v-x", "CVE-2026-12"),
+    ]
+    issues = source.opencti_issues(software, stack, relations, [])
+    assert [i.external_id for i in issues] == ["v-g"]
+
+
+def test_a_cve_shared_by_two_stack_products_is_one_issue_and_one_case_per_product():
+    """#1693: a Chromium CVE OpenCTI links to Chrome and Edge fans out to both products' cases."""
+    stack = [
+        {"product": "Chrome", "vendor": "Google", "cpe": "", "label": "Google Chrome"},
+        {"product": "Edge", "vendor": "Microsoft", "cpe": "", "label": "Microsoft Edge"},
+    ]
+    software = [
+        {"id": "sw-c", "name": "chrome", "vendor": "google", "cpe": ""},
+        {"id": "sw-e", "name": "edge", "vendor": "", "cpe": "cpe:2.3:a:microsoft:edge:*:*:*:*:*:*:*:*"},
+    ]
+    relations = [_rel("sw-c", "v-1", "CVE-2026-20"), _rel("sw-e", "v-1", "CVE-2026-20")]
+    issues = source.opencti_issues(software, stack, relations, [])
+    assert sorted(i.product for i in issues) == ["Chrome", "Edge"]
+    grouping = rules.group_issues(issues)
+    assert set(grouping.groups) == {"upgrade:google/chrome@latest", "upgrade:microsoft/edge@latest"}
+
+
+def test_openaev_finding_lifecycle_is_read_when_present_and_absent_otherwise():
+    findings = [
+        {
+            "finding_id": "f-1",
+            "finding_value": "CVE-2026-1",
+            "finding_status": "NOT_REPRODUCED",
+            "finding_last_tested": "2026-11-21T10:00:00Z",
+        },
+        {"finding_id": "f-2", "finding_value": "CVE-2026-2", "finding_status": "OPEN", "finding_retest_inject_id": "inj-9"},
+        {"finding_id": "f-3", "finding_value": "CVE-2026-3"},  # an OpenAEV older than the lifecycle
+    ]
+    one, two, three = source.openaev_issues(findings)
+    assert one.retest_status == "not_reproduced" and one.last_tested_at.startswith("2026-11-21T10:00")
+    assert not one.retest_pending
+    assert two.retest_status == "open" and two.retest_pending and two.last_tested_at is None
+    assert (three.retest_status, three.last_tested_at, three.retest_pending) == (None, None, False)
+
+
 @pytest.mark.asyncio
 async def test_recompute_writes_nothing_when_a_product_cannot_answer(monkeypatch):
     async def read(db, user_id, vertical, *, now=None, members=None):
@@ -109,8 +162,8 @@ async def test_recompute_merges_and_resolves_only_what_the_reader_confirms_close
 
     applied: list = []
 
-    async def apply(db, *, organization_id, vertical, issues, closed, now):
-        applied.append(list(closed))
+    async def apply(db: Any, **kw: Any) -> dict[str, int]:
+        applied.append(list(kw["closed"]))
         return {"created": 1, "updated": 0, "resolved": 0, "reopened": 0, "no_known_fix": 0}
 
     async def members(db, *, organization_id, vertical):
@@ -206,8 +259,8 @@ async def test_recompute_applies_when_opencti_and_openaev_answer(monkeypatch):
 
     applied: list = []
 
-    async def apply(db, *, organization_id, vertical, issues, closed, now):
-        applied.append(sorted(i.member_id for i in issues))
+    async def apply(db: Any, **kw: Any) -> dict[str, int]:
+        applied.append(sorted(i.member_id for i in kw["issues"]))
         return {"created": 1, "updated": 0, "resolved": 0, "reopened": 0, "no_known_fix": 0}
 
     async def members(db, *, organization_id, vertical):
@@ -222,7 +275,7 @@ async def test_recompute_applies_when_opencti_and_openaev_answer(monkeypatch):
         return None
 
     db.commit = commit
-    monkeypatch.setattr(source, "_profile_tech_stack", stack)
+    monkeypatch.setattr(source, "_organization_software", stack)
     monkeypatch.setattr(source, "_user_creds", creds)
     monkeypatch.setattr(source, "_read_opencti", read_opencti)
     monkeypatch.setattr(source, "attach_probe", lambda headers, base_url: headers)
@@ -272,7 +325,7 @@ async def test_recompute_route_builds_the_callers_own_cases_and_is_throttled(mon
     async def slot(user_id, vertical):
         return next(slots)
 
-    monkeypatch.setattr(api_module.source, "recompute_for_user", recompute)
+    monkeypatch.setattr(source, "recompute_for_user", recompute)
     monkeypatch.setattr(api_module, "recompute_slot", slot)
     member = SimpleNamespace(id=uuid.uuid4(), ctem_vertical=None, is_admin=False)
     async with _client(monkeypatch, member) as client:

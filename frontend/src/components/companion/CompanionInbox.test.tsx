@@ -23,7 +23,7 @@ const FEED: NotificationFeed = {
       id: RUN,
       kind: "hitl",
       created_at: new Date().toISOString(),
-      route: `/runs/${RUN}`,
+      route: `/operations/executions/${RUN}`,
       title: "Containment",
       subtitle: "Remediation planner",
       summary: "Approval required before running: isolate_host",
@@ -105,7 +105,7 @@ describe("CompanionInbox", () => {
     expect(api.post).toHaveBeenCalledWith("/notifications/22222222-2222-4222-8222-222222222222/dismiss");
   });
 
-  it("opens a waiting work item without a refused read call, its subtitle translated", async () => {
+  it("opens a waiting work item without reading it, its subtitle translated (#991)", async () => {
     const ITEM = "33333333-3333-4333-8333-333333333333";
     api.get.mockImplementation(async (path: string) => {
       if (path === "/notifications") {
@@ -123,6 +123,7 @@ describe("CompanionInbox", () => {
               summary: "Ship on Monday?",
               critical: false,
               run_id: null,
+              awaiting_answer: true,
               unread: true,
             },
           ],
@@ -136,6 +137,7 @@ describe("CompanionInbox", () => {
     expect(screen.queryByRole("button", { name: "Mark all read" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Approve the rollout/ }));
     expect(await screen.findByText("Runs page")).toBeTruthy();
+    // A decision still waiting is read only by its answer (#991): no dismiss call.
     expect(api.post).not.toHaveBeenCalled();
   });
 

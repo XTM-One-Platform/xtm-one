@@ -61,6 +61,7 @@ from app.api.v1.schemas.flow import (
 )
 from app.core.config import settings
 from app.core.database import get_db
+from app.models.decision_hooks import open_flow_park
 from app.models.flow import (
     FLOW_STATUS_ACTIVE,
     FLOW_STATUS_DRAFT,
@@ -255,7 +256,15 @@ async def respond_flow_run(
       shared visibility — otherwise a read-only viewer could inject
       ``{{ask.response}}`` into a run nobody asked them about.
     """
-    response = str(body.get("response") or "").strip()
+    run = await answer_flow_park(db, user, run_id, str(body.get("response") or ""))
+    return _run_summary(run)
+
+
+async def answer_flow_park(db: AsyncSession, user: User, run_id: str, response: str) -> FlowRun:
+    """Answer a flow run's Ask-user park as *user*: the one path the respond
+    endpoint and the decisions router (#842, S2) both take, so the access rule
+    and the refusals cannot drift between them."""
+    response = response.strip()
     if not response:
         raise HTTPException(status_code=422, detail="A response is required.")
     run = await get_visible_run(db, user, run_id)
@@ -268,16 +277,29 @@ async def respond_flow_run(
             status_code=409, detail="The run is not waiting for a human answer."
         )
     await _refuse_if_run_flow_paused(db, run)
+    from app.services.decision_ask import flow_option
+
+    # An Ask-user node with options (#842, S6): the chosen key is {{ask.option}}.
+    ask = waiting.get("ask") if isinstance(waiting.get("ask"), dict) else None
+    option = flow_option(ask, response)
     waiting["released"] = True
     waiting["response"] = response
+    if option:
+        waiting["option"] = option
     waiting["responded_by"] = user.email or str(user.id)
     state["waiting"] = waiting
     run.state = state
-    await db.commit()
+    from app.models.decision_hooks import answer_actor
+
+    token = answer_actor.set(user.id)
+    try:
+        await db.commit()
+    finally:
+        answer_actor.reset(token)
     from app.services import orchestration_engine as engine
 
     await engine.notify_orchestration_wake()
-    return _run_summary(run)
+    return run
 
 
 # ---------------------------------------------------------------------------
@@ -935,6 +957,16 @@ def _global_runs_query(
     return query
 
 
+def awaiting_human(state: dict[str, Any] | None) -> dict[str, Any]:
+    """The Ask-user park a person can still answer, else an empty dict.
+
+    A park whose answer was taken (``released``) is not answerable any more:
+    the run panel shows no card for it while the worker resumes the run, so a
+    second answer never meets the 409 of the respond route (#842, S6).
+    """
+    return state["waiting"] if state and open_flow_park(state) else {}
+
+
 @router.get("/runs/{run_id}", response_model=FlowRunDetailResponse)
 async def get_flow_run(
     run_id: str,
@@ -964,15 +996,10 @@ async def get_flow_run(
             else None
         ),
         step_mode=bool((run.state or {}).get("step_mode")),
-        awaiting_input_node_id=(
-            (run.state or {}).get("waiting", {}).get("node")
-            if ((run.state or {}).get("waiting") or {}).get("kind") == "human"
-            else None
-        ),
-        awaiting_input_question=(
-            (run.state or {}).get("waiting", {}).get("question")
-            if ((run.state or {}).get("waiting") or {}).get("kind") == "human"
-            else None
+        awaiting_input_node_id=awaiting_human(run.state).get("node"),
+        awaiting_input_question=awaiting_human(run.state).get("question"),
+        awaiting_input_ask=(
+            awaiting_human(run.state).get("ask") if isinstance(awaiting_human(run.state).get("ask"), dict) else None
         ),
         steps=[
             FlowRunStepResponse(

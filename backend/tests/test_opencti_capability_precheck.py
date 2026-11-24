@@ -503,7 +503,9 @@ async def test_each_instance_probes_with_its_own_credentials(monkeypatch):
 # Gated tools that take every argument (**unknown) and refuse the ones their action
 # does not apply by name, instead of dropping them silently (the unapplied-arguments
 # contract, tests/test_opencti_pir_unapplied_args.py).
-_REFUSES_UNKNOWN_ARGUMENTS = frozenset({"manage_opencti_pir", "manage_opencti_playbook"})
+_REFUSES_UNKNOWN_ARGUMENTS = frozenset(
+    {"manage_opencti_pir", "manage_opencti_playbook", "manage_opencti_security_coverage"}
+)
 
 
 def test_gate_keeps_the_handler_signature_for_argument_filtering():

@@ -47,7 +47,7 @@ from .checks import _CI_MAX_PAGES, _CI_PAGE_SIZE, ci_verdict, classify_ci, is_co
 from .contents import _json_object
 from .landed import pull_key, pull_probe
 from .merge import conflict_answer, outcome_line
-from .merge_resolution import _branch_tip
+from .merge_resolution import _already_merged, _branch_tip, drop_stopped_alignment, ref_moved_and_undone
 
 _SOURCE = "integration:github"
 _MERGE_METHODS = {"MERGE", "SQUASH", "REBASE"}
@@ -59,6 +59,14 @@ _UP_TO_DATE_RE = re.compile(r"no new commits on the base branch|already up[ -]to
 #: GitHub's 422 on create PR when an open pull request already joins the head
 #: and base ("A pull request already exists for owner:branch.").
 _ALREADY_EXISTS_RE = re.compile(r"a pull request already exists", re.IGNORECASE)
+
+#: Statuses a review request is retried on: the gateway set, plus the 404 GitHub
+#: answers for a pull request created a moment before (seen on xtm-one #809, the
+#: same call passing seconds later). The request is idempotent, so a retry can
+#: never add a second request; the budget below bounds a pull request that is
+#: really missing.
+_REVIEW_REQUEST_RETRY_STATUSES = TRANSIENT_RETRY_STATUSES | {404}
+_REVIEW_REQUEST_RETRY_SECONDS = 15.0
 
 #: Pauses (seconds) before each new merge attempt after an answer that leaves
 #: the merge state unknown (gateway 5xx, transport error, "already in
@@ -249,6 +257,49 @@ async def _pr_node_id(
     if not node_id:
         return None, f"Error: Could not resolve node id for PR #{number}."
     return node_id, None
+
+
+#: Review decisions under which GitHub auto-merge is refused: the pull request still waits for a
+#: reviewer, and an auto-merge enabled now lets GitHub (or its merge queue) land it the moment the
+#: checks pass, with no tool reading the review again (an admin bypass even skips the rule).
+_AUTOMERGE_BLOCKING_DECISIONS = frozenset({"REVIEW_REQUIRED", "CHANGES_REQUESTED"})
+
+_REVIEW_DECISION_QUERY = (
+    "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){"
+    "pullRequest(number:$number){reviewDecision}}}"
+)
+
+
+async def _automerge_review_refusal(
+    client: httpx.AsyncClient, owner: str, name: str, number: int, headers: dict[str, str]
+) -> str | None:
+    """The refusal when PR *number* still waits for an approving review, else ``None``.
+
+    ``reviewDecision`` is ``None`` when the base requires no review: auto-merge then
+    stays allowed. An unreadable decision is refused too: the doubt never enables a merge.
+    """
+    data, err = await _common.gh_graphql(
+        client,
+        headers,
+        _REVIEW_DECISION_QUERY,
+        {"owner": owner, "name": name, "number": number},
+        action=f"read the review decision of PR #{number} before enabling auto-merge",
+    )
+    if err or not isinstance(data, dict):
+        return (
+            f"Error: auto-merge not enabled on PR #{number}, nothing was written: its review decision "
+            f"could not be read ({err or 'no data'})."
+        )
+    pull = (data.get("repository") or {}).get("pullRequest") or {}
+    decision = pull.get("reviewDecision") if isinstance(pull, dict) else None
+    if decision not in _AUTOMERGE_BLOCKING_DECISIONS:
+        return None
+    return (
+        f"Error: auto-merge not enabled on PR #{number}, nothing was written: its review decision is "
+        f"{decision}. Auto-merge would let GitHub merge it as soon as the checks pass, before the review "
+        "the repository asks for (an admin bypass skips the review rule). Wait for an approving review, "
+        "then merge with merge_github_pr."
+    )
 
 
 def register(
@@ -1543,6 +1594,9 @@ def register(
         copilot_aliases = {"copilot", "github-copilot", "copilot-review"}
         resolved = [copilot_bot if r.lower() in copilot_aliases else r for r in reviewers]
         async with egress_client(timeout=30) as client:
+            # A review request is idempotent (requesting a reviewer twice keeps one request),
+            # so a 404 is retried: GitHub answers it for a pull request created a moment
+            # before, until its replicas see it. The budget bounds a genuinely missing one.
             resp, err = await _common.safe_request(
                 client,
                 "post",
@@ -1551,6 +1605,8 @@ def register(
                 f"request reviewers on PR #{number} in {repo}",
                 headers=_json_headers(headers),
                 json={"reviewers": resolved},
+                retry_statuses=_REVIEW_REQUEST_RETRY_STATUSES,
+                max_total_seconds=_REVIEW_REQUEST_RETRY_SECONDS,
             )
             if err:
                 return err
@@ -1602,6 +1658,50 @@ def register(
             no_op=True,
         )
 
+    async def _drop_stopped_alignment(client: Any, owner: str, name: str, number: int) -> tuple[str, str | None]:
+        """Move the PR branch off the take-the-ref commits a stopped line merge left: ``(note, refusal)``.
+
+        A call stopped between the alignment commits and the merge (a rollout) leaves the conflicting paths
+        holding the base's version. GitHub's update-branch then merges cleanly over them and the PR's own side
+        of those paths is lost without a word (xtm-one #1254: 24 i18n keys). merge_github_branch drops them
+        first; update_branch does the same before asking GitHub, so a repeat resolves both sides again.
+        """
+        repo = f"{owner}/{name}"
+        repo_url = f"{_BASE_URL}/repos/{owner}/{name}"
+        pr_resp, pr_err = await _common.safe_request(
+            client, "get", f"{repo_url}/pulls/{number}", _PROVIDER, f"read PR #{number} in {repo}", headers=headers
+        )
+        if pr_err:
+            return "", None
+        pr = _json_object(pr_resp)
+        head = pr.get("head") if isinstance(pr, dict) else None
+        head_repo = head.get("repo") if isinstance(head, dict) else None
+        branch = _coerce_str(head.get("ref")) if isinstance(head, dict) else ""
+        owner_repo = _coerce_str(head_repo.get("full_name")) if isinstance(head_repo, dict) else ""
+        if not branch or owner_repo != repo:
+            return "", None
+        return await drop_stopped_alignment(client, headers, repo, repo_url, branch)
+
+    async def _update_branch(client: Any, owner: str, name: str, number: int) -> str | ToolResult:
+        """GitHub's update-branch on PR #*number*, or the line merge of :func:`_update_branch_conflict` on a 422."""
+        repo = f"{owner}/{name}"
+        resp, err = await _common.safe_request(
+            client,
+            "put",
+            f"{_BASE_URL}/repos/{owner}/{name}/pulls/{number}/update-branch",
+            _PROVIDER,
+            f"update branch for PR #{number}",
+            headers=_json_headers(headers),
+            json={},
+            expected_statuses={422},
+        )
+        if resp is not None and resp.status_code == 422:
+            return await _update_branch_conflict(client, owner, name, number, resp, err or "")
+        if err:
+            return err
+        await mark_self_action(repo, number)
+        return f"PR #{number} branch update queued: {(resp.json() or {}).get('message', 'Success')}"
+
     async def _update_branch_conflict(
         client: Any, owner: str, name: str, number: int, resp: httpx.Response, err: str
     ) -> str | ToolResult:
@@ -1634,6 +1734,10 @@ def register(
         text = f"Merge {base_ref} into {branch}"
         before = await _branch_tip(client, headers, repo, repo_url, branch)
         answer = await conflict_answer(client, headers, repo, repo_url, branch, base_ref, text, {})
+        if ref_moved_and_undone(answer):
+            # The base moved between the line merge and the merge itself, and nothing stayed on the branch: the
+            # line merge is run once more against the base's new commit instead of handing the agent a refusal.
+            answer = await conflict_answer(client, headers, repo, repo_url, branch, base_ref, text, {})
         if answer.startswith("Merged"):
             # Every path merged line by line without an overlap: the branch took its base in signed commits.
             await mark_self_action(repo, number)
@@ -1649,6 +1753,14 @@ def register(
         outcome = await outcome_line(client, headers, repo, repo_url, branch, before, answer)
         if "landed true" in outcome:
             await mark_self_action(repo, number)
+            base_tip = await _branch_tip(client, headers, repo, repo_url, base_ref)
+            if base_tip and await _already_merged(client, headers, repo, repo_url, branch, base_tip):
+                # The merge landed although its answer was an error (a lost answer, a replayed call): the
+                # branch holds the base, so the outcome leads, never "Error" over work that was written.
+                return (
+                    f"Merged (landed): the branch of PR #{number} in {repo} now holds '{base_ref}' "
+                    f"({base_tip[:12]}) although the merge call answered an error.\n{outcome}\n{answer}"
+                )
         return f"{lead}\n{answer}\n{outcome}"
 
     async def _toggle_draft(
@@ -1716,25 +1828,23 @@ def register(
         action = (action or "").strip().lower()
         async with egress_client(timeout=30) as client:
             if action == "update_branch":
-                resp, err = await _common.safe_request(
-                    client,
-                    "put",
-                    f"{_BASE_URL}/repos/{owner}/{name}/pulls/{number}/update-branch",
-                    _PROVIDER,
-                    f"update branch for PR #{number}",
-                    headers=_json_headers(headers),
-                    json={},
-                    expected_statuses={422},
-                )
-                if resp is not None and resp.status_code == 422:
-                    return await _update_branch_conflict(client, owner, name, number, resp, err or "")
-                if err:
-                    return err
-                await mark_self_action(repo, number)
-                return f"PR #{number} branch update queued: {(resp.json() or {}).get('message', 'Success')}"
+                dropped, refusal = await _drop_stopped_alignment(client, owner, name, number)
+                if refusal:
+                    return refusal
+                answer = await _update_branch(client, owner, name, number)
+                if not dropped:
+                    return answer
+                if isinstance(answer, ToolResult):
+                    answer.content = f"{answer.content}\n{dropped}"
+                    return answer
+                return f"{answer}\n{dropped}"
             if action in ("ready_for_review", "enable_automerge"):
                 verb = "marked ready" if action == "ready_for_review" else "set to auto-merge"
                 refusal = await review_loop.review_loop_refusal(client, owner, name, number, headers, verb)
+                if refusal:
+                    return refusal
+            if action == "enable_automerge":
+                refusal = await _automerge_review_refusal(client, owner, name, number, headers)
                 if refusal:
                     return refusal
             node_id, e = await _pr_node_id(client, owner, name, number, headers)
@@ -2132,7 +2242,8 @@ def register(
                 "toggles draft; update_branch merges the base branch into the PR branch (refused on a conflict, it merges "
                 "line by line on the server and lands when no hunk overlaps, else names the hunks and the "
                 "merge_github_branch call that resolves them); enable_automerge auto-merges "
-                "once all requirements pass (merge_method=merge|squash|rebase); disable_automerge cancels it; "
+                "once all requirements pass (merge_method=merge|squash|rebase; refused while the PR waits for an "
+                "approving review); disable_automerge cancels it; "
                 "dequeue takes it out of its merge queue (nothing written when it is not queued)."
             ),
             input_schema={

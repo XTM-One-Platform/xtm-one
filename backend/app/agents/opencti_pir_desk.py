@@ -45,6 +45,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.agents.fleet_opt_in import SEEDED_FLEET_OPT_IN
+from app.agents.gate_answered import gate_answered_assignment
 
 ORCHESTRATOR = "opencti-pir-desk-orchestrator"
 TRIAGE_ANALYST = "opencti-pir-triage-analyst"
@@ -224,7 +225,7 @@ PIR_DESK_AGENTS: list[dict[str, Any]] = [
 _COMMON = {
     "agent_slug": ORCHESTRATOR,
     **SEEDED_FLEET_OPT_IN,
-    "ai_label": True,
+    "ai_label": False,
     "notify_on_complete": False,
     "show_in_digest": True,
     "max_iterations": 150,
@@ -299,6 +300,17 @@ PIR_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
             "Answer with the run JSON."
         ),
     },
+    gate_answered_assignment(
+        _COMMON,
+        prefixes=(APPROVAL_PREFIX,),
+        inherit_switch_from="PIR match created",
+        description="A person answered an indicator revocation: revoke it, or record the refusal.",
+        apply=(
+            "Approved: revoke exactly the indicator the item names in OpenCTI and record it on its "
+            "PIR case. Rejected or deferred: keep the indicator and record the decision and the "
+            "reason on the case. Answer with the run JSON."
+        ),
+    ),
 ]
 
 PIR_DESK_FLEET: dict[str, Any] = {

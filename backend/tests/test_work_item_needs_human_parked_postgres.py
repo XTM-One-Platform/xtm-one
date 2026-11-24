@@ -91,6 +91,7 @@ async def test_an_open_item_turned_needs_human_leaves_the_queue() -> None:
                 created_by_agent_id=str(agent.id),
                 status="in_progress",
                 needs_human=True,
+                ask=_ASK,
                 blocked_reason="later",
                 writer=writer,
             )

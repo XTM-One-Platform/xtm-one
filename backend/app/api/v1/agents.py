@@ -153,6 +153,7 @@ from app.models.general_assistant_config import clamp_max_iterations
 from app.models.integration import Integration
 from app.models.knowledge_base import KnowledgeBase
 from app.models.user import User
+from app.services import builtin_customer_layer
 from app.services.agent_bindings import (
     BINDING_MODELS,
     derive_available_channel_types,
@@ -712,6 +713,12 @@ async def create_agent(
         db, user, body.browser_profile_ids, baseline=None, company_managed=bool(body.is_company_managed)
     )
     _admin_bound_or_403(user, body.builtin_tool_ids)
+    _created_allowlist = _builtin_allowed_or_422(body.builtin_allowed_tools)
+    _created_ids = body.builtin_tool_ids if body.builtin_tool_ids is not None else template_default_builtin_tool_ids
+    from app.services.builtin_allowed_tools import allowlisted_groups_not_enabled, not_enabled_refusal
+
+    if _not_enabled := allowlisted_groups_not_enabled(_created_ids, _created_allowlist):
+        raise HTTPException(status_code=422, detail=not_enabled_refusal(_not_enabled))
 
     agent = Agent(
         **agent_kwargs,
@@ -775,7 +782,7 @@ async def create_agent(
         browser_profile_ids=browser_profile_ids,
         browser_profile_read_only=normalize_read_only(body.browser_profile_read_only, browser_profile_ids),
         mcp_allowed_tools=body.mcp_allowed_tools,
-        builtin_allowed_tools=_builtin_allowed_or_422(body.builtin_allowed_tools),
+        builtin_allowed_tools=_created_allowlist,
         # Empty = no denials, stored as NULL like the agent builder does.
         tool_deny_list=body.tool_deny_list or None,
         knowledge_base_ids=kb_ids,
@@ -1513,7 +1520,7 @@ def _admin_bound_or_403(user, requested, before=()) -> None:
         )
 
 
-def _builtin_allowed_or_422(value):
+def _builtin_allowed_or_422(value: Any) -> dict[str, list[str]] | None:
     """``builtin_allowed_tools`` normalised, or a 422 naming the valid functions."""
     from app.services.builtin_allowed_tools import (
         BuiltinAllowedToolsError,
@@ -1524,6 +1531,22 @@ def _builtin_allowed_or_422(value):
         return normalize_builtin_allowed_tools(value)
     except BuiltinAllowedToolsError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _builtin_allowed_enabled_or_422(agent: Any, before_allowed: Any) -> None:
+    """An allow list for a group the agent does not enable grants nothing (#1428).
+
+    An entry this write adds or changes for such a group is refused (422); an
+    entry it leaves as stored (a group switched off, a form sending the list
+    back unchanged) goes with its group.
+    """
+    from app.services.builtin_allowed_tools import not_enabled_written_or_pruned
+    from app.services.builtin_tool_aliases import canonical_builtin_selection
+
+    before = canonical_builtin_selection(list(agent.builtin_tool_ids or []), before_allowed)[1]
+    refusal = not_enabled_written_or_pruned(agent, before)
+    if refusal:
+        raise HTTPException(status_code=422, detail=refusal)
 
 
 def _canonical_builtin(agent) -> tuple[list[str], dict[str, list[str]] | None]:
@@ -1734,11 +1757,36 @@ async def update_agent(
 
     _builtin_writable_only = builtin_agent_edit_allowed(body.model_fields_set)
     _integrations_only = _is_integration_binding_change(agent, body)
-    _builtin_carve_out = _builtin_writable_only or _integrations_only
+    # The customer layer (#914): a body that changes customer-layer fields and
+    # no mechanics field. Mechanics fields re-sent unchanged by a whole form
+    # are not a change; one that moves is refused by name.
+    _sent = {f: getattr(body, f, None) for f in body.model_fields_set}
+    _locked = builtin_customer_layer.locked_changes(agent, _sent) if agent.is_builtin else []
+    # Integration fields keep their own diff (``_is_integration_binding_change``:
+    # some read null as "unchanged"), so they are left out of this one.
+    _customer_changes = (
+        builtin_customer_layer.customer_layer_changes(agent, _sent)
+        - builtin_customer_layer.INTEGRATION_LAYER_FIELDS
+        if agent.is_builtin
+        else set()
+    )
+    _customer_layer_only = bool(_customer_changes) and not _locked
+    # The integration fields the seed writes a default for are recorded too,
+    # so the next seed run keeps what a person set (diffed before the update).
+    # A null sent is "unchanged" for these fields, as in the integration diff.
+    _seeded_default_changes = (
+        builtin_customer_layer.customer_layer_changes(
+            agent,
+            {f: v for f, v in _sent.items() if f in builtin_customer_layer.SEEDED_DEFAULT_FIELDS and v is not None},
+        )
+        if agent.is_builtin
+        else set()
+    )
+    _builtin_carve_out = _builtin_writable_only or _integrations_only or _customer_layer_only
 
     if agent.is_builtin and settings.is_xtm_one and not _builtin_carve_out:
         raise HTTPException(
-            status_code=403, detail="Built-in agents cannot be modified"
+            status_code=403, detail=builtin_customer_layer.locked_refusal(_locked)
         )
 
     if agent.is_builtin and _builtin_carve_out:
@@ -1858,6 +1906,16 @@ async def update_agent(
                 detail="Only admins can hide an agent's activity from non-admins",
             )
         agent.hide_activity_from_non_admins = body.hide_activity_from_non_admins
+
+    # Organization notes (#914): only a built-in carries them, appended after
+    # its seeded persona at prompt time; any other agent edits its persona.
+    if "customer_notes" in body.model_fields_set:
+        if not agent.is_builtin:
+            raise HTTPException(
+                status_code=422,
+                detail="Organization notes apply to built-in agents only; edit the persona instead",
+            )
+        agent.customer_notes = (body.customer_notes or "").strip() or None
 
     # Browser profiles: a profile this request ADDS must be one the
     # caller may use; the read-only list keeps the ids still bound.
@@ -2076,6 +2134,8 @@ async def update_agent(
 
     # These fields accept null as a meaningful value (null = "no scoping, all tools"),
     # so we must use model_fields_set to distinguish "not provided" from "explicitly null".
+    # The allow list as stored before this write: what a person did not touch (#1428).
+    allowed_before_write = getattr(agent, "builtin_allowed_tools", None)
     for nullable_field in _NULLABLE_SCOPING_FIELDS:
         if nullable_field in body.model_fields_set:
             raw = getattr(body, nullable_field)
@@ -2101,6 +2161,7 @@ async def update_agent(
         from app.services.builtin_tool_aliases import fold_builtin_selection
 
         fold_builtin_selection(agent)
+        _builtin_allowed_enabled_or_422(agent, allowed_before_write)
 
     # An allow-list under the shared ``openapi`` provider is split per
     # OpenAPI integration (each one is its own API) - also when the bindings
@@ -2494,6 +2555,11 @@ async def update_agent(
                 )
                 kb.description = f"Auto-created knowledge base for the {body.name} agent. Used for style learning, context storage, and RAG."
 
+    # The customer layer of a built-in (#914): remember what a person set, so
+    # the seed leaves it as they set it on the next boot.
+    if agent.is_builtin and (_customer_changes or _seeded_default_changes):
+        builtin_customer_layer.record_customer_fields(agent, _customer_changes | _seeded_default_changes)
+
     wf_count = (
         await db.execute(
             select(func.count(Assignment.id)).where(Assignment.agent_id == agent.id)
@@ -2546,6 +2612,7 @@ async def update_agent(
             # A safety control: who widened an agent's tools is on the record.
             "tool_deny_list": list(agent.tool_deny_list or []),
             "skill_package_bindings": skill_package_changes.as_audit_dict(),
+            "customer_fields": list(agent.customer_fields or []),
         },
         request=request,
     )
@@ -4484,6 +4551,8 @@ def _to_response(
         enabled=a.enabled,
         is_company_managed=a.is_company_managed,
         hide_activity_from_non_admins=bool(getattr(a, "hide_activity_from_non_admins", False)),
+        customer_notes=getattr(a, "customer_notes", None),
+        customer_fields=list(getattr(a, "customer_fields", None) or []) or None,
         is_public_catalog=a.is_public_catalog,
         catalog_include_personal_tools=a.catalog_download_includes_personal_tools,
         shared_group_ids=a.shared_group_ids,

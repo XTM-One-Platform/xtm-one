@@ -23,7 +23,9 @@ platform's models and its own pause helpers:
 * the FAILING fleet (#9670): every fleet automation enabled and one of its members' latest run a
   failure of its own work :data:`FAILED_AGE` ago, so the health reads ``failing``
   (``run_outcome.member_verdict``);
-* every other CTEM fleet left as seeded (not set up). With the five built-in CTEM fleets none is
+* with fewer fleets than states (the four built-in CTEM fleets of #1048), the health state left
+  over (``failing``) is carried by the PARTIAL fleet (:func:`extras`, the row's ``also``);
+* every other CTEM fleet left as seeded (not set up). With four or five built-in CTEM fleets none is
   left: ``lab.py`` forks one (every copied automation is created switched off, and a fork of a
   ``ctem-*`` fleet is a CTEM fleet) for the Not set up state (#9689).
 
@@ -105,6 +107,23 @@ def plan(fleets: dict[str, list[tuple[str, bool]]]) -> dict[str, str]:
         if chosen is not None:
             states[chosen] = state
     return states
+
+
+#: The health states a fleet of its own reads when there are enough built-in CTEM fleets.
+HEALTH_STATES = ("stale", "failing")
+
+
+def extras(states: dict[str, str]) -> dict[str, list[str]]:
+    """The health states :func:`plan` left without a fleet, carried by the PARTIAL fleet.
+
+    With the four built-in CTEM fleets of #1048 (on, partial, paused, stale) no fleet is left for
+    ``failing``: the partial fleet's enabled automation then carries the failed run, so its health
+    reads ``failing`` while its opt-in still reads partially on, and every state of
+    ``lab.CTEM_FLEET_OPTIN_REQUIRED`` is rendered. Five fleets or more: nothing.
+    """
+    missing = [s for s in HEALTH_STATES if s not in states.values()]
+    partial = next((s for s, state in states.items() if state == "partial"), None)
+    return {partial: missing} if missing and partial is not None else {}
 
 
 async def seed_stale_item(db, work_item, admin: uuid.UUID, slug: str, agent_id: uuid.UUID) -> None:
@@ -218,6 +237,7 @@ async def seed(admin_id: str, tracked: list[str]) -> dict:
         if len(automations) < 3:
             raise RuntimeError(f"{len(automations)} built-in CTEM fleet(s): three are needed")
         states = plan({s: [(str(a.id), trackable(a.trigger_config)) for a in rows] for s, rows in automations.items()})
+        carried = extras(states)
         by_slug = {f.slug: f for f in fleets}
 
         def switch_on(assignment: Assignment) -> None:
@@ -254,6 +274,11 @@ async def seed(admin_id: str, tracked: list[str]) -> dict:
                             actor_user_id=admin,
                             actor_label="lab",
                         )
+            for extra in carried.get(slug, []):
+                if extra == "stale":
+                    await seed_stale_item(db, WorkItem, admin, slug, rows[0].agent_id)
+                elif extra == "failing":
+                    await seed_failed_run(db, AssignmentRun, admin, rows[0])
         organizations = [await db.get(Organization, uuid.UUID(i)) for i in tracked]
         monitored = next(
             (o for o in organizations if o is not None and o.archived_at is None and o.monitoring == "on"), None
@@ -266,6 +291,7 @@ async def seed(admin_id: str, tracked: list[str]) -> dict:
             slug: {
                 "id": str(by_slug[slug].id),
                 "state": state,
+                "also": carried.get(slug, []),
                 "total": len(automations[slug]),
                 "enabled": sum(1 for a in automations[slug] if a.enabled),
                 "paused": sum(1 for a in automations[slug] if not a.enabled and a.paused_reason == PAUSE_REASON),

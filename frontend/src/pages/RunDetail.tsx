@@ -13,6 +13,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
+import { workItemPath } from "@/lib/task-routes";
 import { useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { useTick } from "@/hooks/useTick";
@@ -59,6 +60,7 @@ import { Tip } from "@/components/ui/tooltip";
 import { ChatMarkdown } from "@/components/chat/ChatMarkdown";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { TruncatedText } from "@/components/ui/truncated-text";
 import { DelegationIndent } from "@/components/ui/delegation-indent";
 import { DisclosureSummary } from "@/components/ui/disclosure";
 import { RunCancelledCard } from "@/components/ui/run-cancelled-card";
@@ -66,7 +68,6 @@ import { RunFrictionsCard } from "@/components/ui/run-frictions-card";
 import { HeldBadge } from "@/components/ui/held-badge";
 import { runHeldReason } from "@/lib/held";
 import { orderRunTree } from "@/lib/run-tree";
-import { approvalCodesIn, approvalReply } from "@/lib/hitl-approval";
 import { isTriggerMetadataKey } from "@/lib/trigger-context";
 import { formatFailureCause } from "@/lib/failure-causes";
 import { Button } from "@/components/ui/button";
@@ -80,7 +81,7 @@ import { useAssignmentRunDetail, useRespondToHumanInput, useDismissRun, useDelet
 import { RunActionRequests } from "@/components/runs/RunActionRequests";
 import { A2ARunExchange } from "@/components/runs/A2ARunExchange";
 import { a2aNoResultText } from "@/components/runs/a2a-no-result-text";
-import { ActionProposalList } from "@/components/ui/action-proposal";
+import { RunDecisionCard } from "@/components/decisions/RunDecisionCard";
 import { useLangfuseConfig } from "@/hooks/api/useSettingsApi";
 import { useSpeechToText } from "@/hooks/useSpeechToText";
 import { useChatSendEnabled } from "@/hooks/usePlatformConfig";
@@ -90,6 +91,7 @@ import { InlineFileContent } from "@/components/chat-panel/InlineFileContent";
 import { conversationRevisions, fileTag } from "@/pages/chat/file-revisions";
 import { FileRevisionsContext } from "@/pages/chat/file-revisions-context";
 import { answerProse, summaryPreview } from "@/pages/chat/answerMarkers";
+import RouteNotFound from "@/pages/RouteNotFound";
 import type { ChatMessageAttachment } from "@/types";
 import { cn, formatDateTime, formatCompactNumber, formatDurationShort, pluralize, attachmentTypeLabel } from "@/lib/utils";
 import { runErrorIsNeutral, runErrorText } from "@/lib/run-error-text";
@@ -793,7 +795,7 @@ function RunOverviewCard({ run }: { run: AssignmentRunDetail }) {
         </div>
         {run.llm_trace_id && isAdmin ? (
           <Link
-            to={`/traces/${run.llm_trace_id}`}
+            to={`/observability/traces/${run.llm_trace_id}`}
             className="mt-2 flex items-center gap-2 rounded-sm border border-elevation-subtle-soft bg-elevation-hover px-3 py-2.5 content-base transition-colors hover:border-accent/30 hover:bg-accent/5"
           >
             <Scan className="h-4 w-4 text-accent" />
@@ -875,6 +877,8 @@ function unfinishedRunNotice(
       return t_i18n("The model did not answer in time, so this run stopped before the agent finished.");
     case "waiting_on_tasks":
       return t_i18n("This run stopped while tasks it delegated were still running: the result is partial.");
+    case "integrations_unreadable":
+      return t_i18n("The agent finished, but none of its integrations could be read: the result is not assessable.");
     default:
       return t_i18n("This run stopped before the agent finished: the result is partial.");
   }
@@ -885,7 +889,7 @@ export default function RunDetail() {
   useTick(REFETCH_INTERVAL_SLOW); // keep relative timestamps fresh
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { data: run, isLoading } = useAssignmentRunDetail(id || "");
+  const { data: run, isLoading } = useAssignmentRunDetail(id || "", { notFoundIsOrdinary: true });
   const { isAdmin } = useAuth();
   const respondHitl = useRespondToHumanInput();
   const submitApprovals = useSubmitApprovalDecisions();
@@ -896,16 +900,11 @@ export default function RunDetail() {
   const chatSendEnabled = useChatSendEnabled();
   const { toast } = useToast();
   const [ConfirmEl, confirm] = useConfirm();
-  const [hitlResponse, setHitlResponse] = useState("");
   const [followupPrompt, setFollowupPrompt] = useState("");
   // How a follow-up runs: a new background run (default) or an interactive
   // chat seeded with this run's history (for troubleshooting).
   const [followupMode, setFollowupMode] = useState<"background" | "chat">("background");
   const [promptOpen, setPromptOpen] = useState(false);
-  const speech = useSpeechToText({
-    onTranscript: (text) =>
-      setHitlResponse((prev) => (prev ? prev + " " : "") + text.trim()),
-  });
   const followupSpeech = useSpeechToText({
     onTranscript: (text) =>
       setFollowupPrompt((prev) => (prev ? prev + " " : "") + text.trim()),
@@ -915,7 +914,8 @@ export default function RunDetail() {
   const { data: descendants, isLoading: descendantsLoading } = useDescendantRuns(hasChildren ? id ?? null : null);
 
   if (isLoading) return <PageSkeleton cards={3} />;
-  if (!run) return <div className="py-20 text-center text-default-secondary">{t_i18n("Run not found.")}</div>;
+  // An unknown id (or one you cannot read) is an address no page answers (#797 S4).
+  if (!run) return <RouteNotFound />;
 
   const statusCfg = runStatusConfig(run);
   // A failed run the platform ended: its error block reads neutral, as its badge does.
@@ -956,7 +956,6 @@ export default function RunDetail() {
   const isFreeTextPending = isHitlPending && pendingApprovals.length === 0;
   // Company-managed runs: everyone sees the pause, only admins can resolve it.
   const canInteractHitl = !run.is_company_managed || isAdmin;
-  const approvalCodes = isHitlPending ? approvalCodesIn(run.human_input_question) : [];
   // Resolved HITL rounds — from the durable history, with a legacy fallback
   // for runs resolved before the history column existed (their live fields
   // survived because they never went through the resume-clear path).
@@ -981,6 +980,8 @@ export default function RunDetail() {
     runContext.type === "scheduled_work_item" ? String(runContext.work_item_id ?? "") : "";
   // A run that wrote one file name twice: the chips number the revisions.
   const fileRevisions = conversationRevisions([{ created_at: run.created_at, attachments: chipAttachments }]);
+  // A delegation run (no assignment) names the agent that delegated it.
+  const delegatedFromName = run.parent_run_id && !run.assignment_name ? run.parent_agent_name || "" : "";
 
   return (
     <div className="space-y-6">
@@ -988,45 +989,53 @@ export default function RunDetail() {
       <div>
         {/* The opener may name where Back goes (the fleet timeline: "Back to Command Center"). */}
         <LocationBackButton to={-1} label="Back" className="mb-4" />
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="flex items-center justify-between gap-4">
+          {/* The title block shrinks before the header actions; its badges stay on one line
+              and the agent name is cut with a tooltip (UX r1 B1 on #1590). */}
+          <div className="flex min-w-0 flex-1 items-center gap-4">
             <div className={cn(
               "flex h-14 w-14 shrink-0 items-center justify-center rounded-sm",
               isRunning ? "bg-accent/10" : unfinishedNotice || waitingOnCaller ? "bg-feedback-warning-primary/10" : run.status === "completed" ? "bg-feedback-success-primary/10" : "bg-feedback-error-primary/10",
             )}>
               <AgentIcon className={cn("h-7 w-7", isRunning ? "text-accent" : unfinishedNotice ? "text-feedback-warning-primary" : statusCfg.color)} />
             </div>
-            <div>
+            <div className="min-w-0">
               <h1 className="text-2xl font-bold">
                 {run.assignment_name
                   || (scheduledItemId
                     ? String(runContext.title || t_i18n("Scheduled work item"))
                     : t_i18n("Delegation Run"))}
               </h1>
-              <div className="flex items-center gap-2 mt-1">
-                <Badge variant={statusCfg.badge} className="gap-1">
+              {/* The badges stay on one line; the names after them shrink with an ellipsis and a
+                  tooltip, never to 0 px (UX r2 B2 on #1590). A delegation run's names need more
+                  room than an assignment run's: below it they wrap as one group to a second line. */}
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
+                <Badge variant={statusCfg.badge} className="shrink-0 gap-1 whitespace-nowrap">
                   <StatusIcon className={cn("h-3 w-3", isRunning && "animate-spin")} />
                   {t_i18n(statusCfg.label)}
                 </Badge>
                 {heldReason && <HeldBadge reason={heldReason} />}
                 {unfinishedNotice && (
-                  <Badge variant="outline" className="gap-1 text-feedback-warning-primary border-feedback-warning-primary/40">
+                  <Badge variant="outline" className="shrink-0 gap-1 whitespace-nowrap text-feedback-warning-primary border-feedback-warning-primary/40">
                     <AlertTriangle className="h-3 w-3" />
-                    {t_i18n("Partial result")}
+                    {run.stop_reason === "integrations_unreadable" ? t_i18n("Not assessable") : t_i18n("Partial result")}
                   </Badge>
                 )}
-                {run.parent_run_id && !run.assignment_name && run.parent_agent_name && (
-                  <span className="content-compact text-accent flex items-center gap-1">
-                    {t_i18n("Delegated from")} <span className="font-medium">{run.parent_agent_name}</span>
-                  </span>
-                )}
-                <span className="content-compact text-default-secondary">{run.agent_name}</span>
+                <div className={cn("flex max-w-full flex-1 items-center gap-2", delegatedFromName ? "min-w-48" : "min-w-16")}>
+                  {delegatedFromName && (
+                    <span className="content-compact text-accent flex min-w-0 items-center gap-1">
+                      <span className="shrink-0 whitespace-nowrap">{t_i18n("Delegated from")}</span>
+                      <TruncatedText text={delegatedFromName} className="font-medium" />
+                    </span>
+                  )}
+                  <TruncatedText text={run.agent_name} className="content-compact text-default-secondary min-w-16" />
+                </div>
               </div>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {run.assignment_id && (
-              <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => navigate(`/assignments/${run.assignment_id}`)}>
+              <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => navigate(`/agents/assignments/${run.assignment_id}`)}>
                 <Zap className="h-3.5 w-3.5" /> {t_i18n("View Assignment")}
               </Button>
             )}
@@ -1035,7 +1044,7 @@ export default function RunDetail() {
                 variant="secondary"
                 size="sm"
                 className="gap-1.5"
-                onClick={() => navigate(`/operations/work-items?item=${scheduledItemId}`)}
+                onClick={() => navigate(workItemPath(scheduledItemId))}
               >
                 <CalendarClock className="h-3.5 w-3.5" /> {t_i18n("View the scheduled work item")}
               </Button>
@@ -1052,7 +1061,7 @@ export default function RunDetail() {
               </Tip>
             )}
             {run.parent_run_id && (
-              <Button variant="default" size="sm" className="gap-1.5" onClick={() => navigate(`/runs/${run.parent_run_id}`)}>
+              <Button variant="default" size="sm" className="gap-1.5" onClick={() => navigate(`/operations/executions/${run.parent_run_id}`)}>
                 <CornerLeftUp className="h-3.5 w-3.5" /> {t_i18n("Parent Run")}
               </Button>
             )}
@@ -1079,154 +1088,39 @@ export default function RunDetail() {
           its pasted link. Listed to the people who may answer it. */}
       <RunActionRequests runId={run.id} enabled={isHitlPending && canInteractHitl} />
 
-      {/* Per-tool approval — structured proposals. Takes precedence over
-          the free-text block below, exactly as on the run card: a gated pause
-          sets ``human_input_question`` too ("Approval required before running:
-          …"), so without this the reviewer was handed a text box and asked to
-          type an answer to a question that only has three answers. */}
-      {isApprovalPending && (
-        <Card className="border-feedback-warning-primary/30">
-          <CardHeader>
-            <CardTitle className="content-base flex items-center gap-2 text-feedback-warning-primary">
-              <div className="h-5 w-5 rounded-full bg-feedback-warning-primary/20 flex items-center justify-center animate-pulse">
-                <Hand className="h-3 w-3 text-feedback-warning-primary" />
-              </div>
-              {t_i18n("Approval Needed")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {canInteractHitl ? (
-              <ActionProposalList
-                proposals={pendingApprovals}
-                isSubmitting={submitApprovals.isPending}
-                submitFailed={submitApprovals.isError}
-                onSubmit={(decisions) =>
-                  submitApprovals.mutate(
-                    { runId: run.id, decisions },
-                    {
-                      onSuccess: () =>
-                        toast({ title: t_i18n("Decision recorded: assignment resuming"), variant: "success" }),
-                      onError: (err) =>
-                        toast({ title: t_i18n("Could not submit decisions"), description: err.message, variant: "error" }),
-                    },
-                  )
-                }
-              />
-            ) : (
-              <p className="content-compact text-feedback-warning-primary">
-                {t_i18n("Waiting for approval from someone with access to this run.")}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Human-in-the-loop — awaiting free-text input */}
-      {isFreeTextPending && run.human_input_question && (
-        <Card className="border-feedback-warning-primary/30">
-          <CardHeader>
-            <CardTitle className="content-base flex items-center gap-2 text-feedback-warning-primary">
-              <div className="h-5 w-5 rounded-full bg-feedback-warning-primary/20 flex items-center justify-center animate-pulse">
-                <Hand className="h-3 w-3 text-feedback-warning-primary" />
-              </div>
-              {t_i18n("Agent Needs Your Input")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-sm bg-feedback-warning-primary/5 p-4 content-base text-default-secondary">
-              <ChatMarkdown content={run.human_input_question} />
-            </div>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (hitlResponse.trim()) {
-                  respondHitl.mutate(
-                    { runId: run.id, response: hitlResponse.trim() },
-                    {
-                      onSuccess: () => {
-                        toast({ title: t_i18n("Response sent: assignment resuming"), variant: "success" });
-                        setHitlResponse("");
-                      },
-                    },
-                  );
-                }
-              }}
-              className="space-y-3"
-            >
-              <div className="relative">
-                <textarea
-                  className="flex min-h-[80px] w-full rounded-sm border border-feedback-warning-primary/20 bg-elevation-default px-3 py-2 pr-10 content-base placeholder:text-default-secondary focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-feedback-warning-primary/50"
-                  placeholder={t_i18n("Type your response to the agent...")}
-                  value={hitlResponse}
-                  onChange={(e) => setHitlResponse(e.target.value)}
-                />
-                {speech.isSupported && (
-                  <Tip content={speech.isListening ? t_i18n("Stop dictation") : t_i18n("Dictate response")}>
-                    <button
-                      type="button"
-                      onClick={speech.toggle}
-                      className={cn(
-                        "absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-sm transition-colors",
-                        speech.isListening
-                          ? "bg-feedback-warning-primary/20 text-feedback-warning-tertiary animate-pulse"
-                          : "text-default-secondary hover:text-feedback-warning-tertiary hover:bg-feedback-warning-primary/10",
-                      )}
-                    >
-                      {speech.isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                    </button>
-                  </Tip>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {approvalCodes.length > 0 && (
-                  <Tip content={t_i18n("Replies {reply} and resumes the run", { reply: approvalReply(approvalCodes) })}>
-                    <Button
-                      type="button"
-                      disabled={respondHitl.isPending}
-                      className="gap-1.5 bg-feedback-success-primary/15 text-feedback-success-primary hover:bg-feedback-success-primary/25"
-                      onClick={() => {
-                        speech.stop();
-                        respondHitl.mutate(
-                          { runId: run.id, response: approvalReply(approvalCodes) },
-                          {
-                            onSuccess: () => {
-                              toast({ title: t_i18n("Response sent: assignment resuming"), variant: "success" });
-                              setHitlResponse("");
-                            },
-                          },
-                        );
-                      }}
-                    >
-                      <Check className="h-3.5 w-3.5" />
-                      {approvalCodes.length === 1
-                        ? t_i18n("Approve {code}", { code: approvalCodes[0] })
-                        : t_i18n("Approve all ({count})", { count: approvalCodes.length })}
-                    </Button>
-                  </Tip>
-                )}
-                <Button
-                  type="submit"
-                  disabled={!hitlResponse.trim() || respondHitl.isPending}
-                  className="gap-1.5 bg-feedback-warning-primary/20 text-feedback-warning-tertiary hover:bg-feedback-warning-primary/30"
-                  onClick={() => speech.stop()}
-                >
-                  <Send className="h-3.5 w-3.5" />
-                  {respondHitl.isPending ? t_i18n("Sending...") : t_i18n("Send Response & Resume")}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  disabled={dismissRun.isPending}
-                  className="gap-1.5 text-default-secondary hover:text-feedback-error-primary hover:bg-feedback-error-primary/10"
-                  onClick={() => { speech.stop(); dismissRun.mutate(run.id, { onSuccess: () => toast({ title: t_i18n("Run dismissed"), variant: "success" }) }); }}
-                >
-                  <X className="h-3.5 w-3.5" />
-                  {dismissRun.isPending ? t_i18n("Dismissing...") : t_i18n("Discard")}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+      {/* The pause on the one decision card (#842, S3): a tool approval
+          when proposals are pending (they take precedence, exactly as on the
+          run card: a gated pause sets ``human_input_question`` too), else the
+          run's question with its free text. */}
+      {(isApprovalPending || (isFreeTextPending && run.human_input_question)) && (
+        <RunDecisionCard
+          // A failed approval remounts the card so its controls answer again.
+          key={`${run.id}-${submitApprovals.isError ? "failed" : "ok"}`}
+          runId={run.id}
+          question={run.human_input_question}
+          proposals={isApprovalPending ? pendingApprovals : []}
+          canAnswer={canInteractHitl}
+          pending={submitApprovals.isPending || respondHitl.isPending || dismissRun.isPending}
+          onApprove={(runId, decisions) =>
+            submitApprovals.mutate(
+              { runId, decisions },
+              {
+                onSuccess: () => toast({ title: t_i18n("Decision recorded: assignment resuming"), variant: "success" }),
+                onError: (err) =>
+                  toast({ title: t_i18n("Could not submit decisions"), description: err.message, variant: "error" }),
+              },
+            )
+          }
+          onRespond={(runId, response) =>
+            respondHitl.mutate(
+              { runId, response },
+              { onSuccess: () => toast({ title: t_i18n("Response sent: assignment resuming"), variant: "success" }) },
+            )
+          }
+          onDismiss={(runId) =>
+            dismissRun.mutate(runId, { onSuccess: () => toast({ title: t_i18n("Run dismissed"), variant: "success" }) })
+          }
+        />
       )}
 
       {/* Resolved HITL rounds — persisted history: answered/dismissed state,
@@ -1499,7 +1393,7 @@ export default function RunDetail() {
                       onSuccess: (newRun) => {
                         toast({ title: t_i18n("Follow-up run created"), variant: "success" });
                         setFollowupPrompt("");
-                        navigate(`/runs/${newRun.id}`);
+                        navigate(`/operations/executions/${newRun.id}`);
                       },
                       onError: (err) => {
                         toast({ title: err.message || t_i18n("Failed to create follow-up"), variant: "error" });
@@ -1632,7 +1526,7 @@ export default function RunDetail() {
                     <div
                       key={desc.id}
                       className="group flex items-center gap-3 p-3 rounded-sm cursor-pointer hover:bg-elevation-hover transition-colors"
-                      onClick={() => navigate(`/runs/${desc.id}`)}
+                      onClick={() => navigate(`/operations/executions/${desc.id}`)}
                     >
                       <DelegationIndent depth={depth} />
                       <SIcon className={cn("h-4 w-4 shrink-0", cfg.color, descRunning && "animate-spin")} />

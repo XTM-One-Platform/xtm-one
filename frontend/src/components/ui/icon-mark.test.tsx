@@ -117,7 +117,7 @@ describe("card icon marks", () => {
 
     const link = screen.getByRole("link");
     expect(link.textContent).toContain("Triage");
-    expect(link.getAttribute("href")).toBe("/flows/f1/builder");
+    expect(link.getAttribute("href")).toBe("/flows/library/f1");
 
     const marks = screen.getAllByRole("img").filter((el) => el.getAttribute("tabindex") === "0");
     expect(marks.length).toBeGreaterThanOrEqual(3);

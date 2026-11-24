@@ -53,8 +53,41 @@ def blob_key(workspace_id: uuid.UUID, sha256: str) -> str:
     return f"{OBJECT_PREFIX}{workspace_id}/{sha256}"
 
 
+def commit_statement_timeout_ms() -> int:
+    """The statement timeout of one workspace commit transaction, in ms; 0 keeps the pool default."""
+    from app.core.config import settings
+
+    seconds = int(getattr(settings, "sandbox_workspace_commit_statement_timeout_secs", 0) or 0)
+    return 0 if seconds <= 0 else min(seconds * 1000, 2_147_483_647)
+
+
 class WorkspaceAccessError(PermissionError):
     """The scope's person is not the workspace's: it is never opened for them."""
+
+
+class BlobReleasedError(RuntimeError):
+    """A content the change set reuses without uploading it is no longer held by the workspace.
+
+    The session skips the upload of a content the manifest held when it read
+    it; a concurrent commit (another tool, a ``code_interpreter`` write-back,
+    another replica) may release that content and delete its blob before this
+    commit takes the row lock. Committing then would point a path at a blob
+    that no longer exists: the file is listed but its bytes are gone. The
+    commit is refused whole instead and *shas* names the contents to upload
+    before trying again.
+    """
+
+    def __init__(self, shas: Iterable[str]) -> None:
+        self.shas = frozenset(shas)
+        super().__init__(f"{len(self.shas)} reused content(s) released by a concurrent commit")
+
+
+def _released(current: dict[str, ManifestEntry], reused: Iterable[str]) -> frozenset[str]:
+    """The contents of *reused* no path of *current* holds any more."""
+    wanted = set(reused)
+    if not wanted:
+        return frozenset()
+    return frozenset(wanted - {entry.sha256 for entry in current.values()})
 
 
 @dataclass(frozen=True)
@@ -301,9 +334,13 @@ class MemoryWorkspaceStore(_BaseStore):
         *,
         bytes_read: int = 0,
         bytes_written: int = 0,
+        reused: Iterable[str] = (),
     ) -> CommitPlan:
         async with self._lock:
             current = self.files.setdefault(workspace_id, {})
+            released = _released(current, reused)
+            if released:
+                raise BlobReleasedError(released)
             upserts = list(upserts)
             removals = list(removals)
             plan = plan_commit(current, upserts, removals, limits)
@@ -553,6 +590,7 @@ class WorkspaceStore(_BaseStore):
         *,
         bytes_read: int = 0,
         bytes_written: int = 0,
+        reused: Iterable[str] = (),
     ) -> CommitPlan:
         """Apply the change set under the workspace's row lock, or refuse it whole.
 
@@ -560,6 +598,9 @@ class WorkspaceStore(_BaseStore):
         the commit releases is deleted once it is in. Concurrent commits of
         one workspace serialize on the row: the later one is planned against
         what the earlier one left, path by path (the last write of a path wins).
+        *reused* names the contents the caller did not upload because the
+        workspace held them when it looked: one no path holds under the lock
+        any more raises :class:`BlobReleasedError`, nothing written.
         """
         from sqlalchemy import delete, select, update
         from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -571,6 +612,14 @@ class WorkspaceStore(_BaseStore):
         removals = list(removals)
         now = datetime.now(UTC)
         async with self._sessions() as db:
+            timeout_ms = commit_statement_timeout_ms()
+            if timeout_ms:
+                # A large change set, or a commit waiting on another one's row
+                # lock, outlives the pool's 30 s default: this transaction alone
+                # gets the longer bound (SET LOCAL, gone at its commit).
+                from sqlalchemy import text
+
+                await db.execute(text("SELECT set_config('statement_timeout', :ms, true)"), {"ms": str(timeout_ms)})
             locked = (
                 await db.execute(select(W.id).where(W.id == workspace_id).with_for_update())
             ).scalar_one_or_none()
@@ -583,6 +632,9 @@ class WorkspaceStore(_BaseStore):
                 path: ManifestEntry(path=path, size=int(size), sha256=sha, mtime=float(mtime))
                 for path, size, sha, mtime in rows
             }
+            released = _released(current, reused)
+            if released:
+                raise BlobReleasedError(released)
             plan = plan_commit(current, upserts, removals, limits)
             gone = [path for path in removals if path in current]
             for start in range(0, len(gone), _UPSERT_BATCH):

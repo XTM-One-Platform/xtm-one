@@ -308,6 +308,10 @@ def test_every_skipped_copy_field_is_identity_ownership_or_activation():
         # on a company-managed agent (activation state); a personal copy never
         # hides its activity.
         "hide_activity_from_non_admins",
+        # The customer layer of a built-in (#914): this instance's organization
+        # notes and the seed's bookkeeping; a copy is never seeded.
+        "customer_notes",
+        "customer_fields",
     }
     assert set(AGENT_COPY_SKIP_FIELDS) == allowed, (
         "The copy skip list changed. A field only belongs here if it is an "

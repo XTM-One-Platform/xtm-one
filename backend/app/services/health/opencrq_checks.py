@@ -39,13 +39,14 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.docs_links import docs_url
 from app.services.health.engine import Check, CheckResult, close_out, register_check
-from app.services.health.opencti_checks import _registrations
+from app.services.health.opencti_checks import _registrations, with_restart_grace
 from app.services.health.platform_checks import PLATFORM_CHECK_INTERVAL, _platform_check
 
 MODULE = "opencrq"
 PLATFORM_IDENTIFIER = "opencrq"
-DOC_LINK = "/docs/administration/health#opencrq-checks"
+DOC_LINK = docs_url("administration/health", "opencrq-checks")
 SOURCE = "OpenCRQ health snapshot"
 
 Read = Callable[[Any, dict[str, Any] | None, datetime], list[CheckResult]]
@@ -119,6 +120,7 @@ def _check(check_id: str, read: Read) -> Callable[[AsyncSession, datetime], Awai
         results: list[CheckResult] = []
         for registration, snapshot in await _registrations(db, now, PLATFORM_IDENTIFIER):
             results.extend(read(registration, snapshot, now))
+        results = await with_restart_grace(db, now, results, PLATFORM_IDENTIFIER)
         return results + await close_out(db, check_id, results)
 
     run.__name__ = read.__name__

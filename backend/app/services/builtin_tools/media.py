@@ -51,6 +51,7 @@ from ._shared import (
 from ._shared import (
     unresolved_file_message as _unresolved_file_message,
 )
+from .image_assets import ALLOWED_IMAGE_TYPES, sniff_raster_type
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -1145,6 +1146,8 @@ async def build_image_generation_tool(
 
             file_ref = None
             file_att = None
+            # Gemini answers JPEG: label the bytes as what they are; PNG for anything unrecognised.
+            content_type = sniff_raster_type(image_bytes) or "image/png"
             # Store in S3 for persistent access
             try:
                 from app.models.file_attachment import FileAttachment
@@ -1154,11 +1157,11 @@ async def build_image_generation_tool(
                 s3_prefix = (
                     f"generated/{conversation_id}" if conversation_id else "generated"
                 )
-                filename = f"image_{uuid.uuid4().hex[:8]}.png"
+                filename = f"image_{uuid.uuid4().hex[:8]}{ALLOWED_IMAGE_TYPES[content_type]}"
                 s3_object_name = await file_storage.upload(
                     data=image_bytes,
                     filename=filename,
-                    content_type="image/png",
+                    content_type=content_type,
                     prefix=s3_prefix,
                 )
                 file_att = FileAttachment(
@@ -1166,7 +1169,7 @@ async def build_image_generation_tool(
                     user_id=parsed_uid,
                     conversation_id=conv_id,
                     filename=filename,
-                    content_type="image/png",
+                    content_type=content_type,
                     size=len(image_bytes),
                     s3_object_name=s3_object_name,
                     source="agent",
@@ -1188,7 +1191,7 @@ async def build_image_generation_tool(
                 prompt=prompt,
                 model=img_model,
                 image_data=image_bytes,
-                content_type="image/png",
+                content_type=content_type,
             )
             # Persist on a dedicated short-lived session, NOT the captured
             # request session: this closure runs mid agentic loop (after the

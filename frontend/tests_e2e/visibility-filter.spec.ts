@@ -23,8 +23,8 @@ import { deleteAgent, ok, withAdmin } from './helpers';
 const PAGES = [
   '/templates',
   '/operations/executions',
-  '/operations/work-items',
-  '/operations/state',
+  '/tasks/work-items',
+  '/operations/shared-state',
   '/files',
   '/flows',
 ];
@@ -206,7 +206,7 @@ test.describe('Visibility filter', () => {
     });
     // The URL names Mine: with none named, the tab lands by its counts.
     await wide(page);
-    await page.goto('/operations/work-items?vis=mine');
+    await page.goto('/tasks/work-items?vis=mine');
     await expect(segment(page, 'Mine')).toHaveAttribute('aria-checked', 'true', { timeout: 15_000 });
     await expect.poll(() => asked.at(-1)).toBe('mine');
 
@@ -254,7 +254,7 @@ test.describe('Visibility filter', () => {
 
   test('an old ?ownership=shared link on Operations (shared + company) opens on All, then moves to ?vis=', async ({ page }) => {
     await wide(page);
-    await page.goto('/operations/work-items?ownership=shared');
+    await page.goto('/tasks/work-items?ownership=shared');
 
     await expect(segment(page, 'All')).toHaveAttribute('aria-checked', 'true', { timeout: 15_000 });
     await segment(page, 'Mine').click();

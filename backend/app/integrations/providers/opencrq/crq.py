@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import logging
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
@@ -304,31 +304,101 @@ def _fmt_run(run: dict) -> str:
     return "\n".join(lines)
 
 
+#: The figure families OpenCRQ recomputes alone (crqIndicators.enqueueFamilyRecompute), with what each writes.
+FIGURE_FAMILIES: dict[str, str] = {
+    "levers": "control upgrade what-ifs",
+    "techniques": "technique values",
+    "cves": "CVE gains",
+}
+
+_LEVERS_RECOMPUTE = 'run_opencrq_crq_simulation(risk_scenario_id, family="levers")'
+
+
+def _empty_what_if_reason(latest: dict[str, Any] | None, err: str | None) -> str:
+    """Why a scenario has no control what-if, read off its latest run (*latest*, or the read's *err*).
+
+    OpenCRQ writes control what-ifs only in a run whose ``profile`` carries ``levers``: a full
+    simulation or a levers recompute. The automatic price passes compute the baseline alone, so a
+    scenario can hold many runs and no what-if; a run that computed the levers and wrote no row found
+    no control acting on the scenario's techniques, which running again does not change.
+    """
+    if err:
+        return (
+            "No control what-if results for this risk scenario, and its latest run could not be read "
+            f"to say why ({err}). Control what-ifs are computed by {_LEVERS_RECOMPUTE}."
+        )
+    if not latest:
+        return (
+            "No control what-if results: this risk scenario has no CRQ run yet. Start a full "
+            "simulation with run_opencrq_crq_simulation, then read this again."
+        )
+    run = f"{latest.get('createdAt', 'undated')} (id: {latest.get('id')})"
+    profile = latest.get("profile")
+    if isinstance(profile, list) and "levers" in profile:
+        return (
+            f"No control what-if results: the latest run, {run}, computed the control what-ifs and "
+            "found no control acting on this scenario's techniques (no scored control capability "
+            "on them). Running again changes nothing until a control capability is assessed on "
+            "these techniques (list_opencrq_control_capabilities)."
+        )
+    computed = (
+        f"computed {', '.join(profile)} only"
+        if isinstance(profile, list) and profile
+        else "computed the baseline only"
+        if isinstance(profile, list)
+        else "does not say which figures it computed"
+    )
+    return (
+        "No control what-if results: none is stored for this risk scenario. "
+        f"The latest run, {run}, {computed} (the automatic price runs compute the baseline, "
+        f"never the control what-ifs). Compute them with {_LEVERS_RECOMPUTE}, wait for the job "
+        "(get_opencrq_job), then read this again."
+    )
+
+
 def register(
     base_url: str, headers: dict[str, str], executor: CallableToolExecutor
 ) -> list[ToolDefinition]:
     async def run_opencrq_crq_simulation(
-        risk_scenario_id: str = "", tenant_id: str = ""
+        risk_scenario_id: str = "", family: str = "", tenant_id: str = ""
     ) -> str:
         if not risk_scenario_id:
             return "risk_scenario_id is required."
+        if family and family not in FIGURE_FAMILIES:
+            return f"family must be one of {', '.join(FIGURE_FAMILIES)} (or empty for a full simulation)."
         tenant, err = await _resolve_tenant(base_url, headers, tenant_id)
         if err:
             return err
-        result, err = await _trpc(
-            base_url, headers, "crqIndicators.enqueueSimulation",
-            "enqueue CRQ simulation",
-            input={"riskScenarioId": risk_scenario_id}, mutation=True,
-            tenant_id=tenant,
-        )
+        if family:
+            what = f"the {family} figures ({FIGURE_FAMILIES[family]})"
+            result, err = await _trpc(
+                base_url,
+                headers,
+                "crqIndicators.enqueueFamilyRecompute",
+                "enqueue CRQ family recompute",
+                input={"riskScenarioId": risk_scenario_id, "family": family},
+                mutation=True,
+                tenant_id=tenant or "",
+            )
+        else:
+            what = "a CRQ simulation"
+            result, err = await _trpc(
+                base_url,
+                headers,
+                "crqIndicators.enqueueSimulation",
+                "enqueue CRQ simulation",
+                input={"riskScenarioId": risk_scenario_id},
+                mutation=True,
+                tenant_id=tenant or "",
+            )
         if err:
             return err
         job_id = (result or {}).get("jobId")
+        read = "get_opencrq_crq_what_if" if family == "levers" else "get_opencrq_crq_run"
         return (
-            f"Enqueued CRQ simulation for risk scenario {risk_scenario_id}"
+            f"Enqueued {what} for risk scenario {risk_scenario_id}"
             + (f" (job id: {job_id})" if job_id else "")
-            + ". Check its status with get_opencrq_job, then read results "
-            "with get_opencrq_crq_run."
+            + f". Check its status with get_opencrq_job, then read results with {read}."
         )
 
     async def get_opencrq_crq_run(
@@ -429,10 +499,16 @@ def register(
             if err:
                 return err
             if not results:
-                return (
-                    "No what-if results for this risk scenario (run a CRQ "
-                    "simulation first)."
+                latest, latest_err = await _trpc(
+                    base_url,
+                    headers,
+                    "crqIndicators.getLatestRun",
+                    "get latest CRQ run",
+                    input={"riskScenarioId": risk_scenario_id},
+                    tenant_id=tenant or "",
+                    client=client,
                 )
+                return _empty_what_if_reason(latest, latest_err)
             capabilities, names_err = await _trpc(
                 base_url, headers, "controlCapabilities.getControlCapabilities",
                 "list control capabilities", tenant_id=tenant, client=client,
@@ -981,13 +1057,27 @@ def register(
             name="run_opencrq_crq_simulation",
             description=(
                 "Enqueue a cyber risk quantification (CRQ) Monte Carlo "
-                "simulation for an OpenCRQ risk scenario. Returns the "
+                "simulation for an OpenCRQ risk scenario, or with family one "
+                "figure family alone (levers: the control upgrade what-ifs "
+                "get_opencrq_crq_what_if reads). Returns the "
                 "background job id (check its status with get_opencrq_job). "
                 "Confirm with the user before starting a simulation."
             ),
             input_schema={
                 "type": "object",
-                "properties": {**_scenario_prop, **TENANT_PROP},
+                "properties": {
+                    **_scenario_prop,
+                    "family": {
+                        "type": "string",
+                        "enum": list(FIGURE_FAMILIES),
+                        "description": (
+                            "Recompute this figure family alone instead of a full "
+                            "simulation: levers (control upgrade what-ifs), "
+                            "techniques (technique values) or cves (CVE gains)."
+                        ),
+                    },
+                    **TENANT_PROP,
+                },
                 "required": ["risk_scenario_id"],
             },
             source=_SOURCE,
@@ -1040,7 +1130,9 @@ def register(
                 "Get the control upgrade what-if results of an OpenCRQ risk "
                 "scenario: how much upgrading each control's strength or "
                 "coverage would reduce the ALE (useful for "
-                "prioritizing remediation)."
+                "prioritizing remediation). An empty answer says why: no run "
+                "computed them yet (compute them with run_opencrq_crq_simulation "
+                "family levers) or no control acts on the scenario."
             ),
             input_schema={
                 "type": "object",

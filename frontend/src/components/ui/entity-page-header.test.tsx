@@ -181,7 +181,7 @@ describe("EntityPageHeader", () => {
 
     renderWithProviders(
       <MemoryRouter>
-        <EntityPageHeader backTo="/traces" backLabel="Back to Traces" title="chat" />
+        <EntityPageHeader backTo="/observability/traces" backLabel="Back to Traces" title="chat" />
       </MemoryRouter>,
     );
     expect(screen.queryByTestId("entity-page-header-tile")).toBeNull();
@@ -575,6 +575,38 @@ describe("EntityHeaderMoreActions", () => {
     expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
   });
 
+  // A row with no button in the wide row stays reachable at 1280 px and above (#1508 UX round 1 B1).
+  it("keeps the menu-only rows in a menu at 1280 px and above, and every row below", async () => {
+    const user = userEvent.setup();
+    const ran: string[] = [];
+    renderWithProviders(
+      <MemoryRouter>
+        <EntityHeaderMoreActions
+          items={[{ id: "settings", label: "Settings", onSelect: () => ran.push("settings") }]}
+          menuOnly={[{ id: "reset", label: "Reset to factory state", onSelect: () => ran.push("reset") }]}
+        />
+      </MemoryRouter>,
+    );
+    const wide = screen.getByTestId("entity-page-header-more-actions-wide");
+    expect(wide.getAttribute("data-widths")).toBe("xl");
+    expect(screen.getByTestId("entity-page-header-more-actions").getAttribute("data-widths")).toBe("below-xl");
+    const triggers = screen.getAllByRole("button", { name: "More actions" });
+    expect(triggers).toHaveLength(2);
+    const wideTrigger = triggers.find((t) => wide.contains(t))!;
+    await user.click(wideTrigger);
+    expect(screen.queryByRole("menuitem", { name: "Settings" })).toBeNull();
+    await user.click(await screen.findByRole("menuitem", { name: "Reset to factory state" }));
+    expect(ran).toEqual(["reset"]);
+  });
+
+  it("puts the fleet page's reset and setup rows in the menu kept at 1280 px and above", () => {
+    const text = source("src/pages/flows/FleetPage.tsx");
+    expect(text).toContain("menuOnly={menuOnlyActions}");
+    const menuOnly = text.slice(text.indexOf("const menuOnlyActions"));
+    expect(menuOnly.indexOf('id: "reset-factory"')).toBeGreaterThan(-1);
+    expect(menuOnly.indexOf('id: "run-setup-again"')).toBeGreaterThan(-1);
+  });
+
   it("stays at every width with always (a docked panel took the row's room)", () => {
     renderWithProviders(
       <MemoryRouter>
@@ -590,11 +622,11 @@ describe("FleetWorkspaceChip", () => {
 
   it("links a fleet to its workspace with the way back", () => {
     expect(fleetWorkspaceChipLink({ kind: "workspace", id: "w-1", name: "CEO Office" }, fromFleet)).toEqual({
-      to: "/workspaces/w-1",
+      to: "/tasks/workspaces/w-1",
       state: { backTo: "/fleets/f-1", backLabel: "Back to the fleet" },
     });
     expect(
-      fleetWorkspaceChipLink({ kind: "fleet", id: "f-1", name: "CEO Office" }, { path: "/workspaces/w-1", label: "x" }).to,
+      fleetWorkspaceChipLink({ kind: "fleet", id: "f-1", name: "CEO Office" }, { path: "/tasks/workspaces/w-1", label: "x" }).to,
     ).toBe("/fleets/f-1");
   });
 
@@ -604,7 +636,7 @@ describe("FleetWorkspaceChip", () => {
         <FleetWorkspaceChip target={{ kind: "workspace", id: "w-1", name: "CEO Office" }} from={fromFleet} />
         <FleetWorkspaceChip
           target={{ kind: "fleet", id: "f-1", name: "CEO Office" }}
-          from={{ path: "/workspaces/w-1", label: "Back to the workspace" }}
+          from={{ path: "/tasks/workspaces/w-1", label: "Back to the workspace" }}
         />
       </MemoryRouter>,
     );
@@ -615,7 +647,7 @@ describe("FleetWorkspaceChip", () => {
     expect(screen.getByRole("img", { name: "Works in workspace" })).toBeTruthy();
     expect(screen.getByRole("img", { name: "Hosts fleet" })).toBeTruthy();
     const links = screen.getAllByRole("link");
-    expect(links.map((a) => a.getAttribute("href"))).toEqual(["/workspaces/w-1", "/fleets/f-1"]);
+    expect(links.map((a) => a.getAttribute("href"))).toEqual(["/tasks/workspaces/w-1", "/fleets/f-1"]);
     expect(links.map((a) => a.getAttribute("aria-label"))).toEqual([
       "Works in workspace: CEO Office",
       "Hosts fleet: CEO Office",
@@ -630,7 +662,7 @@ describe("FleetWorkspaceChip", () => {
       <MemoryRouter>
         <FleetWorkspaceChip
           target={{ kind: "fleet", id: "f-1", name: "CEO Office", archived: true }}
-          from={{ path: "/workspaces/w-1", label: "Back to the workspace" }}
+          from={{ path: "/tasks/workspaces/w-1", label: "Back to the workspace" }}
         />
       </MemoryRouter>,
     );
@@ -642,7 +674,7 @@ describe("FleetWorkspaceChip", () => {
       <MemoryRouter>
         <FleetWorkspaceChip
           target={{ kind: "fleet", id: "f-1", name: "CEO Office", archived: true }}
-          from={{ path: "/workspaces/w-1", label: "Back to the workspace" }}
+          from={{ path: "/tasks/workspaces/w-1", label: "Back to the workspace" }}
           prefix=""
         />
       </MemoryRouter>,

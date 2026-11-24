@@ -269,3 +269,17 @@ def infer_tool_type(tool_name: str) -> str:
     The rules are :func:`classify_tool_name`'s; an unknown name is a ``write``.
     """
     return classify_tool_name(tool_name)[0]
+
+
+def definition_tool_type(definition: object) -> str:
+    """``read`` or ``write`` for a tool definition: its own declaration first.
+
+    A definition declared ``read_only`` (``ToolDefinition.read_only``: no call
+    of it changes anything, whatever its arguments) is a read whatever its
+    verb, the statement ``withhold_write_tools`` and the repeat guard already
+    trust; otherwise its name decides (:func:`infer_tool_type`). Duck-typed so
+    this module stays importable from any layer.
+    """
+    if getattr(definition, "read_only", False) is True:
+        return "read"
+    return infer_tool_type(str(getattr(definition, "name", "") or ""))

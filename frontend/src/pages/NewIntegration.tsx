@@ -26,7 +26,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useAuthConfig } from "@/hooks/api/useAuthApi";
 import { useProviderCatalog, useCreateIntegration } from "@/hooks/api/useIntegrationApi";
 import { useCredentialSharingConfirm } from "@/hooks/useCredentialSharingConfirm";
-import { withoutHiddenExtraFields } from "@/lib/extra-fields";
+import { extraFieldDefaults, hasInvalidExtraField, withoutHiddenExtraFields } from "@/lib/extra-fields";
 import { resolveVariant, variantValue } from "@/lib/catalog-variants";
 import { offersSlackEventsUrl } from "@/lib/slack-events";
 import { ExtraFieldInputs } from "@/components/ui/extra-field-inputs";
@@ -36,6 +36,7 @@ import { SecretField } from "@/components/ui/secret-field";
 import { COPY_FEEDBACK_DELAY } from "@/lib/constants";
 import { useFormatter } from "@/i18n";
 import { createsOnAdminOAuthApp } from "@/pages/integration-detail/admin-oauth-app";
+import { hasWebhookDeliveredEvents } from "@/pages/integration-detail/webhooks-card-blocks";
 import type { ProviderCatalogItem, CreateIntegrationRequest } from "@/types";
 
 /**
@@ -125,7 +126,7 @@ export default function NewIntegration() {
         : {}),
     });
     // Pre-populate extra fields with default values from extra_field_options
-    const defaults: Record<string, string> = {};
+    const defaults: Record<string, string> = extraFieldDefaults(item.extra_field_inputs);
     if (item.extra_field_options) {
       for (const [key, options] of Object.entries(item.extra_field_options)) {
         if (options.length > 0) defaults[key] = options[0].value;
@@ -134,7 +135,7 @@ export default function NewIntegration() {
     setExtraFields(defaults);
     setShowSecrets(false);
     setUseOwnCreds(false);
-    setIsCompanyManaged(false);
+    setIsCompanyManaged(Boolean(item.company_managed_only));
     setSelectedAuthType(item.supported_auth_types ? item.auth_type : null);
     setOpenapiDraft(null);
   }, []);
@@ -291,6 +292,12 @@ export default function NewIntegration() {
     const isSlack = selected.provider === "slack";
     const slackEventsUrl = `${baseUrl}/api/v1/integrations/notifications/slack`;
     const onAdminOAuthApp = createsOnAdminOAuthApp(selected, selectedAuthType || form.auth_type, form.client_id);
+    // The webhook URL and the admin-managed webhook line only hold for events
+    // that can arrive by webhook; a provider whose events are all polled gets
+    // one polling line instead.
+    const hasOwnEventsLine = isMicrosoft || isSlack;
+    const webhookEvents = !hasOwnEventsLine && hasWebhookDeliveredEvents(selected);
+    const pollingOnlyEvents = !hasOwnEventsLine && selected.available_events.length > 0 && !webhookEvents;
     return (
       <div className="space-y-6">
         {consentElement}
@@ -553,6 +560,7 @@ export default function NewIntegration() {
                       onChange={setExtraFields}
                       options={selected.extra_field_options}
                       visibleWhen={selected.extra_field_visible_when}
+                      inputs={selected.extra_field_inputs}
                       showSecrets={showSecrets}
                     />
                   )}
@@ -600,6 +608,7 @@ export default function NewIntegration() {
                       onChange={setExtraFields}
                       options={selected.extra_field_options}
                       visibleWhen={selected.extra_field_visible_when}
+                      inputs={selected.extra_field_inputs}
                       showSecrets={showSecrets}
                     />
                   )}
@@ -622,6 +631,7 @@ export default function NewIntegration() {
                       onChange={setExtraFields}
                       options={selected.extra_field_options}
                       visibleWhen={selected.extra_field_visible_when}
+                      inputs={selected.extra_field_inputs}
                       showSecrets={showSecrets}
                     />
                   )}
@@ -665,6 +675,7 @@ export default function NewIntegration() {
                       onChange={setExtraFields}
                       options={selected.extra_field_options}
                       visibleWhen={selected.extra_field_visible_when}
+                      inputs={selected.extra_field_inputs}
                       showSecrets={showSecrets}
                       helpFor={extraFieldHelp}
                     />
@@ -676,8 +687,8 @@ export default function NewIntegration() {
             </div>
             )}
 
-            {/* Webhook URL — only shown when user provides own creds (not admin-provisioned) */}
-            {selected.available_events.length > 0 && !isMicrosoft && !isSlack && !onAdminOAuthApp && (
+            {/* Webhook URL — only for a provider with a webhook or hybrid event, when the user provides own creds (not admin-provisioned); a polling-only provider has nothing to configure */}
+            {webhookEvents && !onAdminOAuthApp && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Webhook className="h-4 w-4 text-default-secondary" />
@@ -707,11 +718,20 @@ export default function NewIntegration() {
             )}
 
             {/* Admin-provisioned: webhooks managed centrally, just inform the user */}
-            {selected.available_events.length > 0 && !isMicrosoft && !isSlack && onAdminOAuthApp && (
+            {webhookEvents && onAdminOAuthApp && (
               <div className="flex items-center gap-2 rounded-sm bg-elevation-hover px-3 py-2">
                 <Webhook className="h-3.5 w-3.5 text-default-secondary shrink-0" />
                 <p className="content-compact text-default-secondary">
                   {t_i18n("Webhooks for {provider} are managed by your administrator. Events will be delivered to your agents automatically.", { provider: selected.name })}
+                </p>
+              </div>
+            )}
+
+            {pollingOnlyEvents && (
+              <div className="flex items-center gap-2 rounded-sm bg-elevation-hover px-3 py-2">
+                <Webhook className="h-3.5 w-3.5 text-default-secondary shrink-0" />
+                <p className="content-compact text-default-secondary">
+                  {t_i18n("Events from {provider} are picked up by polling. No webhook needs to be configured in {provider}.", { provider: selected.name })}
                 </p>
               </div>
             )}
@@ -763,12 +783,21 @@ export default function NewIntegration() {
                   <Building2 className="h-4 w-4 text-accent" />
                   <div>
                     <p className="content-base font-medium">{t_i18n("Company-managed integration")}</p>
-                    <p className="content-compact text-default-secondary">
-                      {t_i18n("Shared with all users. Only admins can edit.")}
+                    <p id="company-managed-help" className="content-compact text-default-secondary">
+                      {selected.company_managed_only
+                        ? t_i18n("Always company-managed: it sends from the platform's own address, so only admins create and edit it, for every user.")
+                        : t_i18n("Shared with all users. Only admins can edit.")}
                     </p>
                   </div>
                 </div>
-                <Switch aria-label={t_i18n("Company-managed integration")} checked={isCompanyManaged} onCheckedChange={setIsCompanyManaged} />
+                <Switch
+                  aria-label={t_i18n("Company-managed integration")}
+                  aria-describedby="company-managed-help"
+                  checked={isCompanyManaged}
+                  onCheckedChange={setIsCompanyManaged}
+                  disabled={Boolean(selected.company_managed_only)}
+                  className="disabled:cursor-not-allowed"
+                />
               </div>
             )}
 
@@ -779,7 +808,7 @@ export default function NewIntegration() {
               <Button variant="ghost" onClick={() => navigate("/integrations")}>{t_i18n("Cancel")}</Button>
               <Button
                 onClick={handleCreate}
-                disabled={!form.name.trim() || create.isPending || (isOpenAPI && !openapiDraft?.ready) || (!!selected.requires_relay && !form.relay_group_id)}
+                disabled={!form.name.trim() || create.isPending || (isOpenAPI && !openapiDraft?.ready) || (!!selected.requires_relay && !form.relay_group_id) || hasInvalidExtraField(extraFields, selected.extra_field_inputs)}
               >
                 {create.isPending ? t_i18n("Creating...") : t_i18n("Create integration")}
               </Button>

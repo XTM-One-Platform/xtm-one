@@ -7,7 +7,8 @@
  * backend refuses a second run while one is in flight.
  */
 import { Icon } from "@filigran/design-system";
-import { Badge, BadgeFocusTrigger } from "@/components/ui/badge";
+import { BadgeFocusTrigger } from "@/components/ui/badge";
+import { ToneBadge } from "@/components/ui/tone-badge";
 import { Tip } from "@/components/ui/tooltip";
 import { useFormatter } from "@/i18n";
 import { formatShortDateTimeIntl, formatTimeAgo } from "@/lib/relative-time";
@@ -75,9 +76,9 @@ export function AssessmentFreshness({
       {stale && (
         <Tip content={staleTip} side="top">
           <BadgeFocusTrigger aria-label={`${t_i18n("Out of date")}. ${staleTip}`}>
-            <Badge variant="secondary" className="content-compact text-feedback-warning-tertiary bg-feedback-warning-primary/10">
+            <ToneBadge tone="orange" className="content-compact">
               {t_i18n("Out of date")}
-            </Badge>
+            </ToneBadge>
           </BadgeFocusTrigger>
         </Tip>
       )}

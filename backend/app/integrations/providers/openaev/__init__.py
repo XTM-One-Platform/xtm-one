@@ -34,6 +34,8 @@ The provider is split by domain:
 * ``taxonomy``         - tags, kill chain phases, attack patterns, variables.
 * ``findings``         - findings + vulnerabilities (writes).
 * ``platform``         - connectors (read) + platform settings.
+* ``health_reads``     - read-only module health reads of the Platform Health
+                         module checker (#101 S15b-2c).
 
 Token format passed by the dispatcher: ``base_url||api_token`` (the
 ``extra_config`` base_url is prepended by ``_get_token`` in
@@ -45,7 +47,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from app.core.module_versions import RegisteredVersionFn
 from app.integrations.http import RefreshFn, parse_compound_token
+from app.integrations.short_id import install_short_id_guard
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import (
@@ -68,12 +72,14 @@ from .core import register_core
 from .dashboards import register as register_dashboards
 from .expectations import register as register_expectations
 from .findings import register as register_findings
+from .health_reads import register as register_health_reads
 from .injects import register as register_injects
 from .lessons_reports import register as register_lessons_reports
 from .notifications import register as register_notifications
 from .phishing import register as register_phishing
 from .platform import register as register_platform
 from .preview import register as register_preview
+from .read_scope import ReadScope
 from .simulations import register as register_simulations
 from .taxonomy import register as register_taxonomy
 from .teams import register as register_teams
@@ -101,6 +107,7 @@ def build_tools(
     persist_file_fn: PersistFileFn | None = None,
     refresh_fn: RefreshFn | None = None,
     tenant_id: str = "",
+    registered_version_fn: RegisteredVersionFn | None = None,
     **_kwargs: Any,
 ) -> list[ToolDefinition]:
     """Build OpenAEV integration tools.
@@ -148,6 +155,9 @@ def build_tools(
     # Every module's requests scope themselves to the default tenant through
     # this one resolver (read by ``_scope_path``), so a new module cannot forget.
     headers.tenant_scope = capabilities
+    # The caller's read rights (GET /api/me, once per tool set): OpenAEV answers an
+    # empty page to a grant-limited identity, so the count reads say so (#1444).
+    headers.read_scope = ReadScope(base_url, headers)
 
     tools: list[ToolDefinition] = []
     tools += register_core(base_url, headers, executor)
@@ -173,6 +183,16 @@ def build_tools(
     tools += register_dashboards(base_url, headers, executor)
     tools += register_notifications(base_url, headers, executor)
     tools += register_preview(base_url, headers, executor, capabilities=capabilities)
-    tools += register_platform(base_url, headers, executor, capabilities=capabilities)
+    tools += register_platform(
+        base_url,
+        headers,
+        executor,
+        capabilities=capabilities,
+        registered_version_fn=registered_version_fn,
+    )
     tools += register_autonomous(base_url, headers, executor)
+    tools += register_health_reads(base_url, headers, executor)
+    # An 8-hex id prefix is answered by OpenAEV as a missing object ("Inject not
+    # found"): refuse it by name before any request (app.integrations.short_id).
+    install_short_id_guard(executor, [tool.name for tool in tools], platform="OpenAEV")
     return tools

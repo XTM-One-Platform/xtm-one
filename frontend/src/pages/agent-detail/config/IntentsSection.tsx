@@ -16,7 +16,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import { useState } from "react";
 import { Zap, Layers, Globe, Plus, Check, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { SearchInput } from "@/components/ui/search-input";
@@ -74,9 +74,9 @@ function IntentBindingsCard({ agent, canManage }: { agent: Agent; canManage: boo
           <div className="flex items-center gap-2">
             <Zap className="h-3.5 w-3.5 text-accent" />
             <CardTitle className="text-base">{t_i18n("Intent Bindings")}</CardTitle>
-            <Badge variant="outline" className="content-caption tabular-nums">
+            <CountBadge variant="outline">
               {agentBindings.length}
-            </Badge>
+            </CountBadge>
           </div>
           {canManage && (
             <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>

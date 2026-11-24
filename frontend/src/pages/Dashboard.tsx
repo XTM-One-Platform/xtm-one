@@ -764,7 +764,7 @@ export default function Dashboard() {
                   <Card
                     key={digest.id}
                     className="cursor-pointer hover:bg-elevation-hover transition-all duration-300 group"
-                    onClick={() => navigate(`/runs/${digest.id}`)}
+                    onClick={() => navigate(`/operations/executions/${digest.id}`)}
                   >
                     <CardContent className="pt-5 pb-4 space-y-3">
                       <div className="flex items-center justify-between">

@@ -19,7 +19,9 @@ selects the text files of a prefix and its globs (the selection of
 file back in ONE workspace commit only when the whole change set is within the
 caps: a rename across a package, a moved import, an option renamed in forty
 call sites, without a code_interpreter script or forty ``sandbox_edit_file``
-calls. The answer is a diffstat per file and a bounded diff, never the files.
+calls. The answer is never the files: a diffstat per file, then for a dry run
+a bounded diff, for a write each distinct line change once with its count
+(:func:`distinct_changes`), since the write's diff repeats one hunk per site.
 
 The replacement is Python's ``re`` template (``\\1``, ``\\g<name>``) with the
 character escapes ``\\uXXXX``, ``\\UXXXXXXXX`` and ``\\xXX`` expanded first
@@ -32,6 +34,7 @@ counted apart (:attr:`Plan.unchanged`), never reported as no match.
 
 from __future__ import annotations
 
+import difflib
 import re
 from dataclasses import dataclass, field
 
@@ -46,6 +49,11 @@ MAX_FILES = 200
 MAX_DIFFS_CHARS = 12_000
 #: Diffstat lines shown; the rest counted in one line (#460: 141 files answered 26k characters).
 MAX_STAT_LINES = 40
+#: Characters of the distinct line changes a written replace answers (a dry run keeps the diffs):
+#: one run made 18 replaces whose diffs were 160k characters, 59% of its tool results.
+MAX_WRITE_CHANGES_CHARS = 4_000
+#: Characters of one side of a distinct line change; the rest counted.
+MAX_CHANGE_LINE_CHARS = 160
 
 
 #: A character escape of a replacement, after an even run of backslashes (``\\\\u0041`` is a literal backslash then ``u0041``).
@@ -172,3 +180,52 @@ def report(changes: list[FileChange], display) -> tuple[str, str]:
     if hidden:
         tail = f"\n... [diff of {len(hidden)} more file(s) not shown: {', '.join(hidden[:10])}; sandbox_checkout_diff or sandbox_read_file reads them]"
     return "\n".join(stats), "".join(diffs) + tail
+
+
+def _clip(line: str) -> str:
+    line = line.rstrip("\r\n")
+    if len(line) <= MAX_CHANGE_LINE_CHARS:
+        return line
+    return f"{line[:MAX_CHANGE_LINE_CHARS]} ... [+{len(line) - MAX_CHANGE_LINE_CHARS:,} chars]"
+
+
+def distinct_changes(changes: list[FileChange], *, max_chars: int = MAX_WRITE_CHANGES_CHARS) -> str:
+    """The distinct line changes of *changes*, each once with its count and file count, bounded at *max_chars*.
+
+    A written replace usually makes the same change many times (a rename, a moved
+    import): its diff repeats one hunk per site. This answers each distinct
+    removed-lines / added-lines pair once, most frequent first, so the model reads
+    what the pattern did without the repeated context; the rest is counted and
+    ``sandbox_checkout_diff`` reads the whole diff.
+    """
+    counts: dict[tuple[tuple[str, ...], tuple[str, ...]], int] = {}
+    files: dict[tuple[tuple[str, ...], tuple[str, ...]], set[str]] = {}
+    for change in changes:
+        before = change.before.splitlines()
+        after = change.after.splitlines()
+        matcher = difflib.SequenceMatcher(a=before, b=after)
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == "equal":
+                continue
+            key = (tuple(before[i1:i2]), tuple(after[j1:j2]))
+            counts[key] = counts.get(key, 0) + 1
+            files.setdefault(key, set()).add(change.path)
+    ordered = sorted(counts, key=lambda k: (-counts[k], k))
+    lines: list[str] = []
+    used = 0
+    shown = 0
+    for key in ordered:
+        removed, added = key
+        block = [f"{counts[key]}x in {len(files[key])} file(s):"]
+        block += [f"  - {_clip(line)}" for line in removed]
+        block += [f"  + {_clip(line)}" for line in added]
+        text = "\n".join(block)
+        if shown and used + len(text) + 1 > max_chars:
+            break
+        lines.append(text)
+        used += len(text) + 1
+        shown += 1
+    rest = len(ordered) - shown
+    head = f"Distinct line changes: {len(ordered)}, most frequent first"
+    tail = f"\n... [{rest} more distinct change(s); sandbox_checkout_diff reads the whole diff]" if rest else ""
+    return head + "\n" + "\n".join(lines) + tail

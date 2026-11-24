@@ -14,7 +14,7 @@
 """The categories of the organization context, and how an agent resolves them (#11533).
 
 The profile has a short identity (name, sector, regions, size, risk
-appetite) and long lists: the crown jewels, the tech stack, the AI systems,
+appetite) and long lists: the crown jewels, the software, the AI systems,
 the PIRs, the tracked organizations. The identity is always in the prompt
 (``organization_context_injection``); a list is a CATEGORY: announced in the
 prompt with its size, preloaded only when the cascade selects it, and read
@@ -46,18 +46,23 @@ from pydantic import BaseModel
 from app.services.organization_context import CONTRACT_FIELDS, OrganizationProfile
 
 #: List fields of the profile that are identity or bookkeeping, never a category.
-_NOT_CATEGORIES: frozenset[str] = frozenset({"regions", "onboarding_skipped"})
+#: ``fx_rates`` (#1383) is a handful of rates shown with the currency in the basic block.
+_NOT_CATEGORIES: frozenset[str] = frozenset({"regions", "onboarding_skipped", "fx_rates"})
 #: The category read from the tracked organizations, not from the profile.
 TRACKED_ORGANIZATIONS = "tracked_organizations"
 #: Object fields of the profile read as a category, one row per explicit rule (#11543).
-_OBJECT_CATEGORIES: tuple[str, ...] = ("prioritization_policy",)
+#: ``attack_surface`` (CTEM-26) is one row, its settings, once any differs from the default (#1691).
+_OBJECT_CATEGORIES: tuple[str, ...] = ("prioritization_policy", "attack_surface")
 #: The category answered with the linked knowledge bases and their passages (#11543).
 ENTERPRISE_KNOWLEDGE = "enterprise_knowledge"
 #: Labels of the fields that are not contract fields (``CONTRACT_FIELDS`` names the others).
 _LABELS: dict[str, str] = {
     "assets_exposure": "assets and exposure",
     "asset_groups": "asset groups",
+    "shipped_products": "shipped products",
     "prioritization_policy": "prioritization policy",
+    "attack_surface": "attack surface pass: enabled, provider integrations, cadence",
+    "tech_stack": "software: vendor, product, type, versions, CPE, asset count",
     ENTERPRISE_KNOWLEDGE: "procedures and reference documents, read by query",
 }
 #: Rows a page answers by default, and at most.
@@ -76,7 +81,27 @@ class Category:
     label: str
 
 
+#: The profile field the Software category reads before the store is built (#1495).
+SOFTWARE_FIELD = "tech_stack"
+#: The category of the organization's software (#1495): the Software entity, ``tech_stack`` its deprecated alias.
+SOFTWARE = "software"
+#: Deprecated since #1495 (kept one release): ``tech_stack`` answers the ``software`` category.
+TECH_STACK_ALIAS = "tech_stack"
+#: The profile field the primary assets are stored under (#1591: OpenCRQ's primary assets, the stored key kept).
+PRIMARY_ASSETS_FIELD = "crown_jewels"
+#: The category of the organization's primary assets (#1591), in OpenCRQ's words.
+PRIMARY_ASSETS = "primary_assets"
+#: Deprecated since #1591 (kept one release): ``crown_jewels`` answers the ``primary_assets`` category.
+CROWN_JEWELS_ALIAS = "crown_jewels"
+#: Each deprecated category name, to the category it answers.
+CATEGORY_ALIASES: dict[str, str] = {TECH_STACK_ALIAS: SOFTWARE, CROWN_JEWELS_ALIAS: PRIMARY_ASSETS}
+
+
 def _category_name(field: str) -> str:
+    if field == SOFTWARE_FIELD:
+        return SOFTWARE
+    if field == PRIMARY_ASSETS_FIELD:
+        return PRIMARY_ASSETS
     # ``pir_ids`` is read as ``pirs``: a category names what it lists.
     return field[: -len("_ids")] + "s" if field.endswith("_ids") else field
 
@@ -98,15 +123,46 @@ CATEGORY_NAMES: tuple[str, ...] = tuple(category.name for category in CATEGORIES
 _BY_NAME = {category.name: category for category in CATEGORIES}
 
 
+def available() -> tuple[Category, ...]:
+    """The categories this platform's mode exposes: every one, none in Copilot mode (#1690).
+
+    Copilot has no CTEM loop: its agents read the identity alone, so no category is
+    listed, readable, preloaded or offered in a picker. The stored data stays untouched.
+    """
+    from app.services.organization_context import identity_only
+
+    return () if identity_only() else CATEGORIES
+
+
+def available_names() -> tuple[str, ...]:
+    """The names of :func:`available`."""
+    return tuple(category.name for category in available())
+
+
+#: Deprecated since #1501 (kept one release): ``ai_systems`` reads the assets of category ``ai_target``.
+AI_SYSTEMS_ALIAS = Category(
+    "ai_systems", "assets_exposure", "AI systems (deprecated: the assets of category ai_target)"
+)
+
+
+def canonical_name(name: object) -> str:
+    """*name* lower-cased, a deprecated alias read as the category it answers (``crown_jewels`` -> ``primary_assets``)."""
+    wanted = str(name or "").strip().lower()
+    return CATEGORY_ALIASES.get(wanted, wanted)
+
+
 def get(name: str) -> Category | None:
-    return _BY_NAME.get(str(name or "").strip().lower())
+    wanted = canonical_name(name)
+    if wanted == AI_SYSTEMS_ALIAS.name:
+        return AI_SYSTEMS_ALIAS
+    return _BY_NAME.get(wanted)
 
 
 def normalize_categories(value: object) -> list[str]:
     """A stored list, deduplicated, unknown names dropped (a category removed from the model)."""
     if not isinstance(value, list | tuple):
         return []
-    return [name for name in dict.fromkeys(str(v).strip().lower() for v in value) if name in _BY_NAME]
+    return [name for name in dict.fromkeys(canonical_name(v) for v in value) if name in _BY_NAME]
 
 
 def check_categories(value: object) -> list[str] | None:
@@ -126,7 +182,7 @@ def check_categories(value: object) -> list[str] | None:
         value = [part for part in (p.strip() for p in text.split(",")) if part]
     if not isinstance(value, list | tuple):
         raise ValueError("organization_context_categories must be a list of category names")
-    names = [str(v).strip().lower() for v in value]
+    names = [canonical_name(v) for v in value]
     unknown = [name for name in names if name not in _BY_NAME]
     if unknown:
         raise ValueError(
@@ -165,7 +221,11 @@ def rows_of(profile: OrganizationProfile, category: Category) -> list[Any]:
     """The rows of a profile category, as JSON values."""
     if category.field == "prioritization_policy":
         return policy_rows(profile)
+    if category.field == "attack_surface":
+        return attack_surface_rows(profile)
     values = getattr(profile, category.field, None) or []
+    if category is AI_SYSTEMS_ALIAS:
+        values = [v for v in values if getattr(v, "category", "") == "ai_target"]
     if category.field == "pir_ids":
         return [{"id": pir, "name": profile.pir_names.get(pir, "")} for pir in values]
     return [value.model_dump(mode="json") if isinstance(value, BaseModel) else value for value in values]
@@ -191,6 +251,14 @@ def policy_rows(profile: OrganizationProfile) -> list[dict[str, Any]]:
     return rows
 
 
+def attack_surface_rows(profile: OrganizationProfile) -> list[dict[str, Any]]:
+    """The attack surface pass as one row of its settings; none while every setting is the default (#1691)."""
+    from app.services.organization_context import AttackSurfacePass
+
+    surface = profile.attack_surface
+    return [] if surface == AttackSurfacePass() else [surface.model_dump(mode="json")]
+
+
 def tracked_rows(organizations: list[Any]) -> list[dict[str, Any]]:
     return [
         {
@@ -212,6 +280,16 @@ def matches(row: Any, query: str) -> bool:
         return True
     values = row.values() if isinstance(row, dict) else [row]
     return any(needle in str(value).lower() for value in values)
+
+
+#: Categories the index names only once filled (#1432): most organizations ship nothing, and the
+#: basic block keeps its size for every profile that does not fill them.
+OPTIONAL_CATEGORIES: frozenset[str] = frozenset({"shipped_products", "attack_surface"})
+
+
+def indexed(category: Category, count: int) -> bool:
+    """Whether the category index of the basic block names *category*."""
+    return bool(count) or category.name not in OPTIONAL_CATEGORIES
 
 
 def index_line(category: Category, count: int) -> str:
@@ -248,14 +326,71 @@ def render_page(
     return "\n".join([head + ".", wrap_untrusted(json.dumps(page, ensure_ascii=False), "organization profile"), tail])
 
 
+#: The ``field:value`` terms an agent's query on the assets category filters on (#1774): the
+#: CTEM Inventory list's filters (``organization_asset_store``), ``source`` and ``group`` included.
+ASSET_QUERY_FIELDS: tuple[str, ...] = (
+    "category",
+    "subcategory",
+    "criticality",
+    "internet_facing",
+    "os_family",
+    "source",
+    "group",
+)
+
+
+def split_asset_query(query: str) -> tuple[dict[str, list[str]], str]:
+    """``(filters, name text)`` of an assets query: ``os_family:windows source:intune web`` (#1774).
+
+    A ``field:value`` term on a known field is a filter (a repeated field ORs its values,
+    fields AND); every other word stays the name substring.
+    """
+    filters: dict[str, list[str]] = {}
+    words: list[str] = []
+    for term in str(query or "").split():
+        name, sep, value = term.partition(":")
+        if sep and name.lower() in ASSET_QUERY_FIELDS and value:
+            filters.setdefault(name.lower(), []).append(value)
+        else:
+            words.append(term)
+    return filters, " ".join(words)
+
+
+def render_asset_page(rows: list[dict[str, Any]], *, total: int, query: str, offset: int, limit: int) -> str:
+    """One page of the merged CTEM Inventory assets as an agent reads it (#1774)."""
+    from app.services.content_safety import wrap_untrusted
+
+    scope = f" matching {query.strip()!r}" if query.strip() else ""
+    name = "assets_exposure (merged CTEM Inventory assets, one row per real asset)"
+    if not total:
+        return f"Category {name}: no row{scope}. Do not guess it."
+    if not rows:
+        return f"Category {name}: offset {offset} is past the {total} rows{scope}."
+    nxt = offset + len(rows)
+    tail = (
+        'More: get_organization_context(category="assets_exposure"'
+        + (f", query={query.strip()!r}" if scope else "")
+        + f", offset={nxt}, limit={limit})."
+        if nxt < total
+        else "End of the category."
+    )
+    head = f"Category {name}: rows {offset + 1}-{nxt} of {total}{scope}."
+    return "\n".join([head, wrap_untrusted(json.dumps(rows, ensure_ascii=False), "organization profile"), tail])
+
+
 def render_categories(counts: dict[str, int]) -> str:
     """What ``get_organization_context(category="*")`` answers: every category with its size."""
     lines = [
         "Organization context categories (read one by name, e.g. "
-        'get_organization_context(category="tech_stack"), narrow it with query=, page it with offset= and limit=, up to '
+        'get_organization_context(category="software"), narrow it with query=, page it with offset= and limit=, up to '
         f"{MAX_PAGE} rows a page):"
     ]
-    lines += [index_line(category, counts.get(category.name, 0)) for category in CATEGORIES]
+    if not available():
+        return (
+            "No organization context category on this platform: the profile is its identity alone "
+            "(get_organization_context() reads it)."
+        )
+    lines += [index_line(category, counts.get(category.name, 0)) for category in available()]
     return "\n".join(lines)
 
 

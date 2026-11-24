@@ -33,7 +33,7 @@ ENTRY_INTENT = "global.assistant"
 SURFACE_VERTICAL: dict[str, str | None] = {
     "opencti": "cti",
     "openaev": "aev",
-    "opencrq": "grc",
+    "opencrq": "crq",
     "xtm_one": None,
 }
 
@@ -155,7 +155,7 @@ def test_module_assistants_keep_their_entry_bindings():
     for slug, vertical in (
         ("opencti-assistant", "cti"),
         ("openaev-assistant", "aev"),
-        ("opencrq-assistant", "grc"),
+        ("opencrq-assistant", "crq"),
         ("fimi-analyst", "fimi"),
     ):
         assert (ENTRY_INTENT, vertical) in by_agent[slug], slug

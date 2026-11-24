@@ -532,6 +532,43 @@ NOTICES: dict[str, dict[str, str]] = {
         "fr": "Ouvrir dans XTM One",
         "ja": "XTM One で開く",
     },
+    # --- The link buttons of the objects of a decision's ask (#1177) ------
+    "card_link_pull_request": {
+        "en": "Open PR #{number}",
+        "es": "Abrir la PR #{number}",
+        "fr": "Ouvrir la PR #{number}",
+        "ja": "PR #{number} を開く",
+    },
+    "card_link_issue": {
+        "en": "Open issue #{number}",
+        "es": "Abrir la incidencia #{number}",
+        "fr": "Ouvrir l'issue #{number}",
+        "ja": "Issue #{number} を開く",
+    },
+    "card_link_ticket": {
+        "en": "Open the ticket",
+        "es": "Abrir el ticket",
+        "fr": "Ouvrir le ticket",
+        "ja": "チケットを開く",
+    },
+    "card_link_ticket_key": {
+        "en": "Open {key}",
+        "es": "Abrir {key}",
+        "fr": "Ouvrir {key}",
+        "ja": "{key} を開く",
+    },
+    "card_link_page": {
+        "en": "Open the page",
+        "es": "Abrir la página",
+        "fr": "Ouvrir la page",
+        "ja": "ページを開く",
+    },
+    "card_link_document": {
+        "en": "Open the document",
+        "es": "Abrir el documento",
+        "fr": "Ouvrir le document",
+        "ja": "ドキュメントを開く",
+    },
     "card_no_access": {
         "en": "This run doesn't exist or you don't have access to it.",
         "es": "Esta ejecución no existe o no tiene acceso a ella.",
@@ -628,6 +665,12 @@ NOTICES: dict[str, dict[str, str]] = {
         "fr": "Approuver",
         "ja": "承認",
     },
+    "card_approve_always": {
+        "en": "Approve always",
+        "es": "Aprobar siempre",
+        "fr": "Toujours approuver",
+        "ja": "常に承認",
+    },
     "card_reject": {
         "en": "Reject",
         "es": "Rechazar",
@@ -712,6 +755,12 @@ NOTICES: dict[str, dict[str, str]] = {
         "fr": "Choisissez Approuver ou Rejeter pour chaque outil.",
         "ja": "すべてのツールについて［承認］または［却下］を選択してください。",
     },
+    "card_choose_approval": {
+        "en": "Choose Approve, Approve always or Reject.",
+        "es": "Elija Aprobar, Aprobar siempre o Rechazar.",
+        "fr": "Choisissez Approuver, Toujours approuver ou Rejeter.",
+        "ja": "［承認］、［常に承認］、［却下］のいずれかを選択してください。",
+    },
     "card_answer_empty": {
         "en": "Write an answer first.",
         "es": "Escriba primero una respuesta.",
@@ -747,6 +796,183 @@ NOTICES: dict[str, dict[str, str]] = {
         "es": "Su respuesta se ha enviado.",
         "fr": "Votre réponse a été envoyée.",
         "ja": "回答を送信しました。",
+    },
+    # --- The decision card of any human gate (#842, S9) -------------
+    "card_header_decision": {
+        "en": "XTM One · Decision",
+        "es": "XTM One · Decisión",
+        "fr": "XTM One · Décision",
+        "ja": "XTM One · 判断",
+    },
+    "card_from": {
+        "en": "{source}",
+        "es": "{source}",
+        "fr": "{source}",
+        "ja": "{source}",
+    },
+    "card_from_by": {
+        "en": "{source} from {agent}",
+        "es": "{source} de {agent}",
+        "fr": "{source} de {agent}",
+        "ja": "{agent} からの{source}",
+    },
+    "card_source_run": {
+        "en": "Question",
+        "es": "Pregunta",
+        "fr": "Question",
+        "ja": "質問",
+    },
+    "card_source_tool_approval": {
+        "en": "Tool approval",
+        "es": "Aprobación de herramienta",
+        "fr": "Approbation d'outil",
+        "ja": "ツールの承認",
+    },
+    "card_source_flow": {
+        "en": "Flow question",
+        "es": "Pregunta de un flujo",
+        "fr": "Question d'un flux",
+        "ja": "フローからの質問",
+    },
+    "card_source_work_item": {
+        "en": "Work item decision",
+        "es": "Decisión de una tarea",
+        "fr": "Décision sur une tâche",
+        "ja": "作業項目の判断",
+    },
+    "card_recommended": {
+        "en": "Recommended",
+        "es": "Recomendada",
+        "fr": "Recommandée",
+        "ja": "推奨",
+    },
+    "card_label_deadline": {
+        "en": "Answer by",
+        "es": "Responder antes de",
+        "fr": "Répondre avant",
+        "ja": "回答期限",
+    },
+    "card_label_answered_at": {
+        "en": "Answered at",
+        "es": "Respondida el",
+        "fr": "Répondue le",
+        "ja": "回答日時",
+    },
+    "card_decision_waiting": {
+        "en": "A decision is waiting for you",
+        "es": "Una decisión le espera",
+        "fr": "Une décision vous attend",
+        "ja": "判断が必要です",
+    },
+    "card_answer_text": {
+        "en": "Add a comment or answer in your own words (optional)",
+        "es": "Añada un comentario o responda con sus palabras (opcional)",
+        "fr": "Ajoutez un commentaire ou répondez avec vos mots (facultatif)",
+        "ja": "コメントや自由回答を入力（任意）",
+    },
+    "card_waiting_for": {
+        "en": "Waiting for {name}.",
+        "es": "Esperando a {name}.",
+        "fr": "En attente de {name}.",
+        "ja": "{name} の回答待ちです。",
+    },
+    "card_not_linked_decision": {
+        "en": "Sign in to XTM One with the email address of this account to answer.",
+        "es": "Inicie sesión en XTM One con la dirección de correo de esta cuenta para responder.",
+        "fr": "Connectez-vous à XTM One avec l'adresse e-mail de ce compte pour répondre.",
+        "ja": "回答するには、このアカウントのメールアドレスで XTM One にサインインしてください。",
+    },
+    "card_decided_option": {
+        "en": "{name} chose {option}.",
+        "es": "{name} eligió {option}.",
+        "fr": "{name} a choisi {option}.",
+        "ja": "{name} が {option} を選びました。",
+    },
+    "card_decided_tools": {
+        "en": "{name} decided the tools: {verdicts}.",
+        "es": "{name} decidió sobre las herramientas: {verdicts}.",
+        "fr": "{name} a décidé pour les outils : {verdicts}.",
+        "ja": "{name} がツールについて判断しました: {verdicts}。",
+    },
+    "card_decision_expired": {
+        "en": "This decision expired without an answer.",
+        "es": "Esta decisión venció sin respuesta.",
+        "fr": "Cette décision a expiré sans réponse.",
+        "ja": "この判断は回答されないまま期限切れになりました。",
+    },
+    "card_decision_cancelled": {
+        "en": "This decision is no longer needed.",
+        "es": "Esta decisión ya no es necesaria.",
+        "fr": "Cette décision n'est plus nécessaire.",
+        "ja": "この判断は不要になりました。",
+    },
+    "card_someone": {
+        "en": "Someone",
+        "es": "Alguien",
+        "fr": "Quelqu'un",
+        "ja": "誰か",
+    },
+    "card_recipient_company": {
+        "en": "anyone in the company",
+        "es": "cualquier persona de la empresa",
+        "fr": "n'importe qui dans l'entreprise",
+        "ja": "社内のいずれかのメンバー",
+    },
+    "card_recipient_admins": {
+        "en": "the platform administrators",
+        "es": "los administradores de la plataforma",
+        "fr": "les administrateurs de la plateforme",
+        "ja": "プラットフォームの管理者",
+    },
+    "card_decision_refused": {
+        "en": "You can't answer this decision.",
+        "es": "No puede responder a esta decisión.",
+        "fr": "Vous ne pouvez pas répondre à cette décision.",
+        "ja": "この判断に回答することはできません。",
+    },
+    "card_decision_already_answered": {
+        "en": "This decision has already been answered.",
+        "es": "Esta decisión ya ha sido respondida.",
+        "fr": "Cette décision a déjà reçu une réponse.",
+        "ja": "この判断にはすでに回答済みです。",
+    },
+    # --- The Slack decision card (#842, S10) ---------------------------
+    "card_answer_with_text": {
+        "en": "Answer with text",
+        "es": "Responder con texto",
+        "fr": "Répondre par écrit",
+        "ja": "テキストで回答",
+    },
+    "card_modal_title": {
+        "en": "Your answer",
+        "es": "Su respuesta",
+        "fr": "Votre réponse",
+        "ja": "回答",
+    },
+    "card_cancel": {
+        "en": "Cancel",
+        "es": "Cancelar",
+        "fr": "Annuler",
+        "ja": "キャンセル",
+    },
+    "card_decision_failed": {
+        "en": "This couldn't be done. Open the decision in XTM One.",
+        "es": "No se pudo realizar. Abra la decisión en XTM One.",
+        "fr": "L'action n'a pas abouti. Ouvrez la décision dans XTM One.",
+        "ja": "実行できませんでした。XTM One で判断を開いてください。",
+    },
+    # --- The WhatsApp decision message (#842, S12) ----------------------
+    "card_choose": {
+        "en": "Choose",
+        "es": "Elegir",
+        "fr": "Choisir",
+        "ja": "選択",
+    },
+    "card_decide_in_xtm": {
+        "en": "Answer in XTM One.",
+        "es": "Responda en XTM One.",
+        "fr": "Répondez dans XTM One.",
+        "ja": "XTM One で回答してください。",
     },
 }
 

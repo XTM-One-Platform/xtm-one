@@ -402,6 +402,7 @@ export function useUpdateGeneralAssistantConfig() {
       mcp_exposed_agent_ids?: string[];
       platform_mcp_enabled?: boolean;
       xtm_mcp_enabled?: boolean;
+      reply_suggestions_enabled?: boolean;
       /** Also email every user that `agent_default_model` is the new default. */
       announce_default_model?: boolean;
     }) =>

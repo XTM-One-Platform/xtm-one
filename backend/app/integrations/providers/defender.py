@@ -20,6 +20,7 @@ Tool categories (≈50 tools):
   - Devices / Machines (MDE): list, get, vulnerabilities, logged-on users
   - Response Actions (MDE): isolate / release, AV scan, collect investigation
     package, restrict / unrestrict app execution, stop & quarantine file,
+    Live Response library scripts (run, approval-gated, list, result),
     list / get / cancel machine actions
   - Threat & Vulnerability Management (MDE): vulnerabilities, software,
     security recommendations, exposure score, device secure score
@@ -45,6 +46,7 @@ Either way two audiences are used depending on the API surface:
 from __future__ import annotations
 
 import io
+import json
 import logging
 import re
 import zipfile
@@ -121,6 +123,9 @@ _MDE_BASE = "https://api.securitycenter.microsoft.com/api"
 # An investigation package is kept as a conversation file up to the
 # Microsoft file tools' download limit; its entries are listed up to this many.
 _MAX_PACKAGE_BYTES = 100 * 1024 * 1024
+# A Live Response result is a small JSON document (exit code, output, errors).
+_MAX_LIVE_RESPONSE_BYTES = 5 * 1024 * 1024
+_MAX_LIVE_RESPONSE_TEXT = 20_000
 _MAX_LISTED_PACKAGE_ENTRIES = 60
 _MAX_LISTED_ENTRY_NAME = 160
 
@@ -1706,6 +1711,128 @@ def build_tools(
             {"Comment": comment, "Sha1": sha1},
         )
 
+    async def run_defender_live_response_script(machine_id: str, script_name: str, comment: str, args: str = "") -> str:
+        """Run a Live Response library script on a device (approval-gated).
+
+        Only a script already uploaded to the tenant's Live Response library
+        runs: the tool never sends code of its own. The run is a machine
+        action, cancelled by ``cancel_defender_machine_action`` while it is
+        pending; its output is read with ``get_defender_live_response_result``.
+        """
+        name = (script_name or "").strip()
+        if not name or "/" in name or "\\" in name:
+            return (
+                "Error: script_name is the file name of a script of the Live "
+                "Response library (list_defender_live_response_library lists them)."
+            )
+        if not (comment or "").strip():
+            return "Error: comment (the reason of the run) is required."
+        params = [{"key": "ScriptName", "value": name}]
+        if (args or "").strip():
+            params.append({"key": "Args", "value": args.strip()})
+        result = await _machine_action(
+            _url_encode((machine_id or "").strip(), safe=""),
+            "runliveresponse",
+            "Live Response script run",
+            {"Commands": [{"type": "RunScript", "params": params}], "Comment": comment},
+        )
+        if result.startswith("Error"):
+            return result
+        return (
+            f"{result} Undo while it is pending: cancel_defender_machine_action. "
+            "Output once it succeeded: get_defender_live_response_result."
+        )
+
+    async def list_defender_live_response_library() -> str:
+        """List the scripts of the tenant's Live Response library."""
+        access_token = await _mde_token()
+        if not access_token:
+            return _AUTH_ERROR
+        async with egress_client(timeout=30) as client:
+            resp, err = await safe_request(
+                client,
+                "get",
+                f"{_MDE_BASE}/libraryfiles",
+                _PROVIDER,
+                "list the Live Response library",
+                headers=_headers(access_token),
+            )
+        if err:
+            return err
+        files = (resp.json() or {}).get("value", []) or []
+
+        def _fmt(f: dict) -> str:
+            params = " (takes parameters)" if f.get("hasParameters") else ""
+            return f"  {f.get('fileName', '?')}{params}: {_trunc(f.get('description'), 160)}"
+
+        return format_entity_list(files, _fmt, noun="library script")
+
+    async def get_defender_live_response_result(action_id: str) -> str:
+        """The exit code, output and errors of a Live Response script run."""
+        aid = (action_id or "").strip()
+        if not aid:
+            return "Error: action_id is required (the id run_defender_live_response_script returned)."
+        access_token = await _mde_token()
+        if not access_token:
+            return _AUTH_ERROR
+        action_url = f"{_MDE_BASE}/machineactions/{_url_encode(aid, safe='')}"
+        async with egress_client(timeout=30) as client:
+            resp, err = await safe_request(
+                client,
+                "get",
+                action_url,
+                _PROVIDER,
+                f"get machine action {aid}",
+                headers=_headers(access_token),
+            )
+            if err:
+                return err
+            action = resp.json() or {}
+            kind = action.get("type") or "unknown"
+            if kind != "LiveResponse":
+                return f"Error: machine action {aid} is of type {kind}, not a Live Response run."
+            status = action.get("status") or "unknown"
+            device = action.get("computerDnsName") or action.get("machineId") or "the device"
+            if status in ("Pending", "InProgress"):
+                return f"The Live Response run on {device} is not finished (status: {status}). Ask again later."
+            if status != "Succeeded":
+                return f"The Live Response run on {device} ended with status {status}: no output."
+            link_resp, err = await safe_request(
+                client,
+                "get",
+                f"{action_url}/GetLiveResponseResultDownloadLink(index=0)",
+                _PROVIDER,
+                f"get the result link of machine action {aid}",
+                headers=_headers(access_token),
+            )
+            if err:
+                return err
+        link = str((link_resp.json() or {}).get("value") or "").strip().strip('"')
+        download = await fetch_public_media(
+            link, source=_PROVIDER, max_bytes=_MAX_LIVE_RESPONSE_BYTES, what="Live Response result"
+        )
+        if isinstance(download, FetchError):
+            return str(download)
+        try:
+            data = json.loads(download.data.decode("utf-8", "replace") or "{}")
+        except ValueError:
+            return "Error: the Live Response result is not the JSON Defender documents."
+        if not isinstance(data, dict):
+            data = {}
+        output = str(data.get("script_output") or "")
+        errors = str(data.get("script_errors") or "")
+        lines = [
+            f"Live Response run {aid} on {device}: script "
+            f"{data.get('script_name', '?')}, exit code {data.get('exit_code', '?')}.",
+            "Output:",
+            output[:_MAX_LIVE_RESPONSE_TEXT] or "(empty)",
+        ]
+        if len(output) > _MAX_LIVE_RESPONSE_TEXT:
+            lines.append(f"[output cut at {_MAX_LIVE_RESPONSE_TEXT} of {len(output)} characters]")
+        if errors.strip():
+            lines += ["Errors:", errors[:_MAX_LIVE_RESPONSE_TEXT]]
+        return "\n".join(lines)
+
     async def list_defender_machine_actions(count: int = 25) -> str:
         """List recent response/machine actions across Defender for Endpoint."""
         access_token = await _mde_token()
@@ -2398,6 +2525,9 @@ def build_tools(
         "unrestrict_defender_app_execution", unrestrict_defender_app_execution
     )
     executor.register("stop_and_quarantine_file", stop_and_quarantine_file)
+    executor.register("run_defender_live_response_script", run_defender_live_response_script)
+    executor.register("list_defender_live_response_library", list_defender_live_response_library)
+    executor.register("get_defender_live_response_result", get_defender_live_response_result)
     executor.register("list_defender_machine_actions", list_defender_machine_actions)
     executor.register("get_defender_machine_action", get_defender_machine_action)
     executor.register(
@@ -2671,6 +2801,8 @@ def build_tools(
             },
             source=src,
             priority=0,
+            # "run" reads as a write to the name classifier; KQL hunting has no mutating command.
+            read_only=True,
         ),
         # ── 3. Threat Intelligence (Defender TI) ──────────────────────────
         ToolDefinition(
@@ -3228,6 +3360,53 @@ def build_tools(
                     "comment": {"type": "string", "description": "Reason (required)"},
                 },
                 "required": ["machine_id", "sha1", "comment"],
+            },
+            source=src,
+            priority=2,
+        ),
+        ToolDefinition(
+            name="run_defender_live_response_script",
+            description=(
+                "Run a script of the tenant's Live Response library on a device "
+                "(each call asks a person). Undo while pending: "
+                "cancel_defender_machine_action; output: get_defender_live_response_result."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "machine_id": {"type": "string"},
+                    "script_name": {
+                        "type": "string",
+                        "description": "File name in the Live Response library",
+                    },
+                    "args": {"type": "string", "description": "Script arguments (optional)"},
+                    "comment": {"type": "string", "description": "Reason (required)"},
+                },
+                "required": ["machine_id", "script_name", "comment"],
+            },
+            source=src,
+            priority=2,
+            always_ask=True,
+        ),
+        ToolDefinition(
+            name="list_defender_live_response_library",
+            description="List the scripts of the tenant's Live Response library.",
+            input_schema={"type": "object", "properties": {}, "required": []},
+            source=src,
+            priority=2,
+        ),
+        ToolDefinition(
+            name="get_defender_live_response_result",
+            description="Read the exit code, output and errors of a finished Live Response script run.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "action_id": {
+                        "type": "string",
+                        "description": "Machine action id of the run",
+                    }
+                },
+                "required": ["action_id"],
             },
             source=src,
             priority=2,

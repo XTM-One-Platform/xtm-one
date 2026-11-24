@@ -223,6 +223,101 @@ async def dispatch_stored(integration_id: uuid.UUID | str, rows: Iterable[dict[s
     return dispatched
 
 
+async def sent_replies(integration_id: str, conversation_id: str, limit: int) -> list[ContextMessage]:
+    """The last *limit* replies the integration's WhatsApp accounts sent in *conversation_id*, oldest first.
+
+    Each is a ``from_account`` message whose id is the sent message's id: the
+    gateway's echo of it in the number's own chat carries that id.
+    """
+    from sqlalchemy import select
+
+    from app.core.database import async_session
+    from app.models.agent_account import AgentAccount, AgentAccountReply
+
+    key = uuid.UUID(str(integration_id))
+    r = AgentAccountReply
+    async with async_session() as db:
+        found = (
+            await db.execute(
+                select(r.sent_message_id, r.draft_text, r.sent_text, r.decided_at, r.created_at)
+                .join(AgentAccount, AgentAccount.id == r.account_id)
+                .where(
+                    AgentAccount.integration_id == key,
+                    AgentAccount.provider == KEY,
+                    r.conversation_id == conversation_id.strip(),
+                    r.status == "sent",
+                    r.sent_message_id.is_not(None),
+                )
+                .order_by(r.created_at.desc())
+                .limit(max(1, limit))
+            )
+        ).all()
+    out = [
+        ContextMessage(
+            message_id=str(sent_id),
+            sender_name="",
+            text=str(draft or sent or ""),
+            created_at=_aware(decided or created),
+            from_account=True,
+        )
+        for sent_id, draft, sent, decided, created in found
+        if (draft or sent) and (decided or created)
+    ]
+    return list(reversed(out))
+
+
+def _aware(moment: datetime) -> datetime:
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+
+def with_own_replies(
+    rows: Iterable[Any], replies: Iterable[ContextMessage], event: AccountEvent, limit: int
+) -> list[ContextMessage]:
+    """The context of *event*: the stored *rows* before it and the account's *replies*, oldest first.
+
+    A stored row that is the echo of a reply (same message id: the gateway
+    stores the number's own chat, replies included) is the reply, placed at
+    the echo's time, never a message of someone else. Without the replies the
+    turn took every earlier message for a new one and answered it again.
+    """
+    by_id = {reply.message_id: reply for reply in replies if reply.message_id}
+    out: list[ContextMessage] = []
+    for row in rows:
+        if row.wamid == event.message_id or _aware(row.received_at) > event.created_at:
+            continue
+        reply = by_id.pop(row.wamid, None)
+        if reply is not None:
+            out.append(
+                ContextMessage(
+                    message_id=reply.message_id,
+                    sender_name=reply.sender_name,
+                    text=reply.text,
+                    created_at=_aware(row.received_at),
+                    from_account=True,
+                )
+            )
+            continue
+        out.append(
+            ContextMessage(
+                message_id=row.wamid,
+                sender_name=row.sender_name or row.sender,
+                text=row.text or "",
+                created_at=_aware(row.received_at),
+            )
+        )
+    out = out[-limit:]
+    # Replies with no echo (the Cloud API echoes nothing): placed at their
+    # send time, within the window the stored messages cover.
+    since = out[0].created_at if len(out) >= limit else None
+    out.extend(
+        reply
+        for reply in by_id.values()
+        if reply.created_at <= event.created_at and (since is None or reply.created_at >= since)
+    )
+    out.sort(key=lambda m: m.created_at)
+    return out
+
+
 class WhatsAppProvider(AccountProvider):
     """A WhatsApp business number, operated through its ``whatsapp`` integration."""
 
@@ -372,10 +467,13 @@ class WhatsAppProvider(AccountProvider):
     # -- answering ----------------------------------------------------------
 
     async def fetch_context(self, session: ProviderSession, event: AccountEvent, limit: int) -> list[ContextMessage]:
-        """The messages of the conversation stored before *event*, oldest first.
+        """The messages of the conversation before *event*, oldest first, the account's own replies included.
 
-        The store holds what the number received: the account's own replies
-        are not in it (the Cloud API does not echo them).
+        The store holds what the number received; the replies the integration's
+        accounts sent in the conversation are read from their record
+        (:func:`sent_replies`) and marked ``from_account``, so the turn sees
+        what was already answered as history and only the new messages as the
+        user message (:func:`with_own_replies`).
         """
         from app.services.whatsapp_inbound import read_messages
 
@@ -386,17 +484,13 @@ class WhatsAppProvider(AccountProvider):
             rows = await read_messages(integration_id, event.conversation_id, limit + 1)
         except Exception as exc:
             raise ProviderError(f"The WhatsApp conversation could not be read: {type(exc).__name__}") from None
-        out = [
-            ContextMessage(
-                message_id=row.wamid,
-                sender_name=row.sender_name or row.sender,
-                text=row.text or "",
-                created_at=row.received_at,
-            )
-            for row in rows
-            if row.wamid != event.message_id and row.received_at <= event.created_at
-        ]
-        return out[-limit:]
+        try:
+            replies = await sent_replies(integration_id, event.conversation_id, limit)
+        except Exception as exc:
+            # The stored messages alone still give the turn its context.
+            logger.info("WhatsApp integration %s: own replies not read: %s", integration_id, type(exc).__name__)
+            replies = []
+        return with_own_replies(rows, replies, event, limit)
 
     async def account_messages_since(self, session: ProviderSession, event: AccountEvent) -> list[str]:
         """None known: the Cloud API does not echo what the number sends."""

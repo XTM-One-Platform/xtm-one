@@ -49,3 +49,16 @@ test("a scheduled outcome shows without its run link, which the page draws as it
   // Only the trailing run link goes: a link in the prose stays.
   assert.equal(withoutScheduledRunLink("See [View the run](/runs/a) later."), "See [View the run](/runs/a) later.");
 });
+
+test("a scheduled outcome linked to its run under Operations > Executions shows without that link (#797)", () => {
+  const outcome = { scheduled_outcome: { run_id: "r-1" } };
+  const absolute = "**Done**: sent at 07:00.\n\n[View the run](https://one.test/operations/executions/r-1)";
+  const relative = "**Done**: sent at 07:00.\n\n[View the run](/operations/executions/r-1)";
+  assert.equal(messageTextForPage(absolute, "assistant", false, outcome), "**Done**: sent at 07:00.");
+  assert.equal(messageTextForPage(relative, "assistant", false, outcome), "**Done**: sent at 07:00.");
+  assert.equal(withoutScheduledRunLink(relative), "**Done**: sent at 07:00.");
+  assert.equal(
+    withoutScheduledRunLink("See [View the run](/operations/executions/a) later."),
+    "See [View the run](/operations/executions/a) later.",
+  );
+});

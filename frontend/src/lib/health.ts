@@ -19,7 +19,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * is shown as itself, never as a known one.
  */
 
-import type { HealthTargetType } from "@/types";
+import type { HealthScheduleMark, HealthTargetType } from "@/types";
+
+/**
+ * Whether a schedule mark is a real firing (#735). The scheduler writes a mark
+ * with `now` the first time it sees a schedule, so the cycle first fires at its
+ * next occurrence and never at boot; that mark carries neither a cycle nor a
+ * refusal and is not a firing (the Schedule table shows "Never").
+ */
+export function isScheduleFiring(mark: HealthScheduleMark | undefined): mark is HealthScheduleMark {
+  return !!mark && (mark.cycle_id !== null || mark.refusal !== null);
+}
 
 type BadgeVariant = "default" | "secondary" | "outline" | "success" | "warning" | "destructive" | "cyan";
 
@@ -62,7 +72,19 @@ export const HEALTH_SPECIALIST_LABELS = {
   quality_analyst: "Quality Analyst",
   flow_lab: "Flow Lab",
   experimenter: "Experimenter",
+  opencti_checker: "OpenCTI Health Checker",
+  openaev_checker: "OpenAEV Health Checker",
+  opencrq_checker: "OpenCRQ Health Checker",
+  module_analyst: "Module Analyst",
 } as const;
+
+/** Every role a module checker cycle is booked under, the S14 alias included (backend `identity.MODULE_CHECKER_ROLES`). */
+const MODULE_CHECKER_ROLES: ReadonlySet<string> = new Set(["opencti_checker", "openaev_checker", "opencrq_checker", "module_analyst"]);
+
+/** Whether a cycle's specialist is a module checker (#101 S15): its digest shows recommendations and agentic findings. */
+export function isModuleCheckerRole(specialist: string): boolean {
+  return MODULE_CHECKER_ROLES.has(specialist);
+}
 
 /** @i18n-keys */
 export const HEALTH_TRIGGER_LABELS = {
@@ -106,6 +128,11 @@ const REASON_LABELS = {
   remove: "removed",
   flag: "flagged",
   dry_run: "dry-run",
+  high: "high confidence",
+  medium: "medium confidence",
+  low: "low confidence",
+  opened: "opened",
+  resolved: "resolved",
 } as const;
 
 export function healthSkipLabel(what: string): string {
@@ -134,13 +161,18 @@ const REFUSAL_LABELS = {
   start_failed: "{name} could not start this work.",
 } as const;
 
+/** The i18n key of a refusal code (`{name}` placeholder), `null` for a code this build does not know. */
+export function healthRefusalCodeKey(code: unknown): string | null {
+  return typeof code === "string" && Object.prototype.hasOwnProperty.call(REFUSAL_LABELS, code)
+    ? REFUSAL_LABELS[code as keyof typeof REFUSAL_LABELS]
+    : null;
+}
+
 /** The i18n key of a refusal: by its code, else the generic one. */
 export function healthRefusalKey(error: unknown): string {
   const detail = (error as { detail?: unknown } | null)?.detail;
   const code = detail && typeof detail === "object" ? (detail as { code?: unknown }).code : undefined;
-  return typeof code === "string" && Object.prototype.hasOwnProperty.call(REFUSAL_LABELS, code)
-    ? REFUSAL_LABELS[code as keyof typeof REFUSAL_LABELS]
-    : REFUSAL_LABELS.start_failed;
+  return healthRefusalCodeKey(code) ?? REFUSAL_LABELS.start_failed;
 }
 
 /** @i18n-keys */
@@ -201,7 +233,7 @@ export const EVIDENCE_KIND_LABELS = {
 export function healthTargetHref(type: HealthTargetType | null, id: string | null): string | null {
   if (!id) return null;
   if (type === "agent") return `/agents/${id}`;
-  if (type === "flow") return `/flows/${id}/builder`;
-  if (type === "assignment") return `/assignments/${id}`;
+  if (type === "flow") return `/flows/library/${id}`;
+  if (type === "assignment") return `/agents/assignments/${id}`;
   return null;
 }

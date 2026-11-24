@@ -66,6 +66,32 @@ def test_list_frictions_refuses_an_unknown_kind(monkeypatch):
     assert text.startswith("Error: unknown kind nope") and "Nothing was listed" in text
 
 
+def _friction_row(run_id: str | None) -> dict:
+    return {"id": "f1", "kind": "turn_resumed", "run_id": run_id, "class": "unclassified", "evidence": "resumed"}
+
+
+def test_list_frictions_by_agent_names_the_run_of_each_row(monkeypatch):
+    run_id = str(uuid.uuid4())
+
+    async def fake_list(**kwargs):
+        return [_friction_row(run_id)], 1
+
+    monkeypatch.setattr(frictions, "list_frictions", fake_list)
+    _, executor = build_friction_tools(str(USER), str(AGENT), run_id=RUN)
+    text = _call(executor, "list_frictions", agent_id=str(AGENT), kind="turn_resumed")
+    assert f"- `f1` turn_resumed in run {run_id}" in text
+
+
+def test_list_frictions_of_one_run_does_not_repeat_the_run(monkeypatch):
+    async def fake_list(**kwargs):
+        return [_friction_row(str(RUN))], 1
+
+    monkeypatch.setattr(frictions, "list_frictions", fake_list)
+    _, executor = build_friction_tools(str(USER), str(AGENT), run_id=RUN)
+    text = _call(executor, "list_frictions")
+    assert "in run" not in text and "- `f1` turn_resumed" in text
+
+
 def test_the_kind_filter_is_a_clause_of_the_query(monkeypatch):
     statements: list = []
 

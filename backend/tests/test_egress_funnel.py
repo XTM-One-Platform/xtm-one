@@ -73,7 +73,9 @@ PLATFORM_INTERNAL = {
     "services/autonomous_pentest.py": "registered OpenAEV platforms, reached at their registered API URL",
     "services/builtin_tools/image_assets.py": "fetch_image_asset reaches the public web (SSRF-checked)",
     "services/ctem_cases_source.py": "registered platforms, reached at their registered API URL (CTEM Cases, #11545)",
+    "services/ctem_dependency_matches.py": "registered OpenCTI, reached at its registered API URL (#1331)",
     "services/ctem_metrics_collector.py": "registered platforms, reached at their registered API URL",
+    "services/ctem_threat_package_live.py": "registered OpenCTI, reached at its registered API URL with the acting user's access (#1547)",
     "services/github_token_installations.py": "GitHub App installation tokens from api.github.com",
     "services/health/platform_checks.py": "Platform Health version check: the public XTM One release list on api.github.com",
     "services/mcp_oauth_clients.py": (
@@ -93,6 +95,8 @@ PLATFORM_INTERNAL = {
     "services/sandbox_workspace/preview.py": (
         "previews of started sandbox services on the operator's own OpenSandbox proxy; a relay would see its API key"
     ),
+    "services/google_chat_decision_cards.py": "Google Chat API calls (spaces.messages.create and patch, spaces.findDirectMessage) of the platform-hosted Chat app",
+    "services/slack_decision_cards.py": "Slack Web API calls (chat.update, views.open) of the platform-hosted Slack bot",
     "services/slack_events.py": "Slack identity lookups for the platform-hosted Slack bot",
     "services/telemetry.py": "Filigran telemetry",
     "services/tracing/clickhouse_client.py": "the platform's own trace store",

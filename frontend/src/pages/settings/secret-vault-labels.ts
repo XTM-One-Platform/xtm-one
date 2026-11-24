@@ -184,7 +184,7 @@ export function vaultUseHref(kind: string, id: string): string | null {
     case "mcp_server":
       return `/mcp-servers/${id}`;
     case "variable":
-      return `/variables/${id}`;
+      return `/connections/variables/${id}`;
     case "llm_provider":
       return "/settings/ai/models";
     case "channel_bot":
@@ -194,7 +194,7 @@ export function vaultUseHref(kind: string, id: string): string | null {
     case "langfuse":
       return "/settings/usage/observability";
     case "browser_profile":
-      return "/browser-profiles";
+      return "/connections";
     default:
       return null;
   }

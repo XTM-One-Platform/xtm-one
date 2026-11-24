@@ -425,34 +425,11 @@ async def test_create_llm_provider_blocked_when_models_env_only(monkeypatch):
     assert "MODELS_ENV_PROVIDING_ONLY=true" in str(exc.value.detail)
 
 
-@pytest.mark.asyncio
-async def test_create_llm_provider_blocked_when_gateway_flag_off(monkeypatch):
+def test_gateway_provider_addable_without_any_feature_flag(monkeypatch):
     monkeypatch.setattr(app_settings, "enabled_features", "")
-
-    body = LLMProviderRequest(
-        provider="filigran_gateway",
-        api_key="http://gateway.local:8080",
-    )
-
-    with pytest.raises(HTTPException) as exc:
-        await create_llm_provider(
-            body=body,
-            request=SimpleNamespace(),
-            user=SimpleNamespace(id=uuid.uuid4()),
-            db=SimpleNamespace(),
-        )
-
-    assert exc.value.status_code == 403
-    assert "Filigran AI Gateway" in str(exc.value.detail)
-
-
-@pytest.mark.asyncio
-async def test_create_llm_provider_allowed_when_gateway_flag_on(monkeypatch):
-    monkeypatch.setattr(app_settings, "enabled_features", "FILIGRAN_GATEWAY_PROVIDER")
 
     from app.api.v1.settings import _ensure_new_provider_allowed
 
-    # Raises only when the flag is off; this must not raise.
     _ensure_new_provider_allowed("filigran_gateway")
 
 
@@ -1075,7 +1052,6 @@ async def _resolve_gateway(monkeypatch, api_key: str):
     from app.api.v1.schemas.settings import ResolveModelsRequest
     from app.api.v1.settings import PROVIDER_MAP, resolve_models_with_key
 
-    monkeypatch.setattr(app_settings, "enabled_features", "FILIGRAN_GATEWAY_PROVIDER")
     monkeypatch.setitem(PROVIDER_MAP, "filigran_gateway", _RejectingGateway)
     with pytest.raises(HTTPException) as exc:
         await resolve_models_with_key(

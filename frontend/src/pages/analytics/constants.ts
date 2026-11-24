@@ -47,6 +47,8 @@ export const SOURCE_LABELS = {
   evaluation: "Evaluation",
   flow: "Flows",
   proxy: "Proxy",
+  // The analysis layer of Platform Health (#101 S9): its own source, never an agentic execution.
+  platform_health: "Platform Health",
 } as const;
 
 export function sourceLabel(source: string): string {

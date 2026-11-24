@@ -1,11 +1,15 @@
-"""Single-product seeded fleet M1: the OpenCTI PIR intelligence desk (#10542, epic #8975)."""
+"""Single-product seeded fleet M1: the OpenCTI PIR intelligence desk (#10542, epic #8975).
+
+Since CTEM-31 (#1048) the desk is the Intelligence role of the generic CTEM loop
+fleet: its agents and automations are unchanged, its fleet row is retired.
+"""
 
 from __future__ import annotations
 
 from app.agents import opencti_pir_desk as m1
 from app.agents.builtin_agents import ADMIN_OPT_IN_BUILTIN_ASSIGNMENTS, BUILTIN_AGENTS, BUILTIN_ASSIGNMENTS
-from app.agents.builtin_fleet_docs import BUILTIN_FLEET_DOCS, BUILTIN_FLEET_STRUCTURED
-from app.agents.builtin_fleets import BUILTIN_FLEETS
+from app.agents.builtin_fleet_docs import BUILTIN_FLEET_STRUCTURED, OPENCTI_PIR_DESK_DOC
+from app.agents.builtin_fleets import BUILTIN_FLEETS, CTEM_LOOP_SLUG, RETIRED_FLEET_SUCCESSORS
 from app.agents.builtin_roi_units import BUILTIN_ROI_EXEMPT, BUILTIN_ROI_UNITS, EXEMPT_ORCHESTRATOR
 from app.agents.fleet_opt_in import ENABLED_BY_DEFAULT_ALLOWLIST
 from app.services.opencti_trigger_provisioning import read_provision_spec
@@ -21,12 +25,16 @@ def _assignments() -> list[dict]:
     return [a for a in BUILTIN_ASSIGNMENTS if a["agent_slug"] == m1.ORCHESTRATOR]
 
 
-def test_the_fleet_is_seeded_in_xtm_one_and_dev_never_in_copilot():
+def test_the_desk_is_a_role_of_the_generic_loop_seeded_in_xtm_one_and_dev_never_in_copilot():
     from app.agents import fleet_seed
 
-    assert m1.PIR_DESK_FLEET in BUILTIN_FLEETS
-    assert m1.FLEET_SLUG in [f["slug"] for f in fleet_seed.fleets_for_mode("xtm_one")]
-    assert m1.FLEET_SLUG in [f["slug"] for f in fleet_seed.fleets_for_mode("dev")]
+    assert m1.PIR_DESK_FLEET not in BUILTIN_FLEETS
+    assert RETIRED_FLEET_SUCCESSORS[m1.FLEET_SLUG] == CTEM_LOOP_SLUG
+    loop = next(f for f in fleet_seed.fleets_for_mode("xtm_one") if f["slug"] == CTEM_LOOP_SLUG)
+    roles = {m["agent"]: m for m in loop["members"]}
+    assert set(roles) >= _NEW
+    role = roles[m1.ORCHESTRATOR]["role_label"]
+    assert role == "Intelligence desk"
     assert fleet_seed.fleets_for_mode("copilot") == []
     for slug in _NEW:
         assert _agents()[slug]["platform_targets"] == ["xtm_one", "dev"]
@@ -79,13 +87,14 @@ def test_roi_on_seeded_units_and_the_orchestrator_counts_nothing_twice():
 
 
 def test_the_seeded_documentation_names_every_automation_and_the_revocation_gate():
-    triggers = BUILTIN_FLEET_DOCS[m1.FLEET_SLUG]["triggers"]
+    triggers = OPENCTI_PIR_DESK_DOC["triggers"]
     for a in m1.PIR_DESK_ASSIGNMENTS:
         assert f"**{a['name']}**" in triggers
-    structured = BUILTIN_FLEET_STRUCTURED[m1.FLEET_SLUG]
-    assert [g["key"] for g in structured["gates"]] == ["indicator.revoke"]
-    assert structured["gates"][0]["impact"] == "destructive"
-    assert {p["check"] for p in structured["prerequisites"]} >= {"integration:opencti", "manual"}
+    # The revocation is folded into the loop's one waiting gate, ctem.mobilize (CTEM-31).
+    loop = BUILTIN_FLEET_STRUCTURED[CTEM_LOOP_SLUG]
+    mobilize = next(g for g in loop["gates"] if g["key"] == "ctem.mobilize")
+    assert "revoke a stale indicator" in mobilize["action"] and mobilize["impact"] == "destructive"
+    assert {p["check"] for p in loop["prerequisites"]} >= {"integration:opencti", "manual"}
 
 
 def test_no_hard_dependency_on_new_pir_criteria_types():

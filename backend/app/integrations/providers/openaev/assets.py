@@ -12,14 +12,199 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Any
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
-from ._common import _api, _search_body, _validate_filter_group, json_answer
+from ._common import _api, _relation_ids, _search_body, _validate_filter_group, json_answer
 
 logger = logging.getLogger(__name__)
 
 _SOURCE = "integration:openaev"
+
+#: The fields of OpenAEV's EndpointInput, as an endpoint read answers them.
+#: PUT /api/endpoints/{id} copies every one of them onto the endpoint, so an
+#: update sends them all back (read, merge, write) or clears the ones left out.
+_ENDPOINT_INPUT_FIELDS = (
+    "asset_name",
+    "asset_description",
+    "asset_external_reference",
+    "asset_tags",
+    "endpoint_platform",
+    "endpoint_arch",
+    "asset_ips",
+    "asset_hostname",
+    "asset_url",
+    "asset_mac_addresses",
+    "endpoint_is_eol",
+    "asset_category",
+    "asset_subcategory",
+    "asset_criticality",
+    "asset_internet_facing",
+    "asset_cloud_provider",
+    "asset_cloud_native_type",
+    "asset_cloud_region",
+    "asset_linked_person",
+    "asset_metadata",
+)
+
+
+#: Categories newer than some OpenAEV releases (xtm-one #1233): an update that
+#: sets one of them and is refused for it is sent again as GENERIC_ASSET with no
+#: subcategory.
+_NEWER_CATEGORIES = frozenset({"SOURCE_CODE"})
+
+#: The wording ``format_http_error`` gives a 400 and a 422.
+_REJECTION_MARKERS = ("bad request", "validation error")
+
+
+#: The update parameters an explicit ``clear`` unsets, with the value that
+#: unsets each one in the endpoint body (the name, platform and arch are
+#: required by OpenAEV and the category always has a value: never cleared).
+_CLEARABLE: dict[str, tuple[str, Any]] = {
+    "description": ("asset_description", None),
+    "hostname": ("asset_hostname", None),
+    "ips": ("asset_ips", []),
+    "tags": ("asset_tags", []),
+    "url": ("asset_url", None),
+    "subcategory": ("asset_subcategory", None),
+    "criticality": ("asset_criticality", None),
+    "internet_facing": ("asset_internet_facing", None),
+    "external_reference": ("asset_external_reference", None),
+}
+
+
+def _cleared(clear: list[str] | None) -> tuple[dict[str, Any], str]:
+    """The endpoint body values that unset the fields named in *clear*.
+
+    Returns ``(changes, refusal)``; an unknown name is refused before any call.
+    """
+    changes: dict[str, Any] = {}
+    unknown: list[str] = []
+    for raw in clear or []:
+        name = str(raw or "").strip().lower()
+        if not name:
+            continue
+        if name not in _CLEARABLE:
+            unknown.append(name)
+            continue
+        key, value = _CLEARABLE[name]
+        changes[key] = value
+    if unknown:
+        return {}, (
+            f"clear names unknown field(s): {', '.join(unknown)}. Clearable: "
+            f"{', '.join(_CLEARABLE)}. Nothing was written."
+        )
+    return changes, ""
+
+
+def _asset_group_input(current: dict[str, Any]) -> dict[str, Any]:
+    """The AssetGroupInput that keeps *current* (an asset group read) as it is."""
+    body: dict[str, Any] = {}
+    for key in ("asset_group_name", "asset_group_description"):
+        if key in current:
+            body[key] = current[key]
+    if "asset_group_tags" in current:
+        body["asset_group_tags"] = _relation_ids(current.get("asset_group_tags"), "tag_id")
+    if isinstance(current.get("asset_group_dynamic_filter"), dict):
+        body["asset_group_dynamic_filter"] = current["asset_group_dynamic_filter"]
+    return body
+
+
+def _category_refused(err: str | None, category: str) -> bool:
+    """Whether *err* is OpenAEV rejecting *category* itself.
+
+    Only a 400 or 422 whose detail names the category field (``asset_category``
+    or the ``AssetCategory`` enum) or the value counts: a 5xx, a timeout or a
+    rejection of another field (the subcategory included) is answered as it is,
+    never retried with a downgraded category.
+    """
+    if not err:
+        return False
+    low = err.lower()
+    if not any(marker in low for marker in _REJECTION_MARKERS):
+        return False
+    return any(word in low for word in ("asset_category", "assetcategory", category.lower()))
+
+
+def _endpoint_input(current: dict[str, Any]) -> dict[str, Any]:
+    """The update body that keeps *current* (an endpoint read) as it is."""
+    body = {k: current[k] for k in _ENDPOINT_INPUT_FIELDS if k in current}
+    tags = body.get("asset_tags")
+    if isinstance(tags, list):
+        # Tags read back as ids, or as objects on some builds.
+        body["asset_tags"] = [
+            t.get("tag_id") if isinstance(t, dict) else t
+            for t in tags
+            if (t.get("tag_id") if isinstance(t, dict) else t)
+        ]
+    return body
+
+
+async def _bulk_update(
+    base_url: str,
+    headers: dict[str, str],
+    *,
+    asset_ids: list[str] | None,
+    filter_json: str,
+    category: str,
+    subcategory: str,
+    url: str,
+    criticality: str,
+    tags: list[str] | None,
+    clear: list[str] | None = None,
+) -> str:
+    """One ``PUT /api/assets/bulk`` (OpenAEV #9654) over ids or a filter group."""
+    ids = [i for i in (asset_ids or []) if i]
+    if bool(ids) == bool(filter_json):
+        return "bulk_update needs exactly one selection: asset_ids or asset_filter."
+    body: dict[str, Any] = {}
+    if ids:
+        body["asset_ids_to_process"] = ids
+    else:
+        try:
+            parsed = json.loads(filter_json)
+        except ValueError as exc:
+            return f"asset_filter must be valid JSON: {exc}"
+        filter_err = _validate_filter_group(parsed)
+        if filter_err:
+            return f"asset_filter is invalid. {filter_err}"
+        body["search_pagination_input"] = {"filterGroup": parsed}
+    changes: dict[str, Any] = {}
+    if category:
+        changes["asset_category"] = category.strip().upper()
+    if subcategory:
+        changes["asset_subcategory"] = subcategory.strip().upper()
+    if url:
+        changes["asset_url"] = url
+    clear_names = {str(c or "").strip().lower() for c in clear or []} - {""}
+    if clear_names - {"url"}:
+        return (
+            "bulk_update clears the url only (OpenAEV stores a blank url as none); "
+            "clear other fields asset by asset with action 'update'. Nothing was written."
+        )
+    if "url" in clear_names and not url:
+        changes["asset_url"] = ""
+    if criticality:
+        changes["asset_criticality"] = criticality.strip().upper()
+    if tags:
+        changes["asset_tags_to_add"] = tags
+    if not changes:
+        return "Provide at least one of category, subcategory, url, criticality, tags or clear ['url']."
+    if "asset_subcategory" in changes and "asset_category" not in changes:
+        return "A subcategory needs its category: pass category too."
+    body.update(changes)
+    resp, err = await _api(base_url, headers, "put", "/api/assets/bulk", "bulk update assets", json=body)
+    if err:
+        if "404" in err or "405" in err or "not found" in err.lower():
+            return (
+                f"{err}\nThis OpenAEV has no bulk asset update (it needs OpenAEV with "
+                "PUT /api/assets/bulk): update the assets one by one with action 'update'."
+            )
+        return err
+    updated = resp.json() if resp is not None else None
+    count = len(updated) if isinstance(updated, list) else 0
+    return f"Updated {count} asset(s): {', '.join(sorted(changes))}."
 
 
 def register(
@@ -35,36 +220,112 @@ def register(
         platform: str = "",
         arch: str = "",
         tags: list[str] | None = None,
+        url: str = "",
+        category: str = "",
+        subcategory: str = "",
+        criticality: str = "",
+        internet_facing: bool | None = None,
+        external_reference: str = "",
+        asset_ids: list[str] | None = None,
+        asset_filter: str = "",
+        clear: list[str] | None = None,
     ) -> str:
         action = (action or "").strip().lower()
+        if action == "bulk_update":
+            return await _bulk_update(
+                base_url,
+                headers,
+                asset_ids=asset_ids,
+                filter_json=asset_filter,
+                category=category,
+                subcategory=subcategory,
+                url=url,
+                criticality=criticality,
+                tags=tags,
+                clear=clear,
+            )
         if not asset_id:
             return "asset_id (endpoint_id) is required."
 
         if action == "update":
-            body: dict = {}
+            changes, refusal = _cleared(clear)
+            if refusal:
+                return refusal
             if name:
-                body["asset_name"] = name
+                changes["asset_name"] = name
             if description:
-                body["asset_description"] = description
+                changes["asset_description"] = description
             if tags is not None:
-                body["asset_tags"] = tags
+                changes["asset_tags"] = tags
             if hostname:
-                body["asset_hostname"] = hostname
+                changes["asset_hostname"] = hostname
             if ips is not None:
-                body["asset_ips"] = ips
+                changes["asset_ips"] = ips
             if platform:
-                body["endpoint_platform"] = platform
+                changes["endpoint_platform"] = platform
             if arch:
-                body["endpoint_arch"] = arch
-            if not body:
-                return "Provide at least one field to update."
+                changes["endpoint_arch"] = arch
+            if url:
+                changes["asset_url"] = url
+            if category:
+                changes["asset_category"] = category.strip().upper()
+            if subcategory:
+                changes["asset_subcategory"] = subcategory.strip().upper()
+            if criticality:
+                changes["asset_criticality"] = criticality.strip().upper()
+            if internet_facing is not None:
+                changes["asset_internet_facing"] = internet_facing
+            if external_reference:
+                changes["asset_external_reference"] = external_reference
+            if not changes:
+                return "Provide at least one field to update, or name the fields to unset in clear."
+            # OpenAEV's PUT replaces the whole endpoint (fields left out are
+            # cleared, tags replaced): read it, then send it back with only
+            # the requested fields changed.
+            resp, err = await _api(
+                base_url,
+                headers,
+                "get",
+                f"/api/endpoints/{asset_id}",
+                "read endpoint",
+            )
+            if err:
+                return err
+            current = resp.json() if resp is not None else None
+            if not isinstance(current, dict) or not current:
+                return f"Endpoint '{asset_id}' not found: nothing updated."
+            body = _endpoint_input(current)
+            body.update(changes)
             _, err = await _api(
                 base_url, headers, "put", f"/api/endpoints/{asset_id}",
                 "update endpoint", json=body,
             )
+            fallback = ""
+            requested = str(changes.get("asset_category") or "")
+            if (
+                requested in _NEWER_CATEGORIES
+                and current.get("asset_category") != requested
+                and _category_refused(err, requested)
+            ):
+                # An OpenAEV that predates the category refuses it: keep the asset
+                # unclassified there (XTM One keeps the exact category).
+                fallback = requested
+                body["asset_category"] = "GENERIC_ASSET"
+                body.pop("asset_subcategory", None)
+                _, err = await _api(
+                    base_url,
+                    headers,
+                    "put",
+                    f"/api/endpoints/{asset_id}",
+                    "update endpoint",
+                    json=body,
+                )
             if err:
                 return err
-            return f"Updated endpoint {asset_id}."
+            done = f"Updated endpoint {asset_id}: {', '.join(sorted(changes))}."
+            if fallback:
+                done += f" This OpenAEV does not know {fallback}: the category was set to GENERIC_ASSET there."
+            return done
 
         if action == "delete":
             _, err = await _api(
@@ -76,7 +337,7 @@ def register(
             return f"Deleted endpoint {asset_id}."
 
         return (
-            f"Unknown action '{action}'. Valid actions: update, delete. "
+            f"Unknown action '{action}'. Valid actions: update, delete, bulk_update. "
             "(Use search_openaev_assets / get_openaev_asset to read.)"
         )
 
@@ -158,6 +419,22 @@ def register(
                     "create asset group", json=body,
                 )
             else:
+                # OpenAEV's PUT replaces the whole group (AssetGroupInput): a
+                # name left out is refused, tags and the dynamic filter left
+                # out are reset. Read it and send it back with the changes.
+                resp, err = await _api(
+                    base_url,
+                    headers,
+                    "get",
+                    f"/api/asset_groups/{asset_group_id}",
+                    "read asset group",
+                )
+                if err:
+                    return err
+                current = resp.json() if resp is not None else None
+                if not isinstance(current, dict) or not current:
+                    return f"Asset group '{asset_group_id}' not found: nothing updated."
+                body = {**_asset_group_input(current), **body}
                 resp, err = await _api(
                     base_url, headers, "put", f"/api/asset_groups/{asset_group_id}",
                     "update asset group", json=body,
@@ -317,25 +594,54 @@ def register(
             name="manage_openaev_asset",
             description=(
                 "Update or delete an OpenAEV asset (endpoint). Actions: 'update' "
-                "(asset_id + any of name, description, tags, hostname, ips, platform "
-                "[Windows/Linux/MacOS], arch [x86_64/arm64]) and 'delete' (asset_id). "
+                "(asset_id + any of the fields; the others are kept; clear lists the "
+                "fields to unset), 'delete' "
+                "(asset_id) and 'bulk_update' (asset_ids or asset_filter; sets category, "
+                "subcategory, url, criticality, adds tags on every match). "
                 "Endpoints are normally created by deploying an agent; use "
                 "search_openaev_assets / get_openaev_asset to read."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
-                    "action": {"type": "string", "enum": ["update", "delete"]},
+                    "action": {"type": "string", "enum": ["update", "delete", "bulk_update"]},
                     "asset_id": {"type": "string", "description": "Endpoint ID."},
+                    "asset_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "bulk_update: the asset ids.",
+                    },
+                    "asset_filter": {
+                        "type": "string",
+                        "description": "bulk_update: asset search filter group as JSON.",
+                    },
                     "name": {"type": "string"},
                     "description": {"type": "string"},
                     "hostname": {"type": "string"},
                     "ips": {"type": "array", "items": {"type": "string"}},
                     "platform": {"type": "string", "description": "Windows/Linux/MacOS."},
                     "arch": {"type": "string", "description": "x86_64/arm64."},
-                    "tags": {"type": "array", "items": {"type": "string"}},
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Tag ids; replaces the asset's tags.",
+                    },
+                    "url": {"type": "string"},
+                    "category": {
+                        "type": "string",
+                        "description": "HOST, WEB_APPLICATION, CLOUD_RESOURCE...",
+                    },
+                    "subcategory": {"type": "string", "description": "WEBSITE, SERVER..."},
+                    "criticality": {"type": "string", "description": "LOW, MEDIUM, HIGH, VERY_HIGH."},
+                    "internet_facing": {"type": "boolean"},
+                    "external_reference": {"type": "string"},
+                    "clear": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": list(_CLEARABLE)},
+                        "description": "Fields to unset (bulk_update: url only).",
+                    },
                 },
-                "required": ["action", "asset_id"],
+                "required": ["action"],
             },
             source=_SOURCE,
         ),
@@ -344,7 +650,7 @@ def register(
             description=(
                 "Manage OpenAEV asset groups. Actions: 'list' (search), 'get' "
                 "(asset_group_id), 'create' (name, optional description/tags/"
-                "dynamic_filter JSON), 'update' (asset_group_id + fields), "
+                "dynamic_filter JSON), 'update' (asset_group_id + fields; the others are kept), "
                 "'set_assets' (asset_group_id + asset_ids for static membership), "
                 "'delete' (asset_group_id). dynamic_filter is a FilterGroup JSON "
                 "object for dynamic membership."

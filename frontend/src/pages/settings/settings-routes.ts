@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * The Settings sections and the redirect table of the old tabs (#9173, S1).
+ * The Settings sections (#9173, S1).
  *
  * Settings has 7 sections, each with its sub-sections in the URL:
- * `/settings/<section>/<sub-section>`. Every route of the 12 old tabs
- * redirects here, keeping its query and hash (an old OAuth callback with
- * `?gh_connected=true`, an old hub link with `#xtm-hub`).
- * `settings-routes.test.ts` fails on an old route literal anywhere else in
- * the frontend or the backend.
+ * `/settings/<section>/<sub-section>`. A segment that is not a section is not
+ * found: the former tab routes are not redirected (#797).
+ * `settings-routes.test.ts` fails on a former route literal anywhere in the
+ * frontend or the backend.
  */
 
 export type SettingsTab = "organization" | "automations" | "integrations" | "ai" | "security" | "usage" | "platform";
@@ -29,33 +28,20 @@ export type UsageSection = "quotas" | "observability" | "pricing" | "storage";
 /** The Platform Health settings: the Platform Health page links here (#9301 N4, renamed #101 S1). */
 export const HEALTH_SETTINGS_PATH = "/settings/automations/health";
 
-/** The old tab segment and where it lives now. */
-export const LEGACY_SETTINGS_ROUTES: Readonly<Record<string, string>> = {
-  parameters: "/settings/platform",
-  models: "/settings/ai/models",
-  assistant: "/settings/ai/assistant",
-  channels: "/settings/integrations/channels",
-  mcp: "/settings/integrations/mcp",
-  quotas: "/settings/usage/quotas",
-  observability: "/settings/usage/observability",
-  quality: "/settings/automations/quality",
-  concierge: HEALTH_SETTINGS_PATH,
-};
+/** The former tab segments, retired with no redirect (#797); the test keeps them out of the code. */
+export const RETIRED_SETTINGS_SEGMENTS: readonly string[] = [
+  "parameters", "models", "assistant", "channels", "mcp", "quotas", "observability", "quality", "concierge",
+];
 
-/**
- * Where an old Settings route goes, its query and hash kept; `null` when the
- * tab segment is not an old one.
- */
-export function legacySettingsTarget(tab: string | undefined, search: string, hash: string): string | null {
-  if (!tab || !Object.prototype.hasOwnProperty.call(LEGACY_SETTINGS_ROUTES, tab)) return null;
-  return `${LEGACY_SETTINGS_ROUTES[tab]}${search}${hash}`;
+/** Whether a `/settings/:tab` segment is a section; bare `/settings` is (the first section). */
+export function isSettingsTab(tab: string | undefined): boolean {
+  return tab === undefined || (SETTINGS_TABS as readonly string[]).includes(tab);
 }
 
 /**
  * The sub-section bare `/settings/automations` opens (UX C3): Fleets in
  * XTM One mode, Agent runs in Copilot mode. An XTM One only section in Copilot
- * mode falls back to this default; Platform Health is built in since #101 (S1),
- * and the former `concierge` segment opens it.
+ * mode falls back to this default; Platform Health is built in since #101 (S1).
  * Fleets is in every mode (#9162 scope: fleet member configuration and its
  * presets are generic fleet features); only CTEM stage agents is XTM One only.
  */
@@ -72,8 +58,6 @@ export function automationsSection(
     case "quality":
     case "health":
       return requested;
-    case "concierge":
-      return "health";
     default:
       return fallback;
   }

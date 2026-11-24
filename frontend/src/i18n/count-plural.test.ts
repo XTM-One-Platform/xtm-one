@@ -84,6 +84,8 @@ const BARE: Record<string, string> = {
  * ("sur la dernière exécution" with no run).
  */
 const NEVER_ZERO: Record<string, string> = {
+  "{count, plural, one {Every hour} other {Every # hours}}":
+    "The outside lens cadence_hours is 1 to 720 (AttackSurfacePass, OrganizationOutsideLensCard).",
   "{count, plural, one {Last # day} other {Last # days}}":
     "The CTEM context bar and widget settings pass CONTEXT_PERIODS (7, 30, 90) only (dashboard-context.ts).",
   "{count, plural, one {Its runs refuse this integration's tools until its owner gets access back or the binding is removed.} other {Its runs refuse the tools of these # integrations until its owner gets access back or the bindings are removed.}}":
@@ -96,6 +98,8 @@ const NEVER_ZERO: Record<string, string> = {
     "waitingPullRequestCount returns pull_requests.length || 1, so an item waiting for CI waits on at least one pull request.",
   "{count, plural, one {It stays blocked until the CI of its pull request completes and the platform hands it over.} other {It stays blocked until the CI of its # pull requests completes and the platform hands it over.}}":
     "waitingPullRequestCount returns pull_requests.length || 1, so an item waiting for CI waits on at least one pull request.",
+  "Only the first {count, plural, one {# item is} other {# items are}} drawn: narrow the filters to see the rest.":
+    "WorkItemGraphView passes the constant GRAPH_NODE_CAP (500) and shows it only when the graph is truncated.",
   "Delete {count, plural, one {the only run} other {all # runs}} from this batch?":
     "EvaluationDetail builds each batch from its runs, so a batch holds at least one.",
   "from the last {count, plural, one {run} other {{shown} runs}}":

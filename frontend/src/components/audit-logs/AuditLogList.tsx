@@ -107,7 +107,7 @@ function AuditLogDialog({ log, onClose, userKnown }: { log: AuditLog | null; onC
               <Badge variant="outline" className="content-caption">{auditEntityLabel(log.entity_type, t_i18n)}</Badge>
               {/* The user moved out of the table cell (#12070): the detail opens them. */}
               {userKnown ? (
-                <Link to={`/users/${log.user_id}`} className="content-compact text-accent hover:underline" data-testid="audit-log-detail-user">
+                <Link to={`/users-and-groups/users/${log.user_id}`} className="content-compact text-accent hover:underline" data-testid="audit-log-detail-user">
                   {log.user_email}
                 </Link>
               ) : (

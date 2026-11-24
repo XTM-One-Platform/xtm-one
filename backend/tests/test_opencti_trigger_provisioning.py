@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 
@@ -25,6 +26,7 @@ class FakeOpenCTI:
         self.sectors = sectors or []
         self.notifiers: dict[str, dict] = {}
         self.triggers: dict[str, dict] = {}
+        self.playbooks: dict[str, dict[str, Any]] = {}
         self.calls: list[str] = []
         self._next = 0
 
@@ -34,7 +36,7 @@ class FakeOpenCTI:
 
     async def __call__(self, query: str, variables: dict | None = None):
         v = variables or {}
-        op = query.split("(")[0].split()[-1]
+        op = query.split("(")[0].split("{")[0].split()[-1]
         self.calls.append(op)
         if op == "XtmLabels":
             nodes = [{"id": i, "value": name} for name, i in self.labels.items() if v["search"].lower() in name.lower()]
@@ -44,9 +46,60 @@ class FakeOpenCTI:
             rows = self.countries if root == "countries" else self.sectors
             # OpenCTI's search is fuzzy: answer every row, the caller matches exactly.
             return {root: {"edges": [{"node": n} for n in rows]}}, None
+        if op == "XtmMe":
+            return {"me": {"id": "user-xtm", "name": "XTM One integration"}}, None
+        if op == "XtmPirs":
+            return {"pirs": {"edges": [{"node": {"id": "pir-1", "name": "Ransomware on finance"}}]}}, None
+        if op == "XtmNodeReplace":
+            i = v["input"]
+            for node in self.playbooks[v["id"]]["nodes"]:
+                if node["id"] == v["nodeId"]:
+                    node.update(
+                        name=i["name"],
+                        component_id=i["component_id"],
+                        position=i["position"],
+                        configuration=i["configuration"],
+                    )
+            return {"playbookReplaceNode": v["nodeId"]}, None
+        if op == "XtmPlaybook":
+            p = self.playbooks.get(v["id"])
+            if not p:
+                return {"playbook": None}, None
+            definition = json.dumps({"nodes": p["nodes"], "links": []})
+            return {
+                "playbook": {
+                    "id": v["id"],
+                    "name": p["name"],
+                    "playbook_running": p["running"],
+                    "playbook_definition": definition,
+                }
+            }, None
+        if op == "XtmPlaybookAdd":
+            pid = self._id()
+            self.playbooks[pid] = {"name": v["input"]["name"], "nodes": [], "running": False}
+            return {"playbookAdd": {"id": pid}}, None
+        if op == "XtmNodeAdd":
+            nid = self._id()
+            i = v["input"]
+            self.playbooks[v["id"]]["nodes"].append(
+                {
+                    "id": nid,
+                    "name": i["name"],
+                    "position": i["position"],
+                    "component_id": i["component_id"],
+                    "configuration": i["configuration"],
+                    "parent": i.get("parentNodeId"),
+                }
+            )
+            return {"playbookAddNode": nid}, None
+        if op == "XtmPlaybookRun":
+            self.playbooks[v["id"]]["running"] = v["input"][0]["value"] == ["true"]
+            return {"playbookFieldPatch": {"id": v["id"]}}, None
         if op == "XtmFind":
-            root = "notifiers" if "notifiers(" in query else "triggersKnowledge"
-            store = self.notifiers if root == "notifiers" else self.triggers
+            root = (
+                "notifiers" if "notifiers(" in query else "playbooks" if "playbooks(" in query else "triggersKnowledge"
+            )
+            store = self.notifiers if root == "notifiers" else self.playbooks if root == "playbooks" else self.triggers
             nodes = [{"id": k, "name": o["name"]} for k, o in store.items()]
             return {root: {"edges": [{"node": n} for n in nodes]}}, None
         if op == "XtmNotifier":
@@ -76,7 +129,13 @@ class FakeOpenCTI:
                 self.triggers[v["id"]][e["key"]] = e["value"] if e["key"] == "notifiers" else e["value"][0]
             return {"triggerKnowledgeFieldPatch": {"id": v["id"]}}, None
         if op == "XtmDelete":
-            store = self.triggers if "triggerKnowledgeDelete" in query else self.notifiers
+            store = (
+                self.triggers
+                if "triggerKnowledgeDelete" in query
+                else self.playbooks
+                if "playbookDelete" in query
+                else self.notifiers
+            )
             if store.pop(v["id"], None) is None:
                 return {}, "Object not found"
             return {}, None
@@ -109,6 +168,9 @@ def test_spec_is_normalised_and_named():
         ({"cisa_kev": "yes"}, "cisa_kev"),
         ({"min_epss_score": 1.5}, "min_epss_score"),
         ({"min_epss_score": True}, "min_epss_score"),
+        ({"min_cvss": 11}, "min_cvss"),
+        ({"min_cvss": True}, "min_cvss"),
+        ({"to_types": [""]}, "non-empty"),
         ("yes", "object"),
     ],
 )
@@ -147,8 +209,34 @@ def test_epss_alone_is_a_gte_filter_and_a_usable_spec():
 def test_a_spec_without_vulnerability_signals_keeps_its_filters():
     spec = prov.read_provision_spec(SPEC_CONFIG)
     assert spec["cisa_kev"] is None and spec["min_epss_score"] is None and spec["from_types"] == []
+    assert spec["to_types"] == [] and spec["relationship_types"] == [] and spec["min_cvss"] is None
     filters = json.loads(prov.trigger_filters(spec, ["label-1"]))
     assert {f["key"][0] for f in filters["filters"]} == {"entity_type", "objectLabel", "x_opencti_score"}
+
+
+def test_to_types_relationship_types_and_min_cvss_are_filters():
+    spec = prov.read_provision_spec(
+        {
+            "provider": "opencti",
+            "provision": {"to_types": ["Vulnerability"], "relationship_types": ["has"], "min_cvss": 7},
+        }
+    )
+    assert spec["to_types"] == ["Vulnerability"] and spec["relationship_types"] == ["has"]
+    assert spec["min_cvss"] == 7.0
+    keys = {f["key"][0]: f for f in json.loads(prov.trigger_filters(spec, []))["filters"]}
+    assert keys["toTypes"] == {"key": ["toTypes"], "values": ["Vulnerability"], "operator": "eq", "mode": "or"}
+    assert keys["entity_type"]["values"] == ["has"]
+    assert keys["x_opencti_cvss_base_score"] == {
+        "key": ["x_opencti_cvss_base_score"],
+        "values": ["7.0"],
+        "operator": "gte",
+        "mode": "or",
+    }
+
+
+def test_each_new_key_alone_is_a_usable_spec():
+    for provision in ({"to_types": ["Vulnerability"]}, {"relationship_types": ["has"]}, {"min_cvss": 9}):
+        assert prov.read_provision_spec({"provider": "opencti", "provision": provision})
 
 
 def test_notifier_posts_to_the_receiver_with_the_token():
@@ -415,3 +503,166 @@ async def test_an_unresolved_region_or_sector_is_an_error_and_nothing_is_created
     assert state["status"] == "error"
     assert "regions ['JP']" in state["error"] and "sector ['Energy']" in state["error"]
     assert not octi.triggers and not octi.notifiers
+
+
+PIR_CONFIG: dict[str, Any] = {
+    "provider": "opencti",
+    "event": "create",
+    "provision": {
+        "fleet": "Threat response",
+        "purpose": "PIR flags",
+        "mode": "pir_playbook",
+        "organization_context": ["pir_ids"],
+        "pir_min_score": 70,
+    },
+}
+
+
+def _pir_spec() -> dict[str, Any]:
+    spec = prov.read_provision_spec(PIR_CONFIG)
+    assert spec is not None
+    return dict(spec, pir_ids=["pir-2", "pir-1"])
+
+
+def test_pir_playbook_mode_needs_the_profile_pirs_and_a_known_mode() -> None:
+    assert _pir_spec()["mode"] == "pir_playbook"
+    trigger_spec = prov.read_provision_spec(SPEC_CONFIG)
+    assert trigger_spec is not None and trigger_spec["mode"] == "trigger"
+    provision: dict[str, Any] = dict(PIR_CONFIG["provision"])
+    no_pirs = {**PIR_CONFIG, "provision": {**provision, "organization_context": []}}
+    with pytest.raises(prov.ProvisionSpecError, match="must name pir_ids"):
+        prov.read_provision_spec(no_pirs)
+    unknown = {**PIR_CONFIG, "provision": {**provision, "mode": "stream"}}
+    with pytest.raises(prov.ProvisionSpecError, match=r"provision\.mode"):
+        prov.read_provision_spec(unknown)
+
+
+def test_pir_playbook_nodes_listen_to_the_profile_pirs_and_notify_the_integration_user() -> None:
+    entry, notify = prov.pir_playbook_nodes(
+        _pir_spec(), "notifier-1", "user-xtm", "XTM One integration", {"pir-1": "Ransomware on finance"}
+    )
+    # Items as OpenCTI's PIR listener reads them (pir.value), never bare ids, with the
+    # label and type its form draws the chip from (a PIR OpenCTI did not name shows its id).
+    assert entry["inPirFilters"] == [
+        {"value": "pir-1", "label": "Ransomware on finance", "type": "Pir"},
+        {"value": "pir-2", "label": "pir-2", "type": "Pir"},
+    ]
+    assert entry["create"] is True and entry["update"] is True
+    assert entry["delete"] is False and entry["create_rel"] is False
+    score = json.loads(entry["filters"])["filters"][0]
+    assert score == {"key": ["pir_score"], "values": ["70"], "operator": "gte", "mode": "or"}
+    # The Targets chip of the notifier node: the user's name and the user icon (CTEM-05 follow-up).
+    assert notify == {
+        "notifiers": ["notifier-1"],
+        "authorized_members": [{"value": "user-xtm", "label": "XTM One integration", "type": "User"}],
+    }
+    # No name answered: the id, never an empty chip.
+    _, bare = prov.pir_playbook_nodes(_pir_spec(), "notifier-1", "user-xtm")
+    assert bare["authorized_members"] == [{"value": "user-xtm", "label": "user-xtm", "type": "User"}]
+
+
+def test_chip_items_are_compared_by_value_only() -> None:
+    _, notify = prov.pir_playbook_nodes(_pir_spec(), "notifier-1", "user-xtm", "XTM One integration")
+    resaved = {**notify, "authorized_members": [{"value": "user-xtm", "label": "Renamed", "type": "User"}]}
+    assert prov.same_node_configuration(prov.NOTIFIER_COMPONENT, notify, resaved)
+    assert prov.same_node_configuration(
+        prov.NOTIFIER_COMPONENT, notify, {**notify, "authorized_members": [{"value": "user-xtm"}]}
+    )
+    other = {**notify, "authorized_members": [{"value": "someone-else", "label": "XTM One integration"}]}
+    assert not prov.same_node_configuration(prov.NOTIFIER_COMPONENT, notify, other)
+    assert not prov.same_node_configuration(prov.NOTIFIER_COMPONENT, notify, {**notify, "notifiers": ["n-2"]})
+    assert not prov.same_node_configuration(
+        prov.NOTIFIER_COMPONENT, notify, {**notify, "authorized_members": ["user-xtm"]}
+    )
+
+
+def test_pir_webhook_template_keys_each_change_on_the_pir_information() -> None:
+    template = prov.PIR_WEBHOOK_TEMPLATE
+    assert "data[0].notification_id" in template and "notification.id" not in template
+    assert "pir_information" in template.split('"type"')[0]
+    assert '"xtm_source": "pir_playbook"' in template
+
+
+@pytest.mark.asyncio
+async def test_reconcile_pir_playbook_creates_a_running_playbook_then_is_idempotent() -> None:
+    octi = FakeOpenCTI()
+    state = await prov.reconcile(octi, _pir_spec(), None, url=URL, secret="s")
+    assert state["status"] == "provisioned", (state.get("error"), octi.calls)
+    assert state["mode"] == "pir_playbook"
+    assert not octi.triggers and len(octi.notifiers) == 1
+    playbook = octi.playbooks[state["playbook_id"]]
+    assert playbook["running"] and playbook["name"] == "XTM One - Threat response - PIR flags"
+    entry, notify = playbook["nodes"]
+    assert (entry["component_id"], notify["component_id"]) == (prov.PIR_ENTRY_COMPONENT, prov.NOTIFIER_COMPONENT)
+    assert notify["parent"] == entry["id"]
+    assert json.loads(notify["configuration"])["notifiers"] == [state["notifier_id"]]
+    template = json.loads(octi.notifiers[state["notifier_id"]]["notifier_configuration"])["template"]
+    assert template == prov.PIR_WEBHOOK_TEMPLATE
+
+    octi.calls.clear()
+    again = await prov.reconcile(octi, _pir_spec(), state, url=URL, secret="s")
+    assert again["playbook_id"] == state["playbook_id"]
+    assert not [c for c in octi.calls if c.endswith(("Add", "Patch", "Delete", "Run"))]
+
+
+@pytest.mark.asyncio
+async def test_a_playbook_provisioned_without_chip_labels_is_relabelled_in_place() -> None:
+    octi = FakeOpenCTI()
+    state = await prov.reconcile(octi, _pir_spec(), None, url=URL, secret="s")
+    playbook = octi.playbooks[state["playbook_id"]]
+    entry_node, notify_node = playbook["nodes"]
+    node_ids = (entry_node["id"], notify_node["id"])
+    # The form CTEM-05 provisioned before the labels: value alone.
+    for node, key in ((entry_node, "inPirFilters"), (notify_node, "authorized_members")):
+        config = json.loads(node["configuration"])
+        config[key] = [{"value": item["value"]} for item in config[key]]
+        node["configuration"] = json.dumps(config)
+    octi.calls.clear()
+    again = await prov.reconcile(octi, _pir_spec(), state, url=URL, secret="s")
+    assert again["playbook_id"] == state["playbook_id"] and list(octi.playbooks) == [state["playbook_id"]]
+    assert again["fingerprint"] == state["fingerprint"]
+    assert octi.calls.count("XtmNodeReplace") == 2
+    assert not [c for c in octi.calls if c.endswith(("Add", "Delete", "Run"))]
+    entry_node, notify_node = playbook["nodes"]
+    # Patched in place: same nodes, same link.
+    assert (entry_node["id"], notify_node["id"]) == node_ids and notify_node["parent"] == entry_node["id"]
+    members = json.loads(notify_node["configuration"])["authorized_members"]
+    assert members == [{"value": "user-xtm", "label": "XTM One integration", "type": "User"}]
+    assert json.loads(entry_node["configuration"])["inPirFilters"][0]["label"] == "Ransomware on finance"
+
+    # A label rewritten by a save in OpenCTI is not a drift: nothing is written.
+    config = json.loads(notify_node["configuration"])
+    config["authorized_members"][0]["label"] = "Renamed in OpenCTI"
+    notify_node["configuration"] = json.dumps(config)
+    octi.calls.clear()
+    kept = await prov.reconcile(octi, _pir_spec(), again, url=URL, secret="s")
+    assert kept["playbook_id"] == state["playbook_id"]
+    assert not [c for c in octi.calls if c.endswith(("Add", "Replace", "Patch", "Delete", "Run"))]
+
+
+@pytest.mark.asyncio
+async def test_reconcile_pir_playbook_rebuilds_an_edited_or_stopped_playbook() -> None:
+    octi = FakeOpenCTI()
+    state = await prov.reconcile(octi, _pir_spec(), None, url=URL, secret="s")
+    octi.playbooks[state["playbook_id"]]["running"] = False
+    rebuilt = await prov.reconcile(octi, _pir_spec(), state, url=URL, secret="s")
+    assert rebuilt["playbook_id"] != state["playbook_id"] and list(octi.playbooks) == [rebuilt["playbook_id"]]
+    assert octi.playbooks[rebuilt["playbook_id"]]["running"]
+
+    octi.playbooks[rebuilt["playbook_id"]]["nodes"][0]["configuration"] = "{}"
+    again = await prov.reconcile(octi, _pir_spec(), rebuilt, url=URL, secret="s")
+    assert list(octi.playbooks) == [again["playbook_id"]] and again["playbook_id"] != rebuilt["playbook_id"]
+
+
+@pytest.mark.asyncio
+async def test_switching_mode_swaps_the_trigger_and_the_playbook_and_remove_deletes_all() -> None:
+    octi = FakeOpenCTI()
+    trigger_spec = dict(_pir_spec(), mode="trigger")
+    as_trigger = await prov.reconcile(octi, trigger_spec, None, url=URL, secret="s")
+    assert len(octi.triggers) == 1 and not octi.playbooks
+    as_playbook = await prov.reconcile(octi, _pir_spec(), as_trigger, url=URL, secret="s")
+    assert not octi.triggers and len(octi.playbooks) == 1
+    back = await prov.reconcile(octi, trigger_spec, as_playbook, url=URL, secret="s")
+    assert len(octi.triggers) == 1 and not octi.playbooks
+    assert await prov.remove(octi, {**back, "playbook_id": as_playbook["playbook_id"]}) is None
+    assert not octi.triggers and not octi.playbooks and not octi.notifiers

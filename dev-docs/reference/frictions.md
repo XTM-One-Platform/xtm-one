@@ -28,7 +28,7 @@ event-replay hook waits for a replay path (none exists yet).
 | `tool`, `evidence` | The tool involved and what was observed, bounded to 2,000 characters |
 | `evidence_hash`, `count` | The dedupe key and how many times the run met it |
 | `friction_class` | `harness`, `procedure`, `persona_prompt_trigger`, `knowledge`, `platform_acceptable`, `unclassified` |
-| `disposition_kind`, `disposition_ref`, `disposed_at` | What carries the fix: `work_item`, `shared_state`, `skill_edit`, `prompt_edit` (each with a ref) or `accepted` |
+| `disposition_kind`, `disposition_ref`, `disposed_at` | What carries the fix: `work_item`, `shared_state`, `skill_edit`, `prompt_edit` (each with a ref) or `accepted`; a `harness` friction never takes `skill_edit` or `prompt_edit` (`HARNESS_REFUSED_DISPOSITIONS`, #1686) |
 
 **Dedupe.** Within one run a friction is unique by (kind, tool, evidence hash):
 the same friction met again raises `count` and `last_seen_at`. The hash is

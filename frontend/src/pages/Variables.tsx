@@ -433,7 +433,7 @@ export default function Variables() {
     setCreateOpen(true);
   }, [searchParams, setSearchParams]);
 
-  /* ``/variables/:id`` opens one variable's dialog, read through the detail
+  /* ``/connections/variables/:id`` opens one variable's dialog, read through the detail
      route: that is how Administration > Objects opens a colleague's private
      variable, which this list does not carry for an admin either. */
   const { id: routeVariableId } = useParams<{ id?: string }>();
@@ -444,11 +444,11 @@ export default function Variables() {
   const shownVar = editVar ?? routeVariable ?? null;
   const closeEdit = useCallback(() => {
     setEditVar(null);
-    if (routeVariableId) navigate("/variables", { replace: true });
+    if (routeVariableId) navigate("/connections/variables", { replace: true });
   }, [navigate, routeVariableId]);
 
   useEffect(() => {
-    if (routeVariableMissing) navigate("/variables", { replace: true });
+    if (routeVariableMissing) navigate("/connections/variables", { replace: true });
   }, [routeVariableMissing, navigate]);
 
   const handleCreate = async (data: {
@@ -516,7 +516,7 @@ export default function Variables() {
       {/* The Connections family header (#9301 N3b): its h1, the page's help
           in the "i" (#10215), and one tab row of the connection pages. */}
       <NavFamilyHeader
-        to="/variables"
+        to="/connections/variables"
         title="Variables"
         infoLabel={t_i18n("About variables")}
         info={customVariablesEnabled

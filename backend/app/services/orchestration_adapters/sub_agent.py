@@ -27,6 +27,7 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.utils import safe_uuid
 from app.llm.provider_access import acting_for
@@ -45,6 +46,40 @@ ADAPTER_NAME = "sub_agent"
 def execution_dedup_key(task_id: str | uuid.UUID) -> str:
     """Canonical dedup key for a sub-agent task's execution."""
     return f"sub_agent_task:{task_id}"
+
+
+#: The run status a parent holds its slot in while it waits for its delegated child.
+LIVE_PARENT_STATUSES = ("running",)
+
+
+async def children_of_live_parents(db: AsyncSession, due: list[OrchestrationExecution]) -> set[uuid.UUID]:
+    """The ids of the *due* task executions whose parent run (``payload.parent_run_id``) is still running.
+
+    Such a parent holds a slot of the shared pool while it waits for its child: the child must not queue
+    behind the work that slot is part of. One read; an execution with no parent run is never one.
+    """
+    parent_of: dict[uuid.UUID, uuid.UUID] = {}
+    for execution in due:
+        parent = safe_uuid((execution.payload or {}).get("parent_run_id"))
+        if parent is not None:
+            parent_of[execution.id] = parent
+    if not parent_of:
+        return set()
+    from app.models.assignment import AssignmentRun
+
+    live = set(
+        (
+            await db.execute(
+                select(AssignmentRun.id).where(
+                    AssignmentRun.id.in_(list(set(parent_of.values()))),
+                    AssignmentRun.status.in_(LIVE_PARENT_STATUSES),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return {execution_id for execution_id, parent in parent_of.items() if parent in live}
 
 
 async def _rebuild_file_context(ctx: AdapterContext, file_ids: list[str] | None):
@@ -243,6 +278,24 @@ class SubAgentAdapter(OrchestrationAdapter):
     def raised_attempt_bound(self, max_attempts: int) -> int:
         """A task queued under the old floor (4) is taken back under the task bound."""
         return raised_task_bound(max_attempts)
+
+    async def deal_claims(
+        self, db: AsyncSession, due: list[OrchestrationExecution], worker_id: str
+    ) -> list[OrchestrationExecution]:
+        """Children of a live parent first, then the rest; oldest first in each (the order *due* comes in)."""
+        if not due:
+            return []
+        first = await children_of_live_parents(db, due)
+        return [e for e in due if e.id in first] + [e for e in due if e.id not in first]
+
+    async def deal_reserved_claims(
+        self, db: AsyncSession, due: list[OrchestrationExecution], worker_id: str
+    ) -> list[OrchestrationExecution]:
+        """What the delegation reserve may claim once the shared pool is full: children of a live parent alone."""
+        if not due:
+            return []
+        first = await children_of_live_parents(db, due)
+        return [e for e in due if e.id in first]
 
     @property
     def cancel_poll_seconds(self) -> float | None:
@@ -508,7 +561,15 @@ class SubAgentAdapter(OrchestrationAdapter):
                 )
                 return
             if task is not None and task.status in ("pending", "running"):
-                error = _cap_reached_error(task, execution) or error
+                from app.services import orchestration_engine as engine
+
+                if engine.expired_before_start(execution):
+                    # Its queue-wait bound passed before any worker started it
+                    # (deadline_exceeded_before_start): its budget counts from its
+                    # start, so this is a capacity failure, named with its wait.
+                    error = engine.expired_before_start_message("The background task", execution)
+                else:
+                    error = _cap_reached_error(task, execution) or error
                 task.status = "failed"
                 task.error = error
                 task.completed_at = now

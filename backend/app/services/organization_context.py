@@ -3,7 +3,7 @@
 """The organization profile: one structured, versioned context every agent reads.
 
 The contract is ``dev-docs/ctem-fleets.md`` section 6 (#8987): sector,
-regions, size, crown jewels, tech stack, AI systems inventory, PIRs, risk
+regions, size, crown jewels, software, AI systems inventory, PIRs, risk
 appetite, loaded hourly rate and currency, ticketing target. It replaces
 the free-text ``company-context`` knowledge base as the source agents
 reason from: a stage analyst ranks by the crown jewels it reads here and
@@ -24,7 +24,7 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import date
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import ColumnElement, func, select
@@ -113,6 +113,10 @@ ASSET_TAXONOMY: dict[str, tuple[str, ...]] = {
         "ai_gateway",
         "vulnerability_scanner",
     ),
+    #: What the organization builds and ships (#1233): a third-party dependency is not an asset, it is
+    #: the software (SBOM) of the repository; container images, registries and IaC templates stay where
+    #: they are. An OpenAEV or OpenCTI without the value receives ``generic_asset`` (asset-model.md).
+    "source_code": ("code_repository", "ci_cd_pipeline", "package_registry", "software_package", "code_other"),
     "generic_asset": (),
 }
 ASSET_CATEGORIES: tuple[str, ...] = tuple(ASSET_TAXONOMY)
@@ -140,12 +144,37 @@ KNOWLEDGE_KINDS: tuple[str, ...] = ("sop", "runbook", "patch_policy", "reference
 #: The profile parts added by #11543 (``asset_groups`` by #11781). They are read by tool, never dumped into
 #: the always-on profile block, and they are not contract fields: an existing profile
 #: reads, renders and reports its missing fields exactly as before.
-EXPOSURE_FIELDS: tuple[str, ...] = ("assets_exposure", "asset_groups", "prioritization_policy", "enterprise_knowledge")
+EXPOSURE_FIELDS: tuple[str, ...] = (
+    "assets_exposure",
+    "asset_groups",
+    "prioritization_policy",
+    "enterprise_knowledge",
+    # CTEM-29: read by the scope gate, never dumped into the always-on block.
+    "owned_domains",
+    # CTEM-26: read by the attack surface pass, never dumped into the always-on block.
+    "address_ranges",
+    "attack_surface",
+    # CTEM-28: read by the evidence health pass, never dumped into the always-on block.
+    "evidence_health",
+    # Cases recompute interval (#1216): read by the scheduled cases pass, never dumped into the always-on block.
+    "cases_recompute",
+    # Asset identity and field precedence (#1178): read by the asset store, never dumped into the always-on block.
+    "asset_identity",
+    # Cases attention weights (#1176): read by the Cases list and case page, never dumped into the always-on block.
+    "case_attention",
+    # Per path source exclusions (#1445): read where a signal is recorded, never dumped into the always-on block.
+    "signal_sources",
+)
 #: Profile fields read by a CTEM page only (#11547 S2e), never dumped into the
 #: always-on block and not contract fields, like the parts above.
 PAGE_ONLY_FIELDS: tuple[str, ...] = ("posture_target",)
+#: Profile parts read like fields but derived from another (#1501: ``ai_systems`` is the assets of
+#: category ai_target): readers, prerequisite checks and the contract name them, nothing stores them.
+DERIVED_FIELDS: tuple[str, ...] = ("ai_systems",)
 
 _Strict = ConfigDict(extra="forbid", str_strip_whitespace=True)
+#: The most assets the profile model holds; the records hold more (#1543), the readers get this many.
+PROFILE_ASSET_CAP = 5000
 
 
 def normalize_regions(value: list[str]) -> list[str]:
@@ -160,7 +189,50 @@ def normalize_regions(value: list[str]) -> list[str]:
     return regions
 
 
+#: The sources of rows a person wrote (typed, a CSV upload, the REST API): never a platform's rows.
+HAND_SOURCES: frozenset[str] = frozenset({"manual", "csv", "api"})
+#: The platforms a sync reads; their rows are read-only in the form (#1134).
+PLATFORM_SOURCES: frozenset[str] = frozenset({"opencti", "openaev", "opencrq"})
+#: The prefix of the source of rows an agent wrote: ``agent:<agent id>``.
+AGENT_SOURCE_PREFIX = "agent:"
+
+
+def is_platform_source(source: str) -> bool:
+    """Whether a row of *source* belongs to a platform (a sync owns it) rather than to a person or an agent."""
+    source = (source or "").strip().lower()
+    return bool(source) and source not in HAND_SOURCES and not source.startswith(AGENT_SOURCE_PREFIX)
+
+
+def _legacy_platform_id(data: Any, legacy_key: str, platform: str) -> Any:
+    """A row saved before #1134 with only *legacy_key* reads as a row of *platform* keyed on that id.
+
+    Only a row with no ``source`` at all is such a row: a row a person typed
+    (``manual``, ``csv``, ``api``) or an agent wrote keeps its source and
+    carries *legacy_key* as a link only, so a link set by the OpenCRQ
+    reconcile never hands a typed row to a sync that may remove it (#1473).
+    """
+    if not isinstance(data, dict):
+        return data
+    legacy = str(data.get(legacy_key) or "").strip()
+    if not legacy or str(data.get("external_id") or "").strip():
+        return data
+    if str(data.get("source") or "").strip():
+        return data
+    data = dict(data)
+    data["external_id"] = legacy
+    data["source"] = platform
+    return data
+
+
 class CrownJewel(BaseModel):
+    """A crown jewel; ``source`` / ``external_id`` / ``sync_id`` say where it came from (#1134).
+
+    ``opencrq_asset_id`` is the id before #1134, kept readable for one release:
+    a row carrying it with no ``source`` reads as an OpenCRQ row, an OpenCRQ
+    row keeps it equal to ``external_id``, and on a typed row it is the link
+    the OpenCRQ reconcile set, never a change of owner (#1473).
+    """
+
     model_config = _Strict
 
     name: str = Field(min_length=1, max_length=200)
@@ -170,11 +242,27 @@ class CrownJewel(BaseModel):
     opencrq_asset_id: str = Field(default="", max_length=100)
     #: The ``assets_exposure`` rows (assets or asset groups, by name) this crown jewel runs on (#11543).
     asset_names: list[str] = Field(default_factory=list, max_length=200)
+    source: str = Field(default="manual", max_length=80)
+    external_id: str = Field(default="", max_length=200)
+    #: The sync that last wrote the row (empty: typed, a one-off import or an agent).
+    sync_id: str = Field(default="", max_length=64)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_opencrq(cls, data: Any) -> Any:
+        return _legacy_platform_id(data, "opencrq_asset_id", "opencrq")
 
     @field_validator("asset_names")
     @classmethod
     def _asset_names(cls, value: list[str]) -> list[str]:
         return [name for name in dict.fromkeys(str(v).strip()[:200] for v in value) if name]
+
+    @model_validator(mode="after")
+    def _opencrq_id_follows(self) -> CrownJewel:
+        self.source = self.source.strip().lower() or "manual"
+        if self.source == "opencrq" and self.external_id:
+            self.opencrq_asset_id = self.external_id[:100]
+        return self
 
 
 class TechStackEntry(BaseModel):
@@ -183,9 +271,81 @@ class TechStackEntry(BaseModel):
     product: str = Field(min_length=1, max_length=200)
     vendor: str = Field(default="", max_length=200)
     cpe: str = Field(default="", max_length=300)
+    #: The version the organization runs, optional (CTEM-11): cases then name the version to reach.
+    version: str = Field(default="", max_length=100)
+    #: Where the row came from (#1134): ``manual``, ``csv``, ``api``, ``agent:<id>`` or a platform.
+    source: str = Field(default="manual", max_length=80)
+    external_id: str = Field(default="", max_length=200)
+    sync_id: str = Field(default="", max_length=64)
+
+
+class ShippedProduct(BaseModel):
+    """A product the organization ships (#1432), apart from the software it runs.
+
+    ``repositories`` are the ``owner/name`` of its source repositories: a
+    vulnerability on the product (matched by CPE, then by product and vendor)
+    resolves to them in the CTEM scope gate, so it joins the case of the
+    repository advisory for the same CVE.
+    """
+
+    model_config = _Strict
+
+    product: str = Field(min_length=1, max_length=200)
+    vendor: str = Field(default="", max_length=200)
+    cpe: str = Field(default="", max_length=300)
+    repositories: list[str] = Field(default_factory=list, max_length=50)
+
+    @field_validator("product", "vendor", "cpe")
+    @classmethod
+    def _stripped(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("repositories")
+    @classmethod
+    def _repositories(cls, value: list[str]) -> list[str]:
+        """``owner/name`` each once; a GitHub URL is read as its ``owner/name``."""
+        out: list[str] = []
+        for raw in value:
+            text = str(raw or "").strip().removesuffix(".git").strip("/")
+            for prefix in ("https://github.com/", "http://github.com/", "github.com/"):
+                if text.lower().startswith(prefix):
+                    text = text[len(prefix) :]
+            if not text:
+                continue
+            parts = text.split("/")
+            if len(parts) != 2 or not all(parts) or len(text) > 200:
+                raise ValueError(f"repository {raw!r} is not owner/name")
+            out.append(text)
+        return list(dict.fromkeys(out))
+
+
+#: OpenAEV's ``Asset.AI_TARGET_PROVIDER``, lower-cased (#1501).
+AI_TARGET_PROVIDERS: tuple[str, ...] = (
+    "openai_compatible",
+    "anthropic",
+    "azure_openai",
+    "aws_bedrock",
+    "google_vertex",
+    "huggingface",
+    "ollama",
+    "custom_http",
+    "mcp_server",
+    "agent_http",
+    "xtm_one",
+)
+#: The kind of a profile AI system (before #1501) -> the OpenAEV ``ai_target`` subcategory it is.
+#: ``assistant`` and ``embedded`` have none: the row keeps its kind as the tag ``ai_kind:<kind>``.
+AI_KIND_SUBCATEGORY: dict[str, str] = {"agent": "ai_agent", "model_api": "llm_model"}
+#: A profile AI system's exposure (before #1501) -> the asset's ``internet_facing``.
+AI_EXPOSURE_FACING: dict[str, str] = {"public": "yes", "internal": "no", "partner": "unknown"}
 
 
 class AiSystem(BaseModel):
+    """A profile AI system as saved before #1501, read only to move it into the assets.
+
+    ``openaev_asset_id`` is the id before #1134, read as an OpenAEV row (see :class:`CrownJewel`).
+    """
+
     model_config = _Strict
 
     name: str = Field(min_length=1, max_length=200)
@@ -193,6 +353,21 @@ class AiSystem(BaseModel):
     owner: str = Field(default="", max_length=200)
     exposure: Literal["internal", "partner", "public"] = "internal"
     openaev_asset_id: str = Field(default="", max_length=100)
+    source: str = Field(default="manual", max_length=80)
+    external_id: str = Field(default="", max_length=200)
+    sync_id: str = Field(default="", max_length=64)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_openaev(cls, data: Any) -> Any:
+        return _legacy_platform_id(data, "openaev_asset_id", "openaev")
+
+    @model_validator(mode="after")
+    def _openaev_id_follows(self) -> AiSystem:
+        self.source = self.source.strip().lower() or "manual"
+        if self.source == "openaev" and self.external_id:
+            self.openaev_asset_id = self.external_id[:100]
+        return self
 
 
 def _names(value: list[str], *, limit: int = 200) -> list[str]:
@@ -256,6 +431,7 @@ class AssetEntry(BaseModel):
         "saas_application",
         "ai_target",
         "security_platform",
+        "source_code",
         "generic_asset",
     ] = "generic_asset"
     #: A subcategory of ``category`` (empty: none chosen).
@@ -269,13 +445,60 @@ class AssetEntry(BaseModel):
     #: The ``tech_stack`` products running on it, by product name.
     tech_stack: list[str] = Field(default_factory=list, max_length=100)
     tags: list[str] = Field(default_factory=list, max_length=50)
-    source: str = Field(default="manual", max_length=50)
+    source: str = Field(default="manual", max_length=80)
     external_id: str = Field(default="", max_length=200)
+    #: The sync that last wrote the row (#1134; empty: typed, a one-off import or an agent).
+    sync_id: str = Field(default="", max_length=64)
+    #: Identity keys the asset store matches records on (#1251; ``organization_asset_identity``):
+    #: an endpoint manager or EDR source fills them, a typed row may leave them empty.
+    serial: str = Field(default="", max_length=200)
+    #: The Entra (Azure AD) device id, the key Intune and Defender share.
+    device_id: str = Field(default="", max_length=200)
+    hostname: str = Field(default="", max_length=255)
+    fqdn: str = Field(default="", max_length=255)
+    mac: list[str] = Field(default_factory=list, max_length=10)
+    ip: list[str] = Field(default_factory=list, max_length=10)
+    #: Operating system as the source reports it (field-level provenance in the store).
+    os_family: str = Field(default="", max_length=80)
+    os_version: str = Field(default="", max_length=80)
+    os_build: str = Field(default="", max_length=80)
+    #: A cloud or platform resource id, a strong identity key: a code repository's ``<host>:repository:<id>``
+    #: (GitHub and GitLab sources), stable across a rename or a transfer.
+    cloud_resource_id: str = Field(default="", max_length=300)
+    #: Where the asset is reached or browsed (a repository's web URL), http(s) only. A code repository
+    #: row is matched across sources on it (identity kind ``repository``), else on a name shaped ``owner/repo``.
+    url: str = Field(default="", max_length=500)
+    #: When the source last observed the asset, ISO 8601 UTC (#1134 S4, CTEM-27: OpenAEV's
+    #: ``asset_last_seen``; #1251: Intune and Defender's last sync); empty when the source does
+    #: not say. Owned by the source.
+    last_seen: str = Field(default="", max_length=40)
+    #: The source's activity status (OpenAEV ``asset_status`` lower-cased: ``stale`` when unseen
+    #: past the tenant's threshold); empty when the source does not say.
+    status: Literal["", "active", "inactive", "agentless", "stale"] = ""
+    #: An AI target (category ``ai_target``, #1501): OpenAEV's ``ai_target_*`` fields, lower-cased
+    #: enums. The token, the configuration and the system prompt never leave OpenAEV.
+    ai_target_provider: str = Field(default="", max_length=40)
+    ai_target_endpoint: str = Field(default="", max_length=500)
+    ai_target_model: str = Field(default="", max_length=200)
+    ai_target_modality: Literal["", "text", "vision", "audio", "multimodal"] = ""
 
     @model_validator(mode="before")
     @classmethod
     def _legacy_type(cls, data: Any) -> Any:
         return upgrade_legacy_type(data) if isinstance(data, dict) else data
+
+    @field_validator("ai_target_provider")
+    @classmethod
+    def _provider(cls, value: str) -> str:
+        text = value.strip().lower()
+        if text and text not in AI_TARGET_PROVIDERS:
+            raise ValueError(f"ai_target_provider {value!r} is not one of {', '.join(AI_TARGET_PROVIDERS)}")
+        return text
+
+    @field_validator("mac", "ip")
+    @classmethod
+    def _clean_addresses(cls, value: list[str]) -> list[str]:
+        return list(dict.fromkeys(v.strip()[:64] for v in value if v and v.strip()))
 
     @field_validator("tech_stack", "tags")
     @classmethod
@@ -308,8 +531,10 @@ class AssetGroupEntry(BaseModel):
     owner: str = Field(default="", max_length=200)
     tech_stack: list[str] = Field(default_factory=list, max_length=100)
     tags: list[str] = Field(default_factory=list, max_length=50)
-    source: str = Field(default="manual", max_length=50)
+    source: str = Field(default="manual", max_length=80)
     external_id: str = Field(default="", max_length=200)
+    #: The sync that last wrote the row (#1134).
+    sync_id: str = Field(default="", max_length=64)
 
     @field_validator("tech_stack", "tags")
     @classmethod
@@ -354,6 +579,16 @@ class AcceptedRisk(BaseModel):
     reason: str = Field(default="", max_length=1000)
 
 
+class SeveritySla(BaseModel):
+    """Hours to fix a CTEM case of each severity (#847): P1 a day, P2 three days, P3 thirty days."""
+
+    model_config = _Strict
+
+    p1: int = Field(default=24, ge=1, le=24 * 365)
+    p2: int = Field(default=72, ge=1, le=24 * 365)
+    p3: int = Field(default=720, ge=1, le=24 * 365)
+
+
 class PrioritizationPolicy(BaseModel):
     """The explicit rules the CTEM prioritization funnel and its agents apply (#11543).
 
@@ -375,6 +610,23 @@ class PrioritizationPolicy(BaseModel):
     min_crown_jewel_criticality: Literal["", "low", "medium", "high", "critical"] = ""
     exclusions: list[PolicyExclusion] = Field(default_factory=list, max_length=200)
     accepted_risks: list[AcceptedRisk] = Field(default_factory=list, max_length=500)
+    #: CTEM scope gate (#847): a confirmed signal opens a case when its subject's criticality (assets,
+    #: crown jewels, risk scenarios) is at least this; below, it goes to the watchlist.
+    scope_min_criticality: Literal["low", "medium", "high", "critical"] = "high"
+    #: CTEM scope gate (#847): a case also needs an OpenCRQ risk scenario holding the subject.
+    require_risk_scenario: bool = False
+    #: CTEM scope gate (#847): the time to fix a case of each severity, in hours (the case's ``sla_due_at``).
+    sla_hours: SeveritySla = Field(default_factory=SeveritySla)
+    #: CTEM trigger rules (CTEM-08): the PIR score (0 to 100) an OpenCTI entity flagged in a profile PIR
+    #: must reach before a fleet run starts on it: a vulnerability, and threat activity (an intrusion
+    #: set, a campaign, a malware...). Read live from OpenCTI at delivery, never the delivered score.
+    pir_min_score_vulnerability: int = Field(default=70, ge=0, le=100)
+    pir_min_score_threat: int = Field(default=75, ge=0, le=100)
+    #: CTEM review step (CTEM-16): the label an analyst sets on the drafted Grouping in OpenCTI to
+    #: approve its coverage request when the gate ``ctem.analyst_review`` waits (empty: analyst-reviewed).
+    analyst_review_label: str = Field(default="", max_length=100)
+    #: CTEM-29: the scope criticality of an identity of an owned domain (a leaked credential, path 10).
+    identity_criticality: Literal["low", "medium", "high", "critical"] = "high"
 
 
 #: The values the settings page proposes for a first policy (never applied unless saved).
@@ -410,11 +662,275 @@ class RiskAppetite(BaseModel):
     approval_threshold: float | None = Field(default=None, ge=0)
 
 
+class FxRate(BaseModel):
+    """A reference exchange rate an agent may cite to convert an amount (#1383).
+
+    One unit of ``from_currency`` is ``rate`` units of ``to_currency``, as
+    published on ``as_of`` by ``source``. A risk figure priced in another
+    currency than the organization's (OpenCRQ prices in USD) is converted with
+    the rate whose ``to_currency`` is the profile's currency before it is
+    compared with a threshold; without one the comparison is unknown, never
+    made across two currencies and never on a rate the model guessed.
+    """
+
+    model_config = _Strict
+
+    from_currency: str = Field(min_length=3, max_length=3)
+    to_currency: str = Field(min_length=3, max_length=3)
+    rate: float = Field(gt=0)
+    as_of: date
+    source: str = Field(min_length=1, max_length=200)
+
+    @field_validator("from_currency", "to_currency", mode="before")
+    @classmethod
+    def _iso(cls, value: Any) -> str:
+        code = str(value or "").strip().upper()
+        if not _CURRENCY.match(code):
+            raise ValueError(f"currency {value!r} is not an ISO 4217 code (e.g. EUR, USD)")
+        return code
+
+    @model_validator(mode="after")
+    def _two_currencies(self) -> FxRate:
+        if self.from_currency == self.to_currency:
+            raise ValueError(f"a reference rate converts between two currencies, not {self.from_currency} to itself")
+        return self
+
+
+def reference_rate(profile: OrganizationProfile, from_currency: str) -> FxRate | None:
+    """The reference rate converting *from_currency* into the profile's currency, the latest ``as_of`` first.
+
+    ``None`` when the profile has no currency, names the same one, or holds no
+    such rate: the caller then reports the comparison as unknown.
+    """
+    source = str(from_currency or "").strip().upper()
+    target = profile.currency
+    if not target or not source or source == target:
+        return None
+    rates = [r for r in profile.fx_rates if r.from_currency == source and r.to_currency == target]
+    return max(rates, key=lambda r: r.as_of) if rates else None
+
+
+class TicketingSync(BaseModel):
+    """How CTEM cases sync with the ticketing target (#917, ``dev-docs/ctem-ticketing.md``).
+
+    Read by ``services/ctem_ticketing.py`` at every sync, so a change applies
+    to the next sync with no restart. Every field has the program default.
+    """
+
+    model_config = _Strict
+
+    #: When a case gets its ticket: when it passes Mobilize and is P1 or P2, P1 only, or by hand.
+    create_on: Literal["mobilize_p1_p2", "mobilize_p1", "manual"] = "mobilize_p1_p2"
+    #: The Jira issue type, or the ServiceNow table (``incident``, ``change_request`` or ``problem``,
+    #: ``ctem_ticketing.SERVICENOW_TABLES``; another table is refused at save).
+    record_type: str = Field(default="", max_length=80)
+    #: Labels (Jira) or the category (ServiceNow) every ticket carries.
+    labels: list[str] = Field(default_factory=list, max_length=20)
+    #: Case severity to the system's priority value (Jira priority name, ServiceNow urgency 1-3).
+    priority_map: dict[str, str] = Field(default_factory=dict)
+    #: The ticket's own status name to a case ticket status (open, in_progress, done, cancelled),
+    #: read before the system's default categories.
+    status_map: dict[str, str] = Field(default_factory=dict)
+    #: A ticket moved to done asks the case's re-test.
+    done_starts_retest: bool = True
+    #: A case reopened by a failed re-test reopens its ticket, or opens a linked one.
+    on_reopen: Literal["reopen", "linked"] = "reopen"
+    #: Put the case's due date (its SLA) on the ticket.
+    due_date_from_sla: bool = True
+
+
+class AttackSurfacePass(BaseModel):
+    """The opt-in outside lens of CTEM-26 (``dev-docs/ctem-attack-surface.md``).
+
+    Off by default. When on, a scheduled pass reads the outside view of
+    ``owned_domains`` and ``address_ranges`` from ``integration`` and
+    ``integrations`` (connected attack-surface providers: Shodan, Google Threat
+    Intelligence ASM), merges them per host and records the differences as
+    signals on paths 5, 6 and 7.
+    """
+
+    model_config = _Strict
+
+    enabled: bool = False
+    #: The id of a provider integration the pass reads with its owner's credential (the first one).
+    integration: str = Field(default="", max_length=100)
+    #: More provider integrations read in the same pass, their observations merged per host.
+    integrations: list[Annotated[str, Field(max_length=100)]] = Field(default_factory=list, max_length=10)
+    #: Hours between two passes (daily by default).
+    cadence_hours: int = Field(default=24, ge=1, le=24 * 30)
+    #: A host unseen for this many days is a stale asset (path 6).
+    stale_after_days: int = Field(default=14, ge=1, le=365)
+
+
+class EvidenceHealthPass(BaseModel):
+    """The evidence health pass of CTEM-28 (``dev-docs/ctem-evidence-health.md``).
+
+    A scheduled pass reads from ``integration`` (an OpenCRQ integration) the
+    evidence health of the supporting assets of every risk scenario and records
+    evidence decay (path 9) and blind spots (path 12) as signals. A gap never
+    reads as safe.
+
+    ``enabled`` unset (``None``) means no administrator chose: the pass runs on
+    the declared integration, else on the single connected OpenCRQ integration
+    (#1344, ``ctem_evidence_health.resolve_pass``). ``False`` keeps it off,
+    except the legacy stored default (``False`` with no integration), read as unset.
+    """
+
+    model_config = _Strict
+
+    enabled: bool | None = None
+    #: The id of the OpenCRQ integration the pass reads with its owner's credential.
+    integration: str = Field(default="", max_length=100)
+    #: The re-test delay: evidence older than this many days has expired (path 9).
+    max_age_days: int = Field(default=30, ge=1, le=3650)
+    #: Hours between two passes (daily by default).
+    cadence_hours: int = Field(default=24, ge=1, le=24 * 30)
+
+
+#: One source of a trigger path as ``provider:kind`` (``ctem_signal_sources.source_key``).
+_SOURCE_KEY = re.compile(r"^[a-z0-9_-]{1,40}:(listener|pass|pir_playbook)$")
+
+
+class SignalSourcesSettings(BaseModel):
+    """Which connected source feeds which CTEM trigger path (#1445, ``dev-docs/ctem-signals.md`` s.2bis).
+
+    Every connected source feeds every path it can by default. ``excluded``
+    names, per trigger path, the sources (``provider:kind``) an administrator
+    took off that path alone: an excluded source records nothing on it and is
+    not bound on it, while it keeps feeding its other paths. Set from the
+    Sources tab of CTEM > Signals.
+    """
+
+    model_config = _Strict
+
+    excluded: dict[str, list[str]] = Field(default_factory=dict)
+
+    @field_validator("excluded")
+    @classmethod
+    def _clean_excluded(cls, value: dict[str, list[str]]) -> dict[str, list[str]]:
+        from app.services.ctem_signal_sources import PATH_SOURCES, source_key
+
+        out: dict[str, list[str]] = {}
+        for path, keys in value.items():
+            known = {source_key(s.provider, s.kind) for s in PATH_SOURCES.get(path, ())}
+            if not known:
+                raise ValueError(f"{path!r} is not a trigger path with a source")
+            cleaned: list[str] = []
+            for key in keys:
+                key = str(key).strip()
+                if not _SOURCE_KEY.match(key) or key not in known:
+                    raise ValueError(f"{key!r} is not a source of the trigger path {path!r}")
+                if key not in cleaned:
+                    cleaned.append(key)
+            if cleaned:
+                out[path] = sorted(cleaned)
+        return out
+
+
+class CasesRecompute(BaseModel):
+    """How often the shared CTEM cases are recomputed from the source products (``dev-docs/ctem-cases.md`` s.4.3).
+
+    On by default: cases are inferred, never refreshed by hand. The scheduled
+    pass reads with the CTEM loop fleet's run-as users, else the recent viewers
+    of Cases; a viewer opening the page past the interval gets one too.
+    """
+
+    model_config = _Strict
+
+    #: Minutes between two scheduled recomputes (every 15 minutes by default, at least 5).
+    interval_minutes: int = Field(default=15, ge=5, le=24 * 60)
+
+
+class CaseAttentionWeights(BaseModel):
+    """How the CTEM Cases list ranks what needs attention first (#1176, ``dev-docs/ctem-cases.md`` s.7.2bis).
+
+    Points per reason of the explained attention score; the defaults are the
+    ranking the list ships with. Set by an administrator from the "Act on this
+    first" band of CTEM > Cases. Read by the Cases list and the case page only.
+    """
+
+    model_config = _Strict
+
+    priority_critical: int = Field(default=40, ge=0, le=100)
+    priority_high: int = Field(default=25, ge=0, le=100)
+    priority_medium: int = Field(default=10, ge=0, le=100)
+    priority_low: int = Field(default=0, ge=0, le=100)
+    #: Points when the case holds at least one KEV issue.
+    kev: int = Field(default=15, ge=0, le=100)
+    #: Points when the case touches at least one crown jewel.
+    crown_jewel: int = Field(default=15, ge=0, le=100)
+    #: Points when the SLA is breached or the due date has passed.
+    overdue: int = Field(default=20, ge=0, le=100)
+    #: Points when the due date is within ``due_soon_days``.
+    due_soon: int = Field(default=10, ge=0, le=100)
+    due_soon_days: int = Field(default=3, ge=1, le=90)
+    #: Points when nobody owns the case.
+    no_owner: int = Field(default=5, ge=0, le=100)
+    #: Points per day open, capped at ``age_max``.
+    age_per_day: int = Field(default=1, ge=0, le=100)
+    age_max: int = Field(default=10, ge=0, le=100)
+
+
+class AssetIdentity(BaseModel):
+    """How the asset store matches one asset across sources and which source a field shows (#1178).
+
+    Empty keeps the defaults of ``organization_asset_identity``: every strong key in its default
+    order, and ``DEFAULT_PRECEDENCE`` per field. Set in CTEM > Inventory (Sources panel).
+    """
+
+    model_config = _Strict
+
+    #: The strong keys, most reliable first; a key left out never merges (empty: the default order).
+    key_order: list[Literal["serial", "cloud_resource_id", "repository", "device_id", "mac", "fqdn", "hostname"]] = (
+        Field(default_factory=list, max_length=7)
+    )
+    #: Per field, the sources or source classes in order (``*`` any other); a field left out keeps its default.
+    precedence: dict[
+        Annotated[str, Field(min_length=1, max_length=80)],
+        list[Annotated[str, Field(min_length=1, max_length=80)]],
+    ] = Field(default_factory=dict, max_length=50)
+
+    @field_validator("key_order")
+    @classmethod
+    def _distinct_keys(cls, value: list[str]) -> list[str]:
+        return list(dict.fromkeys(value))
+
+    @field_validator("precedence")
+    @classmethod
+    def _clean_precedence(cls, value: dict[str, list[str]]) -> dict[str, list[str]]:
+        out: dict[str, list[str]] = {}
+        for name, order in value.items():
+            cleaned = list(dict.fromkeys(s.strip().lower() for s in order if s.strip()))
+            if len(cleaned) > 20:
+                raise ValueError(f"precedence of {name!r} names more than 20 sources")
+            if cleaned:
+                out[name.strip().lower()] = cleaned
+        return out
+
+
+def normalize_address_ranges(value: list[str]) -> list[str]:
+    """CIDR blocks in their network form, each once (a bare address is its /32 or /128)."""
+    import ipaddress
+
+    out: list[str] = []
+    for raw in value:
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        try:
+            network = ipaddress.ip_network(text, strict=False)
+        except ValueError as exc:
+            raise ValueError(f"address range {text!r} is not an IP address or CIDR block") from exc
+        out.append(str(network))
+    return list(dict.fromkeys(out))
+
+
 class TicketingTarget(BaseModel):
     model_config = _Strict
 
     integration: str = Field(default="", max_length=100)
     project: str = Field(default="", max_length=200)
+    sync: TicketingSync = Field(default_factory=TicketingSync)
 
 
 class OrganizationProfile(BaseModel):
@@ -429,7 +945,11 @@ class OrganizationProfile(BaseModel):
     size: Literal["", "1-50", "51-250", "251-1000", "1001-5000", "5001-20000", "20000+"] = ""
     crown_jewels: list[CrownJewel] = Field(default_factory=list, max_length=200)
     tech_stack: list[TechStackEntry] = Field(default_factory=list, max_length=500)
-    ai_systems: list[AiSystem] = Field(default_factory=list, max_length=200)
+    #: What the organization ships, with its source repositories (#1432). Not a contract
+    #: field: a vendor-free organization ships nothing; the software is what it runs.
+    shipped_products: list[ShippedProduct] = Field(default_factory=list, max_length=200)
+    #: No ``ai_systems`` list since #1501: an AI system is an asset of category ``ai_target``
+    #: (``assets_exposure``); a profile saved before reads its rows there (:func:`ai_system_asset`).
     pir_ids: list[str] = Field(default_factory=list, max_length=100)
     #: The last known OpenCTI name of each PIR in ``pir_ids``, saved with it so the
     #: profile names a PIR even when OpenCTI cannot be read or deleted it (#9615).
@@ -438,15 +958,37 @@ class OrganizationProfile(BaseModel):
     risk_appetite: RiskAppetite = Field(default_factory=RiskAppetite)
     loaded_hourly_rate: float | None = Field(default=None, ge=0)
     currency: str = Field(default="", max_length=3)
+    #: Reference exchange rates into the organization's currency (#1383), read by the
+    #: risk agents to convert OpenCRQ figures. Not a contract field; shown to agents
+    #: only when filled.
+    fx_rates: list[FxRate] = Field(default_factory=list, max_length=50)
     ticketing: TicketingTarget = Field(default_factory=TicketingTarget)
     #: Assets of the attack surface, with their exposure (#11543).
-    assets_exposure: list[AssetEntry] = Field(default_factory=list, max_length=5000)
+    assets_exposure: list[AssetEntry] = Field(default_factory=list, max_length=PROFILE_ASSET_CAP)
     #: Groups the assets join through their ``group`` (#11781; ``asset_group`` rows of #11543 move here).
     asset_groups: list[AssetGroupEntry] = Field(default_factory=list, max_length=500)
     #: The rules the prioritization funnel applies (#11543); defaults change nothing.
     prioritization_policy: PrioritizationPolicy = Field(default_factory=PrioritizationPolicy)
     #: Knowledge bases of the organization's procedures, read by tool only (#11543).
     enterprise_knowledge: list[KnowledgeLink] = Field(default_factory=list, max_length=50)
+    #: The DNS and email domains the organization owns (CTEM-29; the outside lens reads them too):
+    #: a leaked credential of an account on one of them is in scope.
+    owned_domains: list[str] = Field(default_factory=list, max_length=500)
+    #: The public address ranges the organization owns, as CIDR blocks (CTEM-26): an answering
+    #: name that points outside them is no longer owned (path 6).
+    address_ranges: list[str] = Field(default_factory=list, max_length=500)
+    #: The opt-in attack surface pass of the outside lens (CTEM-26).
+    attack_surface: AttackSurfacePass = Field(default_factory=AttackSurfacePass)
+    #: The opt-in evidence health pass: evidence decay and blind spots (CTEM-28).
+    evidence_health: EvidenceHealthPass = Field(default_factory=EvidenceHealthPass)
+    #: How often the shared CTEM cases are recomputed with no user action.
+    cases_recompute: CasesRecompute = Field(default_factory=CasesRecompute)
+    #: The sources an administrator took off one trigger path (#1445).
+    signal_sources: SignalSourcesSettings = Field(default_factory=SignalSourcesSettings)
+    #: How one asset is matched across sources and which source each field shows (#1178).
+    asset_identity: AssetIdentity = Field(default_factory=AssetIdentity)
+    #: The points of the Cases attention score (#1176): what needs attention first.
+    case_attention: CaseAttentionWeights = Field(default_factory=CaseAttentionWeights)
     #: The Exposure Posture score (0-100) the organization aims for, drawn as the
     #: target line of the CTEM Governance & Risk page (#11547 S2e). Empty: no target,
     #: the page asks for one. Not a contract field and never preloaded.
@@ -455,6 +997,36 @@ class OrganizationProfile(BaseModel):
     #: (``services/organization_onboarding.py``, #11224). Not a contract field:
     #: ``missing_fields`` still reports them; the onboarding no longer asks.
     onboarding_skipped: list[str] = Field(default_factory=list, max_length=20)
+
+    @property
+    def ai_systems(self) -> list[AssetEntry]:
+        """The AI systems: the assets of category ``ai_target`` (#1501; read-only, never dumped)."""
+        return ai_target_assets(self)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _ai_systems_into_assets(cls, data: Any) -> Any:
+        """A profile saved before #1501: its ``ai_systems`` rows become ``ai_target`` assets, nothing lost.
+
+        A row an asset of the same source and id already carries (an OpenAEV AI target imported both
+        ways) is not added twice; a typed row named like an AI target asset is the same thing.
+        """
+        if not isinstance(data, dict) or "ai_systems" not in data:
+            return data
+        data = dict(data)
+        legacy = data.pop("ai_systems") or []
+        assets = list(data.get("assets_exposure") or [])
+        for raw in legacy if isinstance(legacy, list) else []:
+            try:
+                AiSystem.model_validate(raw)
+            except ValueError as exc:
+                # Never dropped in silence: a bad row is refused and named, as before #1501.
+                raise ValueError(f"ai_systems: {exc}") from None
+            row = ai_system_asset(raw)
+            if row is not None and not _carried(assets, row):
+                assets.append(row)
+        data["assets_exposure"] = assets
+        return data
 
     @model_validator(mode="before")
     @classmethod
@@ -487,6 +1059,18 @@ class OrganizationProfile(BaseModel):
     def _iso_regions(cls, value: list[str]) -> list[str]:
         return normalize_regions(value)
 
+    @field_validator("owned_domains")
+    @classmethod
+    def _domains(cls, value: list[str]) -> list[str]:
+        """Lower-cased, ``@`` and a trailing dot dropped, each once."""
+        cleaned = (str(v).strip().lower().lstrip("@").rstrip(".") for v in value)
+        return [d for d in dict.fromkeys(cleaned) if d and len(d) <= 253]
+
+    @field_validator("address_ranges")
+    @classmethod
+    def _ranges(cls, value: list[str]) -> list[str]:
+        return normalize_address_ranges(value)
+
     @field_validator("currency")
     @classmethod
     def _iso_currency(cls, value: str) -> str:
@@ -508,6 +1092,60 @@ class OrganizationProfile(BaseModel):
         return self
 
 
+def ai_system_asset(raw: Any) -> dict[str, Any] | None:
+    """A profile AI system saved before #1501 as an ``ai_target`` asset row (``None`` when unreadable).
+
+    The kind becomes the OpenAEV subcategory where one exists (:data:`AI_KIND_SUBCATEGORY`), else the
+    tag ``ai_kind:<kind>``; the exposure sets ``internet_facing`` (:data:`AI_EXPOSURE_FACING`) and stays
+    as the tag ``exposure:<value>``; owner, source, id and sync are kept.
+    """
+    if isinstance(raw, AiSystem):
+        raw = raw.model_dump()
+    if not isinstance(raw, dict):
+        return None
+    try:
+        system = AiSystem.model_validate(raw)
+    except ValueError:
+        return None
+    tags = [f"exposure:{system.exposure}"]
+    subcategory = AI_KIND_SUBCATEGORY.get(system.kind, "")
+    if not subcategory:
+        tags.insert(0, f"ai_kind:{system.kind}")
+    return {
+        "name": system.name,
+        "category": "ai_target",
+        "subcategory": subcategory,
+        "internet_facing": AI_EXPOSURE_FACING[system.exposure],
+        "owner": system.owner,
+        "tags": tags,
+        "source": system.source,
+        "external_id": system.external_id,
+        "sync_id": system.sync_id,
+    }
+
+
+def _carried(assets: list[Any], row: dict[str, Any]) -> bool:
+    """Whether *assets* already hold *row*: the same source and id, or an AI target of the same name."""
+    for asset in assets:
+        data = asset.model_dump() if isinstance(asset, BaseModel) else asset
+        if not isinstance(data, dict):
+            continue
+        source = str(data.get("source") or "manual").strip().lower()
+        if row["external_id"] and source == row["source"] and str(data.get("external_id") or "") == row["external_id"]:
+            return True
+        if (
+            data.get("category") == "ai_target"
+            and str(data.get("name") or "").strip().casefold() == row["name"].casefold()
+        ):
+            return True
+    return False
+
+
+def ai_target_assets(profile: OrganizationProfile) -> list[AssetEntry]:
+    """The AI systems of *profile*: its assets of category ``ai_target`` (#1501)."""
+    return [asset for asset in profile.assets_exposure if asset.category == "ai_target"]
+
+
 #: Every field of the contract, in the order a report names them, with the
 #: words a person reads when it is missing.
 CONTRACT_FIELDS: tuple[tuple[str, str], ...] = (
@@ -515,8 +1153,8 @@ CONTRACT_FIELDS: tuple[tuple[str, str], ...] = (
     ("sector", "sector"),
     ("regions", "regions of operation"),
     ("size", "organization size"),
-    ("crown_jewels", "crown jewels and business services"),
-    ("tech_stack", "tech stack"),
+    ("crown_jewels", "primary assets and business services"),
+    ("tech_stack", "software"),
     ("ai_systems", "AI systems inventory"),
     ("pir_ids", "priority intelligence requirements (PIRs)"),
     ("risk_appetite.annual_loss_threshold", "risk appetite: annual loss threshold"),
@@ -534,10 +1172,30 @@ def _value(profile: OrganizationProfile, path: str) -> Any:
     return value
 
 
+#: The identity fields: in Copilot mode the profile is these alone (#1690). Copilot has
+#: no CTEM loop, so its agents need who the company is and nothing else; the other
+#: fields stay stored untouched, so switching the mode never loses data.
+IDENTITY_FIELDS: frozenset[str] = frozenset({"name", "sector", "sub_sector", "regions", "size"})
+
+
+def identity_only() -> bool:
+    """Whether the profile is read and reported as its identity alone: a Copilot-like platform (#1690)."""
+    from app.core.config import settings
+
+    return bool(settings.is_copilot_like)
+
+
+def contract_fields() -> tuple[tuple[str, str], ...]:
+    """The contract fields of this platform's mode: :data:`CONTRACT_FIELDS`, the identity alone in Copilot mode."""
+    if identity_only():
+        return tuple(field for field in CONTRACT_FIELDS if field[0] in IDENTITY_FIELDS)
+    return CONTRACT_FIELDS
+
+
 def missing_fields(profile: OrganizationProfile) -> list[str]:
-    """The contract fields *profile* leaves empty, by path, in contract order."""
+    """The contract fields *profile* leaves empty, by path, in contract order (the identity alone in Copilot mode)."""
     missing: list[str] = []
-    for path, _label in CONTRACT_FIELDS:
+    for path, _label in contract_fields():
         value = _value(profile, path)
         if path == "ticketing":
             empty = not (value.integration and value.project)
@@ -554,12 +1212,93 @@ def missing_fields(profile: OrganizationProfile) -> list[str]:
 BRIEF_NOTICE_LINE = "Organization context incomplete: missing {fields}. The analysis would be sharper with them."
 
 
+#: The contract fields only the CTEM loop reads (scope gate, risk quantification,
+#: prioritization, ticketing): a run that is not CTEM work is never pushed to
+#: report them, and its briefs carry no notice about them (#1384).
+CTEM_ONLY_FIELDS: frozenset[str] = frozenset(
+    {
+        "pir_ids",
+        "risk_appetite.annual_loss_threshold",
+        "risk_appetite.approval_threshold",
+        "loaded_hourly_rate",
+        "ticketing",
+    }
+)
+
+
+def missing_for_run(missing: list[str], *, ctem_work: bool) -> list[str]:
+    """*missing* (contract paths) as a run reads it: the CTEM-only fields left out when it is not CTEM work."""
+    return list(missing) if ctem_work else [path for path in missing if path not in CTEM_ONLY_FIELDS]
+
+
+def holds_ctem_tools(agent: object) -> bool:
+    """Whether *agent* holds CTEM tools: a built-in CTEM case or signal agent, or the ``ctem_read`` group bound."""
+    from app.services.builtin_tools.ctem_cases import CTEM_CASE_AGENT_SLUGS
+    from app.services.builtin_tools.ctem_read import CTEM_READ_GROUP
+    from app.services.builtin_tools.ctem_signals import CTEM_SIGNAL_AGENT_SLUGS
+
+    if agent is None:
+        return False
+    groups = getattr(agent, "builtin_tool_ids", None)
+    if isinstance(groups, (list, tuple, set, frozenset)) and CTEM_READ_GROUP in groups:
+        return True
+    slug = getattr(agent, "slug", None) or ""
+    return bool(getattr(agent, "is_builtin", False)) and slug in (CTEM_CASE_AGENT_SLUGS | CTEM_SIGNAL_AGENT_SLUGS)
+
+
+def is_ctem_fleet(*, slug: object, is_builtin: object, forked_from: object) -> bool:
+    """Whether a fleet is a CTEM fleet: a seeded CTEM fleet (a retired slug included) or a fork of one."""
+    from app.agents.builtin_fleets import BUILTIN_FLEETS, RETIRED_FLEET_SUCCESSORS
+
+    slugs = {entry["slug"] for entry in BUILTIN_FLEETS} | set(RETIRED_FLEET_SUCCESSORS)
+    if is_builtin and slug in slugs:
+        return True
+    source = forked_from if isinstance(forked_from, dict) else {}
+    return bool(source.get("is_builtin")) and source.get("slug") in slugs
+
+
+async def ctem_fleet(db: AsyncSession, fleet_id: object) -> bool:
+    """Whether the fleet *fleet_id* is a CTEM fleet; ``False`` for none or a failed read."""
+    from app.models.fleet import Fleet
+
+    if fleet_id is None:
+        return False
+    try:
+        row = (
+            await db.execute(select(Fleet.slug, Fleet.is_builtin, Fleet.forked_from).where(Fleet.id == fleet_id))
+        ).first()
+    except Exception:  # context, never a reason to fail a run: read as not CTEM
+        return False
+    if row is None:
+        return False
+    return is_ctem_fleet(slug=row[0], is_builtin=row[1], forked_from=row[2])
+
+
+async def ctem_work_for(db: AsyncSession, agent: object, *, fleet_id: object = None) -> bool:
+    """Whether a run of *agent* is CTEM work (#1384): it holds CTEM tools, or its home fleet is a CTEM fleet.
+
+    *fleet_id* is the home fleet the caller already resolved; without it the
+    home fleet is read. The one signal every organization block reads before
+    it pushes the CTEM-only fields and the brief notice.
+    """
+    if holds_ctem_tools(agent):
+        return True
+    if agent is None:
+        return False
+    if fleet_id is None:
+        from app.services.fleet_runs import home_fleet_defaults
+
+        fleet_id = getattr(await home_fleet_defaults(db, getattr(agent, "id", None)), "fleet_id", None)
+    return await ctem_fleet(db, fleet_id)
+
+
 def brief_notice_instruction(missing: list[str]) -> str:
     """What the agent is told to add to its briefs when *missing* (contract paths) names a field.
 
     ``""`` for a complete profile: a brief then carries no notice. Implemented
     once here and read by every profile block an agent gets (the basic
-    summary of every turn and the ``get_organization_context`` reading).
+    summary of every turn and the ``get_organization_context`` reading),
+    only on a run that is CTEM work (:func:`ctem_work_for`, #1384).
     """
     if not missing:
         return ""
@@ -618,6 +1357,93 @@ async def current_version(
     ).scalar_one_or_none()
 
 
+async def asset_list_counts(db: AsyncSession, organization_id: uuid.UUID | None) -> dict[str, int] | None:
+    """``{assets_exposure, asset_groups}`` counted on the asset records (#1543), ``None`` before their import.
+
+    Two indexed ``COUNT`` reads: the prompt blocks and the category index name
+    the true sizes without loading a row (the profile JSON no longer sees the
+    row API, agent and import writes).
+    """
+    from app.services import organization_asset_records as records
+
+    if organization_id is None or not await records.is_imported(db, organization_id):
+        return None
+    return await records.list_counts(db, organization_id)
+
+
+async def hydrated_profile(db: AsyncSession, row: OrganizationContextVersion | None) -> OrganizationProfile:
+    """The profile of *row* with ``assets_exposure`` and ``asset_groups`` read from the asset records (#1543).
+
+    The records are the source of truth once imported: a row API, agent or
+    import write lands there and never in a profile version. Before the import
+    the stored lists are the truth and are answered as they are. The lists are
+    capped at 5,000 assets (``profile_lists``), the bound the readers had.
+    """
+    from app.services import organization_asset_records as records
+
+    profile = parse_profile(row.profile if row else {})
+    if row is None or row.organization_id is None or not await records.is_imported(db, row.organization_id):
+        return profile
+    asset_rows, group_rows, _truncated = await records.profile_lists(db, row.organization_id, cap=PROFILE_ASSET_CAP)
+    assets: list[AssetEntry] = []
+    for value in asset_rows:
+        try:
+            assets.append(AssetEntry.model_validate({k: v for k, v in value.items() if k != "software"}))
+        except ValueError:
+            continue  # a record a newer release wrote with a field this one does not know
+    groups: list[AssetGroupEntry] = []
+    for value in group_rows:
+        try:
+            groups.append(AssetGroupEntry.model_validate(value))
+        except ValueError:
+            continue
+    return profile.model_copy(update={"assets_exposure": assets, "asset_groups": groups})
+
+
+async def current_profile(
+    db: AsyncSession, organization_id: uuid.UUID | None = None
+) -> tuple[OrganizationContextVersion | None, OrganizationProfile]:
+    """``(latest version, its profile with the asset lists from the records)``: what a reader of assets uses."""
+    row = await current_version(db, organization_id)
+    return row, await hydrated_profile(db, row)
+
+
+async def software_profile(
+    db: AsyncSession, organization_id: uuid.UUID | None = None
+) -> tuple[OrganizationContextVersion | None, OrganizationProfile]:
+    """:func:`current_profile` with its software read from the Software entities (#1495), for the CTEM gates.
+
+    The software the organization runs is the Software entities of the asset
+    store (synced from Intune, Defender, OpenAEV and the SBOMs, or typed by an
+    administrator), plus the profile rows typed before the move that no entity
+    carries (``organization_software_store.matcher_entries``, the CVE matcher's
+    reading). Read-only: the answer is never saved, a writer reads
+    :func:`current_version`. Before the store holds any software the profile
+    rows are answered as they are.
+    """
+    from app.services import organization_software_store as software_store
+
+    row, profile = await current_profile(db, organization_id)
+    if row is None or row.organization_id is None:
+        return row, profile
+    software = await software_store.matcher_software(db, row.organization_id)
+    if not software:
+        return row, profile
+    typed = [{"vendor": e.vendor, "product": e.product, "cpe": e.cpe, "version": e.version} for e in profile.tech_stack]
+    entries = [
+        TechStackEntry(
+            product=entry["product"][:200],
+            vendor=entry["vendor"][:200],
+            cpe=entry["cpe"][:300],
+            version=entry["version"][:100],
+            source="software",
+        )
+        for entry in software_store.matcher_entries(software, typed)
+    ]
+    # model_copy does not validate: the store may hold more software than a typed list may.
+    return row, profile.model_copy(update={"tech_stack": entries})
+
+
 async def list_versions(
     db: AsyncSession, *, limit: int = 20, organization_id: uuid.UUID | None = None
 ) -> list[OrganizationContextVersion]:
@@ -634,6 +1460,52 @@ async def list_versions(
         .scalars()
         .all()
     )
+
+
+async def get_version(
+    db: AsyncSession, version: int, organization_id: uuid.UUID | None = None
+) -> OrganizationContextVersion | None:
+    """Version *version* of *organization_id* (the primary when ``None``), or ``None`` (#1473)."""
+    return (
+        await db.execute(
+            select(OrganizationContextVersion)
+            .where(_of_organization(organization_id), OrganizationContextVersion.version == version)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+def restored_profile(
+    current: dict[str, Any], past: dict[str, Any], fields: list[str]
+) -> tuple[dict[str, Any], list[str]]:
+    """*current* with *fields* taken from *past* (every field of *past* when empty); ``(profile, fields)``.
+
+    ``ValueError`` names a field the profile does not have. ``ai_systems`` (#1501, a derived field)
+    restores the ``ai_target`` assets of *past* in place of the current ones, the other assets kept;
+    *past* is a parsed profile, so a version saved before #1501 already carries them as assets.
+    """
+    known = set(OrganizationProfile.model_fields)
+    wanted = [f for f in dict.fromkeys(str(f).strip() for f in fields) if f] or sorted(known)
+    unknown = [f for f in wanted if f not in known and f not in DERIVED_FIELDS]
+    if unknown:
+        raise ValueError(f"not a field of the organization profile: {', '.join(unknown)}")
+    restored = dict(current)
+    for name in wanted:
+        if name == "ai_systems":
+            restored["assets_exposure"] = [
+                *(a for a in restored.get("assets_exposure") or [] if not _is_ai_target_row(a)),
+                *(a for a in past.get("assets_exposure") or [] if _is_ai_target_row(a)),
+            ]
+        elif name in past:
+            restored[name] = past[name]
+        else:
+            restored.pop(name, None)
+    return restored, wanted
+
+
+def _is_ai_target_row(row: Any) -> bool:
+    """Whether a dumped asset row is an AI system (category ``ai_target``, #1501)."""
+    return isinstance(row, dict) and row.get("category") == "ai_target"
 
 
 async def save_version(
@@ -668,6 +1540,27 @@ async def save_version(
             )
         )
     ).scalar()
+    # Since #1543 the asset records are the source of truth: the asset and group lists of the saved
+    # profile (an old client, an import or a sync still on this path) become row writes first, only
+    # the rows that differ, each re-matching its own identity cluster. A hand row gets its id written
+    # back on *profile* before the dump, so the next save addresses it exactly.
+    from app.services import organization_asset_records as records
+
+    if await _asset_lists_changed(db, organization_id, profile, latest):
+        held = await asset_list_counts(db, organization_id)
+        await records.apply_profile_lists(
+            db,
+            organization_id,
+            profile,
+            origin="profile",
+            actor=f"{source}:{author_user_id or ''}".rstrip(":"),
+            profile_version=int(latest or 0) + 1,
+            # A list read from records past the model's cap is a page: what it lacks is not deleted.
+            remove_missing=not held or held["assets_exposure"] <= PROFILE_ASSET_CAP,
+        )
+    elif await records.is_imported(db, organization_id):
+        if await records.imported_version(db, organization_id) >= int(latest or 0):
+            await records.mark_version(db, organization_id, int(latest or 0) + 1)
     row = OrganizationContextVersion(
         organization_id=organization_id,
         version=int(latest or 0) + 1,
@@ -681,6 +1574,65 @@ async def save_version(
     return row
 
 
+def _list_dump(rows: Any) -> list[Any]:
+    return [r.model_dump(mode="json") if hasattr(r, "model_dump") else dict(r) for r in rows or []]
+
+
+async def _asset_lists_changed(
+    db: AsyncSession, organization_id: uuid.UUID, profile: BaseModel, latest: int | None
+) -> bool:
+    """Whether *profile* changes the asset or group list of the latest stored version (#1543).
+
+    A writer that edits another field bases its profile on the stored JSON,
+    whose lists no longer see the row API, agent and import writes. Applying
+    those unchanged, stale lists to the records would delete what those writes
+    added: only a list the caller changed is applied. A profile without the
+    lists (a tracked organization's model) changes nothing.
+    """
+    if getattr(profile, "assets_exposure", None) is None:
+        return False
+    if not latest:
+        return True
+    stored = (
+        await db.execute(
+            select(OrganizationContextVersion.profile).where(
+                OrganizationContextVersion.organization_id == organization_id,
+                OrganizationContextVersion.version == int(latest),
+            )
+        )
+    ).scalar()
+    stored = stored if isinstance(stored, dict) else {}
+    for name in ("assets_exposure", "asset_groups"):
+        before = [dict(r) for r in stored.get(name) or [] if isinstance(r, dict)]
+        if _list_dump(getattr(profile, name, None)) != [
+            _list_dump([parsed])[0] for parsed in _parsed_rows(name, before)
+        ]:
+            return True
+    return False
+
+
+def _parsed_rows(name: str, rows: list[dict[str, Any]]) -> list[Any]:
+    """*rows* of the stored list *name* as the profile model dumps them (a row that no longer parses kept raw).
+
+    A source's inline ``software`` (not an ``AssetEntry`` field) is left out, as
+    the model drops it, so an unchanged synced row compares equal.
+    """
+    from app.services import organization_asset_records as records
+
+    out: list[Any] = []
+    for row in rows:
+        try:
+            if name == "assets_exposure":
+                value = records.validate_asset(row)
+                value.pop("software", None)
+                out.append(AssetEntry.model_validate(value))
+            else:
+                out.append(AssetGroupEntry.model_validate(row))
+        except ValueError:
+            out.append(row)
+    return out
+
+
 #: Header of the block a fleet run's prompt carries (see :func:`fleet_run_context`).
 FLEET_RUN_CONTEXT_HEADER = "--- Organization context ---"
 
@@ -691,6 +1643,7 @@ async def fleet_run_context(
     *,
     fleet: object | None = None,
     organization_ids: list[uuid.UUID] | None = None,
+    agent: object = None,
 ) -> str:
     """The organization profile block appended to a fleet member's run prompt.
 
@@ -702,7 +1655,9 @@ async def fleet_run_context(
     ``fleet_runs.assignment_fleet_context``) skips the home-fleet read.
     *organization_ids* are the tracked organizations the triggering event
     concerns (``services/organization_events.py``, #9157 M4): their profiles
-    follow the primary's, so the run names the organization.
+    follow the primary's, so the run names the organization. *agent* (the run's
+    agent row) and the home fleet decide whether the run is CTEM work, the
+    only runs told about the CTEM-only fields and the brief notice (#1384).
     """
     import logging
 
@@ -713,7 +1668,13 @@ async def fleet_run_context(
         resolved = fleet if fleet is not None else await home_fleet_defaults(db, agent_id)
         if getattr(resolved, "fleet_id", None) is None:
             return ""
-        block = render_for_agent(await current_version(db))
+        ctem_work = holds_ctem_tools(agent) or await ctem_fleet(db, getattr(resolved, "fleet_id", None))
+        primary = await current_version(db)
+        block = render_for_agent(
+            primary,
+            ctem_work=ctem_work,
+            asset_counts=await asset_list_counts(db, primary.organization_id if primary else None),
+        )
         tracked = await scoped_tracked_blocks(db, getattr(resolved, "organization_scope", None))
         scoped = f"\n\n{FLEET_RUN_CONTEXT_HEADER}\n" + "\n\n".join([block, *tracked])
         return scoped + await _concerned_organizations_block(db, organization_ids or [])
@@ -778,8 +1739,79 @@ async def scoped_tracked_blocks(db: AsyncSession, scope: dict | None) -> list[st
     ]
 
 
+def _row_identity(row: dict[str, Any]) -> tuple[str, str]:
+    """How a list row of the profile is told apart: its source key when synced, else its name."""
+    external_id = str(row.get("external_id") or "").strip()
+    if external_id:
+        return str(row.get("source") or "").strip().lower(), external_id
+    name = row.get("name") or row.get("product") or row.get("id") or ""
+    return "", str(name).strip().casefold()
+
+
+def _row_label(row: dict[str, Any]) -> str:
+    return str(row.get("name") or row.get("product") or row.get("external_id") or row.get("id") or "?")[:200]
+
+
+def removed_rows(before: dict[str, Any] | None, after: dict[str, Any]) -> dict[str, list[str]]:
+    """List field -> the names of the rows *before* held that *after* no longer holds (#1473).
+
+    Both are dumped profiles. Rows are matched on ``source`` + ``external_id``
+    when synced, else on their name, so a save that drops a crown jewel (a
+    stale form, an API client sending an old copy) says which ones, never
+    silently. A list field absent from *after* is not judged.
+    """
+    if not before:
+        return {}
+    out: dict[str, list[str]] = {}
+    for key, rows in before.items():
+        if not isinstance(rows, list) or key not in after or not isinstance(after.get(key), list):
+            continue
+        old = [r for r in rows if isinstance(r, dict)]
+        if not old:
+            continue
+        kept = {_row_identity(r) for r in after[key] if isinstance(r, dict)}
+        lost = [_row_label(r) for r in old if _row_identity(r) not in kept]
+        if lost:
+            out[key] = lost[:100]
+    return out
+
+
+def _drop_typed_provenance(row: dict[str, Any]) -> None:
+    """Leave out the provenance fields of *row* that hold their typed-row defaults (#1134)."""
+    if row.get("source") == "manual":
+        row.pop("source", None)
+    for key in ("external_id", "sync_id"):
+        if not row.get(key):
+            row.pop(key, None)
+
+
+def _ai_block_row(asset: AssetEntry) -> dict[str, Any]:
+    """An AI target asset as the always-on block names an AI system (#1501)."""
+    row: dict[str, Any] = {"name": asset.name, "subcategory": asset.subcategory, "owner": asset.owner}
+    row["internet_facing"] = asset.internet_facing
+    if asset.source not in HAND_SOURCES:
+        row["source"] = asset.source
+    return {k: v for k, v in row.items() if v not in ("", None) or k == "name"}
+
+
+def _insert_before(data: dict[str, Any], before: str, key: str, value: Any) -> dict[str, Any]:
+    """*data* with *key* set just before *before* (at the end when *before* is absent)."""
+    out: dict[str, Any] = {}
+    for k, v in data.items():
+        if k == before:
+            out[key] = value
+        out[k] = v
+    out.setdefault(key, value)
+    return out
+
+
 def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     """The profile as dumped before #11543: the parts it added left out, an empty crown jewel link too.
+
+    An empty software version (CTEM-11) is left out the same way, and so are
+    empty reference exchange rates (#1383), and
+    ticketing sync settings left at their defaults (#917) and the provenance of
+    a typed row (#1134: ``source`` manual, no ``external_id``, no ``sync_id``).
 
     The always-on block and every reader that dumped the whole profile keep
     their exact text for a profile that never filled the new parts.
@@ -788,70 +1820,109 @@ def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     for jewel in dumped.get("crown_jewels") or []:
         if not jewel.get("asset_names"):
             jewel.pop("asset_names", None)
+    for entry in dumped.get("tech_stack") or []:
+        if not entry.get("version"):
+            entry.pop("version", None)
+    for key in ("crown_jewels", "tech_stack"):
+        for row in dumped.get(key) or []:
+            _drop_typed_provenance(row)
+    # #1501: the always-on block keeps naming the AI systems, now the assets of category ai_target,
+    # at the place the list had (the block of a profile without any reads as before).
+    ai_rows = [_ai_block_row(asset) for asset in ai_target_assets(profile)]
+    dumped = _insert_before(dumped, "pir_ids", "ai_systems", ai_rows)
+    if not dumped.get("fx_rates"):
+        # #1383: a profile with no reference rate dumps as before.
+        dumped.pop("fx_rates", None)
+    if not dumped.get("shipped_products"):
+        # #1432: a profile that ships nothing dumps as before.
+        dumped.pop("shipped_products", None)
+    ticketing = dumped.get("ticketing")
+    if isinstance(ticketing, dict) and ticketing.get("sync") == TicketingSync().model_dump(mode="json"):
+        ticketing.pop("sync", None)
     return dumped
 
 
-def exposure_counts(profile: OrganizationProfile) -> dict[str, int]:
-    """The size of each part #11543 added (the policy counts its explicit rules)."""
+def exposure_counts(profile: OrganizationProfile, asset_counts: dict[str, int] | None = None) -> dict[str, int]:
+    """The size of each part #11543 added (the policy counts its explicit rules).
+
+    *asset_counts* (:func:`asset_list_counts`) replaces the asset and group
+    counts of the stored profile with the records' (#1543).
+    """
     policy = profile.prioritization_policy
+    defaults = PrioritizationPolicy()
     rules = sum(
         1
-        for name, value in policy.model_dump().items()
-        if name not in ("exclusions", "accepted_risks") and value != PrioritizationPolicy.model_fields[name].default
+        for name in PrioritizationPolicy.model_fields
+        if name not in ("exclusions", "accepted_risks") and getattr(policy, name) != getattr(defaults, name)
     )
+    lists = asset_counts or {}
     return {
-        "assets_exposure": len(profile.assets_exposure),
-        "asset_groups": len(profile.asset_groups),
+        "assets_exposure": lists.get("assets_exposure", len(profile.assets_exposure)),
+        "asset_groups": lists.get("asset_groups", len(profile.asset_groups)),
         "prioritization_policy": rules + len(policy.exclusions) + len(policy.accepted_risks),
         "enterprise_knowledge": len(profile.enterprise_knowledge),
     }
 
 
-def exposure_line(profile: OrganizationProfile) -> str:
+def exposure_line(profile: OrganizationProfile, asset_counts: dict[str, int] | None = None) -> str:
     """One announcement line for the filled parts of #11543 (``""`` when none is): never their content."""
-    counts = {name: count for name, count in exposure_counts(profile).items() if count}
+    counts = {name: count for name, count in exposure_counts(profile, asset_counts).items() if count}
     if not counts:
         return ""
     parts = ", ".join(f"{name} ({count})" for name, count in counts.items())
     return f"Also filled, read by tool: {parts}; read one with get_organization_context(category=NAME)."
 
 
-def render_for_agent(row: OrganizationContextVersion | None) -> str:
+def render_for_agent(
+    row: OrganizationContextVersion | None,
+    *,
+    ctem_work: bool = True,
+    asset_counts: dict[str, int] | None = None,
+) -> str:
     """The profile as an agent reads it: the filled fields, then the missing ones.
 
     The missing fields are named so the run reports them instead of
     guessing; the profile is data a person typed, so it is quarantined.
+    *ctem_work* false (:func:`ctem_work_for`): the CTEM-only fields are not
+    named and no brief notice is asked (#1384). *asset_counts*
+    (:func:`asset_list_counts`): the asset and group sizes the records hold,
+    never the rows (#1543).
     """
     import json
 
     from app.services.content_safety import wrap_untrusted
 
+    identity = identity_only()
     if row is None:
+        every = missing_for_run([path for path, _label in contract_fields()], ctem_work=ctem_work)
+        labels = dict(CONTRACT_FIELDS)
         return (
             "No organization profile is saved yet. Every field is missing: "
-            + ", ".join(label for _path, label in CONTRACT_FIELDS)
+            + ", ".join(labels[path] for path in every)
             + ". Do not guess them: name the fields your work needed in your output, "
-            "and say an administrator fills them in Settings > Organization. "
-            + brief_notice_instruction([path for path, _label in CONTRACT_FIELDS])
+            "and say an administrator fills them in Settings > Organization."
+            + (f" {brief_notice_instruction(every)}" if ctem_work else "")
         )
     profile = parse_profile(row.profile)
-    missing = missing_fields(profile)
+    missing = missing_for_run(missing_fields(profile), ctem_work=ctem_work)
     filled = {
         key: value
         for key, value in legacy_dump(profile).items()
         if value not in ("", [], None)
         and not (isinstance(value, dict) and not any(value.values()))
         and key != "onboarding_skipped"
+        # Copilot mode: the identity alone reaches an agent (#1690).
+        and (not identity or key in IDENTITY_FIELDS)
     }
     labels = dict(CONTRACT_FIELDS)
-    exposure = exposure_line(profile)
+    exposure = "" if identity else exposure_line(profile, asset_counts)
     lines = [
         f"Organization profile, version {row.version} (saved {row.created_at:%Y-%m-%d %H:%M} UTC, source {row.source}).",
         "Cite the fields you used. Fields not filled: "
         + (", ".join(labels[path] for path in missing) if missing else "none")
         + "."
         + (" Do not guess them: name the ones your work needed in your output." if missing else "")
-        + (f" {brief_notice_instruction(missing)}" if missing else ""),
+        + (f" {brief_notice_instruction(missing)}" if missing and ctem_work else ""),
         "",
         wrap_untrusted(json.dumps(filled, ensure_ascii=False, indent=1), "organization profile"),
     ]

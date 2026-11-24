@@ -24,7 +24,7 @@ export interface EvaluationSubjectRef {
 }
 
 export function evaluationSubjectPath(run: EvaluationSubjectRef): string | null {
-  if (run.flow_id) return `/flows/${run.flow_id}/builder`;
+  if (run.flow_id) return `/flows/library/${run.flow_id}`;
   if (run.agent_id) return `/agents/${run.agent_id}`;
   return null;
 }

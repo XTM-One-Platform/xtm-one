@@ -23,12 +23,14 @@ import { useAuth } from "@/hooks/useAuth";
 import { useNow } from "@/hooks/useTick";
 import { useMe } from "@/hooks/api/useAuthApi";
 import { useCtemPosture, useCtemPostureHistory } from "@/hooks/api/useCtemMetricsApi";
+import { useCtemLoopMeasures } from "@/hooks/api/useCtemCasesApi";
 import { useOrganizationContext, useSaveOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
 import { useFormatter } from "@/i18n";
 import { CTEM_BAND_CONFIG, CTEM_PRODUCT_INFO } from "@/lib/constants";
 import { profileFieldHref } from "@/lib/organization-profile-tabs";
 import { safeExternalUrl } from "@/lib/utils";
 import type { CtemVertical } from "@/types";
+import { CasesInPhaseCard } from "./ctem/CasesInPhaseCard";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
 import { HeroCard, HiddenChartValues, NotConfiguredFrame, useRovingMarks } from "./ctem/stage-heroes";
 import { formatTrendDay, historyWindow } from "./ctem/trend-window";
@@ -258,6 +260,64 @@ function TargetForm({
 
 const TARGET_FIELD = "ctem-posture-target";
 
+const LOOP_STEPS = [
+  { key: "signal_to_case", label: "Signal to case" },
+  { key: "case_to_validation", label: "Case to first validation" },
+  { key: "case_to_decision", label: "Case to decision" },
+  { key: "case_to_passing_retest", label: "Case to passing re-test" },
+] as const;
+
+/**
+ * How fast the loop runs (CTEM-30): the median of each step over the cases the
+ * reader sees, read from the case history, and the share of resolved cases
+ * closed on a passing validation. A step no case reached reads "No case yet",
+ * never 0.
+ */
+function LoopMeasures() {
+  const { t_i18n } = useFormatter();
+  const { data, isError } = useCtemLoopMeasures();
+  const m = data?.measures;
+  const duration = (hours: number | null) =>
+    hours == null
+      ? t_i18n("No case yet")
+      : hours < 1
+        ? t_i18n("Under 1 hour")
+        : hours < 48
+        ? t_i18n("{count, plural, one {# hour} other {# hours}}", { count: Math.round(hours * 10) / 10 })
+        : t_i18n("{count, plural, one {# day} other {# days}}", { count: Math.round(hours / 2.4) / 10 });
+  if (isError) return <NotConfiguredFrame reason={t_i18n("The loop measures could not be read")} testId="ctem-governance-loop-error" />;
+  if (!m) return null;
+  if (m.case_count === 0) {
+    return <NotConfiguredFrame reason={t_i18n("No case yet: the measures start with the first case the loop opens")} testId="ctem-governance-loop-empty" />;
+  }
+  const proof = m.closed_on_proof;
+  return (
+    <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5" data-testid="ctem-governance-loop-measures">
+      {LOOP_STEPS.map((s) => (
+        <div key={s.key} className="rounded-sm border border-elevation-subtle-soft p-3" data-testid={`ctem-governance-loop-${s.key}`}>
+          <dt className="content-caption text-default-secondary">{t_i18n(s.label)}</dt>
+          <dd className="content-compact font-medium">{duration(m[s.key].median_hours)}</dd>
+          {/* A step no case reached says "No case yet" alone (UX round 1 A2 on #941). */}
+          {m[s.key].count > 0 && (
+            <dd className="content-caption text-default-secondary">
+              {t_i18n("Median of {count, plural, one {# case} other {# cases}}", { count: m[s.key].count })}
+            </dd>
+          )}
+        </div>
+      ))}
+      <div className="rounded-sm border border-elevation-subtle-soft p-3" data-testid="ctem-governance-loop-closed_on_proof">
+        <dt className="content-caption text-default-secondary">{t_i18n("Closed on proof")}</dt>
+        <dd className="content-compact font-medium">
+          {proof.share == null ? t_i18n("No resolved case yet") : `${Math.round(proof.share * 100)}%`}
+        </dd>
+        <dd className="content-caption text-default-secondary">
+          {t_i18n("{proven} of {count, plural, one {# resolved case} other {# resolved cases}}", { proven: proof.proven, count: proof.resolved })}
+        </dd>
+      </div>
+    </dl>
+  );
+}
+
 export default function CtemGovernance() {
   const { t_i18n, intl } = useFormatter();
   const navigate = useNavigate();
@@ -380,6 +440,9 @@ export default function CtemGovernance() {
         />
       </HeroCard>
 
+      {/* The decisions waiting and the risks accepted on cases (#1621): one full-width row. */}
+      <CasesInPhaseCard stage="governance" backTo="/ctem/governance" />
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <HeroCard title={t_i18n("Accepted risks")} testId="ctem-governance-risks">
           {risks.length === 0 ? (
@@ -419,6 +482,14 @@ export default function CtemGovernance() {
           </div>
         </HeroCard>
       </div>
+
+      <HeroCard
+        title={t_i18n("Loop measures")}
+        hint={t_i18n("How fast the loop runs, read from the history of the cases you can see")}
+        testId="ctem-governance-loop"
+      >
+        <LoopMeasures />
+      </HeroCard>
     </div>
   );
 }

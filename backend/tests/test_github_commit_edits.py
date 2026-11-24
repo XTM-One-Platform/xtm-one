@@ -3,12 +3,24 @@ the file at the branch tip, all or nothing, in the one signed commit, with the
 diff read back; no sandbox involved."""
 
 import base64
+from typing import Any
 from unittest.mock import patch
 
 import httpx
 import pytest
 
-from tests.test_github_commit import _SAFE_REQUEST, API, GRAPHQL, NEW_COMMIT, TIP, FakeGitHub, _commit_tool
+from app.integrations.providers.github import contents
+from tests.test_github_commit import (
+    _SAFE_REQUEST,
+    API,
+    GRAPHQL,
+    NEW_COMMIT,
+    TIP,
+    FakeGitHub,
+    _commit_tool,
+    _committed_paths,
+    _CountingGitHub,
+)
 
 #: The text every edited file has on the branch unless a test says otherwise.
 _README = "# App\n\nversion: \"0.4.3\"\nmore: text\n"
@@ -206,6 +218,62 @@ async def test_malformed_edits_are_refused_before_any_request(entry, expected):
 
     assert expected in result
     assert fake.calls == []
+
+
+class _SplitEditingGitHub(_CountingGitHub):
+    """The split fake, also answering a blob read with *text*."""
+
+    def __init__(self, text: str) -> None:
+        super().__init__()
+        self.text = text
+
+    async def __call__(self, client: Any, method: str, url: str, provider: Any, action: str, **kwargs: Any) -> Any:
+        if method == "get" and url.startswith(f"{API}/git/blobs/"):
+            self.calls.append((method, url, kwargs))
+            encoded = base64.b64encode(self.text.encode("utf-8")).decode("ascii")
+            return httpx.Response(200, json={"content": encoded, "encoding": "base64"}), None
+        return await super().__call__(client, method, url, provider, action, **kwargs)  # type: ignore[no-untyped-call]
+
+
+@pytest.mark.asyncio
+async def test_edits_whose_resolved_files_pass_the_cap_land_as_consecutive_signed_commits() -> None:
+    """One-line edits on several large files: the cap counts whole files, so
+    the set goes through the split path instead of being refused (#1307)."""
+    commit, _ = _commit_tool()
+    fake = _SplitEditingGitHub(text="a" * 6 + "\n")
+    edit = [{"find": "a\n", "replace": "b\n"}]
+    with patch(_SAFE_REQUEST, new=fake), patch.object(contents, "_MAX_COMMIT_CONTENT_BYTES", 10):
+        result = await commit(
+            repo="acme/app",
+            branch="feat/x",
+            message="feat(app): x (#1)",
+            files=[{"path": "README.md", "edits": edit}, {"path": "AGENTS.md", "edits": edit}],
+        )
+
+    assert isinstance(result, str) and result.startswith("Committed the change set to branch 'feat/x'"), result
+    assert sorted(_committed_paths(c)[0] for c in fake.commits) == ["AGENTS.md", "README.md"]
+    assert all(c["expectedHeadOid"] for c in fake.commits)
+    assert "Edits applied:" in result
+    assert "+aaaaab" in result
+    # The target moved once, to the last part.
+    assert len(fake.urls("patch")) == 1
+
+
+@pytest.mark.asyncio
+async def test_edits_with_one_resolved_file_over_the_cap_are_still_refused() -> None:
+    commit, _ = _commit_tool()
+    fake = _SplitEditingGitHub(text="a" * 12 + "\n")
+    with patch(_SAFE_REQUEST, new=fake), patch.object(contents, "_MAX_COMMIT_CONTENT_BYTES", 10):
+        result = await commit(
+            repo="acme/app",
+            branch="feat/x",
+            message="chore: x",
+            files=[{"path": "README.md", "edits": [{"find": "a\n", "replace": "b\n"}]}],
+        )
+
+    assert "over the 10 one signed commit may carry, so no split can commit it" in result
+    assert fake.commits == []
+    assert fake.urls("patch") == []
 
 
 def test_the_tool_schema_documents_edits():

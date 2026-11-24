@@ -126,8 +126,28 @@ def test_a_part_the_documentation_does_not_hold_reads_as_missing():
 def test_every_list_is_capped_with_the_count_of_what_was_cut():
     triggers = [{"module": "platform", "name": f"Trigger {i}"} for i in range(9)]
     page = _doc(structured={"triggers": triggers})
-    assert "Trigger 4" in page and "Trigger 5" not in page
+    cap = sheet.CAPS["triggers"]
+    assert f"Trigger {cap - 1}" in page and f"Trigger {cap}" not in page
     assert f"+{9 - sheet.CAPS['triggers']} more" in page
+
+
+def test_every_shipped_fleet_names_all_its_triggers_on_the_sheet():
+    # #1319: Platform Health ships 6 triggers, vulnerability prioritization 7; none may fold into "+N more".
+    # The CTEM loop (one trigger per phase and module) stays folded: the sheet is one page, always.
+    from app.agents import builtin_fleet_docs
+
+    folded = {"CTEM_LOOP_STRUCTURED"}
+    shipped = {
+        name: value
+        for name, value in vars(builtin_fleet_docs).items()
+        if name.endswith("_STRUCTURED") and name not in folded and isinstance(value, dict) and value.get("triggers")
+    }
+    assert "PLATFORM_HEALTH_STRUCTURED" in shipped
+    for name, structured in shipped.items():
+        page = _doc(structured={"triggers": structured["triggers"]})
+        assert "more</li>" not in page, name
+    health = _doc(structured={"triggers": builtin_fleet_docs.PLATFORM_HEALTH_STRUCTURED["triggers"]})
+    assert "Module checks" in health and "Memory review" in health
 
 
 def test_every_value_is_escaped():

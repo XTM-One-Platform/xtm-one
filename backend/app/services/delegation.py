@@ -28,6 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent_delegation import AgentDelegation
+from app.services.sub_agent_result_text import stored_answer
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ async def log_delegation(
         message_id=uuid.UUID(message_id) if message_id else None,
         description=description,
         status=status,
-        result=(result[:50_000] if result else None),
+        result=(stored_answer(result) if result else None),
         error=(error[:5_000] if error else None),
         duration_ms=duration_ms,
         metadata_json=metadata or {},
@@ -135,7 +136,7 @@ async def update_delegation(
     if status in ("completed", "failed"):
         delegation.completed_at = datetime.now(UTC)
     if result is not None:
-        delegation.result = result[:50_000]
+        delegation.result = stored_answer(result)
     if error is not None:
         delegation.error = error[:5_000]
     # Scope the flush to the delegation row: callers (task body, dead-letter

@@ -2336,6 +2336,9 @@ def build_trace_tools(
         trace_id: str = "",
         span_tool: str = "",
         span_match: str = "",
+        started_from: str = "",
+        started_to: str = "",
+        offset: int = 0,
     ) -> str:
         if not user_id or user_id == "anonymous":
             return "Error: inspect_agent_traces requires an authenticated user context."
@@ -2421,6 +2424,10 @@ def build_trace_tools(
                     rollup_only=rollup_only,
                     span_tool=span_tool,
                     span_match=span_match,
+                    # The same window as inspect_my_traces: it narrows the time, never the scope.
+                    started_from=started_from,
+                    started_to=started_to,
+                    offset=offset,
                     **fetch_kwargs,
                 )
         except Exception as exc:
@@ -2726,8 +2733,8 @@ def build_trace_tools(
             source="builtin:observability",
             description=(
                 "Traces of another agent when supervision is allowed (admin or "
-                "allow-list); no target_agent_id lists every supervised agent's, a "
-                "deleted agent's included until purged. Previews are bounded: "
+                "allow-list); no target_agent_id lists every supervised agent's. "
+                "Previews are bounded: "
                 f"{TRACE_PAYLOAD_TOOL_NAME} reads one whole."
             ),
             input_schema={
@@ -2757,6 +2764,9 @@ def build_trace_tools(
                     },
                     **_SPAN_WINDOW_PROPERTIES,
                     "trace_id": {"type": "string", "description": "One trace (UUID, 8+ hex prefix) or run id."},
+                    "started_from": {"type": "string"},
+                    "started_to": {"type": "string"},
+                    "offset": {"type": "integer"},
                 },
                 "additionalProperties": False,
             },

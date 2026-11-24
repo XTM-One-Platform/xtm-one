@@ -17,6 +17,7 @@ import { testQueryClient } from "@/testing/providers";
 import type { TimelineEntry } from "@/lib/ctem-fleet-timeline";
 import { FleetTimelineCard } from "./FleetTimelineCard";
 import type { AiLockReason } from "@/hooks/useAiLockReason";
+import type { CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
 
 const viewer = vi.hoisted(() => ({ isAdmin: true }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ isAdmin: viewer.isAdmin }) }));
@@ -32,8 +33,15 @@ const entry = (over: Partial<TimelineEntry> = {}): TimelineEntry => ({
   at: new Date().toISOString(),
   source: "chat",
   event: null,
+  caseId: null,
   ...over,
 });
+
+const CASE = {
+  id: "c-1",
+  title: "Patch nginx",
+  state: "remediating",
+} as unknown as CtemCaseSummary;
 
 // The real catalogs, English included: the run-outcome and run-source keys
 // are ids whose English text differs ("Run source: chat" reads "Chat").
@@ -43,6 +51,7 @@ function page(
   timeline: TimelineEntry[],
   locale: keyof typeof CATALOGS = "en",
   lock: { licensed: boolean; lockReason: AiLockReason | null } = { licensed: true, lockReason: null },
+  casesById: Record<string, CtemCaseSummary> = {},
 ) {
   return render(
     <QueryClientProvider client={testQueryClient()}>
@@ -52,11 +61,18 @@ function page(
             <Route
               path="/"
               element={
-                <FleetTimelineCard timeline={timeline} isLoading={false} licensed={lock.licensed} lockReason={lock.lockReason} />
+                <FleetTimelineCard
+                  timeline={timeline}
+                  casesById={casesById}
+                  isLoading={false}
+                  licensed={lock.licensed}
+                  lockReason={lock.lockReason}
+                />
               }
             />
-            <Route path="/runs/:id" element={<LocationBackButton to={-1} label="Back" />} />
+            <Route path="/operations/executions/:id" element={<LocationBackButton to={-1} label="Back" />} />
             <Route path="/fleets" element={<p>Fleets tab</p>} />
+            <Route path="/ctem/cases/:id" element={<p>Case page</p>} />
           </Routes>
         </MemoryRouter>
       </IntlProvider>
@@ -76,6 +92,19 @@ describe("FleetTimelineCard", () => {
     page([]);
     fireEvent.click(screen.getByRole("button", { name: "Open fleets" }));
     expect(screen.getByText("Fleets tab")).toBeTruthy();
+  });
+
+  it("names the case of a case run and opens it (#915)", () => {
+    page([entry({ caseId: "c-1" })], "en", undefined, { "c-1": CASE });
+    expect(screen.getByText("Remediating", { exact: false })).toBeTruthy();
+    fireEvent.click(screen.getByRole("link", { name: "Open case Patch nginx" }));
+    expect(screen.getByText("Case page")).toBeTruthy();
+  });
+
+  it("never names a case the reader cannot read (#915)", () => {
+    page([entry({ caseId: "c-hidden" })], "en", undefined, { "c-1": CASE });
+    expect(screen.queryByRole("link", { name: /Open case/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Open run of Experimenter" })).toBeTruthy();
   });
 
   it("shows a badge on a completed run", () => {

@@ -42,8 +42,10 @@ export function useDismissNotification() {
         feed
           ? {
               ...feed,
-              items: feed.items.map((item) => (item.id === id && item.kind !== "hitl" ? { ...item, unread: false } : item)),
-              unread_count: feed.items.filter((item) => item.unread && (item.id !== id || item.kind === "hitl")).length,
+              // An entry its recipient opens or dismisses is read (#901), except a
+              // decision still waiting, read only by its answer (#991).
+              items: feed.items.map((item) => (item.id === id && !item.awaiting_answer ? { ...item, unread: false } : item)),
+              unread_count: feed.items.filter((item) => item.unread && (item.id !== id || item.awaiting_answer)).length,
             }
           : feed,
       );

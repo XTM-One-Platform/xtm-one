@@ -142,6 +142,30 @@ def mutation_response_keys(document: str) -> list[str]:
     return keys
 
 
+#: Merge mutations the raw tool never sends: each has a dedicated tool that reads the pull request's
+#: review state first (manage_github_pr enable_automerge, merge_github_pr), and sent raw they let
+#: GitHub land a pull request that still waits for its review.
+_GUARDED_MERGE_MUTATIONS = frozenset({"enablePullRequestAutoMerge", "enqueuePullRequest", "mergePullRequest"})
+
+
+def guarded_merge_refusal(document: str) -> str | None:
+    """The refusal when a mutation of *document* calls a guarded merge field, else ``None``.
+
+    Names inside strings, block strings and comments are skipped, as in :func:`read_only_refusal`.
+    """
+    if not mutation_response_keys(document):
+        return None
+    names = {m.group() for m in _TOKEN.finditer(document or "") if m.lastgroup == "name"}
+    found = sorted(names & _GUARDED_MERGE_MUTATIONS)
+    if not found:
+        return None
+    return (
+        f"Error: mutation not sent, nothing was written: {', '.join(found)} goes through "
+        "manage_github_pr (action=enable_automerge) or merge_github_pr, which read the pull request's "
+        "review decision and review-loop verdict first."
+    )
+
+
 def _named(keys: list[str]) -> str:
     shown = ", ".join(keys[:_MAX_KEYS_NAMED])
     return shown + (f" (+{len(keys) - _MAX_KEYS_NAMED} more)" if len(keys) > _MAX_KEYS_NAMED else "")
@@ -194,6 +218,9 @@ def register(
                     '(e.g. \'{"owner": "octocat", "number": 1}\').'
                 )
         mutation_keys = mutation_response_keys(query)
+        guarded = guarded_merge_refusal(query) if mutation_keys else None
+        if guarded:
+            return guarded
         async with egress_client(timeout=60) as client:
             data, err = await _common.gh_graphql(
                 client,

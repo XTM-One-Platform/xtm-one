@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { Button } from "@/components/ui/button";
 import { CardEditActions } from "@/components/ui/card-edit-actions";
 import { Input } from "@/components/ui/input";
@@ -956,7 +957,7 @@ export function GeneralAssistantSection({
         <div>
           <CardTitle className="content-base flex items-center gap-2">
             <Bot className="h-4 w-4 text-accent" /> {t_i18n("Channels & Routing")}
-            {(() => { const count = Object.keys(gaConfig?.channel_config || {}).length + (isWebEnabled ? 1 : 0); return count > 0 && !editingChannels ? <Badge variant="secondary" className="content-caption h-4 px-1.5">{count}</Badge> : null; })()}
+            {(() => { const count = Object.keys(gaConfig?.channel_config || {}).length + (isWebEnabled ? 1 : 0); return count > 0 && !editingChannels ? <CountBadge variant="secondary">{count}</CountBadge> : null; })()}
             <Badge className="content-caption bg-feedback-error-primary/10 text-feedback-error-primary border border-feedback-error-primary/20 gap-1 ml-1"><AlertTriangle className="h-3 w-3" /> {t_i18n("Danger Zone")}</Badge>
           </CardTitle>
           <CardDescription className="content-compact mt-0.5">

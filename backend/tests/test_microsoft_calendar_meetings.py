@@ -892,6 +892,48 @@ async def test_the_listing_links_an_occurrence_to_its_series(graph):
     assert "| id: OCC1 | series_id: SERIES1" in result.content
 
 
+@pytest.mark.asyncio
+async def test_no_online_meeting_is_an_empty_structured_list_a_gate_check_reads_as_empty(graph: FakeGraph) -> None:
+    """A gate check tests the structured value: no meeting is ``[]``, never the non-empty text."""
+    from app.services.assignment_activation_check import condition_met, structured_result
+
+    graph.on(
+        "GET", "/v1.0/me/calendarView", _json({"value": [{"id": "E1", "subject": "Lunch", "isOnlineMeeting": False}]})
+    )
+
+    result = await _call("list_microsoft_online_meetings", days=1)
+
+    data, readable = structured_result(result)
+    assert readable and data == []
+    assert "No online meetings found" in result.content
+    assert not condition_met(data, "non_empty")
+    assert condition_met(data, "empty")
+
+
+@pytest.mark.asyncio
+async def test_online_meetings_are_listed_as_the_structured_value(graph: FakeGraph) -> None:
+    event = {
+        "subject": "ExCo",
+        "isOnlineMeeting": True,
+        "onlineMeeting": {"joinUrl": JOIN_URL},
+        "start": {"dateTime": "2026-11-19T09:00:00.0000000"},
+        "end": {"dateTime": "2026-11-19T10:00:00.0000000"},
+        "organizer": {"emailAddress": {"name": "Organizer"}},
+    }
+    graph.on("GET", "/v1.0/me/calendarView", _json({"value": [event]}))
+
+    result = await _call("list_microsoft_online_meetings", days=7)
+
+    assert not result.is_error
+    assert "Found 1 online meeting(s)" in result.content
+    [record] = result.structured
+    assert record["subject"] == "ExCo"
+    assert record["start"] == "2026-11-19 09:00:00"
+    assert record["organizer"] == "Organizer"
+    assert record["join_url"] == JOIN_URL
+    assert record["meeting_id"]
+
+
 def test_the_new_parameters_are_optional_and_described():
     executor = CallableToolExecutor()
     tools = {t.name: t for t in ms.build_tools("tok", executor)}

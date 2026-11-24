@@ -44,7 +44,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_agentic_ai
 from app.api.v1.helpers import (
     combine_scopes,
     fleet_filter,
@@ -311,6 +311,47 @@ async def count_work_items_by_status(
         search=search,
         scheduled_only=scheduled_only,
         waiting_for_me=waiting_for_me,
+    )
+
+
+@router.get("/graph")
+async def work_items_graph(
+    owner_agent_id: str | None = None,
+    status: str | None = None,
+    correlation_key: str | None = None,
+    open_only: bool = False,
+    stale_only: bool = False,
+    search: str | None = None,
+    scheduled_only: bool = False,
+    ownership: str | None = None,
+    vis: str | None = None,
+    workspace: str | None = None,
+    fleet: str | None = None,
+    waiting_for_me: bool = False,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """The Graph view of Tasks > Work Items: ``{nodes, edges, truncated}``
+    for the list's filters, read with the list's visibility
+    (``services/work_item_graph.py``): the items, the visible items they
+    wait for outside the filter, their references and the people they wait
+    for. Declared before ``GET /{work_item_id}``."""
+    from app.services import work_item_graph
+
+    return await work_item_graph.read_graph(
+        user_id=str(user.id),
+        viewer=user,
+        filters={
+            "ownership": resolve_list_ownership(vis, ownership),
+            "scope": _workspace_scope(workspace, fleet),
+            "owner_agent_id": owner_agent_id,
+            "status": status,
+            "correlation_key": correlation_key,
+            "open_only": open_only,
+            "stale_only": stale_only,
+            "search": search,
+            "scheduled_only": scheduled_only,
+            "waiting_for_me": waiting_for_me,
+        },
     )
 
 
@@ -640,7 +681,18 @@ async def get_work_item(
         **described,
         "roi": await _roi_block(described, user),
         "attachments": await _attachments_block(described),
+        "note_runs": await _note_runs_block(described, user),
     }
+
+
+async def _note_runs_block(item: dict[str, object], user: User) -> dict[str, dict[str, object]]:
+    """The agent behind each stamped note's run, for the dialog's activity timeline (#776)."""
+    from app.core.database import async_session
+    from app.services.work_item_note_runs import note_runs
+
+    async with async_session() as db:
+        description = item.get("description")
+        return await note_runs(db, description if isinstance(description, str) else None, user)
 
 
 async def _attachments_block(item: dict) -> dict:
@@ -815,6 +867,42 @@ async def answer_work_item(
     if item is None:
         raise HTTPException(status_code=404, detail="Work item not found")
     return item
+
+
+class WorkItemAsk(BaseModel):
+    action: Literal["recheck", "solved", "do"]
+    # It's solved: what changed, in the person's words (optional).
+    text: str | None = None
+
+
+@router.post("/{work_item_id}/ask")
+async def ask_work_item(
+    work_item_id: str,
+    body: WorkItemAsk,
+    user: User = Depends(get_current_user),
+    _agentic_gate: None = Depends(require_agentic_ai),
+) -> dict:
+    """Send Re-check, It's solved or Do it to the item's agent (#774): a stamped
+    note, then its inbox or a run of the agent takes the item now
+    (``work_item.ask_work_item``). Answers ``{item, agent, via}``."""
+    try:
+        sent = await work_item_service.ask_work_item(
+            work_item_id,
+            user_id=str(user.id),
+            action=body.action,
+            text=body.text,
+            asked_by=getattr(user, "full_name", None) or getattr(user, "email", None),
+            writer=person_writer(is_admin=user.is_admin),
+        )
+    except CompanyManagedWriteRefusedError as exc:
+        raise _refused(exc) from exc
+    except ScheduledWorkItemError as exc:
+        raise _scheduled_refusal(exc) from exc
+    except work_item_service.WorkItemAskRefusedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if sent is None:
+        raise HTTPException(status_code=404, detail="Work item not found")
+    return sent
 
 
 @router.post("/{work_item_id}/requeue")

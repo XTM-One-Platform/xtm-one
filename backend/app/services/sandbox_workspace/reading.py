@@ -65,14 +65,19 @@ MAX_GROUPS = 500
 MAX_JSON_FIELDS = 20
 MAX_JSON_FIELD_CHARS = 200
 #: Files a search opens at most, and bytes it decodes at most, per call (32 MB stopped an
-#: unscoped search of one backend tree after about 1,100 files).
-MAX_GREP_FILES = 4000
+#: unscoped search of one backend tree after about 1,100 files; 4,000 files stopped a whole
+#: xtm-one checkout before frontend/src and licensing, so two readers of a renamed path were
+#: missed). The call's time budget is the bound that stops a larger search first.
+MAX_GREP_FILES = 25_000
 MAX_GREP_BYTES = 128 * 1024 * 1024
 #: A file larger than this is not searched (a CI job log of a few MB is).
 MAX_GREP_FILE_BYTES = 32 * 1024 * 1024
 #: Blobs a search reads at once, and bytes a batch holds at most (a larger file is read alone).
 GREP_READ_FILES = 8
 GREP_READ_BYTES = 16 * 1024 * 1024
+#: Files one read of an installed tree fetches at once: each read is a helper run and a tar round trip
+#: in the command container, so a package of a few thousand small files is read in a few batches.
+INSTALLED_READ_FILES = 400
 #: A file larger than this is not outlined nor written whole.
 MAX_TEXT_FILE_BYTES = 4 * 1024 * 1024
 #: Suffixes a search skips without reading the file: images, fonts, archives, media, compiled objects.
@@ -296,16 +301,16 @@ def unread_binary(path: str) -> bool:
     return dot > 0 and name[dot:] in BINARY_SUFFIXES
 
 
-def plan_grep(sized: list[tuple[str, int]], out: GrepResult) -> list[list[str]]:
+def plan_grep(sized: list[tuple[str, int]], out: GrepResult, *, batch_files: int = GREP_READ_FILES) -> list[list[str]]:
     """The read batches of a search over *sized* (``(path, size)`` in path order).
 
     Files past :data:`MAX_GREP_FILE_BYTES` or with a binary suffix are skipped
     and counted; the rest are taken in order until :data:`MAX_GREP_FILES` or
     :data:`MAX_GREP_BYTES`, then recorded in ``out.left`` with ``out.stopped``
     saying which budget ran out. Each batch holds at most
-    :data:`GREP_READ_FILES` files and :data:`GREP_READ_BYTES` bytes (a larger
-    file is a batch of its own), so the reads of a batch run at once with a
-    bounded memory.
+    *batch_files* files (default :data:`GREP_READ_FILES`) and
+    :data:`GREP_READ_BYTES` bytes (a larger file is a batch of its own), so the
+    reads of a batch run at once with a bounded memory.
     """
     batches: list[list[str]] = []
     batch: list[str] = []
@@ -325,7 +330,7 @@ def plan_grep(sized: list[tuple[str, int]], out: GrepResult) -> list[list[str]]:
             out.stopped = f"{format_size(MAX_GREP_BYTES)} read"
             out.left.append(path)
             continue
-        if batch and (len(batch) >= GREP_READ_FILES or batch_bytes + size > GREP_READ_BYTES):
+        if batch and (len(batch) >= batch_files or batch_bytes + size > GREP_READ_BYTES):
             batches.append(batch)
             batch, batch_bytes = [], 0
         batch.append(path)

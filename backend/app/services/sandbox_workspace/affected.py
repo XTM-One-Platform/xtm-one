@@ -128,6 +128,14 @@ Three more rules keep the selection precise (gap family
   ``affected=true`` runs only :meth:`Selection.runnable` (32 of 46 selected
   files of a backend checkout failed 21 times on FileNotFoundError in 590 s).
 
+A wording-only change of a Python file (:func:`wording_words`: its code
+tokens equal on both sides, comments and docstrings aside; any other string
+is code) names neither its definitions nor its module path: the distinctive
+words it replaced select the tests pinning the former or new text, and a
+note names the files. A product rename in docstrings and comments of 17
+modules selected 55 test files through the edited functions and module
+paths, about 60 minutes of run for no code change.
+
 Generic on purpose: no tool, repository or framework name is known here
 (invariant 18); a test file is recognised by its name only.
 """
@@ -137,9 +145,11 @@ from __future__ import annotations
 import asyncio
 import difflib
 import fnmatch
+import io
 import posixpath
 import re
 import time
+import tokenize
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 
@@ -227,6 +237,7 @@ AFFINITY_STOP = frozenset({"test", "tests", "spec", "index", "init", "main", "ut
 #: Files named in a note about what was not searched or not held.
 NAMED_IN_NOTE = 5
 _TOKEN = re.compile(r"[A-Za-z0-9]+")
+_MARKER_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 #: Reads the file as checked out (``bytes``) or says why it cannot (``str``).
 BaseReader = Callable[[str], Awaitable[bytes | str]]
@@ -241,6 +252,74 @@ def is_prose_file(path: str) -> bool:
     """Whether *path* is prose by its extension (``.md``, ``.rst``, ``.txt``...): no identifier source."""
     name = path.rsplit("/", 1)[-1]
     return "." in name and name.rsplit(".", 1)[-1].casefold() in PROSE_EXTENSIONS
+
+
+def excluded_markers(argv: Iterable[str]) -> tuple[str, ...]:
+    """The pytest markers a check's *argv* deselects with ``-m "not X"`` (``-m "not integration"``).
+
+    Only a plain ``not X`` (or ``not X and not Y``) expression is read; any other expression answers none.
+    """
+    args = list(argv)
+    found: list[str] = []
+    for i, arg in enumerate(args):
+        if arg == "-m" and i + 1 < len(args):
+            expression = args[i + 1]
+        elif arg.startswith("-m") and len(arg) > 2:
+            expression = arg[2:].lstrip("=")
+        else:
+            continue
+        parts = [p.strip() for p in expression.split(" and ")]
+        names = [p[4:].strip() for p in parts if p.startswith("not ")]
+        if len(names) == len(parts) and all(_MARKER_NAME.fullmatch(n) for n in names):
+            found.extend(names)
+    return tuple(dict.fromkeys(found))
+
+
+def marked_with(text: str, markers: Iterable[str]) -> list[str]:
+    """The *markers* a test file's *text* applies (``pytest.mark.X``, ``pytestmark = pytest.mark.X``)."""
+    return [m for m in markers if re.search(r"\bpytest\.mark\." + re.escape(m) + r"\b", text)]
+
+
+def selected_markers(argv: Iterable[str]) -> tuple[str, ...]:
+    """The pytest markers a check's *argv* selects with a plain ``-m X`` (or ``-m "X or Y"``).
+
+    A ``not``, an ``and`` or any other expression answers none: only a check that runs every file marked X
+    is named to run them.
+    """
+    args = list(argv)
+    found: list[str] = []
+    for i, arg in enumerate(args):
+        if i and posixpath.basename(args[i - 1]).startswith("python"):
+            continue  # `python -m pytest`: a module, not a marker
+        if arg == "-m" and i + 1 < len(args):
+            expression = args[i + 1]
+        elif arg.startswith("-m") and len(arg) > 2:
+            expression = arg[2:].lstrip("=")
+        else:
+            continue
+        names = [p.strip() for p in expression.split(" or ")]
+        if all(_MARKER_NAME.fullmatch(n) and n not in ("not", "and", "or") for n in names):
+            found.extend(names)
+    return tuple(dict.fromkeys(found))
+
+
+def marker_runners(
+    checks: Iterable[tuple[str, Iterable[str], str]], cwd: str, markers: Iterable[str]
+) -> dict[str, list[str]]:
+    """Marker -> the checks (*checks*: name, argv, directory) of the directory *cwd* that select it with ``-m``.
+
+    What the answer names for a file a check's ``-m "not X"`` deselects (``integration`` -> ``backend-integration``).
+    """
+    wanted = list(markers)
+    here = cwd.strip("/")
+    runners: dict[str, list[str]] = {}
+    for name, argv, directory in checks:
+        if directory.strip("/") != here:
+            continue
+        for marker in selected_markers(argv):
+            if marker in wanted:
+                runners.setdefault(marker, []).append(name)
+    return runners
 
 
 def is_source_scan(text: str, scans: Iterable[re.Pattern[str]] = ()) -> bool:
@@ -385,6 +464,92 @@ def _touched(path: str, text: str, lines: set[int], literals: set[str], defined:
     return out
 
 
+_WORD = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
+#: Tokens that never carry behaviour between two code tokens: comments and blank lines.
+_TRIVIA = frozenset({tokenize.COMMENT, tokenize.NL})
+#: Tokens a statement starts after: a string run between one of them and the end of the statement is a docstring.
+_STATEMENT_START = frozenset({tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT, tokenize.ENCODING})
+
+
+def _docstrings(tokens: list[tokenize.TokenInfo]) -> set[int]:
+    """Indexes of the STRING tokens of *tokens* that form a statement alone (a docstring or a bare string).
+
+    Any other string (an argument, a constant, a dict key, a format string, an
+    f-string part) is a value the code acts on: its change is a code change.
+    """
+    out: set[int] = set()
+    i = 0
+    while i < len(tokens):
+        if tokens[i].type != tokenize.STRING:
+            i += 1
+            continue
+        run = [i]
+        j = i + 1
+        while j < len(tokens) and (tokens[j].type in _TRIVIA or tokens[j].type == tokenize.STRING):
+            if tokens[j].type == tokenize.STRING:
+                run.append(j)
+            j += 1
+        k = i - 1
+        while k >= 0 and tokens[k].type in _TRIVIA:
+            k -= 1
+        starts = k < 0 or tokens[k].type in _STATEMENT_START
+        ends = j >= len(tokens) or tokens[j].type in (tokenize.NEWLINE, tokenize.ENDMARKER)
+        if starts and ends:
+            out.update(run)
+        i = j
+    return out
+
+
+def _python_tokens(text: str) -> tuple[list[tuple[int, str]], list[str]] | None:
+    """The code tokens of *text* (type, text) and the text of its comments and docstrings; ``None`` when it does not tokenize."""
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
+    except (tokenize.TokenError, SyntaxError, IndentationError):
+        return None
+    docs = _docstrings(tokens)
+    code: list[tuple[int, str]] = []
+    wording: list[str] = []
+    for n, token in enumerate(tokens):
+        if token.type == tokenize.NL:
+            continue
+        if token.type == tokenize.COMMENT or n in docs:
+            wording.append(token.string)
+        else:
+            code.append((token.type, token.string))
+    return code, wording
+
+
+def wording_words(path: str, old_text: str, new_text: str) -> set[str] | None:
+    """The words a wording-only change of a Python file replaces, or ``None`` when the change touches code.
+
+    Wording-only: the code tokens of both sides are equal (comments and
+    docstrings aside) and their text differs. Every other string literal (a
+    status value, a key, a regex, a message, an f-string) is code: a test
+    asserting the new value imports the module, so its change keeps the
+    definition and module selection. The answer is the words removed or added
+    in the comments and docstrings (a word diff), kept when distinctive
+    (:func:`_kept`); no distinctive word left means ``None``, the code path,
+    never an empty selection. A rename of a product in docstrings and comments
+    across 17 modules selected 55 test files through the edited definitions and
+    module paths, about 60 minutes of run for no code change.
+    """
+    if not path.endswith(".py") or old_text == new_text:
+        return None
+    old = _python_tokens(old_text)
+    new = _python_tokens(new_text)
+    if old is None or new is None or old[0] != new[0]:
+        return None
+    before = _WORD.findall(" ".join(old[1]))
+    after = _WORD.findall(" ".join(new[1]))
+    words: set[str] = set()
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, before, after, autojunk=False).get_opcodes():
+        if tag != "equal":
+            words.update(before[i1:i2])
+            words.update(after[j1:j2])
+    kept = {w for w in words if _kept(w)}
+    return kept or None
+
+
 def python_module(path: str, base: str) -> str:
     """The import path of the Python module *path* seen from *base* (the check's directory), ``""`` otherwise."""
     if not path.endswith(".py") or (base and not is_under(path, base)):
@@ -403,6 +568,7 @@ def changed_identifiers(
     generic: set[str] | None = None,
     literals: set[str] | None = None,
     defined: set[str] | None = None,
+    wording: set[str] | None = None,
 ) -> set[str]:
     """What a change of *path* touches: definitions, literals on changed lines, and its module path.
 
@@ -419,9 +585,21 @@ def changed_identifiers(
     stays out) and when it is distinctive (:func:`distinctive_literal`): a
     JSON-schema keyword (``description``, ``properties``) or a short plain dict
     key (``sources``) is set aside as generic, never searched.
+
+    A wording-only change of a Python file (:func:`wording_words`: comments
+    and docstrings alone) names neither its definitions nor its module
+    path: the words it replaced are the answer, also added to *wording* when
+    given, so they select the tests pinning that text and no test importing the
+    module for another reason.
     """
     old_text = reading.decode(before) if before is not None and reading.is_text(before) else None
     new_text = reading.decode(after) if after is not None and reading.is_text(after) else None
+    if old_text is not None and new_text is not None:
+        words = wording_words(path, old_text, new_text)
+        if words is not None:
+            if wording is not None:
+                wording |= words
+            return words
     names: set[str] = set()
     if old_text is not None and new_text is not None:
         old_lines, new_lines = _changed_lines(old_text.splitlines(), new_text.splitlines())
@@ -647,6 +825,11 @@ class Selection:
     #: Selected test file -> the top-level directories it reads that the checkout does not hold (ranked last,
     #: never run by ``affected=true``: :meth:`runnable`).
     outside: dict[str, list[str]] = field(default_factory=dict)
+    #: Selected test file -> the markers it applies that the check's ``-m "not X"`` deselects: pytest collects
+    #: the file and runs none (or only part) of its tests, so the answer names them and the marker.
+    deselected: dict[str, list[str]] = field(default_factory=dict)
+    #: Deselected marker -> the checks of the same directory that select it (:func:`marker_runners`).
+    runners: dict[str, list[str]] = field(default_factory=dict)
 
     def runnable(self) -> list[str]:
         """The selected test files this checkout can run: every one but those reading a directory it lacks."""
@@ -684,6 +867,18 @@ class Selection:
                 + (" ..." if len(self.quoted_only) > 5 else "")
                 + "."
             )
+        if self.deselected:
+            markers = sorted({m for found in self.deselected.values() for m in found})
+            files = list(self.deselected)
+            rows.append(
+                f"Deselected by this check's -m: {len(files)} selected test file(s) are marked "
+                + ", ".join(markers)
+                + ", which this check does not run: "
+                + ", ".join(files[:NAMED_IN_NOTE])
+                + (f", +{len(files) - NAMED_IN_NOTE} more" if len(files) > NAMED_IN_NOTE else "")
+                + ". "
+                + self._runner_sentence(markers)
+            )
         if self.scoped:
             rows.append(
                 "Names defined by a changed Python module select only the tests that import it: "
@@ -692,6 +887,19 @@ class Selection:
                 + "."
             )
         return "\n".join([head, *rows, *self.notes])
+
+    def _runner_sentence(self, markers: list[str]) -> str:
+        """How to run the deselected files: the check naming each marker, else the generic advice."""
+        named = [f"{', '.join(self.runners[m])} ({m})" for m in markers if self.runners.get(m)]
+        if not named:
+            return "Run them with the check that selects that marker (args: these files) before the push."
+        missing = [m for m in markers if not self.runners.get(m)]
+        return (
+            "Run them with "
+            + "; ".join(named)
+            + " (args: these files) before the push."
+            + (f" No check of this directory selects {', '.join(missing)}." if missing else "")
+        )
 
 
 async def affected_tests(
@@ -705,11 +913,14 @@ async def affected_tests(
     clock: Callable[[], float] = time.monotonic,
     always: Iterable[str] = (),
     scans: Iterable[str] = (),
+    excluded: Iterable[str] = (),
 ) -> Selection:
     """The test files under the check directory *cwd* (workspace path) that the checkout's *changes* affect.
 
     *always* (the check's ``affected_always`` globs) names the test files selected on every source change;
     *scans* (its ``affected_scan_patterns``) the text of the source-scan gates selected on it.
+    *excluded* (:func:`excluded_markers` of its argv) the pytest markers it deselects: a selected file
+    applying one is listed in :attr:`Selection.deselected`.
 
     With *deadline* (a *clock* instant) the test files are read until then only: the
     rest are not searched and the selection's notes say how many.
@@ -731,6 +942,8 @@ async def affected_tests(
     generic: set[str] = set()
     quoted: dict[str, set[str]] = {}
     definitions: set[str] = set()
+    #: Changed Python file -> the words of a wording-only change (comments and docstrings alone).
+    worded: dict[str, set[str]] = {}
 
     async def one(repo_path: str, mark: str) -> set[str]:
         after = before = None
@@ -748,6 +961,11 @@ async def affected_tests(
                     unread_bases.append(repo_path)
         literals = quoted.setdefault(repo_path, set())
         words = None if is_test_file(repo_path) else generic
+        if before is not None and after is not None and reading.is_text(before) and reading.is_text(after):
+            replaced = wording_words(repo_path, reading.decode(before), reading.decode(after))
+            if replaced is not None:
+                worded[repo_path] = replaced
+                return replaced
         return changed_identifiers(repo_path, before, after, base=base, generic=words, literals=literals, defined=definitions)
 
     found = await asyncio.gather(*(one(p, m) for p, m in marked))
@@ -759,6 +977,10 @@ async def affected_tests(
             # A changed test runs because it changed: its literals and test names select no other file.
             own_names += 1
             quoted.pop(repo_path, None)
+        elif repo_path in worded:
+            # Wording alone: the replaced words select the tests pinning the text, the module path selects nothing.
+            quoted.pop(repo_path, None)
+            out.identifiers |= names
         elif module:
             # The literals stay free: a schema key is asserted by tests that never import its module.
             literals = quoted.get(repo_path, set())
@@ -768,6 +990,14 @@ async def affected_tests(
             out.identifiers |= names
     if own_names:
         out.notes.append(f"{own_names} changed test file(s) run as changed; their own names select no other test file.")
+    wording_only = sorted(p for p in worded if not is_test_file(p))
+    if wording_only:
+        out.notes.append(
+            f"{len(wording_only)} changed file(s) change wording only (comments, docstrings): "
+            + ", ".join(wording_only[:NAMED_IN_NOTE])
+            + (f", +{len(wording_only) - NAMED_IN_NOTE} more" if len(wording_only) > NAMED_IN_NOTE else "")
+            + "; only the tests naming a replaced word are selected, never by their definitions or module path."
+        )
     for module in out.scoped:
         out.scoped[module] -= out.identifiers
     # A top-level directory name (``"frontend"`` in a checks list) is in every test reading that tree: no selector.
@@ -896,6 +1126,9 @@ async def affected_tests(
     )
     if prose:
         out.notes.append(_prose_note(prose, out.tests, searched_all=not skipped))
+    deselecting = tuple(excluded)
+    if deselecting:
+        out.deselected = {path: hit for path in out.tests if (hit := marked_with(texts.get(path, ""), deselecting))}
     absent = missing_directories(record)
     if absent:
         # A test reading a tree the checkout lacks fails on a missing file, not on the change: run it last.
@@ -1012,8 +1245,13 @@ async def changed_files(
     read_base: BaseReader,
     globs: Iterable[str] = (),
     lines: bool = False,
+    whole_repository: bool = False,
 ) -> FileSelection:
     """The files the checkout added or modified under the check directory *cwd*, kept by *globs*.
+
+    With *whole_repository* (``affected_whole_repository``), a changed file outside *cwd* is kept too,
+    passed relative to *cwd* (``../docker-compose.yml``): a script that maps the change to what a
+    repository-wide selection reads (a test naming a compose file or a workflow) needs every path.
 
     With *lines*, a modified file is passed as ``PATH:A-B,C-D``, the line ranges
     the change wrote; an added file, or one whose checked-out version cannot be
@@ -1034,7 +1272,7 @@ async def changed_files(
     kept_globs = tuple(globs)
     marked = sorted(branch_marks(record, changes).items())
     for repo_path, mark in marked:
-        if base and not is_under(repo_path, base):
+        if base and not whole_repository and not is_under(repo_path, base):
             continue
         rel = posixpath.relpath(repo_path, base) if base else repo_path
         if not matches_globs(rel, kept_globs):

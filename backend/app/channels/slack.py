@@ -23,6 +23,7 @@ import asyncio
 import json
 import logging
 import re
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
@@ -48,6 +49,11 @@ from app.core.utils import format_exception_message, is_graceful_shutdown_cancel
 from app.services.agent_posts import record_slack_post
 from app.services.channel_notices import notice, notice_language
 from app.services.vault import reveal_field, reveal_json_field
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.models.user import User
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -859,3 +865,173 @@ async def post_queued_notice(inbound: InboundMessage, text: str) -> bool:
         )
     )
     return sent is not None
+
+
+# ---------------------------------------------------------------------------
+# Interactivity: the decision card's buttons and modal (#842, S10, I.3)
+# ---------------------------------------------------------------------------
+
+
+async def _verified_form(request: Request) -> tuple[dict[str, Any] | None, str]:
+    """The ``payload`` of a signed interactivity request, and the bot token.
+
+    Fails closed exactly as ``/slack/events``: no bot, no signing secret or a
+    bad signature is a 401 and nothing is read.
+    """
+    from urllib.parse import parse_qs
+
+    body = await request.body()
+    creds = await _get_slack_bot_creds()
+    if not creds:
+        raise HTTPException(status_code=401, detail="Slack bot not configured")
+    bot_token, signing_secret = creds
+    if not signing_secret:
+        logger.error("Slack interaction rejected: the slack_bot channel bot has no signing_secret configured")
+        raise HTTPException(status_code=401, detail="Slack signing secret not configured")
+    sig = request.headers.get("X-Slack-Signature", "")
+    ts = request.headers.get("X-Slack-Request-Timestamp", "")
+    if not verify_slack_signature(body, signing_secret, sig, ts):
+        raise HTTPException(status_code=401, detail="Invalid Slack signature")
+    try:
+        raw = parse_qs(body.decode()).get("payload", [""])[0]
+        payload = json.loads(raw)
+    except (UnicodeDecodeError, ValueError):
+        return None, bot_token
+    return (payload if isinstance(payload, dict) else None), bot_token
+
+
+async def _interaction_user(db: AsyncSession, bot_token: str, slack_user_id: str) -> User | None:
+    """The platform user behind a click: by Slack email, then by the linked Slack identity."""
+    from app.channels.router import resolve_user_by_channel_identity, resolve_user_by_email
+
+    if not slack_user_id:
+        return None
+    email, _name = await _resolve_slack_user(bot_token, slack_user_id)
+    if email:
+        user = await resolve_user_by_email(db, email)
+        if user is not None:
+            return user
+    return await resolve_user_by_channel_identity(db, ChannelType.SLACK.value, slack_user_id)
+
+
+async def _slack_api(bot_token: str, method: str, body: dict[str, Any]) -> None:
+    """One Web API call of the interactivity path; a refusal is logged, never raised."""
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                f"{SLACK_API_BASE}/{method}",
+                headers={"Authorization": f"Bearer {bot_token}", "Content-Type": "application/json; charset=utf-8"},
+                json=body,
+            )
+            data = resp.json()
+        if not isinstance(data, dict) or not data.get("ok"):
+            logger.warning("Slack %s refused: %s", method, (data or {}).get("error", "unknown"))
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.warning("Slack %s failed: %s", method, format_exception_message(exc))
+
+
+async def _settle_click(
+    bot_token: str,
+    *,
+    value: dict[str, str],
+    slack_user_id: str,
+    channel: str,
+    ts: str,
+    option: str | None = None,
+    text: str | None = None,
+) -> None:
+    """Answer a click or a modal submission, then update the card or tell the clicker why not."""
+    from app.core.database import async_session
+    from app.services import slack_decision_cards as cards
+
+    async with async_session() as db:
+        user = await _interaction_user(db, bot_token, slack_user_id)
+        language = notice_language(user)
+        message, ephemeral = await cards.answer(db, value, user, language, option=option, text=text)
+    if message is not None and channel and ts:
+        await _slack_api(bot_token, "chat.update", {"channel": channel, "ts": ts, **message})
+    if ephemeral and channel and slack_user_id:
+        await _slack_api(
+            bot_token, "chat.postEphemeral", {"channel": channel, "user": slack_user_id, "text": ephemeral}
+        )
+
+
+async def _open_text_modal(bot_token: str, *, value: dict[str, str], trigger_id: str, channel: str, ts: str) -> None:
+    from app.core.database import async_session
+    from app.services import slack_decision_cards as cards
+
+    async with async_session() as db:
+        view = await cards.view_for(db, value, None, notice_language())
+    if view is None or not trigger_id:
+        return
+    modal = cards.text_modal(view, notice_language(), channel=channel, ts=ts)
+    await _slack_api(bot_token, "views.open", {"trigger_id": trigger_id, "view": modal})
+
+
+@router.post("/slack/interactions")
+async def slack_interactions(request: Request) -> dict[str, Any]:
+    """Slack's interactivity Request URL: a decision card's button or its text modal.
+
+    Answers 200 at once (Slack waits 3 seconds) and does the work in a tracked
+    task; a modal submission answers ``{}`` so Slack closes the modal. The
+    answer itself goes through the decision router as the clicker (I.3).
+    """
+    from app.services import slack_decision_cards as cards
+
+    payload, bot_token = await _verified_form(request)
+    if payload is None:
+        return {"ok": True}
+    kind = payload.get("type")
+    slack_user_id = str((payload.get("user") or {}).get("id") or "")
+    if kind == "block_actions":
+        actions = payload.get("actions") or []
+        action = actions[0] if actions and isinstance(actions[0], dict) else {}
+        action_id = str(action.get("action_id") or "")
+        value = cards.parse_value(action.get("value"))
+        if value is None:
+            # A link button, or a click we did not draw: nothing to answer.
+            return {"ok": True}
+        channel = str((payload.get("channel") or {}).get("id") or "")
+        ts = str((payload.get("container") or {}).get("message_ts") or (payload.get("message") or {}).get("ts") or "")
+        if action_id == cards.ACTION_TEXT:
+            spawn_channel_task(
+                _open_text_modal(
+                    bot_token, value=value, trigger_id=str(payload.get("trigger_id") or ""), channel=channel, ts=ts
+                ),
+                name="slack-decision-modal",
+            )
+        elif action_id.startswith(cards.ACTION_ANSWER + ":"):
+            spawn_channel_task(
+                _settle_click(
+                    bot_token,
+                    value=value,
+                    slack_user_id=slack_user_id,
+                    channel=channel,
+                    ts=ts,
+                    option=value.get("option"),
+                ),
+                name="slack-decision-answer",
+            )
+        return {"ok": True}
+    if kind == "view_submission":
+        view = payload.get("view") or {}
+        if view.get("callback_id") != cards.MODAL_CALLBACK:
+            return {}
+        meta = cards.parse_value(view.get("private_metadata"))
+        if meta is None:
+            return {}
+        values = ((view.get("state") or {}).get("values") or {}).get(cards.MODAL_BLOCK) or {}
+        text = str((values.get(cards.MODAL_INPUT) or {}).get("value") or "")
+        spawn_channel_task(
+            _settle_click(
+                bot_token,
+                value=meta,
+                slack_user_id=slack_user_id,
+                channel=meta.get("channel", ""),
+                ts=meta.get("ts", ""),
+                text=text,
+            ),
+            name="slack-decision-text",
+        )
+        return {}
+    return {"ok": True}

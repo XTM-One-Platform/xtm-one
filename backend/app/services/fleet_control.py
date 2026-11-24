@@ -254,6 +254,10 @@ class FleetEnableItem:
     missing: tuple[str, ...]
     #: Part of this call: every automation that is off unless the call names a subset (#9173 S5).
     selected: bool = True
+    #: Runs a day its schedule starts (0 for a trigger that is not a schedule, #1538).
+    runs_per_day: float = 0.0
+    #: It runs once per event (event, platform event, webhook, work item): its daily count is not known ahead.
+    event_driven: bool = False
 
 
 @dataclass(frozen=True)
@@ -288,6 +292,102 @@ class FleetEnablePlan:
         from app.services.fleet_run_as import MODULE_PROVIDERS
 
         return [p for p in MODULE_PROVIDERS if p in seen]
+
+
+#: Days of history the average cost of one run is read over.
+ESTIMATE_COST_DAYS = 30
+#: Days a schedule too rare for a month is counted over (#1538, UX round 2 B3).
+YEAR_DAYS = 365
+#: Trigger kinds that start one run per event: their daily count is unknown before they run.
+EVENT_TRIGGERS = frozenset({"integration_event", "platform_event", "webhook", "work_item"})
+
+
+@dataclass(frozen=True)
+class FleetEnableEstimate:
+    """The expected load of the automations Enable fleet picks (#1538): an order of magnitude, not a quote.
+
+    ``scheduled_runs_per_day`` counts the schedules of the picked automations
+    (their cron over 30 days, the About tab basis, divided by 30).
+    ``event_automations`` counts the picked automations that run once per
+    event (their rate depends on the events, bounded by ``max_concurrent_runs``).
+    ``avg_cost_per_run`` is the mean cost of their runs of the last
+    :data:`ESTIMATE_COST_DAYS` days from the local trace store, None when none
+    ran; ``cost_per_day`` multiplies it by the scheduled runs, None without it.
+    """
+
+    scheduled_runs_per_day: float
+    event_automations: int
+    avg_cost_per_run: float | None
+    cost_per_day: float | None
+    cost_days: int = ESTIMATE_COST_DAYS
+
+
+def scheduled_runs_per_day(assignments: list[Any]) -> float:
+    """The runs a day the schedules of *assignments* start (an unreadable cron counts 0).
+
+    Kept to four decimals, never one: a monthly schedule is 0.0333 a day, and a
+    per-item rate rounded to 0.0 made a monthly-only pick read as no run at all
+    once the client summed the items (#1538, UX round 1 B3). The client rounds
+    the total it shows.
+
+    A schedule that never fires in the 30-day window (a quarterly, half-yearly
+    or yearly cron) is counted over a full year instead, its fires divided by
+    :data:`YEAR_DAYS`, so it never reads as no run (#1538, UX round 2 B3).
+    """
+    from app.services.fleet_doc_generation import QUOTA_DAYS, cron_fires
+
+    total = 0.0
+    for assignment in assignments:
+        if str(getattr(assignment, "trigger_type", "") or "") != "schedule":
+            continue
+        config = assignment.trigger_config if isinstance(assignment.trigger_config, dict) else {}
+        cron = config.get("cron")
+        monthly = cron_fires(cron, QUOTA_DAYS)
+        if monthly:
+            total += monthly / QUOTA_DAYS
+        elif monthly == 0:
+            total += (cron_fires(cron, YEAR_DAYS) or 0) / YEAR_DAYS
+    return round(total, 4)
+
+
+async def average_run_cost(db: AsyncSession, assignment_ids: list[uuid.UUID], *, days: int) -> float | None:
+    """Mean cost of one run of *assignment_ids* over the last *days*, from ``llm_traces``; None when none ran."""
+    if not assignment_ids:
+        return None
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import func
+
+    from app.models.assignment import AssignmentRun
+    from app.models.llm_trace import LLMTrace
+
+    since = datetime.now(UTC) - timedelta(days=days)
+    runs, cost = (
+        await db.execute(
+            select(
+                func.count(func.distinct(LLMTrace.assignment_run_id)),
+                func.coalesce(func.sum(LLMTrace.total_cost), 0),
+            )
+            .join(AssignmentRun, AssignmentRun.id == LLMTrace.assignment_run_id)
+            .where(AssignmentRun.assignment_id.in_(assignment_ids), LLMTrace.started_at >= since)
+        )
+    ).one()
+    if not runs:
+        return None
+    return round(float(cost or 0) / int(runs), 4)
+
+
+async def estimate_enable(db: AsyncSession, assignments: list[Any]) -> FleetEnableEstimate:
+    """The :class:`FleetEnableEstimate` of the picked *assignments* (read only)."""
+    per_day = scheduled_runs_per_day(assignments)
+    events = sum(1 for a in assignments if str(getattr(a, "trigger_type", "") or "") in EVENT_TRIGGERS)
+    avg = await average_run_cost(db, [a.id for a in assignments], days=ESTIMATE_COST_DAYS)
+    return FleetEnableEstimate(
+        scheduled_runs_per_day=per_day,
+        event_automations=events,
+        avg_cost_per_run=avg,
+        cost_per_day=None if avg is None else round(avg * per_day, 2),
+    )
 
 
 def check_enable_selection(rows: list[_AutomationRow], assignment_ids: list[uuid.UUID] | None) -> None:
@@ -335,6 +435,8 @@ async def _enable_plan(
                 providers=providers,
                 missing=tuple(missing),
                 selected=picked is None or assignment.id in picked,
+                runs_per_day=scheduled_runs_per_day([assignment]),
+                event_driven=str(getattr(assignment, "trigger_type", "") or "") in EVENT_TRIGGERS,
             )
         )
     return FleetEnablePlan(run_as_user_id=run_as_user_id, items=tuple(items)), targets
@@ -351,6 +453,16 @@ async def plan_fleet_enable(
     rows = await _fleet_automation_rows(db, fleet, lock=False)
     plan, _targets = await _enable_plan(db, rows, run_as_user_id, assignment_ids)
     return plan
+
+
+async def estimate_fleet_enable(
+    db: AsyncSession, fleet: Fleet, *, assignment_ids: list[uuid.UUID] | None = None
+) -> FleetEnableEstimate:
+    """The expected load of what Enable fleet picks (every automation that is off, or *assignment_ids*)."""
+    rows = await _fleet_automation_rows(db, fleet, lock=False)
+    picked = None if assignment_ids is None else set(assignment_ids)
+    targets = [a for a, _agent in rows if _enableable(a) and (picked is None or a.id in picked)]
+    return await estimate_enable(db, targets)
 
 
 async def enable_fleet(
@@ -385,14 +497,18 @@ async def enable_fleet(
         raise FleetActionRefusedError(409, ENABLE_NOTHING_TO_ENABLE)
     if plan.missing:
         raise FleetActionRefusedError(400, missing_refusal(plan.missing))
-    from app.services.fleets import is_fleet_health_check
+    from app.services.fleets import is_fleet_health_answered, is_fleet_health_check, is_fleet_past_due_listener
 
     for assignment, agent in targets:
-        # The weekly health check (#11700) reads the fleet as the person who
-        # enabled it, never as the seed owner.
-        if is_fleet_automation(agent, assignment) or (
-            is_fleet_health_check(assignment) and assignment.run_as_user_id is None
-        ):
+        # The weekly health check (#11700), its answer listener (#1406) and the overdue
+        # items listener (#1662) read the fleet as the person who enabled it, never as
+        # the seed owner.
+        seeded_health = (
+            is_fleet_health_check(assignment)
+            or is_fleet_health_answered(assignment)
+            or is_fleet_past_due_listener(assignment)
+        )
+        if is_fleet_automation(agent, assignment) or (seeded_health and assignment.run_as_user_id is None):
             assignment.run_as_user_id = run_as_user_id
         await resume_assignment(
             db, assignment=assignment, user=actor, request=request, note=f"Fleet '{fleet.name}' enabled"

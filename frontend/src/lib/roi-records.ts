@@ -22,6 +22,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * covers it.
  */
 
+import { workItemPath } from "./task-routes.ts";
 import type { RoiWindow } from "@/hooks/api/useRoiReportApi";
 import { parseValueWindow } from "./roi-value.ts";
 
@@ -81,8 +82,8 @@ export function roiRecordsApiParams(query: RoiRecordsQuery, search = ""): URLSea
 
 /** Where one record opens: its work item, else its run. */
 export function roiRecordHref(record: { kind: "run" | "work_item"; run_id: string | null; work_item_id: string | null }): string | undefined {
-  if (record.kind === "work_item" && record.work_item_id) return `/operations/work-items?item=${record.work_item_id}`;
-  if (record.run_id) return `/runs/${record.run_id}`;
+  if (record.kind === "work_item" && record.work_item_id) return workItemPath(record.work_item_id);
+  if (record.run_id) return `/operations/executions/${record.run_id}`;
   return undefined;
 }
 

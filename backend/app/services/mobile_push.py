@@ -44,6 +44,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.utils import format_exception_message
+from app.services.notification_feed import DECISION_KINDS, kind_names
 
 logger = logging.getLogger(__name__)
 
@@ -262,7 +263,8 @@ def push_payload(item: Any, *, minimal: bool, actions: list[dict] | None = None)
         "url": item.route,
         "tag": item.id,
         "kind": item.kind,
-        "urgent": item.kind in ("hitl", "flow_hitl") or bool(getattr(item, "critical", False)),
+        # Every decision is urgent, whichever source it waits on (#842, S4).
+        "urgent": item.kind in DECISION_KINDS or bool(getattr(item, "critical", False)),
         "icon": notification_icon(),
     }
     if actions:
@@ -285,11 +287,11 @@ def in_quiet_hours(quiet_hours: object, now: datetime) -> bool:
     return start <= local < end if start < end else local >= start or local < end
 
 
-def device_wants(device: Any, kind: str, now: datetime) -> bool:
-    """Whether a phone gets a push of ``kind`` now."""
+def device_wants(device: Any, kind: str, now: datetime, *, source: str | None = None) -> bool:
+    """Whether a phone gets a push of ``kind`` now (a decision muted under its former kind stays muted)."""
     if not device.push_enabled:
         return False
-    if kind in (device.muted_kinds or []):
+    if kind_names(kind, source) & set(device.muted_kinds or []):
         return False
     return not in_quiet_hours(device.quiet_hours, now)
 
@@ -387,7 +389,7 @@ async def push_item_to_user(
     if only_device is not None:
         query = query.where(MobileDevice.id == only_device)
     devices = list((await db.execute(query)).scalars().all())
-    wanting = [d for d in devices if device_wants(d, item.kind, moment)]
+    wanting = [d for d in devices if device_wants(d, item.kind, moment, source=getattr(item, "source", None))]
     counts["skipped"] = len(devices) - len(wanting)
     if not wanting:
         return counts
@@ -514,7 +516,8 @@ async def deliver_queued_push(db: AsyncSession, *, user_id: str, ref_kind: str, 
         if view is None:
             return None
         item = present_run(view)
-        if item is not None and item.kind == "hitl" and view.pending_approvals and not view.interactive:
+        # A run decision on tool approvals: Approve / Reject on the push.
+        if item is not None and item.source == "run" and view.pending_approvals and not view.interactive:
             from app.services.push_action_tokens import approval_actions
 
             async def actions_for(device, _view=view):

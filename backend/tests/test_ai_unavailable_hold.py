@@ -841,8 +841,8 @@ async def test_the_agent_reads_that_a_listed_delegation_is_held(monkeypatch):
 
     lines = (await built[1]._handlers["list_background_tasks"]()).splitlines()
 
-    assert lines[0] == f"• {held_id[:8]}... | pending | Summarise | {message}"
-    assert lines[1] == f"• {plain_id[:8]}... | pending | Translate"
+    assert lines[0] == f"• {held_id} | pending | Summarise | {message}"
+    assert lines[1] == f"• {plain_id} | pending | Translate"
 
 
 # ── Kind 4: the pending runs of an evaluation ───────────────────────────────

@@ -1502,6 +1502,8 @@ def build_tools(
             },
             source=src,
             priority=1,
+            # "run" reads as a write to the name classifier; ES|QL (_query) has no mutating command.
+            read_only=True,
         ),
         ToolDefinition(
             name="run_elastic_eql_query",
@@ -1524,6 +1526,8 @@ def build_tools(
             },
             source=src,
             priority=2,
+            # "run" reads as a write to the name classifier; EQL goes to the _eql/search API.
+            read_only=True,
         ),
         ToolDefinition(
             name="search_elastic",

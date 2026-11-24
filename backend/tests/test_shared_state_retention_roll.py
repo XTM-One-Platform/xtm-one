@@ -157,6 +157,39 @@ async def test_without_an_archive_key_the_rolled_items_are_dropped_and_counted(m
 
 
 @pytest.mark.asyncio
+async def test_a_guarded_roll_without_an_archive_key_dropping_more_than_appended_is_refused(monkeypatch, limits):
+    """A policy set on a list already over its bound drops nothing silently (item ba7836c9)."""
+    limits(0)
+    source = _state({"runs": _runs(0, 10)})
+    _sessions(monkeypatch, _Session(source))
+    with pytest.raises(ValueError, match="no archive_key"):
+        await shared_state_service.upsert_state(
+            user_id=str(uuid.uuid4()),
+            key="open-prs",
+            append={"runs": _runs(100, 1)},
+            retention={"keep_last": 3},
+            guard_trim=True,
+            writer=COMPANY_AGENT,
+            is_company_managed=True,
+        )
+    assert [r["n"] for r in source.value["runs"]] == list(range(10))
+    # Confirmed, the same write drops them and says so.
+    source = _state({"runs": _runs(0, 10)})
+    _sessions(monkeypatch, _Session(source))
+    out = await shared_state_service.upsert_state(
+        user_id=str(uuid.uuid4()),
+        key="open-prs",
+        append={"runs": _runs(100, 1)},
+        retention={"keep_last": 3},
+        guard_trim=False,
+        writer=COMPANY_AGENT,
+        is_company_managed=True,
+    )
+    assert [r["n"] for r in out["value"]["runs"]] == [8, 9, 100]
+    assert out["rolled"] == {"runs": 8}
+
+
+@pytest.mark.asyncio
 async def test_setting_a_policy_stores_it_and_rolls_the_list_at_once(monkeypatch, limits):
     limits(0)
     source = _state({"runs": _runs(0, 5)})

@@ -161,21 +161,36 @@ def _short(text: object, limit: int) -> str:
     return value if len(value) <= limit else value[: limit - 3].rstrip() + "..."
 
 
-def category_counts(profile: Any, *, tracked_count: int = 0) -> dict[str, int]:
-    """The size of every category of *profile* (``tracked_organizations`` from *tracked_count*)."""
+def category_counts(
+    profile: Any, *, tracked_count: int = 0, asset_counts: dict[str, int] | None = None
+) -> dict[str, int]:
+    """The size of every category of *profile* (``tracked_organizations`` from *tracked_count*).
+
+    *asset_counts* (``organization_context.asset_list_counts``) gives the asset
+    and group sizes the records hold (#1543), counted without loading a row.
+    """
     from app.services import organization_context_categories as cats
 
-    counts = {category.name: len(cats.rows_of(profile, category)) for category in cats.CATEGORIES if category.field}
+    lists = asset_counts or {}
+    counts = {
+        category.name: lists[category.field] if category.field in lists else len(cats.rows_of(profile, category))
+        for category in cats.CATEGORIES
+        if category.field
+    }
     counts[cats.TRACKED_ORGANIZATIONS] = tracked_count
     return counts
 
 
-def render_summary(row: Any, *, tracked_count: int = 0) -> str:
+def render_summary(
+    row: Any, *, tracked_count: int = 0, ctem_work: bool = True, asset_counts: dict[str, int] | None = None
+) -> str:
     """The basic block of the primary profile *row*: identity + category index, at most :data:`SUMMARY_MAX_CHARS`.
 
     ``""`` when no profile is saved. The identity is a handful of short
     fields and the index one line per category of the model, so the block
-    never grows with a list's length.
+    never grows with a list's length. *ctem_work* false
+    (``organization_context.ctem_work_for``): the CTEM-only fields are left
+    out of the "Not filled" line and no brief notice is asked (#1384).
     """
     import json
 
@@ -184,12 +199,15 @@ def render_summary(row: Any, *, tracked_count: int = 0) -> str:
     from app.services.organization_context import (
         CONTRACT_FIELDS,
         brief_notice_instruction,
+        identity_only,
         missing_fields,
+        missing_for_run,
         parse_profile,
     )
 
     if row is None:
         return ""
+    identity = identity_only()
     profile = parse_profile(row.profile)
     facts: dict[str, Any] = {}
     if profile.name:
@@ -201,7 +219,8 @@ def render_summary(row: Any, *, tracked_count: int = 0) -> str:
     if profile.size:
         facts["size"] = profile.size
     appetite = profile.risk_appetite
-    if appetite.annual_loss_threshold is not None or appetite.approval_threshold is not None:
+    # Copilot mode (#1690): the identity alone, no risk appetite, currency, category index or CTEM field.
+    if not identity and (appetite.annual_loss_threshold is not None or appetite.approval_threshold is not None):
         currency = f" {profile.currency}" if profile.currency else ""
         facts["risk_appetite"] = {
             key: f"{value:g}{currency}"
@@ -211,24 +230,40 @@ def render_summary(row: Any, *, tracked_count: int = 0) -> str:
             )
             if value is not None
         }
-    if profile.currency:
+    if profile.currency and not identity:
         facts["currency"] = profile.currency
-    counts = category_counts(profile, tracked_count=tracked_count)
+    if profile.fx_rates and not identity:
+        # #1383: the reference rates an agent cites to convert a figure into the currency above.
+        facts["fx_rates"] = [
+            f"1 {r.from_currency} = {r.rate:g} {r.to_currency} ({r.as_of.isoformat()}, {_short(r.source, 60)})"
+            for r in profile.fx_rates[:10]
+        ]
+    counts = category_counts(profile, tracked_count=tracked_count, asset_counts=asset_counts)
+    if identity:
+        run_missing = missing_fields(profile)
+        labels = dict(CONTRACT_FIELDS)
+        missing = [labels[path] for path in run_missing]
+        tail = "Not filled: " + (", ".join(missing) if missing else "none") + ". Never guess a missing field."
+        head = f"{SUMMARY_HEADER}\nThe organization you work for (profile version {row.version})."
+        body = wrap_untrusted(json.dumps(facts, ensure_ascii=False), "organization profile", stable=True)
+        return "\n".join([head, body, tail])[:SUMMARY_MAX_CHARS]
     head = (
         f"{SUMMARY_HEADER}\nThe organization you work for (profile version {row.version}). "
-        "The rest of the profile is in categories: read exactly the one your work needs with "
-        'get_organization_context(category="tech_stack", query="cisco", offset=0, limit=50) reads one '
-        '(any name of the index below); category="*" lists them.'
+        "The rest is in the categories below: read only the one your work needs with "
+        'get_organization_context(category="software", query="cisco") (it pages); category="*" lists them.'
     )
     index = "Categories:\n" + "\n".join(
-        cats.index_line(category, counts[category.name]) for category in cats.CATEGORIES
+        cats.index_line(category, counts[category.name])
+        for category in cats.CATEGORIES
+        if cats.indexed(category, counts[category.name])
     )
     category_fields = {category.field for category in cats.CATEGORIES}
     labels = dict(CONTRACT_FIELDS)
-    missing = [labels[path] for path in missing_fields(profile) if path not in category_fields]
+    run_missing = missing_for_run(missing_fields(profile), ctem_work=ctem_work)
+    missing = [labels[path] for path in run_missing if path not in category_fields]
     tail = "Not filled: " + (", ".join(missing) if missing else "none") + ". Never guess a missing field."
-    # Incomplete: every brief the agent writes says so, in one info line (#11586).
-    notice = brief_notice_instruction(missing_fields(profile))
+    # Incomplete: every brief of a CTEM run says so, in one info line (#11586, #1384).
+    notice = brief_notice_instruction(run_missing) if ctem_work else ""
     if notice:
         tail += " " + notice
     body = wrap_untrusted(json.dumps(facts, ensure_ascii=False), "organization profile", stable=True)
@@ -247,11 +282,13 @@ async def _tracked(db: AsyncSession) -> list[Any]:
 async def render_preloaded_categories(db: AsyncSession, row: Any, names: list[str]) -> str:
     """The categories the cascade selected, each capped, after the basic block (``""`` when none)."""
     from app.services import organization_context_categories as cats
-    from app.services.organization_context import parse_profile
+    from app.services.organization_context import hydrated_profile
 
+    # Copilot mode exposes no category (#1690): a stored selection is kept, never preloaded.
+    names = [name for name in names if name in cats.available_names()]
     if row is None or not names:
         return ""
-    profile = parse_profile(row.profile)
+    profile = await hydrated_profile(db, row)  # the asset and group rows from the records (#1543)
     parts: list[str] = []
     for name in names:
         category = cats.get(name)
@@ -281,7 +318,9 @@ async def assignment_run_organization_context(
 
     if not await effective_for(db, agent=agent, assignment=assignment):
         return "", ""
-    block = await fleet_run_context(db, getattr(agent, "id", None), fleet=fleet, organization_ids=organization_ids)
+    block = await fleet_run_context(
+        db, getattr(agent, "id", None), fleet=fleet, organization_ids=organization_ids, agent=agent
+    )
     if block:
         return block, ""
     return "", await organization_summary_for(db, agent=agent, assignment=assignment)
@@ -302,12 +341,17 @@ async def organization_summary_for(
     try:
         if not await effective_for(db, agent=agent, assignment=assignment):
             return ""
-        from app.services.organization_context import current_version
+        from app.services.organization_context import asset_list_counts, ctem_work_for, current_version
 
         row = await current_version(db)
         if row is None:
             return ""
-        basic = render_summary(row, tracked_count=len(await _tracked(db)))
+        basic = render_summary(
+            row,
+            tracked_count=len(await _tracked(db)),
+            ctem_work=await ctem_work_for(db, agent),
+            asset_counts=await asset_list_counts(db, row.organization_id),
+        )
         preloaded = await render_preloaded_categories(
             db, row, await categories_for(db, agent=agent, assignment=assignment)
         )

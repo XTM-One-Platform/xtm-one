@@ -30,6 +30,7 @@ nothing changes and the caller gets a generic error.
 from __future__ import annotations
 
 import logging
+import uuid
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -48,11 +49,17 @@ from app.services.health import budget as health_budget
 from app.services.health.consent import Revocation, apply_revocation
 from app.services.health.naming import default_health_agent_name, load_health_agent_name
 from app.services.health.settings import (
+    SPEND_LIMITS_ENV_VAR,
+    SPEND_LIMITS_LOCKED_REASON,
     HealthBudgetCaps,
     HealthSettings,
+    SpendLimitsLockedError,
+    describe_spend_limits,
     load_health_settings,
+    load_stored_health_settings,
     save_health_settings,
     scope_narrowed,
+    spend_limits_unlocked,
 )
 
 logger = logging.getLogger(__name__)
@@ -299,10 +306,107 @@ async def put_health_settings(
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> HealthSettings:
-    before, after = await save_health_settings(db, body, actor=admin, request=request)
+    """Store the settings. A changed spend ceiling while they are locked (#1202) is refused (403), nothing written.
+
+    A new "Run checks as" user (12.3) who cannot read a registered module is refused (400, the modules named),
+    nothing written, as a fleet automation's run-as (``fleet_run_as``, #9188).
+    """
+    if body.module_run_as_user_id != (await load_stored_health_settings(db)).module_run_as_user_id:
+        await check_module_run_as(db, body.module_run_as_user_id)
+    try:
+        before, after = await save_health_settings(db, body, actor=admin, request=request)
+    except SpendLimitsLockedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     revocation = Revocation(kind="scope_narrowed") if scope_narrowed(before, after) else None
     await _commit_with_revocation(db, revocation)
     return after
+
+
+async def check_module_run_as(db: AsyncSession, user_id: uuid.UUID | None) -> None:
+    """400 when *user_id* cannot read every registered module the checks need; ``None`` passes (not set).
+
+    The ``detail`` is ``{code, modules?, message}``: the client words the refusal from its catalogs.
+    """
+    if user_id is None:
+        return
+    from app.services.health.run_as import (
+        missing_module_access,
+        run_as_inactive_detail,
+        run_as_refusal_detail,
+        user_is_active,
+    )
+
+    if not await user_is_active(db, user_id):
+        raise HTTPException(status_code=400, detail=run_as_inactive_detail())
+    missing = await missing_module_access(db, user_id)
+    if missing:
+        raise HTTPException(status_code=400, detail=run_as_refusal_detail(missing))
+
+
+class ModuleRunAsCheck(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: uuid.UUID
+
+
+class ModuleRunAsSaved(BaseModel):
+    module_run_as_user_id: uuid.UUID | None
+
+
+@router.put("/settings/run-as", response_model=ModuleRunAsSaved)
+async def put_module_run_as(
+    body: ModuleRunAsCheck,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> ModuleRunAsSaved:
+    """Set the "Run checks as" user alone (the onboarding step), validated as the settings save."""
+    await check_module_run_as(db, body.user_id)
+    current = await load_health_settings(db)
+    updated = current.model_copy(update={"module_run_as_user_id": body.user_id})
+    try:
+        _before, after = await save_health_settings(db, updated, actor=admin, request=request)
+    except SpendLimitsLockedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    await db.commit()
+    return ModuleRunAsSaved(module_run_as_user_id=after.module_run_as_user_id)
+
+
+class SpendLimit(BaseModel):
+    """One spend ceiling: the value in force, its default, what the row holds and where the value comes from."""
+
+    block: str
+    key: str
+    value: int | Decimal | None
+    default: int | Decimal | None
+    stored: int | Decimal | None
+    #: ``default`` (the built-in value applies) or ``database`` (a stored value applies).
+    source: str
+
+
+class SpendLimitsResponse(BaseModel):
+    """Whether the spend ceilings are locked at their defaults (#1202), and each of them."""
+
+    locked: bool
+    #: ``environment`` while locked: only the variable below unlocks them.
+    locked_reason: str | None
+    env_var: str
+    limits: list[SpendLimit]
+
+
+@router.get("/settings/spend-limits", response_model=SpendLimitsResponse)
+async def get_spend_limits(
+    _admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SpendLimitsResponse:
+    """The spend lock and every ceiling, so the page needs no second rule."""
+    locked = not spend_limits_unlocked()
+    return SpendLimitsResponse(
+        locked=locked,
+        locked_reason=SPEND_LIMITS_LOCKED_REASON if locked else None,
+        env_var=SPEND_LIMITS_ENV_VAR,
+        limits=[SpendLimit(**item) for item in describe_spend_limits(await load_stored_health_settings(db))],
+    )
 
 
 @router.get("/budget", response_model=BudgetResponse)

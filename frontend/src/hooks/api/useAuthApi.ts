@@ -135,6 +135,8 @@ export function useUpdateProfile() {
       chat_sidebar_expanded_workspaces?: string[] | null;
       /** The bell shows the work items waiting for this person (#9437). */
       notify_waiting_work_items?: boolean;
+      /** The composer's reply suggestion after a chat turn. */
+      reply_suggestions_enabled?: boolean;
     }) =>
       api.put("/settings/preferences", data),
     // Serialized: every preference write PUTs a whole field value, so two
@@ -204,8 +206,8 @@ export function useAuthConfig() {
        Its ~15 other consumers degrade silently, and that is knowingly
        accepted rather than unnoticed. On a transient 5xx:
 
-       - `Settings` reads `FILIGRAN_GATEWAY_PROVIDER` as off and drops the
-         Gateway provider option;
+       - `Settings` reads `VIDEO_STUDIO` as off and drops the video models
+         and video-only providers;
        - `ForgotPassword` loses its "SSO accounts cannot reset a password" note;
        - `NewUser` / `Profile` / `ResetPassword` fall back to the client
          `MIN_PASSWORD_LENGTH`, so a stricter server policy shows inline
@@ -223,7 +225,7 @@ export function useAuthConfig() {
        Retries stay at the app default (main.tsx: two attempts for network
        errors, one retry otherwise) rather than `usePlatformConfig`'s three.
        Nothing blocks on the platform config, whereas `/flows` and
-       `/flows/:id/builder` now hold a skeleton until this settles — three
+       `/flows/library/:id` now hold a skeleton until this settles — three
        retries would put a full 1s + 2s + 4s backoff in front of the page on a
        single transient 500. */
     throwOnError: false,

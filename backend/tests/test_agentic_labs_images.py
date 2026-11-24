@@ -102,6 +102,22 @@ async def test_the_pod_runs_each_dependency_on_its_own_image_and_the_service_on_
     )
 
 
+async def test_starting_a_product_image_service_names_what_depends_on_it(lab_images: None) -> None:
+    """A service on an AGENTIC_LABS_IMAGES key is refused as started, with its dependants named (#1371)."""
+    workspace = _workspace()
+    await workspace.put_tree([("co/.xtm-one/checks.toml", SERVICES.encode())])
+    with pytest.raises(checks.ChecksError) as refused:
+        await services.resolve(
+            workspace, checkout="co", service="product", known_images={"python-dev"}, lab_images={"search", "product"}
+        )
+    text = str(refused.value)
+    assert "product image key 'product'" in text and "AGENTIC_LABS_IMAGES" in text
+    assert "Start a service that depends on it instead: lab." in text and "OPENSANDBOX_IMAGES" not in text
+    # A key neither setting knows keeps the OPENSANDBOX_IMAGES refusal.
+    with pytest.raises(checks.ChecksError, match="which OPENSANDBOX_IMAGES does not configure"):
+        await services.resolve(workspace, checkout="co", service="search", known_images={"python-dev"})
+
+
 def test_the_setting_parses_key_image_pairs_keeping_the_tag():
     parsed = Settings(agentic_labs_images="opencti:docker.io/opencti/platform:6.9.0,search:reg:5000/os:2")
     assert parsed.agentic_labs_images == {"opencti": "docker.io/opencti/platform:6.9.0", "search": "reg:5000/os:2"}

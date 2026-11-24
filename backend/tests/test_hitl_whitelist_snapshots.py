@@ -6,6 +6,8 @@ goes stale — the script had a ``--check`` mode that nothing ran, and the far
 larger integration layer had no snapshot at all.
 """
 
+import re
+
 import pytest
 
 from scripts.dump_platform_read_whitelist import (
@@ -31,6 +33,16 @@ def test_the_snapshot_matches_what_is_derived(path, renderer):
         "READ THE DIFF: every added line is a tool that will run with no human "
         "in the loop, on every deployment, scheduled runs included."
     )
+
+
+@pytest.mark.parametrize("renderer", [render, render_integrations], ids=["platform", "integration"])
+def test_the_header_holds_no_count_that_every_tool_pr_would_rewrite(renderer):
+    """A '# N tools' header line changed with every added tool, so two PRs
+    adding tools always conflicted on it once one of them merged (#1121)."""
+    header = [line for line in renderer().splitlines() if line.startswith("#")]
+    counted = [line for line in header if re.search(r"\b\d+ (tools|providers|held|read-classified)\b", line)]
+
+    assert not counted, counted
 
 
 def test_the_hand_gated_family_is_absent_from_both():

@@ -161,6 +161,78 @@ async def test_quality_signals_serve_no_content_without_content_access():
     assert "comment" not in signals["feedback"]["latest_negative"][0]
 
 
+def _unstarted(agent_id, user_id, at, *, cause="engine_deadline_exceeded", status="failed") -> AssignmentRun:
+    """A run its deadline stopped in the queue: no trace, never started (#1416)."""
+    return AssignmentRun(
+        agent_id=agent_id,
+        user_id=user_id,
+        status=status,
+        error=f"Deadline exceeded at {at.isoformat()}.",
+        failure_cause=cause,
+        created_at=at,
+        completed_at=at,
+    )
+
+
+@pytest.mark.asyncio
+async def test_runs_failed_before_start_count_in_both_windows_and_once():
+    async with _temp_database("cd_unstarted") as sessions:
+        async with sessions() as db:
+            owner, opted_out = _user("owner"), _user("opted-out")
+            db.add_all([owner, opted_out])
+            await db.flush()
+            agent = Agent(id=uuid.uuid4(), name="Queued agent", user_id=owner.id, persona="x")
+            db.add(agent)
+            await db.flush()
+            day = timedelta(days=1)
+            # Failed without a start, but traced: counted once, as its trace.
+            traced_run = _unstarted(agent.id, owner.id, NOW - 2 * day, cause="tool_error")
+            unstarted = [
+                _unstarted(agent.id, owner.id, NOW - day),
+                _unstarted(agent.id, owner.id, NOW - day, cause="engine_never_claimed", status="cancelled"),
+                _unstarted(agent.id, opted_out.id, NOW - 3 * day),
+            ]
+            started = AssignmentRun(
+                agent_id=agent.id, user_id=owner.id, status="failed", created_at=NOW - day, started_at=NOW - day
+            )
+            previous = _unstarted(agent.id, owner.id, NOW - 9 * day, cause=None)
+            db.add_all([traced_run, *unstarted, started, previous])
+            await db.flush()
+            failed_trace = _trace(agent.id, owner.id, NOW - 2 * day, status="error", cause="tool_error")
+            failed_trace.assignment_run_id = traced_run.id
+            db.add_all(
+                [
+                    _trace(agent.id, owner.id, NOW - day),
+                    _trace(agent.id, owner.id, NOW - day),
+                    failed_trace,
+                    _trace(agent.id, owner.id, NOW - 9 * day),
+                ]
+            )
+            await db.commit()
+        async with sessions() as db:
+            signals = await quality_signals(
+                db, _reader(owner, opted_out), AgentAccess(agent=agent, content=True), days=7, now=NOW
+            )
+            metrics_only = await quality_signals(
+                db, _reader(owner, opted_out), AgentAccess(agent=agent, content=False), days=7, now=NOW
+            )
+
+    current = signals["current"]
+    # 2 traced ok + 1 traced failed + 3 failed before start; the started run without a trace is not one.
+    assert (current["runs"], current["failed"], current["failure_rate_pct"]) == (6, 4, 66.7)
+    assert current["failed_before_start"] == 3
+    assert current["failed_before_start_causes"] == {"deadline_before_start": 3}
+    previous_figures = signals["previous"]
+    assert (previous_figures["runs"], previous_figures["failed"], previous_figures["failed_before_start"]) == (2, 1, 1)
+    assert previous_figures["failure_rate_pct"] == 50.0
+    assert signals["drift_pct"]["failure_rate"] == 33.4
+    # Run ids beside the trace ids, never an opted-out user's, never without content access.
+    assert sorted(signals["failed_before_start_run_ids"]) == sorted(str(r.id) for r in unstarted[:2])
+    assert signals["failed_trace_ids"] == [str(failed_trace.id)]
+    assert "failed_before_start_run_ids" not in metrics_only
+    assert metrics_only["current"]["failed_before_start"] == 3
+
+
 @pytest.mark.asyncio
 async def test_verify_evidence_keeps_only_the_agent_s_own_refs():
     async with _temp_database("cd_evidence") as sessions:

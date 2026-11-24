@@ -101,7 +101,7 @@ describe("postureCsvRows", () => {
     const base = posture();
     const tailored = postureCsvRows(posture({ headline: { ...base.headline, kev_tailored_count: 3, kev_tailored_products: ["Fortinet FortiOS", "Microsoft Exchange"] } }), t);
     expect(tailored.find((r) => r.key === "headline.kev_tailored_products")?.value).toBe("Fortinet FortiOS, Microsoft Exchange");
-    expect(tailored.find((r) => r.key === "headline.kev_tailored_count")?.metric).toBe("Known-exploited in your tech stack");
+    expect(tailored.find((r) => r.key === "headline.kev_tailored_count")?.metric).toBe("Known-exploited in your software");
     const empty = postureCsvRows(posture({ headline: { ...base.headline, kev_tailored_count: 0, kev_tailored_products: [] } }), t);
     expect(empty.some((r) => r.key === "headline.kev_tailored_products")).toBe(false);
   });

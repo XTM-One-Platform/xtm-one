@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+from types import SimpleNamespace
 
 from app.services.sandbox_workspace import commands, jobs
 from app.services.sandbox_workspace.manifest import Limits
@@ -232,3 +233,45 @@ async def test_an_install_run_first_is_not_recorded_as_the_job_of_the_check():
     # Outside a bound call nothing is recorded.
     await jobs.record(_Workspace(), "other", "unit")
     assert len(state[jobs.JOBS]) == 1
+
+
+def test_saving_a_run_drops_the_oldest_run_directories_beyond_the_kept_count():
+    """Saved results never fill the file limit: the oldest run directories go, prepush records stay."""
+    entries = {}
+    for i in range(5):
+        for name in ("run.json", "stdout.txt", "stderr.txt"):
+            entries[f".xtm/runs/r{i}/{name}"] = SimpleNamespace(mtime=float(i))
+    entries[".xtm/runs/prepush/co.json"] = SimpleNamespace(mtime=0.0)
+    entries["co/app.py"] = SimpleNamespace(mtime=0.0)
+
+    stale = commands._stale_run_files(entries, ".xtm/runs/new", keep=3)
+    # The new run plus the 2 newest kept (r4, r3); r0..r2 dropped whole.
+    assert sorted({p.split("/")[2] for p in stale}) == ["r0", "r1", "r2"]
+    assert len(stale) == 9
+    assert ".xtm/runs/prepush/co.json" not in stale and "co/app.py" not in stale
+    # Under the kept count nothing goes; the run being saved is never counted twice.
+    assert commands._stale_run_files(entries, ".xtm/runs/r4", keep=10) == []
+
+
+async def test_a_saved_run_leaves_at_most_the_kept_count_of_run_directories(monkeypatch):
+    workspace = _worker(_scope(), MemoryWorkspaceStore())
+    monkeypatch.setattr(commands, "MAX_KEPT_RUNS", 3)
+    command = SimpleNamespace(
+        check="unit", argv=["true"], cwd="co", image="img", timeout=60, report=None, report_path=None
+    )
+    for i in range(5):
+        saved = await commands._save_run(
+            workspace,
+            f".xtm/runs/r{i}",
+            command=command,
+            stdout="ok",
+            stderr="",
+            exit_code=0,
+            timed_out=False,
+            seconds=1.0,
+            failure="",
+            container="c",
+        )
+        assert saved
+    runs = {p.split("/")[2] for p in await workspace.entries(refresh=True) if p.startswith(".xtm/runs/")}
+    assert len(runs) == 3 and "r4" in runs, runs

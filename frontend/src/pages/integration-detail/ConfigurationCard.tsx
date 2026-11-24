@@ -15,7 +15,7 @@ import { useCredentialSharingConfirm } from "@/hooks/useCredentialSharingConfirm
 import { useUserShareGrants } from "@/hooks/useUserShareGrants";
 import { useUpdateIntegration } from "@/hooks/api/useIntegrationApi";
 import { useAuth } from "@/hooks/useAuth";
-import { extraConfigPatch, isExtraFieldVisible, isSecretExtraKey, restoreEmptiedExtraFields, withoutHiddenExtraFields } from "@/lib/extra-fields";
+import { extraConfigPatch, hasInvalidExtraField, isExtraFieldVisible, isSecretExtraKey, restoreEmptiedExtraFields, withoutHiddenExtraFields } from "@/lib/extra-fields";
 import { ExtraFieldInputs } from "@/components/ui/extra-field-inputs";
 import { Label } from "@/components/ui/label";
 import { SecretField } from "@/components/ui/secret-field";
@@ -342,7 +342,7 @@ export function ConfigurationCard({ integration, catalogEntry, canManage, isRegi
       onStartEditing={startEditing}
       onCancel={() => setEditing(false)}
       onSave={handleSave}
-      canSave={!(catalogEntry?.requires_relay && !editRelayGroupId)}
+      canSave={!(catalogEntry?.requires_relay && !editRelayGroupId) && !hasInvalidExtraField(editExtra, catalogEntry?.extra_field_inputs)}
       isSaving={update.isPending}
       editCompanyManaged={editCompanyManaged}
       onCompanyManagedChange={setEditCompanyManaged}
@@ -714,6 +714,7 @@ export function ConfigurationCard({ integration, catalogEntry, canManage, isRegi
             onChange={setEditExtra}
             options={catalogEntry?.extra_field_options}
             visibleWhen={catalogEntry?.extra_field_visible_when}
+            inputs={catalogEntry?.extra_field_inputs}
             schemaTypeByKey={schemaTypeByKey}
             showSecrets={showSecrets}
           />

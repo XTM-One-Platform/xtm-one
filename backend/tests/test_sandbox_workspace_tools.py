@@ -393,9 +393,15 @@ async def test_put_refuses_another_conversations_file_naming_its_owner_scope(sto
         # The owned lookup admits nothing here (a template asset, a row gone): only the refusal is tested.
         return None, None
 
+    async def no_asset(_file_id, _user_id):
+        return None
+
+    from app.services import template_containers
+
     monkeypatch.setattr(_shared, "load_scoped_file_ref", scoped)
     monkeypatch.setattr(_shared, "_own_session", own_session)
     monkeypatch.setattr(wi_files, "load_owned_file_ref", not_owned)
+    monkeypatch.setattr(template_containers, "load_visible_asset", no_asset)
     file_id = str(uuid.uuid4())
     put = await composite.execute_tool(
         ToolCall(id="1", name="sandbox_put_file", arguments={"file_id": file_id, "path": "x.png"})
@@ -430,6 +436,43 @@ async def test_put_takes_a_file_another_run_of_the_same_user_produced(store, mon
     assert "to workspace/in/brief.md (5 B" in put.content, put.content
     assert asked == [(ref.file_id[:8], str(user))]
     assert composite.file_context.is_fetched(ref.file_id)
+
+
+async def test_put_takes_a_template_asset_the_caller_can_see(store, monkeypatch):
+    """A template asset (a brand logo from get_template) is put by its id when its container is visible to the
+    acting user (#1318); the lookup is asked with the bare id whatever spelling the model used."""
+    from types import SimpleNamespace
+
+    from app.services import template_containers
+    from app.services.builtin_tools import _shared
+
+    conversation, user = uuid.uuid4(), uuid.uuid4()
+    composite, _ = _composite(conversation, user)
+    asset_id = uuid.uuid4()
+    asked: list[tuple[str, str]] = []
+
+    async def scoped(_file_id, **_scope):
+        return None
+
+    async def not_owned(_file_id, _user_id):
+        return None, None
+
+    async def visible(file_id, user_id):
+        asked.append((file_id, user_id))
+        return SimpleNamespace(id=asset_id) if file_id == str(asset_id) and user_id == str(user) else None
+
+    ref = FileRef.from_bytes(data=b"<svg/>", filename="logo.svg", content_type="image/svg+xml")
+    monkeypatch.setattr(_shared, "load_scoped_file_ref", scoped)
+    monkeypatch.setattr(wi_files, "load_owned_file_ref", not_owned)
+    monkeypatch.setattr(template_containers, "load_visible_asset", visible)
+    monkeypatch.setattr(FileRef, "from_attachment", staticmethod(lambda _row: ref))
+    put = await composite.execute_tool(
+        ToolCall(
+            id="1", name="sandbox_put_file", arguments={"file_id": f"[[FILE:{asset_id}]]", "path": "brand/logo.svg"}
+        )
+    )
+    assert "to workspace/brand/logo.svg (6 B" in put.content, put.content
+    assert asked == [(str(asset_id), str(user))]
 
 
 async def test_put_refuses_an_ambiguous_prefix_with_its_candidates(store, monkeypatch):
@@ -1027,6 +1070,23 @@ async def test_grep_past_its_byte_budget_names_what_it_did_not_reach(store, monk
     ) in grep.content
 
 
+async def test_grep_past_its_time_budget_names_what_it_did_not_reach(store, monkeypatch):
+    """The workspace search stops at the call's time budget, not at a file count (#758), and names the rest."""
+    from app.services.sandbox_workspace import commands, reading
+
+    composite, _ = _composite(uuid.uuid4(), uuid.uuid4())
+    for i in range(3):
+        await _put(composite, f"src/f{i}.py", b"needle = 1\n")
+    assert reading.MAX_GREP_FILES >= 20_000  # a whole checkout is not cut by a file count
+    monkeypatch.setattr(commands, "wait_budget", lambda *a, **k: 0.0)
+    grep = await composite.execute_tool(
+        ToolCall(id="g", name="sandbox_grep", arguments={"pattern": "needle", "path_prefix": "src"})
+    )
+    assert not grep.is_error, grep.content
+    assert "search stopped early: the call's time budget ran out; 3 file(s) not searched" in grep.content
+    assert "the first is workspace/src/f0.py" in grep.content
+
+
 def test_plan_grep_batches_by_count_and_bytes_and_keeps_path_order():
     from app.services.sandbox_workspace import reading
 
@@ -1221,6 +1281,42 @@ async def test_json_keys_changes_every_catalog_in_one_commit_or_none(store):
         ToolCall(id="j2", name="sandbox_json_keys", arguments={"paths": ["i18n/en.json", "i18n/bad.json"], "set": {"*": {"K": "V"}}})
     )
     assert refused.is_error and "not a JSON object" in refused.content and "Nothing was written" in refused.content
+    assert b'"K"' not in await _workspace_bytes(store, conversation, "i18n/en.json")
+
+
+async def test_json_keys_reads_the_set_from_a_workspace_file(store):
+    """set_from: the set object is read from a workspace JSON file; set and set_from together are refused."""
+    conversation, user = uuid.uuid4(), uuid.uuid4()
+    composite, _ = _composite(conversation, user)
+    await _put(composite, "i18n/en.json", b'{\n  "Save": "Save"\n}\n')
+    await _put(composite, "i18n/fr.json", b'{\n  "Save": "Enregistrer"\n}\n')
+    await _put(composite, "work/set.json", b'{"i18n/en.json": {"New": "New"}, "i18n/fr.json": {"New": "Nouveau"}}')
+    done = await composite.execute_tool(
+        ToolCall(
+            id="s1",
+            name="sandbox_json_keys",
+            arguments={"paths": ["i18n/en.json", "i18n/fr.json"], "set_from": "work/set.json"},
+        )
+    )
+    assert not done.is_error, done.content
+    assert done.content.startswith("Wrote 2 of 2 file(s) in one commit")
+    assert (
+        await _workspace_bytes(store, conversation, "i18n/fr.json")
+        == b'{\n  "Save": "Enregistrer",\n  "New": "Nouveau"\n}\n'
+    )
+    both = await composite.execute_tool(
+        ToolCall(
+            id="s2",
+            name="sandbox_json_keys",
+            arguments={"paths": ["i18n/en.json"], "set": {"*": {"K": "V"}}, "set_from": "work/set.json"},
+        )
+    )
+    assert both.is_error and "either 'set' or 'set_from'" in both.content
+    await _put(composite, "work/list.json", b"[1]")
+    wrong = await composite.execute_tool(
+        ToolCall(id="s3", name="sandbox_json_keys", arguments={"paths": ["i18n/en.json"], "set_from": "work/list.json"})
+    )
+    assert wrong.is_error and "must hold a JSON object" in wrong.content
     assert b'"K"' not in await _workspace_bytes(store, conversation, "i18n/en.json")
 
 
@@ -2475,13 +2571,16 @@ async def test_checkout_rebase_repeat_while_its_job_runs_answers_that_job(store,
     composite, executor, _archives, _reads = await _rebasable(store)
     gate = asyncio.Event()
     real = jobs.rebase_running
+    tasks: list[asyncio.Task] = []
 
     async def slow(workspace, key, run_id, label, work):
         async def held():
             await gate.wait()
             return await work()
 
-        return await real(workspace, key, run_id, label, held)
+        task = await real(workspace, key, run_id, label, held)
+        tasks.append(task)
+        return task
 
     monkeypatch.setattr(jobs, "rebase_running", slow)
     monkeypatch.setattr(jobs, "POLL_WAIT", 0.05)
@@ -2492,9 +2591,12 @@ async def test_checkout_rebase_repeat_while_its_job_runs_answers_that_job(store,
     sync_repeat = await _call(composite, "sandbox_checkout_rebase", checkout="repo", ref="main")
     assert f"Rebase {run_id}" in sync_repeat.content
     assert await jobs.rebase_landed(executor.session, {"checkout": "repo", "ref": "main"}) is False
+    assert len(tasks) == 1, "the repeats answered the running job, no second rebase"
     gate.set()
+    # Wait for the job itself, not a 0.05 s poll: under xdist load the rebase outlives a short poll.
+    await tasks[0]
     done = await _call(composite, "sandbox_checkout_rebase", checkout="repo", run_id=run_id)
-    assert done.content.startswith("workspace/repo/: rebased from acme/repo@v1")
+    assert done.content.startswith("workspace/repo/: rebased from acme/repo@v1"), done.content
 
 
 async def test_checkout_rebase_job_lost_with_its_worker_is_reported_and_unknown_ids_refused(store):

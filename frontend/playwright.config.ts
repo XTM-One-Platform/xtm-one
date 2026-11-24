@@ -29,7 +29,7 @@ export default defineConfig({
   // retries cost more wall clock than the parallelism saves. Shards, not
   // workers, are where this suite's parallelism comes from.
   workers: process.env.CI ? 1 : undefined,
-  // The JSON report is what `yarn e2e:shard-timings` rebuilds shard-timings.json from.
+  // The JSON report is what the nightly run measures the shard weights from (backend/scripts/shard_weights.py).
   reporter: process.env.CI
     ? [['list'], ['html', { open: 'never' }], ['json', { outputFile: 'test-results/timings.json' }]]
     : [['list'], ['html', { open: 'never' }]],

@@ -33,7 +33,13 @@ off by default:
   saved by the administrator the turn acts for (#11888);
 - ``list_organization_proposals`` and ``decide_organization_proposal`` read
   and accept or reject the pending proposals, the review of Settings >
-  Organization (``organization_context_proposals.decide``, #475).
+  Organization (``organization_context_proposals.decide``, #475);
+- ``list_organization_versions`` and ``restore_organization_version`` read
+  the saved versions and restore fields from one, through the handlers of
+  the Settings > Organization routes so every check is the same (#1676);
+  ``update_organization_context`` takes ``based_on_version``; the tools the
+  profile's platform services declare (``organization_context_agent_tools``)
+  join the group, named there, never here (invariant 18).
 
 Authorization is enforced twice, as Settings > Organization is admin-only:
 the turn wires the group only when the person it acts for is a platform
@@ -63,6 +69,8 @@ ORGANIZATION_CREATE_SYNC_TOOL = "create_organization_sync"
 ORGANIZATION_RUN_SYNC_TOOL = "run_organization_sync"
 ORGANIZATION_LIST_PROPOSALS_TOOL = "list_organization_proposals"
 ORGANIZATION_DECIDE_PROPOSAL_TOOL = "decide_organization_proposal"
+ORGANIZATION_VERSIONS_TOOL = "list_organization_versions"
+ORGANIZATION_RESTORE_TOOL = "restore_organization_version"
 _PROPOSAL_STATUSES = ("pending", "accepted", "rejected")
 _SOURCE = f"builtin:{ORGANIZATION_CONTEXT_WRITE_GROUP}"
 REFUSAL = "Refused: only an administrator can change the organization profile."
@@ -99,6 +107,19 @@ def refused_admin_bound_ids(requested, *, before=(), caller_is_admin: bool) -> l
     return sorted({t for t in (requested or ()) if t in ADMIN_BOUND_BUILTIN_TOOL_IDS and t not in already})
 
 
+#: Copilot mode (#1690): the profile is its identity alone, so a list section is never written.
+IDENTITY_ONLY_REFUSAL = (
+    "Refused: on this platform the organization profile is its identity alone (name, sector, regions, size). "
+    "Use update_organization_context for those fields; nothing was changed."
+)
+
+
+def _identity_only() -> bool:
+    from app.services.organization_context import identity_only
+
+    return identity_only()
+
+
 def build_organization_context_write_tools(
     *,
     user_id: str | None,
@@ -109,7 +130,9 @@ def build_organization_context_write_tools(
 ) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """The write tools of the profile, acting for *user_id* (an administrator)."""
 
-    async def _update(organization: str = "", changes: list | None = None) -> str:
+    async def _update(
+        organization: str = "", changes: list[Any] | None = None, based_on_version: int | None = None
+    ) -> str:
         if not caller_is_admin or not user_id:
             return REFUSAL
         from app.core.database import async_session
@@ -133,6 +156,7 @@ def build_organization_context_write_tools(
                     organization=str(organization or ""),
                     changes=list(changes or []),
                     agent_name=agent_name,
+                    based_on_version=based_on_version,
                 )
                 await log_audit(
                     db,
@@ -155,7 +179,8 @@ def build_organization_context_write_tools(
             return "Error: the profile could not be saved right now. Say so; nothing was changed."
         return (
             f"Saved version {outcome['version']} of the profile of {outcome['organization']}: "
-            f"{', '.join(outcome['fields'])}. Settings > Organization shows it in the history and can roll it back. "
+            f"{', '.join(outcome['fields'])}. Settings > Organization shows it in the history; "
+            "an administrator can restore a field from an earlier version. "
             f"{SHARED_CONTEXT_NOTICE}"
         )
 
@@ -211,11 +236,31 @@ def build_organization_context_write_tools(
         from app.services import organization_context as org_context
         from app.services import organization_context_rows as org_rows
 
+        if _identity_only():
+            return IDENTITY_ONLY_REFUSAL
         try:
             async with async_session() as db:
                 person = await _admin(db)
                 if person is None:
                     return REFUSAL
+                if section in org_rows.SOURCED_SECTIONS:
+                    from app.services import organization_asset_records as records
+
+                    org = await records.ensure_records(db)
+                    if org is not None:  # no profile yet: the profile path below creates the organization
+                        return await _record_rows(
+                            db,
+                            person,
+                            org,
+                            mode,
+                            section,
+                            source,
+                            rows,
+                            external_ids,
+                            rows_format,
+                            include_owner,
+                            apply,
+                        )
                 current = await org_context.current_version(db)
                 base = org_context.parse_profile(current.profile if current else {})
                 if mode == "upsert":
@@ -241,6 +286,84 @@ def build_organization_context_write_tools(
         except Exception:
             logger.warning("Organization profile row write failed", exc_info=True)
             return "Error: the profile could not be changed right now. Say so; nothing was changed."
+
+    async def _record_rows(
+        db: Any,
+        person: Any,
+        org: uuid.UUID,
+        mode: str,
+        section: str,
+        source: str,
+        rows: list[Any] | None,
+        external_ids: list[Any] | None,
+        rows_format: str,
+        include_owner: bool,
+        apply: bool,
+    ) -> str:
+        """Assets and asset groups since #1543: planned against the records, written row by row (no version)."""
+        import json
+
+        from app.services import organization_asset_records as records
+        from app.services import organization_context_rows as org_rows
+
+        src = source.strip().lower()
+        if mode == "upsert":
+            mapped = org_rows.map_rows(list(rows or []), rows_format, include_owner=include_owner)
+            org_rows.check_call(section, src, len(mapped))
+            refs = [
+                (src, str(r.get("external_id") or "").strip())
+                for r in mapped
+                if isinstance(r, dict) and str(r.get("external_id") or "").strip()
+            ]
+            stored = await records.rows_by_ref(db, org, section, refs)
+            fresh_names = [str(r.get("name") or "") for r in mapped if isinstance(r, dict)]
+            names = await records.name_owners(db, org, section, fresh_names, source=src)
+            # A row's own record is no clash: drop the names the addressed records hold.
+            for row in stored.values():
+                names.pop(org_rows.name_key(row.get("name")), None)
+            validate = records.validate_asset if section == "assets" else records.validate_group
+            plan = org_rows.plan_record_upsert(section, src, mapped, validate=validate, stored=stored, names=names)
+        else:
+            ids = [str(i).strip() for i in (external_ids or []) if str(i).strip()]
+            org_rows.check_call(section, src, len(ids))
+            stored = await records.rows_by_ref(db, org, section, [(src, i) for i in ids])
+            plan = org_rows.plan_record_remove(section, src, ids, stored=stored)
+        answer = plan.as_dict()
+        if not apply or not plan.changed:
+            answer["applied"] = False
+            answer["notice"] = SHARED_CONTEXT_NOTICE
+            return json.dumps(answer)
+        actor = f"agent:{agent_name}"[:120] if agent_name else f"agent:{person.id}"
+        origin = f"agent:{src}"[:80]
+        try:
+            if mode == "upsert":
+                for start in range(0, len(plan.writes), records.MAX_BATCH):
+                    await records.write_rows(
+                        db, org, section, plan.writes[start : start + records.MAX_BATCH], origin=origin, actor=actor
+                    )
+            else:
+                await records.remove_rows(db, org, section, plan.remove_refs, origin=origin, actor=actor)
+        except records.RecordError as exc:
+            await db.rollback()
+            return f"Not saved: {exc}"
+        from app.services.audit import log_audit
+
+        summary = org_rows.basis(plan, agent_name)
+        await log_audit(
+            db,
+            user=person,
+            action="update" if mode == "upsert" else "delete",
+            entity_type="organization_context",
+            entity_id=str(org),
+            entity_name=section,
+            summary=f"Organization {section} rows written by agent {agent_name or 'unknown'}: {summary}"[:500],
+            details={"agent": agent_name, "section": section, "source": src, "tool": mode, **answer["counts"]},
+        )
+        await db.commit()
+        answer["applied"] = True
+        answer["history"] = "each row change is in the asset history (Inventory), restorable by an administrator"
+        answer["notice"] = SHARED_CONTEXT_NOTICE
+        return json.dumps(answer)
 
     async def _upsert_rows(
         section: str = "",
@@ -272,6 +395,9 @@ def build_organization_context_write_tools(
         from app.services import organization_context as org_context
         from app.services import organization_context_import as imp
 
+        if _identity_only():
+            return IDENTITY_ONLY_REFUSAL
+
         if section not in imp.SECTION_SOURCES:
             return f"Not run: section must be one of {', '.join(imp.SECTION_SOURCES)}"
         try:
@@ -289,12 +415,30 @@ def build_organization_context_write_tools(
                     "applied": False,
                     "notice": SHARED_CONTEXT_NOTICE,
                 }
-                if plan.error or not apply or not (plan.new or plan.updated) or plan.profile is None:
+                if plan.error or not apply:
+                    return json.dumps(answer, default=str)
+                if plan.on_records:
+                    # Assets and asset groups (#1543): row writes on the records, never a profile version.
+                    written = await imp.apply_record_import(
+                        db, plan, actor=(f"agent:{agent_name}" if agent_name else f"agent:{person.id}")[:120]
+                    )
+                    if plan.software:
+                        written += await imp.store_endpoint_software(db, plan, user_id=person.id)
+                    await db.commit()
+                    answer.update(applied=bool(written))
+                    return json.dumps(answer, default=str)
+                if not (plan.new or plan.updated) or plan.profile is None:
+                    # An endpoint source (#1251) may change only the software of known devices.
+                    if plan.software and await imp.store_endpoint_software(db, plan, user_id=person.id):
+                        await db.commit()
+                        answer.update(applied=True)
                     return json.dumps(answer, default=str)
                 sources = imp.provenance(plan, used)
                 row = await org_context.save_version(
                     db, plan.profile, source="draft", author_user_id=person.id, sources=sources
                 )
+                if plan.software:
+                    await imp.store_endpoint_software(db, plan, user_id=person.id)
                 await db.commit()
                 answer.update(applied=True, version=row.version)
                 return json.dumps(answer, default=str)
@@ -309,6 +453,8 @@ def build_organization_context_write_tools(
             "source": sync.source,
             "filters": sync.filters or {},
             "remove_gone": sync.remove_gone,
+            "excluded_external_ids": list(getattr(sync, "excluded_external_ids", None) or []),
+            "direction": getattr(sync, "direction", None) or "inbound",
             "schedule": {
                 "frequency": sync.frequency,
                 "hour": sync.hour,
@@ -343,12 +489,13 @@ def build_organization_context_write_tools(
         source: str = "",
         filters: dict[str, Any] | None = None,
         batch_type: str = "",
-        remove_gone: bool = False,
+        remove_gone: bool = True,
         frequency: str = "daily",
         hour: int = 6,
         minute: int = 0,
         weekday: int = 0,
         timezone: str = "UTC",
+        direction: str = "inbound",
     ) -> str:
         import json
 
@@ -357,6 +504,8 @@ def build_organization_context_write_tools(
         from app.services import organization_context_sync as osync
         from app.services.audit import log_audit
 
+        if _identity_only():
+            return IDENTITY_ONLY_REFUSAL
         try:
             async with async_session() as db:
                 person = await _admin(db)
@@ -378,6 +527,7 @@ def build_organization_context_write_tools(
                     minute=int(minute),
                     weekday=int(weekday),
                     timezone=timezone or "UTC",
+                    direction=direction or "inbound",
                 )
                 db.add(sync)
                 await db.flush()
@@ -501,6 +651,85 @@ def build_organization_context_write_tools(
             return "Error: the proposal could not be decided right now. Say so; nothing was changed."
         return json.dumps({"proposal_id": str(wanted), **outcome}, default=str)
 
+    def _http_refusal(prefix: str, exc: Any) -> str:
+        """The route's refusal (404, 409, 422) as the tool's answer: nothing was saved."""
+        return f"{prefix}: {getattr(exc, 'detail', exc)}"
+
+    async def _versions(version: int | None = None, limit: int = 20) -> str:
+        import json
+
+        from fastapi import HTTPException
+
+        from app.api.v1 import organization_context as routes
+        from app.core.database import async_session
+
+        try:
+            async with async_session() as db:
+                person = await _admin(db)
+                if person is None:
+                    return REFUSAL
+                if version is not None:
+                    one = await routes.get_organization_context_version(int(version), db=db, _admin=person)
+                    return json.dumps(one.model_dump(mode="json"), default=str)
+                rows = await routes.list_organization_context_versions(
+                    limit=max(1, min(int(limit or 20), 100)), db=db, _admin=person
+                )
+                return json.dumps({"versions": [r.model_dump(mode="json") for r in rows]}, default=str)
+        except HTTPException as exc:
+            return _http_refusal("Not read", exc)
+        except Exception:
+            logger.warning("Organization profile versions read failed", exc_info=True)
+            return "Error: the profile versions could not be read right now. Say so."
+
+    async def _restore(version: int = 0, fields: list[Any] | None = None, based_on_version: int | None = None) -> str:
+        import json
+
+        from fastapi import HTTPException
+
+        from app.api.v1 import organization_context as routes
+        from app.core.database import async_session
+        from app.services.audit import log_audit
+
+        try:
+            async with async_session() as db:
+                person = await _admin(db)
+                if person is None:
+                    return REFUSAL
+                body = routes.RestoreOrganizationContextRequest(
+                    fields=[str(f) for f in (fields or [])], based_on_version=based_on_version
+                )
+                # The route's own handler: the 409 stale base and every check of a hand save (#1473).
+                saved = await routes.restore_organization_context_version(int(version), body, db=db, admin=person)
+                await log_audit(
+                    db,
+                    user=person,
+                    action="update",
+                    entity_type="organization_context",
+                    entity_id=str(saved.version),
+                    entity_name="organization",
+                    summary=(
+                        f"Organization profile version {saved.version} restored from v{version} by agent "
+                        f"{agent_name or 'unknown'}: {', '.join(body.fields) or 'every field'}"
+                    )[:500],
+                    details={"agent": agent_name, "version": saved.version, "restored_from": int(version)},
+                )
+                await db.commit()
+                return json.dumps(
+                    {
+                        "version": saved.version,
+                        "restored_from": int(version),
+                        "fields": body.fields or "every field",
+                        "removed_rows": saved.removed_rows,
+                        "missing_fields": saved.missing_fields,
+                    },
+                    default=str,
+                )
+        except HTTPException as exc:
+            return _http_refusal("Not restored", exc)
+        except Exception:
+            logger.warning("Organization profile restore failed", exc_info=True)
+            return "Error: the version could not be restored right now. Say so; nothing was changed."
+
     executor = CallableToolExecutor()
     executor.register(ORGANIZATION_UPDATE_TOOL, _update)
     executor.register(ORGANIZATION_UPSERT_ROWS_TOOL, _upsert_rows)
@@ -511,13 +740,15 @@ def build_organization_context_write_tools(
     executor.register(ORGANIZATION_RUN_SYNC_TOOL, _run_sync)
     executor.register(ORGANIZATION_LIST_PROPOSALS_TOOL, _list_proposals)
     executor.register(ORGANIZATION_DECIDE_PROPOSAL_TOOL, _decide_proposal)
+    executor.register(ORGANIZATION_VERSIONS_TOOL, _versions)
+    executor.register(ORGANIZATION_RESTORE_TOOL, _restore)
     _apply = {"type": "boolean", "description": "false (default): preview only. true: save a new version."}
     # The platforms and formats are declared by the services, never named here (invariant 18).
     from app.services.organization_context_import import SECTION_SOURCES
-    from app.services.organization_context_rows import ROW_FORMATS
+    from app.services.organization_context_rows import ROW_FORMATS, ROW_SECTIONS
 
     _import_sources = sorted({s for sources in SECTION_SOURCES.values() for s in sources})
-    _section = {"type": "string", "enum": ["assets", "asset_groups", "tech_stack", "ai_systems"]}
+    _section = {"type": "string", "enum": list(ROW_SECTIONS)}
     from app.services.organization_context_sync import ALL_SECTIONS, SYNCABLE_SECTIONS
 
     definitions = [
@@ -527,8 +758,9 @@ def build_organization_context_write_tools(
                 "Change the organization profile now, as a new version authored by the administrator you act for: "
                 "field changes on your own organization or a tracked one. Read get_organization_context first and "
                 "send the whole new value of each field (a list replaces the list), with its basis. Each value is "
-                "validated like the Settings > Organization form; the history there can roll it back. To leave the "
-                "decision to an administrator instead, use propose_organization_context_change." + SHARED_CONTEXT_CLAUSE
+                "validated like the Settings > Organization form; an admin can restore a past version. To leave the "
+                "decision to an administrator instead, use propose_organization_context_change."
+                + SHARED_CONTEXT_CLAUSE
             ),
             input_schema={
                 "type": "object",
@@ -542,6 +774,10 @@ def build_organization_context_write_tools(
                         "description": "Field changes: {field (contract path, e.g. tech_stack), value, basis}.",
                         "items": {"type": "object"},
                     },
+                    "based_on_version": {
+                        "type": "integer",
+                        "description": "The version you read: another saved since refuses, nothing saved.",
+                    },
                 },
                 "required": ["changes"],
             },
@@ -552,8 +788,9 @@ def build_organization_context_write_tools(
             name=ORGANIZATION_UPSERT_ROWS_TOOL,
             description=(
                 "Add or update rows of one profile section without resending the list: assets and asset groups keyed "
-                "on source + external_id (rows a person wrote are never touched), tech stack and AI systems by name "
-                "(added if new). Validated like the CSV import. Preview first (apply false): counts and refusals with "
+                "on source + external_id (rows a person wrote are never touched), software and AI systems by name "
+                "(tech_stack: old alias of software). "
+                "Validated like the CSV import. Preview first (apply false): counts and refusals with "
                 "reasons. A rows_format other than profile maps a platform's raw objects on the server."
                 + SHARED_CONTEXT_CLAUSE
             ),
@@ -578,7 +815,7 @@ def build_organization_context_write_tools(
         ToolDefinition(
             name=ORGANIZATION_REMOVE_ROWS_TOOL,
             description=(
-                "Remove assets or asset groups a source synced, by source + external_id (a device the source retired). "
+                "Remove assets or asset groups a source synced, by source + external_id. "
                 "Rows a person wrote are never removed. Preview first."
             ),
             input_schema={
@@ -597,9 +834,8 @@ def build_organization_context_write_tools(
         ToolDefinition(
             name=ORGANIZATION_IMPORT_TOOL,
             description=(
-                "Run the Settings > Organization import of one section from a connected platform (same rules: "
-                "hand rows kept, the source's own rows updated). Preview first: new, updated, skipped, the source count."
-                + SHARED_CONTEXT_CLAUSE
+                "Run the Settings > Organization import of one section from a connected platform (hand rows kept). "
+                "Preview first: new, updated, skipped, source count." + SHARED_CONTEXT_CLAUSE
             ),
             input_schema={
                 "type": "object",
@@ -622,7 +858,7 @@ def build_organization_context_write_tools(
             name=ORGANIZATION_LIST_SYNCS_TOOL,
             description=(
                 "The scheduled syncs of Settings > Organization > Syncs: section, source, filters, schedule, "
-                "enabled, paused reason, next and last run with its counts. Read it before creating one."
+                "enabled, paused reason, next and last run with its counts."
             ),
             input_schema={"type": "object", "properties": {}},
             source=_SOURCE,
@@ -632,7 +868,7 @@ def build_organization_context_write_tools(
             name=ORGANIZATION_CREATE_SYNC_TOOL,
             description=(
                 "Keep one section in sync with a platform on a schedule (the import's rules: hand rows kept), or "
-                "section all to run every section sync. Runs with your administrator's token. Preview the import "
+                "section all to run every section sync. Runs with your admin's token. Preview the import "
                 "with run_organization_import first." + SHARED_CONTEXT_CLAUSE
             ),
             input_schema={
@@ -642,7 +878,11 @@ def build_organization_context_write_tools(
                     "source": {"type": "string", "enum": _import_sources},
                     "filters": {"type": "object"},
                     "batch_type": {"type": "string"},
-                    "remove_gone": {"type": "boolean", "description": "Remove the source's rows it no longer has."},
+                    "remove_gone": {
+                        "type": "boolean",
+                        "description": "Drop rows gone from the source (default true).",
+                    },
+                    "direction": {"type": "string", "enum": ["inbound", "outbound"]},
                     "frequency": {"type": "string", "enum": ["hourly", "daily", "weekly"]},
                     "hour": {"type": "integer"},
                     "minute": {"type": "integer"},
@@ -670,7 +910,7 @@ def build_organization_context_write_tools(
             name=ORGANIZATION_LIST_PROPOSALS_TOOL,
             description=(
                 "The organization profile proposals of Settings > Organization, newest first: id, kind, "
-                "organization, entries, based_on_version. Read it before deciding one."
+                "organization, entries, based_on_version."
             ),
             input_schema={
                 "type": "object",
@@ -686,8 +926,7 @@ def build_organization_context_write_tools(
             name=ORGANIZATION_DECIDE_PROPOSAL_TOOL,
             description=(
                 "Accept or reject a pending proposal, as the administrator you act for (the Settings > Organization "
-                "review). accept names the fields or organizations kept; empty rejects it, e.g. one already applied "
-                "with update_organization_context."
+                "review). accept names the fields or organizations kept; empty rejects it."
             ),
             input_schema={
                 "type": "object",
@@ -704,7 +943,46 @@ def build_organization_context_write_tools(
             source=_SOURCE,
             priority=0,
         ),
+        ToolDefinition(
+            name=ORGANIZATION_VERSIONS_TOOL,
+            description=(
+                "The saved versions of your organization's profile, newest first (version, source, author, "
+                "crown jewel count, provenance); with version, that version's whole profile."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {"version": {"type": "integer"}, "limit": {"type": "integer"}},
+            },
+            source=_SOURCE,
+            priority=0,
+        ),
+        ToolDefinition(
+            name=ORGANIZATION_RESTORE_TOOL,
+            description=(
+                "Save the next profile version with fields taken from a past version (Settings > Organization "
+                "restore, same checks). Answers the rows the restore drops." + SHARED_CONTEXT_CLAUSE
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "version": {"type": "integer"},
+                    "fields": {"type": "array", "items": {"type": "string"}, "description": "Empty: every field."},
+                    "based_on_version": {"type": "integer", "description": "The current version you read."},
+                },
+                "required": ["version"],
+            },
+            source=_SOURCE,
+            priority=0,
+        ),
     ]
+    # The tools a platform service of the profile declares (#1676): named and run there, wired here generically.
+    from app.services.organization_context_agent_tools import declared_organization_tools
+
+    for definition, handler in declared_organization_tools(
+        admin=_admin, refusal=REFUSAL, shared_context_clause=SHARED_CONTEXT_CLAUSE
+    ):
+        executor.register(definition.name, handler)
+        definitions.append(dataclasses.replace(definition, source=_SOURCE, priority=0))
     if include_proposal:
         from .organization_proposals import build_organization_proposal_tool
 

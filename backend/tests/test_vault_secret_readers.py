@@ -151,6 +151,9 @@ OTHER_COLUMN_READS: dict[str, str] = {
     "services/integration_user_credentials.py:account_extra": _PENDING_EXTRA_CONFIG,
     "services/integration_user_credentials.py:configuration_extra": _PENDING_EXTRA_CONFIG,
     "services/lmstudio_llm_provider.py:_refusal": _PENDING_EXTRA_CONFIG,
+    # Rewrites the stored document with the generated receiver secret added: the secret it
+    # uses is read through reveal_json_field first, and a revealed copy must never be stored.
+    "services/trigger_provisioning.py:receiver_secret": _PENDING_EXTRA_CONFIG,
 }
 
 

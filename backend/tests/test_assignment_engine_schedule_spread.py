@@ -212,7 +212,8 @@ async def test_trigger_assignment_no_delay_creates_pending_execution(monkeypatch
     assert run.status == "pending"
     assert len(created) == 1
     assert created[0]["adapter"] == "assignment"
-    assert created[0]["payload"] == {"run_id": run_id}
+    assert created[0]["payload"]["run_id"] == run_id
+    assert created[0]["payload"]["start_budget_seconds"] > 0
     assert created[0]["dedup_key"] == f"assignment_run:{run_id}"
     assert created[0]["deadline_at"] is not None
     assert woke == [True]
@@ -316,11 +317,12 @@ async def test_trigger_assignment_deadline_applies_iteration_floor(monkeypatch):
     )
 
     exec_args = created[0]
-    delta = (exec_args["deadline_at"] - exec_args["run_at"]).total_seconds()
+    # The budget counts from the run's start: carried on the payload, applied at the claim.
+    budget = exec_args["payload"]["start_budget_seconds"]
     expected = (
         50 * ae._MIN_SECS_PER_ITERATION + ae.settings.orchestration_grace_seconds
     )
-    assert delta == pytest.approx(expected)
+    assert budget == pytest.approx(expected)
 
 
 @pytest.mark.asyncio
@@ -346,11 +348,11 @@ async def test_trigger_assignment_deadline_applies_static_minimum_floor(monkeypa
     )
 
     exec_args = created[0]
-    delta = (exec_args["deadline_at"] - exec_args["run_at"]).total_seconds()
+    budget = exec_args["payload"]["start_budget_seconds"]
     expected = (
         ae._MIN_ASSIGNMENT_TIMEOUT_SECONDS + ae.settings.orchestration_grace_seconds
     )
-    assert delta == pytest.approx(expected)
+    assert budget == pytest.approx(expected)
 
 
 @pytest.mark.asyncio
@@ -373,5 +375,8 @@ async def test_trigger_assignment_generous_timeout_deadline_not_floored(monkeypa
     )
 
     exec_args = created[0]
+    budget = exec_args["payload"]["start_budget_seconds"]
+    assert budget == pytest.approx(3600 + ae.settings.orchestration_grace_seconds)
+    # Until a worker starts it, the deadline is the queue-wait bound.
     delta = (exec_args["deadline_at"] - exec_args["run_at"]).total_seconds()
-    assert delta == pytest.approx(3600 + ae.settings.orchestration_grace_seconds)
+    assert delta == pytest.approx(ae.settings.orchestration_max_queue_wait_seconds)

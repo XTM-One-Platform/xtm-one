@@ -1,26 +1,31 @@
 # SPDX-License-Identifier: Apache-2.0
 
-"""OpenCRQ crown-jewel sync of the organization profile (#8987, slice 3d).
+"""OpenCRQ primary-asset sync of the organization profile (#8987, slice 3d; #1591).
 
-The profile's crown jewels (``services/organization_context.py``) and
-OpenCRQ's supporting assets describe the same assets twice. An administrator
-runs the sync on demand (``POST /api/v1/organization-context/opencrq-sync``,
-a dry run unless ``apply`` is set) and it reconciles them both ways:
+The profile's primary assets (the ``crown_jewels`` section of
+``services/organization_context.py``, named crown jewels before #1591) are
+OpenCRQ's PRIMARY assets: the business assets, rated by four security needs
+(availability, integrity, confidentiality, traceability). OpenCRQ's
+supporting assets are the IT underneath and are never rows of this section.
+An administrator runs the reconcile on demand
+(``POST /api/v1/organization-context/opencrq-sync``, a dry run unless
+``apply`` is set):
 
-- **link**: a crown jewel without ``opencrq_asset_id`` whose name matches one
-  supporting asset (case-insensitive, exactly one) gets that asset's id;
-- **profile -> OpenCRQ**: a linked jewel whose criticality differs from the
-  asset's sets the asset's criticality (the profile is where the business
-  says what matters);
-- **OpenCRQ -> profile**: a supporting asset rated ``very_high`` that no
-  jewel names joins the profile as a ``critical`` crown jewel linked to it;
-- a jewel whose ``opencrq_asset_id`` OpenCRQ no longer holds is reported,
-  never removed.
+- **link**: a row without ``opencrq_asset_id`` whose name matches one
+  primary asset (case-insensitive, exactly one) gets that asset's id; a typed
+  row stays typed (#1473);
+- **OpenCRQ -> profile**: a primary asset no row names joins the profile by
+  the import's rule (criticality = its highest security need), source
+  ``opencrq`` keyed on its id;
+- a row whose ``opencrq_asset_id`` OpenCRQ no longer holds is reported,
+  never removed; a row an older build keyed on a SUPPORTING asset is left to
+  the import, which supersedes it;
+- nothing is written to OpenCRQ: a primary asset's security needs are its own.
 
 :func:`plan_sync` is the pure rule; :func:`run_sync` reads OpenCRQ through
-the company-managed integration with a token minted for the administrator,
-saves the next profile version (source ``api``) and writes the criticalities
-only when ``apply`` is set. Nothing is guessed: an ambiguous name is reported.
+the company-managed integration with a token minted for the administrator
+and, with ``apply``, saves the next profile version (source ``api``).
+Nothing is guessed: an ambiguous name is reported.
 """
 
 from __future__ import annotations
@@ -35,8 +40,8 @@ from app.services.organization_context import CrownJewel, OrganizationProfile
 
 #: Profile criticality -> OpenCRQ supporting-asset criticality.
 TO_OPENCRQ: dict[str, str] = {"low": "low", "medium": "medium", "high": "high", "critical": "very_high"}
-#: The OpenCRQ rating that makes an unnamed asset a crown jewel of the profile.
-PULLED_CRITICALITY = "very_high"
+#: The default lowest security need that keeps an OpenCRQ primary asset: empty, every primary asset (#1591).
+DEFAULT_MIN_CRITICALITY = ""
 #: Supporting assets read at most (pages of 500).
 MAX_ASSETS = 2000
 
@@ -51,10 +56,21 @@ class SyncPlan:
     pulled: list[tuple[str, str]] = field(default_factory=list)  # (asset id, name)
     ambiguous: list[str] = field(default_factory=list)  # jewel names matching several assets
     stale: list[tuple[str, str]] = field(default_factory=list)  # (jewel, asset id OpenCRQ lacks)
+    #: Synced jewels whose pushed criticality falls below the sync's threshold: kept as typed rows (#1473).
+    released: list[tuple[str, str]] = field(default_factory=list)  # (jewel, asset id)
+    #: The threshold the plan pulled with, and the assets read by OpenCRQ criticality (#1558): an empty
+    #: plan over assets none of which reaches the threshold says so, never "already agree".
+    min_criticality: str = DEFAULT_MIN_CRITICALITY
+    by_criticality: dict[str, int] = field(default_factory=dict)
 
     @property
     def profile_changed(self) -> bool:
-        return bool(self.linked or self.pulled)
+        return bool(self.linked or self.pulled or self.released)
+
+    @property
+    def in_sync(self) -> bool:
+        """Whether the profile and OpenCRQ agree: nothing to link, push or pull, nothing undecided."""
+        return not (self.linked or self.pushed or self.pulled or self.ambiguous or self.stale)
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -63,6 +79,11 @@ class SyncPlan:
             "pulled_from_opencrq": [{"opencrq_asset_id": a, "name": n} for a, n in self.pulled],
             "ambiguous": list(self.ambiguous),
             "not_in_opencrq": [{"crown_jewel": j, "opencrq_asset_id": a} for j, a in self.stale],
+            "kept_below_sync_threshold": [{"crown_jewel": j, "opencrq_asset_id": a} for j, a in self.released],
+            "in_sync": self.in_sync,
+            "min_criticality": self.min_criticality,
+            "assets_read": sum(self.by_criticality.values()),
+            "by_criticality": dict(self.by_criticality),
         }
 
 
@@ -70,8 +91,34 @@ def _asset_name(asset: dict) -> str:
     return str(asset.get("name") or asset.get("derivedName") or "").strip()
 
 
-def plan_sync(profile: OrganizationProfile, assets: list[dict]) -> SyncPlan:
-    """Reconcile *profile*'s crown jewels with OpenCRQ's supporting *assets* (no I/O)."""
+def count_by_criticality(assets: list[dict[str, Any]]) -> dict[str, int]:
+    """The supporting assets per OpenCRQ criticality, lowest first; any other value counts as ``unknown`` (#1558)."""
+    from app.services.organization_context_import import OPENCRQ_LEVELS
+
+    counts: dict[str, int] = {}
+    for asset in assets:
+        level = str(asset.get("criticality") or "").lower()
+        key = level if level in OPENCRQ_LEVELS else "unknown"
+        counts[key] = counts.get(key, 0) + 1
+    order = ("unknown", *OPENCRQ_LEVELS)
+    return {key: counts[key] for key in order if key in counts}
+
+
+def plan_sync(
+    profile: OrganizationProfile, assets: list[dict[str, Any]], min_criticality: str = DEFAULT_MIN_CRITICALITY
+) -> SyncPlan:
+    """Reconcile *profile*'s primary assets (crown jewels) with OpenCRQ's PRIMARY *assets* (no I/O, #1591).
+
+    A row with no OpenCRQ link whose name matches exactly one primary asset is
+    linked (a typed row stays typed, #1473); a primary asset no row names is
+    pulled by the import's rule (:func:`organization_context_import.opencrq_primary_asset`);
+    a linked row OpenCRQ no longer holds is reported. Nothing is pushed: a
+    primary asset's rating is its four security needs, owned by OpenCRQ.
+    """
+    from app.services.organization_context_import import OPENCRQ_LEVELS, opencrq_primary_asset, primary_asset_level
+
+    if min_criticality and min_criticality not in OPENCRQ_LEVELS:
+        min_criticality = DEFAULT_MIN_CRITICALITY
     by_id = {str(a.get("id")): a for a in assets if a.get("id")}
     by_name: dict[str, list[dict]] = {}
     for asset in by_id.values():
@@ -80,11 +127,16 @@ def plan_sync(profile: OrganizationProfile, assets: list[dict]) -> SyncPlan:
             by_name.setdefault(name, []).append(asset)
 
     updated = profile.model_copy(deep=True)
-    plan = SyncPlan(profile=updated)
+    rated = [{"criticality": primary_asset_level(a)} for a in by_id.values()]
+    plan = SyncPlan(profile=updated, min_criticality=min_criticality, by_criticality=count_by_criticality(rated))
     jewels: list[CrownJewel] = []
     claimed: set[str] = set()
     for jewel in updated.crown_jewels:
         asset_id = jewel.opencrq_asset_id
+        if asset_id and asset_id not in by_id and jewel.source == "opencrq":
+            # A row an older build keyed on a SUPPORTING asset: the import supersedes it.
+            jewels.append(jewel)
+            continue
         if not asset_id:
             matches = by_name.get(jewel.name.casefold(), [])
             if len(matches) > 1:
@@ -94,29 +146,22 @@ def plan_sync(profile: OrganizationProfile, assets: list[dict]) -> SyncPlan:
                 jewel = jewel.model_copy(update={"opencrq_asset_id": asset_id})
                 plan.linked.append((jewel.name, asset_id))
         if asset_id:
-            asset = by_id.get(asset_id)
-            if asset is None:
-                plan.stale.append((jewel.name, asset_id))
-            else:
+            if asset_id in by_id:
                 claimed.add(asset_id)
-                wanted = TO_OPENCRQ[jewel.criticality]
-                if str(asset.get("criticality") or "").lower() != wanted:
-                    plan.pushed.append((asset_id, _asset_name(asset), wanted))
+            else:
+                plan.stale.append((jewel.name, asset_id))
         jewels.append(jewel)
 
     named = {j.name.casefold() for j in jewels}
     for asset_id, asset in by_id.items():
-        name = _asset_name(asset)
-        if (
-            asset_id in claimed
-            or str(asset.get("criticality") or "").lower() != PULLED_CRITICALITY
-            or not name
-            or name.casefold() in named
-        ):
+        if asset_id in claimed:
             continue
-        jewels.append(CrownJewel(name=name[:200], criticality="critical", opencrq_asset_id=asset_id[:100]))
-        named.add(name.casefold())
-        plan.pulled.append((asset_id, name))
+        pulled = opencrq_primary_asset(asset, min_criticality)
+        if pulled is None or pulled.name.casefold() in named:
+            continue
+        jewels.append(pulled)
+        named.add(pulled.name.casefold())
+        plan.pulled.append((asset_id, pulled.name))
 
     updated.crown_jewels = jewels[:200]
     return plan
@@ -162,6 +207,36 @@ async def _opencrq_connection(db: AsyncSession, user_id: str) -> tuple[str, Any]
     return base_url.strip().rstrip("/"), _headers(api_token.strip())
 
 
+async def _list_primary_assets(base_url: str, headers: Any, tenant: str) -> tuple[list[dict[str, Any]], str | None]:
+    """The tenant's OpenCRQ PRIMARY assets, every organization of it (#1591), at most :data:`MAX_ASSETS`."""
+    from app.integrations.providers.opencrq._common import _trpc
+
+    organizations, err = await _trpc(
+        base_url, headers, "organizations.getOrganizations", "list organizations", tenant_id=tenant
+    )
+    if err:
+        return [], str(err)
+    assets: list[dict[str, Any]] = []
+    for organization in organizations or []:
+        organization_id = str((organization or {}).get("id") or "")
+        if not organization_id:
+            continue
+        items, err = await _trpc(
+            base_url,
+            headers,
+            "primaryAssets.getPrimaryAssets",
+            "list primary assets",
+            input={"organizationId": organization_id},
+            tenant_id=tenant,
+        )
+        if err:
+            return assets, str(err)
+        assets.extend(a for a in (items or []) if isinstance(a, dict))
+        if len(assets) >= MAX_ASSETS:
+            break
+    return assets[:MAX_ASSETS], None
+
+
 async def _list_assets(base_url: str, headers: Any, tenant: str) -> tuple[list[dict], str | None]:
     from app.integrations.providers.opencrq._common import _trpc
 
@@ -182,11 +257,38 @@ async def _list_assets(base_url: str, headers: Any, tenant: str) -> tuple[list[d
     return assets[:MAX_ASSETS], None
 
 
+async def saved_min_criticality(db: AsyncSession) -> str:
+    """The minimum security need of the saved OpenCRQ primary-asset sync, else every primary asset (#1591)."""
+    from sqlalchemy import select
+
+    from app.models.organization_context import OrganizationContextSync
+
+    row = (
+        (
+            await db.execute(
+                select(OrganizationContextSync)
+                .where(OrganizationContextSync.section == "crown_jewels", OrganizationContextSync.source == "opencrq")
+                .order_by(OrganizationContextSync.created_at)
+                .limit(1)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    level = str(((row.filters or {}) if row is not None else {}).get("min_criticality") or "")
+    return level or DEFAULT_MIN_CRITICALITY
+
+
 async def run_sync(
-    db: AsyncSession, *, user_id: uuid.UUID, apply: bool, tenant_id: str = ""
+    db: AsyncSession, *, user_id: uuid.UUID, apply: bool, tenant_id: str = "", min_criticality: str = ""
 ) -> tuple[SyncPlan | None, list[str]]:
-    """Plan the sync, and with *apply* write both sides; ``(plan, errors)``."""
-    from app.integrations.providers.opencrq._common import _resolve_tenant, _trpc
+    """Plan the sync, and with *apply* write both sides; ``(plan, errors)``.
+
+    *min_criticality* empty reads the saved OpenCRQ crown-jewel sync's filter, so the
+    reconcile and the sync pull the same assets; an administrator may pick another
+    level on the check (#1558), an unknown one falls back to the default.
+    """
+    from app.integrations.providers.opencrq._common import _resolve_tenant
     from app.services import organization_context as org_context
 
     connection = await _opencrq_connection(db, str(user_id))
@@ -196,22 +298,13 @@ async def run_sync(
     tenant, err = await _resolve_tenant(base_url, headers, tenant_id)
     if err:
         return None, [str(err)]
-    assets, err = await _list_assets(base_url, headers, tenant or "")
+    assets, err = await _list_primary_assets(base_url, headers, tenant or "")
     if err:
         return None, [err]
     current = await org_context.current_version(db)
-    plan = plan_sync(org_context.parse_profile(current.profile if current else {}), assets)
-    if not apply:
-        return plan, []
-
-    errors: list[str] = []
-    for asset_id, name, criticality in plan.pushed:
-        _, err = await _trpc(
-            base_url, headers, "supportingAssets.updateSupportingAsset", "update supporting asset",
-            input={"id": asset_id, "criticality": criticality}, mutation=True, tenant_id=tenant or "",
-        )
-        if err:
-            errors.append(f"{name or asset_id}: {err}")
-    if plan.profile_changed:
+    level = min_criticality or await saved_min_criticality(db)
+    plan = plan_sync(org_context.parse_profile(current.profile if current else {}), assets, level)
+    if apply and plan.profile_changed:
+        # #1591: nothing is written to OpenCRQ; its primary assets' security needs are its own.
         await org_context.save_version(db, plan.profile, source="api", author_user_id=user_id)
-    return plan, errors
+    return plan, []

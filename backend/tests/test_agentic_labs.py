@@ -11,9 +11,11 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import io
+import json
 import pathlib
 import tarfile
 import uuid
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
@@ -741,6 +743,68 @@ async def test_exec_turns_a_refused_or_lost_stream_into_a_kube_error(monkeypatch
         assert raised.value.status == 0 and raised.value.handshake == 0 and "exec stream was lost" in str(raised.value)
 
 
+class _ClosingStream:
+    """An exec stream whose server closes it while stdin is sent, after the frames it holds (lab-start-exec-stream-lost)."""
+
+    def __init__(self, frames: list[bytes], *, close_on_send: bool = True) -> None:
+        self.frames = frames
+        self.close_on_send = close_on_send
+        self.sent: list[bytes] = []
+
+    async def __aenter__(self) -> _ClosingStream:
+        return self
+
+    async def __aexit__(self, *_exc: object) -> bool:
+        return False
+
+    async def send(self, data: bytes) -> None:
+        from websockets.exceptions import ConnectionClosedOK
+
+        self.sent.append(data)
+        if self.close_on_send:
+            raise ConnectionClosedOK(None, None)
+
+    def __aiter__(self) -> AsyncIterator[bytes]:
+        return self._frames()
+
+    async def _frames(self) -> AsyncIterator[bytes]:
+        for frame in self.frames:
+            yield frame
+
+
+def _exec_client(monkeypatch: pytest.MonkeyPatch, stream: _ClosingStream) -> kube.KubeClient:
+    import websockets.asyncio.client as ws_client
+
+    monkeypatch.setattr(ws_client, "connect", lambda *_a, **_k: stream)
+    config = kube.KubeConfig(api_url="http://api", namespace="labs", token_path="/nonexistent", ca_path="")
+    monkeypatch.setattr(kube.KubeConfig, "token", lambda self: "t")
+    return kube.KubeClient(config)
+
+
+async def test_exec_closed_while_stdin_is_sent_still_reads_the_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    # tar ends at its end-of-archive blocks and the server closes the stream before the last chunk lands.
+    status = json.dumps({"status": "Success"}).encode()
+    stream = _ClosingStream([bytes([1]) + b"unpacked", bytes([3]) + status])
+    result = await _exec_client(monkeypatch, stream).exec("lab-1", "workspace", ["tar"], stdin=b"x")
+    assert result.exit_code == 0 and result.stdout == b"unpacked" and len(stream.sent) == 1
+
+
+async def test_exec_closed_while_stdin_is_sent_keeps_a_failed_exit_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    status = json.dumps(
+        {"status": "Failure", "message": "exit 2", "details": {"causes": [{"reason": "ExitCode", "message": "2"}]}}
+    ).encode()
+    stream = _ClosingStream([bytes([2]) + b"tar: broken", bytes([3]) + status])
+    result = await _exec_client(monkeypatch, stream).exec("lab-1", "workspace", ["tar"], stdin=b"x")
+    assert result.exit_code == 2 and result.stderr == b"tar: broken"
+
+
+async def test_exec_closed_with_no_status_frame_is_still_a_lost_stream(monkeypatch: pytest.MonkeyPatch) -> None:
+    stream = _ClosingStream([bytes([1]) + b"partial"])
+    with pytest.raises(kube.KubeError) as raised:
+        await _exec_client(monkeypatch, stream).exec("lab-1", "workspace", ["tar"], stdin=b"x")
+    assert "exec stream was lost" in str(raised.value) and raised.value.handshake == 0
+
+
 @pytest.mark.usefixtures("lab_settings", "no_quota")
 async def test_a_lab_that_never_answers_says_where_to_read_its_logs(redis, monkeypatch):
     workspace = _workspace()
@@ -832,6 +896,23 @@ async def test_the_status_names_a_service_that_exited_with_its_code(redis):
     fake.never_ready = False
     again = await labs.start_lab(await _resolved(workspace), workspace=workspace, client=fake, sleep=_no_sleep)
     assert again.ready and again.service_id != outcome.service_id and outcome.service_id in fake.deleted
+
+
+@pytest.mark.usefixtures("lab_settings", "no_quota")
+async def test_the_status_names_why_a_starting_service_waits_and_its_restarts(redis):
+    workspace = _workspace()
+    fake = _Kube()
+    fake.never_ready = True
+    outcome = await labs.start_lab(
+        await _resolved(workspace), workspace=workspace, client=fake, sleep=_no_sleep, background=True
+    )
+    for status in fake.pods[outcome.service_id]["status"]["containerStatuses"]:
+        if status["name"] == "svc-db":
+            status["state"] = {"waiting": {"reason": "ContainerCreating"}}
+        if status["name"] == "svc-lab":
+            status["restartCount"] = 2
+    status = await labs.lab_status(workspace, outcome.service_id, client=fake)
+    assert "services: db starting (ContainerCreating), lab starting (restarted 2x)" in status.text, status.text
 
 
 async def _resolved_with_ready_log(workspace: WorkspaceSession) -> services.ResolvedService:

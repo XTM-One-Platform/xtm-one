@@ -13,7 +13,6 @@ from __future__ import annotations
 import ast
 import uuid
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from types import SimpleNamespace
 
 import jwt as pyjwt
@@ -23,6 +22,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from app.core.config import settings
 from app.core.security import JWT_CLOCK_SKEW_LEEWAY, decode_access_token
 from app.core.xtm_auth import XTM_JWT_MAX_LIFETIME, _kid, _private_key, _public_key_raw, verify_xtm_jwt
+from tests import app_sources
 from tests.jwt_clock import freeze_pyjwt_clock
 
 PLATFORM = "http://localhost:8080"
@@ -157,7 +157,7 @@ def test_a_session_token_minted_by_a_replica_ahead_beyond_the_leeway_is_refused(
 # Every verifying decode passes the one leeway
 # ---------------------------------------------------------------------------
 
-_APP = Path(__file__).resolve().parents[1] / "app"
+_APP = app_sources.APP_DIR
 _JWT_MODULE_NAMES = {"jwt", "pyjwt", "_jwt"}
 #: Vendor-documented 5 minutes for the vendor's own webhook tokens.
 _VENDOR_LEEWAY_MODULES = {"channels/teams.py", "channels/google_chat.py"}
@@ -187,9 +187,8 @@ def _is_unverified_peek(call: ast.Call) -> bool:
 
 def _verifying_decodes() -> list[tuple[str, ast.Call]]:
     found = []
-    for path in _APP.rglob("*.py"):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
+    for path in app_sources.python_files(_APP):
+        for node in app_sources.walk(app_sources.tree(path)):
             if _is_jwt_decode(node) and not _is_unverified_peek(node):
                 found.append((path.relative_to(_APP).as_posix(), node))
     return found

@@ -43,7 +43,7 @@ describe("A2ARunExchange", () => {
     expect(screen.getByText("Asked its caller")).toBeTruthy();
     expect(screen.getByText("Answered")).toBeTruthy();
     const link = screen.getByRole("link", { name: /View the run that continued it/ });
-    expect(link.getAttribute("href")).toBe("/runs/run-2");
+    expect(link.getAttribute("href")).toBe("/operations/executions/run-2");
   });
 
   it("says a question was withdrawn when the task was cancelled first", () => {
@@ -60,7 +60,7 @@ describe("A2ARunExchange", () => {
     expect(screen.getByText("Which currency?")).toBeTruthy();
     expect(screen.getByText("NZD, 9000")).toBeTruthy();
     const link = screen.getByRole("link", { name: /View the run that asked/ });
-    expect(link.getAttribute("href")).toBe("/runs/run-1");
+    expect(link.getAttribute("href")).toBe("/operations/executions/run-1");
   });
 
   it("links no run the viewer cannot open", () => {

@@ -187,6 +187,7 @@ _REASON_TEXT = {
     "target_switched_off": "the target agent is switched off",
     "deleted": "it was deleted",
     "automations_off": "every automation is off",
+    "platform_health_off": "Platform Health is off in Settings",
     "not_filled": "not filled",
 }
 REASON_CODES = frozenset(_REASON_TEXT)
@@ -202,6 +203,8 @@ LABEL_OWN_ACCOUNT = "{provider} (your own account)"
 LABEL_HANDOVER = "Handover to {name}"
 LABEL_HANDOVER_UNNAMED = "Handover to an agent"
 LABEL_AUTOMATIONS = "At least one automation switched on"
+#: The Platform Health fleet's one automation prerequisite (#974): Platform Health itself, on in Settings.
+LABEL_PLATFORM_HEALTH_ON = "Platform Health switched on in Settings"
 LABEL_INTEGRATION = "Integration"
 LABEL_KNOWLEDGE_BASE = "Knowledge base"
 LABEL_MCP_SERVER = "MCP server"
@@ -209,7 +212,7 @@ LABEL_MCP_SERVER = "MCP server"
 PROFILE_LABELS = {
     "profile:sector": "Sector in the organization profile",
     "profile:regions": "Regions in the organization profile",
-    "profile:crown_jewels": "Crown jewels in the organization profile",
+    "profile:crown_jewels": "Primary assets in the organization profile",
     "profile:tech_stack": "Technology in the organization profile",
     "profile:ai_systems": "AI systems listed in the organization profile",
     "profile:tracked_organizations": "A tracked organization with monitoring on",
@@ -476,8 +479,9 @@ async def live_prerequisites(
     from app.models.knowledge_base import KnowledgeBase
     from app.models.mcp_server import MCPServer
     from app.models.user import User as UserModel
-    from app.services.fleet_views import fleet_automation_counts, home_member_ids
+    from app.services.fleet_views import HEALTH_SETTINGS_ROUTE, fleet_automation_counts, home_member_ids
     from app.services.fleets import fleet_members
+    from app.services.health.read_only import is_health_fleet
 
     now = now or datetime.now(UTC)
     if group_ids is None:
@@ -588,7 +592,18 @@ async def live_prerequisites(
             out.add(f"{prefix}:{key}", kind, row.name if shown else (fallback, {}), state, who, f"{route}/{key}")
 
     counts = await fleet_automation_counts(db, fleet)
-    if counts.total:
+    if is_health_fleet(fleet):
+        # Its assignments start from the Settings cycle runner (#974): the one
+        # prerequisite is Platform Health on, fixed in Settings, never on the fleet.
+        out.add(
+            "automations:enabled",
+            "automations",
+            (LABEL_PLATFORM_HEALTH_ON, {}),
+            _OK if counts.enabled else (NOT_MET, "platform_health_off", {}),
+            [str(a.id) for a in members],
+            HEALTH_SETTINGS_ROUTE,
+        )
+    elif counts.total:
         out.add(
             "automations:enabled",
             "automations",

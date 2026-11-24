@@ -39,6 +39,8 @@ export interface TimelineRun {
   trigger_type?: string | null;
   trigger_provider?: string | null;
   trigger_event?: string | null;
+  /** The CTEM case the run works on, when a case event started it (#915). */
+  case_id?: string | null;
 }
 
 /** `GET /fleets/{id}/activity`. */
@@ -90,6 +92,8 @@ export interface TimelineEntry {
   source: TimelineSource;
   /** The integration event the run answered (`report.created`...), when known. */
   event: string | null;
+  /** The CTEM case the run works on (#915), `null` for any other run. */
+  caseId: string | null;
 }
 
 const MODULES = new Set(["opencti", "openaev", "opencrq"]);
@@ -204,6 +208,7 @@ export function fleetTimeline(
         at: run.created_at,
         source: timelineSource(run),
         event: run.trigger_type === "integration_event" ? (run.trigger_event ?? null) : null,
+        caseId: run.case_id ?? null,
       });
     }
   }

@@ -52,6 +52,7 @@ from app.integrations.providers.hubspot_activity import (
     search_total,
 )
 from app.integrations.providers.hubspot_line_items import HubSpotLineItems, line_item_definitions
+from app.integrations.providers.hubspot_notes import HubSpotNotes, note_definitions
 from app.integrations.providers.hubspot_records import (
     ASSOCIATION_CATEGORIES,
     ENGAGEMENT_SPECS,
@@ -156,6 +157,8 @@ _DEAL_DEFAULT_KEYS = set(_DEAL_PROPS.split(",")) | {"hs_object_id"}
 _TICKET_PROPS = (
     "subject,content,hs_pipeline,hs_pipeline_stage,hs_ticket_priority,hubspot_owner_id,createdate,hs_lastmodifieddate"
 )
+# hs_object_id is always returned by HubSpot regardless of requested properties
+_TICKET_DEFAULT_KEYS = set(_TICKET_PROPS.split(",")) | {"hs_object_id"}
 #: The properties of each record type shown with their labels (stage, status, owner...).
 _LABELLED = {
     "contacts": ("lifecyclestage", "hs_lead_status", "hubspot_owner_id"),
@@ -194,6 +197,20 @@ def _named(tool: str, handler: Callable[..., Awaitable[Any]]) -> Callable[..., A
             _CURRENT_TOOL.reset(token)
 
     return run
+
+
+def _search_result(text: str, records: list[dict[str, Any]]) -> ToolResult:
+    """A search answer: *text* for the model, the records listed as its structured value.
+
+    An assignment's gate check (``non_empty`` / ``empty`` / a path condition)
+    tests the structured value, never the text: "Found 0 tickets" is a
+    non-empty string, and a text-only answer left the check unevaluated, so the
+    run went ahead on an empty pipeline. Nothing found is ``[]``.
+    """
+    structured = [
+        {"id": r.get("id"), "properties": dict(r.get("properties") or {})} for r in records if isinstance(r, dict)
+    ]
+    return ToolResult(tool_call_id="", content=text, structured=structured)
 
 
 def _is_read(method: str, url: str) -> bool:
@@ -800,7 +817,7 @@ def build_tools(
         after: str = "",
         properties: str = "",
         raw_values: bool = False,
-    ) -> str:
+    ) -> str | ToolResult:
         """Search and filter contacts with optional sorting and structured filters."""
         extra = [n for n in split_names(properties) if n not in _CONTACT_PROPS.split(",")]
         body = _build_search_body(
@@ -826,7 +843,7 @@ def build_tools(
         if err:
             text += f"\nStopped early: {err.splitlines()[0]}"
         note = "" if raw_values else activity.labels_note("contacts")
-        return text + (f"\n{note}" if note and results else "")
+        return _search_result(text + (f"\n{note}" if note and results else ""), results)
 
     async def create_hubspot_contact(
         email: str,
@@ -946,7 +963,7 @@ def build_tools(
         after: str = "",
         properties: str = "",
         raw_values: bool = False,
-    ) -> str:
+    ) -> str | ToolResult:
         """Search and filter companies with optional sorting and structured filters."""
         extra = [n for n in split_names(properties) if n not in _COMPANY_PROPS.split(",")]
         body = _build_search_body(
@@ -990,7 +1007,7 @@ def build_tools(
         )
         if err:
             text += f"\nStopped early: {err.splitlines()[0]}"
-        return text
+        return _search_result(text, results)
 
     async def create_hubspot_company(
         name: str,
@@ -1154,7 +1171,7 @@ def build_tools(
         after: str = "",
         properties: str = "",
         raw_values: bool = False,
-    ) -> str:
+    ) -> str | ToolResult:
         """Search and filter deals with optional sorting and structured filters."""
         default_props = _DEAL_PROPS.split(",")
         extra = split_names(properties)
@@ -1209,7 +1226,7 @@ def build_tools(
         )
         if err:
             text += f"\nStopped early: {err.splitlines()[0]}"
-        return text
+        return _search_result(text, results)
 
     async def create_hubspot_deal(
         dealname: str,
@@ -1761,10 +1778,12 @@ def build_tools(
         count: int = 10,
         after: str = "",
         raw_values: bool = False,
-    ) -> str:
+        properties: str = "",
+    ) -> str | ToolResult:
         """Search and filter support tickets with optional sorting and structured filters."""
+        extra = [n for n in split_names(properties) if n not in _TICKET_DEFAULT_KEYS]
         body = _build_search_body(
-            properties=_TICKET_PROPS.split(","),
+            properties=list(dict.fromkeys([*_TICKET_PROPS.split(","), *extra])),
             query=query,
             filters_json=filters_json,
             sort_by=sort_by,
@@ -1789,7 +1808,7 @@ def build_tools(
                     _json.dumps(_redact_search_body(body), default=str),
                 )
                 return err
-            await _labelled(client, "tickets", results, [], raw_values)
+            await _labelled(client, "tickets", results, extra, raw_values)
 
         def _fmt(t: dict) -> str:
             p = t.get("properties", {})
@@ -1800,6 +1819,9 @@ def build_tools(
             )
             if p.get("hubspot_owner_id"):
                 line += f" | Owner: {_shown('tickets', p, 'hubspot_owner_id', raw_values)}"
+            extras = [f"{k}: {_shown('tickets', p, k, raw_values)}" for k in extra if p.get(k) not in (None, "")]
+            if extras:
+                line += " | " + " | ".join(extras)
             return line
 
         text = (
@@ -1809,11 +1831,14 @@ def build_tools(
         )
         if err:
             text += f"\nStopped early: {err.splitlines()[0]}"
-        return text
+        return _search_result(text, results)
 
-    async def get_hubspot_ticket(ticket_id: str, associations: str = "", raw_values: bool = False) -> str:
-        """Get detailed information about a specific HubSpot ticket."""
-        params: dict[str, str] = {"properties": _TICKET_PROPS}
+    async def get_hubspot_ticket(
+        ticket_id: str, associations: str = "", raw_values: bool = False, properties: str = ""
+    ) -> str:
+        """Get detailed information about a specific HubSpot ticket, custom properties included."""
+        requested = [n for n in split_names(properties) if n not in _TICKET_DEFAULT_KEYS]
+        params: dict[str, str] = {"properties": ",".join(dict.fromkeys([*_TICKET_PROPS.split(","), *requested]))}
         if associations:
             params["associations"] = associations
         async with egress_client(timeout=30) as client:
@@ -1830,7 +1855,8 @@ def build_tools(
                 return err
             t = resp.json()
             p = t.get("properties", {})
-            await _labelled(client, "tickets", [t], [], raw_values)
+            extra = [k for k in p if k not in _TICKET_DEFAULT_KEYS]
+            await _labelled(client, "tickets", [t], extra, raw_values)
             assoc_text = await _associations_text(client, t)
         text = (
             f"Ticket ID: {t['id']}\n"
@@ -1843,6 +1869,9 @@ def build_tools(
             f"Created: {p.get('createdate', 'N/A')}\n"
             f"Last Modified: {p.get('hs_lastmodifieddate', 'N/A')}"
         )
+        for key in extra:
+            if p.get(key) is not None:
+                text += f"\n{key}: {_shown('tickets', p, key, raw_values) if p[key] != '' else ''}"
         return text + assoc_text
 
     async def create_hubspot_ticket(
@@ -2383,6 +2412,8 @@ def build_tools(
     for name, handler in activity.handlers().items():
         _register(name, handler)
     for name, handler in HubSpotLineItems(_throttled, headers=headers).handlers().items():
+        _register(name, handler)
+    for name, handler in HubSpotNotes(_throttled, headers=headers).handlers().items():
         _register(name, handler)
 
     # ── Tool definitions ─────────────────────────────────────────────────
@@ -3159,6 +3190,11 @@ def build_tools(
                         "description": "Show raw values (stage IDs, owner IDs) instead of labels",
                         "default": False,
                     },
+                    "properties": {
+                        "type": "string",
+                        "description": "Extra ticket properties to return, custom ones included, comma-separated",
+                        "default": "",
+                    },
                 },
                 "required": [],
             },
@@ -3175,6 +3211,11 @@ def build_tools(
                     "associations": {
                         "type": "string",
                         "description": "Comma-separated object types to include associations for (e.g. 'contacts,companies')",
+                        "default": "",
+                    },
+                    "properties": {
+                        "type": "string",
+                        "description": "Extra ticket properties to return, custom ones included, comma-separated",
                         "default": "",
                     },
                     "raw_values": {
@@ -3414,6 +3455,7 @@ def build_tools(
         ),
         *activity_definitions(src),
         *line_item_definitions(src),
+        *note_definitions(src),
     ]
     definitions = [replace(d, description=d.description + scopes_sentence(d.name)) for d in definitions]
     if object_type_scope is not None:

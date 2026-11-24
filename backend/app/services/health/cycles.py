@@ -41,7 +41,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Final, Literal, get_args
+from typing import Any, Final, Literal, get_args
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -54,7 +54,8 @@ from app.services.health.fleet_seed import AssignmentKey, fleet_assignment
 logger = logging.getLogger(__name__)
 
 CycleTrigger = Literal["schedule", "signal", "on_demand"]
-TargetType = Literal["agent", "flow", "assignment"]
+#: ``module``: a registered platform (``PlatformRegistration.id``), the Module Analyst's target (#101 S14).
+TargetType = Literal["agent", "flow", "assignment", "module"]
 ScheduleKey = Literal["memory", "quality", "flows", "digest"]
 SCHEDULE_KEYS: Final[tuple[str, ...]] = get_args(ScheduleKey)
 
@@ -149,6 +150,10 @@ async def _target_in_scope(db: AsyncSession, target_type: str, target_id: uuid.U
     from app.models.flow import Flow
     from app.services.health.consent import in_supervision_scope
 
+    if target_type == "module":
+        from app.services.health.module_analyst import registration_in_scope
+
+        return await registration_in_scope(db, target_id)
     if target_type == "agent":
         if (
             await db.execute(select(Agent.id).where(Agent.id == target_id, Agent.is_sandbox.is_(False)))
@@ -334,7 +339,7 @@ async def run_due_schedules(db: AsyncSession, *, now: datetime | None = None) ->
         if previous is not None and previous.status == "open":
             result = CycleStart(refusal="cycle_open", open_cycle_id=previous.id)
         else:
-            payload = {"since": mark.fired_at.isoformat()} if key == "digest" else None
+            payload = await _digest_payload(db, mark.fired_at, now) if key == "digest" else None
             result = await start_cycle(db, key=_SCHEDULE_ASSIGNMENT[key], trigger="schedule", payload=payload)
         mark = await db.get(HealthScheduleMark, key)
         mark.fired_at = now
@@ -348,6 +353,25 @@ async def run_due_schedules(db: AsyncSession, *, now: datetime | None = None) ->
     return started
 
 
+async def _digest_payload(db: AsyncSession, since: datetime, until: datetime) -> dict[str, Any]:
+    """The weekly digest's trigger payload: its window and the Modules part read from the stored reports (13.8).
+
+    ``modules`` is computed here, never by the model: per module, the check rounds of the
+    window and the checks failed most. A read that fails leaves ``modules`` out and the
+    digest says the part is unavailable.
+    """
+    from app.services.health.check_reports import weekly_module_summary
+
+    payload: dict[str, Any] = {"since": since.isoformat()}
+    try:
+        async with db.begin_nested():
+            payload["modules"] = await weekly_module_summary(db, since=since, until=until)
+    except Exception:
+        logger.exception("Platform Health weekly digest: the module check reports could not be read")
+        payload["modules_unavailable"] = True
+    return payload
+
+
 async def _run_tree(db: AsyncSession, root_id: uuid.UUID) -> list:
     """The cycle's run and every run delegated from it, at any depth: ``(id, status, error, completed_at)``."""
     from app.models.assignment import AssignmentRun
@@ -358,12 +382,24 @@ async def _run_tree(db: AsyncSession, root_id: uuid.UUID) -> list:
     return list((await db.execute(query.where(AssignmentRun.id.in_(ids)))).all())
 
 
-async def _book_runs(db: AsyncSession, cycle_id: uuid.UUID, runs: list, *, now: datetime) -> bool:
+async def _book_runs(
+    db: AsyncSession, cycle_id: uuid.UUID, runs: list, *, now: datetime, own_ledger: bool = False
+) -> bool:
     """Charge each ended run's LLM traces on the cycle, once per run; whether every one is booked.
 
     Traces reach the store after the run ends: a run that ended moments ago
-    with none yet is booked at a later tick.
+    with none yet is booked at a later tick. ``own_ledger``: the cycle's spend is
+    already on the Module Analyst's own ledger (#101 S14b-2, dev-docs 12.5), so
+    each run is marked booked with nothing charged here: one ceiling, no double count.
     """
+    if own_ledger:
+        from app.services.health.budget import charge, charged_refs
+
+        done = await charged_refs(db, "run", [run.id for run in runs])
+        for run in runs:
+            if run.id not in done:
+                await charge(db, cycle_id, tokens=0, cost_usd=Decimal(0), ref=("run", run.id))
+        return True
     from sqlalchemy import func
 
     from app.models.llm_trace import LLMTrace
@@ -437,11 +473,22 @@ async def _settle_cycle(db: AsyncSession, cycle_id: uuid.UUID, root_id: uuid.UUI
     from app.services.health.budget import REFUSAL_MESSAGES, budget_refusal, close_cycle, remaining
 
     tree = await _run_tree(db, root_id)
-    booked = await _book_runs(db, cycle_id, [run for run in tree if run.status in TERMINAL_RUN_STATUSES], now=now)
+    from app.services.health.identity import MODULE_CHECKER_ROLES
+
+    specialist = await db.scalar(select(HealthCycle.specialist).where(HealthCycle.id == cycle_id))
+    own_ledger = specialist in MODULE_CHECKER_ROLES
+    booked = await _book_runs(
+        db,
+        cycle_id,
+        [run for run in tree if run.status in TERMINAL_RUN_STATUSES],
+        now=now,
+        own_ledger=own_ledger,
+    )
     await db.commit()
     active = [run.id for run in tree if run.status not in TERMINAL_RUN_STATUSES]
     if active:
-        cap = (await remaining(db, cycle_id)).refusal
+        # A module checker stops at its own ceiling, call by call, never at the fleet caps.
+        cap = None if own_ledger else (await remaining(db, cycle_id)).refusal
         if cap in _CAPS:
             logger.info("Platform Health cycle %s: %s, its runs are stopped", cycle_id, cap)
             await _stop_runs(db, active, REFUSAL_MESSAGES[cap])
@@ -449,7 +496,7 @@ async def _settle_cycle(db: AsyncSession, cycle_id: uuid.UUID, root_id: uuid.UUI
     root = next((run for run in tree if run.id == root_id), None)
     if not booked or root is None:
         return 0
-    refusal = await budget_refusal(db, cycle_id)
+    refusal = None if own_ledger else await budget_refusal(db, cycle_id)
     if refusal in _CAPS:
         # A cap reached when the run ends may have cut its work short, and
         # which tool call it refused is not recorded: never read as completed.
@@ -550,3 +597,7 @@ async def health_tick(*, ai_on: bool) -> None:
     from app.services.health.signals import signals_tick
 
     await signals_tick()
+    # The Module Analyst's triggers (#101 S14a-2b, section 12.2): XTM One mode only.
+    from app.services.health.module_analyst import module_analyst_tick
+
+    await module_analyst_tick()

@@ -204,6 +204,64 @@ async def test_read_state_is_shared_by_every_session(no_limits) -> None:
             ).status_code == 422
 
 
+async def test_a_waiting_work_item_entry_stays_unread_through_the_dismiss_route(
+    no_limits: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#901 accepts the feed's ``work_item:<uuid>`` id on dismiss; #991 keeps it unread while it waits."""
+    from app.services import work_item
+
+    item_id = str(uuid.uuid4())
+
+    async def _waiting(*, user_id: str, limit: int) -> list[dict[str, str]]:
+        return [{"id": item_id, "title": "Pick", "question": "A or B?", "since": "2026-11-21T08:00:00+00:00"}]
+
+    monkeypatch.setattr(work_item, "list_work_items_waiting_for_person", _waiting)
+    async with _world() as (scratch, owner, _other, _admin), _client(scratch.sessions, owner) as client:
+        feed = (await client.get("/api/v1/notifications")).json()
+        entry = next(i for i in feed["items"] if i["kind"] == "decision" and i["source"] == "work_item")
+        assert entry["id"] == f"work_item:{item_id}"
+        assert entry["unread"] is True
+        assert (await client.post(f"/api/v1/notifications/{entry['id']}/dismiss")).status_code == 204
+        after = (await client.get("/api/v1/notifications")).json()
+        again = next(i for i in after["items"] if i["id"] == entry["id"])
+        assert again["unread"] is True
+        assert again["awaiting_answer"] is True
+        imported = await client.post("/api/v1/notifications/read", json={"dismissed_ids": [entry["id"]]})
+        assert imported.status_code == 200
+        assert (await client.post("/api/v1/notifications/work_item:nope/dismiss")).status_code == 404
+
+
+async def test_mark_all_read_never_reads_a_waiting_decision(
+    no_limits: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#991: neither a dismiss nor "Mark all read" reads a decision that still waits for an answer."""
+    from app.services import work_item
+
+    item_id = str(uuid.uuid4())
+
+    async def _waiting(*, user_id: str, limit: int) -> list[dict[str, str]]:
+        return [{"id": item_id, "title": "Pick", "question": "A or B?", "since": "2026-11-21T08:00:00+00:00"}]
+
+    monkeypatch.setattr(work_item, "list_work_items_waiting_for_person", _waiting)
+    async with _world() as (scratch, owner, _other, _admin):
+        async with scratch.sessions() as db:
+            await _paused_run(db, owner)
+        async with _client(scratch.sessions, owner) as client:
+            feed = (await client.get("/api/v1/notifications")).json()
+            pinned = [i for i in feed["items"] if i["kind"] == "decision"]
+            assert {i["source"] for i in pinned} == {"run", "work_item"}
+            assert all(i["unread"] for i in pinned)
+            for entry in pinned:
+                assert (await client.post(f"/api/v1/notifications/{entry['id']}/dismiss")).status_code == 204
+            read = (await client.post("/api/v1/notifications/read", json={})).json()
+            ids = {i["id"] for i in pinned}
+            assert all(i["unread"] is True for i in read["items"] if i["id"] in ids)
+            assert read["unread_count"] == len(ids)
+            after = (await client.get("/api/v1/notifications")).json()
+            assert all(i["unread"] is True for i in after["items"] if i["id"] in ids)
+            assert after["unread_count"] == len(ids)
+
+
 async def _paused_run(db, owner: User) -> AssignmentRun:
     agent = Agent(id=uuid.uuid4(), name="agent", user_id=owner.id)
     db.add(agent)

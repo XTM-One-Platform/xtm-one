@@ -37,7 +37,7 @@ def test_every_stage_has_a_weekly_per_user_assessment_enabled_by_default():
     assert set(weekly) == set(STAGE_KEYS)
     for stage, data in weekly.items():
         assert data["trigger_type"] == "schedule", stage
-        assert data["trigger_config"] == {"cron": "0 8 * * 1"}, stage
+        assert data["trigger_config"] == {"cron": "0 8 * * 1", "fanout_audience": "ctem_users"}, stage
         assert data["run_as_all_users"] is True, stage
         assert data["enabled"] is True, stage
         # Never an automation an administrator must switch on first.

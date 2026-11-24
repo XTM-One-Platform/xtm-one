@@ -32,7 +32,11 @@ export interface FileRetentionCategory {
 export interface FileRetentionSettings {
   categories: FileRetentionCategory[];
   max_days: number;
-  next_sweep_at: string;
+  /** The last completed hourly pass plus an hour; null when the sweep is due now. */
+  next_sweep_at: string | null;
+  /** No hourly pass completed in two hours. */
+  sweep_overdue: boolean;
+  maintenance_completed_at: string | null;
   last_sweep: { at: string; files: Record<string, number>; bytes: Record<string, number> } | null;
   can_edit: boolean;
 }

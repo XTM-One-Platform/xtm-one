@@ -25,7 +25,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * section 6 (B3).
  */
 import { ArrowUpRight, History } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,8 @@ import { BUTTON_ROLE_FOCUS_RING, buttonRoleProps } from "@/lib/button-role";
 import { cn } from "@/lib/utils";
 import { CtemWidgetHeader } from "./CtemWidgetHeader";
 import type { TimelineEntry, TimelineOutcome, TimelineSource } from "@/lib/ctem-fleet-timeline";
+import type { CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
+import { CASE_STATE_LABEL } from "./cases-shared";
 
 /**
  * The key of what started a run. The run-source keys are their own (en
@@ -84,9 +86,16 @@ export function FleetTimelineCard({
   isLoading,
   licensed = true,
   lockReason = null,
+  casesById = {},
 }: {
   timeline: TimelineEntry[];
   isLoading: boolean;
+  /**
+   * The cases the reader sees (`GET /ctem-cases`), by id (#915). A run row
+   * whose case is not in it shows the run alone: a case the reader cannot
+   * read is never named.
+   */
+  casesById?: Readonly<Record<string, CtemCaseSummary | undefined>>;
   /** False in Community Edition: the card shows what fleets do, with the footer. */
   licensed?: boolean;
   /** Why AI cannot run (`useAiLockReason`), for the footer of the Community Edition state. */
@@ -96,7 +105,7 @@ export function FleetTimelineCard({
   const { t_i18n, intl } = useFormatter();
   const navigate = useNavigate();
   const open = (entry: TimelineEntry) =>
-    navigate(`/runs/${entry.runId}`, { state: { backTo: "/", backLabel: "Back to Command Center" } });
+    navigate(`/operations/executions/${entry.runId}`, { state: { backTo: "/", backLabel: "Back to Command Center" } });
 
   return (
     <Card className="h-full overflow-hidden flex flex-col">
@@ -138,8 +147,9 @@ export function FleetTimelineCard({
             {timeline.map((entry) => {
               const key = entry.outcome;
               const source = t_i18n(SOURCE_LABELS[entry.source]);
+              const kase = entry.caseId ? casesById[entry.caseId] : undefined;
               return (
-                <li key={entry.runId}>
+                <li key={entry.runId} className="py-0.5">
                   <div
                     {...buttonRoleProps(() => open(entry))}
                     aria-label={t_i18n("Open run of {agent}", { agent: entry.agentName ?? entry.fleetName })}
@@ -173,6 +183,19 @@ export function FleetTimelineCard({
                       {formatTimeAgo(intl, entry.at)}
                     </span>
                   </div>
+                  {kase && (
+                    <Link
+                      to={`/ctem/cases/${kase.id}`}
+                      state={{ backTo: "/", backLabel: "Back to Command Center" }}
+                      aria-label={t_i18n("Open case {title}", { title: kase.title })}
+                      className="flex items-center gap-2 px-1 pb-1.5 -mt-1 min-w-0 content-caption text-default-secondary hover:text-default-primary hover:underline"
+                    >
+                      <span className="truncate">
+                        {t_i18n("Case")}: {kase.title}
+                      </span>
+                      <span className="shrink-0">· {t_i18n(CASE_STATE_LABEL[kase.state])}</span>
+                    </Link>
+                  )}
                 </li>
               );
             })}

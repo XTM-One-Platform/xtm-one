@@ -43,6 +43,10 @@ _NOT_TOOLS = {
     "start_date",
     "start_time",
     "stop_time",
+    # ``set_shared_state`` list operations and its retention argument.
+    "archive_key",
+    "remove_json",
+    "update_json",
 }
 
 
@@ -90,7 +94,12 @@ def _builtin_tool_names() -> set[str]:
 
 def _agent_loop_tool_names() -> set[str]:
     """Tools a turn adds from an agent's columns or for every agent, outside the groups."""
-    from app.services.builtin_tools import ORGANIZATION_CONTEXT_TOOL
+    from app.services.builtin_tools import (
+        CTEM_CASE_TOOL_NAMES,
+        CTEM_SIGNAL_TOOL_NAMES,
+        ORGANIZATION_CONTEXT_TOOL,
+        SCHEDULING_TOOL_NAMES,
+    )
     from app.services.evaluation import always_ask
     from app.tools.tool_gating import LOAD_TOOLS_TOOL_NAME
     from app.tools.wait_policy import CHECK_TASK_STATUS_TOOL_NAME, WAIT_TOOL_NAME
@@ -106,6 +115,11 @@ def _agent_loop_tool_names() -> set[str]:
         *always_ask._HANDOVER_TOOLS,
         *always_ask._SKILL_TOOLS,
         ORGANIZATION_CONTEXT_TOOL,
+        # Offered by agent slug to the seeded CTEM agents (``offers_ctem_case_tools``), outside the groups.
+        *CTEM_CASE_TOOL_NAMES,
+        *CTEM_SIGNAL_TOOL_NAMES,
+        # One-off scheduled work: added per turn by the chat and the assignment engine (``build_scheduling_tools``).
+        *SCHEDULING_TOOL_NAMES,
     }
 
 

@@ -22,6 +22,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * cards, columns and assumptions are shared with the fleet ROI view
  * (`components/roi/RoiReportParts`, #9785).
  */
+import { valuePath } from "@/lib/task-routes";
 import { useMemo } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Clock3, Target } from "lucide-react";
@@ -146,7 +147,7 @@ export function OutcomesTab() {
       {header}
       <p className="content-compact text-default-secondary">
         {t_i18n("Every user reads the value of the agents and fleets they can open on the Value page.")}{" "}
-        <Link to={`/value?scope=organization${window === "30d" ? "" : `&window=${window}`}`} className="text-accent hover:underline">
+        <Link to={valuePath(undefined, window === "30d" ? { scope: "organization" } : { scope: "organization", window })} className="text-accent hover:underline">
           {t_i18n("Open Value")}
         </Link>
       </p>

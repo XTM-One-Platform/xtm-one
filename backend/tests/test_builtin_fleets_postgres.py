@@ -187,6 +187,52 @@ async def test_a_level_a_person_set_survives_a_reboot():
         assert len(await _seed_rows(db, fleet)) == 1
 
 
+_OLD_ROOT = {**_SPEC, "slug": "t-old-root", "name": "Old root"}
+_OLD_DESK = {
+    "slug": "t-old-desk",
+    "name": "Old desk",
+    "icon": "Crosshair",
+    "orchestrator": "t-friend",
+    "members": [{"agent": "t-friend", "role_label": "Orchestrator"}],
+}
+_MERGED = {
+    **_SPEC,
+    "slug": "t-loop",
+    "name": "Loop",
+    "previous_slugs": ["t-old-root"],
+    "absorbs": ["t-old-desk"],
+    "leads": ["t-friend"],
+    "members": [*_SPEC["members"], {"agent": "t-friend", "role_label": "Desk", "parent": "t-orch"}],
+    "connected": [],
+}
+
+
+async def test_an_upgrade_adopts_the_previous_row_folds_the_absorbed_fleet_and_keeps_its_pins():
+    """CTEM-31 (#1048): the old root row is renamed (same id), the absorbed fleet is swept, its pins carried."""
+    async with (
+        scratch_database("bf_ctem31", tables=ALL_TABLES, extensions=("vector",), skip_without_extensions=True) as s,
+        s.sessions() as db,
+    ):
+        await _setup(db)
+        await seed_builtin_fleets(db, platform_mode="xtm_one", fleets=[_OLD_ROOT, _OLD_DESK])
+        rows = {f.slug: f for f in (await db.execute(select(Fleet))).scalars()}
+        root_id = rows["t-old-root"].id
+        rows["t-old-desk"].approval_pins = {"g.desk": "wait"}
+        rows["t-old-root"].approval_pins = {"g.root": "wait"}
+        await db.commit()
+        await seed_builtin_fleets(db, platform_mode="xtm_one", fleets=[_MERGED])
+        fleets = (await db.execute(select(Fleet))).scalars().all()
+        assert [f.slug for f in fleets] == ["t-loop"]
+        loop = fleets[0]
+        assert loop.id == root_id and loop.name == "Loop"
+        assert loop.approval_pins == {"g.desk": "wait", "g.root": "wait"}
+        members = await _members(db, loop)
+        assert members["t-friend"].role == FLEET_ROLE_MEMBER
+        assert members["t-friend"].parent_member_id == members["t-orch"].id
+        # A second boot changes nothing.
+        assert await seed_builtin_fleets(db, platform_mode="xtm_one", fleets=[_MERGED]) == 0
+
+
 async def test_an_existing_fleet_never_set_by_a_person_moves_to_low_at_the_next_boot():
     async with (
         scratch_database(

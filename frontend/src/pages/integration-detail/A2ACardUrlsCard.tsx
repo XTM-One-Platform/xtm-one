@@ -30,7 +30,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 import { useState } from "react";
 import { Check, Copy, Link2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useFormatter } from "@/i18n";
@@ -95,7 +95,7 @@ export function A2ACardUrlsCard({ integration }: { integration: Integration }) {
         <CardTitle className="flex items-center gap-2 content-base">
           <Link2 className="h-4 w-4 text-accent" />
           {t_i18n("Agent card URLs")}
-          <Badge variant="cyan" className="ml-auto content-caption">{bound.length}</Badge>
+          <CountBadge variant="cyan" className="ml-auto">{bound.length}</CountBadge>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">

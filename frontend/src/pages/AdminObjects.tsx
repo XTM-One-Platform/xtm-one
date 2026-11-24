@@ -71,15 +71,15 @@ const OBJECT_TYPE_CONFIG: Record<PlatformObjectType, { label: string; icon: Reac
   // An enrolled machine - an XTM One Desktop install or a headless runner.
   // The Desktop page lists only YOUR fleet; this is where an
   // admin sees every machine, whoever enrolled it.
-  runner: { label: "Machine", icon: MonitorSmartphone, route: "/runners/:id" },
-  flow: { label: "Flow", icon: Workflow, route: "/flows/:id/builder" },
+  runner: { label: "Machine", icon: MonitorSmartphone, route: "/desktop/runners/:id" },
+  flow: { label: "Flow", icon: Workflow, route: "/flows/library/:id" },
   dataset: { label: "Dataset", icon: Database, route: "/evaluations/datasets/:id" },
   evaluation: { label: "Evaluation", icon: FlaskConical, route: "/evaluations/:id" },
-  variable: { label: "Variable", icon: Braces, route: "/variables/:id" },
+  variable: { label: "Variable", icon: Braces, route: "/connections/variables/:id" },
   // Channel bots are configured on one Settings tab, which scrolls to this one.
   channel_bot: { label: "Channel Bot", icon: Radio, route: "/settings/integrations/channels?bot=:id" },
-  assignment: { label: "Assignment", icon: ClipboardList, route: "/assignments/:id" },
-  assignment_run: { label: "Assignment Run", icon: Play, route: "/runs/:id" },
+  assignment: { label: "Assignment", icon: ClipboardList, route: "/agents/assignments/:id" },
+  assignment_run: { label: "Assignment Run", icon: Play, route: "/operations/executions/:id" },
   report: { label: "Report", icon: ScrollText, route: "/reports/:id" },
   conversation: { label: "Conversation", icon: MessagesSquare, route: null },
   file: { label: "File", icon: File, route: null },

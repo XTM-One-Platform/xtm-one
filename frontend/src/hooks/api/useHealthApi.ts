@@ -27,6 +27,7 @@ import { defaultHealthName } from "@/lib/health";
 import { syncFlowNodeCatalog } from "@/lib/flow-node-catalog";
 import { REFETCH_INTERVAL_STANDARD } from "@/lib/constants";
 import type {
+  HealthAnalysisOverview,
   HealthBudget,
   HealthCycle,
   HealthCycleStart,
@@ -35,11 +36,15 @@ import type {
   HealthFindingStatus,
   HealthHistoryPoint,
   HealthModule,
+  HealthModuleAnalysis,
+  HealthModuleCheckReports,
+  HealthModuleInvestigation,
   HealthName,
   HealthOverview,
   HealthOptIn,
   HealthScheduleMark,
   HealthSettings,
+  HealthSpendLimits,
   HealthSeverity,
   HealthSignal,
   HealthTargetType,
@@ -53,6 +58,8 @@ const SETTINGS_KEY = ["health", "settings"] as const;
 const BUDGET_KEY = ["health", "budget"] as const;
 const OPT_OUT_KEY = ["health", "opt-out"] as const;
 const NAME_KEY = ["health", "name"] as const;
+const ANALYSIS_KEY = ["health", "analysis"] as const;
+const SPEND_LIMITS_KEY = ["health", "settings", "spend-limits"] as const;
 
 /** What a manager opts in to improvement: an agent or a flow, on the same route shape. */
 export type OptInTarget = "agent" | "flow";
@@ -121,14 +128,43 @@ export function useSaveHealthSettings() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (settings: HealthSettings) => api.put<HealthSettings>("/health/settings", settings),
+    // The settings section answers every failure itself: one toast, or the refused field inline (UX r1 B1).
+    meta: { suppressGlobalErrorToast: true },
     onSuccess: (data) => {
       qc.setQueryData(SETTINGS_KEY, data);
       void qc.invalidateQueries({ queryKey: BUDGET_KEY });
       void qc.invalidateQueries({ queryKey: NAME_KEY });
+      void qc.invalidateQueries({ queryKey: ANALYSIS_KEY });
       // The orchestrator agent is renamed with it, in the lists and the flow node catalog.
       void qc.invalidateQueries({ queryKey: ["agents"] });
       syncFlowNodeCatalog(qc);
     },
+  });
+}
+
+/**
+ * Set the "Run checks as" user alone (dev-docs 12.3), from the onboarding step. A user who cannot read a
+ * registered module is refused (400) with the modules named; nothing is written then.
+ */
+export function useSaveHealthRunAs() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => api.put<{ module_run_as_user_id: string | null }>("/health/settings/run-as", { user_id: userId }),
+    // The onboarding step shows the refusal under its picker.
+    meta: { suppressGlobalErrorToast: true },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: SETTINGS_KEY });
+      void qc.invalidateQueries({ queryKey: ["health-overview"] });
+    },
+  });
+}
+
+/** Whether the spend ceilings are locked at their defaults (#1202) and the variable that unlocks them. */
+export function useHealthSpendLimits(enabled = true) {
+  return useQuery<HealthSpendLimits>({
+    queryKey: SPEND_LIMITS_KEY,
+    queryFn: () => api.get("/health/settings/spend-limits"),
+    enabled,
   });
 }
 
@@ -317,6 +353,58 @@ export function useDismissHealthFindings() {
     mutationFn: ({ ids, reason, days }: { ids: string[]; reason: string; days: number | null }) =>
       api.post<HealthFindingBulkResult>("/health/findings/dismiss", { ids, reason, days }),
     onSuccess: refresh,
+  });
+}
+
+// ── Analysis layer (#101 S9): administrators only ────────────────────────
+
+/** The latest analysis per module, the ceilings and the spend: stored rows, no model call. */
+export function useHealthAnalysis(options: { enabled?: boolean } = {}) {
+  return useQuery<HealthAnalysisOverview>({
+    queryKey: ANALYSIS_KEY,
+    queryFn: () => api.get("/health/analysis"),
+    enabled: options.enabled ?? true,
+    throwOnError: false,
+  });
+}
+
+/** Analyse one module now, within the ceilings; a refusal comes back as the module's status, not an error. */
+export function useRunHealthAnalysis() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (module: HealthModule) => api.post<HealthModuleAnalysis>(`/health/analysis/${module}/run`, {}),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ANALYSIS_KEY }),
+  });
+}
+
+/**
+ * "Run checks now" (#101 S15e-2, sections 13.2 and 13.8; "Investigate now" of S14c before it): the
+ * module checker's round on every active registration of one module, administrators only. Its
+ * `["health-overview"]` invalidation refreshes the "Agentic checks" line too. A per-registration refusal comes back in `items`; a refusal of the
+ * whole request (`module_analyst_off`, `no_registration`, AI off) is a 409 the card words itself.
+ */
+export function useInvestigateHealthModule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (module: HealthModule) => api.post<HealthModuleInvestigation>(`/health/modules/${module}/investigate`, {}),
+    meta: { suppressGlobalErrorToast: true },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["health-overview"] });
+      void qc.invalidateQueries({ queryKey: ["health-cycles"] });
+    },
+  });
+}
+
+/**
+ * The latest agentic check report of every registration of one module (#101 S15e, section 13.6),
+ * administrators only: stored rows, no model call, readable with AI off. Refreshed with the overview.
+ */
+export function useHealthModuleChecks(module: HealthModule, options: { enabled?: boolean } = {}) {
+  return useQuery<HealthModuleCheckReports>({
+    queryKey: ["health-overview", "checks", module],
+    queryFn: () => api.get(`/health/modules/${module}/checks`),
+    enabled: options.enabled ?? true,
+    throwOnError: false,
   });
 }
 

@@ -149,6 +149,11 @@ class Fleet(VisibilityColumns, Base):
     #: Iteration cap default of the HOME members; an agent's own
     #: ``max_iterations`` wins, the platform ceiling clamps. NULL = none.
     max_iterations: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    #: Optional run budget of the fleet (#1526, ``services/fleet_run_budget``):
+    #: ``{runs_per_hour, tokens_per_hour}``, each optional, over the home
+    #: members' runs of the last rolling hour. Over it, new runs are held in the
+    #: queue (never failed) and the owner is told once an hour. NULL = none.
+    run_budget: Mapped[dict[str, int] | None] = mapped_column(JSON(none_as_null=True), nullable=True, default=None)
     #: Member defaults (dev-docs/ctem-fleets.md section 10.3): what a connected
     #: row inherits while its own field is NULL. Read through
     #: ``app.services.fleets.effective_member_settings``, never raw.
@@ -195,6 +200,21 @@ class Fleet(VisibilityColumns, Base):
     #: custom fleet; NULL keeps a legacy custom fleet on its declared gates
     #: until a person applies a level through ``PUT /fleets/{id}/autonomy``.
     approval_pins: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True, default=None)
+    #: Gates a person added to a built-in fleet (#916, CTEM-34): the customer
+    #: layer of its catalog, same shape as ``approval_gates``, read after the
+    #: seeded gates (``fleet_autonomy.effective_gates``). The seed never writes
+    #: it, so an added gate survives every upgrade. NULL = none added.
+    customer_gates: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON(none_as_null=True), nullable=True, default=None
+    )
+    #: Whether the platform also pauses the tool calls a waiting gate maps to
+    #: (#1467). Off by default and never written by the seed: by design XTM One
+    #: enables no programmatic tool-level gate, a fleet's gates are instructions
+    #: to its members (a decision item with its ask card). An administrator
+    #: opts a fleet in (``PUT /fleets/{id}/autonomy``, ``enforce_at_tool_level``).
+    enforce_gates_at_tool_level: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     #: Where the fleet's instructions (persona, guardrails, skills) put it on
     #: the four-level scale, between-step positions allowed (#10168, B2-I of
     #: #10000; ``fleet_autonomy.INSTRUCTIONS_POSITIONS``). Never a platform

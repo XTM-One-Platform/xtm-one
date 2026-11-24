@@ -70,6 +70,29 @@ def concerned_organizations(data: Any, organizations: Any) -> list[str]:
     return sorted({str(o["id"]) for o in entries if seen & set(o.get("sector_ids") or [])})
 
 
+def named_organizations(data: Any, organizations: Any) -> list[str]:
+    """The XTM One ids of the tracked *organizations* whose OpenCTI identity *data* names (CTEM-29).
+
+    Identity only: a sector match concerns a tracked organization's sector, not the
+    organization, and never makes a third-party event.
+    """
+    if not isinstance(organizations, list) or not organizations:
+        return []
+    seen = _strings(data)
+    entries = [o for o in organizations if isinstance(o, dict) and o.get("id")]
+    return sorted({str(o["id"]) for o in entries if seen & set(o.get("identity_ids") or [])})
+
+
+def named_in_payload(payload: dict[str, Any], trigger_config: Any) -> list[str]:
+    """The tracked organizations an OpenCTI delivery to *trigger_config* names by identity."""
+    from app.services.opencti_trigger_provisioning import STATE_KEY
+
+    state = trigger_config.get(STATE_KEY) if isinstance(trigger_config, dict) else None
+    if not isinstance(state, dict):
+        return []
+    return named_organizations(payload.get("data"), state.get("organizations"))
+
+
 def annotate_payload(payload: dict[str, Any], trigger_config: Any) -> list[str]:
     """Record in *payload* the organizations its OpenCTI event concerns; returns them (in place)."""
     from app.services.opencti_trigger_provisioning import STATE_KEY

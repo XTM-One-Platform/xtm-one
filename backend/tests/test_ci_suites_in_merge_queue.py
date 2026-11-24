@@ -1,7 +1,7 @@
 """The test suites run in the merge queue, and skip on a pull request.
 
 A pull request runs the static checks of ``ci.yml`` (the lint jobs, the secret
-scan, the ROI ledger's invariants, the frontend ratchet gates and catalog
+scan, the ROI ledger's invariants, the tool schema budget, the frontend ratchet gates and catalog
 tests) and the frontend build; the suites, the database checks and the shards
 of ``e2e.yml`` skip there and run on a merge group and by hand. In the queue each
 workflow's ``select`` job sizes them to what the merge group's own change
@@ -30,8 +30,16 @@ WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 SUITES = ["ci.yml", "e2e.yml"]
 REQUIRED = {"ci.yml": "verdict", "e2e.yml": "e2e"}
 # What a pull request runs: the static checks, the ROI ledger's invariant
-# suites (#12077 L7d) and the frontend ratchet gates.
-ON_PULL_REQUESTS = {"backend-lint", "roi-invariants", "frontend-lint", "frontend-gates", "office-addin-lint", "secrets"}
+# suites (#12077 L7d), the tool schema budget (#1625) and the frontend ratchet gates.
+ON_PULL_REQUESTS = {
+    "backend-lint",
+    "roi-invariants",
+    "tool-schema-budget",
+    "frontend-lint",
+    "frontend-gates",
+    "office-addin-lint",
+    "secrets",
+}
 IN_THE_QUEUE = "github.event_name != 'pull_request'"
 # Under a minute, so it runs on every pull request as well, and in the queue
 # as the selection says: the frontend build and its design-system guards.
@@ -41,6 +49,8 @@ ON_PULL_REQUESTS_AND_SELECTED = {
 }
 # Opens an issue when the nightly run fails: it reads the required check, not the reverse.
 NOTIFY = "notify-on-failure"
+# Publishes the shard weights, on a nightly run only (scripts/shard_weights.py).
+PUBLISH = "shard-weights"
 # The jobs a selection sizes, and the output that says whether each runs.
 SELECTED = {
     "ci.yml": {
@@ -126,6 +136,11 @@ def test_a_pull_request_runs_the_static_checks_and_the_queue_the_suites(name):
     for job_name, job in jobs.items():
         if job_name in {REQUIRED[name], NOTIFY}:
             continue
+        if job_name == PUBLISH:
+            assert job["if"].startswith(
+                "always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && "
+            ), f"{name}: {job_name}"
+            continue
         if job_name in ON_PULL_REQUESTS:
             assert "if" not in job, f"{name}: {job_name}"
         elif job_name in ON_PULL_REQUESTS_AND_SELECTED:
@@ -155,6 +170,12 @@ def test_a_job_that_reads_the_selection_downloads_it_first(name):
     # merge group (#440: bootstrap read backend-tests.txt with no artifact).
     for job_name, job in _workflow(name)["jobs"].items():
         steps = job.get("steps", [])
+        if any(
+            (step.get("with") or {}).get("name") == "test-selection"
+            for step in steps
+            if "upload-artifact" in str(step.get("uses", ""))
+        ):
+            continue  # the select job writes the selection it uploads
         reader = next(
             (i for i, step in enumerate(steps) if "/selection/" in str(step.get("env", {})) + str(step.get("run", ""))),
             None,
@@ -185,8 +206,9 @@ def test_the_required_checks_report_even_a_cancelled_run():
     # reports the required check as passed.
     e2e = _workflow("e2e.yml")["jobs"]["e2e"]
     assert e2e["if"] == f"always() && {IN_THE_QUEUE}"
-    # A failed selection skips the shards: the aggregator reads it too.
-    assert set(e2e["needs"]) == {"select", "shard"}
+    # A failed selection skips the shards: the aggregator reads it too, and a
+    # nightly run's failed publishing of the shard weights.
+    assert set(e2e["needs"]) == {"select", "shard", PUBLISH}
 
 
 @pytest.mark.parametrize("name", SUITES)
@@ -242,6 +264,28 @@ def test_a_pull_request_runs_the_catalog_tests():
     filters = _gates_command().split("--project unit", 1)[1].split()
     missing = [test for test in catalog if not _covered_by(test, filters)]
     assert not missing, f"catalog tests a pull request never runs: {missing}"
+
+
+def test_the_sandbox_frontend_gates_check_runs_the_ci_command_as_a_pre_push_guard():
+    # #1080 went red on Frontend gates: frontend-unit affected=true selects the
+    # gates only when it runs, and nothing named it before the push. The check
+    # runs CI's step verbatim and is a pre-push guard on every frontend source.
+    checks = tomllib.loads((REPO_ROOT / ".xtm-one" / "checks.toml").read_text(encoding="utf-8"))
+    spec = checks["check"]["frontend-gates"]
+    assert spec["cwd"] == "frontend"
+    assert spec["argv"][:2] == ["sh", "-c"]
+    assert spec["argv"][2] == _gates_command()
+    for name in ("no-class-name-assertions.test.ts", "App.tsx", "index.css", "en.json"):
+        assert any(fnmatch.fnmatchcase(name, glob) for glob in spec["pre_push"]), name
+
+
+def test_a_pull_request_runs_every_source_scan_guard():
+    # #745 broke src/lib/mode-split-guard.test.ts, a guard that reads the
+    # whole tree: vitest related never selects it, so only the merge group
+    # went red. The gates job runs every such guard the script lists.
+    command = _gates_command()
+    assert "&& yarn vitest run $(node scripts/source-scan-tests.mjs)" in command
+    assert (REPO_ROOT / "frontend" / "scripts" / "source-scan-tests.mjs").is_file()
 
 
 def test_the_gate_filter_reads_a_shallow_glob_only():

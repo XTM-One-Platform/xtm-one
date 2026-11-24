@@ -8,14 +8,10 @@ import {
   fleetParamPending,
   fleetViewPath,
   isKnownFleetTab,
-  legacyFleetLocation,
   offersFleetPicker,
   readFleetOpsList,
   readFleetTab,
-  readLegacyFleetView,
 } from "./fleet-operations";
-
-const params = (query: string) => new URLSearchParams(query);
 
 describe("readFleetTab", () => {
   it("opens a fleet on About, the page with no tab, and reads every tab segment (#10203)", () => {
@@ -34,7 +30,7 @@ describe("readFleetTab", () => {
     expect(FLEET_TABS.length).toBeLessThanOrEqual(8);
   });
 
-  it("knows which segments name a tab, so an unknown one is replaced by About", () => {
+  it("knows which segments name a tab, so an unknown one is not found (#797)", () => {
     expect(isKnownFleetTab(undefined)).toBe(true);
     for (const segment of ["graph", "data-flow", "members", "approval", "schedule", "operations", "roi"]) {
       expect(isKnownFleetTab(segment)).toBe(true);
@@ -64,37 +60,6 @@ describe("fleetViewPath", () => {
       const segment = fleetViewPath("f", view).split("/")[3];
       expect(readFleetTab(segment)).toBe(view);
     }
-  });
-});
-
-describe("legacy links (?view=, ?ops=, ?mode=)", () => {
-  it("reads the view an old query named, null when it names none", () => {
-    expect(readLegacyFleetView(params(""))).toBeNull();
-    expect(readLegacyFleetView(params("window=7d"))).toBeNull();
-    expect(readLegacyFleetView(params("view=graph"))).toBe("graph");
-    expect(readLegacyFleetView(params("view=about"))).toBe("about");
-    expect(readLegacyFleetView(params("view=nope"))).toBe("about");
-    expect(readLegacyFleetView(params("view=flow"))).toBe("flow");
-    // The Graph tab's former "Agents | Data flow" switch (#9829).
-    expect(readLegacyFleetView(params("view=graph&mode=flow"))).toBe("flow");
-    expect(readLegacyFleetView(params("mode=flow"))).toBe("flow");
-    expect(readLegacyFleetView(params("view=about&mode=flow"))).toBe("about");
-    expect(readLegacyFleetView(params("ops=runs&mode=flow"))).toBe("operations");
-  });
-
-  it("redirects each old link to its path, the rest of the query kept", () => {
-    expect(legacyFleetLocation("f", params(""))).toBeNull();
-    expect(legacyFleetLocation("f", params("window=7d"))).toBeNull();
-    expect(legacyFleetLocation("f", params("view=graph"))).toBe("/fleets/f/graph");
-    expect(legacyFleetLocation("f", params("view=about"))).toBe("/fleets/f");
-    expect(legacyFleetLocation("f", params("view=nope"))).toBe("/fleets/f");
-    expect(legacyFleetLocation("f", params("view=roi&window=7d"))).toBe("/fleets/f/roi?window=7d");
-    expect(legacyFleetLocation("f", params("view=graph&mode=flow"))).toBe("/fleets/f/data-flow");
-    expect(legacyFleetLocation("f", params("mode=flow&layout=radial"))).toBe("/fleets/f/data-flow?layout=radial");
-    expect(legacyFleetLocation("f", params("ops=runs&review=unreviewed"))).toBe("/fleets/f/operations/runs?review=unreviewed");
-    expect(legacyFleetLocation("f", params("ops=executions"))).toBe("/fleets/f/operations/runs");
-    // The work items' Stale segment owned `?view=` inside Operations: it stays a query of the list.
-    expect(legacyFleetLocation("f", params("ops=work-items&view=stale"))).toBe("/fleets/f/operations/work-items?view=stale");
   });
 });
 

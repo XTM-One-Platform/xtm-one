@@ -16,15 +16,24 @@ import {
   PrioritizationFunnelCard,
   PrioritizationFunnelPlaceholder,
   PrioritizationFunnelWithCases,
+  signalGateCounts,
 } from "./PrioritizationFunnel";
 import { SAMPLE_FUNNEL, withCasesLayer } from "./prioritization-funnel";
 
 const casesRead = vi.hoisted(() => ({ value: { data: undefined as unknown } as { data: unknown; isError?: boolean }, options: [] as unknown[] }));
 vi.mock("@/hooks/api/useCtemCasesApi", () => ({
+  CTEM_OPEN_CASE_STATES: ["new", "analyzing", "waiting_decision", "remediating", "validating"],
   useCtemCases: (options?: unknown) => {
     casesRead.options.push(options);
     return casesRead.value;
   },
+  // The funnel's "In a case" step (#1621): no overview read in these tests, so no step.
+  useCtemCasesOverview: () => ({ data: undefined }),
+}));
+
+const signalsRead = vi.hoisted(() => ({ value: { data: undefined } as { data: unknown; isError?: boolean } }));
+vi.mock("@/hooks/api/useCtemSignalsApi", () => ({
+  useRecentCtemSignals: () => signalsRead.value,
 }));
 
 const NO_OPENAEV: CtemFunnel = {
@@ -54,7 +63,7 @@ describe("PrioritizationFunnel", () => {
     // What a layer removed leaves as a branch, labelled with its count and reason.
     const relevant = screen.getByTestId("ctem-flow-label-relevant");
     expect(relevant.textContent).toContain("3.7K");
-    expect(relevant.textContent).toContain("not in your tech stack");
+    expect(relevant.textContent).toContain("not in your software");
     expect(screen.getByTestId("ctem-flow-label-exploitable").textContent).toContain("not exploitable");
     expect(screen.getByText("89 CVE findings on your assets (OpenAEV)")).toBeTruthy();
     expect(screen.getByTestId("ctem-funnel-needs-action").textContent).toBe("21 vulnerabilities need action");
@@ -73,10 +82,10 @@ describe("PrioritizationFunnel", () => {
     expect(screen.getByTestId("ctem-funnel-count-exposed").textContent).toBe("Not configured");
     // A not configured exclusion removes nothing: its branch has no thickness.
     expect(screen.getByTestId("ctem-flow-branch-exposed").getAttribute("data-branch")).toBe("0");
-    // Each call to action opens the tab and card of its field (Exposure for assets, Business for crown jewels...), never the first tab.
-    expect(screen.getByRole("link", { name: "Add your assets and exposure" }).getAttribute("href")).toBe("/settings/organization/profile/exposure?card=assets_exposure");
-    expect(screen.getByRole("link", { name: "Map crown jewels to assets" }).getAttribute("href")).toBe("/settings/organization/profile/business?card=crown_jewels");
-    expect(screen.getByRole("link", { name: "Set a prioritization policy" }).getAttribute("href")).toBe("/settings/organization/profile/exposure?card=prioritization_policy");
+    // Each call to action opens the tab and card of its field (Exposure for assets, Business for primary assets...), never the first tab.
+    expect(screen.getByRole("link", { name: "Add your assets and exposure" }).getAttribute("href")).toBe("/ctem/inventory?card=assets_exposure");
+    expect(screen.getByRole("link", { name: "Map primary assets to assets" }).getAttribute("href")).toBe("/ctem/inventory/business?card=crown_jewels");
+    expect(screen.getByRole("link", { name: "Set a prioritization policy" }).getAttribute("href")).toBe("/ctem/inventory/exposure?card=prioritization_policy");
     expect(screen.getByTestId("ctem-funnel-count-open_issues").textContent).toBe("Not available yet");
   });
 
@@ -147,10 +156,10 @@ describe("PrioritizationFunnel", () => {
     expect(tooltip.textContent).not.toContain("Read now");
   });
 
-  it("says a not configured layer opens Settings > Organization", async () => {
+  it("says a not configured layer opens CTEM > Inventory, where the assets live (#1178)", async () => {
     draw(<PrioritizationFunnel variant="stage" funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);
     fireEvent.focus(screen.getByRole("link", { name: /^Exposed, Not configured/ }));
-    expect((await screen.findByRole("tooltip")).textContent).toContain("Opens Settings > Organization");
+    expect((await screen.findByRole("tooltip")).textContent).toContain("Opens CTEM > Inventory");
   });
 
   it("opens the exact value on keyboard focus of a sample bar, which is not a link", async () => {
@@ -177,16 +186,33 @@ describe("the cases layer", () => {
     expect(screen.getByRole("link", { name: "Cases, No open case" })).toBeTruthy();
   });
 
-  it("reads the counts of the Cases API: needs attention plus in progress", () => {
-    casesRead.value = { data: { vertical: "cyber", counts: { needs_attention: 2, in_progress: 3, resolved: 4, accepted_risk: 1 }, cases: [], details_unavailable: [] } };
+  it("reads the counts of the Cases API: every open status (#1503)", () => {
+    casesRead.value = { data: { vertical: "cyber", counts: { waiting_decision: 2, new: 1, remediating: 2, resolved: 4, accepted_risk: 1 }, cases: [], details_unavailable: [] } };
     draw(<PrioritizationFunnelWithCases funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);
     expect(screen.getByTestId("ctem-funnel-count-open_issues").textContent).toBe("5");
     expect(screen.getByRole("link", { name: "Cases, 5 open cases" })).toBeTruthy();
-    // The node fans out into the two open states of the Cases board, linked to the list.
-    expect(screen.getByRole("link", { name: "Needs attention: 2 cases" }).getAttribute("href")).toBe("/ctem/cases?state=needs_attention");
-    expect(screen.getByRole("link", { name: "In progress: 3 cases" }).getAttribute("href")).toBe("/ctem/cases?state=in_progress");
+    // The node fans out into what waits on a person and what the agents work, linked to the list.
+    expect(screen.getByRole("link", { name: "Waiting for decision: 2 cases" }).getAttribute("href")).toBe("/ctem/cases?state=waiting_decision");
+    expect(screen.getByRole("link", { name: "In work: 3 cases" }).getAttribute("href")).toBe("/ctem/cases?state=open");
     expect(screen.getByTestId("ctem-flow-cases-closed").textContent).toBe("4 resolved, 1 accepted risk");
     expect(screen.getByTestId("ctem-flow-outcome").textContent).toBe("21 issues grouped into 5 open cases");
+  });
+
+  // #865 prod retest D1: a watched case is drawn, first of the closed line, linked to its list.
+  it("shows the mitigated, watching cases first on the closed line", () => {
+    casesRead.value = {
+      data: { vertical: "cyber", counts: { new: 1, mitigated_watching: 2, resolved: 4, accepted_risk: 1 }, cases: [], details_unavailable: [] },
+    };
+    draw(<PrioritizationFunnelWithCases funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);
+    // Every count shows, never clamped: mitigated on its own line above the
+    // closed line (UX round 2 on #897, B4).
+    const outcomes = screen.getByTestId("ctem-flow-cases-outcomes");
+    expect(outcomes.querySelectorAll("p")).toHaveLength(2);
+    expect(screen.getByTestId("ctem-flow-cases-mitigated").textContent).toBe("2 mitigated, watching");
+    expect(screen.getByTestId("ctem-flow-cases-closed").textContent).toBe("4 resolved, 1 accepted risk");
+    expect(outcomes.textContent).toBe("2 mitigated, watching4 resolved, 1 accepted risk");
+    expect(screen.getByTestId("ctem-flow-cases-mitigated").getAttribute("href")).toBe("/ctem/cases?state=mitigated_watching");
+    casesRead.value = { data: undefined };
   });
 
   it("puts one tab stop on the flow and moves it with the arrow keys", async () => {
@@ -216,15 +242,55 @@ describe("the cases layer", () => {
   it("keeps the layer not available, with no fan, when the Cases API fails", () => {
     casesRead.options = [];
     casesRead.value = {
-      data: { vertical: "cyber", counts: { needs_attention: 2, in_progress: 3, resolved: 4, accepted_risk: 1 }, cases: [], details_unavailable: [] },
+      data: { vertical: "cyber", counts: { waiting_decision: 2, remediating: 3, resolved: 4, accepted_risk: 1 }, cases: [], details_unavailable: [] },
       isError: true,
     };
     draw(<PrioritizationFunnelWithCases funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);
     expect(casesRead.options.every((options) => (options as { throwOnError?: boolean })?.throwOnError === false)).toBe(true);
     expect(screen.getByTestId("ctem-funnel-count-open_issues").textContent).toBe("Not available yet");
-    expect(screen.queryByRole("link", { name: /^Needs attention:/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^Waiting for decision:/ })).toBeNull();
     expect(screen.queryByTestId("ctem-flow-cases-closed")).toBeNull();
     casesRead.value = { data: undefined };
+  });
+});
+
+// #874: the two gates of the loop as numbers under the funnel, "10 flagged, 3 real".
+describe("the gate counts", () => {
+  it("counts signals in, confirmed, in scope and cases from the counts by state", () => {
+    expect(signalGateCounts({ new: 1, to_validate: 2, discarded: 1, watchlist: 3, confirmed: 1, case_opened: 2 })).toEqual({
+      total: 10,
+      confirmed: 6,
+      inScope: 3,
+      cases: 2,
+      watchlist: 3,
+    });
+  });
+
+  it("draws the line under the stage funnel, and nothing before the signals API answers", () => {
+    casesRead.value = { data: undefined };
+    signalsRead.value = { data: undefined };
+    const { unmount } = draw(<PrioritizationFunnelWithCases funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);
+    expect(screen.queryByTestId("ctem-funnel-gate-counts")).toBeNull();
+    unmount();
+    signalsRead.value = { data: { total: 3, counts: { to_validate: 1, watchlist: 1, confirmed: 1 }, signals: [] } };
+    draw(<PrioritizationFunnelWithCases funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);
+    expect(screen.getByTestId("ctem-funnel-gate-counts").textContent).toBe(
+      "Signals: 3 in, 2 confirmed, 1 in scope, 0 opened a case, 1 on the watchlist",
+    );
+    signalsRead.value = { data: undefined };
+  });
+
+  // UX r1 B1 on #875: a count that shares a noun with another count on the same
+  // card names its scope; the gate line never reads as a second total of cases.
+  it("names its scope so its cases never read as the card's open cases", () => {
+    casesRead.value = { data: undefined };
+    signalsRead.value = { data: { total: 4, counts: { to_validate: 1, discarded: 1, watchlist: 1, case_opened: 1 }, signals: [] } };
+    draw(<PrioritizationFunnelWithCases funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);
+    const line = screen.getByTestId("ctem-funnel-gate-counts").textContent ?? "";
+    expect(line.startsWith("Signals: ")).toBe(true);
+    expect(line).toContain("1 opened a case");
+    expect(line).not.toMatch(/\d+ cases?\b/);
+    signalsRead.value = { data: undefined };
   });
 });
 

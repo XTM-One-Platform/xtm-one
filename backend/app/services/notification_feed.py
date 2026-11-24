@@ -15,20 +15,27 @@ The items come from the two sources the bell always read:
   visibility included;
 * the person's ``Activity`` rows of the notification types
   (:data:`BELL_ACTIVITY_TYPES`), routed by their ``notification_source``;
-* the work items waiting for the person (``work_item_waiting``, #9437): the
+* the work items waiting for the person (#9437): the
   population of the dashboard notice, one entry per item, unless the person
   turned them off (``User.notify_waiting_work_items``). Answering the item
   takes it out of that population, which clears its entry.
 
 Read state lives on the server (``NotificationReadState``) so a phone and a
-computer agree on what is unread. A run awaiting a human, and a work item
-waiting for the person, is unread until it is answered, whatever was marked.
+computer agree on what is unread. A decision still waiting (a run awaiting a
+human, a work item waiting for the person, a flow parked on its Ask-user node)
+carries ``awaiting_answer`` and is unread until it is answered, whatever was
+opened, dismissed or marked read (#991).
+
+Every human gate (a paused run, a flow's Ask-user node, a work item's ask) is
+the one ``decision`` kind (#842, S4), presented by :func:`present_decision`;
+its former kinds ``hitl``, ``flow_hitl`` and ``work_item_waiting`` stay readable
+for one release.
 """
 
 from __future__ import annotations
 
 import uuid
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -38,6 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.channels.base import strip_artifact_markers
 from app.models.notification_read_state import NotificationReadState
+from app.services.decision_links import decision_link, flow_run_link, run_link
 
 #: Activity types an integration auth failure is recorded under (#3218).
 AUTH_FAILURE_ACTIVITY_TYPES: tuple[str, ...] = ("assignment_auth_quarantine", "assignment_auth_failure")
@@ -54,8 +62,13 @@ BELL_ACTIVITY_TYPES: tuple[str, ...] = (
     *CONTINUATION_REFUSED_ACTIVITY_TYPES,
 )
 
-#: The kinds of notification, in the frontend's ``NotificationKind``.
+#: The kinds of notification, in the frontend's ``NotificationKind``. ``decision``
+#: is the one kind the feed writes for a human gate (#842, S4; human-gates.md
+#: section 5): ``hitl``, ``flow_hitl`` and ``work_item_waiting`` stay valid for one
+#: release as its aliases, so muted kinds, persisted rows and installed
+#: companions still read.
 NOTIFICATION_KINDS: tuple[str, ...] = (
+    "decision",
     "hitl",
     "flow_hitl",
     "run",
@@ -74,10 +87,28 @@ NOTIFICATION_KINDS: tuple[str, ...] = (
     "builtin_tools_outside_allowlist",
 )
 
+#: The former decision kinds, read as ``decision`` for one release (#842, S4).
+DECISION_KIND_ALIASES: frozenset[str] = frozenset({"hitl", "flow_hitl", "work_item_waiting"})
+#: The decision kind and its aliases.
+DECISION_KINDS: frozenset[str] = frozenset({"decision", *DECISION_KIND_ALIASES})
+#: The sources a ``decision`` entry comes from (``decision_links.decision_link``).
+DECISION_SOURCES: tuple[str, ...] = ("run", "flow_run", "work_item")
+#: The former kind of each source: a phone that muted it keeps it muted.
+DECISION_ALIAS_BY_SOURCE: dict[str, str] = {"run": "hitl", "flow_run": "flow_hitl", "work_item": "work_item_waiting"}
+
+
+def kind_names(kind: str, source: str | None = None) -> frozenset[str]:
+    """The names a phone may have muted an entry under: its kind, and for a
+    ``decision`` its source's former kind (read for one release, #842 S4)."""
+    alias = DECISION_ALIAS_BY_SOURCE.get(source or "") if kind == "decision" else None
+    return frozenset({kind, alias}) if alias else frozenset({kind})
+
+
 #: Kinds that wait on the person: shown first.
-URGENT_KINDS: frozenset[str] = frozenset({"hitl", "flow_hitl", "work_item_waiting"})
-#: Kinds unread until answered, whatever was marked read.
-UNREAD_UNTIL_ANSWERED_KINDS: frozenset[str] = frozenset({"hitl", "work_item_waiting"})
+URGENT_KINDS: frozenset[str] = DECISION_KINDS
+#: The decision kinds: an entry of one of them that still waits carries
+#: ``awaiting_answer`` and stays unread until answered (#991).
+UNREAD_UNTIL_ANSWERED_KINDS: frozenset[str] = DECISION_KINDS
 #: The id prefix of a waiting work item's entry (never a run's or an activity's id).
 WORK_ITEM_WAITING_PREFIX = "work_item:"
 
@@ -99,8 +130,13 @@ class NotificationItem:
     subtitle: str | None = None
     summary: str | None = None
     critical: bool = False
-    #: The run a ``hitl`` item waits on (the Inbox answers it there).
+    #: The run a run decision waits on (the Inbox answers it there), or the
+    #: flow run a flow decision asks from.
     run_id: str | None = None
+    #: A decision still waiting for its answer: unread whatever was read (#991).
+    awaiting_answer: bool = False
+    #: What a ``decision`` entry waits on: ``run``, ``flow_run`` or ``work_item``.
+    source: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -143,6 +179,46 @@ def _is_uuid(value: str | None) -> bool:
     return True
 
 
+def present_decision(
+    *,
+    entry_id: str,
+    source: str,
+    source_id: object,
+    created_at: str,
+    question: str | None,
+    fallback_title: str,
+    by: str | None,
+    deadline: object = None,
+    flow_id: object = None,
+    awaiting_answer: bool = True,
+) -> NotificationItem:
+    """A human gate as the one ``decision`` bell entry (#842, S4; human-gates.md section 5).
+
+    The three sources (a paused run, a flow's Ask-user node, a work item's ask)
+    say the same thing: the question as the title (``fallback_title`` without
+    one), who asks as the subtitle (the agent or the flow; the client prefixes
+    the translated source label), the deadline as the summary, the route
+    from ``decision_links``. ``entry_id`` keeps the id each source always had,
+    so read and dismissed state survive the change of kind.
+    """
+    if source not in DECISION_SOURCES:
+        raise ValueError(f"unknown decision source {source!r}")
+    text = summary_preview(question)
+    run_id = str(source_id) if source in ("run", "flow_run") and _is_uuid(str(source_id)) else None
+    return NotificationItem(
+        id=entry_id,
+        kind="decision",
+        created_at=created_at,
+        route=decision_link(source, source_id, flow_id=flow_id),
+        title=text or fallback_title,
+        subtitle=by,
+        summary=waiting_deadline_text(deadline),
+        run_id=run_id,
+        awaiting_answer=awaiting_answer,
+        source=source,
+    )
+
+
 def present_run(run: Any) -> NotificationItem | None:
     """A notification-worthy run as a bell item, or ``None`` (nothing to say)."""
     created = run.created_at if isinstance(run.created_at, str) else run.created_at.isoformat()
@@ -150,15 +226,14 @@ def present_run(run: Any) -> NotificationItem | None:
     if run.status == "awaiting_human":
         if not run.human_input_question:
             return None
-        return NotificationItem(
-            id=str(run.id),
-            kind="hitl",
+        return present_decision(
+            entry_id=str(run.id),
+            source="run",
+            source_id=run.id,
             created_at=created,
-            route=f"/runs/{run.id}",
-            title=title,
-            subtitle=run.agent_name,
-            summary=run.human_input_question,
-            run_id=str(run.id),
+            question=run.human_input_question,
+            fallback_title=title,
+            by=run.agent_name or title,
         )
     preview = summary_preview(run.result_summary)
     # A summary that is mostly a marker would make an empty notification.
@@ -168,27 +243,47 @@ def present_run(run: Any) -> NotificationItem | None:
         id=str(run.id),
         kind="run",
         created_at=created,
-        route=f"/runs/{run.id}",
+        route=run_link(run.id),
         title=title,
         subtitle=run.agent_name,
         summary=preview,
     )
 
 
+def waiting_deadline_text(deadline: object) -> str | None:
+    """``Answer by Fri 21 Nov, 09:00 UTC`` for an ask deadline; ``None`` when absent or unreadable."""
+    if not isinstance(deadline, str) or not deadline.strip():
+        return None
+    try:
+        when = datetime.fromisoformat(deadline.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)
+    when = when.astimezone(UTC)
+    return f"Answer by {when:%a} {when.day} {when:%b}, {when:%H:%M} UTC"
+
+
 def present_waiting_work_item(item: dict[str, Any]) -> NotificationItem | None:
-    """A work item waiting for the person as a bell entry: its question, the
-    item open in Operations (where the decision card answers it)."""
+    """A work item waiting for the person as a bell entry, the item open in
+    Tasks > Work Items (where the decision card answers it).
+
+    The entry says what the decision card says, nothing else (#776): the ask's
+    question as the title (``Decision needed: <title>`` without one) and its
+    deadline as the summary. ``blocked_reason`` is never shown here.
+    """
     item_id = item.get("id")
     if not _is_uuid(item_id):
         return None
-    return NotificationItem(
-        id=f"{WORK_ITEM_WAITING_PREFIX}{item_id}",
-        kind="work_item_waiting",
+    return present_decision(
+        entry_id=f"{WORK_ITEM_WAITING_PREFIX}{item_id}",
+        source="work_item",
+        source_id=item_id,
         created_at=str(item.get("since") or ""),
-        route=f"/operations/work-items?item={item_id}",
-        title=str(item.get("title") or "Work item"),
-        subtitle="Work item",
-        summary=summary_preview(item.get("question")) or None,
+        question=item.get("question"),
+        fallback_title=f"Decision needed: {item.get('title') or 'work item'}",
+        by=_str(item, "agent_name"),
+        deadline=item.get("deadline"),
     )
 
 
@@ -209,7 +304,7 @@ def present_activity(activity: Any, *, flows_enabled: bool) -> NotificationItem 
         return NotificationItem(kind=kind, route=route, subtitle=activity.agent_name or subtitle, **base, **extra)
 
     assignment_id = _str(metadata, "assignment_id")
-    assignment_route = f"/assignments/{assignment_id}" if _is_uuid(assignment_id) else None
+    assignment_route = f"/agents/assignments/{assignment_id}" if _is_uuid(assignment_id) else None
     if activity_type in AUTH_FAILURE_ACTIVITY_TYPES:
         return item("auth_failure", assignment_route or "/integrations", "Integration")
     if activity_type in STALE_REFERENCE_ACTIVITY_TYPES:
@@ -220,7 +315,7 @@ def present_activity(activity: Any, *, flows_enabled: bool) -> NotificationItem 
         return None
 
     if source == "llm_analytics_refresh":
-        return item("analytics_refresh", _internal_path(_str(metadata, "dashboard_path"), "/analytics"), "System")
+        return item("analytics_refresh", _internal_path(_str(metadata, "dashboard_path"), "/observability"), "System")
     if source in ("flow_hitl", "flow"):
         # The builder is hidden behind its flag: a link nobody can open is worse
         # than no notification.
@@ -228,12 +323,21 @@ def present_activity(activity: Any, *, flows_enabled: bool) -> NotificationItem 
             return None
         flow_id = _str(metadata, "flow_id")
         run_id = _str(metadata, "flow_run_id")
-        route = "/flows"
-        if _is_uuid(flow_id):
-            route = f"/flows/{flow_id}/builder"
-            if source == "flow_hitl" and _is_uuid(run_id):
-                route += f"?run={run_id}"
-        return item(source, route, "Flow")
+        if source == "flow_hitl" and _is_uuid(run_id):
+            # Whether the run still waits is read in build_feed (one query):
+            # pinned only while it does (mark_waiting_flow_asks).
+            return present_decision(
+                entry_id=str(activity.id),
+                source="flow_run",
+                source_id=run_id,
+                created_at=created,
+                question=activity.summary,
+                fallback_title=activity.title,
+                by=activity.agent_name or "Flow",
+                flow_id=flow_id,
+                awaiting_answer=False,
+            )
+        return item(source, flow_run_link(flow_id, run_id if source == "flow_hitl" else None), "Flow")
     if source == "security_audit":
         audit_path = _str(metadata, "audit_path")
         route = audit_path if audit_path and audit_path.startswith("/settings/security") else "/settings/security"
@@ -257,7 +361,7 @@ def present_activity(activity: Any, *, flows_enabled: bool) -> NotificationItem 
         run_id = _str(metadata, "run_id")
         conversation_id = _str(metadata, "conversation_id")
         if _is_uuid(run_id):
-            route = f"/runs/{run_id}"
+            route = run_link(run_id)
         elif _is_uuid(conversation_id):
             route = f"/chat?c={conversation_id}"
         else:
@@ -268,7 +372,7 @@ def present_activity(activity: Any, *, flows_enabled: bool) -> NotificationItem 
     if source == "run_action_request":
         # Someone who cannot answer a paused run asked its owner to act: the run.
         run_id = _str(metadata, "run_id")
-        return item("run_action_request", f"/runs/{run_id}" if _is_uuid(run_id) else "/operations", "Run")
+        return item("run_action_request", run_link(run_id), "Run")
     if source == "builtin_tools_outside_allowlist":
         # A release shipped tools an agent's allowlist leaves out (#12192): its
         # Tooling section, where each one is added in one click.
@@ -301,12 +405,49 @@ def _parse_time(value: str) -> datetime | None:
 
 
 def is_unread(item: NotificationItem, *, read_at: datetime | None, dismissed: set[str]) -> bool:
-    if item.kind in UNREAD_UNTIL_ANSWERED_KINDS:
+    # A decision still waiting is unread until answered, whatever was opened,
+    # dismissed or marked read (#991). Any other entry its recipient opened or
+    # dismissed is read (#901).
+    if item.awaiting_answer and item.kind in UNREAD_UNTIL_ANSWERED_KINDS:
         return True
     if item.id in dismissed:
         return False
     created = _parse_time(item.created_at)
     return read_at is None or (created is not None and created > read_at)
+
+
+def flow_ask_waits(run: Any) -> bool:
+    """Whether a flow run is still parked on an Ask-user node nobody answered."""
+    from app.models.flow_run import FLOW_RUN_STATUS_AWAITING
+
+    waiting = (run.state or {}).get("waiting") if isinstance(run.state, dict) else None
+    return (
+        run.status == FLOW_RUN_STATUS_AWAITING
+        and isinstance(waiting, dict)
+        and waiting.get("kind") == "human"
+        and not waiting.get("released")
+    )
+
+
+async def mark_waiting_flow_asks(db: AsyncSession, items: list[NotificationItem]) -> list[NotificationItem]:
+    """Set ``awaiting_answer`` on each flow decision whose flow run still waits.
+
+    A run answered, cancelled, finished or gone leaves its entry an ordinary
+    one, read on open, so no entry is ever pinned with nothing to answer.
+    """
+    from app.models.flow_run import FlowRun
+
+    run_ids = {uuid.UUID(i.run_id) for i in items if _is_flow_decision(i) and i.run_id and _is_uuid(i.run_id)}
+    if not run_ids:
+        return items
+    rows = (await db.execute(select(FlowRun).where(FlowRun.id.in_(run_ids)))).scalars().all()
+    waiting = {str(run.id) for run in rows if flow_ask_waits(run)}
+    return [replace(i, awaiting_answer=True) if _is_flow_decision(i) and i.run_id in waiting else i for i in items]
+
+
+def _is_flow_decision(item: NotificationItem) -> bool:
+    """A decision a flow's Ask-user node asks (``flow_hitl`` read as its alias)."""
+    return item.kind == "flow_hitl" or (item.kind == "decision" and item.source == "flow_run")
 
 
 # ── Read state ───────────────────────────────────────────────────────────────
@@ -377,7 +518,7 @@ async def build_feed(db: AsyncSession, user: Any, *, limit: int = FEED_WINDOW) -
     if getattr(user, "notify_waiting_work_items", True) is not False:
         waiting = await list_work_items_waiting_for_person(user_id=str(user.id), limit=limit)
         items += [i for row in waiting if (i := present_waiting_work_item(row)) is not None]
-    merged = merge_items(items)
+    merged = await mark_waiting_flow_asks(db, merge_items(items))
     read_at, dismissed_list = await load_read_state(db, user.id)
     dismissed = set(dismissed_list)
     payload = []

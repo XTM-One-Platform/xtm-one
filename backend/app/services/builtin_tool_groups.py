@@ -269,6 +269,28 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         aliases=("stix_bundle_validator", "fimi_analytics"),
     ),
     BuiltinToolGroup(
+        # Read-only CTEM signals and cases for any agent (#1337), as the person
+        # the turn or run acts for, with the CTEM routes' permission model.
+        id="ctem_read",
+        name="CTEM Read",
+        tagline="Read the CTEM signals and cases the person you act for can see, read-only",
+        detail="Lets the agent list the CTEM signals with their evidence, list the CTEM cases with their counts by state, and read one case with its issues, history, who opened it and why each empty section is empty. It acts for the person the turn or run acts for, with the same rules as the CTEM pages: a case they cannot see does not exist for the agent, an issue they cannot see is a Restricted row. It writes nothing. XTM One mode only.",
+        category="security",
+        icon="ScanEye",
+        agent_keyed=True,
+    ),
+    BuiltinToolGroup(
+        # CTEM administrator repairs (#1778): the attack surface pass summary and
+        # repair and the threat package repair, the REST routes' admin scope.
+        id="ctem_repair",
+        name="CTEM Repair",
+        tagline="Read the attack surface passes and run the CTEM repairs, administrators",
+        detail="Lets the agent read the latest attack surface passes (what each read covered, hosts observed, signals per path), discard the new-host signals raised without a complete previous read, and correct the threat packages stored with a Grouping page whose Grouping is not live. A repair defaults to a dry run that writes nothing and answers the counts and the ids. It acts for the person the turn or run acts for, who must be an administrator, as on the REST routes. XTM One mode only.",
+        category="security",
+        icon="Stethoscope",
+        agent_keyed=True,
+    ),
+    BuiltinToolGroup(
         id="stix_extractor",
         # Off by default and never reached through Threat Intelligence: one call reads a
         # report through hundreds of model calls (up to 30 min), so an agent carries it
@@ -300,7 +322,7 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         id="organization_context",
         name="Organization Profile Editing",
         tagline="Administrators only: update the organization profile, or propose a change for review",
-        detail="Lets the agent change the organization profile (crown jewels, tech stack, AI systems, risk appetite and the other fields of Settings > Organization) for the administrator it acts for: each change is saved as a new version authored by that administrator, with the agent and the basis kept, so the history can roll it back. It can also propose a change for an administrator to review. Only an administrator can bind it, and the tools are offered only on a turn that acts for an administrator; every agent keeps reading the profile without it.",
+        detail="Lets the agent change the organization profile (crown jewels, software, AI systems, risk appetite and the other fields of Settings > Organization) for the administrator it acts for: each change is saved as a new version authored by that administrator, with the agent and the basis kept, so the history can roll it back. It can also propose a change for an administrator to review. Only an administrator can bind it, and the tools are offered only on a turn that acts for an administrator; every agent keeps reading the profile without it.",
         category="platform",
         icon="Building2",
         agent_keyed=True,
@@ -408,6 +430,18 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         agent_keyed=True,
         health_only=True,
         core=("get_flow_diagnosis", "get_assignment_path", "get_flow_shadow"),
+    ),
+    BuiltinToolGroup(
+        id="health_modules",
+        name="Health Modules",
+        tagline="Investigate registered modules and recommend on their findings",
+        detail="Platform Health's Module Analyst: reads the open findings of a registered OpenCTI, OpenAEV or OpenCRQ with the recommendations already attached, and attaches its own recommendation to each finding the module reads explain. Never writes to a module. Works only inside a Platform Health run.",
+        category="observability",
+        icon="Stethoscope",
+        gate="health",
+        agent_keyed=True,
+        health_only=True,
+        core=("list_module_findings",),
     ),
 )
 

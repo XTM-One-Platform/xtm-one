@@ -67,6 +67,7 @@ export const HEALTH_CHECK_TITLES = {
   "xtm_one.kb_stale_embeddings": "Knowledge base embeddings outdated",
   "xtm_one.licence": "License not valid",
   "xtm_one.licence_expiry": "License expiring",
+  "xtm_one.maintenance_stalled": "Hourly maintenance stalled",
   "xtm_one.mcp_server_broken": "MCP server broken",
   "xtm_one.provider_error_rate": "Model provider errors",
   "xtm_one.quota_near_ceiling": "Quota near its ceiling",
@@ -107,6 +108,7 @@ const HEALTH_EVIDENCE_LABELS = {
   job: "Job",
   judged_runs_read: "Rated runs read",
   kind: "Kind",
+  last_completed_at: "Last completed",
   last_error: "Last error",
   last_heartbeat_at: "Last heartbeat",
   last_triggered_at: "Last triggered",
@@ -117,6 +119,7 @@ const HEALTH_EVIDENCE_LABELS = {
   newer: "Newer version",
   oauth_status: "OAuth status",
   offline: "Offline",
+  overdue_since: "Overdue since",
   owner_active: "Owner active",
   period: "Period",
   platform_model: "Platform model",
@@ -204,6 +207,7 @@ export const HEALTH_CHECK_RECOMMENDATIONS = {
   "xtm_one.kb_stale_embeddings": "Re-embed the knowledge base with the platform's embedding model.",
   "xtm_one.licence": "Install a valid Filigran licence in Settings > Platform, or contact Filigran.",
   "xtm_one.licence_expiry": "Renew the Filigran licence before it expires.",
+  "xtm_one.maintenance_stalled": "Read the web process logs for the scheduler tick errors; the hourly retention sweeps and purges wait until it completes again.",
   "xtm_one.mcp_server_broken": "Connect the MCP server again so its OAuth token is renewed.",
   "xtm_one.provider_error_rate": "Check the provider's status and the model's credentials, or switch the agents to another model.",
   "xtm_one.quota_near_ceiling": "Agentic runs stop for everyone once the ceiling is reached: raise it with Filigran or reduce the scheduled and event-driven runs.",
@@ -229,9 +233,13 @@ const HEALTH_PERIOD_LABELS = {
   yearly: "Yearly",
 } as const;
 
-/** A key no table names yet (a check newer than this build): its words, never its snake case. */
+/**
+ * A key no table names yet (a check newer than this build): its words, never its snake case.
+ * The module segment goes, and the `agentic` segment of a Module Analyst check id with it: the
+ * row's Agentic badge already says so (UX round 1 B2 on #953).
+ */
 function humanize(key: string): string {
-  const words = key.replace(/^[a-z_]+\./, "").replace(/_/g, " ").trim();
+  const words = key.replace(/^[a-z_]+\.(?:agentic\.)?/, "").replace(/_/g, " ").trim();
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : key;
 }
 

@@ -6,16 +6,14 @@ This page is about **your own monitoring** of an OpenCRQ deployment. It is unrel
 
 ## Two independent transports
 
-Metrics are recorded once per process and served identically by two independent, opt-in transports — see [Configuration](configuration.md#opentelemetry-traces-metrics-logs) for every variable and default:
+Metrics are recorded once per process and served identically by two independent, opt-in transports — see [Configuration](configuration.md#observability) for every variable and default:
 
-- **Pull (Prometheus scrape)** — `TELEMETRY__METRICS__PROMETHEUS__ENABLED`. The process manager serves one merged scrape endpoint per container, on port `14269` by default (`TELEMETRY__METRICS__PROMETHEUS__PORT`), covering every process the container supervises. No collector is required for this path.
-- **Push (OTLP)** — `TELEMETRY__METRICS__OTLP__ENABLED`, sent by each process independently to the configured OTLP destination, whether that is a collector or any OTLP-native backend.
+- **Pull (Prometheus scrape)** — `TELEMETRY__OBSERVABILITY__PROMETHEUS__ENABLED`. The process manager serves one merged scrape endpoint per container, on port `14269` by default (`TELEMETRY__OBSERVABILITY__PROMETHEUS__PORT`), covering every process the container supervises. No collector is required for this path.
+- **Push (OTLP)** — `TELEMETRY__OBSERVABILITY__OTLP__METRICS__ENABLED`, sent by each process independently to the configured OTLP destination, whether that is a collector or any OTLP-native backend.
 
 Either, both, or neither may be enabled; enabling one does not require the other.
 
 The scrape endpoint additionally withholds itself, logging an error and leaving the rest of the platform running, in three cases: the configured port equals the healthcheck server's port, a process in the running profile is named after the process manager's own reserved name (which would collide with the `process_name` identity label), or the server fails to start. If a target that should be up is refusing connections, check the application's logs for those errors before looking at the network.
-
-**Migration note.** `TELEMETRY__METRICS__ENABLED` and `TELEMETRY__METRICS__EXPORTER_OTLP` are superseded by `TELEMETRY__METRICS__OTLP__ENABLED` and `TELEMETRY__METRICS__OTLP__EXPORTER`. The platform logs an error naming the replacement if it encounters an old key at boot.
 
 ## Identity, always
 
@@ -29,13 +27,13 @@ Every series, on either transport, carries three identity attributes: `process.n
 | Identity attributes | `process_name`, `service_name`, `service_version` as constant labels on every sample line. | `process.name`, `service.name`, `service.version` as resource attributes. |
 | `service.instance.id` | Absent. | Present, as a resource attribute. |
 
-The recorded values are identical on both transports, and so is the set of families — with one exception: `opengrc.pm.collection.ok` and `opengrc.pm.collection.failures` are scrape-only (see [Supervision and collection outcome](#supervision-and-collection-outcome) below).
+The recorded values are identical on both transports, and so is the set of families — with one exception: `opencrq.pm.collection.ok` and `opencrq.pm.collection.failures` are scrape-only (see [Supervision and collection outcome](#supervision-and-collection-outcome) below).
 
 Derive no name by applying the sanitisation rules above by hand: always confirm the exact scraped name against a real document, since a version bump of an auto-instrumentation can add or remove a family (guarded by the set-equality test in `back/src/utils/metrics-contract.test.ts`).
 
 ## Protection: network placement, not authentication
 
-The scrape endpoint carries no authentication by design — it is protected by where it is reachable from, never by a credential. Never publish it outside the container or pod network; the bind address (`TELEMETRY__METRICS__PROMETHEUS__HOST`) is the control, and **it defaults to `0.0.0.0`**, so a deployment that enables this transport without setting it listens on every interface of its container. The image declares no metric port, so nothing is exposed unless a deployment explicitly enables and routes to this transport.
+The scrape endpoint carries no authentication by design — it is protected by where it is reachable from, never by a credential. Never publish it outside the container or pod network; the bind address (`TELEMETRY__OBSERVABILITY__PROMETHEUS__HOST`) is the control, and **it defaults to `0.0.0.0`**, so a deployment that enables this transport without setting it listens on every interface of its container. The image declares no metric port, so nothing is exposed unless a deployment explicitly enables and routes to this transport.
 
 An unauthenticated reader of the endpoint learns: the platform version, the process role names a deployment runs and how many of each, the database server's address, port and name (the values of `postgres.host`, `postgres.port` and `postgres.database`, which appear in the connection-pool identifier and on the query-duration histogram), Postgres `SQLSTATE` codes observed on queries, and the kinds of database operation the application issues (`SELECT`, `INSERT`, ...). Database **table names are not exposed** — the query-duration histogram carries an operation kind and, bounded, an error code, never the SQL text or the tables it touches.
 
@@ -78,17 +76,17 @@ This page states the predicate; shipping the alert rule itself is out of scope (
 
 Owned by the process manager itself, never per-process — `process_name` here identifies the process manager, not a supervised child.
 
-The two `collection` families measure the scrape endpoint's own work of gathering each process's snapshot, so they exist **only when the scrape transport is enabled**. `opengrc.pm.processes` is recorded regardless and reaches both transports. This is the one place where the two transports do not carry the same set of families.
+The two `collection` families measure the scrape endpoint's own work of gathering each process's snapshot, so they exist **only when the scrape transport is enabled**. `opencrq.pm.processes` is recorded regardless and reaches both transports. This is the one place where the two transports do not carry the same set of families.
 
 | Instrument name (push) | Exposed name (scrape) | Type | Unit | Attributes | Description |
 |:--|:--|:--|:--|:--|:--|
-| `opengrc.pm.processes` | `opengrc_pm_processes` | Gauge | `{process}` | `state`: one of `FORKING`, `BOOTING`, `STARTING`, `RUNNING`, `STOPPING`, `STOPPED`, `EXITED`, `ERROR` | The number of supervised processes currently in each lifecycle state. |
-| `opengrc.pm.collection.ok` | `opengrc_pm_collection_ok` | Gauge | — | `supervised_process`: the name of the process the snapshot was collected from, including `pm` for the process manager's own | Whether the most recent metrics collection from a supervised process succeeded (1) or failed (0). |
-| `opengrc.pm.collection.failures` | `opengrc_pm_collection_failures_total` | Counter | `{failure}` | `supervised_process`, `reason`: one of `timeout`, `error`, `not_connected`, `not_running`, `oversized`, `invalid`, `empty`, `send_error` | The number of metrics-collection attempts from a supervised process that failed, by reason. |
+| `opencrq.pm.processes` | `opencrq_pm_processes` | Gauge | `{process}` | `state`: one of `FORKING`, `BOOTING`, `STARTING`, `RUNNING`, `STOPPING`, `STOPPED`, `EXITED`, `ERROR` | The number of supervised processes currently in each lifecycle state. |
+| `opencrq.pm.collection.ok` | `opencrq_pm_collection_ok` | Gauge | — | `supervised_process`: the name of the process the snapshot was collected from, including `pm` for the process manager's own | Whether the most recent metrics collection from a supervised process succeeded (1) or failed (0). |
+| `opencrq.pm.collection.failures` | `opencrq_pm_collection_failures_total` | Counter | `{failure}` | `supervised_process`, `reason`: one of `timeout`, `error`, `not_connected`, `not_running`, `oversized`, `invalid`, `empty`, `send_error` | The number of metrics-collection attempts from a supervised process that failed, by reason. |
 
 A collection outcome is only visible from the *following* scrape — every outcome is recorded after the snapshot the current response serves, so a reader sees one round's lag on this family, and the two collection families are absent altogether from the very first scrape after a start.
 
-More generally, a family that is only recorded when something happens does not exist on the endpoint until it first happens. `opengrc_pm_collection_failures_total`, `db_client_connection_timeouts_total` and `opengrc_db_client_connection_reconnection_attempts_total` only ever appear once the corresponding failure has occurred, so a healthy deployment serves none of the three; `db_client_connection_wait_time` and `db_client_connection_use_time` appear on the first pool acquisition. Write panels and alerts on these so that an absent series is treated as zero. Note that `or vector(0)` is a blunt instrument for that: it yields a label-free series, so it breaks `by (...)` grouping, and it only fires when the selector is entirely empty — it fills nothing when a family exists for one `process_name` and not another.
+More generally, a family that is only recorded when something happens does not exist on the endpoint until it first happens. `opencrq_pm_collection_failures_total`, `db_client_connection_timeouts_total` and `opencrq_db_client_connection_reconnection_attempts_total` only ever appear once the corresponding failure has occurred, so a healthy deployment serves none of the three; `db_client_connection_wait_time` and `db_client_connection_use_time` appear on the first pool acquisition. Write panels and alerts on these so that an absent series is treated as zero. Note that `or vector(0)` is a blunt instrument for that: it yields a label-free series, so it breaks `by (...)` grouping, and it only fires when the selector is entirely empty — it fills nothing when a family exists for one `process_name` and not another.
 
 ### Node runtime (per process)
 
@@ -130,7 +128,7 @@ Authored in `back/src/engines/db/db-metrics.ts`, adopting the OpenTelemetry sema
 | `db.client.connection.use_time` | `db_client_connection_use_time` | Histogram | `s` | `db_client_connection_pool_name` | The time between borrowing a connection and returning it to the pool. |
 | `db.client.connection.timeouts` | `db_client_connection_timeouts_total` | Counter | `{timeout}` | `db_client_connection_pool_name` | The number of connection requests that timed out before a connection could be obtained. |
 
-The pool name is `{server.address}:{server.port}/{db.namespace}` (e.g. `postgres:5432/opengrc`), matching the algorithm `instrumentation-pg` itself uses, so this pool identifier lines up with the one on the query-duration histogram below.
+The pool name is `{server.address}:{server.port}/{db.namespace}` (e.g. `postgres:5432/opencrq`), matching the algorithm `instrumentation-pg` itself uses, so this pool identifier lines up with the one on the query-duration histogram below.
 
 ### Query duration (per process)
 
@@ -150,7 +148,7 @@ A query that produced no error carries no `error_type` attribute at all — abse
 
 | Instrument name (push) | Exposed name (scrape) | Type | Unit | Attributes | Description |
 |:--|:--|:--|:--|:--|:--|
-| `opengrc.db.client.connection.reconnection_attempts` | `opengrc_db_client_connection_reconnection_attempts_total` | Counter | `{attempt}` | `db_client_connection_pool_name` | The number of attempts made to re-establish the database connection after the pool reported an error. |
+| `opencrq.db.client.connection.reconnection_attempts` | `opencrq_db_client_connection_reconnection_attempts_total` | Counter | `{attempt}` | `db_client_connection_pool_name` | The number of attempts made to re-establish the database connection after the pool reported an error. |
 
 ### Change-driven recompute (job-running processes)
 
@@ -158,9 +156,9 @@ Authored in `back/src/utils/recompute-metrics.ts`. The dispatcher asks for a rec
 
 | Instrument name (push) | Exposed name (scrape) | Type | Unit | Attributes | Description |
 |:--|:--|:--|:--|:--|:--|
-| `opengrc.recompute.asks` | `opengrc_recompute_asks_total` | Counter | `{ask}` | `path`: `dispatcher` or `manual`, `job_kind`, `already_existed`: `true` when the ask folded into a run already queued or running, `reason` (dispatcher path only): `change`, `reconnect`, `daily` or `followup` | Recompute enqueue requests, by path and dedup outcome. |
-| `opengrc.recompute.unattributed_reads` | `opengrc_recompute_unattributed_reads_total` | Counter | `{read}` | `job_kind` | Reads an observed run could not attribute to a table, each of which widened the job's subscription to every table until its next clean run. |
-| `opengrc.recompute.feeding_cycles` | `opengrc_recompute_feeding_cycles_total` | Counter | `{cycle}` | `job_kind`, `cycle`: the job kinds of the feeding cycle joined by ` -> ` | Job kinds whose observed reads and writes feed each other, counted once per distinct cycle per process rather than once per detection: every observation refresh of a job in a cycle detects it again. Reported only: every kind of the cycle keeps its change routing, the watermark each job scopes itself with being what makes the loop converge. The line beside it is a warning, not an error. |
+| `opencrq.recompute.asks` | `opencrq_recompute_asks_total` | Counter | `{ask}` | `path`: `dispatcher` or `manual`, `job_kind`, `already_existed`: `true` when the ask folded into a run already queued or running, `reason` (dispatcher path only): `change`, `reconnect`, `daily` or `followup` | Recompute enqueue requests, by path and dedup outcome. |
+| `opencrq.recompute.unattributed_reads` | `opencrq_recompute_unattributed_reads_total` | Counter | `{read}` | `job_kind` | Reads an observed run could not attribute to a table, each of which widened the job's subscription to every table until its next clean run. |
+| `opencrq.recompute.feeding_cycles` | `opencrq_recompute_feeding_cycles_total` | Counter | `{cycle}` | `job_kind`, `cycle`: the job kinds of the feeding cycle joined by ` -> ` | Job kinds whose observed reads and writes feed each other, counted once per distinct cycle per process rather than once per detection: every observation refresh of a job in a cycle detects it again. Reported only: every kind of the cycle keeps its change routing, the watermark each job scopes itself with being what makes the loop converge. The line beside it is a warning, not an error. |
 
 `job_kind` is bounded by the registered job handlers, `reason` and `path` by the enums above, and `cycle` by the combinations of registered kinds, so none of these attributes grows with traffic. A non-zero `unattributed_reads` or `feeding_cycles` is an engineering signal, not an operational one: the job keeps running and keeps being routed, it is only asked more often than it needs until the code is fixed. A cycle that does not converge is reported separately, as an error log naming the kind and the job origins that keep asking for it.
 
@@ -170,9 +168,9 @@ Authored in `back/src/features/opencti-mirror-rebuild/mirror-rebuild-metrics.ts`
 
 | Instrument name (push) | Exposed name (scrape) | Type | Unit | Attributes | Description |
 |:--|:--|:--|:--|:--|:--|
-| `opengrc.opencti.mirror_rebuild.actors` | `opengrc_opencti_mirror_rebuild_actors_total` | Counter | `{actor}` | `outcome`: `rebuilt` (the actor was folded from what the mirror holds), `retracted` (the stream deleted its upstream object, so the actor is gone), `failed` (the rebuild raised and the actor's rows stay marked) | Actors one mirror rebuild settled, by outcome. |
+| `opencrq.opencti.mirror_rebuild.actors` | `opencrq_opencti_mirror_rebuild_actors_total` | Counter | `{actor}` | `outcome`: `rebuilt` (the actor was folded from what the mirror holds), `retracted` (the stream deleted its upstream object, so the actor is gone), `failed` (the rebuild raised and the actor's rows stay marked) | Actors one mirror rebuild settled, by outcome. |
 
-`outcome` is a three-value enum, so the attribute does not grow with traffic. A `failed` count that keeps rising run after run is the operational signal: the rows of that actor stay marked, every later run picks them up again and fails the same way, so the backlog never drains. Alert on `increase(opengrc_opencti_mirror_rebuild_actors_total{outcome="failed"}[1h]) > 0` sustained across several windows, and read the `OpenCTI actor rebuild failed, its rows stay marked` log lines to get the STIX id. A single burst of `failed` alongside a healthy `rebuilt` count is a transient the next run absorbs.
+`outcome` is a three-value enum, so the attribute does not grow with traffic. A `failed` count that keeps rising run after run is the operational signal: the rows of that actor stay marked, every later run picks them up again and fails the same way, so the backlog never drains. Alert on `increase(opencrq_opencti_mirror_rebuild_actors_total{outcome="failed"}[1h]) > 0` sustained across several windows, and read the `OpenCTI actor rebuild failed, its rows stay marked` log lines to get the STIX id. A single burst of `failed` alongside a healthy `rebuilt` count is a transient the next run absorbs.
 
 ### Doorbell resolution (http process)
 
@@ -180,10 +178,10 @@ Authored in `back/src/features/events/doorbell-metrics.ts`. Every tRPC query pro
 
 | Instrument name (push) | Exposed name (scrape) | Type | Unit | Attributes | Description |
 |:--|:--|:--|:--|:--|:--|
-| `opengrc.events.doorbells` | `opengrc_events_doorbells_total` | Counter | `{doorbell}` | `resolution`: `named` when the doorbell names procedures, `all` when it stands for every table (a LISTEN reconnect) | Doorbells resolved against the query dependency index. |
-| `opengrc.events.doorbell.procedures` | `opengrc_events_doorbell_procedures` | Histogram | `{procedure}` | none | Number of query procedures one named doorbell makes stale. |
-| `opengrc.events.query_index.explains` | `opengrc_events_query_index_explains_total` | Counter | `{explain}` | `outcome`: `ok` or `refused` | EXPLAIN statements run to learn the tables a query procedure reads. One per distinct statement shape, a bound list counting as one shape whatever its length, so the `ok` count plateaus once every code path has run. A refused EXPLAIN is retried on the statement's next occurrence. |
-| `opengrc.events.query_index.procedures` | `opengrc_events_query_index_procedures` | Gauge | `{procedure}` | `state`: `observed` (a read set the doorbell can narrow on), `declared` (a read set the procedure declares in its tRPC meta, for a result no statement of its own reads), `widened` (a statement EXPLAIN refused, a plan that did not come back within the attribution deadline, or a read of a table without a doorbell), `without_reads` (a call completed and attributed no read) | Query procedures the index knows, by state. |
+| `opencrq.events.doorbells` | `opencrq_events_doorbells_total` | Counter | `{doorbell}` | `resolution`: `named` when the doorbell names procedures, `all` when it stands for every table (a LISTEN reconnect) | Doorbells resolved against the query dependency index. |
+| `opencrq.events.doorbell.procedures` | `opencrq_events_doorbell_procedures` | Histogram | `{procedure}` | none | Number of query procedures one named doorbell makes stale. |
+| `opencrq.events.query_index.explains` | `opencrq_events_query_index_explains_total` | Counter | `{explain}` | `outcome`: `ok` or `refused` | EXPLAIN statements run to learn the tables a query procedure reads. One per distinct statement shape, a bound list counting as one shape whatever its length, so the `ok` count plateaus once every code path has run. A refused EXPLAIN is retried on the statement's next occurrence. |
+| `opencrq.events.query_index.procedures` | `opencrq_events_query_index_procedures` | Gauge | `{procedure}` | `state`: `observed` (a read set the doorbell can narrow on), `declared` (a read set the procedure declares in its tRPC meta, for a result no statement of its own reads), `widened` (a statement EXPLAIN refused, a plan that did not come back within the attribution deadline, or a read of a table without a doorbell), `without_reads` (a call completed and attributed no read) | Query procedures the index knows, by state. |
 
 Only an `observed` or `declared` procedure is narrowed; the other two states are named on every doorbell, so each one costs every open tab a refetch on every change. `without_reads` is not "depends on nothing": a procedure returning what the tRPC context resolved (the session's own user) issues no statement of its own and still goes stale, so it is named, unless it declares the tables its result depends on (`.meta({ reads: [schema.users] })`, `[]` for a result held in process memory). A procedure that shows up there is one to declare. The log names a procedure as it widens (`Query procedure widened to every doorbell`, with the refused statement or the silent table); a refused count that keeps growing after the `ok` count has plateaued means a statement Postgres refuses to plan generically, and one that grows in bursts under load means the EXPLAIN could not get a connection. A call waits at most 250 ms for the plan of a statement it issued: the EXPLAIN borrows from the same pool the request does, so waiting for it unbounded would turn a saturated pool into five-second responses. Past that deadline the response goes out and the procedure is `widened` until the plan lands, which is what a `widened` count rising and falling under load means.
 
@@ -193,10 +191,10 @@ Authored in `back/src/utils/trpc-telemetry.ts`, recorded by a middleware at the 
 
 | Instrument name (push) | Exposed name (scrape) | Type | Unit | Attributes | Description |
 |:--|:--|:--|:--|:--|:--|
-| `opengrc.trpc.server.duration` | `opengrc_trpc_server_duration` | Histogram | `s` | `trpc_type`: `query` or `mutation`, `error_type` (a tRPC error code such as `UNAUTHORIZED`, or `_OTHER` for anything outside that set; absent on success) | Duration of a single tRPC procedure call, output validation included, serialization excluded, aggregated across every procedure. |
-| `opengrc.trpc.server.calls` | `opengrc_trpc_server_calls_total` | Counter | `{call}` | `trpc_procedure` (the dotted procedure path, e.g. `findingScore.getScoredFindings`), `trpc_type`, `error_type` | tRPC procedure calls, by procedure and outcome. |
+| `opencrq.trpc.server.duration` | `opencrq_trpc_server_duration` | Histogram | `s` | `trpc_type`: `query` or `mutation`, `error_type` (a tRPC error code such as `UNAUTHORIZED`, or `_OTHER` for anything outside that set; absent on success) | Duration of a single tRPC procedure call, output validation included, serialization excluded, aggregated across every procedure. |
+| `opencrq.trpc.server.calls` | `opencrq_trpc_server_calls_total` | Counter | `{call}` | `trpc_procedure` (the dotted procedure path, e.g. `findingScore.getScoredFindings`), `trpc_type`, `error_type` | tRPC procedure calls, by procedure and outcome. |
 
-The per-procedure breakdown lives on `opengrc.trpc.server.calls` alone: the duration histogram carries no `trpc_procedure` label, on purpose. The app router registers on the order of 250 procedures, and a per-procedure histogram would multiply that by every bucket — 250 procedures fully exercised against a 6-boundary histogram would expose over 2,000 lines for a breakdown no dashboard we operate reads (its latency panel already aggregates the procedure label away with `sum by (le)`). What is lost is more than per-procedure latency: `opengrc.trpc.server.response_items` is gone outright, so the response-size distribution disappears for every call, not just its per-procedure breakdown — the slow-call log below is the only place a size still survives, and only above its threshold. The `Slow tRPC call` log line is the substitute for diagnosing which call got slow, at the cost of no baseline for calls under its threshold. `trpc_procedure` is bounded by the app router's procedure set, and `error_type` by tRPC's own error-code enum, which the middleware checks the value against rather than trusting it: an abnormal throw carries whatever `code` its own library set, a Postgres SQLSTATE or a Node errno included. Both are closed sets that only grow with a code change — but the worst case is already past the SDK's default 2000-series-per-instrument `aggregationCardinalityLimit`: 250 procedures times tRPC's twenty-odd error codes (plus absent, for success) is comfortably into the thousands. In practice a given procedure only ever produces a handful of its possible codes, which is what keeps this instrument under the limit today; past it, the SDK folds the overflow into `otel.metric.overflow` rather than growing the family further, so a newly-noisy procedure would degrade silently rather than error.
+The per-procedure breakdown lives on `opencrq.trpc.server.calls` alone: the duration histogram carries no `trpc_procedure` label, on purpose. The app router registers on the order of 250 procedures, and a per-procedure histogram would multiply that by every bucket — 250 procedures fully exercised against a 6-boundary histogram would expose over 2,000 lines for a breakdown no dashboard we operate reads (its latency panel already aggregates the procedure label away with `sum by (le)`). What is lost is more than per-procedure latency: `opencrq.trpc.server.response_items` is gone outright, so the response-size distribution disappears for every call, not just its per-procedure breakdown — the slow-call log below is the only place a size still survives, and only above its threshold. The `Slow tRPC call` log line is the substitute for diagnosing which call got slow, at the cost of no baseline for calls under its threshold. `trpc_procedure` is bounded by the app router's procedure set, and `error_type` by tRPC's own error-code enum, which the middleware checks the value against rather than trusting it: an abnormal throw carries whatever `code` its own library set, a Postgres SQLSTATE or a Node errno included. Both are closed sets that only grow with a code change — but the worst case is already past the SDK's default 2000-series-per-instrument `aggregationCardinalityLimit`: 250 procedures times tRPC's twenty-odd error codes (plus absent, for success) is comfortably into the thousands. In practice a given procedure only ever produces a handful of its possible codes, which is what keeps this instrument under the limit today; past it, the SDK folds the overflow into `otel.metric.overflow` rather than growing the family further, so a newly-noisy procedure would degrade silently rather than error.
 
 A call at or above 500ms is also written to the log as `Slow tRPC call`, carrying its procedure, duration and item count: the histogram says calls got slower in aggregate, that line says which call did and how much data it was carrying.
 
@@ -206,12 +204,12 @@ One target per container, structurally identical to an OpenCTI scrape block — 
 
 ```yaml
 scrape_configs:
-  - job_name: opengrc
-    # Must stay above TELEMETRY__METRICS__PROMETHEUS__MIN_INTERVAL_MS (default 5000):
+  - job_name: opencrq
+    # Must stay above TELEMETRY__OBSERVABILITY__PROMETHEUS__MIN_INTERVAL_MS (default 5000):
     # inside that window the endpoint re-serves its cached document.
     scrape_interval: 15s
     static_configs:
-      - targets: ["opengrc:14269"] # host:TELEMETRY__METRICS__PROMETHEUS__PORT
+      - targets: ["opencrq:14269"] # host:TELEMETRY__OBSERVABILITY__PROMETHEUS__PORT
 ```
 
 Building a panel: aggregate across processes as [Composition across processes](#composition-across-processes) describes — `sum` for an additive family, the statistic's own operator for the event-loop delay gauges and the utilisation ratios — so the panel is correct whether the container runs one process or several. Group by `instance` to keep containers apart. For example, total in-use database connections per container:
@@ -224,7 +222,7 @@ No authentication or TLS is included above — the endpoint is unauthenticated b
 
 ## Recording rules: making existing OpenCTI runtime dashboards resolve
 
-These rules translate OpenCRQ's Node-runtime names into the names an [`opentelemetry-node-metrics`](https://github.com/marcbachmann/opentelemetry-node-metrics) (v3.0.0, the package OpenCTI's own runtime dashboards are built against) exporter would have produced, so an existing OpenCTI runtime panel resolves against an OpenCRQ target without being rewritten — as long as the panel carries no `job` selector of its own: the recorded series keep `job="opengrc"` (see the rules below), so a panel pinned to OpenCTI's own job name still needs that selector dropped or relabeled. They apply **only** to the Node-runtime family group above — OpenCTI has no pool, query or supervision dashboards, so no rule is needed for those. Every rule is marked as a **rename** (same quantity, different name), an **aggregation** (OpenCRQ splits what the other side reports whole), or **no equivalent** (the two measure different things and no expression converts one into the other); a family OpenCRQ no longer exposes carries no row here — see [Node runtime](#node-runtime-per-process) for the eight the cardinality cuts dropped. Emit no alias series from the product itself: the mapping lives here, as a recording rule the operator applies on top of their own scrape — never as a second name OpenCRQ serves.
+These rules translate OpenCRQ's Node-runtime names into the names an [`opentelemetry-node-metrics`](https://github.com/marcbachmann/opentelemetry-node-metrics) (v3.0.0, the package OpenCTI's own runtime dashboards are built against) exporter would have produced, so an existing OpenCTI runtime panel resolves against an OpenCRQ target without being rewritten — as long as the panel carries no `job` selector of its own: the recorded series keep `job="opencrq"` (see the rules below), so a panel pinned to OpenCTI's own job name still needs that selector dropped or relabeled. They apply **only** to the Node-runtime family group above — OpenCTI has no pool, query or supervision dashboards, so no rule is needed for those. Every rule is marked as a **rename** (same quantity, different name), an **aggregation** (OpenCRQ splits what the other side reports whole), or **no equivalent** (the two measure different things and no expression converts one into the other); a family OpenCRQ no longer exposes carries no row here — see [Node runtime](#node-runtime-per-process) for the eight the cardinality cuts dropped. Emit no alias series from the product itself: the mapping lives here, as a recording rule the operator applies on top of their own scrape — never as a second name OpenCRQ serves.
 
 | OpenCRQ name | OpenCTI-compatible name | Category |
 |:--|:--|:--|
@@ -246,49 +244,49 @@ These rules translate OpenCRQ's Node-runtime names into the names an [`opentelem
 
 **The GC histogram's buckets do not line up.** The name renames cleanly, but OpenCRQ's `v8js.gc.duration` ships the boundaries `0.001, 0.01, 0.1, 1, 5`, which are not the ones the other side's histogram carries. A `histogram_quantile` panel still resolves and still gives a sensible answer; a panel or alert that selects a specific `le` value does not. Re-bucket at the source if you depend on one.
 
-**Before you install these:** the rules record over metric names that `prom-client`-based exporters also serve — `process_cpu_seconds_total`, `process_cpu_user_seconds_total`, `process_cpu_system_seconds_total` and `process_resident_memory_bytes` are standard names, and on the very Prometheus that also scrapes OpenCTI they will already exist. Every rule below therefore selects with `job="opengrc"`; change it if you named the job differently, and do not drop it, or the two products' series are folded together irreversibly at recording time. Save the group to a file and reference it from your Prometheus configuration:
+**Before you install these:** the rules record over metric names that `prom-client`-based exporters also serve — `process_cpu_seconds_total`, `process_cpu_user_seconds_total`, `process_cpu_system_seconds_total` and `process_resident_memory_bytes` are standard names, and on the very Prometheus that also scrapes OpenCTI they will already exist. Every rule below therefore selects with `job="opencrq"`; change it if you named the job differently, and do not drop it, or the two products' series are folded together irreversibly at recording time. Save the group to a file and reference it from your Prometheus configuration:
 
 ```yaml
 rule_files:
-  - opengrc-opencti-compat.yml
+  - opencrq-opencti-compat.yml
 ```
 
 ```yaml
 groups:
-  - name: opengrc-opencti-compat
+  - name: opencrq-opencti-compat
     rules:
       - record: nodejs_eventloop_lag_max_seconds
-        expr: max without (process_name) (nodejs_eventloop_delay_max{job="opengrc"})
+        expr: max without (process_name) (nodejs_eventloop_delay_max{job="opencrq"})
       # Exact only when every process observed the same sample count.
       - record: nodejs_eventloop_lag_mean_seconds
-        expr: avg without (process_name) (nodejs_eventloop_delay_mean{job="opengrc"})
+        expr: avg without (process_name) (nodejs_eventloop_delay_mean{job="opencrq"})
       # A percentile cannot be recombined across processes: this reports the worst process,
       # not the container.
       - record: nodejs_eventloop_lag_p99_seconds
-        expr: max without (process_name) (nodejs_eventloop_delay_p99{job="opengrc"})
+        expr: max without (process_name) (nodejs_eventloop_delay_p99{job="opencrq"})
       - record: process_resident_memory_bytes
-        expr: sum without (process_name) (process_memory_usage{job="opengrc"})
+        expr: sum without (process_name) (process_memory_usage{job="opencrq"})
       # The heap trap: sum the V8 heap spaces back together to get one value per container.
       - record: nodejs_heap_size_used_bytes
-        expr: sum without (process_name, v8js_heap_space_name) (v8js_memory_heap_used{job="opengrc"})
+        expr: sum without (process_name, v8js_heap_space_name) (v8js_memory_heap_used{job="opencrq"})
       # The per-space series the other side also exposes. Its label is `space`, and its values
       # drop the `_space` suffix that V8 reports, so both the key and the value are rewritten.
       - record: nodejs_heap_space_size_used_bytes
-        expr: sum without (process_name, v8js_heap_space_name) (label_replace(v8js_memory_heap_used{job="opengrc"}, "space", "$1", "v8js_heap_space_name", "(.*)_space"))
+        expr: sum without (process_name, v8js_heap_space_name) (label_replace(v8js_memory_heap_used{job="opencrq"}, "space", "$1", "v8js_heap_space_name", "(.*)_space"))
       - record: process_cpu_user_seconds_total
-        expr: sum without (process_name, cpu_mode) (process_cpu_time_total{job="opengrc", cpu_mode="user"})
+        expr: sum without (process_name, cpu_mode) (process_cpu_time_total{job="opencrq", cpu_mode="user"})
       - record: process_cpu_system_seconds_total
-        expr: sum without (process_name, cpu_mode) (process_cpu_time_total{job="opengrc", cpu_mode="system"})
+        expr: sum without (process_name, cpu_mode) (process_cpu_time_total{job="opencrq", cpu_mode="system"})
       - record: process_cpu_seconds_total
-        expr: sum without (process_name, cpu_mode) (process_cpu_time_total{job="opengrc"})
+        expr: sum without (process_name, cpu_mode) (process_cpu_time_total{job="opencrq"})
       # OpenCRQ's own series carries no `kind` label (a View merges the four GC kinds into one
       # series), so this only sums across processes — a panel grouping by `kind` sees one series.
       - record: nodejs_gc_duration_seconds_bucket
-        expr: sum without (process_name) (v8js_gc_duration_bucket{job="opengrc"})
+        expr: sum without (process_name) (v8js_gc_duration_bucket{job="opencrq"})
       - record: nodejs_gc_duration_seconds_sum
-        expr: sum without (process_name) (v8js_gc_duration_sum{job="opengrc"})
+        expr: sum without (process_name) (v8js_gc_duration_sum{job="opencrq"})
       - record: nodejs_gc_duration_seconds_count
-        expr: sum without (process_name) (v8js_gc_duration_count{job="opengrc"})
+        expr: sum without (process_name) (v8js_gc_duration_count{job="opencrq"})
 ```
 
 Built against OpenCTI 7.260701.0. The names above come from `opentelemetry-node-metrics`, which OpenCTI has pinned at `3.0.0` since 5.4.0, so this mapping applies unchanged to any OpenCTI from 5.4.0 onward. A rule pointing at a name a given OpenCTI deployment does not serve is a correctable documentation issue, not a breaking change to OpenCRQ's own contract.

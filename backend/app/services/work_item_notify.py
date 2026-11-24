@@ -54,7 +54,8 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -69,8 +70,12 @@ logger = logging.getLogger(__name__)
 NOTIFY_KEY = "notify"
 DELIVERY_KEY = "delivery"
 #: The channels a notify ask may name. ``teams`` is accepted as an alias of
-#: ``teams_dm`` (a person or a chat); ``teams_channel`` is a Teams channel.
-CHANNELS: frozenset[str] = frozenset({"teams_dm", "teams", "teams_channel"})
+#: ``teams_dm`` (a person or a chat); ``teams_channel`` is a Teams channel;
+#: ``email`` is an Outlook email to a person's address (#842, S9b);
+#: ``google_chat`` is a Chat space or a person's DM with the Chat app, the
+#: Google integration posting as a user where the app is not (#842, S11).
+CHANNELS: frozenset[str] = frozenset({"teams_dm", "teams", "teams_channel", "email", "google_chat"})
+GOOGLE_CHAT = "google_chat"
 #: The sending account's own Teams chat (Graph's self-chat): nobody else is in it.
 SELF_CHAT_ID = "48:notes"
 #: Sends tried before the item's user is told on the web instead.
@@ -94,12 +99,20 @@ _CHAT_TOOL = "create_microsoft_chat"
 #: The integration tools that post in an existing chat and in a channel.
 _CHAT_MESSAGE_TOOL = "send_microsoft_chat_message"
 _CHANNEL_TOOL = "send_microsoft_channel_message"
+#: The integration tool that sends an email (channel ``email``).
+_EMAIL_TOOL = "send_microsoft_email"
 #: The sentence each tool answers on success; anything else is a failure.
 _SENT: dict[str, str] = {
     _CHAT_TOOL: "Initial message sent.",
+    _EMAIL_TOOL: "Email sent to ",
     _CHAT_MESSAGE_TOOL: "Chat message sent.",
     _CHANNEL_TOOL: "Message sent to channel.",
+    "update_microsoft_chat_message": "Chat message updated.",
+    "update_microsoft_channel_message": "Channel message updated.",
+    "send_google_chat_message": "Message sent to ",
 }
+#: The Google integration tool that posts as a user (channel ``google_chat`` without the app).
+_GOOGLE_CHAT_TOOL = "send_google_chat_message"
 #: Graph's answer to a 1:1 chat whose recipient is the sending account itself.
 _SELF_RECIPIENT = "duplicate chat members"
 #: Refusals a retry cannot fix: the integration layer's wording of an HTTP
@@ -136,6 +149,14 @@ def target_label(spec: Mapping[str, Any]) -> str:
     """Who or where a notify ask sends to, for logs and the give-up notice."""
     if spec.get("channel") == "teams_channel":
         return "a Teams channel"
+    if spec.get("channel") == "email":
+        return f"the email address {spec.get('user') or ''}"
+    if spec.get("channel") == GOOGLE_CHAT:
+        return (
+            f"the Google Chat space {spec['space']}"
+            if spec.get("space")
+            else f"{spec.get('user') or ''} on Google Chat"
+        )
     if spec.get("chat_id"):
         return "the account's own Teams chat" if spec["chat_id"] == SELF_CHAT_ID else "a Teams chat"
     return str(spec.get("user") or "")
@@ -145,6 +166,8 @@ def _target_key(spec: Mapping[str, Any]) -> str:
     """The target as ``WORK_ITEM_NOTIFY_TEST_RECIPIENTS`` lists it, lower case."""
     if spec.get("channel") == "teams_channel":
         return f"{spec.get('team_id') or ''}/{spec.get('channel_id') or ''}".strip().lower()
+    if spec.get("channel") == GOOGLE_CHAT and spec.get("space"):
+        return str(spec["space"]).strip().lower()
     if spec.get("chat_id"):
         return str(spec["chat_id"]).strip().lower()
     return str(spec.get("user") or "").strip().lower()
@@ -162,6 +185,12 @@ def _clean_target(spec: Mapping[str, Any], channel: str) -> dict[str, str]:
             )
         return {"channel": "teams_channel", "team_id": team_id, "channel_id": channel_id}
     user = str(spec.get("user") or "").strip()
+    if channel == GOOGLE_CHAT:
+        return _clean_google_chat_target(spec, user)
+    if channel == "email":
+        if "@" not in user or any(c.isspace() or c == "," for c in user):
+            raise NotifyError("payload.notify with channel email needs user, one email address")
+        return {"channel": "email", "user": user}
     chat_id = str(spec.get("chat_id") or "").strip()
     if user and chat_id:
         raise NotifyError(
@@ -182,6 +211,25 @@ def _clean_target(spec: Mapping[str, Any], channel: str) -> dict[str, str]:
             "team_id and channel_id"
         )
     return {"channel": "teams_dm", "user": user}
+
+
+def _clean_google_chat_target(spec: Mapping[str, Any], user: str) -> dict[str, str]:
+    """A Google Chat target: ``space`` (``spaces/<id>``) or ``user`` (a person's email, the app's DM)."""
+    from app.services.google_chat_decision_cards import space_name
+
+    raw_space = str(spec.get("space") or "").strip()
+    if raw_space and user:
+        raise NotifyError("payload.notify with channel google_chat names either space or user, not both")
+    if raw_space:
+        space = space_name(raw_space)
+        if space is None:
+            raise NotifyError("payload.notify.space is not a Google Chat space name (spaces/ followed by the space id)")
+        return {"channel": GOOGLE_CHAT, "space": space}
+    if "@" not in user or any(c.isspace() or c == "," for c in user):
+        raise NotifyError(
+            "payload.notify with channel google_chat needs space (spaces/ followed by the space id) or user, one email address"
+        )
+    return {"channel": GOOGLE_CHAT, "user": user}
 
 
 def notify_spec(payload: Any) -> dict[str, Any] | None:
@@ -259,15 +307,17 @@ def normalize_notify_payload(
     if channel not in CHANNELS:
         raise NotifyError(
             f"payload.notify.channel '{channel}' is not supported "
-            "(supported: teams_dm, teams_channel)"
+            "(supported: teams_dm, teams_channel, email, google_chat)"
         )
     target = _clean_target(spec, channel)
     integration = str(spec.get("integration") or "").strip()
-    if not integration:
+    if not integration and channel != GOOGLE_CHAT:
         raise NotifyError(
             "payload.notify.integration must name the Microsoft integration that sends it"
         )
-    cleaned: dict[str, Any] = {**target, "integration": integration}
+    # Google Chat sends as the Chat app; the integration (a Google account) is
+    # the fallback that posts as a user where the app is not.
+    cleaned: dict[str, Any] = {**target, **({"integration": integration} if integration else {})}
     message = spec.get("message")
     if isinstance(message, str) and message.strip():
         cleaned["message"] = message.strip()[:1000]
@@ -388,8 +438,8 @@ def _parse_time(value: Any) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
-async def _resolve_integration(db: Any, item: Any, reference: str) -> str:
-    """The id of the Microsoft integration *reference* names, visible to the item's user."""
+async def _resolve_integration(db: Any, item: Any, reference: str, provider: str = "microsoft") -> str:
+    """The id of the *provider* integration *reference* names, visible to the item's user."""
     if not item.user_id:
         raise NotifyError("the item belongs to no user, so no integration can send for it")
     from app.api.v1.helpers import integration_visible_filter
@@ -404,15 +454,14 @@ async def _resolve_integration(db: Any, item: Any, reference: str) -> str:
     found = (
         await db.execute(
             select(Integration.id)
-            .where(clause, Integration.provider == "microsoft", visible)
+            .where(clause, Integration.provider == provider, visible)
             .order_by(Integration.created_at)
             .limit(1)
         )
     ).scalar_one_or_none()
     if found is None:
-        raise NotifyError(
-            f"no Microsoft integration '{reference}' the item's owner may use"
-        )
+        label = "Microsoft" if provider == "microsoft" else provider.capitalize()
+        raise NotifyError(f"no {label} integration '{reference}' the item's owner may use")
     return str(found)
 
 
@@ -450,8 +499,18 @@ async def _usable_agent(db: Any, item: Any, agent_id: Any) -> Any:
     return agent
 
 
-def _tool_call(spec: Mapping[str, Any], text: str) -> tuple[str, dict[str, Any]]:
-    """The integration tool and its arguments that deliver *text* to the ask's target."""
+def _tool_call(spec: Mapping[str, Any], text: str, subject: str = "") -> tuple[str, dict[str, Any]]:
+    """The integration tool and its arguments that deliver *text* to the ask's target.
+
+    *subject* is the email's subject (channel ``email``); the Teams tools ignore it.
+    """
+    if spec.get("channel") == "email":
+        return _EMAIL_TOOL, {
+            "to": str(spec["user"]),
+            "subject": (subject or "Work item notification")[:200],
+            "body": text,
+            "content_type": "text",
+        }
     if spec.get("channel") == "teams_channel":
         return _CHANNEL_TOOL, {
             "team_id": str(spec["team_id"]),
@@ -469,23 +528,23 @@ def _failure(content: str) -> NotifyError:
     return PermanentNotifyError(message) if is_permanent_refusal(content) else NotifyError(message)
 
 
-async def _send_teams_dm(item: Any, spec: Mapping[str, Any], text: str) -> None:
-    """Send *text* to the ask's target (a person, a chat or a channel), as the item's agent may.
+#: ``(tool, arguments) -> (sent, answer)``: one Microsoft tool call of an agent.
+GraphCall = Callable[[str, dict[str, Any]], Awaitable[tuple[bool, str]]]
 
-    The send is a tool call of the agent that created the item (its owner
-    when no agent created it), resolved exactly as a scheduled exact action
-    of that agent (``resolve_exact_toolset``): its bindings, read-only
-    integrations, allowed tools, enforced element scope and deny list, with
-    the named integration pinned, and the approval gate's answer, after the
-    live checks of :func:`_usable_agent`. An agent
-    that may not send a Teams chat through that integration cannot make the
-    platform send one for it. Runs on its own session, never on the one that
-    holds the item (a token refresh commits its session).
 
-    A ``user`` that is the sending account itself is refused by Graph
-    ("Duplicate chat members"); the text then goes to the account's own chat
-    (``48:notes``) through ``send_microsoft_chat_message``. A refusal
-    no retry fixes raises :class:`PermanentNotifyError`.
+@asynccontextmanager
+async def agent_graph_caller(item: Any, integration_ref: str, provider: str = "microsoft") -> AsyncIterator[GraphCall]:
+    """Microsoft tool calls as the item's agent may make them, through the named integration.
+
+    The agent that created the item (its owner when no agent created it),
+    resolved exactly as a scheduled exact action of that agent
+    (``resolve_exact_toolset``): its bindings, read-only integrations,
+    allowed tools, enforced element scope and deny list, with the named
+    integration pinned, and the approval gate's answer, after the live checks
+    of :func:`_usable_agent`. An agent that may not send a Teams message
+    through that integration cannot make the platform send one for it. Runs
+    on its own session (a token refresh commits its session). *item* needs
+    ``id``, ``user_id``, ``created_by_agent_id`` and ``owner_agent_id``.
     """
     from app.core.database import async_session
     from app.services.scheduled_work_item_runner import (
@@ -499,9 +558,9 @@ async def _send_teams_dm(item: Any, spec: Mapping[str, Any], text: str) -> None:
         raise NotifyError("no agent created or owns the item, so none may send its notification")
     async with async_session() as db:
         agent = await _usable_agent(db, item, agent_id)
-        integration_id = await _resolve_integration(db, item, str(spec["integration"]))
+        integration_id = await _resolve_integration(db, item, integration_ref, provider)
         toolset = await resolve_exact_toolset(
-            db, agent, str(item.user_id), pinned={"microsoft": integration_id}
+            db, agent, str(item.user_id), pinned={provider: integration_id}
         )
 
         async def _call(tool: str, arguments: dict[str, Any]) -> tuple[bool, str]:
@@ -535,9 +594,30 @@ async def _send_teams_dm(item: Any, spec: Mapping[str, Any], text: str) -> None:
             content = result.content if isinstance(result.content, str) else str(result.content or "")
             # A tool may report a failed message inside a successful answer;
             # only its own success sentence counts as sent.
-            return (not result.is_error and _SENT[tool] in content), content
+            return (not result.is_error and _SENT.get(tool, "\0") in content), content
 
-        tool, arguments = _tool_call(spec, text)
+        yield _call
+
+
+async def _send_teams_dm(item: Any, spec: Mapping[str, Any], text: str) -> None:
+    """Send *text* to the ask's target (a person, a chat or a channel), as the item's agent may.
+
+    The send is a tool call of :func:`agent_graph_caller`. A ``user`` that is
+    the sending account itself is refused by Graph ("Duplicate chat
+    members"); the text then goes to the account's own chat (``48:notes``)
+    through ``send_microsoft_chat_message``. A refusal no retry fixes raises
+    :class:`PermanentNotifyError`.
+
+    An item that waits for a decision goes as the bot's card first when the
+    bot is in the target (#842 S9, :func:`_send_decision_card`).
+    """
+    if spec.get("channel") == GOOGLE_CHAT:
+        await _send_google_chat(item, spec, text)
+        return
+    if (item.created_by_agent_id or item.owner_agent_id) is not None and await _send_decision_card(item, spec):
+        return
+    async with agent_graph_caller(item, str(spec["integration"])) as _call:
+        tool, arguments = _tool_call(spec, text, subject=str(getattr(item, "title", "") or ""))
         sent, content = await _call(tool, arguments)
         if not sent and tool == _CHAT_TOOL and _SELF_RECIPIENT in content.lower():
             # The recipient is the sending account: its own chat is the 1:1.
@@ -553,6 +633,76 @@ async def _send_teams_dm(item: Any, spec: Mapping[str, Any], text: str) -> None:
                 ) from exc
     if not sent:
         raise _failure(content)
+
+
+async def _send_google_chat(item: Any, spec: Mapping[str, Any], text: str) -> None:
+    """Send *text* to a Google Chat space or a person's DM (#842, S11).
+
+    As the Chat app first (the channel bot, app auth); where the app is not
+    in the space or has no DM with the person, as a user through the Google
+    integration the ask names (a space only: a user-auth DM needs its space
+    name). Nothing could send: :class:`PermanentNotifyError`.
+    """
+    from app.core.database import async_session
+    from app.services import google_chat_decision_cards as gchat
+
+    async with async_session() as db:
+        space = await gchat.app_space_for(db, spec)
+    if space is not None:
+        token = await gchat.app_token()
+        channel_sent = bool(token) and await gchat.post_message(token, space, {"text": text}) is not None
+        if channel_sent:
+            return
+    integration = str(spec.get("integration") or "")
+    if not integration or not spec.get("space"):
+        raise PermanentNotifyError(
+            f"the Google Chat app could not post to {target_label(spec)}, and no Google integration "
+            "and space name are set to post as a user"
+        )
+    async with agent_graph_caller(item, integration, "google") as _call:
+        sent, content = await _call(_GOOGLE_CHAT_TOOL, {"space_name": str(spec["space"]), "message": text})
+    if not sent:
+        raise _failure(content)
+
+
+async def _bot_target(spec: Mapping[str, Any]) -> dict[str, str] | None:
+    """The Teams bot's conversation for the ask's target, or ``None`` when the bot is not there."""
+    from app.services.decision_card_delivery import bot_conversation, personal_bot_conversation
+
+    if spec.get("channel") == "teams_channel":
+        return await bot_conversation(str(spec.get("channel_id") or ""))
+    if spec.get("chat_id"):
+        if spec["chat_id"] == SELF_CHAT_ID:
+            return None
+        return await bot_conversation(str(spec["chat_id"]))
+    return await personal_bot_conversation(str(spec.get("user") or ""))
+
+
+async def _send_decision_card(item: Any, spec: Mapping[str, Any]) -> bool:
+    """Send the item's open decision as the bot's card when the bot is in the target (#842, S9, I.2).
+
+    ``False`` (the text goes through the agent's account as before) when the
+    item waits for no decision, the bot is not in the target conversation, or
+    Teams did not take the card.
+    """
+    if not getattr(item, "needs_human", False):
+        return False
+    from app.core.database import async_session
+    from app.services.channel_notices import notice_language
+    from app.services.decision_card_delivery import open_decision, send_decision_card
+
+    try:
+        conversation = await _bot_target(spec)
+        if conversation is None:
+            return False
+        async with async_session() as db:
+            decision = await open_decision(db, "work_item", item.id)
+            if decision is None:
+                return False
+            return await send_decision_card(db, decision, conversation, viewer=None, language=notice_language())
+    except Exception as exc:
+        logger.warning("Work item %s: decision card not sent: %s", item.id, format_exception_message(exc))
+        return False
 
 
 async def _give_up_on_web(db: Any, item: Any, spec: Mapping[str, Any], error: str) -> None:
@@ -645,14 +795,17 @@ def notify_payload_for(
     channel_id: str | None = None,
     message: str | None = None,
     include_result: bool = False,
+    email: bool = False,
 ) -> dict[str, Any]:
     """A ``payload.notify`` value, for callers that build one in code.
 
     The target is *user* (a person), *chat_id* (a Teams chat) or *team_id*
-    and *channel_id* (a Teams channel).
+    and *channel_id* (a Teams channel); *email* sends to *user* by email.
     """
     spec: dict[str, Any]
-    if team_id or channel_id:
+    if email:
+        spec = {"channel": "email", "user": user or ""}
+    elif team_id or channel_id:
         spec = {"channel": "teams_channel", "team_id": team_id or "", "channel_id": channel_id or ""}
     elif chat_id:
         spec = {"channel": "teams_dm", "chat_id": chat_id}

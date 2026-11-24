@@ -129,7 +129,7 @@ export function TracePeekDrawer({ traceId, open, onOpenChange }: TracePeekDrawer
               <div className="flex items-center gap-2">
                 <Badge variant={trace.status === "ok" ? "secondary" : "destructive"}>{t_i18n(traceStatusLabelKey(trace.status))}</Badge>
                 <Button asChild variant="outline" size="sm">
-                  <Link to={`/traces/${trace.id}`}>
+                  <Link to={`/observability/traces/${trace.id}`}>
                     {t_i18n("Open full page")}
                     <ExternalLink className="h-3.5 w-3.5" />
                   </Link>

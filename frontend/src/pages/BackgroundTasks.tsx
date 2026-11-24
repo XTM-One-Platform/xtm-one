@@ -59,7 +59,7 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 import { AnnotationButtons } from "@/components/ui/annotation-buttons";
 import { useMyAnnotations } from "@/hooks/api/useAnnotationApi";
 import { ICON_MAP, STATUS_CONFIG, REFETCH_INTERVAL_FAST } from "@/lib/constants";
-import { storedPageSize, type DataTableState } from "@/lib/data-table-state";
+import { clearFilterParams, storedPageSize, type DataTableState } from "@/lib/data-table-state";
 import type { SortDirection } from "@/lib/table-rows";
 import { cn, formatDurationShort, parsePageParam } from "@/lib/utils";
 import { useFormatter } from "@/i18n";
@@ -419,7 +419,7 @@ export default function BackgroundTasks({
 
   // A run's task opens the run; a chat's task has no page of its own.
   const openTask = (task: SubAgentTask) => {
-    if (task.assignment_run_id) navigate(`/runs/${task.assignment_run_id}`);
+    if (task.assignment_run_id) navigate(`/operations/executions/${task.assignment_run_id}`);
   };
 
   const statusLabels: Record<TaskStatus, string> = {
@@ -540,7 +540,7 @@ export default function BackgroundTasks({
     const StatusIcon = cfg.icon;
     const selected = selectedIds.has(task.task_id);
     const runId = task.assignment_run_id;
-    const openRun = runId ? () => navigate(`/runs/${runId}`) : undefined;
+    const openRun = runId ? () => navigate(`/operations/executions/${runId}`) : undefined;
     const parentName = task.parent_agent_name || t_i18n("Unknown agent");
     const targetName = task.target_agent_name || t_i18n("Unknown agent");
     const title = taskTitle(task);
@@ -811,6 +811,14 @@ export default function BackgroundTasks({
         }
         filterPills={morePills}
         externalFilterCount={moreFilterCount}
+        // A Status chosen on the toolbar narrows the list too: Clear all shows for it (UX r1 B1 on #1004).
+        toolbarFilterActive={selectedStatuses.length > 0}
+        // Clear all clears what the count counts, the status and search too, in one write (#1001).
+        onClearAll={() =>
+          setSearchParams((prev) => clearFilterParams(prev, ["status", "liveness", ...(lockedFleet ? [] : ["fleet"])]), {
+            replace: true,
+          })
+        }
         view={{ value: viewMode, onChange: setViewMode }}
         // One scroller, inside the list: the cards scroll in their box, the page does not.
         fitGrid

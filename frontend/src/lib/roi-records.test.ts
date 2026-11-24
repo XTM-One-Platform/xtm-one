@@ -50,7 +50,7 @@ describe("the review-rate card and its list", () => {
   });
 
   it("opens a work item's record on its work item and a run's on its run", () => {
-    expect(roiRecordHref({ kind: "work_item", run_id: "r-1", work_item_id: "w-1" })).toBe("/operations/work-items?item=w-1");
-    expect(roiRecordHref({ kind: "run", run_id: "r-1", work_item_id: null })).toBe("/runs/r-1");
+    expect(roiRecordHref({ kind: "work_item", run_id: "r-1", work_item_id: "w-1" })).toBe("/tasks/work-items/w-1");
+    expect(roiRecordHref({ kind: "run", run_id: "r-1", work_item_id: null })).toBe("/operations/executions/r-1");
   });
 });

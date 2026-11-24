@@ -77,6 +77,78 @@ def builtin_functions_outside_allowlist(value: Any) -> dict[str, list[str]]:
     return outside
 
 
+def allowlisted_groups_not_enabled(tool_ids: Iterable[str] | None, value: Any) -> list[str]:
+    """The groups *value* scopes that *tool_ids* does not enable (#1428), in stored order. Pure.
+
+    Both sides are made canonical first (a former id such as ``work_items``
+    counts as its group, ``coordination``), so an allow list keyed by a former
+    id of an enabled group is fine. Such an entry grants nothing: the group is
+    not wired, so the functions it names never reach the agent. Never raises on
+    a stale value: a read must not fail on it.
+    """
+    if not isinstance(value, Mapping) or not value:
+        return []
+    from app.services.builtin_tool_aliases import canonical_builtin_selection
+
+    try:
+        ids, allowed = canonical_builtin_selection(list(tool_ids or []), value)
+    except Exception:  # a stale stored value never fails a read
+        return []
+    enabled = set(ids)
+    return [str(group) for group, names in (allowed or {}).items() if names is not None and group not in enabled]
+
+
+def not_enabled_refusal(groups: Iterable[str]) -> str:
+    """The refusal of a write whose allow list scopes *groups* the agent does not enable (#1428)."""
+    names = ", ".join(f"'{group}'" for group in groups)
+    return (
+        f"builtin_allowed_tools scopes built-in group(s) {names} that the agent does not enable: "
+        "their functions would never be granted. Add the group(s) to builtin_tool_ids, or drop the entry."
+    )
+
+
+def without_groups_not_enabled(tool_ids: Iterable[str] | None, value: Any) -> dict[str, list[str]] | None:
+    """*value* without the entries of groups *tool_ids* does not enable (#1428). Pure.
+
+    Used when a write changes ``builtin_tool_ids`` alone: a group switched off
+    takes its allow list with it instead of leaving an entry that grants nothing.
+    """
+    stale = set(allowlisted_groups_not_enabled(tool_ids, value))
+    if not stale or not isinstance(value, Mapping):
+        return value if isinstance(value, dict) and value else None
+    from app.services.builtin_tool_aliases import alias_group, current_group_id
+
+    kept = {
+        str(key): names
+        for key, names in value.items()
+        if (alias_group(current_group_id(str(key))) or current_group_id(str(key))) not in stale
+    }
+    return kept or None
+
+
+def not_enabled_written_or_pruned(agent: Any, before_allowed: Any) -> str | None:
+    """Settle the allow-list entries of groups *agent* does not enable after a write (#1428).
+
+    *agent* carries the canonical ``builtin_tool_ids`` / ``builtin_allowed_tools``
+    the write leaves; *before_allowed* is the canonical list before it. An
+    entry the write added or changed for a group not enabled is the caller's
+    mistake: the refusal is answered and nothing is changed. An entry left as
+    it was (its group switched off by this write, or stored so before the
+    fix) is dropped, so no entry ever claims a grant that does not exist.
+    ``None`` when the write may go on.
+    """
+    ids = list(getattr(agent, "builtin_tool_ids", None) or [])
+    after = getattr(agent, "builtin_allowed_tools", None)
+    stale = allowlisted_groups_not_enabled(ids, after)
+    if not stale:
+        return None
+    written = [group for group in stale if group in groups_a_person_changed(before_allowed, after)]
+    if written:
+        return not_enabled_refusal(written)
+    agent.builtin_allowed_tools = without_groups_not_enabled(ids, after)
+    return None
+
+
 def implicit_scope_groups(config: Any) -> list[str]:
     """The groups of *config* whose allow list the platform wrote, in stored order. Pure."""
     raw = config.get(IMPLICIT_SCOPE_CONFIG_KEY) if isinstance(config, Mapping) else None

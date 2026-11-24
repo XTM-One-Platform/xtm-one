@@ -64,7 +64,7 @@ describe("the Analytics Outcomes tab", () => {
     get.mockImplementation(async () => report());
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     renderWithProviders(
-      <MemoryRouter initialEntries={["/analytics/outcomes"]}>
+      <MemoryRouter initialEntries={["/observability/outcomes"]}>
         <OutcomesTab />
       </MemoryRouter>,
       client,

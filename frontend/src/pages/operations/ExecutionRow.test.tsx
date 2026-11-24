@@ -166,8 +166,9 @@ describe("execution rows", () => {
     expect(screen.queryByTestId("execution-answer")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Answer" }));
     const answer = screen.getByTestId("execution-answer");
-    expect(within(answer).getByText("Agent needs your input:")).toBeInTheDocument();
-    expect(within(answer).getByPlaceholderText("Type your response...")).toBeInTheDocument();
+    // The shared decision card (#842, S3): the question heads it, free text under it.
+    expect(within(answer).getByTestId("run-decision-question").textContent).toBe("Which feed should I use?");
+    expect(within(answer).getByLabelText("Your answer")).toBeInTheDocument();
     // The panel sits outside the fixed-height line.
     expect(screen.getByTestId("execution-line").contains(answer)).toBe(false);
   });

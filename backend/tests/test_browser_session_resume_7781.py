@@ -59,6 +59,7 @@ def fresh_process(monkeypatch):
     monkeypatch.setattr(browser_tool, "_known_stamps", {})
     monkeypatch.setattr(browser_tool, "_kept_pages", {})
     monkeypatch.setattr(browser_tool, "_notices", {})
+    monkeypatch.setattr(browser_tool, "_next_launch", {})
 
 
 def _plain_session(url: str = "https://lab.example/flows/map", viewport=None) -> browser_tool.BrowserSession:
@@ -232,3 +233,80 @@ async def test_a_viewport_set_with_nothing_kept_shares_nothing(redis, fresh_proc
 
     assert redis.data == {}
     assert "agent:conv" not in browser_tool._kept_pages
+
+
+def test_the_scale_is_bounded() -> None:
+    assert browser_tool.viewport_scale(None) == 1
+    assert browser_tool.viewport_scale(2) == 2.0
+    for wrong in (0.5, 4, True, "2", float("nan")):
+        with pytest.raises(ValueError):
+            browser_tool.viewport_scale(wrong)
+
+
+async def test_a_scale_change_recreates_the_session_signed_in_on_its_page(
+    redis: FakeRedis, fresh_process: None, launch: FakeLaunch, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """device_scale_factor is a context option: the viewport action re-creates the context at the new ratio."""
+    key = "agent:conv"
+    old = _plain_session(viewport={"width": 1280, "height": 720})
+    old.redirects.close = MagicMock()  # type: ignore[method-assign]
+    old.context = SimpleNamespace(storage_state=AsyncMock(return_value=STATE), close=AsyncMock())
+    old.browser = SimpleNamespace(close=AsyncMock(), is_connected=lambda: True)
+    old.pw = SimpleNamespace(stop=AsyncMock())
+    browser_tool._sessions[key] = old
+    await browser_tool._remember_state(key, old)  # signed in on its page
+    monkeypatch.setattr(browser_tool, "_went_on_elsewhere", AsyncMock(return_value=False))
+    monkeypatch.setattr(browser_tool, "_alive", lambda _s: True)
+    monkeypatch.setattr(browser_tool, "_ensure_cleanup_running", AsyncMock())
+    reopened: list[str] = []
+
+    async def reopen(session_key: str, session: browser_tool.BrowserSession) -> bool:
+        if session.resume_url:
+            reopened.append(session.resume_url)
+            session.resume_url = None
+        return False
+
+    monkeypatch.setattr(browser_tool, "_reopen_resumed_page", reopen)
+    launch.context.new_page.return_value.set_viewport_size = AsyncMock()
+    launch.context.new_page.return_value.evaluate = AsyncMock(return_value=[1440, 900])
+
+    answer = await browser_tool.browser_set_viewport(key, 1440, 900, 2)
+
+    assert launch.context_kwargs["device_scale_factor"] == 2.0
+    assert launch.context_kwargs["viewport"] == {"width": 1440, "height": 900}
+    assert launch.context_kwargs["storage_state"] == STATE
+    assert reopened == ["https://lab.example/flows/map"]
+    fresh = browser_tool._sessions[key]
+    assert fresh is not old and fresh.scale == 2.0
+    assert "at pixel ratio 2" in answer
+    assert browser_tool._next_launch == {}
+
+
+async def test_the_scale_is_restored_after_a_resume(redis: FakeRedis, fresh_process: None, launch: FakeLaunch) -> None:
+    key = "agent:assignment:run"
+    session = _plain_session(viewport={"width": 1440, "height": 900})
+    session.scale = 2.0
+    await browser_tool._remember_state(key, session)
+    browser_tool._kept_states.clear()
+    browser_tool._kept_pages.clear()
+
+    resumed = await browser_tool._launch_session(key)
+
+    assert launch.context_kwargs["device_scale_factor"] == 2.0
+    assert resumed.scale == 2.0
+    assert "pixel ratio 2 restored" in (browser_tool.take_notice(key) or "")
+
+
+async def test_a_profile_session_refuses_a_scale_change(fresh_process: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    session = _plain_session()
+    session.profile = SimpleNamespace(name="corp")
+    monkeypatch.setattr(browser_tool, "_get_or_create_session", AsyncMock(return_value=session))
+
+    with pytest.raises(ValueError, match="browser profile"):
+        await browser_tool.browser_set_viewport("agent:conv", 1440, 900, 2)
+
+
+async def test_a_session_opens_at_ratio_one(redis: FakeRedis, fresh_process: None, launch: FakeLaunch) -> None:
+    await browser_tool._launch_session("agent:assignment:other")
+
+    assert launch.context_kwargs["device_scale_factor"] == 1

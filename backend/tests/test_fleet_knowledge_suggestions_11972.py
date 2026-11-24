@@ -137,6 +137,14 @@ async def test_a_fleet_without_a_shared_base_gets_the_informational_suggestion_o
     assert [s["kind"] for s in await _found(desk)] == ["fleet_without_working_knowledge"]
 
 
+async def test_a_built_in_fleet_gets_no_knowledge_suggestion_and_its_fork_does(desk) -> None:
+    """The knowledge wiring of a built-in fleet is seeded mechanics (#1510): its fork keeps the suggestion."""
+    desk.fleet.is_builtin = True
+    assert await _found(desk) == []
+    desk.fleet.is_builtin = False
+    assert [s["kind"] for s in await _found(desk)] == ["fleet_without_working_knowledge"]
+
+
 async def test_a_second_writer_is_named(desk) -> None:
     _bind_all(desk, lead_writes=True)
     desk.members[1].knowledge_base_permissions = {desk.kb: "write"}
@@ -210,7 +218,7 @@ def test_the_seeded_skill_carries_the_knowledge_and_records_section_as_suggestio
 
     entry = next(s for s in BUILTIN_SKILLS if s["slug"] == "fleet-design-practices")
     content = _resolve_seed_content("skill_content", entry["content"])
-    section = content.split("## 9. Knowledge and records", 1)[1].split("\n## ", 1)[0]
+    section = content.split("## 10. Knowledge and records", 1)[1].split("\n## ", 1)[0]
     for words in ("Working knowledge", "write grant", "read-only", "10 Fleet runbook", "90 Lessons log", "KNOWLEDGE:"):
         assert words in section
     assert not re.search(r"\b(must|never)\b", section, re.I)

@@ -545,6 +545,19 @@ def _activity_id_note(activity_id: str) -> str:
     return " (accepted by Bot Framework; no activity ID returned)"
 
 
+#: The ``decision`` argument of the card send tools (human-gates.md I.2).
+_DECISION_PROPERTY: dict[str, Any] = {
+    "type": "string",
+    "default": "",
+    "description": (
+        "A decision to post instead of card: its id prefixed by its source, "
+        "e.g. 'run:' or 'work_item:' then the run or item UUID. Sends the "
+        "platform's decision card, answerable in place by its recipient."
+        " Never write a decision card's JSON by hand."
+    ),
+}
+
+
 def _build_card_activity(
     card: dict[str, Any],
     fallback_text: str = "",
@@ -1155,12 +1168,34 @@ def build_tools(
 
     # ── Adaptive Card helpers ───────────────────────────────────────────
 
+    async def _card_or_decision(
+        card: dict[str, Any] | None, decision: str, fallback_text: str
+    ) -> tuple[dict[str, Any], str] | str:
+        """The card to send: the rendered *decision* when given, else *card*.
+
+        Agents never write a decision card by hand (human-gates.md I.2): the
+        decision id renders the same card the notify paths send, answerable
+        in place. The answer is the error text when neither resolves.
+        """
+        if decision and decision.strip():
+            from app.services.decision_card_delivery import decision_card_for_tool
+
+            rendered = await decision_card_for_tool(decision.strip())
+            if isinstance(rendered, str):
+                return rendered
+            decision_card, preview = rendered
+            return decision_card, fallback_text or preview
+        if not isinstance(card, dict) or not card:
+            return "Error: pass a card (Adaptive Card JSON) or a decision id."
+        return card, fallback_text
+
     async def send_teams_bot_channel_card(
         team_id: str,
         channel_id: str,
-        card: dict[str, Any],
+        card: dict[str, Any] | None = None,
         fallback_text: str = "",
         reply_to_id: str = "",
+        decision: str = "",
     ) -> str:
         """Send an Adaptive Card to a Teams channel as the bot (via Bot Framework).
 
@@ -1188,11 +1223,18 @@ def build_tools(
         message context) — the embedded root then threads the send when no
         explicit *reply_to_id* is given.
 
+        *decision* (``run:<id>``, ``flow_run:<id>``, ``work_item:<id>``)
+        sends that decision's card instead of *card*.
+
         A chat-surface conversation id (group chat, meeting chat, 1:1 —
         ``@thread.v2`` / ``@unq.gbl.spaces``) is transparently routed to the
         group-chat card path: chats have no team/channel routing and are not
         governed by channel whitelists.
         """
+        resolved = await _card_or_decision(card, decision, fallback_text)
+        if isinstance(resolved, str):
+            return resolved
+        card, fallback_text = resolved
         channel_id, embedded_root = _split_channel_thread_id(channel_id)
         if embedded_root and not reply_to_id:
             reply_to_id = embedded_root
@@ -1277,7 +1319,10 @@ def build_tools(
                 return f"Adaptive Card sent to channel (activity ID: {activity_id})."
 
     async def send_teams_bot_chat_card(
-        user_email: str, card: dict[str, Any], fallback_text: str = ""
+        user_email: str,
+        card: dict[str, Any] | None = None,
+        fallback_text: str = "",
+        decision: str = "",
     ) -> str:
         """Send an Adaptive Card as a 1:1 chat message to a user by email.
 
@@ -1287,7 +1332,13 @@ def build_tools(
         principal lookup) and fell back to a Graph message send — both dead
         ends with app-only tokens, since Graph forbids application-context
         chat message sending entirely.
+
+        *decision* sends that decision's card instead of *card*.
         """
+        resolved = await _card_or_decision(card, decision, fallback_text)
+        if isinstance(resolved, str):
+            return resolved
+        card, fallback_text = resolved
         bf_token = await _get_bf_token()
         if not bf_token:
             return "Error: Could not acquire Bot Framework token."
@@ -1429,7 +1480,10 @@ def build_tools(
             return f"Message sent to group chat{_activity_id_note(activity_id)}."
 
     async def send_teams_bot_group_chat_card(
-        chat_id: str, card: dict[str, Any], fallback_text: str = ""
+        chat_id: str,
+        card: dict[str, Any] | None = None,
+        fallback_text: str = "",
+        decision: str = "",
     ) -> str:
         """Send an Adaptive Card into a Teams group/meeting chat the bot is in.
 
@@ -1439,7 +1493,12 @@ def build_tools(
         message-bubble width in chats, so plain display cards are downgraded
         to full-width Markdown text; cards Markdown cannot represent
         (inputs/submit buttons, charts, tables, media) stay native cards.
+        *decision* sends that decision's card instead of *card*.
         """
+        resolved = await _card_or_decision(card, decision, fallback_text)
+        if isinstance(resolved, str):
+            return resolved
+        card, fallback_text = resolved
         # Chat surface: plain display cards downgrade to full-width Markdown.
         if not _card_must_stay_card(card):
             markdown = _card_to_markdown(card)
@@ -2124,8 +2183,9 @@ def build_tools(
                         "default": "",
                         "description": "Optional message/activity ID to reply to. When provided, the card is sent as a threaded reply.",
                     },
+                    "decision": _DECISION_PROPERTY,
                 },
-                "required": ["team_id", "channel_id", "card"],
+                "required": ["team_id", "channel_id"],
             },
             source=_SOURCE,
             priority=2,
@@ -2162,8 +2222,9 @@ def build_tools(
                             "NOT repeat the full card content."
                         ),
                     },
+                    "decision": _DECISION_PROPERTY,
                 },
-                "required": ["user_email", "card"],
+                "required": ["user_email"],
             },
             source=_SOURCE,
             priority=2,
@@ -2266,8 +2327,9 @@ def build_tools(
                             "(Teams toast/summary). Do NOT repeat the card content."
                         ),
                     },
+                    "decision": _DECISION_PROPERTY,
                 },
-                "required": ["chat_id", "card"],
+                "required": ["chat_id"],
             },
             source=_SOURCE,
             priority=2,

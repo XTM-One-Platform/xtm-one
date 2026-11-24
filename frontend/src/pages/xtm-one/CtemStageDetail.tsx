@@ -53,6 +53,7 @@ import { postureBusy } from "./ctem/landing-refresh";
 import { Spinner } from "@filigran/design-system";
 import { ScopingRing, DiscoveryArea, ValidationMatrix, type DiscoveryPoint } from "./ctem/stage-heroes";
 import { DiscoveryMix } from "./ctem/DiscoveryMix";
+import { TriggerPathsCard } from "./ctem/loop/TriggerPathsCard";
 import { ScopingMix } from "./ctem/ScopingMix";
 import { ValidationMix } from "./ctem/ValidationMix";
 import { PrioritizationMix } from "./ctem/PrioritizationMix";
@@ -167,6 +168,7 @@ import {
   PrioritizationFunnelWithCases,
 } from "./ctem/PrioritizationFunnel";
 import { CasesBoard } from "./ctem/CasesBoard";
+import { CasesInPhaseCard } from "./ctem/CasesInPhaseCard";
 import { SAMPLE_FUNNEL, funnelDisplay } from "./ctem/prioritization-funnel";
 
 function StageViz({ stage }: { stage: CtemStage }) {
@@ -565,6 +567,8 @@ export default function CtemStageDetail() {
           onConnect={() => navigate("/")}
         />
       )}
+      {/* The loop's signals by trigger path and lens (CTEM-30, #937): each path's status and Connect are the Signal sources page's (#1263). */}
+      {stage === "discovery" && vertical === "cyber" && <TriggerPathsCard />}
       {/* Prioritization's mixed views and gap fillers (#11998), under the funnel. */}
       {hasReal && stage === "prioritization" && vertical === "cyber" && (
         <PrioritizationMix
@@ -575,6 +579,7 @@ export default function CtemStageDetail() {
             opencrq: Boolean(posture?.products?.opencrq?.present),
           }}
           onConnect={() => navigate("/")}
+          openctiUrl={posture?.products?.opencti?.present ? posture.products.opencti.url : null}
         />
       )}
       {/* Validation's mixed views and gap fillers (#11998), under the outcome matrix. */}
@@ -613,6 +618,10 @@ export default function CtemStageDetail() {
           onConnect={() => navigate("/")}
         />
       )}
+
+      {/* The cases in this phase (#1621): its own full-width row, so the AI assessment and
+          Metrics row below keeps its equal heights. */}
+      {validStage && vertical === "cyber" && <CasesInPhaseCard stage={stage as (typeof CTEM_STAGE_KEYS)[number]} backTo={`/ctem/${stage}`} />}
 
       <div className="grid gap-5 lg:grid-cols-3">
         {/* AI assessment - the actionable centerpiece */}

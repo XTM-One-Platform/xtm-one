@@ -47,6 +47,11 @@ export function isOrganizationSettingsHref(href: string): boolean {
   return href === "/settings/organization" || href.startsWith("/settings/organization?") || href.startsWith("/settings/organization/profile/");
 }
 
+/** Whether a link opens CTEM > Inventory, where the technology and exposure cards live (#1178). */
+export function isInventoryHref(href: string): boolean {
+  return href === "/ctem/inventory" || href.startsWith("/ctem/inventory?") || href.startsWith("/ctem/inventory/");
+}
+
 /** Name, definition and call to action of each layer (English catalog keys). */
 export const FUNNEL_LAYER_COPY: Record<CtemFunnelLayerKey, { name: string; definition: string; cta?: string }> = {
   known: {
@@ -55,8 +60,8 @@ export const FUNNEL_LAYER_COPY: Record<CtemFunnelLayerKey, { name: string; defin
   },
   relevant: {
     name: "Relevant to you",
-    definition: "Vulnerabilities of the software in your tech stack, matched on CPE, or on product and vendor.",
-    cta: "Add your tech stack",
+    definition: "Vulnerabilities of your software, matched on CPE, or on product and vendor.",
+    cta: "Add your software",
   },
   exploitable: {
     name: "Exploitable",
@@ -69,8 +74,8 @@ export const FUNNEL_LAYER_COPY: Record<CtemFunnelLayerKey, { name: string; defin
   },
   business_impact: {
     name: "Business impact",
-    definition: "On an asset that supports a crown jewel.",
-    cta: "Map crown jewels to assets",
+    definition: "On an asset that supports a primary asset.",
+    cta: "Map primary assets to assets",
   },
   policy: {
     name: "After policy",
@@ -83,7 +88,7 @@ export const FUNNEL_LAYER_COPY: Record<CtemFunnelLayerKey, { name: string; defin
   open_issues: {
     name: "Cases",
     definition: "Open cases: the issues above grouped by the fix they share, needing attention or in progress.",
-    cta: "Add your tech stack",
+    cta: "Add your software",
   },
 };
 
@@ -92,16 +97,20 @@ export const FUNNEL_CASES_PATH = "/ctem/cases";
 
 /** What the Cases API answered for the caller (`GET /ctem-cases`, #11613). */
 export interface FunnelCases {
-  /** Cases needing attention or in progress, among those the caller sees. */
+  /** Open cases (new to validating, #1503), among those the caller sees. */
   open: number;
   /** Every case the caller sees, whatever its state. */
   total: number;
 }
 
-/** The four case states of the Cases board (S5c), their counts as the Cases API sent them. */
+/** The case states of the Cases board (S5c), their counts as the Cases API sent them. */
 export interface FunnelCaseStates {
-  needs_attention: number;
-  in_progress: number;
+  /** Open cases a person must decide on (#1503). */
+  waiting_decision: number;
+  /** Open cases the agents work: new, analyzing, remediating, validating (#1503). */
+  in_work: number;
+  /** Mitigated, watching (#857): the re-test stays on until the permanent fix. */
+  mitigated_watching?: number;
   resolved: number;
   accepted_risk: number;
 }
@@ -130,7 +139,7 @@ export function isCasesLayer(layer: CtemFunnelLayer): boolean {
  *
  * - `cases` undefined (not read yet, or the read failed): the layer stays as
  *   the backend sent it, without a count.
- * - cases cannot be built (no tech stack and no OpenAEV) and none exists: not
+ * - cases cannot be built (no software inventory and no OpenAEV) and none exists: not
  *   configured, leading to Settings > Organization; never an invented 0.
  * - otherwise live, with the exact count of open cases and no drop: a case
  *   groups the issues above, it removes none of them.
@@ -241,7 +250,7 @@ const FLOW_WIDE_FROM = 1000;
 
 /** The reason a layer removed what it removed, in plain words (catalog keys). */
 export const FLOW_REASON: Partial<Record<CtemFunnelLayerKey, string>> = {
-  relevant: "not in your tech stack",
+  relevant: "not in your software",
   exploitable: "not exploitable",
   exposed: "not exposed",
   business_impact: "low business impact",
@@ -267,6 +276,10 @@ export interface FlowStep {
   drawnShare: number | null;
   /** Baseline of the branch label (staircase), null on the first step. */
   labelY: number | null;
+  /** Left edge of the branch label, past the branch curve. */
+  labelX: number;
+  /** Width of the branch label box: to the figure's edge, or to `labelRight` on a row beside or below the outcomes block's top. */
+  labelWidth: number;
   /** The previous live layer's key, for the drop text; null on the first. */
   fromKey: CtemFunnelLayerKey | null;
 }
@@ -281,7 +294,24 @@ export interface FlowLayout {
   biggest: CtemFunnelLayerKey | null;
   node: { x: number; y: number; width: number; height: number };
   tiles: { x: number; width: number; height: number; ys: [number, number] };
+  /** Right edge of a branch label on a row beside the outcomes block: 8 px before the cases column. */
+  labelRight: number;
+  /**
+   * Top of the cases outcomes block (mitigated, resolved, accepted risk),
+   * placed below the highest branch label row so the top label, which runs
+   * into the cases column, never draws over it; the rows beside the block end
+   * at `labelRight` (UX round 3 on #897, B4: "Set a prioritization policy"
+   * drew over "0 resolved" at 1080).
+   */
+  outcomesTop: number;
+  /** Height reserved for the outcomes block. */
+  outcomesHeight: number;
 }
+
+/** Height reserved for the outcomes block: three caption lines and their gaps (1080 wraps the mitigated line). */
+const FLOW_OUTCOMES_HEIGHT = 60;
+/** Half height of a branch label box (h-5, centred on its baseline row). */
+const FLOW_LABEL_HALF = 10;
 
 /** The flow laid out at `width` px (the measured figure width). */
 export function flowLayout(funnel: CtemFunnel, width: number): FlowLayout {
@@ -300,9 +330,11 @@ export function flowLayout(funnel: CtemFunnel, width: number): FlowLayout {
   layers.forEach((layer, index) => {
     const x = index * pitch;
     const labelY = index === 0 ? null : FLOW_HEIGHT - 32 - (index - 1) * FLOW_LABEL_ROW;
+    const labelX = x + Math.min(pitch * 0.5, 64) + 6;
+    const labelWidth = Math.max(width - labelX - 4, 0);
     const live = layer.state === "live" && layer.count !== null;
     if (index === 0 || !live || prevCount <= 0) {
-      steps.push({ layer, x, entered: height, kept: height, height, branch: 0, removed: null, trueShare: null, drawnShare: null, labelY, fromKey: null });
+      steps.push({ layer, x, entered: height, kept: height, height, branch: 0, removed: null, trueShare: null, drawnShare: null, labelY, labelX, labelWidth, fromKey: null });
       if (index === 0 && live) fromKey = layer.key;
       return;
     }
@@ -325,6 +357,8 @@ export function flowLayout(funnel: CtemFunnel, width: number): FlowLayout {
       trueShare: (removed / prevCount) * 100,
       drawnShare: entered > 0 ? (branch / entered) * 100 : 0,
       labelY,
+      labelX,
+      labelWidth,
       fromKey,
     });
     if (removed > biggestDrop) {
@@ -338,7 +372,22 @@ export function flowLayout(funnel: CtemFunnel, width: number): FlowLayout {
   const node = { x: flowWidth + 8, y: FLOW_TOP - 6, width: nodeWidth, height: 64 };
   const tileX = node.x + node.width + 28;
   const tiles = { x: tileX, width: Math.max(width - tileX - 2, 0), height: 48, ys: [FLOW_TOP - 24, FLOW_TOP + 32] as [number, number] };
-  return { width, flowWidth, pitch, steps, biggest, node, tiles };
+  const labelRight = Math.max(tileX - 8, 0);
+  const rows = steps.map((step) => step.labelY).filter((y): y is number => y !== null);
+  const topRow = rows.length > 0 ? Math.min(...rows) : FLOW_HEIGHT;
+  const underTiles = tiles.ys[1] + tiles.height + 12;
+  const underLabels = Math.max(underTiles, topRow + FLOW_LABEL_HALF + 8);
+  // Below the top label row when the block still fits the reserved height;
+  // else under the tiles, the rows beside it then ending at labelRight.
+  const outcomesTop = underLabels + FLOW_OUTCOMES_HEIGHT <= FLOW_HEIGHT ? underLabels : underTiles;
+  for (const step of steps) {
+    if (step.labelY === null) continue;
+    // Every row from the block's top down ends before the column: a wrapped
+    // translation that runs past the reserved height still clears them.
+    const beside = step.labelY + FLOW_LABEL_HALF > outcomesTop;
+    if (beside) step.labelWidth = Math.max(Math.min(step.labelWidth, labelRight - step.labelX), 0);
+  }
+  return { width, flowWidth, pitch, steps, biggest, node, tiles, labelRight, outcomesTop, outcomesHeight: FLOW_OUTCOMES_HEIGHT };
 }
 
 const f = (value: number) => value.toFixed(1);
@@ -382,7 +431,7 @@ export function flowDashedPath(layout: FlowLayout, step: FlowStep): string {
   return `M${f(x)},${f(FLOW_TOP + step.height)} L${f(x)},${f(row - 10)} C${f(x)},${f(row)} ${f(x + 4)},${f(row)} ${f(x + dx)},${f(row)}`;
 }
 
-/** A fan link from the open cases node to its state tile (`index` 0: Needs attention, 1: In progress). */
+/** A fan link from the open cases node to its tile (`index` 0: Waiting for decision, 1: In work). */
 export function flowFanPath(layout: FlowLayout, s0: number, s1: number, index: number): string {
   const { node, tiles } = layout;
   const centre = tiles.ys[index] + tiles.height / 2;

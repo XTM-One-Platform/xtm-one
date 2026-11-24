@@ -36,6 +36,7 @@ raising it is reserved to a human administrator.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping
 from typing import Any, Literal
 
@@ -235,6 +236,25 @@ def gate_catalog(level: Any, gates: Iterable[Mapping[str, Any]] | None) -> list[
     return out
 
 
+def with_live_step_gates(structured: Any, catalog: Iterable[Mapping[str, Any]] | None) -> Any:
+    """*structured* with each step's ``gate`` read from the gate it names (#1074).
+
+    A step whose ``gate_key`` is in *catalog* (:func:`gate_catalog`, the fleet's
+    live level and pins applied) shows its approval badge exactly when that gate
+    waits, so the About page and the Approval tab never disagree. A step without
+    a key, or naming a gate the catalog does not hold, keeps its stored flag.
+    The stored value is never mutated: a copy is returned when a step changes.
+    """
+    if not isinstance(structured, Mapping) or not isinstance(structured.get("steps"), list):
+        return structured
+    waits = {str(g.get("key")): bool(g.get("gated")) for g in catalog or () if isinstance(g, Mapping) and g.get("key")}
+    steps: list[Any] = []
+    for step in structured["steps"]:
+        key = step.get("gate_key") if isinstance(step, Mapping) else None
+        steps.append(dict(step, gate=waits[key]) if key in waits else step)
+    return {**structured, "steps": steps}
+
+
 # ── Run time (#9769, slice S1b) ─────────────────────────────────────────────
 
 
@@ -260,11 +280,17 @@ def fleet_gates(approval_gates: Any, documentation: Any) -> list[Mapping[str, An
     return _structured_gates(documentation)
 
 
+def customer_gates_of(value: Any) -> list[Mapping[str, Any]]:
+    """The valid entries of a stored ``Fleet.customer_gates`` value (#916): the gates a person added to a built-in fleet."""
+    return [g for g in value if isinstance(g, Mapping) and g.get("key")] if isinstance(value, list) else []
+
+
 def effective_gates(
     approval_gates: Any,
     documentation: Any,
     computed: Iterable[Mapping[str, Any]] | None = None,
     pins: Any = None,
+    customer: Any = None,
 ) -> list[dict[str, Any]]:
     """The gates the level acts on (#10153 C1): the declared ones, then the computed ones, each with its pin.
 
@@ -273,12 +299,19 @@ def effective_gates(
     configuration (``fleet_gate_proposals.propose_gates``, custom fleets only),
     added when no declared gate has the same key, so accepting a proposal
     never changes what waits. ``source`` says where each gate comes from
-    (``stored``, ``documentation``, ``computed``); ``pin`` is the stored
-    per-action override of :func:`clean_pins`, when there is one.
+    (``stored``, ``documentation``, ``customer``, ``computed``); ``pin`` is the
+    stored per-action override of :func:`clean_pins`, when there is one.
+    *customer* is ``Fleet.customer_gates`` (#916): gates a person added to a
+    built-in fleet, read after its seeded ones; a key the seed declares keeps
+    the seeded gate (a pin moves that one).
     """
     declared_source = "stored" if isinstance(approval_gates, list) else "documentation"
     out: list[dict[str, Any]] = [dict(g, source=declared_source) for g in fleet_gates(approval_gates, documentation)]
     keys = {str(g.get("key") or "") for g in out}
+    for gate in customer_gates_of(customer):
+        if str(gate.get("key")) not in keys:
+            out.append(dict(gate, source="customer"))
+            keys.add(str(gate.get("key")))
     for gate in computed or ():
         if isinstance(gate, Mapping) and str(gate.get("key") or "") not in keys:
             out.append(dict(gate, source="computed"))
@@ -292,6 +325,31 @@ def effective_gates(
     return out
 
 
+#: The integration context key holding :func:`gate_tool_names` of the run's fleet (#1480).
+FLEET_GATED_TOOLS_CONTEXT_KEY = "fleet_gated_tools"
+
+
+def gate_tool_names(gates: Iterable[Mapping[str, Any]] | None) -> frozenset[str]:
+    """Every tool a gate of the fleet names or offers, whether it waits at the level or runs (#1480).
+
+    A tool offered only because a gate decides it (``apply_opencti_draft`` under
+    the CTEM analyst review) is offered whenever its gate exists. A built-in
+    gate declares no ``tools`` (#1675): it names what it offers by its key
+    (``builtin_fleet_docs.GATE_OFFERED_TOOLS``), so the offer never depends on
+    a tool-level pause. On a custom fleet opted in to tool-level enforcement,
+    :func:`gated_tool_rules` pauses the call where the gate waits.
+    """
+    from app.agents.builtin_fleet_docs import GATE_OFFERED_TOOLS
+
+    names: set[str] = set()
+    for gate in gates or ():
+        names.update(GATE_OFFERED_TOOLS.get(str(gate.get("key") or ""), ()))
+        for tool in gate.get("tools") or ():
+            if isinstance(tool, Mapping) and tool.get("name"):
+                names.add(str(tool["name"]))
+    return frozenset(names)
+
+
 def gated_tool_rules(level: Any, gates: Iterable[Mapping[str, Any]] | None) -> list[dict[str, Any]]:
     """The tool rules the run enforces at *level*: one per tool of each gate that still waits.
 
@@ -302,19 +360,97 @@ def gated_tool_rules(level: Any, gates: Iterable[Mapping[str, Any]] | None) -> l
     for gate in gates or ():
         if not gate_waits(level, gate):
             continue
+        grant = _grant_of(gate)
         for tool in gate.get("tools") or ():
             if not isinstance(tool, Mapping) or not tool.get("name"):
                 continue
-            when = tool.get("when") if isinstance(tool.get("when"), Mapping) else {}
-            rules.append(
-                {
-                    "name": str(tool["name"]),
-                    "when": {str(k): [str(v) for v in (vals or ())] for k, vals in when.items()},
-                    "key": gate.get("key") or "",
-                    "action": gate.get("action") or "",
-                }
-            )
+            raw_when = tool.get("when")
+            when: Mapping[str, Any] = raw_when if isinstance(raw_when, Mapping) else {}
+            rule: dict[str, Any] = {
+                "name": str(tool["name"]),
+                "when": {str(k): [str(v) for v in (vals or ())] for k, vals in when.items()},
+                "key": gate.get("key") or "",
+                "action": gate.get("action") or "",
+            }
+            if grant is not None:
+                rule["grant"] = grant
+            rules.append(rule)
     return rules
+
+
+def _grant_of(gate: Mapping[str, Any]) -> dict[str, list[str]] | None:
+    """The gate's grant (``DocGate.grant``, #1339) as ``{objects, fresh}``, or ``None`` without one."""
+    grant = gate.get("grant")
+    if not isinstance(grant, Mapping):
+        return None
+    objects = [str(a) for a in grant.get("objects") or () if a]
+    if not objects:
+        return None
+    return {"objects": objects, "fresh": [str(a) for a in grant.get("fresh") or () if a]}
+
+
+#: The object ids an approved call's answer names (an OpenAEV id is a UUID).
+_OBJECT_ID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.IGNORECASE)
+
+
+def _given(value: Any) -> bool:
+    """Whether an argument holds a value (an empty string, list or ``None`` does not)."""
+    if value is None:
+        return False
+    if isinstance(value, str | list | tuple | dict | set):
+        return bool(value)
+    return True
+
+
+class _ValidationGrants:
+    """One decision per validation (#1339): what a person's approval of a gated call covers.
+
+    A call a person approved (or a call this grant let through) adds, per gate
+    key, the object ids it named in the gate's ``grant.objects`` arguments and
+    the ids its answer returned (the object it created). A later call of the same
+    gate runs without a second pause when it names one of those objects and gives
+    none of the gate's ``grant.fresh`` arguments: a new target, a new schedule or
+    another object asks again. Held for the turn, never stored.
+    """
+
+    def __init__(self) -> None:
+        self._objects: dict[str, set[str]] = {}
+        self._passed: dict[str, str] = {}
+
+    def covers(self, rule: Mapping[str, Any], arguments: Any) -> bool:
+        grant = rule.get("grant")
+        granted = self._objects.get(rule.get("key") or "")
+        if not grant or not granted or not isinstance(arguments, Mapping):
+            return False
+        if any(_given(arguments.get(a)) for a in grant["fresh"]):
+            return False
+        named = {str(arguments.get(a)).lower() for a in grant["objects"] if _given(arguments.get(a))}
+        return bool(named) and named <= granted
+
+    def passed(self, call_id: str, key: str) -> None:
+        self._passed[call_id] = key
+
+    def observe(self, rules: list[dict[str, Any]], call: Any, result: Any, approved: set[str]) -> None:
+        """Record what an approved (or granted) gated call named and created."""
+        key = self._passed.get(call.id)
+        rule = next(
+            (r for r in rules if r.get("grant") and rule_matches(r, call.name, call.arguments)),
+            None,
+        )
+        if rule is None:
+            return
+        if key is None and call.id in approved:
+            key = rule.get("key") or ""
+        if key is None or getattr(result, "is_error", False):
+            return
+        ids = self._objects.setdefault(key, set())
+        arguments = call.arguments if isinstance(call.arguments, Mapping) else {}
+        for argument in rule["grant"]["objects"]:
+            if _given(arguments.get(argument)):
+                ids.add(str(arguments[argument]).lower())
+        content = getattr(result, "content", "")
+        if isinstance(content, str):
+            ids.update(m.lower() for m in _OBJECT_ID.findall(content))
 
 
 def rule_matches(rule: Mapping[str, Any], name: str, arguments: Any) -> bool:
@@ -346,6 +482,7 @@ def make_fleet_autonomy_gate(inner, rules: list[dict[str, Any]], *, approved_cal
     approved this very call (*approved_call_ids*, the resume decisions).
     """
     approved = approved_call_ids or set()
+    grants = _ValidationGrants()
 
     def _gate(call) -> None:
         from app.tools.base import HumanInputRequestedError
@@ -353,6 +490,10 @@ def make_fleet_autonomy_gate(inner, rules: list[dict[str, Any]], *, approved_cal
         if call.id not in approved:
             for rule in rules:
                 if rule_matches(rule, call.name, call.arguments):
+                    if grants.covers(rule, call.arguments):
+                        # The validation a person approved: no second pause (#1339).
+                        grants.passed(call.id, rule.get("key") or "")
+                        continue
                     raise HumanInputRequestedError(
                         question=(
                             f"Approval required to run {call.name}: the fleet gates '{rule['action'] or rule['key']}' "
@@ -364,6 +505,12 @@ def make_fleet_autonomy_gate(inner, rules: list[dict[str, Any]], *, approved_cal
         if inner is not None:
             inner(call)
 
+    def _observe(call: Any, result: Any) -> None:
+        grants.observe(rules, call, result, approved)
+
+    # Read by the composite after each dispatch (``CompositeToolExecutor``): the
+    # answer of an approved call names the validation it created (#1339).
+    _gate.observe = _observe  # type: ignore[attr-defined]
     return _gate
 
 
@@ -371,6 +518,10 @@ async def install_fleet_autonomy_gate(
     db, composite, fleet_id: Any, *, approved_call_ids: set[str] | None = None
 ) -> bool:
     """Wrap *composite*'s installed gate with the pauses of *fleet_id*'s gates at its level (#10140).
+
+    Only for a fleet an administrator opted in to tool-level enforcement
+    (``Fleet.enforce_gates_at_tool_level``, #1467): by default a fleet's gates
+    are instructions, stated in the run prompt, and no tool call pauses.
 
     The entry points other than an assignment run (chat, channel threads,
     consults, sub-agents, work-item turns) call this after installing the
@@ -382,6 +533,8 @@ async def install_fleet_autonomy_gate(
     """
     autonomy = await fleet_autonomy_for_run(db, fleet_id)
     if autonomy is None:
+        return False
+    if not await fleet_enforces_at_tool_level(db, fleet_id):
         return False
     rules = gated_tool_rules(*autonomy)
     if not rules:
@@ -408,9 +561,17 @@ FLEET_AUTONOMY_HEADER = "── Fleet autonomy level ──"
 
 
 def fleet_autonomy_block(
-    level: Any, gates: Iterable[Mapping[str, Any]] | None, instructions: str | None = None
+    level: Any,
+    gates: Iterable[Mapping[str, Any]] | None,
+    instructions: str | None = None,
+    *,
+    enforced: bool = False,
 ) -> str:
     """The block appended to a fleet member's run prompt: the level and, per declared gate, waits or automatic.
+
+    *enforced* is ``Fleet.enforce_gates_at_tool_level`` (#1467): without it the
+    gates are instructions only, and the block says that an answered decision
+    is not asked again.
 
     *instructions* is :func:`instructions_line` of the fleet: one more line
     when a person announced the instructions position, nothing otherwise, so
@@ -431,11 +592,19 @@ def fleet_autonomy_block(
             lines.append(f"- {entry['action']} ({entry['module']}, impact {entry['impact']}): {verdict}")
     if alone:
         lines.append(f"{alone} other write action group(s) of this fleet run without approval (still logged).")
-    lines.append(
-        "An action that waits needs a person's approval before it runs, as your instructions say; the "
-        "platform also pauses the tool calls the fleet maps to it until a person approves. An action that "
-        "runs without approval is still reported in the case. Only an administrator can raise this level."
-    )
+    if enforced:
+        lines.append(
+            "An action that waits needs a person's approval before it runs, as your instructions say; the "
+            "platform also pauses the tool calls the fleet maps to it until a person approves. An action that "
+            "runs without approval is still reported in the case. Only an administrator can raise this level."
+        )
+    else:
+        lines.append(
+            "An action that waits is one decision item for a person (a needs_human work item with its "
+            "ask), filed between steps: never a pause inside a run. Ask once; once a person has answered "
+            "that decision, you decide what it means and do it without asking again. An action that runs "
+            "without approval is still reported in the case. Only an administrator can raise this level."
+        )
     if instructions:
         lines.append(instructions)
     return "\n".join(lines)
@@ -464,6 +633,38 @@ async def fleet_instructions_for_run(db, fleet_id: Any) -> str | None:
         logging.getLogger(__name__).exception("Fleet instructions position unreadable for fleet %s", fleet_id)
         return None
     return instructions_line(row[0], row[1]) if row is not None else None
+
+
+async def fleet_enforces_at_tool_level(db: Any, fleet_id: Any) -> bool:
+    """Whether an administrator opted *fleet_id* in to tool-level gate pauses (#1467); ``False`` on a failed read.
+
+    Off by default: XTM One enables no programmatic tool-level gate unless a
+    person asks for one, the same rule as an agent's ``approve_tool_calls``.
+    Never on a built-in (seeded) fleet, whatever the stored flag (#1675): its
+    tools are always offered and authorized, and its gates are decision items
+    between steps, never a pause inside a run.
+    """
+    if fleet_id is None:
+        return False
+    import logging
+
+    from sqlalchemy import select
+
+    from app.models.fleet import Fleet
+
+    try:
+        async with db.begin_nested():
+            row = (
+                await db.execute(
+                    select(Fleet.enforce_gates_at_tool_level, Fleet.is_builtin).where(Fleet.id == fleet_id)
+                )
+            ).first()
+    except Exception:
+        logging.getLogger(__name__).exception("Fleet tool-level enforcement unreadable for fleet %s", fleet_id)
+        return False
+    if row is None or row[1]:
+        return False
+    return bool(row[0])
 
 
 async def fleet_autonomy_for_run(db, fleet_id: Any) -> tuple[str, list[Mapping[str, Any]]] | None:

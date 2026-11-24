@@ -13,7 +13,7 @@
 
 """Notification delivery service – sends assignment results to the user's preferred channel.
 
-Supports: web (Redis pub/sub → SSE), Teams, Slack, WhatsApp, email draft.
+Supports: web (Redis pub/sub → SSE), Teams, Slack, Google Chat, WhatsApp, email draft.
 The delivery channel is determined by the assignment's trigger_config.notify_via
 or falls back to web notification.
 
@@ -101,6 +101,8 @@ async def deliver_notification(
         await _notify_teams(db, agent, summary, run)
     elif notify_via == "slack":
         await _notify_slack(db, agent, summary, run)
+    elif notify_via == "google_chat":
+        await _notify_google_chat(db, agent, summary, run, assignment)
     elif notify_via == "whatsapp":
         await _notify_whatsapp(db, agent, summary, run)
     elif notify_via == "email":
@@ -391,6 +393,9 @@ async def _notify_teams(
         )
         return
 
+    if run.status == "awaiting_human" and await _send_run_decision_card(db, run, user, conv_ref):
+        return
+
     # TeamsChannel handles Markdown normalization, chunking against the
     # Teams activity size cap, and the required Activity.from field.
     channel = TeamsChannel(
@@ -416,6 +421,50 @@ async def _notify_teams(
             message,
             is_company=False,
         )
+
+
+async def _send_run_decision_card(db: AsyncSession, run: AssignmentRun, user: object, conv_ref: dict[str, str]) -> bool:
+    """Send the paused run's decision as its Teams card, answered in place (#842, S9, I.2).
+
+    ``False`` when the run has no open decision or the card was not taken:
+    the caller then sends its text as before.
+    """
+    from app.services.decision_card_delivery import open_decision, send_decision_card
+
+    try:
+        decision = await open_decision(db, "run", run.id)
+        if decision is None:
+            return False
+        conversation = {
+            "service_url": str(conv_ref["service_url"]),
+            "conversation_id": str(conv_ref["conversation_id"]),
+            "conversation_type": "",
+        }
+        return await send_decision_card(db, decision, conversation, viewer=user, language=notice_language(user))
+    except Exception as exc:
+        logger.warning("Teams decision card for run %s not sent: %s", run.id, format_exception_message(exc))
+        return False
+
+
+async def _send_run_slack_decision_card(
+    db: AsyncSession, run: AssignmentRun, user: object, bot_token: str, slack_user_id: str
+) -> bool:
+    """Send the paused run's decision as its Slack card, answered in place (#842, S10, I.2).
+
+    ``False`` when the run has no open decision or Slack refused the card: the
+    caller then sends its text as before.
+    """
+    from app.services.decision_card_delivery import open_decision
+    from app.services.slack_decision_cards import send_decision_card
+
+    try:
+        decision = await open_decision(db, "run", run.id)
+        if decision is None:
+            return False
+        return await send_decision_card(db, decision, bot_token, slack_user_id, language=notice_language(user))
+    except Exception as exc:
+        logger.warning("Slack decision card for run %s not sent: %s", run.id, format_exception_message(exc))
+        return False
 
 
 async def _notify_slack(
@@ -474,6 +523,11 @@ async def _notify_slack(
             )
             return
 
+        if run.status == "awaiting_human" and await _send_run_slack_decision_card(
+            db, run, user, bot_token, slack_user_id
+        ):
+            return
+
         resp = await client.post(
             "https://slack.com/api/chat.postMessage",
             headers={**headers, "Content-Type": "application/json; charset=utf-8"},
@@ -501,6 +555,67 @@ async def _notify_slack(
             message,
             is_company=False,
         )
+
+
+async def _notify_google_chat(
+    db: AsyncSession, agent: Agent, message: str, run: AssignmentRun, assignment: Assignment
+) -> None:
+    """Send the run's result to Google Chat as the Chat app (#842, S11, I.4 path (d)).
+
+    The target is ``trigger_config.notify_space`` (a space the app is in),
+    else the app's DM with the run's owner (their linked Chat identity). A
+    run paused on a decision goes as its cardsV2 card, answered in place;
+    anything else, or a card Chat refused, as text. No channel bot, no space
+    and no DM: the web notification, as for every channel.
+    """
+    from app.channels.base import OutboundMessage
+    from app.channels.google_chat import GoogleChatChannel, _get_googlechat_creds
+    from app.services import google_chat_decision_cards as gchat
+
+    user = await _load_run_user(db, run)
+    if not user:
+        return
+    creds = await _get_googlechat_creds()
+    token = await GoogleChatChannel(creds["credentials_json"])._get_access_token() if creds else ""
+    configured = str((assignment.trigger_config or {}).get("notify_space") or "")
+    space = gchat.space_name(configured) if configured else None
+    if space is None and token and (name := gchat.chat_user_name(user)):
+        space = await gchat.direct_message_space(token, name)
+    if not token or space is None:
+        logger.info("Google Chat: no app token or no space for run %s, fell back to web", run.id)
+        await _notify_web(str(run.user_id), agent.name, "Google Chat notification", message, is_company=False)
+        return
+    language = notice_language(user)
+    if run.status == "awaiting_human" and await _send_run_google_chat_decision_card(db, run, token, space, language):
+        return
+    channel = GoogleChatChannel(creds["credentials_json"], space_name=space) if creds else None
+    sent = (
+        await channel.send_message(OutboundMessage(text=f"**{agent.name}**\n\n{localized_reply(message, language)}"))
+        if channel
+        else None
+    )
+    if sent:
+        logger.info("Google Chat notification sent for assignment run %s", run.id)
+        return
+    logger.warning("Google Chat notification failed for assignment run %s", run.id)
+    await _notify_web(str(run.user_id), agent.name, "Google Chat notification", message, is_company=False)
+
+
+async def _send_run_google_chat_decision_card(
+    db: AsyncSession, run: AssignmentRun, token: str, space: str, language: str
+) -> bool:
+    """Send the paused run's decision as its Google Chat card (#842, S11); ``False``: send the text."""
+    from app.services.decision_card_delivery import open_decision
+    from app.services.google_chat_decision_cards import send_decision_card
+
+    try:
+        decision = await open_decision(db, "run", run.id)
+        if decision is None:
+            return False
+        return await send_decision_card(db, decision, token, space, language=language)
+    except Exception as exc:
+        logger.warning("Google Chat decision card for run %s not sent: %s", run.id, format_exception_message(exc))
+        return False
 
 
 async def _notify_whatsapp(

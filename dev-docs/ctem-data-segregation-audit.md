@@ -22,8 +22,14 @@ Read on `main` 42250c43 and the fix branch of #11613. Verdicts: **segregated**,
 | 3a | CTEM fleets F1, F2, F4 (company-managed runs and `ctem:f*:state`) | **leak, medium** (opt-in, off by default) | decision owed, see 3a |
 | 3b | Unattended module calls (service-account rule) | segregated | - |
 | 4 | Writes back to OpenCTI / OpenAEV / OpenCRQ | segregated (per-user JWT) | - |
-| 5 | OpenAEV / OpenCRQ tenant boundary | not verifiable here | target-side check owed |
-| 6 | Admin-only surfaces | segregated after #11613 | - |
+| 5 | OpenAEV / OpenCRQ tenant boundary | segregated (read on the target side, 21 Nov 2026) | - |
+| 6 | Admin-only surfaces | segregated after #11613; organization profile shared by design | - |
+| 7a | CTEM signals (API, agent tools, activity stream) | segregated for users; administrators read all (decision owed) | - |
+| 7b | Scope gate (`ctem_scope_gate_store`) | **leak, medium**: fixed | #933 |
+| 7c | CTEM case platform events (`ctem_case.*`) | **leak, high**: fixed | #933 |
+
+Refreshed 21 Nov 2026 after the CTEM loop audit (signals, scope gate, case
+loop): rows 2a, 5, 6 updated, rows 7a to 7c added.
 
 ## 1. Live reads
 
@@ -67,6 +73,12 @@ After (Sam's design, 13 Nov 2026: shared cases, per-viewer content, the
 source products are the only judge):
 - The database stores ids and workflow only (migration `ctemscope11613`
   drops every content column and deletes the rows built from one view).
+  No longer true since the case loop (21 Nov 2026): a case built from
+  signals stores a title and a fix key from the signal's subject, a severity,
+  an SLA, risk scenario ids, tickets and validation references, the same for
+  every viewer of the case. Presence stays per viewer (absent and 404 for a
+  viewer who sees no member). Per-viewer rendering of those fields is a
+  decision owed (shared organization data, or masked per viewer).
 - `services/ctem_cases_view.py` renders every case for the viewer from the
   viewer's own source read (their JWT), cached per user for 5 minutes: a case
   with no visible issue is absent from the list and the counts and a 404; an
@@ -166,14 +178,15 @@ the source product applies the acting user's own rights. The fleets of 3a
 write as their seed administrator by the same rule, which is the
 administrator's explicit opt-in.
 
-## 5. OpenAEV / OpenCRQ tenants: not verifiable here
+## 5. OpenAEV / OpenCRQ tenants: segregated
 
 XTM One mints one JWT per user addressed to the registered platform URL
-(`platform_token_audience`). Which tenant that identity resolves to, and that
-a user of tenant T1 cannot be served T2's data, is decided by OpenAEV /
-OpenCRQ when they validate the JWT against `/xtm/auth/jwks`. XTM One never
-names a tenant in the call. Owed: a check on the OpenAEV and OpenCRQ side of
-the JWT-to-user mapping.
+(`platform_token_audience`) and never names a tenant in the call. Read on the
+target side (21 Nov 2026): OpenAEV resolves the XTM One JWT to a user by
+email and applies that user's rights on every route
+(`security/token/XtmJwksExtractor`); OpenCRQ resolves it by subject under
+its tenant isolation (`back/src/trpc.ts`). The tenant check after the user
+is resolved is inferred from that code, not exercised in a lab.
 
 ## 6. Admin-only surfaces
 
@@ -181,6 +194,57 @@ the JWT-to-user mapping.
   caller sees and closes only what the caller's read confirms closed (#11613).
 - `GET/PUT /ctem/stage-agents`: `require_admin`; agent assignment only, no
   source data.
-- Organization context writes (#11594): administrators' agents only; the
-  organization profile holds no OpenCTI / OpenAEV data. Not re-audited in
-  depth here.
+- Organization context writes (#11594): administrators' agents only. The
+  profile imports from OpenCTI, OpenAEV and OpenCRQ with the administrator's
+  access; source segregation and markings are not kept and every user and
+  agent of the organization reads it. By design: the profile is organization
+  data an administrator publishes, and its import tools say so.
+
+## 7. The CTEM loop: signals, scope gate, case events (21 Nov 2026)
+
+### 7a. Signals: segregated for users
+
+`GET /ctem-signals`, `GET /{id}`, the agent tools and the counts answer the
+caller's own signals; an administrator reads every signal of the
+organization, including the `system` signals of the integration listeners
+(OpenCTI object name and a bounded trigger message). The activity stream sends
+ids only to the recorder and the administrators. Whether administrators may
+read listener copies without their OpenCTI rights being checked is a decision
+owed (organization data, or ids only).
+
+### 7b. Scope gate: leak, medium (fixed by #933)
+
+Before: `POST /ctem-signals/evaluate` and `/{id}/evaluate` read OpenCRQ risk
+scenarios with the administrator's connection and wrote their ids, names and
+criticality into every gated signal, including signals another user recorded,
+who read them back; `related_signals` listed ids and verdicts of other
+recorders' signals.
+
+After: a signal is decided with its recorder's rights.
+`ctem_scope_gate_store.scenario_reader` names the recorder's own OpenCRQ
+connection (a `system` signal, read by administrators only: the evaluating
+administrator's); the bulk pass reads once per recorder. `related_signals`
+applies the signal API's rule: an administrator and a `system` signal see
+every signal, anyone else only their own. A signal decided before the fix
+keeps its stored decision until its next evaluation.
+
+Tests: `tests/test_ctem_segregation_events_gate.py::test_an_admin_evaluation_writes_no_admin_scenario_into_a_user_signal`,
+`::test_related_signals_of_a_non_admin_recorder_are_their_own`.
+
+### 7c. Case events: leak, high (fixed by #933)
+
+Before: the four `ctem_case.*` events were platform-wide: any user's
+`platform_event` assignment, flow or task watch was woken for every case with
+severity, SLA, owner, risk scenario ids, the signal id and the validation
+entry with its note.
+
+After: they are viewer-checked (`platform_events.VIEWER_CHECKED_EVENTS`).
+Each delivery checks with `ctem_cases_view.user_sees_case` (the API's rule)
+that the owner and the user the run executes as see the case; an
+administrator's `scope: all` subscription running as itself hears every case,
+never through another run-as user. An unreadable view refuses the delivery.
+The payload is `case_id`, `vertical`, `state`, `trigger_path`; the run reads
+the rest with `get_ctem_case` under its own view.
+
+Tests: `tests/test_ctem_segregation_events_gate.py` (non-administrator not
+woken, run-as user checked, administrator scope all, unreadable view, flows).

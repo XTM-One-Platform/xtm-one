@@ -28,6 +28,7 @@ const FLAGS: NavFlags = {
   dashboardStudio: true,
   evaluation: true,
   intents: true,
+  ctemCases: false,
 };
 
 const toolsGroup = (): NavGroup => {
@@ -51,6 +52,66 @@ test("the top block reads Home, Chat, the Orchestration group, then Work (#9301)
     primary.entries.map((entry) => (entry.kind === "leaf" ? entry.to : entry.id)),
     ["/", "/chat", "agents", "work"],
   );
+});
+
+/* The callers set `ctemCases` from the mode (Sidebar.tsx, use-nav-group.ts), as `intents`. */
+const XTM_ONE: NavFlags = { ...FLAGS, xtmOne: true, ctemCases: true };
+
+test("CTEM: a top-level group between Chat and Orchestration in XTM One mode only, holding Cases, open with AI off (#1135)", () => {
+  const xtmOne = XTM_ONE;
+  const top = (flags: NavFlags, isAdmin = true) =>
+    resolveNav(flags, isAdmin)[0].entries.map((entry) => (entry.kind === "leaf" ? entry.to : entry.id));
+  assert.deepEqual(top(xtmOne), ["/", "/chat", "ctem", "agents", "work"], "XTM One mode, administrator");
+  assert.deepEqual(top(xtmOne, false), ["/", "/chat", "ctem", "agents", "work"], "XTM One mode, every user");
+  assert.deepEqual(top(FLAGS), ["/", "/chat", "agents", "work"], "Copilot mode: absent, not locked");
+  const ctem = group("ctem", true, xtmOne);
+  assert.equal(ctem.label, "CTEM");
+  assert.equal(ctem.to, undefined, "no hub page: the heading folds the group");
+  assert.deepEqual(ctem.children.map((child) => child.to), ["/ctem/cases", "/ctem/signals", "/ctem/inventory"]);
+  for (const flags of [{ ...xtmOne, aiEnabled: false }, { ...xtmOne, aiLicensed: false }, { ...xtmOne, chat: false }]) {
+    const found = group("ctem", true, flags);
+    assert.ok(!found.locked, "the group carries no lock");
+    const cases = found.children.find((child) => child.to === "/ctem/cases");
+    assert.ok(cases && !cases.locked, "listed and open: a read surface, no AI or licence lock");
+  }
+  assert.equal(ctem.children[0].label, "Cases");
+  assert.equal(ctem.children[1].label, "Signals", "between Cases and Inventory, Sam, 23 Nov 2026 (#1401)");
+  assert.equal(ctem.children[2].label, "Inventory", "Sam, 22 Nov 2026 (#1178)");
+  const glyphs = resolveNav(xtmOne, true)[0].entries.filter((entry) => entry.kind === "group" && entry.id !== "ctem").map((entry) => entry.icon);
+  assert.ok(!glyphs.includes(ctem.icon), "the CTEM glyph is not another group's (Orchestration, Work)");
+});
+
+test("a case page lights Cases, the other CTEM pages still light Home (#1135)", () => {
+  const sections = resolveNav(XTM_ONE, true);
+  for (const pathname of ["/ctem/cases", "/ctem/cases/c-1", "/ctem/cases/c-1/history"]) {
+    assert.equal(activeNavPath(sections, pathname), "/ctem/cases", pathname);
+  }
+  for (const pathname of ["/ctem", "/ctem/discovery", "/ctem/governance", "/ctem/casesx", "/briefing"]) {
+    assert.equal(activeNavPath(sections, pathname), "/", pathname);
+  }
+});
+
+test("the Signals page and its Sources page light CTEM > Signals (#1401)", () => {
+  const sections = resolveNav(XTM_ONE, true);
+  for (const pathname of ["/ctem/signals", "/ctem/signals/sources"]) {
+    assert.equal(activeNavPath(sections, pathname), "/ctem/signals", pathname);
+  }
+  assert.equal(activeNavPath(sections, "/ctem/signalsx"), "/", "a longer path is not the page");
+  const found = navDestinations(resolveNav(XTM_ONE, false)).find((dest) => dest.to === "/ctem/signals");
+  assert.ok(found, "listed in the palette in XTM One mode");
+  assert.equal(found.parent, "CTEM");
+  assert.deepEqual(found.keywords, ["CTEM", "Trigger paths", "Signal sources"]);
+  assert.equal(navDestinations(resolveNav(FLAGS, false)).find((dest) => dest.to === "/ctem/signals"), undefined, "never in Copilot mode");
+});
+
+test("the palette lists CTEM > Cases in XTM One mode only, found by CTEM and exposure cases (#1135)", () => {
+  const destination = (flags: NavFlags) => navDestinations(resolveNav(flags, false)).find((dest) => dest.to === "/ctem/cases");
+  const found = destination(XTM_ONE);
+  assert.ok(found, "listed in XTM One mode");
+  assert.equal(found.label, "Cases");
+  assert.equal(found.parent, "CTEM", "the palette's secondary line names the group");
+  assert.deepEqual(found.keywords, ["CTEM", "Exposure cases"]);
+  assert.equal(destination(FLAGS), undefined, "never in Copilot mode");
 });
 
 test("the Orchestration group opens its hub, like Agent Studio, and holds Agents, Fleets, Agentic Flow and, for administrators, Intents (N2c, N2d)", () => {
@@ -104,18 +165,18 @@ test("every row of a group carries its own lock: Fleets by the licence, Agentic 
   assert.equal(lock({ ...FLAGS, aiLicensed: false }, "/agents"), "unlicensed");
 });
 
-test("Value sits in Work right after Operations, both modes, every user; locked on Community Edition only, never by AI off", () => {
-  // Sam, 8 Nov 2026: not a top-level row; reachable in two clicks from Work.
-  const value = (flags: NavFlags, isAdmin: boolean) => group("work", isAdmin, flags).children.find((child) => child.to === "/value");
+test("Tasks sits in Work right above Operations, both modes, every user, open with AI off; Value is a tab, no row", () => {
+  // Sam, 20 Nov 2026 (#775): what to do and follow above what is running or past; the menu does not grow.
+  const tasks = (flags: NavFlags, isAdmin: boolean) => group("work", isAdmin, flags).children.find((child) => child.to === "/tasks");
   for (const xtmOne of [false, true]) {
-    assert.deepEqual(group("work", false, { ...FLAGS, xtmOne }).children.slice(0, 2).map((child) => child.to), ["/operations", "/value"]);
-    const entry = value({ ...FLAGS, xtmOne }, false);
+    const children = group("work", false, { ...FLAGS, xtmOne }).children.map((child) => child.to);
+    assert.deepEqual(children.slice(0, 2), ["/tasks", "/operations"]);
+    assert.ok(!children.includes("/value"), "Value is a Tasks tab, not a menu row");
+    const entry = tasks({ ...FLAGS, xtmOne }, false);
     assert.ok(entry && !entry.locked, `listed and open (xtmOne ${xtmOne}, not admin)`);
   }
-  const aiOff = value({ ...FLAGS, aiEnabled: false }, false);
+  const aiOff = tasks({ ...FLAGS, aiEnabled: false }, false);
   assert.ok(aiOff && !aiOff.locked, "AI off keeps the read surface open");
-  const community = value({ ...FLAGS, aiLicensed: false }, false);
-  assert.ok(community && community.locked && community.lockReason === "unlicensed");
 });
 
 test("the command center pages light the home row; a fleet lights Fleets, a flow Agentic Flow", () => {
@@ -126,7 +187,9 @@ test("the command center pages light the home row; a fleet lights Fleets, a flow
   assert.equal(activeNavPath(sections, "/fleets/f-1/members"), "/fleets");
   assert.equal(activeNavPath(sections, "/flows/map/schedule"), "/flows");
   assert.equal(activeNavPath(sections, "/agents/new"), "/agents");
-  assert.equal(activeNavPath(sections, "/value/methodology"), "/value");
+  assert.equal(activeNavPath(sections, "/tasks/value/methodology"), "/tasks");
+  assert.equal(activeNavPath(sections, "/tasks/work-items/0b1c"), "/tasks");
+  assert.equal(activeNavPath(sections, "/operations/shared-state"), "/operations");
   assert.equal(activeNavPath(sections, "/dashboards/d-1"), "/dashboards", "the studio is not the home");
 });
 
@@ -175,7 +238,7 @@ test("Dashboards is listed, in the nav and the palette, only while the Dashboard
   assert.ok(!routes({ ...FLAGS, dashboardStudio: false }).includes("/dashboards"));
 });
 
-const OBSERVABILITY = ["/analytics", "/analytics/outcomes", "/traces", "/trace-sessions"];
+const OBSERVABILITY = ["/observability", "/observability/outcomes", "/observability/traces", "/observability/sessions"];
 
 const adminLeaf = (isAdmin: boolean, isGroupManager: boolean, to: string) =>
   resolveNav(FLAGS, isAdmin, isGroupManager)
@@ -183,14 +246,14 @@ const adminLeaf = (isAdmin: boolean, isGroupManager: boolean, to: string) =>
     ?.entries.find((entry) => entry.kind === "leaf" && entry.to === to);
 
 test("Observability is one family row: Model usage, Outcomes, Traces, Sessions (#9301 N3)", () => {
-  const row = adminLeaf(true, false, "/analytics");
+  const row = adminLeaf(true, false, "/observability");
   assert.ok(row && row.kind === "leaf");
   assert.equal(row.label, "Observability");
   assert.deepEqual(row.family?.map((member) => [member.to, member.label]), [
-    ["/analytics", "Model usage"],
-    ["/analytics/outcomes", "Outcomes"],
-    ["/traces", "Traces"],
-    ["/trace-sessions", "Sessions"],
+    ["/observability", "Model usage"],
+    ["/observability/outcomes", "Outcomes"],
+    ["/observability/traces", "Traces"],
+    ["/observability/sessions", "Sessions"],
   ]);
   assert.equal(row.locked, undefined, "a read surface, never AI-locked (SC-011)");
   const palette = navDestinations(resolveNav(FLAGS, true)).filter((dest) => OBSERVABILITY.includes(dest.to));
@@ -200,13 +263,13 @@ test("Observability is one family row: Model usage, Outcomes, Traces, Sessions (
 
 test("every member page of Observability lights the family row", () => {
   const sections = resolveNav(FLAGS, true);
-  for (const path of ["/analytics", "/analytics/outcomes", "/traces", "/traces/abc", "/trace-sessions"]) {
-    assert.equal(activeNavPath(sections, path), "/analytics", path);
+  for (const path of ["/observability", "/observability/outcomes", "/observability/traces", "/observability/traces/abc", "/observability/sessions"]) {
+    assert.equal(activeNavPath(sections, path), "/observability", path);
   }
 });
 
 test("a group manager's Administration is the single row Model usage, the page's h1 (r3 A1)", () => {
-  const row = adminLeaf(false, true, "/analytics");
+  const row = adminLeaf(false, true, "/observability");
   assert.ok(row && row.kind === "leaf");
   assert.equal(row.label, "Model usage");
   assert.equal(row.family, undefined, "one member: no family, no tab row");
@@ -215,7 +278,7 @@ test("a group manager's Administration is the single row Model usage, the page's
       .map((dest) => dest.to)
       .filter((to) => OBSERVABILITY.includes(to));
   assert.deepEqual(observability(true, false), OBSERVABILITY);
-  assert.deepEqual(observability(false, true), ["/analytics"]);
+  assert.deepEqual(observability(false, true), ["/observability"]);
   assert.deepEqual(observability(false, false), []);
   assert.deepEqual(
     resolveNav(FLAGS, false, true).find((section) => section.id === "admin")?.entries.length,
@@ -226,47 +289,47 @@ test("a group manager's Administration is the single row Model usage, the page's
 
 test("Tools & Integrations lists its fixed pages and nothing per integration", () => {
   const children = toolsGroup().children;
-  assert.deepEqual(children.map((child) => child.to), ["/mcp-servers", "/tools", "/integrations", "/browser-profiles"]);
-  assert.deepEqual(children[3].family?.map((member) => member.to), ["/browser-profiles", "/variables", "/relays"]);
+  assert.deepEqual(children.map((child) => child.to), ["/mcp-servers", "/tools", "/integrations", "/connections"]);
+  assert.deepEqual(children[3].family?.map((member) => member.to), ["/connections", "/connections/variables", "/connections/relays"]);
 });
 
 test("Connections is one family row: Browser profiles, Variables, Relays (#9301 N3b)", () => {
-  const row = toolsGroup().children.find((child) => child.to === "/browser-profiles");
+  const row = toolsGroup().children.find((child) => child.to === "/connections");
   assert.ok(row);
   assert.equal(row.label, "Connections");
   assert.deepEqual(row.family?.map((member) => [member.to, member.label]), [
-    ["/browser-profiles", "Browser profiles"],
-    ["/variables", "Variables"],
-    ["/relays", "Relays"],
+    ["/connections", "Browser profiles"],
+    ["/connections/variables", "Variables"],
+    ["/connections/relays", "Relays"],
   ]);
   assert.equal(row.locked, undefined, "infrastructure, never AI-locked");
   const sections = resolveNav(FLAGS, false);
-  for (const path of ["/browser-profiles", "/variables", "/variables/v-1", "/relays", "/relays/r-1"]) {
-    assert.equal(activeNavPath(sections, path), "/browser-profiles", path);
+  for (const path of ["/connections", "/connections/variables", "/connections/variables/v-1", "/connections/relays", "/connections/relays/r-1"]) {
+    assert.equal(activeNavPath(sections, path), "/connections", path);
   }
-  const palette = navDestinations(sections).filter((dest) => ["/browser-profiles", "/variables", "/relays"].includes(dest.to));
+  const palette = navDestinations(sections).filter((dest) => ["/connections", "/connections/variables", "/connections/relays"].includes(dest.to));
   assert.deepEqual(palette.map((dest) => [dest.to, dest.parent]), [
-    ["/browser-profiles", "Connections"], ["/variables", "Connections"], ["/relays", "Connections"],
+    ["/connections", "Connections"], ["/connections/variables", "Connections"], ["/connections/relays", "Connections"],
   ]);
   /* Both flags off: one member, a plain row with that page's name. */
   const alone = resolveNav({ ...FLAGS, customVariables: false, relays: false }, false)
     .flatMap((section) => section.entries)
     .find((entry): entry is NavGroup => entry.kind === "group" && entry.id === "tools-and-integrations")
-    ?.children.find((child) => child.to === "/browser-profiles");
+    ?.children.find((child) => child.to === "/connections");
   assert.equal(alone?.label, "Browser profiles");
   assert.equal(alone?.family, undefined);
 });
 
 test("Users and groups is one family row for administrators only (#9301 N3b)", () => {
-  const row = adminLeaf(true, false, "/users");
+  const row = adminLeaf(true, false, "/users-and-groups");
   assert.ok(row && row.kind === "leaf");
   assert.equal(row.label, "Users and groups");
-  assert.deepEqual(row.family?.map((member) => [member.to, member.label]), [["/users", "Users"], ["/groups", "Groups"]]);
+  assert.deepEqual(row.family?.map((member) => [member.to, member.label]), [["/users-and-groups", "Users"], ["/users-and-groups/groups", "Groups"]]);
   const sections = resolveNav(FLAGS, true);
-  for (const path of ["/users", "/users/u-1", "/groups", "/groups/g-1", "/groups/new"]) {
-    assert.equal(activeNavPath(sections, path), "/users", path);
+  for (const path of ["/users-and-groups", "/users-and-groups/users/u-1", "/users-and-groups/groups", "/users-and-groups/groups/g-1", "/users-and-groups/groups/new"]) {
+    assert.equal(activeNavPath(sections, path), "/users-and-groups", path);
   }
-  assert.equal(adminLeaf(false, true, "/users"), undefined, "a group manager gets no Users and groups row");
+  assert.equal(adminLeaf(false, true, "/users-and-groups"), undefined, "a group manager gets no Users and groups row");
 });
 
 test("no nav entry or palette destination opens one integration's page", () => {

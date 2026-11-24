@@ -223,8 +223,8 @@ def test_the_run_link_is_absolute_on_the_web_app_url(monkeypatch):
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "frontend_url", "https://one.example.com/")
-    assert swi.run_url("r1") == "https://one.example.com/runs/r1"
-    assert swi.run_link_markdown("r1") == "\n\n[View the run](https://one.example.com/runs/r1)"
+    assert swi.run_url("r1") == "https://one.example.com/operations/executions/r1"
+    assert swi.run_link_markdown("r1") == "\n\n[View the run](https://one.example.com/operations/executions/r1)"
     assert swi.run_link_markdown(None) == ""
 
 

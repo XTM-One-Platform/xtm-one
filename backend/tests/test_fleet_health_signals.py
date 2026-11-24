@@ -6,6 +6,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -77,21 +78,56 @@ def test_a_large_first_day_with_no_baseline_is_a_spike():
 # ── blocked_without_blocker ─────────────────────────────────────────────────
 
 
+_OWNER = uuid.uuid4()
+_ASK = {
+    "question": "Merge it?",
+    "options": [{"key": "A", "label": "yes"}, {"key": "B", "label": "no"}],
+    "recommendation": "A",
+}
+
+
 @pytest.mark.parametrize(
     "fields",
     [
-        {"blocked_on": ["x"], "blocked_on_refs": None, "blocked_reason": None, "needs_human": None},
-        {"blocked_on": None, "blocked_on_refs": [{"kind": "issue"}], "blocked_reason": None, "needs_human": None},
-        {"blocked_on": None, "blocked_on_refs": None, "blocked_reason": "waits for X", "needs_human": None},
-        {"blocked_on": None, "blocked_on_refs": None, "blocked_reason": None, "needs_human": True},
+        {"blocked_on": ["x"], "blocked_on_refs": None, "needs_human": None},
+        {"blocked_on": None, "blocked_on_refs": [{"kind": "issue"}], "needs_human": None},
+        {"blocked_on": None, "blocked_on_refs": None, "needs_human": True, "ask": _ASK},
+        # One live blocker of two is enough.
+        {"blocked_on": ["x", "y"], "blocked_on_refs": None, "needs_human": None, "cancelled_blockers": {"y"}},
     ],
 )
-def test_a_blocked_item_naming_any_blocker_is_fine(fields):
-    assert not signals.blocked_without_blocker(**fields)
+def test_a_black_or_white_blocked_item_is_fine(fields: dict[str, Any]) -> None:
+    assert not signals.blocked_without_blocker(owner_agent_id=_OWNER, **fields)
 
 
-def test_a_blocked_item_naming_nothing_is_reported():
-    assert signals.blocked_without_blocker(blocked_on=[], blocked_on_refs=[], blocked_reason="  ", needs_human=False)
+@pytest.mark.parametrize(
+    "fields",
+    [
+        # Free text alone is no blocker (#762).
+        {"blocked_on": None, "blocked_on_refs": None, "blocked_reason": "waits for X", "needs_human": None},
+        {"blocked_on": [], "blocked_on_refs": [], "blocked_reason": "  ", "needs_human": False},
+        # A person's decision without its card.
+        {"blocked_on": None, "blocked_on_refs": None, "needs_human": True},
+        {"blocked_on": None, "blocked_on_refs": None, "needs_human": True, "ask": {"question": "Merge it?"}},
+        # Every item it waits for was cancelled: nothing will release it.
+        {"blocked_on": ["x"], "blocked_on_refs": None, "needs_human": None, "cancelled_blockers": {"x"}},
+    ],
+)
+def test_a_blocked_item_that_is_not_black_or_white_is_reported(fields: dict[str, Any]) -> None:
+    assert signals.blocked_without_blocker(owner_agent_id=_OWNER, **fields)
+
+
+def test_a_wait_on_its_own_open_pull_request_is_not_reported() -> None:
+    # Written by the inbox finalizer for a draft, released by its CI completion.
+    bound = {"pull_requests": [{"repo": "o/r", "number": 12, "state": "open", "draft": True}]}
+    fields = {"blocked_on": None, "blocked_on_refs": None, "blocked_reason": "WAITS FOR: o/r#12", "needs_human": None}
+    assert not signals.blocked_without_blocker(owner_agent_id=_OWNER, payload=bound, **fields)
+    closed = {"pull_requests": [{"repo": "o/r", "number": 12, "state": "closed"}]}
+    assert signals.blocked_without_blocker(owner_agent_id=_OWNER, payload=closed, **fields)
+
+
+def test_an_ownerless_blocked_item_is_reported_whatever_it_waits_for() -> None:
+    assert signals.blocked_without_blocker(blocked_on=["x"], blocked_on_refs=None, needs_human=None)
 
 
 # ── The report ──────────────────────────────────────────────────────────────
@@ -168,7 +204,12 @@ async def test_an_orchestrator_gets_the_tool_and_the_skill_once():
     agent = SimpleNamespace(builtin_tool_ids=["web"], builtin_allowed_tools=None, skill_ids=[])
     assert await grant_fleet_health_advisory(db, agent)
     assert "platform" in agent.builtin_tool_ids
-    assert agent.builtin_allowed_tools["platform"] == ["get_fleet_health"]
+    assert agent.builtin_allowed_tools["platform"] == [
+        "get_fleet_health",
+        "dismiss_fleet_health_findings",
+        "regenerate_fleet_documentation",
+        "list_fleet_doc_findings",
+    ]
     assert agent.skill_ids == [str(skill_id)]
     # Idempotent.
     assert not await grant_fleet_health_advisory(db, agent)
@@ -197,6 +238,40 @@ async def test_an_orchestrator_also_gets_the_fleet_design_practices_skill():
     assert await grant_fleet_health_advisory(db, agent)
     assert agent.skill_ids == [str(health), str(design)]
     assert not await grant_fleet_health_advisory(db, agent)
+
+
+@pytest.mark.asyncio
+async def test_an_orchestrator_on_the_health_tools_alone_gets_the_documentation_tools():
+    """#1631: an orchestrator granted before the documentation tools gets them at the next backfill."""
+    from app.services.fleets import FLEET_DOC_FUNCTIONS, grant_fleet_health_advisory
+
+    agent = SimpleNamespace(
+        builtin_tool_ids=["platform"],
+        builtin_allowed_tools={"platform": ["get_fleet_health", "dismiss_fleet_health_findings"]},
+        skill_ids=[],
+    )
+    assert await grant_fleet_health_advisory(_Db([]), agent)
+    assert set(FLEET_DOC_FUNCTIONS) <= set(agent.builtin_allowed_tools["platform"])
+    assert not await grant_fleet_health_advisory(_Db([]), agent)
+
+
+def test_the_documentation_tools_granted_are_platform_fleet_functions():
+    """#1631: the regeneration rule line of the seeded orchestrator personas names a granted tool."""
+    from app.services.builtin_tool_aliases import BUILTIN_GROUP_ALIASES
+    from app.services.fleets import FLEET_DOC_FUNCTIONS
+
+    group, functions = BUILTIN_GROUP_ALIASES["fleets"]
+    assert group == "platform"
+    platform_fleet_tools = set(functions)
+    assert set(FLEET_DOC_FUNCTIONS) <= platform_fleet_tools
+
+
+def test_the_coverage_reporter_reads_the_desk_state():
+    """#1631: its persona reads openaev:detection-desk:state; the seed gives it the shared-state tools."""
+    from app.agents import openaev_detection_desk as desk
+
+    reporter = next(a for a in desk.DETECTION_DESK_AGENTS if a["slug"] == desk.COVERAGE_REPORTER)
+    assert "shared_state" in reporter["builtin_tool_ids"]
 
 
 def test_the_fleet_design_skill_is_seeded_as_suggestions():
@@ -308,6 +383,63 @@ async def test_an_existing_check_keeps_its_switch_and_follows_its_fleet():
     assert not await ensure_fleet_health_check(db, other, agent)
     assert db.rows[0].enabled is True
     assert db.rows[0].activation_check["arguments"] == {"fleet_id": str(other.id)}
+
+
+@pytest.mark.asyncio
+async def test_the_answer_listener_takes_the_health_decisions_with_the_check_switch():
+    """#1406: an owner's answer on a fleet-health item reaches one listener, on with the check."""
+    from app.services.assignment_pause import CREATED_DISABLED_REASON
+    from app.services.fleets import (
+        FLEET_HEALTH_KEY_PREFIX,
+        ensure_fleet_health_answered,
+        ensure_fleet_health_check,
+        fleet_health_check_prompt,
+        is_fleet_health_answered,
+    )
+
+    db, fleet, agent = _AssignmentDb(), _fleet(), _orchestrator()
+    # No seeded check (opted out): nothing files the items, so no listener.
+    assert not await ensure_fleet_health_answered(db, fleet, agent)
+    await ensure_fleet_health_check(db, fleet, agent)
+    (check,) = db.rows
+    assert await ensure_fleet_health_answered(db, fleet, agent, check)
+    listener = db.rows[1]
+    assert is_fleet_health_answered(listener)
+    flt = listener.trigger_config["filter"]
+    assert listener.trigger_config["scope"] == "own"
+    assert (flt["previous_status"], flt["status"]) == ("blocked", "open")
+    assert flt["correlation_key"] == {"starts_with": [FLEET_HEALTH_KEY_PREFIX]}
+    # The check names the key the listener takes; the listener claims first and dismisses once.
+    assert f"{FLEET_HEALTH_KEY_PREFIX}{fleet.id}" in fleet_health_check_prompt(fleet)
+    assert "claim_work_item" in listener.prompt and "dismiss_fleet_health_findings" in listener.prompt
+    # Born off with the check (not set up yet).
+    assert listener.enabled is False and listener.paused_reason == CREATED_DISABLED_REASON
+    # Idempotent.
+    assert not await ensure_fleet_health_answered(db, fleet, agent, check)
+    assert len(db.rows) == 2
+
+
+@pytest.mark.asyncio
+async def test_the_answer_listener_of_a_running_check_is_born_on_as_its_run_as():
+    from app.services.fleets import ensure_fleet_health_answered, ensure_fleet_health_check
+
+    db, fleet, agent = _AssignmentDb(), _fleet(), _orchestrator()
+    await ensure_fleet_health_check(db, fleet, agent)
+    (check,) = db.rows
+    check.enabled, check.paused_reason, check.run_as_user_id = True, None, uuid.uuid4()
+    assert await ensure_fleet_health_answered(db, fleet, agent, check)
+    listener = db.rows[1]
+    assert listener.enabled is True and listener.run_as_user_id == check.run_as_user_id
+
+
+def test_the_skill_keys_the_owner_decisions_for_the_listener():
+    from app.agents.builtin_agents import BUILTIN_SKILLS
+    from app.agents.seed import _resolve_seed_content
+    from app.services.fleets import FLEET_HEALTH_ANSWERED_NAME, FLEET_HEALTH_KEY_PREFIX
+
+    entry = next(s for s in BUILTIN_SKILLS if s["slug"] == "fleet-health-advisory")
+    content = _resolve_seed_content("skill_content", entry["content"])
+    assert f"`{FLEET_HEALTH_KEY_PREFIX}`" in content and FLEET_HEALTH_ANSWERED_NAME in content
 
 
 @pytest.mark.asyncio

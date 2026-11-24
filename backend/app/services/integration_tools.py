@@ -38,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.constants import TRUNCATE_SNIPPET
 from app.core.egress import EgressRoute, egress_client, egress_route
 from app.core.integration_tool_slug import derive_tool_slug, tool_slug_error
+from app.core.module_versions import registered_version_reader
 from app.core.platform_identity import (
     RegisteredPlatform,
     platform_for_integration,
@@ -49,6 +50,7 @@ from app.integrations.http import format_http_error, format_network_error
 from app.integrations.providers.abusech import build_tools as abusech_tools
 from app.integrations.providers.abuseipdb import build_tools as abuseipdb_tools
 from app.integrations.providers.aikido import build_tools as aikido_tools
+from app.integrations.providers.airwallex import build_tools as airwallex_tools
 from app.integrations.providers.anomali import build_tools as anomali_tools
 from app.integrations.providers.anthropic import build_tools as anthropic_tools
 from app.integrations.providers.anyrun import build_tools as anyrun_tools
@@ -69,6 +71,7 @@ from app.integrations.providers.cybersixgill import (
 )
 from app.integrations.providers.cyware import build_tools as cyware_tools
 from app.integrations.providers.databricks import build_tools as databricks_tools
+from app.integrations.providers.dealhub import build_tools as dealhub_tools
 from app.integrations.providers.defender import build_tools as defender_tools
 from app.integrations.providers.discord_bot import build_tools as discord_bot_tools
 from app.integrations.providers.docusign import build_tools as docusign_tools
@@ -120,8 +123,10 @@ from app.integrations.providers.mistral import build_tools as mistral_tools
 from app.integrations.providers.mitre_atlas import build_tools as mitre_atlas_tools
 from app.integrations.providers.mitre_attack import build_tools as mitre_attack_tools
 from app.integrations.providers.n8n import build_tools as n8n_tools
+from app.integrations.providers.netsuite import build_tools as netsuite_tools
 from app.integrations.providers.newsapi import build_tools as newsapi_tools
 from app.integrations.providers.notion import build_tools as notion_tools
+from app.integrations.providers.odoo import build_tools as odoo_tools
 from app.integrations.providers.onepassword import build_tools as onepassword_tools
 from app.integrations.providers.openaev import build_tools as openaev_tools
 from app.integrations.providers.openai import build_tools as openai_tools
@@ -135,13 +140,16 @@ from app.integrations.providers.opencrq.procedure_manifest import PROBE, Manifes
 from app.integrations.providers.opencti import build_tools as opencti_tools
 from app.integrations.providers.ovhcloud import build_tools as ovhcloud_tools
 from app.integrations.providers.pagerduty import build_tools as pagerduty_tools
+from app.integrations.providers.pennylane import build_tools as pennylane_tools
 from app.integrations.providers.perk import build_tools as perk_tools
 from app.integrations.providers.picus import build_tools as picus_tools
 from app.integrations.providers.planhat import build_tools as planhat_tools
+from app.integrations.providers.platform_email import build_tools as platform_email_tools
 from app.integrations.providers.proofpoint import build_tools as proofpoint_tools
 from app.integrations.providers.purview import build_tools as purview_tools
 from app.integrations.providers.qradar import build_tools as qradar_tools
 from app.integrations.providers.qualys import build_tools as qualys_tools
+from app.integrations.providers.quotapath import build_tools as quotapath_tools
 from app.integrations.providers.ransomware_live import (
     build_tools as ransomware_live_tools,
 )
@@ -150,6 +158,7 @@ from app.integrations.providers.recorded_future import (
     build_tools as recorded_future_tools,
 )
 from app.integrations.providers.rss import build_tools as rss_tools
+from app.integrations.providers.rydoo import build_tools as rydoo_tools
 from app.integrations.providers.securityscorecard import (
     build_tools as securityscorecard_tools,
 )
@@ -162,6 +171,7 @@ from app.integrations.providers.shodan import build_tools as shodan_tools
 from app.integrations.providers.slack import build_tools as slack_tools
 from app.integrations.providers.slack_bot import build_tools as slack_bot_tools
 from app.integrations.providers.socradar import build_tools as socradar_tools
+from app.integrations.providers.spendesk import build_tools as spendesk_tools
 from app.integrations.providers.splunk import build_tools as splunk_tools
 from app.integrations.providers.sublime import build_tools as sublime_tools
 from app.integrations.providers.sumologic import build_tools as sumologic_tools
@@ -977,6 +987,7 @@ PROVIDER_TOOLS = {
     "onepassword": onepassword_tools,
     "planhat": planhat_tools,
     "metabase": metabase_tools,
+    "odoo": odoo_tools,
     "databricks": databricks_tools,
     "supabase": supabase_tools,
     "perk": perk_tools,
@@ -986,6 +997,7 @@ PROVIDER_TOOLS = {
     "newsapi": newsapi_tools,
     "feedly": feedly_tools,
     "rss": rss_tools,
+    "platform_email": platform_email_tools,
     "google_search": google_search_tools,
     "brave_search": brave_search_tools,
     "giphy": giphy_tools,
@@ -994,12 +1006,16 @@ PROVIDER_TOOLS = {
     "filigran_ai": filigran_ai_tools,
     "hubspot": hubspot_tools,
     "drata": drata_tools,
+    "pennylane": pennylane_tools,
     "credly": credly_tools,
     "concord": concord_tools,
+    "dealhub": dealhub_tools,
     "wordsmith": wordsmith_tools,
     "docusign": docusign_tools,
+    "netsuite": netsuite_tools,
     "jira": jira_tools,
     "ashby": ashby_tools,
+    "quotapath": quotapath_tools,
     "hibob": hibob_tools,
     "linkedin": linkedin_tools,
     "x": x_tools,
@@ -1041,6 +1057,9 @@ PROVIDER_TOOLS = {
     "aws_security": aws_security_tools,
     "ovhcloud": ovhcloud_tools,
     "aikido": aikido_tools,
+    "airwallex": airwallex_tools,
+    "rydoo": rydoo_tools,
+    "spendesk": spendesk_tools,
     "sublime": sublime_tools,
     "proofpoint": proofpoint_tools,
     "servicenow": servicenow_tools,
@@ -1107,10 +1126,13 @@ CHANNEL_BOT_TOOLS = {
 _PERSIST_FILE_PROVIDERS = frozenset(
     {
         "aikido",
+        "airwallex",
+        "spendesk",
         "anyrun",
         "ashby",
         "bluesky",
         "concord",
+        "dealhub",
         "wordsmith",
         "crowdstrike",
         "crowdstrike_ngsiem",
@@ -1120,6 +1142,7 @@ _PERSIST_FILE_PROVIDERS = frozenset(
         "docusign",
         "doppel",
         "drata",
+        "pennylane",
         "facebook",
         "figma",
         "flashpoint",
@@ -1134,11 +1157,15 @@ _PERSIST_FILE_PROVIDERS = frozenset(
         "linkedin",
         "metabase",
         "microsoft",
+        "netsuite",
         "notion",
+        "odoo",
         "onepassword",
         "openaev",
         "opencti",
         "perk",
+        "rydoo",
+        "quotapath",
         "servicenow",
         "slack",
         "tanium",
@@ -2777,6 +2804,60 @@ async def _get_token(
         # error instead of the tools silently disappearing.
         return f"{region}||{project}||{customer}||{sa_json}"
 
+    # --- Odoo: base_url||database||login||api_key[||company_ids] ---
+    # The URL, database, login and default companies live in extra_config,
+    # the API key in api_key_enc. A missing part still builds the tools: the
+    # provider names it at call time.
+    if provider == "odoo":
+        extra = {}
+        if integ.extra_config_enc:
+            try:
+                extra = await _reveal_extra(integ)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to decrypt extra_config for '%s' (odoo): %s",
+                    integ.name,
+                    format_exception_message(exc),
+                )
+        from app.integrations.providers.odoo import OdooCredential
+
+        return OdooCredential.build(
+            str(extra.get("base_url") or ""),
+            str(extra.get("database") or ""),
+            str(extra.get("login") or ""),
+            (await reveal_field(integ, "api_key_enc")) or "",
+            str(extra.get("company_ids") or ""),
+        )
+
+    # --- NetSuite ---
+    # The API Key field holds the secret (the certificate's private key for
+    # OAuth 2.0 machine-to-machine, the token secret for TBA); the account,
+    # the mode and the other identifiers live in extra_config. The provider
+    # mints or signs its own requests, so the OAuth refresh below does not
+    # apply. The secret is the last field (split greedily).
+    if provider == "netsuite":
+        extra = {}
+        if integ.extra_config_enc:
+            try:
+                extra = await _reveal_extra(integ)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to decrypt extra_config for '%s' (netsuite): %s",
+                    integ.name,
+                    format_exception_message(exc),
+                )
+        from app.integrations.providers.netsuite import compound_credential as netsuite_credential
+
+        compound = netsuite_credential((await reveal_field(integ, "api_key_enc")) or "", extra)
+        if not compound:
+            logger.warning(
+                "Integration '%s' (netsuite) is missing the account ID, the secret or the identifiers "
+                "of its authentication mode.",
+                integ.name,
+            )
+            return None
+        return compound
+
     # --- DocuSign JWT Grant ("API Key" mode) ---
     # The RSA private key lives in api_key_enc; the integration key, the user
     # to impersonate, the environment and the account live in extra_config.
@@ -2925,6 +3006,71 @@ async def _get_token(
                 )
         aikido_secret = (await reveal_field(integ, "api_key_enc")) or ""
         return aikido_token_from_config(aikido_secret, aikido_extra)
+
+    # --- Airwallex (client id + API key exchanged for a 30-minute bearer) ---
+    # The API key is the API key column; the environment, the client id, the
+    # account to log in as live in extra_config.
+    # The provider gets ``environment||client_id||login_as||api_key``.
+    if provider == "airwallex":
+        from app.integrations.providers.airwallex import (
+            token_from_config as airwallex_token_from_config,
+        )
+
+        airwallex_extra = {}
+        if integ.extra_config_enc:
+            try:
+                airwallex_extra = await _reveal_extra(integ)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to decrypt extra_config for '%s' (airwallex): %s",
+                    integ.name,
+                    format_exception_message(exc),
+                )
+        airwallex_secret = (await reveal_field(integ, "api_key_enc")) or ""
+        return airwallex_token_from_config(airwallex_secret, airwallex_extra)
+
+    # --- Rydoo (OAuth2 client credentials, one company, branches as entities) ---
+    # The client secret is the API key column; the client id lives in
+    # extra_config. The provider gets ``client_id||client_secret``.
+    if provider == "rydoo":
+        from app.integrations.providers.rydoo import (
+            token_from_config as rydoo_token_from_config,
+        )
+
+        rydoo_extra = {}
+        if integ.extra_config_enc:
+            try:
+                rydoo_extra = await _reveal_extra(integ)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to decrypt extra_config for '%s' (rydoo): %s",
+                    integ.name,
+                    format_exception_message(exc),
+                )
+        rydoo_secret = (await reveal_field(integ, "api_key_enc")) or ""
+        return rydoo_token_from_config(rydoo_secret, rydoo_extra)
+
+    # --- Spendesk (OAuth2 client credentials, production or sandbox host) ---
+    # The client secret is the API key column; the environment and the client
+    # id live in extra_config. The provider gets ``environment||client_id||secret``
+    # (partial when a part is missing, so a call names what to fix).
+    if provider == "spendesk":
+        from app.integrations.providers.spendesk import (
+            token_from_config as spendesk_token_from_config,
+        )
+
+        spendesk_extra = {}
+        if integ.extra_config_enc:
+            try:
+                spendesk_extra = await _reveal_extra(integ)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to decrypt extra_config for '%s' (spendesk): %s",
+                    integ.name,
+                    format_exception_message(exc),
+                )
+        spendesk_secret = (await reveal_field(integ, "api_key_enc")) or ""
+        return spendesk_token_from_config(spendesk_secret, spendesk_extra)
 
     # --- CrowdSec (two independent x-api-key credentials) ---
     # The CTI API (cti.api.crowdsec.net) and the Service API
@@ -3640,6 +3786,22 @@ async def _get_token(
                 format_exception_message(exc),
             )
 
+    # Platform email: no credential, it sends through the deployment's SMTP;
+    # the "token" carries its guards (allowed domains, daily limit).
+    if not token and provider == "platform_email":
+        from app.integrations.providers.platform_email import platform_email_token
+
+        try:
+            extra = await _reveal_extra(integ) if integ.extra_config_enc else {}
+        except Exception as exc:
+            logger.warning(
+                "Failed to read the guards of '%s' (platform_email): %s",
+                integ.name,
+                format_exception_message(exc),
+            )
+            extra = {}
+        token = platform_email_token(extra)
+
     # MITRE ATLAS: no credentials — the "token" is the data source URL
     # (optional extra_config.source_url override for mirrors / air-gapped
     # hosts, falling back to the official atlas-data release URL). Resolved
@@ -4226,6 +4388,21 @@ async def _get_token(
                 format_exception_message(exc),
             )
 
+    # Pennylane: a firm token names the company of each request (X-Company-Id).
+    if provider == "pennylane" and integ.extra_config_enc:
+        try:
+            extra = await _reveal_extra(integ)
+            company_id = str(extra.get("company_id") or "").strip()
+            if company_id:
+                return f"{company_id}||{token}"
+        except Exception as exc:
+            logger.warning(
+                "Failed to extract company_id from extra_config for '%s' (%s): %s",
+                integ.name,
+                provider,
+                format_exception_message(exc),
+            )
+
     # LinkedIn: prepend account_type and organization_id from extra_config
     if provider == "linkedin" and integ.extra_config_enc:
         try:
@@ -4277,6 +4454,8 @@ async def _get_token(
     extra_field_providers: dict[str, str] = {
         "credly": "organization_id",
         "concord": "organization_id",
+        # DealHub: the instance host (api.dealhub.io when unset) as ``host||token``.
+        "dealhub": "instance_host",
         "google_search": "search_engine_id",
         "hibob": "service_user_id",
         # HackerOne uses HTTP Basic auth: the API token *identifier* (username)
@@ -4765,6 +4944,27 @@ def _make_park_full_ci_fn(context: dict[str, Any]) -> Callable[..., Awaitable[bo
         return await park("github", repo, base, workflow, number, head_sha, user_id)
 
     return _park
+
+
+def _make_branch_lease_check_fn(context: dict[str, Any]) -> Callable[[str, str], Awaitable[str | None]] | None:
+    """The ``check_branch_lease`` callback the GitHub branch-moving tools get.
+
+    Bound to the calling run (``context["run_id"]``) and its person: a branch
+    another LIVE run leases (``hold="take"``) answers the refusal text, so the
+    write stands down. ``None`` outside a run: there is no holder to compare.
+    """
+    run_id = str(context.get("run_id") or "").strip()
+    if not run_id:
+        return None
+    user_id = context.get("user_id") or None
+
+    async def _check(repo: str, branch: str) -> str | None:
+        from app.services.shared_state_pull_requests import branch_lease_refusal, live_branch_lease
+
+        lease = await live_branch_lease(repo, branch, user_id=user_id, run_id=run_id)
+        return branch_lease_refusal(repo, branch, lease) if lease else None
+
+    return _check
 
 
 def _make_record_push_fn(
@@ -6546,6 +6746,16 @@ async def _build_integration_tools_inner(
                         read_only=is_read_only_binding(integration_id, _read_only_ids),
                     ):
                         _builder_kwargs["live_writes"] = True
+                    # A fleet gate naming apply_opencti_draft (the CTEM analyst
+                    # review, #1480) offers it with Live writes off: the gate,
+                    # not the setting, decides the validation. Never on a
+                    # read-only binding.
+                    from app.services.fleet_autonomy import FLEET_GATED_TOOLS_CONTEXT_KEY
+
+                    if "apply_opencti_draft" in (
+                        context.get(FLEET_GATED_TOOLS_CONTEXT_KEY) or ()
+                    ) and not is_read_only_binding(integration_id, _read_only_ids):
+                        _builder_kwargs["gated_draft_validation"] = True
                 # When HITL is on, give OpenCTI a way to VERIFY a human approved
                 # an irreversible action (entity merge) rather than trusting the
                 # model's word for it. The run's ``human_input_history`` is the
@@ -6585,6 +6795,10 @@ async def _build_integration_tools_inner(
                     _park = _make_park_full_ci_fn(context)
                     if _park is not None:
                         _builder_kwargs["park_full_ci"] = _park
+                    # A branch another live run leases is not moved by this run.
+                    _lease_check = _make_branch_lease_check_fn(context)
+                    if _lease_check is not None:
+                        _builder_kwargs["check_branch_lease"] = _lease_check
                     # An enforced repository Scope(s) is a hard boundary on the
                     # GitHub tools.
                     from app.integrations.providers.github.scope import (
@@ -6712,6 +6926,11 @@ async def _build_integration_tools_inner(
                 # tools return.
                 if provider in ("notion", "microsoft", "whatsapp"):
                     _builder_kwargs["integration_id"] = str(integration_id)
+                # Platform email: the agent the daily limit counts and the
+                # person its audit entry is anchored on.
+                if provider == "platform_email":
+                    _builder_kwargs["agent_id"] = str(context.get("agent_id") or "")
+                    _builder_kwargs["user_id"] = str(context.get("user_id") or "")
                 # Microsoft: the agent the run acts for scopes the mail send
                 # guard (one answer per conversation across its runs).
                 if provider == "microsoft" and context.get("agent_id"):
@@ -6746,6 +6965,15 @@ async def _build_integration_tools_inner(
                 _names_sink = context.get(PLATFORM_NAMES_CONTEXT_KEY)
                 if isinstance(_names_sink, list) and _declares(builder, "platform_names_sink"):
                     _builder_kwargs["platform_names_sink"] = _platform_names.append
+                # A module XTM One registered names the version it registered beside
+                # its own live version read (#888): a platform-managed integration only.
+                _version_row = _row_cache.get(integration_id)
+                if (
+                    _version_row is not None
+                    and _version_row.auth_type == "platform_managed"
+                    and _declares(builder, "registered_version_fn")
+                ):
+                    _builder_kwargs["registered_version_fn"] = registered_version_reader(str(integration_id))
                 _attack_found: list[tuple[str, str]] = []
                 _attack_sink = context.get(ATTACK_SOURCES_CONTEXT_KEY)
                 if isinstance(_attack_sink, list) and _declares(builder, "attack_source_sink"):

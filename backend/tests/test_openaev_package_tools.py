@@ -394,11 +394,32 @@ async def test_manage_player_allows_update_delete_outside_orchestrator_run(monke
     assert (fake.calls[-1]["json"] or {}).get("user_teams") == ["team-abc"]
 
 
-async def test_inject_update_omits_unprovided_flags(monkeypatch):
+async def test_inject_update_keeps_the_stored_fields(monkeypatch):
+    # OpenAEV's PUT replaces the whole inject (InjectInput): the tool reads it
+    # and sends every stored field back, only the asked ones changed.
     from app.integrations.providers.openaev import injects
 
     executor, _ = _build()
-    fake = _RecordingApi({"inject_id": "i1", "inject_title": "t"})
+    stored = {
+        "inject_id": "i1",
+        "inject_title": "t",
+        "inject_enabled": False,
+        "inject_all_teams": True,
+        "inject_depends_duration": 60,
+        "inject_injector_contract": {"injector_contract_id": "c1"},
+        "inject_injector": "inj1",
+        "inject_teams": ["t1"],
+        "inject_assets": [{"asset_id": "a1"}],
+        "inject_asset_groups": [],
+        "inject_tags": ["tag1"],
+        "inject_depends_on": [
+            {
+                "dependency_relationship": {"inject_parent_id": "p1", "inject_children_id": "i1"},
+                "dependency_condition": {"mode": "and", "conditions": []},
+            }
+        ],
+    }
+    fake = _RecordingApi(stored)
     monkeypatch.setattr(injects, "_api", fake)
     result = await _run(
         executor,
@@ -412,11 +433,39 @@ async def test_inject_update_omits_unprovided_flags(monkeypatch):
         },
     )
     assert not result.is_error, result.content
+    assert [c["method"] for c in fake.calls] == ["get", "put"]
     body = fake.last_json()
-    assert "inject_title" not in body
-    assert "inject_enabled" not in body
-    assert "inject_all_teams" not in body
-    assert body.get("inject_description") == "d"
+    assert body["inject_description"] == "d"
+    assert body["inject_title"] == "t"
+    assert body["inject_enabled"] is False
+    assert body["inject_all_teams"] is True
+    assert body["inject_depends_duration"] == 60
+    assert body["inject_injector_contract"] == "c1"
+    assert body["inject_injector"] == "inj1"
+    assert body["inject_teams"] == ["t1"]
+    assert body["inject_assets"] == ["a1"]
+    assert body["inject_tags"] == ["tag1"]
+    assert body["inject_depends_on"] == [
+        {
+            "dependency_relationship": {"inject_parent_id": "p1"},
+            "dependency_condition": {"mode": "and", "conditions": []},
+        }
+    ]
+
+
+async def test_inject_update_of_an_unreadable_inject_writes_nothing(monkeypatch):
+    from app.integrations.providers.openaev import injects
+
+    executor, _ = _build()
+    fake = _RecordingApi({"inject_id": "i1"})
+    monkeypatch.setattr(injects, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_inject",
+        {"action": "update", "scope": "scenario", "parent_id": "s1", "inject_id": "i1", "description": "d"},
+    )
+    assert "Nothing was written" in result.content
+    assert [c["method"] for c in fake.calls] == ["get"]
 
 
 async def test_inject_create_sends_defaults(monkeypatch):
@@ -727,6 +776,351 @@ async def test_security_platform_output_uses_security_platform_id_label(monkeypa
     assert "security_platform_id: sp1" in created.content
 
 
+async def test_asset_update_keeps_the_fields_it_does_not_change(monkeypatch):
+    # OpenAEV's PUT /api/endpoints/{id} replaces the whole endpoint: the tool
+    # reads it first and sends every field back, only the asked ones changed.
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    current = {
+        "asset_id": "e1",
+        "asset_name": "shop.example.com",
+        "asset_external_reference": "dns-enum:shop.example.com",
+        "asset_hostname": "shop.example.com",
+        "asset_ips": ["10.0.0.5"],
+        "asset_tags": ["t1", {"tag_id": "t2"}],
+        "asset_category": "HOST",
+        "endpoint_platform": "Linux",
+        "asset_type": "Endpoint",
+    }
+    fake = _RecordingApi(current)
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_asset",
+        {
+            "action": "update",
+            "asset_id": "e1",
+            "category": "web_application",
+            "subcategory": "website",
+            "url": "https://shop.example.com",
+        },
+    )
+    assert not result.is_error, result.content
+    assert [c["method"] for c in fake.calls] == ["get", "put"]
+    sent = fake.last_json()
+    assert sent["asset_category"] == "WEB_APPLICATION"
+    assert sent["asset_subcategory"] == "WEBSITE"
+    assert sent["asset_url"] == "https://shop.example.com"
+    assert sent["asset_external_reference"] == "dns-enum:shop.example.com"
+    assert sent["asset_ips"] == ["10.0.0.5"]
+    assert sent["asset_hostname"] == "shop.example.com"
+    assert sent["asset_tags"] == ["t1", "t2"]
+    assert sent["endpoint_platform"] == "Linux"
+    assert "asset_type" not in sent and "asset_id" not in sent
+
+
+async def test_asset_update_to_source_code_falls_back_on_an_older_openaev(monkeypatch):
+    # xtm-one #1233: an OpenAEV that predates SOURCE_CODE refuses it; the tool
+    # sends GENERIC_ASSET without a subcategory and says so.
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    puts: list[dict] = []
+
+    async def fake(base_url, headers, method, path, action, *, json=None, params=None, **kw):
+        if method == "get":
+            return _FakeResp({"asset_id": "e1", "asset_name": "repo", "asset_category": "GENERIC_ASSET"}), None
+        puts.append(dict(json))
+        if json.get("asset_category") == "SOURCE_CODE":
+            return None, (
+                "Error: OpenAEV rejected the request to update endpoint — bad request. "
+                'Cannot deserialize value of type `AssetCategory` from String "SOURCE_CODE"'
+            )
+        return _FakeResp({}), None
+
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_asset",
+        {"action": "update", "asset_id": "e1", "category": "source_code", "subcategory": "code_repository"},
+    )
+    assert not result.is_error, result.content
+    assert [p["asset_category"] for p in puts] == ["SOURCE_CODE", "GENERIC_ASSET"]
+    assert puts[0]["asset_subcategory"] == "CODE_REPOSITORY"
+    assert "asset_subcategory" not in puts[1]
+    assert "GENERIC_ASSET there" in result.content
+
+
+@pytest.mark.parametrize(
+    ("stored", "args", "error"),
+    [
+        # A server error on a category change: answered as it is.
+        (
+            "GENERIC_ASSET",
+            {"category": "source_code"},
+            "Error: OpenAEV server error (503) while trying to update endpoint. "
+            "The service may be temporarily unavailable.",
+        ),
+        # Another field refused on a category change: answered as it is.
+        (
+            "GENERIC_ASSET",
+            {"category": "source_code", "url": "not a url"},
+            "Error: OpenAEV rejected the request to update endpoint — validation error. asset_url: must be a URL",
+        ),
+        # An endpoint already SOURCE_CODE, an unrelated change refused: never
+        # downgraded (review 6013276149 on #1238).
+        (
+            "SOURCE_CODE",
+            {"description": "new"},
+            "Error: OpenAEV rejected the request to update endpoint — bad request. asset_category",
+        ),
+        # The same endpoint and a transient error.
+        (
+            "SOURCE_CODE",
+            {"description": "new"},
+            "Error: OpenAEV server error (502) while trying to update endpoint.",
+        ),
+    ],
+)
+async def test_asset_update_never_downgrades_on_another_error(monkeypatch, stored, args, error):
+    # xtm-one #1233: only a rejection of the requested newer category falls back.
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    puts: list[dict] = []
+
+    async def fake(base_url, headers, method, path, action, *, json=None, params=None, **kw):
+        if method == "get":
+            return _FakeResp({"asset_id": "e1", "asset_name": "repo", "asset_category": stored}), None
+        puts.append(dict(json))
+        return None, error
+
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(executor, "manage_openaev_asset", {"action": "update", "asset_id": "e1", **args})
+    assert len(puts) == 1
+    assert "GENERIC_ASSET" not in result.content
+    assert error in result.content
+
+
+async def test_asset_update_clears_the_named_fields(monkeypatch):
+    # An explicit clear unsets a field; an empty string alone is still no change.
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    current = {
+        "asset_id": "e1",
+        "asset_name": "shop",
+        "asset_url": "https://old.example",
+        "asset_subcategory": "WEBSITE",
+        "asset_internet_facing": True,
+        "asset_ips": ["10.0.0.5"],
+    }
+    fake = _RecordingApi(current)
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_asset",
+        {"action": "update", "asset_id": "e1", "clear": ["url", "subcategory", "internet_facing", "ips"]},
+    )
+    assert not result.is_error, result.content
+    sent = fake.last_json()
+    assert sent["asset_url"] is None
+    assert sent["asset_subcategory"] is None
+    assert sent["asset_internet_facing"] is None
+    assert sent["asset_ips"] == []
+    assert sent["asset_name"] == "shop"
+
+
+async def test_asset_update_refuses_an_unknown_clear_before_any_call(monkeypatch):
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    fake = _RecordingApi({})
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(executor, "manage_openaev_asset", {"action": "update", "asset_id": "e1", "clear": ["name"]})
+    assert "unknown field(s): name" in result.content
+    assert fake.calls == []
+
+
+async def test_asset_bulk_update_clears_the_url(monkeypatch):
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    fake = _RecordingApi(["a1"])
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(
+        executor, "manage_openaev_asset", {"action": "bulk_update", "asset_ids": ["a1"], "clear": ["url"]}
+    )
+    assert not result.is_error, result.content
+    assert fake.last_json() == {"asset_ids_to_process": ["a1"], "asset_url": ""}
+
+
+async def test_asset_group_update_keeps_the_stored_fields(monkeypatch):
+    # OpenAEV's PUT replaces the whole group (AssetGroupInput): a dynamic filter
+    # alone keeps the stored name, description and tags.
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    stored = {
+        "asset_group_id": "ag1",
+        "asset_group_name": "Web",
+        "asset_group_description": "front",
+        "asset_group_tags": ["t1", {"tag_id": "t2"}],
+        "asset_group_dynamic_filter": {"mode": "and", "filters": []},
+    }
+    fake = _RecordingApi(stored)
+    monkeypatch.setattr(assets, "_api", fake)
+    group = {"mode": "and", "filters": [{"key": "asset_tags", "operator": "contains", "values": ["t1"], "mode": "or"}]}
+    result = await _run(
+        executor,
+        "manage_openaev_asset_group",
+        {"action": "update", "asset_group_id": "ag1", "dynamic_filter": json.dumps(group)},
+    )
+    assert not result.is_error, result.content
+    assert [c["method"] for c in fake.calls] == ["get", "put"]
+    assert fake.last_json() == {
+        "asset_group_name": "Web",
+        "asset_group_description": "front",
+        "asset_group_tags": ["t1", "t2"],
+        "asset_group_dynamic_filter": group,
+    }
+
+
+def test_fmt_asset_prints_the_fields_the_write_tool_sets():
+    from app.integrations.providers.openaev._common import _fmt_asset
+
+    out = _fmt_asset(
+        {
+            "asset_id": "e1",
+            "asset_name": "shop",
+            "asset_category": "WEB_APPLICATION",
+            "asset_subcategory": "WEBSITE",
+            "asset_criticality": "HIGH",
+            "asset_internet_facing": False,
+            "asset_url": "https://shop.example",
+            "asset_external_reference": "dns:shop",
+            "asset_tags": [{"tag_id": "t1"}],
+        }
+    )
+    for line in (
+        "Category: WEB_APPLICATION",
+        "Subcategory: WEBSITE",
+        "Criticality: HIGH",
+        "Internet-facing: False",
+        "URL: https://shop.example",
+        "External reference: dns:shop",
+        "Tags: t1",
+    ):
+        assert line in out
+
+
+async def test_asset_update_of_a_missing_endpoint_writes_nothing(monkeypatch):
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    fake = _RecordingApi({})
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_asset",
+        {"action": "update", "asset_id": "e1", "name": "x"},
+    )
+    assert "nothing updated" in result.content
+    assert [c["method"] for c in fake.calls] == ["get"]
+
+
+async def test_asset_bulk_update_by_filter_sends_one_put(monkeypatch):
+    # xtm-one #1288: OpenAEV #9654 PUT /api/assets/bulk, selection by filter.
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    fake = _RecordingApi(["a1", "a2", "a3"])
+    monkeypatch.setattr(assets, "_api", fake)
+    group = {
+        "mode": "and",
+        "filters": [{"key": "asset_tags", "operator": "contains", "values": ["t1"], "mode": "or"}],
+    }
+    result = await _run(
+        executor,
+        "manage_openaev_asset",
+        {
+            "action": "bulk_update",
+            "asset_filter": json.dumps(group),
+            "category": "web_application",
+            "subcategory": "website",
+            "tags": ["t9"],
+        },
+    )
+    assert not result.is_error, result.content
+    assert [(c["method"], c["path"]) for c in fake.calls] == [("put", "/api/assets/bulk")]
+    sent = fake.last_json()
+    assert sent == {
+        "search_pagination_input": {"filterGroup": group},
+        "asset_category": "WEB_APPLICATION",
+        "asset_subcategory": "WEBSITE",
+        "asset_tags_to_add": ["t9"],
+    }
+    assert "Updated 3 asset(s)" in result.content
+
+
+async def test_asset_bulk_update_by_ids(monkeypatch):
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    fake = _RecordingApi(["a1"])
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_asset",
+        {"action": "bulk_update", "asset_ids": ["a1"], "criticality": "high", "url": "https://x.example"},
+    )
+    assert not result.is_error, result.content
+    assert fake.last_json() == {
+        "asset_ids_to_process": ["a1"],
+        "asset_criticality": "HIGH",
+        "asset_url": "https://x.example",
+    }
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        ({"category": "host"}, "exactly one selection"),
+        ({"asset_ids": ["a1"], "asset_filter": "{}", "category": "host"}, "exactly one selection"),
+        ({"asset_ids": ["a1"]}, "at least one of"),
+        ({"asset_ids": ["a1"], "subcategory": "server"}, "needs its category"),
+        ({"asset_filter": "not json", "category": "host"}, "valid JSON"),
+    ],
+)
+async def test_asset_bulk_update_refuses_before_any_call(monkeypatch, args, message):
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    fake = _RecordingApi([])
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(executor, "manage_openaev_asset", {"action": "bulk_update", **args})
+    assert message in result.content
+    assert fake.calls == []
+
+
+async def test_asset_bulk_update_on_an_openaev_without_the_route(monkeypatch):
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+
+    async def fake(base_url, headers, method, path, action, *, json=None, params=None, **kw):
+        return None, "Error: OpenAEV resource not found (404) while trying to bulk update assets."
+
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_asset",
+        {"action": "bulk_update", "asset_ids": ["a1"], "category": "host"},
+    )
+    assert "one by one" in result.content
+
+
 async def test_empty_update_bodies_are_rejected():
     # Representative coverage of the empty-update guard across the domain
     # modules: an update with only the entity id must return a friendly message
@@ -785,6 +1179,83 @@ async def test_empty_update_bodies_are_rejected():
 
 
 # ── Connector catalog browsing + connector-instance deployment ───────────
+
+
+class _PathApi:
+    """Stub for `_api` answering each path with its own canned body."""
+
+    def __init__(self, bodies):
+        self._bodies = bodies
+        self.paths: list[str] = []
+
+    async def __call__(self, base_url, headers, method, path, action, *, json=None, params=None):
+        self.paths.append(path)
+        body = self._bodies.get(path)
+        if isinstance(body, str):
+            return None, body
+        return _FakeResp(body), None
+
+
+async def test_query_connectors_shows_the_reported_composer_version_and_image(monkeypatch):
+    # The XTM Composer version and image come from what the Composer reports to
+    # OpenAEV (GET /api/settings, OpenAEV #9612), never from the platform version.
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/collectors": [{"collector_id": "c1", "collector_name": "Mitre"}],
+            "/api/settings": {
+                "platform_version": "3.261118.0",
+                "xtm_composer_version": "3.261121.0",
+                "xtm_composer_image": "filigran/xtm-composer:3.261121.0",
+                "xtm_composer_last_connectivity_check": "2026-11-21T14:00:00Z",
+            },
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(executor, "query_openaev_connectors", {"kind": "collectors"})
+    assert not result.is_error, result.content
+    assert "Mitre" in result.content
+    assert "  version: 3.261121.0" in result.content
+    assert "  image: filigran/xtm-composer:3.261121.0" in result.content
+    assert "  last connectivity check: 2026-11-21T14:00:00Z" in result.content
+    assert "3.261118.0" not in result.content
+
+
+async def test_query_connectors_names_an_openaev_without_composer_fields(monkeypatch):
+    # An older OpenAEV (no xtm_composer_* in its settings) is named as such, and a
+    # failed settings read keeps the connector list.
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    monkeypatch.setattr(
+        platform,
+        "_api",
+        _PathApi(
+            {
+                "/api/injectors": [{"injector_id": "i1", "injector_name": "HTTP"}],
+                "/api/settings": {"platform_version": "3.261118.0"},
+            }
+        ),
+    )
+    result = await _run(executor, "query_openaev_connectors", {"kind": "injectors"})
+    assert "XTM Composer: not reported by this OpenAEV" in result.content
+    assert "3.261118.0" not in result.content
+
+    monkeypatch.setattr(
+        platform,
+        "_api",
+        _PathApi(
+            {
+                "/api/injectors": [{"injector_id": "i1", "injector_name": "HTTP"}],
+                "/api/settings": "OpenAEV answered 403",
+            }
+        ),
+    )
+    result = await _run(executor, "query_openaev_connectors", {"kind": "injectors"})
+    assert "HTTP" in result.content
+    assert "XTM Composer: could not be read (OpenAEV answered 403)" in result.content
 
 
 async def test_catalog_get_surfaces_required_and_secret_params(monkeypatch):
@@ -1085,7 +1556,8 @@ async def test_connector_instance_from_a_collector_or_executor_id(monkeypatch, k
         {"action": "stop", "connector_id": "c1"},
     )
     assert not result.is_error, result.content
-    assert result.content == "Connector instance ci1 is now stopping."
+    assert result.content.startswith("Connector instance ci1: requested status set to stopping.")
+    assert "is now" not in result.content
     assert fake.calls[-1]["path"] == "/api/connector-instances/ci1/requested-status"
 
 
@@ -1111,6 +1583,160 @@ async def test_connector_kind_reads_one_related_ids_endpoint(monkeypatch):
     assert not result.is_error, result.content
     assert "Connector instance ci1 (resolved from executor e1)" in result.content
     assert fake.calls[0]["path"] == "/api/executors/e1/related-ids"
+
+
+async def test_instance_get_shows_image_and_container_runtime(monkeypatch):
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/connector-instances/ci1": {
+                "connector_instance_id": "ci1",
+                "connector_instance_current_status": "started",
+                "connector_instance_requested_status": "starting",
+                "connector_image": "openaev/injector-nmap:rolling",
+                "connector_instance_started_at": "2026-11-20T10:00:00Z",
+                "connector_instance_restart_count": 2,
+                "connector_instance_is_in_reboot_loop": False,
+            },
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_connector_instance",
+        {"action": "get", "connector_instance_id": "ci1"},
+    )
+    assert not result.is_error, result.content
+    assert "  image: openaev/injector-nmap:rolling" in result.content
+    assert "  started at: 2026-11-20T10:00:00Z" in result.content
+    assert "  restart count: 2" in result.content
+    assert "  in reboot loop: no" in result.content
+    assert "not reported" not in result.content
+
+
+async def test_instance_get_tells_the_requested_intent_from_the_state(monkeypatch):
+    # A requested 'starting' next to a current 'started' is a running instance:
+    # the answer never reads the intent as the state (gap
+    # openaev-instance-status-intent-read-as-state).
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/connector-instances/ci1": {
+                "connector_instance_id": "ci1",
+                "connector_instance_current_status": "started",
+                "connector_instance_requested_status": "starting",
+                "connector_instance_heartbeat_at": "2026-11-23T19:55:24Z",
+                "connector_instance_configurations": [{"k": "v"}],
+            },
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_connector_instance",
+        {"action": "get", "connector_instance_id": "ci1"},
+    )
+    assert not result.is_error, result.content
+    assert "  state (actual): started" in result.content
+    assert "  requested (intent): starting" in result.content
+    assert "  reading: started, as requested" in result.content
+    assert "  raw fields:" in result.content
+    assert "    connector_instance_heartbeat_at: 2026-11-23T19:55:24Z" in result.content
+    assert "configurations" not in result.content
+
+
+async def test_instance_get_says_a_request_is_not_reached_yet(monkeypatch):
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/connector-instances/ci1": {
+                "connector_instance_id": "ci1",
+                "connector_instance_current_status": "stopped",
+                "connector_instance_requested_status": "starting",
+            },
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_connector_instance",
+        {"action": "get", "connector_instance_id": "ci1"},
+    )
+    assert "the request 'starting' has not been reached yet" in result.content
+    assert "raw fields" not in result.content
+
+
+@pytest.mark.parametrize(("tail", "size"), [(10, 10), (500, 100), (0, 50)])
+async def test_connector_instance_logs_takes_a_tail(monkeypatch, tail, size):
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _RecordingApi({"content": [{"i": n} for n in range(120)], "totalElements": 120})
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_connector_instance",
+        {"action": "logs", "connector_instance_id": "ci1", "tail": tail},
+    )
+    assert not result.is_error, result.content
+    assert fake.calls[0]["json"] == {"page": 0, "size": size}
+    assert len(json.loads(result.content)["logs"]) == size
+
+
+async def test_query_connectors_shows_type_external_and_last_execution(monkeypatch):
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/collectors": [
+                {
+                    "collector_id": "c1",
+                    "collector_name": "GitHub",
+                    "collector_type": "openaev_github",
+                    "collector_external": True,
+                    "collector_last_execution": "2026-11-23T19:40:00Z",
+                }
+            ],
+            "/api/settings": {},
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(executor, "query_openaev_connectors", {"kind": "collectors"})
+    assert not result.is_error, result.content
+    assert (
+        "- GitHub (id: c1) {type: openaev_github, external: yes, last execution: 2026-11-23T19:40:00Z}"
+    ) in result.content
+
+
+async def test_instance_get_says_when_start_time_is_not_reported(monkeypatch):
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/connector-instances/ci1": {
+                "connector_instance_id": "ci1",
+                "connector_instance_current_status": "started",
+            },
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_connector_instance",
+        {"action": "get", "connector_instance_id": "ci1"},
+    )
+    assert not result.is_error, result.content
+    assert "  started at: not reported by this OpenAEV" in result.content
+    assert "  image:" not in result.content
+    assert "restart count" not in result.content
 
 
 async def test_connector_without_an_instance_says_it_is_not_managed(monkeypatch):
@@ -1150,7 +1776,50 @@ async def test_unknown_connector_id_names_every_kind_tried(monkeypatch):
         {"action": "logs", "connector_id": "nope"},
     )
     assert "No injector, collector or executor with id nope" in result.content
-    assert len(fake.calls) == 3
+    # The three kinds, then the id tried as a connector instance id.
+    assert [c["path"] for c in fake.calls][-1] == "/api/connector-instances/nope"
+    assert len(fake.calls) == 4
+
+
+async def test_connector_instance_id_passed_as_connector_id(monkeypatch):
+    # query_openaev_connectors lists both ids; an instance id given as
+    # connector_id is resolved as the instance instead of failing.
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/connector-instances/ci1": {"connector_instance_id": "ci1"},
+            "/api/connector-instances/ci1/logs/search": _LOGS,
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_connector_instance",
+        {"action": "logs", "connector_id": "ci1"},
+    )
+    assert not result.is_error, result.content
+    assert json.loads(result.content) == {
+        "connector_instance_id": "ci1",
+        "logs": [{"i": 1}],
+    }
+    assert [c["path"] for c in fake.calls] == [
+        "/api/injectors/ci1/related-ids",
+        "/api/collectors/ci1/related-ids",
+        "/api/executors/ci1/related-ids",
+        "/api/connector-instances/ci1",
+        "/api/connector-instances/ci1/logs/search",
+    ]
+
+
+async def test_connector_list_footer_names_connector_instance_id(monkeypatch):
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    monkeypatch.setattr(platform, "_api", _PathApi({"/api/injectors": [{"injector_id": "inj1"}]}))
+    result = await _run(executor, "query_openaev_connectors", {"kind": "injectors"})
+    assert "takes that id as connector_instance_id" in result.content
 
 
 async def test_catalog_id_alone_never_picks_a_deployment(monkeypatch):

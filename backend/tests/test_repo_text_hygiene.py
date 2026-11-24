@@ -19,9 +19,6 @@ import pytest
 
 from tests import app_sources
 
-#: One worker reads the index once (``--dist loadgroup``), the one that holds the parsed source.
-pytestmark = pytest.mark.xdist_group(app_sources.XDIST_GROUP)
-
 REPO_ROOT = app_sources.REPO_ROOT
 
 #: Files that quote mojibake on purpose, as paths relative to the repository.
@@ -46,11 +43,16 @@ _REPORTED = 40
 
 @functools.cache
 def _git() -> str:
-    """The git executable. Fails on CI when there is none or no checkout: a
-    skipped tripwire is a green build that checked nothing."""
+    """The git executable. Fails on GitHub Actions when there is none or no
+    checkout: a skipped tripwire is a green build that checked nothing.
+
+    The job is told by ``GITHUB_ACTIONS``, not ``CI``: the sandbox command
+    containers set ``CI=1`` for non-interactive tools and run on a checkout
+    without ``.git`` (``materialize_repository`` writes none), where the test
+    has nothing to read and skips."""
     git = shutil.which("git")
     if not git or not (REPO_ROOT / ".git").exists():
-        if os.environ.get("CI"):
+        if os.environ.get("GITHUB_ACTIONS") == "true":
             pytest.fail("the Backend job must run from a git checkout with git installed")
         pytest.skip("not a git checkout")
     return git

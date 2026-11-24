@@ -38,7 +38,7 @@ function ExchangeText({ label, content }: { label: string; content: string }) {
 function RunLink({ runId, label, icon }: { runId: string; label: string; icon: IconName }) {
   return (
     <Button asChild variant="secondary" size="sm" className="gap-1.5">
-      <Link to={`/runs/${runId}`}>
+      <Link to={`/operations/executions/${runId}`}>
         <Icon name={icon} size={16} /> {label}
       </Link>
     </Button>

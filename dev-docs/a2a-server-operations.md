@@ -520,6 +520,18 @@ finishes, and by then nothing is executing it to notice. Expect up to
 `A2A_REAP_INTERVAL_SECONDS` (60) between the child finishing and the partner
 being told.
 
+**Ticket status pushes.** A ticket (work item) created by a run of a partner
+task's run tree is the partner's ticket (the same tree the bulk read of
+`list_work_items` is scoped to). When it changes status (`open`, `in_progress`,
+`blocked`, `done`, `cancelled`; `claimed` is dispatch bookkeeping and is not
+sent), every callback the partner registered on the originating task receives
+`{"kind": "work_item.status_changed", "taskId", "contextId", "workItemId",
+"status", "previousStatus"}` plus its `token`: identity and status only, never
+the title, a note or the result. One attempt per change, no retry, and the
+callback's attempt budget (the task's own announcement) is neither spent nor
+reset; a callback whose budget is spent is not called. The bulk read stays the
+floor (`backend/app/a2a/ticket_push.py`).
+
 ## Automatic revocation — expect this
 
 An exposure is revoked automatically when any of these happen. The partner's

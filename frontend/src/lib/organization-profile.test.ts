@@ -2,7 +2,20 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { formatAmount, fromForm, pirLink, pirNamesOf, splitList, toForm, unreadablePlatform, type ProfileLike } from "./organization-profile.ts";
+import {
+  DEFAULT_TICKETING_SYNC,
+  formatAmount,
+  fromForm,
+  pirLink,
+  pirNamesOf,
+  splitList,
+  isSupportedRecordType,
+  ticketingDefaults,
+  ticketingSyncOf,
+  toForm,
+  unreadablePlatform,
+  type ProfileLike,
+} from "./organization-profile.ts";
 
 const PROFILE: ProfileLike = {
   name: "Acme",
@@ -12,7 +25,6 @@ const PROFILE: ProfileLike = {
   size: "251-1000",
   crown_jewels: [{ name: "Payments", business_service: "Cards", owner: "CISO", criticality: "critical", opencrq_asset_id: "a-1" }],
   tech_stack: [],
-  ai_systems: [],
   pir_ids: ["pir-1"],
   pir_names: { "pir-1": "Ransomware on energy" },
   risk_appetite: { annual_loss_threshold: 1000000, approval_threshold: null },
@@ -25,10 +37,29 @@ describe("organization profile form", () => {
   it("round-trips a stored profile unchanged", () => {
     const result = fromForm(toForm(PROFILE));
     assert.ok("profile" in result);
-    assert.deepEqual(result.profile, PROFILE);
+    // The shipped products are always sent (#1432): an empty list is what clears them.
+    assert.deepEqual(result.profile, { ...PROFILE, shipped_products: [] });
   });
 
-  it("keeps the assets, the policy, the knowledge links and the crown jewel links through a save (#11543)", () => {
+  it("carries the shipped products through a save, drops rows without a product and repeats of a repository (#1432)", () => {
+    const shipped: ProfileLike = {
+      ...PROFILE,
+      shipped_products: [{ product: "Acme Server", vendor: "Acme", cpe: "", repositories: ["acme/server"] }],
+    };
+    const kept = fromForm(toForm(shipped));
+    assert.ok("profile" in kept);
+    assert.deepEqual(kept.profile, shipped);
+    const form = toForm(shipped);
+    form.shipped_products = [
+      { product: " ", vendor: "", cpe: "", repositories: [] },
+      { product: "Acme Agent", vendor: "Acme", cpe: "", repositories: [" acme/agent ", "acme/agent", ""] },
+    ];
+    const cleaned = fromForm(form);
+    assert.ok("profile" in cleaned);
+    assert.deepEqual(cleaned.profile.shipped_products, [{ product: "Acme Agent", vendor: "Acme", cpe: "", repositories: ["acme/agent"] }]);
+  });
+
+  it("keeps the assets, the policy, the knowledge links and the primary asset links through a save (#11543)", () => {
     const filled: ProfileLike = {
       ...PROFILE,
       crown_jewels: [{ ...PROFILE.crown_jewels[0], asset_names: ["web-1"] }],
@@ -48,7 +79,7 @@ describe("organization profile form", () => {
     };
     const result = fromForm(toForm(filled));
     assert.ok("profile" in result);
-    assert.deepEqual(result.profile, filled);
+    assert.deepEqual(result.profile, { ...filled, shipped_products: [] });
   });
 
   it("keeps the posture target through a save, and adds none to a profile without one (#11547 S2e)", () => {
@@ -111,6 +142,36 @@ describe("organization profile form", () => {
     assert.equal(unreadablePlatform("OpenCTI PIRs: Enterprise Edition"), "OpenCTI PIRs");
     assert.equal(unreadablePlatform("OpenAEV: TimeoutError"), "OpenAEV");
     assert.equal(unreadablePlatform("something else"), "");
+  });
+
+  it("keeps the CTEM ticketing sync through a save, cleaned, and adds none to a profile without one (#917)", () => {
+    const sync = { ...DEFAULT_TICKETING_SYNC, create_on: "mobilize_p1" as const, labels: ["ctem"], priority_map: { P1: "Highest" }, status_map: { "Ready for QA": "done" } };
+    const withSync: ProfileLike = { ...PROFILE, ticketing: { integration: "int-1", project: "SEC", sync } };
+    const kept = fromForm(toForm(withSync));
+    assert.ok("profile" in kept);
+    assert.deepEqual(kept.profile.ticketing, withSync.ticketing);
+    const form = toForm(withSync);
+    form.ticketing.sync = { ...sync, record_type: " Bug ", labels: ["ctem", " ctem", ""], priority_map: { P1: " ", P2: "High" }, status_map: { " ": "done", " QA ": "in_progress" } };
+    const cleaned = fromForm(form);
+    assert.ok("profile" in cleaned);
+    assert.deepEqual(cleaned.profile.ticketing.sync, { ...sync, record_type: "Bug", labels: ["ctem"], priority_map: { P2: "High" }, status_map: { QA: "in_progress" } });
+    const none = fromForm(toForm(PROFILE));
+    assert.ok("profile" in none);
+    assert.equal("sync" in none.profile.ticketing, false);
+  });
+
+  it("fills a partial stored sync with the program defaults, and names the backend default per provider (#917)", () => {
+    assert.deepEqual(ticketingSyncOf({ on_reopen: "linked" }), { ...DEFAULT_TICKETING_SYNC, on_reopen: "linked" });
+    assert.deepEqual(ticketingSyncOf(undefined), DEFAULT_TICKETING_SYNC);
+    assert.equal(ticketingDefaults("servicenow").record_type, "incident");
+    assert.equal(ticketingDefaults("jira").priority.P1, "Highest");
+  });
+
+  it("accepts only the three ServiceNow tables the case sync writes to, any Jira issue type", () => {
+    for (const table of ["incident", "change_request", "problem", "", " problem "]) assert.equal(isSupportedRecordType("servicenow", table), true, table);
+    for (const table of ["sc_task", "Incident", "task"]) assert.equal(isSupportedRecordType("servicenow", table), false, table);
+    assert.equal(isSupportedRecordType("jira", "sc_task"), true);
+    assert.equal(isSupportedRecordType("", "Bug"), true);
   });
 
   it("names the field when an amount is not a number", () => {

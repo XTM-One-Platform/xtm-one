@@ -37,10 +37,10 @@ holds what replaced that, apart from the SQL, which stays with the queue:
   oldest and newest alternately once its oldest queued run is older than
   ``ASSIGNMENT_QUEUE_BACKLOG_SECONDS``, so a backlog never delays fresh work by
   its whole length (nothing is dropped);
-- the 429 back-off: a 429 met by an assignment's run (model provider or
-  integration) halves that assignment's cap for
-  ``ASSIGNMENT_DISPATCH_RATE_LIMIT_BACKOFF_SECONDS``, a fixed window; a 429 met
-  anywhere else (chat, evaluations, embeddings) is none of dispatch's business
+- the rate-limit back-off: a rate limit met by an assignment's run (a model
+  provider's or an integration's 429, the AI Gateway's throttle) halves that
+  assignment's cap for ``ASSIGNMENT_DISPATCH_RATE_LIMIT_BACKOFF_SECONDS``, a
+  fixed window; one met anywhere else (chat, evaluations, embeddings) is none of dispatch's business
   (the retries of ``retry_llm_call`` and ``safe_request`` are unchanged);
 - the per-assignment dispatch gauges served on ``/metrics``.
 
@@ -52,6 +52,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import logging
+import math
 import time
 import uuid
 from collections import deque
@@ -116,6 +117,21 @@ def is_delivery(trigger_context: dict | None) -> bool:
 def shares_slots(run_type: object) -> bool:
     """Whether a run of ``trigger_context["type"]`` *run_type* shares its assignment up to the cap."""
     return run_type in SHARED_SLOT_TRIGGER_TYPES
+
+
+#: Trigger types of a seeded assignment that fires once per event: born with
+#: ``SEEDED_EVENT_CONCURRENCY`` runs at once unless its seed names a cap, so an
+#: event storm on one seeded fleet never takes the whole worker pool.
+SEEDED_EVENT_TRIGGER_TYPES = frozenset({"integration_event", "platform_event"})
+SEEDED_EVENT_CONCURRENCY = 1
+
+
+def seeded_trigger_config(trigger_type: object, trigger_config: dict[str, Any] | None) -> dict[str, Any]:
+    """The ``trigger_config`` a built-in seed writes: an event trigger capped at one run unless it names a cap."""
+    config = dict(trigger_config) if isinstance(trigger_config, dict) else {}
+    if trigger_type in SEEDED_EVENT_TRIGGER_TYPES:
+        config.setdefault(MAX_CONCURRENT_RUNS_KEY, SEEDED_EVENT_CONCURRENCY)
+    return config
 
 
 def _clamp_cap(value: int) -> int:
@@ -473,12 +489,98 @@ def select_runs(
 
 
 def throttled_cap(cap: int) -> int:
-    """The cap an assignment backs off to while a provider answers 429."""
+    """The cap an assignment backs off to while a provider rate-limits it."""
     return max(1, cap // 2)
 
 
 # ---------------------------------------------------------------------------
-# 429 back-off
+# Fair share of the worker pool across fleets
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ClaimCandidate:
+    """One due assignment execution as the fair-share deal reads it.
+
+    ``group``: the agent's home fleet, else the agent itself (an agent outside
+    any fleet is its own group). ``child_of_live_parent``: a delegated run whose
+    parent run still holds a slot, waiting for it.
+    """
+
+    key: Any
+    group: str
+    agent: str
+    run_at: datetime
+    child_of_live_parent: bool = False
+
+
+def share_cap(pool: int, share: float) -> int:
+    """The slots one group (or agent) may hold while another waits: at least 1, at most the pool."""
+    pool = max(1, int(pool))
+    if share <= 0 or share >= 1:
+        return pool
+    return max(1, min(pool, math.ceil(pool * share)))
+
+
+def fair_share_order(
+    candidates: Iterable[ClaimCandidate],
+    *,
+    running_by_group: dict[str, int],
+    running_by_agent: dict[str, int],
+    pool: int,
+    fleet_share: float,
+    agent_share: float,
+) -> list[Any]:
+    """The order a free slot claims the due *candidates* in (their keys).
+
+    1. Delegated children of a live parent first, oldest first: the parent holds
+       a slot until its child ends, so the child never queues behind the
+       backlog its parent's slot is part of.
+    2. Then one candidate per group in turn, the group whose oldest due run is
+       oldest first, each group's runs oldest first. A storm of one fleet
+       therefore never delays another fleet's run by more than one slot.
+    3. A group already holding its share of the pool (``fleet_share``), or a
+       run whose agent holds its share (``agent_share``), goes after every
+       group still under its share, in the same turn order: work-conserving, an
+       otherwise idle pool still runs it.
+
+    Pure and linear in the candidates; claims taken in this order count against
+    the shares as they are dealt.
+    """
+    items = sorted(candidates, key=lambda c: (c.run_at, str(c.key)))
+    first = [c for c in items if c.child_of_live_parent]
+    rest = [c for c in items if not c.child_of_live_parent]
+    group_cap = share_cap(pool, fleet_share)
+    agent_cap = share_cap(pool, agent_share)
+    held_group = dict(running_by_group)
+    held_agent = dict(running_by_agent)
+    for child in first:
+        held_group[child.group] = held_group.get(child.group, 0) + 1
+        held_agent[child.agent] = held_agent.get(child.agent, 0) + 1
+
+    queues: dict[str, deque[ClaimCandidate]] = {}
+    for candidate in rest:
+        queues.setdefault(candidate.group, deque()).append(candidate)
+    groups = deque(queues)
+    under: list[ClaimCandidate] = []
+    over: list[ClaimCandidate] = []
+    while groups:
+        group = groups.popleft()
+        queue = queues[group]
+        candidate = queue.popleft()
+        if held_group.get(group, 0) >= group_cap or held_agent.get(candidate.agent, 0) >= agent_cap:
+            over.append(candidate)
+        else:
+            under.append(candidate)
+            held_group[group] = held_group.get(group, 0) + 1
+            held_agent[candidate.agent] = held_agent.get(candidate.agent, 0) + 1
+        if queue:
+            groups.append(group)
+    return [c.key for c in (*first, *under, *over)]
+
+
+# ---------------------------------------------------------------------------
+# Rate-limit back-off
 # ---------------------------------------------------------------------------
 
 _ASSIGNMENT_THROTTLE_PREFIX = "assignment_dispatch:throttled:"
@@ -499,7 +601,7 @@ async def _redis():
 
 @contextlib.contextmanager
 def dispatch_scope(assignment_id: object) -> Iterator[None]:
-    """Attribute the 429s met inside the block to this assignment's runs."""
+    """Attribute the rate limits met inside the block to this assignment's runs."""
     token = _current_assignment.set(str(assignment_id) if assignment_id else None)
     try:
         yield
@@ -508,13 +610,13 @@ def dispatch_scope(assignment_id: object) -> Iterator[None]:
 
 
 async def note_rate_limited(source: str) -> None:
-    """Record a provider's 429 met by an assignment's run. Never raises.
+    """Record a provider's rate limit (a 429, or the AI Gateway's throttle) met by an assignment's run. Never raises.
 
-    Only a 429 met inside ``dispatch_scope`` counts, model provider
+    Only a rate limit met inside ``dispatch_scope`` counts, model provider
     (``source="llm"``) or integration alike, and it backs off that assignment
-    alone: a 429 met in a chat, an evaluation or an embedding - on a user's own
+    alone: one met in a chat, an evaluation or an embedding - on a user's own
     key as often as not - throttles nothing. The window is fixed from
-    the first 429: the retries that follow do not extend it.
+    the first one: the retries that follow do not extend it.
     """
     seconds = int(settings.assignment_dispatch_rate_limit_backoff_seconds)
     assignment_id = _current_assignment.get()
@@ -524,13 +626,13 @@ async def note_rate_limited(source: str) -> None:
         redis = await _redis()
         if await redis.set(_ASSIGNMENT_THROTTLE_PREFIX + assignment_id, "1", ex=seconds, nx=True):
             logger.info(
-                "Assignment dispatch backing off for %ds: %s rate limit (429) on assignment %s",
+                "Assignment dispatch backing off for %ds: %s rate limit on assignment %s",
                 seconds,
                 source,
                 assignment_id,
             )
     except Exception as exc:
-        logger.debug("Could not record a %s 429 for dispatch: %s", source, format_exception_message(exc))
+        logger.debug("Could not record a %s rate limit for dispatch: %s", source, format_exception_message(exc))
     with contextlib.suppress(ValueError):
         _throttle_cache[uuid.UUID(assignment_id)] = (time.monotonic() + _THROTTLE_CACHE_SECONDS, True)
 
@@ -590,6 +692,7 @@ async def read_dispatch_stats(db) -> dict[str, Any]:
 
     from app.models.assignment import Assignment, AssignmentRun
     from app.services.assignment_engine import QUEUED_RUN_STATUS, _queue_blocking_statuses
+    from app.services.decision_waits import holds_assignment
 
     now = datetime.now(UTC)
     hold_on_approval = bool(settings.assignment_queue_hold_on_awaiting_human)
@@ -608,7 +711,7 @@ async def read_dispatch_stats(db) -> dict[str, Any]:
                 func.count().filter(AssignmentRun.status == "awaiting_human"),
             )
             .where(
-                AssignmentRun.status.in_(_queue_blocking_statuses()),
+                holds_assignment(AssignmentRun, _queue_blocking_statuses()),
                 AssignmentRun.assignment_id.is_not(None),
             )
             .group_by(AssignmentRun.assignment_id)

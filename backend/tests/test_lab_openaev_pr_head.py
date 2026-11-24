@@ -39,10 +39,83 @@ def test_the_service_runs_the_script_on_the_jvm_image_with_its_stores():
 
 def test_the_ports_never_meet_another_lab():
     module = _module()
-    ours = {module.PORT, module.VITE_PORT, module.BACKEND_PORT}
-    assert len(ours) == 3
+    ours = {module.PORT, module.VITE_PORT, module.BACKEND_PORT, module.OPENCTI_STUB_PORT}
+    assert len(ours) == 4
     others = {spec["port"] for name, spec in _services().items() if name != "lab-openaev"}
     assert not ours & others
+
+
+def test_the_default_tenant_is_connected_to_the_opencti_stub(monkeypatch):
+    """Gap lab-xtm-counterpart-stub: the backend's own counterpart lookup answers, no browser stub."""
+    import json
+
+    module = _module()
+    monkeypatch.delenv("LAB_OPENAEV_OPENCTI", raising=False)
+    spring = json.loads(module.backend_env()["SPRING_APPLICATION_JSON"])
+    assert spring == {
+        "openaev": {
+            "xtm": {"opencti": {"enable": True, "url": module.OPENCTI_STUB_URL, "token": module.OPENCTI_STUB_TOKEN}}
+        }
+    }
+    assert module.OPENCTI_STUB_URL.endswith("/") and str(module.OPENCTI_STUB_PORT) in module.OPENCTI_STUB_URL
+    monkeypatch.setenv("LAB_OPENAEV_OPENCTI", "off")
+    assert "SPRING_APPLICATION_JSON" not in module.backend_env()
+
+
+def _lookup(module, kind_filters):
+    return module.opencti_answer(
+        {
+            "query": "query XtmCounterparts { stixCoreObjects { edges { node { id } } } }",
+            "variables": {"first": 8, "filters": kind_filters},
+        }
+    )
+
+
+def test_the_stub_answers_the_asset_lookup_found_and_not_found():
+    """The filter shape of OpenCTICounterpartProvider.variables(ASSET): a System by name, observables by value."""
+    module = _module()
+    names = ["lab-web-01", "lab-dc-01", "lab-mac-01"]
+    filters = {
+        "mode": "or",
+        "filters": [],
+        "filterGroups": [
+            {
+                "mode": "and",
+                "filters": [{"key": ["entity_type"], "values": ["System"]}, {"key": ["name"], "values": names}],
+            },
+            {
+                "mode": "and",
+                "filters": [
+                    {"key": ["entity_type"], "values": ["Hostname", "IPv4-Addr"]},
+                    {"key": ["value"], "values": names},
+                ],
+            },
+        ],
+    }
+    nodes = [e["node"] for e in _lookup(module, filters)["data"]["stixCoreObjects"]["edges"]]
+    found = {n.get("name") or n.get("observable_value") for n in nodes}
+    assert found == {"lab-web-01", "lab-dc-01"}
+    web = next(n for n in nodes if n.get("name") == "lab-web-01")
+    assert web["representative"]["main"] == "lab-web-01" and web["reports"]["pageInfo"]["globalCount"] == 3
+    assert web["objectMarking"] == [{"definition": "TLP:AMBER"}] and web["modified"]
+
+
+def test_the_stub_answers_an_attack_pattern_by_its_mitre_id_and_nothing_else_empty():
+    module = _module()
+    filters = {
+        "mode": "and",
+        "filters": [
+            {"key": ["entity_type"], "values": ["Attack-Pattern"]},
+            {"key": ["x_mitre_id"], "values": ["T1486", "T9999"]},
+        ],
+        "filterGroups": [],
+    }
+    nodes = [e["node"] for e in _lookup(module, filters)["data"]["stixCoreObjects"]["edges"]]
+    assert [n["x_mitre_id"] for n in nodes] == ["T1486"]
+    assert module.opencti_answer({"query": "query { externalReferences { edges { node { url } } } }"}) == {
+        "data": {"externalReferences": {"edges": []}}
+    }
+    assert module.opencti_answer({"query": "mutation { connectorRegister }"}) == {"data": {}}
 
 
 def test_the_backend_runs_on_the_port_the_front_proxies_to():
@@ -56,6 +129,12 @@ def test_the_backend_is_awaited_on_its_unauthenticated_route():
     assert f"/api/health?health_access_key={module.HEALTH_KEY}" == module.HEALTH_PATH
     assert module.backend_env()["OPENAEV_HEALTHCHECK_KEY"] == module.HEALTH_KEY
     assert "{HEALTH_PATH}" in SCRIPT.read_text(encoding="utf-8")
+
+
+def test_the_lab_turns_every_preview_feature_on():
+    """A PR behind an OpenAEV preview flag renders its screens in the lab, not the flag-off fallback."""
+    module = _module()
+    assert module.backend_env()["OPENAEV_ENABLED_DEV_FEATURES"] == module.PREVIEW_FEATURES == "*"
 
 
 def test_the_backend_boots_on_the_lab_stores():
@@ -93,23 +172,70 @@ def test_the_seed_writes_on_the_default_tenant(monkeypatch, tmp_path):
     module = _module()
     calls = []
 
+    monkeypatch.setattr(module, "STATE", {})
+    monkeypatch.setattr(module, "api", _seed_api(calls))
+    monkeypatch.setattr(module, "SEEDED", tmp_path / "openaev-seeded.json")
+    done = module.seed()
+    writes = [path for method, path, _ in calls if method == "POST"]
+    assert all(path.startswith(f"/api/tenants/{module.TENANT_ID}/") for path in writes)
+    assert len(done) == len(module.SEED_ASSETS) + 8
+    assert module.STATE["scenario"] == "s1" and module.STATE["simulation"] == "e1"
+    assert "seed_missing" not in module.STATE
+
+
+def _seed_api(calls):
     def api(method, path, body=None):
-        calls.append((method, path))
+        calls.append((method, path, body))
+        if path == "/api/settings":
+            return {"platform_version": "3.261123.0"}
         if path.endswith("endpoints/agentless"):
             return {"asset_id": f"a{len(calls)}"}
+        if path.endswith("endpoints/register"):
+            return {"asset_id": "agent-1"}
         if path.endswith("scenarios"):
             return {"scenario_id": "s1"}
         if path.endswith("exercises"):
             return {"exercise_id": "e1"}
+        if path.endswith("/payloads"):
+            return {"payload_id": "p1"}
+        if path.endswith("injector_contracts/search"):
+            return {"content": [{"injector_contract_id": "c1"}]}
+        if path.endswith("/atomic-testings"):
+            return {"inject_id": "i1"}
         return {}
 
-    monkeypatch.setattr(module, "api", api)
+    return api
+
+
+def test_the_seed_launches_an_atomic_testing_on_a_registered_agent(monkeypatch, tmp_path):
+    """Gap lab-openaev-no-running-atomic-testing-seed: the running and pending states render with no hand SQL."""
+    module = _module()
+    calls = []
+    monkeypatch.setattr(module, "STATE", {})
+    monkeypatch.setattr(module, "api", _seed_api(calls))
     monkeypatch.setattr(module, "SEEDED", tmp_path / "openaev-seeded.json")
-    done = module.seed()
-    assert all(path.startswith(f"/api/tenants/{module.TENANT_ID}/") for _, path in calls)
-    assert len(done) == len(module.SEED_ASSETS) + 3
-    assert module.STATE["scenario"] == "s1" and module.STATE["simulation"] == "e1"
-    assert "seed_missing" not in module.STATE
+    module.seed()
+    bodies = {path.rsplit(f"/api/tenants/{module.TENANT_ID}/", 1)[-1]: body for _, path, body in calls}
+    # The agent registers with the backend's own version: any other gets an upgrade job whose installer is absent.
+    assert bodies["endpoints/register"]["endpoint_agent_version"] == "3.261123.0"
+    assert bodies["atomic-testings"]["inject_injector_contract"] == "c1"
+    assert bodies["atomic-testings"]["inject_assets"] == ["agent-1"]
+    assert ("POST", module.tenant_path("atomic-testings/i1/launch"), None) in calls
+    assert module.STATE["atomic_testing"] == "i1" and "seed_missing" not in module.STATE
+
+
+def test_a_missing_platform_version_names_the_agent_step_and_skips_what_depends_on_it(monkeypatch, tmp_path):
+    module = _module()
+    calls = []
+    inner = _seed_api(calls)
+    monkeypatch.setattr(module, "STATE", {})
+    monkeypatch.setattr(module, "api", lambda m, p, b=None: {} if p == "/api/settings" else inner(m, p, b))
+    monkeypatch.setattr(module, "SEEDED", tmp_path / "openaev-seeded.json")
+    module.seed()
+    missing = module.STATE["seed_missing"]
+    assert "agent lab-agent-01" in missing and "platform_version" in missing
+    assert "atomic testing" in missing and "launch of" in missing
+    assert "agent" not in module.STATE
 
 
 def _http_error(module, code: int, body: bytes):
@@ -139,22 +265,18 @@ def test_a_failed_simulation_is_named_with_the_backend_answer_and_seeded_on_the_
     monkeypatch.setattr(module, "STATE", {})
     calls = []
     refuse = {"exercises": True}
+    inner = _seed_api([])
 
     def api(method, path, body=None):
-        calls.append(path)
+        if method == "POST":
+            calls.append(path)
         if path.endswith("exercises") and refuse["exercises"]:
             raise _http_error(module, 400, b'{"message":"exercise_name: must not be blank"}')
-        if path.endswith("endpoints/agentless"):
-            return {"asset_id": f"a{len(calls)}"}
-        if path.endswith("scenarios"):
-            return {"scenario_id": "s1"}
-        if path.endswith("exercises"):
-            return {"exercise_id": "e1"}
-        return {}
+        return inner(method, path, body)
 
     monkeypatch.setattr(module, "api", api)
     first = module.seed()
-    assert len(first) == len(module.SEED_ASSETS) + 2
+    assert len(first) == len(module.SEED_ASSETS) + 7
     assert calls.count(module.tenant_path("exercises")) == 1, "a 4xx is final, never retried"
     assert "HTTP 400" in module.STATE["seed_missing"] and "must not be blank" in module.STATE["seed_missing"]
     assert "simulation" not in module.STATE
@@ -168,6 +290,48 @@ def test_a_failed_simulation_is_named_with_the_backend_answer_and_seeded_on_the_
     assert second == [f"simulation {module.SEED_SIMULATION['exercise_name']}"]
     assert module.STATE["scenario"] == "s1" and module.STATE["simulation"] == "e1"
     assert "seed_missing" not in module.STATE
+
+
+def test_the_history_writes_finished_simulations_once_with_bound_values(monkeypatch, tmp_path):
+    """Gap lab-openaev-no-history-seed: past finished simulations with scored expectations, no hand SQL."""
+    module = _module()
+    calls = []
+    monkeypatch.setattr(module, "STATE", {})
+    monkeypatch.setattr(module, "SEEDED", tmp_path / "openaev-seeded.json")
+    monkeypatch.setattr(module, "psql", lambda sql, **params: calls.append((sql, params)) or "10")
+    assert module.seed_history() is True
+    sql, params = calls[0]
+    assert params == {"scenario": module.SEED_SCENARIO["scenario_name"], "weeks": str(module.HISTORY_WEEKS)}
+    assert module.SEED_SCENARIO["scenario_name"] not in sql, "values are bound as psql variables, never spliced"
+    assert "'FINISHED'" in sql and "injects_expectations" in sql and "scenarios_exercises" in sql
+    for kind in ("PREVENTION", "DETECTION", "VULNERABILITY"):
+        assert f"'{kind}'" in sql
+    # The next start on the kept database writes nothing again.
+    assert module.seed_history() is False
+    assert len(calls) == 1
+
+
+def test_a_failed_history_is_named_and_tried_again_on_the_next_start(monkeypatch, tmp_path):
+    module = _module()
+    monkeypatch.setattr(module, "STATE", {"seed_missing": "asset lab-web-01 (HTTP 400)"})
+    monkeypatch.setattr(module, "SEEDED", tmp_path / "openaev-seeded.json")
+
+    def fail(sql, **params):
+        raise module.subprocess.CalledProcessError(3, ["psql"], stderr="ERROR:  no scenario named Lab")
+
+    monkeypatch.setattr(module, "psql", fail)
+    assert module.seed_history() is False
+    missing = module.STATE["seed_missing"]
+    assert missing.startswith("asset lab-web-01 (HTTP 400); ")
+    assert module.HISTORY_STEP in missing and "no scenario named" in missing
+    monkeypatch.setattr(module, "psql", lambda sql, **params: "10")
+    assert module.seed_history() is True
+
+
+def test_the_start_writes_the_history_after_the_api_seed():
+    source = SCRIPT.read_text()
+    main = source[source.index("def main()") :]
+    assert main.index("seed()") < main.index("seed_history()")
 
 
 def test_the_seed_waits_for_the_admin_token_the_start_up_runner_writes(monkeypatch):

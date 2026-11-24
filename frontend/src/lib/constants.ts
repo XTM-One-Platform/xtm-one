@@ -35,6 +35,7 @@ import {
   Network, Scan, ScanSearch, TrendingUp,
 } from "lucide-react";
 import { BASE_PATH, withBasePath } from "@/lib/base-path";
+import type { HotTone } from "@/components/ui/tone-badge";
 import { HEADLINE_LABELS } from "@/lib/evaluation-headlines";
 import { ALL_HANDOVER_TYPES } from "@/lib/handover-types";
 import { providerLogoSrcFrom } from "@/lib/provider-logo-src";
@@ -223,6 +224,8 @@ export const TRIGGER_ICONS: Record<string, React.ElementType> = {
   manual: Play,
   work_item: ListChecks,
   platform_event: Radio,
+  // The CTEM signal tile of the trigger picker (#1409), a platform_event trigger underneath.
+  ctem_signal: Radar,
 };
 
 export const TRIGGER_LABELS: Record<string, string> = {
@@ -232,6 +235,7 @@ export const TRIGGER_LABELS: Record<string, string> = {
   manual: "Manual",
   work_item: "Work item",
   platform_event: "Platform event",
+  ctem_signal: "CTEM signal",
   followup: "Follow-up",
 };
 
@@ -319,10 +323,14 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   figma: "Figma",
   filigran_ai: "Filigran AI",
   planhat: "Planhat",
+  quotapath: "QuotaPath",
   metabase: "Metabase",
+  odoo: "Odoo",
   openaev: "OpenAEV",
   opencti: "OpenCTI",
   opencrq: "OpenCRQ",
+  // The core, a module Platform Health covers on an XTM One platform (#974).
+  xtm_one: "XTM One",
   xtm_hub: "XTM Hub",
   intune: "Microsoft Intune",
   sentinel: "Microsoft Sentinel",
@@ -374,6 +382,9 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   sekoia: "Sekoia.io",
   sublime: "Sublime Security",
   aikido: "Aikido Security",
+  airwallex: "Airwallex",
+  rydoo: "Rydoo",
+  spendesk: "Spendesk",
   whatsapp: "WhatsApp",
   securityscorecard: "SecurityScorecard",
   pagerduty: "PagerDuty",
@@ -402,12 +413,14 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   newsapi: "NewsAPI",
   feedly: "Feedly",
   rss: "RSS",
+  platform_email: "Platform email",
   perk: "Perk",
   google_search: "Google Search",
   brave_search: "Brave Search",
   giphy: "GIPHY",
   credly: "Credly",
   concord: "Concord",
+  dealhub: "DealHub",
   ashby: "Ashby",
   linkedin: "LinkedIn",
   x: "X (Twitter)",
@@ -421,6 +434,8 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   docusign: "DocuSign",
   google_a2a: "Google Agent Platform A2A",
   nova: "Nova Prompt Safety",
+  netsuite: "NetSuite",
+  pennylane: "Pennylane",
 };
 
 // ── MCP transport display names ─────────────────────────────────────────────
@@ -528,10 +543,12 @@ const INTEGRATION_TYPE_LABEL_KEYS = {
   crm: "CRM",
   documentation: "Documentation",
   travel: "Travel & Booking",
+  spend_management: "Spend Management",
   compliance: "Compliance",
   data_governance: "Data Governance",
   ediscovery: "eDiscovery",
   hr: "HR & People",
+  sales_compensation: "Sales Compensation",
   design: "Design",
   siem: "SIEM",
   email_security: "Email Security",
@@ -579,6 +596,11 @@ const INTEGRATION_TYPE_LABEL_KEYS = {
   a2a: "Agent to Agent (A2A)",
   marketplace: "Marketplace & Resources",
   guardrails: "Guardrails",
+  accounting: "Accounting",
+  erp: "ERP",
+  finance: "Finance & Treasury",
+  expense_management: "Expense Management",
+  cpq: "Quoting (CPQ)",
 } as const;
 
 /** Integration type labels by type id; display them through `t_i18n`, search haystacks keep the English form. */
@@ -769,11 +791,15 @@ export const PROVIDER_LOGOS: Record<string, string> = assetPaths({
   figma: "/logos/figma.svg",
   filigran_ai: "/logos/filigran.svg",
   planhat: "/logos/planhat.svg",
+  quotapath: "/logos/quotapath.svg",
   metabase: "/logos/metabase.svg",
+  odoo: "/logos/odoo.svg",
   grafana: "/logos/grafana.svg",
   openaev: "/logos/openaev.svg",
   opencti: "/logos/opencti.svg",
   opencrq: "/logos/opencrq.svg",
+  // The pinned emblem (#964 palette); the light theme reads PROVIDER_LOGOS_LIGHT (UX r1 B1 on #980).
+  xtm_one: "/xtm-one-emblem.svg",
   xtm_hub: "/logos/xtm_hub.svg",
   intune: "/logos/intune.svg",
   sentinel: "/logos/sentinel.svg",
@@ -852,12 +878,14 @@ export const PROVIDER_LOGOS: Record<string, string> = assetPaths({
   newsapi: "/logos/newsapi.svg",
   feedly: "/logos/feedly.svg",
   rss: "/logos/rss.svg",
+  platform_email: "/logos/platform_email.svg",
   perk: "/logos/perk.svg",
   google_search: "/logos/google_search.svg",
   brave_search: "/logos/brave_search.svg",
   giphy: "/logos/giphy.svg",
   credly: "/logos/credly.svg",
   concord: "/logos/concord.svg",
+  dealhub: "/logos/dealhub.svg",
   ashby: "/logos/ashby.svg",
   linkedin: "/logos/linkedin.svg",
   x: "/logos/x.svg",
@@ -873,6 +901,11 @@ export const PROVIDER_LOGOS: Record<string, string> = assetPaths({
   telegram_bot: "/logos/telegram.svg",
   discord_bot: "/logos/discord.svg",
   googlechat_bot: "/logos/google_chat.svg",
+});
+
+/** The marks drawn twice, one per theme: the light theme's file (UX r1 B1 on #980, the #964 palette). */
+export const PROVIDER_LOGOS_LIGHT: Record<string, string> = assetPaths({
+  xtm_one: "/xtm-one-emblem-light.svg",
 });
 
 /**
@@ -1752,8 +1785,8 @@ export function organizationContextEffective(
 
 /** @i18n-keys */
 export const ORGANIZATION_CONTEXT_CATEGORY_LABELS = {
-  crown_jewels: "Crown jewels",
-  tech_stack: "Tech stack",
+  primary_assets: "Primary assets",
+  software: "Software",
   ai_systems: "AI systems inventory",
   pirs: "Priority intelligence requirements (PIRs)",
   tracked_organizations: "Tracked organizations",
@@ -2603,13 +2636,16 @@ export const CTEM_BAND_CONFIG: Record<
 export const CTEM_BAND_SCALE_TEXT =
   "0-100, higher is better: under 40 Critical, 40-59 At risk, 60-74 Fair, 75-89 Good, 90+ Strong.";
 
-/** Priority badge styling for CTEM briefing next-steps / recommended actions.
- *  Shared by the Exposure Briefing page and the dashboard Recommended actions
- *  card so the High / Medium / Low badge looks identical in both places. */
-export const CTEM_PRIORITY_CONFIG: Record<string, { label: string; cls: string }> = {
-  high: { label: "High", cls: "bg-feedback-error-primary/15 text-feedback-error-primary" },
-  medium: { label: "Medium", cls: "bg-feedback-alert-primary/15 text-feedback-warning-tertiary" },
-  low: { label: "Low", cls: "bg-elevation-hover text-default-secondary" },
+/** Priority of a CTEM briefing next step or recommended action: its label and
+ *  the ToneBadge tone it is drawn in (#1354), so the High / Medium / Low chip
+ *  wears the single chip style of every other CTEM chip (design system 1.13.0,
+ *  #1595) and looks identical on the Exposure Briefing page,
+ *  the briefing card, Act now and Recommended actions. The labels are context
+ *  keys: the bare "Medium" key means "medium term" in fr, es and ja. */
+export const CTEM_PRIORITY_CONFIG: Record<string, { label: string; tone: HotTone }> = {
+  high: { label: "High (priority)", tone: "red" },
+  medium: { label: "Medium (priority)", tone: "orange" },
+  low: { label: "Low (priority)", tone: "neutral" },
 };
 
 /** Products that feed the CTEM command center. OpenCRQ is registration-driven

@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   activeFilterCount,
+  clearFilterParams,
   initialTableState,
   matchesFilters,
   readTableState,
@@ -13,6 +14,13 @@ import {
 const defaults: DataTableDefaults = { sort: { key: "name", direction: "asc" }, pageSize: 25 };
 
 describe("data table state in the URL", () => {
+  it("clears the page's filter keys and the table's search, filters and page, keeps the rest", () => {
+    const params = new URLSearchParams("view=waiting&fleet=f1&agent=a&status=blocked&wi_q=x&wi_f_kind=a&wi_page=2&q=old&page=3&wi_sort=due:asc&wi_size=50&vis=mine&item=i1");
+    const next = clearFilterParams(params, ["view", "fleet", "agent", "status"], "wi_");
+    assert.equal(next.toString(), "wi_sort=due%3Aasc&wi_size=50&vis=mine&item=i1");
+    assert.equal(params.get("view"), "waiting", "the input is never changed");
+  });
+
   it("writes nothing for an untouched table and keeps the other keys", () => {
     const params = new URLSearchParams("tab=usage");
     const next = writeTableState(params, "", initialTableState(defaults), defaults);

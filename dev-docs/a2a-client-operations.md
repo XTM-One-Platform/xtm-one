@@ -291,7 +291,13 @@ resumed, so for that path:
   work item's run still going stays refused `continuation_not_owned`
   (FR-046). The refusal never says to resend: when a still-running run of the
   same agent and user holds the task, it names that run and says to collect
-  again once it ends or from the `a2a.delegation.completed` run;
+  again once it ends or from the `a2a.delegation.completed` run; otherwise it
+  says no task the caller may continue has that id and to pass the full task
+  id;
+- a `continue_task_id` of 8 characters or more that matches no task exactly
+  is resolved as a prefix when it names exactly ONE task the caller may
+  continue, under the same `_scoped_to_caller` scoping (#978,
+  `_resolve_owned_prefix`); ambiguous or shorter stays refused;
 - a collect (no message) of a task whose rows for this caller all concluded
   answers the newest row from the record, nothing sent, when that row ended
   with an outcome the partner itself decided (`partner_failed`;

@@ -1,4 +1,4 @@
-"""OVHcloud network and exposure: IP blocks, firewall, mitigation, IP Load Balancing, vRack, DNS, any GET."""
+"""OVHcloud network and exposure: IP blocks, firewall (read, approval-gated block), mitigation, IP Load Balancing, vRack, DNS, any GET."""
 
 from __future__ import annotations
 
@@ -11,6 +11,8 @@ from ._common import LIMIT, OFFSET, OvhClient, clamp, list_with_details, page_no
 _IP_BLOCK = {"type": "string", "description": "IP block, e.g. 203.0.113.0/28 or 203.0.113.4/32."}
 _IPLB = {"type": "string", "description": "IP Load Balancing service name, e.g. loadbalancer-1a2b3c."}
 _ZONE = {"type": "string", "description": "DNS zone name, e.g. example.com."}
+# The Edge Network Firewall applies rules by ascending sequence (0 to 19).
+_BLOCK_SEQUENCE = 0
 _IP_TYPES = (
     "cdn",
     "cloud",
@@ -195,7 +197,80 @@ def register(client: OvhClient, executor: CallableToolExecutor) -> list[ToolDefi
         data, err = await client.get(api_path, f"read {api_path}", params)
         return err or render(f"GET {api_path}", data)
 
+    def _firewall_target(ip_block: str, ip: str) -> tuple[str, str] | str:
+        block, target = (ip_block or "").strip(), (ip or "").strip()
+        if not block or not target or "/" in target:
+            return "Error: give the IP block and one IP of it (a single address, no /prefix)."
+        return f"/ip/{seg(block)}/firewall", target
+
+    async def block_ovhcloud_ip(ip_block: str, ip: str, reason: str) -> str:
+        """Deny every inbound packet to one IP at the Edge Network Firewall."""
+        parsed = _firewall_target(ip_block, ip)
+        if isinstance(parsed, str):
+            return parsed
+        if not (reason or "").strip():
+            return "Error: reason is required."
+        path, target = parsed
+        listed, err = await client.get(path, f"list the firewalled IPs of {ip_block}")
+        if err:
+            return err
+        if target not in [str(item) for item in (listed or [])]:
+            _, err = await client.request("POST", path, f"add {target} to the firewall", body={"ipOnFirewall": target})
+            if err:
+                return err
+        rule_path = f"{path}/{seg(target)}/rule"
+        sequences, err = await client.get(rule_path, f"list the firewall rules of {target}")
+        if err:
+            return err
+        if _BLOCK_SEQUENCE in [int(s) for s in (sequences or []) if str(s).isdigit()]:
+            return (
+                f"Error: rule {_BLOCK_SEQUENCE} of the firewall of {target} is already used; "
+                "the block must be the first rule. Read it with get_ovhcloud_ip_firewall."
+            )
+        _, err = await client.request(
+            "POST",
+            rule_path,
+            f"add a deny-all rule for {target}",
+            body={"action": "deny", "protocol": "ipv4", "sequence": _BLOCK_SEQUENCE},
+        )
+        if err:
+            return err
+        _, err = await client.request(
+            "PUT", f"{path}/{seg(target)}", f"enable the firewall of {target}", body={"enabled": True}
+        )
+        if err:
+            return f"{err}\nThe deny-all rule is written but the firewall of {target} may not be enabled."
+        return (
+            f"{target} blocked: deny-all rule {_BLOCK_SEQUENCE} added and its Edge Network "
+            "Firewall enabled. It filters inbound traffic from the internet only. "
+            "Undo: unblock_ovhcloud_ip."
+        )
+
+    async def unblock_ovhcloud_ip(ip_block: str, ip: str) -> str:
+        """Remove the deny-all rule block_ovhcloud_ip wrote."""
+        parsed = _firewall_target(ip_block, ip)
+        if isinstance(parsed, str):
+            return parsed
+        path, target = parsed
+        rule_path = f"{path}/{seg(target)}/rule/{_BLOCK_SEQUENCE}"
+        rule, err = await client.get(rule_path, f"read rule {_BLOCK_SEQUENCE} of {target}")
+        if err:
+            return err
+        rule = rule if isinstance(rule, dict) else {}
+        if (
+            rule.get("action") != "deny"
+            or rule.get("protocol") != "ipv4"
+            or any(rule.get(k) for k in ("source", "sourcePort", "destinationPort"))
+        ):
+            return f"Error: rule {_BLOCK_SEQUENCE} of {target} is not the deny-all rule block_ovhcloud_ip writes; nothing removed."
+        _, err = await client.request("DELETE", rule_path, f"remove rule {_BLOCK_SEQUENCE} of {target}")
+        if err:
+            return err
+        return f"{target} unblocked: deny-all rule {_BLOCK_SEQUENCE} removed (the firewall stays enabled with its other rules)."
+
     handlers = {
+        "block_ovhcloud_ip": block_ovhcloud_ip,
+        "unblock_ovhcloud_ip": unblock_ovhcloud_ip,
         "list_ovhcloud_ips": list_ovhcloud_ips,
         "get_ovhcloud_ip": get_ovhcloud_ip,
         "get_ovhcloud_ip_firewall": get_ovhcloud_ip_firewall,
@@ -208,7 +283,28 @@ def register(client: OvhClient, executor: CallableToolExecutor) -> list[ToolDefi
     }
     for name, handler in handlers.items():
         executor.register(name, handler)
+    _one_ip = {"type": "string", "description": "One IP of the block."}
+    blocking = [
+        tool(
+            "block_ovhcloud_ip",
+            "Block all inbound internet traffic to one IP at the Edge Network Firewall "
+            "(each call asks a person). Undo: unblock_ovhcloud_ip.",
+            {"ip_block": _IP_BLOCK, "ip": _one_ip, "reason": {"type": "string", "description": "Reason (required)."}},
+            ["ip_block", "ip", "reason"],
+            priority=3,
+            always_ask=True,
+        ),
+        tool(
+            "unblock_ovhcloud_ip",
+            "Remove the deny-all firewall rule block_ovhcloud_ip wrote on one IP.",
+            {"ip_block": _IP_BLOCK, "ip": _one_ip},
+            ["ip_block", "ip"],
+            priority=3,
+            always_ask=True,
+        ),
+    ]
     return [
+        *blocking,
         tool(
             "list_ovhcloud_ips",
             "List the account's IP blocks: type, routed-to service, country, description.",

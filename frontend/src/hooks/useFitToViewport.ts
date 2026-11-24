@@ -45,10 +45,18 @@ export function fitRoom({ viewport, top, below }: FitMeasure, floor = FIT_FLOOR_
 }
 
 /**
+ * The attribute of a side panel that fits the window on its own beside the page's list (the
+ * faceted filter sidebar of a records list, #1501 UX r1 B1): the list beside it is still the
+ * page's last block, so both are bounded and the page never scrolls.
+ */
+export const FIT_BESIDE_ATTRIBUTE = "data-fit-beside";
+
+/**
  * True when `root` is the page's last block: at every level up to `main`, no laid-out
  * sibling sits beside it or under it (a sibling above it, a page title or a toolbar, is
  * fine). A widget in a dashboard grid has one (#11470): its bound came from the next row
  * of the page, not from the window, and cut the table to a few rows inside its card.
+ * A side panel marked `FIT_BESIDE_ATTRIBUTE` is not such a sibling: it bounds itself.
  */
 function isLastBlock(root: HTMLElement, main: HTMLElement): boolean {
   for (let node: HTMLElement | null = root; node && node !== main; node = node.parentElement) {
@@ -56,7 +64,7 @@ function isLastBlock(root: HTMLElement, main: HTMLElement): boolean {
     if (!parent) return false;
     const top = node.getBoundingClientRect().top;
     for (const sibling of Array.from(parent.children)) {
-      if (sibling === node || !(sibling instanceof HTMLElement)) continue;
+      if (sibling === node || !(sibling instanceof HTMLElement) || sibling.hasAttribute(FIT_BESIDE_ATTRIBUTE)) continue;
       const position = getComputedStyle(sibling).position;
       if (position === "absolute" || position === "fixed") continue;
       const box = sibling.getBoundingClientRect();
@@ -107,8 +115,9 @@ function measure(el: HTMLElement, main: HTMLElement): FitMeasure {
  * The max height to give `el`: a number (fits the window), null (long-form page: no
  * bound) or undefined (not measured yet, or not in the app's page, a dialog for
  * example: the caller keeps its own cap). Re-measured when the window, the page's
- * content or the area changes size; a 1 px change is ignored, so the bound it sets
- * never feeds back into a resize loop. `root` is the table's whole block (toolbar, area,
+ * content or the area changes size; a 1 px growth is ignored, so the bound it sets
+ * never feeds back into a resize loop, but a 1 px shrink is applied, so the bound never
+ * exceeds the room and the page never scrolls (#1300). `root` is the table's whole block (toolbar, area,
  * pager), the one that must be the page's last block to fit; it defaults to `el`.
  */
 export function useFitToViewport(el: HTMLElement | null, root?: HTMLElement | null): number | null | undefined {
@@ -126,7 +135,8 @@ export function useFitToViewport(el: HTMLElement | null, root?: HTMLElement | nu
         // A widget, not the page's list: no bound, the table hugs its rows (#11470).
         const widget = !isLastBlock(root ?? el, main);
         const next = several || widget ? null : fitRoom(measureNatural(el, main));
-        setRoom((prev) => (typeof prev === "number" && next !== null && Math.abs(prev - next) <= 1 ? prev : next));
+        // Keep the bound on a 1 px growth only: a bound 1 px over the room would scroll the page.
+        setRoom((prev) => (typeof prev === "number" && next !== null && prev <= next && next - prev <= 1 ? prev : next));
       });
     };
     update();
@@ -148,12 +158,59 @@ export function useFitToViewport(el: HTMLElement | null, root?: HTMLElement | nu
   return room;
 }
 
+/**
+ * The max height of a side panel marked `FIT_BESIDE_ATTRIBUTE` (a facet sidebar beside the page's
+ * list): the window's height minus the panel's top in the document and the main's bottom padding,
+ * so the panel ends where the list beside it ends and scrolls inside itself, never the page (#1501
+ * UX r1 B1). Undefined outside the app's page or before the first measure: the caller keeps its cap.
+ */
+export function useFitBeside(el: HTMLElement | null): number | undefined {
+  const [room, setRoom] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (!el || typeof window === "undefined") return;
+    const main = el.closest<HTMLElement>("#app-content");
+    if (!main || el.closest("[role=dialog]")) return;
+    let frame = 0;
+    const update = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const top = el.getBoundingClientRect().top + window.scrollY;
+        const padding = Number.parseFloat(getComputedStyle(main).paddingBottom) || 0;
+        const next = Math.floor(window.innerHeight - top - padding);
+        setRoom(next >= FIT_FLOOR_PX ? next : undefined);
+      });
+    };
+    update();
+    window.addEventListener("resize", update);
+    let observer: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(update);
+      for (const child of Array.from(main.children)) observer.observe(child);
+    }
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", update);
+      observer?.disconnect();
+    };
+  }, [el]);
+  return room;
+}
+
 /** The attribute a page-level sticky bar under the top bar carries (the horizontal SectionIndex). */
 export const PAGE_STICKY_BAR_ATTRIBUTE = "data-page-sticky-bar";
 
 /** The lowest edge a table header must clear: the top bar's, or a sticky page bar's below it. */
 export function stickyBarBottom(barBottoms: readonly number[]): number {
   return barBottoms.reduce((low, bottom) => Math.max(low, bottom), 0);
+}
+
+/**
+ * The page bars a table header must clear: only those placed before the area in the page.
+ * A sticky bar that comes after the table (a tab bar under a card) sits below it at rest;
+ * counting it pushed the header to the bottom of the table and hid its last row (#1294 UX r1 B1).
+ */
+export function pageBarsAbove(area: Node, bars: readonly HTMLElement[]): HTMLElement[] {
+  return bars.filter((bar) => (bar.compareDocumentPosition(area) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 && !bar.contains(area));
 }
 
 /** How far to push the header down so it sits under the top bar, kept inside the area. */
@@ -181,7 +238,7 @@ export function usePageStickyHead(area: HTMLElement | null, head: HTMLElement | 
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const rect = area.getBoundingClientRect();
-        const pageBars = Array.from(main.querySelectorAll<HTMLElement>(`[${PAGE_STICKY_BAR_ATTRIBUTE}]`));
+        const pageBars = pageBarsAbove(area, Array.from(main.querySelectorAll<HTMLElement>(`[${PAGE_STICKY_BAR_ATTRIBUTE}]`)));
         const barBottom = stickyBarBottom([
           bar && bar !== main ? bar.getBoundingClientRect().bottom : 0,
           ...pageBars.map((pageBar) => pageBar.getBoundingClientRect().bottom),

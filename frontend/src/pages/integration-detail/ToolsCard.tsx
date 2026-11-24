@@ -18,6 +18,7 @@ import { Link } from "react-router-dom";
 import { Wrench, BookOpen, Pencil, Info } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { Button } from "@/components/ui/button";
 import { HitlIcon } from "@/components/ui/hitl-icon";
 import { Tip } from "@/components/ui/tooltip";
@@ -209,7 +210,7 @@ export function ToolsCard({ catalogEntry, integration }: { catalogEntry: Provide
                 <div className="flex items-center gap-1.5">
                   <BookOpen className="h-3 w-3 text-feedback-success-primary" />
                   <h4 className="content-caption font-semibold uppercase tracking-wider text-feedback-success-primary">{t_i18n("Read Tools")}</h4>
-                  <Badge variant="outline" className="text-[8px] ml-1">{readTools.length}</Badge>
+                  <CountBadge variant="outline" className="ml-1">{readTools.length}</CountBadge>
                 </div>
               </div>
               {readTools.map((tool, idx) => (
@@ -224,7 +225,7 @@ export function ToolsCard({ catalogEntry, integration }: { catalogEntry: Provide
                 <div className="flex items-center gap-1.5">
                   <Pencil className="h-3 w-3 text-feedback-warning-primary" />
                   <h4 className="content-caption font-semibold uppercase tracking-wider text-feedback-warning-primary">{t_i18n("Write Tools")}</h4>
-                  <Badge variant="outline" className="text-[8px] ml-1">{writeTools.length}</Badge>
+                  <CountBadge variant="outline" className="ml-1">{writeTools.length}</CountBadge>
                 </div>
               </div>
               {writeTools.map((tool, idx) => (

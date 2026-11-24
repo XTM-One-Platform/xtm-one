@@ -8,7 +8,12 @@
  * each a link to the filtered Cases list. The counts are the list's own
  * (`GET /ctem-cases`, computed on the cases the caller sees, #11613), so the
  * row never counts a case the list would hide. No case and nothing to build
- * them from (no tech stack, no OpenAEV): one dismissible setup row.
+ * them from (no software inventory, no OpenAEV): one dismissible setup row.
+ *
+ * Cases in motion (#1621): each segment of the bar says its count and share on
+ * hover, and the row ends with "Waiting for a decision: N, oldest X", a link
+ * to the case that waits longest (`GET /ctem-cases/overview`), absent at 0. No
+ * inline approval: decisions stay in the unified decision system.
  */
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -16,7 +21,8 @@ import { Icon } from "@filigran/design-system";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { CTEM_CASE_STATES, useCtemCases, type CtemCaseState } from "@/hooks/api/useCtemCasesApi";
+import { Tip } from "@/components/ui/tooltip";
+import { CTEM_CASE_STATES, useCtemCases, useCtemCasesOverview, type CtemCaseState } from "@/hooks/api/useCtemCasesApi";
 import { useNow } from "@/hooks/useTick";
 import { useFormatter } from "@/i18n";
 import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
@@ -28,13 +34,17 @@ import { caseDueFlags, casesListHref, EXPIRING_DAYS } from "./cases-due";
 import { profileFieldHref } from "@/lib/organization-profile-tabs";
 
 /**
- * The segment fill of each state: the feedback token of its Chip severity
- * (7.0). Accepted risk takes the neutral token, never the track's colour, so
+ * The segment fill of each state: the feedback token of its hot tone
+ * (7.0, #1267), the same colour as its badge. Accepted risk takes the neutral token, never the track's colour, so
  * its segment stays visible (at least 3:1 on the track, both themes).
  */
 const SEGMENT_FILL: Record<CtemCaseState, string> = {
-  needs_attention: "bg-feedback-alert-primary",
-  in_progress: "bg-feedback-info-primary",
+  new: "bg-feedback-warning-primary",
+  analyzing: "bg-feedback-info-primary",
+  waiting_decision: "bg-feedback-error-primary",
+  remediating: "bg-feedback-info-primary",
+  validating: "bg-feedback-info-primary",
+  mitigated_watching: "bg-feedback-alert-primary",
   resolved: "bg-feedback-success-primary",
   accepted_risk: "bg-feedback-neutral-primary",
 };
@@ -42,7 +52,7 @@ const SEGMENT_FILL: Record<CtemCaseState, string> = {
 const LINK = cn("content-compact font-medium text-accent hover:underline", BUTTON_ROLE_FOCUS_RING);
 
 export interface CasesCountsCardProps {
-  /** Whether cases can be built at all: a tech stack or OpenAEV connected. */
+  /** Whether cases can be built at all: a software inventory or OpenAEV connected. */
   configured: boolean;
   /** Open the OpenAEV connect dialog of the page. */
   onConnectOpenAev: () => void;
@@ -53,6 +63,7 @@ export function CasesCountsCard({ configured, onConnectOpenAev }: CasesCountsCar
   const now = useNow();
   // One section of the command center: a failed read stays in this row.
   const { data, isLoading, isError, refetch } = useCtemCases({ throwOnError: false });
+  const { data: overview } = useCtemCasesOverview();
   const [setupClosed, setSetupClosed] = useState(false);
   const counts = data?.counts;
   const total = counts ? CTEM_CASE_STATES.reduce((sum, s) => sum + (counts[s] ?? 0), 0) : null;
@@ -66,6 +77,13 @@ export function CasesCountsCard({ configured, onConnectOpenAev }: CasesCountsCar
     }
     return { overdue, expiring };
   }, [data, now]);
+  const waiting = overview?.waiting;
+  const waitingAge = (hours: number | null | undefined) =>
+    hours == null
+      ? null
+      : hours < 48
+        ? t_i18n("{hours} h", { hours: Math.max(1, Math.round(hours)) })
+        : t_i18n("{days} d", { days: Math.round(hours / 24) });
 
   const header = (
     <div className="flex items-center justify-between gap-2">
@@ -91,9 +109,9 @@ export function CasesCountsCard({ configured, onConnectOpenAev }: CasesCountsCar
     return (
       <Card className="flex h-full flex-col overflow-hidden" data-testid="ctem-cases-card">
         <CardContent className="flex flex-1 flex-wrap items-center gap-3 p-4">
-          <p className="min-w-0 flex-1 content-compact">{t_i18n("Build cases from your tech stack")}</p>
+          <p className="min-w-0 flex-1 content-compact">{t_i18n("Build cases from your software")}</p>
           <Button asChild variant="outline">
-            <Link to={profileFieldHref("tech_stack")}>{t_i18n("Add tech stack")}</Link>
+            <Link to={profileFieldHref("tech_stack")}>{t_i18n("Add software")}</Link>
           </Button>
           <Button variant="outline" onClick={onConnectOpenAev}>
             {t_i18n("Connect OpenAEV")}
@@ -107,17 +125,35 @@ export function CasesCountsCard({ configured, onConnectOpenAev }: CasesCountsCar
   } else if (total === 0) {
     body = (
       <p className="content-compact text-default-secondary">
-        {t_i18n("No case yet: cases appear when open issues on your stack share a fix.")}
+        {t_i18n("No case yet: cases appear when open issues on your software share a fix.")}
       </p>
     );
   } else {
     body = (
       <div className="flex flex-col gap-2" aria-busy={isLoading && !data}>
-        <div className="flex h-2 overflow-hidden rounded-full bg-elevation-hover" aria-hidden="true">
+        {/* The chips carry every count for a screen reader; the segments add the share on hover. */}
+        <div className="flex h-2 overflow-hidden rounded-full bg-elevation-hover" aria-hidden="true" data-testid="ctem-cases-bar">
           {total
             ? CTEM_CASE_STATES.map((state) => {
                 const n = counts?.[state] ?? 0;
-                return n > 0 ? <span key={state} className={SEGMENT_FILL[state]} style={{ width: `${(n / total) * 100}%` }} /> : null;
+                if (n <= 0) return null;
+                const share = Math.round((n / total) * 100);
+                return (
+                  <Tip
+                    key={state}
+                    content={t_i18n("{state}: {count, plural, one {# case} other {# cases}}, {share}%", {
+                      state: t_i18n(CASE_STATE_LABEL[state]),
+                      count: n,
+                      share,
+                    })}
+                  >
+                    <span
+                      className={cn("h-full", SEGMENT_FILL[state])}
+                      style={{ width: `${(n / total) * 100}%` }}
+                      data-testid={`ctem-cases-segment-${state}`}
+                    />
+                  </Tip>
+                );
               })
             : null}
         </div>
@@ -132,7 +168,9 @@ export function CasesCountsCard({ configured, onConnectOpenAev }: CasesCountsCar
                   <Link
                     to={casesListHref({ state })}
                     aria-label={count === undefined ? label : t_i18n("{state}: {count, plural, one {# case} other {# cases}}", { count, state: label })}
-                    className={cn("inline-flex items-center gap-1.5 rounded-sm", BUTTON_ROLE_FOCUS_RING)}
+                    // A block-level flex row: an inline-flex link would sit on the <li>'s text baseline, which
+                    // follows its first item, so a chip with a leading icon rose above its siblings.
+                    className={cn("flex items-center gap-1.5 rounded-sm", BUTTON_ROLE_FOCUS_RING)}
                     data-testid={`ctem-cases-count-${state}`}
                   >
                     <CaseStateChip state={state} />
@@ -155,6 +193,21 @@ export function CasesCountsCard({ configured, onConnectOpenAev }: CasesCountsCar
                 count: due.expiring,
                 days: EXPIRING_DAYS,
               })}
+            </Link>
+          )}
+          {waiting && waiting.count > 0 && waiting.oldest && (
+            <Link
+              to={`/ctem/cases/${waiting.oldest.case_id}`}
+              state={{ backTo: "/", backLabel: "Back to Command Center" }}
+              className={cn(LINK, "ml-auto")}
+              data-testid="ctem-cases-waiting"
+            >
+              {(() => {
+                const age = waitingAge(waiting.oldest_hours);
+                return age
+                  ? t_i18n("Waiting for a decision: {count}, oldest {age}", { count: waiting.count, age })
+                  : t_i18n("Waiting for a decision: {count}", { count: waiting.count });
+              })()}
             </Link>
           )}
         </div>

@@ -21,6 +21,7 @@ import inspect
 import uuid
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -205,14 +206,24 @@ _WRITE_VERBS = {"create", "update", "delete", "send", "post", "transition", "upl
 def test_every_tool_of_the_provider_registry_is_read_or_write():
     """The one classifier names every integration tool's access, and agrees
     with the catalog badge; a name made of a write verb is never a read."""
-    from app.api.v1.integration_catalog import build_provider_tools
+    from app.api.v1.integration_catalog import build_dummy_token, build_provider_tools
+    from app.services.integration_tools import PROVIDER_TOOLS
     from app.services.tool_classification import READ_VERBS
+    from app.tools.base import CallableToolExecutor
 
     catalogue = build_provider_tools()
     assert sum(len(tools) for tools in catalogue.values()) > 500
     for provider, tools in catalogue.items():
+        # A definition declared read_only is a read whatever its verb: the
+        # badge and a read-only binding (withhold_write_tools) both trust it.
+        builder: Any = PROVIDER_TOOLS[provider]
+        declared = {
+            d.name
+            for d in builder(build_dummy_token(provider), CallableToolExecutor(), refresh_fn=lambda: None)
+            if d.read_only
+        }
         for tool in tools:
-            access = integration_tool_access(tool.name)
+            access = "read" if tool.name in declared else integration_tool_access(tool.name)
             assert access in ("read", "write")
             assert access == tool.tool_type, (provider, tool.name)
             tokens = tool.name.lower().split("_")
@@ -235,6 +246,18 @@ async def test_list_integration_tools_reports_each_tools_access():
     assert "  - delete_linkedin_post [write]" in result.content
     unknown = await _call(executor, "list_integration_tools", provider="nope")
     assert "Unknown provider 'nope'" in unknown.content
+
+
+@pytest.mark.asyncio
+async def test_list_integration_tools_honours_a_read_only_declaration() -> None:
+    """A hunt declared read_only is a read whatever its verb, as the catalog
+    badge and a read-only binding already say."""
+    _definitions, executor = _builder()
+
+    result = await _call(executor, "list_integration_tools", provider="defender")
+
+    assert "  - run_defender_hunting_query [read]" in result.content
+    assert "  - create_defender_indicator [write]" in result.content
 
 
 CISO = str(uuid.uuid4())
@@ -277,12 +300,12 @@ async def test_list_integration_tools_lists_each_openapi_integrations_imported_o
 
     result = await _call(executor, "list_integration_tools", provider="openapi")
     content = result.content
-    assert f"**CISO assistant** (`{CISO}`) - 3 tools (1 read, 2 write):" in content
+    assert f"**CISO assistant** (`{CISO}`) - 3 tools (2 read, 1 write):" in content
     assert "  - ciso_list_risks [read] `GET /risks`" in content
     assert "  - ciso_create_risk [write] `POST /risks`" in content
-    # The access is the one the read-only binding enforces (by name); a GET
-    # the name classifies as a write is flagged, since it is withheld.
-    assert "  - ciso_recompute_risks [write] `GET /risks/recompute` - a read by its method" in content
+    # The access is the one the read-only binding enforces: the HTTP method,
+    # never the generated name (a GET named recompute stays a read).
+    assert "  - ciso_recompute_risks [read] `GET /risks/recompute`" in content
     assert f"**Bare** (`{BARE}`): no imported operation" in content
     assert "has no tools" not in content
 

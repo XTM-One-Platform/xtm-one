@@ -450,14 +450,14 @@ _OCTI_TOP_VULNS = """
 query CtemTopVulns {
   vulnerabilities(first: 10, orderBy: x_opencti_cvss_base_score, orderMode: desc) {
     edges { node {
-      name x_opencti_cvss_base_score x_opencti_cvss_base_severity
+      id name x_opencti_cvss_base_score x_opencti_cvss_base_severity
       x_opencti_epss_score x_opencti_cisa_kev
     } }
   }
 }
 """
 
-# Software observables matching the organization profile's tech stack (by CPE or
+# Software observables matching the organization profile's software inventory (by CPE or
 # product name), the anchor of the tailored KEV count (Software -has-> Vulnerability).
 _OCTI_STACK_SOFTWARE = """
 query CtemStackSoftware($filters: FilterGroup, $first: Int) {
@@ -898,21 +898,47 @@ async def _octi_top_vulns(
     return data or {}
 
 
-def _stack_matches(node: dict, stack: list[dict[str, str]]) -> str | None:
+def _cpe_vendor(cpe: str | None) -> str:
+    """The vendor field of a CPE 2.3 (``cpe:2.3:a:google:chrome:...``) or 2.2 (``cpe:/a:google:chrome``) name."""
+    value = (cpe or "").strip().lower()
+    if value.startswith("cpe:2.3:"):
+        parts = value.split(":")
+        vendor = parts[3] if len(parts) > 3 else ""
+    elif value.startswith("cpe:/"):
+        parts = value[5:].split(":")
+        vendor = parts[1] if len(parts) > 1 else ""
+    else:
+        return ""
+    return "" if vendor in ("*", "-") else vendor
+
+
+def _vendor_token(value: str) -> str:
+    return "".join(ch for ch in value.lower() if ch.isalnum())
+
+
+def _vendors_agree(a: str, b: str) -> bool:
+    """Two vendor names agree when one is unknown or both fold to the same token (``Palo Alto`` and ``palo_alto``)."""
+    a, b = _vendor_token(a), _vendor_token(b)
+    return not a or not b or a == b
+
+
+def _stack_matches(node: dict[str, Any], stack: list[dict[str, Any]]) -> str | None:
     """The stack product a Software observable stands for, or ``None``.
 
     A CPE equal to the entry's wins; otherwise the product name must match
-    (case-insensitive) and, when both sides name a vendor, the vendor too.
+    (case-insensitive) and the vendors must agree when both sides state one.
+    A side's vendor is its ``vendor``, else the vendor its CPE names, so a node
+    of another vendor's product of the same name (an Edge node whose CPE says
+    ``microsoft``) never carries its vulnerabilities into the entry's case.
     """
     cpe = (node.get("cpe") or "").strip().lower()
     name = (node.get("name") or "").strip().lower()
-    vendor = (node.get("vendor") or "").strip().lower()
+    vendor = (node.get("vendor") or "").strip() or _cpe_vendor(cpe)
     for entry in stack:
         if entry["cpe"] and cpe and entry["cpe"].lower() == cpe:
             return entry["label"]
-        if entry["product"].lower() == name and (
-            not entry["vendor"] or not vendor or entry["vendor"].lower() == vendor
-        ):
+        entry_vendor = (entry.get("vendor") or "").strip() or _cpe_vendor(entry.get("cpe"))
+        if entry["product"].lower() == name and _vendors_agree(entry_vendor, vendor):
             return entry["label"]
     return None
 
@@ -921,10 +947,10 @@ async def _octi_kev_tailored(
     client: httpx.AsyncClient,
     base_url: str,
     headers: dict[str, str],
-    stack: list[dict[str, str]],
+    stack: list[dict[str, Any]],
     user_id: str,
 ) -> dict[str, Any] | None:
-    """Known-exploited vulnerabilities restricted to the organization's tech stack.
+    """Known-exploited vulnerabilities restricted to the organization's software inventory.
 
     Resolves the Software observables matching *stack* (bounded), then counts
     the KEV vulnerabilities related to them. ``None`` when OpenCTI cannot answer
@@ -1006,35 +1032,30 @@ async def _octi_kev_tailored(
     }
 
 
-async def _profile_tech_stack(db: AsyncSession | None) -> list[dict[str, str]]:
-    """The primary organization profile's tech stack, ``[]`` when none is set."""
+async def _organization_software(db: AsyncSession | None) -> list[dict[str, Any]]:
+    """What the primary organization runs, as the CVE matcher reads it (#1495), ``[]`` when nothing.
+
+    The Software entities of the asset store (synced and hand-typed), with the
+    installed version when only one known version runs, plus the profile rows
+    typed before the move to Software that no entity carries yet
+    (``organization_software_store.matcher_entries``).
+    """
     if db is None:
         return []
     from app.services import organization_context as org_context
+    from app.services import organization_software_store as software_store
 
     try:
         row = await org_context.current_version(db)
         if row is None:
             return []
         profile = org_context.parse_profile(row.profile)
-    except Exception as exc:  # a bad stored profile never breaks the posture
-        logger.info("CTEM organization profile unreadable: %s", format_exception_message(exc))
+        software = await software_store.matcher_software(db, row.organization_id)
+    except Exception as exc:  # a bad stored profile or store never breaks the posture
+        logger.info("CTEM organization software unreadable: %s", format_exception_message(exc))
         return []
-    stack: list[dict[str, str]] = []
-    for entry in profile.tech_stack:
-        product = entry.product.strip()
-        if not product:
-            continue
-        vendor = entry.vendor.strip()
-        stack.append(
-            {
-                "product": product,
-                "vendor": vendor,
-                "cpe": entry.cpe.strip(),
-                "label": f"{vendor} {product}" if vendor and not product.lower().startswith(vendor.lower()) else product,
-            }
-        )
-    return stack
+    typed = [{"vendor": e.vendor, "product": e.product, "cpe": e.cpe, "version": e.version} for e in profile.tech_stack]
+    return software_store.matcher_entries(software, typed)
 
 
 async def _profile_asset_rows(db: AsyncSession | None) -> tuple[list[Any], list[Any]] | None:
@@ -1044,10 +1065,9 @@ async def _profile_asset_rows(db: AsyncSession | None) -> tuple[list[Any], list[
     from app.services import organization_context as org_context
 
     try:
-        row = await org_context.current_version(db)
+        row, profile = await org_context.current_profile(db)  # assets from the records (#1543)
         if row is None:
             return None
-        profile = org_context.parse_profile(row.profile)
     except Exception as exc:  # a bad stored profile never breaks the posture
         logger.info("CTEM organization profile unreadable: %s", format_exception_message(exc))
         return None
@@ -1078,7 +1098,7 @@ def _exposed_basis(inputs: dict[str, Any], tailored: dict[str, Any]) -> tuple[in
     """The funnel's last live layer before Exposed: ``(count, OpenCTI filter)``, ``None`` without a countable filter.
 
     The same choice :func:`~app.services.ctem_funnel.build_funnel` makes:
-    the tailored layers when the profile has a tech stack, else the known ones.
+    the tailored layers when the profile has a software, else the known ones.
     A known-layer filter of ``None`` means every vulnerability.
     """
 
@@ -1375,6 +1395,8 @@ async def _collect_opencti_cyber(
     severity = [{"label": label, "value": value} for (label, value) in severity_rows]
     top_vulns = [
         {
+            # The OpenCTI id: the "Open in OpenCTI" pivot of each row (#1357).
+            "id": n.get("id"),
             "name": n.get("name"),
             "cvss": n.get("x_opencti_cvss_base_score"),
             "severity": n.get("x_opencti_cvss_base_severity"),
@@ -2385,9 +2407,9 @@ async def build_posture_for_user(
     # providers' live collection CONCURRENTLY: OpenCTI and OpenAEV are independent
     # platforms, each on its own httpx client, so a cyber/fraud build costs about
     # max(OpenCTI, OpenAEV) instead of their sum.
-    # The organization profile's tech stack (cyber): read in the same DB phase,
+    # The organization profile's software inventory (cyber): read in the same DB phase,
     # it narrows the KEV count to what the organization runs (#11213).
-    stack = await _profile_tech_stack(db) if vertical == VERTICAL_CYBER else []
+    stack = await _organization_software(db) if vertical == VERTICAL_CYBER else []
     asset_rows = await _profile_asset_rows(db) if vertical == VERTICAL_CYBER else None
     reachability = _profile_reachability(asset_rows)
 

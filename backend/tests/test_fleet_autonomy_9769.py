@@ -113,11 +113,11 @@ def test_the_catalog_follows_the_matrix_per_fleet_and_level(slug, level):
         assert entry["by_level"] == {lvl: _MATRIX[lvl][gate["impact"]] for lvl in AUTONOMY_LEVELS}
 
 
-def test_autonomous_gates_nothing_and_medium_frees_the_ticket_only():
-    threat = BUILTIN_FLEET_STRUCTURED["ctem-threat-response"]["gates"]
+def test_autonomous_gates_nothing_and_medium_frees_the_analyst_review_only():
+    threat = BUILTIN_FLEET_STRUCTURED["ctem-loop"]["gates"]
     assert not any(e["gated"] for e in gate_catalog("autonomous", threat))
     medium = {e["key"]: e["gated"] for e in gate_catalog("medium", threat)}
-    assert medium == {"openaev.scenario.launch": True, "ticket.create": False}
+    assert [k for k, gated in medium.items() if not gated] == ["ctem.analyst_review"]
 
 
 def test_a_gate_without_an_impact_reads_as_high():

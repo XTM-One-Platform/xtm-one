@@ -65,7 +65,7 @@ const DEFAULT_SORT_DIR: SortDirection = "desc";
 /**
  * Sortable columns, mapped to the direction a first click opens with: newest
  * and biggest first for dates and numbers, A→Z for text. The keys are the
- * `sort_by` values the API allows for `/traces` — Agent and Score are absent on
+ * `sort_by` values the API allows for `/observability/traces` — Agent and Score are absent on
  * purpose, since both live outside the trace row and the ClickHouse read path
  * cannot order by them.
  */
@@ -492,7 +492,7 @@ export default function Traces() {
     <div className="space-y-6">
       {/* The Observability family header (#9301 N3): its h1 and one tab row. */}
       <NavFamilyHeader
-        to="/traces"
+        to="/observability/traces"
         title="Traces"
         infoLabel={t_i18n("About traces")}
         info={t_i18n("Browse and filter LLM traces to debug agent behavior.")}
@@ -505,7 +505,7 @@ export default function Traces() {
             <TraceScopeChip
               icon={Zap}
               label={scopedAssignment?.name ?? t_i18n("Assignment {id}", { id: shortId(assignmentId) })}
-              to={`/assignments/${encodeURIComponent(assignmentId)}`}
+              to={`/agents/assignments/${encodeURIComponent(assignmentId)}`}
               removeLabel={t_i18n("Remove the assignment scope")}
               onRemove={() => updateParams({ [ASSIGNMENT_TRACE_PARAM]: "" })}
             />
@@ -514,7 +514,7 @@ export default function Traces() {
             <TraceScopeChip
               icon={Play}
               label={t_i18n("Run {id}", { id: shortId(assignmentRunId) })}
-              to={`/runs/${encodeURIComponent(assignmentRunId)}`}
+              to={`/operations/executions/${encodeURIComponent(assignmentRunId)}`}
               removeLabel={t_i18n("Remove the run scope")}
               onRemove={() => updateParams({ [ASSIGNMENT_RUN_TRACE_PARAM]: "" })}
             />

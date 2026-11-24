@@ -22,6 +22,7 @@ import type { Visibility } from "@/lib/visibility";
 import type {
   ScheduledWorkItem,
   WorkItem,
+  WorkItemGraph,
   WorkItemOwnerCount,
   WorkItemStatus,
 } from "@/types";
@@ -31,6 +32,8 @@ interface WorkItemFilters {
   /** One status or several, comma-separated (`open,blocked`). */
   status?: WorkItemStatus | string;
   correlation_key?: string;
+  /** The items whose key starts with it (`GET /work-items?correlation_key_prefix=`). */
+  correlation_key_prefix?: string;
   open_only?: boolean;
   stale_only?: boolean;
   /** Only the items the platform runs at their time. */
@@ -65,6 +68,7 @@ function toCountQuery(filters: WorkItemFilters): string {
   if (filters.owner_agent_id) params.set("owner_agent_id", filters.owner_agent_id);
   if (filters.status) params.set("status", filters.status);
   if (filters.correlation_key) params.set("correlation_key", filters.correlation_key);
+  if (filters.correlation_key_prefix) params.set("correlation_key_prefix", filters.correlation_key_prefix);
   if (filters.open_only) params.set("open_only", "true");
   if (filters.stale_only) params.set("stale_only", "true");
   if (filters.scheduled_only) params.set("scheduled_only", "true");
@@ -86,6 +90,21 @@ function toQuery(filters: WorkItemFilters): string {
   if (filters.limit) params.set("limit", String(filters.limit));
   if (filters.offset) params.set("offset", String(filters.offset));
   return params.toString();
+}
+
+/**
+ * `GET /work-items/graph`: the Graph view's nodes and edges for the list's
+ * filters, in one call (`services/work_item_graph.py`). Pagination and sort
+ * do not apply: the graph reads the first 500 matches (`truncated` says so).
+ */
+export function useWorkItemGraph(filters: WorkItemFilters = {}, enabled = true) {
+  const qs = toCountQuery(filters);
+  return useQuery<WorkItemGraph>({
+    queryKey: ["work-items", "graph", qs],
+    queryFn: () => api.get(`/work-items/graph${qs ? `?${qs}` : ""}`),
+    enabled,
+    refetchInterval: REFETCH_INTERVAL_STANDARD,
+  });
 }
 
 export function useWorkItems(filters: WorkItemFilters = {}, enabled = true) {
@@ -205,6 +224,24 @@ export function useAnswerWorkItem() {
   const qc = useQueryClient();
   return useMutation<WorkItem, Error, { id: string; option?: string; text?: string }>({
     mutationFn: ({ id, ...body }) => api.post(`/work-items/${id}/answer`, body),
+    meta: { suppressGlobalErrorToast: true },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["work-items"] }),
+  });
+}
+
+/**
+ * Send Re-check, It's solved or Do it to the item's own agent (#774): a note
+ * lands on the item and the agent takes it now. The caller toasts the
+ * outcome itself, so the global error toast stays quiet.
+ */
+export function useAskWorkItem() {
+  const qc = useQueryClient();
+  return useMutation<
+    { item: WorkItem; agent: { id: string; name: string }; via: "inbox" | "run" },
+    Error,
+    { id: string; action: "recheck" | "solved" | "do"; text?: string }
+  >({
+    mutationFn: ({ id, ...body }) => api.post(`/work-items/${id}/ask`, body),
     meta: { suppressGlobalErrorToast: true },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["work-items"] }),
   });

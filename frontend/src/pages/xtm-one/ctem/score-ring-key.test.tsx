@@ -84,7 +84,7 @@ describe("TopRiskTile", () => {
     expect(screen.queryByTestId("ctem-top-risk-trend")).toBeNull();
     expect(screen.queryByTestId("ctem-top-risk-delta")).toBeNull();
     expect(screen.getByText("Trend after 2 days of history")).toBeTruthy();
-    expect(screen.getByText("Known-exploited in your tech stack")).toBeTruthy();
+    expect(screen.getByText("Known-exploited in your software")).toBeTruthy();
   });
 
   it("asks to connect OpenCTI and shows no number when it is not connected", () => {

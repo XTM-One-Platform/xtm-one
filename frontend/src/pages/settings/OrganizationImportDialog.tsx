@@ -53,9 +53,10 @@ import {
   FILTER_LABELS,
   MIN_CRITICALITY_LABELS,
   filterValueLabel,
+  keepsSourceOrder,
   type FilterKey,
 } from "@/lib/organization-import-filters";
-import { PLATFORM_NAMES } from "@/lib/organization-profile";
+import { IMPORT_SOURCE_NAMES, IMPORT_SOURCE_PROVIDER } from "@/lib/organization-profile";
 import { defaultSchedule, type SyncSchedule } from "@/lib/organization-sync-schedule";
 import { OrganizationSharedContextNotice } from "./OrganizationSharedContextNotice";
 import { SyncScheduleFields } from "./OrganizationSyncSchedule";
@@ -67,19 +68,30 @@ const glyph = (name: IconName): ElementType => {
 };
 
 /** The product's own logo on a source card (the shared ProviderLogo assets); the card's title names it. */
-const logo = (provider: ImportSourceKey): ElementType => {
-  const Logo = () => <ProviderLogo provider={provider} decorative className="h-4 w-4" />;
+const logo = (source: ImportSourceKey): ElementType => {
+  const Logo = () => <ProviderLogo provider={IMPORT_SOURCE_PROVIDER[source] ?? source} decorative className="h-4 w-4" />;
   return Logo;
 };
-const SOURCE_LOGOS: Record<ImportSourceKey, ElementType> = { opencti: logo("opencti"), openaev: logo("openaev"), opencrq: logo("opencrq") };
+const SOURCE_LOGOS: Record<ImportSourceKey, ElementType> = {
+  opencti: logo("opencti"),
+  openaev: logo("openaev"),
+  opencrq: logo("opencrq"),
+  intune: logo("intune"),
+  defender: logo("defender"),
+  tanium: logo("tanium"),
+  crowdstrike: logo("crowdstrike"),
+  servicenow: logo("servicenow"),
+  github: logo("github"),
+  gitlab: logo("gitlab"),
+};
 
 /** @i18n-keys */
 const SECTION_LABELS = {
   assets: "Assets",
   asset_groups: "Asset groups",
   ai_systems: "AI systems",
-  tech_stack: "Tech stack",
-  crown_jewels: "Crown jewels",
+  tech_stack: "Software",
+  crown_jewels: "Primary assets",
   pirs: "PIRs",
 } as const satisfies Record<ImportSectionKey, string>;
 
@@ -144,10 +156,51 @@ const FILTER_HELP = {
   tenant_id: { helper: "Empty: your default OpenCRQ tenant.", info: "The OpenCRQ tenant to read, when you have several." },
   pir_ids: { helper: "Only these PIRs. Empty: every PIR of OpenCTI.", info: "Picked from the PIRs of your connected OpenCTI." },
   search: { helper: "Only names holding this text. Empty: every name.", info: "Matched by the source on the name, as its own search does." },
+  operating_system: { helper: "Only devices on these systems. Empty: every system.", info: "The operating system the source reports for the device." },
+  compliance: { helper: "Only devices in these states. Empty: every state.", info: "The compliance state Intune gives the device against your policies." },
+  ownership: { helper: "Only devices of this ownership. Empty: both.", info: "Whether Intune marks the device as owned by the company or by the person." },
+  last_seen_days: { helper: "Only devices seen in this window. Empty: any time.", info: "The last time the source heard from the device: its last check-in or the last report of its sensor." },
+  include_owner: { helper: "Off: the device's user is not copied.", info: "On: the primary user Intune names becomes the asset owner. Personal data: keep it off unless your policy allows it." },
+  os_platform: { helper: "Only machines on these systems. Empty: every system.", info: "The OS platform Defender for Endpoint reports for the machine." },
+  health_status: { helper: "Only machines in these states. Empty: every state.", info: "The health of the Defender sensor on the machine." },
+  exposure_level: { helper: "Only machines at these levels. Empty: every level.", info: "The exposure level Defender Vulnerability Management gives the machine." },
+  organizations: { helper: "Only repositories of these organizations. Empty: every repository the account reaches.", info: "The GitHub organizations the connected account is a member of." },
+  groups: { helper: "Only projects of these groups, subgroups included. Empty: every project the token is a member of.", info: "The GitLab groups the connected token can read." },
+  include_archived: { helper: "Off: archived repositories are left out.", info: "On: archived repositories are imported too, marked inactive." },
+  include_forks: { helper: "Off: forks are left out.", info: "On: forked repositories are imported too, tagged fork." },
+  skip_software: { helper: "Off: each endpoint's installed applications are read.", info: "Tanium's installed applications with their versions. On: endpoints only, faster." },
+  filter_query: { helper: "Only hosts this FQL expression matches. Empty: every host.", info: "A Falcon Query Language filter on the host fields, such as tags:'SensorGroupingTags/Finance'." },
+  ci_class: { helper: "The CMDB class to read. Default: Computers.", info: "The ServiceNow hardware class whose configuration items become assets." },
+  operational_status: { helper: "Only CIs in these states. Empty: every state. CIs whose install status is Retired are always left out.", info: "The operational status ServiceNow gives the configuration item." },
+  query: { helper: "Only CIs this encoded query matches. Empty: every CI of the class.", info: "A ServiceNow encoded query, as the list view's Copy query gives it, such as location.name=Paris." },
+  skip_dependencies: { helper: "Off: each repository's dependencies are read.", info: "GitHub: the dependency graph SBOM. GitLab: the dependency list, on GitLab Ultimate only. On: repositories only, faster." },
 } as const;
 
 /** The filters read from the source as a list of values (a picker, never free text). */
-const PICKED: FilterKey[] = ["labels", "markings", "created_by", "creator", "asset_groups", "tags", "category", "subcategory", "criticality", "internet_facing", "environment", "platform", "type"];
+const PICKED: FilterKey[] = [
+  "labels",
+  "markings",
+  "created_by",
+  "creator",
+  "asset_groups",
+  "tags",
+  "category",
+  "subcategory",
+  "criticality",
+  "internet_facing",
+  "environment",
+  "platform",
+  "type",
+  "operating_system",
+  "compliance",
+  "ownership",
+  "os_platform",
+  "health_status",
+  "exposure_level",
+  "operational_status",
+  "organizations",
+  "groups",
+];
 
 /** @i18n-keys */
 const OUTCOME_LABELS = { new: "New", updated: "Updated", unchanged: "Unchanged", skipped: "Skipped" } as const;
@@ -165,6 +218,17 @@ const PROFILE_FIELDS = {
   external_id: "External ID",
   product: "Product",
   kind: "Kind",
+  hostname: "Hostname",
+  fqdn: "FQDN",
+  serial: "Serial number",
+  device_id: "Entra device ID",
+  os_family: "OS family",
+  os_version: "OS version",
+  os_build: "OS build",
+  last_seen: "Last seen",
+  resource_id: "Resource ID",
+  url: "URL",
+  software: "Software",
 } as const;
 type ProfileField = keyof typeof PROFILE_FIELDS;
 
@@ -176,6 +240,20 @@ const MAPPING_NOTES = {
   aiKind: "Always Model API",
   aiExposure: "Public when internet-facing, else internal",
   veryHighCritical: "Very high becomes Critical",
+  deviceOwner: "Only when Device owner is on",
+  osTaxonomy: "From the operating system, and the device model when the source gives it",
+  deviceTags: "OS, compliance and ownership, each as a prefixed tag",
+  machineTags: "OS, exposure level, health and risk, each as a prefixed tag",
+  hostDomain: "The host name with the machine domain, when the source gives one",
+  ciDisplay: "The display value ServiceNow shows for the reference",
+  ciClassTag: "The CI class as a ci_class: tag",
+  codeRepository: "Always Source code, Code repository",
+  repoExposure: "Internet-facing when public, else not internet-facing",
+  repoTags: "Owner, visibility, language, topics and default branch as prefixed tags, plus archived and fork when they apply",
+  repoTagsGitlab: "Owner, visibility, topics and default branch as prefixed tags, plus archived and fork when they apply",
+  repoKey: "The host and the repository's numeric ID, kept across a rename",
+  githubSbom: "The dependency graph SBOM (SPDX): name, version, PURL",
+  gitlabDependencies: "The dependency list (GitLab Ultimate): name, version, PURL from the package manager",
 } as const;
 
 /** One profile field: the source attribute(s) it reads, and the fallback when the source gives none. */
@@ -187,6 +265,10 @@ interface MappingRow {
 }
 
 const ASSET_FIELDS: ProfileField[] = ["name", "type", "criticality", "exposure", "environment", "owner", "group", "tags", "external_id"];
+/** An endpoint source also fills the identity keys and the operating system of the asset (#1251). */
+const DEVICE_FIELDS: ProfileField[] = [...ASSET_FIELDS, "hostname", "fqdn", "serial", "device_id", "os_family", "os_version", "os_build", "last_seen"];
+/** A code source fills the repository's identity key, its link and its dependencies. */
+const REPOSITORY_FIELDS: ProfileField[] = [...ASSET_FIELDS, "resource_id", "url", "last_seen", "software"];
 
 /** How the source's attributes map to the profile, per section and source; the profile fields absent here are "not provided". */
 const MAPPINGS: Record<string, { fields: ProfileField[]; rows: MappingRow[] }> = {
@@ -213,7 +295,145 @@ const MAPPINGS: Record<string, { fields: ProfileField[]; rows: MappingRow[] }> =
       { to: "external_id", from: ["id"] },
     ],
   },
+  "assets:intune": {
+    fields: DEVICE_FIELDS,
+    rows: [
+      { to: "name", from: ["deviceName"] },
+      { to: "type", from: ["operatingSystem", "chassisType", "model"], note: "osTaxonomy" },
+      { to: "owner", from: ["userDisplayName"], note: "deviceOwner" },
+      { to: "tags", from: ["operatingSystem", "complianceState", "managedDeviceOwnerType"], note: "deviceTags" },
+      { to: "external_id", from: ["id"] },
+      { to: "hostname", from: ["deviceName"] },
+      { to: "fqdn", from: ["deviceName"] },
+      { to: "serial", from: ["serialNumber"] },
+      { to: "device_id", from: ["azureADDeviceId"] },
+      { to: "os_family", from: ["operatingSystem"] },
+      { to: "os_version", from: ["osVersion"] },
+      { to: "last_seen", from: ["lastSyncDateTime"] },
+    ],
+  },
+  "assets:defender": {
+    fields: DEVICE_FIELDS,
+    rows: [
+      { to: "name", from: ["computerDnsName"] },
+      { to: "type", from: ["osPlatform"], note: "osTaxonomy" },
+      { to: "tags", from: ["osPlatform", "exposureLevel", "healthStatus", "riskScore"], note: "machineTags" },
+      { to: "external_id", from: ["id"] },
+      { to: "hostname", from: ["computerDnsName"] },
+      { to: "fqdn", from: ["computerDnsName"] },
+      { to: "device_id", from: ["aadDeviceId"] },
+      { to: "os_family", from: ["osPlatform"] },
+      { to: "os_version", from: ["version"] },
+      { to: "os_build", from: ["osBuild"] },
+      { to: "last_seen", from: ["lastSeen"] },
+    ],
+  },
+  "assets:tanium": {
+    fields: DEVICE_FIELDS,
+    rows: [
+      { to: "name", from: ["name"] },
+      { to: "type", from: ["os.name", "os.platform"], note: "osTaxonomy" },
+      { to: "tags", from: ["os.platform"] },
+      { to: "external_id", from: ["id"] },
+      { to: "hostname", from: ["name"] },
+      { to: "fqdn", from: ["name", "domainName"], note: "hostDomain" },
+      { to: "serial", from: ["serialNumber"] },
+      { to: "os_family", from: ["os.platform"] },
+      { to: "os_version", from: ["os.generation"] },
+      { to: "last_seen", from: ["eidLastSeen"] },
+    ],
+  },
+  "assets:crowdstrike": {
+    fields: DEVICE_FIELDS,
+    rows: [
+      { to: "name", from: ["hostname"] },
+      { to: "type", from: ["os_product_name", "product_type_desc"], note: "osTaxonomy" },
+      { to: "tags", from: ["platform_name", "tags"] },
+      { to: "external_id", from: ["device_id"] },
+      { to: "hostname", from: ["hostname"] },
+      { to: "fqdn", from: ["hostname", "machine_domain"], note: "hostDomain" },
+      { to: "serial", from: ["serial_number"] },
+      { to: "os_family", from: ["platform_name"] },
+      { to: "os_version", from: ["os_version"] },
+      { to: "os_build", from: ["os_build"] },
+      { to: "last_seen", from: ["last_seen"] },
+    ],
+  },
+  "assets:servicenow": {
+    fields: DEVICE_FIELDS,
+    rows: [
+      { to: "name", from: ["name"] },
+      { to: "type", from: ["os", "sys_class_name"], note: "osTaxonomy" },
+      { to: "environment", from: ["environment"] },
+      { to: "owner", from: ["owned_by", "managed_by"], note: "ciDisplay" },
+      { to: "tags", from: ["sys_class_name"], note: "ciClassTag" },
+      { to: "external_id", from: ["sys_id"] },
+      { to: "hostname", from: ["host_name"] },
+      { to: "fqdn", from: ["fqdn"] },
+      { to: "serial", from: ["serial_number"] },
+      { to: "os_family", from: ["os"] },
+      { to: "os_version", from: ["os_version"] },
+      { to: "last_seen", from: ["last_discovered"] },
+    ],
+  },
+  "assets:github": {
+    fields: REPOSITORY_FIELDS,
+    rows: [
+      { to: "name", from: ["full_name"] },
+      { to: "type", from: [], note: "codeRepository" },
+      { to: "exposure", from: ["visibility"], note: "repoExposure" },
+      { to: "tags", from: ["owner.login", "visibility", "language", "topics", "default_branch"], note: "repoTags" },
+      { to: "external_id", from: ["id"] },
+      { to: "resource_id", from: ["id"], note: "repoKey" },
+      { to: "url", from: ["html_url"] },
+      { to: "last_seen", from: ["pushed_at"] },
+      { to: "software", from: ["dependency-graph/sbom"], note: "githubSbom" },
+    ],
+  },
+  "assets:gitlab": {
+    fields: REPOSITORY_FIELDS,
+    rows: [
+      { to: "name", from: ["path_with_namespace"] },
+      { to: "type", from: [], note: "codeRepository" },
+      { to: "exposure", from: ["visibility"], note: "repoExposure" },
+      { to: "tags", from: ["namespace.full_path", "visibility", "topics", "default_branch"], note: "repoTagsGitlab" },
+      { to: "external_id", from: ["id"] },
+      { to: "resource_id", from: ["id"], note: "repoKey" },
+      { to: "url", from: ["web_url"] },
+      { to: "last_seen", from: ["last_activity_at"] },
+      { to: "software", from: ["dependencies"], note: "gitlabDependencies" },
+    ],
+  },
   "asset_groups:openaev": { fields: ["name", "external_id"], rows: [{ to: "name", from: ["asset_group_name"] }, { to: "external_id", from: ["asset_group_id"] }] },
+  // #1556: the groups of the endpoint sources, their members kept in sync at each run.
+  "asset_groups:intune": {
+    fields: ["name", "external_id"],
+    rows: [
+      { to: "name", from: ["displayName"] },
+      { to: "external_id", from: ["id"] },
+    ],
+  },
+  "asset_groups:tanium": {
+    fields: ["name", "external_id"],
+    rows: [
+      { to: "name", from: ["name"] },
+      { to: "external_id", from: ["id"] },
+    ],
+  },
+  "asset_groups:crowdstrike": {
+    fields: ["name", "external_id"],
+    rows: [
+      { to: "name", from: ["name"] },
+      { to: "external_id", from: ["id"] },
+    ],
+  },
+  "asset_groups:servicenow": {
+    fields: ["name", "external_id"],
+    rows: [
+      { to: "name", from: ["cmdb_ci_service.name"] },
+      { to: "external_id", from: ["sys_id"] },
+    ],
+  },
   "ai_systems:openaev": {
     fields: ["name", "kind", "exposure", "owner"],
     rows: [
@@ -239,12 +459,21 @@ const TAXONOMY_FILTERS: FilterKey[] = ["category", "subcategory", "criticality",
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Today's one-click draft of the empty fields from every platform. */
-  onQuickSetup: () => void;
+  /** Today's one-click draft of the empty fields from every platform; without it the Quick setup row is not drawn. */
+  onQuickSetup?: () => void;
   quickSetupPending?: boolean;
+  /**
+   * The sections offered (#1367, points 4 and 5): CTEM > Inventory > Sources imports the inventory sections, Settings >
+   * Organization the business profile ones (primary assets, PIRs). Every section when omitted.
+   */
+  sections?: readonly ImportSectionKey[];
 }
 
-export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, quickSetupPending }: Props) {
+/** The sections each surface imports into (#1367): the same split as the backend's SECTION_SCOPES. */
+export const INVENTORY_IMPORT_SECTIONS = ["assets", "asset_groups", "tech_stack", "ai_systems"] as const satisfies readonly ImportSectionKey[];
+export const PROFILE_IMPORT_SECTIONS = ["crown_jewels", "pirs"] as const satisfies readonly ImportSectionKey[];
+
+export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, quickSetupPending, sections: offered }: Props) {
   const { t_i18n } = useFormatter();
   const f = useNumberFormat();
   const { toast } = useToast();
@@ -270,7 +499,7 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
   const pirs = useOrganizationPirs(open && section === "pirs");
   const options = useOrganizationImportOptions(section, source, open && (step === "filters" || step === "mapping"));
 
-  const platform = PLATFORM_NAMES[source ?? ""] ?? source ?? "";
+  const platform = IMPORT_SOURCE_NAMES[source ?? ""] ?? source ?? "";
   const sectionEntry = sources.data?.sections.find((entry) => entry.section === section);
   const sourceEntry = sectionEntry?.sources.find((entry) => entry.source === source);
   const unavailable = options.data?.unavailable ?? {};
@@ -416,6 +645,19 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
   const filterControl = (key: FilterKey) => {
     const id = `org-import-filter-${key}`;
     const reason = reasonOf(key);
+    // An on/off choice is a switch row of its own, never a control inside a labelled field.
+    if (key === "include_owner" || key === "include_archived" || key === "include_forks" || key === "skip_dependencies" || key === "skip_software")
+      return (
+        <SettingsSwitchField
+          key={key}
+          id={id}
+          label={t_i18n(FILTER_LABELS[key])}
+          helper={t_i18n(FILTER_HELP[key].helper)}
+          info={t_i18n(FILTER_HELP[key].info)}
+          checked={filters[key] === "true"}
+          onCheckedChange={(checked) => setFilter(key, checked ? "true" : "")}
+        />
+      );
     const control = () => {
       if ((PICKED as string[]).includes(key))
         return (
@@ -427,18 +669,22 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
             selected={listValue(key)}
             onToggle={(value) => toggle(key, value)}
             disabled={Boolean(reason)}
-            sort={key !== "criticality"}
+            sort={!keepsSourceOrder(key)}
             placeholder={options.isLoading ? t_i18n("Reading {platform}", { platform }) : t_i18n("Every value")}
             searchPlaceholder={t_i18n("Search a value")}
             emptyOptionsLabel={t_i18n("No value in {platform}", { platform })}
             noMatchLabel={t_i18n("No matching value")}
           />
         );
-      if (key === "min_criticality" || key === "tenant_id") {
+      if (key === "min_criticality" || key === "tenant_id" || key === "last_seen_days" || key === "ci_class") {
         const choices =
           key === "min_criticality"
             ? (Object.keys(MIN_CRITICALITY_LABELS) as (keyof typeof MIN_CRITICALITY_LABELS)[]).map((level) => ({ value: level, label: t_i18n(MIN_CRITICALITY_LABELS[level]) }))
-            : (options.data?.options.tenant_id ?? []).map((o) => ({ value: o.value, label: o.label }));
+            : key === "last_seen_days"
+              ? [{ value: "", label: t_i18n("Any time") }, ...(options.data?.options.last_seen_days ?? []).map((o) => ({ value: o.value, label: filterValueLabel(t_i18n, key, o.value) }))]
+              : key === "ci_class"
+                ? (options.data?.options.ci_class ?? []).map((o) => ({ value: o.value, label: filterValueLabel(t_i18n, key, o.value) }))
+                : (options.data?.options.tenant_id ?? []).map((o) => ({ value: o.value, label: o.label }));
         const current = typeof filters[key] === "string" ? (filters[key] as string) : "";
         return (
           <SearchableSelect
@@ -448,7 +694,7 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
             sort={false}
             disabled={Boolean(reason)}
             options={choices}
-            value={current || (key === "min_criticality" ? "high" : "")}
+            value={current || (key === "min_criticality" ? "high" : key === "ci_class" ? "cmdb_ci_computer" : "")}
             onValueChange={(value) => setFilter(key, value)}
             placeholder={key === "tenant_id" ? t_i18n("Default tenant") : undefined}
             className="w-full"
@@ -498,7 +744,7 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
     );
   };
 
-  const sectionKeys = Object.keys(SECTION_LABELS) as ImportSectionKey[];
+  const sectionKeys = (Object.keys(SECTION_LABELS) as ImportSectionKey[]).filter((key) => !offered || offered.includes(key));
   const availableSources = (sectionEntry?.sources ?? []).filter((entry) => entry.available).map((entry) => entry.source);
   const pickSource = (next: ImportSourceKey) => {
     setSource(next);
@@ -530,15 +776,17 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
           />
         ))}
       </div>
-      <div className="flex items-center justify-between gap-3 rounded-sm border border-elevation-subtle px-3 py-2">
-        <p className="content-compact text-default-secondary">
-          {t_i18n("Quick setup: fill the empty fields from every connected platform in one click, then review them in the form.")}
-        </p>
-        <Button variant="secondary" onClick={onQuickSetup} disabled={quickSetupPending} aria-busy={quickSetupPending || undefined}>
-          {quickSetupPending && <Spinner size="sm" tone="inherit" />}
-          {t_i18n("Quick setup")}
-        </Button>
-      </div>
+      {onQuickSetup && (
+        <div className="flex items-center justify-between gap-3 rounded-sm border border-elevation-subtle px-3 py-2">
+          <p className="content-compact text-default-secondary">
+            {t_i18n("Quick setup: fill the empty fields from every connected platform in one click, then review them in the form.")}
+          </p>
+          <Button variant="secondary" onClick={onQuickSetup} disabled={quickSetupPending} aria-busy={quickSetupPending || undefined}>
+            {quickSetupPending && <Spinner size="sm" tone="inherit" />}
+            {t_i18n("Quick setup")}
+          </Button>
+        </div>
+      )}
     </div>
   );
 
@@ -567,11 +815,15 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
             disabled={!entry.available}
             onSelect={() => pickSource(entry.source)}
             icon={SOURCE_LOGOS[entry.source] ?? glyph("database")}
-            title={PLATFORM_NAMES[entry.source] ?? entry.source}
+            title={IMPORT_SOURCE_NAMES[entry.source] ?? entry.source}
             description={
               entry.available
                 ? t_i18n("Connected and readable with your account.")
-                : t_i18n("Not available: {reason}. Connect it in Settings > Integrations.", { reason: entry.reason || t_i18n("not connected") })
+                : entry.reason_code === "not_connected"
+                  ? t_i18n("Not available: no {source} integration is connected. Connect it in Settings > Integrations.", { source: IMPORT_SOURCE_NAMES[entry.source] ?? entry.source })
+                  : entry.reason_code === "no_token"
+                    ? t_i18n("Not available: the {source} integration has no token. Authorize it again in Settings > Integrations.", { source: IMPORT_SOURCE_NAMES[entry.source] ?? entry.source })
+                    : t_i18n("Not available: {reason}. Connect it in Settings > Integrations.", { reason: entry.reason || t_i18n("not connected") })
             }
           />
         ))}
@@ -682,7 +934,7 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
 
   // Counts are compact, the exact figure on hover (Design standards s.5): the plural reads the number, {shown} draws it.
   const totalLine = (count: number, kind: "read" | "match") => {
-    const name = PLATFORM_NAMES[plan?.source ?? ""] ?? plan?.source ?? "";
+    const name = IMPORT_SOURCE_NAMES[plan?.source ?? ""] ?? plan?.source ?? "";
     const line = (shown: (value: number) => string) =>
       kind === "read"
         ? t_i18n("{count, plural, =0 {No entity read from {platform}} one {{shown} entity read from {platform}} other {{shown} entities read from {platform}}}", { count, shown: shown(count), platform: name })
@@ -700,9 +952,13 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
       )}
       {preview.isError && <p className="content-compact text-feedback-error-primary">{t_i18n("The preview could not be made. Try again in a moment.")}</p>}
       {plan?.error && (
-        <p className="content-compact text-feedback-error-primary">
-          {t_i18n("{platform} could not be read. Nothing will be saved.", { platform: PLATFORM_NAMES[plan.source] ?? plan.source })}
-        </p>
+        <div className="space-y-1" data-testid="org-import.read-error">
+          <p className="content-compact text-feedback-error-primary">
+            {t_i18n("{platform} could not be read. Nothing will be saved.", { platform: IMPORT_SOURCE_NAMES[plan.source] ?? plan.source })}
+          </p>
+          {/* The cause and what to grant (Design standards s.5): only the reasons the backend words itself, never a platform's raw text. */}
+          {plan.error_reason && <p className="content-compact text-default-secondary">{t_i18n("Reason: {reason}", { reason: plan.error_reason })}</p>}
+        </div>
       )}
       {plan && !plan.error && (
         <>

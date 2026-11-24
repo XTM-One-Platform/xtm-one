@@ -383,8 +383,18 @@ async def sweep_category(
     return tally
 
 
-async def sweep(db: AsyncSession, *, now: datetime | None = None, dry_run: bool = False) -> dict[str, dict[str, Any]]:
-    """One tick of the file retention over every category this module sweeps; per category its tally. Commits."""
+async def sweep(
+    db: AsyncSession,
+    *,
+    now: datetime | None = None,
+    dry_run: bool = False,
+    also: Mapping[str, int] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """One tick of the file retention over every category this module sweeps; per category its tally. Commits.
+
+    *also* names the files an older sweep deleted in the same pass per category
+    (the check pictures), kept with the figures Settings shows as the last sweep.
+    """
     rules = await load_policy(db)
     report: dict[str, dict[str, Any]] = {}
     for category in CATEGORIES:
@@ -394,6 +404,9 @@ async def sweep(db: AsyncSession, *, now: datetime | None = None, dry_run: bool 
         if days <= 0:
             continue
         report[category.key] = await sweep_category(db, category, days, now=now, dry_run=dry_run)
+    for key, files in (also or {}).items():
+        if key in BY_KEY and key not in report:
+            report[key] = {"files": int(files), "bytes": 0, "kept_referenced": 0, "objects_left": 0, "more": False}
     if not dry_run:
         await _remember_sweep(report, now or _now())
     return report

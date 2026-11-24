@@ -22,7 +22,7 @@ import re
 import time
 import uuid
 from base64 import b64decode, b64encode
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from datetime import UTC, datetime
 from typing import Any
@@ -85,11 +85,13 @@ from app.api.v1.integration_catalog import (
     build_dummy_token,
     build_provider_tools,
     integration_owns_oauth_scopes,
+    invalid_extra_fields,
     is_certified_provider,
     is_registration_only_provider,
     missing_required_extra_fields,
     missing_required_extra_fields_message,
     newly_missing_required_extra_fields,
+    normalize_typed_extra_fields,
     platform_base_url,
     registration_editable_extra_fields,
     supported_auth_types,
@@ -152,6 +154,7 @@ from app.models.integration import Integration
 from app.models.oauth_default import OAuthDefault
 from app.models.user import User
 from app.services.audit import log_audit
+from app.services.email import is_email_configured
 from app.services.hitl_whitelist import platform_approval_by_provider
 from app.services.integration_bundle_manager import (
     INTEGRATION_BUNDLE_MAX_BYTES,
@@ -178,6 +181,7 @@ from app.services.integration_state import (
     takes_admin_oauth_app,
     uses_admin_oauth_app,
 )
+from app.services.integration_status import current_reason
 from app.services.integration_user_credentials import (
     apply_share_choice,
     connected_user_counts,
@@ -245,7 +249,7 @@ _INTEGRATION_TYPE_META: dict[str, dict[str, str]] = {
     },
     "repository": {
         "label": "Code Repository",
-        "description": "Source code hosting (GitHub, Jira, Atlassian)",
+        "description": "Source code hosting (GitHub, GitLab)",
     },
     "crm": {"label": "CRM", "description": "Customer relationship management"},
     "documentation": {"label": "Documentation", "description": "Documentation & wikis"},
@@ -936,6 +940,13 @@ async def list_provider_catalog(
         if category and val.get("category") != category:
             continue
 
+        # A provider that sends through the deployment's SMTP is offered only
+        # while SMTP is configured.
+        if val.get("requires_platform_smtp") and not is_email_configured():
+            continue
+        # Only an administrator creates a company-managed-only provider.
+        if val.get("company_managed_only") and not is_admin:
+            continue
         provider_disabled = (key in disabled_providers) or (key in custom_disabled)
 
         # Non-admin users: skip disabled providers unless explicitly requested
@@ -981,11 +992,13 @@ async def list_provider_catalog(
                 # whole outbound feature unreachable from the product.
                 a2a_directions=val.get("a2a_directions"),
                 requires_relay=bool(val.get("requires_relay")),
+                company_managed_only=bool(val.get("company_managed_only")),
                 variant_selector=val.get("variant_selector"),
                 variants=variants,
                 extra_fields=val.get("extra_fields"),
                 extra_field_options=extra_field_options,
                 extra_field_visible_when=val.get("extra_field_visible_when"),
+                extra_field_inputs=val.get("extra_field_inputs"),
                 description=val.get("description"),
                 logo=val.get("logo"),
                 integration_types=val.get("integration_types", []),
@@ -1914,6 +1927,27 @@ async def _forget_oauth_share_dismissal(
 # ---------------------------------------------------------------------------
 
 
+def _require_catalog_creation_rules(
+    catalog: Mapping[str, Any], provider: str, user: User, is_company_managed: bool
+) -> None:
+    """Refuse a creation its catalog entry rules out.
+
+    ``requires_platform_smtp``: the provider sends through the deployment's SMTP,
+    so it exists only while SMTP is configured. ``company_managed_only``: an
+    administrator creates it, company-managed, never as a personal integration.
+    """
+    if catalog.get("requires_platform_smtp") and not is_email_configured():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Provider '{provider}' needs the platform's SMTP server, and none is configured (SMTP_HOSTNAME).",
+        )
+    if catalog.get("company_managed_only") and not (user.is_admin and is_company_managed):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Provider '{provider}' is created by an administrator, as a company-managed integration only.",
+        )
+
+
 def _validate_a2a_federation_config(
     provider: str, direction: str | None, extra_config: dict
 ) -> None:
@@ -1994,6 +2028,7 @@ async def create_integration(
             status_code=403,
             detail=f"Provider '{body.provider}' is currently disabled by an admin.",
         )
+    _require_catalog_creation_rules(catalog, body.provider, user, bool(body.is_company_managed))
 
     if body.provider.startswith("custom:"):
         custom_row_result = await db.execute(
@@ -2047,6 +2082,9 @@ async def create_integration(
             status_code=400,
             detail=missing_required_extra_fields_message(body.provider, missing),
         )
+    # Typed values within their rule (a domain list, a bounded number).
+    if body.extra_config and (invalid := invalid_extra_fields(body.provider, body.extra_config)):
+        raise HTTPException(status_code=422, detail=" ".join(invalid))
 
     # Only admins can create company-managed integrations
     require_admin_for_company_managed(
@@ -2056,7 +2094,10 @@ async def create_integration(
     # ── Auto-fill from admin OAuth defaults when user doesn't supply creds ──
     effective_client_id = body.client_id
     effective_client_secret = body.client_secret
-    effective_extra = body.extra_config
+    # A domain list sent as a JSON list is stored one entry per line, as the form stores it.
+    effective_extra = (
+        normalize_typed_extra_fields(body.provider, body.extra_config) if body.extra_config else body.extra_config
+    )
     uses_admin_oauth_credentials = False
 
     # The one rule, shared with the agent builder's create_integration.
@@ -2818,8 +2859,12 @@ async def update_integration(
     if typed_credential_untested(integration.auth_type, api_key=body.api_key, client_secret=body.client_secret):
         integration.connection_test_status = CONNECTION_TEST_UNTESTED
     if body.extra_config is not None:
-        new_extra = await merged_extra_config(db, integration, body.extra_config)
+        new_extra = await merged_extra_config(
+            db, integration, normalize_typed_extra_fields(integration.provider, body.extra_config)
+        )
         _refuse_newly_missing_required_extra(integration, new_extra)
+        if invalid := invalid_extra_fields(integration.provider, body.extra_config):
+            raise HTTPException(status_code=422, detail=" ".join(invalid))
         if integration.provider.startswith("custom:"):
             # The base URL policy, as on create; the session rolls back on
             # the refusal, so nothing assigned above is stored.
@@ -3924,6 +3969,104 @@ async def _test_integration(
             ok, message = False, f"{integration.name} connection failed"
         return {"status": "ok" if ok else "error", "message": message}
 
+    # DealHub: the API token is in api_key_enc, the instance host in
+    # extra_config. Validate by reading the account's active users.
+    if integration.provider == "dealhub":
+        from app.integrations.providers.dealhub import (
+            build_dealhub_token,
+        )
+        from app.integrations.providers.dealhub import (
+            validate_connection as dealhub_validate,
+        )
+
+        dealhub_extra: dict[str, object] = {}
+        if integration.extra_config_enc:
+            with suppress(Exception):
+                decrypted = decrypt_json(integration.extra_config_enc)
+                dealhub_extra = decrypted if isinstance(decrypted, dict) else {}
+        dealhub_host = dealhub_extra.get("instance_host")
+        dealhub_secret = (await reveal_field(integration, "api_key_enc")) or ""
+        try:
+            ok, message = await dealhub_validate(
+                build_dealhub_token(dealhub_host if isinstance(dealhub_host, str) else "", dealhub_secret)
+            )
+        except Exception:
+            logger.debug("DealHub connectivity check failed", exc_info=True)
+            ok, message = False, f"{integration.name} connection failed"
+        return {"status": "ok" if ok else "error", "message": message}
+
+    # Airwallex exchanges a client id and an API key for a 30-minute bearer:
+    # the key is in api_key_enc, the environment, client id and login_as in
+    # extra_config. Validate by reading the account.
+    if integration.provider == "airwallex":
+        from app.integrations.providers.airwallex import (
+            token_from_config as airwallex_token_from_config,
+        )
+        from app.integrations.providers.airwallex import (
+            validate_connection as airwallex_validate,
+        )
+
+        airwallex_extra: dict[str, object] = {}
+        if integration.extra_config_enc:
+            with suppress(Exception):
+                decrypted = decrypt_json(integration.extra_config_enc)
+                airwallex_extra = decrypted if isinstance(decrypted, dict) else {}
+        airwallex_secret = (await reveal_field(integration, "api_key_enc")) or ""
+        try:
+            ok, message = await airwallex_validate(airwallex_token_from_config(airwallex_secret, airwallex_extra))
+        except Exception:
+            logger.debug("Airwallex connectivity check failed", exc_info=True)
+            ok, message = False, f"{integration.name} connection failed"
+        return {"status": "ok" if ok else "error", "message": message}
+
+    # Rydoo mints a bearer from an API client (client credentials): the secret
+    # is in api_key_enc, the client id in extra_config. Validate by listing the
+    # company's branches (its legal entities).
+    if integration.provider == "rydoo":
+        from app.integrations.providers.rydoo import (
+            token_from_config as rydoo_token_from_config,
+        )
+        from app.integrations.providers.rydoo import (
+            validate_connection as rydoo_validate,
+        )
+
+        rydoo_extra: dict[str, object] = {}
+        if integration.extra_config_enc:
+            with suppress(Exception):
+                decrypted = decrypt_json(integration.extra_config_enc)
+                rydoo_extra = decrypted if isinstance(decrypted, dict) else {}
+        rydoo_secret = (await reveal_field(integration, "api_key_enc")) or ""
+        try:
+            ok, message = await rydoo_validate(rydoo_token_from_config(rydoo_secret, rydoo_extra))
+        except Exception:
+            logger.debug("Rydoo connectivity check failed", exc_info=True)
+            ok, message = False, f"{integration.name} connection failed"
+        return {"status": "ok" if ok else "error", "message": message}
+
+    # Spendesk mints a bearer from a Public API client (client credentials):
+    # the secret is in api_key_enc, the environment and client id in
+    # extra_config. Validate by listing the organisation's entities.
+    if integration.provider == "spendesk":
+        from app.integrations.providers.spendesk import (
+            token_from_config as spendesk_token_from_config,
+        )
+        from app.integrations.providers.spendesk import (
+            validate_connection as spendesk_validate,
+        )
+
+        spendesk_extra: dict[str, object] = {}
+        if integration.extra_config_enc:
+            with suppress(Exception):
+                decrypted = decrypt_json(integration.extra_config_enc)
+                spendesk_extra = decrypted if isinstance(decrypted, dict) else {}
+        spendesk_secret = (await reveal_field(integration, "api_key_enc")) or ""
+        try:
+            ok, message = await spendesk_validate(spendesk_token_from_config(spendesk_secret, spendesk_extra))
+        except Exception:
+            logger.debug("Spendesk connectivity check failed", exc_info=True)
+            ok, message = False, f"{integration.name} connection failed"
+        return {"status": "ok" if ok else "error", "message": message}
+
     # OVHcloud signs each request (application key mode) or mints an OAuth2
     # bearer (service account mode): the secret is in api_key_enc, the rest of
     # the credential in extra_config. Validate with the provider's own read of
@@ -4086,6 +4229,32 @@ async def _test_integration(
             }
         return await test_provider_connectivity(
             "docusign", docusign_token, {}, integration.name, db=db, integration=integration
+        )
+
+    # NetSuite: the compound credential (account, mode, identifiers and the
+    # secret of the API Key field) is assembled from the row the gate above
+    # cleared and handed to the provider's validate_connection.
+    if integration.provider == "netsuite":
+        from app.integrations.providers.netsuite import compound_credential as netsuite_credential
+
+        netsuite_extra: dict = {}
+        if integration.extra_config_enc:
+            with suppress(Exception):
+                netsuite_extra = decrypt_json(integration.extra_config_enc) or {}
+        netsuite_token = netsuite_credential(
+            ((await reveal_field(integration, "api_key_enc")) or "").strip(), netsuite_extra
+        )
+        if not netsuite_token:
+            return {
+                "status": "error",
+                "message": (
+                    "Missing credentials: set the account ID and, for OAuth 2.0 machine-to-machine, the client "
+                    "ID, the certificate ID and the certificate's private key; for Token-Based Authentication, "
+                    "the consumer key and secret, the token ID and the token secret."
+                ),
+            }
+        return await test_provider_connectivity(
+            "netsuite", netsuite_token, {}, integration.name, db=db, integration=integration
         )
 
     # Microsoft Purview in app-only (API-key) mode stores the service principal
@@ -4742,6 +4911,8 @@ def _to_response(
     # Someone acting with their own account sees its state, never the
     # holder's: its status and token, and no scopes (theirs are not recorded).
     status, has_access_token, scopes = r.status, bool(r.access_token_enc), r.scopes
+    # Why and since when (#1665): the holder's verdict, never shown for someone's own account.
+    status_reason, status_reason_at = current_reason(r)
     # What the stored token was granted, and what it asked for and did not get.
     granted = getattr(r, "granted_scopes", None) if has_access_token else None
     granted_scopes = None if granted is None else split_scopes(granted)
@@ -4751,6 +4922,7 @@ def _to_response(
         has_access_token = bool(my_credential and my_credential.has_access_token)
         scopes = required_scopes = None
         granted_scopes = missing = None
+        status_reason = status_reason_at = None
 
     return IntegrationResponse(
         id=str(r.id),
@@ -4760,6 +4932,8 @@ def _to_response(
         auth_type=r.auth_type,
         status=status,
         connection_test_status=getattr(r, "connection_test_status", None),
+        status_reason=status_reason,
+        status_reason_at=status_reason_at,
         name=r.name,
         tool_slug=r.tool_slug,
         description=r.description,

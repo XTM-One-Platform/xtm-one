@@ -82,8 +82,26 @@ export interface Fleet {
   automations?: FleetAutomations | null;
   /** The newest run of a home member the reader may see; `null` = never run. */
   last_run_at?: string | null;
+  /** The Platform Health fleet only (#974): what starts it and what it covers, from its Settings. */
+  health_starts?: FleetHealthStarts | null;
   created_at: string;
   updated_at: string;
+}
+
+/** What starts the Platform Health fleet (`FleetHealthStartsResponse`, #974): Settings schedules and signals. */
+interface FleetHealthStarts {
+  /** A signal pass is on: an investigation starts on an event. */
+  events: boolean;
+  /** The schedules switched on in Settings > Platform Health. */
+  schedules: number;
+  /** The soonest next start of those schedules; `null` when none is on. */
+  next_run_at: string | null;
+  /** The modules it covers, XTM One modes only; empty in Copilot mode. */
+  modules: string[];
+  /** Where an administrator switches and schedules it. */
+  settings_route: string;
+  /** Platform Health is on in Settings; off, nothing starts and `next_run_at` is `null` (UX r1 B2 on #980). */
+  active?: boolean;
 }
 
 /** Where a forked fleet came from, as recorded at fork time (`fleets.forked_from`). */
@@ -463,6 +481,128 @@ export function useFleetFlow(fleetId: string | null | undefined, shown = true) {
   });
 }
 
+/** An integration as a capability slot shows it (`FleetSlotIntegration`, #914 slice 2). */
+export interface FleetSlotIntegration {
+  integration_id: string;
+  provider: string;
+  /** Empty when the reader cannot see the bound integration. */
+  name: string;
+}
+
+/** One capability a member's role can use, and how it is filled (`FleetCapabilitySlot`). */
+interface FleetCapabilitySlot {
+  capability: string;
+  label: string;
+  state: "filled" | "empty" | "unavailable";
+  bound: FleetSlotIntegration[];
+  candidates: FleetSlotIntegration[];
+  /** The built-in option, when the capability has one: it fills the slot by itself (#1201). */
+  builtin?: FleetSlotBuiltin | null;
+  /** Integrations of the capability this member cannot take, and why (#1373). */
+  blocked?: FleetSlotBlockedIntegration[];
+}
+
+/** An integration of the capability a member cannot take (`FleetSlotBlockedIntegration`, #1373). */
+export interface FleetSlotBlockedIntegration extends FleetSlotIntegration {
+  /** `not_company_managed`: the members are company-managed and take company-managed integrations only. */
+  reason: "not_company_managed" | "not_connected";
+}
+
+/** A capability's built-in option (`FleetSlotBuiltin`, #1201): served by XTM One, never stored as a binding. */
+interface FleetSlotBuiltin {
+  key: string;
+  label: string;
+  /** Always active: an external integration adds to it and it cannot be removed. */
+  always_on: boolean;
+}
+
+/** One member using a capability type, in the expanded type row (`FleetCapabilityTypeMember`, #1201). */
+export interface FleetCapabilityTypeMember {
+  member_id: string;
+  agent_id: string;
+  name: string;
+  role_label: string;
+  can_edit: boolean;
+  bound: FleetSlotIntegration[];
+  /** Its bound set differs from the fleet choice: an override ("Custom"). */
+  custom: boolean;
+}
+
+/** A capability across the fleet's members: one row of the type view (`FleetCapabilityType`, #1201). */
+export interface FleetCapabilityType {
+  capability: string;
+  label: string;
+  state: "connected" | "partial" | "not_bound" | "not_usable" | "none_connected";
+  /** The fleet choice: the bound set most members share. */
+  choice: FleetSlotIntegration[];
+  candidates: FleetSlotIntegration[];
+  members: FleetCapabilityTypeMember[];
+  builtin?: FleetSlotBuiltin | null;
+  /** What no member can take, and why (#1373): the row names it instead of "Connect one". */
+  blocked?: FleetSlotBlockedIntegration[];
+}
+
+/** The capability slots of one home member (`FleetMemberSlots`). */
+export interface FleetMemberSlots {
+  member_id: string;
+  agent_id: string;
+  name: string;
+  role_label: string;
+  /** Whether the reader may bind or unbind on this member's agent. */
+  can_edit: boolean;
+  slots: FleetCapabilitySlot[];
+}
+
+/** `GET /fleets/{id}/capability-slots`. */
+export interface FleetCapabilitySlots {
+  fleet_id: string;
+  members: FleetMemberSlots[];
+  /** The same slots grouped by capability (#1201): one row per type. */
+  types: FleetCapabilityType[];
+}
+
+/** Each home member's capability slots: configuration only, never a run or quota (#914). */
+export function useFleetCapabilitySlots(fleetId: string | null | undefined, shown = true) {
+  return useQuery<FleetCapabilitySlots>({
+    queryKey: [...KEY, "capability-slots", fleetId],
+    queryFn: () => api.get(`/fleets/${fleetId}/capability-slots`),
+    enabled: !!fleetId && shown,
+    ...FLEET_QUERY_POLICY,
+    throwOnError: false,
+  });
+}
+
+/** One step of the CTEM loop guided setup (`FleetSetupStep`, #1087). */
+export interface FleetSetupStep {
+  key: "organization" | "modules" | "ecosystem" | "gates" | "preview" | "enable";
+  /** `done` / `skipped` as recorded for the current setup version, else `ready` (already in place) or `todo`. */
+  state: "done" | "skipped" | "ready" | "todo";
+  /** What the step shows, read live (counts, connected modules, slot states, level, opt-in). */
+  facts: Record<string, unknown>;
+}
+
+/** `GET /fleets/setup/ctem-loop` (#1087): where the guided setup stands; administrators of XTM One only. */
+export interface FleetSetupStatus {
+  version: string;
+  /** The CTEM loop fleet, null when it is not seeded on this instance. */
+  fleet_id: string | null;
+  steps: FleetSetupStep[];
+  /** The step the flow opens on; null when every step is done or skipped. */
+  resume_on: FleetSetupStep["key"] | null;
+}
+
+/** The CTEM loop setup's step states, read while the guided setup is open: read only, no quota. */
+export function useCtemLoopSetupStatus(enabled: boolean) {
+  return useQuery<FleetSetupStatus>({
+    queryKey: [...KEY, "setup", "ctem-loop"],
+    queryFn: () => api.get("/fleets/setup/ctem-loop"),
+    enabled,
+    staleTime: 0,
+    retry: false,
+    throwOnError: false,
+  });
+}
+
 /** One object of a fork's source that moved since the fork (`FleetSourceChange`). */
 export interface FleetSourceChange {
   object: "fleet" | "member" | "connected";
@@ -482,6 +622,8 @@ export interface FleetSourceChanges {
   /** False on a fork older than the kept structure: the diff is not known. */
   diff_available: boolean;
   changes: FleetSourceChange[];
+  /** The seeded fleet that took over a retired built-in source (CTEM-31), else absent or `null`. */
+  successor?: { fleet_id: string; slug: string; name: string } | null;
 }
 
 /**
@@ -609,6 +751,9 @@ export interface FleetDocNote {
 /** How many of a fleet's gated actions wait for a person (`fleets.autonomy_level`, #9769). */
 export type FleetAutonomyLevel = "full_gates" | "medium" | "low" | "autonomous";
 
+/** A per-action override of the level (`fleet_autonomy.APPROVAL_PINS`). */
+export type FleetGatePin = "wait" | "run";
+
 /** One declared gate of the fleet, as `fleet_autonomy.gate_catalog` returns it. */
 export interface FleetAutonomyGate {
   key: string;
@@ -617,6 +762,8 @@ export interface FleetAutonomyGate {
   /** The integration a gate proposed from write tools acts in (#10034); absent for a declared gate. */
   provider?: string;
   impact: "low" | "high" | "destructive";
+  /** A per-action override of the level (#10153; on a built-in fleet too since #916): `wait` always waits, `run` always runs alone; absent, the gate follows the level. */
+  pin?: FleetGatePin | null;
   /** Waits for a person at the fleet's level. */
   gated: boolean;
   /** Waits for a person, per level. */
@@ -1214,6 +1361,26 @@ export function useSetFleetAutonomy(fleetId: string) {
 }
 
 /**
+ * Apply the level and the per-action pins in one call (`PUT /fleets/{id}/autonomy`,
+ * #10153 C3; built-in fleets take pins since #916, CTEM-34). The pins are the
+ * whole map: a gate left out follows the level. Re-reads the documentation,
+ * whose `autonomy_catalog` the strip and the matrix draw.
+ */
+export function useSetFleetGatePins(fleetId: string) {
+  const invalidate = useInvalidateFleet();
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, { level: FleetAutonomyLevel; pins: Record<string, FleetGatePin> }>({
+    mutationFn: (body) => api.put(`/fleets/${fleetId}/autonomy`, body),
+    onSettled: () => {
+      invalidate();
+      qc.invalidateQueries({ queryKey: [...KEY, "documentation", fleetId] });
+      qc.invalidateQueries({ queryKey: [...KEY, "approval-gates", fleetId] });
+    },
+    meta: OWN_ERROR_TOAST,
+  });
+}
+
+/**
  * A fleet's approval gate catalog and the gates proposed from its configuration
  * (`GET /fleets/{id}/approval-gates`, #10014). Read only: no model call, no quota, no run.
  */
@@ -1283,6 +1450,53 @@ export function useFleetControl(fleetId: string, action: "pause" | "resume") {
   });
 }
 
+/** What a reset to the factory state changes (`FleetResetResponse`, #1508); the dry run's counts feed the dialog. */
+export interface FleetResetResult {
+  fleet_id: string;
+  dry_run: boolean;
+  automations: number;
+  run_as_cleared: number;
+  /** Integrations, knowledge bases, skills, MCP servers and custom tools unbound from the members. */
+  bindings: number;
+  pins: number;
+  gates: number;
+  /** The level the fleet moves back to; null when it is already there. */
+  autonomy_level: string | null;
+  agents: number;
+  settings: string[];
+  documentation: boolean;
+  held_by_stop: string[];
+  automations_state: FleetAutomations;
+}
+
+/** The dry run of a reset, read while its dialog is open (administrators, built-in fleets). */
+export function useFleetResetPlan(fleetId: string, enabled: boolean) {
+  return useQuery<FleetResetResult>({
+    queryKey: [...KEY, "reset-plan", fleetId],
+    queryFn: () => api.post<FleetResetResult>(`/fleets/${fleetId}/reset`, { dry_run: true }),
+    enabled,
+    staleTime: 0,
+    gcTime: 0,
+    meta: OWN_ERROR_TOAST,
+  });
+}
+
+/** Reset a built-in fleet to its factory state (`POST /fleets/{id}/reset`, #1508), the fleet's name typed. */
+export function useFleetReset(fleetId: string) {
+  const invalidate = useInvalidateFleet();
+  const qc = useQueryClient();
+  return useMutation<FleetResetResult, Error, string>({
+    mutationFn: (confirmName) => api.post<FleetResetResult>(`/fleets/${fleetId}/reset`, { confirm_name: confirmName }),
+    onSettled: () => {
+      invalidate();
+      qc.invalidateQueries({ queryKey: ["assignments"] });
+      qc.invalidateQueries({ queryKey: ["agents"] });
+      syncFlowNodeCatalog(qc);
+    },
+    meta: OWN_ERROR_TOAST,
+  });
+}
+
 /** One automation of the fleet that is off (`FleetEnableItemResponse`): switched on when selected. */
 export interface FleetEnableItem {
   id: string;
@@ -1293,6 +1507,20 @@ export interface FleetEnableItem {
   missing: string[];
   /** Part of the call (every automation when the request picked none). */
   selected: boolean;
+  /** Runs a day its schedule starts (0 for a trigger that is not a schedule, #1538). */
+  runs_per_day?: number;
+  /** It runs once per event: its daily count is not known ahead. */
+  event_driven?: boolean;
+}
+
+/** The expected load of the automations the plan picks (`FleetEnableEstimateResponse`, #1538): an order of magnitude. */
+export interface FleetEnableEstimate {
+  scheduled_runs_per_day: number;
+  event_automations: number;
+  /** Mean cost of one run of the picked automations over `cost_days`; null when none ran. */
+  avg_cost_per_run: number | null;
+  cost_per_day: number | null;
+  cost_days: number;
 }
 
 /** The plan (`dry_run`) or the outcome of Enable fleet (`FleetEnableResponse`, #9769 S4b). */
@@ -1307,6 +1535,8 @@ export interface FleetEnableResult {
   missing: string[];
   items: FleetEnableItem[];
   automations: FleetAutomations;
+  /** On a dry run: the expected runs a day and cost of the picked automations (#1538). */
+  estimate?: FleetEnableEstimate | null;
 }
 
 /**
@@ -1502,6 +1732,55 @@ export function useUpdateFleetMember(fleetId: string) {
   });
 }
 
+/** The fleet choice of a capability: exactly these integrations on every member slot of that type (#1201). */
+export interface FleetCapabilityWrite {
+  capability: string;
+  /** Empty leaves the built-in option alone, when the capability has one. */
+  integrationIds: string[];
+  /** Also write the members whose slot is custom; otherwise they keep their override. */
+  overrideCustom: boolean;
+}
+
+/**
+ * Write the fleet choice of a capability on every member slot of that type
+ * (`PUT /fleets/{id}/capabilities/{capability}`, #1201). The caller says the refusal.
+ */
+export function useSetFleetCapability(fleetId: string) {
+  const invalidate = useInvalidateFleet();
+  return useMutation<FleetCapabilitySlots, Error, FleetCapabilityWrite>({
+    mutationFn: ({ capability, integrationIds, overrideCustom }) =>
+      api.put<FleetCapabilitySlots>(`/fleets/${fleetId}/capabilities/${encodeURIComponent(capability)}`, {
+        integration_ids: integrationIds,
+        override_custom: overrideCustom,
+      }),
+    onSettled: invalidate,
+    meta: OWN_ERROR_TOAST,
+  });
+}
+
+/** One member's exact slot: an override, or its reset to the fleet choice (#1201). */
+export interface FleetMemberSlotWrite {
+  memberId: string;
+  capability: string;
+  integrationIds: string[];
+}
+
+/**
+ * Set exactly these integrations on one member's slot
+ * (`PUT /fleets/{id}/members/{member}/slots/{capability}`, #1201). The caller says the refusal.
+ */
+export function useSetFleetMemberSlot(fleetId: string) {
+  const invalidate = useInvalidateFleet();
+  return useMutation<FleetMemberSlots, Error, FleetMemberSlotWrite>({
+    mutationFn: ({ memberId, capability, integrationIds }) =>
+      api.put<FleetMemberSlots>(`/fleets/${fleetId}/members/${memberId}/slots/${encodeURIComponent(capability)}`, {
+        integration_ids: integrationIds,
+      }),
+    onSettled: invalidate,
+    meta: OWN_ERROR_TOAST,
+  });
+}
+
 /** A bulk change: the member settings to write; `null` resets a field to the fleet default. */
 export type FleetMembersBulkSet = { [K in FleetMemberSetting]?: FleetMemberDefaults[K] | null };
 
@@ -1610,12 +1889,19 @@ export function useMoveFleetMember(fleetId: string) {
   });
 }
 
-export function useFleetHealth(fleetId: string | null | undefined) {
+/**
+ * A fleet's health. With `optional`, the health only enriches another view (the
+ * case page's empty states): any failure stays on the query, no retry, and the
+ * caller renders without it instead of the page's ErrorBoundary.
+ */
+export function useFleetHealth(fleetId: string | null | undefined, options: { optional?: boolean } = {}) {
   return useQuery<FleetHealth>({
-    queryKey: [...KEY, "health", fleetId],
+    // Its own cache entry when optional, so a tolerated error never reaches a strict read.
+    queryKey: [...KEY, "health", fleetId, ...(options.optional ? ["optional"] : [])],
     queryFn: () => api.get(`/fleets/${fleetId}/health`),
     enabled: !!fleetId,
     ...FLEET_QUERY_POLICY,
+    ...(options.optional ? { throwOnError: false, retry: false } : {}),
     refetchInterval: 30_000,
   });
 }

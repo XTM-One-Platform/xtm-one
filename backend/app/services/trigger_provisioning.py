@@ -57,6 +57,158 @@ async def maintain_trigger_provisioning(db: Any) -> None:
             await db.rollback()
 
 
+def provision_spec_error(trigger_type: object, trigger_config: object) -> str | None:
+    """Why the ``provision`` block of a trigger as it will be saved cannot be provisioned, else ``None``.
+
+    Read at save time by every create and update path, so a block the
+    scheduler pass would refuse is refused before it is stored, with the same
+    message, instead of minutes later in the provisioning state.
+    """
+    if trigger_type != "integration_event" or not isinstance(trigger_config, dict):
+        return None
+    provider = trigger_config.get("provider")
+    if provider not in _PROVISIONERS:
+        return None
+    module = _module(provider)
+    read_spec = getattr(module, "read_provision_spec", None)
+    spec_error = getattr(module, "ProvisionSpecError", None)
+    if read_spec is None or spec_error is None:
+        return None
+    try:
+        read_spec(trigger_config)
+    except spec_error as exc:
+        return f"Invalid trigger_config: {exc}"
+    return None
+
+
+def direct_binding_id(assignment: Any, agent: Any, provider: str) -> str | None:
+    """The *provider* integration the assignment binds (its own bindings, else the agent's).
+
+    An assignment's bindings replace the agent's when set (``{}`` = none at all).
+    """
+    own = getattr(assignment, "integration_bindings", None)
+    bindings = own if isinstance(own, dict) else getattr(agent, "integration_bindings", None)
+    if not isinstance(bindings, dict):
+        return None
+    value = bindings.get(provider)
+    if isinstance(value, list):
+        value = value[0] if value else None
+    return str(value) if value else None
+
+
+def uses_template(agent: Any, provider: str) -> bool:
+    """Whether *agent* reaches *provider* through a per-user template binding."""
+    return provider in {str(p) for p in (getattr(agent, "integration_template_bindings", None) or []) if p}
+
+
+async def template_integration_id(
+    db: Any, agent: Any, provider: str, label: str, user_id: Any
+) -> tuple[str | None, str]:
+    """``(integration_id, "")`` for the *provider* integration *user_id* gets at run time, else ``(None, reason)``.
+
+    The run path's resolution of a template binding (``assignment_engine``):
+    the integrations eligible for the user (``template_candidate_filter``,
+    platform-managed ones included) and connected for them, the user's own
+    preferred, else a company-wide one. Ordered by creation then id, so the
+    pick, and the receiver URL that carries it, stays the same across rechecks.
+    """
+    import uuid
+
+    from sqlalchemy import select
+
+    from app.models.integration import Integration
+    from app.services.integration_tools import pick_template_integration, template_candidate_filter
+    from app.services.integration_user_credentials import connected_for_clause
+
+    unresolved = f"template binding {provider}: no {label} integration resolvable for the run-as user"
+    try:
+        user_uuid = uuid.UUID(str(user_id)) if user_id is not None else None
+    except ValueError:
+        user_uuid = None
+    if user_uuid is None:
+        return None, unresolved
+    rows = (
+        (
+            await db.execute(
+                select(Integration)
+                .where(
+                    Integration.provider == provider,
+                    await template_candidate_filter(
+                        db, user_uuid, company_automation=bool(getattr(agent, "is_company_managed", False))
+                    ),
+                    connected_for_clause(user_uuid),
+                )
+                .order_by(Integration.created_at, Integration.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    candidates = list(rows)
+    if len(candidates) > 1 and any(getattr(i, "scope_config", None) for i in candidates):
+        # The run path never auto-picks among scoped integrations either.
+        return None, (
+            f"template binding {provider}: several scoped {label} integrations for the run-as user; "
+            f"bind one to the assignment"
+        )
+    picked, _origin = pick_template_integration(
+        candidates, user_uuid, provider=provider, context=f"trigger provisioning agent={getattr(agent, 'name', '')}"
+    )
+    if picked is None:
+        return None, unresolved
+    return str(picked.id), ""
+
+
+async def receiver_secret(integration: Any) -> str | None:
+    """The ``webhook_secret`` a provisioned notifier sends to the receiver, ``None`` when there is none.
+
+    A platform-managed integration (written by the platform registration,
+    which carries no secret) gets one generated and stored in its extra
+    config the first time a provisioning pass needs it; the registration
+    keeps it (``registration_editable_extra_fields``) and the receiver reads it
+    from the same place. Any other integration keeps the secret its admin set.
+    The caller commits. Raises when the stored config or secret cannot be read.
+    """
+    import json
+    import secrets
+
+    from app.core.security import configured_secret, decrypt_json, encrypt_value
+    from app.services.vault import reveal_json_field
+
+    extra = await reveal_json_field(integration, "extra_config_enc") if integration.extra_config_enc else None
+    secret = configured_secret((extra if isinstance(extra, dict) else {}).get("webhook_secret"))
+    if secret or getattr(integration, "auth_type", None) != "platform_managed":
+        return secret
+    stored = decrypt_json(integration.extra_config_enc) if integration.extra_config_enc else {}
+    if not isinstance(stored, dict):
+        return None
+    secret = secrets.token_urlsafe(32)
+    integration.extra_config_enc = encrypt_value(json.dumps({**stored, "webhook_secret": secret}))
+    logger.info("Generated the receiver secret of platform-managed integration %s", integration.id)
+    return secret
+
+
+async def webhook_secret_state(integration: Any) -> str:
+    """Whether *integration* holds a ``webhook_secret`` and where it came from, never its value.
+
+    ``"set (auto-generated)"`` on a platform-managed integration (:func:`receiver_secret` generated it,
+    the registration carries none), ``"set (entered by an administrator)"`` on any other,
+    ``"not set"`` without one, ``"unreadable"`` when the stored config cannot be read.
+    """
+    from app.core.security import configured_secret
+    from app.services.vault import reveal_json_field
+
+    try:
+        extra = await reveal_json_field(integration, "extra_config_enc") if integration.extra_config_enc else None
+    except Exception:  # unreadable config or vault secret: say so, never raise from a read
+        return "unreadable"
+    if not configured_secret((extra if isinstance(extra, dict) else {}).get("webhook_secret")):
+        return "not set"
+    if getattr(integration, "auth_type", None) == "platform_managed":
+        return "set (auto-generated)"
+    return "set (entered by an administrator)"
+
+
 async def deprovision_assignment(db: Any, assignment: Any) -> None:
     """Remove what was provisioned for *assignment* in its source platform (best effort)."""
     config = getattr(assignment, "trigger_config", None)

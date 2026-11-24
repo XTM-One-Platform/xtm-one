@@ -58,10 +58,19 @@ from app.integrations.providers import docusign
 from app.integrations.providers.google import GMAIL_API
 from app.integrations.providers.microsoft import GRAPH_API
 from app.integrations.providers.microsoft._message_type import message_type
+from app.integrations.providers.odoo import events as odoo_events
+from app.integrations.providers.quotapath import events as quotapath_events
 from app.models.agent import Agent
 from app.models.assignment import Assignment, event_read_from_legacy_key
 from app.models.integration import Integration
-from app.services import jira_events, opencrq_job_events
+from app.services import (
+    dealhub_events,
+    event_coalescing,
+    jira_events,
+    netsuite_events,
+    opencrq_job_events,
+    pennylane_events,
+)
 from app.services.agent_posts import (
     is_agent_mail,
     is_agent_slack_post,
@@ -135,6 +144,16 @@ POLL_INTERVALS = {
     **dict.fromkeys(sorted(opencrq_job_events.EVENTS), opencrq_job_events.POLL_INTERVAL_SECONDS),
     # Jira issue events (jira_events): an assignment is acted on within the minute.
     **dict.fromkeys(sorted(jira_events.EVENTS), jira_events.POLL_INTERVAL_SECONDS),
+    # QuotaPath payouts (providers/quotapath/events.py): no webhook in its API.
+    **dict.fromkeys(sorted(quotapath_events.EVENTS), quotapath_events.POLL_INTERVAL_SECONDS),
+    # Odoo records (providers/odoo/events.py): no webhook in the external API.
+    **dict.fromkeys(sorted(odoo_events.EVENTS), odoo_events.POLL_INTERVAL_SECONDS),
+    # Pennylane changelogs (pennylane_events): no webhook to a company token.
+    **dict.fromkeys(sorted(pennylane_events.EVENTS), pennylane_events.POLL_INTERVAL_SECONDS),
+    # DealHub quote status changes (dealhub_events): the fallback of its webhooks.
+    **dict.fromkeys(sorted(dealhub_events.EVENTS), dealhub_events.POLL_INTERVAL_SECONDS),
+    # NetSuite change events (netsuite_events): SuiteQL every 5 min, within the account's concurrency limit.
+    **dict.fromkeys(sorted(netsuite_events.EVENTS), netsuite_events.POLL_INTERVAL_SECONDS),
 }
 
 _MAX_DISCOVERED_CHANNELS = 20
@@ -174,6 +193,8 @@ _CHANNEL_MESSAGE_PAGE = 20
 _GMAIL_PAGE = 10
 _DOCUSIGN_PAGE = 50
 _OPENCRQ_PAGE = 50
+# Changelog entries one Pennylane poll reads: each selected one costs a record read.
+_PENNYLANE_PAGE = 50
 # Pages one poll reads back to back while the provider has more; past
 # them, the next tick reads on.
 _MAX_PAGES_PER_POLL = 5
@@ -181,6 +202,11 @@ _MAX_PAGES_PER_POLL = 5
 # not push the tick past the scheduler's 60 s interval. Every due assignment
 # still reads its first page, and one cut short reads on next tick.
 _POLL_TICK_BUDGET_SECONDS = 40.0
+# When a poll last read a page, a backlog or a catch-up included: the
+# ``event_poll:`` stamp is the interval gate and is written only once the poll
+# caught up, so ``delivery_mode`` reads this one too and never shows a stale
+# last poll while the pages keep creating runs (#1718).
+POLL_READ_KEY_PREFIX = "event_poll_read:"
 
 # Teams, Slack and Gmail cannot list the oldest first: a poll reads back to its
 # cursor, at most this far, and dispatches the oldest of what it read. Past it,
@@ -556,6 +582,11 @@ async def _dispatch_poll_page(
                 "message_id": msg_id or None,
                 "triggered_at": datetime.now(UTC).isoformat(),
             }
+            # A poller that coalesces its events (``event_coalescing``): the
+            # dispatcher folds this one into a queued run of the same key.
+            coalesce_key = event_coalescing.payload_key(event_payload)
+            if coalesce_key:
+                event_trigger_context[event_coalescing.CONTEXT_KEY] = coalesce_key
             try:
                 # Started in a free slot, else queued: a polled event has a
                 # cursor to fall back on, so it always waits in the queue rather
@@ -601,6 +632,13 @@ async def _dispatch_poll_page(
                     replay_unsafe=replay_unsafe,
                 )
                 return dispatched, "queue_full"
+            if coalesce_key:
+                # Every event the coalesced one stands for is seen now: a page
+                # read again past a backed-off cursor starts nothing twice.
+                for covered in event_payload.get("covers") or []:
+                    covered_id = covered.get("message_id") if isinstance(covered, dict) else None
+                    if covered_id and covered_id != msg_id:
+                        await claim_seen(redis, wf.id, covered_id)
             dispatched += 1
 
         # The whole batch was dispatched: the cursor moves past it.
@@ -713,37 +751,43 @@ async def poll_integration_events(db: AsyncSession) -> int:
                 if not agent or not agent.enabled:
                     continue
 
-                # Get the integration — prefer explicit binding from trigger config
-                integration_id = trigger_integration_id(config, agent)
+                # Get the integration — prefer explicit binding from trigger config,
+                # else the agent's binding, else its template binding resolved for
+                # the user the automation runs as (#1378).
+                integration_id, reader_id, skip = await _poll_integration(db, wf, agent, config)
                 if not integration_id:
+                    await note_poll_skip(redis, wf.id, skip)
                     continue
 
-                # OAuth tokens are personal to whoever connected them:
-                # this poll runs on behalf of the agent, so the
-                # agent's owner is the acting identity for the ownership check.
+                # OAuth tokens are personal to whoever connected them: a bound
+                # integration is polled on behalf of the agent, its owner the
+                # acting identity for the ownership check; a template-resolved one
+                # on behalf of the user it was resolved for.
                 int_result = await db.execute(
                     select(Integration).where(
                         Integration.id == integration_id,
-                        connected_for_clause(agent_acting_user_id(agent)),
-                        reader_clause(agent_acting_user_id(agent)),
+                        connected_for_clause(reader_id),
+                        reader_clause(reader_id),
                     )
                 )
                 integration = int_result.scalar_one_or_none()
                 # The owner's own account on a per_user integration.
-                holder = (
-                    await resolve_token_holder(db, integration, agent_acting_user_id(agent))
-                    if integration is not None
-                    else None
-                )
+                holder = await resolve_token_holder(db, integration, reader_id) if integration is not None else None
                 access_token = (
-                    await _poll_credential(
-                        provider, integration, holder, db=db, user_id=agent_acting_user_id(agent)
-                    )
-                    if holder is not None
+                    await _poll_credential(provider, integration, holder, db=db, user_id=reader_id)
+                    if integration is not None and holder is not None
                     else None
                 )
                 if not access_token:
+                    await note_poll_skip(
+                        redis,
+                        wf.id,
+                        f"no usable credential on integration {integration_id} for its reader"
+                        if integration is not None
+                        else f"integration {integration_id} is not connected or not readable for its reader",
+                    )
                     continue
+                await note_poll_skip(redis, wf.id, None)
                 # The events go to a run acting as this user: delivered even
                 # when they cannot see the integration they come from, and
                 # said so. No acting user (an owner-less
@@ -794,6 +838,8 @@ async def poll_integration_events(db: AsyncSession) -> int:
                             route=route,
                         )
                     triggered += dispatched
+                    if outcome in ("more", "caught_up", "seeded"):
+                        await redis.set(f"{POLL_READ_KEY_PREFIX}{wf.id}", str(datetime.now(UTC).timestamp()), ex=86400)
                     if outcome != "more":
                         break
                 if outcome == "refused":
@@ -865,9 +911,73 @@ async def _poll_provider(
     if provider == jira_events.PROVIDER and event_type in jira_events.EVENTS:
         return await _poll_jira_issues(access_token, event_type, wf, redis, integration_id=integration_id)
 
+    if provider == quotapath_events.PROVIDER and event_type in quotapath_events.EVENTS:
+        return await _poll_quotapath_payouts(access_token, event_type, wf, redis)
+
+    if provider == odoo_events.PROVIDER and event_type in odoo_events.EVENTS:
+        return await _poll_odoo_records(access_token, event_type, wf, redis)
+
+    if provider == pennylane_events.PROVIDER and event_type in pennylane_events.EVENTS:
+        return await _poll_pennylane_changes(access_token, event_type, wf, redis)
+
+    if provider == dealhub_events.PROVIDER and dealhub_events.polled(event_type):
+        return await _poll_dealhub_quotes(access_token, event_type, wf, redis)
+
+    if provider == netsuite_events.PROVIDER and event_type in netsuite_events.EVENTS:
+        return await _poll_netsuite_changes(access_token, event_type, wf, redis)
+
     # Unsupported provider/event — return empty
     logger.debug("No poller for %s/%s", provider, event_type)
     return []
+
+
+#: Why the last poll of an assignment read nothing (a key per assignment, a day).
+POLL_SKIP_KEY_PREFIX = "event_poll_skip:"
+_POLL_SKIP_TTL_SECONDS = 86400
+
+
+async def note_poll_skip(redis: Any, assignment_id: Any, reason: str | None) -> None:
+    """Record (or clear, *reason* ``None``) why the poller skipped the assignment.
+
+    ``graph_event_subscriptions.delivery_mode`` shows it next to the last poll,
+    so a poll that never runs says why instead of "Last poll: never" alone.
+    """
+    key = f"{POLL_SKIP_KEY_PREFIX}{assignment_id}"
+    try:
+        if reason:
+            await redis.set(key, reason[:300], ex=_POLL_SKIP_TTL_SECONDS)
+        else:
+            await redis.delete(key)
+    except Exception as exc:
+        logger.debug("Could not record the poll skip of assignment %s: %r", assignment_id, exc)
+
+
+async def _poll_integration(db: Any, wf: Any, agent: Any, config: dict[str, Any]) -> tuple[Any, Any, str]:
+    """``(integration_id, reader_id, "")`` the assignment is polled through, else ``(None, None, reason)``.
+
+    The trigger's pinned integration or the agent's binding is read as the
+    agent's owner, as before. An agent that reaches the provider only by
+    template binding (the seeded agents) is polled through the integration
+    its run-as user resolves at run time, read as that user; a seeded fleet
+    automation with no run-as is never polled as the seed owner (#9188).
+    """
+    integration_id = trigger_integration_id(config, agent)
+    if integration_id:
+        return integration_id, agent_acting_user_id(agent), ""
+    provider = str(config.get("provider") or "")
+    from app.services.fleet_run_as import NO_RUN_AS_REASON, provisioning_user_id
+    from app.services.trigger_provisioning import template_integration_id, uses_template
+
+    if not uses_template(agent, provider):
+        return None, None, f"no {provider} integration bound to the trigger or its agent"
+    user_id = provisioning_user_id(wf, agent)
+    if user_id is None:
+        return None, None, NO_RUN_AS_REASON
+    label = {"opencti": "OpenCTI", "openaev": "OpenAEV", "opencrq": "OpenCRQ"}.get(provider, provider)
+    resolved, reason = await template_integration_id(db, agent, provider, label, user_id)
+    if not resolved:
+        return None, None, reason
+    return resolved, user_id, ""
 
 
 async def _poll_credential(
@@ -885,16 +995,39 @@ async def _poll_credential(
     the environment and the account ride with the OAuth token, and the JWT
     Grant mode stores no access token at all, only the RSA key it mints one with.
     """
-    if provider in (opencrq_job_events.PROVIDER, jira_events.PROVIDER) and db is not None:
+    if (
+        provider
+        in (
+            opencrq_job_events.PROVIDER,
+            jira_events.PROVIDER,
+            odoo_events.PROVIDER,
+            pennylane_events.PROVIDER,
+            netsuite_events.PROVIDER,
+        )
+        and db is not None
+    ):
         # The compound the tools run on: OpenCRQ's ``base_url||token`` (an API
         # key, or a token minted for the acting user on a platform-managed
-        # integration), Jira's ``cloud_id||token`` refreshed when about to expire.
+        # integration), Jira's ``cloud_id||token`` refreshed when about to expire,
+        # Odoo's ``base_url||database||login||api_key[||company_ids]``,
+        # Pennylane's token, prefixed ``company_id||`` for a firm token,
+        # NetSuite's account, mode and secret (``netsuite.compound_credential``).
         from app.services.integration_tools import _get_token
 
         token = await _get_token(
             db, str(integration.id), provider, user_id=str(user_id) if user_id else None, integ=integration
         )
+        if provider == pennylane_events.PROVIDER:
+            return token or None
         return token if token and "||" in token else None
+    if provider == dealhub_events.PROVIDER and db is not None:
+        # ``host||token`` when the instance host is set, the bare token otherwise.
+        from app.services.integration_tools import _get_token
+
+        token = await _get_token(
+            db, str(integration.id), provider, user_id=str(user_id) if user_id else None, integ=integration
+        )
+        return token or None
     if provider != "docusign":
         return decrypt_value(holder.access_token_enc) if holder.access_token_enc else None
     from app.services.vault import reveal_json_field
@@ -928,6 +1061,11 @@ async def _poll_opencrq_job_runs(credential: str, event_type: str, wf: Assignmen
     ``finishedFrom`` is inclusive: the run at the cursor comes back and the seen
     set skips it. The tenant is the trigger filter's ``tenant_id``, else the
     account's sole tenant. The first poll starts from now.
+
+    The page is ONE event (``opencrq_job_events.coalesce_events``, #1417): a
+    batch recompute starts one run, not one per job, and a run that processed
+    nothing is no event. The runs a page covers that were already dispatched
+    are left out, so a page fetched again starts nothing new.
     """
     cursor_key = f"event_cursor:{wf.id}"
     since = await redis.get(cursor_key)
@@ -951,9 +1089,213 @@ async def _poll_opencrq_job_runs(credential: str, event_type: str, wf: Assignmen
     await _note_backlog(redis, wf, "OpenCRQ", page.more)
     if page.cursor is not None and page.cursor.get("finishedAt"):
         await redis.set(cursor_key, str(page.cursor["finishedAt"]), ex=_CURSOR_TTL_SECONDS)
-    return [
-        opencrq_job_events.run_event(run, event_type, base_url=base_url, tenant_id=tenant) for run in page.items
-    ]
+    fresh = []
+    for run in page.items:
+        msg_id = opencrq_job_events.run_event(run, event_type, base_url=base_url, tenant_id=tenant)["message_id"]
+        if msg_id and await redis.zscore(event_seen_set_key(wf.id), msg_id) is not None:
+            continue
+        fresh.append(run)
+    return opencrq_job_events.coalesce_events(fresh, event_type, base_url=base_url, tenant_id=tenant)
+
+
+async def _poll_quotapath_payouts(api_key: str, event_type: str, wf: Assignment, redis: Redis) -> list[dict[str, Any]]:
+    """Poll the QuotaPath payouts of *event_type* since the last check (``quotapath.events``).
+
+    The cursor is a Unix time in seconds: the updated-since lists read from it
+    (inclusive, the seen set skipping a payout already run); the unresolved
+    list has no time filter and the seen set alone tells a new payout. The
+    first poll starts from now.
+    """
+    cursor_key = f"event_cursor:{wf.id}"
+    since = await redis.get(cursor_key)
+    now = int(datetime.now(UTC).timestamp())
+    if not since:
+        await redis.set(cursor_key, str(now), ex=_CURSOR_TTL_SECONDS)
+        if event_type == "payout_unresolved":
+            # Mark what is owed today seen, so enabling the trigger replays nothing.
+            rows, err = await quotapath_events.list_payouts(api_key, event_type, None)
+            for row in rows if not err else []:
+                msg_id = quotapath_events.payout_event(row, event_type)["message_id"]
+                if msg_id:
+                    await claim_seen(redis, wf.id, msg_id)
+        return []
+    try:
+        since_ts = int(since.decode() if isinstance(since, bytes) else since)
+    except ValueError:
+        since_ts = now
+    rows, err = await quotapath_events.list_payouts(api_key, event_type, since_ts)
+    if err:
+        logger.warning("QuotaPath payout poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
+        return []
+    await redis.set(cursor_key, str(now), ex=_CURSOR_TTL_SECONDS)
+    return [quotapath_events.payout_event(row, event_type) for row in rows]
+
+
+async def _poll_odoo_records(credential: str, event_type: str, wf: Assignment, redis: Redis) -> list[dict[str, Any]]:
+    """Poll the Odoo records of *event_type* stamped since the last check (``odoo.events``).
+
+    The domain reads at or after the cursor (inclusive): the records at the
+    cursor come back and the seen set skips them. The trigger filter narrows
+    the search (company and journal ids, states). The first poll starts from now.
+    """
+    cursor_key = f"event_cursor:{wf.id}"
+    since = await redis.get(cursor_key)
+    if not since:
+        await redis.set(cursor_key, odoo_events.now_cursor(), ex=_CURSOR_TTL_SECONDS)
+        return []
+    since = since.decode() if isinstance(since, bytes) else str(since)
+    filter_config = trigger_filter(getattr(wf, "trigger_config", None))
+    records, cred, err = await odoo_events.list_changed_records(
+        credential, event_type, since, filter_config, limit=odoo_events.PAGE + 1
+    )
+    if err:
+        logger.warning("Odoo poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
+        return []
+
+    def stamped(record: dict[str, Any]) -> str:
+        return odoo_events.stamp_of(record, event_type)
+
+    page = _oldest_page(records, stamped, odoo_events.PAGE)
+    _log_page_cut(wf, "Odoo", page)
+    await _note_backlog(redis, wf, "Odoo", page.more)
+    if page.cursor is not None:
+        await redis.set(cursor_key, stamped(page.cursor), ex=_CURSOR_TTL_SECONDS)
+    return [odoo_events.record_event(record, event_type, credential=cred) for record in page.items]
+
+
+async def _poll_pennylane_changes(
+    credential: str, event_type: str, wf: Assignment, redis: Redis
+) -> list[dict[str, Any]]:
+    """Poll the Pennylane changelog entries processed since the last check (``pennylane_events``).
+
+    ``start_date`` is inclusive: the entries at the cursor come back and the
+    seen set skips them. The cursor moves past every entry of the page, the ones
+    the event does not read included. The first poll starts from now.
+    """
+    cursor_key = f"event_cursor:{wf.id}"
+    since = await redis.get(cursor_key)
+    if not since:
+        return await _seed_from_now(redis, cursor_key)
+    since = since.decode() if isinstance(since, bytes) else str(since)
+    entries, more, err = await pennylane_events.list_changes(credential, event_type, since, limit=_PENNYLANE_PAGE)
+    if err:
+        logger.warning("Pennylane changelog poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
+        return []
+
+    def processed(entry: dict[str, Any]) -> datetime:
+        return pennylane_events.parse_instant(entry.get("processed_at"))
+
+    entries.sort(key=lambda e: (processed(e), str(e.get("id", ""))))
+    page = _oldest_page(entries, processed, _PENNYLANE_PAGE)
+    _log_page_cut(wf, "Pennylane", page)
+    await _note_backlog(redis, wf, "Pennylane", page.more or more)
+    if page.cursor is not None and page.cursor.get("processed_at"):
+        await redis.set(cursor_key, str(page.cursor["processed_at"]), ex=_CURSOR_TTL_SECONDS)
+    return await pennylane_events.change_events(
+        credential, event_type, pennylane_events.selected(page.items, event_type)
+    )
+
+
+async def _poll_dealhub_quotes(credential: str, event_type: str, wf: Assignment, redis: Redis) -> list[dict[str, Any]]:
+    """Poll the DealHub quotes whose status changed since the last check (``dealhub_events``).
+
+    The cursor is the status map of the quotes read last time; the first poll
+    records it and runs nothing. A read that fails leaves the cursor alone.
+    """
+    cursor_key = f"event_cursor:{wf.id}"
+    known = dealhub_events.load_statuses(await redis.get(cursor_key))
+    quotes, err = await dealhub_events.list_quotes(credential)
+    if err:
+        logger.warning("DealHub quote poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
+        return []
+    delivered = await dealhub_events.webhook_statuses(redis, wf.id)
+    events, statuses = dealhub_events.poll_events(quotes, event_type, known, delivered=delivered)
+    await redis.set(cursor_key, dealhub_events.dump_statuses(statuses), ex=_CURSOR_TTL_SECONDS)
+    return events
+
+
+async def _poll_netsuite_changes(credential: str, event_type: str, wf: Assignment, redis: Redis) -> list[dict]:
+    """Poll the NetSuite records changed since the last check (``netsuite_events``).
+
+    Transactions: one SuiteQL read of the event's record types modified at or
+    after the cursor (a NetSuite timestamp, never converted), oldest first; the
+    record at the cursor comes back and the seen set skips it. Periods: the
+    posting periods' flags diffed against the last snapshot. The first poll
+    stores the cursor (the records at it marked seen) or the snapshot and runs
+    nothing.
+    """
+    from app.integrations.providers.netsuite import parse_token, read_suiteql
+
+    account_id = parse_token(credential).get("account_id") or ""
+    cursor_key = f"event_cursor:{wf.id}"
+    stored = await redis.get(cursor_key)
+    if event_type == netsuite_events.ACCOUNTING_PERIOD_CHANGED:
+        rows, _more, err = await read_suiteql(
+            credential, netsuite_events.PERIODS_QUERY, 2000, "read accounting periods"
+        )
+        if err:
+            logger.warning("NetSuite period poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
+            return []
+        previous = netsuite_events.load_snapshot(stored)
+        snapshot = netsuite_events.period_snapshot(rows)
+        if snapshot:
+            await redis.set(cursor_key, netsuite_events.dump_snapshot(snapshot), ex=_CURSOR_TTL_SECONDS)
+        if previous is None:
+            return []
+        return netsuite_events.period_events(rows, previous, account_id=account_id)
+    since = stored.decode() if isinstance(stored, bytes) else (str(stored) if stored else "")
+    if not netsuite_events.is_timestamp(since):
+        # First poll (or an unreadable cursor): start from the newest change, run nothing.
+        rows, _more, err = await read_suiteql(
+            credential, netsuite_events.seed_query(event_type), 1, "read the newest change"
+        )
+        if err:
+            logger.warning("NetSuite change poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
+            return []
+        seed = str((rows[0] if rows else {}).get("cursor") or "")
+        if not netsuite_events.is_timestamp(seed):
+            await redis.set(cursor_key, netsuite_events.EPOCH, ex=_CURSOR_TTL_SECONDS)
+            return []
+        # The next poll reads at or after the cursor, so the records modified at
+        # the seed instant come back: they are marked seen now, never run.
+        rows, _more, err = await read_suiteql(
+            credential,
+            netsuite_events.changes_query(event_type, None, seed),
+            netsuite_events.PAGE + 1,
+            "read the records at the newest change",
+        )
+        if err:
+            logger.warning("NetSuite change poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
+            return []
+        for row in rows:
+            if str(row.get("modified_at") or "") == seed:
+                event = netsuite_events.transaction_event(row, event_type, account_id=account_id)
+                if event["message_id"]:
+                    await claim_seen(redis, wf.id, event["message_id"])
+        await redis.set(cursor_key, seed, ex=_CURSOR_TTL_SECONDS)
+        return []
+    filter_config = trigger_filter(getattr(wf, "trigger_config", None))
+    rows, more, err = await read_suiteql(
+        credential,
+        netsuite_events.changes_query(event_type, filter_config, since),
+        netsuite_events.PAGE + 1,
+        "read changed records",
+    )
+    if err:
+        logger.warning("NetSuite change poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
+        return []
+
+    def modified(row: dict) -> str:
+        # Same fixed-width format throughout: the text orders as the time does.
+        return str(row.get("modified_at") or "")
+
+    rows.sort(key=lambda r: (modified(r), str(r.get("id", ""))))
+    page = _oldest_page(rows, modified, netsuite_events.PAGE)
+    _log_page_cut(wf, "NetSuite", page)
+    await _note_backlog(redis, wf, "NetSuite", page.more or more)
+    if page.cursor is not None and netsuite_events.is_timestamp(modified(page.cursor)):
+        await redis.set(cursor_key, modified(page.cursor), ex=_CURSOR_TTL_SECONDS)
+    return [netsuite_events.transaction_event(row, event_type, account_id=account_id) for row in page.items]
 
 
 #: The connected Jira account per integration (``GET /myself``), read once a day.

@@ -45,6 +45,7 @@ import contextlib
 import functools
 import logging
 import time
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -52,7 +53,9 @@ import structlog
 from croniter import croniter
 from croniter.croniter import CroniterBadCronError
 from sqlalchemy import String, and_, cast, func, or_, select
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import InstanceState
 
 from app.core.config import settings
 from app.core.database import async_session
@@ -71,6 +74,7 @@ from app.llm.provider_access import acting_for
 from app.models.agent import Agent
 from app.models.assignment import Assignment, AssignmentRun
 from app.models.knowledge_base import KBExportPackage
+from app.services import wall_clock_schedule
 from app.services.assignment_engine import has_active_run, trigger_assignment
 from app.services.assignment_pause import (
     AssignmentOwnerDeactivatedError,
@@ -133,17 +137,14 @@ _SKILL_REFRESH_OUTCOMES = get_or_create_counter(
     ["outcome", "auth"],
 )
 
-# ── Memory maintenance scheduling ─────────────────────────────────────────────
-# Run memory maintenance once per hour (every 60th tick at 60s interval).
-_MEMORY_MAINTENANCE_INTERVAL = 60  # ticks (60 × 60s = 1 hour)
-_tick_counter = 0
-
-# ── Skill auto-refresh scheduling ────────────────────────────────────────────
-# Check for stale URL-based skills once per hour (same cadence as memory
-# maintenance).  Individual skills are refreshed when their fetched_at is
-# older than SKILL_REFRESH_MAX_AGE_SECONDS (24 hours).
-_SKILL_REFRESH_CHECK_INTERVAL = 60  # ticks (60 × 60s = 1 hour)
-_skill_tick_counter = 0
+# ── Hourly jobs: a wall-clock schedule shared by every process (#768) ─────────
+# The hourly maintenance block, the skill auto-refresh check, the AI adoption
+# sync and the model prices git sync run when their last COMPLETED pass, kept
+# in Redis, is older than their interval, under a cluster-wide lock
+# (``services/wall_clock_schedule.py``). They used to count ticks in a module
+# global that restarted at 0 on every boot: a platform redeploying more often
+# than hourly never reached 60 ticks and never ran them. Individual skills are
+# refreshed when their fetched_at is older than SKILL_REFRESH_MAX_AGE_SECONDS.
 SKILL_REFRESH_MAX_AGE_SECONDS = 86400  # 24 hours
 
 # ── API key stats flush scheduling ────────────────────────────────────────────
@@ -156,11 +157,6 @@ _apikey_stats_tick_counter = 0
 _QUOTA_FLUSH_INTERVAL = 5  # ticks (5 × 60s = 5 minutes)
 _quota_flush_tick_counter = 0
 
-
-# ── AI adoption metrics sync scheduling ──────────────────────────────────────
-# Collect external AI platform metrics once per hour (every 60th tick).
-_AI_METRICS_SYNC_INTERVAL = 60  # ticks (60 × 60s = 1 hour)
-_ai_metrics_tick_counter = 0
 
 # ── CTEM metrics: no scheduling. Collected live, per-user, on dashboard load
 # (each request mints the acting user's JWT so OpenCTI/OpenAEV return only what
@@ -192,19 +188,11 @@ _daily_stats_tick_counter = _DAILY_STATS_INTERVAL
 _TEAMS_SUBSCRIPTION_INTERVAL = 60
 _teams_subscription_tick_counter = _TEAMS_SUBSCRIPTION_INTERVAL
 
-# ── Model prices git sync scheduling ────────────────────────────────────────
-# Pull LiteLLM model pricing/context JSON and re-sync llm_model_prices on a
-# configurable cadence (minutes), using the autonomous 60s tick.
-_model_prices_git_sync_tick_counter = 0
-
 # ── Blocked references polling fallback ─────────────────────────────
 # Starts at 0: the first tick after a restart reads the references of the items
 # no delivery released, then every ``work_item_blocked_refs.POLL_EVERY_TICKS``.
 _blocked_refs_poll_tick_counter = 0
 
-
-def _model_prices_git_sync_interval_ticks() -> int:
-    return max(1, int(settings.model_prices_git_sync_interval_minutes))
 
 # ── Cron warning rate limiting ────────────────────────────────────────────────
 # A misconfigured cron expression would otherwise log a WARNING every
@@ -361,15 +349,11 @@ async def _flag_assignment_cron_misconfiguration(
 
 
 __all__ = [
-    "_ai_metrics_tick_counter",
     "_apikey_stats_tick_counter",
     "_blocked_refs_poll_tick_counter",
     "_daily_stats_tick_counter",
-    "_model_prices_git_sync_tick_counter",
     "_quota_flush_tick_counter",
-    "_skill_tick_counter",
     "_teams_subscription_tick_counter",
-    "_tick_counter",
     "_trace_purge_tick_counter",
 ]
 
@@ -1268,29 +1252,67 @@ async def _cleanup_figure_stills() -> int:
     return await figure_stills.sweep() + await insert_builds.sweep()
 
 
-async def _cleanup_check_files(db: AsyncSession) -> int:
+async def _cleanup_check_files(db: AsyncSession) -> tuple[int, bool]:
     """Delete the check files made more than ``agent_check_file_retention_days`` ago.
 
     The pictures a tool made for the agent to look at (frames, contact sheets,
     insert sweeps, slide captures, page renders); one a video uses is kept.
-    Returns how many were deleted.
+    Returns how many were deleted and whether more are left past retention.
     """
     from app.services import check_files
 
-    return await check_files.sweep(db)
+    return await check_files.sweep_pass(db)
 
 
-async def _cleanup_retained_files(db: AsyncSession) -> int:
+async def _cleanup_retained_files(db: AsyncSession, *, also: dict[str, int] | None = None) -> tuple[int, bool]:
     """Delete the stored files past their category's retention (Settings > Storage & retention).
 
     The agent's scratch and delivered files go 60 days after their last use by
     default; a file a live object still names is kept, and a deleted one stays
-    as a tombstone (``services/file_retention.py``). Returns how many files.
+    as a tombstone (``services/file_retention.py``). *also* adds the files an
+    older sweep deleted (check pictures) to the figures Settings shows. Returns
+    how many files and whether a category stopped at its per-tick cap.
     """
     from app.services import file_retention
 
-    report = await file_retention.sweep(db)
-    return sum(int(tally.get("files", 0)) for tally in report.values())
+    report = await file_retention.sweep(db, also=also)
+    files = sum(int(tally.get("files", 0)) for key, tally in report.items() if not also or key not in also)
+    return files, any(bool(tally.get("more")) for tally in report.values())
+
+
+async def _run_retention_pass(db: AsyncSession) -> None:
+    """One bounded pass of the check file and file retention sweeps (#768).
+
+    Each sweep is capped per tick; when one stops at its cap, the backlog flag
+    of :data:`wall_clock_schedule.RETENTION_DRAIN` makes the next ticks run this
+    pass again until nothing past retention is left, instead of waiting an hour.
+    Each sweep catches its own failure, so one never starves the other.
+    """
+    swept_checks, more_checks = 0, False
+    try:
+        swept_checks, more_checks = await _cleanup_check_files(db)
+        if swept_checks:
+            logger.info(
+                "Check file retention: deleted %d picture%s made for an agent to look at",
+                swept_checks,
+                "" if swept_checks == 1 else "s",
+            )
+    except Exception as e:
+        logger.error("Check file retention error: %s", format_exception_message(e), exc_info=True)
+        await db.rollback()
+    more_files = False
+    try:
+        swept_files, more_files = await _cleanup_retained_files(db, also={"agent_check": swept_checks})
+        if swept_files:
+            logger.info(
+                "File retention: deleted the bytes of %d file%s past their retention",
+                swept_files,
+                "" if swept_files == 1 else "s",
+            )
+    except Exception as e:
+        logger.error("File retention error: %s", format_exception_message(e), exc_info=True)
+        await db.rollback()
+    await wall_clock_schedule.set_backlog(wall_clock_schedule.RETENTION_DRAIN, more_checks or more_files)
 
 
 async def _cleanup_kb_figure_sources(db: AsyncSession) -> int:
@@ -1371,8 +1393,9 @@ async def run_autonomous_tick() -> int:
     """Run one tick of the autonomous scheduler.
 
     Returns the number of assignments triggered.
-    A lock prevents overlapping ticks when a previous tick runs longer
-    than the 60 s interval (e.g. slow KB sync or memory maintenance).
+    A lock prevents overlapping ticks in this process when a previous tick
+    runs longer than the 60 s interval (e.g. slow KB sync or memory
+    maintenance); other replicas are not covered by it.
     """
     if _tick_lock.locked():
         logger.warning("Skipping scheduler tick — previous tick still running")
@@ -1613,6 +1636,86 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("CTEM case expiry error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
+        # CTEM case loop (#857): open the cases of confirmed signals still
+        # waiting, escalate SLA breaches once. Rules only, no model call;
+        # its own cadence (CTEM_CASE_SWEEP_SECONDS, default hourly).
+        try:
+            from app.services import ctem_case_loop
+
+            if await ctem_case_loop.sweep_due():
+                # #1505: the unmatched signals a newer profile version may now hold, decided
+                # again first, so the sweep below opens their cases grouped by case key.
+                from app.services import ctem_scope_gate_store
+
+                rechecked = await ctem_scope_gate_store.recheck_parked(db)
+                await db.commit()
+                if rechecked:
+                    logger.info("CTEM unmatched signals re-checked after a profile change: %s", rechecked)
+                pending = ctem_case_loop.PendingEvents()
+                counts = await ctem_case_loop.sweep(db, events=pending)
+                await db.commit()
+                await ctem_case_loop.publish_pending(pending)
+                # The open cases their owning fleet never ran (#1390): handed to it once.
+                from app.services.ctem_case_routing import catch_up
+
+                counts["caught_up"] = await catch_up()
+                if any(counts.values()):
+                    logger.info("CTEM case sweep: %s", counts)
+        except Exception as e:
+            logger.error("CTEM case sweep error: %s", format_exception_message(e), exc_info=True)
+            await db.rollback()
+        # CTEM cases kept current (dev-docs/ctem-cases.md s.4.3): the source recompute
+        # on its own interval (profile cases_recompute.interval_minutes, default 15),
+        # as the CTEM loop fleet's run-as users, else the recent viewers of Cases.
+        try:
+            from app.services import ctem_cases_refresh
+
+            refresh_counts = await ctem_cases_refresh.scheduled_pass(db)
+            if refresh_counts and refresh_counts.get("applied"):
+                logger.info("CTEM cases scheduled recompute: %s", refresh_counts)
+        except Exception as e:
+            logger.error("CTEM cases scheduled recompute error: %s", format_exception_message(e), exc_info=True)
+            await db.rollback()
+        # CTEM attack surface pass (CTEM-26): the outside lens, opt-in in the profile,
+        # its own cadence (attack_surface.cadence_hours, default daily). Rules only, no model call.
+        try:
+            from app.services import ctem_attack_surface
+
+            surface_counts = await ctem_attack_surface.scheduled_pass(db)
+            if surface_counts:
+                logger.info("CTEM attack surface pass: %s", surface_counts)
+        except Exception as e:
+            logger.error("CTEM attack surface pass error: %s", format_exception_message(e), exc_info=True)
+            await db.rollback()
+        # CTEM evidence health pass (CTEM-28): evidence decay (path 9) and blind spots
+        # (path 12) from OpenCRQ, opt-in in the profile, its own cadence
+        # (evidence_health.cadence_hours, default daily). Rules only, no model call.
+        try:
+            from app.services import ctem_evidence_health
+
+            evidence_counts = await ctem_evidence_health.scheduled_pass(db)
+            if evidence_counts:
+                logger.info("CTEM evidence health pass: %s", evidence_counts)
+        except Exception as e:
+            logger.error("CTEM evidence health pass error: %s", format_exception_message(e), exc_info=True)
+            await db.rollback()
+        # CTEM ticketing sync (#917): create the ticket of a mobilized case,
+        # pull the ticket status (ServiceNow's inbound), push the case state.
+        # Rules only, no model call; its own cadence (CTEM_TICKETING_SYNC_SECONDS, default 5 min).
+        try:
+            from app.core.config import settings as app_settings
+            from app.services import ctem_case_loop, ctem_ticketing
+
+            if await ctem_ticketing.sync_due():
+                pending = ctem_case_loop.PendingEvents()
+                counts = await ctem_ticketing.sync_cases(db, events=pending, base_url=app_settings.frontend_url)
+                await db.commit()
+                await ctem_case_loop.publish_pending(pending)
+                if any(v for k, v in counts.items() if k != "not_connected"):
+                    logger.info("CTEM ticketing sync: %s", counts)
+        except Exception as e:
+            logger.error("CTEM ticketing sync error: %s", format_exception_message(e), exc_info=True)
+            await db.rollback()
         # Assignments marked delete_assignment(after_run=true) whose runs
         # have all ended: deleted now, so a one-off retires itself.
         try:
@@ -1623,6 +1726,16 @@ async def _run_autonomous_tick_inner() -> int:
                 logger.info("Deleted %d assignment(s) retired after their last run", retired)
         except Exception as e:
             logger.error("Assignment retirement error: %s", format_exception_message(e), exc_info=True)
+        # A person's decision past its deadline expires and its run resumes
+        # with the default option or no answer (human-gates.md section 7, F3).
+        try:
+            from app.services.decision_waits import expire_overdue_decisions
+
+            expired = await expire_overdue_decisions()
+            if expired:
+                logger.info("Expired %d decision(s) past their deadline", expired)
+        except Exception as e:
+            logger.error("Decision expiry error: %s", format_exception_message(e), exc_info=True)
         # A claim that records no run (a chat turn, a claim made by an older
         # release) and that no live run of its agent holds: released after its
         # grace, so the inbox below dispatches it in the same tick.
@@ -1687,6 +1800,16 @@ async def _run_autonomous_tick_inner() -> int:
                 logger.info("Sent %d work item notification(s)", notified)
         except Exception as e:
             logger.error("Work-item notification error: %s", format_exception_message(e), exc_info=True)
+        # The decision card of a work item waiting for a person, posted in the
+        # Teams chat or channel its notify ask names, as its agent (#842 S9b).
+        try:
+            from app.services.decision_graph_cards import deliver_work_item_cards
+
+            carded = await deliver_work_item_cards()
+            if carded:
+                logger.info("Sent %d decision card(s)", carded)
+        except Exception as e:
+            logger.error("Decision card error: %s", format_exception_message(e), exc_info=True)
         # The timers runs armed for a date (arm_timer): each due one raises
         # timer.due once, or is skipped when its unless condition is met.
         try:
@@ -1697,6 +1820,16 @@ async def _run_autonomous_tick_inner() -> int:
                 logger.info("Fired %d timer(s)", timers_fired)
         except Exception as e:
             logger.error("Timer firing error: %s", format_exception_message(e), exc_info=True)
+        # The open work items that crossed their due date: work_item.past_due
+        # raised once each (#1662), so a fleet reacts before its weekly check.
+        try:
+            from app.services.work_item_past_due import raise_past_due_items
+
+            past_due = await raise_past_due_items()
+            if past_due:
+                logger.info("Raised work_item.past_due for %d item(s)", past_due)
+        except Exception as e:
+            logger.error("Past-due raise error: %s", format_exception_message(e), exc_info=True)
         # The CI completions a trigger filter could not judge (their enriched
         # facts timed out or the provider failed): read again, and triggered on
         # a match, so the last check of a head is never lost to a slow read.
@@ -2240,13 +2373,10 @@ async def _run_autonomous_tick_inner() -> int:
 
         # --- 5e. Periodic model-prices git sync (optional) ---
         if settings.model_prices_git_sync_enabled:
-            global _model_prices_git_sync_tick_counter
-            _model_prices_git_sync_tick_counter += 1
-            if (
-                _model_prices_git_sync_tick_counter
-                >= _model_prices_git_sync_interval_ticks()
-            ):
-                _model_prices_git_sync_tick_counter = 0
+            _prices_claim = await wall_clock_schedule.claim(
+                wall_clock_schedule.model_prices_git_sync(settings.model_prices_git_sync_interval_minutes)
+            )
+            if _prices_claim is not None:
                 try:
                     from app.services.tracing.price_loader import (
                         pull_model_prices_git_source,
@@ -2274,6 +2404,8 @@ async def _run_autonomous_tick_inner() -> int:
                 except Exception as e:
                     logger.error("Model prices git sync error: %s", format_exception_message(e), exc_info=True)
                     await db.rollback()
+                # A failed pull waits for the next interval, as it did before.
+                await wall_clock_schedule.complete(_prices_claim)
 
         await _run_trace_storage_maintenance(db)
 
@@ -2283,11 +2415,12 @@ async def _run_autonomous_tick_inner() -> int:
         # --- 6c. Agent accounts: subscriptions, chat polls, grace periods ---
         await _run_agent_account_maintenance()
 
-        # --- 6. Periodic memory maintenance (once per hour) ---
-        global _tick_counter
-        _tick_counter += 1
-        if _tick_counter >= _MEMORY_MAINTENANCE_INTERVAL:
-            _tick_counter = 0
+        # --- 6. Periodic memory maintenance and retention sweeps (once per hour) ---
+        # Due when the last COMPLETED pass, in Redis, is an hour old; one
+        # process runs it under a cluster-wide lock, and a pass a deploy cut
+        # is run again once its lock expires (#768).
+        _maintenance_claim = await wall_clock_schedule.claim(wall_clock_schedule.HOURLY_MAINTENANCE)
+        if _maintenance_claim is not None:
             try:
                 from app.services.persistent_memory import run_memory_maintenance
 
@@ -2466,28 +2599,7 @@ async def _run_autonomous_tick_inner() -> int:
             except Exception as e:
                 logger.error("Knowledge base figure source retention error: %s", format_exception_message(e), exc_info=True)
                 await db.rollback()
-            try:
-                swept_checks = await _cleanup_check_files(db)
-                if swept_checks:
-                    logger.info(
-                        "Check file retention: deleted %d picture%s made for an agent to look at",
-                        swept_checks,
-                        "" if swept_checks == 1 else "s",
-                    )
-            except Exception as e:
-                logger.error("Check file retention error: %s", format_exception_message(e), exc_info=True)
-                await db.rollback()
-            try:
-                swept_files = await _cleanup_retained_files(db)
-                if swept_files:
-                    logger.info(
-                        "File retention: deleted the bytes of %d file%s past their retention",
-                        swept_files,
-                        "" if swept_files == 1 else "s",
-                    )
-            except Exception as e:
-                logger.error("File retention error: %s", format_exception_message(e), exc_info=True)
-                await db.rollback()
+            await _run_retention_pass(db)
             try:
                 swept_work = await _cleanup_stored_video_work()
                 if swept_work:
@@ -2514,12 +2626,18 @@ async def _run_autonomous_tick_inner() -> int:
                     "Orphan annotation cleanup error: %s", format_exception_message(e), exc_info=True
                 )
                 await db.rollback()
+            # Every step above caught its own failure: the pass is complete.
+            await wall_clock_schedule.complete(_maintenance_claim)
+        elif await wall_clock_schedule.backlog_pending(wall_clock_schedule.RETENTION_DRAIN):
+            # --- 6h. A retention pass stopped at its cap: drain on the next ticks ---
+            _drain_claim = await wall_clock_schedule.claim(wall_clock_schedule.RETENTION_DRAIN)
+            if _drain_claim is not None:
+                await _run_retention_pass(db)
+                await wall_clock_schedule.complete(_drain_claim)
 
         # --- 7. Periodic skill auto-refresh (check once per hour) ---
-        global _skill_tick_counter
-        _skill_tick_counter += 1
-        if _skill_tick_counter >= _SKILL_REFRESH_CHECK_INTERVAL:
-            _skill_tick_counter = 0
+        _skills_claim = await wall_clock_schedule.claim(wall_clock_schedule.SKILL_REFRESH)
+        if _skills_claim is not None:
             try:
                 refreshed = await _refresh_stale_skills(db)
                 if refreshed:
@@ -2527,6 +2645,7 @@ async def _run_autonomous_tick_inner() -> int:
             except Exception as e:
                 logger.error("Skill auto-refresh error: %s", format_exception_message(e), exc_info=True)
                 await db.rollback()
+            await wall_clock_schedule.complete(_skills_claim)
 
         # --- 8. Flush Redis-buffered API key usage stats (every 5 min) ---
         global _apikey_stats_tick_counter
@@ -2588,6 +2707,16 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("Sandbox copy purge error: %s", format_exception_message(e), exc_info=True)
 
+        # --- 9c0. Component versions of the connected platforms ---
+        # No model call; nothing is read while no assignment subscribes to
+        # integration.version.changed, one read per platform every 5 minutes.
+        try:
+            from app.services.integration_component_versions import component_versions_tick
+
+            await component_versions_tick()
+        except Exception as e:
+            logger.error("Component versions tick error: %s", format_exception_message(e), exc_info=True)
+
         # --- 9c. Platform Health cycles, schedules and signals (#8261) ---
         # Settling a cycle (and its digest) runs whatever the switches; starting
         # work needs agentic AI and Platform Health switched on (``cycles.health_tick``).
@@ -2607,6 +2736,15 @@ async def _run_autonomous_tick_inner() -> int:
             await health_pass_tick()
         except Exception as e:
             logger.error("Platform Health pass error: %s", format_exception_message(e), exc_info=True)
+        # --- 9c ter. Platform Health analysis (#101 S9, dev-docs/platform-health.md 6) ---
+        # One model call per module whose findings changed, at most once a day,
+        # within the analysis ceiling; nothing with AI off or analysis off.
+        try:
+            from app.services.health.analysis import analysis_tick
+
+            await analysis_tick(ai_on=_ai_on)
+        except Exception as e:
+            logger.error("Platform Health analysis error: %s", format_exception_message(e), exc_info=True)
         # --- 9d. Advance flow shadows, switch-overs and their watch (#8260) ---
         # The watch and its rollback need no model and run whatever the flags,
         # so a switch-over applied before is never left unwatched; pairing new
@@ -2655,10 +2793,8 @@ async def _run_autonomous_tick_inner() -> int:
         from app.services.ai_state import AI_DISABLED_MODE
 
         if _app_settings.platform_mode != AI_DISABLED_MODE and _ai_on:
-            global _ai_metrics_tick_counter
-            _ai_metrics_tick_counter += 1
-            if _ai_metrics_tick_counter >= _AI_METRICS_SYNC_INTERVAL:
-                _ai_metrics_tick_counter = 0
+            _metrics_claim = await wall_clock_schedule.claim(wall_clock_schedule.AI_METRICS_SYNC)
+            if _metrics_claim is not None:
                 try:
                     # The platform's own agentic usage only (#11380): no
                     # external vendor is called any more.
@@ -2668,6 +2804,7 @@ async def _run_autonomous_tick_inner() -> int:
                     logger.info("AI metrics sync completed: %s", summary)
                 except Exception as e:
                     logger.error("AI metrics sync error: %s", format_exception_message(e), exc_info=True)
+                await wall_clock_schedule.complete(_metrics_claim)
 
         # --- 11. CTEM metrics: intentionally NOT scheduled (lazy-by-design). CTEM
         # posture is collected on demand on dashboard load and served
@@ -3138,6 +3275,91 @@ async def _process_scheduled_evaluations(db: AsyncSession) -> int:
     return count
 
 
+# Renewed while the fan-out runs, so a fan-out of any size keeps it; a crashed
+# holder's claim lapses within the TTL and the window fires late, not twice.
+_FANOUT_CLAIM_TTL_SECONDS = 5 * 60
+_FANOUT_CLAIM_RENEW_SECONDS = 60
+
+# Touch the claim only while it is still ours, never a successor's.
+_FANOUT_CLAIM_RELEASE_SCRIPT = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0
+"""
+_FANOUT_CLAIM_RENEW_SCRIPT = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('EXPIRE', KEYS[1], ARGV[2])
+end
+return 0
+"""
+
+
+async def _renew_fanout_claim(redis, key: str, token: str) -> None:
+    while True:
+        await asyncio.sleep(_FANOUT_CLAIM_RENEW_SECONDS)
+        try:
+            renewed = await redis.eval(_FANOUT_CLAIM_RENEW_SCRIPT, 1, key, token, _FANOUT_CLAIM_TTL_SECONDS)
+        except Exception:
+            logger.debug("Fan-out claim renewal failed for %s", key, exc_info=True)
+            continue
+        if not renewed:
+            logger.warning("Fan-out claim %s lapsed before its fan-out ended", key)
+            return
+
+
+class _FanoutClaim:
+    def __init__(self, redis, key: str, token: str):
+        self._redis, self._key, self._token = redis, key, token
+
+    async def held(self) -> bool:
+        """Still ours. Asked before each user: a lost claim (Redis restart) can be
+        retaken at once, long before the next renewal would notice."""
+        try:
+            return await self._redis.get(self._key) == self._token
+        except Exception:
+            # Unreachable from this pod says nothing of the others: stop, and
+            # the next tick resumes with dedup.
+            logger.warning("Fan-out claim %s could not be checked", self._key, exc_info=True)
+            return False
+
+
+@contextlib.asynccontextmanager
+async def _fanout_claim(assignment_id):
+    """The claim to fan out *assignment_id*, or ``None`` when another tick holds it.
+
+    Released on exit, raise included. Not held when Redis does not answer: the
+    window stays open.
+    """
+    key = f"copilot:scheduler_fanout_claim:{assignment_id}"
+    token = uuid.uuid4().hex
+    try:
+        from app.core.redis import redis_client
+
+        redis = await redis_client()
+        held = bool(await redis.set(key, token, nx=True, ex=_FANOUT_CLAIM_TTL_SECONDS))
+    except Exception:
+        logger.warning("Fan-out claim unavailable for %s", assignment_id, exc_info=True)
+        held = False
+    if not held:
+        yield None
+        return
+    renewal = asyncio.create_task(_renew_fanout_claim(redis, key, token))
+    try:
+        yield _FanoutClaim(redis, key, token)
+    finally:
+        renewal.cancel()
+        try:
+            await redis.eval(_FANOUT_CLAIM_RELEASE_SCRIPT, 1, key, token)
+        except Exception:
+            logger.warning(
+                "Fan-out claim release failed for %s; it lapses in %ds",
+                assignment_id,
+                _FANOUT_CLAIM_TTL_SECONDS,
+                exc_info=True,
+            )
+
+
 # Per-user fan-out: skip users who already have a run within this window so a
 # monthly fan-out doesn't re-fire across scheduler ticks / restarts.
 _FANOUT_RECENT_DAYS = 25
@@ -3160,6 +3382,73 @@ def _fanout_dedup_days(cron_expr: str, now: datetime) -> int:
         return _FANOUT_RECENT_DAYS
 
 
+#: ``trigger_config.fanout_audience`` of a fan-out that only concerns the
+#: people who use the CTEM command center (the seeded stage analysts): a user
+#: is in it when the command center built a posture for them within
+#: ``_CTEM_AUDIENCE_DAYS`` (one ``ctem_posture_snapshots`` row per user,
+#: vertical and day, written by each live build). Without the key every
+#: active user is targeted, as before.
+FANOUT_AUDIENCE_KEY = "fanout_audience"
+FANOUT_AUDIENCE_CTEM_USERS = "ctem_users"
+_CTEM_AUDIENCE_DAYS = 30
+
+
+async def _fanout_audience_user_ids(db: AsyncSession, assignment, now: datetime) -> set | None:
+    """The users a fan-out is limited to, or ``None`` for every active user."""
+    config = getattr(assignment, "trigger_config", None)
+    audience = config.get(FANOUT_AUDIENCE_KEY) if isinstance(config, dict) else None
+    if audience != FANOUT_AUDIENCE_CTEM_USERS:
+        return None
+    from app.models.ctem_posture_snapshot import CtemPostureSnapshot
+
+    since = now - timedelta(days=_CTEM_AUDIENCE_DAYS)
+    return set(
+        (
+            await db.execute(
+                select(CtemPostureSnapshot.user_id).where(CtemPostureSnapshot.updated_at >= since).distinct()
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+def _is_expired(instance) -> bool:
+    state = sa_inspect(instance, raiseerr=False)
+    return isinstance(state, InstanceState) and bool(state.expired_attributes)
+
+
+async def _reload_expired(db: AsyncSession, *instances) -> None:
+    """Re-read the instances a rollback expired, one query per model.
+
+    A rollback expires the whole session, and an AsyncSession cannot lazy-load
+    an expired attribute: the next read would raise MissingGreenlet.
+    """
+    ids: dict[type, list] = {}
+    for instance in instances:
+        if _is_expired(instance):
+            # The identity key survives the expiry; reading ``.id`` would not.
+            ids.setdefault(type(instance), []).append(sa_inspect(instance).identity[0])
+    for model, model_ids in ids.items():
+        await db.execute(
+            select(model).where(model.id.in_(model_ids)).execution_options(populate_existing=True)
+        )
+
+
+async def _still_due(db: AsyncSession, assignment, cron_expr: str, now: datetime) -> bool:
+    """Whether the window is still open: an overlapping tick may have served it
+    since this tick loaded the assignment (``expire_on_commit=False``)."""
+    state = sa_inspect(assignment, raiseerr=False)
+    if isinstance(state, InstanceState) and state.persistent:
+        await db.refresh(assignment, ["last_triggered_at", "schedule_resumed_at"])
+    last_run = schedule_base(assignment)
+    if last_run is None:
+        return True
+    zone, _ = schedule_timezone(assignment.trigger_config)
+    next_run = next_cron_run(cron_expr, last_run, tz=zone)
+    return next_run is not None and now >= next_run
+
+
 def _fanout_spread_delay_seconds(index: int, total: int) -> int:
     """Evenly spread *total* fan-out runs across the configured window.
 
@@ -3176,7 +3465,12 @@ def _fanout_spread_delay_seconds(index: int, total: int) -> int:
 
 
 async def _fanout_assignment_to_users(
-    db: AsyncSession, assignment, agent, now: datetime, cron_expr: str
+    db: AsyncSession,
+    assignment,
+    agent,
+    now: datetime,
+    cron_expr: str,
+    claim: _FanoutClaim | None = None,
 ) -> int | None:
     """Fan a scheduled assignment out to ONE run per active user.
 
@@ -3186,8 +3480,8 @@ async def _fanout_assignment_to_users(
     OpenCTI/OpenAEV). Gated like every AI dispatch and per-user deduped.
 
     Returns the number of runs triggered, or ``None`` when agentic AI is
-    unavailable here - before the fan-out or in the middle of it - so the
-    caller leaves the cron window open.
+    unavailable here - before the fan-out or in the middle of it - or once
+    *claim* is lost, so the caller leaves the cron window open.
     """
     from app.models.assignment import AssignmentRun
     from app.models.user import User
@@ -3220,6 +3514,14 @@ async def _fanout_assignment_to_users(
             select(User.id, User.ctem_vertical).where(User.is_active.is_(True))
         )
     ).all()
+    # A fan-out that concerns CTEM users only makes no run for a user who
+    # never opened the command center: N active users with one CTEM user
+    # is one run, not N heavy runs queued behind every other fleet.
+    audience = await _fanout_audience_user_ids(db, assignment, now)
+    if audience is not None:
+        rows = [row for row in rows if row[0] in audience]
+        if not rows:
+            return 0
 
     # Prefetch — in ONE query — the set of user_ids that already have a recent
     # run for this assignment, so dedup is an in-memory lookup instead of a
@@ -3259,6 +3561,14 @@ async def _fanout_assignment_to_users(
 
     triggered = 0
     for index, (user_id, ctem_vertical) in enumerate(eligible):
+        if claim is not None and not await claim.held():
+            # Another tick may claim it now: going on would race its dedup.
+            logger.warning(
+                "Fan-out of '%s' stopped after %d run(s) - its claim was lost",
+                assignment.name,
+                triggered,
+            )
+            return None
         try:
             await trigger_assignment(
                 assignment=assignment,
@@ -3297,6 +3607,7 @@ async def _fanout_assignment_to_users(
             # from prior users are durable and untouched. Matches the
             # rollback-and-continue every other handler in this module uses.
             await db.rollback()
+            await _reload_expired(db, assignment, agent)
             refusal = refusal_code(exc)
             if refusal is not None and refusal_is_personal(exc):
                 # AI is off for this user's group only: their run is not
@@ -3356,8 +3667,18 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
         agent_result = await db.execute(select(Agent).where(Agent.id.in_(agent_ids)))
         agents_map = {a.id: a for a in agent_result.scalars().all()}
 
-    for assignment in assignments:
+    # Ids read before anything can roll back: the handler below logs one after
+    # its rollback has expired every instance of the session.
+    pending = [(a.id, a) for a in assignments]
+    for index, (assignment_id, assignment) in enumerate(pending):
         try:
+            if _is_expired(assignment):
+                # A rollback expired them all: reload the rest of the tick at once.
+                await _reload_expired(
+                    db, *(a for _, a in pending[index:]), *agents_map.values()
+                )
+                if _is_expired(assignment):
+                    continue  # deleted meanwhile: no row to reload
             cron_expr = (assignment.trigger_config or {}).get("cron")
             # Skip only when no cron is configured at all (key absent). A
             # present-but-invalid value ("" / [] / 0 / non-string) is a real
@@ -3369,6 +3690,10 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
 
             # Check if the agent is enabled (batch-loaded)
             agent = agents_map.get(assignment.agent_id)
+            if agent is not None and _is_expired(agent):
+                await _reload_expired(db, *agents_map.values())
+                if _is_expired(agent):
+                    continue  # deleted meanwhile
             if not agent or not agent.enabled:
                 continue
 
@@ -3490,8 +3815,8 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
             # only AFTER the fan-out attempt returns, so a transient failure
             # (rolled back by the per-assignment handler below) is retried on the
             # next tick instead of being skipped for the whole cron window;
-            # per-user dedup inside the helper keeps multi-tick retries from
-            # double-firing. Bypasses the per-assignment has_active_run guard
+            # per-user dedup keeps a retry from re-serving users, and the claim
+            # keeps a concurrent tick out. Bypasses the per-assignment has_active_run guard
             # (parallel per-user runs are intended here).
             #
             # SECURITY: fan-out is an admin-managed capability and is gated to
@@ -3506,25 +3831,43 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
                 structlog.contextvars.bind_contextvars(
                     agent=agent.name, assignment=assignment.name
                 )
-                fanned = await _fanout_assignment_to_users(
-                    db, assignment, agent, now, cron_expr
-                )
-                if fanned is None:
-                    # Agentic AI unavailable: the window stays open.
-                    continue
-                # Stamp only after a clean return (incl. 0 when all users are
-                # deduped) so a raised failure leaves the window open for the
-                # next tick; per-user dedup prevents duplicate runs on retry.
-                assignment.last_triggered_at = now
-                await db.commit()
-                if fanned:
-                    count += 1
-                    logger.info(
-                        "Scheduled assignment '%s' (agent '%s') fanned out to %d user(s)",
-                        assignment.name,
-                        agent.name,
-                        fanned,
-                    )
+                try:
+                    # Dedup sees only committed runs, so a tick overlapping one
+                    # still fanning out would serve its remaining users twice. The
+                    # claim is held until the stamp below is committed.
+                    async with _fanout_claim(assignment.id) as claim:
+                        if claim is None:
+                            logger.info(
+                                "Fan-out of '%s' not claimed - another tick is fanning it "
+                                "out or Redis is unavailable; its window stays open",
+                                assignment.name,
+                            )
+                            continue
+                        if not await _still_due(db, assignment, cron_expr, now):
+                            continue
+                        fanned = await _fanout_assignment_to_users(
+                            db, assignment, agent, now, cron_expr, claim
+                        )
+                        if fanned is None:
+                            # Agentic AI unavailable or claim lost: the window stays open.
+                            continue
+                        # Stamp only after a clean return (0 included): a raise
+                        # leaves the window open, and dedup absorbs the retry.
+                        assignment.last_triggered_at = now
+                        await db.commit()
+                    if fanned:
+                        count += 1
+                        logger.info(
+                            "Scheduled assignment '%s' (agent '%s') fanned out to %d user(s)",
+                            assignment.name,
+                            agent.name,
+                            fanned,
+                        )
+                finally:
+                    structlog.contextvars.unbind_contextvars("agent", "assignment")
+                continue
+
+            if not await _still_due(db, assignment, cron_expr, now):
                 continue
 
             # Skip if there's already an active run for this assignment.
@@ -3628,7 +3971,7 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
             await db.rollback()
             logger.error(
                 "Error processing scheduled assignment %s: %s",
-                assignment.id,
+                assignment_id,
                 format_exception_message(e),
                 exc_info=True,
             )

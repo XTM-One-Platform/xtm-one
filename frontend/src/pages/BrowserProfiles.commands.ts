@@ -26,7 +26,7 @@ export default defineCommands([
     title: "Browse browser profiles",
     keywords: ["sign-in", "login", "session", "credentials", "mfa"],
     icon: KeyRound,
-    navigate: "/browser-profiles",
+    navigate: "/connections",
   },
   {
     id: "browserProfiles.create",
@@ -34,6 +34,6 @@ export default defineCommands([
     title: "New browser profile",
     keywords: ["sign-in", "login", "session", "credentials"],
     icon: Plus,
-    navigate: "/browser-profiles?new=1",
+    navigate: "/connections?new=1",
   },
 ]);

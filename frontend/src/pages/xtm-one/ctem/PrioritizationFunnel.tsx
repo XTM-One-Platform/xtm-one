@@ -47,7 +47,8 @@ import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { useFormatter } from "@/i18n";
 import { formatTimeAgoLine } from "@/lib/relative-time";
-import { useCtemCases, type CtemCaseState } from "@/hooks/api/useCtemCasesApi";
+import { CTEM_OPEN_CASE_STATES, useCtemCases, useCtemCasesOverview } from "@/hooks/api/useCtemCasesApi";
+import { useRecentCtemSignals, type CtemSignalList } from "@/hooks/api/useCtemSignalsApi";
 import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
 import { cn, safeExternalUrl } from "@/lib/utils";
 import type { CtemFunnel, CtemFunnelLayer } from "@/types";
@@ -69,7 +70,9 @@ import {
   funnelLayerHref,
   funnelRows,
   funnelSettingsHref,
+  funnelWidthPct,
   isCasesLayer,
+  isInventoryHref,
   isOrganizationSettingsHref,
   withCasesLayer,
   type FlowStep,
@@ -103,12 +106,16 @@ const FunnelEmptyGlyph = ({ className }: { className?: string }) => <Icon name="
 const LIVE_FILL = ["bg-accent/25", "bg-accent/40", "bg-accent/60", "bg-accent/75", "bg-accent/85", "bg-accent", "bg-accent"];
 
 /** The fill of each case state, the tokens of the Cases board (`CasesCountsCard`). */
-const SEGMENT_FILL: Record<CtemCaseState, string> = {
-  needs_attention: "bg-feedback-alert-primary",
-  in_progress: "bg-feedback-info-primary",
-  resolved: "bg-feedback-success-primary",
-  accepted_risk: "bg-feedback-neutral-primary",
+const SEGMENT_FILL: Record<"waiting_decision" | "in_work", string> = {
+  waiting_decision: "bg-feedback-error-primary",
+  in_work: "bg-feedback-info-primary",
 };
+
+/** The two open tiles of the fan (#1503): what waits on a person, and what the agents work. */
+const FAN_TILES = [
+  { key: "waiting_decision", label: CASE_STATE_LABEL.waiting_decision, href: casesListHref({ state: "waiting_decision" }) },
+  { key: "in_work", label: "In work", href: casesListHref({ state: "open" }) },
+] as const;
 
 /** Width the flow is laid out at before its box is measured (and in tests, which have no layout). */
 const FLOW_FALLBACK_WIDTH = 1080;
@@ -189,6 +196,11 @@ export interface PrioritizationFunnelProps {
   sample?: boolean;
   /** The case counts by state (`GET /ctem-cases`): the cases node fans out into them. */
   caseStates?: FunnelCaseStates;
+  /**
+   * Compact only (#1621): the last step "In a case", the vulnerabilities (the funnel's unit) an open
+   * case carries and the cases resolved in the window (`GET /ctem-cases/overview`); absent, no step.
+   */
+  inCase?: { count: number; resolved: number; days: number } | null;
 }
 
 /** Whether the bars are drawn at their width yet (grown in after the first paint). */
@@ -263,7 +275,7 @@ const LayerLink = forwardRef<HTMLElement, LayerLinkProps>(function LayerLink(
   );
 });
 
-export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = false, caseStates, readAt }: PrioritizationFunnelProps) {
+export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = false, caseStates, readAt, inCase = null }: PrioritizationFunnelProps) {
   const { t_i18n, intl } = useFormatter();
   const grown = useGrown();
   const measured = useFlowWidth();
@@ -317,6 +329,7 @@ export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = fal
     const href = hrefOf(layer);
     if (!href) return null;
     if (isOrganizationSettingsHref(href)) return t_i18n("Opens Settings > Organization");
+    if (isInventoryHref(href)) return t_i18n("Opens CTEM > Inventory");
     if (/^https?:\/\//.test(href)) return t_i18n("Opens in OpenCTI, Arsenal > Vulnerabilities");
     return t_i18n("Opens the Cases list");
   };
@@ -403,6 +416,43 @@ export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = fal
               </Tip>
             </li>
           ))}
+          {inCase && !sample && (
+            <li className="flex min-w-0 flex-1 flex-col justify-end gap-1" data-testid="ctem-funnel-step-in-case">
+              <Tip
+                content={
+                  <div className="max-w-64 space-y-1">
+                    <p className="font-semibold">{t_i18n("In a case")}: {exact(inCase.count)}</p>
+                    <p>{t_i18n("Vulnerabilities an open case carries, among the ones you can see.")}</p>
+                    <p>{t_i18n("{count, plural, one {# case resolved in the last {days} days} other {# cases resolved in the last {days} days}}", { count: inCase.resolved, days: inCase.days })}</p>
+                    <p className="font-medium">{t_i18n("Opens the Cases list")}</p>
+                  </div>
+                }
+              >
+                <LayerLink
+                  href="/ctem/cases"
+                  label={t_i18n("In a case, {count}, {resolved} resolved in {days} d", { count: exact(inCase.count), resolved: inCase.resolved, days: inCase.days })}
+                  className="flex min-w-0 flex-col gap-1"
+                >
+                  <span className="content-caption truncate text-default-secondary">
+                    {t_i18n("In a case")}
+                    <span className="tabular-nums"> · {t_i18n("{resolved} resolved in {days} d", { resolved: inCase.resolved, days: inCase.days })}</span>
+                  </span>
+                  <span className="content-base font-semibold tabular-nums" data-testid="ctem-funnel-count-in-case">
+                    {n(inCase.count)}
+                  </span>
+                  <span className="relative block h-2 overflow-hidden rounded-full bg-elevation-hover">
+                    <span
+                      className={cn(
+                        "absolute inset-y-0 left-0 rounded-full transition-[width] duration-700 ease-out motion-reduce:transition-none",
+                        LIVE_FILL[LIVE_FILL.length - 1],
+                      )}
+                      style={{ width: grown ? `${funnelWidthPct(inCase.count, funnel.layers[0]?.count ?? 0)}%` : "0%" }}
+                    />
+                  </span>
+                </LayerLink>
+              </Tip>
+            </li>
+          )}
         </ol>
         {unconfigured > 0 && (
           <p className="content-caption text-default-secondary" data-testid="ctem-funnel-compact-unconfigured">
@@ -417,7 +467,7 @@ export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = fal
   const layout = flowLayout(funnel, measured.width || FLOW_FALLBACK_WIDTH);
   const casesRow = rows.find((row) => isCasesLayer(row.layer));
   const casesLive = casesRow?.layer.state === "live" && casesRow.layer.count !== null && !!caseStates;
-  const fan = casesLive ? flowFan(layout.node, caseStates.needs_attention, caseStates.in_progress) : [];
+  const fan = casesLive ? flowFan(layout.node, caseStates.waiting_decision, caseStates.in_work) : [];
   const rowOf = (key: string) => rows.find((row) => row.layer.key === key) as FunnelRow;
   const reasonOf = (step: FlowStep) => (FLOW_REASON[step.layer.key] ? t_i18n(FLOW_REASON[step.layer.key] as string) : "");
   const tableRows = rows.map((row) => {
@@ -543,15 +593,13 @@ export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = fal
         {layout.steps.map((step) => {
           if (step.labelY === null) return null;
           const layer = step.layer;
-          const dx = Math.min(layout.pitch * 0.5, 64);
-          const left = step.x + dx + 6;
           const cta = layer.state === "not_configured" ? FUNNEL_LAYER_COPY[layer.key].cta : undefined;
           const biggest = layout.biggest === layer.key;
           return (
             <div
               key={layer.key}
               className="absolute flex h-5 min-w-0 items-center gap-1.5 overflow-hidden content-caption"
-              style={{ left, top: step.labelY - 10, width: Math.max(layout.width - left - 4, 0) }}
+              style={{ left: step.labelX, top: step.labelY - 10, width: step.labelWidth }}
               data-testid={`ctem-flow-label-${layer.key}`}
             >
               {step.removed != null ? (
@@ -612,13 +660,13 @@ export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = fal
         )}
 
         {casesLive &&
-          (["needs_attention", "in_progress"] as const).map((state, i) => {
+          FAN_TILES.map(({ key: state, label: english, href }, i) => {
             const count = caseStates[state];
-            const label = t_i18n(CASE_STATE_LABEL[state]);
+            const label = t_i18n(english);
             return (
               <Link
                 key={state}
-                to={casesListHref({ state })}
+                to={href}
                 aria-label={t_i18n("{state}: {count, plural, one {# case} other {# cases}}", { count, state: label })}
                 className={cn(
                   "absolute flex flex-col justify-center overflow-hidden rounded-sm border border-elevation-subtle-soft bg-elevation-default pl-3 pr-2",
@@ -637,19 +685,41 @@ export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = fal
           })}
 
         {casesLive && (
-          <p
-            className="absolute line-clamp-2 content-caption text-default-secondary"
-            style={{ left: layout.tiles.x, top: FLOW_TOP + 92, width: layout.tiles.width }}
-            data-testid="ctem-flow-cases-closed"
+          // Mitigated, watching on its own line above the closed line, and no
+          // clamp: every count shows at 1080, where the column is 118 px (UX
+          // round 2 on #897, B4; #865 prod retest D1 for the watching state).
+          // Placed by the layout below the top branch label, the labels beside
+          // it ending before the column (UX round 3 on #897, B4).
+          <div
+            className="absolute flex flex-col gap-1 content-caption text-default-secondary"
+            style={{ left: layout.tiles.x, top: layout.outcomesTop, width: layout.tiles.width }}
+            data-testid="ctem-flow-cases-outcomes"
           >
-            <Link to={casesListHref({ state: "resolved" })} className={cn("text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)} data-flow-mark="" tabIndex={-1}>
-              {t_i18n("{count, plural, one {# resolved} other {# resolved}}", { count: caseStates.resolved })}
-            </Link>
-            {", "}
-            <Link to={casesListHref({ state: "accepted_risk" })} className={cn("text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)} data-flow-mark="" tabIndex={-1}>
-              {t_i18n("{count, plural, one {# accepted risk} other {# accepted risk}}", { count: caseStates.accepted_risk })}
-            </Link>
-          </p>
+            {(caseStates.mitigated_watching ?? 0) > 0 && (
+              <p>
+                <Link
+                  to={casesListHref({ state: "mitigated_watching" })}
+                  className={cn("text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)}
+                  data-flow-mark=""
+                  tabIndex={-1}
+                  data-testid="ctem-flow-cases-mitigated"
+                >
+                  {/* Inline, on the text baseline (UX round 1 on #897, B2). */}
+                  <Icon name="eye" size={16} aria-hidden className="mr-1 inline-block align-text-bottom" />
+                  {t_i18n("{count, plural, one {# mitigated, watching} other {# mitigated, watching}}", { count: caseStates.mitigated_watching ?? 0 })}
+                </Link>
+              </p>
+            )}
+            <p data-testid="ctem-flow-cases-closed">
+              <Link to={casesListHref({ state: "resolved" })} className={cn("text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)} data-flow-mark="" tabIndex={-1}>
+                {t_i18n("{count, plural, one {# resolved} other {# resolved}}", { count: caseStates.resolved })}
+              </Link>
+              {", "}
+              <Link to={casesListHref({ state: "accepted_risk" })} className={cn("text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)} data-flow-mark="" tabIndex={-1}>
+                {t_i18n("{count, plural, one {# accepted risk} other {# accepted risk}}", { count: caseStates.accepted_risk })}
+              </Link>
+            </p>
+          </div>
         )}
       </div>
       {casesLive && (
@@ -702,20 +772,55 @@ export function PrioritizationFunnelWithCases({
   const data = isError ? undefined : read;
   const cases = data
     ? {
-        open: (data.counts.needs_attention ?? 0) + (data.counts.in_progress ?? 0),
+        open: CTEM_OPEN_CASE_STATES.reduce((sum, s) => sum + (data.counts[s] ?? 0), 0),
         total: Object.values(data.counts).reduce((sum, value) => sum + (value ?? 0), 0),
       }
     : undefined;
   const caseStates: FunnelCaseStates | undefined = data
     ? {
-        needs_attention: data.counts.needs_attention ?? 0,
-        in_progress: data.counts.in_progress ?? 0,
+        waiting_decision: data.counts.waiting_decision ?? 0,
+        in_work: CTEM_OPEN_CASE_STATES.reduce((sum, s) => sum + (s === "waiting_decision" ? 0 : (data.counts[s] ?? 0)), 0),
+        mitigated_watching: data.counts.mitigated_watching ?? 0,
         resolved: data.counts.resolved ?? 0,
         accepted_risk: data.counts.accepted_risk ?? 0,
       }
     : undefined;
   return (
-    <PrioritizationFunnel variant="stage" funnel={withCasesLayer(funnel, cases)} openctiUrl={openctiUrl} caseStates={caseStates} readAt={readAt} />
+    <div className="space-y-3">
+      <PrioritizationFunnel variant="stage" funnel={withCasesLayer(funnel, cases)} openctiUrl={openctiUrl} caseStates={caseStates} readAt={readAt} />
+      <SignalGateCounts />
+    </div>
+  );
+}
+
+/**
+ * The two gates of the loop as numbers (#874, "10 flagged, 3 real"): signals
+ * in, confirmed by reconcile, in scope, cases. Read from the counts by state of
+ * `GET /ctem-signals` (the recent read, refreshed by `ctem_signal_update`), so it
+ * moves live. A signal still waiting for reconcile counts in "in" only.
+ */
+export function signalGateCounts(counts: CtemSignalList["counts"]) {
+  const c = (state: keyof CtemSignalList["counts"]) => counts[state] ?? 0;
+  const cases = c("case_opened");
+  const inScope = cases + c("confirmed");
+  const confirmed = inScope + c("watchlist");
+  const total = confirmed + c("new") + c("to_validate") + c("discarded");
+  return { total, confirmed, inScope, cases, watchlist: c("watchlist") };
+}
+
+function SignalGateCounts() {
+  const { t_i18n } = useFormatter();
+  const { data, isError } = useRecentCtemSignals(1);
+  // Never an invented 0: no line until the signals API answers, none on a refused read.
+  if (!data || isError) return null;
+  const gate = signalGateCounts(data.counts);
+  if (gate.total === 0) return null;
+  return (
+    <p className="content-compact text-default-secondary tabular-nums" data-testid="ctem-funnel-gate-counts">
+      {/* UX r1 B1 on #875: the card already counts open cases; this line names its
+          scope (signals) so its "opened a case" never reads as a second case total. */}
+      {t_i18n("Signals: {total} in, {confirmed} confirmed, {inScope} in scope, {cases} opened a case, {watchlist} on the watchlist", gate)}
+    </p>
   );
 }
 
@@ -829,6 +934,9 @@ export function PrioritizationFunnelCard({
   readAt?: string | null;
 }) {
   const { t_i18n } = useFormatter();
+  // The funnel ends in action (#1621): the vulnerabilities an open case carries, same unit as the steps.
+  const { data: overview } = useCtemCasesOverview();
+  const inCase = overview ? { count: overview.funnel.in_case, resolved: overview.funnel.resolved_recent, days: overview.funnel.resolved_window_days } : null;
   return (
     <Card className="flex h-full flex-col overflow-hidden" data-testid="ctem-funnel-card">
       <CardContent className="flex flex-1 flex-col gap-3 p-4">
@@ -848,7 +956,7 @@ export function PrioritizationFunnelCard({
           {placeholder ? (
             <PrioritizationFunnelPlaceholder display={placeholder} variant="compact" openctiUrl={openctiUrl} />
           ) : (
-            <PrioritizationFunnel funnel={funnel} variant="compact" openctiUrl={openctiUrl} sample={sample} readAt={readAt} />
+            <PrioritizationFunnel funnel={funnel} variant="compact" openctiUrl={openctiUrl} sample={sample} readAt={readAt} inCase={inCase} />
           )}
         </div>
       </CardContent>

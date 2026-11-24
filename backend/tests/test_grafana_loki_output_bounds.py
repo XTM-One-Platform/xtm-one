@@ -37,6 +37,36 @@ def test_seven_traceback_lines_stay_far_below_the_tool_cap() -> None:
     assert out.count("chars cut]") == 7
 
 
+def test_metric_matrix_series_carry_their_label_sets() -> None:
+    data = {
+        "status": "success",
+        "data": {
+            "resultType": "matrix",
+            "result": [
+                {"metric": {"level": "error"}, "values": [[1_763_500_000, "12"], [1_763_500_060, "3"]]},
+                {"metric": {"level": "warn"}, "values": [[1_763_500_000, "7"]]},
+            ],
+        },
+    }
+    out = _format_loki_logs(data)
+    assert 'Series: {level="error"}' in out
+    assert 'Series: {level="warn"}' in out
+    assert "Stream: {}" not in out
+    assert "[2025-11-18 21:06:40 UTC] 12" in out
+    assert out.endswith("Total: 3 sample(s) across 2 series.")
+
+
+def test_metric_vector_sample_is_shown_with_its_labels() -> None:
+    data = {
+        "status": "success",
+        "data": {"resultType": "vector", "result": [{"metric": {"app": "api"}, "value": [1_763_500_000, "42"]}]},
+    }
+    out = _format_loki_logs(data)
+    assert 'Series: {app="api"}' in out
+    assert "] 42" in out
+    assert out.endswith("Total: 1 sample(s) across 1 series.")
+
+
 def test_empty_result_message_unchanged() -> None:
     assert _format_loki_logs({"status": "success", "data": {"result": []}}) == (
         "No log results found (Loki status: success)."

@@ -3,7 +3,7 @@
 ``GET /runners/{id}/commands`` gives a manager the WHOLE history of a machine
 - shell payloads and output, inline file contents - and an admin manages every
 machine through the by-id bypass ``_get_visible_runner`` keeps. The
-admin Objects browser now opens every enrolled machine on ``/runners/:id``, so
+admin Objects browser now opens every enrolled machine on ``/desktop/runners/:id``, so
 a colleague's PRIVATE laptop is one click away for an administrator; the read
 therefore leaves the same kind of trail the break-glass read of another
 user's conversation files does: one audit entry per admin, per machine, per

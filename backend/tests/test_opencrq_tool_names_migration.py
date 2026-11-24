@@ -96,6 +96,7 @@ REVIEWED_ELSEWHERE = {
     ("conversations", "tool_overrides_json"): "built-in, custom and integration ids",
     ("evaluation_runs", "require_tool_approval"): "a flag",
     ("evaluations", "require_tool_approval"): "a flag",
+    ("fleets", "enforce_gates_at_tool_level"): "a flag (#1467)",
     ("general_assistant_config", "custom_tool_ids"): "ids",
     ("general_assistant_config", "builtin_tool_ids"): "built-in tool ids",
     ("integration_openapi_specs", "tool_prefix"): "an OpenAPI spec's own prefix",

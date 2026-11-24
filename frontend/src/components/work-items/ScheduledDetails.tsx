@@ -173,7 +173,7 @@ export function ScheduledDetails({
         ))}
       {s.run_id && (
         <Link
-          to={`/runs/${s.run_id}`}
+          to={`/operations/executions/${s.run_id}`}
           className="inline-flex items-center gap-1 text-accent hover:underline"
           onClick={(e) => e.stopPropagation()}
         >

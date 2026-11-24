@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// The empty Cases list and board (#12139): "No open exposure on your stack" is
+// The empty Cases list and board (#12139): "No open exposure on your software" is
 // an all-clear only when every product answered; a product that could not be
 // read is named instead, on the list page and on the board. The API sends
 // product ids ("openaev"), so the mocks do too and the text shows display names.
@@ -32,7 +32,7 @@ describe("CasesBoard empty state", () => {
     get.mockResolvedValue(list([]));
     renderWithProviders(<MemoryRouter><CasesBoard /></MemoryRouter>);
     const empty = await screen.findByTestId("ctem-cases-board-empty");
-    expect(empty.textContent).toBe("No open exposure on your stack");
+    expect(empty.textContent).toBe("No open exposure on your software");
   });
 
   it("names the products that could not be read instead of the all-clear", async () => {
@@ -40,7 +40,7 @@ describe("CasesBoard empty state", () => {
     renderWithProviders(<MemoryRouter><CasesBoard /></MemoryRouter>);
     const empty = await screen.findByTestId("ctem-cases-board-empty");
     expect(empty.textContent).toBe("OpenCTI and OpenAEV could not be read, so open exposures there may be missing.");
-    expect(screen.queryByText("No open exposure on your stack")).toBeNull();
+    expect(screen.queryByText("No open exposure on your software")).toBeNull();
   });
 });
 
@@ -48,14 +48,14 @@ describe("CtemCases list empty state", () => {
   it("says no open exposure when every product answered", async () => {
     get.mockResolvedValue(list([]));
     renderWithProviders(<MemoryRouter><CtemCases /></MemoryRouter>);
-    expect(await screen.findByText("No open exposure on your stack")).toBeTruthy();
+    expect(await screen.findByText("No open exposure on your software")).toBeTruthy();
   });
 
   it("names the product that could not be read instead of the all-clear", async () => {
     get.mockResolvedValue(list(["openaev"]));
     renderWithProviders(<MemoryRouter><CtemCases /></MemoryRouter>);
     expect(await screen.findByText("OpenAEV could not be read, so open exposures there may be missing.")).toBeTruthy();
-    expect(screen.queryByText("No open exposure on your stack")).toBeNull();
+    expect(screen.queryByText("No open exposure on your software")).toBeNull();
   });
 
   it("reads the sentence in French with the product named", async () => {

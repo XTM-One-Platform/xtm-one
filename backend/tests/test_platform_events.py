@@ -590,6 +590,7 @@ async def test_run_failed_carries_the_held_items_workspace_scope(monkeypatch):
     assert published[-1][1]["personal_owner_ids"] == [str(run.user_id)]
     # A run that ended on its own terms carries no stop_reason.
     assert published[-1][1]["stop_reason"] is None
+    assert published[-1][1]["partial"] is False
 
 
 @pytest.mark.asyncio
@@ -619,9 +620,12 @@ async def test_a_completed_run_cut_short_says_why_in_its_event(monkeypatch: pyte
     await engine._publish_run_ended(run, "run.completed", reason="completed")
     assert published[-1][0] == "run.completed"
     assert published[-1][1]["stop_reason"] == "deadline"
+    assert published[-1][1]["partial"] is True
     await engine._publish_run_ended(run, "run.failed", reason="failed", error="boom")
     assert published[-1][1]["stop_reason"] is None
+    assert published[-1][1]["partial"] is False
     assert "stop_reason" in pe.PLATFORM_EVENTS["run.completed"]["filter_keys"]
+    assert "partial" in pe.PLATFORM_EVENTS["run.completed"]["filter_keys"]
 
 
 def test_run_event_of_a_personal_item_reaches_only_its_owner():

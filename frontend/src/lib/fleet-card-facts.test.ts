@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 
 import {
   agentsNotInAFleet,
+  cardStartsAndModules,
   fleetEntryPoints,
   fleetModules,
   fleetStarts,
@@ -50,6 +51,22 @@ test("what starts a fleet counts the automations on when any is on, distinct sch
     run("z", true, "webhook"),
   ];
   assert.deepEqual(fleetStarts(["a", "b"], all), { events: true, schedules: 2 });
+});
+
+test("the Platform Health fleet reads its Settings schedules and covered modules, not its manual assignments (#974)", () => {
+  const members = fleetStarts(["h"], [run("h", false, "manual")]);
+  assert.deepEqual(members, { events: false, schedules: 0 });
+  const health = { events: true, schedules: 4, modules: ["xtm_one", "opencti"] };
+  assert.deepEqual(cardStartsAndModules(health, members, []), {
+    starts: { events: true, schedules: 4 },
+    modules: ["xtm_one", "opencti"],
+  });
+  // Copilot mode: no module line for the health fleet.
+  assert.deepEqual(cardStartsAndModules({ events: false, schedules: 0, modules: [] }, members, ["jira"]).modules, []);
+  // Every other fleet keeps its members' facts.
+  const own = { events: true, schedules: 2 };
+  assert.deepEqual(cardStartsAndModules(null, own, ["jira"]), { starts: own, modules: ["jira"] });
+  assert.equal(moduleDisplayName("xtm_one"), "XTM One");
 });
 
 test("a fleet with every automation off says what would start it once set up", () => {

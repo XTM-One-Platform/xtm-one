@@ -30,7 +30,7 @@ describe("MarkerInlineChip", () => {
     ["REPORT", null, `/reports/${ID}`, "Report"],
     ["VIDEO", null, `/videos/${ID}`, "Video"],
     ["DASHBOARD", null, `/dashboards/${ID}`, "Dashboard"],
-    ["WORK_ITEM", null, `/operations/work-items?item=${ID}`, "Work item"],
+    ["WORK_ITEM", null, `/tasks/work-items/${ID}`, "Work item"],
   ] as const)("links a %s (slide %s) to %s with its title and kind", (kind, slideRef, href, label) => {
     state.data = { id: ID, title: "Valuation 2024" };
     state.isLoading = false;

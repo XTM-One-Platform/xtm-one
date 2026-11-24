@@ -143,10 +143,38 @@ def test_the_lab_recomputes_the_screens_cases_and_reads_them_back():
         "/ctem/cases",
     ):
         assert part in helper, part
+    # #1529: the scope is declared before the recompute, else every issue is a watchlisted signal.
+    assert helper.index("seed_ctem_screens_scope(token)") < helper.index(
+        "'POST', '/ctem-cases/recompute?vertical=cyber'"
+    )
+    scope = ast.unparse(functions["seed_ctem_screens_scope"])
+    for part in ("'PUT', '/organization-context'", "/organization-context/assets/records/batch", "SCREENS_ASSETS"):
+        assert part in scope, part
     seed = ast.unparse(functions["seed_entities"])
     assert "lab_switch('LAB_CTEM_SCREENS', LAB_CTEM_SCREENS_STATES) == 'on'" in seed
     assert "seeded.update(seed_ctem_screens(token, base))" in seed
     assert "skipped['CTEM cases and scored stages']" in seed
+
+
+def test_the_screens_scope_puts_every_fixable_issue_on_a_critical_asset(monkeypatch):
+    """#1529: each screens issue with a fix resolves to a stack product run by a ``very_high`` asset."""
+    from app.services import ctem_cases
+    from app.services.ctem_scope_gate import ASSET_TO_SCOPE, CRITICALITY_ORDER
+    from app.services.organization_context import AssetEntry
+
+    sample = _sample()
+    module = _lab_asgi(monkeypatch)
+    stack = {e["product"] for e in sample.SCREENS_TECH_STACK}
+    assets = [AssetEntry.model_validate(row) for row in sample.SCREENS_ASSETS]
+    threshold = CRITICALITY_ORDER.index("high")
+    grouping = ctem_cases.group_issues(module.screens_source_issues(datetime(2026, 11, 14, tzinfo=UTC)))
+    products = {i.product for members in grouping.groups.values() for i in members if i.product}
+    assert products and products <= stack
+    for product in products:
+        running = [a for a in assets if product in a.tech_stack]
+        assert running, product
+        assert max(CRITICALITY_ORDER.index(ASSET_TO_SCOPE[a.criticality]) for a in running) >= threshold
+    assert len({a.external_id for a in assets}) == len(assets)
 
 
 def test_the_screens_labs_are_the_default_lab_with_the_switch():

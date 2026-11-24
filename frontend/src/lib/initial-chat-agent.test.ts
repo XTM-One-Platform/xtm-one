@@ -1,6 +1,6 @@
 // The agent a new `/chat` starts with (`initialChatAgent`): an explicit
-// `?agent=` opens an agent built for assignments too, as the agent page's
-// "Chat with Agent" offers; the hand-off and the default skip it.
+// `?agent=` and a launcher's hand-off open an agent built for assignments too,
+// as the agent page's "Chat with Agent" offers; the default skips it.
 import { describe, expect, it } from "vitest";
 
 import { CHAT_GENERAL_AGENT_PARAM } from "@/lib/constants";
@@ -30,8 +30,9 @@ describe("the agent a new chat starts with", () => {
     expect(start("nobody")).toBe("chat");
   });
 
-  it("takes the hand-off's agent only when it is made for chat", () => {
-    expect(start(null, "assignments")).toBe("chat");
+  it("takes the hand-off's agent, one built for assignments included (#774)", () => {
+    expect(start(null, "assignments")).toBe("assignments");
+    expect(start(null, "off")).toBe("chat");
     expect(initialChatAgent({ agentParam: null, pendingAgent: CHAT_GENERAL_AGENT_PARAM }, user, agents, true, null)).toBeNull();
   });
 });

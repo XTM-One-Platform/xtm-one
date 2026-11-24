@@ -40,6 +40,34 @@ describe("StatCard", () => {
     expect(document.body).toHaveFocus();
   });
 
+  it("draws its footer only when one is passed, so no card carries an empty divider (UX B1 on #965)", () => {
+    renderWithProviders(
+      <>
+        <StatCard icon={Inbox} label="Bare" value={1} subtitle="7 days" />
+        <StatCard icon={Inbox} label="With" value={2} subtitle="7 days" footer={<p>Outcome</p>} />
+      </>,
+    );
+    const footers = screen.getAllByTestId("stat-card-footer");
+    expect(footers).toHaveLength(1);
+    expect(footers[0].textContent).toBe("Outcome");
+  });
+
+  it("keeps the footer in flow under the subtitle, so the dividers of one grid row share one y (UX B3 on #965)", () => {
+    renderWithProviders(
+      <>
+        <StatCard icon={Inbox} label="Long" value={1} subtitle="7 days" footer={<p>A two line outcome</p>} />
+        <StatCard icon={Inbox} label="Short" value={2} subtitle="7 days" footer={<p>Refused</p>} />
+      </>,
+    );
+    // happy-dom computes no layout: pin the structure that gives the shared divider line
+    // (the footer follows the value block, in flow).
+    const wrappers = screen.getAllByTestId("stat-card-footer-wrapper");
+    expect(wrappers).toHaveLength(2);
+    for (const wrapper of wrappers) {
+      expect(wrapper.previousElementSibling?.querySelector('[data-testid="stat-card-value"]')).not.toBeNull();
+    }
+  });
+
   it("shows the exact figure on hover, never the compact text again (UX B4 on #10529)", () => {
     renderWithProviders(
       <>

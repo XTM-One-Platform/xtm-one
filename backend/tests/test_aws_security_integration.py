@@ -58,10 +58,10 @@ def _capture(monkeypatch, payloads: list[dict] | dict | None = None) -> list[dic
 # ---------------------------------------------------------------------------
 
 
-def test_build_tools_registers_all_fourteen_tools():
+def test_build_tools_registers_all_sixteen_tools():
     executor = _SafeIntegrationExecutor()
     definitions = build_tools(_TOKEN, executor)
-    assert len(definitions) == 14
+    assert len(definitions) == 16
     assert set(executor._handlers) == {d.name for d in definitions}
     # Reads sort before the triage/write tools.
     priorities = {d.name: d.priority for d in definitions}

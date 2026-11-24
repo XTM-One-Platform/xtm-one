@@ -14,7 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 import { useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -28,6 +28,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/ui/stat-card";
 import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { isEmergencyStopped } from "@/lib/emergency-stop";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -54,9 +55,8 @@ import {
   INTEGRATION_PROVIDER_NAMES, TRANSPORT_DISPLAY_NAMES,
   HANDOVER_TYPES, MAX_ITERATIONS_DEFAULT, clampMaxIterations, handoverTypeConfig, providerLogoSrc } from "@/lib/constants";
 import { shownHandoverType } from "@/lib/handover-types";
-import { AddAssignmentPanel } from "./AddAssignmentPanel";
-import { HealthOptInCard } from "@/components/health/HealthOptInCard";
-import { HealthTargetCard } from "@/components/health/HealthTargetCard";
+import { AddAssignmentPanel, type AssignmentPreset } from "./AddAssignmentPanel";
+import { HealthImprovementRow } from "@/components/health/HealthImprovementRow";
 import { AgentFleetCard } from "./AgentFleetCard";
 import { ComingUpCard } from "./ComingUpCard";
 import { a2aBindingLabel } from "./a2a-binding-label";
@@ -67,6 +67,7 @@ import { Tip } from "@/components/ui/tooltip";
 import { useFormatter } from "@/i18n";
 import { useRoutingModelLabel } from "@/hooks/useRoutingModelLabel";
 import type { Agent, Assignment } from "@/types";
+import { triggerTile } from "@/lib/ctem-signal-trigger";
 
 // ---------------------------------------------------------------------------
 // Overview: Integration row with tool count
@@ -155,7 +156,25 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
   const { data: runningRuns } = useAllAssignmentRuns(
     20, 0, "running", undefined, undefined, undefined, agent.id, undefined, undefined, true, undefined, "all",
   );
-  const [addingAssignment, setAddingAssignment] = useState(false);
+  // `?add-assignment=ctem-case` (the CTEM case page, #1266): the panel opens on the case events.
+  // Read once: the preset applies to the first open only, and closing the panel drops it and the parameter.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [preset, setPreset] = useState<AssignmentPreset | undefined>(() =>
+    searchParams.get("add-assignment") === "ctem-case"
+      ? { triggerType: "platform_event", platformEvents: ["ctem_case.opened", "ctem_case.reopened"], name: t_i18n("Work CTEM cases") }
+      : undefined,
+  );
+  const [addingAssignment, setAddingAssignment] = useState(() => Boolean(preset) && canManage);
+  const closeAddAssignment = () => {
+    setAddingAssignment(false);
+    if (!preset) return;
+    setPreset(undefined);
+    setSearchParams((params) => {
+      const next = new URLSearchParams(params);
+      next.delete("add-assignment");
+      return next;
+    }, { replace: true });
+  };
   const assignmentsCardRef = useRef<HTMLDivElement>(null);
   // The Fleet card's "Add Assignment" (#9539 S5, UX round 1 B1): opens this page's panel and brings it into view.
   const openAddAssignment = () => {
@@ -251,12 +270,6 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
 
       {/* ── Fleet: home fleet and connecting fleets, read only ── */}
       <AgentFleetCard agent={agent} assignments={assignments} onAddAssignment={canManage ? openAddAssignment : undefined} />
-
-      {/* ── Platform Health improvement opt-in (#8254) ── */}
-      <HealthOptInCard targetType="agent" targetId={agent.id} />
-
-      {/* ── Platform Health: its proposals and cycles, for its managers (#8261) ── */}
-      <HealthTargetCard targetType="agent" targetId={agent.id} canManage={canManage} />
 
       {/* ── General Assistant Badge ── */}
       {gaConfig?.linked_agent_id === agent.id && canStandInForGeneralAssistant(agent) && (
@@ -412,19 +425,20 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
           <div className="flex items-center gap-2">
             <span className="content-caption text-default-secondary">{t_i18n("{enabled} of {total} active", { enabled: formatCompactNumber(enabledAssignments), total: formatCompactNumber(assignments?.length || 0) })}</span>
             {canManage && (
-              <Button size="sm" className="h-7 content-compact gap-1.5" onClick={() => setAddingAssignment(!addingAssignment)}>
+              <Button size="sm" className="h-7 content-compact gap-1.5" onClick={() => (addingAssignment ? closeAddAssignment() : setAddingAssignment(true))}>
                 <Plus className="h-3 w-3" /> {t_i18n("Add Assignment")}
               </Button>
             )}
           </div>
         </CardHeader>
         <CardContent className="pt-0 px-4 pb-4">
-          {addingAssignment && <div className="mb-4"><AddAssignmentPanel agent={agent} onClose={() => setAddingAssignment(false)} /></div>}
+          {addingAssignment && <div className="mb-4"><AddAssignmentPanel agent={agent} preset={preset} onClose={closeAddAssignment} /></div>}
 
           {assignments && assignments.length > 0 ? (
             <div className="space-y-2">
               {[...assignments].sort((a, b) => a.name.localeCompare(b.name)).map((wf) => {
-                const TriggerIcon = TRIGGER_ICONS[wf.trigger_type] ?? Zap;
+                const tile = triggerTile(wf.trigger_type, wf.trigger_config);
+                const TriggerIcon = TRIGGER_ICONS[tile] ?? Zap;
                 const cronExpr = wf.trigger_type === "schedule" ? wf.trigger_config.cron : null;
                 const isWfRunning = runningAssignmentIds.has(wf.id);
                 const status = assignmentDisplayStatus(wf);
@@ -433,7 +447,7 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
                 return (
                   <Link
                     key={wf.id}
-                    to={`/assignments/${wf.id}`}
+                    to={`/agents/assignments/${wf.id}`}
                     className={cn(
                       "flex items-center justify-between rounded-sm border px-4 py-3 cursor-pointer transition-all hover:bg-elevation-hover",
                       isWfRunning ? "border-accent/30 bg-accent/[0.03]" : isActive ? "border-elevation-subtle-soft bg-elevation-hover" : "border-elevation-subtle-soft opacity-50",
@@ -447,7 +461,7 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
                         <p className="content-base font-medium truncate">{wf.name}</p>
                         <div className="flex items-center gap-2 mt-0.5">
                           <AssignmentRowBadge assignment={wf} running={isWfRunning} ownerPausedRemedy={ownerPausedRemedy} />
-                          <span className="content-caption text-default-secondary">{t_i18n(TRIGGER_LABELS[wf.trigger_type] ?? wf.trigger_type)}</span>
+                          <span className="content-caption text-default-secondary">{t_i18n(TRIGGER_LABELS[tile] ?? wf.trigger_type)}</span>
                           {cronExpr && <span className="content-caption text-default-secondary">· {describeCron(cronExpr)}</span>}
                           <span className="content-caption text-default-secondary">· {t_i18n("{count, plural, one {{shown} run} other {{shown} runs}}", { count: wf.execution_count, shown: formatCompactNumber(wf.execution_count) })}</span>
                         </div>
@@ -483,7 +497,7 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
         <Card className="flex flex-col">
           <CardHeader className="flex-row items-center justify-between space-y-0 p-4 pb-3">
             <CardTitle className="content-base flex items-center gap-2"><Cog className="h-4 w-4 text-accent" /> {t_i18n("Integrations")}</CardTitle>
-            <Badge variant="outline" className="text-[9px]">{totalIntegrationCount}</Badge>
+            <CountBadge variant="outline">{totalIntegrationCount}</CountBadge>
           </CardHeader>
           <CardContent className="flex-1 px-4 pb-4 pt-0">
             {totalIntegrationCount > 0 ? (
@@ -532,7 +546,7 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
         <Card className="flex flex-col">
           <CardHeader className="flex-row items-center justify-between space-y-0 p-4 pb-3">
             <CardTitle className="content-base flex items-center gap-2"><Terminal className="h-4 w-4 text-accent" /> {t_i18n("MCP Servers")}</CardTitle>
-            <Badge variant="outline" className="text-[9px]">{boundMCPs.length}</Badge>
+            <CountBadge variant="outline">{boundMCPs.length}</CountBadge>
           </CardHeader>
           <CardContent className="flex-1 px-4 pb-4 pt-0">
             {boundMCPs.length > 0 ? (
@@ -562,7 +576,7 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
         <Card className="flex flex-col">
           <CardHeader className="flex-row items-center justify-between space-y-0 p-4 pb-3">
             <CardTitle className="content-base flex items-center gap-2"><Code2 className="h-4 w-4 text-accent" /> {t_i18n("Custom Tools")}</CardTitle>
-            <Badge variant="outline" className="text-[9px]">{boundTools.length}</Badge>
+            <CountBadge variant="outline">{boundTools.length}</CountBadge>
           </CardHeader>
           <CardContent className="flex-1 px-4 pb-4 pt-0">
             {boundTools.length > 0 ? (
@@ -592,7 +606,7 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
         <Card className="flex flex-col">
           <CardHeader className="flex-row items-center justify-between space-y-0 p-4 pb-3">
             <CardTitle className="content-base flex items-center gap-2"><GraduationCap className="h-4 w-4 text-accent" /> {t_i18n("Skills")}</CardTitle>
-            <Badge variant="outline" className="text-[9px]">{boundSkills.length}</Badge>
+            <CountBadge variant="outline">{boundSkills.length}</CountBadge>
           </CardHeader>
           <CardContent className="flex-1 px-4 pb-4 pt-0">
             {boundSkills.length > 0 ? (
@@ -622,7 +636,7 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
         <Card className="flex flex-col">
           <CardHeader className="flex-row items-center justify-between space-y-0 p-4 pb-3">
             <CardTitle className="content-base flex items-center gap-2"><BookOpen className="h-4 w-4 text-accent" /> {t_i18n("Knowledge Bases")}</CardTitle>
-            <Badge variant="outline" className="text-[9px]">{boundKBs.length}</Badge>
+            <CountBadge variant="outline">{boundKBs.length}</CountBadge>
           </CardHeader>
           <CardContent className="flex-1 px-4 pb-4 pt-0">
             {boundKBs.length > 0 ? (
@@ -667,7 +681,7 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
                 <ExternalLink className="h-3 w-3" />
                 {t_i18n("View in flow")}
               </Button>
-              <Badge variant="outline" className="text-[9px]">{handoverAgents.length}</Badge>
+              <CountBadge variant="outline">{handoverAgents.length}</CountBadge>
             </div>
           </CardHeader>
           <CardContent className="flex-1 px-4 pb-4 pt-0">
@@ -699,6 +713,8 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
         </Card>
       </div>
 
+      {/* ── Platform Health improvement: one compact row after the configuration (#101 S10) ── */}
+      <HealthImprovementRow agentId={agent.id} canManage={canManage} />
     </div>
   );
 }

@@ -34,8 +34,13 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
 
     # ── Online Meeting Tools ───────────────────────────────────────────
 
-    async def list_microsoft_online_meetings(days: int = 7, count: int = 10) -> str:
-        """List recent online meetings with their meeting IDs, subject, date, and join URL."""
+    async def list_microsoft_online_meetings(days: int = 7, count: int = 10) -> str | ToolResult:
+        """List recent online meetings with their meeting IDs, subject, date, and join URL.
+
+        The answer carries the listed meetings as its structured value
+        (``[]`` when none), so an assignment's gate check (``non_empty`` /
+        ``empty`` / a path condition) decides on the data, never on the text.
+        """
         now = datetime.now(UTC)
         start = now - timedelta(days=days)
         start_iso = start.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -68,9 +73,14 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
         online_events.reverse()
 
         if not online_events:
-            return f"No online meetings found in the last {days} day(s)."
+            return ToolResult(
+                tool_call_id="",
+                content=f"No online meetings found in the last {days} day(s).",
+                structured=[],
+            )
 
         results: list[str] = []
+        records: list[dict[str, str]] = []
         for event in online_events:
             if len(results) >= count:
                 break
@@ -106,8 +116,22 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
                 parts.append(f"  Attendees: {', '.join(attendee_names)}")
             parts.append(f"  Join URL: {join_url}")
             results.append("\n".join(parts))
+            records.append(
+                {
+                    "meeting_id": meeting_id,
+                    "subject": subject,
+                    "start": str(start_dt),
+                    "end": str(end_dt),
+                    "organizer": organizer_name,
+                    "join_url": join_url,
+                }
+            )
 
-        return f"Found {len(results)} online meeting(s):\n\n" + "\n---\n".join(results)
+        return ToolResult(
+            tool_call_id="",
+            content=f"Found {len(results)} online meeting(s):\n\n" + "\n---\n".join(results),
+            structured=records,
+        )
 
     async def get_microsoft_meeting_attendance(meeting_id: str) -> str:
         """Get the attendance report for an online meeting (who attended, duration)."""

@@ -12,8 +12,8 @@ Each request goes through the OpenCRQ backend to XTM One, under your own identit
 | --- | --- | --- |
 | `global.assistant` | The conversation behind `Ask Ariane` | `CTEM Assistant`, which hands the conversation over to the `OpenCRQ Assistant` |
 | `global.summarize`, `global.explain`, `global.make_it_shorter`, `global.make_it_longer`, `global.fix_spelling`, `global.change_tone` | Writing help on text content | `OpenCRQ Assistant` |
-| `grc.control_gap_analysis` | Analyze control capability gaps against a framework | `OpenCRQ Assistant` |
-| `grc.risk_scenario_generator` | Draft risk scenarios from business and threat context | `OpenCRQ Assistant` |
+| `crq.control_gap_analysis` | Analyze control capability gaps against a framework | `OpenCRQ Assistant` |
+| `crq.risk_scenario_generator` | Draft risk scenarios from business and threat context | `OpenCRQ Assistant` |
 
 OpenCRQ declares these capabilities when it registers. Which of them has a button in OpenCRQ depends on your OpenCRQ version, and an administrator can bind a different agent to any of them on the [`Intents`](../../administration/intents.md) page.
 
@@ -48,7 +48,7 @@ The exposure lifecycle on the [home dashboard](../home-dashboard.md) has a `Gove
 
 - the OpenCRQ deployment is not registered with XTM One, or runs Community Edition
 - no agent is bound to the capability, or the bound agent is disabled or private
-- the binding targets another business context than `grc`
+- the binding targets another business context than `crq`
 - your OpenCRQ permissions do not allow the operation
 
 ## Next step

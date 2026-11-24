@@ -150,7 +150,7 @@ from app.services.assignment_pause import (
     switch_off_reason,
 )
 from app.services.audit import log_audit
-from app.services.chat_approval_resume import record_refused_decision
+from app.services.chat_approval_resume import record_approval_decision, record_refused_decision
 from app.services.element_scope import normalize_scope_enforcement
 from app.services.organization_context_categories import checked_for_api as _checked_org_categories
 from app.services.visibility import SegmentCounts, Visibility, segment_counts
@@ -727,6 +727,12 @@ async def create_assignment(
     fleet_error = await fleet_scope_error(body.trigger_type, body.trigger_config, agent.id)
     if fleet_error is not None:
         raise HTTPException(status_code=422, detail=fleet_error)
+    from app.services.trigger_provisioning import provision_spec_error
+
+    # A provision block the scheduler pass would refuse is refused now (#970).
+    provision_error = provision_spec_error(body.trigger_type, body.trigger_config)
+    if provision_error is not None:
+        raise HTTPException(status_code=422, detail=provision_error)
 
     # Resolve the optional "run as" identity (company-managed agents only).
     # The agent is company-managed ⟹ assert_writable_agent above already
@@ -764,6 +770,8 @@ async def create_assignment(
             openapi_integration_ids(body.integration_bindings or agent.integration_bindings),
         )
 
+    if body.activation_check is not None:
+        await _gate_fleet_or_422(db, body.activation_check)
     assignment = Assignment(
         agent_id=agent.id,
         # Assignment ownership tracks the parent *agent's* owner so that the
@@ -1756,6 +1764,7 @@ async def get_run_detail(
         failure_cause=r.failure_cause,
         failure_determination=r.failure_determination,
         stop_reason=r.stop_reason,
+        integration_auth_failures=getattr(r, "integration_auth_failures", None),
         human_input_question=r.human_input_question,
         human_input_response=r.human_input_response,
         human_input_history=r.human_input_history,
@@ -2700,6 +2709,7 @@ async def release_covered_runs(
                 ],
                 user,
             )
+            await record_approval_decision(db, run=run, user=user, surface="assignment_release_covered")
             await resume_assignment_run(db, run)
         except HTTPException as exc:
             _refuse("rejected_by_applier", str(exc.detail), _calls=call_ids)
@@ -2873,6 +2883,7 @@ async def approve_by_tool(
         ]
         try:
             _apply_decisions_to_run(run, applied, user)
+            await record_approval_decision(db, run=run, user=user, surface="assignment_by_tool")
             await _grant_standing_approvals(db, run, applied, user)
             await resume_assignment_run(db, run)
         except HTTPException as exc:
@@ -3033,6 +3044,7 @@ async def batch_respond_to_approvals(
         # endpoint happened to anticipate.
         try:
             _apply_decisions_to_run(run, applied, user)
+            await record_approval_decision(db, run=run, user=user, surface="assignment_batch")
         # Composed, not reimplemented: a second grant path is exactly how the
         # two surfaces would drift (FR-029, FR-038b). ``approve_always`` reaches
         # a batch since FR-032's revision, and it grants here through the very
@@ -3136,6 +3148,7 @@ async def answer_paused_run(
     # the free-text answer below, handled first so the two never mix.
     if body.decisions is not None:
         _apply_decisions_to_run(run, body.decisions, user, surface=answered_from)
+        await record_approval_decision(db, run=run, user=user, surface=answered_from or surface)
         await _grant_standing_approvals(db, run, body.decisions, user)
         await resume_assignment_run(db, run)
         # Decided: the Approve / Reject buttons of its phone notifications
@@ -4051,6 +4064,15 @@ def _builtin_allowed_or_422(value):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+async def _gate_fleet_or_422(db: AsyncSession, check: object) -> None:
+    """422 when the gate check names a fleet that does not exist (#1400)."""
+    from app.services.fleets import gate_fleet_refusal
+
+    refusal = await gate_fleet_refusal(db, check)
+    if refusal is not None:
+        raise HTTPException(status_code=422, detail=refusal)
+
+
 #: Fields ``update_assignment`` copies verbatim when the body sets them.
 _UPDATE_LOOP_FIELDS: tuple[str, ...] = (
     "name",
@@ -4201,6 +4223,13 @@ async def update_assignment(
         and stored_cron is not None
     ):
         body.trigger_config = {**body.trigger_config, "cron": stored_cron}
+    # A batch window as it will be saved: judged against the type the row keeps.
+    if body.trigger_config is not None:
+        from app.services.event_batching import window_error
+
+        batch_error = window_error(saved_type, body.trigger_config)
+        if batch_error is not None:
+            raise HTTPException(status_code=422, detail=batch_error)
     # A platform_event trigger as it will be saved: a config sent alone
     # is judged against the stored type, which the request schema cannot see.
     if saved_type == "platform_event" and body.trigger_config is not None:
@@ -4222,6 +4251,14 @@ async def update_assignment(
         concurrency_error = work_item_concurrency_error(body.trigger_config)
         if concurrency_error is not None:
             raise HTTPException(status_code=422, detail=concurrency_error)
+    # A provision block judged as it will be saved, refused now rather than
+    # on the scheduler pass (#970).
+    if body.trigger_config is not None:
+        from app.services.trigger_provisioning import provision_spec_error
+
+        provision_error = provision_spec_error(saved_type, body.trigger_config)
+        if provision_error is not None:
+            raise HTTPException(status_code=422, detail=provision_error)
 
     # Pause provenance: remember the state BEFORE the generic setattr
     # loop below so a pause/resume can be told apart from any other edit and
@@ -4233,6 +4270,8 @@ async def update_assignment(
     # happen while the row is still untouched.
     if getattr(body, "enabled", None) is True and not was_enabled:
         ensure_not_emergency_stopped(assignment)
+    if "activation_check" in body.model_fields_set and body.activation_check is not None:
+        await _gate_fleet_or_422(db, body.activation_check)
 
     for field in _UPDATE_LOOP_FIELDS:
         if field not in body.model_fields_set:
@@ -4755,7 +4794,7 @@ async def _assert_channel_override_additions(
 # Providers that support per-assignment webhook URLs (dedicated URL per assignment).
 # These providers allow configuring as many webhooks as needed on their side,
 # so each Copilot assignment can have its own dedicated endpoint.
-_PROVIDERS_WITH_ASSIGNMENT_WEBHOOKS: set[str] = {"opencti", "perk", "github", "hubspot", "aikido"}
+_PROVIDERS_WITH_ASSIGNMENT_WEBHOOKS: set[str] = {"opencti", "perk", "github", "hubspot", "aikido", "airwallex"}
 
 
 async def _owner_paused(db: AsyncSession, assignment: Assignment, user: User) -> bool:
@@ -4912,6 +4951,7 @@ def _run_to_response(
         failure_cause=r.failure_cause,
         failure_determination=r.failure_determination,
         stop_reason=r.stop_reason,
+        integration_auth_failures=getattr(r, "integration_auth_failures", None),
         human_input_question=r.human_input_question,
         human_input_response=r.human_input_response,
         human_input_history=r.human_input_history,

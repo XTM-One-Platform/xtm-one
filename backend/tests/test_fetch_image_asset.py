@@ -402,6 +402,48 @@ async def test_fetch_image_asset_refuses_a_decodable_raster_outside_the_allow_li
 
 
 @pytest.mark.asyncio
+async def test_fetch_image_asset_stores_a_favicon_as_png(monkeypatch, _open_policy, _http):
+    """A vendor's favicon.ico is often its only public logo: the download takes
+    image/x-icon and stores the largest frame as a PNG a slide can carry."""
+    from PIL import Image
+
+    ico = _raster("ICO", 32, 32)
+    assert ico.startswith(b"\x00\x00\x01\x00")
+    _http(
+        {
+            "https://x.test/favicon.ico": (200, {"content-type": "image/x-icon"}, ico),
+            "https://x.test/broken.ico": (200, {"content-type": "image/vnd.microsoft.icon"}, ico[:10]),
+        }
+    )
+    persisted: list[dict] = []
+    _defs, executor = _build(monkeypatch, persisted)
+    executor.file_context = FileContext()
+
+    result = await _call(executor, url="https://x.test/favicon.ico")
+    assert result.is_error is False, result.content
+    assert persisted[0]["content_type"] == "image/png"
+    assert persisted[0]["filename"] == "favicon.png"
+    assert persisted[0]["raw_bytes"].startswith(b"\x89PNG")
+    with Image.open(io.BytesIO(persisted[0]["raw_bytes"])) as stored:
+        assert stored.size == (32, 32)
+    assert "Fetched favicon.png (image/png," in result.content
+
+    broken = await _call(executor, url="https://x.test/broken.ico")
+    assert broken.is_error is True
+    assert "does not decode as an ICO file" in broken.content
+    assert len(persisted) == 1
+
+
+def test_ico_to_png_refuses_what_is_not_a_bounded_icon():
+    from app.services.builtin_tools.image_assets import ico_to_png
+
+    assert ico_to_png(_png()) is None, "a PNG is not an ICO"
+    assert ico_to_png(b"") is None
+    assert ico_to_png(b"\x00\x00\x01\x00garbage") is None
+    assert ico_to_png(_raster("ICO", 16, 16)).startswith(b"\x89PNG")
+
+
+@pytest.mark.asyncio
 async def test_fetch_image_asset_relays_a_download_refusal_and_needs_a_store(monkeypatch, _open_policy, _http):
     _http({"https://x.test/page": (200, {"content-type": "text/html"}, b"<html/>")})
     persisted: list[dict] = []

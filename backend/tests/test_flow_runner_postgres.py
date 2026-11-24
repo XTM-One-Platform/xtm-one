@@ -4743,10 +4743,85 @@ async def test_ask_user_parks_and_resumes_with_the_answer(monkeypatch):
         assert len(ask_steps) == 1  # ONE journal row for the parked node
         assert ask_steps[0].output == {
             "response": "Oui, publie",
+            "option": "",
             "responded_by": "admin@filigran.io",
         }
         fin = [s_ for s_ in steps if s_.node_id == "fin"]
         assert fin and fin[-1].input["value"] == "reponse:Oui, publie"
+
+
+@pytest.mark.asyncio
+async def test_ask_user_with_options_parks_the_ask_and_resumes_with_the_option(monkeypatch):
+    """#842 S6: options, recommendation and deadline park as the ask; the
+    answer through the shared respond path makes {{ask.option}} the key."""
+    from types import SimpleNamespace
+
+    import app.services.notify as notify_mod
+    from app.api.v1 import flow_runs as flow_runs_api
+
+    async def fake_notify(db, user_id, **kwargs):
+        return None
+
+    async def fake_wake():
+        return None
+
+    monkeypatch.setattr(notify_mod, "notify_web_user", fake_notify)
+    import app.services.orchestration_engine as engine
+
+    monkeypatch.setattr(engine, "notify_orchestration_wake", fake_wake)
+
+    graph = {
+        "nodes": [
+            _node("t1", "trigger.manual"),
+            _node(
+                "ask",
+                "action.ask_user",
+                title="Validation",
+                question="On publie ?",
+                options='[{"key": "A", "label": "Publier"}, {"key": "B", "label": "Attendre"}]',
+                recommendation="B",
+                deadline="2026-12-01T17:00:00Z",
+            ),
+            _node("fin", "util.cast", value="choix:{{ask.option}}", to="text"),
+        ],
+        "edges": [
+            _edge("t1", "ask", th="in"),
+            _edge("ask", "fin"),
+        ],
+        "viewport": {"x": 0, "y": 0, "zoom": 1},
+    }
+    async with _temp_database() as sessions, sessions() as session:
+        user, flow = await _seed(session, graph=graph)
+        run, outcome = await _run_to_outcome(session, user, flow)
+        assert outcome.kind == "park"
+        ask = run.state["waiting"]["ask"]
+        assert [o["key"] for o in ask["options"]] == ["A", "B"]
+        assert ask["recommendation"] == "B"
+        assert ask["deadline"] == "2026-12-01T17:00:00+00:00"
+
+        async def visible(db, u, rid):
+            return run
+
+        monkeypatch.setattr(flow_runs_api, "get_visible_run", visible)
+        monkeypatch.setattr(flow_runs_api, "_get_controllable_run", lambda *a, **k: visible(None, None, None))
+
+        async def not_paused(db, r):
+            return None
+
+        monkeypatch.setattr(flow_runs_api, "_refuse_if_run_flow_paused", not_paused)
+        answerer = SimpleNamespace(id=user.id, email="admin@filigran.io")
+        await flow_runs_api.answer_flow_park(session, answerer, str(run.id), "b: lundi")
+        assert run.state["waiting"]["option"] == "B"
+
+        outcome2 = await FlowWalker(session, run, user).run_burst()
+        await session.commit()
+        assert outcome2.kind == "completed"
+        steps = await _steps(session, run)
+        ask_step = next(s_ for s_ in steps if s_.node_id == "ask")
+        assert ask_step.output["option"] == "B"
+        assert ask_step.output["response"] == "b: lundi"
+        fin = [s_ for s_ in steps if s_.node_id == "fin"]
+        assert fin and fin[-1].input["value"] == "choix:B"
 
 
 @pytest.mark.asyncio

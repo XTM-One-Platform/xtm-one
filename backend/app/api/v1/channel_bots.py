@@ -84,6 +84,7 @@ CHANNEL_BOT_CATALOG: dict[str, dict] = {
                 "Go to 'Event Subscriptions', enable events, and set the Request URL to: {base_url}/api/channels/slack/events",
                 "Subscribe to bot events: message.im and app_mention. Optionally add message.channels if the bot should respond to ALL messages in channels (not just @mentions) — but do NOT subscribe to both message.channels and app_mention together, as @mentions would trigger duplicate responses.",
                 "Invite the bot to the Slack channels where it should respond (type /invite @YourBotName).",
+                "Go to 'Interactivity & Shortcuts', turn Interactivity on and set the Request URL to: {base_url}/api/channels/slack/interactions (decision cards are answered from their buttons).",
             ],
             "permissions": [
                 {

@@ -165,6 +165,9 @@ _WORK_ITEM_KEYS = (
     "blocked_reason",
     "blocked_on",
     "blocked_on_refs",
+    # true on the status change a person's answer made (answer_work_item):
+    # a decision listener hears the answer, not another release of the item.
+    "answered",
 )
 _FRICTION_KEYS = (
     "friction_id",
@@ -183,6 +186,7 @@ _RUN_KEYS = (
     "work_item_ids",
     "reason",
     "stop_reason",
+    "partial",
 )
 _TASK_KEYS = ("task_id", "agent_id", "parent_run_id", "outcome_preview")
 _A2A_DELEGATION_KEYS = (
@@ -209,6 +213,31 @@ _AGENT_ACCOUNT_KEYS = (
     "sent_at",
 )
 _RELEASE_KEYS = ("version", "git_sha", "previous_version", "previous_git_sha", "first_seen_at", "release")
+#: A CTEM case event carries the case id and its routing only (#11613, #857, #933): the
+#: run reads the rest with get_ctem_case, under its own user's view of the case.
+_CTEM_CASE_KEYS = (
+    "case_id",
+    "vertical",
+    "state",
+    "trigger_path",
+    # The fleet that runs the case (#1390, services/ctem_case_routing.py): the CTEM loop
+    # unless an active use-case fleet takes the case's path.
+    "owner_fleet",
+)
+#: ctem_case.validation_finished adds the OpenAEV delivery it reports (#918).
+_CTEM_CASE_VALIDATION_KEYS = (*_CTEM_CASE_KEYS, "openaev.event", "openaev.resource_type", "openaev.resource_id")
+#: A CTEM signal event carries the signal id and its routing only (#1409): the run reads the
+#: read the signal with list_ctem_signals signal_id, under its own permissions.
+_CTEM_SIGNAL_KEYS = (
+    "signal_id",
+    "trigger_path",
+    "lens",
+    "source_provider",
+    "subject_kind",
+    "verdict",
+    "case_id",
+    "pir_floor_met",
+)
 _VIDEO_KEYS = (
     "job_kind",
     "job_id",
@@ -272,6 +301,15 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
         ),
         "filter_keys": _WORK_ITEM_KEYS,
     },
+    "work_item.past_due": {
+        "description": (
+            "An open work item crossed its due date (services/work_item_past_due.py): raised once per item "
+            "and due date by the scheduler tick (a new due_at crossed raises again); scheduled one-offs are "
+            "left out. The payload carries due_at and overdue_seconds. Filter on owner_agent_id, "
+            "correlation_key (starts_with) or priority."
+        ),
+        "filter_keys": (*_WORK_ITEM_KEYS, "due_at", "overdue_seconds"),
+    },
     "work_item.needs_human": {
         "description": (
             "A work item started waiting for a person: needs_human became true, or the blocked_reason "
@@ -282,14 +320,19 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
     },
     "run.completed": {
         "description": (
-            "An assignment run completed. stop_reason names why a run stopped before its task was done "
+            "A run completed: an assignment run, or a delegated child run (no assignment; parent_run_id "
+            "names the run that delegated it). stop_reason names why a run stopped before its task was done "
             "(deadline, budget_exhausted, max_iterations, timeout, waiting_on_tasks...): the run still "
-            "completes with a partial result; null when it ended on its own terms."
+            "completes with a partial result; null when it ended on its own terms. partial is true exactly "
+            "when stop_reason is set."
         ),
         "filter_keys": _RUN_KEYS,
     },
     "run.failed": {
-        "description": "An assignment run failed.",
+        "description": (
+            "A run failed: an assignment run, or a delegated child run (no assignment; parent_run_id "
+            "names the run that delegated it)."
+        ),
         "filter_keys": (*_RUN_KEYS, "error"),
     },
     "run.orphaned": {
@@ -378,8 +421,10 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
             "A connected OpenCTI, OpenAEV or OpenCRQ platform reported a version other than the one recorded, "
             "on its registration heartbeat (once per platform and upgrade; not on a first registration): wait "
             "for a module upgrade instead of polling its version. Payload: provider, platform_identifier, "
-            "integration_id, previous_version, version, first_seen_at. Platform-wide: heard by every "
-            "subscriber whatever its scope."
+            "integration_id, previous_version, version, first_seen_at. Also raised when a connector of a "
+            "connected OpenCTI reports another version (read every 5 minutes while a subscriber exists): "
+            "the payload then adds component_kind, component_id, component_name, component_slug. "
+            "Platform-wide: heard by every subscriber whatever its scope."
         ),
         "filter_keys": (
             "provider",
@@ -388,6 +433,10 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
             "previous_version",
             "version",
             "first_seen_at",
+            "component_kind",
+            "component_id",
+            "component_name",
+            "component_slug",
         ),
     },
     "platform.default_model_route.changed": {
@@ -411,6 +460,85 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
             "after.model",
         ),
     },
+    "ctem_case.opened": {
+        "description": (
+            "A CTEM case was opened from a confirmed, in-scope exposure signal (services/ctem_case_loop.py): "
+            "start a fleet run from the case. Payload: case_id, vertical, state, trigger_path, owner_fleet "
+            "(the fleet that runs it); read the "
+            "case with get_ctem_case. Heard only when the user the subscription runs as sees the case "
+            "(an administrator's scope all assignment running as itself hears every case)."
+        ),
+        "filter_keys": _CTEM_CASE_KEYS,
+    },
+    "ctem_case.reopened": {
+        "description": (
+            "A resolved or watched CTEM case reopened because a re-test failed: restart the remediation. "
+            "Payload: case_id, vertical, state, trigger_path. Heard only by readers of the case."
+        ),
+        "filter_keys": _CTEM_CASE_KEYS,
+    },
+    "ctem_case.resolved": {
+        "description": (
+            "A CTEM case resolved on a passing validation reference (not exposed, or fixed): close the run. "
+            "Payload: case_id, vertical, state, trigger_path. Heard only by readers of the case."
+        ),
+        "filter_keys": _CTEM_CASE_KEYS,
+    },
+    "ctem_case.sla_breached": {
+        "description": (
+            "An open CTEM case passed its SLA (once per case): escalate. Payload: case_id, vertical, "
+            "state, trigger_path. Heard only by readers of the case."
+        ),
+        "filter_keys": _CTEM_CASE_KEYS,
+    },
+    "ctem_case.stalled": {
+        "description": (
+            "An open CTEM case waits on nobody (#1736): no open gate work item of the case, no armed "
+            "ctem-loop-reminder timer and no case activity for CTEM_CASE_STALL_HOURS; raised by the case sweep "
+            "once per stall window. Re-run the loop and end it on an ask to a named person with a due date, "
+            "an armed reminder, or a terminal state. Payload: case_id, vertical, state, trigger_path. Heard only "
+            "by readers of the case."
+        ),
+        "filter_keys": _CTEM_CASE_KEYS,
+    },
+    "ctem_case.validation_finished": {
+        "description": (
+            "An OpenAEV result a CTEM case waits on arrived (a simulation it references finished, a finding it "
+            "holds changed or was deleted; services/ctem_openaev_events.py), once per case and occurrence: read "
+            "the result and write it on the case with record_ctem_case_validation. Payload: the case fields and "
+            "openaev {event, resource_type, resource_id, platform_url}. Heard only by readers of the case."
+        ),
+        "filter_keys": _CTEM_CASE_VALIDATION_KEYS,
+    },
+    "ctem_case.retest_requested": {
+        "description": (
+            "The remediation ticket of an open CTEM case reached done in the declared ticketing system "
+            "(services/ctem_ticketing.py): run the re-test; the case closes on its result, never on the ticket. "
+            "Payload: the case fields, ticket_integration, ticket_key. Heard only by readers of the case."
+        ),
+        "filter_keys": _CTEM_CASE_KEYS,
+    },
+    "ctem_signal.recorded": {
+        "description": (
+            "A CTEM signal was seen for the first time (services/ctem_signals.py), after the scope gate gave it "
+            "its first verdict; a re-sighting raises nothing. Payload: signal_id, trigger_path, lens, "
+            "source_provider, subject_kind, verdict (confirmed, to_validate, watchlist, discarded, or null when "
+            "the gate did not run), case_id, pir_floor_met (a relevant threat's PIR score reached the policy threshold); "
+            "read the signal with list_ctem_signals signal_id. Heard only when the user the "
+            "subscription runs as reads the signal (an administrator, or its recorder; a listener's signal is "
+            "an administrator's only)."
+        ),
+        "filter_keys": _CTEM_SIGNAL_KEYS,
+    },
+    "ctem_signal.triaged": {
+        "description": (
+            "The scope gate changed the verdict of a CTEM signal after its first sighting (an on-demand or "
+            "bulk evaluation, services/ctem_scope_gate_store.py): confirmed, to_validate, watchlist or "
+            "discarded. Payload: the signal fields, verdict and previous_verdict. Heard only by readers of "
+            "the signal."
+        ),
+        "filter_keys": (*_CTEM_SIGNAL_KEYS, "previous_verdict"),
+    },
     "timer.due": {
         "description": (
             "A timer an agent armed with arm_timer reached its due time (services/platform_timers.py): "
@@ -425,7 +553,30 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
 #: part in: a build belongs to no one and its version is shown to every user,
 #: so a ``scope: own`` subscriber hears them too.
 PLATFORM_WIDE_EVENTS: frozenset[str] = frozenset(
-    {"platform.release.deployed", "platform.default_model_route.changed", "integration.version.changed"}
+    {
+        "platform.release.deployed",
+        "platform.default_model_route.changed",
+        "integration.version.changed",
+    }
+)
+
+#: The events about an object whose readers only the object's own view decides
+#: (#933): a CTEM case is shared, its visibility is per viewer
+#: (``services/ctem_cases_view``); a CTEM signal is read by administrators and
+#: its recorder (#1409). Any scope may subscribe; each delivery is then
+#: checked by :func:`can_read_object` with the identity the run executes as.
+VIEWER_CHECKED_EVENTS: frozenset[str] = frozenset(
+    {
+        "ctem_case.opened",
+        "ctem_case.reopened",
+        "ctem_case.resolved",
+        "ctem_case.sla_breached",
+        "ctem_case.stalled",
+        "ctem_case.validation_finished",
+        "ctem_case.retest_requested",
+        "ctem_signal.recorded",
+        "ctem_signal.triaged",
+    }
 )
 
 
@@ -688,6 +839,9 @@ def run_data(
         # Why a completed run stopped before its task was done (the run's
         # stop_reason: deadline, budget, iteration cap...); None otherwise.
         "stop_reason": stop_reason,
+        # A completed run that stopped before its task was done, said outright:
+        # a listener never has to know the list of unfinished stop reasons.
+        "partial": bool(stop_reason),
         # The agent whose run it is raised the event (ignore_self_triggered_events).
         "actor_agent_id": _str(agent_id),
         "participant_agent_ids": sorted(participants),
@@ -883,9 +1037,18 @@ def touched_workspaces(payload: Mapping[str, Any]) -> set[str]:
     return {str(w) for w in (payload.get("workspace_id"), *(payload.get("workspace_ids") or ())) if w}
 
 
+def is_viewer_checked(payload: Mapping[str, Any]) -> bool:
+    """Whether *payload* is about an object whose own view decides its readers (:data:`VIEWER_CHECKED_EVENTS`)."""
+    return payload.get("event") in VIEWER_CHECKED_EVENTS
+
+
 def in_scope(sub: Subscription, payload: Mapping[str, Any]) -> bool:
-    """Whether *sub* may see an event with *payload*."""
-    if sub.scope_all or is_platform_wide(payload):
+    """Whether *sub* may see an event with *payload*.
+
+    A viewer-checked event passes here whatever the scope: :func:`can_read_object`
+    then decides with the identity the run executes as.
+    """
+    if sub.scope_all or is_platform_wide(payload) or is_viewer_checked(payload):
         return True
     # A personal object (a work item filed by a user) reaches only that user's
     # assignments: naming another user's agent as its owner does not wake it.
@@ -1230,10 +1393,13 @@ async def dispatch_event(name: str, payload: Mapping[str, Any]) -> list[str]:
         subs = []
     outcomes: list[str] = []
     readable: dict[str, set[str]] = {}
+    object_readers: dict[str, bool] = {}
     for sub, assignment, agent in subs:
         if mismatch_reason(sub, name, payload) is not None:
             continue
         if not await can_read_workspace(sub, payload, readable):
+            continue
+        if not await can_read_object(sub, payload, object_readers):
             continue
         # An assignment never wakes on the end of one of its own runs: a
         # run.completed subscriber would otherwise start itself forever.
@@ -1299,6 +1465,60 @@ async def can_read_workspace(sub: Subscription, payload: Mapping[str, Any], cach
                 logger.warning("Platform event: workspaces of %s unreadable: %s", key, format_exception_message(exc))
                 cache[key] = set()
         if not wanted <= cache[key]:
+            return False
+    return True
+
+
+def object_identities(sub: Subscription) -> set[str]:
+    """The users who must read the object of a viewer-checked event for *sub* to hear it.
+
+    The workspace rule (:func:`can_read_workspace`): the owner and the user the
+    run executes as; an administrator's ``scope: all`` subscription skips the
+    owner's check, never the run-as user's. Empty: nothing to check.
+    """
+    if sub.scope_all:
+        if not sub.run_as_user_id or str(sub.run_as_user_id) == str(sub.user_id):
+            return set()
+        return {str(sub.run_as_user_id)}
+    return {str(u) for u in (sub.user_id, sub.run_as_user_id) if u}
+
+
+async def user_reads_object(user_id: str, payload: Mapping[str, Any]) -> bool:
+    """Whether *user_id* reads the object of a viewer-checked event; any failure refuses."""
+    kind = payload.get("object_type")
+    if kind not in ("ctem_case", "ctem_signal"):
+        return False  # a viewer-checked event of no known object reaches no one
+    from app.core.database import async_session
+
+    try:
+        async with async_session() as db:
+            if kind == "ctem_signal":
+                from app.services.ctem_signals import user_reads_signal
+
+                return await user_reads_signal(db, user_id, payload.get("signal_id"))
+            from app.services.ctem_cases_view import user_sees_case
+
+            return await user_sees_case(db, user_id, payload.get("case_id"), payload.get("vertical"))
+    except Exception as exc:  # unreadable: refuse, never leak
+        logger.warning(
+            "Platform event: %s visibility of %s unreadable: %s", kind, user_id, format_exception_message(exc)
+        )
+        return False
+
+
+async def can_read_object(sub: Subscription, payload: Mapping[str, Any], cache: dict[str, bool]) -> bool:
+    """Whether *sub* may hear a viewer-checked event (#933); any other event: yes.
+
+    Each user of :func:`object_identities` must read the object, decided by
+    the object's own per-viewer view; *cache* keeps one answer per user and
+    event across the subscriptions of one dispatch.
+    """
+    if not is_viewer_checked(payload):
+        return True
+    for user in object_identities(sub):
+        if user not in cache:
+            cache[user] = await user_reads_object(user, payload)
+        if not cache[user]:
             return False
     return True
 

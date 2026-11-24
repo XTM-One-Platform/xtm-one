@@ -29,6 +29,8 @@ const OWN_ORDER: Record<string, string> = {
   "src/pages/VideoStudio.tsx": "a segmented usage switch and a date range, no option list",
   "src/pages/operations/OperationsStatusFilter.tsx": "statuses in the order of a run's life (ordinal)",
   "src/pages/operations/WorkItemStatusFilter.tsx": "statuses in the order of an item's life (ordinal)",
+  "src/pages/xtm-one/ctem/CasesGroupByPill.tsx": "a single grouping choice, No grouping first, not a filter list",
+  "src/pages/xtm-one/ctem/CasesViewsPill.tsx": "the user's saved views in the order they were saved, not a filter list",
 };
 
 function sourceFiles(dir: string): string[] {

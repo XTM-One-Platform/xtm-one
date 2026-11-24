@@ -416,7 +416,7 @@ class _FakeHub:
         if "XtmOneHubUploader" in query:
             return {"me": {"id": _UPLOADER}}, None
         if "XtmOneHubPublish" in query:
-            return {"createDocument": {"id": _DOCUMENT, "name": variables["input"]["name"], "active": False}}, None
+            return {"createDocument": {"id": _DOCUMENT, "name": variables["input"]["name"], "status": "draft"}}, None
         return None, "Error: unexpected query"
 
 
@@ -473,9 +473,11 @@ async def test_sharing_on_the_hub_publishes_the_opencti_export_as_an_inactive_re
     _name, variables, token, upload = hub.calls[-1]
     assert token == _HUB_TOKEN
     document = variables["input"]
-    assert (document["name"], document["short_description"], document["active"], document["uploader_id"]) == (
-        "Threat board", "Weekly threat figures", False, _UPLOADER,
+    assert (document["name"], document["short_description"], document["status"], document["uploader_id"]) == (
+        "Threat board", "Weekly threat figures", "draft", _UPLOADER,
     )  # fmt: skip
+    assert document["meta_description"] == "Weekly threat figures"
+    assert "active" not in document
     assert document["slug"].startswith("threat-board-")
     assert variables["metadata"] == [{"key": "product_version", "value": "6.0.0"}]
     sent = json.loads(upload[2])

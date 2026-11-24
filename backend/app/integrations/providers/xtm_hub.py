@@ -149,6 +149,9 @@ _ORDERINGS = {
 _PRODUCTS = frozenset({"opencti", "openaev"})
 _VERSION_RE = re.compile(r"^\d{1,4}(?:\.\d{1,4}){1,2}$")
 _SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$")
+#: The Hub's ``DocumentStatus``: only a published resource is the library's.
+_PUBLISHED = "published"
+_DRAFT = "draft"
 #: A Relay cursor is base64; anything else is refused before it is sent.
 _CURSOR_RE = re.compile(r"^[A-Za-z0-9+/=_-]{1,200}$")
 _ID_RE = re.compile(r"^[A-Za-z0-9+/=_:-]{1,200}$")
@@ -170,6 +173,13 @@ _NOT_A_HUB = (
 _REFUSED = (
     "Error: XTM Hub refused the request. Check the arguments (a cursor is only "
     "valid for the search that returned it) and retry."
+)
+#: A Hub error code (``extensions.code``, or a message that is one): the only
+#: part of a refusal the agent reads, so no free text of the answer leaks.
+_HUB_ERROR_CODE_RE = re.compile(r"^[A-Z][A-Z0-9_]{2,63}$")
+_FORBIDDEN_HINT = (
+    " An API token never carries the Hub's BYPASS capability: the token's user "
+    "needs the operation's own capability (for example READ_ORGANIZATION_MEMBERS)."
 )
 _BAD_BASE_URL = (
     "Error: the integration's XTM Hub URL is not an http(s) URL. Set it to the "
@@ -342,7 +352,7 @@ query XtmOneHubLibrarySearch(
   ) {
     totalCount
     pageInfo { hasNextPage endCursor }
-    edges { node { active file_name"""
+    edges { node { status file_name"""
     + SUMMARY_FIELDS
     + """} }
   }
@@ -353,7 +363,7 @@ query XtmOneHubLibrarySearch(
 DOCUMENT_QUERY = """
 query XtmOneHubDocument($sid: ServiceInstanceId!, $did: DocumentId!) {
   document(serviceInstanceId: $sid, documentId: $did) {
-    id name file_name active service_instance_id
+    id name file_name status service_instance_id
   }
 }
 """
@@ -390,7 +400,7 @@ mutation XtmOneHubPublish(
   createDocument(
     serviceInstanceId: $sid, input: $input, metadata: $metadata,
     sourceDocument: $sourceDocument
-  ) { id name slug active }
+  ) { id name slug status }
 }
 """
 
@@ -639,17 +649,53 @@ async def xtm_hub_graphql(
             str(e.get("message") or "") for e in errors[:3] if isinstance(e, dict)
         ]
         _log_failure(action, "GraphQL errors: " + "; ".join(messages))
-        if api_token is not None and "READ_ONLY_API_TOKEN" in messages:
+        codes = _error_codes(errors)
+        if api_token is not None and "READ_ONLY_API_TOKEN" in codes:
             return None, _READ_ONLY_HUB_KEY
-        return None, _REFUSED
+        partial = body.get("data")
+        # A field the caller may not read answers null with an error beside a
+        # root that still answered: the answer is kept, the refusal logged.
+        if 200 <= status < 300 and isinstance(partial, dict) and any(value is not None for value in partial.values()):
+            return partial, None
+        return None, _refusal(codes)
     if not 200 <= status < 300:
         _log_failure(action, f"HTTP {status} without a GraphQL error")
         return None, _NOT_A_HUB
-    data = body.get("data")
-    if not isinstance(data, dict):
+    envelope = body.get("data")
+    if not isinstance(envelope, dict):
         _log_failure(action, "no GraphQL data envelope")
         return None, _NOT_A_HUB
-    return data, None
+    return envelope, None
+
+
+def _error_codes(errors: list[Any]) -> list[str]:
+    """The distinct Hub error codes of a GraphQL error list, at most three."""
+    codes: list[str] = []
+    for error in errors[:5]:
+        if not isinstance(error, dict):
+            continue
+        extensions = error.get("extensions")
+        candidates = [
+            extensions.get("code") if isinstance(extensions, dict) else None,
+            error.get("message"),
+        ]
+        for value in candidates:
+            if isinstance(value, str) and _HUB_ERROR_CODE_RE.match(value) and value not in codes:
+                codes.append(value)
+    return codes[:3]
+
+
+def _refusal(codes: list[str]) -> str:
+    """The refusal the agent reads: the fixed sentence, with the Hub's codes."""
+    if not codes:
+        return _REFUSED
+    hint = _FORBIDDEN_HINT if "FORBIDDEN_ACCESS" in codes else ""
+    return f"{_REFUSED} Hub error: {', '.join(codes)}.{hint}"
+
+
+def is_refusal(error: str | None) -> bool:
+    """Whether *error* is a GraphQL refusal of the Hub, with or without its codes."""
+    return bool(error) and str(error).startswith(_REFUSED)
 
 
 def _catalog_ids(data: dict[str, Any]) -> dict[str, str]:
@@ -890,7 +936,7 @@ async def _token_support_error(base_url: str) -> str | None:
     data, err = await xtm_hub_graphql(base_url, CAPABILITIES_QUERY, {}, "read capabilities")
     if err:
         # An older Hub has no ``settings.capabilities``: a GraphQL refusal.
-        return _NO_API_TOKENS if err == _REFUSED else err
+        return _NO_API_TOKENS if is_refusal(err) else err
     settings = (data or {}).get("settings")
     capabilities = settings.get("capabilities") if isinstance(settings, dict) else None
     if not isinstance(capabilities, list) or _API_TOKENS_CAPABILITY not in capabilities:
@@ -925,9 +971,11 @@ async def _read_myself(
 
 
 def _scope_label(scope: Any) -> str:
-    return {"read": "read only", "read_write": "read and write"}.get(
-        str(scope), "unknown access"
-    )
+    return {
+        "read": "read only",
+        "read_write": "read and write",
+        "admin": "read, write and admin",
+    }.get(str(scope), "unknown access")
 
 
 async def _whoami(base_url: str, api_token: str) -> tuple[str, str | None]:
@@ -1064,10 +1112,12 @@ async def publish_hub_resource(
         "slug": slug,
         "short_description": short_description,
         "description": description,
-        # Never active: a person makes it visible on the Hub. Tool
-        # approvals are opt-in, so this is the step that keeps a human
-        # between an agent (which reads Hub content) and a public catalog.
-        "active": False,
+        # The Hub's meta description is required; the short description is it.
+        "meta_description": short_description,
+        # Always a draft: a person publishes it on the Hub. Tool approvals
+        # are opt-in, so this is the step that keeps a human between an
+        # agent (which reads Hub content) and a public catalog.
+        "status": _DRAFT,
         "use_cases": list(use_cases or []),
         "solution_categories": [],
         # Never the caller's choice: the resource is the token's user's.
@@ -1089,7 +1139,7 @@ async def publish_hub_resource(
     if not isinstance(created, dict) or not isinstance(created.get("id"), str):
         _log_failure("publish a resource", "no createDocument")
         return None, _NOT_A_HUB
-    return {"id": created["id"], "kind": kind, "active": created.get("active") is True}, None
+    return {"id": created["id"], "kind": kind, "active": created.get("status") == _PUBLISHED}, None
 
 
 # ---------------------------------------------------------------------------
@@ -1736,8 +1786,9 @@ def build_tools(
             _log_failure("search a library", "no documents connection")
             return _NOT_A_HUB
         rows = _nodes(connection)
-        # An inactive resource is withdrawn: never offered for download.
-        active = [row for row in rows if row.get("active") is True]
+        # Only a published resource is offered: a draft or one in validation
+        # is not the library's yet.
+        active = [row for row in rows if row.get("status") == _PUBLISHED]
         hidden = len(rows) - len(active)
         page = connection.get("pageInfo") or {}
         cursor = page.get("endCursor") if isinstance(page, dict) else None
@@ -1750,7 +1801,7 @@ def build_tools(
         ):
             hint = f'\n[More resources may be available - pass after="{cursor}"]'
         if not active:
-            return f"No active resource matched in this library ({base_url}).{hint}"
+            return f"No published resource matched in this library ({base_url}).{hint}"
         lines: list[str] = []
         for row in active:
             # The public catalog page of a type is no page of a private library.
@@ -1766,7 +1817,7 @@ def build_tools(
         return (
             f"{len(active)} of {total if isinstance(total, int) else '?'} resources "
             "of the library"
-            + (f" ({hidden} inactive not shown)" if hidden else "")
+            + (f" ({hidden} not published not shown)" if hidden else "")
             + ":\n"
             + _quarantine("\n".join(lines))
             + hint
@@ -1844,7 +1895,7 @@ def build_tools(
         node = (data or {}).get("document")
         if not isinstance(node, dict):
             return "Error: no such resource in that library, or the token's user cannot see it."
-        if node.get("active") is not True:
+        if node.get("status") != _PUBLISHED:
             return "Error: this resource was withdrawn from the XTM Hub; it is not downloaded."
         name = _one_line(node.get("file_name") or node.get("name"), 200) or "xtm-hub-resource"
         url = f"{base_url}{_DOWNLOAD_PATH}/{quote(sid, safe='')}/{quote(did, safe='')}?attach=1"

@@ -260,6 +260,11 @@ class ImageSummary:
     #: tail, so absence is not provable and a ``forbid_colors`` check must
     #: refuse.
     palette_cut: bool = False
+    #: Share of the opaque pixels whose colour stands at least
+    #: :data:`INK_MIN_DELTA_E` from the dominant one, greys included: the text
+    #: and lines of a painted page in black or grey, which ``colors`` (saturated
+    #: only) never lists. What tells a painted light page from a blank one.
+    ink_share: float = 0.0
 
     @property
     def complete(self) -> bool:
@@ -466,8 +471,12 @@ def summarize_image_bytes(data: bytes) -> ImageSummary | None:
             sampled=sampled,
         )
 
-    dominant_rgb, dominant_count = _bucket_means(all_buckets)[0]
+    bucket_means = _bucket_means(all_buckets)
+    dominant_rgb, dominant_count = bucket_means[0]
     dominant = ColorShare(dominant_rgb, dominant_count / total_opaque)
+    # Per bucket (at most 4096), never per pixel: the grey or black text of a
+    # painted page is ink; a skeleton a few shades off the background is not.
+    ink_count = sum(count for rgb, count in bucket_means[1:] if delta_e(rgb, dominant_rgb) >= INK_MIN_DELTA_E)
 
     threshold_count = SATURATED_COLOR_MIN_SHARE * total_opaque
     # The exact colours, whole, for the gate - with their Lab computed here,
@@ -506,6 +515,7 @@ def summarize_image_bytes(data: bytes) -> ImageSummary | None:
         saturated=saturated,
         sampled=sampled,
         palette_cut=palette_cut,
+        ink_share=ink_count / total_opaque,
     )
 
 
@@ -527,15 +537,25 @@ async def summarize_image(data: bytes) -> ImageSummary | None:
 #: The share of the dominant colour above which a capture with no saturated colour is reported as possibly blank.
 BLANK_DOMINANT_SHARE = 0.95
 
+#: CIE76 distance from the dominant colour from which a pixel counts as ink (text, a line, an icon): far above the
+#: few units between a background and its loading skeleton.
+INK_MIN_DELTA_E = 25.0
+
+#: Ink share from which a capture is painted whatever its colours: the grey text of a light 404 page covers a few
+#: percent of it.
+BLANK_MAX_INK_SHARE = 0.005
+
 
 def looks_blank(summary: ImageSummary | None) -> bool:
-    """True when *summary* is one colour over :data:`BLANK_DOMINANT_SHARE` with no saturated colour at all: a
-    screenshot of a page that did not paint (background only), not a capture to rely on."""
+    """True when *summary* is one colour over :data:`BLANK_DOMINANT_SHARE` with no saturated colour and almost no
+    ink (under :data:`BLANK_MAX_INK_SHARE`): a screenshot of a page that did not paint (background only), not a
+    capture to rely on. A light page of grey or black text is painted, saturated colour or not."""
     return (
         summary is not None
         and summary.dominant is not None
         and summary.dominant.share > BLANK_DOMINANT_SHARE
         and not summary.colors
+        and summary.ink_share < BLANK_MAX_INK_SHARE
     )
 
 

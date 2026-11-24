@@ -60,6 +60,9 @@ MAX_ARGS = 64
 MAX_ARG_CHARS = 512
 #: Characters of one argv item of a ``[service.NAME]``: a lab's ``sh -c`` line outgrows the check bound.
 SERVICE_MAX_ARG_CHARS = 8192
+#: Characters of one argument a call passes (``args``, a command of its own): an inline SQL or JSON outgrows the
+#: bound of a declared argv, which stays :data:`MAX_ARG_CHARS` (#788).
+CALL_MAX_ARG_CHARS = 8192
 MAX_FINDINGS = 50
 #: Characters of stdout and of stderr kept in the result (head and tail each).
 OUTPUT_HEAD = 2_000
@@ -138,6 +141,9 @@ class CheckSpec:
     #: ``PATH:A-B,C-D``), so a fixer named a file main never formatted rewrites the change's lines only;
     #: :data:`WHOLE_ARG` in args turns it off for that call.
     affected_narrows_args: bool = False
+    #: With ``files``: the changed files outside ``cwd`` are passed too, relative to it (``../x.yml``), for a
+    #: script that maps the whole change to a repository-wide selection (the merge queue's test selection).
+    affected_whole_repository: bool = False
     #: Run the install check of the same directory and image first when its dependencies are not installed in
     #: the container (``false`` for a check that needs none, such as a linter of plain files).
     install_first: bool = True
@@ -170,11 +176,17 @@ class CheckSpec:
 #: failed in the sandbox and passed in CI. The run makes a repository at the checkout root with one commit of
 #: the tree (``.gitignore`` honoured; the checkout record, ``.xtm/`` and installed trees left out), ``origin/main`` and
 #: ``origin/master`` on it, runs the command and removes the repository whatever it ended with. A checkout
-#: that holds a ``.git`` of its own is run as it is.
+#: that holds a ``.git`` of its own is run as it is. The repository lives in a directory of its own outside the
+#: checkout (``GIT_DIR`` and ``GIT_WORK_TREE`` exported to the command), so two such checks run at the same
+#: time on one checkout never share a ``.git``: neither waits on the other's ``.git/config`` lock nor loses its
+#: repository when the other one ends and removes it.
 GIT_REPO_SHELL = """set -u
 top="$1"; shift
 if [ -e "$top/.git" ]; then "$@"; exit $?; fi
-trap 'rm -rf "$top/.git"' EXIT
+GIT_WORK_TREE=$(cd "$top" && pwd) || exit 1
+GIT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/xtm-git.XXXXXX") || exit 1
+export GIT_DIR GIT_WORK_TREE
+trap 'rm -rf "$GIT_DIR"' EXIT
 g() { git -C "$top" -c user.name=xtm-one -c user.email=xtm-one@localhost -c init.defaultBranch=main "$@"; }
 g init -q && g add -A -- . ':!.xtm' ':!.xtm-checkout.json' ':(exclude,glob)**/node_modules/**' \\
   ':(exclude,glob)**/.venv/**' ':(exclude,glob)**/.xtm/**' \\
@@ -392,6 +404,11 @@ def load_checks(text: str) -> dict[str, CheckSpec]:
             raise ChecksError(f"[check.{name}] affected_narrows_args must be true or false.")
         if narrows and mode == "tests":
             raise ChecksError(f'[check.{name}] affected_narrows_args applies to affected = "files" or "lines" only.')
+        whole_repository = raw.get("affected_whole_repository", False)
+        if not isinstance(whole_repository, bool):
+            raise ChecksError(f"[check.{name}] affected_whole_repository must be true or false.")
+        if whole_repository and mode != "files":
+            raise ChecksError(f'[check.{name}] affected_whole_repository applies to affected = "files" only.')
         install_first = raw.get("install_first", True)
         if not isinstance(install_first, bool):
             raise ChecksError(f"[check.{name}] install_first must be true or false.")
@@ -442,6 +459,7 @@ def load_checks(text: str) -> dict[str, CheckSpec]:
             affected_by_default=by_default,
             whole_timeout=min(whole_timeout, timeout_raw, MAX_TIMEOUT),
             affected_narrows_args=narrows,
+            affected_whole_repository=whole_repository,
             install_first=install_first,
             fallback_image=fallback_image,
             fallback_when=fallback_when,
@@ -686,8 +704,12 @@ def extra_args(args: object) -> list[str]:
     if not isinstance(args, list):
         raise ChecksError("args must be a list of strings.")
     items = [str(a) for a in args]
-    if len(items) > MAX_ARGS or any(len(a) > MAX_ARG_CHARS for a in items):
-        raise ChecksError(f"args is at most {MAX_ARGS} items of {MAX_ARG_CHARS} characters.")
+    if len(items) > MAX_ARGS or any(len(a) > CALL_MAX_ARG_CHARS for a in items):
+        longest = max((len(a) for a in items), default=0)
+        raise ChecksError(
+            f"args is at most {MAX_ARGS} items of {CALL_MAX_ARG_CHARS} characters (found {len(items)} items, "
+            f"the longest {longest} characters): a longer text goes in a file of the checkout."
+        )
     if any("\x00" in a for a in items):
         raise ChecksError("args holds no control character.")
     return items
@@ -746,6 +768,8 @@ def describe_checks(specs: dict[str, CheckSpec], *, compact: bool = False) -> st
             affected += f" [no args: affected=true; {WHOLE_ARG} alone: the whole run, at most {bound} s]"
         if spec.affected_narrows_args:
             affected += f" [args narrowed to the changed {spec.affected}; {WHOLE_ARG}: as given]"
+        if spec.affected_whole_repository:
+            affected += " [the changed files of the whole repository, relative to its directory]"
         if spec.git_repo:
             affected += " [in a throwaway git repository of the checkout]"
         lines.append(f"- {spec.name}{what}: {shown_argv(spec.argv)}{where}{image}{report}{defaults}{affected}")

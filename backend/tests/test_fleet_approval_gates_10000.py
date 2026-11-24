@@ -112,13 +112,13 @@ async def test_a_whole_regenerate_keeps_the_enforced_gates_of_a_builtin_fleet(sl
 
 
 def test_without_a_stored_catalog_the_documentation_gates_are_read():
-    documented = BUILTIN_FLEET_STRUCTURED["ctem-threat-response"]["gates"]
+    documented = BUILTIN_FLEET_STRUCTURED["ctem-loop"]["gates"]
     gates = fleet_gates(None, {"sections": {}, "structured": {"gates": documented}})
     assert [g["key"] for g in gates] == [g["key"] for g in documented]
 
 
 def test_a_stored_empty_catalog_gates_nothing_whatever_the_documentation_says():
-    documented = BUILTIN_FLEET_STRUCTURED["ctem-threat-response"]["gates"]
+    documented = BUILTIN_FLEET_STRUCTURED["ctem-loop"]["gates"]
     assert fleet_gates([], {"sections": {}, "structured": {"gates": documented}}) == []
 
 
@@ -137,14 +137,16 @@ def test_the_context_carries_the_catalog_only_when_stored():
     assert gen._gate_facts(SimpleNamespace(approval_gates=[{"action": "a"}])) == {"gates": [{"action": "a"}]}
 
 
-def test_the_tool_enforced_gates_of_the_threat_response_fleet_are_stored():
-    fleet = _seeded_fleet("ctem-threat-response")
-    keys = {g["key"] for g in fleet.approval_gates if g.get("tools")}
-    assert {"openaev.scenario.launch", "ticket.create"} <= keys
+def test_the_seeded_gates_of_the_threat_response_fleet_are_stored_without_tools() -> None:
+    """#1675: a seeded gate is a decision; none names a tool."""
+    fleet = _seeded_fleet("ctem-loop")
+    keys = {g["key"] for g in fleet.approval_gates}
+    assert {"ctem.validation.non_readonly", "ctem.mobilize"} <= keys
+    assert not [g["key"] for g in fleet.approval_gates if g.get("tools")]
 
 
 def test_the_seed_is_idempotent():
-    fleet = _seeded_fleet("ctem-threat-response")
+    fleet = _seeded_fleet("ctem-loop")
     stored = fleet.approval_gates
-    _seed_approval_gates(fleet, BUILTIN_FLEET_STRUCTURED["ctem-threat-response"])
+    _seed_approval_gates(fleet, BUILTIN_FLEET_STRUCTURED["ctem-loop"])
     assert fleet.approval_gates is stored

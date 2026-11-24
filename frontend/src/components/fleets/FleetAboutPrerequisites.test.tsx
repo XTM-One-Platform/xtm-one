@@ -146,6 +146,30 @@ describe("FleetAboutPrerequisites", () => {
     expect(screen.getByTestId("about-prerequisite-read-only").textContent).toBe("Platform Health is built in and read-only.");
   });
 
+  it("Platform Health off on its read-only fleet links to Settings, without the read-only line (UX r1 B3 on #980)", () => {
+    renderList(
+      [
+        line({
+          check: "automations:enabled",
+          kind: "automations",
+          provider: "",
+          label: "Platform Health switched on in Settings",
+          label_key: "Platform Health switched on in Settings",
+          state: "not_met",
+          reason_code: "platform_health_off",
+          fix_route: "/settings/automations/health",
+          can_fix: true,
+        }),
+      ],
+      true,
+    );
+    const row = screen.getByTestId("about-prerequisite");
+    expect(within(row).getByText("Platform Health is off in Settings")).toBeTruthy();
+    expect(within(row).getByRole("link", { name: "Fix it" }).getAttribute("href")).toBe("/settings/automations/health");
+    expect(screen.queryByTestId("about-prerequisite-read-only")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Fix with AI" })).toBeNull();
+  });
+
   it("a line the reader may not see says so, before a manual line to confirm", () => {
     renderList([
       manual({ can_confirm: true }),

@@ -94,7 +94,7 @@ test.describe('Flow builder, selection toolbar fits the canvas at 1024 px', () =
         const me = await response.json();
         await route.fulfill({ response, json: { ...me, language } });
       });
-      await page.goto(`/flows/${flowId}/builder`);
+      await page.goto(`/flows/library/${flowId}`);
       const pane = page.locator('.react-flow__pane');
       await expect(pane).toBeVisible({ timeout: 15_000 });
       await expect(page.locator('.react-flow__node')).toHaveCount(4, { timeout: 15_000 });

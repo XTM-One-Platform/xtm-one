@@ -26,7 +26,9 @@ A filter must therefore admit, for each threat type it admits (`Intrusion-Set`, 
 - `uses` from that type to an `Attack-Pattern`,
 - `targets` from that type to a `Location`, a `Sector` and a `Vulnerability`.
 
-To feed the model, it can also admit `uses` from that type to a `Malware`, and `Report` entities. The verdict below does not judge these two.
+To feed the model, it can also admit `uses` from that type to a `Malware`, and `Report` entities. The verdict below does not judge these two. The stream OpenCRQ creates by itself admits both.
+
+The filter below is the one OpenCRQ applies to the stream it manages (`CANONICAL_STREAM_FILTER` in `back/src/features/deployment-integrations/opencti-managed-stream.ts`); keep the two in step and bump `MANAGED_STREAM_FILTER_VERSION` when it changes, so every managed stream is updated at the next start.
 
 When it admits two threat types or more, it must also admit `attributed-to` between them: from a campaign to an intrusion set or a threat actor, and from an intrusion set to a threat actor. A filter admitting intrusion sets alone, with their relationships, still delivers.
 
@@ -42,7 +44,7 @@ The filter is a group of alternatives, each one an `and` of clauses, and OpenCTI
     {
       "mode": "and",
       "filters": [
-        { "key": ["entity_type"], "operator": "eq", "values": ["Intrusion-Set", "Threat-Actor-Group", "Threat-Actor-Individual", "Campaign"], "mode": "or" }
+        { "key": ["entity_type"], "operator": "eq", "values": ["Intrusion-Set", "Threat-Actor-Group", "Threat-Actor-Individual", "Campaign", "Report"], "mode": "or" }
       ],
       "filterGroups": []
     },
@@ -60,7 +62,7 @@ The filter is a group of alternatives, each one an `and` of clauses, and OpenCTI
       "filters": [
         { "key": ["entity_type"], "operator": "eq", "values": ["uses"], "mode": "or" },
         { "key": ["fromTypes"], "operator": "eq", "values": ["Intrusion-Set", "Threat-Actor-Group", "Threat-Actor-Individual", "Campaign"], "mode": "or" },
-        { "key": ["toTypes"], "operator": "eq", "values": ["Attack-Pattern"], "mode": "or" }
+        { "key": ["toTypes"], "operator": "eq", "values": ["Attack-Pattern", "Malware"], "mode": "or" }
       ],
       "filterGroups": []
     },
@@ -93,6 +95,8 @@ The connector always requests the stream with `with-inferences=true` — there i
 
 ## Connecting a tenant
 
-- **Create the Live Stream** on the OpenCTI side, with the filter above applied.
-- **Check the token's marking access** — the service account behind that tenant's `CONNECTORS__OPENCTI__<tenant-uuid>__TOKEN` must be able to read every marking definition applied to the threats, relationships and producer identities in scope. OpenCTI drops a relation from the stream entirely when its source or target cannot be loaded for the stream user — a marking access gap silently narrows the feed the same way a wrong filter does, and the platform cannot tell the two apart.
-- **Link the tenant to that Live Stream** from the Integrations UI.
+Connecting a tenant is automatic: set `CONNECTORS__OPENCTI__<tenant-uuid>__URL` and `__TOKEN` and start OpenCRQ. At each start it creates the Live Stream it manages ("OpenCRQ threat feed", with the filter above), or updates its filter when it is out of date, and binds a tenant that has nothing bound under the "OpenCTI (deployment)" service account. A restart reuses the same stream: it is recognised by the marker in its description, not by its name.
+
+- **Grant the token the stream capability** — the user behind the token needs `TAXIIAPI_SETCOLLECTIONS` (Manage CTI data sharing > Manage Live Streams), or `BYPASS`. Without it OpenCRQ writes nothing in OpenCTI and the connector page names the missing capability; grant it and restart, or create a stream by hand and pick it with **Configure**.
+- **Check the token's marking access** — the user behind that tenant's `CONNECTORS__OPENCTI__<tenant-uuid>__TOKEN` must be able to read every marking definition applied to the threats, relationships and producer identities in scope. OpenCTI drops a relation from the stream entirely when its source or target cannot be loaded for the stream user — a marking access gap silently narrows the feed the same way a wrong filter does, and the platform cannot tell the two apart. Every object mirrored keeps its markings, and each OpenCRQ user reads only what their own OpenCTI markings allow.
+- **Pick another stream if you want** — **Configure** on the OpenCTI connector binds any stream; an admin's binding is never replaced at start, and the verdict above still judges it.

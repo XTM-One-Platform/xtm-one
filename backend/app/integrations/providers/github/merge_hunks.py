@@ -42,11 +42,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.services.sandbox_workspace import structured
-from app.services.sandbox_workspace.jsonmerge import merge_json_objects
+from app.services.sandbox_workspace.jsonmerge import merge_json_objects, removed_keys
 from app.services.sandbox_workspace.reading import is_text
 from app.services.sandbox_workspace.rebase import ConflictRegion, _added, merge_text
 
-from .contents import _MAX_COMMIT_CONTENT_BYTES, _MODE_FILE
+from .contents import _MAX_COMMIT_CONTENT_BYTES, _MODE_EXECUTABLE, _MODE_FILE
 from .merge_resolution import _MAX_READ_BYTES, _read_blob, _read_side, _Side
 
 #: Paths changed on both sides the line merge reads at most; more falls back to the list of paths.
@@ -87,6 +87,9 @@ class PathMerge:
     added_both: tuple[str, ...] = ()
     #: How often each side holds each of those lines: a merge holds a line at most as often as one side.
     side_counts: tuple[tuple[str, int], ...] = ()
+    #: The keys of a JSON object file the merge base and the ref hold that the branch removed: a merge removes them
+    #: without a conflict, so the answer names them for a check (a stale copy of a catalog loses keys that way, #1095).
+    removed_keys: tuple[str, ...] = ()
 
     @property
     def clean(self) -> bool:
@@ -136,13 +139,20 @@ def _checks(path: str, base_text: str, ours_text: str, theirs_text: str) -> dict
     base_lines = base_text.splitlines(keepends=True)
     ours_added = {line.strip() for line in _added(base_lines, ours_text.splitlines(keepends=True))}
     theirs_added = {line.strip() for line in _added(base_lines, theirs_text.splitlines(keepends=True))}
-    both = tuple(sorted(line for line in ours_added & theirs_added if _MEANINGFUL_RE.search(line)))
+    # A line the base already holds is a recurring line of the file (a dict key every provider block opens
+    # with): each side adding it in its own block is two additions, not one written twice.
+    base_held = {line.strip() for line in base_lines}
+    both = tuple(
+        sorted(line for line in ours_added & theirs_added if _MEANINGFUL_RE.search(line) and line not in base_held)
+    )
     ours_counts = Counter(line.strip() for line in ours_text.splitlines())
     theirs_counts = Counter(line.strip() for line in theirs_text.splitlines())
+    kind = _structured_sides(path, ours_text, theirs_text)
     return {
-        "structured_kind": _structured_sides(path, ours_text, theirs_text),
+        "structured_kind": kind,
         "added_both": both,
         "side_counts": tuple((line, max(ours_counts[line], theirs_counts[line])) for line in both),
+        "removed_keys": tuple(removed_keys(base_text, ours_text, theirs_text)) if kind == structured.JSON else (),
     }
 
 
@@ -158,8 +168,14 @@ def _text(data: bytes | None) -> str | None:
         return None
 
 
-def merge_path(path: str, base: bytes | None, ours: bytes | None, theirs: bytes | None) -> PathMerge:
-    """The three-way merge of one path from its three versions (``None``: absent on that side)."""
+def merge_path(
+    path: str, base: bytes | None, ours: bytes | None, theirs: bytes | None, *, ref_first: bool = False
+) -> PathMerge:
+    """The three-way merge of one path from its three versions (``None``: absent on that side).
+
+    *ref_first*: a JSON object file merged by key keeps the order of *theirs* (the ref merged into the branch),
+    the branch's own keys after it, so the branch's diff against the ref holds its own keys only (#1116).
+    """
     if ours is None or theirs is None:
         gone, kept = ("the branch", "the ref") if ours is None else ("the ref", "the branch")
         return PathMerge(path, reason=f"removed on {gone}, changed on {kept}: keep one side whole")
@@ -176,7 +192,7 @@ def merge_path(path: str, base: bytes | None, ours: bytes | None, theirs: bytes 
         )
         if not defect:
             return PathMerge(path, merged=merged.text, **checks)
-    by_key = merge_json_objects(base_text, ours_text, theirs_text)
+    by_key = merge_json_objects(base_text, ours_text, theirs_text, ref_first=ref_first)
     if by_key is not None and not structured.parse_defect(checks["structured_kind"], by_key):
         return PathMerge(path, merged=by_key, **checks)
     regions = merged.regions
@@ -191,10 +207,10 @@ def merge_path(path: str, base: bytes | None, ours: bytes | None, theirs: bytes 
     union = merge_text(base_text, ours_text, theirs_text, both=True).text
     # A JSON object file (an i18n catalog) settles a keep by key: the line merge's preferred hunk would take one
     # side's whole tail and drop the keys the other side appended there; the key merge keeps them.
-    keep_ours = merge_json_objects(base_text, ours_text, theirs_text, prefer="ours")
+    keep_ours = merge_json_objects(base_text, ours_text, theirs_text, prefer="ours", ref_first=ref_first)
     if keep_ours is None:
         keep_ours = merge_text(base_text, ours_text, theirs_text, prefer="ours").text
-    keep_theirs = merge_json_objects(base_text, ours_text, theirs_text, prefer="theirs")
+    keep_theirs = merge_json_objects(base_text, ours_text, theirs_text, prefer="theirs", ref_first=ref_first)
     if keep_theirs is None:
         keep_theirs = merge_text(base_text, ours_text, theirs_text, prefer="theirs").text
     return PathMerge(
@@ -225,6 +241,15 @@ class LineMerge:
         return sorted(path for path, merge in self.merges.items() if not merge.clean)
 
     @property
+    def removed(self) -> list[str]:
+        """``path: key, key`` for every JSON path whose branch removed keys the base and the ref hold (#1095)."""
+        return [
+            f"{path}: {_keys_shown(merge.removed_keys)}"
+            for path, merge in sorted(self.merges.items())
+            if merge.removed_keys
+        ]
+
+    @property
     def validated(self) -> list[str]:
         """``path (FORMAT)`` for every clean structured path: parsed after the merge, no duplicate key (#11986)."""
         return sorted(
@@ -244,7 +269,10 @@ async def line_merge(
     head: str,
     paths: list[str],
 ) -> LineMerge | str:
-    """Read the three versions of *paths* and merge each line by line; the reason when it cannot run."""
+    """Read the three versions of *paths* and merge each line by line; the reason when it cannot run.
+
+    *head* is merged into *branch*: a JSON object file merged by key keeps *head*'s key order (#1116).
+    """
     if len(paths) > MAX_MERGED_PATHS:
         return f"{len(paths)} paths changed on both sides, over the {MAX_MERGED_PATHS} the line merge reads"
     sides: list[_Side] = []
@@ -261,7 +289,15 @@ async def line_merge(
             merges[path] = PathMerge(path, reason=_OVER_TIME_BUDGET)
             continue
         entries = [side.entries.get(path) for side in sides]
-        odd = next((entry for entry in entries if entry is not None and entry.mode != _MODE_FILE), None)
+        # An executable file on every side merges like a plain one: the signed commit keeps its mode.
+        # A path deleted on one side keeps no mode to carry, so an executable one is still resolved whole.
+        modes = {entry.mode for entry in entries if entry is not None}
+        plain = modes == {_MODE_FILE} or (modes == {_MODE_EXECUTABLE} and None not in entries[1:])
+        odd = (
+            None
+            if plain
+            else next((entry for entry in entries if entry is not None and entry.mode != _MODE_FILE), None)
+        )
         if odd is not None:
             merges[path] = PathMerge(path, reason=f"not a plain file (mode {odd.mode}): keep one side whole")
             continue
@@ -290,11 +326,33 @@ async def line_merge(
         try:
             # Off the event loop; a thread past the budget finishes on its own and its result is dropped.
             merges[path] = await asyncio.wait_for(
-                asyncio.to_thread(merge_path, path, base, ours, theirs), timeout=max(remaining, 0.001)
+                asyncio.to_thread(merge_path, path, base, ours, theirs, ref_first=True),
+                timeout=max(remaining, 0.001),
             )
         except TimeoutError:
             merges[path] = PathMerge(path, reason=_OVER_TIME_BUDGET)
     return LineMerge(merges)
+
+
+#: Keys of one path named in an answer; the rest are counted.
+MAX_REMOVED_KEYS_SHOWN = 20
+
+
+def _keys_shown(keys: tuple[str, ...]) -> str:
+    shown = ", ".join(keys[:MAX_REMOVED_KEYS_SHOWN])
+    more = len(keys) - MAX_REMOVED_KEYS_SHOWN
+    return shown + (f" and {more} more" if more > 0 else "")
+
+
+def removed_lines(merged: LineMerge | None) -> list[str]:
+    """The answer lines naming the JSON keys the branch removed, or none (#1095)."""
+    if merged is None or not merged.removed:
+        return []
+    return [
+        f"Keys the branch removed that the merge base and the ref still hold ({len(merged.removed)} path(s)); "
+        "the merge removes them too: restore any the branch dropped by mistake (a stale copy of the file):",
+        *(f"- {line}" for line in merged.removed),
+    ]
 
 
 _OVER_TIME_BUDGET = (

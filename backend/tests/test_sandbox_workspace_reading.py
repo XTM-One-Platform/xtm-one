@@ -956,7 +956,8 @@ def test_a_typical_pytest_failure_summary_stays_under_eight_thousand_characters(
 
 
 def test_the_summary_is_bounded_and_counts_the_blocks_dropped():
-    log = "".join(f"##[error]failure {i} " + "x" * 400 + "\n" for i in range(200))
+    # Distinct by name (failure_<i>), so the repeat folding of #815 leaves each block apart.
+    log = "".join(f"##[error]failure_{i} " + "x" * 400 + "\n" for i in range(200))
     out = ci_logs.format_summary(ci_logs.summarize(log), title="t")
     assert len(out) <= ci_logs.MAX_SUMMARY_CHARS + 300
     assert "more failure block(s) not shown" in out

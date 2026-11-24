@@ -104,7 +104,6 @@ export const KNOWN_FEATURE_FLAGS = [
   "DASHBOARD_STUDIO",
   "DEEP_INVESTIGATION",
   "EVALUATION",
-  "FILIGRAN_GATEWAY_PROVIDER",
   "FLOW_BUILDER",
   "MOBILE_COMPANION",
   "VIDEO_STUDIO",
@@ -721,10 +720,10 @@ function resolveDefaultChatAgent(
 /**
  * The agent a new `/chat` starts with: the one `?agent=` names, then the
  * launcher's hand-off (an agent id, or `CHAT_GENERAL_AGENT_PARAM`),
- * then the user's default (`resolveDefaultChatAgent`). `?agent=` is an explicit
- * pick: an agent built for assignments (`disable_chat`) opens too, as its page
- * offers; the hand-off and the default name chat agents only. `null` = the
- * General Assistant.
+ * then the user's default (`resolveDefaultChatAgent`). `?agent=` and the
+ * hand-off are explicit picks: an agent built for assignments (`disable_chat`)
+ * opens too, as its page offers (a work item's Explain reaches its owner,
+ * #774); the default names chat agents only. `null` = the General Assistant.
  */
 export function initialChatAgent(
   picked: { agentParam: string | null; pendingAgent: string | null },
@@ -734,15 +733,11 @@ export function initialChatAgent(
   linkedAgentId: string | null,
 ): Agent | null {
   const enabledAgent = (id: string | null) => agents.find((a) => a.id === id && a.enabled) ?? null;
-  const chatAgent = (id: string | null) => {
-    const agent = enabledAgent(id);
-    return agent && !agent.disable_chat ? agent : null;
-  };
   return (
     enabledAgent(picked.agentParam) ??
     (picked.pendingAgent === CHAT_GENERAL_AGENT_PARAM
       ? generalAssistantStandIn(linkedAgentId, agents)
-      : (chatAgent(picked.pendingAgent) ?? resolveDefaultChatAgent(user, agents, isXtmOne, linkedAgentId)))
+      : (enabledAgent(picked.pendingAgent) ?? resolveDefaultChatAgent(user, agents, isXtmOne, linkedAgentId)))
   );
 }
 

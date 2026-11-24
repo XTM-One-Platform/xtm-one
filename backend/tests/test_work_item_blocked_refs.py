@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -24,10 +25,12 @@ from app.services.work_item_blocked_refs import (
     all_satisfied,
     apply_reference_event,
     blocked_why,
+    bound_pull_request_wait,
     due_deferral,
     normalize_blocked_on_refs,
     record_closing_on_payload,
     refuse_blocked_without_why,
+    refuse_needs_human_without_ask,
     release_not_before,
     release_note,
     still_waiting_note,
@@ -82,12 +85,21 @@ def test_a_reference_the_platform_cannot_match_is_refused(entry):
 # -- the refusal and the views ------------------------------------------------------
 
 
-def test_a_blocked_status_with_no_why_is_refused_naming_every_field():
+_OWNER = "9c1142f6-d1e1-434a-9099-1c63e3286156"
+_ASK = {
+    "question": "Merge it?",
+    "options": [{"key": "A", "label": "merge"}, {"key": "B", "label": "wait"}],
+    "recommendation": "A",
+}
+
+
+def test_a_blocked_status_with_no_why_is_refused_naming_the_three_options() -> None:
     with pytest.raises(ValueError) as exc:
         refuse_blocked_without_why("blocked")
-    for field in ("blocked_on", "blocked_on_refs", "blocked_reason", "needs_human"):
+    for field in ("owner_agent_id", "blocked_on", "blocked_on_refs", "needs_human", "ask", "not_before"):
         assert field in str(exc.value)
-    assert str(exc.value) == WHY_FIELDS_MESSAGE
+    assert str(exc.value).startswith(WHY_FIELDS_MESSAGE)
+    assert "no owner_agent_id" in str(exc.value) and "nothing was written" in str(exc.value)
 
 
 @pytest.mark.parametrize(
@@ -95,19 +107,67 @@ def test_a_blocked_status_with_no_why_is_refused_naming_every_field():
     [
         {"blocked_on": ["a"]},
         {"blocked_on_refs": [{"repo": REPO, "number": 1}]},
-        {"blocked_reason": "waits for the UX verdict, released by the UX Director"},
-        {"needs_human": True},
+        {"needs_human": True, "ask": _ASK},
     ],
 )
-def test_any_one_why_is_enough(fields):
-    refuse_blocked_without_why("blocked", **fields)
+def test_an_owner_and_one_real_blocker_is_enough(fields: dict[str, Any]) -> None:
+    refuse_blocked_without_why("blocked", owner_agent_id=_OWNER, **fields)
+
+
+@pytest.mark.parametrize(
+    ("fields", "missing"),
+    [
+        # Free text is context, never the blocker (#762).
+        ({"owner_agent_id": _OWNER, "blocked_reason": "waits for the partner retest"}, "no blocker"),
+        # Never ownerless, whatever it waits for.
+        ({"blocked_on": ["a"]}, "no owner_agent_id"),
+        # A person's decision carries its card: a question, two options, a recommendation.
+        ({"owner_agent_id": _OWNER, "needs_human": True}, "without an ask card"),
+        ({"owner_agent_id": _OWNER, "needs_human": True, "ask": {"question": "Merge it?"}}, "without an ask card"),
+        (
+            {"owner_agent_id": _OWNER, "needs_human": True, "ask": {**_ASK, "recommendation": None}},
+            "without an ask card",
+        ),
+    ],
+)
+def test_blocked_is_black_or_white(fields: dict[str, Any], missing: str) -> None:
+    with pytest.raises(ValueError, match=missing):
+        refuse_blocked_without_why("blocked", **fields)
+
+
+_BOUND_DRAFT = {"pull_requests": [{"repo": REPO, "number": 12, "state": "open", "draft": True}]}
+
+
+def test_an_open_bound_pull_request_is_a_blocker_its_ci_releases() -> None:
+    # The inbox finalizer parks a draft between two slices on its own pull
+    # request (#10692): its CI completion hands it back, so it is not free text.
+    refuse_blocked_without_why(
+        "blocked", owner_agent_id=_OWNER, blocked_reason="WAITS FOR: draft CI", payload=_BOUND_DRAFT
+    )
+
+
+def test_a_closed_bound_pull_request_releases_nothing() -> None:
+    closed = {"pull_requests": [{"repo": REPO, "number": 12, "state": "closed"}]}
+    with pytest.raises(ValueError, match="no blocker"):
+        refuse_blocked_without_why("blocked", owner_agent_id=_OWNER, blocked_reason="waits", payload=closed)
+    with pytest.raises(ValueError, match="no owner_agent_id"):
+        refuse_blocked_without_why("blocked", payload=_BOUND_DRAFT)
 
 
 def test_only_a_blocked_status_needs_a_why():
     refuse_blocked_without_why("in_progress")
-    # Blank text is no reason.
-    with pytest.raises(ValueError):
-        refuse_blocked_without_why("blocked", blocked_reason="   ")
+    refuse_blocked_without_why("open", blocked_reason="deferred")
+
+
+def test_needs_human_needs_its_ask_card() -> None:
+    refuse_needs_human_without_ask(None, None)
+    refuse_needs_human_without_ask(True, _ASK)
+    with pytest.raises(ValueError, match="needs_human needs an ask card"):
+        refuse_needs_human_without_ask(True, None)
+    with pytest.raises(ValueError, match="at least 2"):
+        refuse_needs_human_without_ask(
+            True, {"question": "Merge it?", "options": [{"key": "A"}], "recommendation": "A"}
+        )
 
 
 def test_the_views_show_what_a_blocked_item_waits_for():
@@ -125,6 +185,29 @@ def test_the_views_show_what_a_blocked_item_waits_for():
     }
     assert blocked_why({"status": "blocked", "blocked_on": ["a", "b"]})["text"] == "Waits for: 2 work item(s)"
     assert blocked_why({"status": "blocked", "needs_human": True})["text"] == "Waits for: a person (needs_human)"
+
+
+def test_a_draft_parked_on_its_own_pull_request_shows_what_releases_it() -> None:
+    # The inbox finalizer's park of a draft: a reason, no ref, an open bound pull request (#1617).
+    item = {
+        "status": "blocked",
+        "blocked_reason": "WAITS FOR: o/r#12 (draft) to finish its review gate",
+        "payload": {"pull_requests": [{"repo": "o/r", "number": 12, "state": "open", "draft": True}]},
+    }
+    assert bound_pull_request_wait(item) == "the CI completion or closing of o/r#12 (draft), released by itself"
+    why = blocked_why(item)
+    assert why is not None
+    assert why["text"].startswith(
+        "Waits for: the CI completion or closing of o/r#12 (draft), released by itself; WAITS FOR"
+    )
+    # A closed binding, another blocker or an item not blocked: nothing to say.
+    closed = {**item, "payload": {"pull_requests": [{"repo": "o/r", "number": 12, "state": "closed"}]}}
+    assert bound_pull_request_wait(closed) is None
+    assert bound_pull_request_wait({**item, "blocked_on": ["x"]}) is None
+    assert bound_pull_request_wait({**item, "needs_human": True}) is None
+    ref = {"repo": REPO, "kind": "pull_request", "number": 9, "release_on": "merged"}
+    assert bound_pull_request_wait({**item, "blocked_on_refs": [ref]}) is None
+    assert bound_pull_request_wait({**item, "status": "open"}) is None
 
 
 def test_a_legacy_blocked_item_with_no_reason_is_flagged_missing():

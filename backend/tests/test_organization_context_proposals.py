@@ -94,6 +94,52 @@ def test_new_tracked_organizations_are_checked():
         proposals.validate_new_tracked([{"relationship": "customer"}])
 
 
+def test_the_outside_lens_settings_are_fields_of_the_primary_profile_only():
+    """CTEM-26: an agent can scope and enable the outside lens (owned domains, ranges, the pass)."""
+    kept = proposals.validate_field_changes(
+        PRIMARY,
+        {},
+        [
+            {"field": "owned_domains", "value": ["example.com"]},
+            {"field": "address_ranges", "value": ["203.0.113.7", "198.51.100.0/24"]},
+            {"field": "attack_surface", "value": {"enabled": True, "integration": "shodan-1"}},
+        ],
+    )
+    values = {entry["field"]: entry["value"] for entry in kept}
+    assert values["owned_domains"] == ["example.com"]
+    assert values["address_ranges"] == ["203.0.113.7/32", "198.51.100.0/24"]
+    assert values["attack_surface"]["enabled"] is True
+    assert values["attack_surface"]["integration"] == "shodan-1"
+    assert values["attack_surface"]["cadence_hours"] == 24
+    for path in proposals.PROPOSABLE_EXPOSURE_PATHS:
+        assert path not in proposals._contract_paths("tracked")
+
+
+def test_enterprise_knowledge_is_a_field_an_agent_can_change_on_the_primary_profile() -> None:
+    """#1691: update/propose link the procedure knowledge bases as the Settings form does."""
+    link = {"knowledge_base_id": "8a0b3c1e-0000-4000-8000-000000000001", "label": "SOPs", "kind": "sop"}
+    kept = proposals.validate_field_changes(PRIMARY, {}, [{"field": "enterprise_knowledge", "value": [link]}])
+    assert kept[0]["value"] == [link]
+    assert "enterprise_knowledge" not in proposals._contract_paths("tracked")
+    with pytest.raises(proposals.ProposalError, match="enterprise_knowledge"):
+        proposals.validate_field_changes(
+            PRIMARY, {}, [{"field": "enterprise_knowledge", "value": [{**link, "kind": "novel"}]}]
+        )
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"field": "address_ranges", "value": ["10.0.0.0/33"]}, "not an IP address or CIDR block"),
+        ({"field": "attack_surface", "value": {"enabled": True, "cadence_hours": 0}}, "attack_surface"),
+        ({"field": "attack_surface", "value": {"enabled": True, "colour": "red"}}, "attack_surface"),
+    ],
+)
+def test_a_bad_outside_lens_setting_is_refused_with_its_reason(change, message):
+    with pytest.raises(proposals.ProposalError, match=message):
+        proposals.validate_field_changes(PRIMARY, {}, [change])
+
+
 async def test_a_proposal_is_changes_or_organizations_never_both():
     with pytest.raises(proposals.ProposalError, match="one of the two"):
         await proposals.propose(None, author_user_id=None)  # type: ignore[arg-type]

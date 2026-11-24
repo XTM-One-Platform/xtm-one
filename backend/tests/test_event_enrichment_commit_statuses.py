@@ -7,6 +7,7 @@ check runs only, and a commit status is never a check run.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from app.integrations.providers.github import event_enrichment as gh_enrichment
@@ -79,3 +80,25 @@ def test_a_stale_optional_status_already_left_out_does_not_hold() -> None:
     assert gh_enrichment.with_commit_statuses(facts, [_status("ci/slow", "pending")]) == facts
     held = gh_enrichment.with_commit_statuses(facts, [_status("ci/other", "pending")])
     assert not held["all_green"] and held["verdict"] == "pending"
+
+
+def test_statuses_that_just_passed_hold_the_head_until_they_settle() -> None:
+    # OpenAEV-Platform/collectors #690: the last test-* status passed at 09:29:23Z,
+    # the green wake read the head at 09:29:33Z, CircleCI created the build-*
+    # statuses (pending) at 09:29:39Z.
+    facts = gh_enrichment.check_facts(_runs())
+    statuses = [{"context": "ci/circleci: test-a", "state": "success", "updated_at": "2026-11-20T09:29:23Z"}]
+    held = gh_enrichment.with_commit_statuses(facts, statuses, now=datetime(2026, 11, 20, 9, 29, 33, tzinfo=UTC))
+    assert not held["all_green"] and not held["all_completed"] and held["pending"] == 1
+    assert gh_enrichment.STATUSES_SETTLING in held["names"]
+    assert not gh_enrichment.head_settled({"head": {"checks": held}})
+    assert gh_enrichment.head_best_case({"head": {"checks": held}})["head"]["checks"]["all_green"]
+    settled = gh_enrichment.with_commit_statuses(facts, statuses, now=datetime(2026, 11, 20, 9, 31, 0, tzinfo=UTC))
+    assert settled == facts
+
+
+def test_a_red_status_is_not_held_as_settling() -> None:
+    facts = gh_enrichment.check_facts(_runs())
+    statuses = [{"context": "snyk", "state": "failure", "updated_at": "2026-11-20T09:29:23Z"}]
+    red = gh_enrichment.with_commit_statuses(facts, statuses, now=datetime(2026, 11, 20, 9, 29, 33, tzinfo=UTC))
+    assert red["failed_names"] == ["status:snyk"] and red["pending"] == 0 and red["all_completed"]

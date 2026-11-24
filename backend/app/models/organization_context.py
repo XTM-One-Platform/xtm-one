@@ -3,7 +3,7 @@
 """OrganizationContextVersion model - the organization profile every agent reads.
 
 One row per saved version of an organization's profile (sector,
-regions, crown jewels, tech stack, AI systems, PIRs, risk appetite, ROI
+regions, crown jewels, software, AI systems, PIRs, risk appetite, ROI
 rate, ticketing target: the contract of ``dev-docs/ctem-fleets.md`` section 6,
 validated by ``services/organization_context.py``). A save never edits a row:
 it inserts the next ``version`` of that organization (``organization_id``,
@@ -138,6 +138,7 @@ class OrganizationContextSync(Base):
         CheckConstraint(
             "frequency IN ('hourly', 'daily', 'weekly')", name="ck_organization_context_syncs_frequency_valid"
         ),
+        CheckConstraint("direction IN ('inbound', 'outbound')", name="ck_organization_context_syncs_direction_valid"),
         Index("ix_organization_context_syncs_due", "enabled", "next_run_at"),
     )
 
@@ -150,8 +151,23 @@ class OrganizationContextSync(Base):
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
     batch_type: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default=text("''"))
-    #: Remove the rows this source wrote before that it no longer returns (default: kept).
-    remove_gone: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    #: Remove the rows this source wrote before that it no longer returns: a deletion upstream deletes the
+    #: row here (default since #1134; a truncated or failed read removes nothing).
+    remove_gone: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    #: The source ids an administrator excluded from this sync (#1134): never imported, removed if present.
+    excluded_external_ids: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    #: ``inbound`` (the platform is the master, its rows are read-only here) or ``outbound`` (the XTM One
+    #: list is the master: the rows this sync created on the platform follow it, #1134 S3).
+    direction: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="inbound", server_default=text("'inbound'")
+    )
+    #: Outbound: the platform rows this sync created, keyed on the XTM One row (its name, case-folded).
+    #: Only these are updated and deleted; the platform's other rows are never touched.
+    outbound_ids: Mapped[dict[str, str]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
     frequency: Mapped[str] = mapped_column(String(16), nullable=False, default="daily")
     #: Hour and minute of the run in ``timezone`` (the hour is ignored hourly).
     hour: Mapped[int] = mapped_column(Integer, nullable=False, default=6, server_default=text("6"))

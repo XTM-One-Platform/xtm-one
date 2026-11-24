@@ -38,7 +38,7 @@ test("documentedRunRange sums the documented triggers and stays null without one
 });
 
 /** A custom fleet forked from a seeded CTEM fleet, so it is on the command center. */
-const CTEM_FORK = { slug: "ctem-posture", is_builtin: true };
+const CTEM_FORK = { slug: "ctem-loop", is_builtin: true };
 
 const fleet = (id: string, name: string, extra: Record<string, unknown> = {}) => ({
   id,
@@ -162,7 +162,7 @@ test("seeded fleets first, then custom ones, each by name; archived ones left ou
       fleet("c", "Zeta custom"),
       fleet("s2", "Validation", { is_builtin: true, slug: "ctem-vuln-prioritization", forked_from: null }),
       fleet("x", "Old", { is_archived: true }),
-      fleet("s1", "Threat", { is_builtin: true, slug: "ctem-threat-response", forked_from: null }),
+      fleet("s1", "Threat", { is_builtin: true, slug: "ctem-loop", forked_from: null }),
       fleet("d", "Alpha custom"),
     ],
     {},
@@ -282,7 +282,7 @@ test("one fleet on is enough for the tiles; a fleet not read yet keeps the invit
 });
 
 test("only CTEM fleets: the seeded ctem-* ones and forks of them", () => {
-  assert.equal(isCtemFleet({ slug: "ctem-posture", is_builtin: true }), true);
+  assert.equal(isCtemFleet({ slug: "ctem-loop", is_builtin: true }), true);
   assert.equal(isCtemFleet({ slug: "concierge", is_builtin: true }), false);
   assert.equal(isCtemFleet({ slug: "my-fork", is_builtin: false, forked_from: CTEM_FORK }), true);
   assert.equal(isCtemFleet({ slug: "ctem-lookalike", is_builtin: false, forked_from: null }), false);
@@ -291,10 +291,10 @@ test("only CTEM fleets: the seeded ctem-* ones and forks of them", () => {
 });
 
 test("the invitation comes back only for a new fleet or a new module", () => {
-  const seen = { fleets: ["ctem-posture"], modules: ["opencti"] };
-  assert.equal(inviteVisible(null, ["ctem-posture"], ["opencti"]), true);
-  assert.equal(inviteVisible(seen, ["ctem-posture"], ["opencti"]), false);
-  assert.equal(inviteVisible(seen, ["ctem-posture"], []), false);
-  assert.equal(inviteVisible(seen, ["ctem-posture", "ctem-ai-security"], ["opencti"]), true);
-  assert.equal(inviteVisible(seen, ["ctem-posture"], ["opencti", "openaev"]), true);
+  const seen = { fleets: ["ctem-loop"], modules: ["opencti"] };
+  assert.equal(inviteVisible(null, ["ctem-loop"], ["opencti"]), true);
+  assert.equal(inviteVisible(seen, ["ctem-loop"], ["opencti"]), false);
+  assert.equal(inviteVisible(seen, ["ctem-loop"], []), false);
+  assert.equal(inviteVisible(seen, ["ctem-loop", "ctem-ai-security"], ["opencti"]), true);
+  assert.equal(inviteVisible(seen, ["ctem-loop"], ["opencti", "openaev"]), true);
 });

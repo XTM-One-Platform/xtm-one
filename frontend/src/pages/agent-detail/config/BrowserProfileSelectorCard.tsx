@@ -162,7 +162,7 @@ export function BrowserProfileSelectorCard({ agent, canManage }: { agent: Agent;
             ) : (
               <p className="content-caption text-default-secondary italic">
                 {t_i18n("No browser profile you may use yet.")}{" "}
-                <Link to="/browser-profiles?new=1" className="text-accent hover:underline">
+                <Link to="/connections?new=1" className="text-accent hover:underline">
                   {t_i18n("New browser profile")}
                 </Link>
               </p>

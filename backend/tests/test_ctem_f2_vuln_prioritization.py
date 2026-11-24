@@ -70,10 +70,22 @@ def test_the_triage_analyst_counts_cve_assessed():
     assert (decl.unit, decl.count_path) == ("cve_assessed", "findings")
 
 
-def test_the_four_assignments_are_on_the_orchestrator():
+def test_the_assignments_are_on_the_orchestrator() -> None:
     assert all(a in BUILTIN_ASSIGNMENTS for a in CTEM_F2_ASSIGNMENTS)
     by_name = {a["name"]: a for a in CTEM_F2_ASSIGNMENTS}
-    assert set(by_name) == {"New KEV or EPSS jump", "Vulnerability sighted", "Daily backlog pass", "Re-test due"}
+    # The four of the spec, plus the case loop (#891) and software we run (CTEM-08).
+    assert set(by_name) == {
+        "New KEV or EPSS jump",
+        "Vulnerability on software we run",
+        "Vulnerability flagged in a PIR",
+        "Vulnerability sighted",
+        "Daily backlog pass",
+        "Re-test due",
+        "OpenAEV results into cases",
+        "Analyst review mark",
+        "Case opened or reopened",
+        "Gate answered",
+    }
     assert {a["agent_slug"] for a in CTEM_F2_ASSIGNMENTS} == {_ORCH}
     assert croniter.is_valid(by_name["Daily backlog pass"]["trigger_config"]["cron"])
     assert by_name["Daily backlog pass"]["trigger_config"]["cron"] == "0 6 * * *"
@@ -100,3 +112,27 @@ def test_sighting_trigger_filters_on_the_sighted_type():
     keys = {f["key"][0]: f for f in json.loads(prov.trigger_filters(spec, []))["filters"]}
     assert keys["entity_type"]["values"] == ["stix-sighting-relationship"]
     assert keys["fromTypes"]["values"] == ["Vulnerability"]
+
+
+def test_software_we_run_trigger_filters_has_to_a_vulnerability_and_reads_the_profile():
+    a = next(a for a in CTEM_F2_ASSIGNMENTS if a["name"] == "Vulnerability on software we run")
+    assert a["trigger_config"]["runs_in_profile"] == "source"
+    spec = prov.read_provision_spec(a["trigger_config"])
+    filters = json.loads(prov.trigger_filters(spec, []))
+    keys = {f["key"][0]: f["values"] for f in filters["filters"]}
+    assert keys == {
+        "entity_type": ["has"],
+        "fromTypes": ["Infrastructure", "Software", "System"],
+        "toTypes": ["Vulnerability"],
+    }
+    assert filters["filterGroups"] == []
+
+
+def test_pir_flag_listener_is_a_pir_playbook_held_to_the_policy_threshold() -> None:
+    a = next(a for a in CTEM_F2_ASSIGNMENTS if a["name"] == "Vulnerability flagged in a PIR")
+    assert a["trigger_config"]["pir_min_score"] == "policy"
+    spec = prov.read_provision_spec(a["trigger_config"])
+    assert spec is not None
+    assert spec["mode"] == "pir_playbook"
+    assert spec["organization_context"] == ["pir_ids"]
+    assert spec["entity_types"] == ["Vulnerability"]

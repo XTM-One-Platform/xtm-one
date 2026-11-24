@@ -597,9 +597,12 @@ WORK_ITEM_PRIORITY_OPTIONS: tuple[dict[str, str], ...] = (
     {"value": "urgent", "label": "Urgent"},
 )
 
+# Blocked is not offered (#762): a blocked item needs a blocker the platform
+# releases or a person's decision card, which a text field cannot carry.
 WORK_ITEM_STATUS_OPTIONS: tuple[dict[str, str], ...] = tuple(
     {"value": status, "label": status.replace("_", " ").capitalize()}
     for status in WORK_ITEM_STATUSES
+    if status != "blocked"
 )
 
 # What an export node publishes: the stored file and how to fetch it.
@@ -2144,12 +2147,32 @@ NODE_KINDS: tuple[NodeKind, ...] = (
                 placeholder="Approuves-tu la publication de : {{ag1.output}} ?",
                 help="Shown to the user; the run stays paused until they answer.",
             ),
+            ConfigField(
+                "options",
+                "Options",
+                FIELD_JSON,
+                placeholder='[{"key": "A", "label": "Publish", "effect": "The post goes live"}]',
+                help="Optional choices shown as buttons; leave empty for a free-text answer.",
+            ),
+            ConfigField(
+                "recommendation",
+                "Recommended option",
+                FIELD_TEXT,
+                placeholder="A",
+                help="Optional key of the option the card marks as recommended.",
+            ),
+            ConfigField(
+                "deadline",
+                "Deadline",
+                FIELD_VARIABLE_TEXT,
+                placeholder="2026-12-01T17:00:00Z",
+                help="Optional ISO-8601 date and time shown on the card.",
+            ),
         ),
         output_variables=(
             OutputVariable("response", "Response", "The answer the user typed.", type=OUTPUT_TEXT),
-            OutputVariable(
-                "responded_by", "Responded by", "Who answered the question."
-            ),
+            OutputVariable("option", "Option", "The key of the option chosen, empty for free text.", type=OUTPUT_TEXT),
+            OutputVariable("responded_by", "Responded by", "Who answered the question."),
         ),
         searchable_terms=(
             "human", "hitl", "question", "approval", "input", "answer", "ask",

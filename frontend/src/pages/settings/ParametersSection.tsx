@@ -14,6 +14,7 @@ import {
   Languages,
   LayoutTemplate,
   Palette,
+  RotateCcw,
   ShieldCheck,
   Smartphone,
   Sparkles,
@@ -44,6 +45,8 @@ import { useToast } from "@/components/ui/toast";
 import { FileUpload } from "@/components/ui/file-upload";
 import { SettingsNotSet, SettingsReadField, SettingsReadGrid } from "@/components/ui/settings-read-view";
 import { usePlatformSettings, useUpdatePlatformSettings } from "@/hooks/api/useAiAdoptionApi";
+import { useResetOrganizationSetupPrompt } from "@/hooks/api/useOrganizationContextApi";
+import { useAuth } from "@/hooks/useAuth";
 import { useTemplateContainers } from "@/hooks/api/useTemplateContainerApi";
 import { useOnIncludedAllowance } from "@/hooks/useEnterpriseUpsell";
 import {
@@ -384,7 +387,55 @@ export function ParametersSection() {
         </div>
         )}
       </SettingsCard>
+
+      {isXtmOne && <ResetOnboardingCard />}
     </div>
+  );
+}
+
+/**
+ * Reset onboarding: the guided setup is proposed again to administrators, as
+ * after a fresh install (XTM One mode, administrators). Only the proposal's
+ * answer and step progress are cleared; profile, integrations and fleets stay.
+ */
+function ResetOnboardingCard() {
+  const { t_i18n } = useFormatter();
+  const { user } = useAuth();
+  const toast = useToast();
+  const reset = useResetOrganizationSetupPrompt();
+  const [ConfirmEl, confirm] = useConfirm();
+
+  if (user?.role !== "admin") return null;
+
+  const handleReset = async () => {
+    const ok = await confirm({
+      title: t_i18n("Reset onboarding?"),
+      description: t_i18n(
+        "The guided setup is proposed again to administrators. Your organization profile, integrations and fleets are not changed.",
+      ),
+      confirmLabel: t_i18n("Reset onboarding"),
+      variant: "default",
+    });
+    if (!ok) return;
+    reset.mutate(undefined, {
+      onSuccess: () => toast.toast({ title: t_i18n("Onboarding reset"), variant: "success" }),
+    });
+  };
+
+  return (
+    <>
+      <SettingsCard
+        icon={RotateCcw}
+        title={t_i18n("Onboarding")}
+        description={t_i18n("Show the guided setup again now, as after a fresh install.")}
+        action={
+          <Button variant="outline" onClick={handleReset} disabled={reset.isPending}>
+            {t_i18n("Reset onboarding")}
+          </Button>
+        }
+      />
+      {ConfirmEl}
+    </>
   );
 }
 

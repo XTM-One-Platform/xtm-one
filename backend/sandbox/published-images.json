@@ -6,15 +6,15 @@
     "sandbox-nodejs": "615dd0a03104ee5549ef85f732fbe070b91e22c07ede7f4cd4626ad981dd5230"
   },
   "toolchain": {
-    "version": "0.7",
+    "version": "0.8",
     "inputs": {
-      "sandbox-toolchain": "535bcf83a11f05f16b1e53fcc1514dc92a92dd46c05be18987b39e1ad935835a"
+      "sandbox-toolchain": "9a8ab3fa75091b827d127a63572fabe99c499d0e6e97f54006a904278dc047c5"
     }
   },
   "dev": {
-    "version": "0.9",
+    "version": "0.10",
     "inputs": {
-      "sandbox-dev": "e697a25d26861c72ee12dc4ca1bd31b5d16311c925fda907d2332addef6fb85c"
+      "sandbox-dev": "faad5fc60848e31c24e02da0f7e74305516c811948c230a42626a60383a5da90"
     }
   }
 }

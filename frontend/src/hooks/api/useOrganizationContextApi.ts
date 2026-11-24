@@ -5,7 +5,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { syncFlowNodeCatalog } from "@/lib/flow-node-catalog";
-import type { PrioritizationPolicy } from "@/lib/organization-profile";
+import type {
+  AssetIdentitySettings,
+  AttackSurfacePass,
+  CaseAttentionProfile,
+  PrioritizationPolicy,
+  SignalSourcesSettings,
+  TicketingSync,
+} from "@/lib/organization-profile";
 
 interface CrownJewel {
   name: string;
@@ -13,20 +20,23 @@ interface CrownJewel {
   owner: string;
   criticality: "low" | "medium" | "high" | "critical";
   opencrq_asset_id: string;
+  /** The assets and asset groups (by name) it runs on (#11543); absent when none is named. */
+  asset_names?: string[];
+  /** Where the row came from (#1134): manual, csv, api, agent:<id> or a platform. */
+  source?: string;
+  external_id?: string;
+  sync_id?: string;
 }
 
 interface TechStackEntry {
   product: string;
   vendor: string;
   cpe: string;
-}
-
-interface AiSystem {
-  name: string;
-  kind: "assistant" | "agent" | "model_api" | "embedded";
-  owner: string;
-  exposure: "internal" | "partner" | "public";
-  openaev_asset_id: string;
+  /** The version the organization runs, optional (CTEM-11): absent on a profile saved before it. */
+  version?: string;
+  source?: string;
+  external_id?: string;
+  sync_id?: string;
 }
 
 export interface OrganizationProfile {
@@ -37,18 +47,34 @@ export interface OrganizationProfile {
   size: "" | "1-50" | "51-250" | "251-1000" | "1001-5000" | "5001-20000" | "20000+";
   crown_jewels: CrownJewel[];
   tech_stack: TechStackEntry[];
-  ai_systems: AiSystem[];
+  // No `ai_systems` list since #1501: the AI systems are the assets of category `ai_target`.
+  /** What the organization ships, with its source repositories (#1432); absent when none is declared. */
+  shipped_products?: { product: string; vendor: string; cpe: string; repositories: string[] }[];
   pir_ids: string[];
   /** The last known OpenCTI name of each saved PIR (#9615). */
   pir_names?: Record<string, string>;
   risk_appetite: { annual_loss_threshold: number | null; approval_threshold: number | null };
   loaded_hourly_rate: number | null;
   currency: string;
-  ticketing: { integration: string; project: string };
+  /** The ticketing target; `sync` is how CTEM cases sync with it (#917, absent on an older profile: the defaults). */
+  ticketing: { integration: string; project: string; sync?: TicketingSync };
   /** The Exposure Posture score aimed for, 0-100 (#11547 S2e); absent or null: no target. */
   posture_target?: number | null;
   /** The CTEM prioritization rules (#11543); the Governance & Risk page reads its accepted risks. */
   prioritization_policy?: PrioritizationPolicy;
+  /** The owned domains, address ranges and outside lens pass (CTEM-29, CTEM-26), edited on the Exposure tab. */
+  owned_domains?: string[];
+  address_ranges?: string[];
+  attack_surface?: AttackSurfacePass;
+  /** The points of the Cases attention score (#1176); absent on an older backend: the defaults. */
+  case_attention?: CaseAttentionProfile;
+  /** Parts edited elsewhere (CTEM-28, #1216), carried whole by every profile save. */
+  evidence_health?: Record<string, unknown>;
+  cases_recompute?: Record<string, unknown>;
+  /** The sources taken off one CTEM trigger path (#1445), edited in CTEM > Signals, Sources. */
+  signal_sources?: SignalSourcesSettings;
+  /** Asset matching and field precedence (#1178), edited in CTEM > Inventory, Sources. */
+  asset_identity?: AssetIdentitySettings;
 }
 
 export interface OrganizationContextResponse {
@@ -66,7 +92,17 @@ interface OpenCrqSyncPlan {
   pulled_from_opencrq: { opencrq_asset_id: string; name: string }[];
   ambiguous: string[];
   not_in_opencrq: { crown_jewel: string; opencrq_asset_id: string }[];
+  /** Whether the profile and OpenCRQ agree (#1134 S2): the only answer that may say so; absent from an older backend. */
+  in_sync?: boolean;
+  /** The lowest OpenCRQ criticality the plan pulled (#1558). */
+  min_criticality?: OpenCrqLevel;
+  /** The supporting assets read, and their count per OpenCRQ criticality ("unknown" first) (#1558). */
+  assets_read?: number;
+  by_criticality?: Partial<Record<"unknown" | OpenCrqLevel, number>>;
 }
+
+/** OpenCRQ's criticality levels, lowest first: the thresholds the primary-asset check accepts (#1558). */
+export type OpenCrqLevel = "low" | "medium" | "high" | "very_high";
 
 export interface OpenCrqSyncResponse {
   applied: boolean;
@@ -90,6 +126,15 @@ export function useOrganizationContext() {
 export function useNoOrganizationProfile(): boolean {
   const context = useOrganizationContext();
   return context.data !== undefined && context.data.version == null;
+}
+
+/** The integration providers the outside lens pass reads (CTEM-26): the Settings picker offers only these. */
+export function useAttackSurfaceProviders() {
+  return useQuery<{ providers: string[] }>({
+    queryKey: [...KEY, "attack-surface-providers"],
+    queryFn: () => api.get("/organization-context/attack-surface/providers"),
+    staleTime: 5 * 60_000,
+  });
 }
 
 /** Whether every agent's prompt starts with the organization summary (#11533):
@@ -138,13 +183,23 @@ export function useOrganizationReaders(enabled = true) {
   });
 }
 
-/** The first-login organization setup proposal (#9173, S3): proposed once per instance. */
+/** The steps of the guided CTEM loop setup, in order (`organization_setup_prompt.STEPS`, #1087). */
+export type SetupStepKey = "organization" | "modules" | "ecosystem" | "gates" | "preview" | "enable";
+
+/**
+ * The first-connection setup proposal (#9173 S3, versioned by #1087): proposed
+ * at install and once after an upgrade that carries a new setup version.
+ */
 export interface OrganizationSetupPrompt {
   /** True when the caller must be shown the proposal now. */
   propose: boolean;
-  /** The instance's recorded answer, null while unanswered. */
+  /** The instance's recorded answer to the current version, null while unanswered. */
   outcome: OrganizationSetupAnswer | null;
   answered_at: string | null;
+  /** The setup version this build carries (`ctem-loop-1`). */
+  version?: string;
+  /** Step -> `done` or `skipped`, recorded for the current version. */
+  steps?: Partial<Record<SetupStepKey, "done" | "skipped">>;
 }
 
 export type OrganizationSetupAnswer = "started" | "later" | "dismissed";
@@ -164,6 +219,60 @@ export function useAnswerOrganizationSetupPrompt() {
   return useMutation<OrganizationSetupPrompt, Error, OrganizationSetupAnswer>({
     mutationFn: (outcome) => api.post("/organization-context/setup-prompt", { outcome }),
     onSuccess: (state) => qc.setQueryData([...KEY, "setup-prompt"], state),
+  });
+}
+
+/**
+ * Record one step of the guided setup as done or skipped (`PUT
+ * /organization-context/setup-prompt/steps`, administrators, #1087): each step
+ * saves on its own, so leaving midway loses nothing. A progress record only.
+ */
+export function useRecordSetupStep() {
+  const qc = useQueryClient();
+  return useMutation<OrganizationSetupPrompt, Error, { step: SetupStepKey; state: "done" | "skipped" }>({
+    mutationFn: (body) => api.put("/organization-context/setup-prompt/steps", body),
+    onSuccess: (state) => {
+      qc.setQueryData([...KEY, "setup-prompt"], state);
+      qc.invalidateQueries({ queryKey: ["fleets", "setup", "ctem-loop"] });
+    },
+  });
+}
+
+/**
+ * How many times Reset onboarding succeeded in this page session: a client-only
+ * counter, never fetched. The setup proposal reopens on a new value only, not on
+ * a refetch of the setup-prompt query (which any `organization-context`
+ * invalidation triggers with identical data).
+ */
+const SETUP_PROMPT_RESETS_KEY = [...KEY, "setup-prompt-resets"] as const;
+
+export function useOrganizationSetupPromptResets(): number {
+  const { data } = useQuery<number>({
+    queryKey: SETUP_PROMPT_RESETS_KEY,
+    queryFn: () => 0,
+    enabled: false,
+    initialData: 0,
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+  return data;
+}
+
+/**
+ * Reset onboarding (`DELETE /organization-context/setup-prompt`, administrators,
+ * XTM One mode): the answer and step progress are forgotten, so the guided setup
+ * is proposed again as after a fresh install. Nothing else is changed.
+ */
+export function useResetOrganizationSetupPrompt() {
+  const qc = useQueryClient();
+  return useMutation<OrganizationSetupPrompt, Error, void>({
+    mutationFn: () => api.delete("/organization-context/setup-prompt"),
+    onSuccess: (state) => {
+      qc.setQueryData([...KEY, "setup-prompt"], state);
+      qc.setQueryData<number>(SETUP_PROMPT_RESETS_KEY, (count) => (count ?? 0) + 1);
+      qc.invalidateQueries({ queryKey: [...KEY, "setup-prompt"] });
+      qc.invalidateQueries({ queryKey: ["fleets", "setup", "ctem-loop"] });
+    },
   });
 }
 
@@ -192,7 +301,35 @@ export function useSaveOrganizationContext() {
   const qc = useQueryClient();
   return useMutation<OrganizationContextResponse, Error, SaveOrganizationContextBody>({
     mutationFn: (body) => api.put("/organization-context", body),
-    onSuccess: (saved) => qc.setQueryData(KEY, saved),
+    onSuccess: (saved) => {
+      qc.setQueryData(KEY, saved);
+      // The Inventory Assets tab and the asset page read the canonical assets (useOrganizationAssetsApi):
+      // a saved profile adds, updates or deletes rows there, and a stale list maps row positions
+      // onto the fresh profile (#1375 review).
+      void qc.invalidateQueries({ queryKey: ["organization-assets"] });
+    },
+  });
+}
+
+interface PatchOrganizationContextBody {
+  /** Top-level profile fields to set; every other field is kept as stored. Never the asset rows (#1738). */
+  fields: Partial<Omit<OrganizationProfile, "assets_exposure" | "asset_groups">>;
+  based_on_version?: number | null;
+}
+
+/**
+ * Save some top-level fields of the profile (#1738): a settings card sends its own fields alone,
+ * so a synced asset row a sync moved since the last version never blocks the save. The card's
+ * own error toast is the only one shown.
+ */
+export function usePatchOrganizationContext() {
+  const qc = useQueryClient();
+  return useMutation<OrganizationContextResponse, Error, PatchOrganizationContextBody>({
+    mutationFn: (body) => api.patch("/organization-context", body),
+    meta: { suppressGlobalErrorToast: true },
+    onSuccess: (saved) => {
+      qc.setQueryData(KEY, saved);
+    },
   });
 }
 
@@ -265,6 +402,44 @@ export function useOrganizationPirs(enabled: boolean) {
   });
 }
 
+/** One field change of a stored proposal (#9484 S-a2; CTEM-30 "propose scope"): nothing changes until an administrator accepts it. */
+export interface OrganizationContextFieldProposal {
+  /** A contract path, such as "prioritization_policy.scope_min_criticality". */
+  field: string;
+  value: unknown;
+  basis: string;
+  current: unknown;
+  conflict: boolean;
+}
+
+interface OrganizationContextProposal {
+  id: string;
+  kind: "fields" | "new_tracked";
+  proposals: OrganizationContextFieldProposal[];
+  status: "pending" | "accepted" | "rejected";
+  created_at: string;
+}
+
+/** The pending proposals, newest first (administrators, like the page that lists them). */
+export function useOrganizationContextProposals() {
+  return useQuery<OrganizationContextProposal[]>({
+    queryKey: [...KEY, "proposals"],
+    queryFn: () => api.get("/organization-context/proposals?status=pending"),
+  });
+}
+
+/** Accepts the named fields of a proposal (a new profile version) or rejects it with none. */
+export function useDecideOrganizationContextProposal() {
+  const qc = useQueryClient();
+  return useMutation<{ status: "accepted" | "rejected"; version: number | null }, Error, { id: string; accept: string[] }>({
+    mutationFn: ({ id, accept }) => api.post(`/organization-context/proposals/${encodeURIComponent(id)}/decide`, { accept }),
+    // The profile and the list both move: an accepted field is a new version.
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+    // The card says the failure inline.
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
 export function useDraftOrganizationContext() {
   return useMutation<OrganizationDraftResponse, Error, void>({
     mutationFn: () => api.post("/organization-context/draft", {}),
@@ -275,14 +450,26 @@ export function useDraftOrganizationContext() {
 
 /** A profile section the platform import fills (#11780); one run imports one section. */
 export type ImportSectionKey = "assets" | "asset_groups" | "ai_systems" | "tech_stack" | "crown_jewels" | "pirs";
-export type ImportSourceKey = "openaev" | "opencti" | "opencrq";
+/** The Filigran platforms, then the endpoint sources read through a Microsoft integration (#1251). */
+export type ImportSourceKey =
+  | "openaev"
+  | "opencti"
+  | "opencrq"
+  | "intune"
+  | "defender"
+  | "tanium"
+  | "crowdstrike"
+  | "servicenow"
+  | "github"
+  | "gitlab";
 
 export interface ImportSourcesResponse {
   sections: {
     section: ImportSectionKey;
     /** The profile field the section writes. */
     field: string;
-    sources: { source: ImportSourceKey; available: boolean; reason: string; filters: string[] }[];
+    /** reason_code: `not_connected` or `no_token` when the dialog words the reason itself (#1251); empty: `reason` as given. */
+    sources: { source: ImportSourceKey; available: boolean; reason: string; reason_code?: string; filters: string[] }[];
   }[];
 }
 
@@ -352,6 +539,8 @@ interface ImportPlan {
   sample: Record<string, unknown>[];
   truncated: boolean;
   error: string | null;
+  /** The cause of `error` worded for the administrator (the permission to grant), or null when it is not shown. */
+  error_reason?: string | null;
 }
 
 export interface ImportPreviewResponse {
@@ -384,6 +573,17 @@ export function useApplyOrganizationImport() {
 
 export type SyncFrequency = "hourly" | "daily" | "weekly";
 
+export type SyncDirection = "inbound" | "outbound";
+
+/** Per section and platform, the directions a sync may take and why outbound is not offered (#1134 S3). */
+export interface SyncDirectionSupport {
+  section: ImportSectionKey;
+  source: ImportSourceKey;
+  directions: SyncDirection[];
+  /** Why outbound is not offered; empty when it is. */
+  reason: string;
+}
+
 /** An import saved with a schedule (#11913); section "all" is the Sync all schedule that runs every other one. */
 export interface OrganizationSync {
   id: string;
@@ -392,6 +592,15 @@ export interface OrganizationSync {
   filters: Record<string, string | string[]>;
   batch_type: string;
   remove_gone: boolean;
+  /** The source ids this sync never imports (#1134); omitted in a body: the stored list is kept. */
+  excluded_external_ids?: string[];
+  /**
+   * inbound: the platform is the master; outbound: the XTM One list is (#1134 S3).
+   * Omitted in a body: the stored direction is kept, so an edit never resets an outbound sync.
+   */
+  direction?: SyncDirection;
+  /** Outbound: how many platform rows this sync created and keeps in step. */
+  outbound_count?: number;
   frequency: SyncFrequency;
   hour: number;
   minute: number;
@@ -409,16 +618,33 @@ export interface OrganizationSync {
 
 export type OrganizationSyncBody = Pick<
   OrganizationSync,
-  "section" | "source" | "filters" | "batch_type" | "remove_gone" | "frequency" | "hour" | "minute" | "weekday" | "timezone" | "enabled"
+  "section" | "source" | "filters" | "batch_type" | "remove_gone" | "excluded_external_ids" | "direction" | "frequency" | "hour" | "minute" | "weekday" | "timezone" | "enabled"
 >;
 
 const SYNCS = [...KEY, "syncs"] as const;
 
-export function useOrganizationSyncs() {
+/** Where a list of syncs is shown (#1134 S2): the business profile, the inventory, or every sync (""). */
+export type OrganizationSyncScope = "profile" | "inventory" | "";
+
+/** `enabled` false for a reader: the syncs API is for administrators only (403 otherwise, UX r1 B1 on #1540). */
+export function useOrganizationSyncs(scope: OrganizationSyncScope = "", enabled = true) {
   return useQuery<OrganizationSync[]>({
-    queryKey: SYNCS,
-    queryFn: () => api.get("/organization-context/syncs"),
+    queryKey: [...SYNCS, scope],
+    queryFn: () => api.get(scope ? `/organization-context/syncs?scope=${scope}` : "/organization-context/syncs"),
+    enabled,
     // The list says its own failure with a retry; it never takes the page down.
+    throwOnError: false,
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** The direction support matrix the sync dialog offers (#1134 S3); read only while the dialog is open. */
+export function useOrganizationSyncDirections(enabled: boolean) {
+  return useQuery<SyncDirectionSupport[]>({
+    queryKey: [...SYNCS, "directions"],
+    queryFn: () => api.get("/organization-context/syncs/directions"),
+    enabled,
+    staleTime: Infinity,
     throwOnError: false,
     meta: { suppressGlobalErrorToast: true },
   });
@@ -442,11 +668,105 @@ export function useUpdateOrganizationSync() {
   });
 }
 
+/**
+ * What happens to the rows a deleted sync wrote (#1276): ``leave`` keeps them owned by the
+ * source, ``release`` hands them to people (editable by hand), ``purge`` removes them.
+ */
+export type SyncRowsMode = "leave" | "release" | "purge";
+
+/** Delete a sync; ``rows`` says what its rows become (the API default, ``leave``, when omitted). */
 export function useDeleteOrganizationSync() {
   const qc = useQueryClient();
-  return useMutation<void, Error, string>({
-    mutationFn: (id) => api.delete(`/organization-context/syncs/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: SYNCS }),
+  return useMutation<void, Error, string | { id: string; rows: SyncRowsMode }>({
+    mutationFn: (target) =>
+      typeof target === "string" ? api.delete(`/organization-context/syncs/${target}`) : api.delete(`/organization-context/syncs/${target.id}?rows=${target.rows}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: SYNCS });
+      qc.invalidateQueries({ queryKey: KEY });
+    },
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** One source of rows of the profile (#1276): a platform, an agent or partner, a CSV import, the API or a person. */
+export interface OrganizationSource {
+  key: string;
+  kind: "platform" | "agent" | "csv" | "api" | "manual";
+  display_name: string;
+  /** Profile field -> rows of this source. */
+  rows: Record<string, number>;
+  total: number;
+  /** The agent that last wrote this source's rows, when a saved version names it. */
+  written_by_agent: string;
+  sync_ids: string[];
+}
+
+export function useOrganizationSources(scope: OrganizationSyncScope = "") {
+  return useQuery<OrganizationSource[]>({
+    queryKey: [...KEY, "sources", scope],
+    queryFn: () => api.get(scope ? `/organization-context/sources?scope=${scope}` : "/organization-context/sources"),
+    throwOnError: false,
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** What a purge or a release would touch, per profile field, and the rows of other sources kept (#1276). */
+export interface RowsPlan {
+  source: string;
+  mode: string;
+  count: number;
+  counts: Record<string, number>;
+  rows: Record<string, string[]>;
+  kept_elsewhere: Record<string, string[]>;
+  version?: number | null;
+}
+
+/** The dry run of the delete dialog: a sync's rows (target.sync) or a source's rows (target.source). */
+export function useOrganizationRowsPreview(target: { sync?: string; source?: string } | null, mode: "release" | "purge") {
+  const path = target?.sync
+    ? `/organization-context/syncs/${target.sync}/rows-preview?mode=${mode}`
+    : target?.source
+      ? `/organization-context/sources/${encodeURIComponent(target.source)}/rows-preview?mode=${mode}`
+      : "";
+  return useQuery<RowsPlan>({
+    queryKey: [...KEY, "rows-preview", path],
+    queryFn: () => api.get(path),
+    enabled: path !== "",
+    throwOnError: false,
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** Purge or release every row a source without a sync wrote (an agent, a partner, a CSV import). */
+export function useApplyOrganizationSourceRows() {
+  const qc = useQueryClient();
+  return useMutation<RowsPlan, Error, { source: string; mode: "release" | "purge" }>({
+    mutationFn: ({ source, mode }) => api.post(`/organization-context/sources/${encodeURIComponent(source)}/rows`, { mode }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** One entry of a sync's history: a run that changed the profile or failed, or a save. */
+export interface SyncHistoryEntry {
+  at: string;
+  action: string;
+  by: string | null;
+  summary: string;
+  trigger: string;
+  added: number | null;
+  updated: number | null;
+  removed: number | null;
+  version: number | null;
+  error: string | null;
+}
+
+export function useOrganizationSyncHistory(id: string | null) {
+  return useQuery<SyncHistoryEntry[]>({
+    queryKey: [...SYNCS, "history", id],
+    queryFn: () => api.get(`/organization-context/syncs/${id}/history`),
+    enabled: id !== null,
+    throwOnError: false,
     meta: { suppressGlobalErrorToast: true },
   });
 }
@@ -457,6 +777,39 @@ export function useRunOrganizationSync() {
   return useMutation<OrganizationSync, Error, string>({
     mutationFn: (id) => api.post(`/organization-context/syncs/${id}/run`, {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** What Run all syncs did: the syncs that ran and those whose run was refused or failed (#1548). */
+export interface RunAllSyncsResult {
+  ran: number;
+  failed: number;
+}
+
+/**
+ * Run all syncs (#1548): every given sync runs now, one after the other (two runs never write the profile at once),
+ * through the per-sync Run now endpoint; the list is read again after each so its Last run cell follows. No "Sync all"
+ * row is created.
+ */
+export function useRunOrganizationSyncs() {
+  const qc = useQueryClient();
+  return useMutation<RunAllSyncsResult, Error, string[]>({
+    mutationFn: async (ids) => {
+      let ran = 0;
+      let failed = 0;
+      for (const id of ids) {
+        try {
+          const done: OrganizationSync = await api.post(`/organization-context/syncs/${id}/run`, {});
+          if (done?.last_result?.error) failed += 1;
+          else ran += 1;
+        } catch {
+          failed += 1;
+        }
+        await qc.invalidateQueries({ queryKey: KEY });
+      }
+      return { ran, failed };
+    },
     meta: { suppressGlobalErrorToast: true },
   });
 }
@@ -533,10 +886,57 @@ export function useCreateOrganizationFillAgent() {
 
 export function useOpenCrqSync() {
   const qc = useQueryClient();
-  return useMutation<OpenCrqSyncResponse, Error, { apply: boolean }>({
+  // min_criticality left out: the saved primary-asset sync's filter, else high (#1558).
+  return useMutation<OpenCrqSyncResponse, Error, { apply: boolean; min_criticality?: OpenCrqLevel }>({
     mutationFn: (body) => api.post("/organization-context/opencrq-sync", body),
     onSuccess: (result) => {
       if (result.applied) qc.invalidateQueries({ queryKey: KEY });
+    },
+  });
+}
+
+/** A saved version of the profile, as the history lists it (#1473, #1558). */
+export interface OrganizationContextVersionSummary {
+  version: number;
+  source: string;
+  created_at: string;
+  author_user_id: string | null;
+  missing_fields: string[];
+  /** The primary assets the version holds; absent from an older backend. */
+  crown_jewels?: number;
+}
+
+/** The saved versions, newest first (administrators); read only while the restore dialog is open. */
+export function useOrganizationContextVersions(enabled: boolean) {
+  return useQuery<OrganizationContextVersionSummary[]>({
+    queryKey: [...KEY, "versions"],
+    queryFn: () => api.get("/organization-context/versions?limit=100"),
+    enabled,
+  });
+}
+
+/** One saved version whole, for the preview of what a restore brings back. */
+export function useOrganizationContextVersion(version: number | null) {
+  return useQuery<OrganizationContextResponse>({
+    queryKey: [...KEY, "versions", version],
+    queryFn: () => api.get(`/organization-context/versions/${version}`),
+    enabled: version !== null,
+  });
+}
+
+/**
+ * Restores *fields* of a past version as a new version (#1473): the other fields stay as they are,
+ * and a version saved since *based_on_version* answers 409, nothing written.
+ */
+export function useRestoreOrganizationContextVersion() {
+  const qc = useQueryClient();
+  return useMutation<OrganizationContextResponse, Error, { version: number; fields: string[]; based_on_version: number | null }>({
+    mutationFn: ({ version, ...body }) => api.post(`/organization-context/versions/${version}/restore`, body),
+    // The dialog shows the refusal inline (a 409 offers a reload of the versions): no global toast.
+    meta: { suppressGlobalErrorToast: true },
+    onSuccess: (saved) => {
+      qc.setQueryData(KEY, saved);
+      qc.invalidateQueries({ queryKey: KEY });
     },
   });
 }

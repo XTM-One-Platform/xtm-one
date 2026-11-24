@@ -96,11 +96,11 @@ test("the sample funnel is monotonic and its drops add up", () => {
 test("a not configured layer leads to the Settings card of its field, never the bare first tab", () => {
   const notConfigured = (key: CtemFunnel["layers"][number]["key"]) =>
     funnelLayerHref({ key, count: null, drop: null, state: "not_configured", source: "organization", category: null }, "https://cti.example");
-  assert.equal(notConfigured("relevant"), "/settings/organization/profile/technology?card=tech_stack");
-  assert.equal(notConfigured("exposed"), "/settings/organization/profile/exposure?card=assets_exposure");
-  assert.equal(notConfigured("business_impact"), "/settings/organization/profile/business?card=crown_jewels");
-  assert.equal(notConfigured("policy"), "/settings/organization/profile/exposure?card=prioritization_policy");
-  assert.equal(notConfigured("open_issues"), "/settings/organization/profile/technology?card=tech_stack");
+  assert.equal(notConfigured("relevant"), "/ctem/inventory/software?card=tech_stack");
+  assert.equal(notConfigured("exposed"), "/ctem/inventory?card=assets_exposure");
+  assert.equal(notConfigured("business_impact"), "/ctem/inventory/business?card=crown_jewels");
+  assert.equal(notConfigured("policy"), "/ctem/inventory/exposure?card=prioritization_policy");
+  assert.equal(notConfigured("open_issues"), "/ctem/inventory/software?card=tech_stack");
   // Every layer with a call to action names a field, so no CTA falls back to the first tab.
   for (const [key, copy] of Object.entries(FUNNEL_LAYER_COPY)) {
     if (copy.cta) assert.ok(FUNNEL_LAYER_FIELD[key as keyof typeof FUNNEL_LAYER_FIELD], key);
@@ -113,7 +113,7 @@ test("a not configured layer leads to the Settings card of its field, never the 
 
 test("a not configured layer leads to Settings, a live one to the OpenCTI list it counts", () => {
   const [known, , exploitable, exposed, , , openIssues] = SAMPLE_FUNNEL.layers;
-  assert.equal(funnelLayerHref(exposed, "https://cti.example"), "/settings/organization/profile/exposure?card=assets_exposure");
+  assert.equal(funnelLayerHref(exposed, "https://cti.example"), "/ctem/inventory?card=assets_exposure");
   assert.equal(funnelLayerHref(known, "https://cti.example/"), "https://cti.example/dashboard/arsenal/vulnerabilities");
   const filters = { mode: "or", filters: [{ key: ["x_opencti_cisa_kev"], values: ["true"] }], filterGroups: [] };
   const href = funnelLayerHref({ ...exploitable, filters }, "https://cti.example");
@@ -145,13 +145,13 @@ test("the cases layer is the exact count of open cases and leads to the Cases li
   assert.deepEqual(funnel.layers.slice(0, -1), SAMPLE_FUNNEL.layers.slice(0, -1));
 });
 
-test("zero open cases with a tech stack is a live 0, the exact count", () => {
+test("zero open cases with a software is a live 0, the exact count", () => {
   const layer = casesLayer(withCasesLayer(SAMPLE_FUNNEL, { open: 0, total: 0 }));
   assert.equal(layer.state, "live");
   assert.equal(layer.count, 0);
 });
 
-test("without a tech stack, OpenAEV or any case, the cases layer is not configured, never an invented 0", () => {
+test("without a software, OpenAEV or any case, the cases layer is not configured, never an invented 0", () => {
   const bare: CtemFunnel = {
     ...SAMPLE_FUNNEL,
     layers: SAMPLE_FUNNEL.layers.map((layer) => {
@@ -163,7 +163,7 @@ test("without a tech stack, OpenAEV or any case, the cases layer is not configur
   const layer = casesLayer(withCasesLayer(bare, { open: 0, total: 0 }));
   assert.equal(layer.state, "not_configured");
   assert.equal(layer.count, null);
-  assert.equal(funnelLayerHref(layer, "https://cti.example"), "/settings/organization/profile/technology?card=tech_stack");
+  assert.equal(funnelLayerHref(layer, "https://cti.example"), "/ctem/inventory/software?card=tech_stack");
   // A case that exists (built before the stack was removed) is still counted.
   assert.equal(casesLayer(withCasesLayer(bare, { open: 2, total: 3 })).count, 2);
   // OpenAEV alone builds cases.
@@ -209,6 +209,25 @@ for (const width of [1080, 1728]) {
         if (!thin) assert.ok(Math.abs((step.drawnShare as number) - step.trueShare) <= 2, `${step.layer.key} ${step.drawnShare} vs ${step.trueShare}`);
         assert.ok(step.height <= step.entered + 1e-9, `${step.layer.key} grows`);
         assert.ok(step.height >= step.kept - 1e-9);
+      }
+    }
+  });
+
+  test(`at ${width}px no branch label box meets the cases outcomes box, policy not configured (#897 UX round 3, B4)`, () => {
+    const policyOff: CtemFunnel = {
+      ...LIVE_FUNNEL,
+      layers: LIVE_FUNNEL.layers.map((l) => (l.key === "policy" ? { ...l, count: null, drop: null, state: "not_configured" } : l)),
+    };
+    for (const funnel of [LIVE_FUNNEL, policyOff, SAMPLE_FUNNEL]) {
+      const layout = flowLayout(funnel, width);
+      const box = { x0: layout.tiles.x, x1: layout.tiles.x + layout.tiles.width, y0: layout.outcomesTop, y1: layout.outcomesTop + layout.outcomesHeight };
+      assert.ok(box.y1 <= FLOW_HEIGHT, `outcomes end inside the reserved height (${box.y1})`);
+      assert.ok(box.y0 >= layout.tiles.ys[1] + layout.tiles.height, "outcomes sit below the tiles");
+      for (const step of layout.steps) {
+        if (step.labelY === null) continue;
+        const label = { x0: step.labelX, x1: step.labelX + step.labelWidth, y0: step.labelY - 10, y1: step.labelY + 10 };
+        const meets = label.x0 < box.x1 && label.x1 > box.x0 && label.y0 < box.y1 && label.y1 > box.y0;
+        assert.ok(!meets, `${step.layer.key} label ${JSON.stringify(label)} meets outcomes ${JSON.stringify(box)}`);
       }
     }
   });

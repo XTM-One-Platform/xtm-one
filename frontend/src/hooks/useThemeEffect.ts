@@ -59,6 +59,20 @@ export function applyTheme(theme: string | null | undefined) {
   } catch { /* quota exceeded or private browsing */ }
 }
 
+/**
+ * The design system draws one chip style since 1.13.0 (#1595): the former
+ * "Pastel colours" preference is gone, so the class and the cache entry it
+ * left on a browser are cleared once at load.
+ */
+function clearRetiredPastel() {
+  document.documentElement.classList.remove("pastel");
+  try {
+    localStorage.removeItem("copilot-pastel");
+  } catch { /* ignore */ }
+}
+
+clearRetiredPastel();
+
 function readCachedTheme(): string | null {
   try {
     return localStorage.getItem(THEME_STORAGE_KEY);

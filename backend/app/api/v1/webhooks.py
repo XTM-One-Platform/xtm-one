@@ -52,6 +52,10 @@ Signature validation (both endpoints):
   - OpenCTI: token-based (X-OpenCTI-Token header)
   - Perk: Tk-Signature header (HMAC-SHA256)
   - Aikido Security: X-Aikido-Webhook-Signature header (HMAC-SHA256, 30 s replay window)
+  - Airwallex: x-signature over x-timestamp + body (HMAC-SHA256, 5 min replay window)
+  - Rydoo: unsigned expense events, refused unless the URL carries the
+    integration's webhook_token as ?token= (no token configured: refused)
+  - Spendesk: x-spendesk-webhook-signature header (HMAC-SHA256)
   - Custom: X-Signature header (HMAC-SHA256)
   - Static token (direct-assignment endpoint): X-Webhook-Token (or its
     X-Webhook-Secret alias), or Authorization: Bearer — the secret verbatim,
@@ -185,12 +189,25 @@ from app.core.security import (
 from app.core.utils import (
     format_exception_message,
     is_valid_uuid,
+    redact_secret_text,
     request_client_ip,
     safe_uuid,
 )
 from app.integrations.providers.aikido.webhooks import SIGNATURE_HEADER as AIKIDO_SIGNATURE_HEADER
 from app.integrations.providers.aikido.webhooks import trigger_event as aikido_trigger_event
 from app.integrations.providers.aikido.webhooks import verify_signature as verify_aikido_signature
+from app.integrations.providers.airwallex.webhooks import TIMESTAMP_HEADER as AIRWALLEX_TIMESTAMP_HEADER
+from app.integrations.providers.airwallex.webhooks import is_delivery as is_airwallex_delivery
+from app.integrations.providers.airwallex.webhooks import trigger_event as airwallex_trigger_event
+from app.integrations.providers.airwallex.webhooks import verify_signature as verify_airwallex_signature
+from app.integrations.providers.rydoo.webhooks import TOKEN_FIELD as RYDOO_TOKEN_FIELD
+from app.integrations.providers.rydoo.webhooks import TOKEN_PARAM as RYDOO_TOKEN_PARAM
+from app.integrations.providers.rydoo.webhooks import is_delivery as is_rydoo_delivery
+from app.integrations.providers.rydoo.webhooks import token_matches as rydoo_token_matches
+from app.integrations.providers.rydoo.webhooks import trigger_event as rydoo_trigger_event
+from app.integrations.providers.spendesk.webhooks import SIGNATURE_HEADER as SPENDESK_SIGNATURE_HEADER
+from app.integrations.providers.spendesk.webhooks import event_key as spendesk_event_key
+from app.integrations.providers.spendesk.webhooks import verify_signature as verify_spendesk_signature
 from app.models.agent import Agent
 from app.models.assignment import (
     Assignment,
@@ -199,8 +216,8 @@ from app.models.assignment import (
 )
 from app.models.integration import Integration
 from app.models.oauth_default import OAuthDefault
+from app.services import ctem_analyst_mark, ctem_openaev_events, ctem_signal_listeners, github_token_installations
 from app.services import event_enrichment_retry as enrichment_retry
-from app.services import github_token_installations
 from app.services.assignment_engine import (
     QUOTA_DROP_REASON,
     queue_busy_pushed_event,
@@ -1643,6 +1660,19 @@ def _filtered_out(m: _AssignmentMatcher, payload: object) -> str | None:
     return _trigger_filter_reason(m.event, payload, m.payload_filter)
 
 
+def _filter_reads_as_agent(trigger_config: object) -> bool:
+    """Whether an assignment's filter reads a platform as its agent's owner.
+
+    A filter naming the ``enriched.`` facts does, and so does the CTEM PIR
+    score rule, whose live read on a registered (platform-managed) OpenCTI
+    mints its token for that user: without the agent it has no identity and
+    drops every delivery, the ones above the threshold included.
+    """
+    from app.services.ctem_trigger_rules import pir_rule_of
+
+    return needs_enrichment(trigger_filter(trigger_config)) or pir_rule_of(trigger_config)
+
+
 async def _assignment_filter_reason(
     db,
     provider: str,
@@ -1669,6 +1699,16 @@ async def _assignment_filter_reason(
     received on (*receiver_integration_id*), else of the assignment's own;
     the delivery handed to the run is left as it came.
     """
+    if provider == "opencti":
+        # CTEM-08: "a vulnerability on software we run" and the policy's PIR score
+        # thresholds (read live), before any filter, gate or run.
+        from app.services import ctem_trigger_rules
+
+        rule = await ctem_trigger_rules.filter_reason(
+            db, trigger_config, payload, agent=agent, receiver_integration_id=receiver_integration_id
+        )
+        if rule is not None:
+            return rule
     filter_config = trigger_filter(trigger_config)
     if not filter_config or not isinstance(payload, dict):
         return None
@@ -1908,10 +1948,36 @@ def _normalize_hubspot_event(subscription_type: str) -> str:
     return subscription_type
 
 
-def _hubspot_object_type(subscription_type: str) -> str:
-    """Extract the object type from a subscriptionType (e.g. ``contact``)."""
+#: ``objectTypeId`` of the objects HubSpot reports through the generic
+#: ``object.*`` subscriptions (leads, and every standard type a generic
+#: subscription can name), as the crm_object_type scope names them.
+_HUBSPOT_OBJECT_TYPE_IDS: dict[str, str] = {
+    "0-1": "contact",
+    "0-2": "company",
+    "0-3": "deal",
+    "0-5": "ticket",
+    "0-7": "product",
+    "0-8": "line_item",
+    "0-14": "quote",
+    "0-136": "lead",
+}
+
+
+def _hubspot_object_type(subscription_type: str, object_type_id: object = None) -> str:
+    """Extract the object type from a subscriptionType (e.g. ``contact``).
+
+    A generic subscription (``object.creation``, ``object.propertyChange``...)
+    names the object by its ``objectTypeId``: ``0-136`` is ``lead``, a standard
+    id its type, and a custom object keeps its ``2-...`` id, as the Scope(s)
+    picker keys it.
+    """
     parts = subscription_type.rsplit(".", 1)
-    return parts[0] if len(parts) == 2 else "unknown"
+    if len(parts) != 2:
+        return "unknown"
+    type_id = str(object_type_id or "").strip()
+    if parts[0] == "object" and type_id:
+        return _HUBSPOT_OBJECT_TYPE_IDS.get(type_id, type_id)
+    return parts[0]
 
 
 def _signed_url(request: Request) -> str | None:
@@ -2151,6 +2217,24 @@ def _extract_event_key(request: Request, payload: dict) -> str:
     if request.headers.get(AIKIDO_SIGNATURE_HEADER) and isinstance(aikido_event, str):
         return aikido_trigger_event(aikido_event)
 
+    # Airwallex: an Event object (``name``, ``account_id``, ``data``) stamped
+    # with x-timestamp; the trigger key is airwallex_ and its flat name.
+    if is_airwallex_delivery(request.headers.get, payload):
+        return airwallex_trigger_event(payload["name"])
+
+    # Rydoo: a flat expense event (eventType, expenseId, companyId); the
+    # trigger key is rydoo_ and its snake form (ExpenseApproved ->
+    # rydoo_expense_approved).
+    if is_rydoo_delivery(payload):
+        return rydoo_trigger_event(payload["eventType"])
+
+    # Spendesk: ``event.entity`` and ``event.eventType`` name the event
+    # (payables + created -> payables_created), signed per delivery.
+    if request.headers.get(SPENDESK_SIGNATURE_HEADER):
+        spendesk_key = spendesk_event_key(payload)
+        if spendesk_key:
+            return spendesk_key
+
     # Generic / OpenCTI
     return payload.get("type", payload.get("action", "unknown"))
 
@@ -2180,6 +2264,12 @@ def _generic_webhook_event_key(payload: object, request: Request) -> object:
         and isinstance(payload.get("event_type"), str)
     ):
         return aikido_trigger_event(payload["event_type"])
+    if isinstance(payload, dict) and is_airwallex_delivery(request.headers.get, payload):
+        return airwallex_trigger_event(payload["name"])
+    if is_rydoo_delivery(payload):
+        return rydoo_trigger_event(payload["eventType"])
+    if request.headers.get(SPENDESK_SIGNATURE_HEADER) and spendesk_event_key(payload):
+        return spendesk_event_key(payload)
     gh_action = payload.get("action", "") if isinstance(payload, dict) else ""
     gh_event = request.headers.get("X-GitHub-Event", "")
     return f"{gh_event}.{gh_action}" if gh_event else gh_action
@@ -2517,6 +2607,8 @@ def _verify_signature(
     linkedin_sig = request.headers.get("X-LI-Signature", "")
     perk_sig = request.headers.get("Tk-Signature", "")
     aikido_sig = request.headers.get(AIKIDO_SIGNATURE_HEADER, "")
+    airwallex_ts = request.headers.get(AIRWALLEX_TIMESTAMP_HEADER, "")
+    spendesk_sig = request.headers.get(SPENDESK_SIGNATURE_HEADER, "")
     opencti_token = request.headers.get("X-OpenCTI-Token", "")
     openaev_token = request.headers.get(_OPENAEV_HEADER, "")
 
@@ -2551,6 +2643,17 @@ def _verify_signature(
         ok, reason = verify_aikido_signature(body, secret, aikido_sig)
         if not ok:
             raise HTTPException(status_code=401, detail=f"Invalid Aikido webhook signature: {reason}")
+    elif airwallex_ts and request.headers.get("X-Signature", ""):
+        # Airwallex signs x-timestamp + the raw body (hex HMAC-SHA256) in
+        # x-signature; checked before the generic X-Signature (body only).
+        ok, reason = verify_airwallex_signature(body, secret, request.headers.get("X-Signature", ""), airwallex_ts)
+        if not ok:
+            raise HTTPException(status_code=401, detail=f"Invalid Airwallex webhook signature: {reason}")
+    elif spendesk_sig:
+        # Spendesk signs the payload (hex HMAC-SHA256) with the webhook secret.
+        ok, reason = verify_spendesk_signature(body, secret, spendesk_sig)
+        if not ok:
+            raise HTTPException(status_code=401, detail=f"Invalid Spendesk webhook signature: {reason}")
     elif opencti_token:
         # OpenCTI sends a static bearer token in X-OpenCTI-Token.
         if not timing_safe_header_eq(opencti_token, secret):
@@ -3352,6 +3455,16 @@ async def receive_provider_webhook(provider: str, request: Request) -> dict:
             "headers": _safe_webhook_headers(request),
             "method": request.method,
         }
+        # A change in exposure the CTEM loop listens to, whether or not the
+        # event reaches an assignment (#826). Only a delivery verified against
+        # a configured webhook secret records one: this route accepts an
+        # unsigned delivery when no OAuth default or no secret is set.
+        await ctem_signal_listeners.note_event(
+            provider,
+            event_key,
+            payload,
+            verified=routing.oauth_default_exists and _signed_with_webhook_secret(routing.extra_config_enc),
+        )
 
         installation_id = _event_installation_id(provider, payload)
         if (
@@ -3595,6 +3708,17 @@ async def receive_provider_webhook(provider: str, request: Request) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _hubspot_filter_reason(event_key: str, payload: dict, config: object) -> str | None:
+    """Why a HubSpot assignment's trigger ``filter`` drops one batch event, ``None`` when it runs.
+
+    ``scope.crm_object_type`` is applied by the caller; every other key is the
+    payload filter on the event (``propertyName``, ``propertyValue``,
+    ``_hubspot_event.property_name``, operators and combinators), as the other
+    webhook providers are matched. A dropped event is counted on the assignment.
+    """
+    return _trigger_filter_reason(event_key, payload, trigger_filter(config))
+
+
 async def _handle_hubspot_webhook(
     integration_id: str,
     integration: Integration,
@@ -3656,12 +3780,14 @@ async def _handle_hubspot_webhook(
 
         # ── 3. Process each event in the batch ───────────────────────────
         triggered: list[dict] = []
+        filtered: dict[str, int] = {}
+        reasons: dict[str, dict[str, int]] = {}
         now_iso = datetime.now(UTC).isoformat()
 
         for evt in events:
             subscription_type = evt.get("subscriptionType", "")
             event_key = _normalize_hubspot_event(subscription_type)
-            object_type = _hubspot_object_type(subscription_type)
+            object_type = _hubspot_object_type(subscription_type, evt.get("objectTypeId"))
             object_id = str(evt.get("objectId", ""))
 
             # Build normalised payload for this event
@@ -3670,6 +3796,7 @@ async def _handle_hubspot_webhook(
                     "event_type": event_key,
                     "subscription_type": subscription_type,
                     "object_type": object_type,
+                    "object_type_id": str(evt.get("objectTypeId") or ""),
                     "object_id": object_id,
                     "property_name": evt.get("propertyName", ""),
                     "property_value": evt.get("propertyValue", ""),
@@ -3707,6 +3834,12 @@ async def _handle_hubspot_webhook(
                     (config.get("filter") or {}).get("scope") or {}
                 ).get("crm_object_type") or []
                 if allowed_object_types and object_type not in allowed_object_types:
+                    continue
+                # The rest of the filter is matched on the event itself
+                # (``propertyName``, ``_hubspot_event.property_value``, operators).
+                reason = _hubspot_filter_reason(event_key, payload, config)
+                if reason is not None:
+                    _note_filtered(filtered, reasons, str(wf.id), reason)
                     continue
 
                 trigger_context = {
@@ -3770,6 +3903,7 @@ async def _handle_hubspot_webhook(
             )
 
         await db.commit()
+        await _count_filtered(filtered, reasons)
 
     return {"status": "ok", "triggered": triggered, "count": len(triggered)}
 
@@ -3819,6 +3953,54 @@ async def _handle_docusign_connect(
     if not docusign_connect.verify_connect_signature(body, keys, request.headers):
         raise HTTPException(status_code=401, detail="Missing or invalid DocuSign Connect signature")
     return await docusign_connect.dispatch_connect_delivery(integration_id, extra, payload)
+
+
+def _verify_rydoo_webhook_token(extra_config_enc: str | None, request: Request, *, context: str) -> None:
+    """Refuse (401) a Rydoo delivery that does not carry the integration's webhook token.
+
+    Rydoo neither signs its expense webhook nor sets a custom header, so the
+    URL given to Rydoo carries the integration's ``webhook_token`` as
+    ``?token=`` (``X-Webhook-Token`` is accepted too). No token configured
+    refuses every delivery: the integration URL is never left open.
+    """
+    extra = _read_webhook_config(extra_config_enc, context=context) if extra_config_enc else {}
+    configured = _usable_secret(
+        extra.get(RYDOO_TOKEN_FIELD), refusal="Missing or invalid Rydoo webhook token", context=context
+    )
+    if not configured:
+        logger.warning("Rydoo webhook delivery refused (%s): no webhook token configured", context)
+        raise HTTPException(status_code=401, detail="Missing or invalid Rydoo webhook token")
+    presented = str(request.query_params.get(RYDOO_TOKEN_PARAM) or "") or request.headers.get(
+        _STATIC_TOKEN_HEADERS[0], ""
+    )
+    if not rydoo_token_matches(presented, configured):
+        raise HTTPException(status_code=401, detail="Missing or invalid Rydoo webhook token")
+
+
+async def _handle_dealhub_webhook(
+    integration_id: str,
+    extra_config_enc: str | None,
+    payload: object,
+    request: Request,
+) -> dict[str, object]:
+    """A DealHub quote webhook delivery on the integration's webhook URL.
+
+    Refused (401) unless ``Authorization: Bearer <token>`` names one of the
+    integration's webhook tokens (DealHub's Token authentication type): no
+    token configured refuses every delivery. Then
+    ``dealhub_events.dispatch_delivery``.
+    """
+    from app.services import dealhub_events
+
+    context = f"integration={integration_id}"
+    extra = _read_webhook_config(extra_config_enc, context=context)
+    tokens = dealhub_events.webhook_tokens(extra)
+    if not tokens:
+        logger.warning("DealHub webhook delivery refused (%s): no webhook token configured", context)
+        raise HTTPException(status_code=401, detail="Missing or invalid DealHub webhook token")
+    if not dealhub_events.verify_bearer(request.headers.get("authorization"), tokens):
+        raise HTTPException(status_code=401, detail="Missing or invalid DealHub webhook token")
+    return await dealhub_events.dispatch_delivery(integration_id, payload)
 
 
 @router.post("/integrations/{integration_id}")
@@ -3879,6 +4061,11 @@ async def receive_integration_webhook(integration_id: str, request: Request) -> 
         # DocuSign Connect: verified with the Connect HMAC keys, then
         # deduplicated per envelope event in the seen set the poll shares.
         return await _handle_docusign_connect(integration_id, integ_pre.extra_config_enc, body, payload_raw, request)
+    if integ_pre and integ_pre.provider == "dealhub":
+        # DealHub quote webhook: its Token authentication (a bearer token stored
+        # on the integration), then deduplicated per quote change in the seen set
+        # the poll shares.
+        return await _handle_dealhub_webhook(integration_id, integ_pre.extra_config_enc, payload_raw, request)
     if integ_pre and integ_pre.provider == "jira":
         # Jira dynamic webhook: a bearer JWT signed with the OAuth app's client
         # secret, then deduplicated per change in the seen set the poll shares.
@@ -3896,6 +4083,10 @@ async def receive_integration_webhook(integration_id: str, request: Request) -> 
             payload_raw,
             callback_token=str(request.query_params.get(wordsmith_webhooks.CALLBACK_PARAM) or ""),
         )
+    if integ_pre and integ_pre.provider == "rydoo":
+        # Rydoo expense webhook: unsigned, so the integration's webhook token
+        # in the URL gates it before the dedup cache; refused without one.
+        _verify_rydoo_webhook_token(integ_pre.extra_config_enc, request, context=f"integration={integration_id}")
     if integ_pre and integ_pre.extra_config_enc:
         # HubSpot signs every delivery with the app client secret, so the
         # signature must be verified for the configured provider regardless of
@@ -3947,6 +4138,8 @@ async def receive_integration_webhook(integration_id: str, request: Request) -> 
                         Integration.id,
                         Integration.provider,
                         Integration.extra_config_enc,
+                        # _shown_platform_url reads it once this session is closed.
+                        Integration.auth_type,
                     )
                 )
                 .where(Integration.id == integration_id)
@@ -4008,6 +4201,14 @@ async def receive_integration_webhook(integration_id: str, request: Request) -> 
                 "headers": _safe_webhook_headers(request),
                 "method": request.method,
             }
+            # A change in exposure the CTEM loop listens to (#826), from a
+            # delivery verified against a configured webhook secret only.
+            await ctem_signal_listeners.note_event(
+                provider,
+                event_key,
+                payload,
+                verified=_signed_with_webhook_secret(integration.extra_config_enc),
+            )
 
             # ── 5. Find agents bound to this integration ───────────────────
             agents = await _agents_bound_to_integration(
@@ -4171,7 +4372,8 @@ async def receive_integration_webhook(integration_id: str, request: Request) -> 
                     wh_trigger_context = {
                         "type": "webhook",
                         "scope": "integration",
-                        "url": str(request.url),
+                        # A token the URL carries (Rydoo's ?token=) never reaches the run.
+                        "url": redact_secret_text(str(request.url)),
                         "method": request.method,
                         "provider": provider,
                         "event_key": event_key,
@@ -4315,11 +4517,13 @@ async def _handle_hubspot_assignment_webhook(
         allowed_object_types = (
             (config.get("filter") or {}).get("scope") or {}
         ).get("crm_object_type") or []
+        filtered: dict[str, int] = {}
+        reasons: dict[str, dict[str, int]] = {}
 
         for evt in events:
             subscription_type = evt.get("subscriptionType", "")
             event_key = _normalize_hubspot_event(subscription_type)
-            object_type = _hubspot_object_type(subscription_type)
+            object_type = _hubspot_object_type(subscription_type, evt.get("objectTypeId"))
             object_id = str(evt.get("objectId", ""))
 
             # Event filter
@@ -4339,6 +4543,7 @@ async def _handle_hubspot_assignment_webhook(
                     "event_type": event_key,
                     "subscription_type": subscription_type,
                     "object_type": object_type,
+                    "object_type_id": str(evt.get("objectTypeId") or ""),
                     "object_id": object_id,
                     "property_name": evt.get("propertyName", ""),
                     "property_value": evt.get("propertyValue", ""),
@@ -4357,6 +4562,10 @@ async def _handle_hubspot_assignment_webhook(
                 },
                 **evt,
             }
+            reason = _hubspot_filter_reason(event_key, payload, config)
+            if reason is not None:
+                _note_filtered(filtered, reasons, str(wf.id), reason)
+                continue
 
             trigger_context = {
                 "type": "webhook",
@@ -4427,6 +4636,7 @@ async def _handle_hubspot_assignment_webhook(
             )
 
         await db.commit()
+        await _count_filtered(filtered, reasons)
 
     return {"status": "ok", "triggered": triggered, "count": len(triggered)}
 
@@ -4546,6 +4756,8 @@ async def receive_assignment_webhook(
                         Integration.id,
                         Integration.provider,
                         Integration.extra_config_enc,
+                        # _shown_platform_url reads it once this session is closed.
+                        Integration.auth_type,
                     )
                 )
                 .where(Integration.id == integration_id)
@@ -4621,6 +4833,38 @@ async def receive_assignment_webhook(
                 "headers": _safe_webhook_headers(request),
                 "method": request.method,
             }
+            if provider == "openaev":
+                # CTEM-26: a failed reachability assertion is an outside-lens exposure (#1164).
+                await ctem_openaev_events.stamp_reachability_assertion(
+                    event_key,
+                    payload,
+                    integration_id=str(integration_id),
+                    verified=_signed_with_webhook_secret(integration.extra_config_enc),
+                )
+            # A change in exposure the CTEM loop listens to (#826): a provisioned
+            # OpenCTI trigger delivers here; the signal is recorded once per object,
+            # from a delivery verified against a configured webhook secret only.
+            await ctem_signal_listeners.note_event(
+                provider,
+                event_key,
+                payload,
+                verified=_signed_with_webhook_secret(integration.extra_config_enc),
+            )
+            if provider == "opencti":
+                # The analyst's mark on a drafted Grouping answers the CTEM review
+                # gate waiting on its coverage request (CTEM-16, #1089).
+                await ctem_analyst_mark.note_event(
+                    provider,
+                    payload,
+                    verified=_signed_with_webhook_secret(integration.extra_config_enc),
+                )
+            if provider == "openaev":
+                # An OpenAEV result a CTEM case waits on moves it (CTEM-15, #918).
+                await ctem_openaev_events.note_event(
+                    event_key,
+                    payload,
+                    verified=_signed_with_webhook_secret(integration.extra_config_enc),
+                )
 
             # ── 6. Resolve the specific assignment ────────────────────────────
             wf_result = await db.execute(
@@ -4655,9 +4899,16 @@ async def receive_assignment_webhook(
             if provider == "opencti":
                 # A trigger serving tracked organizations (#9157 M4): the run
                 # learns which ones this event concerns.
-                from app.services.organization_events import annotate_payload
+                from app.services.organization_events import annotate_payload, named_in_payload
 
                 annotate_payload(payload, config)
+                # CTEM-29: a report or incident naming a tracked organization is a
+                # third-party event (path 11), recorded once per organization.
+                await ctem_signal_listeners.note_tracked_organizations(
+                    payload,
+                    named_in_payload(payload, config),
+                    verified=_signed_with_webhook_secret(integration.extra_config_enc),
+                )
             if wf.trigger_type == "integration_event":
                 if config.get("provider") != provider:
                     logger.warning(
@@ -4747,12 +4998,10 @@ async def receive_assignment_webhook(
             # poller and the Graph notifications do; a dropped delivery is
             # counted on the assignment.
             if wf.trigger_type == "integration_event":
-                # The agent is read here only for a filter naming the
-                # ``enriched.`` facts, and a disabled one reads nothing: the
-                # delivery is then refused below, unread.
-                filter_agent = (
-                    await db.get(Agent, wf.agent_id) if needs_enrichment(trigger_filter(config)) else None
-                )
+                # The agent is read here only when the filter acts as it
+                # (``_filter_reads_as_agent``); a disabled one reads nothing:
+                # the delivery is then refused below, unread.
+                filter_agent = await db.get(Agent, wf.agent_id) if _filter_reads_as_agent(config) else None
                 if filter_agent is not None and not filter_agent.enabled:
                     return await _finalize_dedup(
                         dedup_key,

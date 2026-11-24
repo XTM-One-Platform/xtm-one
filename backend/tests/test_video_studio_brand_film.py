@@ -787,6 +787,24 @@ class _SpeechProvider:
     async def list_speech_models(self) -> list[str]:
         return ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"]
 
+    async def list_voices(self, model: str | None = None) -> list:
+        from app.llm.speech import OpenAISpeechMixin
+
+        return await OpenAISpeechMixin.list_voices(self, model)
+
+
+class _GatewaySpeechProvider(_SpeechProvider):
+    """A gateway: ElevenLabs speaks the account's voices and takes no style, OpenAI's models do."""
+
+    speech_voices_are_fixed = False
+    default_speech_model = None
+
+    def speech_takes_style(self, model: str) -> bool | None:
+        return False if model.startswith("eleven_") else super().speech_takes_style(model)
+
+    async def list_speech_models(self) -> list[str]:
+        return ["eleven_multilingual_v2", "gpt-4o-mini-tts"]
+
 
 def test_openai_says_which_of_its_speech_models_take_a_style():
     provider = _SpeechProvider()
@@ -796,15 +814,15 @@ def test_openai_says_which_of_its_speech_models_take_a_style():
     assert provider.speech_takes_style("eleven_multilingual_v2") is None
 
 
-def _speech_platform(monkeypatch, model: str):
+def _speech_platform(monkeypatch, model: str, provider=None, voice: str = "alloy"):
     from app.llm import router
     from app.llm.router import SpeechTarget
 
     config = SimpleNamespace(id=uuid.uuid4(), provider="openai", display_name="OpenAI")
-    provider = _SpeechProvider()
+    provider = provider or _SpeechProvider()
 
     async def speech_provider(_db, *, user_id, provider_id=None, model: str | None = None, **_kwargs):
-        return SpeechTarget(provider=provider, model=model or platform_model, config=config, voice="alloy")
+        return SpeechTarget(provider=provider, model=model or platform_model, config=config, voice=voice)
 
     platform_model = model
     monkeypatch.setattr(router, "get_speech_provider", speech_provider)
@@ -832,6 +850,21 @@ def test_a_style_the_platforms_model_ignores_is_spoken_by_one_of_its_provider_th
     assert "the platform's speech model, tts-1-hd, takes no delivery instruction, so gpt-4o-mini-tts" in line
     # Without a style, the platform's model speaks as chosen.
     assert asyncio.run(voice.resolve(None, USER_ID, _narrated({}).voiceover)).model == "tts-1-hd"
+
+
+def test_a_styled_model_that_lacks_the_platforms_voice_speaks_with_its_own_default(monkeypatch):
+    # An ElevenLabs voice id sent to an OpenAI model is refused (#713).
+    _speech_platform(monkeypatch, "eleven_multilingual_v2", _GatewaySpeechProvider(), voice="v-rachel")
+    target = asyncio.run(voice.resolve(None, USER_ID, _narrated({"style": "Warm and assured."}).voiceover))
+    assert (target.model, target.voice) == ("gpt-4o-mini-tts", None)
+
+
+@pytest.mark.parametrize(("own", "model"), [("v-clone", "eleven_multilingual_v2"), ("nova", "gpt-4o-mini-tts")])
+def test_a_videos_own_voice_moves_with_its_style_only_to_a_model_that_has_it(monkeypatch, own, model):
+    # The video's voice outranks its style: a model without it would refuse it (#713).
+    _speech_platform(monkeypatch, "eleven_multilingual_v2", _GatewaySpeechProvider(), voice="v-rachel")
+    target = asyncio.run(voice.resolve(None, USER_ID, _narrated({"style": "Warm.", "voice": own}).voiceover))
+    assert target.model == model
 
 
 def test_a_style_the_videos_own_model_ignores_is_said_at_save(monkeypatch):

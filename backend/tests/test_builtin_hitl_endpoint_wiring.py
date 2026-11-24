@@ -122,7 +122,8 @@ async def test_other_fields_on_a_builtin_agent_are_still_refused(monkeypatch, bo
     with pytest.raises(HTTPException) as exc:
         await _invoke_agent_update(monkeypatch, body, agent, _admin())
     assert exc.value.status_code == 403
-    assert exc.value.detail == "Built-in agents cannot be modified"
+    # The refusal names the locked field when one moved (#914).
+    assert exc.value.detail.startswith("Built-in agents cannot be modified")
     assert agent.approve_tool_calls is True, "refused edit must not have applied"
 
 

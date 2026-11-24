@@ -29,12 +29,13 @@ import { Icon } from "@filigran/design-system";
  * stage shows a spinner beside its name (#12183).
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { Spinner } from "@filigran/design-system";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tip } from "@/components/ui/tooltip";
 import { useCtemStageAssessments } from "@/hooks/api/useCtemMetricsApi";
+import type { CtemSignalState } from "@/hooks/api/useCtemSignalsApi";
 import type { AiLockReason } from "@/hooks/useAiLockReason";
 import { useFormatter } from "@/i18n";
 import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
@@ -46,7 +47,9 @@ import type { CtemBand, CtemStage, CtemVertical } from "@/types";
 import { MiniTrend } from "./ctem-viz";
 import { CtemScoreTip } from "./CtemScoreTip";
 import { LifecycleHeader } from "./LifecycleHeader";
+import { SignalCounter } from "./loop/SignalCounter";
 import { assessmentBusy } from "./landing-refresh";
+import { casesListHref } from "./cases-due";
 import { historyWindow, seriesChange } from "./trend-window";
 
 /** Days of the column sparkline and of every delta of the strip. */
@@ -96,6 +99,41 @@ export interface LifecycleBandProps {
   now?: Date;
   /** The posture behind every column is being rebuilt (#12183). */
   refreshing?: boolean;
+  /**
+   * The CTEM signals by state (CTEM-01-UI): a compact counter under the ring
+   * key, each count opening the signal list of the loop trace. Absent outside
+   * XTM One mode or before the first read.
+   */
+  signals?: {
+    counts: Partial<Record<CtemSignalState, number>>;
+    onOpen: (state: CtemSignalState | null) => void;
+  } | null;
+  /**
+   * The open cases of each stage and those waiting for a decision (`GET /ctem-cases/overview`, #1621),
+   * and the accepted risks for the Governance & Risk column: one footer line per column. Absent
+   * before the first read or outside XTM One mode: no footer line.
+   */
+  cases?: {
+    phases: Partial<Record<CtemStageKey, { open: number; waiting: number }>>;
+    acceptedRisk: number;
+  } | null;
+}
+
+/** The footer line of a column: its open cases, linking to the Cases list on them (#1621). */
+function CasesFooter({ href, text, muted, testId }: { href: string; text: string; muted: boolean; testId: string }) {
+  return (
+    <Link
+      to={href}
+      className={cn(
+        "pointer-events-auto relative z-10 w-fit truncate content-caption hover:underline",
+        muted ? "text-default-secondary" : "font-medium text-accent",
+        BUTTON_ROLE_FOCUS_RING,
+      )}
+      data-testid={testId}
+    >
+      {text}
+    </Link>
+  );
 }
 
 /** The score series of one stage over the last `days` days (`null` on a day with none). */
@@ -274,8 +312,8 @@ function BulletBar({ label, value, delta, unit = "%" }: { label: string; value: 
  */
 const DELTA_ROW = "pointer-events-none flex min-h-[2lh] min-w-0 flex-col content-caption";
 
-/** Five subgrid rows: name, ring, band and delta, metric, sparkline. */
-const COLUMN = "relative row-span-5 grid grid-rows-subgrid min-w-0 gap-y-2 rounded-sm border border-elevation-subtle-soft bg-elevation-default p-3";
+/** Six subgrid rows: name, ring, band and delta, metric, sparkline, open cases (#1621). */
+const COLUMN = "relative row-span-6 grid grid-rows-subgrid min-w-0 gap-y-2 rounded-sm border border-elevation-subtle-soft bg-elevation-default p-3";
 
 function Column({ children, stage, onOpen, openLabel, summary, tip }: {
   children: ReactNode; stage: string; onOpen?: () => void; openLabel?: string;
@@ -325,7 +363,7 @@ function RowAction({ children, onClick, href }: { children: ReactNode; onClick?:
 
 export function LifecycleBandCard({
   stages, live, covered, total, history, vertical, aiLockReason, opencrq,
-  onExport, onConnect, onContentHeight, posture = null, now, refreshing = false,
+  onExport, onConnect, onContentHeight, posture = null, now, refreshing = false, signals = null, cases = null,
 }: LifecycleBandProps) {
   const { t_i18n } = useFormatter();
   const navigate = useNavigate();
@@ -362,7 +400,7 @@ export function LifecycleBandCard({
   const deltaText = (n: number | null) => (n == null ? null : t_i18n("{delta} / 30 d", { delta: signed(n) }));
   const changeHelp = t_i18n("Change over the last 30 days");
   const measuredHelp = t_i18n("From the connected modules' metrics alone, whatever the organization.");
-  const contextHelp = t_i18n("The same metrics read against your organization context: crown jewels, tech stack, sector, PIRs and risk appetite. The more of it is filled, the more of the score holds.");
+  const contextHelp = t_i18n("The same metrics read against your organization context: primary assets, software, sector, PIRs and risk appetite. The more of it is filled, the more of the score holds.");
   const contextLink = <RowAction href={ORGANIZATION_CONTEXT_SETUP}>{t_i18n("Add organization context")}</RowAction>;
 
   const postureTrend = window30.map((h) => h.posture_score ?? null);
@@ -380,8 +418,17 @@ export function LifecycleBandCard({
     <Card className="@container flex flex-col" data-testid="ctem-lifecycle-band">
       <CardContent ref={contentRef} className="flex flex-col gap-3 p-4">
         <LifecycleHeader live={live} covered={covered} total={total} onExport={onExport} />
-        {/* The ring key, once for the strip, short labels on one row; the definitions are in the tooltips. */}
+        {/* Signals first: they start the loop (#1189). Then the ring key, once for the strip, short labels on
+            one row; the definitions are in the tooltips. Wide card: the key at the right end of the row; narrower:
+            the signals on a line of their own, the key on the next one, both on the card's left edge. */}
         <div className="flex flex-wrap items-center gap-4 content-caption text-default-secondary" data-testid="ctem-story-key">
+          {signals && (
+            <span className="flex min-w-0 basis-full items-center gap-1 @5xl:basis-auto" data-testid="ctem-story-key-signals">
+              {/* The signal sources are a tab of the Signals page the counter opens (#1263): no icon of their own here. */}
+              <SignalCounter counts={signals.counts} onOpen={signals.onOpen} />
+            </span>
+          )}
+          <span className="flex flex-wrap items-center gap-4 @5xl:ml-auto" data-testid="ctem-story-key-rings">
           <Tip content={measuredHelp}>
             <span className="inline-flex items-center gap-1.5" tabIndex={0}>
               <Icon name="database" size={16} /> {t_i18n("Outer ring: Measured (quantitative)")}
@@ -392,13 +439,14 @@ export function LifecycleBandCard({
               <Icon name="building-2" size={16} /> {t_i18n("Inner ring: In your context (qualitative)")}
             </span>
           </Tip>
+          </span>
         </div>
         <div className="relative">
           {/* The track the stages sit on: one line through the rings' row. */}
           <div className="pointer-events-none absolute inset-x-3 top-[4.25rem] hidden h-px bg-[var(--border-elevation-subtle-soft)] @5xl:block" aria-hidden data-testid="ctem-story-track" />
           <ul
             className="relative grid grid-cols-2 gap-x-3 gap-y-3 @2xl:grid-cols-3 @5xl:grid-cols-6"
-            style={{ gridTemplateRows: "repeat(5, auto)" }}
+            style={{ gridTemplateRows: "repeat(6, auto)" }}
             data-testid="ctem-lifecycle-chips"
           >
             {CTEM_STAGE_KEYS.map((key, index) => {
@@ -512,6 +560,18 @@ export function LifecycleBandCard({
                   <span className="pointer-events-none block h-6 w-full" data-testid="ctem-lifecycle-trend-line">
                     {isCovered && hasTrend ? <MiniTrend values={trend} color={band.ring} /> : null}
                   </span>
+                  <span className="flex min-h-[1lh] min-w-0">
+                    {cases && (() => {
+                      const open = cases.phases[stageKey]?.open ?? 0;
+                      const waiting = cases.phases[stageKey]?.waiting ?? 0;
+                      const text = open === 0
+                        ? t_i18n("No open case")
+                        : waiting > 0
+                          ? t_i18n("{count, plural, one {# open case} other {# open cases}}, {waiting} waiting", { count: open, waiting })
+                          : t_i18n("{count, plural, one {# open case} other {# open cases}}", { count: open });
+                      return <CasesFooter href={casesListHref({ phase: key })} text={text} muted={open === 0} testId={`ctem-lifecycle-cases-${key}`} />;
+                    })()}
+                  </span>
                 </Column>
               );
             })}
@@ -581,6 +641,19 @@ export function LifecycleBandCard({
               </span>
               <span className="pointer-events-none block h-6 w-full" data-testid="ctem-lifecycle-trend-line">
                 {postureTrend.filter((v) => v !== null).length >= 2 ? <MiniTrend values={postureTrend} color={bandOf(posture?.band).ring} /> : null}
+              </span>
+              <span className="flex min-h-[1lh] min-w-0">
+                {/* Cases carry no Governance phase: the column counts the risks accepted on them. */}
+                {cases && (
+                  <CasesFooter
+                    href={casesListHref({ state: "accepted_risk" })}
+                    text={cases.acceptedRisk === 0
+                      ? t_i18n("No accepted risk")
+                      : t_i18n("{count, plural, one {# accepted risk} other {# accepted risks}}", { count: cases.acceptedRisk })}
+                    muted={cases.acceptedRisk === 0}
+                    testId="ctem-lifecycle-cases-governance"
+                  />
+                )}
               </span>
             </Column>
           </ul>

@@ -22,8 +22,8 @@ Check                               Severity    Category      Fails when
 ==================================  ==========  ============  ==============================================
 ``openaev.heartbeat``               critical    availability  no registration heartbeat for 15 minutes
 ``openaev.healthcheck``             warn/crit   availability  OpenAEV reports a failing healthcheck (ERROR critical)
-``openaev.integration_silent``      warning     availability  an injector, collector or executor silent for 60 minutes
-``openaev.agents_offline``          warning     availability  over half of the agents are offline
+``openaev.integration_silent``      warning     availability  an injector, collector or executor silent for 60 minutes (E)
+``openaev.agents_offline``          warning     availability  over half of the agents are offline (E)
 ==================================  ==========  ============  ==============================================
 
 The heartbeat reads ``PlatformRegistration.is_healthy``. Every other check reads
@@ -31,6 +31,10 @@ the latest fresh snapshot (same rule as the OpenCTI checks,
 :mod:`app.services.health.opencti_checks`): a release that sends none records
 nothing beyond the heartbeat, and a key the snapshot does not carry records
 nothing for its check.
+
+The thresholds marked (E) are the defaults of
+:class:`app.services.health.settings.HealthOpenAEVThresholds`; an administrator
+edits them in Settings > Platform Health and the next pass reads them (#101 S10b).
 
 Same gate as the XTM One platform checks: XTM One modes only, AI switched off
 included, no model call, never metered, no network.
@@ -44,18 +48,20 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.docs_links import docs_url
 from app.services.health.engine import Check, CheckResult, close_out, register_check
-from app.services.health.opencti_checks import _registrations
+from app.services.health.opencti_checks import _registrations, with_restart_grace
 from app.services.health.platform_checks import PLATFORM_CHECK_INTERVAL, _platform_check
+from app.services.health.settings import HealthOpenAEVThresholds, load_health_settings
 
 MODULE = "openaev"
 PLATFORM_IDENTIFIER = "openaev"
-INTEGRATION_SILENT_AFTER = timedelta(minutes=60)
-AGENTS_OFFLINE_MAX_SHARE = 0.5
-DOC_LINK = "/docs/administration/health#openaev-checks"
+#: The thresholds when none is stored (Settings > Platform Health, #101 S10b).
+DEFAULTS = HealthOpenAEVThresholds()
+DOC_LINK = docs_url("administration/health", "openaev-checks")
 SOURCE = "OpenAEV health snapshot"
 
-Read = Callable[[Any, dict[str, Any] | None, datetime], list[CheckResult]]
+Read = Callable[[Any, dict[str, Any] | None, datetime, HealthOpenAEVThresholds], list[CheckResult]]
 
 
 def _result(
@@ -77,7 +83,9 @@ def _subject(registration: Any) -> dict[str, str]:
     return {"registration_id": str(registration.id)}
 
 
-def heartbeat(registration: Any, snapshot: dict[str, Any] | None, now: datetime) -> list[CheckResult]:
+def heartbeat(
+    registration: Any, snapshot: dict[str, Any] | None, now: datetime, limits: HealthOpenAEVThresholds = DEFAULTS
+) -> list[CheckResult]:
     last = registration.last_heartbeat_at
     return [
         _result(
@@ -99,7 +107,9 @@ def heartbeat(registration: Any, snapshot: dict[str, Any] | None, now: datetime)
     ]
 
 
-def healthcheck(registration: Any, snapshot: dict[str, Any] | None, now: datetime) -> list[CheckResult]:
+def healthcheck(
+    registration: Any, snapshot: dict[str, Any] | None, now: datetime, limits: HealthOpenAEVThresholds = DEFAULTS
+) -> list[CheckResult]:
     """One result per healthcheck type OpenAEV reports, its most severe status wins."""
     if snapshot is None or "healthchecks" not in snapshot:
         return []
@@ -124,9 +134,12 @@ def healthcheck(registration: Any, snapshot: dict[str, Any] | None, now: datetim
     ]
 
 
-def integration_silent(registration: Any, snapshot: dict[str, Any] | None, now: datetime) -> list[CheckResult]:
+def integration_silent(
+    registration: Any, snapshot: dict[str, Any] | None, now: datetime, limits: HealthOpenAEVThresholds = DEFAULTS
+) -> list[CheckResult]:
     if snapshot is None or "integrations" not in snapshot:
         return []
+    silent_after = timedelta(minutes=limits.integration_silent_minutes)
     results = []
     for integration in snapshot["integrations"]:
         if "updated_at" not in integration:
@@ -137,7 +150,7 @@ def integration_silent(registration: Any, snapshot: dict[str, Any] | None, now: 
                 "openaev.integration_silent",
                 "warning",
                 "availability",
-                now - updated > INTEGRATION_SILENT_AFTER,
+                now - updated > silent_after,
                 {**_subject(registration), "integration_id": integration["id"]},
                 evidence={
                     "values": {
@@ -145,7 +158,7 @@ def integration_silent(registration: Any, snapshot: dict[str, Any] | None, now: 
                         "kind": integration["kind"],
                         "updated_at": integration["updated_at"],
                     },
-                    "threshold": "60 minutes",
+                    "threshold": f"{limits.integration_silent_minutes} minutes",
                     "source": SOURCE,
                 },
                 recommendation=f"Restart the {integration['kind']} or check its logs; it has stopped reporting.",
@@ -154,7 +167,9 @@ def integration_silent(registration: Any, snapshot: dict[str, Any] | None, now: 
     return results
 
 
-def agents_offline(registration: Any, snapshot: dict[str, Any] | None, now: datetime) -> list[CheckResult]:
+def agents_offline(
+    registration: Any, snapshot: dict[str, Any] | None, now: datetime, limits: HealthOpenAEVThresholds = DEFAULTS
+) -> list[CheckResult]:
     agents = (snapshot or {}).get("agents") or {}
     if "total" not in agents or "offline" not in agents:
         return []
@@ -164,11 +179,11 @@ def agents_offline(registration: Any, snapshot: dict[str, Any] | None, now: date
             "openaev.agents_offline",
             "warning",
             "availability",
-            total > 0 and offline / total > AGENTS_OFFLINE_MAX_SHARE,
+            total > 0 and offline / total * 100 > limits.agents_offline_max_percent,
             _subject(registration),
             evidence={
                 "values": {"total": total, "offline": offline},
-                "threshold": f"{int(AGENTS_OFFLINE_MAX_SHARE * 100)} % offline",
+                "threshold": f"{limits.agents_offline_max_percent:g} % offline",
                 "source": SOURCE,
             },
             recommendation="Check the endpoints and the agent service: simulations cannot run on offline agents.",
@@ -177,12 +192,14 @@ def agents_offline(registration: Any, snapshot: dict[str, Any] | None, now: date
 
 
 def _check(check_id: str, read: Read) -> Callable[[AsyncSession, datetime], Awaitable[list[CheckResult]]]:
-    """``read`` over every registered OpenAEV; a registration or subject gone is closed out."""
+    """``read`` over every registered OpenAEV with the stored thresholds; a registration or subject gone is closed out."""
 
     async def run(db: AsyncSession, now: datetime) -> list[CheckResult]:
+        limits = (await load_health_settings(db)).openaev
         results: list[CheckResult] = []
         for registration, snapshot in await _registrations(db, now, PLATFORM_IDENTIFIER):
-            results.extend(read(registration, snapshot, now))
+            results.extend(read(registration, snapshot, now, limits))
+        results = await with_restart_grace(db, now, results, PLATFORM_IDENTIFIER)
         return results + await close_out(db, check_id, results)
 
     run.__name__ = read.__name__

@@ -3,6 +3,7 @@
 * ``list_opencrq_tenants``               - tenants accessible to the caller.
 * ``get_opencrq_platform_version``       - the version the platform runs.
 * ``list_opencrq_organizations``         - organizations of a tenant.
+* ``get_opencrq_organization``           - one organization's stored fields.
 * ``list_opencrq_frameworks``            - assessment-catalog and Drata frameworks.
 * ``get_opencrq_framework``              - Drata framework detail.
 * ``list_opencrq_framework_requirements`` - requirements of a Drata framework.
@@ -20,6 +21,7 @@ from __future__ import annotations
 import json
 import logging
 
+from app.core.module_versions import RegisteredVersionFn, version_answer
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import (
@@ -65,6 +67,41 @@ _TECHNIQUE_PROCEDURES = {
 }
 
 _CAPABILITY_FUNCTIONS = ["prevent", "detect"]
+
+
+def _fmt_organization(o: dict) -> str:
+    """One organization (risk scope) as getOrganization stores it, one field per line."""
+
+    def _named(rel: object, fallback_id: object) -> str:
+        if isinstance(rel, dict) and rel.get("name"):
+            return f"{_one_line(rel.get('name'), 200)} (id: {rel.get('id') or fallback_id})"
+        return str(fallback_id) if fallback_id else "not set"
+
+    def _value(v: object) -> str:
+        return "not set" if v is None or v == "" else _one_line(v, 300)
+
+    times = (o.get("reactionTimeMin"), o.get("reactionTimeLikely"), o.get("reactionTimeMax"))
+    reaction = (
+        "not set"
+        if all(t is None for t in times)
+        else "min {} h, likely {} h, max {} h".format(*("?" if t is None else t for t in times))
+    )
+    mapped = o.get("mappedAssetCount")
+    lines = [
+        f"Name: {_one_line(o.get('name'), 200, '?')}",
+        f"ID: {o.get('id')}",
+        f"Description: {_value(o.get('description'))}",
+        f"Legal entity name: {_value(o.get('legalEntityName'))}",
+        f"Sector: {_named(o.get('sector'), o.get('sectorId'))}",
+        f"Country: {_named(o.get('country'), o.get('countryId'))}",
+        f"Domain: {_value(o.get('domain'))}",
+        f"Revenue band: {_value(o.get('revenueBand'))}",
+        f"Employee count: {_value(o.get('employeeCount'))}",
+        f"Estate mode: {_value(o.get('estateMode'))}",
+        f"Reaction time: {reaction}",
+        f"Mapped assets: {'unknown' if mapped is None else mapped}",
+    ]
+    return "\n".join(lines)
 
 
 def _fmt_scope_posture(organization_id: str, p: dict) -> str:
@@ -177,7 +214,11 @@ def _fmt_capability_event(e: dict) -> str:
 
 
 def register(
-    base_url: str, headers: dict[str, str], executor: CallableToolExecutor
+    base_url: str,
+    headers: dict[str, str],
+    executor: CallableToolExecutor,
+    *,
+    registered_version_fn: RegisteredVersionFn | None = None,
 ) -> list[ToolDefinition]:
     async def list_opencrq_tenants() -> str:
         tenants, err = await _trpc(
@@ -214,6 +255,33 @@ def register(
             lines.append(entry + (f"\n{link}" if link else ""))
         return _quarantined(
             f"Organizations ({len(orgs)}) in tenant {tenant}:", "\n".join(lines), "organizations"
+        )
+
+    async def get_opencrq_organization(organization_id: str = "", tenant_id: str = "") -> str:
+        organization_id = (organization_id or "").strip()
+        if not organization_id:
+            return "organization_id is required (use list_opencrq_organizations to discover)."
+        tenant, err = await _resolve_tenant(base_url, headers, tenant_id)
+        if err:
+            return err
+        org, err = await _trpc(
+            base_url,
+            headers,
+            "organizations.getOrganization",
+            "get organization",
+            input={"id": organization_id},
+            tenant_id=tenant,
+        )
+        if err:
+            return err
+        if not isinstance(org, dict):
+            return f"Organization {organization_id} not found in tenant {tenant}."
+        link = _grc_link(base_url, tenant, "organization", org.get("id"))
+        return _quarantined(
+            f"Organization in tenant {tenant}:",
+            _fmt_organization(org),
+            "organization",
+            link or "",
         )
 
     async def list_opencrq_frameworks(tenant_id: str = "") -> str:
@@ -375,9 +443,19 @@ def register(
             ]
         if not capabilities:
             return "No control capabilities matched."
-        shown, more = _page(capabilities, offset, 40)
+        size = 40
+        shown, more = _page(capabilities, offset, size)
+        total = len(capabilities)
+        header = f"Control capabilities ({total}):"
+        if shown and total > size:
+            # Said before the rows, so a reader that stops at the first page knows it did.
+            pages = -(-total // size)
+            end = offset + len(shown)
+            header = f"Control capabilities ({total}; page {offset // size + 1} of {pages}, " + (
+                f"next offset {end}):" if end < total else "last page):"
+            )
         return _quarantined(
-            f"Control capabilities ({len(capabilities)}):",
+            header,
             "\n\n".join(_fmt_control(c, base_url, tenant) for c in shown),
             "control capabilities",
             more,
@@ -849,16 +927,23 @@ def register(
 
     async def get_opencrq_platform_version() -> str:
         health, err = await _trpc(base_url, headers, "health", "read the platform version")
+        version = health.get("version") if isinstance(health, dict) and not err else None
         if err:
-            return err
-        version = health.get("version") if isinstance(health, dict) else None
-        if not isinstance(version, str) or not version.strip():
-            return "OpenCRQ answered health without a version: the platform version could not be read."
-        return _quarantined("OpenCRQ version:", json.dumps({"version": version.strip()[:200]}), "platform version")
+            answer, version = err, ""
+        elif not isinstance(version, str) or not version.strip():
+            answer, version = "OpenCRQ answered health without a version: the platform version could not be read.", ""
+        else:
+            version = version.strip()[:200]
+            answer = _quarantined("OpenCRQ version:", json.dumps({"version": version}), "platform version")
+        if registered_version_fn is None:
+            return answer
+        # The live value stays inside its quarantine: the comparison names it, never quotes it.
+        return version_answer("OpenCRQ", answer, version, await registered_version_fn(), quote_live=False)
 
     executor.register("list_opencrq_tenants", list_opencrq_tenants)
     executor.register("get_opencrq_platform_version", get_opencrq_platform_version)
     executor.register("list_opencrq_organizations", list_opencrq_organizations)
+    executor.register("get_opencrq_organization", get_opencrq_organization)
     executor.register("list_opencrq_frameworks", list_opencrq_frameworks)
     executor.register("get_opencrq_framework", get_opencrq_framework)
     executor.register(
@@ -916,6 +1001,23 @@ def register(
                 "scope risk scenarios, assessments, and primary assets."
             ),
             input_schema={"type": "object", "properties": {**_tenant_prop}},
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="get_opencrq_organization",
+            description=(
+                "Read one OpenCRQ organization's stored fields: sector, country, "
+                "domain, revenue band, employee count, estate mode, reaction "
+                "times, mapped asset count. Read-only; verifies an update."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "organization_id": {"type": "string", "description": "Organization UUID."},
+                    **_tenant_prop,
+                },
+                "required": ["organization_id"],
+            },
             source=_SOURCE,
         ),
         ToolDefinition(

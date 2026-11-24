@@ -182,7 +182,9 @@ test.describe('Integration configuration', () => {
     // The endpoint is a plain, readable input. The secret starts EMPTY rather
     // than showing the API's mask under password dots: the only masked field
     // here is the client secret, and its placeholder says a value is stored.
-    const tokenUrl = page.getByPlaceholder('token_url');
+    // Fields are found by their name (the label read off the catalog), never
+    // by the raw key: the placeholder is a sentence on the name.
+    const tokenUrl = page.getByLabel('Partner token endpoint', { exact: true });
     await expect(tokenUrl).toHaveValue(TOKEN_URL);
     await expect(tokenUrl).toHaveAttribute('type', 'text');
     const storedSecret = page.getByPlaceholder('Stored: type to replace');
@@ -195,7 +197,7 @@ test.describe('Integration configuration', () => {
 
     // The field is pre-filled with the stored value. Empty it and save,
     // touching nothing else.
-    const cardUrls = page.getByPlaceholder('card_urls');
+    const cardUrls = page.getByLabel('Partner agent card URLs', { exact: true });
     await expect(cardUrls).toHaveValue(CARD_URLS);
     await cardUrls.fill('');
     await page.getByRole('button', { name: 'Save changes' }).click();
@@ -252,7 +254,7 @@ test.describe('Integration configuration', () => {
     await page.getByRole('combobox').filter({ hasText: 'Service account key JSON' }).click();
     await page.getByRole('option', { name: /Impersonate a service account/ }).click();
     await expect(storedKey).toHaveCount(0);
-    await page.getByPlaceholder('impersonate_service_account').fill('caller@their-project.iam.gserviceaccount.com');
+    await page.getByLabel('Impersonate service account', { exact: true }).fill('caller@their-project.iam.gserviceaccount.com');
     await page.getByRole('button', { name: 'Save changes' }).click();
 
     await expect.poll(() => saved.length).toBe(1);
@@ -346,10 +348,11 @@ test.describe('Integration configuration', () => {
     await expect(page.getByText(/INBOUND-ONLY/)).toHaveCount(0);
     await page.keyboard.press('Escape');
 
-    const secret = page.getByPlaceholder('client_secret');
+    const secret = page.getByLabel('Client secret', { exact: true });
     await expect(secret).toHaveAttribute('type', 'password');
-    await expect(page.getByPlaceholder('token_url')).toHaveAttribute('type', 'text');
-    await expect(page.getByPlaceholder('card_urls')).toHaveAttribute('type', 'text');
+    await expect(secret).toHaveAttribute('placeholder', 'Paste client secret...');
+    await expect(page.getByLabel('Partner token endpoint', { exact: true })).toHaveAttribute('type', 'text');
+    await expect(page.getByLabel('Partner agent card URLs', { exact: true })).toHaveAttribute('type', 'text');
 
     // "Show" is for checking what was just typed, and only that.
     await page.getByRole('button', { name: 'Show', exact: true }).click();
@@ -378,7 +381,7 @@ test.describe('Integration configuration', () => {
     await expect(apiKey).toHaveCount(1);
     await expect(apiKey).toHaveValue('');
     await expect(apiKey).toHaveAttribute('type', 'password');
-    await expect(page.getByPlaceholder('base_url')).toHaveValue('https://acme.example');
+    await expect(page.getByLabel('Acme instance URL', { exact: true })).toHaveValue('https://acme.example');
     await expect(page.getByText('(leave empty to keep current)')).toHaveCount(0);
   });
 

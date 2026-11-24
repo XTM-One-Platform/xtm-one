@@ -141,7 +141,23 @@ renders HTML and the new name changes whether the document reads as a page.
 
 Built-in and skill-package-imported knowledge bases reject document updates on
 both the tool and REST paths — their content is re-seeded from its source, so an
-edit would be silently reverted.
+edit would be silently reverted. The exception is a built-in knowledge base whose
+seed entry sets `user_content` (Company Context): the platform seeds the
+collection, never its documents, so `knowledge_base_content_lock()` does not lock
+it and its documents are written like a company-managed KB's (#1763).
+
+The document write of `update_knowledge_document` and `update_kb_document`
+(old vectors deleted, new source written) runs under
+`kb_helpers.apply_document_write_timeout()`: `SET LOCAL statement_timeout` to
+`kb_sync_timeout_secs`, so a large document is not cancelled by the 30 s pool
+default.
+
+`update_kb_document` replaces a document's source (or appends to it with
+`append`) and re-embeds it, keeping its id.
+
+`get_agent` labels a write grant on a content-locked knowledge base
+`[write grant unused: content locked (<lock>)]` instead of `[writable]`: the run
+strips that grant from its write scope.
 
 ### One gate for every content write
 
@@ -152,7 +168,9 @@ package-installed, then workspace-owned (below), then built-in, then - when a us
 manage right (company-managed = admins only, a share needs the `config` tier),
 then read-only, which only whoever could lift it is told about. The REST
 document / crawl / one-shot import / delete routes, the agent-builder
-`add_kb_document` / `delete_kb_document` / `delete_knowledge_base` tools,
+`add_kb_document` / `update_kb_document` / `delete_kb_document` /
+`delete_knowledge_base` tools (the caller's rights: they reach a KB of another
+agent or office the caller manages, with no write grant on the agent),
 `store_knowledge` / `update_knowledge_document` (no user: the agent writes under
 its own grant; their read-only and built-in sentences are their own) and the
 chat upload all call it - never re-spell one of its checks in a route or a tool.

@@ -18,6 +18,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * the conversation: the same panel as the workspace page, in the slide-over the
  * conversation files use.
  */
+import { workspacePath } from "@/lib/task-routes";
 import { ExternalLink, FolderKanban, X } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -51,7 +52,7 @@ export function WorkspaceKnowledgeDrawer({
           <p className="mt-0.5 truncate content-caption text-default-secondary">{workspace.data?.name ?? ""}</p>
         </div>
         <Button asChild variant="ghost" size="sm" className="h-8 gap-1.5">
-          <Link to={`/workspaces/${workspaceId}`} onClick={onClose}>
+          <Link to={workspacePath(workspaceId)} onClick={onClose}>
             <ExternalLink className="h-3.5 w-3.5" />
             {t_i18n("Open workspace")}
           </Link>

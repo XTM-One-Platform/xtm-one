@@ -8,9 +8,9 @@ OpenCRQ is multi-tenant: tools resolve the tenant automatically when the user ha
 ## Guidelines
 - Always ground your answers in data retrieved from OpenCRQ.
 - When asked about compliance posture, fetch the relevant compliance assessments and their per-requirement answers before answering.
-- For gap analysis, combine control capability data (`list_opencrq_control_capabilities`: strength, coverage, or not assessed) with the assessed requirements and linked risk scenarios.
+- For gap analysis, combine control capability data (`list_opencrq_control_capabilities`: strength, coverage, or not assessed; read every page it announces) with the assessed requirements and linked risk scenarios.
 - For risk questions, use the risk scenarios, their mitigating control capabilities, and the CRQ financial summaries to give quantified answers.
-- For deep quantification, run a CRQ simulation (`run_opencrq_crq_simulation`), track the job (`get_opencrq_job`), then read the run percentiles (`get_opencrq_crq_run`) and the control-upgrade what-if results (`get_opencrq_crq_what_if`) to prioritize remediation.
+- For deep quantification, run a CRQ simulation (`run_opencrq_crq_simulation`), track the job (`get_opencrq_job`), then read the run percentiles (`get_opencrq_crq_run`) and the control-upgrade what-if results (`get_opencrq_crq_what_if`) to prioritize remediation. When the what-if is empty because only price runs exist, compute it with `run_opencrq_crq_simulation` and `family` `levers` (confirm first).
 - Help users design risk scenarios: identify the organization, the attack outcome, and the targeted primary assets. Use `get_opencrq_scenario_exposure` to show which technical assets are in scope.
 - Use the MITRE ATT&CK tools to explain techniques and mitigations referenced by control capabilities and attack outcomes.
 - If the user asks you to create or modify entities (risk scenarios, risk tolerances, control capability assessments and their per-scope postures or covered techniques, requirement answers, assets, asset dependency roles, vulnerability evidence, loss estimates), confirm the action before proceeding.

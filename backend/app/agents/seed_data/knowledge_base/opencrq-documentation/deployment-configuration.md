@@ -10,24 +10,24 @@ This guide details the environment variables and configuration options for deplo
 
 ## Database (PostgreSQL)
 
-**Version.** PostgreSQL 17 is the reference version: the one the XTM bundle runs OpenCRQ beside XTM One on (`pgvector/pgvector`, PostgreSQL 17 with pgvector), and the one the development stack, the shipped Compose file and CI run. OpenCRQ uses no pgvector itself.
+**Version.** PostgreSQL 17 is the reference version: the one the XTM bundle runs OpenCRQ beside XTM One on (`pgvector/pgvector`, PostgreSQL 17 with pgvector), and the one the development stack and CI run. OpenCRQ uses no pgvector itself.
 
 | Variable             | Required | Default Value | Architectural/Functional Impact                                       |
 |:---------------------|:--------:|:--------------|:----------------------------------------------------------------------|
 | `POSTGRES__HOST`     |   Yes    | `postgres`    | Hostname or IP of the PostgreSQL service. Used by the App to connect. |
 | `POSTGRES__PORT`     |   Yes    | `5432`        | Listening port of the PostgreSQL service.                             |
-| `POSTGRES__USER`     |   Yes    | `opengrc`     | User for DB authentication and Postgres container initialization.     |
+| `POSTGRES__USER`     |   Yes    | `opencrq`     | User for DB authentication and Postgres container initialization.     |
 | `POSTGRES__PASSWORD` |   Yes    | `changeme`    | Password for DB authentication.                                       |
-| `POSTGRES__DATABASE` |   Yes    | `opengrc`     | Name of the target database.                                          |
+| `POSTGRES__DATABASE` |   Yes    | `opencrq`     | Name of the target database.                                          |
 | `POSTGRES__POOL_MAX` |    No    | `20`          | Maximum number of PostgreSQL connections in the shared pool of one application process. Increase on high-volume environments. What must stay under PostgreSQL's own `max_connections` is the sum over every process, and a process opens connections this pool does not count: a control pool of 5 on every process that runs jobs, reserved for the job runtime's own claims, lease renewals and log writes so they never queue behind a handler's reads, and one long-lived client per `LISTEN` channel the process subscribes to. |
 
-**Shared memory.** A parallel query passes tuples between its workers through `/dev/shm`, and an aggregate over a large asset estate exceeds the 64 MB a container gets by default: the query then fails outright with `could not resize shared memory segment`. Give the PostgreSQL service at least 1 GB (`shm_size: 1gb` in Compose, an `emptyDir` of `medium: Memory` sized to match on Kubernetes); the composes shipped here already do.
+**Shared memory.** A parallel query passes tuples between its workers through `/dev/shm`, and an aggregate over a large asset estate exceeds the 64 MB a container gets by default: the query then fails outright with `could not resize shared memory segment`. Give the PostgreSQL service at least 1 GB (`shm_size: 1gb` in Compose, an `emptyDir` of `medium: Memory` sized to match on Kubernetes); the development stack and the XTM Docker bundle already do.
 
 **Extensions.** The migrations create the `unaccent` extension. It is trusted, so the database owner can create it without superuser rights, but a managed service that allowlists extensions one by one refuses any it does not list, and the migration then fails at startup. On Azure Database for PostgreSQL Flexible Server, add it to the `azure.extensions` server parameter before the first start.
 
 ## File Storage (RustFS / S3-compatible)
 
-OpenCRQ stores uploaded files (e.g. imported bundles) in an S3-compatible object store. The reference deployment ships [RustFS](https://github.com/rustfs/rustfs), but any S3-compatible backend (MinIO, AWS S3, …) works. Files are scoped per tenant under the key `{tenantId}/{storageKey}`, where `storageKey` is a UUIDv7 generated per upload. The store is only contacted by the backend — there is no direct browser access.
+OpenCRQ stores uploaded files (e.g. imported bundles) in an S3-compatible object store. The development stack ships [RustFS](https://github.com/rustfs/rustfs) and the XTM Docker bundle Silo, but any S3-compatible backend (MinIO, AWS S3, …) works. Files are scoped per tenant under the key `{tenantId}/{storageKey}`, where `storageKey` is a UUIDv7 generated per upload. The store is only contacted by the backend — there is no direct browser access.
 
 File storage is **optional configuration**. Boot behavior depends on the `FILE_STORAGE__*` variables below:
 - **Unset entirely** — the app boots normally with the feature disabled: no upload/download routes are mounted, and the frontend hides the corresponding actions.
@@ -38,10 +38,10 @@ In **non-production**, the bucket is created automatically at startup if missing
 
 | Variable                    | Required (when enabling) | Default Value | Architectural/Functional Impact                                                                                    |
 |:----------------------------|:------------------------:|:--------------|:-------------------------------------------------------------------------------------------------------------------|
-| `FILE_STORAGE__ENDPOINT`   | **Yes**                  | -             | S3 API endpoint of the object store (e.g. `http://rustfs:9000` inside the Compose network). Enables the feature when set together with the access/secret key.  |
+| `FILE_STORAGE__ENDPOINT`   | **Yes**                  | -             | S3 API endpoint of the object store (e.g. `http://minio:9000` inside the XTM Docker bundle). Enables the feature when set together with the access/secret key.  |
 | `FILE_STORAGE__ACCESS_KEY` | **Yes**                  | -             | Access key for the object store. Pass through a secret store (Vault, K8s Secret, SOPS, CI secret).                 |
 | `FILE_STORAGE__SECRET_KEY` | **Yes**                  | -             | Secret key for the object store. Pass through a secret store — never a `ConfigMap` or committed JSON file.         |
-| `FILE_STORAGE__BUCKET`     |    No    | `opengrc`     | Bucket that holds all tenant files.                                                                                |
+| `FILE_STORAGE__BUCKET`     |    No    | `opencrq`     | Bucket that holds all tenant files.                                                                                |
 | `FILE_STORAGE__REGION`     |    No    | `eu-west-3`   | S3 region. Arbitrary for RustFS/MinIO but required by the S3 client.                                               |
 
 > **Production ops — create the bucket first.** Auto-creation is disabled in production to avoid masking a misconfigured endpoint or credentials. Create the bucket once before first boot, e.g. with the AWS CLI against your endpoint:
@@ -54,46 +54,83 @@ In **non-production**, the bucket is created automatically at startup if missing
 
 | Variable                               | Required | Default Value                      | Architectural/Functional Impact                                                            |
 |:---------------------------------------|:--------:|:-----------------------------------|:-------------------------------------------------------------------------------------------|
-| `HTTP_SERVER__PUBLIC_PORT`             |    No    | `3002` (Compose) / `3020` (Sample) | Port exposed on the host to access the application.                                        |
-| `HEALTHCHECK_HTTP_SERVER__PUBLIC_PORT` |    No    | `8444`                             | Port exposed on the host for healthchecks. Separates management traffic from user traffic. |
-| `HTTP_SERVER__HOST`                    |    -     | `0.0.0.0`                          | Defines the internal listening interface of the container.                                 |
-| `HTTP_SERVER__PORT`                    |    -     | `3002`                             | Internal listening port of the application.                                                |
-| `HEALTHCHECK_HTTP_SERVER__PORT`        |    -     | `8444`                             | Internal listening port for healthchecks.                                                  |
+| `HTTP_SERVER__PUBLIC_PORT`             |    No    | -                                  | Port the host publishes the application on, logged beside the internal one.                |
+| `HEALTHCHECK_HTTP_SERVER__PUBLIC_PORT` |    No    | -                                  | Port the host publishes the healthcheck on, logged beside the internal one.                |
+| `HTTP_SERVER__HOST`                    | **Yes**  | -                                  | Internal listening interface, `0.0.0.0` in a container.                                    |
+| `HTTP_SERVER__PORT`                    | **Yes**  | -                                  | Internal listening port of the application, `3002`, which the published image exposes.     |
+| `HEALTHCHECK_HTTP_SERVER__PORT`        | **Yes**  | -                                  | Internal listening port for healthchecks, `8444`, which the published image exposes.       |
+| `APP__ADMIN__TOKEN`                    |    No    | -                                  | Bootstrap admin token, a UUIDv4 (the counterpart of OpenCTI's `APP__ADMIN__TOKEN`). It authenticates the peer provisioning API below and is an admin bearer on the API (see [Admin token as a bearer](#admin-token-as-a-bearer)); unset, both are off. Pass through a secret store. |
+| `XTM__OPENCTI_URL`                     |    No    | -                                  | URL of the deployment's OpenCTI, where the product switcher sends a person. Unset: the URL of the tenant's OpenCTI connection, if any. |
+| `XTM__OPENAEV_URL`                     |    No    | -                                  | URL of the deployment's OpenAEV, for the product switcher. Unset: the URL of the tenant's OpenAEV connection, if any. |
 
-## Observability
+### Peer provisioning API
 
-| Variable                      | Required | Default Value      | Architectural/Functional Impact                         |
-|:------------------------------|:--------:|:-------------------|:--------------------------------------------------------|
-| `TELEMETRY__APPLICATION_NAME` |    No    | `opengrc-platform` | Service name as it will appear in telemetry interfaces. |
-| `TELEMETRY__TAGS`             |    No    | (empty)            | Comma-separated deployment tags (e.g. `saas,eu-west`) attached to [anonymous usage telemetry](usage-telemetry.md) as the `filigran.telemetry.tags` resource attribute. Normalized (trimmed, lowercased, deduplicated, sorted) before export. Empty by default: no tags attribute is exported. |
+A deployment manager gives a sibling XTM product (an OpenAEV or an OpenCTI reading this platform) a service account and a token here, with the bootstrap admin token as bearer. No session and no tenant header: the account is created in the initial tenant (`INITIAL_TENANT__ID`), in its `connectors` group.
 
-### Pyroscope
+- `POST /api/xtm/peer-tokens` with `Authorization: Bearer <APP__ADMIN__TOKEN>` and `{"consumer": "openaev", "name": "OpenAEV", "email": "openaev@example.com", "token_name": "opencrq-link"}`. Idempotent on `email` (lower-cased): the same account is converged and renamed, its live tokens named `token_name` are revoked, and a non-expiring `flgrn_ocrq_tkn_` token is issued. Answers `200 {"user_id", "email", "name", "token_name", "token"}`; the token is shown once.
+- `POST /api/xtm/peer-tokens/revoke` with the same bearer and `{"email", "token_name"}`: revokes those tokens. Answers `200 {"revoked": <count>}`.
 
-| Variable                               | Required | Default Value           | Architectural/Functional Impact             |
-|:---------------------------------------|:--------:|:------------------------|:--------------------------------------------|
-| `TELEMETRY__PYROSCOPE__ENABLED`        |    No    | `false`                 | Enable or disable Pyroscope profiling.      |
-| `TELEMETRY__PYROSCOPE__SERVER_ADDRESS` |    No    | -                       | URL used by the App agent to send profiles. **Required** when Pyroscope is enabled (e.g. `http://pyroscope:4040` in the dev/prod Compose files). |
+A missing or wrong bearer answers 401, an invalid body 400.
 
-### OpenTelemetry (Traces, Metrics, Logs)
+### Admin token as a bearer
+
+As with OpenCTI's `APP__ADMIN__TOKEN`, a sibling product of a single-token deployment (xtm-docker) calls OpenCRQ's API with `Authorization: Bearer <APP__ADMIN__TOKEN>`, with no init step issuing a `flgrn_ocrq_tkn_` token first. At every start OpenCRQ converges a service account named "Deployment admin token" in the initial tenant (`INITIAL_TENANT__ID`), in its `admin` group (every capability, every marking that group is cleared for), and a request carrying the admin token acts as that account. No token is stored: the bearer is compared in constant time with the configured value. Unset, or while the initial tenant does not exist, the admin token is no bearer. Rotating it is a restart with the new value. A SaaS deployment, whose peers get their own `flgrn_ocrq_tkn_` tokens from the provisioning API, keeps the admin token in its secret store and never hands it to a peer.
+
+## Telemetry
+
+Every `TELEMETRY__*` variable sits under one of two groups: `TELEMETRY__USAGE__*`, the [anonymous usage telemetry](usage-telemetry.md) sent to Filigran, and `TELEMETRY__OBSERVABILITY__*`, the monitoring data sent to your own tools. A `TELEMETRY__*` variable the platform does not know, a superseded one included, fails the startup rather than being ignored. The error names the configuration key under its path, e.g. `Unrecognized key: "traces"` under `telemetry` for `TELEMETRY__TRACES__ENABLED`.
+
+The *OpenCTI equivalent* column maps each variable to its OpenCTI counterpart, for operators who already run OpenCTI. The two differ by design in three places:
+
+- OpenCTI keeps its two groups under separate roots, `APP__TELEMETRY__*` for observability and `TELEMETRY_MANAGER__*` for usage telemetry; OpenCRQ keeps both under `TELEMETRY__*`.
+- OpenCTI turns metrics on with one switch, `APP__TELEMETRY__METRICS__ENABLED`, that covers both transports; OpenCRQ turns each transport on with its own `ENABLED`.
+- OpenCTI has no OTLP log export, and its Prometheus endpoint has none of the collection bounds below, since OpenCRQ's endpoint merges every process of the container.
+
+### Usage telemetry
+
+| Variable                    | Required | Default Value | Architectural/Functional Impact | OpenCTI equivalent |
+|:----------------------------|:--------:|:--------------|:--------------------------------|:-------------------|
+| `TELEMETRY__USAGE__ENABLED` |    No    | `true`        | Turns the [anonymous usage telemetry](usage-telemetry.md) sent to Filigran on or off. `false`: the platform never contacts the Filigran collector. | `TELEMETRY_MANAGER__ENABLED` |
+| `TELEMETRY__USAGE__TAGS`    |    No    | (empty)       | Comma-separated deployment tags (e.g. `saas,eu-west`) attached to the usage telemetry as the `filigran.telemetry.tags` resource attribute. Normalized (trimmed, lowercased, deduplicated, sorted) before export. Empty by default: no tags attribute is exported. | `TELEMETRY_MANAGER__TAGS` |
+
+### Observability
 
 See [Metrics](metrics.md) for the full contract of every family the Prometheus and OTLP metrics transports expose, a scrape recipe and OpenCTI-compatible recording rules.
 
-| Variable                            | Required | Default Value | Architectural/Functional Impact                                           |
-|:------------------------------------|:--------:|:--------------|:--------------------------------------------------------------------------|
-| `TELEMETRY__TRACES__ENABLED`        |    No    | `false`       | Enable or disable OpenTelemetry traces.                                   |
-| `TELEMETRY__TRACES__EXPORTER_OTLP`  |    No    | -             | OTLP endpoint for exporting traces (e.g., `http://otel-collector:4317`).  |
-| `TELEMETRY__METRICS__OTLP__ENABLED`       |    No    | `false`       | Enable or disable the OTLP metrics push transport. Renamed from `TELEMETRY__METRICS__ENABLED`. |
-| `TELEMETRY__METRICS__OTLP__EXPORTER`      |    No    | -             | OTLP endpoint for exporting metrics (e.g., `http://otel-collector:4317`). Renamed from `TELEMETRY__METRICS__EXPORTER_OTLP`. |
-| `TELEMETRY__METRICS__PROMETHEUS__ENABLED` |    No    | `false`       | Enable or disable the Prometheus scrape endpoint.                         |
-| `TELEMETRY__METRICS__PROMETHEUS__PORT`    |    No    | `14269`       | Port the Prometheus scrape endpoint listens on.                          |
-| `TELEMETRY__METRICS__PROMETHEUS__HOST`    |    No    | `0.0.0.0`     | Bind address of the scrape endpoint. Binding it to loopback makes it unreachable from outside the container while the application keeps serving. |
-| `TELEMETRY__METRICS__PROMETHEUS__PUBLIC_PORT` |  No  | -             | Port the scrape endpoint is advertised on, when it is published under a different one. |
-| `TELEMETRY__METRICS__PROMETHEUS__COLLECT_TIMEOUT_MS` | No | `2500`   | Per-process bound on one collection. A process exceeding it is reported as a collection outcome rather than delaying the response. |
-| `TELEMETRY__METRICS__PROMETHEUS__ROUND_DEADLINE_MS` | No | `4500`     | Bound on a whole collection round. Must be strictly above the per-process timeout, and is deliberately not a multiple of it so the two bounds stay distinguishable. |
-| `TELEMETRY__METRICS__PROMETHEUS__MIN_INTERVAL_MS` | No | `5000`       | Minimum interval between two collections. Requests arriving inside it are served the cached document, failures included. |
-| `TELEMETRY__METRICS__PROMETHEUS__MAX_REPLY_BYTES` | No | `2097152`    | Maximum size of one process's contribution. A larger one is refused and reported as a collection outcome. |
-| `TELEMETRY__LOGS__ENABLED`          |    No    | `false`       | Enable or disable OpenTelemetry logs.                                     |
-| `TELEMETRY__LOGS__EXPORTER_OTLP`    |    No    | -             | OTLP endpoint for exporting logs (e.g., `http://otel-collector:4317`).    |
+| Variable                                 | Required | Default Value      | Architectural/Functional Impact | OpenCTI equivalent |
+|:-----------------------------------------|:--------:|:-------------------|:--------------------------------|:-------------------|
+| `TELEMETRY__OBSERVABILITY__SERVICE_NAME` |    No    | `opencrq-platform` | Service name of every OTLP signal and of the Prometheus endpoint (`service.name`), and Pyroscope application name. | None for `service.name`, fixed to `opencti-platform`; `APP__TELEMETRY__PYROSCOPE__IDENTIFIER` for Pyroscope |
+
+#### OpenTelemetry (Traces, Metrics, Logs)
+
+| Variable                                             | Required | Default Value | Architectural/Functional Impact | OpenCTI equivalent |
+|:-----------------------------------------------------|:--------:|:--------------|:--------------------------------|:-------------------|
+| `TELEMETRY__OBSERVABILITY__OTLP__TRACES__ENABLED`    |    No    | `false`       | Enable or disable OpenTelemetry traces. | `APP__TELEMETRY__TRACING__ENABLED` |
+| `TELEMETRY__OBSERVABILITY__OTLP__TRACES__EXPORTER`   |    No    | -             | OTLP endpoint for exporting traces (e.g., `http://otel-collector:4317`). **Required** when traces are enabled. | `APP__TELEMETRY__TRACING__EXPORTER_OTLP` |
+| `TELEMETRY__OBSERVABILITY__OTLP__METRICS__ENABLED`   |    No    | `false`       | Enable or disable the OTLP metrics push transport. | `APP__TELEMETRY__METRICS__ENABLED`, which covers both metrics transports |
+| `TELEMETRY__OBSERVABILITY__OTLP__METRICS__EXPORTER`  |    No    | -             | OTLP endpoint for exporting metrics (e.g., `http://otel-collector:4317`). **Required** when OTLP metrics are enabled. | `APP__TELEMETRY__METRICS__EXPORTER_OTLP` |
+| `TELEMETRY__OBSERVABILITY__OTLP__LOGS__ENABLED`      |    No    | `false`       | Enable or disable OpenTelemetry logs. | None |
+| `TELEMETRY__OBSERVABILITY__OTLP__LOGS__EXPORTER`     |    No    | -             | OTLP endpoint for exporting logs (e.g., `http://otel-collector:4317`). **Required** when logs are enabled. | None |
+
+#### Prometheus
+
+| Variable                                                     | Required | Default Value | Architectural/Functional Impact | OpenCTI equivalent |
+|:-------------------------------------------------------------|:--------:|:--------------|:--------------------------------|:-------------------|
+| `TELEMETRY__OBSERVABILITY__PROMETHEUS__ENABLED`              |    No    | `false`       | Enable or disable the Prometheus scrape endpoint. | `APP__TELEMETRY__METRICS__ENABLED`, which covers both metrics transports |
+| `TELEMETRY__OBSERVABILITY__PROMETHEUS__PORT`                 |    No    | `14269`       | Port the Prometheus scrape endpoint listens on. | `APP__TELEMETRY__METRICS__EXPORTER_PROMETHEUS` |
+| `TELEMETRY__OBSERVABILITY__PROMETHEUS__HOST`                 |    No    | `0.0.0.0`     | Bind address of the scrape endpoint. Binding it to loopback makes it unreachable from outside the container while the application keeps serving. | `APP__TELEMETRY__METRICS__EXPORTER_PROMETHEUS_HOST` |
+| `TELEMETRY__OBSERVABILITY__PROMETHEUS__PUBLIC_PORT`          |    No    | -             | Port the scrape endpoint is advertised on, when it is published under a different one. | None |
+| `TELEMETRY__OBSERVABILITY__PROMETHEUS__COLLECT_TIMEOUT_MS`   |    No    | `2500`        | Per-process bound on one collection. A process exceeding it is reported as a collection outcome rather than delaying the response. | None |
+| `TELEMETRY__OBSERVABILITY__PROMETHEUS__ROUND_DEADLINE_MS`    |    No    | `4500`        | Bound on a whole collection round. Must be strictly above the per-process timeout, and is deliberately not a multiple of it so the two bounds stay distinguishable. | None |
+| `TELEMETRY__OBSERVABILITY__PROMETHEUS__MIN_INTERVAL_MS`      |    No    | `5000`        | Minimum interval between two collections. Requests arriving inside it are served the cached document, failures included. | None |
+| `TELEMETRY__OBSERVABILITY__PROMETHEUS__MAX_REPLY_BYTES`      |    No    | `2097152`     | Maximum size of one process's contribution. A larger one is refused and reported as a collection outcome. | None |
+
+#### Pyroscope
+
+| Variable                                              | Required | Default Value | Architectural/Functional Impact | OpenCTI equivalent |
+|:------------------------------------------------------|:--------:|:--------------|:--------------------------------|:-------------------|
+| `TELEMETRY__OBSERVABILITY__PYROSCOPE__ENABLED`        |    No    | `false`       | Enable or disable Pyroscope profiling. | `APP__TELEMETRY__PYROSCOPE__ENABLED` |
+| `TELEMETRY__OBSERVABILITY__PYROSCOPE__SERVER_ADDRESS` |    No    | -             | URL used by the App agent to send profiles. **Required** when Pyroscope is enabled (e.g. `http://pyroscope:4040` in the development Compose file). | `APP__TELEMETRY__PYROSCOPE__EXPORTER` |
 
 ## Jobs (background runtime)
 
@@ -124,7 +161,7 @@ Scores are recomputed whenever the data they read changes, and once a day whatev
 
 ## Platform Seed (non-production)
 
-The platform seed populates the database with demo tenants, users, organizations and assets. It's intended for **non-production environments** — local dev workstations, CI sandboxes, ephemeral test platforms, demo instances — and should **never be enabled in production**, where XTM One's administrator signs in first, as OpenCRQ's super administrator, and creates the first tenant.
+The platform seed populates the database with demo tenants, users, organizations and assets. It's intended for **non-production environments** — local dev workstations, CI sandboxes, ephemeral test platforms, demo instances — and should **never be enabled in production**, where the platform starts with its [initial tenant](#initial-tenant) and XTM One's administrator signs in first, as OpenCRQ's super administrator. On an empty database, the seed leaves only the demo tenants; a platform that booted once without it keeps its initial tenant beside them.
 
 When enabled, the boot sequence creates a platform administrator (in a platform group holding every platform capability) and the demo users, none with an OpenCRQ password: everyone signs in through XTM One. If `PLATFORM_SEED__ENABLED=true` is set, both the admin email and password are required — boot fails fast otherwise (enforced by Zod at config parse time); the password is the one the seeded users get in XTM One, and OpenCRQ stores it nowhere. The seed is idempotent: it skips on subsequent boots once the platform has any user.
 
@@ -141,6 +178,19 @@ With `PLATFORM_SEED__XTM_ONE_ADMIN__*` set, every seeded user is first created i
 | `PLATFORM_SEED__LARGE_ESTATE__ASSETS`       |     No     | `100000`      | How many supporting assets the profile generates, in dependency chains three levels deep. Read only when the profile is enabled. |
 | `PLATFORM_SEED__LARGE_ESTATE__FINDINGS`     |     No     | `300000`      | How many findings it hangs on them, over the CVEs the ordinary seed wrote. Read only when the profile is enabled.               |
 | `PLATFORM_SEED__LARGE_ESTATE__MAPPED_ASSETS`|     No     | `30000`       | How many of those assets the closed risk scope is measured over. At least three, one per primary asset the profile writes, or the seed refuses the profile. |
+
+## Initial tenant
+
+A platform that boots holding no tenant at all creates one, after the platform seed when it is enabled. A platform that already holds a tenant is left alone, so changing these values afterwards does nothing. The check runs at every boot: a platform whose tenants were all deleted gets its initial tenant back at the next restart. The tenant is set up like one created from Platform › Tenants, with no member: XTM One's super administrator reaches it and adds the members. Set its id to write the [connectors](#connectors) configuration (`CONNECTORS__<NAME>__<tenant-uuid>__…`) before the first boot.
+
+In Community Edition this is the platform's only tenant, since a second one is refused. Its name can be changed later from Platform › Tenants, its id cannot: having no member, the tenant is renamed by XTM One's super administrator, or by a holder of the Create Tenants platform capability once they are a member of it.
+
+| Variable               | Required | Default Value                          | Architectural/Functional Impact                                                                  |
+|:-----------------------|:--------:|:---------------------------------------|:--------------------------------------------------------------------------------------------------|
+| `INITIAL_TENANT__ID`   |    No    | `01a043da-ff47-72c2-aaa4-7da56d85c83e` | UUID of the initial tenant. A value that is not a UUID fails the boot parse.                      |
+| `INITIAL_TENANT__NAME` |    No    | `Default`                              | Name of the initial tenant, trimmed. A blank value fails the boot parse.                          |
+
+If creating the tenant fails, the failure is logged and the platform boots without it; a super administrator can still create one from Platform › Tenants.
 
 ## Platform
 
@@ -173,13 +223,13 @@ Being remote, the entitlement fails closed. The license is verified again on eve
 
 The instance is identified to XTM One by its `instance_id`, held in `platform_metadata` and preserved across a `reset_on_version_change`: regenerating it would present a platform the license does not name. `instance_creation` is **not** preserved, so a reset restarts a `ci` license's 45-minute window, as OpenCTI does when its database is recreated.
 
-**Settings → Parameters** carries the Filigran license and XTM One cards, held behind the `enterprise-edition-status` feature flag (see [Feature Flags](#feature-flags-development)), beside the Tenant and OpenCRQ platform cards, which give platform administrators the instance identifier XTM One registers this platform under. The Filigran license card says which edition the platform runs and where that answer comes from, the license type, and the date the license itself expires (before the 90-day grace of a `standard`, `lts` or `nfr` license, marked as such once past). With an XTM One configured, the license is installed there: a Community platform is sent to XTM One's platform settings to install it, and the card says why a platform connected to XTM One stays in Community Edition (XTM One is too old to return the license, withholds it, returns none, or returns one that does not verify). Without one, a platform administrator gets the form to install, replace or remove a Filigran license (see below). A license already installed on the instance is listed with **Remove** in both cases, and the card is read-only for everyone else. The XTM One card gives the connection state, when XTM One last answered a registration and, while XTM One is unreachable, its registration is refused or its answer cannot be read, since when and what to check (an unreadable answer names the `XTM_ONE__URL` and the XTM One and OpenCRQ versions). For a platform administrator it also carries **Check now**, which registers with XTM One at once rather than at the next 5-minute heartbeat, so a license just installed in XTM One applies without waiting, and shows that attempt's own outcome, a refusal or an outage included, even within the ten-minute grace the XTM One toast waits for. What the outage takes away depends on the edition: a Community platform loses Ask Ariane and license activation; a platform entitled by XTM One is told Ask Ariane is unavailable and Enterprise Edition is no longer extended, with the date it ends (or the next restart); a platform entitled by a Filigran license installed on the instance is told Ask Ariane is unavailable, Enterprise Edition carrying on until that license's own end. The entitlement itself is never flagged: a deployment with the flag off still resolves, enforces and reports its edition.
+**Settings → Parameters** carries the Filigran license and XTM One cards, held behind the `enterprise-edition-status` feature flag (see [Feature Flags](#feature-flags-development)), beside the Tenant and OpenCRQ platform cards, which give platform administrators the instance identifier XTM One registers this platform under. The Filigran license card says which edition the platform runs and where that answer comes from, the license type, and the date the license itself expires (before the 90-day grace of a `standard`, `lts` or `nfr` license, marked as such once past). With an XTM One configured, the license is installed there: a Community platform is sent to XTM One's platform settings to install it, and the card says why a platform connected to XTM One stays in Community Edition (XTM One is too old to return the license, withholds it, returns none, or returns one that does not verify). Without one, the card says OpenCRQ takes its Filigran license from XTM One: there is no way to install a license on OpenCRQ itself (see below). A license installed on the instance before 17 November 2026 is still listed with **Remove**; the Enterprise Edition XTM One grants cannot be removed from OpenCRQ, and the card is read-only for everyone else. The XTM One card gives the connection state, when XTM One last answered a registration and, while XTM One is unreachable, its registration is refused or its answer cannot be read, since when and what to check (an unreadable answer names the `XTM_ONE__URL` and the XTM One and OpenCRQ versions). For a platform administrator it also carries **Check now**, which registers with XTM One at once rather than at the next 5-minute heartbeat, so a license just installed in XTM One applies without waiting, and shows that attempt's own outcome, a refusal or an outage included, even within the ten-minute grace the XTM One toast waits for. What the outage takes away depends on the edition: a Community platform loses Ask Ariane and license activation; a platform entitled by XTM One is told Ask Ariane is unavailable and Enterprise Edition is no longer extended, with the date it ends (or the next restart); a platform entitled by a Filigran license installed on the instance is told Ask Ariane is unavailable, Enterprise Edition carrying on until that license's own end. The entitlement itself is never flagged: a deployment with the flag off still resolves, enforces and reports its edition.
 
-### Filigran license installed on the instance
+### Filigran license installed on the instance (before 17 November 2026)
 
-A platform administrator (the **Manage Users** platform capability) can install a Filigran license on OpenCRQ directly, for a deployment XTM One does not entitle: paste the certificate (PEM) in the **Filigran license** field of the Filigran license card and select **Install**. The form is offered only when no XTM One is configured. It is the very certificate XTM One distributes, verified by the same check: signed by the XTM CA, product `filigran xtm`, a valid type and dates (with the 90-day grace of a `standard`, `lts` or `nfr` license), and an OpenCRQ sub-license (OID `1.3.6.1.4.1.62944.90`) holding `global` or this instance's `instance_id`. A license whose OpenCRQ module is unchecked carries an empty sub-license and is refused, as is one naming other platforms only; the refusal gives the reason, and the license already installed, if any, stays.
+Since Filigran License v2 (17 November 2026), XTM One is mandatory for OpenCRQ's Enterprise Edition: the Filigran license is installed in XTM One, which distributes it to OpenCRQ at registration. OpenCRQ has no licence input of its own any more: no field in the UI, no API procedure (the `edition.installFiligranLicense` procedure is removed) and no environment variable or configuration key.
 
-The certificate is kept in `platform_metadata` (`filigran_license_pem`), preserved across a `reset_on_version_change` like `instance_id`, and verified again at every boot. It grants Enterprise Edition until the license itself stops entitling the platform; **Remove** revokes it at once. XTM One's grant and the installed license are independent: the platform runs Enterprise Edition while either entitles it, and the card names the form in use, *distributed by XTM One* or *installed on this instance*.
+A license a platform administrator installed directly on OpenCRQ before that date keeps working as before: it is kept in `platform_metadata` (`filigran_license_pem`), preserved across a `reset_on_version_change` like `instance_id`, and verified again at every boot with the check the registration answer goes through (signed by the XTM CA, product `filigran xtm`, a valid type and dates with the 90-day grace of a `standard`, `lts` or `nfr` license, and an OpenCRQ sub-license, OID `1.3.6.1.4.1.62944.90`, holding `global` or this instance's `instance_id`). It grants Enterprise Edition until the license itself stops entitling the platform; **Remove** revokes it at once. XTM One's grant and such a license are independent: the platform runs Enterprise Edition while either entitles it, and the card names the form in use, *distributed by XTM One* or *installed on this instance*.
 
 The current edition is exported as the `is_enterprise_edition` usage-telemetry gauge.
 
@@ -198,7 +248,7 @@ The AI assistant is an **Enterprise Edition** feature, exactly like the OpenCTI 
 
 | Variable                 | Required | Default Value | Architectural/Functional Impact                                                                                                              |
 |:-------------------------|:--------:|:--------------|:----------------------------------------------------------------------------------------------------------------------------------------------|
-| `XTM_ONE__URL`           |   Yes    | -             | URL this OpenCRQ backend reaches XTM One on (e.g. `https://xtm-one.mycompany.com`, or an internal address such as `http://xtm-one:4000`). See below. |
+| `XTM_ONE__URL`           |   Yes    | -             | URL this OpenCRQ backend reaches XTM One on (e.g. `https://xtm-one.example.com`, or an internal address such as `http://xtm-one:4000`). See below. |
 | `XTM_ONE__TOKEN`         |   Yes    | -             | Shared platform registration token (`PLATFORM_REGISTRATION_TOKEN` on the XTM One side). Pass through a secret store. XTM One withholds the XTM license while it runs with the published default `PLATFORM_REGISTRATION_TOKEN`: set a token of your own. |
 | `XTM_ONE__PLATFORM_URL`  |   Yes    | -             | Public base URL of this OpenCRQ instance — used as the JWT issuer, the JWKS audience, and the `platform_url` sent at registration.            |
 
@@ -216,18 +266,19 @@ Once configured, an unreachable or rejecting XTM One does not fail the healthche
 - **Who signs in**: an account is the XTM One user (its `sub`) it was created for, and always signs in as that XTM One user, whatever its email becomes; the email never finds an account. An XTM One user OpenCRQ does not know gets an account at their first sign-in, with no password and access to nothing: they see "You don't have access to OpenCRQ yet" until an administrator gives them a tenant. One whose email another OpenCRQ account already holds (case-insensitive) is refused and logged as a warning with the XTM One `sub`.
 - **What XTM One says, at every sign-in**: the email, the full name and the title (the `xtm_title` claim, or XTM One's `GET /api/v1/auth/me` when the claim is not sent) replace OpenCRQ's, which shows them read-only; an email another account holds is left unchanged. The per-tenant name and title stay editable in OpenCRQ.
 - **Super administrator**: XTM One's own platform administrator (its `ADMIN_EMAIL` account, signalled by the `xtm_super_admin` claim) is OpenCRQ's super administrator: every right in every tenant and on the platform, without being a member of any tenant or platform group, set and cleared at every sign-in and session renewal. It settles the first install and any lockout, from XTM One. XTM One's ordinary `admin` role gives nothing in OpenCRQ: platform groups, "Platform administrators" included, are managed in OpenCRQ. An XTM One that does not send the claim designates nobody.
+- **Default platform groups**: a platform that starts with no platform role and no platform group creates two of each, with no member: the "Platform administrator" role (Create Tenants, Manage Users and Platform Administration Access) in the "Platform administrators" group, and the "User manager" role (Manage Users and Platform Administration Access) in the "User managers" group. XTM One's super administrator adds the first members, from Settings › Security › Groups, on the Platform scope. From then on they belong to the operator: one that is renamed, changed or deleted stays that way after a restart, and only deleting every platform role and group brings them back at the next boot. A platform that already holds a platform role or group, after an upgrade or with the platform seed, gets none. If creating them fails, the error is logged and the platform starts without them.
 - **Sessions**: a session opened through XTM One lasts about an hour and renews on a navigation shortly before it ends, through XTM One and with no click while the XTM One session is open; an account disabled in XTM One cannot renew, so it loses OpenCRQ within the hour. A renewal XTM One refuses ends the OpenCRQ session at once and shows why, with "Sign in with XTM One"; one that fails for another reason (XTM One slow or down) leaves the session to run to its end.
 - **One address**: a sign-in started on another host than `XTM_ONE__PLATFORM_URL`'s (a DNS alias, `127.0.0.1` for `localhost`) first moves the browser to the platform URL, since XTM One sends it back there (once; behind a proxy that rewrites the `Host` header, every sign-in pays that one extra redirect).
 - **Requirements**: `XTM_ONE__PLATFORM_URL` must be HTTPS (or a loopback address in development): XTM One refuses any other callback, so OpenCRQ then sends none and logs a warning: nobody can sign in, while the rest of the registration (entitlement, Ask Ariane) is unaffected.
 - **Hardening**: keep XTM One's self-service registration off (its default) or restricted to your domains.
 - **Adding members**: an administrator adds people by email, with suggestions from XTM One's directory (`GET /api/v1/users/directory`), and OpenCRQ asks XTM One, as that administrator, to tell each one (`POST /api/v1/platform/access-notices`): XTM One emails a person who has an XTM One account, and invites one who has none when the administrator may invite (XTM One's administrators today); a refusal adds nothing for that email. An invited person's account waits with no XTM One id until they sign in through the single-use `/join/<token>` link their invitation leads to, with the same email: the email alone never ties an account to an XTM One user. When XTM One sends no email, the administrator gets the tenant's link to pass on.
 - **Upgrading**: an instance whose configuration lists the retired `xtm-sign-in` flag in `FEATURE_FLAGS` refuses to boot until it is removed. Accounts made with a password before sign-in through XTM One and never signed in through it are not tied to an XTM One user: their owner's first sign-in is refused as `conflict` while the old account holds the email, until an operator ties it as below or removes it.
-- **First install**: XTM One's administrator signs in, as super administrator, lands on Platform › Tenants and creates the first tenant. An XTM One that does not send `xtm_super_admin` designates nobody, so an instance installed from scratch then has no administrator at all.
+- **First install**: the platform starts with its [initial tenant](#initial-tenant), and XTM One's administrator, signing in as super administrator, lands in it, and can rename it from Platform › Tenants. An XTM One that does not send `xtm_super_admin` designates nobody, so an instance installed from scratch has its tenant but nobody who can add members to it.
 - **An XTM One user recreated** (new `sub`) is another person to OpenCRQ: their old account keeps the email, so the new one is refused until an operator ties the old account to the new `sub` in the database (`UPDATE users SET xtm_subject = '<new sub>' WHERE email = ...`).
 
 ## Connectors
 
-OpenCRQ can enrich supporting assets and vulnerabilities through external connectors, configured via the `connectors` config block. Credentials are never stored in the database: each connector is a **map keyed by tenant UUID**, so two tenants can point the same connector at different accounts/instances. There is no `enabled` flag: a connector is active for a given tenant as soon as that tenant has an entry:
+OpenCRQ can enrich supporting assets and vulnerabilities through external connectors, configured via the `connectors` config block. Credentials are never stored in the database: each connector is a **map keyed by tenant UUID**, so two tenants can point the same connector at different accounts/instances. The id of a platform's first tenant is known before it starts: see [Initial tenant](#initial-tenant). There is no `enabled` flag: a connector is active for a given tenant as soon as that tenant has an entry:
 - **CISA** and **FIRST** need no configuration at all — they are always on, for every tenant.
 - **NIST** works with no configuration, but runs in a rate-limited degraded mode for a tenant until that tenant's entry supplies an API key.
 - **OpenCRQ Default Threats** needs no configuration either, and no service account: it is on for every new tenant, and each tenant switches it off from its Configure drawer. Its one setting is platform-wide, below.
@@ -238,7 +289,7 @@ Once a tenant has an entry for a connector, an admin for that tenant still needs
 Each field is its own flat environment variable, `CONNECTORS__<NAME>__<tenant-uuid>__<field>` — `nconf`'s env store splits on `__` and lower-cases each segment, so the tenant UUID (already lowercase hex) round-trips unchanged — e.g.:
 
 ```
-CONNECTORS__OPENCTI__89c70e9a-8317-4da7-8765-1b9ba004c32c__URL=https://opencti.mycompany.com
+CONNECTORS__OPENCTI__89c70e9a-8317-4da7-8765-1b9ba004c32c__URL=https://opencti.example.com
 CONNECTORS__OPENCTI__89c70e9a-8317-4da7-8765-1b9ba004c32c__TOKEN=...
 ```
 
@@ -284,11 +335,11 @@ The count is written at the end of the identity pass, in the log of the sync run
 
 ### OpenAEV (Adversary Exposure Validation)
 
-Syncs the asset inventory, the latest attack verdicts (prevention and detection per technique) and the CVEs from an [OpenAEV](https://github.com/OpenAEV-Platform/openaev) instance, to support attack-outcome and exposure analyses. A tenant activates once it has both variables below set.
+Syncs the asset inventory, the latest attack verdicts (prevention and detection per technique) and the CVEs from an [OpenAEV](https://github.com/OpenAEV-Platform/openaev) instance, to support attack-outcome and exposure analyses. A tenant activates once it has both variables below set: at boot, an existing tenant given them and with no account bound gets the account `OpenAEV (deployment)`, in its `connectors` group, bound to the integration, so it comes up enabled. An account an admin bound is never replaced; the binding stays editable from the Integrations page.
 
 | Variable                                        | Required | Default Value | Architectural/Functional Impact                                     |
 |:----------------------------------------------------|:--------:|:--------------|:-----------------------------------------------------------------------|
-| `CONNECTORS__OPENAEV__<tenant-uuid>__URL`   | **Yes**  | -             | Base URL of that tenant's OpenAEV instance (e.g. `https://openaev.mycompany.com`). |
+| `CONNECTORS__OPENAEV__<tenant-uuid>__URL`   | **Yes**  | -             | Base URL of that tenant's OpenAEV instance (e.g. `https://openaev.example.com`). |
 | `CONNECTORS__OPENAEV__<tenant-uuid>__TOKEN` | **Yes**  | -             | API token used to authenticate against that tenant's OpenAEV API. Pass through a secret store. |
 
 The connector reads OpenAEV's bulk snapshot export, which needs a version that ships it with its `BULK_SNAPSHOT_EXPORT` preview feature enabled, and a token whose role holds the `ACCESS_SNAPSHOT_OBSERVATION` and `ACCESS_ASSESSMENT` capabilities. Without the export, it falls back to reading exercises and findings, which needs `ACCESS_FINDINGS` instead. See [OpenAEV Connector](openaev-connector.md) for the phases, their cadences, the fallback and what a failed prerequisite looks like.
@@ -299,8 +350,12 @@ Subscribes to an OpenCTI Live Stream (Server-Sent Events) to automatically keep 
 
 | Variable                                        | Required | Default Value | Architectural/Functional Impact                                     |
 |:----------------------------------------------------|:--------:|:--------------|:-----------------------------------------------------------------------|
-| `CONNECTORS__OPENCTI__<tenant-uuid>__URL`   | **Yes**  | -             | Base URL of that tenant's OpenCTI instance (e.g. `https://opencti.mycompany.com`). |
+| `CONNECTORS__OPENCTI__<tenant-uuid>__URL`   | **Yes**  | -             | Base URL of that tenant's OpenCTI instance (e.g. `https://opencti.example.com`). |
 | `CONNECTORS__OPENCTI__<tenant-uuid>__TOKEN` | **Yes**  | -             | API token used to authenticate against that tenant's OpenCTI Live Stream/GraphQL API. Pass through a secret store. |
+
+OpenCRQ drives the Live Stream itself: at every start, for each tenant given these variables, it finds the stream it manages in that OpenCTI (named "OpenCRQ threat feed", recognised by a marker in its description), creates it with the filter of [OpenCTI Connector](opencti-connector.md) when there is none, and brings its filter back to the current version when it carries an older one. A tenant with nothing bound is then bound to it, under the "OpenCTI (deployment)" service account, and the connector starts. A binding an admin made is never replaced, and **Configure** still picks any other stream. Binding at start is safe because every mirrored object keeps its OpenCTI markings and each person reads only what their markings allow.
+
+The token needs read access on every marking definition in scope and the `TAXIIAPI_SETCOLLECTIONS` capability (Manage CTI data sharing > Manage Live Streams), or `BYPASS`. Without that capability nothing is written in OpenCTI, the start goes on, and the connector stays idle with a message naming the missing capability until it is granted (then restart) or an admin picks a stream.
 
 See [OpenCTI Connector](opencti-connector.md) for the setup required on the OpenCTI side: the Live Stream filter this connector needs, and the access its token must have.
 

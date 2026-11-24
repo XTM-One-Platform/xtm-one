@@ -5,6 +5,21 @@ upgrade and rollback procedures live in the documentation site
 ([Deployment > Upgrade](docs/docs/deployment/upgrade.md)); this file documents
 releases that need special attention.
 
+## The Filigran AI Gateway's throttle backs assignments off
+
+**No migration, no configuration change.**
+
+- **Back-off**: an assignment whose run meets the gateway's throttle (`502 provider_error`, `retryable: true`) or load shedding (`503 gateway_overloaded`) has its cap halved, as a provider's 429 already did.
+- **Fewer requests**: a gateway chat call is sent at most 6 times (it was up to 18): the OpenAI SDK no longer retries under XTM One's own retries. Embeddings, images, speech, video and listings keep the SDK's retries.
+- **Sent once**: an error marked `x-should-retry: false` (the gateway's spent quota or a circuit-open past 60 s, or OpenAI's own) fails at once on every OpenAI-compatible provider instead of after 5 retries; a rate limit still backs the assignment off.
+
+## The Filigran AI Gateway provider is always offered
+
+**No migration. Drop `FILIGRAN_GATEWAY_PROVIDER` from `ENABLED_FEATURES` if it is set.**
+
+- **Changed**: the `FILIGRAN_GATEWAY_PROVIDER` feature flag is gone. Administrators can add a Filigran AI Gateway provider from **Settings → AI Models** on every deployment.
+- **Leftover id**: `ENABLED_FEATURES=FILIGRAN_GATEWAY_PROVIDER` is logged as unknown and ignored.
+
 ## STIX scores before and after metric suite 16.0 are not comparable
 
 **No migration. Rescore stored STIX baselines before comparing them with new runs.**
@@ -1060,7 +1075,7 @@ removed from the flag registry, and the code paths they used to gate are now
 always on:
 
 * The **visual flow builder** — the `Flows` tab of `Agentic Flow`, the canvas
-  at `/flows/:id/builder`, and the `/api/v1/flows` + `/api/v1/flow-event-types`
+  at `/flows/library/:id`, and the `/api/v1/flows` + `/api/v1/flow-event-types`
   routes, which no longer answer `403`.
 * **Flow execution** — activate/run/history/cancel, the cron tick, inbound
   webhooks and polled integration events, plus the run/activate controls in the

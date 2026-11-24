@@ -15,6 +15,18 @@
 export const PROFILE_TABS = ["identity", "business", "technology", "exposure", "knowledge"] as const;
 export type ProfileTab = (typeof PROFILE_TABS)[number];
 
+/**
+ * The tabs Settings > Organization keeps (#1178, Sam 22 Nov 2026; #1690, Sam 24 Nov 2026): the Business, Technology
+ * and Exposure cards live on CTEM > Inventory now, so Settings draws no tab bar (identity, knowledge through its
+ * button); the five tabs stay the grouping of fields (drafts, unsaved markers, missing fields).
+ */
+const SETTINGS_PROFILE_TABS = ["identity", "knowledge"] as const satisfies readonly ProfileTab[];
+
+/** Whether a tab's cards live on CTEM > Inventory instead of Settings. */
+export function isInventoryTab(tab: ProfileTab): boolean {
+  return !(SETTINGS_PROFILE_TABS as readonly ProfileTab[]).includes(tab);
+}
+
 /** The tab names (at most three words). @i18n-keys */
 export const PROFILE_TAB_LABELS = {
   identity: "Identity and risk",
@@ -30,17 +42,45 @@ export const PROFILE_CARD_TAB = {
   risk_appetite: "identity",
   ticketing: "identity",
   crown_jewels: "business",
+  shipped_products: "business",
   tracked_organizations: "business",
   tech_stack: "technology",
-  ai_systems: "technology",
   assets_exposure: "exposure",
   asset_groups: "exposure",
   prioritization_policy: "exposure",
+  outside_lens: "exposure",
+  evidence_health: "exposure",
   enterprise_knowledge: "knowledge",
   scheduled_imports: "knowledge",
   context_injection: "knowledge",
 } as const satisfies Record<string, ProfileTab>;
 export type ProfileCard = keyof typeof PROFILE_CARD_TAB;
+
+/**
+ * The CTEM > Inventory page of each card that moved there (#1178): a link to the card lands on that tab, which
+ * mounts the card with its edit (OrganizationSection embed).
+ */
+export const INVENTORY_CARD_PATH: Partial<Record<ProfileCard, string>> = {
+  tech_stack: "/ctem/inventory/software",
+  // The business inputs have their own Inventory tab (#1690).
+  crown_jewels: "/ctem/inventory/business",
+  shipped_products: "/ctem/inventory/business",
+  tracked_organizations: "/ctem/inventory/business",
+  assets_exposure: "/ctem/inventory",
+  // The settings cards have their own Inventory tab (#1511), never an edit view opened by URL only.
+  prioritization_policy: "/ctem/inventory/exposure",
+  outside_lens: "/ctem/inventory/exposure",
+  evidence_health: "/ctem/inventory/exposure",
+  asset_groups: "/ctem/inventory/asset-groups",
+};
+
+/** The link to one card: its Inventory tab when it moved there, else its Settings tab, with `?card=<card>`. */
+export function profileCardHref(card: ProfileCard, params: URLSearchParams = new URLSearchParams()): string {
+  // The card first, then the table filters, as the links were written before the move.
+  const next = new URLSearchParams({ [PROFILE_CARD_PARAM]: card });
+  params.forEach((value, key) => next.set(key, value));
+  return `${INVENTORY_CARD_PATH[card] ?? profileTabPath(PROFILE_CARD_TAB[card])}?${next.toString()}`;
+}
 
 /**
  * Every field of the profile (a form key or a contract path) and the card that edits it.
@@ -62,13 +102,19 @@ export const PROFILE_FIELD_CARD = {
   pir_ids: "ticketing",
   pir_names: "ticketing",
   crown_jewels: "crown_jewels",
+  shipped_products: "shipped_products",
   tech_stack: "tech_stack",
-  ai_systems: "ai_systems",
+  // #1501: the AI systems are the assets of category ai_target, edited on the asset list.
+  ai_systems: "assets_exposure",
   assets_exposure: "assets_exposure",
   asset_groups: "asset_groups",
   prioritization_policy: "prioritization_policy",
   accepted_risks: "prioritization_policy",
   posture_target: "prioritization_policy",
+  owned_domains: "outside_lens",
+  address_ranges: "outside_lens",
+  attack_surface: "outside_lens",
+  evidence_health: "evidence_health",
   enterprise_knowledge: "enterprise_knowledge",
   tracked_organizations: "tracked_organizations",
 } as const satisfies Record<string, ProfileCard>;
@@ -103,14 +149,14 @@ export function parseProfileCard(raw: string | null | undefined): ProfileCard | 
 
 /**
  * The link to the card that edits a field: its tab's path with `?card=<card>`, so a call to
- * action ("Map crown jewels to assets") opens the right tab scrolled to the right card, never the
+ * action ("Map primary assets to assets") opens the right tab scrolled to the right card, never the
  * first tab. An unknown field opens the first tab.
  */
 export function profileFieldHref(path: string): string {
   const fields = PROFILE_FIELD_CARD as Record<string, ProfileCard>;
   const card = fields[path] ?? fields[path.split(".").pop() ?? ""] ?? fields[path.split(".")[0]];
   if (!card) return PROFILE_PATH;
-  return `${profileTabPath(PROFILE_CARD_TAB[card])}?${PROFILE_CARD_PARAM}=${card}`;
+  return profileCardHref(card);
 }
 
 /** The tab a page path names; any other path is the first tab. */

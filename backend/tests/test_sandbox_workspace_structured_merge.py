@@ -155,3 +155,27 @@ def test_a_given_yaml_resolution_with_a_duplicate_key_is_refused() -> None:
     refused = _broken_resolutions({"values.yaml": b"a: 1\na: 2\n"}, {"values.yaml": b"a: 1\n"})
     assert refused is not None and "values.yaml" in refused and "key 'a' written twice" in refused
     assert _broken_resolutions({"values.yaml": b"a: 2\n"}, {"values.yaml": b"a: 1\n"}) is None
+
+
+def test_a_given_json_resolution_that_drops_keys_both_sides_hold_is_refused() -> None:
+    from app.integrations.providers.github.merge_resolution import _broken_resolutions
+
+    branch = b'{\n  "a": "1",\n  "mine": "m"\n}\n'
+    ref = b'{\n  "a": "1",\n  "main": "x",\n  "nested": {\n    "k": "v"\n  }\n}\n'
+    stale = b'{\n  "a": "1",\n  "main": "x",\n  "mine": "m"\n}\n'
+    assert _broken_resolutions({"en.json": stale}, {"en.json": ref}, {"en.json": branch}) is None
+    both = b'{\n  "a": "1",\n  "gone": "g",\n  "nested": {\n    "k": "v"\n  }\n}\n'
+    dropped = b'{\n  "nested": {}\n}\n'
+    refused = _broken_resolutions({"en.json": dropped}, {"en.json": both}, {"en.json": both})
+    assert refused is not None and "drops 3 key(s) both sides hold: a, gone, nested.k" in refused
+    # Without the branch's version the check cannot tell a meant removal: nothing is judged.
+    assert _broken_resolutions({"en.json": dropped}, {"en.json": both}) is None
+
+
+def test_dropped_keys_reads_json_objects_only() -> None:
+    from app.services.sandbox_workspace.jsonmerge import dropped_keys
+
+    assert dropped_keys('{"a": 1}', '{"a": 1, "b": 2}', '{"b": 3}') == ["b"]
+    assert dropped_keys('{"a": 1}', '{"a": 1, "b": 2}', '{"a": 1}') == []
+    assert dropped_keys("[]", '{"b": 2}', '{"b": 2}') == []
+    assert dropped_keys('{"a": 1}') == []

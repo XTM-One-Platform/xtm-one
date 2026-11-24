@@ -42,6 +42,9 @@ import app.models.conversation_share
 import app.models.ctem_case
 import app.models.ctem_metric
 import app.models.ctem_posture_snapshot
+import app.models.ctem_signal
+import app.models.ctem_surface_observation
+import app.models.ctem_surface_pass
 import app.models.custom_dashboard
 import app.models.custom_integration_definition
 import app.models.custom_tool
@@ -49,6 +52,7 @@ import app.models.custom_tool_source
 import app.models.dashboard_widget_pack
 import app.models.dataset
 import app.models.dataset_version
+import app.models.decision
 import app.models.department
 import app.models.embedding
 import app.models.evaluation
@@ -64,11 +68,13 @@ import app.models.flow_shadow
 import app.models.general_assistant_config
 import app.models.group
 import app.models.health
+import app.models.health_analysis
 import app.models.health_check
 import app.models.health_cycle
 import app.models.health_dataset
 import app.models.health_experiment
 import app.models.health_finding
+import app.models.health_module_analyst
 import app.models.health_pet
 import app.models.improvement_proposal
 import app.models.integration
@@ -94,6 +100,8 @@ import app.models.oauth_client
 import app.models.oauth_default
 import app.models.orchestration
 import app.models.organization
+import app.models.organization_asset
+import app.models.organization_asset_record
 import app.models.organization_context
 import app.models.platform_build
 import app.models.platform_event_task_watch

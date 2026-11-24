@@ -141,7 +141,7 @@ class _Rows:
 
 
 class _Db:
-    def __init__(self, row):
+    def __init__(self, row: object) -> None:
         self.row = row
 
     async def execute(self, _statement):
@@ -162,7 +162,7 @@ def computed(monkeypatch):
 
 async def test_a_custom_fleet_with_the_computed_catalog_on_reads_it_at_run_time(computed):
     level, gates = await fleet_gate_proposals.fleet_effective_gates(
-        _Db(("medium", None, None, {}, False)), uuid.uuid4()
+        _Db(("medium", None, None, {}, False, None)), uuid.uuid4()
     )
     assert level == "medium"
     assert _names(level, gates) == {"create_github_issue", "send_microsoft_email"}
@@ -172,7 +172,7 @@ async def test_a_custom_fleet_with_the_computed_catalog_on_reads_it_at_run_time(
 @pytest.mark.parametrize(("pins", "is_builtin"), [(None, False), ({}, True)])
 async def test_a_legacy_custom_fleet_or_a_builtin_fleet_ignores_the_computed_catalog(computed, pins, is_builtin):
     _level, gates = await fleet_gate_proposals.fleet_effective_gates(
-        _Db(("full_gates", [_LOW], None, pins, is_builtin)), uuid.uuid4()
+        _Db(("full_gates", [_LOW], None, pins, is_builtin, None)), uuid.uuid4()
     )
     assert [g["key"] for g in gates] == ["microsoft.low-writes"]
     assert computed == []

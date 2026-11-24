@@ -51,6 +51,7 @@ from app.agents.builtin_agents import (
 )
 from app.agents.builtin_roi_units import with_builtin_roi_unit
 from app.agents.fleet_opt_in import PROVISIONING_STATE_KEYS
+from app.agents.gate_answered import INHERIT_SWITCH_FROM_KEY
 from app.agents.templates import BUILTIN_TEMPLATES
 from app.core.config import settings
 from app.core.feature_flags import is_feature_enabled
@@ -66,12 +67,14 @@ from app.services.agent_config_versioning import (
     versioned_agent_values,
 )
 from app.services.assignment_activation_check import parse_activation_check
+from app.services.assignment_dispatch import seeded_trigger_config
 from app.services.assignment_pause import (
     clear_pause_provenance,
     is_emergency_stopped,
     mark_schedule_resumed,
     pause_assignment,
 )
+from app.services.builtin_customer_layer import seed_keeps_field, seed_keeps_model
 from app.services.kb_helpers import bump_kb_revision, reset_changed_document
 
 logger = logging.getLogger(__name__)
@@ -317,15 +320,24 @@ def _sync_agent_fields(
     agent.disable_chat = data.get("disable_chat", False)
     agent.hide_runs = data.get("hide_runs", False)
     agent.max_iterations = data.get("max_iterations")
-    agent.llm_model = _resolve_llm_model(data, anthropic_enabled=anthropic_enabled)
-    # A built-in that takes a narrow decision runs on the platform routing model:
-    # the deployment's own lightweight model, which no seed can name.
-    agent.llm_model_source = data.get("llm_model_source")
+    # The model is customer layer once a person pinned one (#914,
+    # ``services/builtin_customer_layer``): the seed then leaves it as set.
+    # Every other customer-layer field (bindings, MCP servers, knowledge
+    # bases, skills, custom tools, organization notes) is never written here.
+    if not seed_keeps_model(agent):
+        agent.llm_model = _resolve_llm_model(data, anthropic_enabled=anthropic_enabled)
+        # A built-in that takes a narrow decision runs on the platform routing
+        # model: the deployment's own lightweight model, which no seed can name.
+        agent.llm_model_source = data.get("llm_model_source")
     agent.tool_deny_list = data.get("tool_deny_list") or []
     agent.builtin_tool_ids = data.get("builtin_tool_ids") or []
-    agent.integration_template_bindings = data.get("integration_template_bindings", [])
+    # Template-bound providers and their read-only set are seeded defaults of
+    # the customer layer (#914): once a person set one, the seed leaves it.
+    if not seed_keeps_field(agent, "integration_template_bindings"):
+        agent.integration_template_bindings = data.get("integration_template_bindings", [])
     # The template-bound providers a seeded reader desk may only read.
-    agent.integration_template_read_only = data.get("integration_template_read_only") or None
+    if not seed_keeps_field(agent, "integration_template_read_only"):
+        agent.integration_template_read_only = data.get("integration_template_read_only") or None
     agent.available_channel_types = ["web"]
     agent.tags = data.get("tags", ["builtin"])
     agent.supported_intents = data.get("supported_intents") or {}
@@ -790,13 +802,13 @@ async def seed_builtin_assignments(
     # built-in agents so we don't accumulate orphans across releases. Scoped to
     # agents we seed assignments for; built-in agents are read-only for
     # non-admins, so this won't touch user-authored automations elsewhere.
-    # A fleet orchestrator's weekly health check (#11700) is not a seed row:
+    # A fleet orchestrator's weekly health check (#11700) and its answer listener (#1406) are not seed rows:
     # the fleet service owns it, so it is never removed as stale here.
-    from app.services.fleets import FLEET_HEALTH_CHECK_NAME
+    from app.services.fleets import FLEET_HEALTH_ASSIGNMENT_NAMES
 
     removed = 0
     for slug, names in desired_by_slug.items():
-        names = names | {FLEET_HEALTH_CHECK_NAME}
+        names = names | FLEET_HEALTH_ASSIGNMENT_NAMES
         res = await db.execute(select(Agent).where(Agent.slug == slug))
         agent = res.scalar_one_or_none()
         if not agent:
@@ -854,7 +866,7 @@ async def seed_builtin_assignments(
             # assignment's triggers could never be removed (#9160).
             kept = existing.trigger_config if isinstance(existing.trigger_config, dict) else {}
             existing.trigger_config = {
-                **data.get("trigger_config", {}),
+                **seeded_trigger_config(data["trigger_type"], data.get("trigger_config")),
                 **{k: kept[k] for k in PROVISIONING_STATE_KEYS if k in kept},
             }
             existing.prompt = data["prompt"]
@@ -954,7 +966,7 @@ async def seed_builtin_assignments(
             name=data["name"],
             description=data.get("description"),
             trigger_type=data["trigger_type"],
-            trigger_config=data.get("trigger_config", {}),
+            trigger_config=seeded_trigger_config(data["trigger_type"], data.get("trigger_config")),
             prompt=data["prompt"],
             enabled=data.get("enabled", True),
             ai_label=data.get("ai_label", False),
@@ -968,6 +980,26 @@ async def seed_builtin_assignments(
             hide_runs=data.get("hide_runs"),
         )
         _sync_seeded_gates(seeded, data)
+        sibling_name = data.get(INHERIT_SWITCH_FROM_KEY)
+        if sibling_name and data.get("admin_opt_in"):
+            # A listener added to a fleet an administrator already switched on
+            # (#1388): born with its sibling's switch and run-as, or the fleet
+            # would run without it until someone found it off.
+            sibling = (
+                (
+                    await db.execute(
+                        select(Assignment)
+                        .where(Assignment.agent_id == agent.id, Assignment.name == sibling_name)
+                        .order_by(Assignment.created_at)
+                        .limit(1)
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            if sibling is not None and sibling.enabled and not is_emergency_stopped(sibling):
+                seeded.enabled = True
+                seeded.run_as_user_id = sibling.run_as_user_id
         if not seeded.enabled:
             # A seed row defined as disabled is born paused, and gets the same
             # stamp as the update branch above — otherwise a fresh install
@@ -1891,7 +1923,7 @@ _EDITING_INTENTS: list[tuple[str, str]] = [
 _EDITING_INTENT_AGENTS: list[tuple[str, str]] = [
     ("opencti-assistant", "cti"),
     ("openaev-assistant", "aev"),
-    ("opencrq-assistant", "grc"),
+    ("opencrq-assistant", "crq"),
     ("fimi-analyst", "fimi"),
 ]
 
@@ -1945,9 +1977,9 @@ _INTENT_DESCRIPTIONS: dict[str, str] = {
     "cti.stix_harvester": "Extract cyber threat intelligence from documents into STIX 2.1 bundles",
     "cti.stix_transformer": "Transform a STIX 2.1 bundle (enrich, filter, rewrite, normalize) and return a valid STIX 2.1 bundle",
     "cti.stix_consumer": "Consume a STIX 2.1 bundle as the final step of an OpenCTI playbook (summarize, alert, post, dispatch)",
-    "grc.control_gap_analysis": "Analyze control capability gaps against a compliance framework",
-    "grc.risk_scenario_generator": "Draft risk scenarios from business and threat context",
-    "grc.assessment_summary": "Summarize a compliance assessment and its requirement answers",
+    "crq.control_gap_analysis": "Analyze control capability gaps against a compliance framework",
+    "crq.risk_scenario_generator": "Draft risk scenarios from business and threat context",
+    "crq.assessment_summary": "Summarize a compliance assessment and its requirement answers",
 }
 
 def _build_intent_bindings() -> list[dict]:

@@ -76,7 +76,7 @@ export function MissingVariablesBanner({ agentId }: { agentId: string }) {
               )}
             </p>
             <VariablesNeedingValueList variables={unfilled} />
-            <Link to="/variables" className="inline-block content-compact text-accent hover:underline">
+            <Link to="/connections/variables" className="inline-block content-compact text-accent hover:underline">
               {t_i18n("Set values in Variables")}
             </Link>
           </>

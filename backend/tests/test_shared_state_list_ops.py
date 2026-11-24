@@ -588,6 +588,51 @@ async def test_tool_passes_unset_keys_and_reads_back_the_keys_removed(monkeypatc
     assert "unset_keys must be a list" in bad.content and len(calls) == 1
 
 
+@pytest.mark.asyncio
+async def test_tool_archives_the_top_level_keys_unset_keys_removes_before_the_write(monkeypatch):
+    calls: list[dict] = []
+
+    async def _get(**kwargs):
+        return {"key": kwargs["key"], "value": {"a": {"long": "L"}, "b": [1], "keep": 1}, "notes": []}
+
+    async def _upsert(**kwargs):
+        calls.append(kwargs)
+        return {"key": kwargs["key"], "value": {"keep": 1}, "notes": [], "unset_keys": ["a", "b"]}
+
+    monkeypatch.setattr(shared_state_service, "get_state", _get)
+    monkeypatch.setattr(shared_state_service, "upsert_state", _upsert)
+    _, executor = build_shared_state_tools(SimpleNamespace(), str(uuid.uuid4()), str(uuid.uuid4()))
+    result = await _call(
+        executor, "set_shared_state", key="gaps", unset_keys=["a", "b", "missing"], archive_key="gaps-archive"
+    )
+    assert not result.is_error, result.content
+    assert [c["key"].endswith("gaps-archive") for c in calls] == [True, False], result.content
+    entry = calls[0]["append"]["entries"][0]
+    assert entry["fields"] == {"a": {"long": "L"}, "b": [1]}
+    assert entry["unset_keys"] == ["a", "b"] and entry["source_key"] == "gaps"
+    assert calls[1]["unset_keys"] == ["a", "b", "missing"]
+    assert "Archived 2 key(s) (a, b)" in result.content
+
+
+@pytest.mark.asyncio
+async def test_tool_writes_nothing_when_the_unset_keys_archive_is_refused(monkeypatch):
+    calls: list[dict] = []
+
+    async def _get(**kwargs):
+        return {"key": kwargs["key"], "value": {"a": 1}, "notes": []}
+
+    async def _upsert(**kwargs):
+        calls.append(kwargs)
+        raise ValueError("too large")
+
+    monkeypatch.setattr(shared_state_service, "get_state", _get)
+    monkeypatch.setattr(shared_state_service, "upsert_state", _upsert)
+    _, executor = build_shared_state_tools(SimpleNamespace(), str(uuid.uuid4()), str(uuid.uuid4()))
+    result = await _call(executor, "set_shared_state", key="gaps", unset_keys=["a"], archive_key="gaps-archive")
+    assert "Nothing was written" in result.content
+    assert len(calls) == 1 and calls[0]["key"].endswith("gaps-archive")
+
+
 def test_write_at_path_writes_a_scalar_or_a_list_under_the_path():
     assert shared_state_service.write_at_path({"a": {"b": {"x": 1}}}, ["a", "b"], "text") == {"a": {"b": "text"}}
     assert shared_state_service.write_at_path({}, ["a"], [1, 2]) == {"a": [1, 2]}
@@ -615,7 +660,7 @@ async def test_tool_accepts_a_scalar_value_json_with_a_path_only(monkeypatch):
 @pytest.mark.parametrize(
     ("update_json", "archive_key", "expected"),
     [
-        ('{"entries": {"match": {"key": "a"}, "set": {"x": 1}}}', "other", "needs update_json patches with 'unset'"),
+        ('{"entries": {"match": {"key": "a"}, "set": {"x": 1}}}', "other", "this write drops nothing"),
         ('{"entries": {"match": {"key": "a"}, "unset": ["x"]}}', "watches", "another key"),
     ],
 )
@@ -946,6 +991,68 @@ async def test_tool_passes_unique_by_and_reads_back_the_replaced_count(monkeypat
     assert 'list "prs": 0 appended, 2 removed, 1 replaced, 1 item(s) now' in result.content
 
 
+def test_unique_by_reports_what_a_replacement_overwrote() -> None:
+    # Another run wrote item 7 (count, note) after this caller read no match.
+    value = {"gaps": [{"id": "g7", "count": 3, "note": "x", "state": "queued"}]}
+    replaced: dict[str, list[dict[str, object]]] = {}
+    out, changes = apply_list_ops(
+        value,
+        append={"gaps": [{"id": "g7", "state": "open"}, {"id": "g8"}]},
+        unique_by={"gaps": "id"},
+        replaced_items=replaced,
+    )
+    assert out["gaps"] == [{"id": "g7", "state": "open"}, {"id": "g8"}]
+    assert changes == {"gaps": {"appended": 1, "removed": 0, "replaced": 1}}
+    assert replaced == {"gaps": [{"identity": {"id": "g7"}, "lost": ["count", "note"], "changed": ["state"]}]}
+
+
+def test_an_identical_unique_by_item_records_no_replacement() -> None:
+    replaced: dict[str, list[dict[str, object]]] = {}
+    apply_list_ops(
+        {"prs": [{"number": 1}]}, append={"prs": [{"number": 1}]}, unique_by={"prs": "number"}, replaced_items=replaced
+    )
+    assert replaced == {}
+
+
+@pytest.mark.asyncio
+async def test_upsert_answers_the_replaced_items(monkeypatch):
+    state = _state({"prs": [{"number": 5, "hold": True}]})
+    session = _Session(state)
+    monkeypatch.setattr("app.core.database.async_session", lambda: session)
+    out = await shared_state_service.upsert_state(
+        user_id=str(uuid.uuid4()),
+        key="open-prs",
+        append={"prs": [{"number": 5}]},
+        unique_by={"prs": "number"},
+        writer=COMPANY_AGENT,
+    )
+    assert out["replaced_items"] == {"prs": [{"identity": {"number": 5}, "lost": ["hold"], "changed": []}]}
+
+
+@pytest.mark.asyncio
+async def test_tool_reads_back_the_fields_a_replacement_dropped(monkeypatch):
+    async def _upsert(**kwargs):
+        return {
+            "key": kwargs["key"],
+            "value": {"prs": [{"number": 5}]},
+            "notes": [],
+            "list_changes": {"prs": {"appended": 0, "removed": 0, "replaced": 1}},
+            "replaced_items": {"prs": [{"identity": {"number": 5}, "lost": ["hold", "runs"], "changed": []}]},
+        }
+
+    monkeypatch.setattr(shared_state_service, "upsert_state", _upsert)
+    _, executor = build_shared_state_tools(SimpleNamespace(), str(uuid.uuid4()), str(uuid.uuid4()))
+    result = await _call(
+        executor,
+        "set_shared_state",
+        key="open-prs",
+        append_json='{"prs": [{"number": 5}]}',
+        unique_by_json='{"prs": "number"}',
+    )
+    assert not result.is_error
+    assert 'replaced {"number": 5}: fields dropped hold, runs; fields changed none' in result.content
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("raw", ['{"prs": 3}', '{"prs": ""}', '{"prs": []}', '["number"]'])
 async def test_tool_refuses_a_bad_unique_by_before_any_write(monkeypatch, raw):
@@ -1065,6 +1172,39 @@ def test_unset_archive_lists_the_removed_values_with_the_item_identity():
             "fields": {"long": "L", "other": "O"},
         }
     ]
+
+
+def test_unset_archive_keeps_the_item_key_on_a_bulk_match():
+    value = {
+        "entries": [
+            {"key": "w-1", "deploy": "DEPLOYED", "detail": "retest A"},
+            {"key": "w-2", "deploy": "DEPLOYED", "detail": "retest B"},
+            {"key": "w-3", "deploy": "WATCH", "detail": "retest C"},
+        ]
+    }
+    archived = unset_archive(
+        value,
+        {"entries": {"match": {"deploy": "DEPLOYED"}, "unset": ["detail"]}},
+        source_key="src",
+        at="t",
+    )
+    assert [a["match"] for a in archived] == [
+        {"deploy": "DEPLOYED", "key": "w-1"},
+        {"deploy": "DEPLOYED", "key": "w-2"},
+    ]
+    assert [a["fields"] for a in archived] == [{"detail": "retest A"}, {"detail": "retest B"}]
+
+
+def test_unset_archive_keeps_the_retention_item_key():
+    value = {"rows": [{"ref": "r-9", "state": "done", "note": "N"}]}
+    archived = unset_archive(
+        value,
+        {"rows": {"match": {"state": "done"}, "unset": ["note"]}},
+        source_key="src",
+        at="t",
+        item_key="ref",
+    )
+    assert archived[0]["match"] == {"state": "done", "ref": "r-9"}
 
 
 def test_unset_archive_is_empty_without_unset_or_list():

@@ -36,6 +36,12 @@ export const READ_ONLY_REASON =
 export const HEALTH_READ_ONLY_REASON = "Platform Health is built in and read-only.";
 export const ARCHIVED_REASON = "This fleet is archived: restore it to edit its members.";
 export const BUILTIN_REASON = "Built-in fleets ship with the platform and are read-only.";
+/**
+ * The Members view of a built-in fleet, where its capability slots stay the
+ * customer's (#914): what is locked and what stays yours, never "read-only".
+ */
+export const BUILTIN_MEMBERS_REASON =
+  "Built-in fleets ship with the platform: their members, handovers and gates are locked; the integrations bound to their capability slots stay yours.";
 export const BUILTIN_ADMIN_REASON =
   "Built-in fleets ship with the platform and are read-only. An administrator can still hide their activity from non-admins.";
 

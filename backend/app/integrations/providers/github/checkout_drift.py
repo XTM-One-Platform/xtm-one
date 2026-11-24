@@ -133,6 +133,8 @@ async def reconcile(
     deletes: list[str],
     tracked: Iterable[str] = (),
     recorded_files: Mapping[str, str] | None = None,
+    baseline: str = "",
+    committed: Iterable[str] = (),
 ) -> Reconciled | str:
     """The change set made safe to commit on *tip*, or the refusal (``Error: ...``) naming what overlaps.
 
@@ -140,17 +142,28 @@ async def reconcile(
     does not carry and the branch changed since are ``Reconciled.stale``.
     *recorded_files* maps a repository path to the sha256 the record holds for
     it: a path whose tip version has that hash is based on the tip already.
+    *baseline* is the commit the tree was checked out at when a commit made
+    from the checkout moved the record past it (``record.base_commit``), and
+    *committed* the paths those commits wrote or deleted (#1040): any other
+    path still holds the baseline's text in the workspace, so its merge
+    ancestor is the baseline's version, even when the tip is the record's commit.
     """
-    if not recorded or not tip or tip == recorded:
+    moved_record = bool(baseline) and baseline != recorded and bool(_GIT_OBJECT_ID_RE.fullmatch(baseline))
+    if not recorded or not tip or (tip == recorded and not moved_record):
         return Reconciled(dict(writes), list(deletes))
-    moved = (
-        f"branch '{branch}' of {repo} is at {tip[:8]}, not at the checkout's commit {recorded[:8]}"
-    )
-    # The ancestor of the merge: the recorded commit when the branch grew from it, else their merge base
-    # (a record moved by a commit on another branch, a branch cut from a newer main).
-    ancestor_ref = await _merge_base(client, headers, repo, repo_url, recorded, tip)
+    if tip == recorded:
+        moved = (
+            f"the checkout of {repo} holds files at {baseline[:8]}, the commit it was read at, while its record "
+            f"moved to {recorded[:8]} on branch '{branch}'"
+        )
+        ancestor_ref = recorded
+    else:
+        moved = f"branch '{branch}' of {repo} is at {tip[:8]}, not at the checkout's commit {recorded[:8]}"
+        # The ancestor of the merge: the recorded commit when the branch grew from it, else their merge base
+        # (a record moved by a commit on another branch, a branch cut from a newer main).
+        ancestor_ref = await _merge_base(client, headers, repo, repo_url, recorded, tip)
     read: dict[str, _Side] = {}
-    for ref in dict.fromkeys((recorded, ancestor_ref, tip)):
+    for ref in dict.fromkeys((recorded, ancestor_ref, tip, *((baseline,) if moved_record else ()))):
         side = await _read_side(client, headers, repo, repo_url, ref)
         if isinstance(side, str):
             return (
@@ -160,13 +173,22 @@ async def reconcile(
             )
         read[ref] = side
     record_side, base, head = read[recorded], read[ancestor_ref], read[tip]
-    sides = [base, head]
+    committed_paths = set(committed)
+
+    def base_for(path: str) -> _Side:
+        """The ancestor of *path*: the baseline's version when no commit from the checkout wrote it."""
+        return read[baseline] if moved_record and path not in committed_paths else base
+
+    def held(path: str) -> _Side:
+        """The commit whose version of *path* the workspace holds when this commit does not carry it."""
+        return read[baseline] if moved_record and path not in committed_paths else record_side
+
     carried = {*writes, *deletes}
-    stale = sorted(path for path in set(tracked) - carried if _sha(record_side, path) != _sha(head, path))
+    stale = sorted(path for path in set(tracked) - carried if _sha(held(path), path) != _sha(head, path))
     drifted = [
         path
         for path in [*writes, *deletes]
-        if _sha(base, path) != _sha(head, path)
+        if _sha(base_for(path), path) != _sha(head, path)
         # The workspace already holds the tip's bytes: nothing to merge, the commit tells it apart.
         and not (path in writes and _sha(head, path) == _git_blob_sha(writes[path]))
     ]
@@ -180,7 +202,10 @@ async def reconcile(
             f"{MAX_MERGED_PATHS} merged on the server; nothing was committed. " + _rebase_hint(checkout, branch)
         )
     listed = sum(
-        entry.size for side in sides for path in drifted if (entry := side.entries.get(path)) is not None
+        entry.size
+        for path in drifted
+        for side in (base_for(path), head)
+        if (entry := side.entries.get(path)) is not None
     )
     if listed > MAX_MERGE_READ_BYTES:
         return (
@@ -204,7 +229,11 @@ async def reconcile(
 
     for path in drifted:
         odd = next(
-            (entry for side in sides if (entry := side.entries.get(path)) is not None and entry.mode not in _PLAIN_MODES),
+            (
+                entry
+                for side in (base_for(path), head)
+                if (entry := side.entries.get(path)) is not None and entry.mode not in _PLAIN_MODES
+            ),
             None,
         )
         if odd is not None:
@@ -227,7 +256,7 @@ async def reconcile(
             # the workspace changed the tip's text, so it is written as it is.
             out.on_tip.append(path)
             continue
-        ancestor = await blob(base, path)
+        ancestor = await blob(base_for(path), path)
         if isinstance(ancestor, str):
             return f"{ancestor}\nNothing was committed to branch '{branch}' of {repo}."
         merge = merge_path(path, ancestor, writes[path], theirs)

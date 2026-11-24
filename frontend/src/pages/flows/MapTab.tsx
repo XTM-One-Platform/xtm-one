@@ -32,8 +32,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *     collapsed fleet node that opens the fleet page (`lib/fleet-layer`);
  *     a toolbar switch draws every agent again;
  *   - a second view, the schedule of the same agents (`/flows/map/schedule`,
- *     `?agent=<id>` narrows it to one agent): the former Schedule tab, which
- *     `/flows/schedule` now redirects to.
+ *     `?agent=<id>` narrows it to one agent): the former Schedule tab.
  *
  * The page carries no info block (amendment 3): no handover warnings
  * stack, no hints paragraph, no stat tiles; the graph is the page.
@@ -43,9 +42,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * that only editable agents can be edge sources.
  */
 
+import { workItemsPath } from "@/lib/task-routes";
 import { useMemo, useCallback, useState, useEffect, useRef } from "react";
-import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { isKnownMapView, legacyMapLocation, mapViewPath, readMapView, type MapView } from "@/lib/map-view";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { mapViewPath, readMapView, type MapView } from "@/lib/map-view";
 import { Radio } from "lucide-react";
 import { ScheduleView } from "@/components/ui/schedule-view";
 import { AgentFocusPicker } from "@/components/ui/agent-focus-picker";
@@ -218,12 +218,9 @@ export default function MapTab() {
   // The view is the path segment (`/flows/map/schedule`, #10203 S2); the query keeps the map's state.
   const { mapView } = useParams<{ mapView?: string }>();
   const view: MapView = readMapView(mapView);
-  // A link written before the path routes (`?view=schedule`) is replaced by its path.
-  const legacyTarget = legacyMapLocation(searchParams);
   const setView = useCallback(
     (next: MapView) => {
       const params = new URLSearchParams(searchParams);
-      params.delete("view");
       if (next !== "schedule") params.delete("agent");
       const query = params.toString();
       navigate({ pathname: mapViewPath(next), search: query ? `?${query}` : "" });
@@ -590,7 +587,7 @@ export default function MapTab() {
         // into the one-line activity feed row.
         summary: r.result_summary ? summaryPreview(r.result_summary, 200) || undefined : undefined,
         timestamp: r.completed_at ?? r.started_at ?? r.created_at,
-        href: `/runs/${r.id}`,
+        href: `/operations/executions/${r.id}`,
       });
     }
 
@@ -613,7 +610,7 @@ export default function MapTab() {
           agentIconMap.get(d.parent_agent_id) ??
           agentIconMap.get(d.target_agent_id),
         timestamp: d.completed_at ?? d.started_at ?? d.created_at,
-        href: runId ? `/runs/${runId}` : undefined,
+        href: runId ? `/operations/executions/${runId}` : undefined,
       });
     }
 
@@ -631,7 +628,7 @@ export default function MapTab() {
           ? agentIconMap.get(w.created_by_agent_id)
           : undefined,
         timestamp: w.last_activity_at ?? w.updated_at ?? w.created_at,
-        href: "/operations/work-items",
+        href: workItemsPath(),
       });
     }
 
@@ -672,15 +669,8 @@ export default function MapTab() {
     agents,
     activeAgentIds,
     onOpenAgent: (id) => navigate(`/agents/${id}`, { state: { backTo: "/flows", backLabel: "Back to Agentic Flow" } }),
-    onOpenRun: (id) => navigate(`/runs/${id}`, { state: { backTo: "/flows", backLabel: "Back to Agentic Flow" } }),
+    onOpenRun: (id) => navigate(`/operations/executions/${id}`, { state: { backTo: "/flows", backLabel: "Back to Agentic Flow" } }),
   });
-
-  if (legacyTarget) return <Navigate to={legacyTarget} replace />;
-  // An unknown view segment shows the graph: the address says so too (UX A2 on #10220).
-  if (!isKnownMapView(mapView)) {
-    const query = searchParams.toString();
-    return <Navigate to={`${mapViewPath("graph")}${query ? `?${query}` : ""}`} replace />;
-  }
 
   return (
     <div className="space-y-6">

@@ -75,7 +75,7 @@ export default function RelayGroupDetail() {
     }
   }, [group, searchParams, setSearchParams]);
 
-  if (isLoading) return <DetailPageSkeleton backTo="/relays" backLabel="Back to Relays" tabs={TABS.length} actions={1} />;
+  if (isLoading) return <DetailPageSkeleton backTo="/connections/relays" backLabel="Back to Relays" tabs={TABS.length} actions={1} />;
   if (!group) {
     return (
       <NotFoundState
@@ -83,8 +83,8 @@ export default function RelayGroupDetail() {
         title="Relay group not found"
         description="This relay group may have been deleted, or it is not shared with you."
         actionLabel="View all relay groups"
-        onAction={() => navigate("/relays")}
-        backTo="/relays"
+        onAction={() => navigate("/connections/relays")}
+        backTo="/connections/relays"
         backLabel="Back to Relays"
       />
     );
@@ -97,7 +97,7 @@ export default function RelayGroupDetail() {
     <div className="space-y-6">
       <EnrollDialog group={group} open={enrolling} onOpenChange={setEnrolling} />
       <EntityPageHeader
-        backTo="/relays"
+        backTo="/connections/relays"
         backLabel="Back to Relays"
         icon={Network}
         title={group.name}

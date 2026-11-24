@@ -247,6 +247,12 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Side-effect imports that register SQLAlchemy models with Base.metadata.
 "app/models/__init__.py" = ["F401"]
+# SuiteQL is text-only (no bind parameters in NetSuite's REST query service):
+# every value the provider interpolates passes _int_id, _sql_date, _sql_text or
+# an id regex first (tests/test_netsuite.py pins the refusals).
+"app/integrations/providers/netsuite.py" = ["S608"]
+# SuiteQL of the NetSuite change events: every interpolated value is an int, a type code or a checked timestamp.
+"app/services/netsuite_events.py" = ["S608"]
 # Assertions and hardcoded passwords are acceptable in tests.
 # TID251 guards platform code; tests import the metric suite to exercise it.
 "tests/**/*.py" = ["S101", "S105", "S106", "TID251"]

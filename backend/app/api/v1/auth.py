@@ -266,6 +266,9 @@ class UserResponse(BaseModel):
     chat_sidebar_expanded_workspaces: list[str] | None = None
     # The bell shows the work items waiting for this person (#9437).
     notify_waiting_work_items: bool = True
+    # The composer's reply suggestion after a chat turn; whether one is
+    # generated also needs the platform switch and a routing model.
+    reply_suggestions_enabled: bool = True
     # Group memberships (IDs) of this user. Lets the frontend compute
     # group-shared manage rights with the SAME intersection semantics as the
     # backend (``helpers.get_group_permission`` only counts a shared group the
@@ -1150,6 +1153,7 @@ async def me(
             user, "chat_sidebar_expanded_workspaces", None
         ),
         notify_waiting_work_items=getattr(user, "notify_waiting_work_items", True) is not False,
+        reply_suggestions_enabled=getattr(user, "reply_suggestions_enabled", True) is not False,
         group_ids=group_ids,
         managed_groups=[
             ManagedGroupRef(id=group.id, name=group.name) for group in await managed_groups(db, user.id)

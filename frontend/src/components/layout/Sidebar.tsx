@@ -71,6 +71,12 @@ import openaevWordmark from "@/assets/products/openaev.svg";
 import openaevWordmarkLight from "@/assets/products/openaev-light.svg";
 import xtmHubWordmark from "@/assets/products/xtm-hub.svg";
 import xtmHubWordmarkLight from "@/assets/products/xtm-hub-light.svg";
+import opencrqWordmark from "@/assets/products/opencrq.svg";
+import opencrqWordmarkLight from "@/assets/products/opencrq-light.svg";
+import xtmOneWordmark from "@/assets/products/xtm-one.svg";
+import xtmOneWordmarkLight from "@/assets/products/xtm-one-light.svg";
+import xtmOneMark from "@/assets/products/xtm-one-mark.svg";
+import xtmOneMarkLight from "@/assets/products/xtm-one-mark-light.svg";
 import { MadeByFiligran } from "./MadeByFiligran";
 import { NavRowBody } from "./NavRowBody";
 import {
@@ -126,7 +132,6 @@ function NavRow({
   const collapsed = useNavbarCollapsed();
   const aiOffReason = useAiDisabledReason();
   const unlicensedReason = useEnterpriseLockedReason();
-  const LeafIcon = leaf.icon;
   const label = navLabel(leaf, t_i18n);
   const lockReason = leaf.locked
     ? (leaf.lockReason === "unlicensed" ? unlicensedReason : aiOffReason)
@@ -155,7 +160,7 @@ function NavRow({
         aria-current={active ? "page" : undefined}
       >
         <NavRowBody
-          icon={<LeafIcon className="size-4" />}
+          icon={<Icon name={leaf.icon} size={16} />}
           badge={collapsed && lock("absolute -bottom-1 -right-1.5 size-2.5")}
           trailing={lock("ml-auto size-3")}
         >
@@ -193,13 +198,13 @@ function NavSubmenuRowBody({ leaf }: { leaf: NavLeaf }) {
   const { t_i18n } = useFormatter();
   const aiOffReason = useAiDisabledReason();
   const unlicensedReason = useEnterpriseLockedReason();
-  const LeafIcon = leaf.icon;
   const lockReason = leaf.locked
     ? (leaf.lockReason === "unlicensed" ? unlicensedReason : aiOffReason)
     : null;
   return (
     <span className="flex min-w-0 flex-1 items-center gap-2">
-      <LeafIcon className="size-3.5 shrink-0" aria-hidden />
+      {/* 16px as every row of the suite's navbars (DS NavbarItem), never 14px. */}
+      <Icon name={leaf.icon} size={16} />
       <span className="truncate">{navLabel(leaf, t_i18n)}</span>
       {leaf.locked && (
         <>
@@ -235,7 +240,6 @@ function NavGroupBlock({
   const collapsed = useNavbarCollapsed();
   const aiOffReason = useAiDisabledReason();
   const unlicensedReason = useEnterpriseLockedReason();
-  const GroupIcon = group.icon;
   const hub = group.to;
   const onHub = !!hub && activePath === hub;
 
@@ -293,7 +297,7 @@ function NavGroupBlock({
           )}
         </span>
       }
-      icon={<GroupIcon className="size-4 shrink-0" aria-hidden />}
+      icon={<Icon name={group.icon} size={16} />}
       open={open}
       onOpenChange={handleOpenChange}
       // The heading reads as selected on its hub page, as the label link did;
@@ -312,27 +316,57 @@ function NavGroupBlock({
 /**
  * A suite product's logo in the switcher, the row's only visible content.
  *
- * The wordmark files are OpenCTI's and OpenAEV's own (the library declares its
- * product wordmarks without exporting them, F09), in the variant of the theme.
- * OpenCRQ has no wordmark yet: its glyph, with its name beside it so its row
- * reads like the others.
+ * The wordmark files are the suite's one switcher set, byte-identical to the
+ * files OpenCTI, OpenAEV and OpenCRQ draw their own switchers with (the
+ * library declares its product wordmarks without exporting them, F09): full
+ * #0FBCFF on dark, full #0015A8 on light, 164 units wide. Every row is the
+ * product's wordmark alone, OpenCRQ's included.
  */
-const SUITE_WORDMARKS: Record<Exclude<SuiteProduct, "opencrq">, { dark: string; light: string }> = {
+const SUITE_WORDMARKS: Record<SuiteProduct, { dark: string; light: string }> = {
   opencti: { dark: openctiWordmark, light: openctiWordmarkLight },
   openaev: { dark: openaevWordmark, light: openaevWordmarkLight },
+  opencrq: { dark: opencrqWordmark, light: opencrqWordmarkLight },
   xtm_hub: { dark: xtmHubWordmark, light: xtmHubWordmarkLight },
 };
 
+/**
+ * XTM One's own lockup in the header and the switcher, emblem and wordmark in
+ * the emblem's one purple: #A47AF0 (purple-300, the Figma emblem colour) on
+ * dark, #651FE5 (the `.light` --color-filigran-ia-primary, purple-500) on
+ * light. An exception for product logos and switchers only (Sam, 21 Nov 2026,
+ * #964). Every other surface draws the bundled public/ files, the Figma
+ * lockup (wordmark #F2F2F3 dark, #18191B light).
+ */
+const XTM_ONE_HEADER = {
+  logo: { dark: xtmOneWordmark, light: xtmOneWordmarkLight },
+  mark: { dark: xtmOneMark, light: xtmOneMarkLight },
+} as const;
+
 function suiteLogo(product: SuiteProduct, mode: "light" | "dark") {
-  if (product === "opencrq") {
-    return (
-      <span className="inline-flex items-center gap-2">
-        <Icon name="custom/opencrq" size={20} />
-        <span className="content-base font-medium">{SUITE_PRODUCT_NAMES.opencrq}</span>
-      </span>
-    );
-  }
   return <img src={SUITE_WORDMARKS[product][mode]} alt="" className="h-auto w-full object-contain" />;
+}
+
+/**
+ * Copilot mode's header: the platform logo, a link home, and nothing else. The
+ * suite switcher is XTM One's (Sam, 21 Nov 2026): Copilot is not a suite
+ * product, so it has no chevron and no menu. The slots are the library
+ * switcher's own (28px tall, 126px wide expanded, a 28px square in the rail),
+ * so the logo sits exactly where XTM One's does.
+ */
+function PlatformHomeLogo({ logo, mark, label }: { logo: ReactNode; mark: ReactNode; label: string }) {
+  const collapsed = useNavbarCollapsed();
+  return (
+    <Link
+      to="/"
+      aria-label={label}
+      className={cn(
+        "inline-flex shrink-0 items-center focus-visible:outline-none focus-visible:ring-2 ring-focus",
+        collapsed ? "size-7 justify-center" : "h-7 w-[126px] overflow-hidden",
+      )}
+    >
+      {collapsed ? mark : logo}
+    </Link>
+  );
 }
 
 export function Sidebar({ impersonating = false }: { impersonating?: boolean }) {
@@ -397,6 +431,8 @@ export function Sidebar({ impersonating = false }: { impersonating?: boolean }) 
     evaluation: evaluationOn,
     /* Intents are XTM One domain content: no row in Copilot mode (#445). */
     intents: isXtm,
+    /* The CTEM cases list is XTM One domain content too: no row in Copilot mode (#1135). */
+    ctemCases: isXtm,
   }), [chatEnabled, customVariablesEnabled, relaysEnabled, isXtm, platformConfig?.features.ai_adoption, aiEnabled, aiLicensed, deepInvestigationEnabled, videoStudioEnabled, dashboardStudioEnabled, evaluationOn]);
 
   const sections = useMemo(() => resolveNav(flags, isAdmin, isGroupManager), [flags, isAdmin, isGroupManager]);
@@ -449,30 +485,40 @@ export function Sidebar({ impersonating = false }: { impersonating?: boolean }) 
     }));
   }, [registrations, hubRegistration, isAdmin, isXtm, colorMode, t_i18n]);
 
+  /* The bundled logo is in use while the backend names its light variant; an
+     operator's own logo and mark are drawn as uploaded. */
+  const bundledXtmOne = isXtm && Boolean(platformConfig?.platform_logo_light);
+  const headerLogoSrc = bundledXtmOne ? XTM_ONE_HEADER.logo[colorMode] : logoSrc;
+  const headerMarkSrc = bundledXtmOne && platformConfig?.platform_emblem_light ? XTM_ONE_HEADER.mark[colorMode] : emblemSrc;
+
   const brandLogo = (
-    <img src={logoSrc} alt={platformName} className="h-7 min-w-0 object-contain" />
+    <img src={headerLogoSrc} alt={platformName} className="h-7 min-w-0 object-contain" />
   );
   /* The rail is 48px wide: a wordmark squeezed into its 28px square is an
      unreadable strip, so the rail shows the mark alone. With no mark to show
      (an operator's logo and no favicon), the logo is cropped to its leading
      square, which is where a wordmark carries its mark. */
-  const brandMark = emblemSrc ? (
-    <img src={emblemSrc} alt="" className="size-7 object-contain" />
+  const brandMark = headerMarkSrc ? (
+    <img src={headerMarkSrc} alt="" className="size-7 object-contain" />
   ) : (
     <img src={logoSrc} alt="" className="size-7 max-w-none object-cover object-left" />
   );
 
   const navbarHeader = (
     <>
-      <ProductSwitcher
-        logo={brandLogo}
-        logoCollapsed={brandMark}
-        label={t_i18n("Switch product")}
-        options={productOptions}
-        logoTo="/"
-        linkComponent={Link}
-        logoLabel={`${platformName} home`}
-      />
+      {isXtm ? (
+        <ProductSwitcher
+          logo={brandLogo}
+          logoCollapsed={brandMark}
+          label={t_i18n("Switch product")}
+          options={productOptions}
+          logoTo="/"
+          linkComponent={Link}
+          logoLabel={`${platformName} home`}
+        />
+      ) : (
+        <PlatformHomeLogo logo={brandLogo} mark={brandMark} label={`${platformName} home`} />
+      )}
       {/* Mobile only: the backdrop closes the nav too, but a visible control is
           the discoverable way out on touch. */}
       <button
@@ -491,14 +537,13 @@ export function Sidebar({ impersonating = false }: { impersonating?: boolean }) 
        leaves. Before the library it needed a bespoke rail flyout to stay
        reachable when collapsed; the submenu handles both presentations. */
     if (section.collapsible && section.icon) {
-      const SectionIcon = section.icon;
       const leaves = section.entries.filter((e): e is NavLeaf => e.kind === "leaf");
       return (
         <div key={section.id}>
           {index > 0 && <NavbarSeparator />}
           <NavbarSubmenu
             label={section.label ? t_i18n(section.label) : section.id}
-            icon={<SectionIcon className="size-4 shrink-0" aria-hidden />}
+            icon={<Icon name={section.icon} size={16} />}
             {...submenuState(section.id)}
           >
             {leaves.map((leaf) => submenuRow(leaf, activePath, onNavigate))}

@@ -3235,7 +3235,12 @@ async def run_agent_chat(
                 else "You are a helpful AI assistant."
             )
         else:
-            _persona_source = agent.persona or "You are a helpful AI assistant."
+            # A built-in's organization notes follow its seeded persona (#914).
+            from app.services.builtin_customer_layer import persona_with_customer_notes
+
+            _persona_source = (
+                persona_with_customer_notes(agent, agent.persona) or "You are a helpful AI assistant."
+            )
         _persona = substitute_variables(_persona_source, _variables)
         system_parts = [_persona]
         # The organization summary opens the prompt when the cascade agent >
@@ -4545,6 +4550,7 @@ async def run_agent_chat(
                     *build_organization_context_tool(
                         user_id=None if is_anonymous_user else user_id,
                         is_admin=bool(getattr(user_record, "is_admin", False)),
+                        agent=agent,
                     )
                 )
             # The write-proposal tool of the profile (#9484, S-a2): the CTEM
@@ -4597,6 +4603,29 @@ async def run_agent_chat(
 
             if offers_ctem_case_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_case_tools(user_id=user_id, agent_id=str(agent.id)))
+            # The CTEM signal tools (#826): the CTEM agents that see a trigger first.
+            from app.services.builtin_tools import build_ctem_signal_tools, offers_ctem_signal_tools
+
+            if offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
+                composite.add_tools(*build_ctem_signal_tools(user_id=user_id))
+            # The read-only CTEM group (#1337): bound on any agent, the reads the
+            # CTEM agents above do not already carry.
+            from app.services.builtin_tools import ctem_read_tools_for
+
+            ctem_read = ctem_read_tools_for(agent, agent_builtin_tool_ids, user_id=user_id)
+            if ctem_read is not None:
+                composite.add_tools(*ctem_read)
+            # The CTEM administrator repairs (#1778): the CTEM case agents, or the group bound.
+            from app.services.builtin_tools import ctem_repair_tools_for
+
+            ctem_repair = ctem_repair_tools_for(agent, agent_builtin_tool_ids, user_id=user_id)
+            if ctem_repair is not None:
+                composite.add_tools(*ctem_repair)
+            # The learned skill (#914): a built-in agent records durable lessons.
+            from app.services.builtin_tools import build_learned_lesson_tool, offers_learned_lesson_tool
+
+            if offers_learned_lesson_tool(is_builtin=agent.is_builtin):
+                composite.add_tools(*build_learned_lesson_tool(agent_id=str(agent.id), user_id=user_id))
             # The onboarding interview of the profile (#11224): an
             # administrator's turn only, the profile API being admin-only.
             if _caller_admin:
@@ -7687,6 +7716,7 @@ async def run_agent_chat(
                                 "conversation, so the approved call was not "
                                 "run. Ask again if you still want it."
                             ),
+                            "source": "not_offered",
                         }
                         for _cid, _d in resume_decisions.items()
                     }
@@ -8310,9 +8340,13 @@ async def run_agent_chat(
             # short is delivered as it came, ending with the budget message:
             # repairing it would re-serialize a partial payload as a complete one.
             if response.content and not answer_cut_by_budget(response):
-                from app.services.structured_output import deliver_json_answer
+                from app.services.structured_output import (
+                    deliver_json_answer_in_thread,
+                )
 
-                response.content = deliver_json_answer(
+                # In a thread: repairing a large answer is CPU-bound and would
+                # block the worker's event loop (and its health probe).
+                response.content = await deliver_json_answer_in_thread(
                     response.content,
                     _effective_output_format,
                     _effective_output_schema,
@@ -9028,6 +9062,14 @@ async def run_agent_chat(
             if loop_outcome_out is not None:
                 loop_outcome_out["stop_reason"] = getattr(
                     response, "stop_reason", None
+                )
+                # A deadline stop no model call wrote a token of: the caller
+                # (a delegated task) fails it instead of completing on the
+                # forced-answer notice.
+                from app.tools.agent_loop import deadline_stop_without_output
+
+                loop_outcome_out["deadline_stop_without_output"] = (
+                    deadline_stop_without_output(response)
                 )
                 loop_outcome_out["pending_task_ids"] = list(
                     getattr(response, "pending_task_ids", None) or []

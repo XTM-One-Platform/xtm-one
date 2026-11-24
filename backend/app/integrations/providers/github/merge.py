@@ -33,7 +33,7 @@ from app.tools.base import CallableToolExecutor, ToolDefinition, ToolResult
 from . import _common
 from ._common import _BASE_URL, _PROVIDER, _coerce_str, _enc, _json_headers, parse_repo
 from .contents import _GIT_OBJECT_ID_RE, _branch_name_error, _json_object, _rest_signature_verdict
-from .merge_hunks import LineMerge, describe_conflicts, hunk_ranges, line_merge
+from .merge_hunks import LineMerge, describe_conflicts, hunk_ranges, line_merge, removed_lines
 from .merge_resolution import (
     KEEP_CHOICES,
     Resolution,
@@ -295,10 +295,12 @@ async def conflict_answer(
     # Given resolutions always go to the resolver, which names a path left unresolved; else a clean merge lands.
     if both and (resolved or (merged is not None and not open_paths)):
         landed = await resolve_and_merge(client, headers, repo, repo_url, branch, head, message, both, settled)
-        if notes and landed.startswith("Merged"):
+        removed = removed_lines(merged)
+        if (notes or removed) and landed.startswith("Merged"):
             # Before the Final head line, which stays the last line of the answer.
             body, sep, last = landed.rpartition("\nFinal head: ")
-            how = "\nHow each resolution was applied:\n" + "\n".join(f"- {note}" for note in notes)
+            how = ("\nHow each resolution was applied:\n" + "\n".join(f"- {note}" for note in notes)) if notes else ""
+            how += ("\n" + "\n".join(removed)) if removed else ""
             landed = f"{body}{how}{sep}{last}" if sep else landed + how
         return landed
     lines = [lead, f"Merge base {merge_base[:8]}."]
@@ -320,6 +322,7 @@ async def conflict_answer(
         if merged.validated:
             lines.append(f"Parsed after the merge, valid with no duplicate key ({len(merged.validated)}):")
             lines += _listed_paths(merged.validated)
+        lines += removed_lines(merged)
         return "\n".join(lines)
     if merged is not None:
         lines.append(
@@ -339,6 +342,7 @@ async def conflict_answer(
         if merged.validated:
             lines.append(f"Parsed after the merge, valid with no duplicate key ({len(merged.validated)}):")
             lines += _listed_paths(merged.validated)
+        lines += removed_lines(merged)
     else:
         lines.append(
             f"Read each path with get_github_file at refs {merge_base[:8]} (base), '{branch}' (ours) and '{head}' "
@@ -562,5 +566,9 @@ def register(
             },
             source=_SOURCE,
             priority=1,
+            # A repeat cannot double the merge: it drops alignment commits a stopped call left, answers a merge
+            # already landed, and writes the resolution chunks a stopped call left unwritten
+            # (finish_stopped_resolution). A resumed turn must run it, not refuse it as an in-flight write.
+            replay_safe=True,
         ),
     ]

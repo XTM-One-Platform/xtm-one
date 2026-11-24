@@ -234,14 +234,12 @@ async def _list_chat_models(provider) -> tuple[list[str], dict[str, list[str]] |
 
 
 def _ensure_new_provider_allowed(provider: str, *, from_integration: bool = False) -> None:
-    """Block configuring a NEW provider of a flag-gated type while its flag is off.
+    """Block configuring a NEW provider that is not addable by hand.
 
     Only guards the "create" surfaces (add-provider, and the pre-save
-    resolve/validate calls the add-provider dialog makes before saving) —
-    providers already configured keep working either way, so this is a
-    front door lock, not a runtime kill switch. A provider fed only by an
-    integration (``integration_fed_only``: LM Studio) is created from that
-    integration's console (*from_integration*), never by hand.
+    resolve/validate calls the add-provider dialog makes before saving).
+    A provider fed only by an integration (``integration_fed_only``: LM
+    Studio) is created from that integration's console (*from_integration*).
     """
     provider_cls = PROVIDER_MAP.get(provider)
     if getattr(provider_cls, "integration_fed_only", False) and not from_integration:
@@ -252,14 +250,6 @@ def _ensure_new_provider_allowed(provider: str, *, from_integration: bool = Fals
                 "company-managed integration of its kind."
             ),
         )
-    if provider == "filigran_gateway":
-        from app.core.feature_flags import is_feature_enabled
-
-        if not is_feature_enabled("FILIGRAN_GATEWAY_PROVIDER"):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="The Filigran AI Gateway provider is disabled on this platform.",
-            )
 
 
 def env_managed_default_fields() -> set[str]:
@@ -494,6 +484,9 @@ def _build_ga_response(
         ),
         xtm_mcp_enabled=(
             bool(getattr(ps, "xtm_mcp_enabled", False)) if ps else False
+        ),
+        reply_suggestions_enabled=(
+            getattr(ps, "reply_suggestions_enabled", True) is not False if ps else True
         ),
         env_managed_fields=sorted(_env_managed_ga_fields()),
     )
@@ -735,6 +728,7 @@ async def _ensure_platform_default_model(
     available_models: list[str] | None = None,
     *,
     fill_empty_defaults: bool = True,
+    replaces: str | None = None,
 ) -> None:
     """Set platform default models if none are configured yet.
 
@@ -752,6 +746,9 @@ async def _ensure_platform_default_model(
     ones included: the boot seed passes it under ``BYOLLM_ACTIVATED`` on an
     install an administrator has configured, where an empty default is their
     choice.
+
+    ``replaces``: a saved agent default of this very config equal to it counts
+    as unset (the gateway's ``default`` alias once it marks a chat model, #1421).
     """
     from app.api.v1.platform_settings_helpers import (
         get_platform_settings as _load_ps,
@@ -812,7 +809,13 @@ async def _ensure_platform_default_model(
 
     ps = await _load_ps(db)
 
-    if not ps.agent_default_model and chat_default:
+    replaced = (
+        replaces is not None
+        and ps.agent_default_model == replaces
+        and ps.agent_default_provider == provider
+        and str(ps.agent_default_provider_id or provider_id) == str(provider_id)
+    )
+    if (not ps.agent_default_model or replaced) and chat_default:
         ps.agent_default_provider = provider
         ps.agent_default_provider_id = uuid.UUID(provider_id) if provider_id else None
         ps.agent_default_model = chat_default
@@ -821,6 +824,12 @@ async def _ensure_platform_default_model(
         ps.embedding_provider = provider
         ps.embedding_provider_id = uuid.UUID(provider_id) if provider_id else None
         ps.embedding_model = EMBEDDING_DEFAULTS[provider]
+    elif not ps.embedding_model and provider == FiligranGatewayProvider.provider_name and provider_id:
+        # Its catalog differs per deployment: the gateway's flagged model, where it re-embeds nothing.
+        from app.llm.gateway_embedding_default import fill_from_gateway
+
+        if config := await db.get(LLMProviderConfig, uuid.UUID(provider_id)):
+            await fill_from_gateway(db, ps, [config])
 
     if not ps.image_model and provider in IMAGE_DEFAULTS:
         ps.image_provider = provider
@@ -2506,7 +2515,14 @@ async def refresh_llm_provider_models(
     """
     from app.core.config import settings as app_settings
     from app.core.migrations import bootstrap_lock
-    from app.llm.env_listing import apply_listing, env_provider_keys, list_models_for_seed, listing_platform_model
+    from app.llm.env_listing import (
+        apply_listing,
+        declared_default,
+        env_provider_keys,
+        list_models_for_seed,
+        listing_platform_model,
+        replaced_alias,
+    )
     from app.main import _byollm_install_configured
     from app.services.model_catalog_announcements import model_catalog_watch
 
@@ -2543,8 +2559,8 @@ async def refresh_llm_provider_models(
     # a rollback expires the user loaded on this session (MissingGreenlet).
     await db.commit()
     set_llm_caller(user.id, user.email)
-    listed = await list_models_for_seed(provider, dict(env_provider_keys(warn=False))[provider])
-    if listed is None:
+    listing = await list_models_for_seed(provider, dict(env_provider_keys(warn=False))[provider])
+    if listing is None:
         raise HTTPException(
             status_code=502,
             detail=f"The '{provider}' provider did not list its models; the model list is unchanged.",
@@ -2555,12 +2571,13 @@ async def refresh_llm_provider_models(
         async with bootstrap_lock(wait_timeout=25), model_catalog_watch():
             await lock_provider_configs(db)
             config = await _listed_config()  # an admin may have edited it meanwhile
+            listed = listing.models
             removed = sorted(set(config.available_models or []) - set(listed))
             # Read before anything is written, as at boot.
             install_configured = await _byollm_install_configured(db)
-            apply_listing(config, listed)
+            apply_listing(config, listed, listing.chat_default)
             # A first listing fills the empty platform defaults, as boot does.
-            declared = getattr(PROVIDER_MAP.get(config.provider), "default_model", None)
+            declared = declared_default(config.provider, listing.chat_default, listed)
             if model := listing_platform_model(listed, config.default_model, app_settings.default_model, declared):
                 await _ensure_platform_default_model(
                     db,
@@ -2569,6 +2586,7 @@ async def refresh_llm_provider_models(
                     provider_id=str(config.id),
                     available_models=None,
                     fill_empty_defaults=not install_configured,
+                    replaces=replaced_alias(config.provider, declared),
                 )
             await log_audit(
                 db,
@@ -3254,6 +3272,7 @@ async def get_general_assistant_config(
                 getattr(ps, "platform_mcp_enabled", True)
             ),
             xtm_mcp_enabled=bool(getattr(ps, "xtm_mcp_enabled", False)),
+            reply_suggestions_enabled=getattr(ps, "reply_suggestions_enabled", True) is not False,
             env_managed_fields=sorted(_env_managed_ga_fields()),
         )
 
@@ -3988,6 +4007,8 @@ async def update_general_assistant_config(
         ps.platform_mcp_enabled = body.platform_mcp_enabled
     if body.xtm_mcp_enabled is not None:
         ps.xtm_mcp_enabled = body.xtm_mcp_enabled
+    if body.reply_suggestions_enabled is not None:
+        ps.reply_suggestions_enabled = body.reply_suggestions_enabled
 
     license_changed = False
     if body.enterprise_license is not None:
@@ -4672,6 +4693,8 @@ async def update_preferences(
         )
     if body.notify_waiting_work_items is not None:
         user.notify_waiting_work_items = body.notify_waiting_work_items
+    if body.reply_suggestions_enabled is not None:
+        user.reply_suggestions_enabled = body.reply_suggestions_enabled
     if "chat_sidebar_expanded_workspaces" in body.model_fields_set:
         # Written whole, duplicates dropped in first-seen order; a key naming a
         # workspace since deleted is harmless (no group draws it).

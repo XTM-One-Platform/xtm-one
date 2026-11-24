@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, fireEvent, screen, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { renderWithProviders } from "@/testing/providers";
-import { Home, Gauge, Settings, Sparkles } from "lucide-react";
 import type { NavSection } from "./nav-model";
 
 /**
@@ -19,7 +18,7 @@ import type { NavSection } from "./nav-model";
  */
 
 const sections: NavSection[] = [
-  { id: "main", entries: [{ kind: "leaf", to: "/", icon: Home, label: "Home" }] },
+  { id: "main", entries: [{ kind: "leaf", to: "/", icon: "house", label: "Home" }] },
   {
     id: "resources",
     // A label on a plain block, to prove the shell does not draw it.
@@ -29,13 +28,13 @@ const sections: NavSection[] = [
         kind: "group",
         id: "studio",
         label: "Agent Studio",
-        icon: Sparkles,
+        icon: "sparkles",
         to: "/agent-studio",
         children: [
-          { kind: "leaf", to: "/knowledge", icon: Home, label: "Knowledge" },
-          { kind: "leaf", to: "/prompts", icon: Home, label: "Prompts" },
+          { kind: "leaf", to: "/knowledge", icon: "book-text", label: "Knowledge" },
+          { kind: "leaf", to: "/prompts", icon: "file-text", label: "Prompts" },
           // A locked row of a group: dimmed and marked, still a live link.
-          { kind: "leaf", to: "/intents", icon: Home, label: "Intents", locked: true, lockReason: "ai_disabled" },
+          { kind: "leaf", to: "/intents", icon: "zap", label: "Intents", locked: true, lockReason: "ai_disabled" },
         ],
       },
     ],
@@ -44,14 +43,15 @@ const sections: NavSection[] = [
     id: "observability",
     label: "Observability",
     collapsible: true,
-    icon: Gauge,
-    entries: [{ kind: "leaf", to: "/traces", icon: Settings, label: "Traces" }],
+    icon: "activity",
+    entries: [{ kind: "leaf", to: "/observability/traces", icon: "list-tree", label: "Traces" }],
   },
 ];
 
 const railState = { rail: false };
 const branding: { emblem: string | null } = { emblem: "/emblem.svg" };
 const viewer = { isAdmin: true };
+const mode = { xtmOne: true };
 let registrations: unknown[] = [];
 let hubRegistration: { status: string; hub_url: string | null; default_hub_url: string } = {
   status: "unregistered",
@@ -67,7 +67,7 @@ vi.mock("./nav-model", async (importOriginal) => {
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ isAdmin: viewer.isAdmin }) }));
 vi.mock("@/hooks/usePlatformConfig", () => ({
   usePlatformConfig: () => ({ features: { ai_adoption: true } }),
-  useIsXtmOne: () => true,
+  useIsXtmOne: () => mode.xtmOne,
   usePlatformName: () => "XTM One",
   usePlatformLogoUrl: () => "/logo.png",
   usePlatformEmblemUrl: () => branding.emblem,
@@ -134,6 +134,7 @@ beforeEach(() => {
   hubRegistration = { status: "unregistered", hub_url: null, default_hub_url: "https://hub.default.example.test" };
   railState.rail = false;
   viewer.isAdmin = true;
+  mode.xtmOne = true;
   branding.emblem = "/emblem.svg";
   lockState.aiReason = null;
   localStorage.clear();
@@ -166,7 +167,7 @@ describe("Sidebar", () => {
   });
 
   it("marks the active route with aria-current, which is how the library shows selection", () => {
-    renderSidebar("/traces");
+    renderSidebar("/observability/traces");
     const traces = screen.getByRole("link", { name: /Traces/ });
     expect(traces).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: /Home/ })).not.toHaveAttribute("aria-current");
@@ -256,8 +257,41 @@ describe("Sidebar", () => {
     expect(logos[2]).toMatch(/xtm-hub/);
   });
 
+  it("draws OpenCRQ's own wordmark on its row, never its glyph and a typed name", () => {
+    // Sam, 21 Nov 2026: the OpenCRQ row was a white glyph and plain text while
+    // every other row is the product's full-colour wordmark.
+    registrations = [
+      { id: "r6", platform_identifier: "opencrq", platform_title: "OpenCRQ", platform_url: "https://crq.example.test/", healthy: true },
+    ];
+    renderSidebar();
+    const rows = switcherRows().map((row) => row.closest("[role=menuitem]") ?? row);
+    const crq = rows.find((row) => row.querySelector("img")?.getAttribute("src")?.includes("opencrq"));
+    expect(crq).toBeDefined();
+    // The wordmark is the row's only image, with no visible name typed beside it.
+    expect(crq?.querySelectorAll("img")).toHaveLength(1);
+    expect(crq?.querySelector(".content-base")).toBeNull();
+  });
+
+  it("has no product switcher in Copilot mode: the logo alone, a link home", () => {
+    // Sam, 21 Nov 2026: the suite switcher is XTM One's; Copilot shows its
+    // platform logo linking home, with no chevron and no menu.
+    mode.xtmOne = false;
+    renderSidebar("/observability/traces");
+    expect(screen.queryByRole("button", { name: "Switch product" })).not.toBeInTheDocument();
+    expect(homeImage()).toBe("/logo.png");
+    fireEvent.click(screen.getByRole("link", { name: "XTM One home" }));
+    expect(screen.getByTestId("location").textContent).toBe("/");
+  });
+
+  it("draws the mark alone in the collapsed rail in Copilot mode too", () => {
+    mode.xtmOne = false;
+    railState.rail = true;
+    renderSidebar();
+    expect(homeImage()).toBe("/emblem.svg");
+  });
+
   it("goes home from the switcher's logo through the router, without a page load", () => {
-    renderSidebar("/traces");
+    renderSidebar("/observability/traces");
     fireEvent.click(screen.getByRole("link", { name: "XTM One home" }));
     expect(screen.getByTestId("location").textContent).toBe("/");
   });

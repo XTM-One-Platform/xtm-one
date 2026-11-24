@@ -9,7 +9,7 @@ import { PrioritizationMix } from "./PrioritizationMix";
 
 const VIZ: CtemStageViz = {
   top_vulnerabilities: [
-    { name: "CVE-2024-3400", cvss: 10, severity: "CRITICAL", epss: 0.94, kev: true },
+    { id: "vuln-3400", name: "CVE-2024-3400", cvss: 10, severity: "CRITICAL", epss: 0.94, kev: true },
     { name: "CVE-2023-4966", cvss: 9.4, severity: "CRITICAL", epss: 0.92, kev: false },
     { name: null, cvss: 9, severity: "CRITICAL", epss: null, kev: false },
   ],
@@ -43,6 +43,8 @@ describe("PrioritizationMix", () => {
     expect(split.textContent).toContain("findings");
     expect(split.textContent).toContain("69% carry a CVE");
     expect(screen.getByTestId("ctem-prioritization-data-row").getAttribute("data-wide-columns")).toBe("2");
+    // Equal heights per row (#1612): the row stretches and every card fills its cell.
+    expect(screen.getByTestId("ctem-prioritization-data-row").getAttribute("data-align")).toBe("stretch");
   });
 
   it("reads one finding in the singular", () => {
@@ -79,12 +81,27 @@ describe("PrioritizationMix", () => {
   it("keeps every row on the list's column tracks and writes CVSS and EPSS with the locale's formats (UX r1 B1, B3)", () => {
     renderWithProviders(<PrioritizationMix viz={VIZ} connected={{ opencti: true, openaev: false, opencrq: false }} onConnect={() => {}} />);
     const rows = screen.getByTestId("ctem-prioritization-top-cves-list").querySelectorAll("li");
-    rows.forEach((li) => expect(li.children).toHaveLength(4));
+    rows.forEach((li) => expect(li.children).toHaveLength(5));
     expect(rows[0].textContent).toContain("EPSS 94%");
     expect(rows[1].textContent).toContain("CVSS 9.4");
     const hidden = screen.getByTestId("ctem-hidden-data-table").textContent ?? "";
     expect(hidden).toContain("94%");
     expect(hidden).not.toContain("0.94");
+  });
+
+  it("opens a top CVE in OpenCTI by its id, and draws no pivot without an id or a base URL (#1357)", () => {
+    const { unmount } = renderWithProviders(
+      <PrioritizationMix viz={VIZ} connected={{ opencti: true, openaev: false, opencrq: false }} onConnect={() => {}} openctiUrl="https://cti.example/" />,
+    );
+    const pivots = screen.getAllByTestId("ctem-top-cve-pivot");
+    // Only the CVE with an OpenCTI id gets the pivot.
+    expect(pivots).toHaveLength(1);
+    expect(pivots[0].getAttribute("href")).toBe("https://cti.example/dashboard/id/vuln-3400");
+    expect(pivots[0].getAttribute("target")).toBe("_blank");
+    expect(pivots[0].getAttribute("aria-label")).toBe("Open in OpenCTI");
+    unmount();
+    renderWithProviders(<PrioritizationMix viz={VIZ} connected={{ opencti: true, openaev: false, opencrq: false }} onConnect={() => {}} />);
+    expect(screen.queryByTestId("ctem-top-cve-pivot")).toBeNull();
   });
 
   it("shows five CVEs, then the whole list on Show all, and back (UX r1 B2)", () => {

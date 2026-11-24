@@ -39,6 +39,7 @@ from app.services.sub_agent_files import (
     register_result_refs,
     task_result_file_ids,
 )
+from app.services.sub_agent_result_text import DEFAULT_WINDOW_CHARS, answer_window
 from app.tools.base import CallableToolExecutor, ToolDefinition
 from app.tools.session_input import prompt_safe_task_text
 
@@ -554,15 +555,30 @@ def build_sub_agent_tools(
                 preview = text[:300].replace("\n", " ")
                 file_ids = _result_file_ids(result)
                 files_note = f", {len(file_ids)} file(s) produced" if file_ids else ""
+                # An answer longer than one get_full_task_result window says
+                # so here, with the call that pages it (#1394).
+                paging_note = (
+                    f"\n  Longer than one read: page it with "
+                    f'get_full_task_result(task_id="{tid}", offset=N); each '
+                    "read names the next offset."
+                    if len(text) > DEFAULT_WINDOW_CHARS
+                    else ""
+                )
                 parts.append(
                     f"{tid[:12]}: completed ({len(text):,} chars{files_note})\n"
-                    f"  Preview: {preview}..."
+                    f"  Preview: {preview}...{paging_note}"
                 )
                 finished_file_ids.extend(file_ids)
         return await _with_result_files("\n".join(parts), finished_file_ids)
 
-    async def _get_full_task_result(task_id: str) -> str:
-        """Get the FULL result of a single completed (or failed) background task."""
+    async def _get_full_task_result(task_id: str, offset: int = 0, max_chars: int = DEFAULT_WINDOW_CHARS) -> str:
+        """Get the result of a single completed (or failed) background task.
+
+        The answer is stored whole and read by window (#1394): an answer that
+        fits one window comes back exactly as stored, with no header; a
+        longer one comes back from *offset* with one header line naming the
+        total size, the range shown and the next offset (or the end).
+        """
         from app.services.sub_agent import get_task_result
 
         if not _is_uuid_like(task_id):
@@ -578,7 +594,11 @@ def build_sub_agent_tools(
             return await _with_result_files(text, _result_file_ids(result))
         if result["status"] != "completed":
             return f"Task is still {result['status']}. Check back later."
-        text = result["result"] or "Task completed with no output."
+        stored = result["result"] or ""
+        if not stored:
+            return await _with_result_files("Task completed with no output.", _result_file_ids(result))
+        window = answer_window(stored, offset, max_chars)
+        text = window.text if window.is_whole else f"{window.header(task_id)}\n\n{window.text}"
         return await _with_result_files(text, _result_file_ids(result))
 
     async def _list_background_tasks(status: str = "") -> str:
@@ -598,8 +618,10 @@ def build_sub_agent_tools(
             parent_agent_id=parent_agent_id,
             status=status or None,
         )
+        # The FULL id: check_task_status / get_task_result take a whole UUID,
+        # so a shortened id here could not be passed on (#966).
         parts = [
-            f"• {t['task_id'][:8]}... | {t['status']} | "
+            f"• {t['task_id']} | {t['status']} | "
             f"{t['task_description'][:120]}"
             + (f" | {t['held_reason']}" if t.get("held_reason") else "")
             # A pending / running task names its run and whether its execution
@@ -618,8 +640,7 @@ def build_sub_agent_tools(
                     conversation_ref=safe_uuid(conversation_id),
                 )
         parts += [
-            f"• {p['delegation_id'][:8]}... | running | delegated to partner "
-            f"'{p['partner']}' — still working there"
+            f"• {p['delegation_id']} | running | delegated to partner '{p['partner']}' — still working there"
             for p in partner
         ]
         if not parts:
@@ -884,7 +905,9 @@ def build_sub_agent_tools(
                 description=(
                     "Retrieve the FULL output of a single completed background task "
                     "(or the error of a failed one). Use this to get the actual content "
-                    "one task at a time. Files the task produced - a failed task's "
+                    "one task at a time. An answer longer than max_chars comes by "
+                    "window: a header line gives the total size and the next offset to "
+                    "pass, until it says the end. Files the task produced - a failed task's "
                     "partial output included - are attached to your context by this "
                     "call - read them with read_file_content(file_id), never rebuild "
                     "them from the text."
@@ -895,6 +918,14 @@ def build_sub_agent_tools(
                         "task_id": {
                             "type": "string",
                             "description": "Single task ID to retrieve",
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "description": "Character to start from: the next offset a previous read named (default 0)",
+                        },
+                        "max_chars": {
+                            "type": "integer",
+                            "description": "Characters per read (default 50,000, at most 150,000)",
                         },
                     },
                     "required": ["task_id"],

@@ -9,16 +9,23 @@
         "properties": {
           "name": {"type": "string"},
           "opencrq_id": {"type": "string", "description": "The OpenCRQ scenario id, empty for a draft."},
-          "asset": {"type": "string", "description": "The crown jewel or business service at risk."},
-          "currency": {"type": "string"},
+          "asset": {"type": "string", "description": "The primary asset or business service at risk."},
+          "currency": {"type": "string", "description": "ISO 4217 code of the figures as OpenCRQ prices them (the original currency)."},
           "expected_loss_before": {"type": "number"},
           "expected_loss_after": {"type": "number"},
           "loss_avoided": {"type": "number"},
-          "above_approval_threshold": {"type": "boolean"},
+          "threshold_currency": {"type": ["string", "null"], "description": "ISO 4217 code of the organization's thresholds; null when the profile has no currency."},
+          "expected_loss_before_converted": {"type": "number", "description": "expected_loss_before in threshold_currency."},
+          "expected_loss_after_converted": {"type": "number", "description": "expected_loss_after in threshold_currency."},
+          "loss_avoided_converted": {"type": "number", "description": "loss_avoided in threshold_currency."},
+          "fx_rate": {"type": ["number", "null"], "description": "Units of threshold_currency per unit of currency, from the profile's reference rates; null when none."},
+          "fx_rate_date": {"type": ["string", "null"], "description": "The date the reference rate was published (YYYY-MM-DD)."},
+          "fx_source": {"type": ["string", "null"], "description": "Who published the reference rate, as the profile names it."},
+          "above_approval_threshold": {"type": ["boolean", "null"], "description": "Compared in threshold_currency only; null when no comparison is possible (no rate, no currency or no threshold)."},
           "assumptions": {"type": "array", "items": {"type": "string"}},
           "draft": {"type": "boolean", "description": "True when the scenario is not yet in OpenCRQ."}
         },
-        "required": ["name", "asset", "currency", "assumptions", "draft"],
+        "required": ["name", "asset", "currency", "threshold_currency", "above_approval_threshold", "assumptions", "draft"],
         "additionalProperties": false
       }
     }

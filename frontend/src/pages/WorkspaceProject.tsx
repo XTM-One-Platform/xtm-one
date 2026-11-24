@@ -17,7 +17,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * A workspace: where a team works. Its header is the fleet page's
  * (`EntityPageHeader`), with the fleet it hosts as a chip.
  *
- * Tabs, in the URL (`/workspaces/:id/:tab?`):
+ * Tabs, in the URL (`/tasks/workspaces/:id/:tab?`):
  * - Overview: what it gives its agents (`KnowledgePanel`);
  * - Team, only when it hosts a fleet: the fleet's members (`WorkspaceTeam`);
  * - Operations: work items, shared state and worksets filed here or produced
@@ -25,6 +25,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * - Conversations: the reader's own conversations filed here. Starting a
  *   conversation here files it in the workspace from its first message.
  */
+import { WORKSPACES_PATH } from "@/lib/task-routes";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { FolderKanban, MessageSquarePlus, MessagesSquare } from "lucide-react";
 
@@ -80,8 +81,8 @@ export default function WorkspaceProject() {
         title="Workspace not found"
         description="It may have been deleted, or it is not shared with you."
         actionLabel="Back to Workspaces"
-        onAction={() => navigate("/operations/workspaces")}
-        backTo="/operations/workspaces"
+        onAction={() => navigate(WORKSPACES_PATH)}
+        backTo={WORKSPACES_PATH}
         backLabel="Back to Workspaces"
       />
     );
@@ -127,7 +128,7 @@ export default function WorkspaceProject() {
   return (
     <div className="space-y-6">
       <EntityPageHeader
-        backTo={back?.backTo ?? "/operations/workspaces"}
+        backTo={back?.backTo ?? WORKSPACES_PATH}
         backLabel={back?.backLabel ?? "Back to Workspaces"}
         icon={FolderKanban}
         title={ws.name}

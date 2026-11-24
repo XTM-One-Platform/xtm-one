@@ -16,7 +16,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 /**
  * Settings > Organization: Assets & exposure, Prioritization policy and
  * Enterprise knowledge (#11543 S3). The same SettingsCard and DataTable
- * pattern as the crown jewels, tech stack and AI systems cards: read mode
+ * pattern as the primary assets, software inventory and AI systems cards: read mode
  * draws text, edit mode draws the controls, the page's Save writes them.
  */
 
@@ -114,6 +114,9 @@ const EMPTY_POLICY: PrioritizationPolicy = {
   accepted_risks: [],
 };
 
+/** CTEM-08: the backend defaults of the PIR score thresholds (organization_context.PrioritizationPolicy). */
+const PIR_SCORE_DEFAULTS = { pir_min_score_vulnerability: 70, pir_min_score_threat: 75 } as const;
+
 /** Days before an accepted risk's expiry when the page starts warning. */
 const EXPIRY_REMINDER_DAYS = 30;
 const ANY_CRITICALITY = "any";
@@ -199,7 +202,7 @@ export function exposureIssueFromRefusal(form: ProfileForm, detail: string): Exp
     const index = formIndex(risks, (row) => Boolean(row.subject.trim()), Number(risk[1]));
     return index === undefined ? null : { section: "risk", index, field: risk[2], message: ISSUE_MESSAGES.refused };
   }
-  const score = /^prioritization_policy\.(cvss_min|epss_min)\b/.exec(detail);
+  const score = /^prioritization_policy\.(cvss_min|epss_min|pir_min_score_vulnerability|pir_min_score_threat)\b/.exec(detail);
   return score ? { section: "score", field: score[1], message: ISSUE_MESSAGES.refused } : null;
 }
 
@@ -209,12 +212,15 @@ function ScoreInput({
   value,
   max,
   placeholder,
+  integer = false,
   onCommit,
   onValidity,
 }: {
   id: string;
   value: number | null;
   max: number;
+  /** Whole numbers only (a PIR score). */
+  integer?: boolean;
   placeholder: string;
   onCommit: (value: number | null) => void;
   onValidity: (invalid: boolean) => void;
@@ -228,11 +234,12 @@ function ScoreInput({
     });
   }, [value]);
   const parsed = Number(text.trim());
-  const invalid = text.trim() !== "" && (!Number.isFinite(parsed) || parsed < 0 || parsed > max);
+  const inRange = (n: number) => Number.isFinite(n) && n >= 0 && n <= max && (!integer || Number.isInteger(n));
+  const invalid = text.trim() !== "" && !inRange(parsed);
   return (
     <Input
       id={id}
-      inputMode="decimal"
+      inputMode={integer ? "numeric" : "decimal"}
       aria-labelledby={settingsFieldLabelId(id)}
       aria-describedby={settingsFieldHintId(id)}
       aria-invalid={invalid ? true : undefined}
@@ -242,7 +249,7 @@ function ScoreInput({
         const next = e.target.value;
         setText(next);
         const n = Number(next.trim());
-        const valid = next.trim() === "" || (Number.isFinite(n) && n >= 0 && n <= max);
+        const valid = next.trim() === "" || inRange(n);
         // An out-of-range score is shown and blocks Save (UX B4): never a silent send of the last valid one.
         onValidity(!valid);
         if (next.trim() === "") onCommit(null);
@@ -280,14 +287,16 @@ interface Props {
   saveBar?: (card: ExposureCard) => ReactNode;
   /** The cards drawn, in their order (#12329: the exposure tab draws three, the knowledge tab one); default every card. */
   cards?: readonly ExposureSection[];
+  /** A reader's view (#1540 UX r1 B2): no sentence points at an Edit the reader does not have. */
+  readOnly?: boolean;
 }
 
 /** The cards of this component, by their profile field. */
 export const EXPOSURE_SECTIONS = ["assets_exposure", "asset_groups", "prioritization_policy", "enterprise_knowledge"] as const;
 type ExposureSection = (typeof EXPOSURE_SECTIONS)[number];
 
-/** The exposure tables that open in edit on their own. */
-export type ExposureCard = "assets_exposure" | "asset_groups" | "accepted_risks" | "enterprise_knowledge";
+/** The exposure cards that open in edit on their own (the policy thresholds too since #1540 UX r1 B2). */
+export type ExposureCard = "assets_exposure" | "asset_groups" | "prioritization_policy" | "accepted_risks" | "enterprise_knowledge";
 
 /** The page size of an exposure table in edit, as the list cards' editor (#12271 UX r1 B2). */
 const EDIT_PAGE_SIZE = 25;
@@ -382,17 +391,20 @@ export function OrganizationExposureCards({
   editAction = () => null,
   saveBar = () => null,
   cards = EXPOSURE_SECTIONS,
+  readOnly = false,
 }: Props) {
   const { t_i18n } = useFormatter();
+  // The policy thresholds are in edit with the whole form, or alone from the card's own Edit (#1540 UX r1 B2).
+  const policyEditing = editing || cardEdit === "prioritization_policy";
   const [invalidScores, setInvalidScores] = useState<Record<string, boolean>>({});
   const anyInvalidScore = Object.values(invalidScores).some(Boolean);
   // Cancel drops what was typed: the next edit starts with valid scores.
   useEffect(() => {
-    if (!editing) setInvalidScores({});
-  }, [editing]);
+    if (!policyEditing) setInvalidScores({});
+  }, [policyEditing]);
   useEffect(() => {
-    onScoreValidity?.(editing && anyInvalidScore);
-  }, [anyInvalidScore, editing, onScoreValidity]);
+    onScoreValidity?.(policyEditing && anyInvalidScore);
+  }, [anyInvalidScore, policyEditing, onScoreValidity]);
   const issueOf = (section: ExposureIssue["section"], field: string, index?: number) =>
     issues.find((issue) => issue.section === section && issue.field === field && issue.index === index);
   // The error under a control in a table cell, named by the control's aria-describedby.
@@ -449,7 +461,7 @@ export function OrganizationExposureCards({
       </Select>
     </div>
   );
-  // Read mode sorts; edit mode keeps every row in place under the cursor (as the crown jewels table).
+  // Read mode sorts; edit mode keeps every row in place under the cursor (as the primary assets table).
   const sortable = <R,>(on: boolean, value: (row: R) => SortValue) => (on ? undefined : value);
   const remove = (on: boolean, onClick: () => void) => (on ? <RowRemoveButton label={t_i18n("Remove")} onClick={onClick} /> : null);
 
@@ -750,12 +762,12 @@ export function OrganizationExposureCards({
     },
   ];
 
-  const scoreField = (key: "cvss_min" | "epss_min", title: string, helper: string, max: number) => {
+  const scoreField = (key: "cvss_min" | "epss_min", title: string, helper: string, info: string, max: number) => {
     const id = `${fieldId}-${key}`;
     const refused = issueOf("score", key);
     const error = invalidScores[key] ? t_i18n("Type a number from 0 to {max}, or leave it empty.", { max }) : refused ? t_i18n(refused.message) : undefined;
     return (
-      <SettingsField id={id} label={title} helper={helper} error={error}>
+      <SettingsField id={id} label={title} helper={helper} info={info} error={error}>
         <ScoreInput
           id={id}
           value={policy[key]}
@@ -768,7 +780,33 @@ export function OrganizationExposureCards({
     );
   };
 
-  const policySet = JSON.stringify(policy) !== JSON.stringify(EMPTY_POLICY);
+  // A PIR score threshold equal to its backend default never makes a policy "set"; a customized one does.
+  const atDefault = (key: keyof typeof PIR_SCORE_DEFAULTS) => policy[key] == null || policy[key] === PIR_SCORE_DEFAULTS[key];
+  // Only the fields this card edits count: keys the backend adds with their defaults (scope, SLA) never make a policy "set".
+  const policySet =
+    !atDefault("pir_min_score_vulnerability") ||
+    !atDefault("pir_min_score_threat") ||
+    (Object.keys(EMPTY_POLICY) as (keyof PrioritizationPolicy)[]).some((key) => JSON.stringify(policy[key] ?? EMPTY_POLICY[key]) !== JSON.stringify(EMPTY_POLICY[key]));
+
+  /** CTEM-08: a PIR score threshold, 0 to 100; empty sends nothing and the backend default applies. */
+  const pirField = (key: "pir_min_score_vulnerability" | "pir_min_score_threat", title: string, helper: string, info: string) => {
+    const id = `${fieldId}-${key}`;
+    const refused = issueOf("score", key);
+    const error = invalidScores[key] ? t_i18n("Type a whole number from 0 to 100, or leave it empty for the default.") : refused ? t_i18n(refused.message) : undefined;
+    return (
+      <SettingsField id={id} label={title} helper={helper} info={info} error={error}>
+        <ScoreInput
+          id={id}
+          value={policy[key] ?? null}
+          max={100}
+          integer
+          placeholder={String(PIR_SCORE_DEFAULTS[key])}
+          onCommit={(value) => patchPolicy({ [key]: value ?? undefined } as Partial<PrioritizationPolicy>)}
+          onValidity={(invalid) => setInvalidScores((prev) => (prev[key] === invalid ? prev : { ...prev, [key]: invalid }))}
+        />
+      </SettingsField>
+    );
+  };
   const soonCount = policy.accepted_risks.filter((risk) => expiryState(risk.expires_on) !== "ok" && expiryState(risk.expires_on) !== "unset").length;
 
   return (
@@ -782,7 +820,7 @@ export function OrganizationExposureCards({
         data-testid="settings.organization.assets-exposure"
         icon={AssetsIcon}
         title={t_i18n("Assets and exposure")}
-        description={t_i18n("What runs where, and what the internet can reach. Link assets to crown jewels from the crown jewel rows.")}
+        description={t_i18n("What runs where, and what the internet can reach. Link assets to primary assets from the primary asset rows.")}
         action={
           <>
             {!assetsEditing && (
@@ -932,21 +970,53 @@ export function OrganizationExposureCards({
         title={t_i18n("Prioritization policy")}
         description={t_i18n("The rules the CTEM funnel and its agents apply. Money thresholds stay in Risk appetite.")}
         action={
-          editing &&
-          !policySet && (
-            <Button variant="secondary" className="gap-1.5" onClick={() => patchPolicy({ ...RECOMMENDED_POLICY, accepted_risks: policy.accepted_risks, exclusions: policy.exclusions })}>
-              {t_i18n("Use the recommended policy")}
-            </Button>
+          policyEditing ? (
+            !policySet && (
+              <Button variant="secondary" className="gap-1.5" onClick={() => patchPolicy({ ...RECOMMENDED_POLICY, accepted_risks: policy.accepted_risks, exclusions: policy.exclusions })}>
+                {t_i18n("Use the recommended policy")}
+              </Button>
+            )
+          ) : (
+            editAction("prioritization_policy")
           )
         }
       >
-        {editing ? (
+        {policyEditing ? (
           <div className="space-y-4">
             <SettingsFieldGrid>
-              {scoreField("cvss_min", t_i18n("CVSS minimum"), t_i18n("0 to 10. Empty: no CVSS threshold. Recommended: 7."), 10)}
-              {scoreField("epss_min", t_i18n("EPSS minimum"), t_i18n("0 to 1. Empty: no EPSS threshold. Recommended: 0.1."), 1)}
-              <SettingsField id={`${fieldId}-min_crown_jewel_criticality`} label={t_i18n("Minimum crown jewel criticality")} helper={t_i18n("Keep only findings on assets linked to a crown jewel at this level or above.")}>
-                {select(POLICY_CRITICALITY_LABELS, policy.min_crown_jewel_criticality || ANY_CRITICALITY, "Minimum crown jewel criticality", (v) =>
+              {scoreField(
+                "cvss_min",
+                t_i18n("CVSS minimum"),
+                t_i18n("0 to 10. Empty: no CVSS threshold. Recommended: 7."),
+                t_i18n("The CVSS base score of a vulnerability, from 0 to 10, one decimal. Example: 7 keeps a 7.5 and drops a 6.8. Read by the CTEM scope gate and the policy stage of the funnel. Empty: no CVSS threshold."),
+                10,
+              )}
+              {scoreField(
+                "epss_min",
+                t_i18n("EPSS minimum"),
+                t_i18n("0 to 1. Empty: no EPSS threshold. Recommended: 0.1."),
+                t_i18n("The EPSS probability of exploitation in the next 30 days, from 0 to 1. Example: 0.1 keeps a 0.35 and drops a 0.02. Read by the CTEM scope gate and the policy stage of the funnel. Empty: no EPSS threshold."),
+                1,
+              )}
+              {pirField(
+                "pir_min_score_vulnerability",
+                t_i18n("PIR score minimum: vulnerabilities"),
+                t_i18n("0 to 100. A vulnerability flagged in a PIR starts a fleet run at or above this score. Default: 70."),
+                t_i18n("The live OpenCTI PIR score of a vulnerability, a whole number from 0 to 100. Example: 80: a vulnerability flagged at 85 starts a run, one at 75 does not. Read by the PIR playbook fleet runs (CTEM-08 trigger rule). Empty: the default, 70."),
+              )}
+              {pirField(
+                "pir_min_score_threat",
+                t_i18n("PIR score minimum: threat activity"),
+                t_i18n("0 to 100. An intrusion set, campaign or malware flagged in a PIR starts a fleet run at or above this score. Default: 75."),
+                t_i18n("The live OpenCTI PIR score of an intrusion set, campaign or malware, a whole number from 0 to 100. Example: 80: a campaign flagged at 85 starts a run, one at 75 does not. Read by the PIR playbook fleet runs (CTEM-08 trigger rule). Empty: the default, 75."),
+              )}
+              <SettingsField
+                id={`${fieldId}-min_crown_jewel_criticality`}
+                label={t_i18n("Minimum primary asset criticality")}
+                helper={t_i18n("Keep only findings on assets linked to a primary asset at this level or above.")}
+                info={t_i18n("The criticality of the primary asset a finding's asset is linked to: low, medium, high or critical. Example: High keeps a finding on a critical primary asset and drops one on a medium one. Read by the CTEM scope gate. Any: no criticality threshold.")}
+              >
+                {select(POLICY_CRITICALITY_LABELS, policy.min_crown_jewel_criticality || ANY_CRITICALITY, "Minimum primary asset criticality", (v) =>
                   patchPolicy({ min_crown_jewel_criticality: v === ANY_CRITICALITY ? "" : v }),
                 )}
               </SettingsField>
@@ -955,6 +1025,7 @@ export function OrganizationExposureCards({
               id={`${fieldId}-kev_always_in`}
               label={t_i18n("Known exploited vulnerabilities always in")}
               helper={t_i18n("A vulnerability in CISA KEV passes the thresholds whatever its scores.")}
+              info={t_i18n("On: a vulnerability in the CISA Known Exploited Vulnerabilities catalog passes the CVSS and EPSS thresholds. Off: it is held to them like any other. Read by the CTEM scope gate.")}
               checked={policy.kev_always_in}
               onCheckedChange={(kev_always_in) => patchPolicy({ kev_always_in })}
             />
@@ -962,6 +1033,7 @@ export function OrganizationExposureCards({
               id={`${fieldId}-internet_exposure_required`}
               label={t_i18n("Internet exposure required")}
               helper={t_i18n("Keep only findings on assets marked internet-facing. This drops the findings on user endpoints too.")}
+              info={t_i18n("On: a finding passes only when its asset is marked internet-facing in the profile. Off: internet exposure is not checked. Read by the CTEM scope gate.")}
               checked={policy.internet_exposure_required}
               onCheckedChange={(internet_exposure_required) => patchPolicy({ internet_exposure_required })}
             />
@@ -971,18 +1043,27 @@ export function OrganizationExposureCards({
             <SettingsReadField label={t_i18n("CVSS minimum")} value={policy.cvss_min === null ? "" : String(policy.cvss_min)} mono />
             <SettingsReadField label={t_i18n("EPSS minimum")} value={policy.epss_min === null ? "" : String(policy.epss_min)} mono />
             <SettingsReadField
-              label={t_i18n("Minimum crown jewel criticality")}
+              label={t_i18n("PIR score minimum: vulnerabilities")}
+              value={String(policy.pir_min_score_vulnerability ?? PIR_SCORE_DEFAULTS.pir_min_score_vulnerability)}
+              mono
+            />
+            <SettingsReadField label={t_i18n("PIR score minimum: threat activity")} value={String(policy.pir_min_score_threat ?? PIR_SCORE_DEFAULTS.pir_min_score_threat)} mono />
+            <SettingsReadField
+              label={t_i18n("Minimum primary asset criticality")}
               value={policy.min_crown_jewel_criticality ? label(CRITICALITY_LABELS, policy.min_crown_jewel_criticality) : ""}
             />
             <SettingsReadField label={t_i18n("Known exploited vulnerabilities always in")} value={policy.kev_always_in ? t_i18n("Yes") : t_i18n("No")} />
             <SettingsReadField label={t_i18n("Internet exposure required")} value={policy.internet_exposure_required ? t_i18n("Yes") : t_i18n("No")} />
           </SettingsReadGrid>
         )}
-        {!editing && !policySet && (
+        {!policyEditing && !policySet && (
           <p className="mt-3 content-compact text-default-secondary">
-            {t_i18n("No policy yet: findings rank as before. Edit to start from the recommended policy (CVSS 7, EPSS 0.1, KEV always in).")}
+            {readOnly
+              ? t_i18n("No policy yet: findings rank as before.")
+              : t_i18n("No policy yet: findings rank as before. Edit to start from the recommended policy (CVSS 7, EPSS 0.1, KEV always in).")}
           </p>
         )}
+        {saveBar("prioritization_policy")}
 
         <div className="mt-4 space-y-2">
           <div className="flex items-center justify-between gap-2">

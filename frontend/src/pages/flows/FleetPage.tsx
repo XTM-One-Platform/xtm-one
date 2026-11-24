@@ -67,7 +67,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 import { useCallback, useMemo, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Boxes, CopyPlus, Crown, GitFork, Lock, Settings2 } from "lucide-react";
+import RouteNotFound from "@/pages/RouteNotFound";
+import { Boxes, CopyPlus, Crown, GitFork, ListChecks, Lock, RotateCcw, Settings2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { BuiltinBadge } from "@/components/ui/builtin-badge";
 import { ReadOnlyBadge } from "@/components/ui/read-only-badge";
@@ -79,6 +80,8 @@ import { EntityHeaderMoreActions, EntityHeaderWideOnly, EntityPageHeader } from 
 import type { OverflowMenuItem } from "@/components/ui/overflow-menu";
 import { FleetHeaderActions, FleetHeaderStatus } from "@/components/fleets/FleetHeaderControl";
 import { FleetAutonomyStrip } from "@/components/fleets/FleetAutonomyStrip";
+import { FleetResetDialog } from "@/components/fleets/FleetResetDialog";
+import { FleetSetupDialog } from "@/components/fleets/FleetSetupDialog";
 import { useMediaQuery } from "@/hooks/useCompactToolbar";
 import { useRailHold } from "@/hooks/useNavPrefs";
 import { canControlFleet } from "@/components/fleets/fleet-control";
@@ -141,7 +144,6 @@ import {
   FLEET_TABS,
   fleetViewPath,
   isKnownFleetTab,
-  legacyFleetLocation,
   readFleetTab,
   type FleetView,
 } from "@/lib/fleet-operations";
@@ -184,6 +186,10 @@ export default function FleetPage() {
   // The section the settings open on: the ROI view's "Set the fleet default" lands on Outcomes (UX #9790 B1).
   const [settingsSection, setSettingsSection] = useState<"outcomes" | undefined>(undefined);
   const [forkOpen, setForkOpen] = useState(false);
+  // "Run setup again" (#1151): the one fleet setup, reachable from the menu once the fleet runs.
+  const [setupOpen, setSetupOpen] = useState(false);
+  // "Reset to factory state" (#1508): a built-in fleet, administrators only.
+  const [resetOpen, setResetOpen] = useState(false);
   const { isAdmin } = useAuth();
   const aiOff = useAiActionDisabled();
   const aiOffReason = useAiDisabledReason();
@@ -221,10 +227,8 @@ export default function FleetPage() {
   const now = useNow();
   const liveEdges = useMemo(() => liveHandoverEdges(delegations, now), [delegations, now]);
 
-  // The tab is the path segment (#10203 S2); a legacy `?view=` / `?ops=` / `?mode=` link is replaced below.
+  // The tab is the path segment (#10203 S2); a former `?view=` / `?ops=` / `?mode=` link is not read (#797).
   const requestedView = readFleetTab(tabSegment);
-  // Only the bare fleet path is read: inside a tab, `?view=` belongs to the list it embeds (Stale / Scheduled).
-  const legacyTarget = fleetId && !tabSegment ? legacyFleetLocation(fleetId, searchParams) : null;
   // Read only while the Data flow view shows it: no other view asks for it.
   const flowQuery = useFleetFlow(fleet ? fleetId : null, requestedView === "flow");
   // Another view is a new history entry (back and forward move between tabs)
@@ -306,7 +310,7 @@ export default function FleetPage() {
     agents,
     activeAgentIds,
     onOpenAgent: openAgent,
-    onOpenRun: (id) => navigate(`/runs/${id}`, { state: { backTo: `/fleets/${fleetId}`, backLabel: "Back to the fleet" } }),
+    onOpenRun: (id) => navigate(`/operations/executions/${id}`, { state: { backTo: `/fleets/${fleetId}`, backLabel: "Back to the fleet" } }),
   });
 
   // Handovers are edited from the home members only: a ghost belongs to
@@ -398,10 +402,8 @@ export default function FleetPage() {
   const wideViewport = useMediaQuery("(min-width: 1280px)", true);
   useRailHold(!!fleet?.can_manage && aiPanelOpen && !wideViewport);
 
-  // A link written before the path routes lands on its tab, the address replaced.
-  if (legacyTarget) return <Navigate to={legacyTarget} replace state={location.state} />;
-  // An unknown tab segment lands on About, the address replaced.
-  if (fleetId && !isKnownFleetTab(tabSegment)) return <Navigate to={fleetViewPath(fleetId, FLEET_DEFAULT_VIEW)} replace state={location.state} />;
+  // An unknown tab segment is not found: no redirect (#797).
+  if (fleetId && !isKnownFleetTab(tabSegment)) return <RouteNotFound />;
 
   if (fleetLoading) return <PageSkeleton cards={2} />;
 
@@ -450,6 +452,17 @@ export default function FleetPage() {
       disabledReason: aiOffReason ?? undefined,
     }]),
     { id: "settings", label: t_i18n("Settings"), icon: Settings2, onSelect: openSettings },
+  ];
+  // Rows with no button in the wide row: the menu keeps them at 1280 px and above too (#1508 UX r1 B1, A4).
+  const menuOnlyActions: OverflowMenuItem[] = [
+    // The header's primary is "Set up" while nothing is on; once something runs, the setup stays here (#1151).
+    ...(canControlFleet(fleet, isAdmin) && (health?.automations?.enabled ?? 0) > 0
+      ? [{ id: "run-setup-again", label: t_i18n("Run setup again"), icon: ListChecks, onSelect: () => setSetupOpen(true) }]
+      : []),
+    // A custom fleet has no factory state: the reset is a built-in fleet's, for administrators (#1508).
+    ...(fleet.is_builtin && isAdmin && canControlFleet(fleet, isAdmin)
+      ? [{ id: "reset-factory", label: t_i18n("Reset to factory state"), icon: RotateCcw, onSelect: () => setResetOpen(true) }]
+      : []),
   ];
   // ROI is its managers' tab: anyone else lands on the page's default, About,
   // the address replaced too (UX A1 on #10205).
@@ -588,10 +601,12 @@ export default function FleetPage() {
                 </Button>
               </EntityHeaderWideOnly>
             )}
-            <EntityHeaderMoreActions items={moreActions} always={aiOpen} />
+            <EntityHeaderMoreActions items={moreActions} menuOnly={menuOnlyActions} always={aiOpen} />
+            {/* One setup per fleet (#1151): the primary opens it, the CTEM loop fleet's own guided setup included. */}
             <FleetHeaderActions
               fleetId={fleet.id}
               fleetName={fleet.name}
+              fleetSlug={fleet.slug}
               automations={health?.automations}
               canControl={canControlFleet(fleet, isAdmin)}
             />
@@ -607,6 +622,10 @@ export default function FleetPage() {
       {/* A fork whose source moved since: what changed, never applied to the copy (#9174). */}
       {provenance && <FleetSourceChangesNotice fleetId={fleet.id} source={provenance} />}
       {forkOpen && <ForkFleetDialog fleet={fleet} open={forkOpen} onOpenChange={setForkOpen} />}
+      <FleetSetupDialog fleetId={fleet.id} fleetName={fleet.name} fleetSlug={fleet.slug} open={setupOpen} onOpenChange={setSetupOpen} />
+      {fleet.is_builtin && isAdmin && (
+        <FleetResetDialog fleetId={fleet.id} fleetName={fleet.name} open={resetOpen} onOpenChange={setResetOpen} />
+      )}
       <FleetSettingsPanel
         fleet={fleet}
         members={fleetMembers ?? []}

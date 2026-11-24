@@ -52,20 +52,12 @@ const status = (page: Page) => page.getByTestId('tool-approvals-status');
 const approvalsTab = (page: Page) => page.locator('a[href$="/profile/approvals"]');
 
 test.describe('Tool approvals', () => {
-  test('the old Tools > Approvals tab lands an administrator on the platform rules', async ({ page }) => {
+  test('an administrator opens the platform rules at their own address', async ({ page }) => {
     await serve(page, USAGE_PATH, usage());
-    await page.goto('/tools?tab=approvals');
+    await page.goto('/settings/security/approvals');
     await expect(page).toHaveURL(/\/settings\/security\/approvals$/);
     await expect(status(page)).toHaveAttribute('data-state', 'not_in_use');
     await expect(page.getByText('No agent asks before running tools, so every tool call runs as it always has.')).toBeVisible();
-  });
-
-  test('a link about one tool opens the rules filtered on it', async ({ page }) => {
-    await serve(page, USAGE_PATH, usage());
-    await page.goto('/tools?gate=web_search');
-    // `?tool=` is a way in, dropped once the filter holds it.
-    await expect(page).toHaveURL(/\/settings\/security\/approvals$/);
-    await expect(page.getByPlaceholder('Search by tool or provider', { exact: false })).toHaveValue('web_search');
   });
 
   test('the status names the General Assistant beside the agents that ask', async ({ page }) => {

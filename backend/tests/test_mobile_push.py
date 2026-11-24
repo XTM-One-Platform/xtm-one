@@ -67,28 +67,28 @@ def _activity(activity_type="notification", **metadata):
 @pytest.mark.parametrize(
     ("activity", "kind", "route"),
     [
-        (_activity("assignment_auth_failure", assignment_id=UUID_A), "auth_failure", f"/assignments/{UUID_A}"),
+        (_activity("assignment_auth_failure", assignment_id=UUID_A), "auth_failure", f"/agents/assignments/{UUID_A}"),
         (_activity("assignment_auth_quarantine"), "auth_failure", "/integrations"),
         (
             _activity("assignment_stale_reference_pause", assignment_id=UUID_A),
             "stale_reference",
-            f"/assignments/{UUID_A}",
+            f"/agents/assignments/{UUID_A}",
         ),
         (_activity("assignment_continuation_refused"), "continuation_refused", "/assignments"),
         (
-            _activity(notification_source="llm_analytics_refresh", dashboard_path="/analytics?range=7d"),
+            _activity(notification_source="llm_analytics_refresh", dashboard_path="/observability?range=7d"),
             "analytics_refresh",
-            "/analytics?range=7d",
+            "/observability?range=7d",
         ),
         (
             _activity(notification_source="llm_analytics_refresh", dashboard_path="https://evil.example"),
             "analytics_refresh",
-            "/analytics",
+            "/observability",
         ),
         (
             _activity(notification_source="flow_hitl", flow_id=UUID_A, flow_run_id=UUID_B),
-            "flow_hitl",
-            f"/flows/{UUID_A}/builder?run={UUID_B}",
+            "decision",
+            f"/flows/library/{UUID_A}?run={UUID_B}",
         ),
         (_activity(notification_source="flow", flow_id="not-a-uuid"), "flow", "/flows"),
         (
@@ -112,12 +112,12 @@ def _activity(activity_type="notification", **metadata):
         (
             _activity(notification_source="work_item", run_id=UUID_B, conversation_id=UUID_A),
             "reminder",
-            f"/runs/{UUID_B}",
+            f"/operations/executions/{UUID_B}",
         ),
         (
             _activity(notification_source="work_item", run_id=UUID_B, conversation_id=UUID_A, escalated=True),
             "reminder",
-            f"/runs/{UUID_B}",
+            f"/operations/executions/{UUID_B}",
         ),
         (_activity(notification_source="work_item", conversation_id=UUID_A), "reminder", f"/chat?c={UUID_A}"),
         (
@@ -129,7 +129,11 @@ def _activity(activity_type="notification", **metadata):
         (_activity(notification_source="work_item"), "reminder", "/operations"),
         (_activity(notification_source="agent", path="/dashboards/x"), "agent_message", "/dashboards/x"),
         (_activity(notification_source="agent", path="//evil.example"), "agent_message", "/"),
-        (_activity(notification_source="run_action_request", run_id=UUID_A), "run_action_request", f"/runs/{UUID_A}"),
+        (
+            _activity(notification_source="run_action_request", run_id=UUID_A),
+            "run_action_request",
+            f"/operations/executions/{UUID_A}",
+        ),
         (_activity(notification_source="run_action_request", run_id="../x"), "run_action_request", "/operations"),
     ],
 )
@@ -157,10 +161,21 @@ def _run(status="completed", question=None, summary="The weekly brief found 3 ne
     )
 
 
-def test_a_run_waiting_on_a_human_is_urgent_and_unread_until_answered():
+def test_a_run_waiting_on_a_human_is_urgent_and_unread_until_answered() -> None:
     item = present_run(_run("awaiting_human", question="Approve isolating 3 gateways?"))
-    assert (item.kind, item.route, item.run_id) == ("hitl", f"/runs/{RUN_ID}", RUN_ID)
+    assert item is not None
+    assert (item.kind, item.source, item.route, item.run_id) == (
+        "decision",
+        "run",
+        f"/operations/executions/{RUN_ID}",
+        RUN_ID,
+    )
+    assert item.awaiting_answer is True
+    assert is_unread(item, read_at=datetime(2030, 1, 1, tzinfo=UTC), dismissed=set()) is True
+    # #991: opening or dismissing it never reads a decision still waiting.
     assert is_unread(item, read_at=datetime(2030, 1, 1, tzinfo=UTC), dismissed={item.id}) is True
+    # Answered, the run is no longer awaiting_human: an ordinary entry.
+    assert present_run(_run(summary="Approved, 3 gateways isolated.")).awaiting_answer is False
 
 
 def test_a_finished_run_shows_its_marker_free_summary():

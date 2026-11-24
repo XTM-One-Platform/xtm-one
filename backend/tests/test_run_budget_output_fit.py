@@ -740,7 +740,14 @@ def _guarded_by_the_budget_cut(module) -> tuple[list[int], int]:
         # ``deliver_json_answer`` repairs through the two: the chat turn calls it.
         if not (
             isinstance(call, ast.Call)
-            and getattr(call.func, "id", None) in {"emit_repaired_json", "emit_bare_json", "deliver_json_answer"}
+            and getattr(call.func, "id", None)
+            in {
+                "emit_repaired_json",
+                "emit_bare_json",
+                "deliver_json_answer",
+                "emit_repaired_json_in_thread",
+                "deliver_json_answer_in_thread",
+            }
         ):
             continue
         found += 1

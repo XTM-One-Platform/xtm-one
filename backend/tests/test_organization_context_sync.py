@@ -20,6 +20,18 @@ from app.services import organization_context_import as imp
 from app.services import organization_context_sync as osync
 
 
+def test_each_location_lists_only_its_sections() -> None:
+    # #1134 S2 (Sam, 22 Nov 2026): Settings shows the business profile, CTEM > Inventory the inventory.
+    profile, inventory = osync.SECTION_SCOPES["profile"], osync.SECTION_SCOPES["inventory"]
+    assert set(profile) | set(inventory) == set(osync.SYNCABLE_SECTIONS)
+    assert not set(profile) & set(inventory)
+    # Primary assets are an Inventory source (Sam, 24 Nov 2026): their OpenCRQ sync sits with the asset sources.
+    assert osync.in_scope("crown_jewels", "inventory") and not osync.in_scope("crown_jewels", "profile")
+    assert osync.in_scope("assets", "inventory") and not osync.in_scope("assets", "profile")
+    assert osync.in_scope(osync.ALL_SECTIONS, "profile") and osync.in_scope(osync.ALL_SECTIONS, "inventory")
+    assert all(osync.in_scope(s, "") for s in osync.SYNCABLE_SECTIONS)
+
+
 def _sync(**kwargs) -> SimpleNamespace:
     base = {
         "id": uuid.uuid4(),
@@ -120,8 +132,12 @@ def stubs(monkeypatch):
     async def current(_db):
         return SimpleNamespace(profile={}, version=7)
 
+    async def no_records(*_a: object, **_k: object) -> None:
+        return None  # no organization records: the profile path these runs test
+
     from app.services import audit
 
+    monkeypatch.setattr(imp, "_plan_on_records", no_records)
     monkeypatch.setattr(osync, "_take_lock", take)
     monkeypatch.setattr(osync, "_release_lock", release)
     monkeypatch.setattr(oc, "save_version", save_version)
@@ -174,6 +190,31 @@ async def test_a_missing_token_pauses_the_sync_with_its_reason(monkeypatch, stub
 
 
 @pytest.mark.asyncio
+async def test_a_run_that_only_drops_superseded_rows_saves_the_profile(monkeypatch, stubs):
+    # #1591 review: an older build's supporting-asset crown jewel is dropped even when OpenCRQ
+    # has no primary asset yet; the run saves that cleanup and reports it as removed.
+    async def current(_db):
+        jewel = {"name": "Mail server", "source": "opencrq", "external_id": "s1"}
+        return SimpleNamespace(profile={"crown_jewels": [jewel]}, version=7)
+
+    async def read(_db, _user, _filters):
+        return imp.ReadResult(rows=[], total=0, superseded={"s1"})
+
+    async def no_links(*_a, **_k):
+        return {}
+
+    from app.services import organization_context_opencrq_links as opencrq_links
+
+    monkeypatch.setattr(oc, "current_version", current)
+    monkeypatch.setattr(imp, "_read_opencrq", read)
+    monkeypatch.setattr(opencrq_links, "sync_links_for", no_links)
+    sync = _sync(section="crown_jewels", source="opencrq", filters={})
+    result = await osync.run_sync(_Db(_admin()), sync, trigger="schedule")
+    assert (result["added"], result["updated"], result["removed"], result["version"]) == (0, 0, 1, 8)
+    assert len(stubs["saved"]) == 1
+
+
+@pytest.mark.asyncio
 async def test_an_owner_no_longer_admin_pauses_without_reading(monkeypatch, stubs):
     async def never(*_a, **_k):
         raise AssertionError("read without an administrator")
@@ -192,6 +233,143 @@ async def test_a_second_run_of_the_same_sync_is_skipped(monkeypatch, stubs):
     stubs["locks"].add(sync.id)
     result = await osync.run_sync(_Db(_admin()), sync, trigger="schedule")
     assert result["skipped"] and stubs["saved"] == []
+
+
+class _Found:
+    def __init__(self, hit: bool):
+        self.hit = hit
+
+    def first(self):
+        return (uuid.uuid4(),) if self.hit else None
+
+
+class _DefaultDb:
+    """Answers the two reads of the default source in order: existing sync, deleted by hand."""
+
+    def __init__(self, *, exists=False, deleted=False):
+        self.answers = [exists, deleted]
+        self.added: list = []
+
+    async def execute(self, _stmt):
+        return _Found(self.answers.pop(0))
+
+    def add(self, row):
+        self.added.append(row)
+
+    async def flush(self):
+        return None
+
+
+@pytest.mark.asyncio
+async def test_opencrq_connected_creates_the_daily_primary_asset_source_once(monkeypatch, stubs):
+    owner = _admin()
+
+    async def default_owner(_db):
+        return owner
+
+    monkeypatch.setattr(osync, "_default_owner", default_owner)
+    db = _DefaultDb()
+    row = await osync.ensure_default_primary_asset_sync(db)
+    assert db.added == [row]
+    assert (row.section, row.source, row.frequency, row.enabled) == ("crown_jewels", "opencrq", "daily", True)
+    assert row.owner_user_id == owner.id and row.next_run_at is not None and row.direction == "inbound"
+    # The supporting-asset links of #1591 are on by default: no filter turns them off.
+    from app.services import organization_context_opencrq_links as opencrq_links
+
+    assert opencrq_links.link_option_on(row.filters)
+    assert osync.in_scope(row.section, "inventory")
+    assert stubs["audit"][0]["action"] == "create" and stubs["audit"][0]["details"]["default"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "state",
+    [{"exists": True}, {"deleted": True}],
+    ids=["already-saved-or-turned-off", "deleted-by-an-administrator"],
+)
+async def test_the_default_primary_asset_source_is_never_forced(monkeypatch, stubs, state):
+    async def never(_db):
+        raise AssertionError("no owner is looked up when nothing is created")
+
+    monkeypatch.setattr(osync, "_default_owner", never)
+    db = _DefaultDb(**state)
+    assert await osync.ensure_default_primary_asset_sync(db) is None and db.added == []
+
+
+@pytest.mark.asyncio
+async def test_opencrq_not_connected_for_any_administrator_creates_nothing(monkeypatch, stubs):
+    async def nobody(_db):
+        return None
+
+    monkeypatch.setattr(osync, "_default_owner", nobody)
+    db = _DefaultDb()
+    assert await osync.ensure_default_primary_asset_sync(db) is None and db.added == []
+
+
+@pytest.mark.asyncio
+async def test_a_scheduled_primary_asset_run_counts_and_keeps_manual_rows(monkeypatch, stubs):
+    # A manual primary asset survives a scheduled OpenCRQ run (#1591 rule: manual wins); the run counts what it added.
+    async def current(_db):
+        manual = {"name": "Payroll", "criticality": "critical", "source": "manual"}
+        return SimpleNamespace(profile={"crown_jewels": [manual]}, version=7)
+
+    async def read(_db, _user, _filters):
+        return imp.ReadResult(
+            rows=[imp.CrownJewel(name="Billing", criticality="high", source="opencrq", external_id="p1")], total=1
+        )
+
+    async def links(*_a, **_k):
+        return {"added": 2}
+
+    from app.services import organization_context_opencrq_links as opencrq_links
+
+    monkeypatch.setattr(oc, "current_version", current)
+    monkeypatch.setattr(imp, "_read_opencrq", read)
+    monkeypatch.setattr(opencrq_links, "sync_links_for", links)
+    saved_profiles: list = []
+
+    async def save_version(_db, profile, **kwargs):
+        saved_profiles.append(profile)
+        return SimpleNamespace(version=8)
+
+    monkeypatch.setattr(oc, "save_version", save_version)
+    sync = _sync(section="crown_jewels", source="opencrq", filters={}, remove_gone=True)
+    result = await osync.run_sync(_Db(_admin()), sync, trigger="schedule")
+    assert (result["added"], result["removed"], result["version"], result["links"]) == (1, 0, 8, {"added": 2})
+    names = {(j.name, j.source) for j in saved_profiles[0].crown_jewels}
+    assert names == {("Payroll", "manual"), ("Billing", "opencrq")}
+    assert sync.last_result["added"] == 1
+
+
+@pytest.mark.asyncio
+async def test_run_due_syncs_creates_the_default_source_before_reading_due_ones(monkeypatch):
+    calls: list[str] = []
+
+    async def ensure(_db):
+        calls.append("ensure")
+        return SimpleNamespace()
+
+    class _Due:
+        def scalars(self):
+            return self
+
+        def all(self):
+            return []
+
+    class _TickDb:
+        async def commit(self):
+            calls.append("commit")
+
+        async def rollback(self):
+            calls.append("rollback")
+
+        async def execute(self, _stmt):
+            calls.append("due")
+            return _Due()
+
+    monkeypatch.setattr(osync, "ensure_default_primary_asset_sync", ensure)
+    assert await osync.run_due_syncs(_TickDb()) == 0
+    assert calls == ["ensure", "commit", "due"]
 
 
 @pytest.mark.asyncio

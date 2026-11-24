@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { IntlProvider } from "react-intl";
 import { MemoryRouter } from "react-router-dom";
@@ -21,10 +21,15 @@ vi.mock("@/hooks/useAuth", () => ({
 const workItemQuery = vi.hoisted(() => ({ current: { data: undefined as unknown, isLoading: false, isError: false } }));
 const complete = vi.hoisted(() => ({ mutateAsync: vi.fn(async () => ({})), isPending: false }));
 const answerMutation = vi.hoisted(() => ({ mutateAsync: vi.fn(async () => ({})), isPending: false }));
+const askMutation = vi.hoisted(() => ({
+  mutateAsync: vi.fn(async () => ({ item: {}, agent: { id: "agent-1", name: "Notion Agent" }, via: "run" })),
+  isPending: false,
+}));
 vi.mock("@/hooks/api/useWorkItemApi", () => ({
   useWorkItem: () => workItemQuery.current,
   useCompleteWorkItem: () => complete,
   useAnswerWorkItem: () => answerMutation,
+  useAskWorkItem: () => askMutation,
   useCancelScheduledWorkItem: () => ({ mutate: vi.fn(), isPending: false }),
   useRescheduleScheduledWorkItem: () => ({ mutate: vi.fn(), isPending: false }),
 }));
@@ -91,11 +96,11 @@ function item(overrides: Partial<WorkItem> = {}): WorkItem {
   };
 }
 
-function openDialog(data: WorkItem, actions = {}) {
+function openDialog(data: WorkItem, actions = {}, onClose: () => void = () => {}) {
   workItemQuery.current = { data, isLoading: false, isError: false };
   return renderWithProviders(
     <MemoryRouter>
-      <WorkItemDetailDialog itemId={data.id} onClose={() => {}} actionsFor={() => actions} />
+      <WorkItemDetailDialog itemId={data.id} onClose={onClose} actionsFor={() => actions} />
     </MemoryRouter>,
   );
 }
@@ -218,6 +223,18 @@ describe("the work item detail", () => {
     );
   });
 
+  it("names a long agent the reader cannot open in full in its tooltip", async () => {
+    const longName = "Digital Security Office desk that triages every policy, watch and detection hand-off";
+    const hidden = { id: "agent-9", name: longName, icon: null, accessible: false };
+    openDialog(item({ context: context({ owner_agent: hidden }) }));
+    const label = screen.getAllByTestId("work-item-agent-hidden-label").find((node) => node.textContent === longName);
+    expect(label).toBeDefined();
+    fireEvent.focus(label?.closest("[tabindex]") as HTMLElement);
+    const tip = await screen.findByRole("tooltip");
+    expect(tip.textContent).toContain(longName);
+    expect(tip.textContent).toContain("This agent is not shared with you");
+  });
+
   it("names the inbox that takes the item, and the one whose filters leave it out", () => {
     openDialog(
       item({
@@ -234,7 +251,7 @@ describe("the work item detail", () => {
       }),
     );
     const [taken, leftOut] = screen.getAllByTestId("work-item-inbox");
-    expect(taken.querySelector("a")?.getAttribute("href")).toBe("/assignments/as-1");
+    expect(taken.querySelector("a")?.getAttribute("href")).toBe("/agents/assignments/as-1");
     expect(taken.textContent).toContain("takes this item");
     expect(leftOut.textContent).toContain("a flow you cannot open");
     expect(leftOut.textContent).toContain("leaves this item out");
@@ -296,7 +313,8 @@ describe("the work item detail", () => {
       expect(card.textContent).toContain("Recommended");
       expect(within(card).getByTestId("work-item-decision-deadline")).toBeTruthy();
       const buttons = within(card).getAllByTestId("work-item-decision-option");
-      expect(buttons.map((b) => b.textContent)).toEqual(["Starter", "Enterprise"]);
+      const labels = within(card).getAllByTestId("work-item-decision-option-label");
+      expect(labels.map((b) => b.textContent)).toEqual(["Starter", "Enterprise"]);
       // The card comes before the facts and the description is folded.
       const detail = screen.getByTestId("work-item-detail");
       expect(detail.firstElementChild).toBe(card);
@@ -334,6 +352,148 @@ describe("the work item detail", () => {
       expect(within(button).getByText(label)).toBeTruthy();
     });
 
+    // #834: sources as buttons, Markdown context, recommended option first.
+    it("shows the ask's sources as links, its context as Markdown and the recommended option first", () => {
+      const jira = "https://example.atlassian.net/browse/FIN-798";
+      openDialog(
+        waiting({
+          ask: {
+            ...ask,
+            recommendation: "B",
+            context: "Legal approves with **changes**.\nSee [the review](https://example.com/review).",
+            links: [{ label: "FIN-798", url: jira }],
+          },
+        }),
+        { answer: true },
+      );
+      const card = screen.getByTestId("work-item-decision");
+      const link = within(card).getByTestId("work-item-decision-link") as HTMLAnchorElement;
+      expect(link.textContent).toBe("FIN-798");
+      expect(link.getAttribute("href")).toBe(jira);
+      expect(link.getAttribute("target")).toBe("_blank");
+      const context = within(card).getByTestId("work-item-decision-context");
+      expect(context.querySelector("strong")?.textContent).toBe("changes");
+      expect(context.querySelector("a")?.getAttribute("href")).toBe("https://example.com/review");
+      expect(context.querySelectorAll("p")).toHaveLength(2);
+      const buttons = within(card).getAllByTestId("work-item-decision-option");
+      expect(within(card).getAllByTestId("work-item-decision-option-label").map((b) => b.textContent)).toEqual([
+        "Enterprise",
+        "Starter",
+      ]);
+      expect(buttons[0].closest("[data-testid=work-item-decision-tile]")?.getAttribute("data-recommended")).toBe("true");
+      expect(within(card).queryByTestId("work-item-decision-fallback")).toBeNull();
+    });
+
+    // #842, J.1: every option a full-width tile, label then effect, one Recommended pill.
+    it("renders every option as a full-width tile of equal width, label over effect", () => {
+      openDialog(
+        waiting({
+          ask: {
+            question: "Pick one",
+            options: [
+              { key: "A", label: "Go", effect: "Recommended: posts the prepared comment now." },
+              { key: "B", label: "Edit first", effect: "opens the comment for changes" },
+              { key: "C", label: "No" },
+            ],
+            recommendation: "A",
+          },
+        }),
+        { answer: true },
+      );
+      const card = screen.getByTestId("work-item-decision");
+      expect(within(card).getByTestId("work-item-decision-options").className).toContain("grid-cols-1");
+      const tiles = within(card).getAllByTestId("work-item-decision-option");
+      expect(tiles).toHaveLength(3);
+      // Equal widths: every tile is a block button spanning its single-column cell.
+      const widths = new Set(tiles.map((tile) => tile.className.split(" ").filter((c) => /^(w-|max-w-|flex-1|shrink)/.test(c)).join(" ")));
+      expect([...widths]).toEqual(["w-full"]);
+      for (const tile of tiles) expect(tile.tagName).toBe("BUTTON");
+      // One pill, on the recommended tile only; the agent's own "Recommended:" prefix is dropped.
+      expect(within(card).getAllByTestId("work-item-decision-recommended")).toHaveLength(1);
+      const effects = within(card).getAllByTestId("work-item-decision-effect");
+      expect(effects[0].textContent).toBe("posts the prepared comment now.");
+      expect(card.textContent?.match(/Recommended/g)).toHaveLength(1);
+      // The effect is the tile's description for a screen reader.
+      expect(tiles[0].getAttribute("aria-describedby")).toBe(effects[0].id);
+    });
+
+    it("clamps a clipped effect to 3 lines with Show more, outside the tile button", () => {
+      const effect = "This option does a long list of things the reader may want in full. ".repeat(5);
+      // The clamped span is cut: 72 px of text in a 54 px box.
+      const height = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(72);
+      const client = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(54);
+      try {
+        openDialog(waiting({ ask: { question: "Pick one", options: [{ key: "A", label: "Go", effect }, { key: "B", label: "No" }] } }), {
+          answer: true,
+        });
+        const shown = screen.getByTestId("work-item-decision-effect");
+        expect(shown.getAttribute("data-clamped")).toBe("true");
+        const more = screen.getByRole("button", { name: "Show more" });
+        expect(more.closest("[data-testid=work-item-decision-option]")).toBeNull();
+        fireEvent.click(more);
+        expect(shown.getAttribute("data-clamped")).toBeNull();
+        expect(screen.getByRole("button", { name: "Show less" }).getAttribute("aria-expanded")).toBe("true");
+        expect(answerMutation.mutateAsync).not.toHaveBeenCalled();
+      } finally {
+        height.mockRestore();
+        client.mockRestore();
+      }
+    });
+
+    it("shows no Show more for a long effect that fits in 3 lines (UX r1 B1 on #973)", () => {
+      // 255 characters that fit: scrollHeight equals clientHeight (54 px).
+      const effect = "This option does a long list of things the reader may want. ".repeat(5).slice(0, 255);
+      const height = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(54);
+      const client = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(54);
+      try {
+        openDialog(waiting({ ask: { question: "Pick one", options: [{ key: "A", label: "Go", effect }, { key: "B", label: "No" }] } }), {
+          answer: true,
+        });
+        expect(screen.getByTestId("work-item-decision-effect").getAttribute("data-clamped")).toBeNull();
+        expect(within(screen.getByTestId("work-item-decision")).queryByRole("button", { name: "Show more" })).toBeNull();
+      } finally {
+        height.mockRestore();
+        client.mockRestore();
+      }
+    });
+
+    it("folds the free-text answer behind Answer differently when the ask has options", () => {
+      openDialog(waiting({ ask }), { answer: true });
+      const folded = screen.getByTestId("work-item-decision-free-text");
+      expect(folded.tagName).toBe("DETAILS");
+      expect(folded.hasAttribute("open")).toBe(false);
+      expect(within(folded).getByText("Answer differently")).toBeTruthy();
+    });
+
+    it("names the agent that asks, when the reader may see it", () => {
+      openDialog(
+        waiting({
+          ask,
+          context: context({ owner_agent: { id: "a1", name: "Developer", icon: null, accessible: true } }),
+        }),
+        { answer: true },
+      );
+      expect(screen.getByTestId("work-item-decision-asker").textContent).toBe("Asked by Developer");
+    });
+
+    it("shows the brief, its links and the incomplete line when the ask is missing, not the bare title", () => {
+      openDialog(
+        waiting({
+          card_fallback: {
+            brief: "The People Team asks Legal to review the payroll request.",
+            links: [{ label: "FIN-798", url: "https://example.atlassian.net/browse/FIN-798" }],
+            missing: ["ask.question"],
+          },
+        }),
+        { answer: true },
+      );
+      const card = screen.getByTestId("work-item-decision");
+      const fallback = within(card).getByTestId("work-item-decision-fallback");
+      expect(fallback.textContent).toContain("The People Team asks Legal to review the payroll request.");
+      expect(within(card).getByTestId("work-item-decision-incomplete").textContent).toContain("This card is incomplete");
+      expect(within(card).getByTestId("work-item-decision-link").textContent).toBe("FIN-798");
+    });
+
     it.each([
       ["409", "409 Conflict: the work item changed since it was read"],
       ["500", "500 Internal Server Error: database unavailable"],
@@ -349,32 +509,69 @@ describe("the work item detail", () => {
       logged.mockRestore();
     });
 
-    it("opens a chat with the owner agent, the Explain message in the composer, never sent", () => {
+    it("Explain opens the owner agent's chat with the message sent on arrival, and closes the dialog (#774)", () => {
       sessionStorage.clear();
-      openDialog(waiting({ ask }), { answer: true });
+      const onClose = vi.fn();
+      openDialog(waiting({ ask }), { answer: true }, onClose);
       const ask_agent = screen.getByTestId("work-item-ask-agent");
       expect(within(ask_agent).getByTestId("work-item-ask-freshness").textContent).toContain("Last activity");
-      expect(ask_agent.textContent).toContain("Opens a chat with Notion Agent");
+      expect(ask_agent.textContent).toContain("are sent to Notion Agent");
       fireEvent.click(within(ask_agent).getByTestId("work-item-ask-agent-explain"));
       const draft = sessionStorage.getItem("copilot:chat-input-draft:new") ?? "";
       expect(draft).toContain(item().id);
       expect(draft).toContain("Explain in plain words");
       expect(sessionStorage.getItem("copilot:chat-input-draft:agent")).toBe("agent-1");
-      expect(sessionStorage.getItem("copilot:chat-input-draft:autosend")).toBeNull();
+      expect(sessionStorage.getItem("copilot:chat-input-draft:autosend")).toBe("1");
+      expect(onClose).toHaveBeenCalledTimes(1);
     });
 
-    it("asks the creator to re-check when the owner cannot be opened, and says so when neither can", () => {
+    it("Re-check is sent to the item's agent, no chat, toast and the dialog closes (#774)", async () => {
       sessionStorage.clear();
-      const hidden = { id: null, name: null, icon: null, accessible: false };
-      openDialog(waiting({ ask, context: context({ owner_agent: hidden }) }), { answer: true });
+      askMutation.mutateAsync.mockClear();
+      const onClose = vi.fn();
+      openDialog(waiting({ ask }), { answer: true }, onClose);
       fireEvent.click(screen.getByTestId("work-item-ask-agent-recheck"));
-      expect(sessionStorage.getItem("copilot:chat-input-draft:new")).toContain("close it as obsolete");
-      expect(sessionStorage.getItem("copilot:chat-input-draft:agent")).toBe("agent-2");
-      cleanup();
+      expect(askMutation.mutateAsync).toHaveBeenCalledWith({ id: item().id, action: "recheck", text: undefined });
+      expect(await screen.findByText("Sent to Notion Agent")).toBeTruthy();
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(sessionStorage.getItem("copilot:chat-input-draft:new")).toBeNull();
+    });
+
+    it("It's solved takes an optional line, then sends it with the action (#774)", async () => {
+      askMutation.mutateAsync.mockClear();
+      const onClose = vi.fn();
+      openDialog(waiting({ ask }), { answer: true }, onClose);
+      fireEvent.click(screen.getByTestId("work-item-ask-agent-solved"));
+      expect(askMutation.mutateAsync).not.toHaveBeenCalled();
+      const form = screen.getByTestId("work-item-ask-solved-form");
+      fireEvent.change(within(form).getByRole("textbox"), { target: { value: "key rotated" } });
+      fireEvent.click(screen.getByTestId("work-item-ask-solved-send"));
+      expect(askMutation.mutateAsync).toHaveBeenCalledWith({ id: item().id, action: "solved", text: "key rotated" });
+      await screen.findByText("Sent to Notion Agent");
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("disables the sends while one waits for the agent, and says so", () => {
+      const at = new Date().toISOString();
+      openDialog(waiting({ ask, payload: { _ask: { at } }, last_activity_at: at }), { answer: true });
+      expect((screen.getByTestId("work-item-ask-agent-recheck") as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByTestId("work-item-ask-effect").textContent).toContain("Already sent, waiting for Notion Agent");
+    });
+
+    it("a decision option answer closes the dialog (#774)", async () => {
+      const onClose = vi.fn();
+      openDialog(waiting({ ask }), { answer: true }, onClose);
+      fireEvent.click(within(screen.getByTestId("work-item-decision")).getAllByTestId("work-item-decision-option")[0]);
+      await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    });
+
+    it("sends to the agent it cannot open, without Explain, and says why", () => {
+      const hidden = { id: "agent-9", name: "Desk", icon: null, accessible: false };
       openDialog(waiting({ ask, context: context({ owner_agent: hidden, created_by_agent: hidden }) }), { answer: true });
       const ask_agent = screen.getByTestId("work-item-ask-agent");
-      expect(within(ask_agent).queryAllByRole("button")).toHaveLength(0);
-      expect(ask_agent.textContent).toContain("You cannot open the agent behind this work item");
+      expect(screen.queryByTestId("work-item-ask-agent-explain")).toBeNull();
+      expect(screen.getByTestId("work-item-ask-agent-recheck")).toBeTruthy();
+      expect(ask_agent.textContent).toContain("so Explain is not offered");
       cleanup();
       openDialog(waiting({ ask, context: context({ owner_agent: null, created_by_agent: null }) }), { answer: true });
       const no_agent = screen.getByTestId("work-item-ask-agent");
@@ -404,7 +601,7 @@ describe("the work item detail", () => {
     const holder = screen.getByTestId("work-item-holding-run");
     expect(holder.textContent).toContain("run 2f8112bc");
     expect(holder.textContent).toContain("alive");
-    expect(holder.querySelector("a")?.getAttribute("href")).toBe(`/runs/${runId}`);
+    expect(holder.querySelector("a")?.getAttribute("href")).toBe(`/operations/executions/${runId}`);
   });
 
   it("says the holding run ended with its status, and shows the latest claim note", () => {
@@ -451,7 +648,7 @@ describe("the work item detail", () => {
     const blockers = screen.getByTestId("work-item-blockers");
     const link = blockers.querySelector("a");
     expect(link?.textContent).toContain("Ship the migration");
-    expect(link?.getAttribute("href")).toBe(`/operations/work-items?item=${blockerId}`);
+    expect(link?.getAttribute("href")).toBe(`/tasks/work-items/${blockerId}`);
     expect(blockers.textContent).toContain("a work item you cannot open");
     expect(waitsForSomeone("blocked_on_items")).toBe(false);
   });
@@ -484,6 +681,102 @@ describe("the work item detail", () => {
     expect(screen.queryByText("Mark done")).toBeNull();
     fireEvent.click(screen.getByText("Cancel work item"));
     expect(close).toHaveBeenCalledWith(expect.objectContaining({ status: "blocked" }), "cancelled");
+  });
+
+  // #861: an item that waits only for references is released by the platform:
+  // never "Blocked: not picked up", one sentence per kind it waits for.
+  it("reads Waiting for a change on an item waiting for references, with one sentence per kind", () => {
+    openDialog(
+      item({
+        status: "blocked",
+        blocked_on_refs: [
+          { repo: "o/r", kind: "pull_request", number: 7, release_on: "merged_or_closed" },
+          { repo: "o/r", kind: "deployment", number: 7, release_on: "deployed" },
+          { repo: "o/r", kind: "workflow_run", workflow: "deploy.yml", release_on: "succeeded" },
+          { repo: "o/r", kind: "issue", number: 8, release_on: "closed", state: "closed" },
+        ],
+        context: context({ pickup: { ...context().pickup, state: "waiting_for_refs", auto_cancel_at: null } }),
+      }),
+      { close: vi.fn() },
+    );
+    expect(screen.getByTestId("work-item-pickup").textContent).toContain("Waiting for a change");
+    expect(screen.queryByText(/not picked up/)).toBeNull();
+    expect(screen.getByTestId("work-item-blocked-status").getAttribute("data-kind")).toBe("waiting");
+    // The closed issue is satisfied: its sentence is left out.
+    const kinds = screen.getAllByTestId("work-item-ref-release").map((el) => el.getAttribute("data-kind"));
+    expect(kinds).toEqual(["pull_request", "deployment", "workflow_run"]);
+    const why = screen.getByTestId("work-item-blocked-why");
+    expect(why.querySelector('[data-blocked-ref="o/r: deploy.yml"]')).toBeTruthy();
+    expect(why.querySelector('[data-blocked-ref="o/r#8"]')).toBeNull();
+    expect(screen.queryByText("Mark done")).toBeNull();
+  });
+
+  // #842, J.2: one sentence per kind, and the pull request sentence follows release_on.
+  it("says merged, not merged or closed, when every pull request waits for its merge", () => {
+    openDialog(
+      item({
+        status: "blocked",
+        blocked_on_refs: [
+          { repo: "o/r", kind: "pull_request", number: 7, release_on: "merged" },
+          { repo: "o/r", kind: "pull_request", number: 9, release_on: "merged" },
+        ],
+        context: context({ pickup: { ...context().pickup, state: "waiting_for_refs", auto_cancel_at: null } }),
+      }),
+      { close: vi.fn() },
+    );
+    const sentences = screen.getAllByTestId("work-item-ref-release");
+    expect(sentences).toHaveLength(1);
+    expect(sentences[0].textContent).toBe("A pull request releases it once merged.");
+    const why = screen.getByTestId("work-item-blocked-why");
+    expect(why.querySelector('[data-blocked-ref="o/r#7"]')).toBeTruthy();
+    expect(why.querySelector('[data-blocked-ref="o/r#9"]')).toBeTruthy();
+  });
+
+  it("reads Waiting for a decision on an item waiting for a person, Mark done kept", () => {
+    openDialog(
+      item({
+        status: "blocked",
+        needs_human: true,
+        context: context({ pickup: { ...context().pickup, state: "waiting_for_person", auto_cancel_at: null } }),
+      }),
+      { close: vi.fn() },
+    );
+    expect(screen.getByTestId("work-item-pickup").textContent).toContain("Waiting for a decision");
+    expect(screen.queryByText(/not picked up/)).toBeNull();
+    expect(screen.getByText("Mark done")).toBeTruthy();
+  });
+
+  // #864 UX round 1 B1: a person's decision plus an item it waits for keeps
+  // the blocker item visible, the person on the "Also waits for" row.
+  it("lists the blocker items of an item waiting for a person, the person under Also waits for", () => {
+    openDialog(
+      item({
+        status: "blocked",
+        needs_human: true,
+        blocked_on: ["b1"],
+        context: context({
+          pickup: { ...context().pickup, state: "waiting_for_person", auto_cancel_at: null },
+          blocked_on: [{ id: "b1", title: "Ship the migration", status: "in_progress", accessible: true }],
+        }),
+      }),
+      { close: vi.fn() },
+    );
+    const blockers = screen.getByTestId("work-item-blockers");
+    expect(blockers.textContent).toContain("Ship the migration");
+    expect(screen.getByText("Also waits for")).toBeTruthy();
+    expect(screen.getByTestId("work-item-blocked-why")).toBeTruthy();
+  });
+
+  it("keeps Blocked: not picked up on a legacy item that waits for a reason only", () => {
+    openDialog(
+      item({
+        status: "blocked",
+        blocked_reason: "waits for the partner",
+        context: context({ pickup: { ...context().pickup, state: "blocked", auto_cancel_at: null } }),
+      }),
+    );
+    expect(screen.getByTestId("work-item-pickup").textContent).toContain("Blocked: not picked up");
+    expect(screen.getByTestId("work-item-blocked-status").getAttribute("data-kind")).toBe("action");
   });
 
   it("keeps Blocked on N items and Mark done when a dependency was cancelled", () => {
@@ -809,6 +1102,86 @@ describe("the work item detail", () => {
     expect(screen.getByText("pixel")).toBeTruthy();
   });
 
+  it("shows stamped notes as an activity timeline over the brief, ids as chips (#776)", () => {
+    const run = "8f240eba-1111-4222-8333-944445555666";
+    openDialog(
+      item({
+        description: `2026-11-20 23:22Z (run ${run}): **Pushed** head b6ce1323be6d239a33100a2b6f20a1918298aad3 (run 8f240eba...)\n\nRead the 120 pages.`,
+        note_runs: { [run]: { agent: { id: "a1", name: "Developer" }, accessible: true } },
+      }),
+    );
+    const notes = screen.getAllByTestId("work-item-note");
+    expect(notes).toHaveLength(1);
+    expect(screen.getByTestId("work-item-note-author").textContent).toBe("Developer");
+    // The run is a link named by its first 8 characters, never the uuid inline.
+    expect(notes[0].querySelector(`a[href="/operations/executions/${run}"]`)?.textContent).toContain("8f240eba");
+    const body = screen.getByTestId("work-item-note-body");
+    expect(body.textContent).not.toContain(run);
+    expect(body.textContent).not.toContain("(run");
+    expect(body.querySelector("strong")?.textContent).toBe("Pushed");
+    expect(screen.getByTestId("work-item-id-chip").textContent).toBe("b6ce1323");
+    expect(screen.getByTestId("work-item-brief").textContent).toContain("Read the 120 pages.");
+  });
+
+  it("folds a long note by height, block Markdown included, and unfolds it (#776, UX B1)", () => {
+    const para = "This sentence makes the note long enough to be folded in the activity timeline. ".repeat(12);
+    openDialog(item({ description: `2026-11-20 23:22Z: ${para}\n\nA second paragraph.\n\nRead the brief.` }));
+    const body = screen.getByTestId("work-item-note-body");
+    // A height cap on the wrapper, never -webkit-line-clamp: the text sits in block children.
+    expect(body.className).not.toContain("line-clamp");
+    // overflow-clip, never overflow-hidden: a clip box cannot be scrolled by a focus (UX round 3 B1).
+    expect(body.className).toContain("overflow-clip");
+    expect(body.className).not.toContain("overflow-hidden");
+    expect(body.getAttribute("data-folded")).toBe("true");
+    expect(screen.getByTestId("work-item-note-fade")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    expect(body.getAttribute("data-folded")).toBeNull();
+    expect(body.className).not.toContain("overflow-clip");
+    expect(screen.queryByTestId("work-item-note-fade")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+    expect(body.getAttribute("data-folded")).toBe("true");
+  });
+
+  it("opens a folded note when keyboard focus enters it, so focus never lands in hidden text (#776, UX round 2 B1)", () => {
+    const para = "This sentence makes the note long enough to be folded in the activity timeline. ".repeat(12);
+    // The link sits in the note's own paragraph, past the fold: the oldest note keeps its
+    // first paragraph only (splitDescription), a second paragraph would be the brief.
+    openDialog(item({ description: `2026-11-20 23:22Z: ${para}See [the run log](https://example.com/log) below the fold.\n\nRead the brief.` }));
+    const body = screen.getByTestId("work-item-note-body");
+    expect(body.getAttribute("data-folded")).toBe("true");
+    const link = within(body).getByRole("link", { name: /the run log/ });
+    const intoView = vi.fn();
+    link.scrollIntoView = intoView;
+    const frames = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+      cb(0);
+      return 0;
+    });
+    // The browser's focus scroll of the folded box, which the handler undoes
+    // (jsdom has no layout: an own writable scrollTop stands in for it).
+    Object.defineProperty(body, "scrollTop", { configurable: true, writable: true, value: 405 });
+    act(() => link.focus());
+    frames.mockRestore();
+    expect(body.getAttribute("data-folded")).toBeNull();
+    expect(body.className).not.toContain("overflow-clip");
+    expect(body.scrollTop).toBe(0);
+    // The focused link is brought into the dialog's visible area once the note opens (UX round 3 B1).
+    expect(intoView).toHaveBeenCalledWith({ block: "nearest" });
+    expect(screen.getByRole("button", { name: "Show less" }).getAttribute("aria-expanded")).toBe("true");
+    // Folding again by keyboard leaves the body at its first lines.
+    body.scrollTop = 405;
+    fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+    expect(body.getAttribute("data-folded")).toBe("true");
+    expect(body.scrollTop).toBe(0);
+  });
+
+  it("renders no script or iframe a description carries", () => {
+    openDialog(item({ description: 'x <script>window.__pwned = 1</script> <iframe src="https://e.test"></iframe> [a](javascript:alert(1))' }));
+    const detail = screen.getByTestId("work-item-detail");
+    expect(detail.querySelector("script")).toBeNull();
+    expect(detail.querySelector("iframe")).toBeNull();
+    expect(detail.querySelector('a[href^="javascript"]')).toBeNull();
+  });
+
   it("offers no action to a reader who may not change the item", () => {
     openDialog(item());
     expect(screen.queryByText("Mark done")).toBeNull();
@@ -842,7 +1215,7 @@ describe("the work item detail", () => {
     }
     const name = screen.getByText(longName);
     expect(name.className).toContain("truncate");
-    expect(name.closest("a")?.getAttribute("href")).toBe("/runs/run-9");
+    expect(name.closest("a")?.getAttribute("href")).toBe("/operations/executions/run-9");
     // The person stays in its own column, truncated too.
     const facts = screen.getByTestId("work-item-facts");
     expect(within(facts).getByText("you").className).toContain("truncate");

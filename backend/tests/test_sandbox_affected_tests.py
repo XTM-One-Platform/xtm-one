@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
+
 from app.services.sandbox_workspace import affected, commands
 from app.services.sandbox_workspace.checkout import build_record, changes_since
 from app.services.sandbox_workspace.checks import ReportSummary
@@ -322,6 +324,93 @@ def test_a_literal_on_both_sides_of_an_edited_description_selects_nothing():
     assert "received_since" not in names and literals == set()
 
 
+WORDING_BEFORE = b'''"""Budget guard of the Concierge."""
+
+
+def check_budget(spent, cap):
+    # The Concierge stops here.
+    if spent > cap:
+        raise ValueError(f"budget spent: {spent}")
+    return cap - spent
+'''
+
+WORDING_AFTER = b'''"""Budget guard of Platform Health."""
+
+
+def check_budget(spent, cap):
+    # Platform Health stops here.
+    if spent > cap:
+        raise ValueError(f"budget spent: {spent}")
+    return cap - spent
+'''
+
+
+def test_a_wording_only_change_names_the_replaced_words_not_its_definitions_or_module() -> None:
+    wording: set[str] = set()
+    names = affected.changed_identifiers(
+        "backend/app/budget.py", WORDING_BEFORE, WORDING_AFTER, base="backend", wording=wording
+    )
+    assert names == {"Concierge", "Platform", "Health"} == wording
+    assert affected.wording_words("budget.py", WORDING_BEFORE.decode(), WORDING_AFTER.decode()) == names
+    # A code change, a non-Python file or an identical text is not wording-only.
+    code = WORDING_AFTER.replace(b"spent > cap", b"spent >= cap")
+    assert affected.wording_words("budget.py", WORDING_BEFORE.decode(), code.decode()) is None
+    assert affected.wording_words("budget.ts", "a", "b") is None
+    assert affected.wording_words("budget.py", "x = 1\n", "x = 1\n") is None
+    assert "check_budget" in affected.changed_identifiers("backend/app/budget.py", WORDING_BEFORE, code, base="backend")
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        # A string value the code acts on is code, however short or plain.
+        ('STATUS = "open"\n', 'STATUS = "closed"\n'),
+        ('def f(x):\n    return x == "pending_review"\n', 'def f(x):\n    return x == "awaiting_review"\n'),
+        ('import re\nPAT = re.compile(r"^[a-z]+$")\n', 'import re\nPAT = re.compile(r"^[a-z0-9]+$")\n'),
+        ('def f():\n    raise ValueError("Concierge budget")\n', 'def f():\n    raise ValueError("Platform budget")\n'),
+        ('def f(n):\n    return f"Concierge {n}"\n', 'def f(n):\n    return f"Platform {n}"\n'),
+        ('def f(d):\n    return d.get("sources")\n', 'def f(d):\n    return d.get("sources", "none")\n'),
+        # A docstring change whose replaced words are all too short to select by keeps the code path.
+        ('def f():\n    """the open path."""\n    return 1\n', 'def f():\n    """the shut path."""\n    return 1\n'),
+    ],
+)
+def test_a_string_value_or_an_unselectable_docstring_change_is_not_wording_only(old: str, new: str) -> None:
+    assert affected.wording_words("svc.py", old, new) is None
+    assert affected.changed_identifiers("backend/app/svc.py", old.encode(), new.encode(), base="backend")
+
+
+def test_a_docstring_after_a_comment_or_in_a_class_is_wording() -> None:
+    old = '# head\nclass Guard:\n    # note\n    """Concierge guard."""\n\n    LIMIT = "cap"\n'
+    new = '# head\nclass Guard:\n    # note\n    """Platform guard."""\n\n    LIMIT = "cap"\n'
+    assert affected.wording_words("svc.py", old, new) == {"Concierge", "Platform"}
+
+
+async def test_a_wording_only_change_selects_the_test_pinning_the_text_not_the_tests_importing_the_module() -> None:
+    workspace = _workspace()
+    tree = [
+        ("backend/app/budget.py", WORDING_BEFORE),
+        (
+            "backend/tests/test_budget.py",
+            b"from app.budget import check_budget\n\ndef test_it():\n    assert check_budget(1, 2) == 1\n",
+        ),
+        ("backend/tests/test_budget_doc.py", b"def test_doc(doc):\n    assert 'Concierge' in doc\n"),
+    ]
+    record = build_record(
+        provider="github", repository="o/r", ref="main", commit="c" * 40, path="co", sub_paths=[], files=tree
+    )
+    await workspace.put_tree([(f"co/{p}", d) for p, d in tree] + [(record.record_path, record.to_json())])
+    await workspace.put_tree([("co/backend/app/budget.py", WORDING_AFTER)])
+    changes = changes_since(record, await workspace.entries(refresh=True))
+
+    async def read_base(repo_path: str) -> bytes | str:
+        return dict(tree).get(repo_path, "not checked out")
+
+    selection = await affected.affected_tests(workspace, record, changes, cwd="co/backend", read_base=read_base)
+    assert list(selection.tests) == ["tests/test_budget_doc.py"]
+    assert not selection.scoped
+    assert any("change wording only" in n and "backend/app/budget.py" in n for n in selection.notes)
+
+
 async def test_a_new_test_file_runs_alone_its_literals_and_names_select_no_other_test():
     workspace = _workspace()
     tree = [
@@ -438,6 +527,28 @@ def test_the_note_gives_the_verdict_of_the_files_that_ran_without_the_uncollecte
     assert "40 passed, 0 failed, 0 error(s): the collected tests pass" in note
     outcome.report = ReportSummary(kind="junit", tests=41, passed=39, failed=1, errors=1)
     assert "the collected tests do not pass" in commands.uncollected_note(outcome)
+
+
+def test_a_failure_on_a_file_outside_the_checkout_is_left_out_of_the_verdict():
+    """One test failing on a frontend file a backend checkout lacks: the verdict of the rest is green (#1111)."""
+    absent = "frontend/src/components/blocks/architecture-bare.test.tsx"
+    report = ReportSummary(
+        kind="junit",
+        tests=81,
+        passed=80,
+        failed=1,
+        failures=[("tests.test_x::test_fixture", f"FileNotFoundError: '/tmp/workspace/co/{absent}'")],
+    )
+    outcome = commands.CommandOutcome(text="", exit_code=1, report=report)
+    verdict = commands.missing_file_verdict(outcome, [absent])
+    assert "Without the 1 test(s) failing on those files (tests.test_x::test_fixture): 80 passed, 0 failed" in verdict
+    assert "the tests this checkout can run pass" in verdict
+    report.failures.append(("tests.test_x::test_real", "AssertionError: 1 != 2"))
+    report.failed = 2
+    assert "1 other test(s) fail on the change" in commands.missing_file_verdict(outcome, [absent])
+    assert commands.missing_file_verdict(outcome, []) == ""
+    outcome.report = ReportSummary(kind="junit", failures=[("t", "AssertionError")])
+    assert commands.missing_file_verdict(outcome, [absent]) == ""
 
 
 def test_a_session_pytest_stopped_at_collection_says_nothing_ran():
@@ -676,3 +787,73 @@ def test_a_check_scan_pattern_selects_a_python_tripwire_on_a_source_change_only(
     }
     assert affected.select_tests(tests, set(), source_changed=False, scans=scans) == {}
     assert affected.select_tests(tests, set(), source_changed=True) == {}
+
+
+def test_the_markers_a_check_deselects_are_read_from_its_argv() -> None:
+    unit = ("python", "-m", "pytest", "-m", "not integration", "-q")
+    assert affected.excluded_markers(unit) == ("integration",)
+    assert affected.excluded_markers(("pytest", "-m", "not slow and not integration")) == ("slow", "integration")
+    assert affected.excluded_markers(("pytest", "-mnot slow")) == ("slow",)
+    # A selecting or mixed expression deselects nothing this reader can name.
+    assert affected.excluded_markers(("pytest", "-m", "integration")) == ()
+    assert affected.excluded_markers(("pytest", "-m", "not slow or fast")) == ()
+    assert affected.excluded_markers(("python", "-m", "scripts.queue_tests")) == ()
+
+
+async def test_a_selected_file_marked_with_a_deselected_marker_is_named_not_silently_skipped() -> None:
+    """#778 left the queue red: the postgres test on the changed key was selected and ran nothing."""
+    workspace = _workspace()
+    tree = [
+        ("backend/app/tool.py", BEFORE),
+        (
+            "backend/tests/test_tool_postgres.py",
+            b"import pytest\n\npytestmark = pytest.mark.integration\n\ndef test_x():\n    assert 'start_frame'\n",
+        ),
+        ("backend/tests/test_tool.py", b"def test_y():\n    assert 'start_frame'\n"),
+    ]
+    record = build_record(
+        provider="github", repository="o/r", ref="main", commit="c" * 40, path="co", sub_paths=["backend"], files=tree
+    )
+    await workspace.put_tree([(f"co/{p}", d) for p, d in tree] + [(record.record_path, record.to_json())])
+    await workspace.put_tree([("co/backend/app/tool.py", AFTER)])
+    changes = changes_since(record, await workspace.entries(refresh=True))
+
+    async def read_base(repo_path: str) -> bytes | str:
+        return dict(tree)[repo_path]
+
+    selection = await affected.affected_tests(
+        workspace, record, changes, cwd="co/backend", read_base=read_base, excluded=("integration",)
+    )
+    assert set(selection.tests) == {"tests/test_tool_postgres.py", "tests/test_tool.py"}
+    assert selection.deselected == {"tests/test_tool_postgres.py": ["integration"]}
+    text = selection.describe()
+    assert "Deselected by this check's -m: 1 selected test file(s) are marked integration" in text
+    assert "tests/test_tool_postgres.py" in text
+    plain = await affected.affected_tests(workspace, record, changes, cwd="co/backend", read_base=read_base)
+    assert plain.deselected == {}
+    # Without a check of the directory selecting the marker, the advice stays generic.
+    assert "the check that selects that marker" in text
+    selection.runners = {"integration": ["backend-integration"]}
+    named = selection.describe()
+    assert "Run them with backend-integration (integration) (args: these files) before the push." in named
+    assert "the check that selects that marker" not in named
+
+
+def test_the_markers_a_check_selects_are_read_from_its_argv() -> None:
+    integration = ("python", "../.xtm-one/stores.py", "-m", "integration", "-q")
+    assert affected.selected_markers(integration) == ("integration",)
+    assert affected.selected_markers(("python", "-m", "pytest", "-m", "slow or integration")) == ("slow", "integration")
+    # `python -m pytest` names a module, never a marker; a `not` expression selects nothing.
+    assert affected.selected_markers(("python", "-m", "pytest", "-q")) == ()
+    assert affected.selected_markers(("python", "-m", "pytest", "-m", "not integration")) == ()
+    assert affected.selected_markers(("pytest", "-m", "integration and not slow")) == ()
+
+
+def test_the_check_running_a_deselected_marker_is_found_in_the_same_directory() -> None:
+    checks = [
+        ("backend-unit", ("python", "-m", "pytest", "-m", "not integration"), "co/backend"),
+        ("backend-integration", ("python", "../.xtm-one/stores.py", "-m", "integration"), "co/backend"),
+        ("other-integration", ("pytest", "-m", "integration"), "co/worker"),
+    ]
+    assert affected.marker_runners(checks, "co/backend", ["integration"]) == {"integration": ["backend-integration"]}
+    assert affected.marker_runners(checks, "co/backend", ["slow"]) == {}

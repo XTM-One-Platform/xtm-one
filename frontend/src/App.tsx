@@ -3,6 +3,7 @@
 import { Suspense, lazy, useEffect } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { getToken } from "@/lib/api";
+import { rememberReturnPath } from "@/lib/session-return";
 import { termsOfUsePending } from "@/lib/terms-of-use";
 import { useAuth } from "@/hooks/useAuth";
 import { useMe } from "@/hooks/api/useAuthApi";
@@ -47,7 +48,12 @@ const CtemStageDetail = lazyWithRetry(() => import("@/pages/xtm-one/CtemStageDet
 const CtemGovernance = lazyWithRetry(() => import("@/pages/xtm-one/CtemGovernance"));
 const ExposureBriefing = lazyWithRetry(() => import("@/pages/xtm-one/ExposureBriefing"));
 const CtemCases = lazyWithRetry(() => import("@/pages/xtm-one/CtemCases"));
+const CtemSignals = lazyWithRetry(() => import("@/pages/xtm-one/CtemSignals"));
 const CtemCaseDetail = lazyWithRetry(() => import("@/pages/xtm-one/CtemCaseDetail"));
+const CtemInventory = lazyWithRetry(() => import("@/pages/xtm-one/CtemInventory"));
+const CtemAssetDetail = lazyWithRetry(() => import("@/pages/xtm-one/CtemAssetDetail"));
+const CtemSoftwareDetail = lazyWithRetry(() => import("@/pages/xtm-one/CtemSoftwareDetail"));
+const CtemAssetGroupDetail = lazyWithRetry(() => import("@/pages/xtm-one/CtemAssetGroupDetail"));
 /* Hub pages for the three nav groups that have one — the parent label in the
  * sidebar is a real destination, not just an expand/collapse row. */
 const Work = lazyWithRetry(() => import("@/pages/Work"));
@@ -101,7 +107,7 @@ const Traces = lazyWithRetry(() => import("@/pages/Traces"));
 const TraceSessions = lazyWithRetry(() => import("@/pages/TraceSessions"));
 const TraceDetail = lazyWithRetry(() => import("@/pages/TraceDetail"));
 const Analytics = lazyWithRetry(() => import("@/pages/Analytics"));
-const Value = lazyWithRetry(() => import("@/pages/Value"));
+const Tasks = lazyWithRetry(() => import("@/pages/Tasks"));
 const ValueMethodology = lazyWithRetry(() => import("@/pages/ValueMethodology"));
 const Skills = lazyWithRetry(() => import("@/pages/Skills"));
 const SkillDetail = lazyWithRetry(() => import("@/pages/SkillDetail"));
@@ -129,6 +135,8 @@ const PresentationPublic = lazyWithRetry(() => import("@/pages/PresentationPubli
 /* The audience page of a live poll (/v/CODE): no session, one poll only (#10157). */
 const PollVote = lazyWithRetry(() => import("@/pages/PollVote"));
 const DashboardPublic = lazyWithRetry(() => import("@/pages/DashboardPublic"));
+/* The answer link of a decision (/decide/TOKEN, dev-docs/human-gates.md I.4): signed in as its recipient. */
+const DecisionLink = lazyWithRetry(() => import("@/pages/DecisionLink"));
 const VideoPublic = lazyWithRetry(() => import("@/pages/VideoPublic"));
 /* The library lists decks without rendering any, so it stays in the shell. */
 const Presentations = lazyWithRetry(() => import("@/pages/Presentations"));
@@ -166,6 +174,7 @@ const Profile = lazyWithRetry(() => import("@/pages/Profile"));
 const AgentAccountPage = lazyWithRetry(() => import("@/pages/profile/agent-accounts/AgentAccountPage"));
 /* XTM One Desktop: download, connect a machine, manage the enrolled ones. */
 const Desktop = lazyWithRetry(() => import("@/pages/Desktop"));
+const RouteNotFound = lazyWithRetry(() => import("@/pages/RouteNotFound"));
 /* One enrolled machine by id - the page the admin Objects browser opens. */
 const RunnerDetail = lazyWithRetry(() => import("@/pages/RunnerDetail"));
 const Relays = lazyWithRetry(() => import("@/pages/Relays"));
@@ -183,9 +192,14 @@ const PublicMCPServerDetail = lazyWithRetry(() => import("@/pages/public/PublicM
 const PublicCustomTools = lazyWithRetry(() => import("@/pages/public/PublicCustomTools"));
 const PublicCustomToolDetail = lazyWithRetry(() => import("@/pages/public/PublicCustomToolDetail"));
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+function ProtectedRoute({ children, returnHere = false }: { children: React.ReactNode; returnHere?: boolean }) {
   const token = getToken();
-  if (!token) return <Navigate to="/login" replace />;
+  if (!token) {
+    /* A page opened from outside the app (an answer link in Teams or an
+     * email) is where the sign-in lands again, SSO included. */
+    if (returnHere) rememberReturnPath();
+    return <Navigate to="/login" replace />;
+  }
   return (
     <>
       {/* Every signed-in page follows the session's lifetime and idle timeout. */}
@@ -226,26 +240,6 @@ function TermsGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-/** Redirect a legacy route to its new location, preserving the query string. */
-function LegacyRedirect({ to }: { to: string }) {
-  const { search } = useLocation();
-  return <Navigate to={`${to}${search}`} replace />;
-}
-
-/** `/concierge...` (the former Concierge page) to `/health...`, the rest of the
- *  path, the query and the hash kept (#101 S1). */
-function HealthLegacyRedirect() {
-  const { pathname, search, hash } = useLocation();
-  return <Navigate to={`${pathname.replace(/^\/concierge/, "/health")}${search}${hash}`} replace />;
-}
-
-/** `/flows/fleets...` (the former Fleets tab of Agentic Flow) to `/fleets...`,
- *  the rest of the path, the query and the hash kept (#9301 N2c). */
-function FleetsLegacyRedirect() {
-  const { pathname, search, hash } = useLocation();
-  return <Navigate to={`${pathname.replace(/^\/flows\/fleets/, "/fleets")}${search}${hash}`} replace />;
-}
-
 /**
  * Route-level admin guard. Redirects non-admin users away from admin-only
  * pages (Users, Settings, Evaluations, Objects, Logs, AI Adoption) before any
@@ -253,7 +247,7 @@ function FleetsLegacyRedirect() {
  * functional admin controls.
  *
  * Pages that have legitimate non-admin content are deliberately NOT guarded —
- * e.g. `/groups` and `/intents`, whose list endpoints use `get_current_user`
+ * e.g. `/users-and-groups/groups` and `/intents`, whose list endpoints use `get_current_user`
  * (group names are visible for sharing; intents are listable by all). Those
  * pages hide their admin *controls* via `isAdmin` instead of redirecting.
  *
@@ -469,8 +463,7 @@ export default function App() {
 
       {/* A deck opened by its public link: the token in the address is
           the only credential, so it sits outside ProtectedRoute - and outside
-          AppLayout, like the viewer. More specific than the `/public/*`
-          catalog redirect below, so the router picks it. */}
+          AppLayout, like the viewer. */}
       {/* The PDF a public link offers is printed by the platform's
           headless browser from this page: the static render, reading the deck
           through the public routes with the link's own token. */}
@@ -645,6 +638,21 @@ export default function App() {
         }
       />
 
+      {/* An answer link opened from Teams, Google Chat or an email: the page
+          alone, no app shell; the sign-in comes back here. */}
+      <Route
+        path="/decide/:token"
+        element={
+          <ProtectedRoute returnHere>
+            <ErrorBoundary fullPage>
+              <Suspense fallback={<PageSkeleton />}>
+                <DecisionLink />
+              </Suspense>
+            </ErrorBoundary>
+          </ProtectedRoute>
+        }
+      />
+
       {/* Report viewer — same reasoning as the deck viewer above: a report is read
           full-width and printed to PDF, so the app chrome would end up in the
           exported document. */}
@@ -676,7 +684,16 @@ export default function App() {
         <Route path="/dashboard" element={<Page><CommandCenterRoute /></Page>} />
         <Route path="/ctem/governance" element={<XtmOneRoute><Page><CtemGovernance /></Page></XtmOneRoute>} />
         <Route path="/ctem/cases" element={<XtmOneRoute><Page><CtemCases /></Page></XtmOneRoute>} />
+        {/* The Cases Kanban view is a path, never ?view= (#10203, #1503); a static segment ranks above :id. */}
+        <Route path="/ctem/cases/kanban" element={<XtmOneRoute><Page><CtemCases /></Page></XtmOneRoute>} />
+        <Route path="/ctem/signals" element={<XtmOneRoute><Page><CtemSignals /></Page></XtmOneRoute>} />
+        <Route path="/ctem/signals/:tab" element={<XtmOneRoute><Page><CtemSignals /></Page></XtmOneRoute>} />
         <Route path="/ctem/cases/:id" element={<XtmOneRoute><Page><CtemCaseDetail /></Page></XtmOneRoute>} />
+        {/* CTEM > Inventory (#1178). */}
+        <Route path="/ctem/inventory/assets/:id" element={<XtmOneRoute><Page><CtemAssetDetail /></Page></XtmOneRoute>} />
+        <Route path="/ctem/inventory/software/:id" element={<XtmOneRoute><Page><CtemSoftwareDetail /></Page></XtmOneRoute>} />
+        <Route path="/ctem/inventory/asset-groups/:id" element={<XtmOneRoute><Page><CtemAssetGroupDetail /></Page></XtmOneRoute>} />
+        <Route path="/ctem/inventory/:tab?" element={<XtmOneRoute><Page><CtemInventory /></Page></XtmOneRoute>} />
         <Route path="/ctem/:stage" element={<XtmOneRoute><Page><CtemStageDetail /></Page></XtmOneRoute>} />
         <Route path="/briefing" element={<XtmOneRoute><Page><ExposureBriefing /></Page></XtmOneRoute>} />
         {/* The chat's chunk loads in its empty frame, never a page skeleton the panel's own would replace. */}
@@ -695,8 +712,6 @@ export default function App() {
         <Route path="/agents/:id/chats/:conversationId" element={<Page><AgentChatConversation /></Page>} />
         <Route path="/agents/:id/:tab?/:section?" element={<Page><AgentDetail /></Page>} />
         <Route path="/health/:tab?" element={<AdminRoute><Page><Health /></Page></AdminRoute>} />
-        {/* The former Concierge page (#101 S1): `/concierge[/tab]` opens Platform Health, the tab and query kept. */}
-        <Route path="/concierge/*" element={<HealthLegacyRedirect />} />
         <Route path="/evaluations" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><Evaluations /></Page></AdminRoute></FeatureFlagGate>} />
         <Route path="/evaluations/new" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><NewEvaluation /></Page></AdminRoute></FeatureFlagGate>} />
         <Route path="/evaluations/datasets" element={<FeatureFlagGate flag="EVALUATION"><AdminRoute><Page><Datasets /></Page></AdminRoute></FeatureFlagGate>} />
@@ -710,36 +725,45 @@ export default function App() {
         <Route path="/flows/:tab?" element={<Page><Flows /></Page>} />
         {/* The map's sub-views are path segments (#10203 S2): `/flows/map/schedule`. */}
         <Route path="/flows/map/:mapView" element={<Page><Flows /></Page>} />
-        {/* One fleet; the static `fleets` segment ranks above `/flows/:id/builder`. */}
+        {/* One fleet; the static `fleets` segment ranks above `/flows/library/:id`. */}
         {/* Its tabs are path segments (#10203 S2): `/graph`, `/data-flow`, `/members`,
             `/approval`, `/schedule`, `/operations/:list`, `/roi`; none is About. */}
         <Route path="/fleets" element={<Page><Fleets /></Page>} />
         <Route path="/fleets/:fleetId/:tab?/:list?" element={<Page><FleetPage /></Page>} />
-        {/* The Fleets tab of Agentic Flow became `/fleets` (#9301 N2c): every
-            old link lands on the same fleet, tab, query and hash. */}
-        <Route path="/flows/fleets/*" element={<FleetsLegacyRedirect />} />
-        {/* Deeper than `/flows/:tab?`, so `/flows/map` and `/flows/<uuid>/builder`
+        {/* Deeper than `/flows/:tab?`, so `/flows/map` and `/flows/library/<uuid>`
             never collide. Creation is a POST followed by a navigate — a
             `/flows/new` route WOULD collide with the tab segment. */}
-        <Route path="/flows/:id/builder" element={<FeatureFlagGate flag="FLOW_BUILDER"><Page><FlowBuilder /></Page></FeatureFlagGate>} />
+        <Route path="/flows/library/:id" element={<FeatureFlagGate flag="FLOW_BUILDER"><Page><FlowBuilder /></Page></FeatureFlagGate>} />
         <Route path="/integrations" element={<Page><Integrations /></Page>} />
         <Route path="/integrations/:id/:tab?" element={<Page><IntegrationDetail /></Page>} />
         <Route path="/integrations/new" element={<Page><NewIntegration /></Page>} />
         {/* Saved sign-ins every browser of the platform opens: not behind the Video Studio flag. */}
-        <Route path="/browser-profiles" element={<Page><BrowserProfiles /></Page>} />
+        <Route path="/connections" element={<Page><BrowserProfiles /></Page>} />
         {/* An OAuth2 implicit sign-in lands here with the token in the fragment. */}
         <Route path="/oauth/implicit" element={<Page><OAuthImplicitCallback /></Page>} />
         <Route path="/knowledge" element={<Page><KnowledgeBases /></Page>} />
         <Route path="/knowledge/documents" element={<Page><KnowledgeDocuments /></Page>} />
         <Route path="/knowledge/new" element={<Page><NewKnowledgeBase /></Page>} />
         <Route path="/knowledge/:id/:tab?" element={<Page><KnowledgeBaseDetail /></Page>} />
-        <Route path="/operations/:tab?" element={<Page><Operations /></Page>} />
-        {/* Legacy routes consolidated into Operations (preserve query params) */}
-        <Route path="/tasks" element={<LegacyRedirect to="/operations/executions" />} />
-        <Route path="/background-tasks" element={<LegacyRedirect to="/operations/background-tasks" />} />
-        <Route path="/work-items" element={<LegacyRedirect to="/operations/work-items" />} />
-        <Route path="/runs/:id" element={<Page><RunDetail /></Page>} />
-        <Route path="/assignments/:id/:tab?" element={<Page><AssignmentDetail /></Page>} />
+        {/* Operations: what is running or past, one route per tab (#775). */}
+        <Route path="/operations" element={<Page><Operations /></Page>} />
+        <Route path="/operations/executions" element={<Page><Operations /></Page>} />
+        <Route path="/operations/background-tasks" element={<Page><Operations /></Page>} />
+        <Route path="/operations/shared-state" element={<Page><Operations /></Page>} />
+        <Route path="/operations/worksets" element={<Page><Operations /></Page>} />
+        {/* Tasks: what to do and follow, one route per tab, the paths of the menu (#775).
+            No alias serves the former paths: every link is built by lib/task-routes.ts. */}
+        <Route path="/tasks" element={<Page><Tasks /></Page>} />
+        <Route path="/tasks/work-items" element={<Page><Tasks /></Page>} />
+        <Route path="/tasks/work-items/:itemId" element={<Page><Tasks /></Page>} />
+        {/* The methodology (#9836 R7b): every user, both modes, linked from every "How this is computed". */}
+        <Route path="/tasks/value/methodology" element={<Page><ValueMethodology /></Page>} />
+        {/* The Value report (#9836 R5b): every user, both modes; it shows the Community Edition upgrade path itself. */}
+        <Route path="/tasks/value/:tab?" element={<Page><Tasks /></Page>} />
+        <Route path="/tasks/workspaces" element={<Page><Tasks /></Page>} />
+        <Route path="/tasks/workspaces/:workspaceId/:tab?" element={<Page><WorkspaceProject /></Page>} />
+        <Route path="/operations/executions/:id" element={<Page><RunDetail /></Page>} />
+        <Route path="/agents/assignments/:id/:tab?" element={<Page><AssignmentDetail /></Page>} />
         <Route path="/skills" element={<Page><Skills /></Page>} />
         <Route path="/skills/:id/:tab?" element={<Page><SkillDetail /></Page>} />
         <Route path="/mcp-servers" element={<Page><MCPServers /></Page>} />
@@ -749,10 +773,8 @@ export default function App() {
         <Route path="/tools/custom" element={<Page><CustomTools /></Page>} />
         <Route path="/tools/sources" element={<Page><CustomTools /></Page>} />
         <Route path="/tools/:id/:tab?" element={<Page><CustomToolDetail /></Page>} />
-        <Route path="/variables" element={<Page><Variables /></Page>} />
-        <Route path="/variables/:id" element={<Page><Variables /></Page>} />
-        <Route path="/workspaces" element={<LegacyRedirect to="/operations/workspaces" />} />
-        <Route path="/workspaces/:workspaceId/:tab?" element={<Page><WorkspaceProject /></Page>} />
+        <Route path="/connections/variables" element={<Page><Variables /></Page>} />
+        <Route path="/connections/variables/:id" element={<Page><Variables /></Page>} />
         <Route path="/prompts" element={<Page><Prompts /></Page>} />
         <Route path="/prompts/:id/:tab?" element={<Page><PromptDetail /></Page>} />
         {/* The packs API answers 403 while DEEP_INVESTIGATION is off. */}
@@ -773,32 +795,25 @@ export default function App() {
         <Route path="/videos/media" element={<FeatureFlagGate flag="VIDEO_STUDIO"><Page><VideoStudio /></Page></FeatureFlagGate>} />
         <Route path="/files" element={<Page><Files /></Page>} />
         <Route path="/search" element={<Page><Search /></Page>} />
-        <Route path="/users" element={<AdminRoute><Page><Users /></Page></AdminRoute>} />
-        <Route path="/users/new" element={<AdminRoute><Page><NewUser /></Page></AdminRoute>} />
-        <Route path="/users/:id/:tab?" element={<AdminRoute><Page><UserDetail /></Page></AdminRoute>} />
-        <Route path="/groups" element={<Page><Groups /></Page>} />
-        <Route path="/groups/new" element={<AdminRoute><Page><NewGroup /></Page></AdminRoute>} />
-        <Route path="/groups/:id/:tab?" element={<AdminRoute><Page><GroupDetail /></Page></AdminRoute>} />
+        <Route path="/users-and-groups" element={<AdminRoute><Page><Users /></Page></AdminRoute>} />
+        <Route path="/users-and-groups/users/new" element={<AdminRoute><Page><NewUser /></Page></AdminRoute>} />
+        <Route path="/users-and-groups/users/:id/:tab?" element={<AdminRoute><Page><UserDetail /></Page></AdminRoute>} />
+        <Route path="/users-and-groups/groups" element={<Page><Groups /></Page>} />
+        <Route path="/users-and-groups/groups/new" element={<AdminRoute><Page><NewGroup /></Page></AdminRoute>} />
+        <Route path="/users-and-groups/groups/:id/:tab?" element={<AdminRoute><Page><GroupDetail /></Page></AdminRoute>} />
         <Route path="/objects" element={<AdminRoute><Page><AdminObjects /></Page></AdminRoute>} />
         <Route path="/intents" element={<XtmOneRoute><Page><Intents /></Page></XtmOneRoute>} />
-        <Route path="/analytics/:tab?" element={<AnalyticsRoute><Page><Analytics /></Page></AnalyticsRoute>} />
-        {/* The Value page (#9836 R5b): every user, both modes; the page itself shows the Community Edition upgrade path. */}
-        {/* The methodology (#9836 R7b): every user, both modes, linked from every "How this is computed". */}
-        <Route path="/value/methodology" element={<Page><ValueMethodology /></Page>} />
-        <Route path="/value/:tab?" element={<Page><Value /></Page>} />
-        <Route path="/traces" element={<AdminRoute><Page><Traces /></Page></AdminRoute>} />
-        <Route path="/trace-sessions" element={<AdminRoute><Page><TraceSessions /></Page></AdminRoute>} />
-        <Route path="/traces/sessions" element={<AdminRoute><LegacyRedirect to="/trace-sessions" /></AdminRoute>} />
-        <Route path="/traces/:id/:tab?" element={<Page><TraceDetail /></Page>} />
+        <Route path="/observability/:tab?" element={<AnalyticsRoute><Page><Analytics /></Page></AnalyticsRoute>} />
+        <Route path="/observability/traces" element={<AdminRoute><Page><Traces /></Page></AdminRoute>} />
+        <Route path="/observability/sessions" element={<AdminRoute><Page><TraceSessions /></Page></AdminRoute>} />
+        <Route path="/observability/traces/:id/:tab?" element={<Page><TraceDetail /></Page>} />
         <Route path="/logs" element={<AdminRoute><Page><AuditLogs /></Page></AdminRoute>} />
-        {/* The runners tab moved to its own page; old links follow. */}
-        <Route path="/profile/runners" element={<Navigate to="/desktop" replace />} />
         <Route path="/profile/agent-accounts/:accountId/:tab?" element={<Page><AgentAccountPage /></Page>} />
         <Route path="/profile/:tab?" element={<Page><Profile /></Page>} />
         <Route path="/desktop" element={<Page><Desktop /></Page>} />
-        <Route path="/runners/:id" element={<Page><RunnerDetail /></Page>} />
-        <Route path="/relays" element={<Page><Relays /></Page>} />
-        <Route path="/relays/:id/:tab?" element={<Page><RelayGroupDetail /></Page>} />
+        <Route path="/desktop/runners/:id" element={<Page><RunnerDetail /></Page>} />
+        <Route path="/connections/relays" element={<Page><Relays /></Page>} />
+        <Route path="/connections/relays/:id/:tab?" element={<Page><RelayGroupDetail /></Page>} />
         <Route path="/ai-adoption/:tab?" element={
           platformConfig?.features.ai_adoption === false
             ? <Navigate to="/" replace />
@@ -808,6 +823,8 @@ export default function App() {
         <Route path="/settings/:tab?/:section?" element={<AdminRoute><Page><Settings /></Page></AdminRoute>} />
         {/* A sub-view of a section: the organization profile's tab (#12329, /settings/organization/profile/<tab>). */}
         <Route path="/settings/:tab/:section/:view" element={<AdminRoute><Page><Settings /></Page></AdminRoute>} />
+        {/* No alias and no redirect (#797): an unknown path, a former one included, is not found, in the app chrome. */}
+        <Route path="*" element={<Page><RouteNotFound /></Page>} />
       </Route>
 
       {/* Internal catalog (requires auth + feature flag) */}
@@ -838,10 +855,7 @@ export default function App() {
       ) : (
         <Route path="/catalog/*" element={<Navigate to="/" replace />} />
       )}
-      {/* Redirect old /public URLs to /catalog */}
-      <Route path="/public/*" element={<Navigate to="/catalog" replace />} />
 
-      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </ArcadeProvider>
   );

@@ -50,6 +50,7 @@ from app.core.utils import format_exception_message, safe_uuid
 from app.models.user import User
 from app.models.work_item import WORK_ITEM_TERMINAL_STATUSES
 from app.services.work_item import WorkItemInbox
+from app.services.work_item_blocked_refs import open_refs
 from app.services.work_item_fleet_impact import effective_fleet_impact, impacted_agent_ids
 from app.services.work_item_pull_requests import pull_requests_waiting_for_ci, waiting_for_ci
 
@@ -62,6 +63,8 @@ PICKUP_STATES: tuple[str, ...] = (
     "in_progress",  # claimed or in progress: an agent holds it
     "blocked",  # nothing takes a blocked item until it is put back in the queue
     "blocked_on_items",  # waits for other items; reopens once they are done
+    "waiting_for_refs",  # waits for pull requests, issues, deployments or workflow runs; released by itself
+    "waiting_for_person",  # waits for a person's answer to its decision card; the answer reopens it
     "waiting_for_ci",  # open or blocked on a pull request whose CI runs: its end dispatches it
     "unassigned",  # open with no owner agent: nothing routes it
     "automatic",  # open, due, and an inbox takes it on the next tick
@@ -163,12 +166,19 @@ def pickup_state(
         return "finished"
     if status in ("claimed", "in_progress") and not claim_holder_ended(item):
         return "in_progress"
+    if status == "blocked" and item.get("needs_human"):
+        # A person's answer reopens it: no blocker released before it does (#861).
+        return "waiting_for_person"
     if status == "blocked" and item.get("blocked_on"):
         # Its blockers decide: the end of a CI never releases it.
         return "blocked_on_items"
     if status in ("open", "blocked") and item.get("owner_agent_id") and waiting_for_ci(item) is not None:
         # The end of the CI dispatches it to its owner: not "not picked up".
         return "waiting_for_ci"
+    if status == "blocked" and item.get("owner_agent_id") and open_refs(item.get("blocked_on_refs")):
+        # The platform releases it once each reference is merged, closed,
+        # deployed or succeeded, and hands it to its owner: not "not picked up" (#861).
+        return "waiting_for_refs"
     if status == "blocked":
         return "blocked"
     # Open, or held by a run that ended (released on the next tick): what
@@ -403,13 +413,19 @@ class _Lookup:
             )
         return out
 
-    def agent(self, agent_id: object) -> dict | None:
+    def agent(self, agent_id: object, *, named: bool = False) -> dict[str, object] | None:
         aid = _uuid(agent_id)
         if aid is None:
             return None
         if aid not in self.visible_agents:
             # Named only to a viewer who may open it; one that was deleted
-            # since has no row at all (its id is set NULL with it).
+            # since has no row at all (its id is set NULL with it). *named*:
+            # the OWNER agent of an item the viewer sees keeps its name,
+            # read-only, never its id or a link (#858): who holds the work is
+            # part of the item, not of the agent.
+            if named and aid in self.agents:
+                name, icon = self.agents[aid]
+                return {"id": None, "name": name, "icon": icon, "accessible": False}
             return {"id": None, "name": None, "icon": None, "accessible": False}
         name, icon = self.agents[aid]
         return {"id": str(aid), "name": name, "icon": icon, "accessible": True}
@@ -431,7 +447,7 @@ class _Lookup:
         else:
             visibility = {"reason": "own", "workspace": None}
         return {
-            "owner_agent": self.agent(item.get("owner_agent_id")),
+            "owner_agent": self.agent(item.get("owner_agent_id"), named=True),
             "created_by_agent": self.agent(item.get("created_by_agent_id")),
             "claimed_by_agent": (
                 None

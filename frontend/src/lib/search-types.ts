@@ -5,6 +5,7 @@
  * type: its label (English, translated by the caller), its library icon and
  * the route of one hit. One table, so the typeahead and the page never differ.
  */
+import { workItemPath } from "./task-routes.ts";
 import type { ComponentProps } from "react";
 import type { Icon } from "@filigran/design-system";
 import type { SearchHit, SearchType } from "@/hooks/api/useSearchApi";
@@ -26,13 +27,13 @@ const by = (base: string) => (hit: SearchHit) => `${base}/${hit.id}`;
 export const SEARCH_TYPE_VIEW: Record<SearchType, SearchTypeView> = {
   agent: { plural: "Agents", singular: "Agent", icon: "bot", href: by("/agents") },
   fleet: { plural: "Fleets", singular: "Fleet", icon: "network", href: by("/fleets") },
-  assignment: { plural: "Assignments", singular: "Assignment", icon: "calendar", href: by("/assignments") },
-  flow: { plural: "Flows", singular: "Flow", icon: "link-2", href: (hit) => `/flows/${hit.id}/builder` },
+  assignment: { plural: "Assignments", singular: "Assignment", icon: "calendar", href: by("/agents/assignments") },
+  flow: { plural: "Flows", singular: "Flow", icon: "link-2", href: (hit) => `/flows/library/${hit.id}` },
   intent: { plural: "Intents", singular: "Intent", icon: "compass", href: () => "/intents" },
   conversation: { plural: "Conversations", singular: "Conversation", icon: "quote", href: (hit) => `/chat?c=${hit.id}` },
   work_item: {
     plural: "Work items", singular: "Work item", icon: "circle-check",
-    href: (hit) => `/operations/work-items?item=${hit.id}`,
+    href: (hit) => workItemPath(hit.id),
   },
   knowledge_base: { plural: "Knowledge bases", singular: "Knowledge base", icon: "database", href: by("/knowledge") },
   knowledge_document: {
@@ -49,8 +50,8 @@ export const SEARCH_TYPE_VIEW: Record<SearchType, SearchTypeView> = {
   integration: { plural: "Integrations", singular: "Integration", icon: "link-2", href: by("/integrations") },
   mcp_server: { plural: "MCP servers", singular: "MCP server", icon: "server", href: by("/mcp-servers") },
   custom_tool: { plural: "Custom tools", singular: "Custom tool", icon: "wrench", href: by("/tools") },
-  user: { plural: "Users", singular: "User", icon: "users", href: by("/users") },
-  group: { plural: "Groups", singular: "Group", icon: "users", href: by("/groups") },
+  user: { plural: "Users", singular: "User", icon: "users", href: by("/users-and-groups/users") },
+  group: { plural: "Groups", singular: "Group", icon: "users", href: by("/users-and-groups/groups") },
 };
 
 /** The results page of `q`, optionally on one type's tab. */

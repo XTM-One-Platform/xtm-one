@@ -50,6 +50,46 @@ def _slug(source: str) -> str:
     return source.replace("_", "-")
 
 
+def _state_reason(c: dict) -> str:
+    """Why a connector stands where it does, from the flags OpenCRQ answers.
+
+    OpenCRQ derives the state in order, first match wins (module
+    connectors/status.ts): no deployment credentials, then no tenant
+    binding, then the switch, then the runs. Unknown flags give no reason.
+    """
+    state = c.get("state")
+    stream = c.get("source") == _STREAM_SOURCE
+    if state == "unavailable" and c.get("platformConfigured") is False:
+        return "the OpenCRQ deployment holds no credentials for it for this tenant"
+    if state == "not_configured" and c.get("tenantConfigured") is False:
+        if stream:
+            return "no live stream and service account selected in this tenant"
+        return "no service account bound in this tenant"
+    if state == "never_synced":
+        if c.get("enabled") is False:
+            return "switched off in this tenant"
+        if not stream:
+            return "configured, no sync has finished yet"
+    if state == "failing":
+        if stream:
+            return "OpenCTI rejected the stream token"
+        return "the last sync failed"
+    return ""
+
+
+def _missing_capability_line(stream: dict[str, object]) -> str:
+    """The OpenCTI capability OpenCRQ reports its stream token lacks, or ''.
+
+    connectors-router.ts getStreamState answers ``missingCapability`` while
+    OpenCRQ holds no stream because the deployment's OpenCTI token cannot
+    create it; the capability is what an OpenCTI admin grants to fix it.
+    """
+    capability = _CONTROL_CHARACTERS.sub(" ", str(stream.get("missingCapability") or "")).strip()
+    if not capability:
+        return ""
+    return f"the OpenCTI token lacks the {capability[:80]} capability to create the stream"
+
+
 def _fmt_run(r: dict) -> str:
     line = f"- {r.get('status', '?')}, enqueued {r.get('enqueuedAt') or '?'}"
     if r.get("finishedAt"):
@@ -83,6 +123,21 @@ def register(
         connectors = connectors or []
         if not connectors:
             return "No OpenCRQ connector."
+        # listConnectors does not carry the stream's missing capability: one
+        # getStreamState read adds it to the OpenCTI row. Best effort: a failed
+        # read leaves the row as listConnectors answered it.
+        stream_missing = ""
+        if any(c.get("source") == _STREAM_SOURCE for c in connectors):
+            stream, stream_err = await _trpc(
+                base_url,
+                headers,
+                "connectors.getStreamState",
+                "get connector stream state",
+                input={"source": _STREAM_SOURCE},
+                tenant_id=tenant or "",
+            )
+            if not stream_err and isinstance(stream, dict):
+                stream_missing = _missing_capability_line(stream)
         lines = [f"OpenCRQ connectors ({len(connectors)}):"]
         for c in connectors:
             source = c.get("source", "?")
@@ -90,6 +145,11 @@ def register(
                 f"- {source} ({c.get('domain', '?')}, {c.get('mechanism', '?')}): "
                 f"{c.get('state', '?')}"
             )
+            reason = _state_reason(c)
+            if source == _STREAM_SOURCE and stream_missing:
+                reason = f"{reason}; {stream_missing}" if reason else stream_missing
+            if reason:
+                line += f" ({reason})"
             last = c.get("lastRun") or {}
             if last:
                 line += (
@@ -137,6 +197,9 @@ def register(
                 f"  Last event: {stream.get('lastEventAt') or 'none'}",
                 f"  Reached the live tail: {'yes' if stream.get('reachedLiveTail') else 'no'}",
             ]
+            missing = _missing_capability_line(stream)
+            if missing:
+                lines.append(f"  Missing capability: {missing}")
             if stream.get("backfillPercent") is not None:
                 lines.append(f"  Backfill: {stream['backfillPercent']}%")
             if stream.get("objectsRead") is not None:

@@ -44,11 +44,13 @@ the ones it may not change.
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from app.core.utils import format_exception_message
+from app.models.work_item import WORK_ITEM_TERMINAL_STATUSES
 from app.services.company_managed_writes import (
     CompanyManagedWriteRefusedError,
     agent_writer,
@@ -138,6 +140,12 @@ def _answer_budget() -> int:
 
 #: An argument the caller did not give, apart from an explicit null (which clears).
 _UNSET: Any = object()
+
+#: What update_work_item answers for an empty owner_agent_id (#862): never a clear.
+OWNER_KEPT_LINE = (
+    "owner_agent_id was empty: the owner is kept (an agent never clears an item's owner; "
+    "name another agent to re-route it)"
+)
 
 
 def _clearable(value: Any) -> str | None:
@@ -581,6 +589,7 @@ _BLOCKED_WHY_SCHEMA: dict[str, dict] = {
                 "after": {"type": "string"},
                 "branch": {"type": "string"},
                 "title_contains": {"type": "string"},
+                "carries": {"type": "string"},
                 "release_on": {
                     "type": "string",
                     "enum": ["merged", "closed", "merged_or_closed", "deployed", "succeeded"],
@@ -589,26 +598,32 @@ _BLOCKED_WHY_SCHEMA: dict[str, dict] = {
             "required": ["repo"],
         },
         "description": (
-            "What it waits for (replaces the list; [] clears); reopens once all are met. PR (branch: "
+            "Waits for (replaces; [] clears), reopens when all met. PR (branch: "
             "successors too) or issue: release_on (default merged_or_closed, issue closed). deployment (number "
-            "or sha): the build has the merge. workflow_run: a later success."
+            "or sha): build has the merge. workflow_run: a later success."
         ),
     },
     "blocked_reason": {
         "type": "string",
         "description": (
-            "What it waits for, who releases it, since when. Blocked needs this, blocked_on, "
-            "blocked_on_refs or needs_human."
+            "Context, never the blocker: blocked needs an owner and blocked_on, blocked_on_refs or "
+            "needs_human with ask."
         ),
     },
-    "needs_human": {"type": "boolean", "description": "Blocked on a person's decision."},
+    "needs_human": {"type": "boolean", "description": "Blocked on a person's decision; needs ask."},
     "recipient": {
         "type": "string",
         "description": "needs_human: who decides (user id or email); default: run's person, agent owner, admins",
     },
     "ask": {
         "type": "object",
-        "description": "{question, options:[{key,label,effect}], recommendation: option key, deadline}",
+        "description": (
+            "{question, context, options:[{key,label,effect,keeps_waiting?}], recommendation: option key, deadline, "
+            "links:[{label,url}]}. needs_human: all but deadline, links; 2+ options. Plain words; "
+            "no timestamp, id, key or 'card sent' (use blocked_reason). "
+            "Good: 'Post Legal's comment asking for the 4 missing documents?'. "
+            "Bad: 'CARD SENT 2026-11-20T11:43Z msg 1795175038574: waiting for GO'"
+        ),
     },
 }
 
@@ -657,8 +672,16 @@ def _blocked_why_lines(item: dict) -> list[str]:
             f"  - blocked on {len(refs)} reference(s): {names}. It goes back to open by itself "
             "once every one of them is met as release_on asks."
         )
+    from app.services.work_item_blocked_refs import bound_pull_request_wait
+
+    bound = bound_pull_request_wait(item)
+    if bound:
+        lines.append(f"  - blocked on {bound}: it goes back to open with no write from you.")
     if item.get("blocked_reason"):
         lines.append(f"  - blocked reason: {item['blocked_reason']}")
+    if item.get("status") in WORK_ITEM_TERMINAL_STATUSES:
+        # A finished item waits for nobody: no person line, no pending ask (#1719).
+        return lines
     if item.get("needs_human"):
         lines.append("  - needs a person (needs_human): nothing releases it by itself.")
         if item.get("recipient_line"):
@@ -669,7 +692,8 @@ def _blocked_why_lines(item: dict) -> list[str]:
     why = item.get("blocked_why") or {}
     if why.get("missing"):
         lines.append(
-            "  - BLOCKED WITH NO REASON: set blocked_on, blocked_on_refs, blocked_reason or needs_human."
+            "  - BLOCKED WITH NO REAL BLOCKER: set blocked_on, blocked_on_refs, or needs_human with an ask "
+            "card, and an owner; or reopen it with not_before."
         )
     return lines
 
@@ -837,7 +861,7 @@ def _blocked_on_line(blockers: list) -> str:
     return (
         f"  - blocked on {len(blockers)} work item(s): {', '.join(str(b) for b in blockers)}. "
         "It goes back to open by itself once every one of them is done; a cancelled one "
-        "keeps it blocked."
+        "hands it back to its owner."
     )
 
 
@@ -1070,6 +1094,10 @@ def build_work_item_tools(
         blockers, blockers_err = await _full_blocker_ids(blocked_on)
         if blockers_err:
             return blockers_err
+        if not resolved_owner and agent_id and (blockers or refs or needs_human or status == "blocked"):
+            # A blocked item always has an owner that resumes it (#762): left
+            # empty, it stays in the calling agent's own backlog, as promised.
+            resolved_owner = agent_id
         try:
             item = await create_work_item(
                 user_id=acting_user_id,
@@ -1098,6 +1126,8 @@ def build_work_item_tools(
                 dedupe_by=dedupe_by or None,
                 fleet_impact=impact,
                 writer=writer,
+                # An agent parking an item for a person writes the card they read (#776).
+                require_person_ask=True,
             )
         except CompanyManagedWriteRefusedError as exc:
             return _refused(exc)
@@ -1136,6 +1166,7 @@ def build_work_item_tools(
         if item.get("blocked_on"):
             lines.append(_blocked_on_line(item["blocked_on"]))
         lines.extend(_blocked_why_lines(item))
+        lines.extend(f"  - Warning: {w}" for w in item.get("warnings") or ())
         if item.get("fleet_impact"):
             lines.append(_fleet_impact_line(item["fleet_impact"]))
         if attached:
@@ -1213,7 +1244,7 @@ def build_work_item_tools(
         status: str = "",
         priority: str = "",
         description: str = "",
-        owner_agent_id: str = "",
+        owner_agent_id: str | None = None,
         correlation_key: str = "",
         due_at: str | None = _UNSET,
         not_before: str | None = _UNSET,
@@ -1272,7 +1303,10 @@ def build_work_item_tools(
                     f"{attachable.refusal_reason()} {list_available_files(file_context)}"
                 )
             attached = attachable.file_ids
-        resolved_owner, owner_err = await _owner_argument(owner_agent_id)
+        # An empty owner is never a clear through this tool: the owner is kept,
+        # and the read-back says so instead of a silent no-op (#862).
+        owner_kept = owner_agent_id is not None and not owner_agent_id.strip()
+        resolved_owner, owner_err = await _owner_argument(owner_agent_id or "")
         if owner_err:
             return owner_err
         impact, impact_err = _fleet_impact_argument(fleet_impact)
@@ -1319,6 +1353,8 @@ def build_work_item_tools(
                 take_over=bool(take_over),
                 attachment_file_ids=attached or None,
                 remove_attachment_file_ids=dropped_files or None,
+                # An agent parking an item for a person writes the card they read (#776).
+                require_person_ask=True,
             )
         except CompanyManagedWriteRefusedError as exc:
             return _refused(exc, work_item_id)
@@ -1336,12 +1372,17 @@ def build_work_item_tools(
             f"Updated work item **{item['title']}** (id: `{item['id']}`, "
             f"status: {item['status']}, priority: {item['priority']})."
         )
+        for warning in item.get("warnings") or ():
+            msg += f"\n  - Warning: {warning}"
         # Another writer finished the item this run held: the read-back says stop (#11554).
         from app.services.work_item_preflight import finished_under_holder_text
 
         stop = finished_under_holder_text(item, _own_run_ids())
         if stop:
             msg += f"\n  - {stop}"
+        if owner_kept and item.get("status") == "blocked":
+            # Only where a clear would matter: a blocked item needs its owner (#762).
+            msg += f"\n  - {OWNER_KEPT_LINE}"
         if note.strip():
             stamp = (item.get("description") or "").split(": ", 1)[0]
             msg += (
@@ -2107,6 +2148,23 @@ def build_work_item_tools(
     executor.register("complete_work_item", _complete_work_item)
     executor.register("delegate_to_assignment", _delegate_to_assignment)
 
+    async def _read_for_card(work_item_id: str) -> dict[str, Any] | None:
+        # The agent's own read access, as get_work_item: an item outside it is not found.
+        from app.services.work_item import get_work_item
+
+        full_id, ambiguous = await _full_item_id(work_item_id)
+        if ambiguous:
+            return None
+        item = await get_work_item(full_id, user_id=acting_user_id, reader=writer)
+        if item is None or await _outside_scope(item, allow_all=True):
+            return None
+        return item
+
+    from app.services.decision_graph_card_tool import TOOL_NAME as _CARD_TOOL
+    from app.services.decision_graph_card_tool import build_send_decision_card, decision_card_definition
+
+    executor.register(_CARD_TOOL, build_send_decision_card(agent_id, acting_user_id, _read_for_card))
+
     definitions = [
         ToolDefinition(
             name="create_work_item",
@@ -2478,6 +2536,7 @@ def build_work_item_tools(
             },
             source="builtin:coordination",
         ),
+        decision_card_definition(),
     ]
 
     return definitions, executor
@@ -2530,6 +2589,49 @@ def _delegate_refusal_message(refusal, assignment) -> str:
 
 #: Files one delegation hands its run, as many as a work item attaches.
 _MAX_DELEGATED_FILES = 20
+
+#: A work item id written in a delegation's task text.
+_TASK_UUID_RE = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.IGNORECASE)
+#: How many ids of a task are looked up, so a long task stays one cheap read.
+_MAX_TASK_ITEM_IDS = 20
+
+
+async def _held_work_item_named(db: Any, task: str, agent_id: Any) -> tuple[str, str] | None:
+    """The first work item *task* names that a live run of *agent_id* holds, as ``(item id, run id)``.
+
+    A delegation to an agent's pick-up assignment while that agent's own run
+    holds the item starts a second run that can only stand down (gap
+    work-item-double-dispatch). Only items owned by *agent_id* and held by a
+    run that is still alive refuse; any other id in the text is ignored.
+    """
+    from sqlalchemy import select
+
+    from app.models.work_item import WorkItem
+    from app.services.work_item import held_by_live_run, holding_runs
+
+    ids: list[uuid.UUID] = []
+    for match in _TASK_UUID_RE.findall(task or ""):
+        value = uuid.UUID(match)
+        if value not in ids:
+            ids.append(value)
+        if len(ids) >= _MAX_TASK_ITEM_IDS:
+            break
+    if not ids or agent_id is None:
+        return None
+    rows = (
+        (await db.execute(select(WorkItem).where(WorkItem.id.in_(ids), WorkItem.owner_agent_id == agent_id)))
+        .scalars()
+        .all()
+    )
+    held = [row for row in rows if getattr(row, "claimed_by_run_id", None) is not None]
+    if not held:
+        return None
+    holders = await holding_runs(db, [row.claimed_by_run_id for row in held])
+    order = {value: index for index, value in enumerate(ids)}
+    for row in sorted(held, key=lambda r: order.get(r.id, len(ids))):
+        if held_by_live_run(row, holders):
+            return str(row.id), str(row.claimed_by_run_id)
+    return None
 
 
 def _delegated_file_ids(file_ids: object) -> tuple[list[str], str | None]:
@@ -2647,6 +2749,14 @@ async def _run_delegate_to_assignment(
                 refusal = await manual_trigger_overlap(db, assignment, agent, uid)
             if refusal is not None:
                 return _delegate_refusal_message(refusal, assignment)
+            held = await _held_work_item_named(db, task, assignment.agent_id)
+            if held is not None:
+                item_id, holder_run_id = held
+                return (
+                    f"Not delegated: work item `{item_id}` named in the task is held by live run "
+                    f"`{holder_run_id}` of the same agent. A second run on it would only stand down: "
+                    "add a note to the item instead, or wait for that run (its id is what `until` takes)."
+                )
             run_scope = manual_trigger_run_scope(assignment, agent, uid)
 
             from app.services.agentic_gate import (

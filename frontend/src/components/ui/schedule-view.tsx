@@ -23,14 +23,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * the backend; countdowns refresh on a timer.
  *
  * A view, not a page: the `Schedule` view of the agent-to-agent map
- * (`/flows/map/schedule`, where the former Schedule tab's
- * `/flows/schedule` redirects) and of each fleet page render it. `agentIds`
+ * (`/flows/map/schedule`, the former Schedule tab) and of each fleet page
+ * render it. `agentIds`
  * narrows every part to the agents shown (no value: every agent the caller
  * sees); `agentId` narrows it to one agent (the
  * link of an agent's "Coming up" card), with `onClearAgent` to widen it back.
  * Its rows are `schedule-row.tsx`: two lines of one height each.
  */
 
+import { workItemPath } from "@/lib/task-routes";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -221,7 +222,7 @@ export function ScheduleView({ agentIds = null, agentId = null, onClearAgent, fl
   if (isLoading || oneOffsLoading) return <PageSkeleton cards={2} />;
 
   const clearAgent = () => onClearAgent?.();
-  const openOneOff = (item: ScheduledWorkItem) => navigate(`/operations/work-items?item=${item.id}`);
+  const openOneOff = (item: ScheduledWorkItem) => navigate(workItemPath(item.id));
 
   if (schedules.length === 0 && oneOffs.length === 0) {
     return (
@@ -316,7 +317,7 @@ export function ScheduleView({ agentIds = null, agentId = null, onClearAgent, fl
             windowHours={Number(windowKey)}
             nowMs={nowMs}
             activeAgentIds={activeAgentIds}
-            onSelect={(id) => navigate(`/assignments/${id}`)}
+            onSelect={(id) => navigate(`/agents/assignments/${id}`)}
             onSelectOneOff={openOneOff}
           />
         </CardContent>
@@ -350,7 +351,7 @@ export function ScheduleView({ agentIds = null, agentId = null, onClearAgent, fl
           items={scheduled}
           nowMs={nowMs}
           zone={zone}
-          onOpen={(id) => navigate(`/assignments/${id}`)}
+          onOpen={(id) => navigate(`/agents/assignments/${id}`)}
         />
         <InventorySection
           title={t_i18n("Event-driven")}
@@ -358,7 +359,7 @@ export function ScheduleView({ agentIds = null, agentId = null, onClearAgent, fl
           items={eventDriven}
           nowMs={nowMs}
           zone={zone}
-          onOpen={(id) => navigate(`/assignments/${id}`)}
+          onOpen={(id) => navigate(`/agents/assignments/${id}`)}
         />
         <InventorySection
           title={t_i18n("Manual")}
@@ -366,7 +367,7 @@ export function ScheduleView({ agentIds = null, agentId = null, onClearAgent, fl
           items={manual}
           nowMs={nowMs}
           zone={zone}
-          onOpen={(id) => navigate(`/assignments/${id}`)}
+          onOpen={(id) => navigate(`/agents/assignments/${id}`)}
         />
       </div>
     </div>

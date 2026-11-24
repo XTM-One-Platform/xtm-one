@@ -47,6 +47,7 @@ class FakeGitHub:
         both: list[str],
         always_conflict: bool = False,
         modes: dict[str, str] | None = None,
+        their_modes: dict[str, str] | None = None,
         lose_commit: int | None = None,
         move_branch_on_merge: bool = False,
         omit_sizes: bool = False,
@@ -77,6 +78,8 @@ class FakeGitHub:
         self.both = both
         self.always_conflict = always_conflict
         self.modes = modes or {}
+        # their_modes: the ref's tree modes where they differ from the branch's (a bit set on one side only).
+        self.their_modes = their_modes
         self.lose_commit = lose_commit
         self.move_branch_on_merge = move_branch_on_merge
         self.omit_sizes = omit_sizes
@@ -92,16 +95,26 @@ class FakeGitHub:
         self.merged = False
         self.calls: list[tuple[str, str, dict]] = []
         self.blobs = {_sha(text): text for text in [*ours.values(), *theirs.values()]}
+        # The scratch branch a resolution is built on shares the branch's state; the target keeps its own tip
+        # (target_tip) from the scratch's creation until the one fast-forward moves it.
+        self.scratch: str | None = None
+        self.target_tip: str | None = None
+        self.target_moves: list[str] = []
+        self.scratch_deleted = False
+        self.refuse_target_move = False
+        # Armed by the stop handlers below: the next matching call raises a worker stop.
+        self.stop_armed = False
 
     def posts(self) -> list[str]:
         return [url for verb, url, _ in self.calls if verb == "post"]
 
-    def _tree(self, files: dict[str, str]) -> list[dict]:
+    def _tree(self, files: dict[str, str], modes: dict[str, str] | None = None) -> list[dict[str, Any]]:
+        modes = self.modes if modes is None else modes
         return [
             {
                 "path": path,
                 "type": "blob",
-                "mode": self.modes.get(path, "100644"),
+                "mode": modes.get(path, "100644"),
                 "sha": _sha(text),
                 **({} if self.omit_sizes else {"size": len(text.encode())}),
             }
@@ -116,6 +129,28 @@ class FakeGitHub:
 
         def ok(payload, status: int = 200):
             return httpx.Response(status, json=payload), None
+
+        if method == "get" and url == f"{API}/git/matching-refs/heads/tmp/commit-batch":
+            return ok([])
+        if method == "post" and url == f"{API}/git/refs":
+            self.scratch = kwargs["json"]["ref"].removeprefix("refs/heads/")
+            assert self.scratch.startswith("tmp/commit-batch/") and kwargs["json"]["sha"] == self.tip
+            self.target_tip = self.tip
+            return ok({"ref": kwargs["json"]["ref"]}, 201)
+        if method == "delete" and self.scratch and url == f"{API}/git/refs/heads/{self.scratch}":
+            self.scratch_deleted = True
+            return httpx.Response(204), None
+        if method == "patch" and url == f"{API}/git/refs/heads/feat/x":
+            assert kwargs["json"]["force"] is False
+            if self.refuse_target_move:
+                return httpx.Response(422, json={"message": "Update is not a fast forward"}), "Error: 422"
+            self.target_moves.append(kwargs["json"]["sha"])
+            self.target_tip = None
+            return ok({"object": {"sha": kwargs["json"]["sha"]}})
+        if self.scratch and self.scratch in url:
+            url = url.replace(self.scratch, "feat/x")
+        elif self.target_tip is not None and method == "get" and url == f"{API}/commits/feat/x":
+            return ok({"sha": self.target_tip, "commit": {"tree": {"sha": "a" * 40}}})
 
         if method == "get" and url == API:
             return ok({"default_branch": "main"})
@@ -174,7 +209,7 @@ class FakeGitHub:
         if method == "get" and url == f"{API}/git/trees/{'d' * 40}":
             return ok({"tree": self._tree(self.merge_snapshot), "truncated": False})
         if method == "get" and url == f"{API}/git/trees/{'c' * 40}":
-            return ok({"tree": self._tree(self.theirs), "truncated": False})
+            return ok({"tree": self._tree(self.theirs, self.their_modes), "truncated": False})
         if method == "get" and url.startswith(f"{API}/git/blobs/"):
             text = self.blobs[url.rsplit("/", 1)[1]]
             return ok({"encoding": "base64", "content": base64.b64encode(text.encode()).decode()})
@@ -185,7 +220,7 @@ class FakeGitHub:
             self.ref_updates.append(update)
             if self.refuse_ref_update or update["beforeOid"] != self.tip:
                 return ok({"errors": [{"message": "Ref update refused"}]})
-            assert update["afterOid"] == OURS and update["name"] == "refs/heads/feat/x"
+            assert update["afterOid"] == OURS and update["name"] in ("refs/heads/feat/x", f"refs/heads/{self.scratch}")
             self.tip, self.tip_parent, self.ours = OURS, None, dict(self.initial_ours)
             return ok({"data": {"updateRefs": {"clientMutationId": None}}})
         if method == "get" and url.startswith(f"{API}/compare/{THEIRS}..."):
@@ -212,14 +247,21 @@ class FakeGitHub:
         raise AssertionError(f"unexpected {method.upper()} {url}")
 
 
-def _merge():
+def _merge() -> Any:
     executor = MagicMock()
     executor.register = MagicMock()
     build_tools("fake-token", executor)
     return next(call[0][1] for call in executor.register.call_args_list if call[0][0] == "merge_github_branch")
 
 
-def _sides():
+def _manage() -> Any:
+    executor = MagicMock()
+    executor.register = MagicMock()
+    build_tools("fake-token", executor)
+    return next(call[0][1] for call in executor.register.call_args_list if call[0][0] == "manage_github_pr")
+
+
+def _sides() -> tuple[dict[str, str], dict[str, str]]:
     ours = {"src/a.py": "branch a\n", "docs/b.md": "branch b\n", "same.txt": "x\n"}
     theirs = {"src/a.py": "main a\n", "docs/b.md": "main b\n", "same.txt": "x\n"}
     return ours, theirs
@@ -247,6 +289,45 @@ async def test_resolutions_land_the_merge_in_three_signed_commits():
     }
     assert fake.ours["src/a.py"] == "merged a\n" and fake.ours["docs/b.md"] == "branch b\n"
     assert "verified" in result and MERGE[:12] in result
+
+
+@pytest.mark.asyncio
+async def test_the_branch_moves_once_after_every_commit_landed_on_a_scratch_branch() -> None:
+    ours, theirs = _sides()
+    fake = FakeGitHub(ours, theirs, both=["docs/b.md", "src/a.py"])
+    with patch(_SAFE_REQUEST, new=fake):
+        result = await _merge()(
+            repo="acme/app",
+            branch="feat/x",
+            resolutions=[{"path": "src/a.py", "content": "merged a\n"}, {"path": "docs/b.md", "keep": "branch"}],
+        )
+
+    commit_branches = [
+        kwargs["json"]["variables"]["input"]["branch"]["branchName"]
+        for verb, url, kwargs in fake.calls
+        if verb == "post" and url == GRAPHQL and "createCommitOnBranch" in kwargs["json"]["query"]
+    ]
+    merges = [kwargs["json"]["base"] for verb, url, kwargs in fake.calls if verb == "post" and url == f"{API}/merges"]
+    assert commit_branches and set(commit_branches) == {fake.scratch}
+    # The first merge attempt (refused on the conflict) names the target; the resolved merge, the scratch.
+    assert merges == ["feat/x", fake.scratch]
+    # One fast-forward of the target, to the last commit, never to an intermediate one.
+    assert fake.target_moves == [fake.tip] and fake.scratch_deleted
+    assert "moved once from" in result and result.rstrip().splitlines()[-1].startswith("Outcome") is False
+
+
+@pytest.mark.asyncio
+async def test_a_refused_move_leaves_the_branch_unchanged_and_keeps_the_scratch() -> None:
+    ours, theirs = _sides()
+    fake = FakeGitHub(ours, theirs, both=["src/a.py"])
+    fake.refuse_target_move = True
+    with patch(_SAFE_REQUEST, new=fake):
+        result = await _merge()(
+            repo="acme/app", branch="feat/x", resolutions=[{"path": "src/a.py", "content": "merged a\n"}]
+        )
+
+    assert result.startswith("Error: the merge was built on scratch branch") and "is unchanged" in result
+    assert not fake.target_moves and not fake.scratch_deleted
 
 
 @pytest.mark.asyncio
@@ -486,8 +567,13 @@ def _stop_after_alignment(fake: FakeGitHub):
     return handler
 
 
+def _as_left_by_an_older_build(fake: FakeGitHub) -> None:
+    """The stopped state as a build writing every step on the branch itself left it: the scratch's state is the branch's."""
+    fake.target_tip, fake.scratch = None, None
+
+
 @pytest.mark.asyncio
-async def test_a_replay_after_a_stop_between_alignment_and_merge_resolves_every_path_from_both_sides():
+async def test_a_stop_between_alignment_and_merge_leaves_the_branch_unchanged_and_a_replay_merges() -> None:
     ours, theirs = _sides()
     fake = FakeGitHub(ours, theirs, both=["docs/b.md", "src/a.py"])
     fake.stop_armed = True
@@ -495,6 +581,29 @@ async def test_a_replay_after_a_stop_between_alignment_and_merge_resolves_every_
     with patch(_SAFE_REQUEST, new=_stop_after_alignment(fake)):
         with pytest.raises(_WorkerStop):
             await _merge()(repo="acme/app", branch="feat/x", resolutions=resolutions)
+        # The alignment landed on the scratch branch only: 'feat/x' still points at its own head.
+        assert fake.target_tip == OURS and not fake.target_moves and fake.scratch_deleted
+        # The replay reads the branch as GitHub serves it: its head and its own files.
+        fake.tip, fake.tip_parent, fake.ours = OURS, None, dict(ours)
+        fake.target_tip, fake.scratch, fake.stop_armed = None, None, False
+        result = await _merge()(repo="acme/app", branch="feat/x", resolutions=resolutions)
+
+    assert result.startswith("Merged 'main' into 'feat/x' of acme/app with its conflicts resolved"), result
+    assert not fake.ref_updates and len(fake.target_moves) == 1 and "moved back to" not in result
+    assert fake.merged and fake.ours["src/a.py"] == "merged a\n" and fake.ours["docs/b.md"] == "branch b\n"
+
+
+@pytest.mark.asyncio
+async def test_a_replay_after_a_stop_between_alignment_and_merge_resolves_every_path_from_both_sides() -> None:
+    # A branch an older build left on its alignment commit is still moved off it before the merge.
+    ours, theirs = _sides()
+    fake = FakeGitHub(ours, theirs, both=["docs/b.md", "src/a.py"])
+    fake.stop_armed = True
+    resolutions = [{"path": "src/a.py", "content": "merged a\n"}, {"path": "docs/b.md", "keep": "branch"}]
+    with patch(_SAFE_REQUEST, new=_stop_after_alignment(fake)):
+        with pytest.raises(_WorkerStop):
+            await _merge()(repo="acme/app", branch="feat/x", resolutions=resolutions)
+        _as_left_by_an_older_build(fake)
         # The stopped call left the branch on its alignment commit: both paths hold main's version.
         assert fake.tip == format(0xC0FFEE, "040x") and fake.tip_parent == OURS
         assert fake.ours["src/a.py"] == "main a\n" and fake.ours["docs/b.md"] == "main b\n"
@@ -511,6 +620,47 @@ async def test_a_replay_after_a_stop_between_alignment_and_merge_resolves_every_
 
 
 @pytest.mark.asyncio
+async def test_update_branch_after_a_stopped_alignment_never_merges_over_it() -> None:
+    # xtm-one #1254: a call stopped after its 'Take main's version' commits left the i18n catalogs at main's
+    # version; GitHub's update-branch then merged cleanly over them and the PR's own keys were lost. The
+    # update now moves the branch off those commits first, so the conflict is seen and both sides kept.
+    ours, theirs = _sides()
+    fake = FakeGitHub(ours, theirs, both=["docs/b.md", "src/a.py"])
+    fake.stop_armed = True
+    stopped = _stop_after_alignment(fake)
+    updates: list[str] = []
+
+    async def github(client: Any, method: str, url: str, provider: str, action: str, **kwargs: Any) -> Any:
+        if method == "get" and url == f"{API}/pulls/7":
+            pr = {"head": {"ref": "feat/x", "repo": {"full_name": "acme/app"}}, "base": {"ref": "main"}}
+            return httpx.Response(200, json=pr), None
+        if method == "put" and url == f"{API}/pulls/7/update-branch":
+            updates.append(fake.tip)
+            if any(fake.ours.get(p) != fake.theirs.get(p) for p in fake.both):
+                return httpx.Response(422, json={"message": "merge conflict between base and head"}), "Error: 422"
+            fake.merged = True
+            return httpx.Response(202, json={"message": "Updating pull request branch."}), None
+        return await stopped(client, method, url, provider, action, **kwargs)
+
+    resolutions = [{"path": "src/a.py", "keep": "branch"}, {"path": "docs/b.md", "keep": "branch"}]
+    with patch(_SAFE_REQUEST, new=github):
+        with pytest.raises(_WorkerStop):
+            await _merge()(repo="acme/app", branch="feat/x", resolutions=resolutions)
+        _as_left_by_an_older_build(fake)
+        assert fake.ours["src/a.py"] == "main a\n"
+        fake.stop_armed = False
+        result = await _manage()(repo="acme/app", number=7, action="update_branch")
+
+    assert updates == [OURS], updates
+    assert fake.ref_updates == [
+        {"name": "refs/heads/feat/x", "beforeOid": format(0xC0FFEE, "040x"), "afterOid": OURS, "force": True}
+    ]
+    assert not fake.merged and fake.ours == ours
+    assert result.startswith("Error: the branch of PR #7 in acme/app cannot take 'main'"), result
+    assert "moved back to " + OURS[:12] in result
+
+
+@pytest.mark.asyncio
 async def test_a_stopped_alignment_that_cannot_be_dropped_merges_nothing():
     ours, theirs = _sides()
     fake = FakeGitHub(ours, theirs, both=["src/a.py"])
@@ -518,6 +668,7 @@ async def test_a_stopped_alignment_that_cannot_be_dropped_merges_nothing():
     with patch(_SAFE_REQUEST, new=_stop_after_alignment(fake)):
         with pytest.raises(_WorkerStop):
             await _merge()(repo="acme/app", branch="feat/x", resolutions=[{"path": "src/a.py", "keep": "branch"}])
+        _as_left_by_an_older_build(fake)
         fake.stop_armed, fake.refuse_ref_update = False, True
         merges_before = fake.posts().count(f"{API}/merges")
         result = await _merge()(repo="acme/app", branch="feat/x")
@@ -610,13 +761,38 @@ async def test_resolutions_that_do_not_settle_the_conflict_write_nothing(resolut
 
 
 @pytest.mark.asyncio
-async def test_an_executable_file_is_resolved_by_hand():
+async def test_an_executable_file_on_both_sides_is_resolved_like_a_plain_file() -> None:
+    # createCommitOnBranch keeps the mode of a path it overwrites, so a script 100755 on both sides merges.
     ours, theirs = _sides()
     fake = FakeGitHub(ours, theirs, both=["src/a.py"], modes={"src/a.py": "100755"})
     with patch(_SAFE_REQUEST, new=fake):
+        result = await _merge()(
+            repo="acme/app", branch="feat/x", resolutions=[{"path": "src/a.py", "content": "merged a\n"}]
+        )
+
+    assert result.startswith("Merged 'main' into 'feat/x' of acme/app with its conflicts resolved"), result
+    assert fake.merged and fake.ours["src/a.py"] == "merged a\n"
+
+
+@pytest.mark.asyncio
+async def test_an_executable_bit_on_one_side_only_is_resolved_by_hand() -> None:
+    ours, theirs = _sides()
+    fake = FakeGitHub(ours, theirs, both=["src/a.py"], modes={"src/a.py": "100755"}, their_modes={})
+    with patch(_SAFE_REQUEST, new=fake):
         result = await _merge()(repo="acme/app", branch="feat/x", resolutions=[{"path": "src/a.py", "keep": "ref"}])
 
-    assert "is an executable file on 'feat/x'" in result and "Nothing was written" in result
+    assert "is an executable file on 'feat/x' only" in result and "Nothing was written" in result
+    assert fake.commits == []
+
+
+@pytest.mark.asyncio
+async def test_a_symbolic_link_is_resolved_by_hand() -> None:
+    ours, theirs = _sides()
+    fake = FakeGitHub(ours, theirs, both=["src/a.py"], modes={"src/a.py": "120000"})
+    with patch(_SAFE_REQUEST, new=fake):
+        result = await _merge()(repo="acme/app", branch="feat/x", resolutions=[{"path": "src/a.py", "keep": "ref"}])
+
+    assert "is a symbolic link on 'feat/x'" in result and "Nothing was written" in result
     assert fake.commits == []
 
 
@@ -813,6 +989,7 @@ async def test_a_replay_after_a_stop_between_resolution_chunks_writes_the_missin
     with patch(_SAFE_REQUEST, new=_stop_at_second_resolution_chunk(fake)):
         with pytest.raises(_WorkerStop):
             await _merge()(repo="acme/app", branch="feat/x", resolutions=resolutions)
+        _as_left_by_an_older_build(fake)
         # The stopped call left '(1/2)' alone: the last file still holds main's version.
         assert fake.tip_headline.endswith("(1/2)") and fake.ours["i18n/ja.json"] == theirs["i18n/ja.json"]
         fake.stop_armed = False
@@ -826,6 +1003,35 @@ async def test_a_replay_after_a_stop_between_resolution_chunks_writes_the_missin
         again = await _merge()(repo="acme/app", branch="feat/x", resolutions=resolutions)
     # Two alignment commits, the stopped '(1/2)' and the finishing commit: the replay adds none.
     assert again.startswith("No change: ") and len(fake.commits) == 4
+
+
+@pytest.mark.asyncio
+async def test_a_keep_only_replay_over_a_stopped_resolution_names_it_instead_of_no_change():
+    ours, theirs = _catalogues("branch "), _catalogues("main ")
+    resolutions = [{"path": path, "keep": "branch"} for path in ours]
+    fake = FakeGitHub(ours, theirs, both=sorted(ours))
+    fake.stop_armed = True
+    with patch(_SAFE_REQUEST, new=_stop_at_second_resolution_chunk(fake)):
+        with pytest.raises(_WorkerStop):
+            await _merge()(repo="acme/app", branch="feat/x", resolutions=resolutions)
+        _as_left_by_an_older_build(fake)
+        assert fake.tip_headline.endswith("(1/2)")
+        written = len(fake.commits)
+        fake.stop_armed = False
+        result = await _merge()(repo="acme/app", branch="feat/x", resolutions=resolutions)
+
+    # A keep is settled per hunk and cannot be checked by blob id: the stopped (1/2) tip is named, never hidden.
+    assert result.startswith("Error: ") and "left at part 1 of 2" in result, result
+    assert all(path in result for path in ours) and "No change" not in result
+    assert len(fake.commits) == written
+
+
+def test_merge_github_branch_is_replay_safe_so_a_resumed_turn_finishes_a_stopped_resolution():
+    executor = MagicMock()
+    executor.register = MagicMock()
+    definitions = build_tools("fake-token", executor)
+    merge = next(tool for tool in definitions if tool.name == "merge_github_branch")
+    assert merge.replay_safe is True
 
 
 @pytest.mark.asyncio

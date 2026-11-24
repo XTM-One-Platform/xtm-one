@@ -19,6 +19,13 @@ const state = vi.hoisted(() => ({
   isAdmin: true,
   version: null as number | null,
   navigated: [] as string[],
+  cases: [] as { id: string; title: string; state: string; severity: string | null; priority?: string; sla_due_at: string | null }[],
+  decisions: [] as { id: string; correlation_key: string; needs_human: boolean; status: string }[],
+}));
+
+vi.mock("@/hooks/api/useCtemCasesApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/api/useCtemCasesApi")>()),
+  useCtemCases: () => ({ data: { cases: state.cases } }),
 }));
 
 vi.mock("react-router-dom", async (importOriginal) => ({
@@ -37,6 +44,7 @@ vi.mock("@/hooks/api/useOrganizationContextApi", async (importOriginal) => ({
 vi.mock("@/hooks/api/useWorkItemApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useWorkItemApi")>()),
   useWorkItemsWaitingForMe: () => ({ data: state.waiting }),
+  useWorkItems: () => ({ data: state.decisions }),
 }));
 vi.mock("@/hooks/api/useAssignmentApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useAssignmentApi")>()),
@@ -81,10 +89,27 @@ beforeEach(() => {
   state.isAdmin = true;
   state.version = null;
   state.navigated = [];
+  state.cases = [];
+  state.decisions = [];
   sessionStorage.clear();
 });
 
 describe("ActNowCard", () => {
+  it("says on a case row that its remediation decision waits (CTEM-17-UI)", () => {
+    state.cases = [
+      { id: "c1", title: "Upgrade nginx to 1.27.4", state: "new", severity: "P1", sla_due_at: null },
+      { id: "c2", title: "Patch a P2", state: "new", severity: "P2", sla_due_at: null },
+    ];
+    state.decisions = [
+      { id: "w1", correlation_key: "ctem:remediation:c1", needs_human: true, status: "blocked" },
+      { id: "w2", correlation_key: "ctem:remediation:c2", needs_human: false, status: "done" },
+    ];
+    card([]);
+    const rows = items();
+    expect(within(rows[0]).getByText(/Remediation decision waits/)).toBeTruthy();
+    expect(within(rows[1]).queryByText(/Remediation decision waits/)).toBeNull();
+  });
+
   it("puts the work items and approvals waiting for the reader first, fleets off", () => {
     state.waiting = { count: 2, oldest: { id: "w1", title: "Approve the patch window", reason: null, since: null } };
     state.approvals = { tools: [{ tool_name: "send_email", run_count: 3, call_count: 3 }], mixed: [], mixed_run_count: 1 };
@@ -92,6 +117,31 @@ describe("ActNowCard", () => {
     expect(sources()).toEqual(["work_item", "approval", "module"]);
     expect(screen.getByText("2 work items wait for you")).toBeTruthy();
     expect(screen.getByText("4 runs wait for your approval")).toBeTruthy();
+  });
+
+  it("puts an open P1 case of the loop first, as Do first, with its SLA (#892)", () => {
+    state.waiting = { count: 1, oldest: { id: "w1", title: "Approve the patch window", reason: null, since: null } };
+    state.cases = [
+      { id: "c1", title: "Close the exposure of edge-01", state: "new", severity: "P1", sla_due_at: new Date(Date.now() + 5 * 3_600_000).toISOString() },
+      { id: "c2", title: "Patch a P2", state: "new", severity: "P2", sla_due_at: null },
+    ];
+    card([row("kev", 95)]);
+    // Since CTEM-30 (#937) a P2 case is listed too, below what waits on the reader.
+    expect(sources()).toEqual(["case", "work_item", "case"]);
+    expect(within(items()[0]).getByText("Do first")).toBeTruthy();
+    expect(within(items()[0]).getByText("Close the exposure of edge-01")).toBeTruthy();
+    expect(within(items()[2]).getByText("Patch a P2")).toBeTruthy();
+    expect(within(items()[2]).queryByText("Do first")).toBeNull();
+  });
+
+  it("shows a case row's own urgency, the P1 chip of the case, never a High band (UX round 2 on #897, B3)", () => {
+    state.cases = [
+      { id: "c1", title: "Close the exposure of edge-01", state: "new", severity: "P1", priority: "critical", sla_due_at: new Date(Date.now() + 5 * 3_600_000).toISOString() },
+    ];
+    card([row("kev", 95)]);
+    const first = items()[0];
+    expect(within(first).getByTestId("ctem-act-now-case-urgency").textContent).toContain("P1");
+    expect(within(first).queryByText("High")).toBeNull();
   });
 
   it("marks the first row Do first, and only the first", () => {

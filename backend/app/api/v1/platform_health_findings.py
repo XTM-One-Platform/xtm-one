@@ -44,6 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.api.v1.helpers import get_user_group_ids
 from app.core.database import get_db
+from app.core.docs_links import absolute_docs_link
 from app.models.health_check import (
     MODULES,
     SEVERITIES,
@@ -52,6 +53,7 @@ from app.models.health_check import (
     HealthCheckFinding,
     HealthScoreDay,
 )
+from app.models.health_module_analyst import HealthFindingRecommendation
 from app.models.user import User
 from app.services.health import engine
 
@@ -64,6 +66,15 @@ GENERIC_MODULES: tuple[str, ...] = ("agents", "fleets")
 HISTORY_WINDOWS = (7, 30, 90)
 #: The most findings one page of the list answers.
 MAX_PAGE = 200
+#: The modules the Module Analyst investigates (#101 S14, section 12): their cards carry its last cycle.
+ANALYST_MODULES: tuple[str, ...] = ("opencti", "openaev", "opencrq")
+#: The check id segment of a finding the Module Analyst discovered (``<module>.agentic.<slug>``, section 12.4).
+AGENTIC_SEGMENT = ".agentic."
+
+
+def is_agentic(check_id: str) -> bool:
+    """Whether a finding was discovered by the Module Analyst rather than a deterministic check."""
+    return AGENTIC_SEGMENT in (check_id or "")
 
 
 def present_modules() -> tuple[str, ...]:
@@ -75,6 +86,19 @@ def present_modules() -> tuple[str, ...]:
     return tuple(MODULES)
 
 
+class LastInvestigation(BaseModel):
+    """The Module Analyst's latest cycle on one of the module's registrations (section 12.7)."""
+
+    cycle_id: str
+    registration_id: str
+    #: ``open`` | ``completed`` | ``budget_reached`` | ``failed`` | ``cancelled``.
+    status: str
+    #: ``schedule`` (daily) | ``signal`` (finding set changed) | ``on_demand`` (Investigate now).
+    trigger: str
+    opened_at: datetime
+    closed_at: datetime | None
+
+
 class ModuleCard(BaseModel):
     module: str
     score: int
@@ -83,6 +107,8 @@ class ModuleCard(BaseModel):
     info: int
     #: Score 7 days ago (``None`` when no row exists that day): the card's trend.
     previous_score: int | None
+    #: OpenCTI, OpenAEV, OpenCRQ for an administrator: the Module Analyst's last cycle, ``None`` when none.
+    last_investigation: LastInvestigation | None = None
 
 
 class OverviewResponse(BaseModel):
@@ -91,6 +117,18 @@ class OverviewResponse(BaseModel):
     overall: int
     #: Whether the reader sees every module (administrator) or only their agents.
     scope: Literal["all", "managed"]
+
+
+class AnalystRecommendation(BaseModel):
+    """One ``health_finding_recommendations`` row, shown beside the check's own recommendation."""
+
+    text: str
+    #: ``high`` | ``medium`` | ``low``.
+    confidence: str
+    #: What it read: ``[{"tool", "object_ids", "values", "read_at"}]``.
+    evidence: list[dict[str, Any]]
+    cycle_id: str
+    created_at: datetime
 
 
 class FindingResponse(BaseModel):
@@ -111,6 +149,15 @@ class FindingResponse(BaseModel):
     resolved_at: datetime | None
     dismissal: dict[str, Any] | None
     can_dismiss: bool
+    #: Discovered by the Module Analyst (check id ``<module>.agentic.<slug>``), not by a check.
+    agentic: bool = False
+    #: The Module Analyst's newest recommendation on this finding, ``None`` when none (section 12.7).
+    analyst_recommendation: AnalystRecommendation | None = None
+    #: An agentic finding from the previous check logic (another build or checker playbook,
+    #: or none recorded): a ``deploy`` round re-checks it (section 13.6, #1732).
+    stale: bool = False
+    #: The build whose check logic produced an agentic finding, ``None`` when not recorded.
+    check_build: str | None = None
 
 
 class FindingListResponse(BaseModel):
@@ -214,7 +261,75 @@ def _visible_query(user: User, managed: dict[str, str] | None):
     return query
 
 
-def _response(row: HealthCheckFinding, names: dict[str, str], *, can_dismiss: bool) -> FindingResponse:
+async def _analyst_recommendations(
+    db: AsyncSession, rows: list[HealthCheckFinding]
+) -> dict[str, AnalystRecommendation]:
+    """The newest Module Analyst recommendation of each module finding of *rows*, by finding id."""
+    ids = [row.id for row in rows if row.module in ANALYST_MODULES]
+    if not ids:
+        return {}
+    found = await db.execute(
+        select(HealthFindingRecommendation)
+        .where(HealthFindingRecommendation.finding_id.in_(ids))
+        .order_by(HealthFindingRecommendation.created_at.desc())
+    )
+    newest: dict[str, AnalystRecommendation] = {}
+    for rec in found.scalars():
+        if rec.finding_id not in newest:
+            newest[rec.finding_id] = AnalystRecommendation(
+                text=rec.text,
+                confidence=rec.confidence,
+                evidence=list(rec.evidence or []),
+                cycle_id=str(rec.cycle_id),
+                created_at=rec.created_at,
+            )
+    return newest
+
+
+async def _last_investigations(db: AsyncSession) -> dict[str, LastInvestigation]:
+    """The module checkers' newest cycle per analysed module, over all of the module's registrations."""
+    from app.models.health import HealthCycle
+    from app.models.platform_registration import PlatformRegistration
+    from app.services.health.identity import MODULE_CHECKER_ROLES
+
+    latest: dict[str, LastInvestigation] = {}
+    for module in ANALYST_MODULES:
+        if module not in present_modules():
+            continue
+        row = (
+            await db.execute(
+                select(HealthCycle)
+                .join(PlatformRegistration, PlatformRegistration.id == HealthCycle.target_id)
+                .where(
+                    HealthCycle.target_type == "module",
+                    HealthCycle.specialist.in_(sorted(MODULE_CHECKER_ROLES)),
+                    PlatformRegistration.platform_identifier == module,
+                )
+                .order_by(HealthCycle.opened_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if row is not None:
+            latest[module] = LastInvestigation(
+                cycle_id=str(row.id),
+                registration_id=str(row.target_id),
+                status=row.status,
+                trigger=row.trigger,
+                opened_at=row.opened_at,
+                closed_at=row.closed_at,
+            )
+    return latest
+
+
+def _response(
+    row: HealthCheckFinding,
+    names: dict[str, str],
+    *,
+    can_dismiss: bool,
+    analyst: dict[str, AnalystRecommendation] | None = None,
+) -> FindingResponse:
+    from app.services.health.check_reports import finding_check_logic, is_stale
+
     agent_id = (row.subject or {}).get("agent_id")
     return FindingResponse(
         id=row.id,
@@ -227,12 +342,16 @@ def _response(row: HealthCheckFinding, names: dict[str, str], *, can_dismiss: bo
         subject_name=names.get(str(agent_id)) if agent_id else None,
         evidence=dict(row.evidence or {}),
         recommendation=row.recommendation or "",
-        doc_link=row.doc_link or "",
+        doc_link=absolute_docs_link(row.doc_link or ""),
         first_seen=row.first_seen,
         last_seen=row.last_seen,
         resolved_at=row.resolved_at,
         dismissal=row.dismissal,
         can_dismiss=can_dismiss and row.status == STATUS_OPEN,
+        agentic=is_agentic(row.check_id),
+        analyst_recommendation=(analyst or {}).get(row.id),
+        stale=row.status == STATUS_OPEN and is_stale(row.module, row.evidence),
+        check_build=(finding_check_logic(row.evidence) or {}).get("build"),
     )
 
 
@@ -252,14 +371,17 @@ async def health_overview(user: User = Depends(get_current_user), db: AsyncSessi
             counts[row.module][row.severity] += 1
     week_ago = datetime.now(UTC).date() - timedelta(days=7)
     previous: dict[str, int] = {}
+    investigations: dict[str, LastInvestigation] = {}
     if user.is_admin:
         history = await db.execute(select(HealthScoreDay).where(HealthScoreDay.day == week_ago))
         previous = {day.module: day.score for day in history.scalars()}
+        investigations = await _last_investigations(db)
     cards = [
         ModuleCard(
             module=module,
             score=engine.score_from_counts(c["critical"], c["warning"], c["info"]),
             previous_score=previous.get(module),
+            last_investigation=investigations.get(module),
             **c,
         )
         for module, c in counts.items()
@@ -277,6 +399,7 @@ async def list_health_findings(
     severity: list[str] | None = Query(default=None),
     category: list[str] | None = Query(default=None),
     finding_status: list[str] | None = Query(default=None, alias="status"),
+    agentic: bool | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=MAX_PAGE),
     offset: int = Query(default=0, ge=0),
     user: User = Depends(get_current_user),
@@ -293,6 +416,10 @@ async def list_health_findings(
         query = query.where(HealthCheckFinding.category.in_(category))
     statuses = [s for s in (finding_status or [STATUS_OPEN]) if s in STATUSES]
     query = query.where(HealthCheckFinding.status.in_(statuses or [STATUS_OPEN]))
+    if agentic is not None:
+        pattern = f"%{AGENTIC_SEGMENT}%"
+        check = HealthCheckFinding.check_id.like(pattern)
+        query = query.where(check if agentic else ~check)
     rows = list((await db.execute(query)).scalars())
     rank = {s: i for i, s in enumerate(SEVERITIES)}
     rows.sort(key=lambda r: (rank.get(r.severity, 9), -r.last_seen.timestamp(), r.id))
@@ -304,8 +431,9 @@ async def list_health_findings(
             db, {str((r.subject or {}).get("agent_id")) for r in page if (r.subject or {}).get("agent_id")}
         )
     )
+    analyst = await _analyst_recommendations(db, page)
     return FindingListResponse(
-        items=[_response(r, names, can_dismiss=True) for r in page],
+        items=[_response(r, names, can_dismiss=True, analyst=analyst) for r in page],
         total=len(rows),
     )
 
@@ -328,7 +456,7 @@ async def get_health_finding(
     finding_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ):
     row, names = await _readable_finding(db, user, finding_id)
-    return _response(row, names, can_dismiss=True)
+    return _response(row, names, can_dismiss=True, analyst=await _analyst_recommendations(db, [row]))
 
 
 @router.post("/findings/{finding_id}/dismiss", response_model=FindingResponse)

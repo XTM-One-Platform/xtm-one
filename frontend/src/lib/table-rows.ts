@@ -24,6 +24,26 @@ function compare(a: SortValue, b: SortValue): number {
   return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
 }
 
+/** How a table groups its rows: the group of a row and the order of the groups. */
+export interface RowGrouping<T> {
+  /** The group a row belongs to. */
+  value: (row: T) => string;
+  /** The order of the groups, smallest first; groups of one rank follow their value's alphabetical order. */
+  rank?: (value: string) => number;
+}
+
+/**
+ * *rows* with the rows of one group together, in the group order, the order of
+ * the rows kept inside each group (a stable sort on the group alone).
+ */
+export function groupRows<T>(rows: readonly T[], grouping: RowGrouping<T>): T[] {
+  const order = (value: string) => grouping.rank?.(value) ?? 0;
+  return rows
+    .map((row, index) => ({ row, index, value: grouping.value(row) }))
+    .sort((a, b) => order(a.value) - order(b.value) || a.value.localeCompare(b.value) || a.index - b.index)
+    .map((item) => item.row);
+}
+
 /**
  * *rows* ordered by *getValue*, stable (ties keep the incoming order). Empty
  * values stay at the bottom in both directions: flipping them to the top on a

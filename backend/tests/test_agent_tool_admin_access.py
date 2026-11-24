@@ -227,6 +227,9 @@ _BYPASS_MODULE_SUITES = {
     "services/builtin_tools/health_orchestrator.py": "health_orchestrator",
     # The ROI tools (#10006): reports and records, as on REST.
     "services/builtin_tools/roi.py": "roi",
+    # The CTEM signal tools (#826): granted to built-in CTEM agents by slug, carried
+    # by no suite; an admin's agent lists the organization's signals, as on REST.
+    "services/builtin_tools/ctem_signals.py": None,
     "api/v1/mcp_xtm.py": None,
 }
 

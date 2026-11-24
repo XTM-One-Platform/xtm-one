@@ -247,9 +247,11 @@ The current intent namespace (see `_INTENT_DESCRIPTIONS` in `seed.py` for the au
 - **global.*** editing/assistant intents (`assistant`, `make_it_shorter`, `make_it_longer`, `fix_spelling`, `change_tone`, `summarize`, `explain`)
 - **cti.*** — `nlq_search`, `container_summary`, `container_report`, `containers_digest`, `entity_activity`, `entity_forecast`, `entity_history`, `ttp_harvester`, `stix_harvester`, `stix_transformer`, `stix_consumer`
 - **aev.*** — `attack_path_orchestrator`, `attack_path_additional_agent`, `detection_rules_generator`, `phishing_email_html_generator`, `phishing_landing_page_html_generator`, `message_generator`, `media_article_generator`
-- **grc.*** — `control_gap_analysis`, `risk_scenario_generator`, `assessment_summary`
+- **crq.*** — `control_gap_analysis`, `risk_scenario_generator`, `assessment_summary`
 
-Bindings are scoped to the `cti` / `aev` / `grc` / `fimi` verticals (or universal) per each agent's `supported_intents`. Because the table is generated, consult `seed.py` rather than a hand-copied list here for the exact intent × agent × vertical rows.
+The `crq` vertical and the `crq.*` intents were named `grc` before the OpenCRQ rename. Alembic revision `c1crq2vertical1` moves stored rows (verticals, bindings and their priority overrides, intents with their declarations, agents' supported verticals and intents, registrations' business vertical), merging into rows already under `crq` without dropping a binding. A platform build that still sends `grc` is read under `crq` at registration and by `GET /intents/catalog` (`app/services/intent_aliases.py`, `RENAMED_VERTICALS`), so the old names are never recreated.
+
+Bindings are scoped to the `cti` / `aev` / `crq` / `fimi` verticals (or universal) per each agent's `supported_intents`. Because the table is generated, consult `seed.py` rather than a hand-copied list here for the exact intent × agent × vertical rows.
 
 ---
 

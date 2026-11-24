@@ -138,10 +138,12 @@ RELAYED_FRAME_TYPES = frozenset(
 TURN_FRAME_TYPES = RELAYED_FRAME_TYPES - {"user_message"}
 
 #: Frame types :func:`publish_live` also fans out that belong to no turn: a new
-#: conversation's AI title, generated once its first turn is done.
+#: conversation's AI title, generated once its first turn is done, and the
+#: user's likely next message (``services/chat_reply_suggestions.py``),
+#: proposed once a turn is done.
 #: Kept out of :data:`RELAYED_FRAME_TYPES`, so a turn publisher never journals
 #: or republishes one.
-LIVE_ONLY_FRAME_TYPES = frozenset({"conversation_title"})
+LIVE_ONLY_FRAME_TYPES = frozenset({"conversation_title", "reply_suggestion"})
 
 #: The fanned-out frames that belong to no turn and name none: the only ones
 #: :func:`publish_live` sends.

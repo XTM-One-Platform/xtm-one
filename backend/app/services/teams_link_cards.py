@@ -79,7 +79,7 @@ _MAX_ARGUMENT_VALUE = 200
 _MAX_REASON = 500
 _MAX_ANSWER = 4000
 
-_RUN_PATH = re.compile(r"/runs/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/?")
+_RUN_PATH = re.compile(r"/operations/executions/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/?")
 _STATUSES = frozenset(
     {"pending", "delayed", "running", "awaiting_human", "completed", "failed", "skipped"}
 )
@@ -139,7 +139,7 @@ def parse_link(url: object) -> LinkTarget | None:
 
 def page_url(target: LinkTarget) -> str:
     """The web page of *target*, built from the platform's address and the id only."""
-    return f"{_page_base()}/runs/{target.id}"
+    return f"{_page_base()}/operations/executions/{target.id}"
 
 
 # --- Card pieces -------------------------------------------------------------
@@ -283,7 +283,7 @@ def _status_label(status: str, language: str) -> str:
     return notice(f"card_status_{status}", language) if status in _STATUSES else _clip(status, 40)
 
 
-def _argument_lines(arguments: object) -> list[str]:
+def argument_lines(arguments: object) -> list[str]:
     if not isinstance(arguments, dict):
         return [_clip(json.dumps(arguments, default=str), _MAX_ARGUMENT_VALUE)] if arguments else []
     lines = []
@@ -321,7 +321,7 @@ def _decision_body(target: LinkTarget, proposals: list[dict], language: str) -> 
     calls = [str(p.get("tool_call_id") or "") for p in proposals]
     for index, proposal in enumerate(proposals):
         body.append(_text(_clip(proposal.get("tool_name") or "?", _MAX_NAME), weight="bolder", fontType="monospace"))
-        for line in _argument_lines(proposal.get("arguments")):
+        for line in argument_lines(proposal.get("arguments")):
             body.append(_text(line, isSubtle=True, fontType="monospace"))
         body.append(
             {
@@ -578,7 +578,11 @@ async def act(db: AsyncSession, verb: str, data: dict, user: User | None, langua
     """
     from app.api.v1.assignments import answer_paused_run
     from app.api.v1.schemas.assignment import RespondToHumanInputRequest
+    from app.services import decision_cards
 
+    if decision_cards.is_decision_data(data):
+        # A decision card of any source (#842, S9): one verb, answered through the router.
+        return await decision_cards.act(db, verb, data, user, language)
     target = target_from_data(data)
     if target is None:
         raise ValueError("card data names no run")

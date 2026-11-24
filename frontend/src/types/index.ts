@@ -3,6 +3,7 @@
 /** Shared TypeScript types for XTM One frontend. */
 
 import type { ChatChartBlock } from "@/components/chat/chat-chart";
+import type { ExtraFieldInputSpec } from "@/lib/extra-fields";
 
 // Auth
 
@@ -97,6 +98,8 @@ export interface User {
   chat_sidebar_expanded_workspaces?: string[] | null;
   /** The bell shows the work items waiting for this person (#9437); on by default. */
   notify_waiting_work_items?: boolean;
+  /** The composer's reply suggestion after a chat turn; on by default. */
+  reply_suggestions_enabled?: boolean;
   role: "admin" | "user";
   sso_provider: string | null;
   default_knowledge_base_ids: string[] | null;
@@ -801,6 +804,11 @@ export interface GeneralAssistantConfig {
   platform_mcp_enabled: boolean;
   /** Global toggle for XTM One's own MCP server (/mcp/xtm). Default off. */
   xtm_mcp_enabled: boolean;
+  /**
+   * The composer's reply suggestion after a chat turn, generated on the
+   * routing model: nothing is generated while `routing_model` is unset.
+   */
+  reply_suggestions_enabled?: boolean;
   /**
    * Names of default-model fields unconditionally re-seeded from environment
    * variables on every startup and therefore read-only in the UI (e.g.
@@ -1538,6 +1546,8 @@ export interface ProviderCatalogItem {
   a2a_directions?: ("inbound" | "outbound")[];
   /** Reached only through a relay group (LM Studio): no "Direct" route, the server refuses a save without one. */
   requires_relay?: boolean;
+  /** Created by an administrator as a company-managed integration only (Platform email): the switch is on and locked. */
+  company_managed_only?: boolean;
   /** Which operator choice reshapes this entry (`a2a_direction` for A2A), and
    * the facets each of its values changes. The base entry is the default. */
   variant_selector?: string | null;
@@ -1547,6 +1557,8 @@ export interface ProviderCatalogItem {
   /** Which extra fields belong to which answer: {field: {control: [values]}}.
    *  A field whose condition is unmet is hidden and omitted when saving. */
   extra_field_visible_when?: Record<string, Record<string, string[]>> | null;
+  /** The typed control of an extra field (a domain list as tags, a bounded number); absent, a text input. */
+  extra_field_inputs?: Record<string, ExtraFieldInputSpec> | null;
   description: string | null;
   logo: string | null;
   integration_types: string[];
@@ -2120,6 +2132,10 @@ export interface Agent {
   enabled: boolean;
   is_builtin: boolean;
   is_company_managed: boolean;
+  /** A built-in's organization notes, appended after its persona (#914). */
+  customer_notes?: string | null;
+  /** The customer-layer fields a person set on a built-in, kept across seed runs (#914). */
+  customer_fields?: string[] | null;
   is_public_catalog?: boolean;
   /** The catalog download carries the code of personal custom tools. */
   catalog_include_personal_tools?: boolean;
@@ -2630,8 +2646,8 @@ export interface TriggerConfig {
   express_lane?: { correlation_prefixes: string[]; slots: number };
   /** Dotted path into the trigger payload: queued runs sharing its value start one at a time, in arrival order. */
   ordering_key?: string;
-  /** platform_event triggers: "own" (the default) takes the events on the agent's own objects, "all" every one (an administrator's assignment). */
-  scope?: "own" | "all";
+  /** platform_event triggers: "own" (the default) takes the events on the agent's own objects, "fleet" those of its home fleet's members, "all" every one (an administrator's assignment). */
+  scope?: "own" | "fleet" | "all";
   /** platform_event triggers: a one-off watch, the first matching event starts one run and the subscription ends. */
   once?: boolean;
   /** platform_event one-off watch: the event that fired it, written by the server; saving without it re-arms the watch. */
@@ -5598,6 +5614,8 @@ export interface CtemSeverityBucket {
 }
 
 interface CtemTopVulnerability {
+  /** The vulnerability's OpenCTI id, the "Open in OpenCTI" pivot (#1357); absent on an older payload. */
+  id?: string | null;
   name: string | null;
   cvss: number | null;
   severity: string | null;
@@ -5765,7 +5783,7 @@ export interface CtemFunnelLayer {
   source: "opencti" | "organization" | "ctem_cases";
   /** The organization context category that unlocks a not configured layer. */
   category: string | null;
-  /** The layer an exploitable count was taken on (`relevant`, or `known` without a tech stack). */
+  /** The layer an exploitable count was taken on (`relevant`, or `known` without a software inventory). */
   basis?: string | null;
   /** The OpenCTI FilterGroup of the list a live layer counts, when it fits a link. */
   filters?: Record<string, unknown> | null;
@@ -6010,8 +6028,8 @@ interface CtemBlindSpot {
 export interface CtemHeadline {
   // Cyber
   kev_count: number | null;
-  /** Known-exploited restricted to the organization profile's tech stack, and
-   *  the matched products (at most 3); absent or null without a tech stack. */
+  /** Known-exploited restricted to the organization profile's software inventory, and
+   *  the matched products (at most 3); absent or null without a software inventory. */
   kev_tailored_count?: number | null;
   kev_tailored_products?: string[] | null;
   critical_count: number | null;
@@ -6455,13 +6473,32 @@ export interface WorkItemAskOption {
 }
 
 /** `work_items.ask` (#9437): the question a person answers, as the agent wrote it. */
-interface WorkItemAsk {
+export interface WorkItemAsk {
   question: string;
+  /** 2 to 4 plain lines for the reader, separated by line breaks (#776). */
+  context?: string | null;
   options?: WorkItemAskOption[];
   /** The key of the option the agent recommends. */
   recommendation?: string | null;
   /** When the answer is needed, ISO-8601 UTC. */
   deadline?: string | null;
+  /** The sources the reader opens to decide (#834): a Jira ticket, a pull request, a document. */
+  links?: WorkItemAskLink[];
+}
+
+/** One source of a decision card, shown as a button under the question (#834). */
+interface WorkItemAskLink {
+  label: string;
+  url: string;
+}
+
+/** What a decision card shows when its ask is missing or incomplete (#834): read from the item, no model. */
+interface WorkItemCardFallback {
+  /** The first lines of the item's brief, past the stamped notes. */
+  brief: string;
+  links: WorkItemAskLink[];
+  /** The ask fields still missing, e.g. `ask.question`. */
+  missing: string[];
 }
 
 export interface WorkItem {
@@ -6497,8 +6534,12 @@ export interface WorkItem {
   blocked_reason?: string | null;
   /** Blocked on a person's decision. */
   needs_human?: boolean;
+  /** The person a needs_human item waits for when not its user (#11893); null otherwise. */
+  waits_for_user_id?: string | null;
   /** The decision itself, for an item waiting for a person (#9437); null on a legacy item. */
   ask?: WorkItemAsk | null;
+  /** Set when the item needs a person and its ask is missing or incomplete (#834). */
+  card_fallback?: WorkItemCardFallback | null;
   /** `work_item_blocked_refs.blocked_why`: null when not blocked; `missing` for a blocked item that says nothing. */
   blocked_why?: { text: string; missing: boolean } | null;
   source: string;
@@ -6524,6 +6565,14 @@ export interface WorkItem {
   roi?: RoiReviewBlock | null;
   /** The files the item carries, by name (detail only, #12092). */
   attachments?: WorkItemAttachments;
+  /** The agent behind each run its stamped notes name (detail only, #776). */
+  note_runs?: Record<string, WorkItemNoteRun>;
+}
+
+/** The run a stamped note names: its agent as the reader may see it, and whether the reader may open it. */
+export interface WorkItemNoteRun {
+  agent: { id: string; name: string } | null;
+  accessible: boolean;
 }
 
 /** One file a work item carries, as its dialog lists it. */
@@ -6601,6 +6650,8 @@ export type WorkItemPickupState =
   | "in_progress"
   | "blocked"
   | "blocked_on_items"
+  | "waiting_for_refs"
+  | "waiting_for_person"
   | "waiting_for_ci"
   | "unassigned"
   | "automatic"
@@ -6676,17 +6727,81 @@ export interface WorkItemFleetImpactRef {
 }
 
 /**
- * `work_item_blocked_refs._normalize_ref`: a pull request or issue a blocked
- * item waits for. `state` is set once the code host said it merged or
- * closed; the item goes back to the queue when every one is satisfied.
+ * `work_item_blocked_refs.normalize_blocked_on_refs`: a pull request, issue,
+ * deployment or workflow run a blocked item waits for. `state` is set once it
+ * is satisfied (merged or closed, deployed, succeeded); the item goes back to
+ * the queue when every one is. A deployment names its pull request (`number`)
+ * or its commit (`sha`); a workflow run names its `workflow`, no number.
  */
 export interface WorkItemBlockedRef {
   repo: string;
-  kind: "pull_request" | "issue";
-  number: number;
-  release_on: "merged" | "closed" | "merged_or_closed";
-  state?: "merged" | "closed" | null;
+  kind: "pull_request" | "issue" | "deployment" | "workflow_run";
+  number?: number | null;
+  sha?: string | null;
+  workflow?: string | null;
+  release_on: "merged" | "closed" | "merged_or_closed" | "deployed" | "succeeded";
+  state?: "merged" | "closed" | "deployed" | "succeeded" | null;
   at?: string | null;
+}
+
+/** `services/work_item_graph.py`: a work item of the Graph view. */
+export interface WorkItemGraphItemNode {
+  id: string;
+  kind: "item";
+  title: string;
+  status: WorkItemStatus;
+  priority: string | null;
+  correlation_key: string | null;
+  owner_agent: { id: string | null; name: string | null; icon: string | null } | null;
+  needs_human: boolean;
+  ask: { question: string; options: { key: string; label: string }[]; recommendation?: string | null } | null;
+  is_program_root: boolean;
+  /** A blocker the filter left out, drawn so the chain does not end on nothing. */
+  outside_filter: boolean;
+  /** What the Waiting for me filter reads (`waitsForReader`): the node's Waiting for you marker. */
+  user_id: string | null;
+  waits_for_user_id: string | null;
+  owner_agent_id: string | null;
+  due_at: string | null;
+  scheduled: boolean;
+}
+
+/** A pull request, issue, deployment or workflow run an item waits for. */
+export interface WorkItemGraphRefNode {
+  id: string;
+  kind: "ref";
+  ref_kind: WorkItemBlockedRef["kind"];
+  label: string;
+  repo: string | null;
+  number: number | null;
+  state: WorkItemBlockedRef["state"];
+  satisfied: boolean;
+  url: string | null;
+}
+
+/** The person a `needs_human` item waits for. */
+export interface WorkItemGraphPersonNode {
+  id: string;
+  kind: "person";
+  name: string | null;
+  is_you: boolean;
+}
+
+export type WorkItemGraphNode = WorkItemGraphItemNode | WorkItemGraphRefNode | WorkItemGraphPersonNode;
+
+/** `blocked_on`, `ref` and `person` go from the waiter to what it waits for; `program` from the root to a child. */
+export interface WorkItemGraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  kind: "blocked_on" | "ref" | "person" | "program";
+}
+
+/** `GET /work-items/graph`. */
+export interface WorkItemGraph {
+  nodes: WorkItemGraphNode[];
+  edges: WorkItemGraphEdge[];
+  truncated: boolean;
 }
 
 /** `work_item_context._Lookup.blocked_on`: an item another one waits for. */
@@ -12520,8 +12635,13 @@ export interface PlatformFormsResponse {
 // Notifications and linked phones
 // ---------------------------------------------------------------------------
 
-/** A notification kind (`NOTIFICATION_KINDS`, `services/notification_feed.py`). */
+/**
+ * A notification kind (`NOTIFICATION_KINDS`, `services/notification_feed.py`).
+ * `decision` is every human gate (#842, S4); `hitl`, `flow_hitl` and
+ * `work_item_waiting` stay readable for one release as its aliases.
+ */
 export type NotificationKind =
+  | "decision"
   | "hitl"
   | "flow_hitl"
   | "run"
@@ -12551,10 +12671,17 @@ export interface NotificationItem {
   summary: string | null;
   /** A security audit notification announcing a critical finding. */
   critical: boolean;
-  /** The run a `hitl` item waits on. */
+  /** The run a run decision waits on, or the flow run a flow decision asks from. */
   run_id: string | null;
+  /** What a `decision` entry waits on (`DECISION_SOURCES`). */
+  source?: NotificationDecisionSource | null;
+  /** A decision still waiting: unread until answered, never read by opening it (#991). */
+  awaiting_answer?: boolean;
   unread: boolean;
 }
+
+/** The source of a `decision` notification. */
+export type NotificationDecisionSource = "run" | "flow_run" | "work_item";
 
 export interface NotificationFeed {
   items: NotificationItem[];
@@ -13028,6 +13155,8 @@ export interface FlowRunDetail extends FlowRunSummary {
   /** Human-in-the-loop: the Ask-user node awaiting an answer + its question. */
   awaiting_input_node_id?: string | null;
   awaiting_input_question?: string | null;
+  /** The Ask-user node's structured ask when it lists options (#842, S6); null for free text. */
+  awaiting_input_ask?: WorkItemAsk | null;
   trigger_payload: Record<string, unknown> | null;
   trigger_context: Record<string, unknown> | null;
   steps: FlowRunStep[];
@@ -16167,8 +16296,39 @@ export interface HealthBudgetCaps {
   month_cost_usd: string | null;
 }
 
+/** One spend ceiling (#1202): the value in force, its default, what the row holds and where the value comes from. */
+interface HealthSpendLimit {
+  block: "budget" | "analysis" | "module_analyst";
+  key: string;
+  value: number | string | null;
+  default: number | string | null;
+  stored: number | string | null;
+  source: "default" | "database";
+}
+
+/** `GET /health/settings/spend-limits`: the ceilings are locked at their defaults unless `env_var` is true. */
+export interface HealthSpendLimits {
+  locked: boolean;
+  locked_reason: "environment" | null;
+  env_var: string;
+  limits: HealthSpendLimit[];
+}
+
+/**
+ * The analysis layer of Platform Health (#101 S9): off by default, with hard ceilings per day and per
+ * month; `null` clears a ceiling, which refuses every analysis. Costs are decimal strings.
+ */
+export interface HealthAnalysisSettings {
+  enabled: boolean;
+  day_tokens: number | null;
+  day_cost_usd: string | null;
+  month_tokens: number | null;
+  month_cost_usd: string | null;
+}
+
 /** Settings > Platform Health (`services/health/settings.py`); later levels add fields. */
 export interface HealthSettings extends HealthTriggerSettings {
+  analysis: HealthAnalysisSettings;
   enabled: boolean;
   /** The name it goes by with people; `null` is the platform mode's (`HealthName.default_name`). */
   name: string | null;
@@ -16176,6 +16336,56 @@ export interface HealthSettings extends HealthTriggerSettings {
   scope_agent_ids: string[];
   scope_flow_ids: string[];
   budget: HealthBudgetCaps;
+  /** The editable thresholds of the OpenCTI and OpenAEV checks (#101 S10b), read on the next pass. */
+  opencti: HealthOpenCTIThresholds;
+  openaev: HealthOpenAEVThresholds;
+  /** The alert emails (#101 S12), off by default. */
+  alert_emails: HealthAlertEmailSettings;
+  /** The Module Analyst's switch, debounce, exclusions and own ceilings (#101 S14). */
+  module_analyst: HealthModuleAnalystSettings;
+  /** Whom the module checks read OpenCTI, OpenAEV and OpenCRQ as (dev-docs 12.3); `null`: not set, no module read runs. */
+  module_run_as_user_id?: string | null;
+}
+
+/**
+ * `HealthModuleAnalystSettings` of `services/health/settings.py` (#101 S14, dev-docs 12.5): its own
+ * ceilings outside the agentic quota; `null` clears one, which refuses every model call. Costs are decimal strings.
+ */
+export interface HealthModuleAnalystSettings {
+  enabled: boolean;
+  change_min_interval_minutes: number;
+  excluded_registration_ids: string[];
+  cycle_tokens: number | null;
+  day_tokens: number | null;
+  day_cost_usd: string | null;
+  month_tokens: number | null;
+  month_cost_usd: string | null;
+}
+
+/** `HealthAlertEmailSettings` of `services/health/settings.py`. */
+export interface HealthAlertEmailSettings {
+  enabled: boolean;
+  recipients: string[];
+  min_severity: "critical" | "warning" | "info";
+  immediate: boolean;
+  digest: boolean;
+  /** Minutes a critical finding stays open before its immediate email (default 15, 0 to 1440). */
+  alert_after_minutes?: number;
+}
+
+/** `HealthOpenCTIThresholds` of `services/health/settings.py`. */
+export interface HealthOpenCTIThresholds {
+  connector_stale_minutes: number;
+  connector_errors_max: number;
+  queue_depth_max: number;
+  search_disk_max_percent: number;
+  ingestion_lag_minutes: number;
+}
+
+/** `HealthOpenAEVThresholds` of `services/health/settings.py`. */
+export interface HealthOpenAEVThresholds {
+  integration_silent_minutes: number;
+  agents_offline_max_percent: number;
 }
 
 /** A pet of the Health companion's library (#8261). */
@@ -16228,7 +16438,7 @@ export interface HealthBudget {
 
 // ── Platform Health cycles, signals and inbox (#8261) ─────────────────────
 
-export type HealthTargetType = "agent" | "flow" | "assignment";
+export type HealthTargetType = "agent" | "flow" | "assignment" | "module";
 type HealthCycleStatus = "open" | "completed" | "budget_reached" | "failed" | "cancelled";
 /** A digest's status: ``completed`` only for a completed run with nothing skipped. */
 type HealthDigestStatus = "completed" | "partial" | "failed" | "budget_reached" | "cancelled";
@@ -16257,11 +16467,29 @@ export interface HealthDigest {
   findings: Record<string, number> | null;
   experiments: Record<string, number> | null;
   proposals: { filed: number; applied: number; rolled_back: number; by_verdict: Record<string, number> } | null;
-  budget: { spent_tokens: number; spent_cost_usd: string; cap_tokens: number | null; cap_cost_usd: string | null };
+  /** `ledger: "module_analyst"` when the spend counts against the Module Analyst's own ceiling (#101 S14d). */
+  budget: { spent_tokens: number; spent_cost_usd: string; cap_tokens: number | null; cap_cost_usd: string | null; ledger?: string };
   dry_run_writes: number | null;
+  /** A Module Analyst cycle (#101 S14d): recommendations attached (`attached`, then by confidence). */
+  recommendations?: Record<string, number> | null;
+  /** A Module Analyst cycle: agentic findings of its registration `opened` and `resolved` in its window. */
+  agentic_findings?: Record<string, number> | null;
+  /** The weekly digest (#101 S15e): per module, the check rounds of the week and the checks failed most. */
+  modules?: Partial<Record<HealthModule, HealthWeeklyModuleSummary>> | null;
   skipped: HealthDigestSkip[];
   unavailable: string[];
   narrative: string | null;
+}
+
+/** One module of the weekly digest's Modules part (`check_reports.weekly_module_summary`). */
+export interface HealthWeeklyModuleSummary {
+  rounds: number;
+  registrations: number;
+  passed: number;
+  warned: number;
+  failed: number;
+  not_run: number;
+  most_failed: { id: string; failed: number; warned: number }[];
 }
 
 interface HealthSignalReading {
@@ -16289,6 +16517,8 @@ export interface HealthCycle {
   signal: HealthSignalReading | null;
   digest: HealthDigest | null;
   requested_by_me: boolean;
+  /** The target's name: a module cycle's registration title, an agent's, flow's or assignment's name; null when it no longer exists. */
+  target_name?: string | null;
 }
 
 export interface HealthCycleStart {
@@ -16323,6 +16553,125 @@ export interface HealthModuleCard {
   info: number;
   /** The score a week ago; null when no score was written that day. */
   previous_score: number | null;
+  /** OpenCTI, OpenAEV, OpenCRQ for an administrator: the Module Analyst's last cycle, null when none (#101 S14c). */
+  last_investigation?: HealthLastInvestigation | null;
+}
+
+/** The Module Analyst's latest cycle on one of a module's registrations (dev-docs/platform-health.md section 12.7). */
+export interface HealthLastInvestigation {
+  cycle_id: string;
+  registration_id: string;
+  status: "open" | "completed" | "budget_reached" | "failed" | "cancelled";
+  trigger: "schedule" | "signal" | "on_demand";
+  opened_at: string;
+  closed_at: string | null;
+}
+
+/** What "Run checks now" did on one registration: started, or the refusal code of `start_cycle`. */
+interface HealthModuleInvestigationStart {
+  registration_id: string;
+  cycle_id: string | null;
+  run_id: string | null;
+  refusal: string | null;
+  open_cycle_id?: string | null;
+}
+
+export interface HealthModuleInvestigation {
+  module: HealthModule;
+  items: HealthModuleInvestigationStart[];
+}
+
+/** A module checker's verdict on one check (section 13.6). */
+export type HealthCheckVerdict = "pass" | "warn" | "fail" | "not_run";
+
+/** One check of a module check report: the playbook check id, its verdict, and why. */
+export interface HealthModuleCheckEntry {
+  id: string;
+  verdict: HealthCheckVerdict;
+  category: string;
+  recommendation: string | null;
+  reason: string | null;
+  evidence: HealthAnalystEvidence[];
+  finding_id: string | null;
+}
+
+/** The latest check round of one registration of a module (#101 S15c, section 13.6). */
+export interface HealthModuleCheckReport {
+  report_id: string;
+  registration_id: string;
+  cycle_id: string;
+  started_at: string | null;
+  finished_at: string;
+  passed: number;
+  warned: number;
+  failed: number;
+  not_run: number;
+  checks: HealthModuleCheckEntry[];
+}
+
+/** `GET /health/modules/{module}/checks` (administrators): one report per registration. */
+export interface HealthModuleCheckReports {
+  module: HealthModule;
+  items: HealthModuleCheckReport[];
+  /** `not_set` or `no_access`: the card shows one call to action instead of the per-check lines. */
+  run_as?: "ok" | "not_set" | "no_access";
+}
+
+/** One read the Module Analyst made to back a recommendation. */
+interface HealthAnalystEvidence {
+  tool?: string;
+  object_ids?: string[];
+  values?: Record<string, unknown>;
+  read_at?: string;
+}
+
+/** The Module Analyst's newest recommendation on a finding (section 12.7). */
+export interface HealthAnalystRecommendation {
+  text: string;
+  confidence: "high" | "medium" | "low";
+  evidence: HealthAnalystEvidence[];
+  cycle_id: string;
+  created_at: string;
+}
+
+/** The latest analysis of one module; `status` is null when it was never analysed. */
+export interface HealthModuleAnalysis {
+  module: HealthModule;
+  status: "completed" | "refused" | "failed" | null;
+  /** Why it did not run or failed (`services/health/analysis.py`): disabled, ai_off, ceiling_not_set, ceiling_reached, no_model, no_price, model_error. */
+  reason: string | null;
+  summary: string;
+  model: string | null;
+  tokens: number;
+  cost_usd: string;
+  trigger: "schedule" | "on_demand" | null;
+  analysed_at: string | null;
+}
+
+export interface HealthAnalysisSpend {
+  tokens: number;
+  cost_usd: string;
+  reserved_tokens: number;
+}
+
+/** `GET /health/analysis` (administrators): ceilings, today's and this month's spend, one analysis per module. */
+export interface HealthAnalysisOverview {
+  enabled: boolean;
+  ceilings_set: boolean;
+  ceilings: Omit<HealthAnalysisSettings, "enabled">;
+  day: HealthAnalysisSpend;
+  month: HealthAnalysisSpend;
+  modules: HealthModuleAnalysis[];
+  /** The Module Analyst row of Spend limits (#101 S14d): its own ceilings and ledger. */
+  module_analyst: HealthModuleAnalystSpendRow;
+}
+
+interface HealthModuleAnalystSpendRow {
+  enabled: boolean;
+  ceilings_set: boolean;
+  ceilings: Omit<HealthModuleAnalystSettings, "enabled" | "change_min_interval_minutes" | "excluded_registration_ids">;
+  day: HealthAnalysisSpend;
+  month: HealthAnalysisSpend;
 }
 
 export interface HealthOverview {
@@ -16349,6 +16698,10 @@ export interface HealthFinding {
   resolved_at: string | null;
   dismissal: { reason: string; by_name?: string; at?: string; until?: string | null } | null;
   can_dismiss: boolean;
+  /** Discovered by the Module Analyst (check id `<module>.agentic.<slug>`), not by a deterministic check. */
+  agentic?: boolean;
+  /** The Module Analyst's newest recommendation on this finding, null when none. */
+  analyst_recommendation?: HealthAnalystRecommendation | null;
 }
 
 export interface HealthFindingList {

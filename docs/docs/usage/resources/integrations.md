@@ -228,6 +228,14 @@ An agent can open a SharePoint or OneDrive folder shared with the account that a
 - **Sites.** `list_microsoft_site_files` takes a site by the ID `list_microsoft_sharepoint_sites` gives, by its address (`https://contoso.sharepoint.com/sites/finance`), or as `contoso.sharepoint.com:/sites/finance`. When the account cannot open the site, which is the case when all it holds there is a folder shared with it, the tool says the site is not accessible and points to `list_microsoft_folder_by_url`.
 - It only reads: a read-only binding of the integration offers it. It uses the delegated permissions `Files.Read.All` and `Sites.Read.All`, which the integration already requests.
 
+### Microsoft 365: SharePoint list item fields (metadata columns)
+
+An agent can read the metadata columns a document library adds to its files (a choice, text, date or person column) with their values, without opening the files. It only reads: no tool writes a field.
+
+- **One file.** `get_microsoft_list_item_fields` takes the file as the site plus its `Path` from `list_microsoft_site_files` (and the library when it is not the site's default one), or as the file's URL or sharing link. `columns` keeps only the named columns; a column the item does not carry is said so.
+- **A whole library.** `list_microsoft_list_items` lists a list or a document library, named by its display name or list id, with each item's fields. `filter_column` and `filter_value` keep only the items whose column equals the value (case-insensitive, a multi-value column matches on any of its values); the filter is applied by the platform, so a column the library does not index works too. A listing with more items ends with a `page_token` to pass back for the next page.
+- **Permissions.** Both use `Sites.Read.All`, delegated or application as the integration row is set up. A refused read answers an error naming that permission.
+
 ### Microsoft 365: commenting on a Word document
 
 An agent can review a Word document in OneDrive or SharePoint the way a person does: it reads the document, then leaves native Word comments in it, as the account that authorized the integration. Each comment appears on the passage it is about, in Word desktop and Word for the web, under that account's name. The tool is `add_microsoft_document_comments`; the document is given by its link, or by its path (with the site for a SharePoint library).
@@ -265,6 +273,17 @@ An assistant who works for someone answers threads that exist only in that perso
 - **A new subject.** `create_microsoft_draft_reply`, `reply_microsoft_email_in_thread` and `forward_microsoft_email` take an optional `subject` that replaces the `RE:` or `FW:` subject Outlook builds. The quote Outlook builds stays, and the signature stays directly under the text, above the quote: use it to quote an email under a new subject instead of pasting the quote into a new email, where the signature would land after it.
 - **Which forwards are trusted.** The quoted header is text any sender can write in an email. The agent reads the original participants from it only when the forward was sent from the mailbox's own domain. A message with a forward subject from any other sender is answered to that sender, the agent is told the header was not trusted, and with `send` set the reply stays a draft unless `to` names the recipients the user confirmed. Such a reply never joins the thread the forward's headers name: it threads on the message the mailbox holds.
 - **Draft or sent.** The reply is a draft by default, which the agent sends later with `send_microsoft_draft` or which the person sends from Outlook; sent that way, it threads on the forwarded copy, and the agent is told so. With `send` set, the agent sends it at once, once the user has given the go. A reply sent this way joins the original thread for its correspondents (its `In-Reply-To` and `References` name the original message, not the forwarded copy); the copy is kept in Sent Items. A reply to a message forwarded by another tool than `forward_microsoft_email` joins the thread when the forward kept its references, and the agent is told when it cannot.
+
+### Platform email
+
+The **Platform email** integration lets agents send email from the platform's own address, through the SMTP server the deployment configures (`SMTP_HOSTNAME` and the other `SMTP_*` variables), in the layout of the platform's own emails. It has no credential of its own.
+
+- **Who creates it.** The catalog offers it only while SMTP is configured, and only to an administrator, who creates it company-managed (the switch is on and locked). The server refuses any other creation.
+- **Allowed recipient domains.** Type a domain such as `example.com` and press Enter to add it; an entry that is not a domain name is marked and the form refuses to save (the API answers 422). Every address (to, cc, bcc, reply-to) must belong to one of them exactly; a subdomain is a different domain. With no domain listed, every send is refused. Through the API or an agent tool, the domains are one per line or a JSON list (`["example.com"]`); a list is stored one entry per line.
+- **Daily limit.** The emails one agent may send in a UTC day: a whole number from 0 to 1000, prefilled with 50 (0 stops every send); a value outside the range is refused by the form and the API (422). The next send past the limit is refused until 00:00 UTC.
+- **`send_email`.** `to`, `cc`, `bcc` (comma-separated), one `reply_to`, a one-line `subject`, a Markdown `body` sent as HTML, and `attachment_file_ids` (20 MB together). For an agent set to ask for tool approval, every call asks, whatever the whitelist or a standing approval says; an agent not set to ask, or a platform where an administrator suspended every approval ([AI governance](../../administration/ai-governance.md)), sends without asking, and the audit entry is the record. The same message to the same recipients twice is refused, and each bcc recipient gets their own copy so no header names them.
+- **Audit.** Every send, delivered or refused by the SMTP server, writes one audit log entry (entity `platform_email`, action `send`) with the agent, the recipients, the subject and the outcome. The daily limit is counted from these entries.
+- **Test Connection** says whether SMTP is configured, which domains are allowed and the daily limit.
 
 ### Email signatures (Letsignit)
 
@@ -329,6 +348,17 @@ An agent keeps a Google Sheets spreadsheet up to date the way a person does, as 
 
 They use the OAuth scope `https://www.googleapis.com/auth/spreadsheets`, which the integration requests, or the `https://www.googleapis.com/auth/drive` scope it already held: an integration authorized before shows a permissions change, and works without re-authorizing. The Google Cloud project of the integration's OAuth client must have the **Google Sheets API** enabled; until it is, the tools say so.
 
+### Pennylane: ledger, invoices, bank transactions and analytics
+
+An agent connected to Pennylane (Company API v2) reads and keeps the books the way an accountant does in Pennylane. One integration per Pennylane company: paste a company API token, or a firm token with the **Company ID** it should act on.
+
+- **Ledger.** `search_pennylane_ledger_entry_lines` filters lines by date range, journal, ledger account (or an account number prefix such as `606`) and analytical category, with account and journal labels and page totals. `get_pennylane_trial_balance` sums every account over a period; `create_pennylane_export` starts a FEC, general ledger or analytical general ledger export that `get_pennylane_export` reads once ready. Ledger entries are created and updated only when balanced.
+- **Invoices.** Customer and supplier invoices list by date, party, status, number or analytical category; `get_pennylane_invoice` gives the lines, payments and matched bank transactions, `download_pennylane_invoice_pdf` puts the PDF in the conversation. Customer invoices are created as drafts; finalizing, sending and the e-invoicing calls are their own tools.
+- **Banking.** Bank transactions list with what they are matched to (`unmatched_only=true` for what is left to reconcile); matching, lettering and analytical categorisation are tools, as are bank accounts, bank establishments and SEPA, GoCardless and Pro account mandates.
+- **Changes.** `list_pennylane_changes` reads Pennylane's changelogs (four weeks) for incremental reads.
+- **Events.** An assignment can trigger on `supplier_invoice_created`, `supplier_invoice_updated`, `customer_invoice_created`, `customer_invoice_updated`, `customer_invoice_paid` (once per invoice), `transaction_created` and `transaction_matched` (again when the matched invoices change). They are polled from the changelogs every 5 minutes, starting from the moment the trigger is enabled, and each change is read with its record. Filter keys: `min_amount` and `max_amount` (euros, tax included), `supplier_id`, `customer_id`, `journal_id`, `bank_account_id`, `status` (the payment status of a supplier invoice) and `currency`; any other payload field (`invoice_number`, `label`...) is filtered with the usual operators.
+- **Guardrails.** A tool is a read when its endpoint is a GET, else a write, so a read-only binding withholds every write. Marking an invoice paid, a supplier payment status, bank account and mandate writes, sending a document and deletions wait for a person's approval at each call. The tools that show or change bank data form one group (`BANK_DETAIL_TOOLS`) a deny list can withhold. A missing scope is named in the error; the token is never echoed.
+
 ### Ashby: candidates, applications, interviews and scorecards
 
 An agent connected to Ashby works the recruiting pipeline the way a recruiter reads it in Ashby.
@@ -370,6 +400,58 @@ A DocuSign integration lets an agent send a PDF or Word file of the conversation
 
   A delivery that no stored key signs is refused, and an integration with no key refuses every delivery. Each envelope change runs an assignment once, whether Connect or the 15-minute check reads it first. A delivery that cannot run when it arrives (AI turned off, the assignment's queue full) is left for the check.
 - **Knowing when a document is signed.** An assignment with an *Integration event* trigger on DocuSign runs its agent when an envelope is completed (`envelope_completed`), declined (`envelope_declined`), voided (`envelope_voided`), or when one signer signs (`recipient_completed`). The platform checks DocuSign every 15 minutes and starts from the moment the trigger is enabled; each envelope change runs the assignment once, with the envelope id, its subject, the signers and who signed or declined. Filters narrow it to some envelopes (`envelope_ids`), signers (`signer_emails`, addresses or domains), senders (`sender_emails`) or subjects (`subject_contains`). A typical use: on `envelope_completed`, download the signed copy with `download_docusign_document` and send it on.
+
+### NetSuite: finance across subsidiaries
+
+A NetSuite integration gives the agents the ERP of a OneWorld (multi-subsidiary) company: reads, writes and the sensitive writes asked first.
+
+- **Two ways to connect.** *OAuth 2.0 machine-to-machine* (recommended): an integration record with the Client Credentials grant, a certificate uploaded under Setup > Integration > OAuth 2.0 Client Credentials (M2M) Setup; paste the client ID and the certificate ID, and the certificate's private key in the API Key field. *Token-Based Authentication*: the consumer key and secret and the token ID, the token secret in the API Key field. A sandbox account ID such as `1234567_SB1` works as is. The setup guide lists every role permission, family by family; Test Connection lists the subsidiaries the role reaches.
+- **Reading.** `run_netsuite_suiteql` runs any SuiteQL SELECT (paged, up to 5,000 rows); `describe_netsuite_records` lists the record types and their fields; `get_netsuite_record` and `list_netsuite_records` read any record. The finance tools answer with the currency, the subsidiary and the period of every amount: subsidiaries, accounting periods (closed, AP, AR and all locked), the chart of accounts, departments, classes, locations, currencies and exchange rates, customers, vendors, items, transactions by type with filters (subsidiary, period, account, entity, status, dates, minimum amount), one transaction with its accounting lines, the trial balance, income statement and balance sheet of one subsidiary or consolidated to it, AR and AP aging, intercompany balances by subsidiary and counterparty, bank lines, and the bank details of a vendor or customer.
+- **Writing.** `create_netsuite_record` and `update_netsuite_record` change master data (customers, vendors, items, segments). Posting transactions (`create_netsuite_transaction` / `update_netsuite_transaction`: bills, invoices, credit memos, payments, journals, intercompany journals), `set_netsuite_period_status` (close, reopen, lock), `set_netsuite_entity_bank_details` and `call_netsuite_restlet` (except GET) ask a person on every call, whatever the agent's approval settings. Each family is its own tool, so a binding keeps only the ones it needs.
+- **Saved searches, files and attachments.** `run_netsuite_saved_search`, `download_netsuite_file` (a file cabinet file or a transaction as PDF, into the conversation) and `attach_netsuite_file` go through a small companion RESTlet the administrator deploys once (Customization > Scripting > Scripts > New, a RESTlet deployed for the integration role; the RESTlets scope on the integration record and in the OAuth scopes field), then enters its script and deployment IDs on the integration:
+
+```javascript
+/**
+ * @NApiVersion 2.1
+ * @NScriptType Restlet
+ */
+define(['N/search', 'N/file', 'N/render', 'N/record', 'N/encode'], (search, file, render, record, encode) => {
+  const post = (body) => {
+    try {
+      if (body.action === 'search') {
+        const s = search.load({ id: body.id });
+        const cols = s.columns.map((c) => c.label || c.name);
+        const rows = [];
+        s.run().getRange({ start: 0, end: Math.min(body.limit || 200, 1000) }).forEach((r) => {
+          const row = {};
+          s.columns.forEach((c, i) => { row[cols[i]] = r.getText(c) || r.getValue(c); });
+          rows.push(row);
+        });
+        return { rows, more: rows.length >= Math.min(body.limit || 200, 1000) };
+      }
+      if (body.action === 'file' || body.action === 'pdf') {
+        const f = body.action === 'file'
+          ? file.load({ id: body.id })
+          : render.transaction({ entityId: Number(body.id), printMode: render.PrintMode.PDF });
+        const text = f.isText ? encode.convert({ string: f.getContents(), inputEncoding: encode.Encoding.UTF_8,
+          outputEncoding: encode.Encoding.BASE_64 }) : f.getContents();
+        return { name: f.name, type: f.fileType === 'PDF' ? 'application/pdf' : '', content: text };
+      }
+      if (body.action === 'attach') {
+        record.attach({ record: { type: 'file', id: body.file }, to: { type: body.type, id: body.id } });
+        return { ok: true };
+      }
+      return { error: `unknown action ${body.action}` };
+    } catch (e) {
+      return { error: e.message };
+    }
+  };
+  return { post };
+});
+```
+
+- **Events.** An assignment can start on NetSuite changes, polled every 5 minutes with SuiteQL (no script to deploy): *Vendor bill created or changed*, *Invoice created or changed* (invoices and credit memos), *Payment created or changed* (customer and vendor payments), *Journal entry created or changed* (journal entries and intercompany journals) and *Accounting period changed* (closed, reopened, locked or unlocked). Filters: `subsidiary_id`, `transaction_types`, `status`, `min_amount` and `change_kinds` (`created`, `updated`) on the transaction events, `states` on the period event. The first poll starts from now. The role needs SuiteAnalytics Workbook (SuiteQL) and view access to the transactions and periods it watches.
+- **Limits.** NetSuite's concurrency limit (HTTP 429) is retried with backoff; a role missing a permission, or a transaction in a closed or locked period, is answered as such.
 
 ### HubSpot: activity, forms, sequences and the inbound report
 
@@ -422,7 +504,7 @@ GitHub offers no upload API for comments, so an agent attaches a file of the con
 
 ### GitHub: a comment never posted twice
 
-An agent that posts a verbatim comment (a review verdict, a status line) from a run that may be retried passes `dedupe_first_line: true` to `add_github_comment`. The comments already on the issue or pull request are read on the server: when one opens with the same first non-empty line as the new comment, nothing is committed or posted and the answer names that comment (author, date, link). The earlier comment bodies never reach the agent. Without the option the tool posts as before.
+An agent that posts a verbatim comment (a review verdict, a status line) from a run that may be retried passes `dedupe_first_line: true` to `add_github_comment`. The comments already on the issue or pull request are read on the server: when one opens with the same first non-empty line and holds the same text as the new comment, nothing is committed or posted. A comment that shares only the first line (a verdict header reused for a new round or a new head) does not stop the post. When the post is skipped, the answer names that comment (author, date, link). The earlier comment bodies never reach the agent. Without the option the tool posts as before.
 
 ### GitHub: a comment corrected in place
 

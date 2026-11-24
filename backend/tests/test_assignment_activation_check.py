@@ -198,9 +198,28 @@ async def test_a_text_only_result_lets_the_run_proceed():
     assert outcome.passed and "no structured result" in outcome.error
 
 
-async def test_a_tool_the_agent_does_not_hold_lets_the_run_proceed():
+async def test_a_tool_the_agent_does_not_hold_skips_the_run_as_misconfigured() -> None:
+    # #1400: a permanent configuration error never lets the run through at full cost.
     outcome = await run_activation_check({**CHECK, "tool": "get_shared_state"}, _executor(lambda: None))
-    assert outcome.passed and "holds no tool" in outcome.error
+    assert not outcome.passed and outcome.misconfigured
+    assert "holds no tool" in (outcome.error or "") and "misconfigured" in outcome.summary
+
+
+async def test_a_target_the_tool_reports_missing_skips_the_run_as_misconfigured() -> None:
+    async def _list(**_kwargs: object) -> ToolResult:
+        return ToolResult(tool_call_id="", content="gone", structured={"healthy": None, "target_missing": True})
+
+    outcome = await run_activation_check(CHECK, _executor(_list))
+    assert not outcome.passed and outcome.misconfigured
+    assert "no longer exists" in (outcome.error or "")
+
+
+async def test_a_transient_failure_still_lets_the_run_proceed_not_misconfigured() -> None:
+    async def _list(**_kwargs: object) -> None:
+        raise RuntimeError("database down")
+
+    outcome = await run_activation_check(CHECK, _executor(_list))
+    assert outcome.passed and not outcome.misconfigured
 
 
 async def test_the_work_item_tool_serves_a_structured_list(monkeypatch):

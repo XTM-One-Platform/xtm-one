@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * The editing model of a list of the organization profile (crown jewels, tech stack, AI
+ * The editing model of a list of the organization profile (primary assets, software inventory, AI
  * systems, assets, asset groups, accepted risks, enterprise knowledge; #12256): the rows of
  * an open edit with their state (new, edited, removed), the values Save writes, and the
  * checks a row "needs attention" for. Pure, so the page and its tests share it.
@@ -28,6 +28,7 @@ export const LIST_ISSUES = {
   duplicate: "Same as another row",
   vendor: "Vendor is empty",
   cpe: "Not a valid CPE name",
+  repository: "A repository is not owner/name",
 } as const;
 
 export type ListIssue = (typeof LIST_ISSUES)[keyof typeof LIST_ISSUES];
@@ -93,10 +94,21 @@ export function addRows<V>(rows: readonly EditRow<V>[], values: readonly V[]): E
   return values.reduce<EditRow<V>[]>((next, value) => addRow(next, value).rows, [...rows]);
 }
 
-/** Bulk edit (#12256 slice 2): *patch* set on every row of *keys* that is not removed. */
-export function patchRows<V>(rows: readonly EditRow<V>[], keys: readonly string[], patch: Partial<V>): EditRow<V>[] {
+/**
+ * Bulk edit (#12256 slice 2): *patch* set on every row of *keys* that is not removed. A row
+ * *locked* on one of the patched fields (a synced row's sourced field, #1134) is left as it is,
+ * as its open row keeps that field as text.
+ */
+export function patchRows<V>(
+  rows: readonly EditRow<V>[],
+  keys: readonly string[],
+  patch: Partial<V>,
+  locked?: (value: V, field: string) => boolean,
+): EditRow<V>[] {
   const wanted = new Set(keys);
-  return rows.map((row) => (wanted.has(row.key) && !row.removed ? { ...row, value: { ...row.value, ...patch } } : row));
+  const fields = Object.keys(patch);
+  const takes = (row: EditRow<V>) => wanted.has(row.key) && !row.removed && !(locked && fields.some((field) => locked(row.value, field)));
+  return rows.map((row) => (takes(row) ? { ...row, value: { ...row.value, ...patch } } : row));
 }
 
 /** Bulk remove: each row of *keys* removed as `removeRow` does (saved rows struck through with Undo, added rows gone). */
@@ -131,6 +143,15 @@ export function isCpe(value: string): boolean {
   if (/\s/.test(text)) return false;
   const parts = text.split(/(?<!\\):/);
   return parts.length === 13 && parts[0].toLowerCase() === "cpe" && parts[1] === "2.3" && /^[aho*-]$/.test(parts[2]) && parts.slice(3).every(Boolean);
+}
+
+/**
+ * A source repository as `owner/name` (#1432), a GitHub address read as its `owner/name` as the backend does;
+ * empty is not one.
+ */
+export function isRepository(value: string): boolean {
+  const text = value.trim().replace(/^(https?:\/\/)?github\.com\//i, "").replace(/\.git$/i, "").replace(/^\/+|\/+$/g, "");
+  return text.length <= 200 && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(text);
 }
 
 const norm = (text: string) => text.trim().toLowerCase();
@@ -170,7 +191,7 @@ export function attentionCount<V>(values: readonly V[], check: (value: V, all: r
 
 type Jewel = { name: string; business_service: string; owner: string; criticality: string };
 type Tech = { product: string; vendor: string; cpe: string };
-type AiSystem = { name: string; kind: string; owner: string; exposure: string };
+type Shipped = { product: string; vendor: string; cpe: string; repositories: readonly string[] };
 
 /** The checks and the identity of each list of the identity half of the profile. */
 export const LIST_RULES = {
@@ -186,9 +207,14 @@ export const LIST_RULES = {
     ],
     identity: (value: Tech) => (value.product.trim() ? `${value.product.trim()}\u0000${value.vendor.trim()}` : ""),
   },
-  ai_systems: {
-    check: (value: AiSystem): ListIssue[] => (value.name.trim() ? [] : [LIST_ISSUES.emptyName]),
-    identity: (value: AiSystem) => value.name.trim(),
+  // What the organization ships (#1432): identified as the software inventory is, by product and vendor.
+  shipped_products: {
+    check: (value: Shipped): ListIssue[] => [
+      ...(value.product.trim() ? [] : [LIST_ISSUES.emptyName]),
+      ...(isCpe(value.cpe) ? [] : [LIST_ISSUES.cpe]),
+      ...(value.repositories.every(isRepository) ? [] : [LIST_ISSUES.repository]),
+    ],
+    identity: (value: Shipped) => (value.product.trim() ? `${value.product.trim()}\u0000${value.vendor.trim()}` : ""),
   },
 } as const;
 

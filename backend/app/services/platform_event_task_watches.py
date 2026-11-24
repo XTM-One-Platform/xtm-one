@@ -372,12 +372,15 @@ async def _taking(watches: list[Any], name: str, payload: Mapping[str, Any]) -> 
     from app.services import platform_events as pe
 
     readable: dict[str, set[str]] = {}
+    object_readers: dict[str, bool] = {}
     taking = []
     for watch in watches:
         sub = _subscription(watch)
         if pe.mismatch_reason(sub, name, payload) is not None:
             continue
         if not await pe.can_read_workspace(sub, payload, readable):
+            continue
+        if not await pe.can_read_object(sub, payload, object_readers):
             continue
         taking.append(watch)
     return taking

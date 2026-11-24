@@ -22,7 +22,7 @@
  * hands the state to the caller (`onStateChange`), which sends it to the API.
  * `EntityTable` (asset index pages) is a preset of this component.
  */
-import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Check, Columns3, Download, ListFilter } from "lucide-react";
 import { Icon } from "@filigran/design-system";
@@ -60,7 +60,7 @@ import {
   TABLE_STORAGE_PREFIX,
 } from "@/lib/data-table-state";
 import { sortFilterOptions } from "@/lib/select-options";
-import { matchesSearch, pageOf, sortRows, type SortDirection, type SortValue } from "@/lib/table-rows";
+import { groupRows, matchesSearch, pageOf, sortRows, type RowGrouping, type SortDirection, type SortValue } from "@/lib/table-rows";
 import { cn, saveBlobAs, toggleArrayItem } from "@/lib/utils";
 
 export type { DataTableState, SortDirection, SortValue };
@@ -149,6 +149,11 @@ export interface DataTableFilter<T> {
   ordered?: boolean;
 }
 
+export interface DataTableGroupBy<T> extends RowGrouping<T> {
+  /** The group's header text, already translated. */
+  label: (value: string) => ReactNode;
+}
+
 export interface DataTableSelection {
   /** Keys (`rowKey`) of the selected rows. */
   selected: readonly string[];
@@ -197,6 +202,8 @@ function isPickable(column: { hideable?: boolean; header: string }): boolean {
 }
 
 const PAGE_SIZES = [10, 25, 50, 100] as const;
+/** The page size a table opens at when its caller names none and the user kept none: 25 across the platform (Sam, 23 Nov 2026). */
+const DEFAULT_PAGE_SIZE = 25;
 
 /**
  * The two row heights of every records table (standard v2, dev-docs/reference/data-tables.md):
@@ -252,6 +259,8 @@ export interface DataTableTags {
 export interface DataTableView {
   value: ViewMode;
   onChange: (mode: ViewMode) => void;
+  /** The views offered (default grid and list). */
+  modes?: readonly ViewMode[];
 }
 
 const STORAGE_PREFIX = TABLE_STORAGE_PREFIX;
@@ -393,11 +402,17 @@ export interface DataTableProps<T> {
   onRowClick?: (row: T) => void;
   /** With `onRowClick`: whether this row opens anything; a row that does not is neither a target nor a tab stop. */
   rowOpens?: (row: T) => boolean;
-  /** Detail route of a row: the first non-interactive cell becomes a real link, the row opens it. */
-  rowHref?: (row: T) => string;
+  /** Detail route of a row: the first non-interactive cell becomes a real link, the row opens it. Undefined: that row opens nothing. */
+  rowHref?: (row: T) => string | undefined;
   rowClassName?: (row: T) => string | undefined;
   /** Rows kept above the others whatever the sort (favourites). */
   pinFirst?: (row: T) => boolean;
+  /**
+   * Groups the rows (client mode): the rows of one group follow each other, in the
+   * group order (`rank`, else the value), the sort kept inside each group, and a
+   * header row names each group on the page with its row count (#1176).
+   */
+  groupBy?: DataTableGroupBy<T>;
   /** Last column: the row's own buttons (never opens the row). */
   rowActions?: (row: T) => ReactNode;
   /**
@@ -429,7 +444,7 @@ export interface DataTableProps<T> {
   onStateChange?: (state: DataTableState) => void;
   /**
    * Controlled state: the caller owns search, filters, sort, page and page size
-   * (a page whose URL keys predate the table, such as `/traces`), and each change
+   * (a page whose URL keys predate the table, such as `/observability/traces`), and each change
    * reaches it through `onStateChange` only. Omitted = the table keeps its state.
    */
   state?: DataTableState;
@@ -438,6 +453,11 @@ export interface DataTableProps<T> {
    * active-filter count, so the toolbar offers its "Clear all filters" for them too.
    */
   externalFilterCount?: number;
+  /**
+   * A filter the page draws on the toolbar row and counts on its own pill (a Status pill
+   * away from its default): not in the Filters badge, but "Clear all filters" shows for it.
+   */
+  toolbarFilterActive?: boolean;
   /**
    * Replaces the table's own clear when the page holds filters outside it: "Clear all
    * filters" then clears every filter of the page in one write (the caller keeps the sort).
@@ -469,6 +489,8 @@ export interface DataTableProps<T> {
   fitGrid?: boolean;
   /** data-testid of every body row, for the page's tests. */
   rowTestId?: string;
+  /** `data-*` attributes of one body row (its id, its status), for the page's tests and styles; a row with `rowHref` takes none. */
+  rowDataAttributes?: (row: T) => Record<`data-${string}`, string | undefined>;
 }
 
 /**
@@ -507,7 +529,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
   const preferences = readPreferences(props.storageKey);
   const defaults: DataTableDefaults = {
     sort: props.defaultSort ?? null,
-    pageSize: props.paginate === false ? Number.MAX_SAFE_INTEGER : (preferences.pageSize ?? props.defaultPageSize ?? 10),
+    pageSize: props.paginate === false ? Number.MAX_SAFE_INTEGER : (preferences.pageSize ?? props.defaultPageSize ?? DEFAULT_PAGE_SIZE),
   };
   if (props.state) return <DataTableView {...props} state={props.state} setState={ignoreState} />;
   // An empty prefix is a valid one (the page's only table): test for presence, not truthiness.
@@ -569,6 +591,7 @@ function DataTableView<T>({
   rowHref,
   rowClassName,
   pinFirst,
+  groupBy,
   rowActions,
   rowActionsWidth = 96,
   expandedRow,
@@ -578,6 +601,7 @@ function DataTableView<T>({
   server,
   onStateChange,
   externalFilterCount = 0,
+  toolbarFilterActive = false,
   onClearAll,
   density = "compact",
   layout = "auto",
@@ -585,6 +609,7 @@ function DataTableView<T>({
   fill = false,
   fitGrid = false,
   rowTestId,
+  rowDataAttributes,
   state,
   setState,
 }: DataTableProps<T> & { state: DataTableState; setState: (next: DataTableState) => void }) {
@@ -616,6 +641,18 @@ function DataTableView<T>({
     observer.observe(box);
     return () => observer.disconnect();
   }, [box]);
+  // The scroll area's own clientWidth: its border and its vertical scrollbar left out, so a
+  // full-width row never adds a horizontal overflow (6 px under the Sources table, UX round 1
+  // on #1356, B1). The content box is observed, which shrinks when the scrollbar shows.
+  const [scrollClientWidth, setScrollClientWidth] = useState<number | null>(null);
+  useEffect(() => {
+    if (!scrollArea || typeof ResizeObserver === "undefined") return;
+    const measure = () => setScrollClientWidth(scrollArea.clientWidth > 0 ? scrollArea.clientWidth : null);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(scrollArea);
+    return () => observer.disconnect();
+  }, [scrollArea]);
   // The host's lead control (the fleet page's list switcher) takes its width out of
   // the one-row toolbar: measured so the row can give its right group a line of its own.
   const [lead, setLead] = useState<HTMLDivElement | null>(null);
@@ -628,6 +665,9 @@ function DataTableView<T>({
     observer.observe(lead);
     return () => observer.disconnect();
   }, [lead]);
+  // The lead and box widths at which the one-row toolbar's full labels ran past its box.
+  const [toolbarRow, setToolbarRow] = useState<HTMLDivElement | null>(null);
+  const [fullLabelsOverflow, setFullLabelsOverflow] = useState<{ lead: number; box: number } | null>(null);
 
   // A typed search reaches the state after a pause, so the URL (and a server query) follow the words, not the keys.
   const [searchText, setSearchText] = useState(state.search);
@@ -707,10 +747,21 @@ function DataTableView<T>({
     const matched =
       searchFields && state.search.trim() ? byFilter.filter((row) => matchesSearch(searchFields(row), state.search)) : byFilter;
     const sorted = sortColumn?.sortValue && state.sort ? sortRows(matched, sortColumn.sortValue, state.sort.direction) : matched;
+    if (groupBy) return groupRows(sorted, groupBy);
     if (!pinFirst) return sorted;
     const pinned = sorted.filter(pinFirst);
     return pinned.length === 0 || pinned.length === sorted.length ? sorted : [...pinned, ...sorted.filter((row) => !pinFirst(row))];
-  }, [server, rows, filters, state.filters, state.search, state.sort, searchFields, sortColumn, pinFirst]);
+  }, [server, rows, filters, state.filters, state.search, state.sort, searchFields, sortColumn, pinFirst, groupBy]);
+  // The row count of each group over every page, for the group's header row.
+  const groupCounts = useMemo(() => {
+    if (!groupBy || server) return null;
+    const counts = new Map<string, number>();
+    for (const row of shown) {
+      const value = groupBy.value(row);
+      counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+    return counts;
+  }, [groupBy, server, shown]);
 
   const total = server ? server.total : shown.length;
   const current = server
@@ -720,7 +771,8 @@ function DataTableView<T>({
   const narrowing = !!state.search.trim() || !!search?.value.trim() || filterCount > 0;
   // "Clear all filters" shows when a filter or the page's own search narrows the list
   // (standard v2: a search, tag or pill; never the scope alone, UX round 1 on #10920, B2).
-  const clearable = filterCount > 0 || !!search?.value.trim();
+  // The table's own search and a toolbar filter count too (UX round 1 on #1004, B1).
+  const clearable = filterCount > 0 || !!search?.value.trim() || !!state.search.trim() || toolbarFilterActive;
 
   // A card list (`renderGrid`) has no header to click: the toolbar offers these instead.
   const sortableColumns = columns.filter((column) => column.sortValue && !column.exportOnly);
@@ -769,6 +821,7 @@ function DataTableView<T>({
     update({ pageSize: size });
   };
 
+  const formatGroupCount = (count: number) => t_i18n("{count, plural, one {# row} other {# rows}}", { count });
   const pageKeys = current.rows.map(rowKey).filter((key) => !selection?.disabledReason?.(key));
   const selected = selection?.selected ?? [];
   const pageSelected = pageKeys.filter((key) => selected.includes(key)).length;
@@ -832,8 +885,9 @@ function DataTableView<T>({
   // A full-width row keeps its content on the visible part of a table wider than its card:
   // centred on the whole table, "Clear all filters" sat 41 px past the scroll edge of the
   // OpenRouter keys at 1080 (UX round 3 on #10601, A1). Sticky to the scroll area's left
-  // edge, as wide as that area (inside its 1 px border when framed).
-  const visibleWidth = boxWidth === null ? undefined : Math.max(0, boxWidth - (framed ? 2 : 0));
+  // edge, as wide as that area's client box (inside its border and its vertical scrollbar).
+  const visibleWidth =
+    scrollClientWidth !== null ? scrollClientWidth : boxWidth === null ? undefined : Math.max(0, boxWidth - (framed ? 2 : 0));
   const fullWidth = (content: ReactNode, className: string, testId?: string) => (
     <div data-testid={testId} className={cn("sticky left-0", className)} style={visibleWidth === undefined ? undefined : { width: visibleWidth }}>
       {content}
@@ -919,6 +973,7 @@ function DataTableView<T>({
     ) : (
       <tr
         key={key}
+        {...rowDataAttributes?.(row)}
         data-testid={rowTestId}
         className={className}
         onClick={opens ? () => onRowClick?.(row) : undefined}
@@ -1121,7 +1176,28 @@ function DataTableView<T>({
                   </td>
                 </tr>
               )}
-              {skeletonRows ?? current.rows.map(renderRow)}
+              {skeletonRows ??
+                (groupBy && groupCounts
+                  ? current.rows.flatMap((row, index) => {
+                      const value = groupBy.value(row);
+                      const starts = index === 0 || groupBy.value(current.rows[index - 1]) !== value;
+                      if (!starts) return [renderRow(row)];
+                      return [
+                        <tr key={`group:${value}`} data-testid="data-table-group-row" className="border-t border-elevation-subtle-soft bg-elevation-hover">
+                          <td colSpan={spanned} className="p-0">
+                            {fullWidth(
+                              <span className="flex items-center gap-2">
+                                <span className="min-w-0 truncate font-medium text-default-primary">{groupBy.label(value)}</span>
+                                <span className="shrink-0 tabular-nums text-default-secondary">{formatGroupCount(groupCounts.get(value) ?? 0)}</span>
+                              </span>,
+                              "px-3 py-1.5 content-compact",
+                            )}
+                          </td>
+                        </tr>,
+                        renderRow(row),
+                      ];
+                    })
+                  : current.rows.map(renderRow))}
               {!skeletonRows &&
                 current.page === current.lastPage &&
                 !narrowing &&
@@ -1169,7 +1245,18 @@ function DataTableView<T>({
   // A table narrower than 896 px (a card at 1024) draws Columns and Export CSV as icon
   // buttons with their name in a tooltip, and the page size as its number: the full
   // labels pushed them to a second row at 1024 in en and fr (UX r2 B1 on #10336).
-  const compactToolbar = boxWidth !== null && boxWidth < COMPACT_TOOLBAR_BELOW_PX;
+  // A one-row toolbar whose full labels were measured past its box, at this lead width or a
+  // wider one and this box width or a narrower one, draws the compact controls too: the Tasks
+  // lead (Status, Quick filters) left 852 px at 1440 and the full-label right group ran the
+  // row 84 px past its box (merge queue E2E on #1004). The room the full labels need depends
+  // on the row's controls, so it is measured, never a constant.
+  const leadNeedsCompact =
+    filtersInPill &&
+    boxWidth !== null &&
+    fullLabelsOverflow !== null &&
+    leadWidth >= fullLabelsOverflow.lead &&
+    boxWidth <= fullLabelsOverflow.box;
+  const compactToolbar = boxWidth !== null && (boxWidth < COMPACT_TOOLBAR_BELOW_PX || leadNeedsCompact);
   // A one-row toolbar whose lead leaves less room than its compact controls need
   // wraps, so the right group (total, page size, view) takes its own line instead of
   // pushing the row past its box: the fleet Worksets list at 1080 overflowed by up to
@@ -1180,8 +1267,14 @@ function DataTableView<T>({
   // (the Cases list at 1080 ended at 1167 px with two rows selected, UX r2 B6 on #11666).
   const selectionShown = Boolean(selection) && selected.length > 0;
   const toolbarWraps = !filtersInPill || leadCrowds || selectionShown;
+  // Before paint: a one-row toolbar drawn with its full labels that runs past its box records
+  // the lead and box widths, so the next render draws the compact controls (no flash).
+  useLayoutEffect(() => {
+    if (!toolbarRow || !filtersInPill || toolbarWraps || compactToolbar || boxWidth === null) return;
+    if (toolbarRow.scrollWidth > toolbarRow.clientWidth + 1) setFullLabelsOverflow({ lead: leadWidth, box: boxWidth });
+  }, [toolbarRow, filtersInPill, toolbarWraps, compactToolbar, boxWidth, leadWidth]);
   // A card list (`renderGrid`) has no header row: its page box is the first control of the
-  // toolbar, never a row of its own above the cards (Sam on /operations/state, 14 Nov 2026).
+  // toolbar, never a row of its own above the cards (Sam on /operations/shared-state, 14 Nov 2026).
   // Its slot holds its width during the first read, so the toolbar does not move when it lands.
   const gridPageBox = Boolean(selection && renderGrid) && (isLoading || pageKeys.length > 0);
   const toolbarShown =
@@ -1192,6 +1285,7 @@ function DataTableView<T>({
     <div ref={setBox} className={cn("space-y-3", fill && "flex flex-1 flex-col")}>
       {toolbarShown && (
         <div
+          ref={setToolbarRow}
           data-testid="data-table-toolbar"
           data-lead-crowds={leadCrowds ? "true" : undefined}
           data-wraps={toolbarWraps ? "true" : undefined}
@@ -1372,7 +1466,7 @@ function DataTableView<T>({
                 </Button>
               </Tip>
             )}
-            {view && <ViewToggle value={view.value} onChange={view.onChange} />}
+            {view && <ViewToggle value={view.value} onChange={view.onChange} modes={view.modes} />}
           </div>
         </div>
       )}

@@ -285,7 +285,7 @@ toolbar), then either pick another active user in the **Owner** card or
 switch on **Company-managed flow** to share it with every user, editable by
 administrators only. Both changes save immediately and leave the canvas
 untouched, so an unsaved edit stays where it is. A link to
-`/flows/<id>/builder?panel=owner-access` opens the builder with that drawer
+`/flows/library/<id>?panel=owner-access` opens the builder with that drawer
 already open (a paused flow's notice uses it). The button is not shown to
 other users; the same changes are available through `PUT /api/v1/flows/{id}`
 (`user_id`, `is_company_managed`) and are refused for a non-administrator.

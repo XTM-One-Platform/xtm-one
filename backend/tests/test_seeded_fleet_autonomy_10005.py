@@ -19,14 +19,12 @@ _CTEM = sorted(BUILTIN_FLEET_STRUCTURED)
 
 #: Per fleet at Low: the gates that still wait for a person. Every other gate runs alone and is logged.
 _WAITS_AT_LOW = {
-    "ctem-threat-response": {"openaev.scenario.launch"},
-    "ctem-vuln-prioritization": {"openaev.validation.launch"},
-    "ctem-ai-security": {"openaev.ai_test.launch"},
-    "ctem-posture": set(),
-    "ctem-third-party-risk": {"supplier.action"},
-    "opencti-pir-desk": {"indicator.revoke"},
-    "openaev-detection-desk": {"openaev.simulation.launch"},
-    "opencrq-risk-budget-desk": set(),
+    # The CTEM loop fleets (#916, CTEM-34; #1339): the OpenAEV validation and Mobilize wait
+    # out of the box on a fleet with the validation step, Mobilize alone on the third-party one.
+    "ctem-loop": {"ctem.validation.non_readonly", "ctem.mobilize"},
+    "ctem-vuln-prioritization": {"ctem.validation.non_readonly", "ctem.mobilize"},
+    "ctem-ai-security": {"ctem.validation.non_readonly", "ctem.mobilize"},
+    "ctem-third-party-risk": {"ctem.mobilize"},
 }
 
 
@@ -58,16 +56,19 @@ def test_at_low_only_destructive_gates_wait(slug):
     assert all(e["impact"] != "destructive" for e in catalog if not e["gated"]), slug
 
 
-def test_openaev_launches_still_pause_in_the_tool_path_at_low():
-    gates = BUILTIN_FLEET_STRUCTURED["ctem-threat-response"]["gates"]
-    names = {r["name"] for r in gated_tool_rules(SEEDED_FLEET_AUTONOMY_LEVEL, gates)}
-    assert names == {"manage_openaev_simulation", "manage_openaev_atomic_testing"}
+def test_at_low_the_validation_and_the_mobilize_wait_as_decisions_never_in_the_tool_path() -> None:
+    """#1339: the OpenAEV validation and the one Mobilize decision wait at Low.
+
+    #1675 (Sam, 24 Nov 2026): as decision items between steps; no tool call pauses.
+    """
+    gates = BUILTIN_FLEET_STRUCTURED["ctem-loop"]["gates"]
+    catalog = {e["key"]: e["gated"] for e in gate_catalog(SEEDED_FLEET_AUTONOMY_LEVEL, gates)}
+    assert catalog["ctem.validation.non_readonly"] is True and catalog["ctem.mobilize"] is True
+    assert gated_tool_rules(SEEDED_FLEET_AUTONOMY_LEVEL, gates) == []
 
 
-def test_the_remediation_ticket_runs_alone_at_low():
+def test_the_openaev_validation_waits_at_low() -> None:
     gates = BUILTIN_FLEET_STRUCTURED["ctem-vuln-prioritization"]["gates"]
     catalog = {e["key"]: e for e in gate_catalog(SEEDED_FLEET_AUTONOMY_LEVEL, gates)}
-    assert catalog["ticket.create"]["impact"] == "low"
-    assert catalog["ticket.create"]["gated"] is False
-    names = {r["name"] for r in gated_tool_rules(SEEDED_FLEET_AUTONOMY_LEVEL, gates)}
-    assert "create_jira_issue" not in names
+    assert catalog["ctem.validation.non_readonly"]["gated"] is True
+    assert gated_tool_rules(SEEDED_FLEET_AUTONOMY_LEVEL, gates) == []

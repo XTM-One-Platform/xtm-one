@@ -49,6 +49,7 @@ export const PREREQUISITE_REASONS = {
   target_switched_off: "The target agent is switched off",
   deleted: "It was deleted",
   automations_off: "Every automation is off",
+  platform_health_off: "Platform Health is off in Settings",
   not_filled: "Not filled",
 } as const;
 
@@ -62,12 +63,13 @@ export const PREREQUISITE_LABELS = [
   "Handover to {name}",
   "Handover to an agent",
   "At least one automation switched on",
+  "Platform Health switched on in Settings",
   "Integration",
   "Knowledge base",
   "MCP server",
   "Sector in the organization profile",
   "Regions in the organization profile",
-  "Crown jewels in the organization profile",
+  "Primary assets in the organization profile",
   "Technology in the organization profile",
   "AI systems listed in the organization profile",
   "A tracked organization with monitoring on",

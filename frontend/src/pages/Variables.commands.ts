@@ -27,7 +27,7 @@ export default defineCommands([
     icon: Plus,
     when: ["customVariables"],
     requires: "agenticAI",
-    navigate: "/variables?new=1",
+    navigate: "/connections/variables?new=1",
   },
   {
     id: "variables.list",
@@ -35,6 +35,6 @@ export default defineCommands([
     title: "Browse variables",
     icon: Braces,
     when: ["customVariables"],
-    navigate: "/variables",
+    navigate: "/connections/variables",
   },
 ]);

@@ -31,7 +31,7 @@ needs it in your `.env`** — without it the flow library and the canvas are gon
 | Surface | With the flag off |
 | ------- | ----------------- |
 | `/flows` → `Flows` tab (the library) | Not listed; `/flows/library` normalizes to the `Agent-to-agent map` |
-| `/flows/:id/builder` (the canvas) | Redirects to `/` |
+| `/flows/library/:id` (the canvas) | Redirects to `/` |
 | ⌘K `flows.library` and every `flowBuilder.*` command | Not listed |
 | Operations → Executions | Flow feed and its `Flows` type filter are gone; a stale `?type=flows` URL falls back to `All` |
 | Chat agent picker | The `Flows` section (active chat-flows) is not fetched |
@@ -94,7 +94,7 @@ are gated together: the HITL bell item, the Executions flow feed and the
 builder canvas.
 
 Un-gating the bell would not help on its own — its deep link lands on
-`/flows/<id>/builder`, which redirects home — so the affordance cannot be
+`/flows/library/<id>`, which redirects home — so the affordance cannot be
 restored without un-hiding the canvas, which is the point of the flag.
 
 New installs are safe: nothing is seeded, and nothing can be authored through
@@ -157,7 +157,7 @@ status. TanStack Query v5's `isError` is `isLoadingError || isRefetchError`, so
 a background refetch failure flips it while `data` stays cached and usable —
 and with a 60s `staleTime` and `refetchOnWindowFocus` on, alt-tabbing away and
 back is enough to cause one. Reading it raw tore down whatever the flag gated:
-on `/flows/<id>/builder` that unmounted the canvas and took unsaved graph edits
+on `/flows/library/<id>` that unmounted the canvas and took unsaved graph edits
 with it, over a flag that was known and enabled the whole time. Any new
 consumer must do the same (`isError && !data`), which is why the hook does it
 once for everyone.

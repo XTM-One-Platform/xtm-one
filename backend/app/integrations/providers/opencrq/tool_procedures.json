@@ -1,4 +1,8 @@
 {
+  "add_opencrq_treatment_plan_moves": [
+    "tenants.getTenants",
+    "treatmentPlans.addTreatmentPlanMoves"
+  ],
   "create_opencrq_asset_dependency": [
     "assetDependencies.createSupportToPrimaryLinks",
     "assetDependencies.createSupportToSupportLinks",
@@ -38,6 +42,10 @@
   ],
   "create_opencrq_tenant": [
     "tenants.createTenantsTransaction"
+  ],
+  "create_opencrq_treatment_plan": [
+    "tenants.getTenants",
+    "treatmentPlans.createTreatmentPlan"
   ],
   "delete_opencrq_asset_dependencies": [
     "assetDependencies.deleteSupportToPrimaryLinks",
@@ -86,6 +94,10 @@
     "attackOutcomes.getMitreTechniquesForOutcome",
     "tenants.getTenants"
   ],
+  "get_opencrq_attack_path_reach": [
+    "supportingAssets.getAttackPathReach",
+    "tenants.getTenants"
+  ],
   "get_opencrq_budget_review": [
     "budgetReviews.getBudgetReview",
     "budgetReviews.getBudgetReviewFigures",
@@ -123,6 +135,7 @@
   ],
   "get_opencrq_crq_what_if": [
     "controlCapabilities.getControlCapabilities",
+    "crqIndicators.getLatestRun",
     "crqIndicators.getWhatIfResults",
     "tenants.getTenants"
   ],
@@ -130,9 +143,18 @@
     "cve.getInfo",
     "tenants.getTenants"
   ],
+  "get_opencrq_cve_exploitation": [
+    "riskScenarios.getCveExploitation",
+    "tenants.getTenants"
+  ],
   "get_opencrq_cve_finding": [
     "findingScore.getUniqueCveFinding",
     "organizations.getOrganization",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_data_health": [
+    "jobs.listAllRuns",
+    "riskScenarios.getRiskScenariosOverview",
     "tenants.getTenants"
   ],
   "get_opencrq_evidence": [
@@ -168,6 +190,7 @@
   ],
   "get_opencrq_job": [
     "jobs.getJob",
+    "jobs.getRun",
     "tenants.getTenants"
   ],
   "get_opencrq_loss_driver": [
@@ -177,6 +200,15 @@
   "get_opencrq_mitre_technique": [
     "mitreAttack.getTechniqueByExternalId",
     "mitreAttack.getTechniques",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_organization": [
+    "organizations.getOrganization",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_platform_health": [
+    "connectors.listConnectors",
+    "jobs.listAllRuns",
     "tenants.getTenants"
   ],
   "get_opencrq_platform_rbac": [
@@ -290,6 +322,7 @@
     "tenants.getTenants"
   ],
   "list_opencrq_connectors": [
+    "connectors.getStreamState",
     "connectors.listConnectors",
     "tenants.getTenants"
   ],
@@ -474,6 +507,7 @@
     "tenants.getTenants"
   ],
   "run_opencrq_crq_simulation": [
+    "crqIndicators.enqueueFamilyRecompute",
     "crqIndicators.enqueueSimulation",
     "tenants.getTenants"
   ],
@@ -484,6 +518,10 @@
   "search_opencrq_mitre_techniques": [
     "mitreAttack.getTechniques",
     "tenants.getTenants"
+  ],
+  "set_opencrq_treatment_plan_moves": [
+    "tenants.getTenants",
+    "treatmentPlans.setTreatmentPlanScope"
   ],
   "update_opencrq_asset_dependency_roles": [
     "assetDependencies.updateSupportToPrimaryLinks",
@@ -560,5 +598,9 @@
     "tenants.getTenants",
     "threatRelevanceSettings.getThreatRelevanceSettings",
     "threatRelevanceSettings.updateThreatRelevanceSettings"
+  ],
+  "update_opencrq_treatment_plan": [
+    "tenants.getTenants",
+    "treatmentPlans.updateTreatmentPlan"
   ]
 }

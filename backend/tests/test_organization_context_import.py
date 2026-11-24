@@ -30,8 +30,18 @@ def test_every_section_has_a_field_sources_and_filters():
     for section, sources in imp.SECTION_SOURCES.items():
         for source in sources:
             assert (section, source) in imp.SOURCE_FILTERS
-    # Assets need no OpenAEV: OpenCTI alone can feed them.
-    assert imp.SECTION_SOURCES["assets"] == ("openaev", "opencti")
+    # Assets need no OpenAEV: OpenCTI alone can feed them; Intune and Defender bring devices and software (#1251).
+    assert imp.SECTION_SOURCES["assets"] == (
+        "openaev",
+        "opencti",
+        "intune",
+        "defender",
+        "tanium",
+        "crowdstrike",
+        "servicenow",
+        "github",
+        "gitlab",
+    )
 
 
 def test_openaev_asset_maps_exposure_and_provenance():
@@ -97,12 +107,73 @@ def test_openaev_endpoint_without_subcategory_takes_its_platform():
     assert (unknown.category, unknown.subcategory) == ("host", "")
 
 
+def _aev_row(asset: dict[str, object]) -> oc.AssetEntry:
+    row = imp.openaev_asset(asset)
+    assert row is not None
+    return row
+
+
+def test_openaev_endpoint_carries_its_os_family_and_addresses() -> None:
+    """An OpenAEV Windows endpoint reads os_family Windows, the name Intune gives, with its MACs and IPs as keys."""
+    row = _aev_row(
+        _aev_asset(
+            "w1",
+            "lapt-0002",
+            endpoint_platform="Windows",
+            asset_mac_addresses=["40-D1-33-98-4F-63", "", None, "40-D1-33-98-4F-63"],
+            asset_ips=["10.0.0.5"],
+        )
+    )
+    assert (row.os_family, row.mac, row.ip) == ("Windows", ["40-D1-33-98-4F-63"], ["10.0.0.5"])
+    assert _aev_row(_aev_asset("m1", "m", endpoint_platform="MacOS")).os_family == "macOS"
+    assert _aev_row(_aev_asset("l1", "l", endpoint_platform="Linux")).os_family == "Linux"
+    # A platform that names no operating system leaves the family empty.
+    for platform in ("Unknown", "Generic", None):
+        assert _aev_row(_aev_asset("u1", "u", endpoint_platform=platform)).os_family == ""
+
+
 def test_batch_taxonomy_reads_a_category_a_pair_or_a_legacy_type():
     assert imp.batch_taxonomy("identity") == ("identity", "")
     assert imp.batch_taxonomy("host/server") == ("host", "server")
     assert imp.batch_taxonomy("other") == ("generic_asset", "")
     assert imp.batch_taxonomy("host/router") is None
     assert imp.batch_taxonomy("not-a-type") is None
+
+
+async def test_openaev_inventory_adds_the_non_endpoint_assets_once(monkeypatch):
+    calls: list[str] = []
+    endpoint = {"asset_id": "e1", "asset_type": "endpoint", "asset_name": "srv-01", "asset_hostname": "srv-01"}
+    rows = {
+        "/api/endpoints/search": [endpoint],
+        "/api/assets/search": [
+            {**endpoint, "asset_hostname": None},
+            {
+                "asset_id": "w1",
+                "asset_type": "asset",
+                "asset_name": "app.example.io",
+                "asset_category": "web_application",
+            },
+            {"asset_id": "t1", "asset_type": "ai_target", "asset_name": "llm"},
+        ],
+    }
+
+    async def fake_search(base_url, headers, path, filter_group, text=""):
+        calls.append(path)
+        return imp.ReadResult(rows=list(rows[path]), total=len(rows[path]))
+
+    monkeypatch.setattr(imp, "_openaev_search", fake_search)
+    read = await imp._openaev_inventory("https://aev", {}, None)
+    assert calls == ["/api/endpoints/search", "/api/assets/search"]
+    assert [r["asset_id"] for r in read.rows] == ["e1", "w1"]
+    assert read.rows[0]["asset_hostname"] == "srv-01"
+    assert read.total == 2
+    web = imp.openaev_asset(read.rows[1])
+    assert web is not None and web.name == "app.example.io" and web.external_id == "w1"
+
+    calls.clear()
+    only = await imp._openaev_inventory("https://aev", {}, None, endpoints_only=True)
+    assert calls == ["/api/endpoints/search"]
+    assert [r["asset_id"] for r in only.rows] == ["e1"]
 
 
 def test_openaev_asset_group_is_an_asset_groups_entry():
@@ -130,6 +201,18 @@ def test_opencti_system_takes_the_batch_type_labels_and_author():
         "s1",
     )
     assert imp.opencti_system(node, "not-a-type").category == "generic_asset"
+
+
+def test_a_source_code_asset_is_read_from_openaev_and_opencti_once_they_carry_it():
+    # xtm-one #1233: an OpenAEV asset or OpenCTI System typed SOURCE_CODE reads as source_code.
+    row = imp.openaev_asset(
+        _aev_asset("r1", "xtm-one", asset_category="SOURCE_CODE", asset_subcategory="CODE_REPOSITORY")
+    )
+    assert (row.category, row.subcategory) == ("source_code", "code_repository")
+    node = {"id": "s2", "name": "ci", "x_opencti_system_subcategory": "ci_cd_pipeline"}
+    system = imp.opencti_system(node, "")
+    assert (system.category, system.subcategory) == ("source_code", "ci_cd_pipeline")
+    assert imp.batch_taxonomy("source_code/software_package") == ("source_code", "software_package")
 
 
 def test_opencti_system_maps_the_asset_taxonomy_of_opencti_19943():
@@ -225,13 +308,38 @@ def test_rows_that_left_the_source_are_reported_and_kept_unless_removed():
 
 
 def test_opencrq_threshold_keeps_that_level_and_above():
+    # #1591: OpenCRQ primary assets, rated by their highest security need.
     assets = [
-        {"id": "1", "name": "A", "criticality": "low"},
-        {"id": "2", "name": "B", "criticality": "medium"},
-        {"id": "3", "name": "C", "criticality": "very_high"},
+        {"id": "1", "name": "A", "availability": "low"},
+        {"id": "2", "name": "B", "availability": "low", "confidentiality": "medium"},
+        {"id": "3", "name": "C", "traceability": "very_high"},
+        {"id": "4", "name": "D"},
     ]
-    assert [j.name for j in (imp.opencrq_jewel(a, "medium") for a in assets) if j] == ["B", "C"]
-    assert [j.criticality for j in (imp.opencrq_jewel(a, "high") for a in assets) if j] == ["critical"]
+    # A primary asset with no need rated is always kept, as high.
+    assert [j.name for j in (imp.opencrq_primary_asset(a, "medium") for a in assets) if j] == ["B", "C", "D"]
+    assert [j.criticality for j in (imp.opencrq_primary_asset(a, "high") for a in assets) if j] == ["critical", "high"]
+    assert [j.name for j in (imp.opencrq_primary_asset(a) for a in assets) if j] == ["A", "B", "C", "D"]
+    # The alias kept for one release reads primary assets too.
+    assert imp.opencrq_jewel(assets[2], "low") == imp.opencrq_primary_asset(assets[2], "low")
+
+
+def test_a_row_of_the_superseded_supporting_asset_layer_is_removed_and_a_typed_row_kept() -> None:
+    # #1591: rows an older build imported from OpenCRQ SUPPORTING assets go at the next import.
+    profile = oc.OrganizationProfile(
+        crown_jewels=[
+            oc.CrownJewel(name="Mail server", source="opencrq", external_id="s1"),
+            oc.CrownJewel(name="Mail", source="manual", opencrq_asset_id="s1"),
+        ]
+    )
+    rows = [imp.opencrq_primary_asset({"id": "p1", "name": "Messaging", "availability": "high"})]
+    read = imp.ReadResult(rows=[r for r in rows if r], total=1, superseded={"s1"})
+    plan = imp.plan_import(profile, "crown_jewels", "opencrq", read)
+    assert plan.superseded == ["Mail server"]
+    assert plan.profile is not None
+    assert [j.name for j in plan.profile.crown_jewels] == ["Mail", "Messaging"]
+    # A failed read supersedes nothing.
+    failed = imp.plan_import(profile, "crown_jewels", "opencrq", imp.ReadResult(error="x", superseded={"s1"}))
+    assert failed.superseded == []
 
 
 def test_openaev_filter_group_ands_every_filter():
@@ -260,13 +368,16 @@ def test_assets_merge_counts_new_updated_unchanged_skipped_and_keeps_hand_rows()
     rows = [
         imp.openaev_asset(_aev_asset("a1", "web-01", asset_internet_facing=True)),  # updated
         imp.openaev_asset(_aev_asset("a2", "db-01")),  # unchanged (owner kept)
-        imp.openaev_asset(_aev_asset("a3", "CRM")),  # skipped: a hand-typed row has the name
+        # New: a hand-typed row has the name, so this is a second record of it (#1178, S3),
+        # added beside it for the asset store to merge; the hand-typed row is untouched.
+        imp.openaev_asset(_aev_asset("a3", "CRM")),
         imp.openaev_asset(_aev_asset("a4", "mail-01")),  # new
     ]
     plan = imp.plan_import(profile, "assets", "openaev", imp.ReadResult(rows=rows, total=4))
-    assert (plan.new, plan.updated, plan.unchanged, plan.skipped) == (["mail-01"], ["web-01"], ["db-01"], ["CRM"])
+    assert (plan.new, plan.updated, plan.unchanged, plan.skipped) == (["CRM", "mail-01"], ["web-01"], ["db-01"], [])
     saved = {a.name: a for a in plan.profile.assets_exposure}
     assert saved["crm"].owner == "Sales" and saved["crm"].source == "manual"
+    assert saved["CRM"].source == "openaev" and saved["CRM"].external_id == "a3"
     assert saved["web-01"].internet_facing == "yes"
     assert saved["db-01"].owner == "DBA"
     assert plan.source_total == 4
@@ -278,9 +389,18 @@ def test_a_rerun_from_another_source_never_touches_the_first_source_rows():
     profile = _profile(assets_exposure=[oc.AssetEntry(name="sap", source="openaev", external_id="a1")])
     row = imp.opencti_system({"id": "a1", "name": "SAP"}, "application")
     plan = imp.plan_import(profile, "assets", "opencti", imp.ReadResult(rows=[row], total=1))
-    # Same external id, other source: not its row, and the name is taken -> skipped.
-    assert plan.skipped == ["SAP"] and not plan.updated
-    assert plan.profile.assets_exposure[0].source == "openaev"
+    # Same external id, other source: not its row; a second record of the same thing, added
+    # beside it (the asset store merges them, #1178 S3), the first source's row untouched.
+    assert plan.new == ["SAP"] and not plan.skipped and not plan.updated
+    assert plan.profile is not None
+    assert [(a.source, a.name) for a in plan.profile.assets_exposure] == [("openaev", "sap"), ("opencti", "SAP")]
+
+
+def test_an_asset_group_of_another_source_with_the_same_name_is_still_skipped() -> None:
+    profile = _profile(asset_groups=[oc.AssetGroupEntry(name="web", source="manual")])
+    row = oc.AssetGroupEntry(name="WEB", source="openaev", external_id="g1")
+    plan = imp.plan_import(profile, "asset_groups", "openaev", imp.ReadResult(rows=[row], total=1))
+    assert plan.skipped == ["WEB"] and not plan.new
 
 
 def test_the_same_import_twice_is_unchanged_the_second_time():
@@ -318,9 +438,18 @@ def test_pirs_merge_adds_and_names():
 
 def test_tech_stack_merge_never_duplicates_a_product():
     profile = _profile(tech_stack=[oc.TechStackEntry(product="Splunk")])
-    rows = [oc.TechStackEntry(product="splunk"), oc.TechStackEntry(product="CrowdStrike")]
+    rows = [
+        oc.TechStackEntry(product="splunk", source="openaev", external_id="splunk"),
+        oc.TechStackEntry(product="CrowdStrike", source="openaev", external_id="crowdstrike"),
+    ]
     plan = imp.plan_import(profile, "tech_stack", "openaev", imp.ReadResult(rows=rows, total=2))
-    assert (plan.new, plan.unchanged) == (["CrowdStrike"], ["splunk"])
+    # The typed "Splunk" is a person's row: the import never takes it over (#1134).
+    assert (plan.new, plan.skipped) == (["CrowdStrike"], ["splunk"])
+    assert plan.profile is not None
+    assert [(t.product, t.source) for t in plan.profile.tech_stack] == [
+        ("Splunk", "manual"),
+        ("CrowdStrike", "openaev"),
+    ]
 
 
 def test_provenance_names_the_source_and_filters():
@@ -345,7 +474,8 @@ async def test_options_of_a_source_that_fails_name_the_reason(monkeypatch):
 @pytest.mark.asyncio
 async def test_a_source_that_cannot_feed_the_section_is_refused_without_io():
     read = await imp.read_source(None, user_id=uuid.uuid4(), section="pirs", source="openaev", filters={})
-    assert read.error == "openaev cannot feed pirs"
+    # #1774: the refusal names what the source feeds instead.
+    assert read.error == "openaev cannot feed pirs: it feeds assets, asset_groups, tech_stack"
 
 
 @pytest.mark.asyncio
@@ -369,8 +499,12 @@ async def test_preview_counts_what_the_source_answered(monkeypatch):
         assert filters == {"tags": ["prod"]}
         return imp.ReadResult(rows=[imp.openaev_asset(_aev_asset("a1", "web-01"))], total=1)
 
+    async def no_records(*_a: object, **_k: object) -> None:
+        return None  # no organization records yet: the profile plan
+
     monkeypatch.setattr(org_context, "current_version", current)
     monkeypatch.setattr(imp, "_read_openaev", fake_read)
+    monkeypatch.setattr(imp, "_plan_on_records", no_records)
     plan, version = await imp.preview_import(
         None, user_id=uuid.uuid4(), section="assets", source="openaev", filters={"tags": ["prod"]}
     )

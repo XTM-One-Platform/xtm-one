@@ -40,24 +40,61 @@ def test_builtin_fleets_seed_in_xtm_one_and_never_in_copilot():
     assert fleet_seed.fleets_for_mode("copilot") == []
 
 
-def test_f4_posture_fleet_is_seeded_in_xtm_one_and_dev_only():
-    assert "ctem-posture" in [f["slug"] for f in BUILTIN_FLEETS]
-    assert "ctem-posture" in [f["slug"] for f in fleet_seed.fleets_for_mode("xtm_one")]
-    assert "ctem-posture" in [f["slug"] for f in fleet_seed.fleets_for_mode("dev")]
-    assert fleet_seed.fleets_for_mode("copilot") == []
+def test_exactly_four_seeded_fleets_one_generic_and_three_use_cases():
+    # CTEM-31 (#1048, Sam, 21 Nov 2026): a fifth seeded fleet is a product decision, never a fix.
+    assert [f["slug"] for f in BUILTIN_FLEETS] == [
+        "ctem-loop",
+        "ctem-vuln-prioritization",
+        "ctem-ai-security",
+        "ctem-third-party-risk",
+    ]
+    assert [f["slug"] for f in fleet_seed.fleets_for_mode("dev")] == [f["slug"] for f in BUILTIN_FLEETS]
 
 
-def test_f4_folds_the_stage_analysts_and_the_briefing_under_its_orchestrator():
+def test_the_generic_loop_folds_the_posture_stage_analysts_under_its_posture_role():
     from app.agents.builtin_agents import CTEM_POSTURE_ORCHESTRATOR_SLUG
     from app.services.ctem_verticals import CTEM_STAGE_AGENT_SLUGS
 
-    fleet = next(f for f in BUILTIN_FLEETS if f["slug"] == "ctem-posture")
-    assert fleet["orchestrator"] == CTEM_POSTURE_ORCHESTRATOR_SLUG
-    folded = {m["agent"] for m in fleet["members"]} - {CTEM_POSTURE_ORCHESTRATOR_SLUG}
-    assert folded == set(CTEM_STAGE_AGENT_SLUGS.values()) | {"exposure-briefing-analyst"}
-    assert all(m.get("parent") == CTEM_POSTURE_ORCHESTRATOR_SLUG for m in fleet["members"] if m["agent"] in folded)
-    assert [c["agent"] for c in fleet["connected"]] == ["opencti-dashboard-widget-creator"]
+    fleet = next(f for f in BUILTIN_FLEETS if f["slug"] == "ctem-loop")
+    parents = {m["agent"]: m.get("parent") for m in fleet["members"]}
+    assert parents[CTEM_POSTURE_ORCHESTRATOR_SLUG] == fleet["orchestrator"]
+    for slug in [*CTEM_STAGE_AGENT_SLUGS.values(), "exposure-briefing-analyst"]:
+        assert parents[slug] == CTEM_POSTURE_ORCHESTRATOR_SLUG, slug
+    assert "opencti-dashboard-widget-creator" in {c["agent"] for c in fleet["connected"]}
     assert fleet["entry_handovers"] == [{"from": "ctem-assistant", "type": "delegate"}]
+
+
+def test_the_generic_loop_keeps_every_agent_of_the_fleets_it_absorbs():
+    """No agent of a retired fleet is left orphaned: each is a member of the loop."""
+    from app.agents.openaev_detection_desk import DETECTION_DESK_FLEET
+    from app.agents.opencrq_risk_budget_desk import RISK_BUDGET_DESK_FLEET
+    from app.agents.opencti_pir_desk import PIR_DESK_FLEET
+
+    loop = next(f for f in BUILTIN_FLEETS if f["slug"] == "ctem-loop")
+    members = {m["agent"] for m in loop["members"]}
+    for retired in (PIR_DESK_FLEET, DETECTION_DESK_FLEET, RISK_BUDGET_DESK_FLEET):
+        assert {m["agent"] for m in retired["members"]} <= members, retired["slug"]
+        assert retired["slug"] in loop["absorbs"]
+        assert retired["orchestrator"] in loop["leads"]
+    assert "ctem-posture" in loop["absorbs"] and loop["previous_slugs"] == ["ctem-threat-response"]
+    # One home fleet per agent: no member of the loop is a member of another seeded fleet.
+    for other in BUILTIN_FLEETS[1:]:
+        assert not members & {m["agent"] for m in other["members"]}, other["slug"]
+
+
+def test_every_retired_fleet_names_its_successor_and_every_lead_is_a_member():
+    from app.agents.builtin_fleets import BUILTIN_FLEET_LEADS, RETIRED_FLEET_SUCCESSORS
+
+    assert RETIRED_FLEET_SUCCESSORS == {
+        "ctem-threat-response": "ctem-loop",
+        "ctem-posture": "ctem-loop",
+        "opencti-pir-desk": "ctem-loop",
+        "openaev-detection-desk": "ctem-loop",
+        "opencrq-risk-budget-desk": "ctem-loop",
+    }
+    for fleet in BUILTIN_FLEETS:
+        members = {m["agent"] for m in fleet["members"]}
+        assert BUILTIN_FLEET_LEADS[fleet["slug"]] <= members, fleet["slug"]
 
 
 def test_every_agent_a_builtin_fleet_names_is_a_builtin_agent():

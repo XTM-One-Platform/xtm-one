@@ -1108,9 +1108,10 @@ def platform_event_in_flow_scope(
     of theirs taking part; any other object reaches a flow one of whose agents
     takes part in it. ``scope_all`` is the administrator's every-object scope.
     """
-    from app.services.platform_events import is_platform_wide, personal_owners
+    from app.services.platform_events import is_platform_wide, is_viewer_checked, personal_owners
 
-    if scope_all or is_platform_wide(payload):
+    # A viewer-checked event (a CTEM case) is then decided by the object's own view (#933).
+    if scope_all or is_platform_wide(payload) or is_viewer_checked(payload):
         return True
     owners = personal_owners(payload)
     if owners:
@@ -1210,7 +1211,7 @@ async def _flow_node_takes(
     """
     from app.services.flow_catalog import PLATFORM_EVENT_SCOPE_ALL
     from app.services.integration_event_filters import payload_filter_reason
-    from app.services.platform_events import personal_owners, touched_workspaces
+    from app.services.platform_events import is_viewer_checked, personal_owners, touched_workspaces, user_reads_object
     from app.services.workspaces import workspace_scope_tiers
 
     config = node.get("config") or {}
@@ -1246,6 +1247,13 @@ async def _flow_node_takes(
             ids, _writable = await workspace_scope_tiers(db, str(flow.user_id))
             reads["readable"] = {str(w) for w in ids}
         if not wanted <= reads["readable"]:
+            return False
+    # A flow runs as its owner: a CTEM case reaches it only when the owner sees
+    # the case, unless the owner is an administrator with scope all (#933).
+    if is_viewer_checked(payload) and not scope_all:
+        if "object" not in reads:
+            reads["object"] = await user_reads_object(str(flow.user_id), payload)
+        if not reads["object"]:
             return False
     return True
 

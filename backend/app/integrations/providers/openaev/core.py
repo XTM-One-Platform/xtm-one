@@ -64,6 +64,7 @@ from ._common import (
     scoped_safe_request,
     stored_targets_line,
 )
+from .read_scope import area_scope, count_text, with_scope
 
 logger = logging.getLogger(__name__)
 
@@ -1227,12 +1228,18 @@ def register_core(
                 if scope
                 else f"in simulation {simulation_id}"
             )
+        empty = f"No findings found{' for ' + scope if scope else ''}"
+        if not items:
+            # OpenAEV answers an empty page to an identity without ACCESS_FINDINGS (#1444).
+            read, cause = await area_scope(hdrs, "findings")
+            if read != "full":
+                return with_scope(f"{empty}: {count_text(0, read)}.", read, cause)
         return format_entity_list(
             items,
             partial(_fmt_finding, base_url=base_url),
             noun="finding",
             total=data.get("totalElements"),
-            empty_msg=f"No findings found{' for ' + scope if scope else ''}.",
+            empty_msg=f"{empty}.",
         )
 
     # ── 23. Get vulnerability by CVE ──────────────────────────────────

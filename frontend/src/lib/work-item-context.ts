@@ -47,6 +47,8 @@ export const PICKUP_LABELS = {
   in_progress: "Being worked on",
   blocked: "Blocked: not picked up",
   blocked_on_items: "Blocked on other items",
+  waiting_for_refs: "Waiting for a change",
+  waiting_for_person: "Waiting for a decision",
   waiting_for_ci: "Waiting for CI",
   unassigned: "Unassigned: nothing picks it up",
   automatic: "Picked up automatically",
@@ -76,6 +78,8 @@ export const PICKUP_TONE: Record<WorkItemPickupState, string> = {
   in_progress: "text-filigran-ia-primary bg-filigran-ia-primary/10",
   blocked: "text-feedback-error-primary bg-feedback-error-primary/10",
   blocked_on_items: "text-accent bg-accent/10",
+  waiting_for_refs: "text-accent bg-accent/10",
+  waiting_for_person: "text-accent bg-accent/10",
   waiting_for_ci: "text-accent bg-accent/10",
   unassigned: "text-feedback-warning-tertiary bg-feedback-alert-primary/10",
   automatic: "text-feedback-success-primary bg-feedback-success-primary/10",
@@ -96,7 +100,9 @@ export const PICKUP_EXPLANATIONS = {
   finished: "Nothing acts on a finished item. Put it back in the queue to have it done again.",
   in_progress: "{agent} claimed it and is working on it. If nothing moves, put it back in the queue.",
   blocked: "Nothing picks up a blocked item until someone puts it back in the queue.",
-  blocked_on_items: "It waits for the items below and goes back to the queue by itself once every one of them is done. A cancelled one keeps it blocked.",
+  blocked_on_items: "It waits for the items below and goes back to the queue by itself once every one of them is done or one is cancelled.",
+  waiting_for_refs: "It waits for the changes below and goes back to {agent} by itself once every one of them is released: nothing to do.",
+  waiting_for_person: "It waits for a person's decision and goes back to {agent} by itself once the decision card is answered.",
   waiting_for_ci:
     "{count, plural, one {The CI of its pull request is running: when it completes, the platform hands the item to {agent} at once.} other {The CI of its # pull requests is running: when they complete, the platform hands the item to {agent} at once.}}",
   unassigned: "No owner agent is set, so nothing routes it to anyone. Complete it yourself, or ask an agent to take it over.",
@@ -207,6 +213,27 @@ export const PRIORITY_LABELS = {
 
 const TERMINAL_STATUSES: ReadonlySet<WorkItemStatus> = new Set(["done", "cancelled"]);
 
+/**
+ * Whether the item waits for *readerId* as the Waiting for me filter reads it
+ * (services/work_item.py `_waits_for_person_clause`): a decision owed by the reader
+ * (`needs_human`, its recipient the reader, else its user), or the reader's own item
+ * no agent owns, open past its due date. A scheduled item never waits for anyone.
+ */
+export function waitsForReader(
+  // A list row (`scheduled` its view) or a graph item node (`scheduled` a flag).
+  item: Pick<WorkItem, "needs_human" | "waits_for_user_id" | "status" | "user_id" | "owner_agent_id" | "due_at"> & {
+    scheduled: WorkItem["scheduled"] | boolean;
+  },
+  readerId: string | undefined,
+  now: number = Date.now(),
+): boolean {
+  if (!readerId || item.scheduled || TERMINAL_STATUSES.has(item.status)) return false;
+  if (item.needs_human) return (item.waits_for_user_id ?? item.user_id) === readerId;
+  return (
+    item.user_id === readerId && !item.owner_agent_id && item.status === "open" && !!item.due_at && Date.parse(item.due_at) < now
+  );
+}
+
 /** Whether the item waits for a person's answer (#9437): its decision card shows. */
 export function waitsForAnswer(item: Pick<WorkItem, "needs_human" | "status">): boolean {
   return !!item.needs_human && !TERMINAL_STATUSES.has(item.status);
@@ -231,26 +258,37 @@ export function unfinishedBlockers(item: Pick<WorkItem, "context">): WorkItemBlo
   return (item.context?.blocked_on ?? []).filter((b) => !b.status || !TERMINAL_STATUSES.has(b.status));
 }
 
-/** The items it waits for that were cancelled: the platform then keeps it blocked for good. */
+/** The items it waits for that were cancelled: the platform hands it back to its owner (a legacy row may still show it). */
 export function cancelledBlockers(item: Pick<WorkItem, "context">): WorkItemBlockerRef[] {
   return (item.context?.blocked_on ?? []).filter((b) => b.status === "cancelled");
 }
 
-/** Whether an item it waits for was cancelled: the platform then keeps it blocked for good. */
+/** Whether an item it waits for was cancelled: the platform hands it back to its owner (a legacy row may still show it). */
 function hasCancelledBlocker(item: Pick<WorkItem, "context">): boolean {
   return cancelledBlockers(item).length > 0;
 }
 
 /**
- * What a blocked item needs: `waiting` when at least one item it
- * depends on is unfinished and none was cancelled (it reopens by itself,
- * nothing to do), `action` otherwise (a scheduled leftover, a run cut by a
- * restart, a blocked set by hand, a cancelled dependency: someone puts it
- * back in the queue or closes it). `null` when the item is not blocked.
+ * The pickup states of a blocked item the platform releases by itself besides
+ * its items: a reference, a person's answer. A blocked item waiting for CI keeps
+ * its own "Blocked" chip and CI tooltip.
+ */
+const SELF_RELEASED: ReadonlySet<WorkItemPickupState> = new Set(["waiting_for_refs", "waiting_for_person"]);
+
+/**
+ * What a blocked item needs: `waiting` when the platform releases it by
+ * itself (at least one item it depends on is unfinished and none was
+ * cancelled; or the server says it waits for a reference or a person's
+ * answer: #861), `action` otherwise (a scheduled leftover, a run cut by
+ * a restart, a reason only, a cancelled dependency: someone puts it back in
+ * the queue or closes it). `null` when the item is not blocked.
  */
 export function blockedKind(item: Pick<WorkItem, "status" | "context">): "waiting" | "action" | null {
   if (item.status !== "blocked") return null;
-  return unfinishedBlockers(item).length > 0 && !hasCancelledBlocker(item) ? "waiting" : "action";
+  if (hasCancelledBlocker(item)) return "action";
+  if (unfinishedBlockers(item).length > 0) return "waiting";
+  const state = item.context?.pickup.state;
+  return state && SELF_RELEASED.has(state) ? "waiting" : "action";
 }
 
 /**
@@ -276,23 +314,83 @@ export function blockedReason(item: Pick<WorkItem, "result">): string | null {
   return result || null;
 }
 
-/**
- * The pull requests and issues a blocked item still waits for: every
- * `blocked_on_refs` entry the code host has not reported merged or closed.
- * Empty when the item is not blocked.
- */
-export function pendingBlockedRefs(item: Pick<WorkItem, "status" | "blocked_on_refs">): WorkItemBlockedRef[] {
-  if (item.status !== "blocked") return [];
-  return (item.blocked_on_refs ?? []).filter((ref) => ref.state !== "merged" && ref.state !== "closed");
+/** Whether a reference is satisfied, as `work_item_blocked_refs._satisfied` reads it. */
+function refSatisfied(ref: WorkItemBlockedRef): boolean {
+  if (ref.kind === "deployment") return ref.state === "deployed";
+  if (ref.kind === "workflow_run") return ref.state === "succeeded";
+  return ref.state === "merged" || ref.state === "closed";
 }
 
 /**
- * `owner/name#12` for a pull request and for an issue alike: the icon and the
- * localised "Issue:" / "Pull request:" prefix of the accessible name carry the
- * kind, so no English word lands in the rendered text.
+ * The references a blocked item still waits for: every `blocked_on_refs`
+ * entry not satisfied yet (a pull request or issue not merged or closed, a
+ * deployment not live, a workflow with no successful run). Empty when the
+ * item is not blocked.
  */
-export function blockedRefLabel(ref: Pick<WorkItemBlockedRef, "repo" | "number">): string {
-  return `${ref.repo}#${ref.number}`;
+export function pendingBlockedRefs(item: Pick<WorkItem, "status" | "blocked_on_refs">): WorkItemBlockedRef[] {
+  if (item.status !== "blocked") return [];
+  return (item.blocked_on_refs ?? []).filter((ref) => !refSatisfied(ref));
+}
+
+/**
+ * `owner/name#12` for a pull request, an issue and the deployment of a pull
+ * request; `owner/name@1a2b3c4` for the deployment of a commit;
+ * `owner/name: release.yml` for a workflow run. The icon and the localised
+ * kind of the accessible name carry the kind, so no English word lands in
+ * the rendered text.
+ */
+export function blockedRefLabel(ref: Pick<WorkItemBlockedRef, "repo" | "number" | "sha" | "workflow" | "kind">): string {
+  if (ref.kind === "workflow_run") return `${ref.repo}: ${ref.workflow ?? ""}`;
+  if (ref.number != null) return `${ref.repo}#${ref.number}`;
+  if (ref.sha) return `${ref.repo}@${ref.sha.slice(0, 7)}`;
+  return ref.repo;
+}
+
+/**
+ * What releases a reference, in a sentence a person reads: the explanation of
+ * a waiting item names one per kind it waits for. Read by
+ * `refReleaseSentences`. @i18n-keys
+ */
+const REF_RELEASE_EXPLANATIONS = {
+  pull_request: "A pull request releases it once merged or closed.",
+  issue: "An issue releases it once closed.",
+  deployment: "A deployment releases it once the change runs in production.",
+  workflow_run: "A workflow releases it at its next successful run.",
+} as const satisfies Record<WorkItemBlockedRef["kind"], string>;
+
+/**
+ * The pull request sentence when every pull request waited for is released
+ * by the same event (#842, J.2): "merged or closed" only when that is what the
+ * references say. Read by `t_i18n(...)`. @i18n-keys
+ */
+const PULL_REQUEST_RELEASE = {
+  merged: "A pull request releases it once merged.",
+  closed: "A pull request releases it once closed.",
+} as const;
+
+/** The kinds of *refs*, each once, in the order `REF_RELEASE_EXPLANATIONS` lists them. */
+function refKindsOf(refs: Pick<WorkItemBlockedRef, "kind">[]): WorkItemBlockedRef["kind"][] {
+  const kinds = new Set(refs.map((ref) => ref.kind));
+  return (Object.keys(REF_RELEASE_EXPLANATIONS) as WorkItemBlockedRef["kind"][]).filter((kind) => kinds.has(kind));
+}
+
+/**
+ * One release sentence per kind of reference *refs* holds (never one per
+ * reference: each reference stays a chip under "Waits for"), as untranslated
+ * keys. The pull request sentence follows `release_on`: "merged" when every
+ * pull request waits for its merge, "closed" when every one waits for its
+ * close, "merged or closed" otherwise (#842, J.2).
+ */
+export function refReleaseSentences(
+  refs: Pick<WorkItemBlockedRef, "kind" | "release_on">[],
+): { kind: WorkItemBlockedRef["kind"]; text: string }[] {
+  return refKindsOf(refs).map((kind) => {
+    if (kind !== "pull_request") return { kind, text: REF_RELEASE_EXPLANATIONS[kind] };
+    const events = new Set(refs.filter((ref) => ref.kind === "pull_request").map((ref) => ref.release_on));
+    const only = events.size === 1 ? [...events][0] : null;
+    const text = only === "merged" || only === "closed" ? PULL_REQUEST_RELEASE[only] : REF_RELEASE_EXPLANATIONS.pull_request;
+    return { kind, text };
+  });
 }
 
 /**
@@ -304,9 +402,14 @@ export function blockedWithoutReason(item: Pick<WorkItem, "status" | "blocked_wh
   return item.status === "blocked" && !!item.blocked_why?.missing;
 }
 
-/** Whether "Mark done" belongs on the row: not on an item that waits for open dependencies. */
+/**
+ * Whether "Mark done" belongs on the row: not on an item that waits for open
+ * dependencies or references (released by itself); an item waiting for a
+ * person's decision keeps it, as before.
+ */
 export function offersMarkDone(item: Pick<WorkItem, "status" | "scheduled" | "context">): boolean {
-  return canClose(item) && blockedKind(item) !== "waiting";
+  if (!canClose(item)) return false;
+  return blockedKind(item) !== "waiting" || item.context?.pickup.state === "waiting_for_person";
 }
 
 /** Whether the item can still be completed or cancelled by hand. */

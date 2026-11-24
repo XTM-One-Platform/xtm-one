@@ -23,13 +23,30 @@ Every piece of Platform Health work is a run of one of the fleet's assignments, 
 
 ## Settings > Automations > Platform Health
 
-| Section | What it sets |
+The settings are one section. A bar at its top (**On this page**) jumps to its four groups, each with a link that can be shared (`#health-settings-status`, `#health-settings-spend`, `#health-settings-checks`, `#health-settings-alerts`), then to the companion pets:
+
+| Group | Blocks |
+|---|---|
+| Status and scope | Status (enable, name), scope |
+| Spend limits | Budget, analysis, Module Analyst (XTM One modes) |
+| Health checks | Schedule, signals, module thresholds, durations, dry-run |
+| Alerts | Alert emails |
+
+| Block | What it sets |
 |---|---|
 | Enable, name, scope, budget | Whether Platform Health works, the name the entry points and refusals use, which agents and flows it supervises among those their managers enrolled (all of them, or a list), and its budget per cycle and per month, in tokens and in dollars. |
+| Analysis | Whether the routing model explains the findings, and its hard ceilings per day and per month, in tokens and in dollars (see [Analysis](#analysis)). |
 | Schedule | When each fleet-wide cycle starts, as a cron expression in the time zone chosen: memory consolidation (default every night at 02:00), quality review (Mondays 03:00), flow review (Mondays 04:00) and the weekly digest (Mondays 07:00). Each can be switched off. A schedule never fires at start-up: it first fires at its next occurrence. |
 | Signals | The thresholds below, each with its own switch. |
+| Alert emails | Off by default. On, Platform Health emails the recipients named (up to 20) from the platform sender: one email per critical finding as soon as a health pass opens it, once per finding, and one digest a day (UTC) of the open findings at or above the minimum severity, sent only when there is at least one. Each of the two can be switched off. Nothing is sent while the platform email (SMTP) is not configured; no model call. |
 | Durations | How long an applied proposal is watched for a regression (7 days), how long a flow that replaces an assignment runs in shadow first (3 days), how long it is watched after the switch (7 days), and how many shadow runs it needs (5). |
 | Dry-run | Every write of every Platform Health agent is logged instead of executed: memory changes, proposals, sandbox copies. Digests count what was logged. |
+
+### Spend limits locked by default
+
+Platform Health spends outside the agentic quota: its own ceilings are the only bound on that spend. They are therefore **locked by default**. In the **Spend limits** group, the ceilings of the Budget, Analysis and Module Analyst blocks show their built-in defaults, read-only, with a lock and the variable that unlocks them; a change to one of them is refused. A value stored before the lock is kept, not applied.
+
+To change them, set `PLATFORM_HEALTH_SPEND_LIMITS_UNLOCKED=true` in the platform's environment and restart: the stored values apply again and the ceilings are editable. The switches of the analysis and of the Module Analyst stay editable either way, since turning them off only lowers the spend. `GET /api/v1/health/settings/spend-limits` reports the lock and, for each ceiling, the value in force, its default, the stored value and its source (`default` or `database`).
 
 ### Name
 
@@ -70,7 +87,7 @@ In XTM One mode, AI switched off included, the health pass also checks the XTM O
 | Registration token | Critical | `PLATFORM_REGISTRATION_TOKEN` is the published default value, which authenticates nobody |
 | Licence | Critical | A Filigran licence is installed and refused (no licence installed is Community Edition, not a finding) |
 | Licence expiry | Warning | The validated Filigran licence expires within 30 days |
-| Email (SMTP) | Info | No SMTP host is configured, so the platform sends no email |
+| Email (SMTP) | Info | No SMTP host is configured, so the platform sends no email (nor can agents, through the Platform email integration) |
 | XTM Hub registration | Info | The platform is not registered with XTM Hub, or its registration lost connectivity or must be done again |
 | Integration broken | Warning | A company-managed integration is in error, must be re-authorized, or failed its last connection test (one finding per integration) |
 | MCP server broken | Warning | An enabled company-managed MCP server could not renew its OAuth token (one finding per server) |
@@ -88,6 +105,12 @@ In XTM One mode, AI switched off included, the health pass also checks the XTM O
 
 A finding resolves by itself after two passes in a row without its cause; fixing or deleting the integration, server or knowledge base it names resolves it too.
 
+## Run checks as
+
+The agentic checks of OpenCTI, OpenAEV and OpenCRQ read each module through its integration, as one user: the **Run checks as** user. The XTM One administrator often has no access to the modules, so an administrator picks a user who has, in **Settings > Agents and automations > Platform Health > Health checks > Run checks as**, or on the **Modules** step of the guided **Set up the CTEM loop** setup. The user must reach every registered module's integration (granted to them and connected for them): otherwise the save is refused and the message names the modules the user cannot read.
+
+There is no other identity: while no user is set, or when the user loses access to a module, no agentic check of that module runs and its card on the Platform Health page reads **Checks need a run-as user with <Module> access**, with a link to the setting. Set the user, then **Run checks now**: the card shows the checks passed, warned and failed.
+
 ## OpenCTI checks
 
 In XTM One mode, AI switched off included, every registered OpenCTI is checked every 5 minutes, with no enrolment. The heartbeat check reads the registration; the others read the health snapshot OpenCTI sends with its registration, as long as it is under 15 minutes old. An OpenCTI release that sends no snapshot is only checked for its heartbeat. Nothing is stored while `PLATFORM_REGISTRATION_TOKEN` is the published default value.
@@ -95,13 +118,15 @@ In XTM One mode, AI switched off included, every registered OpenCTI is checked e
 | Check | Severity | Fails when |
 |---|---|---|
 | Heartbeat | Critical | OpenCTI has not registered for 15 minutes |
-| Connector silent | Warning | An active connector has not reported for 30 minutes (one finding per connector) |
-| Connector errors | Warning | A connector has over 10 works in error (one finding per connector) |
-| Queue depth | Warning | Over 100,000 messages wait in the broker |
+| Connector silent | Warning | An active connector has not reported for 30 minutes (one finding per connector) (E) |
+| Connector errors | Warning | A connector has over 10 works in error (one finding per connector) (E) |
+| Queue depth | Warning | Over 100,000 messages wait in the broker (E) |
 | No queue consumer | Critical | Messages wait in the broker and no worker reads them |
 | Search engine | Warning, Critical | The Elasticsearch or OpenSearch cluster is yellow (warning) or red (critical) |
-| Search engine disk | Warning | The search engine disk is over 85 % used |
-| Ingestion lag | Warning | Ingestion lags by over 15 minutes |
+| Search engine disk | Warning | The search engine disk is over 85 % used (E) |
+| Ingestion lag | Warning | Ingestion lags by over 15 minutes (E) |
+
+The figures marked (E) are defaults. An administrator changes them in **Settings > Agents and automations > Platform Health > Module thresholds** (XTM One modes only; Edit, then Save), or with the Platform Health settings API (`PUT /api/v1/health/settings`, keys `opencti.connector_stale_minutes`, `opencti.connector_errors_max`, `opencti.queue_depth_max`, `opencti.search_disk_max_percent`, `opencti.ingestion_lag_minutes`); the next pass, within 5 minutes, reads them.
 
 ## OpenAEV checks
 
@@ -111,8 +136,10 @@ In XTM One mode, AI switched off included, every registered OpenAEV is checked e
 |---|---|---|
 | Heartbeat | Critical | OpenAEV has not registered for 15 minutes |
 | Healthcheck | Warning, Critical | OpenAEV reports a failing healthcheck of a type (mail server, agent or executor, security platform collector, injector contract, ...): critical when one is in error, a warning otherwise (one finding per type) |
-| Integration silent | Warning | An injector, collector or executor has not reported for 60 minutes (one finding per integration) |
-| Agents offline | Warning | Over half of the agents are offline |
+| Integration silent | Warning | An injector, collector or executor has not reported for 60 minutes (one finding per integration) (E) |
+| Agents offline | Warning | Over half of the agents are offline (E) |
+
+The figures marked (E) are defaults, changed like the OpenCTI ones, in the same **Module thresholds** block (keys `openaev.integration_silent_minutes` and `openaev.agents_offline_max_percent`).
 
 ## OpenCRQ checks
 
@@ -123,6 +150,50 @@ In XTM One mode, AI switched off included, every registered OpenCRQ is checked e
 | Heartbeat | Critical | OpenCRQ has not registered for 15 minutes |
 | Job failing | Warning | The last run of a background job ended in the dead-letter queue (one finding per job) |
 
+## Agent checks
+
+Every 15 minutes, in every mode, the health pass checks the agents enrolled in Platform Health, and them alone: after an upgrade no agent is enrolled. These checks read counts, statuses and ids, never conversation content, and call no model. With AI switched off agents do not run, so they record nothing and an open finding is kept as it was.
+
+| Check | Severity | Fails when |
+|---|---|---|
+| Assignment failing | Warning | The last 3 judged runs of an enabled assignment failed |
+| Schedule silent | Info | An enabled schedule has not run for 14 days |
+| Cost spike | Warning | A day's tokens are over 3 times the agent's daily average |
+| Owner disabled | Warning | The agent's owner account is deactivated |
+| Failure spike | Warning | Over 5 % of an assignment's last 20 settled runs failed |
+| Feedback drop | Warning | The agent's weighted feedback score is 10 points under the window before |
+| Cost drift | Info | The cost per run is up 20 % on the window before |
+| Model change | Info | The last day's runs used a model the 7 days before did not |
+| Integration broken | Warning | An integration bound to the agent is in error, must be re-authorized, or failed its last connection test |
+| Orphaned claims | Warning | A work item the agent owns is held by a run that ended |
+| Blocked without blocker | Info | A blocked work item the agent owns names nothing it waits for |
+
+The feedback drop, failure spike and cost drift checks read the thresholds of the [signals](#signals). A finding resolves by itself after two passes in a row without its cause; pausing or deleting the assignment, or unenrolling the agent, resolves it too.
+
+## Analysis
+
+The checks above are deterministic and never call a model. The **analysis** is an optional layer on top of them: one call to the platform routing model per module, which reads that module's open findings (check ids, severities, categories, subject ids and measured values; no conversation content) and writes a short explanation and the order in which to apply the fixes.
+
+- It is **off by default**, and runs only where AI runs (licensed, switched on).
+- A module is analysed only when its open findings changed, at most once a day, or when an administrator asks for it. A failed or refused analysis counts as that day's attempt: the schedule tries again the next day, and an administrator can run it at once.
+- A failed model call counts its full reserved cost against the ceilings, since a provider may bill a call that timed out.
+- It has a **hard ceiling** in tokens and in dollars, per day and per month. Before each call, the platform reserves the call's worst case on today and on this month; a call that would cross any ceiling is refused and the module shows *Ceiling reached*. After the call, the reservation is replaced by what the call really cost.
+- The default ceilings are **100,000 tokens and 1 USD a day, 3,100,000 tokens and 31 USD a month**. They come from a measured run: one analysis of a module with 33 open findings cost 4,763 tokens; the most an analysis reads (60 findings) stays under 8,000 tokens, so the daily default covers two analyses of six modules.
+- A ceiling cleared to no value refuses every analysis (*Ceiling not set*).
+- Analysis calls are traced under their own source, **Platform Health**, visible in LLM analytics. They are not counted in any agentic quota or agentic execution count.
+- **Analyse now does not re-run a check**: it rewrites the explanation from the findings already stored. **Run checks now** on a module card runs that module's checks again and stores new evidence. A finding from a module check made by an older version of XTM One, or whose evidence is more than a day old, is marked as possibly outdated: the analysis never recommends a rollback, a restart or any other disruptive action from it and points to **Run checks now** instead.
+- After an upgrade, every registration with a finding from the previous check logic gets one new round of its module checks on its own, within the usual spend limits; until it lands, the API serves that finding with `stale: true` and the build that produced it (`check_build`).
+
+Administrators switch the analysis on and set its four ceilings under **Settings > Automations > Platform Health > Analysis**. The **Platform Health** page shows an **Analysis** panel under the score history: today's and this month's spend against each ceiling, then each module's latest analysis (its explanation, or why it did not run: *Ceiling reached*, *Ceiling not set*, AI off, no routing model) and an **Analyse now** action, unavailable while AI is off or a ceiling is cleared.
+
+The API is `GET /api/v1/health/analysis` (the latest analysis per module, the ceilings and the spend, and the Module Analyst's ceilings and spend under `module_analyst`) and `POST /api/v1/health/analysis/{module}/run` (an analysis now), both for administrators.
+
+### Module Analyst spend limits
+
+In the XTM One modes, the **Module Analyst** investigates each registered OpenCTI, OpenAEV and OpenCRQ read-only when its findings change and once a day, and attaches recommendations to the findings. It has its own ceilings, outside the agentic quota and outside the Platform Health budget above: tokens per cycle, tokens and dollars per UTC day and per calendar month. Its calls are traced as **Platform Health** and never counted in agentic quotas.
+
+Administrators switch it on or off and set its five ceilings in the **Module Analyst** block of **Settings > Agents and automations > Platform Health > Spend limits**, next to the analysis; the block shows today's and this month's spend against them. The defaults are **80,000 tokens per cycle, 500,000 tokens and 4 USD a day, 10,000,000 tokens and 60 USD a month**: a quiet cycle measured about 22,600 tokens per module. A model call that would cross a ceiling is refused and the cycle stops with what it has written; a ceiling cleared to no value refuses every call.
+
 ## Digest
 
 Each cycle ends with a digest built from what the cycle actually did:
@@ -131,19 +202,20 @@ Each cycle ends with a digest built from what the cycle actually did:
 - the findings, new and already known;
 - the experiments, by outcome;
 - the proposals filed, applied and rolled back, and how many are unmeasured;
-- the budget spent;
+- the budget spent (for a Module Analyst cycle, against its own ceiling);
+- for a Module Analyst cycle, the recommendations it attached, by confidence, and the agentic findings of its module opened and resolved;
 - everything skipped or not completed, with the reason (budget reached, a run that failed, experiments skipped).
 
 A cycle reads **Completed** only when its run completed with nothing skipped. Otherwise it reads **Partly completed**, **Budget reached**, **Failed** or **Cancelled**. A figure that could not be read is shown as *Unavailable*, never as 0. The orchestrator's own report, written in the platform language, is shown under the figures.
 
-The weekly digest assignment summarizes the cycles closed since the previous one; its result appears in the dashboard's latest results.
+The weekly digest assignment summarizes the cycles closed since the previous one, with a **Modules** part for the Module Analyst (cycles run, recommendations attached, agentic findings opened and resolved, spend against its ceiling); its result appears in the dashboard's latest results.
 
 ## The Platform Health page
 
 Administrators find every proposal, cycle and signal on the **Platform Health** page (`/health`):
 
 - **Improvements**: every proposal, filtered by type and status, with its measured result, the number of writes simulated during its experiment, and its evidence. Evidence the viewer may not open is counted, not linked.
-- **Cycles**: every cycle and its digest.
+- **Cycles**: every cycle and its digest; a Module Analyst cycle is listed as **Module Analyst**.
 - **Signals**: the signals currently crossed, and whether each started an investigation.
 
 Managers see the proposals and cycles of the agents and flows they manage on those pages (see [Platform Health](../usage/health.md)).

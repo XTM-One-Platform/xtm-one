@@ -34,7 +34,23 @@ simulations, injects and findings. The events map to triggers as follows
   ``exercise_status`` = ``FINISHED``;
 * ``atomic_test_finished``: resource ``INJECT``, ``UPDATE``, filtered on a
   closed ``inject_status`` (``EXECUTED``, ``PARTIAL``, ``ERROR``);
-* ``finding_created``: resource ``FINDING``, ``CREATE``.
+* ``finding_created``: resource ``FINDING``, ``CREATE``;
+* ``finding_updated`` / ``finding_deleted``: resource ``FINDING``, ``UPDATE``
+  / ``DELETE`` (CTEM-15, #918);
+* ``asset_created`` / ``asset_updated``: resource ``ASSET``, ``CREATE`` /
+  ``UPDATE``;
+* ``asset_stale``: resource ``ASSET``, ``UPDATE``, filtered on
+  ``asset_status`` = ``STALE``: OpenAEV's freshness job raises one asset
+  update when an asset stays unseen past the tenant's
+  ``asset_stale_after_days`` (off at 0), a path 6 signal of the CTEM loop;
+* ``vulnerability_created``: resource ``VULNERABILITY``, ``CREATE``;
+* ``scenario_score_degraded``: resource ``SCENARIO``, ``SCORE_DEGRADATION``
+  (OpenAEV's semantic event, valid on scenarios only): a mitigation that was
+  proven no longer holds, a path 8 signal of the CTEM loop.
+* ``critical_asset_reached``: resource ``SIMULATION``, ``CRITICAL_ASSET_REACHED``
+  (CTEM-13): a finished simulation's attack path reached an asset of high or
+  very high criticality, a path 4 signal. Optional (:data:`OPTIONAL_EVENTS`):
+  an OpenAEV that refuses it keeps the other triggers.
 
 Every object is named ``XTM One - <fleet> - <purpose>``; a trigger adds
 `` - <event>``, which is how the receiver names the event of a delivery
@@ -78,7 +94,18 @@ EVENTS: dict[str, tuple[str, str, str | None, tuple[str, ...]]] = {
     "simulation_finished": ("SIMULATION", "UPDATE", "exercise_status", ("FINISHED",)),
     "atomic_test_finished": ("INJECT", "UPDATE", "inject_status", ("EXECUTED", "PARTIAL", "ERROR")),
     "finding_created": ("FINDING", "CREATE", None, ()),
+    "finding_updated": ("FINDING", "UPDATE", None, ()),
+    "finding_deleted": ("FINDING", "DELETE", None, ()),
+    "asset_created": ("ASSET", "CREATE", None, ()),
+    "asset_updated": ("ASSET", "UPDATE", None, ()),
+    "asset_stale": ("ASSET", "UPDATE", "asset_status", ("STALE",)),
+    "vulnerability_created": ("VULNERABILITY", "CREATE", None, ()),
+    "scenario_score_degraded": ("SCENARIO", "SCORE_DEGRADATION", None, ()),
+    "critical_asset_reached": ("SIMULATION", "CRITICAL_ASSET_REACHED", None, ()),
 }
+#: Events an older OpenAEV may not know: a refused trigger is recorded as unsupported and
+#: never fails the assignment's other triggers (``critical_asset_reached``: CTEM-13).
+OPTIONAL_EVENTS: frozenset[str] = frozenset({"critical_asset_reached"})
 
 #: ``(method, path, json)`` -> ``(status, body)``; the body is ``None`` on 404.
 Api = Callable[[str, str, Any], Awaitable[Any]]
@@ -262,14 +289,20 @@ async def reconcile(
     try:
         notifier_id = await _ensure_notifier(api, state.get("notifier_id"), notifier_body(name, url, secret))
         trigger_ids: dict[str, str] = {}
+        unsupported: list[str] = []
         for event in spec["events"]:
-            trigger_ids[event] = await _ensure_trigger(api, held.get(event), trigger_body(spec, event, notifier_id))
+            try:
+                trigger_ids[event] = await _ensure_trigger(api, held.get(event), trigger_body(spec, event, notifier_id))
+            except OpenAEVApiError:
+                if event not in OPTIONAL_EVENTS:
+                    raise
+                unsupported.append(event)
         for event, stale_id in held.items():
             if event not in trigger_ids and stale_id:
                 await api("delete", f"/api/notification-triggers/{stale_id}", None)
     except Exception as exc:  # one assignment never breaks the pass
         return {**state, "status": "error", "error": str(exc)[:500], "checked_at": stamp}
-    return {
+    out: dict[str, Any] = {
         "status": "provisioned",
         "error": None,
         "name": name,
@@ -278,6 +311,10 @@ async def reconcile(
         "fingerprint": fingerprint(name, ",".join(spec["events"]), url),
         "checked_at": stamp,
     }
+    if unsupported:
+        # The OpenAEV instance predates these events: retried at the next check.
+        out["unsupported_events"] = unsupported
+    return out
 
 
 async def remove(api: Api, state: dict[str, Any]) -> str | None:
@@ -307,35 +344,49 @@ def due_for_check(state: Any, now: datetime) -> bool:
 
 
 def bound_integration_id(assignment: Any, agent: Any) -> str | None:
-    """The OpenAEV integration the assignment acts through (its own binding, else the agent's)."""
-    own = getattr(assignment, "integration_bindings", None)
-    bindings = own if isinstance(own, dict) else getattr(agent, "integration_bindings", None)
-    if not isinstance(bindings, dict):
-        return None
-    value = bindings.get(PROVIDER)
-    if isinstance(value, list):
-        value = value[0] if value else None
-    return str(value) if value else None
+    """The OpenAEV integration the assignment binds (its own binding, else the agent's)."""
+    from app.services.trigger_provisioning import direct_binding_id
+
+    return direct_binding_id(assignment, agent, PROVIDER)
+
+
+async def openaev_integration_id(db: Any, assignment: Any, agent: Any) -> tuple[str | None, str]:
+    """``(integration_id, "")`` the assignment provisions through, else ``(None, reason)``.
+
+    A direct binding first; else the agent's ``openaev`` template binding,
+    resolved for the provisioning run-as user (never the seed owner, #9188).
+    """
+    from app.services.fleet_run_as import NO_RUN_AS_REASON, provisioning_user_id
+    from app.services.trigger_provisioning import template_integration_id, uses_template
+
+    integration_id = bound_integration_id(assignment, agent)
+    if integration_id:
+        return integration_id, ""
+    if not uses_template(agent, PROVIDER):
+        return None, "no OpenAEV integration bound to the assignment or its agent"
+    user_id = provisioning_user_id(assignment, agent)
+    if user_id is None:
+        return None, NO_RUN_AS_REASON
+    return await template_integration_id(db, agent, PROVIDER, "OpenAEV", user_id)
 
 
 async def _connection(db: Any, assignment: Any, agent: Any) -> tuple[Api, str, str] | str:
     """``(api, integration_id, secret)`` or the reason it cannot be built."""
-    from app.core.security import configured_secret
-    from app.integrations.providers.openaev._common import _api, _headers
+    from app.integrations.providers.openaev._common import _api, _headers, is_not_found_error
     from app.models.integration import Integration
     from app.services.integration_tools import _get_token
-    from app.services.vault import reveal_json_field
+    from app.services.trigger_provisioning import receiver_secret
 
-    integration_id = bound_integration_id(assignment, agent)
+    integration_id, reason = await openaev_integration_id(db, assignment, agent)
     if not integration_id:
-        return "no OpenAEV integration bound to the assignment or its agent"
+        return reason
     integration = await db.get(Integration, uuid.UUID(integration_id))
     if integration is None or integration.provider != PROVIDER:
         return f"OpenAEV integration {integration_id} not found"
     # The receiver checks X-OpenAEV-Token against this reading, a vault reference resolved (#6080).
     try:
-        extra = await reveal_json_field(integration, "extra_config_enc") if integration.extra_config_enc else None
-        secret = configured_secret((extra if isinstance(extra, dict) else {}).get("webhook_secret"))
+        # A platform-managed integration gets its secret generated here (#970).
+        secret = await receiver_secret(integration)
     except Exception as exc:  # unreadable config, unreadable vault secret or unusable secret
         return f"the OpenAEV integration's webhook_secret cannot be read: {type(exc).__name__}"
     if not secret:
@@ -357,7 +408,7 @@ async def _connection(db: Any, assignment: Any, agent: Any) -> tuple[Api, str, s
     async def api(method: str, path: str, body: Any) -> Any:
         resp, err = await _api(base_url, headers, method, path, f"{method} {path}", json=body)
         if err:
-            if method == "get" and "404" in err:
+            if method == "get" and is_not_found_error(err):
                 return None
             raise OpenAEVApiError(err)
         if resp is None or not resp.content:

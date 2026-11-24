@@ -22,13 +22,15 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Iterator, Mapping
 from pathlib import Path
 
-#: Seconds of one worker each test file took on CI (files of 2 s and more), read
-#: from the JUnit reports of the eight unit shards of run 44534423144
-#: (scripts/refresh_shard_durations.py).
+#: Seconds of one worker each test file took on CI (files of 2 s and more): the
+#: committed fallback of the table the nightly runs publish (scripts/shard_weights.py).
 DURATIONS_PATH = Path(__file__).with_name("shard_durations.json")
+
+#: The Browser tool job's table: its tests run one at a time, under a real Chromium.
+CHROMIUM_DURATIONS_PATH = Path(__file__).with_name("shard_durations_chromium.json")
 
 #: What a file the table does not name weighs: the median file takes under a second.
 UNTIMED_SECONDS = 1.0
@@ -63,6 +65,21 @@ def shard_node_ids(node_ids: Iterable[str], index: int, total: int) -> frozenset
     return frozenset(sorted(set(node_ids))[index - 1 :: total])
 
 
+def durations_path(value: str | None) -> Path:
+    """``PYTEST_SHARD_DURATIONS``: the table the run's select job handed every job (``scripts/shard_weights.py``).
+
+    Unset, the committed unit table. Set, it must read: a job that fell back on
+    another table than its siblings would deal the files differently, and a
+    file would run twice or never.
+    """
+    if not value:
+        return DURATIONS_PATH
+    path = Path(value)
+    if not path.is_file():
+        raise ValueError(f"PYTEST_SHARD_DURATIONS names {value!r}, which is not a file")
+    return path
+
+
 def load_durations(path: Path = DURATIONS_PATH) -> dict[str, float]:
     return {name: float(seconds) for name, seconds in json.loads(path.read_text(encoding="utf-8")).items()}
 
@@ -81,3 +98,19 @@ def shard_files(files: Iterable[str], durations: Mapping[str, float], index: int
         if job == index - 1:
             kept.add(name)
     return frozenset(kept | (EVERY_SHARD & set(files)))
+
+
+def dealt_files(root: Path, selected: Collection[str] | None, marker: str | None) -> Iterator[str]:
+    """The test files a ``PYTEST_SHARD_SPLIT=files`` job deals out, as paths from ``root``.
+
+    Only the files the job runs: the selected ones (``PYTEST_SELECTED_FILES``;
+    every one when ``selected`` is None) and, under ``PYTEST_MARKED_FILES``, those
+    that spell ``marker``. The files it leaves out would otherwise weigh in the
+    deal, and the shards would get unequal shares of the files they do run.
+    """
+    from tests.marked_files import skips_file
+
+    for path in sorted((root / "tests").rglob("test_*.py")):
+        name = path.relative_to(root).as_posix()
+        if (selected is None or name in selected) and (marker is None or not skips_file(path, marker)):
+            yield name

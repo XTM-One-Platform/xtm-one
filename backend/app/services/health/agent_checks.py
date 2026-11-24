@@ -58,6 +58,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.docs_links import docs_url
 from app.services.fleet_health_signals import (
     FAILING_RUNS,
     SILENT_AFTER,
@@ -76,7 +77,7 @@ MODULE = "agents"
 #: How often the agent checks run (section 3, "Scheduling").
 AGENT_CHECK_INTERVAL = timedelta(minutes=15)
 #: Where a finding of these checks is explained.
-DOC_LINK = "/docs/administration/platform-health#agent-checks"
+DOC_LINK = docs_url("administration/health", "agent-checks")
 
 
 AgentRead = Callable[[AsyncSession, datetime, list[uuid.UUID]], Awaitable[list[CheckResult]]]
@@ -545,6 +546,9 @@ async def _owned_open_items(db: AsyncSession, agents: list[uuid.UUID]) -> dict[u
                 WorkItem.blocked_on_refs,
                 WorkItem.blocked_reason,
                 WorkItem.needs_human,
+                WorkItem.ask,
+                WorkItem.payload,
+                WorkItem.action_mode,
             ).where(WorkItem.owner_agent_id.in_(agents), WorkItem.status.in_(WORK_ITEM_OPEN_STATUSES))
         )
     ).all()
@@ -598,11 +602,16 @@ async def blocked_without_blocker_items(db: AsyncSession, now: datetime, agents:
             str(row.id)
             for row in owned.get(agent_id, [])
             if row.status == "blocked"
+            # A scheduled one-off has its own reschedule and cancel actions (#862).
+            and getattr(row, "action_mode", None) is None
             and blocked_without_blocker(
                 blocked_on=row.blocked_on,
                 blocked_on_refs=row.blocked_on_refs,
                 blocked_reason=row.blocked_reason,
                 needs_human=row.needs_human,
+                owner_agent_id=row.owner_agent_id,
+                ask=row.ask,
+                payload=row.payload,
             )
         )
         results.append(
@@ -613,7 +622,10 @@ async def blocked_without_blocker_items(db: AsyncSession, now: datetime, agents:
                 bool(bare),
                 {"agent_id": str(agent_id)},
                 evidence={"values": {"items": bare[:10], "count": len(bare)}},
-                recommendation="Name what each item waits for (blocked_on, blocked_on_refs or a reason) or reopen it.",
+                recommendation=(
+                    "Give each item a blocker the platform releases (blocked_on, blocked_on_refs) or park it for a "
+                    "person with needs_human and an ask card; else reopen it."
+                ),
             )
         )
     return results

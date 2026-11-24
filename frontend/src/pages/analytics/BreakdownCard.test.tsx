@@ -54,7 +54,7 @@ const ROWS = [
   row({ agent_id: "owned", agent_name: "Owned Bot", owner_id: "u1", owner_name: "Ann Example", owner_email: "ann@example.com", total_cost: 1 }),
 ];
 
-function renderTable(linkEntities: boolean, url = "/analytics") {
+function renderTable(linkEntities: boolean, url = "/observability") {
   const empty = { isLoading: false, isError: false };
   return renderWithProviders(
     <MemoryRouter initialEntries={[url]}>
@@ -146,12 +146,12 @@ describe("Cost breakdown by agent", () => {
     const owner = screen.getByText("Ann Example").closest("[title]") as HTMLElement;
     expect(owner.getAttribute("title")).toBe("Ann Example\nann@example.com");
     expect(owner.closest("a")).toBeNull();
-    expect(screen.queryAllByRole("link").some((el) => el.getAttribute("href") === "/users/u1")).toBe(false);
+    expect(screen.queryAllByRole("link").some((el) => el.getAttribute("href") === "/users-and-groups/users/u1")).toBe(false);
   });
 
   it("reads its filters back from the URL under its own prefix", () => {
     // A reload or a shared link: the Status filter comes from `ba_`.
-    renderTable(true, "/analytics?breakdown=agents&ba_f_status=deleted");
+    renderTable(true, "/observability?breakdown=agents&ba_f_status=deleted");
     expect(screen.getByText("Old Bot")).toBeTruthy();
     expect(screen.queryByText("Shared Bot")).toBeNull();
     expect(screen.queryByText("Paused Bot")).toBeNull();
@@ -159,7 +159,7 @@ describe("Cost breakdown by agent", () => {
 
   it("ignores the keys of the other analytics tables", () => {
     // The Top errors table (`te_`) and the users breakdown (`bu_`) share the page.
-    renderTable(true, "/analytics?te_q=Shared&bu_f_group=Analysts");
+    renderTable(true, "/observability?te_q=Shared&bu_f_group=Analysts");
     expect(screen.getByText("Shared Bot")).toBeTruthy();
     expect(screen.getByText("Private Bot")).toBeTruthy();
   });
@@ -170,7 +170,7 @@ describe("Cost breakdown by agent", () => {
     const empty = { isLoading: false, isError: false };
     const groups = ["Lab OpenCRQ users", "Analysts", "Responders"];
     renderWithProviders(
-      <MemoryRouter initialEntries={["/analytics?breakdown=users"]}>
+      <MemoryRouter initialEntries={["/observability?breakdown=users"]}>
         <BreakdownCard
           breakdown="users"
           onBreakdownChange={() => {}}
@@ -246,7 +246,7 @@ describe("Cost breakdown by agent", () => {
       ...Array.from({ length: 197 }, (_, index) => person(index + 3, ["All Users", "Filigran", "Product - XTM One"])),
     ];
     renderWithProviders(
-      <MemoryRouter initialEntries={["/analytics?breakdown=users"]}>
+      <MemoryRouter initialEntries={["/observability?breakdown=users"]}>
         <BreakdownCard
           breakdown="users"
           onBreakdownChange={() => {}}
@@ -280,7 +280,7 @@ describe("Cost breakdown by agent", () => {
     // UX round 2 on #10980: 10 columns drew 989 px in the 800 px card at 1080.
     const empty = { isLoading: false, isError: false };
     renderWithProviders(
-      <MemoryRouter initialEntries={["/analytics?breakdown=models"]}>
+      <MemoryRouter initialEntries={["/observability?breakdown=models"]}>
         <BreakdownCard
           breakdown="models"
           onBreakdownChange={() => {}}

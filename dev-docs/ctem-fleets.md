@@ -43,10 +43,23 @@ Trigger types an assignment accepts today: `schedule`, `webhook`,
 (`agent_builder.ASSIGNMENT_TRIGGER_TYPES`). `platform_event` covers
 `work_item.*`, `run.*`, `platform.release.deployed` and, for a module's
 upgrade, `integration.version.changed` (a registered platform's heartbeat
-reporting a new version, `services/integration_versions.py`; #584).
+reporting a new version, `services/integration_versions.py`; #584; and a
+connector of a registered OpenCTI reporting another `version`, read every
+5 minutes by the autonomous tick while a subscriber exists, as a
+subscriber's run-as user, the payload adding `component_kind`,
+`component_id`, `component_name`, `component_slug`:
+`services/integration_component_versions.py`).
 The version itself is read on demand by `manage_openaev_settings` action
 `version`, `get_opencti_platform_version` (GraphQL `about { version }`) and
-`get_opencrq_platform_version` (the public tRPC `health` procedure).
+`get_opencrq_platform_version` (the public tRPC `health` procedure). The
+source of a build baseline is the version XTM One registered, the string the
+CTEM Command Center chips show (`PlatformRegistration.platform_version`, with
+its `-dev.<sha>`): `get_platform_overview` returns it per module under
+`registered_modules` (version, commit, status, healthy, `registered_at`,
+`last_heartbeat_at`), and each of the three version tools names it beside the
+module's live answer, labelled a fallback; when the two differ the answer
+names both and infers no upgrade or downgrade (`core/module_versions.py`,
+#888).
 The OpenCTI integration exposes notifier and trigger management
 (`manage_opencti_trigger`, `manage_opencti_notifier`) that S2 builds on; per
 the program brief, the OpenCTI integration event is a create / update / delete
@@ -133,6 +146,11 @@ built-in, JSON output schema per unit of work (section 5 reads it).
 
 ## 4. The four seeded fleets
 
+Since CTEM-31 (#1048, section 14) the seeded set is the generic CTEM loop
+(F1 core, F4 and M1 to M3 folded in as roles), F2 vulnerability management,
+F3 AI security and F5 third-party risk. The per-fleet sections below keep
+describing each role.
+
 Common rules:
 
 - Built-in, company-managed, seeded by S1 from a spec file under
@@ -143,6 +161,42 @@ Common rules:
   work item with `needs_human: true` (approval). Read and draft actions do not.
 - Work-item keys `ctem:<fleet>:<object id>`; shared-state key per fleet
   `ctem:<fleet>:state` (open cases, last refresh, counters for ROI).
+- **The loop fleets run on cases (#891, ownership #1390).** The CTEM loop
+  owns every case on every trigger path (section 14). Its "Case opened or
+  reopened" automation (platform_event, scope all, seeded off) hears
+  `ctem_case.opened`, `ctem_case.reopened`, `ctem_case.sla_breached`,
+  `ctem_case.validation_finished`, `ctem_case.retest_requested` and
+  `ctem_case.stalled`. A case never waits on nobody: the hourly case sweep
+  raises `ctem_case.stalled` on an open case with no open needs_human `ctem:`
+  item of the case, no armed `ctem-loop-reminder:` timer and no case event for
+  `CTEM_CASE_STALL_HOURS` (default 6), once per stall window, and the owning
+  fleet re-runs its loop; every loop run ends on an ask to a named person with a
+  deadline, an armed reminder, or a terminal state. A use-case
+  fleet takes the cases of its own paths only while its case automation is
+  enabled (Vulnerability management: `new_vulnerability`). The owner is
+  computed when the event is published (`services/ctem_case_routing.py`
+  stamps `owner_fleet`) and each automation filters on it, so exactly one
+  fleet runs a case. Case events fire once: on fleet enable and on the
+  hourly case sweep, `catch_up` hands every open case its owner never ran
+  (no open `ctem:<fleet>:case:<id>` item, no `owner_requested` case event for
+  that owner) one `ctem_case.opened`, P1 first, soonest SLA first, 100 per
+  pass. `GET /ctem-cases/{id}` answers `owner_fleet` {slug, name, active};
+  the case page header shows "Owned by <fleet>" linked to the fleet page, or
+  "No active fleet owns this case" when it is null or inactive.
+  The run owns one work item `ctem:<fleet>:case:<case id>` (an open
+  one gets a note, never a second loop), writes owner, state, validation
+  (`record_ctem_case_validation`) and ticket (`record_ctem_case_ticket`) on the
+  case, and closes on proof: a passing re-test resolves the case. Re-test items
+  are keyed `ctem:<fleet>:retest:<case id>`. The event listeners record a
+  signal (`record_ctem_signal`) instead of starting a loop; the scope gate
+  opens or joins the case. `ctem:f1:state` and `ctem:f2:state` keep counters
+  only; migration `c891ctemfleetcase1` dropped their open and closed lists
+  with a dated note. The dropped open items are discarded: no fleet pass
+  re-records them (the F2 daily pass re-ranks existing cases, the F1 weekly
+  sweep covers the last 7 days); one reaches a case again only on a new
+  signal, and the note lists their identifiers (first 50) so an operator can
+  record a signal by hand. Gates are unchanged. Tests:
+  `tests/test_ctem_fleets_on_cases.py`.
 - **Bounded shared state (#10789).** Every seeded persona that keeps a list in
   shared state states its bound: a closed case leaves the open list and only
   bumps the counters, a history or closed list is appended with `keep_last`
@@ -227,12 +281,17 @@ Assignments (on the orchestrator):
 
 | Name | Trigger | Does |
 |---|---|---|
-| New relevant threat | `integration_event` OpenCTI create on Intrusion-Set, Campaign, Report (S2) | Triage, then the loop below |
+| New relevant threat | `integration_event` OpenCTI create on Intrusion-Set, Campaign, Report (S2), listen-only (#1580) | Provisions the OpenCTI trigger; the webhook route records the `relevant_threat` signal, no run |
+| Threat activity flagged in a PIR | `integration_event` OpenCTI PIR playbook, listen-only (#1580) | Provisions the PIR playbook; the delivery records the `relevant_threat` signal, no run |
+| Threat signal recorded | `platform_event` `ctem_signal.recorded` and `ctem_signal.triaged`, filter `trigger_path` `relevant_threat`, `source_provider` `opencti`, `pir_floor_met` true (#1678: the listener stamps it when a PIR score at delivery reaches the policy's `pir_min_score_threat`; below it the signal waits for the weekly sweep), verdict `to_validate` or none; `max_concurrent_runs` 5, ordered by `signal_id`; takes the switch of New relevant threat on upgrade | Triage of a signal the case loop does not own yet; a confirmed signal opens its case through the case loop |
 | Weekly threat sweep | `schedule` `0 7 * * 1` | Catches what events missed |
 | Re-test due | `work_item` prefix `ctem:f1:retest:` | Re-runs the validated scenario after a fix |
 
-Loop: relevance (score against sector, regions, tech stack, PIRs; below the
-threshold the case closes as "not relevant", with the reason) -> OpenAEV
+Loop: relevance (score against sector, regions, tech stack, PIRs; one rule,
+`CTEM_RELEVANCE_RULE` in `builtin_agents.py`, read by the analyst, the
+orchestrator and the prompts (#1678): relevant at a score of 50 or more, or on
+a PIR flag at or above `pir_min_score_threat`; otherwise the case closes as
+"not relevant", with the reason) -> OpenAEV
 scenario proposed (approval) -> results read -> OpenCRQ expected loss updated
 -> top 3 actions, detections drafted, ticket (approval) -> re-test closes the
 case. Units: threat triaged, scenario built, loss updated, action closed.
@@ -500,7 +559,13 @@ in the versioned store `organization_context_versions` (S3, #8987;
 `services/organization_context.py` validates them and names the missing
 ones). Every agent reads it with the core tool `get_organization_context`;
 `GET /api/v1/organization-context` serves it, `PUT` (administrators) saves
-the next version with its source (`form`, `draft`, `api`). The free-text
+the next version with its source (`form`, `draft`, `api`). A `PUT` carrying
+`based_on_version` answers 409 when another version was saved since, and
+every save answers `removed_rows` (list field -> the rows the version before
+held and this one no longer holds). `GET /organization-context/versions/{n}`
+reads a past version whole and `POST /organization-context/versions/{n}/restore`
+(`fields`, `based_on_version`) saves the next version with those fields taken
+from it, provenance `restored from v<n>` (administrators). The free-text
 `company-context` knowledge base stays as background prose only:
 
 | Field | Type | Read by |
@@ -513,7 +578,21 @@ the next version with its source (`form`, `draft`, `api`). The free-text
 | PIRs | OpenCTI PIR ids (`manage_opencti_pir` exists today) | F1, F3 relevance |
 | risk appetite | loss threshold per year, approval threshold | F1, F2, F3 approvals and ranking |
 | loaded hourly rate, currency | number | ROI (section 5) |
+| reference exchange rates (`fx_rates`, optional, not a contract field) | from currency, to currency, rate, date (`as_of`), source | `ctem-risk-quantifier`, `opencrq-risk-desk-orchestrator` |
 | ticketing target | integration and project | Mobilization |
+
+Currencies (#1383): OpenCRQ prices every loss in USD; the thresholds of the
+risk appetite are in the profile's `currency`. A risk agent never compares
+the two: it converts an OpenCRQ figure with the profile's reference rate
+into the organization's currency (`reference_rate`, the latest `as_of`
+wins) and cites the rate, its date and its source, or, with no such rate,
+reports the comparison as unknown (`above_approval_threshold: null` in the
+Risk Quantifier's output) and names the missing rate. The rates are set by
+the API (`PUT /api/v1/organization-context` with `fx_rates`) or through an
+agent (`update_organization_context` / a proposal on `fx_rates`); a form
+save that does not send the key keeps the stored rates. They are shown in
+the always-on summary next to the currency, at most ten, and are not a
+category of the index.
 
 Every new agent's persona carries a "Read the organization context first"
 step; a missing field is reported in the run output, never guessed.
@@ -553,7 +632,14 @@ categories preloaded after the block come from the same cascade on
 `organization_context_categories` (platform JSON list, default `[]`; agent
 and assignment NULL = inherit, a list, empty included, wins;
 `resolve_categories`), each capped at `PRELOAD_MAX_CHARS` = 6,000 characters
-with the call that reads the rest. A run of a fleet member keeps the fuller
+with the call that reads the rest. The brief notice of an incomplete
+profile ("Organization context incomplete: missing ...", #11586) and the
+CTEM-only fields (`CTEM_ONLY_FIELDS`: PIRs, risk appetite thresholds,
+loaded hourly rate, ticketing target) are CTEM-scoped (#1384): the summary,
+the fleet block and the tool reading name them only when
+`organization_context.ctem_work_for` holds (the agent holds CTEM tools, a
+built-in CTEM case or signal agent or the `ctem_read` group, or its home
+fleet is a seeded CTEM fleet or a fork of one). A run of a fleet member keeps the fuller
 fleet block above instead, so the profile appears once; resolved off,
 neither block. An explicit `off` on the agent or the assignment also removes
 the tool (`tools_enabled_for`, in `agent_chat` and `assignment_engine`);
@@ -596,7 +682,15 @@ that administrator:
 - OpenCRQ to profile: a `very_high` asset no jewel names joins the profile
   as a `critical` crown jewel linked to it;
 - a jewel whose asset OpenCRQ no longer holds is reported
-  (`not_in_opencrq`) and kept.
+  (`not_in_opencrq`) and kept;
+- a link never makes a typed jewel an OpenCRQ row: it stays `manual` with
+  `opencrq_asset_id` as a link (only a row with no `source` at all, saved
+  before provenance, reads as an OpenCRQ row);
+- a synced jewel whose pushed criticality falls below the crown-jewel sync's
+  `min_criticality` becomes a typed row linked to its asset
+  (`kept_below_sync_threshold`), so the sync never removes a jewel for a
+  criticality the reconcile wrote. A sync with `remove_gone` removes only the
+  rows stamped with its own `sync_id`; the others are reported (`gone_kept`).
 
 A changed profile is saved as the next version with source `api`.
 
@@ -971,7 +1065,10 @@ OpenCTI pass in `services/opencti_trigger_provisioning.py`) creates in
 OpenCTI, under the bound integration's identity, a Generic webhook notifier
 posting to `/api/hooks/integrations/<integration>/assignments/<assignment>`
 with `X-OpenCTI-Token` set to the integration's `webhook_secret` (no secret:
-nothing is provisioned, the state says why), and a live knowledge trigger with
+nothing is provisioned, the state says why; a platform-managed integration,
+which the registration writes without one, gets a secret generated and stored
+in its extra config by the first pass that needs it,
+`trigger_provisioning.receiver_secret`, #970), and a live knowledge trigger with
 the filters (`entity_type`, `objectLabel` by resolved label id,
 `x_opencti_score` gte) and that notifier. Both are named
 `XTM One - <fleet> - <purpose>`.
@@ -983,6 +1080,18 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   change of event types replaces the trigger.
 - Removed: when `provision` is dropped, the assignment is disabled or deleted.
   An unbound integration leaves the state `orphaned` with the reason.
+- Bound: the assignment's binding, else its agent's; an agent that reaches the
+  module only by template binding (`integration_template_bindings`, the seeded
+  agents) gets the integration its provisioning run-as user resolves at run
+  time (`trigger_provisioning.template_integration_id`: the user's own first,
+  else a company-wide one, oldest first so the receiver URL stays stable; never
+  the seed owner). None resolvable: the state says `template binding opencti:
+  no OpenCTI integration resolvable for the run-as user`. The OpenAEV pass and
+  the CTEM-08 live PIR score re-read (the provisioned `integration_id`) follow
+  the same rule, and so does the event poller (`event_poller._poll_integration`,
+  the OpenCRQ job events): a template-resolved integration is polled as the
+  run-as user. A poll that reads nothing says why in `get_assignment`
+  (`Poll skipped: <reason>`, `event_poll_skip:<assignment>`, a day).
 - Visible: `opencti_provisioning` (status, trigger_id, notifier_id, error,
   checked_at) is returned with the assignment's `trigger_config`, next to
   `last_triggered_at`.
@@ -998,6 +1107,78 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   these types (`fromTypes`; a sighting's `sighting_of_ref`), so
   `{"entity_types": ["stix-sighting-relationship"], "from_types":
   ["Vulnerability"]}` is a sighting of a vulnerability.
+- Relationship target, type and CVSS (CTEM-08): `to_types` keeps a
+  relationship whose target is of these types (`toTypes`, parent types
+  included); `relationship_types` names the relationship type (`has`,
+  `targets`...), matched on `entity_type`, which is the relationship type of
+  a relationship in OpenCTI; `min_cvss` (0 to 10, gte on
+  `x_opencti_cvss_base_score`) is read on the delivered object, so it applies
+  to a Vulnerability, never to a relationship.
+- Trigger rule "a vulnerability on software we run" (CTEM-08):
+  `trigger_config.runs_in_profile: "source"` (beside `provision`, never
+  sent to OpenCTI) keeps a relationship delivery only when its source
+  (`source_value` of the OpenCTI extension) names a tech stack product
+  (product name or CPE) or an asset (name or external id) of the primary
+  organization profile. The receiver reads it before the trigger's filter,
+  gate or run (`services/ctem_trigger_rules.py`); a drop is counted on the
+  assignment with its reason. The F2 orchestrator's "Vulnerability on
+  software we run" listener uses it on `has` from Software, Infrastructure
+  or System to Vulnerability, whatever KEV or EPSS. The OpenCTI signal
+  listener records the source in the signal's `evidence.software`, so the
+  scope gate resolves the signal to that product.
+- Checked at save time (#970): create and update (REST and the agent
+  builder tools) run the provider's `read_provision_spec` on the trigger as
+  it will be saved (`trigger_provisioning.provision_spec_error`) and refuse
+  an unusable block with the pass's own message, never 15 minutes later.
+  `organization_context` is a list of profile field names (`["pir_ids"]`,
+  any of `pir_ids`, `regions`, `sector`): the values are read from the
+  primary organization profile, so an object such as `{"pir_ids": [...]}` is
+  refused. A subset of the profile PIRs is not supported: the playbook
+  listens to every PIR of the profile; narrow the PIRs in the profile.
+- Trigger rule "PIR score thresholds" (CTEM-08):
+  `trigger_config.pir_min_score: "policy"` (beside `provision`, never sent
+  to OpenCTI) holds a PIR playbook delivery (below) to the threshold of the
+  primary profile's prioritization policy: `pir_min_score_vulnerability`
+  (default 70) for a Vulnerability, `pir_min_score_threat` (default 75) for
+  threat activity (intrusion set, threat actor, campaign, malware). Both are
+  policy settings, bounded 0 to 100, never constants. The delivered score
+  lags one change, so the receiver re-reads the entity's live
+  `pirInformation(pirId)` for each delivered PIR with the trigger's OpenCTI
+  integration and starts the run when one PIR reaches the threshold; a score
+  it cannot read drops the delivery naming why (a narrowing rule never widens
+  on an outage). A delivery whose entity is not of the listener's
+  `provision.entity_types` is dropped too, since one playbook per listener
+  delivers every flag of the profile PIRs, and so is any type the policy has
+  no threshold for (a report, an indicator): the rule fails closed. Seeded
+  on "Vulnerability flagged in a PIR" (F2) and "Threat activity flagged in a PIR" (F1), both opt-in;
+  the playbook keeps `pir_min_score` 1 so the policy, not the provisioned
+  object, holds the threshold and an edit in Settings needs no reprovision.
+- PIR flags (CTEM-05): `provision.mode: "pir_playbook"` (with
+  `organization_context: ["pir_ids"]`, required) provisions an OpenCTI
+  playbook instead of a live trigger. OpenCTI flags an entity in a PIR
+  through its internal `in-pir` relationship and writes the entity's
+  `pir_information` without a stream event, so a live trigger with a
+  `pir_score` filter never sees the flag. The playbook entry built for it,
+  "Listen PIR events" (`PLAYBOOK_DATA_STREAM_PIR`), listens to the profile
+  PIRs (enter and score change, `pir_score` gte `pir_min_score`), then
+  "Send to notifier" posts to the same Generic webhook notifier and
+  receiver, delivered to the integration's own OpenCTI user only (the
+  notifier component checks that user's access to the entity, markings
+  and organisations included). Same naming, state block, recheck and
+  removal as a trigger; any drift (a node edited, the playbook stopped)
+  rebuilds the playbook; switching mode deletes the other object. The
+  delivery records a signal on the path the entity type gives
+  (`relevant_threat`, `new_vulnerability`) with `evidence.pir`
+  `[{pir_id, score_at_delivery}]`: ids and score only, the criteria and
+  the causing relationship stay in OpenCTI. Read in a lab on OpenCTI
+  master (21 Nov 2026): an entity entering a PIR is delivered once (type
+  create); a repeated flag with the same score is not delivered; each
+  score change is delivered once (type update) but carries the score
+  before the change, because OpenCTI renders the entity before rewriting
+  its PIR information. The delivery key therefore includes the delivered
+  PIR information, and the fleet reads the live score from OpenCTI
+  before acting. Leaving a PIR is not delivered (the delete toggle stays
+  off).
 
 ### 8.2 Event enrichment
 
@@ -1092,8 +1273,31 @@ kinds and `event_poller` polls them every 60 s.
   inclusive, so the run at the cursor comes back and the seen set skips it
   (`message_id` = `opencrq:<tenant>:<run id>`). The first poll starts from now.
 - The run receives `entity`: run id, kind, status, enqueued, started and
-  finished times, processed and expected totals, progress message, trigger,
-  attempt, tenant and the instance URL.
+  finished times, processed and expected totals, progress message (OpenCRQ's
+  `currentStep`), trigger, attempt, tenant and the instance URL.
+- Moved scenarios (#1663): a `crq-price-recompute` run's progress message is
+  a JSON summary; its `moved` ids, `movedCount` and, when OpenCRQ reports it,
+  `movedAle` travel as `moved_scenario_ids`, `moved_count` and `moved_ale`
+  (`risk_scenario_id`, `ale_before`, `ale_after`, `ale_delta`) on the payload
+  top level and the entity, merged across a coalesced page. The filter keys
+  of every OpenCRQ event (`FILTER_KEYS`, declared in the catalog) are
+  `tenant_id`, `kind`, `risk_scenario_ids`, `moved_scenario_ids` and
+  `moved_count`, all payload fields, so `{"moved_scenario_ids": "<id>"}`
+  runs the assignment when that scenario moved.
+- Coalescing (#1417): a poll page is ONE event, not one per job. The newest
+  run is the entity and the `message_id`; `covers` lists the runs of the page
+  (their own `message_id`s, marked seen at dispatch), `run_count` counts them,
+  and a run that reports progress and processed nothing (`expectedTotal`
+  set, `processedTotal` 0) is no event. A kind that never reports progress
+  (`crq-price-recompute`) ends at 0 whatever it re-priced, so its runs are
+  kept. The `riskScenarioId(s)` of a job payload travel as
+  `entity.risk_scenario_ids` and on each `covers` entry. The event carries
+  `coalesce_key` = `opencrq:<tenant>:<event>`; the poller copies it into the
+  trigger context and `trigger_or_queue_assignment` folds a later event with
+  the same key into the run of the same assignment still queued
+  (`services/event_coalescing.py`, status `coalesced`). The risk desk's three
+  event assignments run with `max_concurrent_runs: 1`: a burst of 30 jobs
+  starts one run and queues at most one more.
 
 ### 8.6 Known limit and the next slices
 
@@ -1553,6 +1757,16 @@ estimate, on top of the table. Before a default is saved the bar says
 what it rewrites ("Applies to 12 members, 3 keep their override", A3);
 the save gives the same Undo toast as a bulk action.
 
+**One Members fold (#1387).** Under the Capabilities card (open first),
+the fleet defaults, the toolbar, the selection bar and the table sit in
+one "Members" section, folded by default: folded, one bar reads the home
+and connected member counts and the current defaults (context, scope,
+instruction) with a Show / Hide toggle; open, the defaults form shows
+whole (no nested toggle), then the toolbar and the table. An unsaved
+defaults edit or a selection keeps it open. A link with a members search,
+filter or sort (`mq`, `mrole`, `mstate`, `msort`, `mdir`) or `mopen=1`
+opens it; Hide over such a link writes `mopen=0`. No localStorage.
+
 **Selection and bulk actions (B1).** The table uses the shared selection
 of the product, never a page-local bar or a native checkbox:
 - `SelectionBox` (`role="checkbox"`) on each row only; there is no
@@ -1782,6 +1996,57 @@ each UI PR, the wireframes above are ASCII).
 
 ## 11. Fleet control: autonomy level, Enable, Pause all, Resume, Back to not set up (#9769, #11060)
 
+**CTEM gate catalog (#916, CTEM-34).** The four CTEM loop fleets
+(threat response, vulnerability prioritization, AI security, third-party
+risk) declare one gate per loop stage, from
+`app.agents.builtin_fleet_docs.CTEM_GATE_KEYS`:
+
+| Key | Stage | Impact |
+|---|---|---|
+| `ctem.validation.non_readonly` | Validate: create or launch an OpenAEV scenario or atomic test | destructive (high on third-party risk, which has no OpenAEV step) |
+| `ctem.analyst_review` | Review of the threat package before its security coverage is requested | low |
+| `ctem.remediation.decision` | Decide the remediation option and record it as an OpenCRQ treatment plan | high |
+| `ctem.mobilize` | Tickets, owners notified, prepared change handed over: one decision per case | destructive |
+| `ctem.production_change` | A change applied on production through an integration | high |
+| `ctem.accept_risk` | Residual risk accepted beyond the policy cap | high |
+| `ctem.close_without_retest` | A case closed with no passing re-test | high |
+
+No seeded gate names a tool or a grant (#1675, Sam, 24 Nov 2026): every tool
+is offered and runs when called; a gate that waits is one decision item the
+orchestrator files between two steps (`needs_human`, its ask card), and the
+Gate answered run reads the answer and sets the case's next state itself. The
+analyst review still offers `apply_opencti_draft` with Live writes off, by its
+key (`builtin_fleet_docs.GATE_OFFERED_TOOLS`), never paused.
+At the seeded level (Low) two gates wait per case (Sam, 23 Nov 2026): the
+OpenAEV validation (on the three fleets with the OpenAEV validation step) and
+`ctem.mobilize`; every other gate runs and the case records it as passed
+automatically. Reads and drafts are never a decision. One decision per
+validation: its ask names the scenario or atomic test, its targets, schedule
+and safe mode, and the answer covers creating and launching exactly that; a
+new target, schedule or object is a new decision, by the persona. The coverage
+request is under `ctem.analyst_review` alone (#1467). Full human gates: every
+gate waits. Full autonomous: nothing waits. A pin (`wait` or `run`) moves one gate
+either way on a built-in fleet too. The former keys (`ticket.create`,
+`openaev.*.launch`, `supplier.action`) are gone from these fleets: a ticket is
+the Mobilize action, so one Mobilize decision covers every ticket of its case.
+The review step (CTEM-16): the vulnerability and threat orchestrators draft the
+threat package as an OpenCTI Grouping (the vulnerability or threat, software,
+attack patterns, a note on the exploitation conditions) and request its
+security coverage, which OpenAEV builds its scenario from; the coverage
+follows the run's OpenCTI draft. Out of the box the request runs and the case
+records "analyst review skipped by policy"; pinned `wait`, the request pauses
+as a decision until a person answers, or until the analyst sets the mark label
+on the Grouping in OpenCTI (`analyst-reviewed`, or the policy's
+`analyst_review_label`): the vulnerability fleet's listen-only assignment
+"Analyst review mark" provisions the Grouping update trigger, and the webhook
+route (`services/ctem_analyst_mark.py`) approves the coverage requests waiting
+on that Grouping and resumes their runs, the resolution naming the mark. A
+pause holding any other call is left to a person.
+The personas name no approval of their own: they apply the catalog the run
+prompt states (`tests/test_ctem_gate_catalog_916.py` pins it). A gate that
+waits is a decision of the unified system (`dev-docs/human-gates.md`), never a
+CTEM-specific card.
+
 **Not set up stays Not set up (#11060).** A person's (`PUT /assignments/{id}`)
 or an agent's (`update_assignment`) switch-off of an automation that has never
 run (`execution_count` 0 and no `last_triggered_at`,
@@ -1797,12 +2062,13 @@ The routes (`backend/app/api/v1/fleets.py`) and their service
 |---|---|---|---|
 | `PATCH /fleets/{id}` `autonomy_level` | `full_gates`, `medium`, `low` (built-in fleet default, #10005), `autonomous`; audit `autonomy_level_change` | lower: whoever manages the fleet; raise: an administrator | allowed (no model call) |
 | `GET /fleets/{id}/approval-gates` | The approval gate catalog the level acts on (`Fleet.approval_gates`, else the documentation's gates; #10000), the gates proposed from the members' configuration (`services/fleet_gate_proposals.py`: one gate per bound integration and impact class naming its write tools, read-only bindings and tool scoping honoured; impact table: read never gated, mark or draft `low`, send, reply, forward, delete, isolate, payment or signature `destructive`, every other write `high`) and the approvals that exist outside the level (agent and automation human in the loop, tool-call approval). Also `autonomy_level`, `effective_catalog` (every gate the level acts on with `source` stored, documentation or computed, `pin`, `tools`, `gated` and `by_level`: the cursor's before-click preview) and `computed_catalog_on` (#10153). No model call, no quota (#10014) | whoever sees the fleet | allowed |
-| `PUT /fleets/{id}/autonomy` | One click of the cursor (#10153): `{level, pins?}` applied in one transaction, `pins` = `{gate key: "wait" \| "run"}` (per-action overrides, `Fleet.approval_pins`; a built-in fleet takes the level only). On a custom fleet it turns the computed catalog on. Audit `autonomy_level_change` with level and pins before and after | lower the level, pin "wait", drop a "run" pin: whoever manages the fleet; raise, pin "run", drop a "wait" pin: an administrator | allowed |
-| `PUT /fleets/{id}/approval-gates` | Stores a custom fleet's catalog (accepted proposals or edited gates, validated as `DocGate`, unique keys); a built-in fleet is refused (the seed writes its catalog). Audit `approval_gates_change` | add: whoever manages the fleet; remove a gate, a tool of one or lower its impact: an administrator | allowed |
-| `POST /fleets/{id}/enable` | Enable fleet (S4b): every automation that is off switches on (seeded, paused by a person, by Pause all), never one an emergency stop holds; the seeded fleet automations run as `run_as_user_id` (the caller by default, another user an administrator's choice). All or nothing: 400 while the run-as user misses a module an automation needs (`fleet_run_as.missing_providers`), 409 when nothing is off or during an emergency stop. `dry_run` answers the plan (each automation, its modules, what is missing) for the setup dialog. Audit `fleet_enable` | whoever manages the fleet; a built-in fleet an administrator | refused (`require_agentic_ai`): it starts new AI work |
+| `PUT /fleets/{id}/autonomy` | One click of the cursor (#10153): `{level, pins?}` applied in one transaction, `pins` = `{gate key: "wait" \| "run"}` (per-action overrides, `Fleet.approval_pins`; a built-in fleet takes them too since #916, kept across seed upgrades: the seed never writes them). On a custom fleet it turns the computed catalog on. Audit `autonomy_level_change` with level and pins before and after | lower the level, pin "wait", drop a "run" pin: whoever manages the fleet; raise, pin "run", drop a "wait" pin: an administrator | allowed |
+| `PUT /fleets/{id}/approval-gates` | Stores a custom fleet's catalog (accepted proposals or edited gates, validated as `DocGate`, unique keys). On a built-in fleet (#916) the body is the gates added to the seeded catalog, stored in `Fleet.customer_gates` (customer layer, never written by the seed, so kept across upgrades; read after the seeded gates, source `customer`, pinned like any gate); a seeded key is refused (422: pin it instead). Audit `approval_gates_change` | add: whoever manages the fleet; remove a gate, a tool of one or lower its impact: an administrator | allowed |
+| `POST /fleets/{id}/enable` | Enable fleet (S4b): every automation that is off switches on (seeded, paused by a person, by Pause all), never one an emergency stop holds; the seeded fleet automations run as `run_as_user_id` (the caller by default, another user an administrator's choice). All or nothing: 400 while the run-as user misses a module an automation needs (`fleet_run_as.missing_providers`), 409 when nothing is off or during an emergency stop. `dry_run` answers the plan (each automation, its modules, what is missing, its `runs_per_day` from its schedule and `event_driven`) for the setup dialog, plus `estimate` (#1538): the picked automations' scheduled runs a day, how many run once per event, the mean cost of one of their runs over 30 days (`llm_traces` joined on `assignment_runs`, null without a run) and a cost a day, an order of magnitude the dialog re-sums over the person's pick. Audit `fleet_enable` | whoever manages the fleet; a built-in fleet an administrator | refused (`require_agentic_ai`): it starts new AI work |
 | `POST /fleets/{id}/pause` | Pause all: every automation that is on switches off, stamped `fleet_pause`. Audit `fleet_pause` | as Enable | allowed |
 | `POST /fleets/{id}/resume` | Resume: exactly the `fleet_pause` ones switch back on; 409 during an emergency stop. Audit `fleet_resume` | as Enable | allowed |
 | `POST /fleets/{id}/unset` | Back to not set up (#11060): every automation that is on switches off, and every off one (any stamp but `panic_stop`) is re-stamped `created_disabled`, so the fleet reads Not set up, 0 on, no Resume. Nothing deleted (ids, prompts, triggers, run history kept); an automation an emergency stop holds is left as it is and named (`held_by_stop` in the audit). Idempotent. Agent tool: `set_fleet_automations(action="unset")`, a dry-run count without `confirm=true`. Audit `fleet_unset` plus one `pause` row per assignment | as Enable | allowed |
+| `POST /fleets/{id}/reset` | Reset a built-in fleet to its factory state (#1508; `services/fleet_reset.py`), administrators only, `dry_run` for the dialog's counts, `confirm_name` (the fleet's name) for the real call. Every automation off and `created_disabled` (as unset) with its run-as and schedule anchor cleared; the level back to the seeded one; `approval_pins`, `customer_gates` and every fleet customer setting (tool-level enforcement, instructions position, confirmed prerequisites, health dismissals, check and enrolment, activity visibility, budget, iteration cap, run budget, member defaults, organization scope) back to their column default; a local documentation version replaced by the shipped one; each home member's customer layer cleared (bindings and their scoping, lending, MCP servers, knowledge bases, skills, custom tools, organization notes, model pin, approval switches), the seed's own built-in integrations, knowledge bases and skills kept, and its definition rewritten from the seed now. Kept: ids, run history, cases and findings, the audit trail, the workspace. Refused (422) on a custom fleet and (409) during an emergency stop. Idempotent; audit `fleet_reset` with the counts; the next boot changes nothing. | administrators | allowed |
 | `POST /fleets/bulk` | pause, resume or set_autonomy on up to 100 fleets, or `all_fleets` (administrators, pause only); each fleet follows its single-fleet rule, refused fleets reported; `dry_run` counts | per fleet | allowed |
 
 **What the level acts on (#10153).** A custom fleet whose `approval_pins` is
@@ -1823,6 +2089,18 @@ fleets `p10153fltpin1` had moved (created before #10164 merged, no level
 change in the audit log), so no member's run prompt changes. A custom fleet that declares gates and has no pins stored keeps acting on its
 declared gates alone until a person applies a level. A built-in fleet acts on
 its seeded catalog alone.
+
+**Step badges follow the catalog (#1074).** A step of the structured
+documentation may name the gate it stands for (`DocStep.gate_key`, a catalog
+key such as `ctem.mobilize`). `GET /fleets/{id}/documentation` derives that
+step's `gate` (the About page's "A person approves first" badge) from the
+same effective catalog it returns as `autonomy_catalog`
+(`fleet_autonomy.with_live_step_gates`), level and pins applied, so the About
+page and the Approval tab never disagree at any level or pin. A step without a
+key, or naming a gate the catalog does not hold, keeps its stored flag. The
+built-in steps name their keys and their stored flags equal the seeded level
+(Low: the OpenAEV validation and `ctem.mobilize` wait), checked for every built-in fleet by
+`test_builtin_fleet_docs.py`.
 
 **Set by instructions (#10168, B2-I).** A fleet whose approvals live in its
 personas, guardrails and skills (no platform gate) has a second position on
@@ -1900,9 +2178,23 @@ its label, stored value, whether it was announced to the members and "not
 enforced by the platform" (`_instructions_text`; "not set" when unset), so
 no audit log read is needed to learn it.
 
-### Where the gates are enforced (#10140)
+### Where the gates are enforced (#10140, opt-in since #1467)
 
-A gate that names tools pauses those calls wherever a member of the fleet
+By design XTM One enables no programmatic tool-level gate by default (#1467,
+Sam, 23 Nov 2026): a fleet's gates are instructions. The run prompt states
+the level and what waits (`fleet_autonomy_block`), the member asks once
+through a decision item with its ask card, and once a person answered it the
+run acts with no second pause. A built-in (seeded) fleet never pauses a tool
+call, on any deployment (#1675, Sam, 24 Nov 2026): the seed forces
+`Fleet.enforce_gates_at_tool_level` off at every boot, `PUT
+/fleets/{id}/autonomy` refuses `enforce_at_tool_level: true` on it (422, fork
+the fleet to enforce), `fleet_autonomy.fleet_enforces_at_tool_level` answers
+false for it whatever is stored, and a built-in member of a built-in fleet
+never gets an in-run approval card (`hitl_whitelist.seeded_fleet_member`, read
+by `resolve_approve_tool_calls`). The platform pauses tool calls only for a
+custom fleet an administrator opted in (`enforce_at_tool_level`, administrators
+only, audited in `autonomy_level_change`). On an
+opted-in fleet, a gate that names tools pauses those calls wherever a member of the fleet
 acts, not only in its automations: `execute_assignment_run` wraps its gate
 with `make_fleet_autonomy_gate`, and `run_agent_chat` (chat, channel threads
 of agent accounts, consults, sub-agents, work-item turns) calls
@@ -1938,6 +2230,10 @@ tool's own contract (#10165: autonomy lowered only, pause applied only with
 button and the rail.
 
 ## 13. Single-product fleets (M1 OpenCTI #10542, M2 OpenAEV, M3 OpenCRQ)
+
+Since CTEM-31 (section 14) M1, M2 and M3 are roles of the generic CTEM loop
+fleet, no longer fleets of their own: their agents, automations, triggers and
+ROI below are unchanged; their gates map onto the loop's catalog.
 
 F1 to F5 each need two or three modules. A customer who buys one product
 only gets one seeded fleet that works end to end with that product alone,
@@ -2043,11 +2339,138 @@ Low and waits at the higher levels; the personas propose such a change as a
 `needs_human` work item and never make it.
 
 Known limits, stated in the fleet documentation: OpenCRQ is in beta until
-its general availability (February 2027); XTM One reads treatment plans and
-budget reviews only (`list_opencrq_treatment_plans`,
-`list_opencrq_budget_reviews`), so the fleet recommends (work items keyed
-`opencrq:risk-budget-desk:recommendation:`) and a person writes the plan in
-OpenCRQ. The `investment_case_written` minutes are a desk assumption
+its general availability (February 2027); XTM One reads budget reviews only
+(`list_opencrq_budget_reviews`) and writes a treatment plan only through the
+`opencrq.register.write` gate (`create_opencrq_treatment_plan` and the move
+tools, CTEM-18, `ctem-cases.md` 9quater), so the fleet recommends (work items keyed
+`opencrq:risk-budget-desk:recommendation:`) and a person approves the plan write. The `investment_case_written` minutes are a desk assumption
 (`LABEL_ASSUMPTION`) until a sourced figure replaces them.
 
 Tests: `tests/test_opencrq_risk_budget_desk_fleet.py`.
+
+## 14. Four seeded fleets: one generic CTEM loop and three use cases (CTEM-31, #1048)
+
+Sam, 21 Nov 2026: at most four seeded fleets, one generic loop end to end and
+three use cases, each one understandable out of the box. `BUILTIN_FLEETS`
+(`backend/app/agents/builtin_fleets.py`) holds exactly:
+
+| # | Slug | Name | What it carries |
+|---|---|---|---|
+| 1 | `ctem-loop` | CTEM loop | Every trigger path on a case: F1 core roles, the posture role (F4 orchestrator, the five stage analysts, the briefing), the Intelligence desk (M1), the Validation desk (M2), the Risk desk (M3) |
+| 2 | `ctem-vuln-prioritization` | Vulnerability management | Path 1, a vulnerability on software we run, to a verified fix (F2) |
+| 3 | `ctem-ai-security` | AI security | F3 |
+| 4 | `ctem-third-party-risk` | Third-party risk | Paths 10 and 11 (F5) |
+
+A fifth entry fails `tests/test_builtin_fleets.py`: adding one is a product
+decision. An agent has one home fleet: the use-case fleets reach the loop's
+role agents (risk quantifier, remediation coordinator) as connected agents.
+
+### 14.1 Upgrade of an instance seeded with the eight former fleets
+
+Three optional keys of a fleet entry, read by `app/agents/fleet_seed.py`:
+
+- `previous_slugs`: the built-in row stored under a former slug is adopted
+  and renamed (`ctem-threat-response` becomes `ctem-loop`), so its id,
+  workspace, autonomy level, pins, runs and the forks pointing at it carry over.
+- `absorbs`: the retired fleets folded in (`ctem-posture`, `opencti-pir-desk`,
+  `openaev-detection-desk`, `opencrq-risk-budget-desk`). Their rows are swept
+  by the stale sweep; their approval pins are read first and added to the loop
+  (a pin the loop already holds wins); their agents are re-homed as members
+  of the loop by the member sync. No agent is orphaned.
+- `leads`: the members whose enabled automation makes the fleet active
+  (`app/services/fleet_runs.builtin_fleet_active_clause`), besides its
+  orchestrator. The former orchestrators of the folded fleets are leads, so
+  an automation switched on before the upgrade keeps the loop active.
+
+Assignments live on the agents, so every automation keeps its enablement,
+run-as and schedule through the upgrade: nothing moves, nothing is disabled.
+A fork of a retired fleet is never touched; its `GET /fleets/{id}/source-changes`
+answer carries `successor` {fleet_id, slug, name}
+(`app/services/fleet_fork.retired_source_successor`), also when the source
+row was adopted under its new slug.
+
+### 14.2 Gates
+
+Out of the box one gate waits per case, `ctem.mobilize` (CTEM-34). The folded
+desks' tool gates map onto the loop's catalog: the M2 simulation launches are
+`ctem.validation.non_readonly` tools, the M3 register writes are
+`ctem.remediation.decision` tools (impact high, logged), and the M1 indicator
+revocation joins the action text of `ctem.mobilize`. All of it is configurable
+by the autonomy cursor and pins.
+
+### 14.3 Embedded module chats
+
+The desks' agents keep `platform_targets` `["xtm_one", "dev"]` and their
+`disable_chat`; no module vertical reads a fleet slug (checked on main at the
+time of the change), so the embedded OpenCTI, OpenAEV and OpenCRQ chats are
+unaffected. The posture lead keeps answering people in chat
+(`chat_members` of the loop entry).
+
+### 14.4 First-connection setup of the loop (CTEM-33, #1087)
+
+The first-connection proposal of #9173 is versioned
+(`organization_setup_prompt.SETUP_VERSION`, `ctem-loop-1`): shown to an
+administrator of an XTM One platform at install and once after an upgrade that
+carries a new version, never in Copilot mode. Its six steps (organization,
+modules, ecosystem, gates, preview, enable) each save on their own through
+`PUT /api/v1/organization-context/setup-prompt/steps`.
+
+`GET /api/v1/fleets/setup/ctem-loop` (administrators, read only) answers each
+step's state and the step to resume on (`app/services/fleet_setup_status.py`):
+`done` or `skipped` as recorded for the current version, else `ready` when the
+platform already holds it (a saved profile with crown jewels and a tech stack;
+one CTEM module registered; one filled ecosystem slot of the loop fleet; the
+loop fleet seeded, for gates and preview; every automation on, for enable),
+else `todo`. The Modules step names what the loop loses without each module.
+Nothing is enabled before the enable step, which calls `POST /fleets/{id}/enable`.
+
+Frontend: "Set up now" of `OrganizationSetupPrompt` opens
+`components/fleets/CtemLoopSetupDialog.tsx` in place (no navigation). It opens on
+`resume_on`, records each step with Continue (`done`) or Skip (`skipped`), and
+reuses the existing pieces rather than new forms: the Organization step links to
+Settings > Organization in setup mode, Ecosystem embeds
+`FleetCapabilitySlotsCard`, Gates embeds `FleetAutonomyStrip`, and Enable opens
+the fleet setup wizard on its "Run as and automations" step (dry-run plan, run
+estimate, Confirm; see "One guided setup for every fleet" below). The step order, copy
+and fact readers are pure functions in `components/fleets/ctem-loop-setup.ts`.
+
+The end (slice 4): after the last step the dialog shows "The CTEM loop is set
+up" with two actions. "Send a test signal" records one signal through the real
+intake (`POST /api/v1/ctem-signals`, path `new_vulnerability`, provider
+`manual`, evidence `{test: true, origin: "ctem-loop-setup"}`, a dedupe key per
+send: `testSignal` in `ctem-loop-setup.ts`), so reconcile and the scope gate run
+on it, then opens the Signals page on its loop trace (`/ctem/signals?signal=<id>`).
+"Open the command center" goes there without a signal. The setup is always
+reachable again through `CtemLoopSetupEntry` ("Set up the CTEM loop") in the
+command center hero, and on the CTEM loop fleet page (slug `ctem-loop`) through
+the header's "Set up" and the menu's "Run setup again" (`FleetSetupDialog`),
+for an XTM One administrator only, never while impersonating
+(`showsCtemLoopSetupEntry`).
+
+On the command center the entry is a nudge (#1379, `dashboardSetupEntryShown`
+in `ctem-loop-setup.ts`, `useDashboardSetupEntry`): it is drawn only while no
+CTEM work runs, that is the loop fleet's enable step reads
+`automations_enabled` 0 and every fleet the page shows (the CTEM fleets, or the
+person's choice, custom fleets included) reads 0 automations on in its health;
+it is not drawn while either is loading. Its close control writes
+`entry:ctem-loop-setup` into `users.organization_context_notice_dismissed`, so it
+never comes back on its own for that person. The fleet page entries and the
+case card's "Set up the CTEM loop" choice (a case no automation works) are
+contextual and always shown.
+
+### One guided setup for every fleet
+
+A fleet has one setup path: "Set up" on its card and on its page header while
+no automation is on, "Run setup again" in the page's menu once one runs. Both
+open `FleetSetupDialog`, which routes the CTEM loop fleet (XTM One
+administrator) to `CtemLoopSetupDialog` and every other fleet to
+`FleetSetupWizard`: What it does (purpose, triggers, monthly run estimate),
+Integrations (the capability slots, skippable with "I will do it later",
+dropped for a fleet without slots), Autonomy (`FleetAutonomyStrip` compact),
+Run as and automations (the `dry_run` plan; a row that misses a module starts
+unpicked with "Needs <module>" because the backend refuses a pick that misses
+one), Review and enable (one `POST /fleets/{id}/enable`). Nothing is enabled
+before Confirm. Progress is kept per fleet in the browser
+(`fleet-setup-wizard.ts`, key `xtm.fleet-setup.<fleet id>`), cleared on
+enable; no endpoint was added. The end screen names the automations left off
+and the slots not bound, with a link to the Members view.

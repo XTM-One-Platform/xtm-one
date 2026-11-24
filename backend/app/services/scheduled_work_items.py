@@ -1394,7 +1394,7 @@ def run_url(run_id: object) -> str:
     or Slack copy) never resolves a relative path against its host."""
     from app.services.email import platform_url
 
-    return f"{platform_url()}/runs/{run_id}"
+    return f"{platform_url()}/operations/executions/{run_id}"
 
 
 def run_link_markdown(run_id: object) -> str:

@@ -20,31 +20,39 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * each block is its own component so later levels add theirs (schedule,
  * signal thresholds, dry-run) as new blocks of the same draft.
  */
-import { useId, useState } from "react";
-import { Link } from "react-router-dom";
-import { Check, Compass, Gauge, Pencil, Power, Radar } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
+import { Check, Compass, Gauge, Pencil, Power, Radar, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SECTION_BAR_ANCHOR_CLASS, SectionIndex } from "@/components/ui/section-index";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   SettingsField,
   SettingsFieldGrid,
   SettingsSwitchField,
+  focusFirstInvalidField,
   settingsFieldHintId,
   settingsFieldLabelId,
 } from "@/components/ui/settings-form";
 import { SettingsReadField, SettingsReadGrid } from "@/components/ui/settings-read-view";
 import { useToast } from "@/components/ui/toast";
 import { useAgents } from "@/hooks/api/useAgentApi";
-import { useHealthBudget, useHealthName, useHealthSettings, useSaveHealthSettings } from "@/hooks/api/useHealthApi";
+import { useHealthAnalysis, useHealthBudget, useHealthName, useHealthSettings, useSaveHealthSettings } from "@/hooks/api/useHealthApi";
 import { useFlows } from "@/hooks/api/useFlowApi";
-import { defaultHealthName } from "@/lib/health";
+import { useNumberFormat } from "@/hooks/useNumberFormat";
+import { defaultHealthName, healthRefusalCodeKey } from "@/lib/health";
+import { cn } from "@/lib/utils";
 import { useFormatter } from "@/i18n";
-import type { HealthBudgetCaps, HealthSettings } from "@/types";
+import type { HealthAnalysisSettings, HealthAnalysisSpend, HealthBudgetCaps, HealthSettings } from "@/types";
 
-import { BlockTitle, type BlockProps } from "./health-block";
+import { BlockTitle, SpendLockNotice, useSpendLock, type BlockProps } from "./health-block";
+import { AlertEmailsBlock, alertEmailsValid } from "./HealthAlertEmailsBlock";
+import { ModuleAnalystBlock, moduleAnalystValid } from "./HealthModuleAnalystBlock";
+import { ModuleThresholdsBlock, moduleThresholdsValid } from "./HealthModuleThresholdsBlock";
+import { HEALTH_RUN_AS_FIELD_ID, HealthRunAsBlock, runAsRefusalText } from "./HealthRunAsBlock";
 import { HealthPetLibrary } from "./HealthPetLibrary";
 import { DryRunBlock, DurationsBlock, ScheduleBlock, SignalsBlock } from "./HealthTriggerBlocks";
 import { Spinner } from "@filigran/design-system";
@@ -76,6 +84,33 @@ function capValid(key: keyof HealthBudgetCaps, value: number | string | null): b
   return Number.isFinite(n) && n >= 0 && (!TOKEN_CAPS.has(key) || Number.isInteger(n));
 }
 
+type CeilingKey = Exclude<keyof HealthAnalysisSettings, "enabled">;
+
+/** The English label of each analysis ceiling. @i18n-keys */
+const CEILING_LABELS = {
+  day_tokens: "Tokens per day",
+  day_cost_usd: "Cost per day (USD)",
+  month_tokens: "Tokens per month",
+  month_cost_usd: "Cost per month (USD)",
+} as const;
+
+/** What each analysis ceiling counts and what reaching it does. @i18n-keys */
+const CEILING_INFO = {
+  day_tokens: "The most tokens the analysis may spend in a UTC day, every module included, e.g. 100000. An analysis that would cross it is refused. Empty: every analysis is refused.",
+  day_cost_usd: "The most the analysis may cost in a UTC day, in US dollars, e.g. 1. An analysis that would cross it is refused. Empty: every analysis is refused.",
+  month_tokens: "The most tokens the analysis may spend in a calendar month, e.g. 3100000. An analysis that would cross it is refused. Empty: every analysis is refused.",
+  month_cost_usd: "The most the analysis may cost in a calendar month, in US dollars, e.g. 31. An analysis that would cross it is refused. Empty: every analysis is refused.",
+} as const;
+
+const CEILING_KEYS = Object.keys(CEILING_LABELS) as CeilingKey[];
+const TOKEN_CEILINGS: ReadonlySet<CeilingKey> = new Set(["day_tokens", "month_tokens"]);
+
+function ceilingValid(key: CeilingKey, value: number | string | null): boolean {
+  if (value === null) return true;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 && (!TOKEN_CEILINGS.has(key) || Number.isInteger(n));
+}
+
 /** The longest name the server accepts (`settings.MAX_NAME_LENGTH`). */
 const MAX_NAME_LENGTH = 40;
 
@@ -88,7 +123,7 @@ function EnableBlock({ draft, editing, onChange }: BlockProps) {
     <div>
       <BlockTitle
         icon={Power}
-        title={t_i18n("Platform Health")}
+        title={t_i18n("Status")}
         hint={t_i18n("While it is off, Platform Health reads nothing and starts no work.")}
       />
       <div className="space-y-4 rounded-sm bg-elevation-default p-3.5">
@@ -112,6 +147,7 @@ function EnableBlock({ draft, editing, onChange }: BlockProps) {
         <SettingsSwitchField
           id={`${fieldId}-enabled`}
           label={t_i18n("Enable Platform Health")}
+          helper={t_i18n("Runs the health checks and their schedules.")}
           info={t_i18n("On: Platform Health watches its scope, runs its schedules and proposes improvements within its budget. Off: it reads nothing and starts no work; its settings are kept.")}
           checked={draft.enabled}
           onCheckedChange={(enabled) => onChange({ ...draft, enabled })}
@@ -241,10 +277,19 @@ function ScopePickers({ draft, onChange }: Pick<BlockProps, "draft" | "onChange"
 }
 
 function BudgetBlock({ draft, editing, onChange }: BlockProps) {
-  const { t_i18n, intl } = useFormatter();
-  const n = (value: number) => intl.formatNumber(value);
+  const { t_i18n } = useFormatter();
+  // Same formats as the Analysis block below it (#730 UX round 1, B1): tokens compact, costs in dollars.
+  const { count: n, money: usd } = useNumberFormat("USD");
   const fieldId = useId();
   const { data: budget } = useHealthBudget();
+  const healthName = useHealthName();
+  // The refusal read by its code in the reader's language (#794: the server's English line showed
+  // untranslated in fr); the server's message only for a code this build does not know.
+  const refusalKey = healthRefusalCodeKey(budget?.refusal);
+  const refusalText = refusalKey ? t_i18n(refusalKey, { name: healthName }) : budget?.refusal_message;
+  // #1202: the caps are locked at their defaults unless the platform's variable unlocks them.
+  const { locked, envVar } = useSpendLock();
+  const editable = editing && !locked;
   const setCap = (key: keyof HealthBudgetCaps, raw: string) => {
     const value = raw.trim() === "" ? null : TOKEN_CAPS.has(key) ? Number(raw) : raw.trim();
     onChange({ ...draft, budget: { ...draft.budget, [key]: value } });
@@ -259,12 +304,13 @@ function BudgetBlock({ draft, editing, onChange }: BlockProps) {
         )}
       />
       <div className="space-y-2 rounded-sm bg-elevation-default p-3.5">
+        {locked && <SpendLockNotice envVar={envVar} testId="health.budget-locked" />}
         <SettingsFieldGrid>
           {CAP_KEYS.map((key) => {
             const id = `${fieldId}-${key}`;
             return (
               <SettingsField key={key} id={id} label={t_i18n(CAP_LABELS[key])} info={t_i18n(CAP_INFO[key])} helper={t_i18n("Empty: no cap.")}>
-                {editing ? (
+                {editable ? (
                   <Input
                     id={id}
                     aria-labelledby={settingsFieldLabelId(id)}
@@ -278,7 +324,11 @@ function BudgetBlock({ draft, editing, onChange }: BlockProps) {
                   />
                 ) : (
                   <p className="content-base font-medium tabular-nums">
-                    {draft.budget[key] === null ? t_i18n("No cap") : n(Number(draft.budget[key]))}
+                    {draft.budget[key] === null
+                      ? t_i18n("No cap")
+                      : TOKEN_CAPS.has(key)
+                        ? n(Number(draft.budget[key]))
+                        : usd(Number(draft.budget[key]))}
                   </p>
                 )}
               </SettingsField>
@@ -287,12 +337,12 @@ function BudgetBlock({ draft, editing, onChange }: BlockProps) {
         </SettingsFieldGrid>
         {budget && (
           <div className="mt-2 border-t border-elevation-subtle-soft pt-2 content-compact text-default-secondary" data-testid="health.budget-usage">
-            {t_i18n("Spent in {month}: {tokens} tokens, {cost} USD.", {
+            {t_i18n("Spent in {month}: {tokens} tokens, {cost}.", {
               month: budget.month,
               tokens: n(budget.used.tokens),
-              cost: n(Number(budget.used.cost_usd)),
+              cost: usd(Number(budget.used.cost_usd)),
             })}
-            {budget.refusal_message && <span className="ml-1 text-feedback-warning-primary">{budget.refusal_message}</span>}
+            {budget.refusal && refusalText && <span className="ml-1 text-feedback-warning-primary">{refusalText}</span>}
           </div>
         )}
       </div>
@@ -300,17 +350,159 @@ function BudgetBlock({ draft, editing, onChange }: BlockProps) {
   );
 }
 
-/** The blocks of the page, in order. Later levels append theirs here. */
-const BLOCKS: ((props: BlockProps) => React.JSX.Element)[] = [
-  EnableBlock,
-  ScopeBlock,
-  BudgetBlock,
-  // Level 8 (#8261): schedule, signal thresholds, durations, dry-run.
-  ScheduleBlock,
-  SignalsBlock,
-  DurationsBlock,
-  DryRunBlock,
+/** The analysis layer (#101 S9c): its switch and its four hard ceilings, read by the analysis only. */
+function AnalysisBlock({ draft, editing, onChange }: BlockProps) {
+  const { t_i18n } = useFormatter();
+  const { count: n, money: usd } = useNumberFormat("USD");
+  const fieldId = useId();
+  const analysis = draft.analysis;
+  const setAnalysis = (next: Partial<HealthAnalysisSettings>) => onChange({ ...draft, analysis: { ...analysis, ...next } });
+  const setCeiling = (key: CeilingKey, raw: string) => {
+    const value = raw.trim() === "" ? null : TOKEN_CEILINGS.has(key) ? Number(raw) : raw.trim();
+    setAnalysis({ [key]: value });
+  };
+  const info = t_i18n("On: once a day, the routing model explains each module's open findings when they changed, within the ceilings below. Off: no model is called. Needs AI to be on.");
+  // #1202: the ceilings are locked at their defaults; the switch stays editable (off only lowers spend).
+  const { locked, envVar } = useSpendLock();
+  const editable = editing && !locked;
+  return (
+    <div data-testid="health.analysis">
+      <BlockTitle
+        icon={Sparkles}
+        title={t_i18n("Analysis")}
+        hint={t_i18n("An optional explanation of the findings by the routing model. Its spend is traced as Platform Health and never counted in agentic quotas.")}
+      />
+      <div className="space-y-4 rounded-sm bg-elevation-default p-3.5">
+        {editing ? (
+          <SettingsSwitchField
+            id={`${fieldId}-enabled`}
+            label={t_i18n("Analyse the findings")}
+            helper={t_i18n("Runs once a day at most, only for modules whose findings changed.")}
+            info={info}
+            checked={analysis.enabled}
+            onCheckedChange={(enabled) => setAnalysis({ enabled })}
+          />
+        ) : (
+          <SettingsReadField label={t_i18n("Analyse the findings")} info={info} value={analysis.enabled ? t_i18n("On") : t_i18n("Off")} />
+        )}
+        {locked && <SpendLockNotice envVar={envVar} testId="health.analysis-locked" />}
+        <SettingsFieldGrid>
+          {CEILING_KEYS.map((key) => {
+            const id = `${fieldId}-${key}`;
+            const valid = ceilingValid(key, analysis[key]);
+            return (
+              <SettingsField
+                key={key}
+                id={id}
+                label={t_i18n(CEILING_LABELS[key])}
+                info={t_i18n(CEILING_INFO[key])}
+                helper={t_i18n("Empty: every analysis is refused.")}
+                error={
+                  editable && !valid
+                    ? TOKEN_CEILINGS.has(key)
+                      ? t_i18n("Enter a whole number of 0 or more.")
+                      : t_i18n("Enter a number of 0 or more.")
+                    : undefined
+                }
+              >
+                {editable ? (
+                  <Input
+                    id={id}
+                    aria-labelledby={settingsFieldLabelId(id)}
+                    aria-describedby={settingsFieldHintId(id)}
+                    aria-invalid={!valid || undefined}
+                    type="number"
+                    min={0}
+                    step={TOKEN_CEILINGS.has(key) ? 1 : 0.01}
+                    className="w-40"
+                    value={analysis[key] ?? ""}
+                    onChange={(e) => setCeiling(key, e.target.value)}
+                  />
+                ) : (
+                  <p className="content-base font-medium tabular-nums">
+                    {analysis[key] === null
+                      ? t_i18n("Not set")
+                      : TOKEN_CEILINGS.has(key)
+                        ? n(Number(analysis[key]))
+                        : usd(Number(analysis[key]))}
+                  </p>
+                )}
+              </SettingsField>
+            );
+          })}
+        </SettingsFieldGrid>
+        <AnalysisSpendLines />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Today's and this month's analysis spend against the ceilings (#961): here, next to the ceilings,
+ * never on the Health dashboard. Stored rows, no model call.
+ */
+function AnalysisSpendLines() {
+  const { t_i18n } = useFormatter();
+  const { count: n, money: usd } = useNumberFormat("USD");
+  const { data } = useHealthAnalysis();
+  if (!data) return null;
+  const line = (label: string, spend: HealthAnalysisSpend, tokens: number | null, cost: string | null) => (
+    <div className="min-w-0 space-y-0.5">
+      <p className="content-compact text-default-secondary">{label}</p>
+      <p className="content-base font-medium tabular-nums text-default-primary">
+        {tokens === null
+          ? t_i18n("Tokens: {tokens}, no ceiling", { tokens: n(spend.tokens) })
+          : t_i18n("Tokens: {tokens} of {ceiling}", { tokens: n(spend.tokens), ceiling: n(tokens) })}
+      </p>
+      <p className="content-compact tabular-nums text-default-secondary">
+        {cost === null
+          ? t_i18n("Cost: {cost}, no ceiling", { cost: usd(Number(spend.cost_usd)) })
+          : t_i18n("Cost: {cost} of {ceiling}", { cost: usd(Number(spend.cost_usd)), ceiling: usd(Number(cost)) })}
+      </p>
+    </div>
+  );
+  return (
+    <div
+      className="grid grid-cols-1 gap-4 border-t border-elevation-subtle-soft pt-3 sm:grid-cols-2"
+      data-testid="health.analysis-spend"
+    >
+      {line(t_i18n("Today"), data.day, data.ceilings.day_tokens, data.ceilings.day_cost_usd)}
+      {line(t_i18n("This month"), data.month, data.ceilings.month_tokens, data.ceilings.month_cost_usd)}
+    </div>
+  );
+}
+
+type Block = (props: BlockProps) => React.JSX.Element | null;
+
+/** The English title of each entry of the section bar, the companion pets last. @i18n-keys */
+const GROUP_TITLES = {
+  status: "Status and scope",
+  spend: "Spend limits",
+  checks: "Health checks",
+  alerts: "Alerts",
+  pets: "Companion pets",
+} as const;
+
+type GroupKey = Exclude<keyof typeof GROUP_TITLES, "pets">;
+
+/**
+ * The blocks of the section in four groups (#101 S13, one compact section): what it is and
+ * watches, what it may spend, what it checks and when, whom it tells. The bar above jumps to
+ * each group; a block names itself, the group adds no second header.
+ */
+const GROUPS: readonly { key: GroupKey; blocks: readonly Block[] }[] = [
+  { key: "status", blocks: [EnableBlock, ScopeBlock] },
+  // #101 S14d-2: the Module Analyst row, its own ceilings next to the analysis (XTM One modes only).
+  { key: "spend", blocks: [BudgetBlock, AnalysisBlock, ModuleAnalystBlock] },
+  // Level 8 (#8261) schedule, signals, durations and dry-run; #101 S10c module thresholds.
+  // "Run checks as" (dev-docs 12.3) first: no module check runs without it.
+  { key: "checks", blocks: [HealthRunAsBlock, ScheduleBlock, SignalsBlock, ModuleThresholdsBlock, DurationsBlock, DryRunBlock] },
+  // #101 S12b: the alert emails, off by default.
+  { key: "alerts", blocks: [AlertEmailsBlock] },
 ];
+
+/** The anchor of a group: readable in a shared link (#health-settings-alerts), one section per page. */
+const anchor = (key: string) => `health-settings-${key}`;
 
 export function HealthSection() {
   const { t_i18n } = useFormatter();
@@ -318,10 +510,32 @@ export function HealthSection() {
   const { data: stored, isLoading } = useHealthSettings();
   const healthName = useHealthName();
   const save = useSaveHealthSettings();
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draft, setDraftState] = useState<Draft | null>(null);
+  // A refused "Run checks as" user, shown under its field (UX r1 B1); any edit of the draft clears it.
+  const [runAsError, setRunAsError] = useState<string | null>(null);
+  const setDraft = (next: Draft | null) => {
+    setDraftState(next);
+    setRunAsError(null);
+  };
   const editing = draft !== null;
   const shown = draft ?? stored;
-  const valid = !!draft && CAP_KEYS.every((key) => capValid(key, draft.budget[key]));
+  // A link to a block of this long page (the module cards' "Set the run-as user") lands on it once
+  // the groups render: the browser's own jump runs before the settings load (UX r1 B2).
+  const { hash } = useLocation();
+  const landedHash = useRef<string | null>(null);
+  useEffect(() => {
+    if (!shown || !hash || landedHash.current === hash) return;
+    landedHash.current = hash;
+    document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView?.({ block: "start" });
+  }, [hash, shown]);
+  const entries = (Object.keys(GROUP_TITLES) as (keyof typeof GROUP_TITLES)[]).map((key) => ({ id: anchor(key), title: GROUP_TITLES[key] }));
+  const valid =
+    !!draft &&
+    CAP_KEYS.every((key) => capValid(key, draft.budget[key])) &&
+    CEILING_KEYS.every((key) => ceilingValid(key, draft.analysis[key])) &&
+    moduleThresholdsValid(draft) &&
+    moduleAnalystValid(draft) &&
+    alertEmailsValid(draft);
 
   const submit = () => {
     if (!draft) return;
@@ -330,12 +544,20 @@ export function HealthSection() {
         setDraft(null);
         toast({ title: t_i18n("Platform Health settings saved"), variant: "success" });
       },
-      onError: (err) =>
+      onError: (err) => {
+        // A refused run-as user is said under its field, not in a toast (UX r1 B1).
+        const refusal = runAsRefusalText(err, t_i18n);
+        if (refusal) {
+          setRunAsError(refusal);
+          focusFirstInvalidField([HEALTH_RUN_AS_FIELD_ID]);
+          return;
+        }
         toast({
           title: t_i18n("Platform Health settings were not saved"),
           description: err instanceof Error ? err.message : undefined,
           variant: "error",
-        }),
+        });
+      },
     });
   };
 
@@ -374,10 +596,28 @@ export function HealthSection() {
           )}
         </div>
       </div>
+      {/* Mounted with the groups (#798 UX r1 B1): the index collects its targets once, on mount,
+          so a bar drawn before the settings load would observe the pets section alone and its
+          current entry would never follow the scroll. */}
+      {shown && <SectionIndex entries={entries} orientation="horizontal" />}
       {shown &&
-        BLOCKS.map((Block, index) => <Block key={index} draft={shown} editing={editing} onChange={setDraft} />)}
+        GROUPS.map((group) => (
+          <section
+            key={group.key}
+            id={anchor(group.key)}
+            aria-label={t_i18n(GROUP_TITLES[group.key])}
+            className={cn("space-y-5", SECTION_BAR_ANCHOR_CLASS)}
+            data-testid={`settings.health.group.${group.key}`}
+          >
+            {group.blocks.map((Block, index) => (
+              <Block key={index} draft={shown} editing={editing} onChange={setDraft} runAsError={runAsError} />
+            ))}
+          </section>
+        ))}
       {/* Saved by its own actions, not by the draft above. */}
-      <HealthPetLibrary />
+      <section id={anchor("pets")} aria-label={t_i18n(GROUP_TITLES.pets)} className={SECTION_BAR_ANCHOR_CLASS}>
+        <HealthPetLibrary />
+      </section>
     </div>
   );
 }

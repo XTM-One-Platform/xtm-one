@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -31,10 +32,11 @@ def _facts() -> d.PlatformFacts:
     )
     d.opencrq_facts(
         [
-            {"id": "a1", "name": "Billing", "criticality": "high"},
-            {"id": "a2", "name": "SCADA", "criticality": "very_high"},
-            {"id": "a3", "name": "Wiki", "criticality": "low"},
-            {"id": "", "name": "Orphan", "criticality": "very_high"},
+            # OpenCRQ primary assets, rated by their security needs (#1591).
+            {"id": "a1", "name": "Billing", "integrity": "high"},
+            {"id": "a2", "name": "SCADA", "availability": "very_high"},
+            {"id": "a3", "name": "Wiki", "availability": "low"},
+            {"id": "", "name": "Orphan", "availability": "very_high"},
         ],
         facts,
     )
@@ -49,6 +51,7 @@ def test_each_platform_maps_to_its_fields_with_its_source():
     assert [(j.name, j.criticality, j.opencrq_asset_id) for j in facts.crown_jewels] == [
         ("SCADA", "critical", "a2"),
         ("Billing", "high", "a1"),
+        ("Wiki", "low", "a3"),
     ]
     assert facts.sources == {
         "name": "opencti",
@@ -108,8 +111,11 @@ async def test_a_failing_platform_is_reported_and_the_others_still_draft(monkeyp
 async def test_the_draft_starts_from_the_current_version_and_saves_nothing(monkeypatch):
     row = SimpleNamespace(version=3, profile={"name": "Acme"})
 
-    async def current_version(db):
+    async def current_version(db: Any, organization_id: Any = None) -> Any:
         return row
+
+    async def hydrated_profile(db: Any, current: Any) -> Any:  # no asset records in this fake session (#1543)
+        return oc.parse_profile(current.profile)
 
     async def collect_facts(db, *, user_id, tenant_id=""):
         facts = d.PlatformFacts(sector="Energy")
@@ -120,6 +126,7 @@ async def test_the_draft_starts_from_the_current_version_and_saves_nothing(monke
         raise AssertionError("the draft saved a version")
 
     monkeypatch.setattr(oc, "current_version", current_version)
+    monkeypatch.setattr(oc, "hydrated_profile", hydrated_profile)
     monkeypatch.setattr(oc, "save_version", no_save)
     monkeypatch.setattr(d, "collect_facts", collect_facts)
     draft, version = await d.draft_profile(SimpleNamespace(), user_id=uuid.uuid4())
@@ -128,11 +135,13 @@ async def test_the_draft_starts_from_the_current_version_and_saves_nothing(monke
     assert draft.filled == [{"field": "sector", "source": "opencti", "detail": "Energy"}]
 
 
-@pytest.mark.parametrize("criticality", ["medium", "low", "", None])
-def test_an_asset_below_high_is_not_a_crown_jewel(criticality):
+@pytest.mark.parametrize(("need", "expected"), [("medium", "medium"), ("low", "low"), ("", "high"), (None, "high")])
+def test_every_primary_asset_is_a_row_rated_by_its_highest_need(need: str | None, expected: str) -> None:
+    # #1591: no threshold on the draft; a primary asset with no need rated reads as high.
     facts = d.PlatformFacts()
-    d.opencrq_facts([{"id": "a1", "name": "X", "criticality": criticality}], facts)
-    assert facts.crown_jewels == [] and "crown_jewels" not in facts.sources
+    d.opencrq_facts([{"id": "a1", "name": "X", "confidentiality": need}], facts)
+    assert [(j.name, j.criticality) for j in facts.crown_jewels] == [("X", expected)]
+    assert facts.sources["crown_jewels"] == "opencrq"
 
 
 def test_the_pir_picker_lists_each_pir_once_by_name():

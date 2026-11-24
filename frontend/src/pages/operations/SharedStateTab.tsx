@@ -38,7 +38,7 @@ import { useTick } from "@/hooks/useTick";
 import { useViewMode } from "@/hooks/useViewMode";
 import { cn, pluralize, formatCompactNumber } from "@/lib/utils";
 import { REFETCH_INTERVAL_STANDARD } from "@/lib/constants";
-import { readTableState, type DataTableDefaults } from "@/lib/data-table-state";
+import { clearFilterParams, readTableState, type DataTableDefaults } from "@/lib/data-table-state";
 import {
   useSharedStates, useSharedStateCount, useDeleteSharedState, useBulkDeleteSharedState,
   useResolveSharedState, useSharedStateOwners,
@@ -448,6 +448,8 @@ export default function SharedStateTab({
         filtersInPill
         filterPills={showFleetPicker ? <FleetFilter value={fleet} onChange={setFleet} /> : undefined}
         externalFilterCount={showFleetPicker && fleet ? 1 : 0}
+        // Clear all clears the fleet it counts with the table's own filters, in one write (#1001).
+        onClearAll={() => setSearchParams((prev) => clearFilterParams(prev, lockedFleet ? [] : ["fleet", "agent"], URL_KEY), { replace: true })}
         exportName="shared-state"
         isLoading={landing || isLoading}
         isError={isError}

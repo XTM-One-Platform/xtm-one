@@ -901,7 +901,7 @@ export function NodeConfigPanel({
                   key={output.name}
                   variant="outline"
                   className="font-mono-plex content-caption"
-                  title={output.description}
+                  title={output.description && !/[{}]/.test(output.description) ? t_i18n(output.description) : output.description}
                 >
                   {`{{${node.id}.${output.name}}}`}
                 </Badge>

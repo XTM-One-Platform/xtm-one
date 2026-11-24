@@ -90,7 +90,7 @@ function filterHeading(page: Page, text: string) {
 test.describe('Traces list — table display', () => {
   test('renders trace rows with the agent name and a "Platform default" fallback for empty models', async ({ page }) => {
     await mockAgentsAndTraces(page);
-    await page.goto('/traces');
+    await page.goto('/observability/traces');
 
     await expect(page.getByRole('heading', { name: 'Observability', level: 1 })).toBeVisible();
     await expect(page.getByText('Trace with model')).toBeVisible();
@@ -111,14 +111,14 @@ test.describe('Traces list — table display', () => {
 
   test('shows the empty state when no traces match the current filters', async ({ page }) => {
     await mockAgentsAndTraces(page, { items: [] });
-    await page.goto('/traces');
+    await page.goto('/observability/traces');
 
     await expect(page.getByText('No traces found')).toBeVisible();
   });
 
   test('hides the Models filter entirely when no models are available', async ({ page }) => {
     await mockAgentsAndTraces(page, { items: [] });
-    await page.goto('/traces?status=error');
+    await page.goto('/observability/traces?status=error');
     await openFilters(page);
 
     await expect(filterHeading(page, 'Agents')).toBeVisible();
@@ -130,7 +130,7 @@ test.describe('Traces list — table display', () => {
       .filter((trace) => !trace.model)
       .map((trace) => ({ ...trace }));
     await mockAgentsAndTraces(page, { items: onlyDefaultTraces });
-    await page.goto('/traces');
+    await page.goto('/observability/traces');
 
     await expect(page.getByText('Trace without explicit model')).toBeVisible();
     await openFilters(page);
@@ -141,7 +141,7 @@ test.describe('Traces list — table display', () => {
   test('keeps the Models filter when the platform-default sentinel is pre-selected in the URL', async ({ page }) => {
     const onlyDefaultTraces = tracesFixture.filter((trace) => !trace.model).map((trace) => ({ ...trace }));
     await mockAgentsAndTraces(page, { items: onlyDefaultTraces });
-    await page.goto('/traces?model=__platform_default__');
+    await page.goto('/observability/traces?model=__platform_default__');
     await openFilters(page);
 
     // Even without explicit models, an active selection must stay visible and removable.
@@ -156,7 +156,7 @@ test.describe('Traces list — column sorting', () => {
     await mockAgentsAndTraces(page, {
       onTracesRequest: (route) => requestedUrls.push(route.request().url()),
     });
-    await page.goto('/traces');
+    await page.goto('/observability/traces');
 
     const duration = page.getByRole('columnheader', { name: 'Duration' });
     // A sortable-but-unsorted column announces itself to screen readers.
@@ -180,7 +180,7 @@ test.describe('Traces list — column sorting', () => {
 
   test('the default newest-first order is shown as sorted and needs no URL params', async ({ page }) => {
     await mockAgentsAndTraces(page);
-    await page.goto('/traces');
+    await page.goto('/observability/traces');
 
     // The list is already ordered by timestamp: the header must say so even
     // though nothing was clicked yet.
@@ -205,7 +205,7 @@ test.describe('Traces list — column sorting', () => {
       total: 120,
       onTracesRequest: (route) => requestedUrls.push(route.request().url()),
     });
-    await page.goto('/traces?sort=total_cost&dir=desc');
+    await page.goto('/observability/traces?sort=total_cost&dir=desc');
 
     await expect(page.getByText('Page 1 of 3').first()).toBeVisible();
     await page.getByRole('button', { name: 'Last' }).first().click();
@@ -225,7 +225,7 @@ test.describe('Traces list — column sorting', () => {
       total: 120,
       onTracesRequest: (route) => requestedUrls.push(route.request().url()),
     });
-    await page.goto('/traces');
+    await page.goto('/observability/traces');
 
     await expect(page.getByText('Page 1 of 3').first()).toBeVisible();
     // The keyset walk holds no cursor for page 3: within the offset bound it
@@ -248,7 +248,7 @@ test.describe('Traces list — column sorting', () => {
     await mockAgentsAndTraces(page, {
       onTracesRequest: (route) => requestedUrls.push(route.request().url()),
     });
-    await page.goto('/traces?sort=agent_name&dir=asc');
+    await page.goto('/observability/traces?sort=agent_name&dir=asc');
 
     // A stale or hand-edited link must not send the API a column it rejects.
     await expect(page.getByText('Trace with model')).toBeVisible();
@@ -268,7 +268,7 @@ test.describe('Traces list — pages past the offset bound', () => {
       total: 1_000_000,
       onTracesRequest: (route) => requestedUrls.push(route.request().url()),
     });
-    await page.goto('/traces?sort=total_cost&dir=desc');
+    await page.goto('/observability/traces?sort=total_cost&dir=desc');
 
     await expect(page.getByText(/Page 1 of 20,?000/).first()).toBeVisible();
     await page.getByRole('button', { name: 'Last', exact: true }).first().click();
@@ -294,7 +294,7 @@ test.describe('Traces list — pages past the offset bound', () => {
       total: 1_000_000,
       onTracesRequest: (route) => requestedUrls.push(route.request().url()),
     });
-    await page.goto('/traces');
+    await page.goto('/observability/traces');
 
     await expect(page.getByText(/Page 1 of 20,?000/).first()).toBeVisible();
     // The keyset walk has no cursor for the last page: Last used to do nothing.
@@ -317,7 +317,7 @@ test.describe('Traces list — pages past the offset bound', () => {
       total: 1_000_000,
       onTracesRequest: (route) => requestedUrls.push(route.request().url()),
     });
-    await page.goto('/traces?sort=total_cost&dir=desc&page=5000');
+    await page.goto('/observability/traces?sort=total_cost&dir=desc&page=5000');
 
     await expect(page.getByText('This page is too deep to open in this order')).toBeVisible();
     // Only the count was read, in the default order.
@@ -337,7 +337,7 @@ test.describe('Traces list — filter usage', () => {
     await mockAgentsAndTraces(page, {
       onTracesRequest: (route) => requestedUrls.push(route.request().url()),
     });
-    await page.goto('/traces');
+    await page.goto('/observability/traces');
     await openFilters(page);
 
     await page.getByRole('combobox', { name: 'Select agents' }).click();
@@ -366,7 +366,7 @@ test.describe('Traces list — filter usage', () => {
     await mockAgentsAndTraces(page, {
       onTracesRequest: (route) => requestedUrls.push(route.request().url()),
     });
-    await page.goto('/traces');
+    await page.goto('/observability/traces');
     await openFilters(page);
 
     await page.getByRole('combobox', { name: 'Select models' }).click();
@@ -383,7 +383,7 @@ test.describe('Traces list — filter usage', () => {
 
   test('Clear filters removes agent, model, status, and date filters', async ({ page }) => {
     await mockAgentsAndTraces(page);
-    await page.goto('/traces?agent_id=agent-alpha&model=claude-sonnet-4-6&status=error&date_from=2026-01-01&date_to=2026-01-31');
+    await page.goto('/observability/traces?agent_id=agent-alpha&model=claude-sonnet-4-6&status=error&date_from=2026-01-01&date_to=2026-01-31');
     await openFilters(page);
 
     await expect(page.getByRole('button', { name: /^Remove / }).first()).toBeVisible();
@@ -426,11 +426,11 @@ test.describe('Traces list — assignment and run scope', () => {
       onTracesRequest: (route) => requestedUrls.push(route.request().url()),
     });
     await mockScopedAssignment(page);
-    await page.goto(`/traces?assignment_id=${SCOPED_ASSIGNMENT.id}`);
+    await page.goto(`/observability/traces?assignment_id=${SCOPED_ASSIGNMENT.id}`);
 
     await expect(page.getByText('Scoped to:')).toBeVisible();
     const chip = page.getByRole('link', { name: SCOPED_ASSIGNMENT.name, exact: true });
-    await expect(chip).toHaveAttribute('href', new RegExp(`/assignments/${SCOPED_ASSIGNMENT.id}$`));
+    await expect(chip).toHaveAttribute('href', new RegExp(`/agents/assignments/${SCOPED_ASSIGNMENT.id}$`));
     await expect(page.getByRole('button', { name: 'Remove the assignment scope' })).toBeVisible();
     await expect
       .poll(() => requestedUrls.some((url) => listParams(url).get('assignment_id') === SCOPED_ASSIGNMENT.id))
@@ -445,7 +445,7 @@ test.describe('Traces list — assignment and run scope', () => {
       onTracesRequest: (route) => requestedUrls.push(route.request().url()),
     });
     await mockScopedAssignment(page);
-    await page.goto(`/traces?assignment_id=${SCOPED_ASSIGNMENT.id}&page=1`);
+    await page.goto(`/observability/traces?assignment_id=${SCOPED_ASSIGNMENT.id}&page=1`);
 
     await expect(page.getByText('Page 2 of 3').first()).toBeVisible();
     await page.getByRole('button', { name: 'Remove the assignment scope' }).click();
@@ -465,7 +465,7 @@ test.describe('Traces list — assignment and run scope', () => {
   test('an assignment the API no longer returns keeps a removable chip, named by its id', async ({ page }) => {
     await mockAgentsAndTraces(page);
     const lookups = await mockScopedAssignment(page, { found: false });
-    await page.goto(`/traces?assignment_id=${SCOPED_ASSIGNMENT.id}`);
+    await page.goto(`/observability/traces?assignment_id=${SCOPED_ASSIGNMENT.id}`);
 
     await expect.poll(() => lookups.length).toBe(1);
     // A thrown 404 would be retried once, about a second later, then replace
@@ -494,7 +494,7 @@ test.describe('Traces list — assignment and run scope', () => {
       const { pathname } = new URL(request.url());
       if (pathname === '/api/v1/users/me') escapedReads.push(pathname);
     });
-    await page.goto(`/traces?assignment_id=${encodeURIComponent('../users/me')}`);
+    await page.goto(`/observability/traces?assignment_id=${encodeURIComponent('../users/me')}`);
 
     await expect(page.getByRole('link', { name: 'Assignment ../users…', exact: true })).toBeVisible();
     // The list still carries the value, for the API to refuse (422).
@@ -510,10 +510,10 @@ test.describe('Traces list — assignment and run scope', () => {
     await mockAgentsAndTraces(page, {
       onTracesRequest: (route) => requestedUrls.push(route.request().url()),
     });
-    await page.goto(`/traces?assignment_run_id=${SCOPED_RUN_ID}&status=error`);
+    await page.goto(`/observability/traces?assignment_run_id=${SCOPED_RUN_ID}&status=error`);
 
     const chip = page.getByRole('link', { name: 'Run 9f2e1a3b…', exact: true });
-    await expect(chip).toHaveAttribute('href', new RegExp(`/runs/${SCOPED_RUN_ID}$`));
+    await expect(chip).toHaveAttribute('href', new RegExp(`/operations/executions/${SCOPED_RUN_ID}$`));
     await expect
       .poll(() =>
         requestedUrls.some((url) => {
@@ -537,7 +537,7 @@ test.describe('Traces list — assignment and run scope', () => {
       onTracesRequest: (route) => requestedUrls.push(route.request().url()),
     });
     await mockScopedAssignment(page);
-    await page.goto(`/traces?assignment_id=${SCOPED_ASSIGNMENT.id}&sort=total_cost&dir=desc&page=5000`);
+    await page.goto(`/observability/traces?assignment_id=${SCOPED_ASSIGNMENT.id}&sort=total_cost&dir=desc&page=5000`);
 
     await expect(page.getByText('This page is too deep to open in this order')).toBeVisible();
     // The count is the scoped list's, never the whole store's.

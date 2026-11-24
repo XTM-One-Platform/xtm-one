@@ -17,8 +17,8 @@
  * until then), locked `unlicensed` on Community Edition like Value; every other
  * line is N1's, unchanged. N2c adds `/agents-hub`, the Agents group's hub
  * (open to everyone, no lock: its cards carry their own), and moves `/fleets`
- * to its own route; `/flows/fleets...` redirects there (tested below).
- * N3 lists `/analytics/outcomes`, a tab of Analytics until then, as a page
+ * to its own route. #797: no former address redirects (tested below).
+ * N3 lists `/observability/outcomes`, a tab of Analytics until then, as a page
  * of the Observability family (administrators, as its tab was).
  */
 
@@ -68,7 +68,7 @@ interface Reach {
    *  locked `unlicensed` on Community Edition only, open with AI off. */
   lock?: "ai" | "license";
   guard: Guard;
-  /** Listed in XTM One mode only: domain content of the XTM platforms (Intents, #445). */
+  /** Listed in XTM One mode only: domain content of the XTM platforms (Intents, #445; CTEM cases, #1135). */
   xtmOneOnly?: true;
 }
 
@@ -79,13 +79,19 @@ const ADMIN_AND_GROUP_MANAGERS: readonly Role[] = ["admin", "groupManager"];
 /** Today's left menu (main 667ec49f), one line per destination; the place of a row is not part of the contract. */
 const REACHABILITY: readonly Reach[] = [
   { to: "/", roles: EVERYONE, guard: "none" },
-  { to: "/value", roles: EVERYONE, lock: "license", guard: "none" },
   { to: "/chat", roles: EVERYONE, gate: "chat", lock: "ai", guard: "none" },
+  // The record of the CTEM loop (#1135): every user, open with AI off; the route sits behind XtmOneRoute, a mode guard.
+  { to: "/ctem/cases", roles: EVERYONE, guard: "none", xtmOneOnly: true },
+  // The signals and their sources (#1401): read by every user, behind the same mode guard.
+  { to: "/ctem/signals", roles: EVERYONE, guard: "none", xtmOneOnly: true },
+  // The inventory (#1178): read by every user; editing stays with administrators on the API.
+  { to: "/ctem/inventory", roles: EVERYONE, guard: "none", xtmOneOnly: true },
   { to: "/flows", roles: EVERYONE, guard: "none" },
   { to: "/fleets", roles: EVERYONE, lock: "license", guard: "none" },
   { to: "/agents", roles: EVERYONE, lock: "ai", guard: "none" },
   { to: "/agents-hub", roles: EVERYONE, guard: "none" },
   { to: "/work", roles: EVERYONE, guard: "none" },
+  { to: "/tasks", roles: EVERYONE, guard: "none" },
   { to: "/operations", roles: EVERYONE, guard: "none" },
   { to: "/presentations", roles: EVERYONE, lock: "ai", guard: "none" },
   { to: "/videos", roles: EVERYONE, gate: "videoStudio", lock: "ai", guard: "none" },
@@ -102,14 +108,14 @@ const REACHABILITY: readonly Reach[] = [
   { to: "/mcp-servers", roles: EVERYONE, lock: "ai", guard: "none" },
   { to: "/tools", roles: EVERYONE, guard: "none" },
   { to: "/integrations", roles: EVERYONE, guard: "none" },
-  { to: "/browser-profiles", roles: EVERYONE, guard: "none" },
-  { to: "/variables", roles: EVERYONE, gate: "customVariables", guard: "none" },
-  { to: "/relays", roles: EVERYONE, gate: "relays", guard: "none" },
-  { to: "/analytics", roles: ADMIN_AND_GROUP_MANAGERS, guard: "AnalyticsRoute" },
+  { to: "/connections", roles: EVERYONE, guard: "none" },
+  { to: "/connections/variables", roles: EVERYONE, gate: "customVariables", guard: "none" },
+  { to: "/connections/relays", roles: EVERYONE, gate: "relays", guard: "none" },
+  { to: "/observability", roles: ADMIN_AND_GROUP_MANAGERS, guard: "AnalyticsRoute" },
   // The page reads Model usage for a group manager whatever the URL says.
-  { to: "/analytics/outcomes", roles: ADMIN, guard: "AnalyticsRoute" },
-  { to: "/traces", roles: ADMIN, guard: "AdminRoute" },
-  { to: "/trace-sessions", roles: ADMIN, guard: "AdminRoute" },
+  { to: "/observability/outcomes", roles: ADMIN, guard: "AnalyticsRoute" },
+  { to: "/observability/traces", roles: ADMIN, guard: "AdminRoute" },
+  { to: "/observability/sessions", roles: ADMIN, guard: "AdminRoute" },
   { to: "/ai-adoption", roles: ADMIN, gate: "aiAdoption", lock: "ai", guard: "AdminRoute" },
   { to: "/evaluations", roles: ADMIN, gate: "evaluation", lock: "ai", guard: "AdminRoute" },
   { to: "/health", roles: ADMIN, gate: "health", lock: "ai", guard: "AdminRoute" },
@@ -117,8 +123,8 @@ const REACHABILITY: readonly Reach[] = [
   // (#9301 UX r1 A4, r2 A5). Intents are XTM One mode only (#445): the route
   // sits behind XtmOneRoute, which is a mode guard, not a role guard.
   { to: "/intents", roles: ADMIN, lock: "ai", guard: "none", xtmOneOnly: true },
-  { to: "/users", roles: ADMIN, guard: "AdminRoute" },
-  { to: "/groups", roles: ADMIN, guard: "none" },
+  { to: "/users-and-groups", roles: ADMIN, guard: "AdminRoute" },
+  { to: "/users-and-groups/groups", roles: ADMIN, guard: "none" },
   { to: "/objects", roles: ADMIN, guard: "AdminRoute" },
   { to: "/logs", roles: ADMIN, guard: "AdminRoute" },
   { to: "/settings", roles: ADMIN, guard: "AdminRoute" },
@@ -170,8 +176,8 @@ test("every role, mode, flag set and AI state reaches exactly the pages of the t
     for (const xtmOne of [false, true]) {
       for (const flagSet of FLAG_SETS) {
         for (const ai of AI_STATES) {
-          // `intents` follows the mode, as Sidebar.tsx and use-nav-group.ts set it.
-          const flags: NavFlags = { ...flagSet.gates, xtmOne, intents: xtmOne, aiEnabled: ai.aiEnabled, aiLicensed: ai.aiLicensed };
+          // `intents` and `ctemCases` follow the mode, as Sidebar.tsx and use-nav-group.ts set them.
+          const flags: NavFlags = { ...flagSet.gates, xtmOne, intents: xtmOne, ctemCases: xtmOne, aiEnabled: ai.aiEnabled, aiLicensed: ai.aiLicensed };
           const combination = `${role}, ${xtmOne ? "XTM One" : "Copilot"} mode, ${flagSet.name}, ${ai.name}`;
           assert.deepEqual(actual(role, flags), expected(role, flags), combination);
           combinations += 1;
@@ -183,19 +189,19 @@ test("every role, mode, flag set and AI state reaches exactly the pages of the t
 });
 
 test("the palette lists each page once", () => {
-  const flags: NavFlags = { ...allGates(true), xtmOne: true, intents: true, aiEnabled: true, aiLicensed: true };
+  const flags: NavFlags = { ...allGates(true), xtmOne: true, intents: true, ctemCases: true, aiEnabled: true, aiLicensed: true };
   const routes = navDestinations(resolveNav(flags, true)).map((dest) => dest.to);
   assert.deepEqual(routes.filter((to, index) => routes.indexOf(to) !== index), []);
   const table = REACHABILITY.map((reach) => reach.to);
   assert.deepEqual(table.filter((to, index) => table.indexOf(to) !== index), [], "one line per page in the table");
 });
 
-test("the pages named by the program are pinned: Value, Fleets, Create an agent, the group managers' Analytics", () => {
+test("the pages named by the program are pinned: Tasks, Fleets, Create an agent, the group managers' Analytics", () => {
   const find = (to: string) => REACHABILITY.find((reach) => reach.to === to);
-  assert.deepEqual(find("/value"), { to: "/value", roles: EVERYONE, lock: "license", guard: "none" });
+  assert.deepEqual(find("/tasks"), { to: "/tasks", roles: EVERYONE, guard: "none" });
   assert.deepEqual(find("/fleets"), { to: "/fleets", roles: EVERYONE, lock: "license", guard: "none" });
   assert.deepEqual(find("/agents/new"), { to: "/agents/new", roles: EVERYONE, lock: "ai", guard: "none" });
-  assert.deepEqual(find("/analytics")?.roles, ADMIN_AND_GROUP_MANAGERS);
+  assert.deepEqual(find("/observability")?.roles, ADMIN_AND_GROUP_MANAGERS);
 });
 
 /** Each `<Route ...>` of `App.tsx` with its path and the text up to the next one. */
@@ -208,7 +214,7 @@ const appRoutes = (): { path: string; body: string }[] => {
     .filter((route) => route.path !== "");
 };
 
-/** `/value/:tab?` serves `/value`: trailing optional segments do not change the page. */
+/** `/tasks/value/:tab?` serves `/tasks/value`: trailing optional segments do not change the page. */
 const servesExactly = (path: string, to: string) => path === to || path.replace(/(\/:[A-Za-z]+\?)+$/, "") === to;
 
 /** `/fleets/:fleetId/:tab?` serves `/fleets/x`: a parameter takes one segment. Tried after `servesExactly`. */
@@ -234,13 +240,33 @@ test("every destination is a route of App.tsx, behind the guard the table record
   }
 });
 
-test("every old Fleets URL redirects to /fleets, the rest of the path, query and hash kept (N2c)", () => {
+test("no route redirects or aliases a former address; an unknown one is not found (#797)", () => {
   const source = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
-  const legacy = appRoutes().find((route) => route.path === "/flows/fleets/*");
-  assert.ok(legacy, "a /flows/fleets/* route exists");
-  assert.match(legacy.body, /^path="\/flows\/fleets\/\*" element=\{<FleetsLegacyRedirect \/>\}/);
-  assert.match(source, /pathname\.replace\(\/\^\\\/flows\\\/fleets\/, "\/fleets"\)\}\$\{search\}\$\{hash\}`\} replace/);
-  assert.ok(appRoutes().some((route) => route.path === "/fleets"), "/fleets is a page of its own");
+  const routes = appRoutes();
+  for (const retired of ["/flows/fleets/*", "/concierge/*", "/traces/sessions", "/profile/runners", "/public/*", "/analytics/:tab?", "/traces", "/trace-sessions", "/browser-profiles", "/variables", "/relays", "/users", "/users/:id/:tab?", "/groups", "/groups/:id/:tab?", "/runs/:id", "/assignments/:id/:tab?", "/flows/:id/builder", "/runners/:id"]) {
+    assert.equal(routes.find((route) => route.path === retired), undefined, `${retired} is not a route`);
+  }
+  // The only redirects left are access guards (home, or the login page): never one page aliasing another.
+  const targets = [...source.matchAll(/<Navigate to="([^"]*)"/g)].map((match) => match[1]);
+  assert.deepEqual([...new Set(targets)].sort(), ["/", "/login"]);
+  assert.doesNotMatch(source, /<Navigate to=\{/, "no computed redirect target");
+  assert.doesNotMatch(source, /LegacyRedirect/);
+  // The license splash has its own catch-all; the app's is the last one.
+  const catchAlls = routes.filter((route) => route.path === "*");
+  const catchAll = catchAlls[catchAlls.length - 1];
+  assert.ok(catchAll, "a catch-all route exists");
+  assert.match(catchAll.body, /<RouteNotFound \/>/);
+  assert.ok(routes.some((route) => route.path === "/fleets"), "/fleets is a page of its own");
+});
+
+// One pattern, one component: the detail pages answer an unknown id with RouteNotFound. The
+// rendered behaviour (a 404 never reaching the section boundary) is pages/unknown-id-not-found.test.tsx.
+test("an unknown agent, assignment, run, flow or machine id is Page not found, never a page-local state (#797 S4)", () => {
+  for (const page of ["AgentDetail.tsx", "AssignmentDetail.tsx", "RunDetail.tsx", "flow-builder/index.tsx", "RunnerDetail.tsx"]) {
+    const source = readFileSync(new URL(`../../pages/${page}`, import.meta.url), "utf8");
+    assert.match(source, /if \(!(agent|assignment|run|flow|runner)\) return <RouteNotFound \/>;/, `${page} renders RouteNotFound`);
+    assert.doesNotMatch(source, /<NotFoundState/, `${page} draws no page-local not-found state`);
+  }
 });
 
 test("Agentic Flow keeps the map and the library, never a Fleets tab (two rows never open one page)", () => {

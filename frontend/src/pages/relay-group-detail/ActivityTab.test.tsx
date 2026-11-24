@@ -56,7 +56,7 @@ vi.mock("@/hooks/api/useRelayApi", async (importOriginal) => ({
 
 const GROUP = { id: "g-1", name: "Paris" } as unknown as RelayGroup;
 
-function renderTab(url = "/relays/g-1/activity") {
+function renderTab(url = "/connections/relays/g-1/activity") {
   return renderWithProviders(
     <MemoryRouter initialEntries={[url]}>
       <ActivityTab group={GROUP} />
@@ -123,7 +123,7 @@ describe("Relay group activity table", () => {
   });
 
   it("reads the outcome, relays, sort and page (1-based in the URL) from the URL", () => {
-    renderTab("/relays/g-1/activity?act_f_outcome=error&act_f_relay=r-1&act_f_relay=r-2&act_sort=created_at:asc&act_page=2");
+    renderTab("/connections/relays/g-1/activity?act_f_outcome=error&act_f_relay=r-1&act_f_relay=r-2&act_sort=created_at:asc&act_page=2");
     expect(last()).toMatchObject({ outcome: "error", relay_id: ["r-1", "r-2"], direction: "asc", offset: 50 });
   });
 

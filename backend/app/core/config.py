@@ -452,6 +452,10 @@ class Settings(BaseSettings):
     log_level: str = ""  # "debug" | "info" | "warning" | "error" | "critical" — empty = auto (debug→DEBUG, else INFO)
     log_format: str = ""  # "json" | "console" — empty = auto (json in prod, console when debug)
     secret_key: str = ""
+    # Former SECRET_KEY values, comma-separated, still accepted when a decision
+    # answer link (``/decide/<token>``, #842) signed before a key rotation is
+    # opened; new links are always signed with SECRET_KEY. Empty: none.
+    decision_link_previous_secrets: str = ""
 
     # --- Vault references ---
     # How long a secret read from a vault (``vault://<provider>/<path>#<key>``)
@@ -778,6 +782,13 @@ class Settings(BaseSettings):
     # routed agent alone.
     channel_agent_mentions_enabled: bool = False
 
+    # Human gates (#842, S2b, dev-docs/human-gates.md section 8): the inbox,
+    # the bell and the decision cards read the ``decisions`` table only when
+    # this is on AND the backfill count check finds every open gate covered
+    # (``decision_backfill.read_switch``). Off by default: the readers keep
+    # reading each engine's own columns, which the dual write keeps current.
+    decisions_read_enabled: bool = False
+
     # --- Worker (SAQ) ---
     worker_concurrency: int = 20  # Max concurrent background jobs
     worker_job_timeout: int = 600  # Max seconds per job (10 min default)
@@ -916,6 +927,13 @@ class Settings(BaseSettings):
     orchestration_default_max_attempts: int = 3  # Claims before a crashed execution dead-letters
     orchestration_claim_batch: int = 20  # Max executions/outbox events claimed per adapter per tick
     orchestration_grace_seconds: int = 120  # Extra slack added to job timeout when computing deadline_at
+    # How long an assignment run or a background task may wait in the queue for a
+    # free worker before it is failed with ``deadline_exceeded_before_start``
+    # (no model call, no ``run.failed``). Its execution budget (timeout + grace)
+    # counts from the moment a worker starts it, never from its creation, so a
+    # saturated queue no longer eats the time it may run. 0 = no queue bound.
+    # An assignment overrides it with ``trigger_config.max_queue_wait_seconds``.
+    orchestration_max_queue_wait_seconds: int = 3600
     # How long background AI work that came due while agentic AI is unavailable
     # (Community Edition, or the AI switch off) - or while the quota store
     # cannot be reached and quotas fail closed - is HELD before it is
@@ -1050,6 +1068,28 @@ class Settings(BaseSettings):
     # the pool ahead of the others (the drain is round-robin across agents and
     # assignments). 0 (default) = ``max_concurrent_runs``.
     assignment_dispatch_max_pending_runs: int = 0
+    # Fair share of the worker pool when its slots claim due assignment runs
+    # (``assignment_dispatch.fair_share_order``): delegated children of a live
+    # parent first, then one run per fleet in turn (an agent outside any fleet
+    # is its own group), oldest first within a fleet. A fleet holding
+    # ``assignment_fleet_max_share`` of the pool (``max_concurrent_runs`` x the
+    # workers claiming assignment runs), or an agent holding
+    # ``assignment_agent_max_share`` of it, goes after every other fleet's due
+    # work - never refused: an otherwise idle pool still runs it. A share of 0
+    # or 1 lifts that cap. False restores the strict oldest-first claim. A
+    # fleet's optional run budget (``Fleet.run_budget``, #1526) then holds the
+    # due runs of a fleet over it (``services/fleet_run_budget``).
+    assignment_fair_share_enabled: bool = True
+    assignment_fleet_max_share: float = 0.5
+    assignment_agent_max_share: float = 0.5
+    # Delegation reserve: slots per worker above the shared pool that only a
+    # delegated child whose parent run is still running may take, once the
+    # shared pool is full (assignment child runs and background sub-agent
+    # tasks alike). A parent holds its slot while it waits for its child, so N
+    # parents filling the pool and each waiting on one child would otherwise
+    # wait until a deadline. Idle or not full, the pool claims as before. 0
+    # turns the reserve off.
+    delegation_reserve_slots: int = 2
     # Once an assignment's oldest queued delivery has waited this long, the
     # drain alternates its newest and oldest deliveries so fresh work is not
     # delayed by the whole backlog (nothing is dropped), and a WARNING says so
@@ -1093,6 +1133,11 @@ class Settings(BaseSettings):
     # safe for assignments whose HITL pause does not leave shared state
     # half-written.
     assignment_queue_hold_on_awaiting_human: bool = True
+    # Hours after which a run paused for a person stops holding its assignment
+    # (human-gates.md section 7, F3): later triggers run, the run stays
+    # resumable. Applies to scheduled, event and delivery runs; a chat-started
+    # run always holds. 0 turns the release off.
+    human_gate_queue_release_hours: float = 4.0
     # Max distinct assignments that promote queued deliveries per drain. The
     # drain runs on every reconciler cycle, and the enqueue and the end of every
     # assignment run wake it, so the rest follow within a cycle.
@@ -1451,6 +1496,16 @@ class Settings(BaseSettings):
     # the KB sync scheduler, which already lifts the cap for embedding
     # deletes. ``0`` disables the per-statement cap (waits indefinitely).
     embedding_reset_statement_timeout_secs: int = 600
+
+    # Per-transaction statement timeout (seconds) of a sandbox workspace
+    # commit (``WorkspaceStore.commit`` in services/sandbox_workspace/store.py).
+    # A checkout of thousands of files reads, deletes and upserts its manifest
+    # under the workspace row lock, and a second commit of the same workspace
+    # waits on that lock: both ran past the 30 000 ms pool default
+    # (core/database.py) and the tool failed with ``QueryCanceledError`` on
+    # ``SELECT ... FOR UPDATE`` or ``UPDATE sandbox_workspaces``. ``0`` keeps
+    # the pool default.
+    sandbox_workspace_commit_statement_timeout_secs: int = 300
 
     # --- Admin user (mandatory, overwritten on every startup) ---
     admin_email: str = "admin@filigran.io"
@@ -2707,6 +2762,13 @@ class Settings(BaseSettings):
     # counting, not sandbox availability) has no XTM-One-vs-Copilot distinction.
     disable_sandbox_quota_usage: bool = False
     ai_catalog_enabled: bool = False
+    # Platform Health spends outside the agentic quota (dev-docs/platform-health.md
+    # sections 6 and 12.5), bounded only by its own spend ceilings (Budget,
+    # Analysis, Module Analyst). False by default: those ceilings are locked at
+    # their built-in defaults, read-only in Settings > Platform Health and a write
+    # to them refused; a stored value is kept, not applied. True: the stored
+    # values apply and the ceilings are editable again. Blank is unset.
+    platform_health_spend_limits_unlocked: bool = False
     # When True, every agent tool of an admin (the agent builder, the flow
     # builder, the trace inspection and the work-items delegation, in chat and
     # on the XTM One MCP server) sees only the admin's three tiers, like every

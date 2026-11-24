@@ -13,11 +13,15 @@ import logging
 import os
 import shutil
 import sys
+from pathlib import Path
 
 import pytest
 
 #: The test files this job collects under ``PYTEST_SHARD_SPLIT=files``, as paths from the backend root (``tests/sharding.py``).
 _SHARD_FILES: pytest.StashKey[frozenset[str] | None] = pytest.StashKey()
+
+#: The table the shards and the ``app_sources`` groups deal by (``PYTEST_SHARD_DURATIONS``, ``tests/sharding.py``).
+_SHARD_DURATIONS: pytest.StashKey[Path] = pytest.StashKey()
 
 #: The test files the merge queue's change reaches (``PYTEST_SELECTED_FILES``, ``tests/selection.py``); None: all.
 _SELECTED_FILES: pytest.StashKey[frozenset[str] | None] = pytest.StashKey()
@@ -31,35 +35,33 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
-    """Read ``PYTEST_MARKED_FILES``, ``PYTEST_SELECTED_FILES`` and ``PYTEST_SHARD_SPLIT`` once: a wrong value stops the run before xdist starts its workers.
+    """Read ``PYTEST_MARKED_FILES``, ``PYTEST_SELECTED_FILES``, ``PYTEST_SHARD_SPLIT`` and ``PYTEST_SHARD_DURATIONS`` once: a wrong value stops the run before xdist starts its workers.
 
     Then register ``tests/repeat.py``, the ``--repeat`` plugin.
     """
     from tests import repeat
     from tests.marked_files import MARKED_FILES, parse_marker
     from tests.selection import read_selected_files
-    from tests.sharding import load_durations, parse_shard, parse_split, shard_files
+    from tests.sharding import dealt_files, durations_path, load_durations, parse_shard, parse_split, shard_files
 
     repeat.register(config)
 
     value = os.environ.get("PYTEST_MARKED_FILES")
     shard = os.environ.get("PYTEST_SHARD")
     try:
-        config.stash[MARKED_FILES] = parse_marker(value) if value else None
+        marker = config.stash[MARKED_FILES] = parse_marker(value) if value else None
         selected = config.stash[_SELECTED_FILES] = read_selected_files(os.environ.get("PYTEST_SELECTED_FILES"))
         # Every listed file must exist: a list in the wrong form would otherwise collect nothing, and pass.
         missing = sorted(name for name in selected or () if not (config.rootpath / name).is_file())
         if missing:
             raise ValueError(f"PYTEST_SELECTED_FILES lists files that do not exist: {', '.join(missing[:5])}")
         split = parse_split(os.environ.get("PYTEST_SHARD_SPLIT"))
+        # Read here, for every run: the app_sources groups deal by it too, with or without shards.
+        durations = config.stash[_SHARD_DURATIONS] = durations_path(os.environ.get("PYTEST_SHARD_DURATIONS"))
         files = None
         if shard and split == "files":
-            root = config.rootpath
-            names = (path.relative_to(root).as_posix() for path in (root / "tests").rglob("test_*.py"))
-            # Only the selected files are dealt out, so the shards share the selection evenly.
-            files = shard_files(
-                (name for name in names if selected is None or name in selected), load_durations(), *parse_shard(shard)
-            )
+            dealt = dealt_files(config.rootpath, selected, marker)
+            files = shard_files(dealt, load_durations(durations), *parse_shard(shard))
         config.stash[_SHARD_FILES] = files
     except ValueError as exc:
         raise pytest.UsageError(str(exc)) from None
@@ -104,17 +106,32 @@ def pytest_ignore_collect(collection_path, config):
 
 @pytest.hookimpl(tryfirst=True, specname="pytest_collection_modifyitems")
 def pytest_collection_modifyitems_group_source_readers(config, items):
-    """Run every test of a file that reads ``tests/app_sources.py`` on one xdist worker.
+    """Run the tests of the files that read ``tests/app_sources.py`` on ``app_sources.XDIST_GROUPS`` xdist workers.
 
-    Its parse cache holds about 1.5 GB per process; two workers each building
-    one got the CI runner killed (#10437). First, so xdist's ``--dist
+    Its parse cache holds about 1.5 GB per process: one copy per group, not one
+    per worker (#10437). Each file goes to one group, dealt longest first by the
+    shard weights (``app_sources.xdist_groups``). First, so xdist's ``--dist
     loadgroup`` sees the group; a test already in a group keeps its own.
     """
     from tests import app_sources
+    from tests.sharding import DURATIONS_PATH, load_durations
 
-    for item in items:
-        if item.get_closest_marker("xdist_group") is None and app_sources.reads_sources(item.path):
-            item.add_marker(pytest.mark.xdist_group(app_sources.XDIST_GROUP))
+    readers = [
+        item
+        for item in items
+        if item.get_closest_marker("xdist_group") is None and app_sources.reads_sources(item.path)
+    ]
+    if not readers:
+        return
+    root = config.rootpath
+    names = {
+        item: item.path.relative_to(root).as_posix() if item.path.is_relative_to(root) else str(item.path)
+        for item in readers
+    }
+    durations = load_durations(config.stash.get(_SHARD_DURATIONS, DURATIONS_PATH))
+    groups = app_sources.xdist_groups(names.values(), durations)
+    for item in readers:
+        item.add_marker(pytest.mark.xdist_group(groups[names[item]]))
 
 
 # Neither first nor last: a deeper conftest's hook has added its markers by
@@ -288,6 +305,23 @@ def _no_platform_event_dispatch(monkeypatch):
 
     monkeypatch.setattr(platform_events, "_registered", True)
     yield
+
+
+@pytest.fixture(autouse=True)
+def _health_findings_open_on_one_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Platform Health findings open on the first failing read here, with no startup grace.
+
+    The check suites pin what each check reads, one pass at a time. In production a
+    finding opens on its second failing read in a row and XTM One's availability
+    checks have a grace after the process starts (#958); the tests OF that rule
+    (``test_health_restart_grace.py``) put the production values back.
+    """
+    from datetime import timedelta
+
+    from app.services.health import engine
+
+    monkeypatch.setattr(engine, "OPEN_AFTER_FAILS", 1)
+    monkeypatch.setattr(engine, "STARTUP_GRACE", timedelta(0))
 
 
 @pytest.fixture(autouse=True)
@@ -476,6 +510,21 @@ def _reset_preview_lane_read():
     yield
     preview_routing.forget_lane_workers()
     figures.forget_figure_fits()
+
+
+@pytest.fixture(autouse=True)
+def _health_spend_limits_unlocked(monkeypatch):
+    """Apply the Platform Health spend ceilings a test stores (#1202).
+
+    Production locks them at their defaults unless
+    ``PLATFORM_HEALTH_SPEND_LIMITS_UNLOCKED`` is true; the budget, analysis and
+    Module Analyst tests store small ceilings to reach them, so the suite runs
+    unlocked. ``test_health_spend_lock.py`` locks them itself.
+    """
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "platform_health_spend_limits_unlocked", True)
+    yield
 
 
 @pytest.fixture(autouse=True)
@@ -878,11 +927,17 @@ def _same_worker_memory_on_every_machine(monkeypatch):
     Without a container limit, the room of a render is the host's memory less
     the preview reserve (``render_process.launch_room``), a hard floor of
     8 GiB: on a 7.7 GiB CI runner every render a test starts would be refused
-    before it ran, on a larger machine never. The tests of a worker's size set
-    their own; every other one runs on a 32 GiB host.
+    before it ran, on a larger machine never. The container's own limit is
+    hidden the same way: a suite run inside a container (a 4 GiB sandbox) reads
+    no cgroup memory limit, so its renders are not refused either. The tests of
+    a worker's size set their own; every other one runs on a 32 GiB host with
+    no container limit.
     """
     from app.services.video_studio import resources
 
+    missing = "/nonexistent/xtm-one-tests/memory"
+    monkeypatch.setattr(resources, "_CGROUP_V2_MEMORY_MAX", missing)
+    monkeypatch.setattr(resources, "_CGROUP_V1_MEMORY_LIMIT", missing)
     monkeypatch.setattr(resources, "host_memory", lambda: 32 << 30)
 
 

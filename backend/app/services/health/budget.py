@@ -19,7 +19,9 @@ Platform Health work first passes the one licence gate every background work pas
 its own caps, set in Settings > Agents and automations > Platform Health: per cycle and per month, in tokens
 and in dollars (invariant 17: a quota, not a feature switch). It is an extra
 cap, never a bypass: the fleet's runs are company-managed assignment runs and
-count in the platform-wide action tiers as any other.
+count in the platform-wide action tiers as any other. The one exception is the
+Module Analyst (#101 S14b, dev-docs ``platform-health.md`` 12.5): its runs leave
+the agentic quota for a ceiling of their own (``module_analyst_budget.py``).
 
 * A **cycle** (``concierge_cycles``) is one unit of work, opened before a
   specialist starts (:func:`open_cycle`) and closed when it ends
@@ -261,7 +263,12 @@ async def open_cycle(
         raise ValueError(f"not a Platform Health role: {specialist!r}")
     if trigger not in _TRIGGERS:
         raise ValueError(f"not a cycle trigger: {trigger!r}")
-    refusal = await budget_refusal(db)
+    # The module checkers are the one exception to the fleet caps (#101 S14b-2 and S15, dev-docs
+    # 12.5, 13.1): the switches and the licence still gate their cycles, their own ceiling bounds
+    # their spend.
+    from app.services.health.identity import MODULE_CHECKER_ROLES
+
+    refusal = await _gate(db) if specialist in MODULE_CHECKER_ROLES else await budget_refusal(db)
     if refusal is not None:
         raise BudgetRefusedError(refusal)
     cycle = HealthCycle(

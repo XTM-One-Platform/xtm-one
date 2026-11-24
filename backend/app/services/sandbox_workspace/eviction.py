@@ -42,6 +42,7 @@ from dataclasses import dataclass
 
 from app.services.sandbox_workspace.checkout import RECORD_NAME, CheckoutRecord, changes_since
 from app.services.sandbox_workspace.checks import RUNS_DIR
+from app.services.sandbox_workspace.gitignore import GitIgnore
 from app.services.sandbox_workspace.paths import display, is_bytecode_cache, is_under
 
 #: The provider says the recorded ref no longer exists (a merged branch deleted).
@@ -148,6 +149,7 @@ def footprints(
     exclude: str = "",
     current_run: str = "",
     now: float | None = None,
+    ignores: Mapping[str, GitIgnore] | None = None,
 ) -> list[Footprint]:
     """Every checkout of *records* (root -> record) outside *exclude*, the largest first.
 
@@ -156,7 +158,10 @@ def footprints(
     checkout being written) is left out: that one is replaced, never evicted.
     A file is counted under the deepest root that holds it. A record written
     by *current_run* is :data:`RUN_LIVE`; with *now*, ``idle`` is the age of
-    the record file (its manifest ``mtime``).
+    the record file (its manifest ``mtime``). *ignores* (root -> the rules of
+    its ``.gitignore`` files) leaves an untracked file git would ignore (a
+    build's output) out of the count, as ``sandbox_checkout_status`` does, so
+    a checkout the status calls clean is clean here too.
     """
     roots = [r for r in records if not (exclude and (is_under(r, exclude) or is_under(exclude, r)))]
     owned: dict[str, list[str]] = {r: [] for r in roots}
@@ -169,7 +174,8 @@ def footprints(
         record = records[root]
         paths = owned[root]
         mine = {p: entries[p] for p in paths}
-        changes = changes_since(record, mine)
+        ignore = (ignores or {}).get(root)
+        changes = changes_since(record, mine, ignore=ignore)
         runs = record.workspace_path(RUNS_DIR)
         # A file outside the recorded sub_paths is no change of the checkout,
         # but an eviction would remove it with the root: it counts too, unless
@@ -181,7 +187,9 @@ def footprints(
         stray = [
             p
             for p in record.outside(paths)
-            if not is_bytecode_cache(p) and not _leftover(baseline, p, entries.get(record.workspace_path(p)))
+            if not is_bytecode_cache(p)
+            and not (ignore and ignore.ignores(p))
+            and not _leftover(baseline, p, entries.get(record.workspace_path(p)))
         ]
         counted = {
             p
@@ -234,9 +242,23 @@ def evicted_line(evicted: Iterable[Footprint], *, pruned: bool = False) -> str:
 
 
 def eviction_paths(chosen: Iterable[Footprint], entries: Iterable[str]) -> list[str]:
-    """The workspace files the evicted checkouts hold (their records included)."""
-    roots = [f.path for f in chosen]
-    return [p for p in entries if any(is_under(p, r) for r in roots)]
+    """The workspace files the evicted checkouts hold (their records included).
+
+    A file is removed with the deepest checkout root that holds it, as
+    :func:`footprints` counts it: a checkout nested inside an evicted one (a
+    lab checked out under a product tree) keeps its files unless it is
+    chosen itself, so evicting a clean outer tree never takes an inner
+    checkout, clean or not, with it.
+    """
+    entries = list(entries)
+    roots = {f.path for f in chosen}
+    every_root = set(checkout_roots(entries)) | roots
+    out: list[str] = []
+    for path in entries:
+        holders = [r for r in every_root if is_under(path, r)]
+        if holders and max(holders, key=len) in roots:
+            out.append(path)
+    return out
 
 
 def refusal_hint(found: list[Footprint], *, limit: int = MAX_LISTED, pruned: bool = False) -> str:

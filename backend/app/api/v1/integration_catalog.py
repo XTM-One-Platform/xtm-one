@@ -22,16 +22,82 @@ Each tool's read / write ``tool_type`` comes from ``services/tool_classification
 from __future__ import annotations
 
 import logging
+import re
+from typing import Any
 
 from app.api.v1.schemas.integration import ProviderTool
 from app.core.config import settings
 from app.integrations.providers.aikido.webhooks import EVENT_TYPES as AIKIDO_EVENT_TYPES
 from app.integrations.providers.aikido.webhooks import TRIGGER_EVENTS as AIKIDO_TRIGGER_EVENTS
-from app.services.tool_classification import infer_tool_type
+from app.integrations.providers.airwallex.webhooks import EVENT_TYPES as AIRWALLEX_EVENT_TYPES
+from app.integrations.providers.airwallex.webhooks import TRIGGER_EVENTS as AIRWALLEX_TRIGGER_EVENTS
+from app.integrations.providers.rydoo.webhooks import EVENT_TYPES as RYDOO_EVENT_TYPES
+from app.integrations.providers.rydoo.webhooks import TRIGGER_EVENTS as RYDOO_TRIGGER_EVENTS
+from app.integrations.providers.spendesk.webhooks import EVENT_TYPES as SPENDESK_EVENT_TYPES
+from app.integrations.providers.spendesk.webhooks import TRIGGER_EVENTS as SPENDESK_TRIGGER_EVENTS
+from app.services.dealhub_events import catalog_events as _dealhub_catalog_events
+from app.services.opencrq_job_events import FILTER_KEYS as _OPENCRQ_FILTER_KEYS
+from app.services.tool_classification import definition_tool_type
 from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
 
 logger = logging.getLogger(__name__)
 
+#: The filter keys of every Pennylane event (services/pennylane_events.py).
+_PENNYLANE_FILTER_KEYS: dict[str, str] = {
+    "min_amount": "Only records of at least this amount in euros, tax included",
+    "max_amount": "Only records of at most this amount in euros, tax included",
+    "supplier_id": "Only records of these Pennylane supplier ids",
+    "customer_id": "Only records of these Pennylane customer ids",
+    "journal_id": "Only transactions of these journal ids",
+    "bank_account_id": "Only transactions of these bank account ids",
+    "status": "Only invoices in these statuses (payment_status for supplier invoices)",
+    "currency": "Only records in these currencies (EUR, USD...)",
+}
+#: Each Pennylane event: (event, label, description).
+_PENNYLANE_EVENTS: tuple[tuple[str, str, str], ...] = (
+    (
+        "supplier_invoice_created",
+        "Supplier invoice created",
+        "Triggers when a supplier invoice is added in Pennylane. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "supplier_invoice_updated",
+        "Supplier invoice updated",
+        "Triggers when a supplier invoice changes in Pennylane (one run per change). Uses polling "
+        "(every 5 minutes); the first poll starts from now.",
+    ),
+    (
+        "customer_invoice_created",
+        "Customer invoice created",
+        "Triggers when a customer invoice is created in Pennylane. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "customer_invoice_updated",
+        "Customer invoice updated",
+        "Triggers when a customer invoice changes in Pennylane (one run per change). Uses polling "
+        "(every 5 minutes); the first poll starts from now.",
+    ),
+    (
+        "customer_invoice_paid",
+        "Customer invoice paid",
+        "Triggers once when a customer invoice is paid in Pennylane. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "transaction_created",
+        "Bank transaction created",
+        "Triggers when a bank transaction is added in Pennylane. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "transaction_matched",
+        "Bank transaction matched",
+        "Triggers when a bank transaction is matched to invoices in Pennylane, again when the "
+        "matched invoices change. Uses polling (every 5 minutes); the first poll starts from now.",
+    ),
+)
 #: The filter keys of every Wordsmith event (the event's ``data`` and envelope, lifted).
 _WORDSMITH_FILTER_KEYS: dict[str, str] = {
     "type": "The Wordsmith event type",
@@ -42,6 +108,50 @@ _WORDSMITH_FILTER_KEYS: dict[str, str] = {
     "resource_type": "The type of the object the event is about",
     "actor_kind": "Who caused the event: user, agent or system",
 }
+#: The filter keys of every Spendesk webhook event (the delivery envelope).
+_SPENDESK_FILTER_KEYS: dict[str, str] = {
+    "event.entity": "The Spendesk entity type of the event: payables or settlements",
+    "event.eventType": "The event type: created or prepared",
+    "companyId": "The Spendesk company (entity) that sent the event",
+    "data.id": "The id of the payable or settlement the event names",
+}
+#: The filter keys of the NetSuite transaction change events (services/netsuite_events.py).
+_NETSUITE_TRANSACTION_FILTER_KEYS: dict[str, str] = {
+    "subsidiary_id": "Only records of these subsidiaries (internal ids)",
+    "transaction_types": "Only these types among the event's (e.g. credit_memo, vendor_payment)",
+    "status": "Only records in one of these statuses (names or codes)",
+    "min_amount": "Only records whose absolute amount is at least this, in the transaction currency",
+    "change_kinds": "Only created or only updated records",
+}
+
+#: The NetSuite transaction change events: event, label, description.
+_NETSUITE_TRANSACTION_EVENTS: tuple[tuple[str, str, str], ...] = (
+    (
+        "vendor_bill_changed",
+        "Vendor bill created or changed",
+        "Triggers when a vendor bill is created or changed. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "invoice_changed",
+        "Invoice created or changed",
+        "Triggers when an invoice or a credit memo is created or changed. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "payment_changed",
+        "Payment created or changed",
+        "Triggers when a customer or vendor payment is created or changed. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "journal_entry_changed",
+        "Journal entry created or changed",
+        "Triggers when a journal entry or an intercompany journal is created or changed. Uses polling "
+        "(every 5 minutes); the first poll starts from now.",
+    ),
+)
+
 #: The filter keys of every Aikido webhook event (the delivery envelope and its payload).
 _AIKIDO_FILTER_KEYS: dict[str, str] = {
     "event_type": "The Aikido event type (issue.open.created, ci.gate.failed, zen.attack...)",
@@ -54,6 +164,21 @@ _AIKIDO_FILTER_KEYS: dict[str, str] = {
     "payload.code_repo_id": "The code repository the event names, when it carries one",
     "payload.code_repo_name": "The code repository name, when the event carries one",
     "payload.team_id": "The responsible team, when the event carries one",
+}
+#: The filter keys of every Airwallex webhook event (the Event object it delivers).
+_AIRWALLEX_FILTER_KEYS: dict[str, str] = {
+    "name": "The Airwallex event type (payout.transfer.paid, deposit.settled...)",
+    "account_id": "The Airwallex account (entity) the event belongs to",
+    "data.object.currency": "The currency of the object, when it carries one",
+    "data.object.amount": "The amount of the object, when it carries one",
+    "data.object.status": "The status of the object the event is about",
+}
+#: The filter keys of every Rydoo expense webhook event (the delivery is flat).
+_RYDOO_FILTER_KEYS: dict[str, str] = {
+    "eventType": "The Rydoo event type (ExpenseSubmitted, ExpenseApproved, ExpenseRejected...)",
+    "expenseId": "The expense the event names",
+    "userId": "The employee who owns the expense",
+    "companyId": "The Rydoo company that sent the event",
 }
 #: The label of each Wordsmith event type in the trigger picker.
 _WORDSMITH_EVENT_LABELS: dict[str, str] = {
@@ -231,6 +356,73 @@ def missing_required_extra_fields_message(provider: str, missing: list[str]) -> 
     )
 
 
+_DOMAIN_NAME = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$")
+
+
+def invalid_extra_fields(provider: str, extra: dict | None) -> list[str]:
+    """The problems of *extra*'s typed values for *provider*, one sentence each.
+
+    Read from the catalog's ``extra_field_inputs``: a ``domains`` field holds
+    domain names only, as text (one per line) or a JSON list (a leading ``@``
+    and a trailing dot are tolerated, as the provider reads them), an ``integer`` field a whole number within its
+    ``minimum`` and ``maximum``. A blank value is not judged: the default
+    applies. The create and update routes answer 422 with these sentences.
+    """
+    entry = PROVIDER_CATALOG.get(provider) or {}
+    specs = entry.get("extra_field_inputs") or {}
+    values = extra if isinstance(extra, dict) else {}
+    problems: list[str] = []
+    for key, spec in specs.items():
+        raw = values.get(key)
+        # A domain list may arrive as a JSON list; it is judged entry by entry,
+        # never as the text of the list.
+        listed = _listed_entries(raw)
+        text = "\n".join(listed) if listed is not None else ("" if raw is None else str(raw).strip())
+        if not text:
+            continue
+        if listed is not None and spec.get("kind") != "domains":
+            problems.append(f"'{key}' takes one value, not a list.")
+            continue
+        if spec.get("kind") == "domains":
+            entries = listed if listed is not None else re.split(r"[\s,;]+", text)
+            bad = [item for item in entries if item and not _DOMAIN_NAME.match(item.lower().lstrip("@").rstrip("."))]
+            if bad:
+                problems.append(f"'{key}' holds values that are not domain names: {', '.join(bad[:5])}.")
+        elif spec.get("kind") == "integer":
+            low, high = spec.get("minimum"), spec.get("maximum")
+            try:
+                number: int | None = int(text)
+            except ValueError:
+                number = None
+            if number is None or (low is not None and number < low) or (high is not None and number > high):
+                problems.append(f"'{key}' is a whole number from {low} to {high}.")
+    return problems
+
+
+def _listed_entries(value: object) -> list[str] | None:
+    """The trimmed, non-empty entries of a JSON list value; ``None`` when *value* is no list."""
+    if not isinstance(value, (list, tuple)):
+        return None
+    return [str(item).strip() for item in value if item is not None and str(item).strip()]
+
+
+def normalize_typed_extra_fields(provider: str, extra: dict[str, Any]) -> dict[str, Any]:
+    """*extra* with each ``domains`` field given as a JSON list stored as text.
+
+    The form stores a domain list one entry per line and reads it back that
+    way; a list an API or tool caller sends is stored in the same form, so the
+    form shows its entries and every reader sees one shape. Other values are
+    left as given; a dict without such a list is returned as is.
+    """
+    entry: Any = PROVIDER_CATALOG.get(provider) or {}
+    specs: dict[str, dict[str, Any]] = entry.get("extra_field_inputs") or {}
+    normalized: dict[str, Any] = {}
+    for key, value in extra.items():
+        listed = _listed_entries(value) if (specs.get(key) or {}).get("kind") == "domains" else None
+        normalized[key] = "\n".join(listed) if listed is not None else value
+    return normalized if normalized != extra else extra
+
+
 def newly_missing_required_extra_fields(
     provider: str, stored: dict | None, merged: dict | None
 ) -> list[str]:
@@ -405,6 +597,17 @@ _GITHUB_PAYLOAD_FILTER_KEYS: dict[str, str] = {
     ),
 }
 
+#: A HubSpot CRM event: the object-type scope plus the payload filter on the
+#: delivered event (``webhooks._hubspot_filter_reason``).
+_HUBSPOT_FILTER_KEYS: dict[str, str] = {
+    "scope": 'The CRM entity types, as {"crm_object_type": ["deal", ...]} (the Scope picker)',
+    "propertyName": 'entity_updated: only changes of this property (a list means any), e.g. "dealstage"',
+    "propertyValue": "entity_updated: only this new value; operators allowed",
+    "changeSource": 'Only changes from this source, e.g. {"ne": "INTEGRATION"}',
+    "operators": _GITHUB_PAYLOAD_FILTER_KEYS["operators"],
+    "all / any / not": _GITHUB_PAYLOAD_FILTER_KEYS["all / any / not"],
+}
+
 #: A GitHub CI or push event: the payload filter plus the open pull request
 #: its head commit belongs to (``providers/github/event_enrichment.py``).
 _GITHUB_HEAD_FILTER_KEYS: dict[str, str] = {
@@ -447,6 +650,11 @@ _GITHUB_HEAD_FILTER_KEYS: dict[str, str] = {
         "CI events: true when every status check the open pull request's base branch requires passed on the "
         "head (skipped or neutral pass), whatever the other checks; false with no open PR or no required check. "
         "Also .total, .passed, .failed, .pending, .missing, .*_names[], .base, .last_to_complete"
+    ),
+    "enriched.head.parent.unchanged_red": (
+        "CI events: true when every counted red check of the head was already red on its first parent "
+        '(a red the head did not cause); {"ne": true} drops such wakes. Also .sha, .failed_names[], '
+        ".new_failed_names[]"
     ),
 }
 
@@ -1874,18 +2082,21 @@ PROVIDER_CATALOG = {
                 "label": "Entity created",
                 "description": "Triggers when a contact, company, deal, or other CRM entity is created in HubSpot.",
                 "mechanism": "webhook",
+                "filter_keys": _HUBSPOT_FILTER_KEYS,
             },
             {
                 "event": "entity_updated",
                 "label": "Entity property updated",
                 "description": "Triggers when a property on a CRM entity is changed in HubSpot (e.g. email, stage, amount).",
                 "mechanism": "webhook",
+                "filter_keys": _HUBSPOT_FILTER_KEYS,
             },
             {
                 "event": "entity_deleted",
                 "label": "Entity deleted",
                 "description": "Triggers when a contact, company, deal, or other CRM entity is deleted in HubSpot.",
                 "mechanism": "webhook",
+                "filter_keys": _HUBSPOT_FILTER_KEYS,
             },
         ],
         "element_types": [
@@ -1981,6 +2192,10 @@ PROVIDER_CATALOG = {
                     "description": "Read the notes logged on records",
                 },
                 {
+                    "scope": "crm.objects.notes.write",
+                    "description": "Write notes on records (create_hubspot_note)",
+                },
+                {
                     "scope": "crm.objects.calls.read",
                     "description": "Read logged calls (direction, outcome, duration, notes)",
                 },
@@ -1991,6 +2206,10 @@ PROVIDER_CATALOG = {
                 {
                     "scope": "crm.objects.tasks.read",
                     "description": "Read tasks (type, status, notes)",
+                },
+                {
+                    "scope": "crm.objects.tasks.write",
+                    "description": "Create tasks on records (create_hubspot_task)",
                 },
                 {
                     "scope": "forms",
@@ -2026,7 +2245,10 @@ PROVIDER_CATALOG = {
         "logo": "/logos/jira.svg",
         "category": "integration",
         "integration_category": "development",
-        "integration_types": ["repository"],
+        # Issues and Service Management: Jira fills the Ticketing capability
+        # slot of a fleet (services.fleet_capability_slots). Not a code host:
+        # never typed "repository", the Source code capability's type (#1434).
+        "integration_types": ["ticketing", "itsm"],
         "auth_type": "oauth",
         # What its sign-in learns about the account: a person's own credential
         # never reads the integration's.
@@ -4593,6 +4815,8 @@ PROVIDER_CATALOG = {
         "logo": "/logos/aikido.svg",
         "category": "integration",
         "integration_category": "exposure_management",
+        # application_security puts it in the Application security capability of a
+        # fleet and keeps it out of the Vulnerability scanner one (#1434).
         "integration_types": ["vulnerability_management", "application_security"],
         "supports_assignment_webhooks": True,
         "available_events": [
@@ -4666,6 +4890,221 @@ PROVIDER_CATALOG = {
                 {
                     "scope": "issues:write and the other :write scopes",
                     "description": "Optional: triage, configuration and the destructive tools (each asks a person)",
+                },
+            ],
+        },
+    },
+    "airwallex": {
+        "name": "Airwallex",
+        "description": (
+            "Airwallex global business accounts, one integration per account or entity: balances and "
+            "balance history, financial transactions, global accounts, deposits, transfers, beneficiaries, "
+            "FX rates and conversions, cards and card transactions, invoices, payment intents, "
+            "settlements, payment links and financial reports, with webhook triggers. Write tools "
+            "(beneficiaries, transfers, FX quotes and conversions, cards and cardholders, payment links, "
+            "billing invoices) ask a person on every call. Bank and card numbers are masked."
+        ),
+        "logo": "/logos/airwallex.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["finance"],
+        "supports_assignment_webhooks": True,
+        "available_events": [
+            {
+                "event": AIRWALLEX_TRIGGER_EVENTS[event],
+                "label": label,
+                # One description for every event (the label names it), so the
+                # trigger picker reads it in the viewer's language.
+                "description": (
+                    "Triggers on this Airwallex webhook event. Add a webhook for it in "
+                    "Airwallex > Settings > Developer > Webhooks, pointing to the webhook URL "
+                    "shown below."
+                ),
+                "mechanism": "webhook",
+                "filter_keys": _AIRWALLEX_FILTER_KEYS,
+            }
+            for event, label in AIRWALLEX_EVENT_TYPES.items()
+        ],
+        "auth_type": "api_key",
+        "supported_auth_types": ["api_key"],
+        "fields": ["api_key"],
+        "extra_fields": {
+            "environment": "Airwallex environment",
+            "client_id": "Client ID",
+            "login_as": "Account ID to sign in as (organisation keys only)",
+            "webhook_secret": "Webhook secret (x-signature)",
+        },
+        "extra_field_options": {
+            "environment": [
+                {"value": "production", "label": "Production - api.airwallex.com"},
+                {"value": "demo", "label": "Sandbox - api-demo.airwallex.com"},
+            ],
+        },
+        "setup_guide": {
+            "title": "Airwallex API key",
+            "url": "https://www.airwallex.com/docs/developer-tools/api/manage-api-keys",
+            "steps": [
+                "In Airwallex, as an account admin, open Settings > Developer > API keys and create an API key (or a restricted key with the permissions below).",
+                "Paste the Client ID in the 'Client ID' field and the API key in the 'API key' field, and pick the environment.",
+                "One integration per Airwallex account (legal entity). An organisation key reaching several accounts: set 'Account ID to sign in as', or let the tools pass on_behalf_of per call.",
+                "Every write tool (transfer, beneficiary, conversion, card, payment link, invoice) asks a person before it runs; bind the integration read-only to withhold them from an agent.",
+                "Optional, for webhook triggers: in Settings > Developer > Webhooks, add a webhook pointing to the webhook URL shown below, subscribe to the events and paste its secret in 'Webhook secret (x-signature)'.",
+                "Click 'Test Connection': it signs in and reads the account.",
+            ],
+            "permissions": [
+                {
+                    "scope": "Balances, Wallet, Global accounts: view",
+                    "description": "Read balances, balance history, financial transactions and global accounts",
+                },
+                {
+                    "scope": "Payouts, Transfers, Beneficiaries: view",
+                    "description": "Read transfers and beneficiaries",
+                },
+                {
+                    "scope": "FX: view",
+                    "description": "Read rates, quotes and conversions",
+                },
+                {
+                    "scope": "Issuing: view",
+                    "description": "Read cards, cardholders and card transactions",
+                },
+                {
+                    "scope": "Billing, Payments, Reports: view",
+                    "description": "Read invoices, payment intents, settlements and generate financial reports",
+                },
+                {
+                    "scope": "Payouts, FX, Issuing: edit",
+                    "description": "The write tools: each asks a person before it runs",
+                },
+            ],
+        },
+    },
+    "rydoo": {
+        "name": "Rydoo",
+        "description": (
+            "Rydoo expense management, the whole public API: expenses ready for accounting by branch "
+            "(legal entity), user, group or trip, expense detail with VAT lines, receipts (download and "
+            "upload), reject, report and reimburse, reimbursements and jobs, card and bank transactions, "
+            "users, groups, roles and treasurer permissions, approval and control flows, projects, "
+            "categories, custom fields (cost centres, GL codes), trips, guests, linked accounts, branch "
+            "exchange rates, e-invoices and payment methods (bank details masked), plus expense webhook "
+            "triggers"
+        ),
+        "logo": "/logos/rydoo.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["finance", "expense_management"],
+        # Rydoo activates one webhook URL per company (through its CSM): the
+        # integration's URL, not one per assignment.
+        "available_events": [
+            {
+                "event": RYDOO_TRIGGER_EVENTS[event],
+                "label": label,
+                "description": (
+                    "Triggers on this Rydoo expense webhook event. Rydoo activates the webhook on request "
+                    "(your CSM or connect@rydoo.com) for the webhook URL shown below. Without it, schedule "
+                    "the list_rydoo_exported_expenses tool instead."
+                ),
+                "mechanism": "webhook",
+                "filter_keys": _RYDOO_FILTER_KEYS,
+            }
+            for event, label in RYDOO_EVENT_TYPES.items()
+        ],
+        # OAuth2 client credentials: the client secret is the stored secret.
+        "auth_type": "api_key",
+        "supported_auth_types": ["api_key"],
+        "fields": ["api_key"],
+        "extra_fields": {
+            "client_id": "API client ID",
+            "webhook_token": "Webhook token (a long random secret you choose; needed for webhook triggers, see the setup guide)",
+        },
+        "setup_guide": {
+            "title": "Rydoo API client",
+            "url": "https://developers.rydoo.com/reference/authentication",
+            "steps": [
+                "Ask Rydoo (your CSM or connect@rydoo.com) for API access: Rydoo issues a client ID and a client secret for the company.",
+                "Paste the client ID in the 'API client ID' field and the client secret in the 'API key' field.",
+                "Click 'Test Connection': it mints a token and lists the company's branches (legal entities).",
+                "Optional, for webhook triggers: set 'Webhook token' to a long random secret, then give Rydoo the webhook URL shown below followed by ?token=<webhook token> and ask them to activate the expense webhook. A delivery without the token, or with no token configured, is refused.",
+                "Every write tool (reject, mark reported or reimbursed, create or update a user, group, project, list item or payment method) asks a person on each call; bind read-only to withhold them.",
+            ],
+            "permissions": [
+                {
+                    "scope": "api_xpd2",
+                    "description": "The Rydoo public API scope (company-wide: every branch)",
+                },
+            ],
+        },
+    },
+    "spendesk": {
+        "name": "Spendesk",
+        "description": (
+            "Spendesk spend management, the whole Public API, multi-entity: wallet summary, wallet "
+            "loads and settlements, card payments and transactions, requests, payables (expenses, "
+            "invoices, card payments) with receipt downloads and missing receipts, cards, members, "
+            "cost centres, analytical fields, expense categories, suppliers (bank details masked), "
+            "chart of accounts, accounting journals and webhooks; every write asks a person, plus "
+            "webhook triggers"
+        ),
+        "logo": "/logos/spendesk.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["spend_management"],
+        "supports_assignment_webhooks": True,
+        "available_events": [
+            {
+                "event": SPENDESK_TRIGGER_EVENTS[event],
+                "label": label,
+                "description": (
+                    "Triggers on this Spendesk webhook event. Create a webhook for it in Spendesk "
+                    "(the create_spendesk_webhook tool) pointing to the webhook URL shown below."
+                ),
+                "mechanism": "webhook",
+                "filter_keys": _SPENDESK_FILTER_KEYS,
+            }
+            for event, label in SPENDESK_EVENT_TYPES.items()
+        ],
+        # OAuth2 client credentials: the client secret is the stored secret.
+        "auth_type": "api_key",
+        "supported_auth_types": ["api_key"],
+        "fields": ["api_key"],
+        "extra_fields": {
+            "environment": "Spendesk environment",
+            "client_id": "Public API client ID",
+            "webhook_secret": "Webhook signing secret (x-spendesk-webhook-signature)",
+        },
+        "extra_field_options": {
+            "environment": [
+                {"value": "production", "label": "Production - public-api.spendesk.com"},
+                {"value": "sandbox", "label": "Sandbox - public-api.demo.spendesk.com"},
+            ],
+        },
+        "setup_guide": {
+            "title": "Spendesk Public API credential",
+            "url": "https://developer.spendesk.com/reference/general",
+            "steps": [
+                "In Spendesk, as an account owner, open Settings > Integrations > API access and create a Public API credential, at organisation level to reach every entity.",
+                "Grant the scopes the agents need: the :read scopes for a read-only binding, the :write scopes for approvals, cards, suppliers, members and bookkeeping.",
+                "Pick the environment, paste the client ID in the 'Public API client ID' field and the client secret in the 'API key' field.",
+                "Optional, for webhook triggers: create a webhook with the create_spendesk_webhook tool pointing to the webhook URL shown below, and paste the secret it answers in the 'Webhook signing secret' field.",
+                "Click 'Test Connection': it mints a token and lists the organisation's entities.",
+            ],
+            "permissions": [
+                {
+                    "scope": "payable:read, transaction:read, request:read",
+                    "description": "Read payables, receipts, transactions and requests",
+                },
+                {
+                    "scope": "settlement:read, wallet-summary:read, wallet-load:read",
+                    "description": "Read the wallet, its loads and settlements",
+                },
+                {
+                    "scope": "card:read, user:read, supplier:read, cost-center:read",
+                    "description": "Read cards, members, suppliers and cost centres",
+                },
+                {
+                    "scope": "the :write scopes",
+                    "description": "Optional: every write tool, each asks a person before it runs",
                 },
             ],
         },
@@ -4924,6 +5363,55 @@ PROVIDER_CATALOG = {
             "notes": "Authentication uses the X-API-KEY HTTP header. If the key is missing or invalid, the API returns 401 Unauthorized. You can generate multiple API keys from your Concord account.",
         },
     },
+    "dealhub": {
+        "name": "DealHub",
+        "description": (
+            "DealHub CPQ, every documented API: quotes with line items, totals, discounts, playbook "
+            "answers and approval steps, quote documents, DealRoom signers, opportunities; simulate, "
+            "generate, submit for approval, publish and sign quotes; users; price book; versions, "
+            "playbooks, product catalog and hierarchy. Every write asks a person before it runs"
+        ),
+        "logo": "/logos/dealhub.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["cpq"],
+        # A secret bearer token a CPQ administrator generates; the instance
+        # host (api.dealhub.io unless the account is on another instance)
+        # lives in extra config.
+        "auth_type": "api_key",
+        "supported_auth_types": ["api_key"],
+        "fields": ["api_key"],
+        "extra_fields": {
+            "instance_host": "DealHub API host (api.dealhub.io when empty)",
+            "webhook_token": "Webhook token (real-time quote events; several tokens separated by commas while rotating)",
+        },
+        # Quote events: DealHub webhooks (Token authentication) in real time,
+        # polling of the quote statuses every 15 minutes as the fallback
+        # (services/dealhub_events.py).
+        "available_events": _dealhub_catalog_events(),
+        "setup_guide": {
+            "title": "DealHub API token",
+            "url": "https://developers.dealhub.io/docs/authentication-overview",
+            "steps": [
+                "In DealHub, as a CPQ administrator, generate an API token (Settings > Integrations > API).",
+                "Paste the token in the 'API key' field.",
+                "Leave 'DealHub API host' empty for api.dealhub.io, or set your instance's host (a name under dealhub.io).",
+                "Click 'Test Connection': it reads the account's active users.",
+                "Optional, real-time quote events: generate a long random token and paste it in 'Webhook token'; in DealHub, System Settings > API Settings > Webhooks, add a webhook whose URL is this integration's webhook URL ({base_url}/api/hooks/integrations/<integration id>), select the quote events and the Token authentication type with the same token. Without it, the events are polled every 15 minutes.",
+            ],
+            "permissions": [
+                {
+                    "scope": "Quote, Headless and CRM APIs",
+                    "description": "Read quotes, approvals, documents and DealRoom signers; generate, submit, publish and sign quotes (each write asks a person)",
+                },
+                {
+                    "scope": "User, Pricing and Version APIs",
+                    "description": "Read users, prices, versions, playbooks and the product catalog; change them (each write asks a person)",
+                },
+            ],
+            "notes": "DealHub has no API to approve or reject an approval step: approvals are read on the quote and decided in DealHub. The Subskribe billing API has its own credential and is not part of this integration.",
+        },
+    },
     "docusign": {
         "name": "DocuSign",
         "description": "e-Signature — send PDF and Word files of a conversation for signature as envelopes, follow signers, download the signed document, templates (eSignature REST API v2.1)",
@@ -5029,6 +5517,130 @@ PROVIDER_CATALOG = {
                 "read from /oauth/userinfo after sign-in. A demo (developer) account only "
                 "produces test signatures; a production integration key must be promoted "
                 "(Go Live) by DocuSign first."
+            ),
+        },
+    },
+    "netsuite": {
+        "name": "NetSuite",
+        "description": "Oracle NetSuite ERP, OneWorld-ready: SuiteQL, any record, subsidiaries, periods, chart of accounts, transactions and journal lines, trial balance, income statement and balance sheet per subsidiary or consolidated, AR/AP aging, intercompany balances; master data, bills, invoices, payments, journals, bank details and period close, the sensitive writes asked first",
+        "logo": "/logos/netsuite.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["erp", "finance"],
+        # Both modes sign their own requests (a client credentials grant with a
+        # certificate, or OAuth 1.0a TBA): the secret goes in the API Key field,
+        # the account and identifiers in extra_config.
+        "auth_type": "api_key",
+        "supported_auth_types": ["api_key"],
+        "fields": ["api_key"],
+        "extra_fields": {
+            "account_id": "Account ID (Setup > Company > Company Information, e.g. 1234567 or 1234567_SB1 for a sandbox)",
+            "auth_mode": "Authentication",
+            "oauth_client_id": "Client ID of the integration record - OAuth 2.0 machine-to-machine",
+            "certificate_id": "Certificate ID (OAuth 2.0 Client Credentials Setup) - OAuth 2.0 machine-to-machine",
+            "oauth_scopes": "OAuth 2.0 scopes (default rest_webservices; add restlets to call RESTlets)",
+            "consumer_key": "Consumer key of the integration record - Token-Based Authentication",
+            "consumer_secret": "Consumer secret of the integration record - Token-Based Authentication",
+            "token_id": "Token ID of the access token - Token-Based Authentication",
+            "companion_script_id": "Companion RESTlet script ID (saved searches, file cabinet, attachments; optional)",
+            "companion_deploy_id": "Companion RESTlet deployment ID",
+        },
+        "extra_field_options": {
+            "auth_mode": [
+                {
+                    "value": "m2m",
+                    "label": "OAuth 2.0 machine-to-machine (client credentials with a certificate), recommended",
+                },
+                {"value": "tba", "label": "Token-Based Authentication (OAuth 1.0a, HMAC-SHA256)"},
+            ],
+        },
+        # Polled with SuiteQL (services/netsuite_events.py, every 5 min): NetSuite
+        # posts no change notification without a script of the customer's.
+        "available_events": [
+            {
+                "event": event,
+                "label": label,
+                "description": description,
+                "mechanism": "polling",
+                "filter_keys": _NETSUITE_TRANSACTION_FILTER_KEYS,
+            }
+            for event, label, description in _NETSUITE_TRANSACTION_EVENTS
+        ]
+        + [
+            {
+                "event": "accounting_period_changed",
+                "label": "Accounting period changed",
+                "description": (
+                    "Triggers when an accounting period is closed, reopened, locked or unlocked. "
+                    "Uses polling (every 5 minutes); the first poll starts from now."
+                ),
+                "mechanism": "polling",
+                "filter_keys": {
+                    "states": "Only periods now in one of these states: open, closed, ap_locked, ar_locked, all_locked",
+                },
+            }
+        ],
+        "setup_guide": {
+            "title": "NetSuite Setup",
+            "url": "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_162686838198.html",
+            "steps": [
+                "Enable the features (Setup > Company > Enable Features > SuiteCloud): REST Web Services, OAuth 2.0 (machine-to-machine) or Token-Based Authentication, and SuiteAnalytics Workbook for SuiteQL.",
+                "Create a dedicated role with the permissions listed below and assign it to an integration user (a person or a dedicated employee record). Grant only the write permissions the agents need: every tool family is its own tool, and the sensitive ones ask a person on every call.",
+                "Create an integration record (Setup > Integration > Manage Integrations > New): for OAuth 2.0 machine-to-machine check Client Credentials (Machine to Machine) Grant and the scope REST Web Services (and RESTlets to call RESTlets); for TBA check Token-Based Authentication. Copy the client ID, or the consumer key and secret, shown once.",
+                "OAuth 2.0 machine-to-machine (recommended): generate a key pair and a certificate (openssl req -new -x509 -newkey rsa:3072 -nodes -keyout private.pem -out public.pem -days 730 -sha256), then Setup > Integration > OAuth 2.0 Client Credentials (M2M) Setup > Create New: the entity (integration user), the role, the application and public.pem. Paste the Certificate ID and the Client ID below and private.pem in the API Key field.",
+                "Token-Based Authentication: create an access token (Setup > Users/Roles > Access Tokens > New) for the application, user and role; paste the consumer key and secret and the token ID below and the token secret in the API Key field.",
+                "Optional, saved searches, file cabinet downloads, transaction PDFs and attachments: deploy the companion RESTlet documented in the integrations usage guide (SuiteScript 2.1, the actions search, file, pdf and attach), add the RESTlets scope to the integration record and the OAuth scopes field, and paste its script and deployment IDs below.",
+                "Set the account ID (sandbox: 1234567_SB1), choose the authentication mode, save, then Test Connection: it reads the subsidiaries the role reaches.",
+            ],
+            "permissions": [
+                {
+                    "scope": "Setup > REST Web Services (Full)",
+                    "description": "Every REST call: records, metadata catalog, SuiteQL",
+                },
+                {
+                    "scope": "Setup > Log in using OAuth 2.0 Access Tokens (Full), or Log in using Access Tokens (Full) for TBA",
+                    "description": "Authenticate the integration",
+                },
+                {
+                    "scope": "Reports > SuiteAnalytics Workbook (Edit)",
+                    "description": "SuiteQL queries (every read tool)",
+                },
+                {
+                    "scope": "Lists > Subsidiaries, Accounts, Accounting Periods, Departments, Classes, Locations, Currency, Customers, Vendors, Items (View)",
+                    "description": "Reference data and the finance statements",
+                },
+                {
+                    "scope": "Transactions > Find Transaction, Invoice, Credit Memo, Customer Payment, Sales Order, Bills, Vendor Payment, Purchase Order, Make Journal Entry, Intercompany Journal (View)",
+                    "description": "Transactions, journal lines, aging, intercompany balances",
+                },
+                {
+                    "scope": "Lists > Customers, Vendors, Items, Departments, Classes, Locations (Create or Edit)",
+                    "description": "create_netsuite_record and update_netsuite_record (master data)",
+                },
+                {
+                    "scope": "Transactions > Bills, Pay Bills, Invoice, Credit Memo, Customer Payment, Make Journal Entry, Intercompany Journal (Create or Edit)",
+                    "description": "create_netsuite_transaction and update_netsuite_transaction (ask a person on every call)",
+                },
+                {
+                    "scope": "Setup > Manage Accounting Periods (Full)",
+                    "description": "set_netsuite_period_status: close, reopen, lock (asks a person on every call)",
+                },
+                {
+                    "scope": "Custom record Entity Bank Details (View; Edit to change them)",
+                    "description": "get_netsuite_entity_bank_details, set_netsuite_entity_bank_details (the write asks a person)",
+                },
+                {
+                    "scope": "Lists > Documents and Files (View; Create to attach)",
+                    "description": "download_netsuite_file and attach_netsuite_file through the companion RESTlet",
+                },
+            ],
+            "notes": (
+                "Reads are free; master-data writes are writes; posting transactions (bills, invoices, payments, "
+                "journals), period close and lock, entity bank detail changes and RESTlet calls other than GET ask a "
+                "person on every call. Each family is its own tool, so a binding narrows it with the integration's "
+                "allowed tools. Concurrency and governance limits (HTTP 429) are retried with backoff on reads, never "
+                "on writes. Consolidated statements use BUILTIN.CONSOLIDATE at the period's "
+                "consolidation rates. A role missing a permission or a locked period is reported as such."
             ),
         },
     },
@@ -5372,6 +5984,80 @@ PROVIDER_CATALOG = {
             "notes": "For Metabase, the API key format is: enter your Metabase base URL in the extra config field, and the API key in the API Key field. The tools will use both to connect to your instance. For full functionality, ensure the API key has write permissions.",
         },
     },
+    "odoo": {
+        "name": "Odoo",
+        "description": "ERP & Accounting (multi-company) - Chart of accounts, Journals, Journal entries and items, Trial balance, General ledger, Aged receivable and payable, FEC-style exports (CSV / XLSX), Invoices, Bills and credit notes (with attachments), Payments and reconciliation, Bank statements, Taxes, Fiscal positions, Analytic accounts, Fixed assets, Currencies, Lock dates, Products, and any model through generic search_read (JSON-2 API, JSON-RPC fallback)",
+        "logo": "/logos/odoo.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["accounting", "finance"],
+        "auth_type": "api_key",
+        "fields": ["api_key"],
+        "extra_fields": {
+            "base_url": "Odoo URL (e.g. https://example.odoo.com)",
+            "database": "Database name",
+            "login": "Login (the user's email)",
+            "company_ids": "Default company ids, comma-separated (optional)",
+        },
+        # Polled from the records' create / write dates (providers/odoo/events.py,
+        # every 60 s): the external API has no outbound webhook.
+        "available_events": [
+            {
+                "event": event,
+                "label": label,
+                "description": description,
+                "mechanism": "polling",
+                "filter_keys": {
+                    "company": "Only records of these companies (ids or names)",
+                    "journal": "Only records of these journals (ids, codes or names)",
+                    "state": "Only records in these Odoo states (draft, posted, cancel; payments: in_process, paid...)",
+                },
+            }
+            for event, label, description in (
+                (
+                    "journal_entry_posted",
+                    "Journal entry posted",
+                    "Triggers when a journal entry is posted in Odoo or a posted entry changes (one run per change). Uses polling (every minute); the first poll starts from now.",
+                ),
+                (
+                    "vendor_bill_created",
+                    "Vendor bill created",
+                    "Triggers when a vendor bill or refund is created in Odoo. Uses polling (every minute); the first poll starts from now.",
+                ),
+                (
+                    "payment_registered",
+                    "Payment registered",
+                    "Triggers when a payment is registered in Odoo. Uses polling (every minute); the first poll starts from now.",
+                ),
+            )
+        ],
+        "setup_guide": {
+            "title": "Odoo API Key Setup",
+            "url": "https://www.odoo.com/documentation/latest/developer/reference/external_api.html",
+            "steps": [
+                "Sign in to Odoo as the user the agents act as (a dedicated user is best: its access rights and companies bound what the tools reach).",
+                "Open the user menu > My Profile (Preferences) > Account Security and create a New API Key named '{APP_NAME}'.",
+                "Paste the key in the API Key field below.",
+                "Fill in the Odoo URL, the database name (Settings > Activate developer mode shows it; on odoo.com it is usually the subdomain) and the login.",
+                "Optionally list default company ids; every tool also takes company_ids, and list_odoo_companies names them.",
+            ],
+            "permissions": [
+                {
+                    "scope": "Accounting / Invoicing: Billing or Accountant",
+                    "description": "Chart of accounts, journals, entries and items, reports, invoices, bills, payments, bank statements, taxes, analytics, assets, lock dates",
+                },
+                {
+                    "scope": "Allowed companies",
+                    "description": "The companies the user may switch to are the companies the tools reach (allowed_company_ids)",
+                },
+                {
+                    "scope": "Contacts",
+                    "description": "Partners and partner bank accounts",
+                },
+            ],
+            "notes": "Odoo 19+ answers the JSON-2 API (bearer API key); older versions are reached through JSON-RPC with the same key. Read or write follows the Odoo operation: every write tool (create, update, post, cancel, reset, register a payment, reconcile, lock dates, generic create / write / unlink / method) asks a person on every call. Bank account numbers answer masked to their last 4 characters. Bind read-only to withhold every write tool. See https://www.odoo.com/documentation/latest/developer/reference/external_api.html.",
+        },
+    },
     "databricks": {
         "name": "Databricks",
         "description": "Lakehouse: SQL Warehouses, Unity Catalog, Jobs & Workflows, Model Serving, Vector Search, and files - volume, DBFS and workspace files (notebooks exported) read, stored as files of the conversation, and written from any file of the conversation",
@@ -5518,6 +6204,57 @@ PROVIDER_CATALOG = {
                 "description": "Triggers when a new finding is created in OpenAEV.",
                 "mechanism": "webhook",
             },
+            {
+                "event": "finding_updated",
+                "label": "Finding updated",
+                "description": "Triggers when a finding changes in OpenAEV (assets, occurrences, status).",
+                "mechanism": "webhook",
+            },
+            {
+                "event": "finding_deleted",
+                "label": "Finding deleted",
+                "description": "Triggers when a finding is deleted in OpenAEV.",
+                "mechanism": "webhook",
+            },
+            {
+                "event": "asset_created",
+                "label": "Asset created",
+                "description": "Triggers when an asset (endpoint) is created in OpenAEV.",
+                "mechanism": "webhook",
+            },
+            {
+                "event": "asset_updated",
+                "label": "Asset updated",
+                "description": "Triggers when an asset (endpoint) changes in OpenAEV.",
+                "mechanism": "webhook",
+            },
+            {
+                "event": "asset_stale",
+                "label": "Asset turned stale",
+                "description": (
+                    "Triggers when an asset has not been seen in OpenAEV for longer than the tenant's "
+                    "stale threshold (off until the threshold is set)."
+                ),
+                "mechanism": "webhook",
+            },
+            {
+                "event": "vulnerability_created",
+                "label": "Vulnerability created",
+                "description": "Triggers when a vulnerability is created in OpenAEV.",
+                "mechanism": "webhook",
+            },
+            {
+                "event": "scenario_score_degraded",
+                "label": "Scenario score degraded",
+                "description": "Triggers when the score of a scenario drops in OpenAEV: a control that held no longer does.",
+                "mechanism": "webhook",
+            },
+            {
+                "event": "critical_asset_reached",
+                "label": "Critical asset reached",
+                "description": "Triggers when a finished simulation's attack path reached an asset of high or very high criticality in OpenAEV.",
+                "mechanism": "webhook",
+            },
         ],
         "auth_type": "api_key",
         "fields": ["api_key"],
@@ -5604,18 +6341,21 @@ PROVIDER_CATALOG = {
                 "label": "Risk scenarios recomputed",
                 "description": "Triggers when a CRQ simulation or the re-pricing of risk scenarios finishes in OpenCRQ. Uses polling (every minute).",
                 "mechanism": "polling",
+                "filter_keys": _OPENCRQ_FILTER_KEYS,
             },
             {
                 "event": "finding_score_changed",
                 "label": "Finding scores recomputed",
                 "description": "Triggers when OpenCRQ finishes recomputing finding scores. Uses polling (every minute).",
                 "mechanism": "polling",
+                "filter_keys": _OPENCRQ_FILTER_KEYS,
             },
             {
                 "event": "control_validation_ingested",
                 "label": "Control validation ingested",
                 "description": "Triggers when OpenCRQ finishes ingesting OpenAEV results or recording the proven posture. Uses polling (every minute).",
                 "mechanism": "polling",
+                "filter_keys": _OPENCRQ_FILTER_KEYS,
             },
         ],
         "setup_guide": {
@@ -6060,7 +6800,9 @@ PROVIDER_CATALOG = {
         "logo": "/logos/defender.svg",
         "category": "integration",
         "integration_category": "detection_response",
-        "integration_types": ["xdr", "edr", "threat_intel", "soar"],
+        # Also a SIEM (#1373): advanced hunting over the unified Defender and
+        # Sentinel tables, so it fills a fleet's SIEM capability beside Sentinel.
+        "integration_types": ["xdr", "edr", "siem", "threat_intel", "soar"],
         # Delegated OAuth (sign-in) is the default; app-only application
         # permissions remain available via the "API Key" auth mode and are
         # recommended for fully-unattended assignments.
@@ -8624,6 +9366,63 @@ PROVIDER_CATALOG = {
             ),
         },
     },
+    "platform_email": {
+        "name": "Platform email",
+        "description": (
+            "Let agents send email from the platform's own address through the SMTP "
+            "server this deployment configures, to the recipient domains you allow"
+        ),
+        "logo": "/logos/platform_email.svg",
+        "category": "integration",
+        "integration_category": "communication",
+        "integration_types": ["email"],
+        # No credential: it sends through the deployment's SMTP settings. Offered
+        # only while SMTP is configured, created by an administrator only, as a
+        # company-managed integration (integrations.py reads both flags).
+        "auth_type": "none",
+        "supported_auth_types": ["none"],
+        "requires_platform_smtp": True,
+        "company_managed_only": True,
+        "fields": [],
+        "extra_fields": {
+            "allowed_domains": "Allowed recipient domains",
+            "daily_limit": "Emails per agent per day",
+        },
+        # The control and the rule of each field: the form draws a domain list as
+        # tags and the limit as a bounded number, and the create and update
+        # routes refuse a value outside the rule (invalid_extra_fields).
+        "extra_field_inputs": {
+            "allowed_domains": {
+                "kind": "domains",
+                "help": "Type a domain such as example.com, then press Enter. Agents can only write to these domains; with none, every send is refused.",
+            },
+            "daily_limit": {
+                "kind": "integer",
+                "minimum": 0,
+                "maximum": 1000,
+                "default": "50",
+                "help": "Emails one agent may send per UTC day, from 0 to 1000. 0 stops every send.",
+            },
+        },
+        "setup_guide": {
+            "title": "Platform email setup",
+            "steps": [
+                "The deployment's SMTP settings (SMTP_HOSTNAME and the other SMTP_* variables) are the server and the sender: nothing to enter here.",
+                "Add the recipient domains agents may write to, one at a time (type a domain, then press Enter). An address outside them is refused.",
+                "Set the daily limit per agent (default 50), then bind the integration to the agents that may send.",
+            ],
+            "permissions": [
+                {
+                    "scope": "Send",
+                    "description": "Send email from the platform sender to the allowed domains; every send asks for approval and is written to the audit log.",
+                },
+            ],
+            "notes": (
+                "Test Connection says whether SMTP is configured and which domains are allowed. "
+                "Bcc recipients each receive their own copy, never named in a header."
+            ),
+        },
+    },
     "rss": {
         "name": "RSS / Atom Feeds",
         "description": "Read news from any RSS or Atom feed — curated sources for any topic",
@@ -8676,6 +9475,9 @@ PROVIDER_CATALOG = {
         "category": "integration",
         "integration_category": "threat_intelligence",
         "integration_types": ["threat_intel"],
+        # An extraction model, not a data source: never offered in a fleet's
+        # capability slots (services.fleet_capability_slots.providers_for).
+        "capability_slots": False,
         "auth_type": "none",
         "fields": [],
         "extra_fields": {
@@ -8861,6 +9663,137 @@ PROVIDER_CATALOG = {
                 {"scope": "Notetaker Read", "description": "AI Notetaker interview transcripts (Ashby add-on)"},
             ],
             "notes": "Ashby uses HTTP Basic Auth: the API key is the username with an empty password, and every endpoint is a POST. A tool that lacks a permission says which one to grant. Ashby allows 1,000 requests per minute per key and 15 report runs per minute per organization. See https://developers.ashbyhq.com/reference/authentication for the permission table.",
+        },
+    },
+    "quotapath": {
+        "name": "QuotaPath",
+        "description": (
+            "Sales commission management - users, teams and managers, compensation plans and paths, "
+            "quotas, deals and their crediting, payouts (earned, paid, still owed), commission totals "
+            "by rep, team, plan and period, CSV payout and deal reports. Commission amounts are people "
+            "data; every write asks a person"
+        ),
+        "logo": "/logos/quotapath.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["sales_compensation"],
+        "auth_type": "api_key",
+        "fields": ["api_key"],
+        "available_events": [
+            {
+                "event": "payout_updated",
+                "label": "Payout created or updated",
+                "description": (
+                    "Triggers when a QuotaPath payout is created or changes (a deal credited, a rate or "
+                    "quota changed). Uses polling (every 15 min); the first poll starts from now."
+                ),
+                "mechanism": "polling",
+            },
+            {
+                "event": "payout_resolved",
+                "label": "Payout resolved",
+                "description": (
+                    "Triggers when a QuotaPath payout is resolved (the period paid out). Uses polling "
+                    "(every 15 min); the first poll starts from now."
+                ),
+                "mechanism": "polling",
+            },
+            {
+                "event": "payout_unresolved",
+                "label": "Payout newly owed",
+                "description": (
+                    "Triggers when a payout appears among the unresolved ones (commission owed, the "
+                    "accrual). Uses polling (every 15 min); what is owed when the trigger is enabled "
+                    "does not run."
+                ),
+                "mechanism": "polling",
+            },
+        ],
+        "setup_guide": {
+            "title": "QuotaPath API Key Setup",
+            "url": "https://api.quotapath.com/docs/",
+            "steps": [
+                "Sign in to QuotaPath as a workspace admin.",
+                "Open Settings > Integrations and generate an API key.",
+                "Paste the key in the field below. Test Connection reads the workspace users.",
+            ],
+            "permissions": [
+                {
+                    "scope": "Workspace API key",
+                    "description": "Reads users, teams, plans, quotas, deals and payouts; writes deals, quotas and imports (each write asks a person)",
+                },
+            ],
+            "notes": "QuotaPath sends the key as 'Authorization: Token <key>' to https://api.quotapath.com/v1. Its public API has no disputes, adjustments, draws, payout-period approval or lock, CRM sync status, statement PDFs or webhooks: those stay in the QuotaPath application, and events are polled.",
+        },
+    },
+    "pennylane": {
+        "name": "Pennylane",
+        "description": "Accounting, Invoicing & Banking - Ledger entries and lines, Trial balance, FEC and general ledger exports, Customer and supplier invoices (with PDFs, payments, matching), Customers, Suppliers, Products, Quotes, Bank transactions, Analytical categories (Company API v2)",
+        "logo": "/logos/pennylane.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["accounting", "finance"],
+        "auth_type": "api_key",
+        "fields": ["api_key"],
+        "extra_fields": {"company_id": "Company ID (firm token only)"},
+        # Polled from the Company API v2 changelogs (services/pennylane_events.py,
+        # every 5 minutes), each change read with its record.
+        "available_events": [
+            {
+                "event": event,
+                "label": label,
+                "description": description,
+                "mechanism": "polling",
+                "filter_keys": _PENNYLANE_FILTER_KEYS,
+            }
+            for event, label, description in _PENNYLANE_EVENTS
+        ],
+        "setup_guide": {
+            "title": "Pennylane API Token Setup",
+            "url": "https://app.pennylane.com",
+            "steps": [
+                "Log in to Pennylane as an administrator of the company.",
+                "Open Settings > Connectivity > Developers and generate an API token (Company API v2).",
+                "Give it the read-only scopes your agents need, and the write scopes only where they may write (listed below).",
+                "Paste the token in the API Key field below. One integration per Pennylane company.",
+                "With a firm (accounting practice) token, also fill in the Company ID of the company it should act on.",
+            ],
+            "permissions": [
+                {
+                    "scope": "ledger_entries:readonly",
+                    "description": "Ledger entries and lines, lettering, their analytics and changelogs",
+                },
+                {
+                    "scope": "ledger_accounts:readonly / journals:readonly",
+                    "description": "Chart of accounts and journals",
+                },
+                {
+                    "scope": "trial_balance:readonly / fiscal_years:readonly",
+                    "description": "Trial balance and fiscal years",
+                },
+                {
+                    "scope": "exports:fec / exports:gl / exports:agl",
+                    "description": "FEC, general ledger and analytical general ledger exports",
+                },
+                {
+                    "scope": "customer_invoices:readonly / supplier_invoices:readonly",
+                    "description": "Invoices, lines, payments, matched transactions, PDFs, changelogs",
+                },
+                {
+                    "scope": "customers:readonly / suppliers:readonly / products:readonly / quotes:readonly",
+                    "description": "Customers, suppliers (IBAN masked), products, quotes",
+                },
+                {
+                    "scope": "bank_accounts:readonly / transactions:readonly",
+                    "description": "Bank accounts and transactions with their matching",
+                },
+                {"scope": "categories:readonly", "description": "Analytical category groups and categories"},
+                {
+                    "scope": "*:all (write)",
+                    "description": "Draft customer invoices, supplier invoice updates, customers, suppliers, ledger entries, matching, analytical categorisation, paid status (each on its own resource scope); file_attachments:all for uploads",
+                },
+            ],
+            "notes": "Pennylane allows 25 requests per 5 seconds per token; a 429 is retried after Retry-After. A tool that lacks a scope names it. No tool initiates a payment, changes bank details or touches mandates. Bind read-only to withhold every write tool; list_pennylane_bank_accounts is the only tool showing bank account data. See https://pennylane.readme.io/reference.",
         },
     },
     "linkedin": {
@@ -9482,6 +10415,8 @@ _URL_DUMMY_PROVIDERS = {
 # exact shape it parses. Tenable needs base_url||access_key||secret_key (both
 # keys non-empty); Intel 471 api_username||api_key, with no URL.
 _SHAPED_DUMMIES: dict[str, str] = {
+    # NetSuite's token is account||mode||...||secret.
+    "netsuite": "1234567||tba||__dummy__||__dummy__||__dummy__||__dummy__",
     # PagerDuty's token is region||from_email||api_key.
     "pagerduty": "us||agent@example.com||__dummy__",
     # Zendesk's token is subdomain||email||api_token.
@@ -9490,6 +10425,12 @@ _SHAPED_DUMMIES: dict[str, str] = {
     "intel471": "__dummy__||__dummy__",
     # Aikido's token is region||client_id||client_secret.
     "aikido": "eu||__dummy__||__dummy__",
+    # Airwallex's token is environment||client_id||login_as||api_key.
+    "airwallex": "production||__dummy__||||__dummy__",
+    # Rydoo's token is client_id||client_secret.
+    "rydoo": "__dummy__||__dummy__",
+    # Spendesk's token is environment||client_id||client_secret.
+    "spendesk": "production||__dummy__||__dummy__",
 }
 
 # Sentinel needs a 6-part compound token (tenant||client_id||secret||sub||rg||ws)
@@ -9537,8 +10478,9 @@ def build_tools_for_provider(provider: str) -> list[ProviderTool] | None:
     """The tools of one provider, each with its read/write type; ``None`` when
     the provider has no tool builder.
 
-    ``tool_type`` is the shared classifier's (``infer_tool_type``), the one a
-    read-only binding enforces.
+    ``tool_type`` is the shared classifier's (``definition_tool_type``: the
+    definition's ``read_only`` declaration, else its name), the one a read-only
+    binding enforces.
     """
     from app.services.integration_tools import PROVIDER_TOOLS as _BUILDERS
     from app.tools.base import CallableToolExecutor
@@ -9557,7 +10499,7 @@ def build_tools_for_provider(provider: str) -> list[ProviderTool] | None:
         ProviderTool(
             name=d.name,
             description=d.description,
-            tool_type=infer_tool_type(d.name),
+            tool_type=definition_tool_type(d),
         )
         for d in defs
     ]

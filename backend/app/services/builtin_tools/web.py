@@ -741,8 +741,8 @@ def build_browser_tool(
             # judge a screen on: said in the line that outlives the pixels.
             summary_line += (
                 f" This capture may be blank: one colour covers over {BLANK_DOMINANT_SHARE:.0%} of it and it holds "
-                "no saturated colour. Check the page has painted (wait, scroll, or capture the viewport) before "
-                "relying on it."
+                "no saturated colour and almost no text or line. Check the page has painted (wait, scroll, or "
+                "capture the viewport) before relying on it."
             )
         # Persist whenever there is a DB session AND something to scope the
         # file by: an owner (``user_id``) OR a conversation / assignment run.
@@ -1039,6 +1039,7 @@ def build_browser_tool(
         reset: bool | None = None,
         seconds: float | None = None,
         offline: bool | None = None,
+        scale: float | None = None,
         file_context: FileContext | None = None,
     ) -> str | ToolResult:
         from app.services.browser_tool import action_order, take_notice
@@ -1070,6 +1071,7 @@ def build_browser_tool(
                 reset,
                 seconds,
                 offline,
+                scale=scale,
             )
         # A session re-created since the last action says so first: never a blank page taken for the old one.
         notice = take_notice(session_key)
@@ -1105,6 +1107,7 @@ def build_browser_tool(
         reset: bool | None = None,
         seconds: float | None = None,
         offline: bool | None = None,
+        scale: float | None = None,
     ) -> str | ToolResult:
         from app.services.browser_tool import (
             EvaluateTimeoutError,
@@ -1163,7 +1166,7 @@ def build_browser_tool(
                 return await browser_get_content(session_key)
 
             elif action == "snapshot":
-                return await browser_snapshot(session_key)
+                return await browser_snapshot(session_key, selector or "")
 
             elif action == "click":
                 if not selector:
@@ -1202,7 +1205,7 @@ def build_browser_tool(
                 if width is None or height is None:
                     return "Error: 'width' and 'height' are required for the viewport action."
                 try:
-                    return await browser_set_viewport(session_key, width, height)
+                    return await browser_set_viewport(session_key, width, height, scale)
                 except ValueError as exc:
                     return _failed_action(f"Browser action 'viewport' refused: {exc}")
 
@@ -1397,7 +1400,7 @@ def build_browser_tool(
                     "type": "string",
                     "description": (
                         "CSS selector for the target element (required for 'click', 'type', 'hover', 'drag'; "
-                        "optional for 'screenshot': capture that element only)."
+                        "optional for 'screenshot'/'snapshot': that element only)."
                     ),
                 },
                 "text": {
@@ -1427,6 +1430,7 @@ def build_browser_tool(
                     "type": "integer",
                     "description": f"viewport only: page height in CSS px ({h_min} to {h_max}).",
                 },
+                "scale": {"type": "number", "description": "viewport: device pixel ratio, 1-3."},
                 "dx": {"type": "number", "description": "drag: px right (negative: left)."},
                 "dy": {"type": "number", "description": "drag: px down (negative: up)."},
                 "steps": {"type": "integer", "description": "drag: moves, 1-100 (10)."},
@@ -1447,8 +1451,8 @@ def build_browser_tool(
                     "type": "string",
                     "enum": list(CONSOLE_LEVELS),
                     "description": (
-                        "console only: 'error' shows the errors and page errors alone, 'warning' the warnings too "
-                        "(default: every message); what it leaves out is counted."
+                        "console only: 'error' the errors and page errors alone, 'warning' the warnings too "
+                        "(default: every message)."
                     ),
                 },
                 "full_page": {
@@ -1467,8 +1471,7 @@ def build_browser_tool(
                 "body": {
                     "type": "string",
                     "description": (
-                        "download only, with method POST: the request body, a JSON text (sent as "
-                        "application/json unless the headers set a Content-Type)."
+                        "download only, with method POST: the request body, a JSON text (application/json by default)."
                     ),
                 },
                 "show_to_user": {

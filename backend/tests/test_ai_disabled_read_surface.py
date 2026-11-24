@@ -359,6 +359,10 @@ def test_no_ai_execution_endpoint_relies_on_the_ui_alone():
             "trigger_evaluation",
             "trigger_evaluation_from_runs",
         },
+        # Platform Health's on-demand analysis (#101 S9): one model call.
+        "app/api/v1/platform_health_analysis.py": {"run_health_analysis"},
+        # "Improve with Platform Health" and the Module Analyst's "Investigate now" (#101 S14c).
+        "app/api/v1/platform_health_cycles.py": {"request_cycle", "investigate_module"},
     }
 
     for rel, funcs in expected.items():
@@ -413,6 +417,9 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     # Settings > Agents and automations > Platform Health (#8254): enable, scope and budget caps; stored
     # configuration reaching no model, and switching it off must stay possible.
     "put_health_settings",
+    # Its "Run checks as" user alone, from the CTEM loop setup (dev-docs/platform-health.md 12.3): the same
+    # stored setting, validated against the module integrations, reaching no model.
+    "put_module_run_as",
     # Platform Health findings triage (#101, S8): dismissing or restoring a stored
     # finding writes its status and an audit row, runs no check and reaches no
     # model; the Health page works with AI switched off, so triage must too.
@@ -428,6 +435,11 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     # versioned organization profile. Stored company data reaching no model
     # when saved; with AI off it stays editable for when agents run again.
     "save_organization_context",
+    # The field-scoped save of that profile (#1738): the same hand save, its fields alone.
+    "patch_organization_context",
+    # Restoring fields of a past version of that profile (#1473): the same hand
+    # save, with the same checks; stored data reaching no model.
+    "restore_organization_context_version",
     # Settings > Organization (#11533): the platform default of the organization
     # summary cascade; a stored switch reaching no model, editable with AI off.
     "save_organization_context_injection",
@@ -450,6 +462,35 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     "update_organization_sync",
     "delete_organization_sync",
     "run_organization_sync",
+    # The rows a source wrote (#1276): an administrator purging them or handing them
+    # to people, saved as a new version of the profile; no model involved.
+    "apply_organization_source_rows",
+    # The asset store's merge and split (#1178, S3): an administrator deciding which
+    # source records are one asset; a stored decision and a rebuild, no model involved.
+    "record_asset_decision",
+    "remove_asset_decision",
+    # An SBOM imported on an asset (#1178): an administrator's file parsed into the
+    # asset's software, no model involved.
+    "import_asset_sbom",
+    # Software typed, changed, deleted, attached or detached by an administrator (#1495):
+    # a stored row and a rebuild, no model involved.
+    "create_organization_software",
+    "update_organization_software",
+    "delete_organization_software",
+    "attach_organization_software",
+    "detach_organization_software",
+    # The asset records, groups, crown-jewel links and change log (#1543): an administrator
+    # or an API client writing stored rows one at a time or in a batch; no model involved.
+    "create_asset_record",
+    "upsert_asset_records",
+    "update_asset_record",
+    "delete_asset_record",
+    "bulk_delete_asset_records",
+    "create_asset_group",
+    "update_asset_group",
+    "delete_asset_group",
+    "set_crown_jewel_asset_links",
+    "restore_asset_changes",
     # A change proposed from chat for that profile (#9484 S-a2): an
     # administrator accepting or rejecting a stored proposal. Accepted fields are
     # saved as the next version, accepted organizations created with monitoring
@@ -459,6 +500,13 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     # answering it once (set up now, later, dismiss). A stored flag reaching no
     # model; with AI off the profile form it opens stays editable.
     "answer_setup_prompt",
+    # The guided setup's step progress (#1087, CTEM-33): a done or skipped mark per
+    # step, stored on the settings row; it reaches no model and enables nothing (the
+    # fleet enable step goes through enable_fleet_automations, which is gated).
+    "record_setup_step",
+    # Settings > Platform "Reset onboarding": an administrator clearing that stored
+    # answer and progress so the setup is proposed again; it reaches no model.
+    "reset_setup_prompt",
     # Settings > Organization, tracked organizations (#9157): an administrator
     # adding, editing, archiving an organization or saving its profile. Stored
     # company data reaching no model; monitoring stays off.
@@ -847,6 +895,10 @@ _EXEMPT_OPERATOR_CONTROL = {
     # re-stamps them as never set up. It only removes future AI work, as Pause
     # all does, so AI off must not block it. No model call.
     "unset_fleet_automations",
+    # Reset a built-in fleet to its factory state (#1508): automations off,
+    # bindings and customer settings cleared. It only removes future AI work and
+    # makes no model call, so AI off must not block it.
+    "reset_fleet_to_factory",
     # The same two on several fleets at once, plus the admins' every-fleet Pause
     # switch and a bulk autonomy level (#9769 S3): no model call, a level change
     # only decides which future tool calls wait for a person.
@@ -883,6 +935,10 @@ _EXEMPT_DETERMINISTIC_FLOW_CONTROL = {
 # POSTs that only read, or grant a read.
 _EXEMPT_READ_IN_POST = {
     "export_knowledge_base",
+    # The inventory lookup of a platform's pivot (#1178): reads the canonical
+    # assets the given identifiers name - no model, nothing written. A POST
+    # only because up to 200 identifiers do not fit a query string.
+    "lookup_canonical_assets",
     # The secret picker's check of one vault reference: it reads the
     # secret on the server and answers whether it can be read, nothing written.
     "check_reference",
@@ -1440,6 +1496,16 @@ _EXEMPT_DETERMINISTIC_TOOLING = {
     # fleet manager (#10469 S2): who and when stored, no model call,
     # licence-gated like the fleet.
     "confirm_fleet_prerequisite_endpoint",
+    # A connected integration bound to or unbound from a member's capability
+    # slot (#914 slice 2): the member agent's integration bindings written,
+    # no model call, licence-gated like the fleet.
+    "bind_fleet_member_slot",
+    "unbind_fleet_member_slot",
+    # The fleet choice of a capability written on every member slot of that
+    # type, and one member's exact override or reset (#1201): the same
+    # integration bindings as a one-click bind, no model call, licence-gated.
+    "set_fleet_capability",
+    "set_fleet_member_slot",
     # A custom fleet's approval gate catalog stored (#10014): configuration
     # computed in code, no model call, licence-gated like the fleet. Adding
     # gates only adds pauses, so AI off must not block it either.
@@ -1521,6 +1587,9 @@ _NON_AI_MODULES: dict[str, str] = {
     # A registered platform's access notice: one email from a fixed template,
     # no model call. A platform with AI off still adds people to it.
     "platform_access_notices.py": "access notice emails from a fixed template; no model call",
+    # Cross-platform keys, identity and the user-token exchange: signatures
+    # over a registered platform's verified user, no model call.
+    "xtm_auth.py": "cross-platform keys and user-token exchange; no model call",
     # Inbound delivery only. Every dispatch it can reach is gated downstream:
     # assignments in ``assignment_engine.trigger_assignment`` /
     # ``trigger_or_queue_assignment``, flows in
@@ -1531,6 +1600,9 @@ _NON_AI_MODULES: dict[str, str] = {
     # case grouped from OpenCTI / OpenAEV data. Rules and writes, no model
     # call, like the posture the cases come from.
     "ctem_cases.py": "CTEM cases: deterministic grouping and state changes; no model call",
+    # CTEM signals (#826): a person records a change in exposure; an idempotent
+    # row write, no model call, like the cases it feeds.
+    "ctem_signals.py": "CTEM signals: deterministic idempotent record; no model call",
 }
 
 # Helpers that enforce the gate themselves, so a route delegating to one is

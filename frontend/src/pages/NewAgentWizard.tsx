@@ -30,7 +30,7 @@ import { PromptGenerator } from "@/components/ui/prompt-generator";
 import { TemplateGallery } from "@/components/ui/template-gallery";
 import { PageSkeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
-import { Tip } from "@/components/ui/tooltip";
+import { StepBar } from "@/components/ui/step-bar";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { CatalogRefreshNotice } from "@/pages/flow-builder/CatalogRefreshNotice";
 import { MultiSelectListField } from "@/pages/flow-builder/MultiSelectListField";
@@ -835,31 +835,17 @@ export default function NewAgentWizard() {
               onRetry={() => void refetchNodeCatalog()}
             />
           )}
-          <div className="flex items-center gap-2">
-            {WALKTHROUGH_STEPS.map((s, i) => (
-              <Tip key={s.key} content={t_i18n(s.title)}>
-                <button
-                  type="button"
-                  aria-label={t_i18n("Step {current} of {total}: {title}", { current: i + 1, total: WALKTHROUGH_STEPS.length, title: t_i18n(s.title) })}
-                  aria-current={i === stepIndex ? "step" : undefined}
-                  // Steps already passed stay reachable; skipping ahead unlocks
-                  // once the walkthrough has reached the review.
-                  disabled={!reviewReached && i > stepIndex}
-                  onClick={() => setStepIndex(i)}
-                  // The bar stays thin visually; the py-2 padding gives the
-                  // control a real hit area (WCAG 2.5.8).
-                  className="flex-1 py-2 disabled:cursor-not-allowed"
-                >
-                  <span
-                    className={cn(
-                      "block h-1.5 w-full rounded-full transition-colors",
-                      i === stepIndex ? "bg-accent" : i < stepIndex || reviewReached ? "bg-accent/60" : "bg-elevation-hover",
-                    )}
-                  />
-                </button>
-              </Tip>
-            ))}
-          </div>
+          {/* The shared step bar (UX r1 B1 on #1092): steps already passed stay reachable; skipping ahead unlocks once the walkthrough has reached the review. */}
+          <StepBar
+            ariaLabel={t_i18n("Steps")}
+            steps={WALKTHROUGH_STEPS.map((s, i) => ({
+              key: s.key,
+              title: t_i18n(s.title),
+              state: i === stepIndex ? "current" : i < stepIndex || reviewReached ? "settled" : "todo",
+              disabled: !reviewReached && i > stepIndex,
+            }))}
+            onSelect={setStepIndex}
+          />
           <p className="mt-3 content-compact font-medium text-default-secondary">
             {isAdvancedStep
               ? t_i18n("Advanced option")

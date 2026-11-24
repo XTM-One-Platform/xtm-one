@@ -112,7 +112,16 @@ jobs:
       # longest cached one) and runs only when backend/sandbox/ changes.
       - name: Build image
         working-directory: backend/sandbox
-        run: ./build-image.sh "${{ matrix.image }}:ci"
+        # Built cold, every apt and pip download included: a mirror error the
+        # Dockerfile's own apt calls do not retry gets two more attempts here
+        # (the layers already built stay in Docker's local cache).
+        run: |
+          for attempt in 1 2 3; do
+            ./build-image.sh "${{ matrix.image }}:ci" && exit 0
+            echo "::warning::The image build failed (attempt $attempt of 3)"
+            if [ "$attempt" -lt 3 ]; then sleep 30; fi
+          done
+          exit 1
 
       # Every check below runs through the image's own python3, not shell
       # utilities: final-minimal (distroless) has no shell/coreutils at all,
@@ -334,7 +343,16 @@ jobs:
 
       - name: Build image
         working-directory: backend/sandbox
-        run: ./build-image.sh sandbox-nodejs:ci
+        # Built cold, every apt and pip download included: a mirror error the
+        # Dockerfile's own apt calls do not retry gets two more attempts here
+        # (the layers already built stay in Docker's local cache).
+        run: |
+          for attempt in 1 2 3; do
+            ./build-image.sh sandbox-nodejs:ci && exit 0
+            echo "::warning::The image build failed (attempt $attempt of 3)"
+            if [ "$attempt" -lt 3 ]; then sleep 30; fi
+          done
+          exit 1
 
       - name: Assert non-root and functional
         run: |
@@ -412,7 +430,14 @@ jobs:
       # No layer cache: the image is the backend's or the frontend's whole
       # lock, and the run must test what a fresh build produces.
       - name: Build image
-        run: bash backend/sandbox/build-dev-image.sh "${{ matrix.target }}" "$IMAGE"
+        # Built cold: a mirror error gets two more attempts, as the images' builds above.
+        run: |
+          for attempt in 1 2 3; do
+            bash backend/sandbox/build-dev-image.sh "${{ matrix.target }}" "$IMAGE" && exit 0
+            echo "::warning::The image build failed (attempt $attempt of 3)"
+            if [ "$attempt" -lt 3 ]; then sleep 30; fi
+          done
+          exit 1
 
       - name: Assert non-root
         run: |
@@ -458,6 +483,7 @@ jobs:
           docker run --rm --network none "$IMAGE" ruff --version
           docker run --rm --network none "$IMAGE" mypy --version
           docker run --rm --network none "$IMAGE" python -m pytest --version
+          docker run --rm --network none "$IMAGE" python -c "import tiktoken; assert tiktoken.get_encoding('cl100k_base').encode('ok'); print('ok: tiktoken cl100k_base loads offline')"
 
       # The integration tests' stores (hardening rule 2, a named runtime
       # exception): baked under /opt/stores, owned by root, and each
@@ -559,7 +585,14 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Build image
-        run: bash backend/sandbox/build-dev-image.sh "${{ matrix.target }}" "$IMAGE"
+        # Built cold: a mirror error gets two more attempts, as the images' builds above.
+        run: |
+          for attempt in 1 2 3; do
+            bash backend/sandbox/build-dev-image.sh "${{ matrix.target }}" "$IMAGE" && exit 0
+            echo "::warning::The image build failed (attempt $attempt of 3)"
+            if [ "$attempt" -lt 3 ]; then sleep 30; fi
+          done
+          exit 1
 
       - name: Assert non-root
         run: |

@@ -87,6 +87,8 @@ from app.services import (
     assignment_run_resume,
     chat_reply_guard,
     chat_turn_coalescing,
+    event_batching,
+    event_coalescing,
     event_run_dedup,
 )
 from app.services.agent_posts import set_posting_assignment
@@ -132,6 +134,7 @@ from app.services.builtin_tools import (
     merge_tool_allow_lists,
     offered_handover_types,
 )
+from app.services.decision_waits import holds_assignment
 from app.services.element_scope import assignment_run_scope
 from app.services.event_bus import (
     ASSIGNMENT_RUN_COMPLETED,
@@ -157,12 +160,14 @@ from app.services.orchestration_engine import (
     deadline_spent,
     deadline_spent_message,
     notify_orchestration_wake,
+    queued_deadline,
 )
 from app.tools.base import FileContext, HumanInputRequestedError, ScopedToolExecutor
 from app.tools.wait_policy import WaitPolicy
 
 if TYPE_CHECKING:
     from app.services.agentic_gate import AgenticVerdict
+    from app.services.assignment_activation_check import ActivationCheckOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -221,11 +226,23 @@ class RunHeld:
     refusal: str
 
 
-class DeadlineCutTimeoutError(TimeoutError):
+class AssignmentTimeoutError(TimeoutError):
+    """The run's own wall-clock bound fired around the agent loop.
+
+    ``run_stop_reason`` is what the failed run records as its ``stop_reason``
+    (#1695): without it a run the timeout stopped read like any other failure.
+    """
+
+    run_stop_reason = "timeout"
+
+
+class DeadlineCutTimeoutError(AssignmentTimeoutError):
     """A run's loop timed out on a bound its orchestration deadline cut short
     of its budget by more than the grace (``deadline_cut_budget``): the
     engine's timeout, credited back free and recorded as
     ``engine_deadline_exceeded``, as the dead-letter it replaces was."""
+
+    run_stop_reason = "deadline"
 
 
 def _unstart_reclaimed_run(run: AssignmentRun, reclaimed: bool) -> bool:
@@ -505,6 +522,17 @@ async def _publish_run_ended(run: AssignmentRun, name: str, *, reason: str, erro
     sandbox workspace is collected here too, in a task of its own.
     """
     _collect_run_workspace(run)
+    await publish_run_event(run, name, reason=reason, error=error)
+
+
+async def publish_run_event(run: Any, name: str, *, reason: str, error: str | None = None) -> None:
+    """Publish run event *name* for *run*, scoped as every ``run.*`` event; never raises.
+
+    *run* is an ``AssignmentRun`` or a snapshot carrying the same attributes
+    (id, agent_id, assignment_id, parent_run_id, trigger_context, user_id,
+    is_company_managed, stop_reason): a delegated child run ends outside the
+    engine (``sub_agent.update_assignment_run``) and publishes through here.
+    """
     from app.services import platform_events
 
     try:
@@ -618,7 +646,7 @@ async def has_active_run(
     """
     conditions = [
         AssignmentRun.assignment_id == assignment_id,
-        AssignmentRun.status.in_(list(ACTIVE_RUN_STATUSES)),
+        holds_assignment(AssignmentRun, ACTIVE_RUN_STATUSES),
     ]
     if user_id is not None:
         conditions.append(AssignmentRun.user_id == user_id)
@@ -635,7 +663,7 @@ async def count_active_runs(db: AsyncSession, assignment_id: _uuid.UUID) -> int:
     result = await db.execute(
         select(func.count(AssignmentRun.id)).where(
             AssignmentRun.assignment_id == assignment_id,
-            AssignmentRun.status.in_(list(ACTIVE_RUN_STATUSES)),
+            holds_assignment(AssignmentRun, ACTIVE_RUN_STATUSES),
         )
     )
     return int(result.scalar_one() or 0)
@@ -650,7 +678,7 @@ async def find_active_run(
     """The newest run of the assignment in an active state, scoped like :func:`has_active_run`."""
     conditions = [
         AssignmentRun.assignment_id == assignment_id,
-        AssignmentRun.status.in_(list(ACTIVE_RUN_STATUSES)),
+        holds_assignment(AssignmentRun, ACTIVE_RUN_STATUSES),
     ]
     if user_id is not None:
         conditions.append(AssignmentRun.user_id == user_id)
@@ -710,16 +738,21 @@ def _loop_timeout_error(
     """What a ``TimeoutError`` around the agent loop is recorded as.
 
     The deadline's (:class:`DeadlineCutTimeoutError`) when the ``wait_for``
-    fired on a bound the deadline cut; the run's own otherwise, and
-    for a timeout raised before the bound elapsed (a setup call).
+    fired on a bound the deadline cut; the run's own
+    (:class:`AssignmentTimeoutError`) when it fired on the run's budget; a
+    plain ``TimeoutError`` for a timeout raised before the bound elapsed (a
+    setup call), which did not stop the run on its timeout.
     """
     message = _format_assignment_timeout_error(
         run_timeout, elapsed_seconds, max_iterations
     )
-    if deadline_cut and run_timeout is not None and elapsed_seconds >= run_timeout:
+    bound_fired = run_timeout is not None and elapsed_seconds >= run_timeout
+    if deadline_cut and bound_fired:
         return DeadlineCutTimeoutError(
             f"{message}: what its deadline left of its {int(budget or 0)}s budget"
         )
+    if bound_fired:
+        return AssignmentTimeoutError(message)
     return TimeoutError(message)
 
 
@@ -843,6 +876,20 @@ _MIN_ASSIGNMENT_TIMEOUT_SECONDS: int = 600
 _UNSET_TIMEOUT_FALLBACK_SECONDS: int = 300
 
 
+def max_queue_wait_seconds(assignment: Assignment) -> float | None:
+    """How long a run of *assignment* may wait for a free worker before it fails unstarted.
+
+    ``trigger_config.max_queue_wait_seconds`` when the assignment sets a number (0 or less: no
+    queue bound); ``None`` otherwise, which means the platform's
+    ``orchestration_max_queue_wait_seconds``. Distinct from ``timeout_seconds``, which is the
+    run's execution time and counts from its start.
+    """
+    value = (getattr(assignment, "trigger_config", None) or {}).get("max_queue_wait_seconds")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
 def _apply_iteration_timeout_floor(
     timeout: float | None,
     effective_max_iterations: int,
@@ -901,6 +948,35 @@ def _apply_iteration_timeout_floor(
         )
         return floor
     return timeout
+
+
+def describe_effective_timeout(
+    stored_timeout_seconds: int | None,
+    effective_max_iterations: int,
+    grace_seconds: float,
+) -> str:
+    """The run budget an assignment's runs get, and why, in one line (#1695).
+
+    The same arithmetic as :func:`_apply_iteration_timeout_floor` (without its
+    log line): the stored ``timeout_seconds`` raised to the 600 s static floor
+    or to ``max_iterations`` x 20 s, plus the orchestration grace, counted from
+    the run's start (queue time is not charged).
+    """
+    stored = _UNSET_TIMEOUT_FALLBACK_SECONDS if stored_timeout_seconds is None else stored_timeout_seconds
+    if stored <= 0:
+        return "no wall-clock bound (timeout disabled)"
+    iteration_floor = effective_max_iterations * _MIN_SECS_PER_ITERATION
+    effective = max(stored, _MIN_ASSIGNMENT_TIMEOUT_SECONDS, iteration_floor)
+    if effective == stored:
+        why = "the stored value, above the floor"
+    elif effective == iteration_floor:
+        why = f"raised to the iteration floor, max_iterations {effective_max_iterations} x {_MIN_SECS_PER_ITERATION}s"
+    else:
+        why = f"raised to the {_MIN_ASSIGNMENT_TIMEOUT_SECONDS}s static floor"
+    return (
+        f"{int(effective)}s ({why}) plus {int(grace_seconds)}s grace, counted from "
+        f"the run's start; a run stopped by it ends failed with stop_reason timeout"
+    )
 
 
 def resolve_effective_max_iterations(
@@ -1537,8 +1613,14 @@ async def _report_unquarantined_auth_failure(
     reason: str,
     consecutive: int = 1,
     kind: str = "credential",
+    recipient_id: _uuid.UUID | str | None = None,
 ) -> None:
     """Report an auth failure on an assignment the quarantine will never pause.
+
+    *recipient_id* is the run's user: a company-managed assignment has no
+    owner, and without it the notice was a live toast only, stored for nobody
+    (#1454). It is passed as ``company_recipient_id``, so a personal
+    assignment still notifies its owner.
 
     The quarantine is deliberately narrow — it only pauses unattended scheduler
     runs, and never touches built-in or per-user fan-out assignments.  Those
@@ -1584,6 +1666,7 @@ async def _report_unquarantined_auth_failure(
             "consecutive_auth_failures": consecutive,
             "auth_failure_kind": kind,
         },
+        company_recipient_id=recipient_id,
     )
     if not delivered:
         # The claim was taken before the notice was known to land. Keeping it
@@ -1669,6 +1752,7 @@ async def _report_after_consecutive_failures(
         reason=reason,
         consecutive=consecutive,
         kind=kind,
+        recipient_id=run.user_id,
     )
 
 
@@ -2637,6 +2721,16 @@ async def _activation_check_executor(
         )
     if composite.resolve_canonical_name(tool) is not None:
         return composite
+    # The fleet reads (get_fleet_health, #1400), as the run wires them: the
+    # agent holds them through its platform group, an on-demand one included.
+    if "fleets" in builtin_ids and effective_user_id:
+        from app.services.builtin_tools import build_fleet_tools
+
+        composite.add_tools(
+            *build_fleet_tools(str(effective_user_id), assignment_run_id=str(run.id), agent_id=str(agent.id))
+        )
+        if composite.resolve_canonical_name(tool) is not None:
+            return composite
     bindings = flatten_bindings(
         agent.integration_bindings or {}
         if assignment.integration_bindings is None
@@ -2784,6 +2878,8 @@ async def _evaluate_one_gate_check(
             exc_info=True,
         )
         return None
+    if outcome.error and check.get("integration_id"):
+        outcome = await _with_integration_state(db, check, outcome)
     if outcome.passed and outcome.error:
         logger.warning(
             "Assignment '%s': %s: %s - the run proceeds",
@@ -2792,6 +2888,26 @@ async def _evaluate_one_gate_check(
             outcome.error,
         )
     return outcome
+
+
+async def _with_integration_state(
+    db: AsyncSession, check: dict[str, Any], outcome: ActivationCheckOutcome
+) -> ActivationCheckOutcome:
+    """*outcome* with its error naming the check's integration when it is not usable (#1665).
+
+    A gate tool of an integration in ``error`` or ``reauthorize`` fails, or is
+    not built at all; the reason recorded on the integration is what the owner
+    needs on the run, not only the tool's own failure.
+    """
+    import dataclasses
+
+    from app.services.integration_status import unusable_integrations
+
+    integration_id = str(check["integration_id"])
+    state = (await unusable_integrations(db, [integration_id])).get(integration_id)
+    if state is None:
+        return outcome
+    return dataclasses.replace(outcome, error=f"integration {integration_id} {state}; {outcome.error}")
 
 
 async def _skip_by_activation_check(
@@ -2833,6 +2949,8 @@ async def _skip_by_activation_check(
         outcome = await _evaluate_one_gate_check(
             db, check, run=run, agent=agent, assignment=assignment, effective_user_id=effective_user_id
         )
+        if outcome is not None and outcome.misconfigured:
+            await _record_misconfigured_gate_check(run, assignment, check, outcome)
         if outcome is None or (outcome.passed and outcome.error):
             # Passed over: named on the run and counted on the assignment (#10724).
             passed_over.append(
@@ -2903,6 +3021,8 @@ async def _skip_by_any_of_checks(
         outcome = await _evaluate_one_gate_check(
             db, check, run=run, agent=agent, assignment=assignment, effective_user_id=effective_user_id
         )
+        if outcome is not None and outcome.misconfigured:
+            await _record_misconfigured_gate_check(run, assignment, check, outcome)
         if outcome is None or (outcome.passed and outcome.error):
             reason = outcome.error if outcome is not None else "the check could not run"
             await _record_unevaluated_gate_checks(
@@ -3012,6 +3132,32 @@ async def _hold_event_for_lease(run: AssignmentRun, assignment: Assignment, hold
     except Exception as exc:
         logger.info("Assignment '%s': event not held for the lease: %s", assignment.name, format_exception_message(exc))
         return False
+
+
+async def _record_misconfigured_gate_check(
+    run: AssignmentRun, assignment: Assignment, check: dict[str, Any], outcome: ActivationCheckOutcome
+) -> None:
+    """Name a gate check that can never pass as configured (#1400): a friction and a drop reason.
+
+    The run is skipped by it (no model call); the friction under the run's
+    scope and the reason counted on the assignment make the configuration
+    error visible to the owner and to the fleet's health read.
+    """
+    from app.services.assignment_activation_check import check_tool_label
+    from app.services.frictions import note_friction, run_scope
+    from app.services.integration_event_filters import record_filter_reasons
+
+    tool = check_tool_label(check)
+    note_friction(
+        "tool_error",
+        tool,
+        f"gate check misconfigured on assignment '{assignment.name}' ({assignment.id}): {outcome.error}",
+        scope=run_scope(run, assignment),
+    )
+    context = dict(getattr(run, "trigger_context", None) or {})
+    context["gate_check_misconfigured"] = {"tool": tool, "reason": (outcome.error or "")[:300]}
+    run.trigger_context = context
+    await record_filter_reasons(assignment.id, {f"gate check misconfigured: {tool}": 1})
 
 
 async def _record_unevaluated_gate_checks(run: AssignmentRun, assignment: Assignment, passed_over: list[dict]) -> None:
@@ -3188,6 +3334,16 @@ def _record_failure_cause(
     run.failure_determination = FailureDetermination.STRUCTURAL.value
     if detail:
         logger.debug("Run %s failure cause: %s (%s)", run.id, cause.value, detail)
+
+
+def _deadline_failure_never_started(run: AssignmentRun, last_usage: Any) -> bool:
+    """A run failed on its deadline before any model call returned.
+
+    Such a run never worked: it waited in the queue until its deadline was
+    spent. ``retry_on_failure`` is for a run that failed while working; a
+    retry of this one only re-queues it into the same saturation.
+    """
+    return run.failure_cause == FailureCause.ENGINE_DEADLINE_EXCEEDED.value and last_usage is None
 
 
 def _apply_failure_classification(
@@ -3748,6 +3904,43 @@ async def _run_unless_stopped(executor, call, cancel_event) -> str:
     return result.content
 
 
+def _refusal_without_run(decision: dict[str, Any], *, decided: bool) -> tuple[str | None, str]:
+    """(gate outcome, first sentence of the tool result) of a call not run.
+
+    Only a verdict a person gave reads "Rejected by human reviewer": a call
+    the deadline refused, one the decision set carried no verdict for and one
+    whose tool left the run's surface each say what refused it, so neither the
+    agent nor an auditor credits a person with a refusal nobody made. The
+    outcome is ``None`` for a person's refusal (the caller keeps
+    ``human_<verdict>``).
+    """
+    from app.tools.approval import (
+        DECISION_SOURCE_DEADLINE,
+        DECISION_SOURCE_KEY,
+        DECISION_SOURCE_NOT_OFFERED,
+        OUTCOME_EXPIRED,
+        OUTCOME_NOT_OFFERED,
+        OUTCOME_UNDECIDED,
+    )
+
+    source = decision.get(DECISION_SOURCE_KEY)
+    if source == DECISION_SOURCE_DEADLINE:
+        return OUTCOME_EXPIRED, (
+            "Not run: nobody answered the approval request before its deadline, "
+            "so the platform refused it. No person rejected it."
+        )
+    if source == DECISION_SOURCE_NOT_OFFERED:
+        reason = decision.get("rejection_reason") or "This tool is no longer available."
+        return OUTCOME_NOT_OFFERED, f"Not run: {reason}"
+    if not decided:
+        return OUTCOME_UNDECIDED, (
+            "Not run: the approval answer carried no verdict for this call, so it "
+            "was refused by default. No person rejected it."
+        )
+    reason = decision.get("rejection_reason") or "No reason given."
+    return None, f"Rejected by human reviewer: {reason}"
+
+
 async def _apply_approval_decisions(
     *,
     executor,
@@ -3779,18 +3972,23 @@ async def _apply_approval_decisions(
     for proposal in proposals:
         call_id = proposal.get("tool_call_id")
         tool_name = proposal.get("tool_name", "")
+        decided = isinstance(decisions.get(call_id), dict)
         decision = decisions.get(call_id) or {}
         verdict = decision.get("decision", "reject")
+        refusal = None if is_approval(verdict) else _refusal_without_run(decision, decided=decided)
 
         if outcomes is not None:
-            # The human's verdict IS this call's gate outcome (FR-020).
-            outcomes[call_id] = f"human_{verdict}"
+            # The human's verdict IS this call's gate outcome (FR-020); a
+            # refusal no person gave is named for what refused it.
+            if refusal and refusal[0]:
+                outcomes[call_id] = refusal[0]
+            else:
+                outcomes[call_id] = f"human_{verdict}"
 
         # An allow-list, so anything unrecognised refuses. This is the last
         # point before execution: a verdict the transports let through — a typo,
         # a stale client's value — must not become consent here.
-        if not is_approval(verdict):
-            reason = decision.get("rejection_reason") or "No reason given."
+        if refusal is not None:
             # A structured refusal, not an exception: the agent should be able
             # to read this, understand the action was declined, and adapt —
             # rather than treat it as a tool malfunction and retry blindly.
@@ -3798,7 +3996,7 @@ async def _apply_approval_decisions(
                 ChatMessage(
                     role="tool",
                     content=(
-                        f"Rejected by human reviewer: {reason} "
+                        f"{refusal[1]} "
                         f"The {tool_name} call was not executed. Do not retry it "
                         f"unchanged; propose an alternative or ask how to proceed."
                     ),
@@ -4561,7 +4759,15 @@ async def execute_assignment_run(
             "quota_reason": "exempt_builtin",
         }
         charged = False
-        if not _run_is_quota_exempt(agent, run):
+        # The Platform Health module checkers run outside the agentic quota under
+        # their own ceiling (#101 S14b and S15, dev-docs/platform-health.md 12.5, 13.1):
+        # decided from the seeded rows alone, never from the trigger or the payload.
+        from app.services.health.module_analyst_budget import is_module_checker_run
+
+        _module_analyst_exempt = is_module_checker_run(agent, assignment)
+        if _module_analyst_exempt:
+            _quota_trace_meta["quota_reason"] = "exempt_module_analyst"
+        if not _module_analyst_exempt and not _run_is_quota_exempt(agent, run):
             charging = False
             try:
                 from app.services.quota import (
@@ -4767,9 +4973,15 @@ async def execute_assignment_run(
         original_status = run.status
 
         # Mark as running. A resume keeps the first ``started_at``: the
-        # run's wall time is read across its resumes.
+        # run's wall time is read across its resumes. A HITL resume keeps it
+        # too, and its pause is counted apart (#1645), never as queue time.
+        from app.services import hitl_resume_clock
+
+        _hitl_resume = original_status == "awaiting_human"
+        if _hitl_resume:
+            hitl_resume_clock.close_pause(run)
         run.status = "running"
-        run.started_at = (run.started_at if _resuming else None) or datetime.now(UTC)
+        run.started_at = (run.started_at if (_resuming or _hitl_resume) else None) or datetime.now(UTC)
         await db.commit()
         await _publish_run_status(
             str(run.user_id),
@@ -5151,14 +5363,21 @@ async def execute_assignment_run(
             from app.services.fleet_autonomy import (
                 fleet_autonomy_block,
                 fleet_autonomy_for_run,
+                fleet_enforces_at_tool_level,
                 fleet_instructions_for_run,
             )
 
             _fleet_autonomy = await fleet_autonomy_for_run(db, getattr(_run_fleet, "fleet_id", None))
+            # Tool-level pauses only on an administrator's opt-in (#1467): by
+            # default the gates are instructions, stated in the block below.
+            _fleet_enforced = _fleet_autonomy is not None and await fleet_enforces_at_tool_level(
+                db, getattr(_run_fleet, "fleet_id", None)
+            )
             if _fleet_autonomy is not None:
                 rendered_prompt += fleet_autonomy_block(
                     *_fleet_autonomy,
                     await fleet_instructions_for_run(db, getattr(_run_fleet, "fleet_id", None)),
+                    enforced=_fleet_enforced,
                 )
 
             # ── Memory (load enabled tiers + user memory before building prompt) ──
@@ -5320,6 +5539,11 @@ async def execute_assignment_run(
             composite = CompositeToolExecutor()
             mcp_manager = None
             integration_notice = ""
+            # Auth failures of the run's integration calls, and the refusal of
+            # a credential already rejected in this run (#1454).
+            from app.services.integration_auth_guard import AuthGuardedExecutor, IntegrationAuthGuard
+
+            auth_guard = IntegrationAuthGuard()
 
             from app.services.builtin_tools import load_custom_tools, load_mcp_tools
 
@@ -5660,6 +5884,11 @@ async def execute_assignment_run(
                         READ_ONLY_CONTEXT_KEY,
                         read_only_integration_ids,
                     )
+                    if _fleet_autonomy is not None:
+                        # The tools a gate of the run's fleet decides (#1480).
+                        from app.services.fleet_autonomy import FLEET_GATED_TOOLS_CONTEXT_KEY, gate_tool_names
+
+                        integration_context[FLEET_GATED_TOOLS_CONTEXT_KEY] = gate_tool_names(_fleet_autonomy[1])
 
                     # Resolved bindings: a template-bound provider marked
                     # read-only narrows the integration resolved for it above.
@@ -5741,7 +5970,10 @@ async def execute_assignment_run(
                         filtered_defs = filter_integration_tools(
                             integ_defs, merged_allowed
                         )
-                        composite.add_tools(filtered_defs, integ_exec)
+                        composite.add_tools(
+                            filtered_defs,
+                            AuthGuardedExecutor(integ_exec, filtered_defs, auth_guard),
+                        )
                         logger.info(
                             "Loaded %d integration tool(s) for assignment (%d filtered by scoping)",
                             len(filtered_defs),
@@ -5873,15 +6105,29 @@ async def execute_assignment_run(
 
                 hitl_executor = CallableToolExecutor()
 
-                async def _request_human_input(question: str, context: str = "") -> str:
+                async def _request_human_input(
+                    question: str,
+                    context: str = "",
+                    options: list[dict[str, Any]] | None = None,
+                    recommendation: str = "",
+                    deadline: str = "",
+                    links: list[dict[str, Any]] | None = None,
+                ) -> str:
                     """Ask the user for input / a decision. Pauses the assignment."""
-                    full_question = question
-                    if context:
-                        full_question = f"{question}\n\nContext: {context}"
+                    from app.services.decision_ask import normalize_run_ask, run_question_text
+
+                    try:
+                        ask = normalize_run_ask(question, context, options, recommendation, deadline, links)
+                    except ValueError as exc:
+                        # Refused before the pause: the agent rewrites the ask in the same turn.
+                        return (
+                            f"Error: nothing was asked. {exc}. In request_human_input, ids, codes the person "
+                            "must not type and technical details go in context; ask again now."
+                        )
                     # This exception propagates up through the agentic loop
                     # The tool_call_id is set by the agent loop's exception handler
                     raise HumanInputRequestedError(
-                        question=full_question,
+                        question=run_question_text(ask),
                         tool_call_id="",  # will be set by the loop
                         conversation=[],  # will be set by the loop
                     )
@@ -5890,22 +6136,52 @@ async def execute_assignment_run(
                 hitl_def = ToolDefinition(
                     name="request_human_input",
                     description=(
-                        "Pause the assignment and ask the user a question. Use this when you need "
-                        "a human decision, approval, clarification, or additional context before "
-                        "proceeding. Provide a clear, actionable question. The assignment will pause "
-                        "until the user responds, then resume with their answer."
+                        "Pause the assignment and ask a person a decision, approval or clarification. "
+                        "Give a one-sentence question in plain words (no ids, keys or timestamps), "
+                        "options with the one you recommend, and links to the sources. The run resumes "
+                        "with the option chosen or the person's own words."
                     ),
                     input_schema={
                         "type": "object",
                         "properties": {
                             "question": {
                                 "type": "string",
-                                "description": "The question to ask the user. Be specific and provide options when possible.",
+                                "description": "The decision in one sentence, in the reader's words.",
                             },
                             "context": {
                                 "type": "string",
-                                "description": "Optional additional context: what you've found, what the options are, and why you need input.",
+                                "description": "What you found and why you ask, shown under the question.",
                                 "default": "",
+                            },
+                            "options": {
+                                "type": "array",
+                                "description": "Up to 6 answers. effect: what choosing it does.",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "key": {"type": "string"},
+                                        "label": {"type": "string"},
+                                        "effect": {"type": "string"},
+                                    },
+                                    "required": ["key", "label"],
+                                },
+                            },
+                            "recommendation": {
+                                "type": "string",
+                                "description": "The key of the option you recommend.",
+                            },
+                            "deadline": {
+                                "type": "string",
+                                "description": "When the answer is needed, ISO-8601.",
+                            },
+                            "links": {
+                                "type": "array",
+                                "description": "Sources to open before deciding.",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {"label": {"type": "string"}, "url": {"type": "string"}},
+                                    "required": ["url"],
+                                },
                             },
                         },
                         "required": ["question"],
@@ -6133,13 +6409,45 @@ async def execute_assignment_run(
 
             if tools_enabled_for(agent=agent, assignment=assignment):
                 # The person the run acts for scopes the enterprise knowledge passages (#11543).
-                composite.add_tools(*build_organization_context_tool(user_id=run.user_id))
+                composite.add_tools(*build_organization_context_tool(user_id=run.user_id, agent=agent))
 
             # --- CTEM case tools (#11545): the CTEM remediation agents, XTM One only ---
             from app.services.builtin_tools import build_ctem_case_tools, offers_ctem_case_tools
 
             if run.user_id and offers_ctem_case_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_case_tools(user_id=str(run.user_id), agent_id=str(agent.id)))
+            # --- CTEM signal tools (#826): the CTEM agents that see a trigger first ---
+            from app.services.builtin_tools import build_ctem_signal_tools, offers_ctem_signal_tools
+
+            if run.user_id and offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
+                composite.add_tools(*build_ctem_signal_tools(user_id=str(run.user_id)))
+            # --- Read-only CTEM group (#1337): bound on any agent, as the run's user ---
+            from app.services.builtin_tools import ctem_read_tools_for
+
+            _ctem_read = (
+                ctem_read_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if run.user_id else None
+            )
+            if _ctem_read is not None:
+                composite.add_tools(*_ctem_read)
+            # --- CTEM administrator repairs (#1778): the CTEM case agents, or the group bound ---
+            from app.services.builtin_tools import ctem_repair_tools_for
+
+            _ctem_repair = (
+                ctem_repair_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if run.user_id else None
+            )
+            if _ctem_repair is not None:
+                composite.add_tools(*_ctem_repair)
+            # --- Learned skill (#914): a built-in agent records durable lessons ---
+            from app.services.builtin_tools import build_learned_lesson_tool, offers_learned_lesson_tool
+
+            if offers_learned_lesson_tool(is_builtin=agent.is_builtin):
+                composite.add_tools(
+                    *build_learned_lesson_tool(
+                        agent_id=str(agent.id),
+                        user_id=str(run.user_id) if run.user_id else None,
+                        run_id=str(run.id),
+                    )
+                )
 
             # --- Organization profile write group (opt-in, administrators only, #11594) ---
             # The run acts as ``effective_user_id``; the group is wired only
@@ -6470,6 +6778,25 @@ async def execute_assignment_run(
                 # The run's Platform Health cycle books what its experiments spend.
                 run_id=str(run.id),
             )
+            # --- Module Analyst (#101 S14a-2b-4): the investigated module's allow-listed reads ---
+            from app.services.builtin_tools.health_modules import add_module_read_tools
+
+            try:
+                await add_module_read_tools(
+                    db,
+                    composite,
+                    agent_builtin_tool_ids,
+                    trigger_context=run.trigger_context,
+                    agent_id=run.agent_id,
+                    user_id=str(effective_user_id) if effective_user_id else None,
+                    run_id=str(run.id),
+                )
+            except Exception as exc:
+                logger.error(
+                    "Module Analyst read tools not loaded for run %s: %s",
+                    run_id,
+                    format_exception_message(exc),
+                )
             from app.services.builtin_tools.flow_lab import add_flow_lab_tools
 
             add_flow_lab_tools(
@@ -7369,12 +7696,16 @@ async def execute_assignment_run(
                 and (run.human_input_response or run.approval_decisions)
             ):
                 from app.core.redaction import restore_known_secrets
+                from app.services.hitl_resume_clock import restamp_prompt_clock
                 from app.tools.base import ToolCall
 
                 restored = []
                 # Stored with each secret variable value as its marker:
                 # the model and the tools get the values back, resolved above.
                 for m in restore_known_secrets(run.messages):
+                    if m.get("role") == "system" and isinstance(m.get("content"), str):
+                        # The clock of the pause is stale by its length (#1645).
+                        m = {**m, "content": restamp_prompt_clock(m["content"])}
                     tc_list = None
                     if m.get("tool_calls"):
                         tc_list = [
@@ -7453,21 +7784,29 @@ async def execute_assignment_run(
                     # Find the pending request_human_input tool call id from the
                     # last assistant message.
                     hitl_tc_id = "hitl"
+                    hitl_args: dict[str, Any] = {}
                     for m in reversed(run.messages):
                         if m.get("tool_calls"):
                             for tc in m["tool_calls"]:
                                 if tc.get("name") == "request_human_input":
                                     hitl_tc_id = tc["id"]
+                                    hitl_args = tc.get("arguments") or {}
                                     break
                             break
 
                     from app.core.redaction import defuse_secret_markers
+                    from app.services.decision_ask import run_answer_text
 
                     messages.append(
                         ChatMessage(
                             role="tool",
                             # What a person wrote: a marker in it is never restored.
-                            content=f"Human response: {defuse_secret_markers(run.human_input_response)}",
+                            # The options are the paused call's own arguments: a reply naming
+                            # one (its key or label) resumes as that option, any other is free text.
+                            content=run_answer_text(
+                                hitl_args if isinstance(hitl_args, dict) else {},
+                                defuse_secret_markers(run.human_input_response),
+                            ),
                             tool_call_id=hitl_tc_id,
                             name="request_human_input",
                         )
@@ -7833,8 +8172,13 @@ async def execute_assignment_run(
 
                 # The fleet's gates still waiting at its autonomy level pause
                 # their tool calls (#9769 S1b), around whichever gate the run
-                # installed; an administrator's platform kill switch wins.
-                if _fleet_autonomy is not None and _suppressed_outcome != OUTCOME_APPROVALS_DISABLED:
+                # installed, only when an administrator opted the fleet in
+                # (#1467); the platform kill switch wins.
+                if (
+                    _fleet_autonomy is not None
+                    and _fleet_enforced
+                    and _suppressed_outcome != OUTCOME_APPROVALS_DISABLED
+                ):
                     from app.services.fleet_autonomy import gated_tool_rules, make_fleet_autonomy_gate
 
                     _fleet_rules = gated_tool_rules(*_fleet_autonomy)
@@ -7872,6 +8216,7 @@ async def execute_assignment_run(
                                     "assignment, so the approved call was not "
                                     "run."
                                 ),
+                                "source": "not_offered",
                             }
                             for _cid, _d in _resume_decisions.items()
                         }
@@ -7904,8 +8249,16 @@ async def execute_assignment_run(
                 # and have it execute.  Wrap the composite in a
                 # ScopedToolExecutor so only the offered tool surface
                 # (``effective_tools``) is executable.
+                # The Module Analyst's every model call is reserved and booked on
+                # its own ceiling ledger (#101 S14b-2, dev-docs 12.5), decided by
+                # the same server-only predicate as its quota exemption.
+                _loop_llm = llm
+                if _module_analyst_exempt:
+                    from app.services.health.module_analyst_ceiling import ModuleAnalystCeilingLLM
+
+                    _loop_llm = ModuleAnalystCeilingLLM(llm, model=wf_resolved_model)
                 loop_kwargs: dict = dict(
-                    llm=llm,
+                    llm=_loop_llm,
                     messages=messages,
                     tools=effective_tools if effective_tools else None,
                     executor=(
@@ -8149,6 +8502,9 @@ async def execute_assignment_run(
 
                 # --- Assignment paused for human input ---
                 run.status = "awaiting_human"
+                from app.services.hitl_resume_clock import mark_paused
+
+                mark_paused(run)
                 # Persist the trace id while the run waits (possibly days)
                 # for a human response — the resumed execution opens a new
                 # trace and overwrites it on completion/failure.
@@ -8287,6 +8643,19 @@ async def execute_assignment_run(
                     enrich_trace_metadata(
                         wf_trace_ctx, {"agent_stop_reason": _terminal_stop}
                     )
+            from app.tools.agent_loop import deadline_stop_without_output
+
+            if deadline_stop_without_output(loop_result):
+                # The wall clock ran out before any model call produced a
+                # token: the answer is the forced-answer notice, not work.
+                # The deadline's timeout (free, ``engine_deadline_exceeded``,
+                # ``run.failed``), never a completion. Its input usage is
+                # still accounted by the failure path.
+                _finished_loop = loop_result
+                raise DeadlineCutTimeoutError(
+                    "Assignment run stopped by its deadline before any model "
+                    "output: " + deadline_spent_message("Assignment run", deadline_at)
+                )
 
             # The agent finished, but an integration reported a resource this
             # run uses as missing in separate runs: the configuration is
@@ -8342,6 +8711,22 @@ async def execute_assignment_run(
                     if run.result_summary
                     else integration_notice
                 )
+            # A run whose integration calls failed authentication is degraded,
+            # never a plain success: the record names the integrations, and
+            # the result says which data it had (#1454).
+            run.integration_auth_failures = auth_guard.failures() or None
+            _coverage_notice = auth_guard.coverage_notice()
+            if _coverage_notice and agent.output_format != "json":
+                run.result_summary = (
+                    f"{run.result_summary}\n\n{_coverage_notice}" if run.result_summary else _coverage_notice
+                )
+            # No called integration was readable: the run says so on its
+            # status line (run list, get_run, CTEM cards) instead of passing
+            # for a plain success; a limit stop keeps its own reason (#1589).
+            if run.stop_reason is None and auth_guard.unreadable():
+                from app.services.integration_auth_guard import UNREADABLE_STOP_REASON
+
+                run.stop_reason = UNREADABLE_STOP_REASON
 
             # ── Surface matplotlib charts produced by the code interpreter ─
             # Persist each chart as a durable run file and append it to the
@@ -8386,9 +8771,13 @@ async def execute_assignment_run(
                 and loop_result.content
                 and not answer_cut_by_budget(loop_result)
             ):
-                from app.services.structured_output import emit_repaired_json
+                from app.services.structured_output import (
+                    emit_repaired_json_in_thread,
+                )
 
-                _repaired_json = emit_repaired_json(
+                # In a thread: repairing a large answer is CPU-bound and would
+                # block the worker's event loop (and its health probe).
+                _repaired_json = await emit_repaired_json_in_thread(
                     loop_result.content,
                     agent.output_schema,
                     log_context=f"assignment {assignment.id}",
@@ -8408,6 +8797,15 @@ async def execute_assignment_run(
                 effective_bindings,
                 guard=_repaired_json is None,
             )
+            # A JSON-output agent's degraded coverage goes in a ``_coverage``
+            # key of its JSON object, where its readers look, instead of the
+            # prose notice that would break the payload (#1589).
+            if agent.output_format == "json" and run.integration_auth_failures:
+                from app.services.integration_auth_guard import with_coverage_key
+
+                _with_coverage = with_coverage_key(run.result_summary, auth_guard.coverage_record())
+                if _with_coverage is not None:
+                    run.result_summary = _with_coverage
 
             # ── ROI: units of work this run produced (#8990, #9285) ──
             # The declaration is resolved (assignment, agent, legacy
@@ -9061,6 +9459,10 @@ async def execute_assignment_run(
             _apply_failure_classification(run, _failure)
             run.status = "failed"
             run.error = error_msg
+            # A run its own timeout (or its deadline) stopped says so in a
+            # field, not only in the error text (#1695).
+            if _timeout_stop := getattr(e, "run_stop_reason", None):
+                run.stop_reason = _timeout_stop
             # Persist the trace id even on failure — that's when deep-linking
             # to the Langfuse trace matters most (usage only when the loop
             # returned before the run failed).
@@ -9225,6 +9627,21 @@ async def execute_assignment_run(
             run.result_summary,
             is_company=run.is_company_managed,
         )
+        # The background tasks the run spawned that never started have no one
+        # left to collect them: cancelled with their cause, so none runs for
+        # nobody. A running child keeps running and delivers as before.
+        if run.status in ("failed", "completed"):
+            try:
+                from app.services.sub_agent import cancel_unstarted_tasks_of_ended_run
+
+                async with async_session() as _children_db:
+                    await cancel_unstarted_tasks_of_ended_run(_children_db, run.id)
+            except Exception as exc:
+                logger.warning(
+                    "Run %s ended; its never-started background tasks were not cancelled: %s",
+                    run.id,
+                    format_exception_message(exc),
+                )
         # After the commit: a subscriber that reads the run sees how it ended.
         if run.status in ("failed", "completed"):
             # The frictions the run left with no disposition: counted on the
@@ -9253,6 +9670,15 @@ async def execute_assignment_run(
             if _stale_failure is not None:
                 # A retry would run the same configuration against the same
                 # missing resource.
+                max_retries = 0
+            elif _deadline_failure_never_started(run, getattr(_llm, "last_usage", None) if _llm is not None else None):
+                # Its deadline was spent before any model call returned: the
+                # run waited in a saturated queue and never worked. A retry
+                # only queues it again behind the same backlog.
+                logger.info(
+                    "Assignment run %s not retried: its deadline expired before any model call returned",
+                    run_id,
+                )
                 max_retries = 0
             elif assignment.retry_on_failure:
                 max_retries = assignment.max_retries or 3
@@ -9344,7 +9770,7 @@ async def execute_assignment_run(
                         seconds=retry_delay_seconds
                     )
                     if retry_ts <= 0:
-                        retry_deadline = None
+                        retry_deadline, retry_budget = None, {}
                     else:
                         retry_timeout = _apply_iteration_timeout_floor(
                             float(retry_ts),
@@ -9352,14 +9778,17 @@ async def execute_assignment_run(
                             retry_run_id,
                             assignment.timeout_seconds,
                         )
-                        retry_deadline = retry_run_at + timedelta(
-                            seconds=retry_timeout
-                            + settings.orchestration_grace_seconds
+                        # Counted from the retry's start, as the primary
+                        # dispatch: a retry into a saturated queue keeps its budget.
+                        retry_deadline, retry_budget = queued_deadline(
+                            retry_run_at,
+                            retry_timeout + settings.orchestration_grace_seconds,
+                            max_queue_wait_seconds=max_queue_wait_seconds(assignment),
                         )
                     await create_execution(
                         db,
                         adapter="assignment",
-                        payload={"run_id": retry_run_id},
+                        payload={"run_id": retry_run_id, **retry_budget},
                         run_at=retry_run_at,
                         deadline_at=retry_deadline,
                         dedup_key=f"assignment_run:{retry_run_id}",
@@ -10065,8 +10494,13 @@ async def _schedule_run_execution(
     timeout_seconds = assignment.timeout_seconds
     if timeout_seconds is None:
         timeout_seconds = _UNSET_TIMEOUT_FALLBACK_SECONDS
+    #
+    # The budget counts from the run's START (``queued_deadline``): until a
+    # worker claims it, ``deadline_at`` is the queue-wait bound; the claim
+    # sets it to start + budget, so time spent waiting for a free slot is
+    # never charged to the run.
     if timeout_seconds <= 0:
-        deadline_at = None
+        deadline_at, start_budget = None, {}
     else:
         effective_timeout = _apply_iteration_timeout_floor(
             float(timeout_seconds),
@@ -10074,8 +10508,10 @@ async def _schedule_run_execution(
             run_id,
             assignment.timeout_seconds,
         )
-        deadline_at = run_at + timedelta(
-            seconds=effective_timeout + settings.orchestration_grace_seconds
+        deadline_at, start_budget = queued_deadline(
+            run_at,
+            effective_timeout + settings.orchestration_grace_seconds,
+            max_queue_wait_seconds=max_queue_wait_seconds(assignment),
         )
 
     # Durable scheduling via the orchestration engine: the reconciler
@@ -10088,7 +10524,7 @@ async def _schedule_run_execution(
     await create_execution(
         db,
         adapter="assignment",
-        payload={"run_id": run_id},
+        payload={"run_id": run_id, **start_budget},
         run_at=run_at,
         deadline_at=deadline_at,
         dedup_key=f"assignment_run:{run_id}",
@@ -10162,8 +10598,10 @@ class QueuedTriggerResult:
       dedup key within the window (``services/event_run_dedup.py``); ``run_id``
       is the ``skipped`` run that records the refusal. Nothing executes.
     - ``"coalesced"``   — a chat message merged into the waiting turn of a run
-      of the same conversation and sender (``services/chat_turn_coalescing.py``);
-      ``run_id`` is that run. No run is created.
+      of the same conversation and sender (``services/chat_turn_coalescing.py``),
+      or a polled event folded into the queued run of its coalesce key
+      (``services/event_coalescing.py``); ``run_id`` is that run. No run is
+      created.
     - ``"steered"``     — a chat message handed to the running turn of its
       conversation and sender, injected at the loop's next iteration
       (``services/chat_turn_steering.py``); ``run_id`` is that run. No
@@ -10340,7 +10778,7 @@ async def _slot_usage(db: AsyncSession, assignment_id: _uuid.UUID) -> _SlotUsage
             AssignmentRun.trigger_context["type"].as_string(),
         ).where(
             AssignmentRun.assignment_id == assignment_id,
-            AssignmentRun.status.in_(_queue_blocking_statuses()),
+            holds_assignment(AssignmentRun, _queue_blocking_statuses()),
         )
     )
     rows = result.all()
@@ -10646,6 +11084,45 @@ async def trigger_or_queue_assignment(
                 )
                 return QueuedTriggerResult(status="steered", run_id=steered_into)
 
+    coalesce_key = event_coalescing.context_key(trigger_context)
+    if coalesce_key is not None:
+        # A burst of polled events that stand for one change (an OpenCRQ batch
+        # recompute, #1417): folded into the run of the same key still waiting
+        # in the queue, so at most one waits behind the one running.
+        folded_into = await _fold_into_queued_run(db, assignment, coalesce_key, payload)
+        if folded_into is not None:
+            await db.commit()
+            await _release_event_claim(assignment.agent_id, dedup_key)
+            logger.info(
+                "Assignment '%s' (%s): event %s folded into queued run %s (coalesce key %s)",
+                assignment.name,
+                assignment.id,
+                (payload or {}).get("message_id") or "?",
+                folded_into,
+                coalesce_key,
+            )
+            return QueuedTriggerResult(status="coalesced", run_id=folded_into)
+
+    batch_window = event_batching.window_seconds(assignment.trigger_config, trigger_context)
+    if batch_window:
+        # An observer with a batch window (``services/event_batching.py``): the
+        # event joins the batch run still waiting, else opens a new batch run
+        # that starts once the window ends.
+        joined = await _join_waiting_batch(db, assignment, payload)
+        if joined is not None:
+            await db.commit()
+            await _release_event_claim(assignment.agent_id, dedup_key)
+            logger.info(
+                "Assignment '%s' (%s): event %s joined batch run %s",
+                assignment.name,
+                assignment.id,
+                (payload or {}).get("event_id") or (payload or {}).get("message_id") or "?",
+                joined,
+            )
+            return QueuedTriggerResult(status="coalesced", run_id=joined)
+        payload = event_batching.batch_payload(payload, batch_window)
+        trigger_context = {**(trigger_context or {}), event_batching.WINDOW_CONTEXT: batch_window}
+
     usage = await _slot_usage(db, assignment.id)
     depth = await count_queued_runs(db, assignment.id)
     start_now = usage.has_room(cap) and ordering_key not in usage.busy_keys
@@ -10666,6 +11143,7 @@ async def trigger_or_queue_assignment(
             payload=payload,
             db=db,
             trigger_context=trigger_context,
+            extra_delay_seconds=batch_window,
         )
         return QueuedTriggerResult(status="ok", run_id=run_id, queue_depth=0)
     if not queue:
@@ -10755,6 +11233,86 @@ async def trigger_or_queue_assignment(
         queue_depth=depth,
         dropped_run_id=dropped_run_id,
     )
+
+
+async def _fold_into_queued_run(
+    db: AsyncSession,
+    assignment: Assignment,
+    coalesce_key: str,
+    payload: dict[str, Any] | None,
+) -> str | None:
+    """Fold a coalescing event into the queued run of the same key; its id, or ``None``.
+
+    The oldest queued run of *assignment* whose trigger context carries
+    *coalesce_key* (``services/event_coalescing.py``), locked so two events
+    folding at once never lose one. Flushes, the caller commits.
+    """
+    result = await db.execute(
+        select(AssignmentRun)
+        .where(
+            AssignmentRun.assignment_id == assignment.id,
+            AssignmentRun.status == QUEUED_RUN_STATUS,
+            AssignmentRun.trigger_context[event_coalescing.CONTEXT_KEY].as_string() == coalesce_key,
+        )
+        .order_by(AssignmentRun.created_at.asc())
+        .limit(1)
+        .with_for_update()
+    )
+    run = result.scalar_one_or_none()
+    if run is None:
+        return None
+    run.trigger_payload = event_coalescing.merged_payload(run.trigger_payload or {}, payload or {})
+    await db.flush()
+    return str(run.id)
+
+
+async def _join_waiting_batch(
+    db: AsyncSession,
+    assignment: Assignment,
+    payload: dict[str, Any] | None,
+) -> str | None:
+    """Append an event to the batch run of *assignment* still waiting; its id, or ``None``.
+
+    The newest batch run (``event_batching.WINDOW_CONTEXT`` in its context)
+    that has not started: queued, or delayed in its window with more than
+    ``chat_turn_coalescing.MERGE_MARGIN_SECONDS`` left. Locked so two events
+    joining at once never lose one. A full batch answers ``None``: the event
+    opens the next one. Flushes, the caller commits.
+    """
+    from app.models.orchestration import OrchestrationExecution
+
+    result = await db.execute(
+        select(AssignmentRun)
+        .where(
+            AssignmentRun.assignment_id == assignment.id,
+            AssignmentRun.status.in_((QUEUED_RUN_STATUS, "delayed")),
+            AssignmentRun.trigger_context[event_batching.WINDOW_CONTEXT].as_string().is_not(None),
+        )
+        .order_by(AssignmentRun.created_at.desc())
+        .limit(1)
+        .with_for_update()
+    )
+    run = result.scalar_one_or_none()
+    if run is None:
+        return None
+    if event_batching.carries(run.trigger_payload, payload):
+        return str(run.id)
+    if not event_batching.can_join(run.trigger_payload):
+        return None
+    if run.status != QUEUED_RUN_STATUS:
+        run_at = (
+            await db.execute(
+                select(OrchestrationExecution.run_at).where(
+                    OrchestrationExecution.dedup_key == f"assignment_run:{run.id}",
+                    OrchestrationExecution.state == "pending",
+                )
+            )
+        ).scalar_one_or_none()
+        if not chat_turn_coalescing.still_open(run_at, datetime.now(UTC)):
+            return None
+    run.trigger_payload = event_batching.merged_payload(run.trigger_payload or {}, payload or {})
+    await db.flush()
+    return str(run.id)
 
 
 async def _merge_into_waiting_turn(
@@ -11190,7 +11748,7 @@ async def _load_queue_states(
                         ~select(in_flight.id)
                         .where(
                             in_flight.assignment_id == AssignmentRun.assignment_id,
-                            in_flight.status.in_(_queue_blocking_statuses()),
+                            holds_assignment(in_flight, _queue_blocking_statuses()),
                             in_flight_key == queued_key,
                         )
                         .exists(),
@@ -11212,7 +11770,7 @@ async def _load_queue_states(
                 )
                 .where(
                     AssignmentRun.assignment_id.in_(ids),
-                    AssignmentRun.status.in_(_queue_blocking_statuses()),
+                    holds_assignment(AssignmentRun, _queue_blocking_statuses()),
                 )
                 .group_by(AssignmentRun.assignment_id)
             )

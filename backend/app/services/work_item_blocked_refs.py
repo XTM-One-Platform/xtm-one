@@ -97,7 +97,13 @@ blocked.
   repository (an infrastructure chart) that reaches production only through
   the next run of a release workflow. An optional ``title_contains`` keeps only
   the runs whose display title holds it (``"refs/tags/"``: the tag build of a
-  release workflow that also runs for a push on main, #34). The polling fallback reads it through
+  release workflow that also runs for a push on main, #34). An optional ``carries`` (``<sha>`` or
+  ``owner/name@<sha>``, stored as ``carries_sha`` and ``carries_repo``, the reference's repository
+  when no repository is named) waits for the release of a merge:
+  only a run whose display title names a commit of ``carries_repo`` that is ``carries_sha`` or a
+  descendant of it releases the item (a release that runs in another repository, its title
+  ``Release <ref> at <sha>``); an older run moves ``after`` past it, so a release of the exact
+  commit cancelled by a newer push never strands the item (#1634). The polling fallback reads it through
   the provider's :data:`~app.integrations.reference_state.WorkflowRunReader`
   (:func:`_poll_workflow_run`); the release note names the run. A run that succeeded
   before the item was blocked sends no delivery any more: the write that blocks it
@@ -130,7 +136,13 @@ _BRANCH_RE = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
 #: The longest ``title_contains`` a ``workflow_run`` reference may give.
 MAX_TITLE_CONTAINS_CHARS = 200
 #: What the workflow run stage remembers of a reference (with ``state`` and ``at``).
-_WORKFLOW_RUN_KEPT = ("run_id", "run_url", "run_at")
+_WORKFLOW_RUN_KEPT = ("run_id", "run_url", "run_at", "run_commit")
+#: A commit named in a release run's display title (``Release refs/heads/main at <sha>``).
+_TITLE_SHA_RE = re.compile(r"\b([0-9a-f]{40})\b")
+#: Older runs of a ``carries_sha`` reference skipped in one read, at most (#1634); the
+#: position reached is kept as ``carry_after`` (outside the reference key), so the next
+#: read resumes past the runs already skipped.
+MAX_CARRY_SKIPS = 5
 #: A commit a deployment reference may name.
 _SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
 #: What the deploy stage remembers of a reference (with ``state`` and ``at``);
@@ -143,6 +155,12 @@ MAX_REFS = 20
 MAX_REASON_CHARS = 2000
 #: Items one delivery may release.
 _MAX_ITEMS_PER_EVENT = 50
+#: Blocked items naming a repository one delivery, or one polling pass, scans for
+#: the ones it concerns: the cap above applies after the match, never before it, so
+#: a long tail of older items on the same repository cannot hide the item a
+#: closing names (an item re-parked after a merge queue removal stayed blocked
+#: about 20 h behind 50 older ones).
+_CANDIDATE_SCAN = 2000
 #: Polling fallback: an item blocked and quiet this long has its references read
 #: (the race of a reference merged before the item was blocked on it included).
 POLL_MIN_AGE_SECONDS = 2 * 60
@@ -159,7 +177,8 @@ POLL_MAX_READS = 50
 RELEASE_GRACE_SECONDS = 45
 
 WHY_FIELDS_MESSAGE = (
-    "a blocked work item must say why: give blocked_on (the work items it waits for), "
+    "a blocked work item is black or white: it needs owner_agent_id (the agent that resumes it) and a "
+    "blocker the platform releases by itself: blocked_on (the work items it waits for), "
     "blocked_on_refs (the pull requests or issues it waits for: "
     '[{"repo": "owner/name", "kind": "pull_request" | "issue", "number": N, '
     '"release_on": "merged" | "closed" | "merged_or_closed"}], or the deployment of a change: '
@@ -167,8 +186,19 @@ WHY_FIELDS_MESSAGE = (
     '"release_on": "deployed"}, or the first successful run of a workflow after a time: '
     '{"repo": "owner/name", "kind": "workflow_run", "workflow": "release.yml", '
     '"after": "2026-11-06T00:40:00Z", "branch": "main"}), '
-    "blocked_reason (what it waits for, who releases it, since when) or needs_human: true"
+    "or a person's decision: needs_human: true with an ask {question, options: [{key, label}], "
+    "recommendation: an option key}. blocked_reason is context, never the blocker; a deferral is an "
+    "open item with not_before"
 )
+
+ASK_REQUIRED_MESSAGE = (
+    "needs_human needs an ask card, written in the same call: ask {question, context (2 to 4 lines), "
+    "options: [{key, label, effect?}] (at least 2), recommendation: the key of one option}; the person "
+    "decides from it and the answer reopens the item"
+)
+
+#: The fewest options an ask card offers: a decision is a choice.
+MIN_ASK_OPTIONS = 2
 
 
 class BlockedRefError(ValueError):
@@ -303,9 +333,35 @@ def _normalize_workflow_run_ref(entry: dict, repo: str) -> dict:
                 f"{MAX_TITLE_CONTAINS_CHARS} characters, got {title!r}"
             )
         out["title_contains"] = title
-    for key in ("state", "at", *_WORKFLOW_RUN_KEPT):
+    out.update(_carries(entry, repo))
+    for key in ("state", "at", "carry_after", *_WORKFLOW_RUN_KEPT):
         if isinstance(entry.get(key), str | int) and not isinstance(entry.get(key), bool):
             out[key] = entry[key]
+    return out
+
+
+def _carries(entry: dict[str, Any], repo: str) -> dict[str, str]:
+    """``carries_sha`` and ``carries_repo`` of a workflow_run reference's ``carries`` (#1634).
+
+    ``carries`` reads ``<sha>`` or ``owner/name@<sha>``; the stored fields are kept on a rewrite.
+    """
+    raw = entry.get("carries")
+    if raw is None or raw == "":
+        sha, carries_repo = entry.get("carries_sha"), entry.get("carries_repo")
+        if sha is None or sha == "":
+            return {}
+        raw = f"{carries_repo}@{sha}" if isinstance(carries_repo, str) and carries_repo else sha
+    if not isinstance(raw, str):
+        raise BlockedRefError(f"blocked_on_refs: carries must be a commit, or owner/name@ then a commit, got {raw!r}")
+    named, _, sha = raw.strip().lower().rpartition("@")
+    if not _SHA_RE.match(sha) or (named and (named.count("/") != 1 or " " in named)):
+        raise BlockedRefError(
+            "blocked_on_refs: carries must be a commit, or owner/name@ then a commit (7 to 40 hexadecimal characters), "
+            f"got {raw!r}"
+        )
+    out = {"carries_sha": sha}
+    if named and named != repo:
+        out["carries_repo"] = named
     return out
 
 
@@ -318,6 +374,7 @@ def _ref_key(ref: dict) -> tuple:
             ref.get("branch"),
             ref.get("after"),
             ref.get("title_contains"),
+            ref.get("carries_sha"),
         )
     return (ref.get("repo"), ref.get("kind"), ref.get("number") or ref.get("sha"))
 
@@ -358,8 +415,9 @@ def unobserved_deployment_message(repo: str) -> str:
         f"blocked_on_refs: the platform does not observe the deployments of {repo}, so a "
         f"deployment reference on it would never release the item. Wait instead on a "
         f'workflow_run reference ({{"repo": "{repo}", "kind": "workflow_run", '
-        f'"workflow": "release.yml", "branch": "main"}}, with the file name of its release '
-        f"workflow), or set blocked_reason "
+        f'"workflow": "release.yml", "branch": "main", "carries": "{repo}@" followed by the merge commit}}, '
+        f"with the repository and file name of its release workflow; carries releases it only on a run "
+        f"whose title names that commit or a later one), or set blocked_reason "
         f"(what to check, who releases it) with a dated not_before for the re-check"
     )
 
@@ -425,7 +483,10 @@ def ref_label(ref: dict) -> str:
     if ref.get("kind") == "workflow_run":
         on = f" on {ref['branch']}" if ref.get("branch") else ""
         titled = f" titled '*{ref['title_contains']}*'" if ref.get("title_contains") else ""
-        return f"a successful {ref['repo']} {ref.get('workflow')} run{on}{titled} after {ref.get('after')}"
+        carrying = ""
+        if ref.get("carries_sha"):
+            carrying = f" carrying {ref.get('carries_repo') or ref['repo']}@{str(ref['carries_sha'])[:7]}"
+        return f"a successful {ref['repo']} {ref.get('workflow')} run{on}{titled}{carrying} after {ref.get('after')}"
     if ref.get("kind") == "deployment":
         if ref.get("number"):
             return f"deployment of {ref['repo']}#{ref['number']}"
@@ -478,10 +539,80 @@ def has_why(
     )
 
 
+def ask_is_complete(ask: object) -> bool:
+    """Whether *ask* is a decision card a person can answer: a question, options, a recommendation. Pure."""
+    if not isinstance(ask, dict):
+        return False
+    options = ask.get("options")
+    return (
+        bool(str(ask.get("question") or "").strip())
+        and isinstance(options, list)
+        and len(options) >= MIN_ASK_OPTIONS
+        and bool(str(ask.get("recommendation") or "").strip())
+    )
+
+
+def bound_open_pull_request(payload: object) -> bool:
+    """Whether *payload* binds an open pull request, whose CI completion or closing releases the item. Pure.
+
+    The wait ``work_item_pull_requests.parked_without_release`` hands back: a
+    draft between two slices, parked by the inbox finalizer (#10692).
+    """
+    from app.services.work_item_pull_requests import pull_request_bindings
+
+    return any(b.get("state", "open") == "open" for b in pull_request_bindings(payload))
+
+
+def blocked_defects(
+    *,
+    owner_agent_id: object = None,
+    blocked_on: object = None,
+    blocked_on_refs: object = None,
+    needs_human: object = None,
+    ask: object = None,
+    bound_open_pull_request: bool = False,
+) -> list[str]:
+    """What keeps a blocked item with these fields from being black or white, ``[]`` when nothing. Pure.
+
+    Blocked is either a real blocker the platform releases by itself
+    (``blocked_on``, ``blocked_on_refs``, or an open pull request bound in the
+    payload, released by its CI completion or its closing:
+    *bound_open_pull_request*) or a person's decision (``needs_human`` with a
+    complete :func:`ask_is_complete` card), and always an owner that resumes
+    it. ``blocked_reason`` and ``not_before`` are never a blocker.
+    """
+    out: list[str] = []
+    if not owner_agent_id:
+        out.append("no owner_agent_id")
+    if needs_human and not ask_is_complete(ask):
+        out.append("needs_human without an ask card")
+    elif not (blocked_on or blocked_on_refs or needs_human or bound_open_pull_request):
+        out.append("no blocker the platform releases (free text or nothing)")
+    return out
+
+
 def refuse_blocked_without_why(status: str | None, **fields: object) -> None:
-    """Raise ``ValueError`` naming the fields when *status* is ``blocked`` with no why."""
-    if status == "blocked" and not has_why(**fields):
-        raise ValueError(WHY_FIELDS_MESSAGE)
+    """Raise ``ValueError`` naming the three options when *status* is ``blocked`` and not black or white.
+
+    *fields* are those of :func:`blocked_defects`; ``blocked_reason`` is
+    accepted and ignored (context, never the blocker); ``payload`` (the item's
+    payload as it lands) counts an open bound pull request as a blocker.
+    """
+    if status != "blocked":
+        return
+    fields.pop("blocked_reason", None)
+    payload = fields.pop("payload", None)
+    if payload is not None and "bound_open_pull_request" not in fields:
+        fields["bound_open_pull_request"] = bound_open_pull_request(payload)
+    defects = blocked_defects(**fields)
+    if defects:
+        raise ValueError(f"{WHY_FIELDS_MESSAGE} (missing: {'; '.join(defects)}); nothing was written")
+
+
+def refuse_needs_human_without_ask(needs_human: object, ask: object) -> None:
+    """Raise ``ValueError`` when an item waits for a person with no decision card to answer."""
+    if needs_human and not ask_is_complete(ask):
+        raise ValueError(f"{ASK_REQUIRED_MESSAGE}; nothing was written")
 
 
 #: An item blocked on its own red pull request is released after this long.
@@ -726,9 +857,34 @@ def blocked_why(item: Any) -> dict | None:
         parts.append(reason)
     if get("needs_human"):
         parts.append("a person (needs_human)")
+    bound = bound_pull_request_wait(item)
+    if bound:
+        parts.insert(0, bound)
     if not parts:
         return {"text": "No reason given", "missing": True}
     return {"text": "Waits for: " + "; ".join(parts), "missing": False}
+
+
+def bound_pull_request_wait(item: Any) -> str | None:
+    """What releases a blocked *item* parked on its own open pull requests alone, ``None`` otherwise.
+
+    The inbox finalizer parks an item on a draft it names with a reason only
+    (#10692): the CI completion or the closing of that pull request hands it
+    back (``work_item_pull_requests.parked_without_release``). Said in words,
+    so a reader never takes it for a free-text block (#1617). Pure.
+    """
+    from app.services.work_item_pull_requests import is_draft, pull_request_bindings
+
+    get = item.get if isinstance(item, dict) else (lambda key, default=None: getattr(item, key, default))
+    if get("status") != "blocked" or get("blocked_on") or get("needs_human"):
+        return None
+    if open_refs(get("blocked_on_refs")):
+        return None
+    bound = [b for b in pull_request_bindings(get("payload")) if b.get("state", "open") == "open"]
+    if not bound:
+        return None
+    names = ", ".join(f"{b['repo']}#{b['number']}{' (draft)' if is_draft(b) else ''}" for b in bound)
+    return f"the CI completion or closing of {names}, released by itself"
 
 
 # -- The matcher -----------------------------------------------------------------
@@ -968,9 +1124,25 @@ def _like_literal(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+def concerns_event(refs: Any, event: PullRequestEvent) -> bool:
+    """Whether one of *refs* may be moved by *event*: same repository, and its number or head branch. Pure.
+
+    A coarse pre-filter of the candidates (the apply decides): a reference on the
+    event's pull request or issue, or one following the event's head branch.
+    """
+    for ref in refs or []:
+        if not isinstance(ref, dict) or ref.get("repo") != event.repo:
+            continue
+        if ref.get("number") in event.pr_numbers:
+            return True
+        if ref.get("head_branch") and event.head_branch and ref.get("head_branch") == event.head_branch:
+            return True
+    return False
+
+
 async def _candidate_ids(db, event: PullRequestEvent) -> list[uuid.UUID]:
     rows = await db.execute(
-        select(WorkItem.id)
+        select(WorkItem.id, WorkItem.blocked_on_refs)
         .where(
             WorkItem.status == "blocked",
             WorkItem.blocked_on_refs.is_not(None),
@@ -978,9 +1150,9 @@ async def _candidate_ids(db, event: PullRequestEvent) -> list[uuid.UUID]:
             cast(WorkItem.blocked_on_refs, Text).ilike(f"%{_like_literal(event.repo)}%", escape="\\"),
         )
         .order_by(WorkItem.last_activity_at.asc())
-        .limit(_MAX_ITEMS_PER_EVENT)
+        .limit(_CANDIDATE_SCAN)
     )
-    return [row[0] for row in rows.all()]
+    return [row[0] for row in rows.all() if concerns_event(row[1], event)][:_MAX_ITEMS_PER_EVENT]
 
 
 async def _apply_to_item(item_id: uuid.UUID, event: PullRequestEvent, now: datetime) -> str | None:
@@ -1276,7 +1448,11 @@ HINT_QUIET_SECONDS = 20.0
 HINT_MAX_READS = 5
 
 
-async def _hint_candidates(db, event: PullRequestEvent) -> list[tuple[uuid.UUID, Any, list]]:
+async def _hint_candidates(
+    db: Any, event: PullRequestEvent, matches: Any = None
+) -> list[tuple[uuid.UUID, Any, list[Any]]]:
+    """The blocked items whose references *matches* (default :func:`_named_by`) finds named by *event*."""
+    named = matches or _named_by
     rows = await db.execute(
         select(WorkItem.id, WorkItem.user_id, WorkItem.blocked_on_refs)
         .where(
@@ -1287,9 +1463,11 @@ async def _hint_candidates(db, event: PullRequestEvent) -> list[tuple[uuid.UUID,
             cast(WorkItem.blocked_on_refs, Text).ilike(f"%{_like_literal(event.repo)}%", escape="\\"),
         )
         .order_by(WorkItem.last_activity_at.asc())
-        .limit(_MAX_ITEMS_PER_EVENT)
+        .limit(_CANDIDATE_SCAN)
     )
-    return [(row[0], row[1], list(row[2] or [])) for row in rows.all()]
+    return [(row[0], row[1], list(row[2] or [])) for row in rows.all() if named(list(row[2] or []), event)][
+        :_MAX_ITEMS_PER_EVENT
+    ]
 
 
 def _named_by(refs: list, event: PullRequestEvent) -> list[dict]:
@@ -1703,6 +1881,45 @@ def schedule_release_check(release: dict) -> None:
 # -- The workflow run stage --------------------------------------------------------
 
 
+def run_commit(run: dict[str, Any]) -> str | None:
+    """The commit a release run's display title names (``Release <ref> at <sha>``), else ``None``. Pure."""
+    match = _TITLE_SHA_RE.search(str(run.get("display_title") or "").lower())
+    return match.group(1) if match else None
+
+
+def _one_second_later(value: object) -> str | None:
+    """*value* (a run's ``created_at``) plus one second, ``YYYY-MM-DDTHH:MM:SSZ``; ``None`` when unreadable."""
+    stamp = _host_stamp(value) if isinstance(value, str) else None
+    if stamp is None:
+        return None
+    return _stamp(datetime.fromisoformat(stamp.replace("Z", "+00:00")) + timedelta(seconds=1))
+
+
+async def _carrying_run(ref: dict[str, Any], run: dict[str, Any], provider: str, token: str) -> bool | None:
+    """Whether *run* releases a commit that is ``carries_sha`` or a descendant of it.
+
+    ``False`` when its title names no commit or an older one, ``None`` when the
+    containment cannot be read (#1634).
+    """
+    from app.integrations.reference_state import commit_containment_readers
+
+    commit = run_commit(run)
+    if commit is None:
+        return False
+    merge_sha = str(ref.get("carries_sha") or "")
+    if same_commit(merge_sha, commit):
+        return True
+    reader = commit_containment_readers().get(provider)
+    if reader is None:
+        return None
+    repo = str(ref.get("carries_repo") or ref.get("repo") or "")
+    try:
+        return await reader(repo, merge_sha, commit, token)
+    except Exception as exc:
+        logger.info("Release of %s not read: %s", ref_label(ref), format_exception_message(exc))
+        return None
+
+
 def workflow_run_note(ref: dict, run: dict, now: datetime) -> str:
     """The note of an item a successful workflow run released. Pure."""
     url = f" ({run['url']})" if run.get("url") else ""
@@ -1732,6 +1949,7 @@ async def _apply_workflow_run(item_id: uuid.UUID, key: tuple, run: dict, now: da
                     ("run_id", run.get("id")),
                     ("run_url", run.get("url")),
                     ("run_at", run.get("created_at")),
+                    ("run_commit", run.get("run_commit")),
                 ):
                     if value is not None:
                         ref[field] = value
@@ -1803,32 +2021,57 @@ async def _poll_workflow_run(
     """Read one ``workflow_run`` reference through the providers' readers and apply a successful run.
 
     False when the read budget (*max_reads* per pass or delivery) left the reference
-    unread, so the item is not stamped polled.
+    unread, so the item is not stamped polled. A ``carries_sha`` reference reads the
+    next run while the one found does not carry the merge (:func:`_carrying_run`),
+    from ``carry_after`` when an earlier read skipped older runs, and records the
+    position it reached when it ends without a carrying run (:func:`_record_carry_after`).
     """
     key = _ref_key(ref)
     for provider, reader in readers.items():
         token = tokens.get((provider, str(user_id)))
         if not token:
             continue
-        read_key = (provider, str(user_id), *key)
-        if read_key not in seen:
-            if counts["read"] >= max_reads:
-                return False
-            counts["read"] += 1
-            try:
-                seen[read_key] = await reader(
-                    str(ref["repo"]),
-                    str(ref["workflow"]),
-                    str(ref["after"]),
-                    ref.get("branch"),
-                    ref.get("title_contains"),
-                    token,
-                )
-            except Exception as exc:
-                _note_read_failure(counts, ref, exc, item_id)
-                seen[read_key] = None
-        run = seen[read_key]
+        after = str(ref.get("carry_after") or ref["after"])
+        start = after
+        run: dict[str, Any] | None = None
+        for _ in range(MAX_CARRY_SKIPS + 1):
+            read_key = (provider, str(user_id), *key, after)
+            if read_key not in seen:
+                if counts["read"] >= max_reads:
+                    return False
+                counts["read"] += 1
+                try:
+                    seen[read_key] = await reader(
+                        str(ref["repo"]),
+                        str(ref["workflow"]),
+                        after,
+                        ref.get("branch"),
+                        ref.get("title_contains"),
+                        token,
+                    )
+                except Exception as exc:
+                    _note_read_failure(counts, ref, exc, item_id)
+                    seen[read_key] = None
+            run = seen[read_key]
+            if run is None or not ref.get("carries_sha"):
+                break
+            carried = await _carrying_run(ref, run, provider, token)
+            if carried is True:
+                run = {**run, "run_commit": run_commit(run)}
+                break
+            if carried is None:
+                # Unreadable: wait for the next pass rather than release on a guess.
+                run = None
+                break
+            # An older commit's release: the next successful run may carry the merge.
+            later = _one_second_later(run.get("created_at"))
+            if later is None:
+                run = None
+                break
+            after, run = later, None
         if run is None:
+            if ref.get("carries_sha") and after != start:
+                await _record_carry_after(item_id, key, after)
             continue
         try:
             outcome = await _apply_workflow_run(item_id, key, run, datetime.now(UTC))
@@ -1844,6 +2087,43 @@ async def _poll_workflow_run(
             counts[outcome] = counts.get(outcome, 0) + 1
         return True
     return True
+
+
+async def _record_carry_after(item_id: uuid.UUID, key: tuple, after: str) -> None:
+    """Keep *after* as ``carry_after`` on the ``workflow_run`` reference *key* of one item (#1634).
+
+    The runs before it are older commits' releases already skipped: without it a
+    reference with more of them than one read skips would re-read the same ones on
+    every pass and never reach the carrying release. Best-effort.
+    """
+    from app.core.database import async_session
+
+    try:
+        async with async_session() as db:
+            item = (
+                await db.execute(select(WorkItem).where(WorkItem.id == item_id).with_for_update())
+            ).scalar_one_or_none()
+            if item is None or item.status != "blocked" or not item.blocked_on_refs:
+                return
+            refs: list[dict] = []
+            moved = False
+            for ref in item.blocked_on_refs:
+                ref = dict(ref)
+                if (
+                    ref.get("kind") == "workflow_run"
+                    and _ref_key(ref) == key
+                    and not _satisfied(ref)
+                    and str(ref.get("carry_after") or ref.get("after") or "") < after
+                ):
+                    ref["carry_after"] = after
+                    moved = True
+                refs.append(ref)
+            if not moved:
+                return
+            item.blocked_on_refs = refs
+            await db.commit()
+    except Exception as exc:
+        logger.info("Carry position of work item %s not kept: %s", item_id, format_exception_message(exc))
 
 
 async def _poll_branch_successors(
@@ -1960,7 +2240,11 @@ async def release_from_workflow_run_delivery(event: PullRequestEvent) -> dict[st
         return counts
     try:
         async with async_session() as db:
-            candidates = [c for c in await _hint_candidates(db, event) if named_by_workflow_run(c[2], event)]
+            candidates = [
+                c
+                for c in await _hint_candidates(db, event, named_by_workflow_run)
+                if named_by_workflow_run(c[2], event)
+            ]
             tokens: dict[tuple[str, str], str | None] = {}
             for _, user_id, _ in candidates:
                 for provider in readers:
@@ -2034,6 +2318,79 @@ def schedule_workflow_run_check(item_id: uuid.UUID | str) -> None:
     _spawn(check_item_workflow_runs(item_id))
 
 
+#: The reference kinds :func:`check_item_reference_states` reads at the write.
+WRITE_CHECKED_KINDS = ("pull_request", "issue")
+
+
+def names_reference_state(refs: object) -> bool:
+    """Whether *refs* (normalised ``blocked_on_refs``) waits for a pull request or an issue. Pure."""
+    items = refs if isinstance(refs, list) else []
+    return any(isinstance(r, dict) and r.get("kind") in WRITE_CHECKED_KINDS for r in items)
+
+
+async def check_item_reference_states(item_id: uuid.UUID | str) -> dict[str, Any]:
+    """Read the open ``pull_request`` and ``issue`` references of one item once, at the write that blocks it.
+
+    A pull request merged or an issue closed before the write sends no delivery
+    any more: without this read the item waits for the polling pass (minutes).
+    Same reader, credential and apply as the polling fallback; a deployment
+    reference has its own check (:func:`check_item_deployment`), a workflow run
+    its own (:func:`check_item_workflow_runs`). ``{"read": r, "released": n,
+    "noted": m}``. Never raises.
+    """
+    from app.core.database import async_session
+    from app.integrations.reference_state import reference_state_readers
+
+    counts: dict[str, Any] = {"read": 0, "released": 0, "noted": 0}
+    readers = reference_state_readers()
+    if not readers:
+        return counts
+    try:
+        item_uuid = uuid.UUID(str(item_id))
+        async with async_session() as db:
+            row = (
+                await db.execute(
+                    select(WorkItem.user_id, WorkItem.status, WorkItem.blocked_on_refs).where(WorkItem.id == item_uuid)
+                )
+            ).one_or_none()
+            if row is None or row[0] is None or row[1] != "blocked":
+                return counts
+            waiting = [r for r in open_refs(row[2]) if r.get("kind") in WRITE_CHECKED_KINDS]
+            tokens: dict[str, str | None] = {}
+            for provider in readers if waiting else ():
+                tokens[provider] = await reference_token(db, provider, row[0])
+        for ref in waiting[:HINT_MAX_READS]:
+            kind = read_kind(ref)
+            if kind is None:
+                continue
+            for provider, reader in readers.items():
+                token = tokens.get(provider)
+                if not token:
+                    continue
+                counts["read"] += 1
+                try:
+                    event = await reader(str(ref["repo"]), kind, int(ref["number"]), token)
+                except Exception as exc:
+                    logger.info("Reference %s of work item %s not read at the write: %s", ref_label(ref), item_id, exc)
+                    continue
+                if event is None or event.kind == "dequeued":
+                    # Still open (or out of a merge queue, which the poller reports): the
+                    # deliveries and the polling pass go on as before.
+                    continue
+                outcome = await _apply_to_item(item_uuid, event, datetime.now(UTC))
+                if outcome:
+                    counts[outcome] = counts.get(outcome, 0) + 1
+                break
+    except Exception as exc:
+        logger.warning("Reference check of work item %s failed: %s", item_id, format_exception_message(exc))
+    return counts
+
+
+def schedule_reference_state_check(item_id: uuid.UUID | str) -> None:
+    """Run :func:`check_item_reference_states` in the background (a write must not wait on the code host)."""
+    _spawn(check_item_reference_states(item_id))
+
+
 # -- The polling fallback --------------------------------------------------------
 
 #: Item id -> monotonic time of its last read, per process.
@@ -2064,7 +2421,11 @@ async def _poll_candidates(db, now: datetime) -> list[tuple[uuid.UUID, Any, list
             WorkItem.last_activity_at <= now - timedelta(seconds=POLL_MIN_AGE_SECONDS),
         )
         .order_by(WorkItem.last_activity_at.asc())
-        .limit(POLL_MAX_ITEMS * 4)
+        # The whole blocked set up to the scan cap: the pass keeps the items not read
+        # in the quiet window (:func:`_due`), so a window of the oldest items only
+        # left every newer one unread once those had all been read (an item
+        # re-parked after a merge queue removal waited about 20 h for its merge).
+        .limit(_CANDIDATE_SCAN)
     )
     return [(row[0], row[1], list(row[2] or [])) for row in rows.all()]
 

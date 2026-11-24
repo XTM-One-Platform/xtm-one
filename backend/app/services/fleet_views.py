@@ -753,9 +753,10 @@ def is_fleet_automation(slug: str | None, agent_builtin: bool, name: str, *, bui
     of the orchestrator (#11700) counts on both.
     """
     from app.agents.builtin_agents import FLEET_OPT_IN_ASSIGNMENTS
-    from app.services.fleets import FLEET_HEALTH_CHECK_NAME
+    from app.services.fleets import FLEET_HEALTH_ASSIGNMENT_NAMES
 
-    if not builtin_fleet or name == FLEET_HEALTH_CHECK_NAME:
+    # The weekly health check (#11700) and its answer listener (#1406) count on both.
+    if not builtin_fleet or name in FLEET_HEALTH_ASSIGNMENT_NAMES:
         return True
     return agent_builtin and (slug, name) in FLEET_OPT_IN_ASSIGNMENTS
 
@@ -791,10 +792,142 @@ def automation_counts(
     )
 
 
-async def fleet_automation_counts(db: AsyncSession, fleet: Fleet) -> AutomationCounts:
-    """The opt-in state of *fleet*'s home members' automations, one query, no run."""
-    from app.models.assignment import Assignment
+#: The one automation the Platform Health fleet counts (#974): Platform Health
+#: itself, switched in Settings > Platform Health, never on the fleet's rows.
+HEALTH_FLEET_AUTOMATION = "Platform Health"
 
+
+def health_fleet_counts(active: bool) -> AutomationCounts:
+    """The automation counts of the Platform Health fleet (#974).
+
+    Its assignments are started by the Settings cycle runner (trigger
+    ``manual``), so counting them would read "Not set up" forever on a fleet
+    nobody may switch. The fleet's state is Platform Health's own: on in
+    Settings reads ``on``, off reads ``paused`` with Platform Health named off.
+    """
+    if active:
+        return AutomationCounts(total=1, enabled=1)
+    return AutomationCounts(total=1, paused=1, off_names=(HEALTH_FLEET_AUTOMATION,))
+
+
+async def platform_health_counts(db: AsyncSession) -> AutomationCounts:
+    """:func:`health_fleet_counts` read from the capability and the Settings switch."""
+    from app.services.health.availability import health_active, health_enabled
+
+    return health_fleet_counts(health_enabled() and await health_active(db))
+
+
+#: The Settings schedules of Platform Health (#974), in the Settings page's order.
+HEALTH_SCHEDULE_KEYS: tuple[str, ...] = ("memory", "quality", "flows", "digest")
+#: The signals that start an investigation of Platform Health (``HealthSignalSettings``).
+HEALTH_SIGNAL_KEYS: tuple[str, ...] = ("feedback", "failure", "cost", "model_change")
+#: Where an administrator switches and schedules Platform Health (the frontend's ``HEALTH_SETTINGS_PATH``).
+HEALTH_SETTINGS_ROUTE = "/settings/automations/health"
+#: The core module Platform Health always covers on an XTM One platform.
+HEALTH_CORE_MODULE = "xtm_one"
+
+
+@dataclass(frozen=True)
+class HealthFleetStarts:
+    """What starts the Platform Health fleet and what it covers (#974): the
+    Settings schedules and signals, never its ``manual`` assignments."""
+
+    #: A signal pass is on: an investigation starts on an event.
+    events: bool = False
+    #: The schedules switched on in Settings > Platform Health.
+    schedules: int = 0
+    #: The soonest next start of those schedules; ``None`` when none is on.
+    next_run_at: datetime | None = None
+    #: The modules it covers: XTM One and every active registered module, XTM One modes only.
+    modules: tuple[str, ...] = ()
+    settings_route: str = HEALTH_SETTINGS_ROUTE
+    #: Platform Health is on in Settings: off, nothing starts, so no next run is promised (UX r1 B2 on #980).
+    active: bool = True
+
+
+def health_fleet_starts(
+    health_settings: object,
+    *,
+    xtm_one: bool,
+    registered: Iterable[str] = (),
+    now: datetime | None = None,
+    active: bool = True,
+) -> HealthFleetStarts:
+    """Pure: the starts line and modules of the Platform Health fleet from its settings (#974).
+
+    Platform Health off (*active* false) starts nothing: the schedules are still
+    counted, but no next run is computed, so a paused fleet never promises one.
+    """
+    from zoneinfo import ZoneInfo
+
+    from app.core.utils import next_cron_run
+
+    schedules = getattr(health_settings, "schedules", None)
+    signals = getattr(health_settings, "signals", None)
+    on = [key for key in HEALTH_SCHEDULE_KEYS if schedules is not None and getattr(schedules, f"{key}_enabled", False)]
+    tz = None
+    if schedules is not None:
+        try:
+            tz = ZoneInfo(str(getattr(schedules, "timezone", "UTC") or "UTC"))
+        except (KeyError, ValueError):
+            tz = None
+    base = now or datetime.now(UTC)
+    upcoming = (
+        [run for key in on if (run := next_cron_run(getattr(schedules, key, None), base, tz=tz)) is not None]
+        if active
+        else []
+    )
+    events = signals is not None and any(getattr(signals, f"{key}_enabled", False) for key in HEALTH_SIGNAL_KEYS)
+    modules: tuple[str, ...] = ()
+    if xtm_one:
+        modules = (HEALTH_CORE_MODULE, *sorted({m for m in registered if m and m != HEALTH_CORE_MODULE}))
+    return HealthFleetStarts(
+        events=events,
+        schedules=len(on),
+        next_run_at=min(upcoming) if upcoming else None,
+        modules=modules,
+        active=active,
+    )
+
+
+async def platform_health_starts(db: AsyncSession) -> HealthFleetStarts:
+    """:func:`health_fleet_starts` read from Settings > Platform Health and the module registrations."""
+    from app.core.config import settings as app_settings
+    from app.models.platform_registration import PlatformRegistration
+    from app.services.health.availability import health_active, health_enabled
+    from app.services.health.module_analyst import MODULE_PROVIDERS
+    from app.services.health.settings import load_health_settings
+
+    active = health_enabled() and await health_active(db)
+    xtm_one = bool(app_settings.is_xtm_one)
+    registered: list[str] = []
+    if xtm_one:
+        registered = [
+            str(identifier)
+            for (identifier,) in (
+                await db.execute(
+                    select(PlatformRegistration.platform_identifier)
+                    .where(
+                        PlatformRegistration.platform_identifier.in_(MODULE_PROVIDERS),
+                        PlatformRegistration.status == "active",
+                    )
+                    .distinct()
+                )
+            ).all()
+        ]
+    return health_fleet_starts(await load_health_settings(db), xtm_one=xtm_one, registered=registered, active=active)
+
+
+async def fleet_automation_counts(db: AsyncSession, fleet: Fleet) -> AutomationCounts:
+    """The opt-in state of *fleet*'s home members' automations, one query, no run.
+
+    The Platform Health fleet reads Platform Health itself (:func:`health_fleet_counts`).
+    """
+    from app.models.assignment import Assignment
+    from app.services.health.read_only import is_health_fleet
+
+    if is_health_fleet(fleet):
+        return await platform_health_counts(db)
     rows = await fleet_members(db, fleet.id)
     ids = home_member_ids(rows, fleet.orchestrator_agent_id)
     if not ids:
@@ -904,9 +1037,13 @@ def switch_on_action(reason: str | None) -> str:
 async def fleet_automation_state(db: AsyncSession, fleet: Fleet) -> FleetAutomationState:
     """The badge of *fleet* (:func:`automation_counts` over the same rows) and
     every counted automation that is off, by agent then assignment name.
-    Reads only. Agent names are the stored ones: the caller filters what it may see."""
+    Reads only. Agent names are the stored ones: the caller filters what it may see.
+    The Platform Health fleet reads Platform Health itself (:func:`health_fleet_counts`)."""
     from app.models.assignment import Assignment
+    from app.services.health.read_only import is_health_fleet
 
+    if is_health_fleet(fleet):
+        return FleetAutomationState(counts=await platform_health_counts(db))
     ids = home_member_ids(await fleet_members(db, fleet.id), fleet.orchestrator_agent_id)
     if not ids:
         return FleetAutomationState(counts=AutomationCounts())
@@ -956,6 +1093,8 @@ class FleetCardFacts:
     automations: AutomationCounts = field(default_factory=AutomationCounts)
     #: The newest run of a home member the caller may see; ``None`` = never run.
     last_run_at: datetime | None = None
+    #: The Platform Health fleet only (#974): its Settings schedules, signals and modules.
+    health_starts: HealthFleetStarts | None = None
 
 
 async def fleet_card_facts(
@@ -971,10 +1110,14 @@ async def fleet_card_facts(
     from sqlalchemy import func
 
     from app.models.assignment import Assignment, AssignmentRun
+    from app.services.health.read_only import is_health_fleet
 
     if not fleets:
         return {}
     by_id = {f.id: f for f in fleets}
+    has_health = any(is_health_fleet(f) for f in fleets)
+    health = await platform_health_counts(db) if has_health else None
+    health_starts = await platform_health_starts(db) if has_health else None
     homes: dict[uuid.UUID, set[uuid.UUID]] = {f.id: set() for f in fleets}
     for fleet_id, agent_id in (
         await db.execute(
@@ -988,7 +1131,12 @@ async def fleet_card_facts(
         homes[fleet_id].add(agent_id)
     agent_ids = sorted({a for members in homes.values() for a in members})
     if not agent_ids:
-        return {fid: FleetCardFacts() for fid in by_id}
+        return {
+            fid: FleetCardFacts(automations=health, health_starts=health_starts)
+            if health is not None and is_health_fleet(fleet)
+            else FleetCardFacts()
+            for fid, fleet in by_id.items()
+        }
     rows_by_agent: dict[uuid.UUID, list[tuple[str | None, bool, str, bool, str | None]]] = {}
     for agent_id, slug, builtin, name, on, reason in (
         await db.execute(
@@ -1017,13 +1165,76 @@ async def fleet_card_facts(
     out: dict[uuid.UUID, FleetCardFacts] = {}
     for fid, fleet in by_id.items():
         members = homes[fid]
-        counts = automation_counts(
-            (row for aid in members for row in rows_by_agent.get(aid, [])),
-            builtin_fleet=bool(getattr(fleet, "is_builtin", False)),
-        )
+        if health is not None and is_health_fleet(fleet):
+            counts = health
+        else:
+            counts = automation_counts(
+                (row for aid in members for row in rows_by_agent.get(aid, [])),
+                builtin_fleet=bool(getattr(fleet, "is_builtin", False)),
+            )
         runs = [last_by_agent[aid] for aid in members if last_by_agent.get(aid) is not None]
-        out[fid] = FleetCardFacts(automations=counts, last_run_at=max(runs) if runs else None)
+        out[fid] = FleetCardFacts(
+            automations=counts,
+            last_run_at=max(runs) if runs else None,
+            health_starts=health_starts if is_health_fleet(fleet) else None,
+        )
     return out
+
+
+#: The ``trigger_context.object_type`` of a run a CTEM case event started (``ctem_case_loop.case_data``).
+CASE_OBJECT_TYPE = "ctem_case"
+
+
+def run_case_id(object_type: str | None, object_id: str | None) -> str | None:
+    """The CTEM case a run works on (#915): the object of the platform event that
+    started it when that object is a case, else ``None``. An id only: the case
+    itself is read through the case API, which applies the reader's view."""
+    if object_type != CASE_OBJECT_TYPE or not object_id:
+        return None
+    try:
+        return str(uuid.UUID(str(object_id)))
+    except (TypeError, ValueError):
+        return None
+
+
+def case_run_clause(case_id: uuid.UUID):
+    """The ``AssignmentRun`` rows a CTEM case event started for *case_id* (#915):
+    the event's object, read key by key from ``trigger_context``."""
+    from app.models.assignment import AssignmentRun
+
+    return (AssignmentRun.trigger_context["object_type"].as_string() == CASE_OBJECT_TYPE) & (
+        AssignmentRun.trigger_context["object_id"].as_string() == str(case_id)
+    )
+
+
+async def case_runs(db: AsyncSession, case_id: uuid.UUID, *, run_scope, limit: int) -> list[tuple]:
+    """The runs the caller may see that work on one CTEM case, oldest first (#915):
+    ``(id, agent_id, agent_name, status, created_at, completed_at, outcome)``,
+    for the case page that interleaves them with the case history. Any fleet's
+    runs: a case is worked by whichever fleet its event reached."""
+    from app.models.assignment import AssignmentRun
+
+    rows = (
+        await db.execute(
+            select(
+                AssignmentRun.id,
+                AssignmentRun.agent_id,
+                Agent.name,
+                AssignmentRun.status,
+                AssignmentRun.created_at,
+                AssignmentRun.completed_at,
+                AssignmentRun.error,
+            )
+            .join(Agent, Agent.id == AssignmentRun.agent_id)
+            .where(case_run_clause(case_id), run_scope)
+            .order_by(AssignmentRun.created_at.desc(), AssignmentRun.id.desc())
+            .limit(limit)
+        )
+    ).all()
+    return [
+        (run_id, agent_id, name, status, created_at, completed_at, run_outcome(status, error))
+        for (run_id, agent_id, name, status, created_at, completed_at, error) in reversed(rows)
+    ]
 
 
 async def recent_runs(
@@ -1031,11 +1242,12 @@ async def recent_runs(
 ) -> list[tuple]:
     """The members' latest runs the caller may see, newest first:
     ``(id, agent_id, assignment_id, status, created_at, completed_at, outcome,
-    trigger_type, trigger_provider, trigger_event)``, the outcome by
+    trigger_type, trigger_provider, trigger_event, case_id)``, the outcome by
     :func:`app.services.run_outcome.run_outcome`, the rule the health badge
-    reads. The three trigger fields are read from ``trigger_context`` key by
-    key (``type``, ``provider``, ``event``; ``None`` when absent), never the
-    whole JSON, so a large delivery body is never loaded for a timeline row."""
+    reads. The trigger fields are read from ``trigger_context`` key by
+    key (``type``, ``provider``, ``event``, ``object_type``, ``object_id``;
+    ``None`` when absent), never the whole JSON, so a large delivery body is
+    never loaded for a timeline row; ``case_id`` is :func:`run_case_id`."""
     from app.models.assignment import AssignmentRun
 
     if not agent_ids:
@@ -1053,6 +1265,8 @@ async def recent_runs(
                 AssignmentRun.trigger_context["type"].as_string(),
                 AssignmentRun.trigger_context["provider"].as_string(),
                 AssignmentRun.trigger_context["event"].as_string(),
+                AssignmentRun.trigger_context["object_type"].as_string(),
+                AssignmentRun.trigger_context["object_id"].as_string(),
             )
             .where(AssignmentRun.agent_id.in_(list(agent_ids)), run_scope)
             .order_by(AssignmentRun.created_at.desc(), AssignmentRun.id.desc())
@@ -1071,6 +1285,7 @@ async def recent_runs(
             trigger_type,
             trigger_provider,
             trigger_event,
+            run_case_id(object_type, object_id),
         )
         for (
             run_id,
@@ -1083,6 +1298,8 @@ async def recent_runs(
             trigger_type,
             trigger_provider,
             trigger_event,
+            object_type,
+            object_id,
         ) in rows
     ]
 

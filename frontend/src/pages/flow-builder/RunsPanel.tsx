@@ -27,8 +27,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 
 import { useState } from "react";
-import { Library, MessageCircleQuestion, Play, Send, StepForward } from "lucide-react";
+import { Library, Play, StepForward } from "lucide-react";
 import { Ban, X } from "lucide-react";
+import { FlowDecisionCard } from "@/components/decisions/FlowDecisionCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { STATUS_CONFIG } from "@/lib/constants";
@@ -38,7 +39,6 @@ import {
   useCancelFlowRun,
   useFlowRunDetail,
   useFlowRunDebug,
-  useFlowRunRespond,
   useFlowRuns,
 } from "@/hooks/api/useFlowApi";
 import { useWorkset, useWorksetItems, useWorksets } from "@/hooks/api/useWorksetApi";
@@ -213,9 +213,10 @@ function RunTrace({ runId }: { runId: string }) {
       {/* Human-in-the-loop: an Ask-user node waits — answer inline, the
           response becomes the node's output and the run resumes. */}
       {data.awaiting_input_question && (
-        <HumanAnswerBox
+        <FlowDecisionCard
           runId={runId}
           question={data.awaiting_input_question}
+          ask={data.awaiting_input_ask}
         />
       )}
       {/* Debugger: paused on a breakpoint — resume or step to the next node. */}
@@ -369,54 +370,6 @@ function RunWorksetCard({
           {coverage.description}
         </p>
       )}
-    </li>
-  );
-}
-
-function HumanAnswerBox({
-  runId,
-  question,
-}: {
-  runId: string;
-  question: string;
-}) {
-  const { t_i18n } = useFormatter();
-  const respond = useFlowRunRespond();
-  const [answer, setAnswer] = useState("");
-  const send = () => {
-    const text = answer.trim();
-    if (!text || respond.isPending) return;
-    respond.mutate({ runId, response: text }, { onSuccess: () => setAnswer("") });
-  };
-  return (
-    <li className="mb-1 rounded-sm border border-feedback-warning-primary/40 bg-feedback-warning-primary/[0.06] px-2 py-1.5">
-      <p className="flex items-center gap-1 content-caption font-medium text-feedback-warning-primary">
-        <MessageCircleQuestion className="h-3 w-3 shrink-0" />
-        {t_i18n("Waiting for your answer")}
-      </p>
-      <p className="mt-0.5 whitespace-pre-wrap content-caption text-default-secondary">
-        {question}
-      </p>
-      <textarea
-        value={answer}
-        onChange={(e) => setAnswer(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send();
-        }}
-        rows={2}
-        placeholder={t_i18n("Type your answer…")}
-        className="mt-1 w-full resize-none rounded-sm border border-elevation-subtle bg-elevation-default px-1.5 py-1 content-caption outline-none focus:border-feedback-warning-primary/60"
-      />
-      <div className="mt-1 flex justify-end">
-        <button
-          type="button"
-          className="flex items-center gap-1 rounded-sm border border-elevation-subtle px-1.5 py-0.5 content-caption hover:bg-elevation-hover disabled:opacity-50"
-          disabled={!answer.trim() || respond.isPending}
-          onClick={send}
-        >
-          <Send className="h-2.5 w-2.5" /> {t_i18n("Send answer")}
-        </button>
-      </div>
     </li>
   );
 }

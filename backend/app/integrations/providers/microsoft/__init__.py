@@ -60,7 +60,13 @@ from . import (
 )
 from ._common import _BASE_URL, GRAPH_API, MicrosoftContext
 from ._drive import _drive_item_link_lines, _encode_share_id
-from .teams_scope import apply_teams_channel_scope
+
+# ``teams_scope`` is imported where it is used, never at package import time:
+# importlib holds a submodule's lock while it imports the parent package, so
+# a thread importing ``microsoft.teams_scope`` directly (``element_scope``,
+# ``integration_tools``) while another thread ran this ``__init__`` deadlocked
+# both on first use ("deadlock detected by _ModuleLock", a run failed at its
+# start). Same rule as ``app.services.openapi_import``.
 
 __all__ = [
     "GRAPH_API",
@@ -210,5 +216,7 @@ def build_tools(
         definitions += domain.register(ctx, executor)
     teams_channel_scope = kwargs.get("teams_channel_scope")
     if teams_channel_scope is not None:
+        from .teams_scope import apply_teams_channel_scope
+
         return apply_teams_channel_scope(definitions, executor, teams_channel_scope)
     return definitions

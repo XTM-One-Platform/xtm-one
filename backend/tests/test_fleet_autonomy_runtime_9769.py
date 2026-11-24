@@ -74,22 +74,22 @@ def test_an_unknown_level_reads_as_full_human_gates():
     assert gated_tool_rules("bogus", gates) == gated_tool_rules("full_gates", gates)
 
 
-def test_a_simulation_launch_pauses_until_autonomous_and_a_read_never_does():
-    gates = [g for slug in _CTEM for g in _gates(slug) if g.get("key") == "openaev.scenario.launch"]
-    assert gates, "the threat response fleet declares the scenario launch gate"
+def test_a_seeded_simulation_launch_and_a_read_never_pause() -> None:
+    """#1675: the validation is a decision item; the launch call itself runs at every level."""
+    gates = [g for g in _gates("ctem-loop") if g.get("key") == "ctem.validation.non_readonly"]
+    assert gates, "the threat response fleet declares the validation gate"
     for level in AUTONOMY_LEVELS:
         gate = make_fleet_autonomy_gate(None, gated_tool_rules(level, gates))
-        # A launch is destructive (#10005): it still waits at Low, the seeded level.
-        assert _paused(gate, _LAUNCH) is (level != "autonomous")
+        assert _paused(gate, _LAUNCH) is False
         assert _paused(gate, _READ) is False
 
 
-def test_a_ticket_waits_only_at_full_human_gates():
-    gates = [g for slug in _CTEM for g in _gates(slug) if g.get("key") == "ticket.create"][:1]
+def test_a_seeded_ticket_never_pauses_on_the_mobilize_gate() -> None:
+    gates = [g for g in _gates("ctem-vuln-prioritization") if g.get("key") == "ctem.mobilize"]
     assert gates
     for level in AUTONOMY_LEVELS:
         gate = make_fleet_autonomy_gate(None, gated_tool_rules(level, gates))
-        assert _paused(gate, _TICKET) is (level == "full_gates")
+        assert _paused(gate, _TICKET) is False
 
 
 def test_an_approved_call_runs_and_the_inner_gate_still_applies():
@@ -120,6 +120,16 @@ def test_the_context_block_names_the_level_and_each_gate():
     for gate in gates:
         assert gate["action"] in block
     assert fleet_autonomy_block("bogus", []).count("Full human gates") == 1
+
+
+def test_the_block_says_gates_are_instructions_unless_the_fleet_opted_in() -> None:
+    """#1467: no tool-level pause by default; an answered decision is not asked again."""
+    gates = _gates(_CTEM[0])
+    plain = fleet_autonomy_block("low", gates)
+    assert "pauses the tool calls" not in plain
+    assert "without asking again" in plain
+    enforced = fleet_autonomy_block("low", gates, enforced=True)
+    assert "platform also pauses the tool calls" in enforced
 
 
 def test_structured_gates_are_read_from_the_stored_documentation_only():

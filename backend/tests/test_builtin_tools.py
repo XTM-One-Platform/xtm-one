@@ -183,6 +183,45 @@ async def test_generate_image_s3_fallback_uses_chat_image_url_without_flushing(m
     assert chat_image.id is not None
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("image_bytes", "content_type", "extension"),
+    [
+        (b"\xff\xd8\xff\xe0\x00\x10JFIF\x00", "image/jpeg", ".jpg"),
+        (b"\x89PNG\r\n\x1a\n\x00\x00", "image/png", ".png"),
+        (b"RIFF\x00\x00\x00\x00WEBPVP8 ", "image/webp", ".webp"),
+        (b"not-an-image", "image/png", ".png"),
+        (b'<svg xmlns="http://www.w3.org/2000/svg"/>', "image/png", ".png"),
+    ],
+)
+async def test_generate_image_stores_the_type_of_its_bytes(monkeypatch, image_bytes, content_type, extension):
+    """Gemini answers JPEG: the S3 object, the attachment and the ChatImage carry the bytes' type (#747)."""
+    provider = SimpleNamespace(generate_image=AsyncMock(return_value=image_bytes))
+
+    async def _fake_get_image_provider(_db: Any) -> tuple[Any, str]:
+        return provider, "gemini-3-pro-image-preview"
+
+    upload_mock = AsyncMock(return_value="generated/test-key")
+    monkeypatch.setattr("app.llm.router.get_image_provider", _fake_get_image_provider)
+    monkeypatch.setattr("app.services.file_storage.file_storage.upload", upload_mock)
+    added: list[Any] = []
+    monkeypatch.setattr("app.services.builtin_tools.media._own_session", lambda: _FakeOwnSession(added))
+
+    _, executor = await build_image_generation_tool(_ImageToolDB(), str(uuid.uuid4()), str(uuid.uuid4()))
+    result = await executor.execute_tool(
+        ToolCall(id=str(uuid.uuid4()), name="generate_image", arguments={"prompt": "a desk"})
+    )
+
+    assert not result.is_error
+    upload = upload_mock.await_args.kwargs
+    assert upload["content_type"] == content_type and upload["filename"].endswith(extension)
+    file_attachment = next(obj for obj in added if obj.__class__.__name__ == "FileAttachment")
+    assert file_attachment.content_type == content_type
+    assert file_attachment.filename == upload["filename"]
+    chat_image = next(obj for obj in added if obj.__class__.__name__ == "ChatImage")
+    assert chat_image.content_type == content_type
+
+
 class _ProviderError(Exception):
     """An OpenAI-shaped SDK error: its HTTP status, its JSON body, its response headers."""
 
@@ -556,6 +595,93 @@ async def test_get_full_task_result_rejects_edge_case_invalid_ids(monkeypatch, i
     )
 
     assert full_res.content == _invalid_task_id_message(invalid_task_id)
+
+
+def _sections_answer() -> str:
+    """A 120,000-character answer of three sections with distinct markers."""
+    return "<<A>>" + "a" * 39_989 + "<</A>>" + "<<B>>" + "b" * 39_989 + "<</B>>" + "<<C>>" + "c" * 39_989 + "<</C>>"
+
+
+def _completed_executor(monkeypatch, answer: str):
+    async def _result(*_args: Any, **_kwargs: Any) -> Any:
+        return {"task_id": "t", "status": "completed", "result": answer, "error": None, "result_file_ids": []}
+
+    monkeypatch.setattr("app.services.sub_agent.get_task_result", _result)
+    _, executor = build_sub_agent_tools(
+        db=SimpleNamespace(),
+        user_id=str(uuid.uuid4()),
+        parent_agent_id=str(uuid.uuid4()),
+        handover_agents=[SimpleNamespace(id=uuid.uuid4(), name="Helper")],
+    )
+    assert executor is not None
+    return executor
+
+
+async def _full(executor, **arguments: Any) -> str:
+    res = await executor.execute_tool(ToolCall(id=str(uuid.uuid4()), name="get_full_task_result", arguments=arguments))
+    assert not res.is_error
+    return res.content
+
+
+@pytest.mark.asyncio
+async def test_get_full_task_result_pages_a_long_answer_to_its_end(monkeypatch):
+    """#1394: a 120,000-character answer is read whole, A, B and C, by offset;
+    every read names the total and the next offset, the last says the end."""
+    answer = _sections_answer()
+    assert len(answer) == 120_000
+    executor = _completed_executor(monkeypatch, answer)
+    task_id = str(uuid.uuid4())
+
+    first = await _full(executor, task_id=task_id)
+    assert first.startswith("[Task answer: characters 0 to 50,000 of 120,000; read the rest with ")
+    assert f'get_full_task_result(task_id="{task_id}", offset=50000)' in first
+
+    second = await _full(executor, task_id=task_id, offset=50_000)
+    assert "characters 50,000 to 100,000 of 120,000" in second
+    assert "offset=100000" in second
+
+    third = await _full(executor, task_id=task_id, offset=100_000)
+    assert "characters 100,000 to 120,000 of 120,000; this is the end." in third
+
+    read = "".join(part.split("\n\n", 1)[1] for part in (first, second, third))
+    assert read == answer
+    for marker in ("<<A>>", "<</A>>", "<<B>>", "<</B>>", "<<C>>", "<</C>>"):
+        assert marker in read
+
+
+@pytest.mark.asyncio
+async def test_get_full_task_result_honours_max_chars(monkeypatch):
+    executor = _completed_executor(monkeypatch, _sections_answer())
+    out = await _full(executor, task_id=str(uuid.uuid4()), offset=0, max_chars=1_000)
+    assert "characters 0 to 1,000 of 120,000" in out
+    assert "offset=1000" in out
+
+
+@pytest.mark.asyncio
+async def test_get_full_task_result_short_answer_is_unchanged(monkeypatch):
+    """An answer under one window reads exactly as before: no header."""
+    executor = _completed_executor(monkeypatch, "short answer")
+    assert await _full(executor, task_id=str(uuid.uuid4())) == "short answer"
+
+
+@pytest.mark.asyncio
+async def test_get_task_result_says_a_long_answer_pages(monkeypatch):
+    executor = _completed_executor(monkeypatch, _sections_answer())
+    task_id = str(uuid.uuid4())
+    res = await executor.execute_tool(
+        ToolCall(id=str(uuid.uuid4()), name="get_task_result", arguments={"task_ids": task_id})
+    )
+    assert "completed (120,000 chars)" in res.content
+    assert f'get_full_task_result(task_id="{task_id}", offset=N)' in res.content
+
+
+@pytest.mark.asyncio
+async def test_get_task_result_short_answer_has_no_paging_note(monkeypatch):
+    executor = _completed_executor(monkeypatch, "short answer")
+    res = await executor.execute_tool(
+        ToolCall(id=str(uuid.uuid4()), name="get_task_result", arguments={"task_ids": str(uuid.uuid4())})
+    )
+    assert "offset=N" not in res.content
 
 
 @pytest.mark.asyncio

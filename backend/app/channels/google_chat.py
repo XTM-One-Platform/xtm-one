@@ -421,6 +421,14 @@ async def googlechat_webhook(request: Request) -> JSONResponse:
         logger.info("Google Chat bot removed from space")
         return JSONResponse({})
 
+    if event_type == "CARD_CLICKED":
+        # A decision card's button (#842, S11): answered only on a verified
+        # request, so an unauthenticated deployment answers no click.
+        if not project_number:
+            logger.warning("Google Chat card click refused: no project_number to verify it")
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        return JSONResponse(await _decision_click(payload))
+
     # Handle message events
     if event_type != "MESSAGE":
         return JSONResponse({})
@@ -579,6 +587,46 @@ async def _process_googlechat_message(
                 logger.debug(
                     "Failed to send error message to Google Chat: %s", format_exception_message(send_exc)
                 )
+
+
+# ── Decision cards (#842, S11) ───────────────────────────────────────────────
+
+
+async def _click_user(db: Any, user: dict[str, Any]) -> Any:
+    """The platform user behind a Chat clicker: by email, else by the linked channel identity."""
+    from app.channels.router import resolve_user_by_channel_identity, resolve_user_by_email
+
+    email = str(user.get("email") or "")
+    if email:
+        found = await resolve_user_by_email(db, email)
+        if found is not None:
+            return found
+    name = str(user.get("name") or "")
+    if not name:
+        return None
+    return await resolve_user_by_channel_identity(db, ChannelType.GOOGLE_CHAT.value, name)
+
+
+async def _decision_click(payload: dict[str, Any]) -> dict[str, Any]:
+    """Answer a verified ``CARD_CLICKED`` on a decision card as the clicker (surface ``google_chat_card``)."""
+    from app.core.database import async_session
+    from app.services import google_chat_decision_cards as cards
+
+    click = cards.parse_click(payload)
+    if click is None:
+        # A link button, or a click we did not draw: nothing to answer.
+        return {}
+    method, value, text = click
+    raw_clicker = payload.get("user")
+    clicker: dict[str, Any] = raw_clicker if isinstance(raw_clicker, dict) else {}
+    async with async_session() as db:
+        user = await _click_user(db, clicker)
+        language = notice_language(user)
+        if method == cards.ACTION_TEXT:
+            message, private = await cards.answer(db, value, user, language, text=text)
+        else:
+            message, private = await cards.answer(db, value, user, language, option=value.get("option"), text=text)
+    return cards.click_response(message, private, str(clicker.get("name") or ""))
 
 
 # ── Credential loading ───────────────────────────────────────────────────────

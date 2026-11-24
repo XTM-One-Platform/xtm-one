@@ -4,8 +4,9 @@ You orchestrate a fleet. This skill is how you keep it healthy and tell its owne
 
 ## When
 
-- On the weekly fleet health check (the automation "Weekly fleet health check" runs only when the fleet has a finding), and whenever a member reports a failure you cannot explain.
-- When a person asks how the fleet is doing.
+- On the built-in weekly fleet health check: turn it on with `set_fleet_automations` rather than a schedule of your own; it is gated on `get_fleet_health` and runs only when the fleet has a finding, so a healthy week costs no model call.
+- On the events that already name a problem, through your `platform_event` listeners: `run.failed`, `run.orphaned`, `work_item.release_exhausted`, `work_item.wait_cycle`, and `work_item.past_due` (an open item crossed its due date, raised once per due date; the seeded "Overdue work items" listener takes it with the health check). React to the event; do not wait for the weekly check, and never add a schedule that re-reads the health.
+- When a member reports a failure you cannot explain, or a person asks how the fleet is doing.
 
 ## 1. Read the health
 
@@ -29,7 +30,9 @@ No finding means healthy: stop there. Send nothing, write nothing.
 | `assignment_failing` | owner | an assignment failed its last 3 judged runs |
 | `assignment_silent` | owner | a schedule has not fired for 14 days |
 | `past_due` | owner | an open item is past its due date |
-| `blocked_without_blocker` | owner | a blocked item names nothing it waits for |
+| `not_picked_up` | owner | an open item no inbox will take: no owner, an owner with no work-item inbox, or inboxes whose correlation prefix or priority leave it out; the fix is an owner whose inbox takes it, a wider inbox, or cancelling it |
+| `blocked_without_blocker` | owner | a blocked item is not black or white: no owner, only a free-text reason, needs_human without an ask card, or its blocked_on items all cancelled; the fix is a valid blocker (`blocked_on`, `blocked_on_refs`, or `needs_human` with an ask; skill "Fleet design and operations" section 4), or `not_before` for a deferral |
+| `decision_card_not_readable` | owner | an item waits for a person on an ask that is missing, incomplete or full of ids |
 | `wait_cycle` | owner | blocked items wait on each other (blocked_on, or a pull request a review item gates) |
 | `blocked_chain_stalled` | owner | a chain of blocked items, all quiet 2 hours, none held by a live run |
 | `oversize_state` | owner | a shared-state entry is over the size limit |
@@ -46,14 +49,16 @@ Never apply an `owner` fix yourself: do not enable or disable agents, pause or d
 
 ## 4. One advisory to the owner
 
-When at least one `owner` finding remains, send the fleet's owner **one** message (the channel your assignment names, else a work item for the owner):
+When at least one `owner` finding remains, give the fleet's owner **one** advisory:
 
 - One line per finding: what is wrong, the recommendation (`advice`), and the evidence ids as links.
 - The safe fixes already applied, with their counts.
 - Nothing else: no greeting, no progress narrative.
 
-Deduplicate per finding: before sending, read what you sent last time (your own work item or shared-state record of the advisory). A finding with the same kind and the same evidence as last time is not repeated unless the owner has not answered for 7 days. A finding that is gone is not mentioned.
+When a finding needs the owner's choice (fix, ignore, change the fleet), put it on one work item for the owner, keyed `fleet-health:` followed by the fleet id (a suffix after it when there are several), blocked with `needs_human` and an `ask` card: the question, the options with their effect, your recommendation, the owner as `recipient`, the finding ids in its description. The owner answers from the card; the answer reopens the item to your assignment "Fleet health answered", which dismisses an ignored finding once with the owner's reason and completes the item. Otherwise send the advisory on the channel your assignment names.
+
+Deduplicate per finding: before sending, read your record of the last advisory (section 5). A finding with the same kind and the same evidence as last time is not repeated: while its card is open it stays in the owner's bell, so never re-send it on a timer. A finding that is gone is not mentioned.
 
 ## 5. Record
 
-Keep one record of the advisory (a work item for the owner, or one shared-state entry keyed by the fleet) holding the finding kinds and evidence ids sent, so the next check can deduplicate. Resolve it when the fleet is healthy again.
+Keep one record of the advisory (the owner's work item, or one shared-state entry keyed by the fleet, its `terminal_condition` "fleet healthy" written at creation) holding the finding kinds and evidence ids sent, so the next check can deduplicate. Resolve it (`resolve_shared_state`, or complete the item) when the fleet is healthy again.

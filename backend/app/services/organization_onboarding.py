@@ -60,7 +60,7 @@ FIELD_HINTS: dict[str, str] = {
     "tech_stack": "the main products in use (list of {product, vendor})",
     "ai_systems": (
         "the AI systems the organization runs or exposes (list of {name, kind: assistant|agent|model_api|embedded, "
-        "owner, exposure: internal|partner|public})"
+        "owner, exposure: internal|partner|public}); saved as assets of category ai_target"
     ),
     "pir_ids": "the OpenCTI priority intelligence requirements to follow (list of OpenCTI PIR ids)",
     "currency": "the currency of every amount (ISO 4217 code, e.g. EUR)",
@@ -70,8 +70,12 @@ FIELD_HINTS: dict[str, str] = {
     "ticketing": "where agents open tickets ({integration, project})",
 }
 
-_PATHS: frozenset[str] = frozenset(path for path, _label in org_context.CONTRACT_FIELDS)
 _LABELS: dict[str, str] = dict(org_context.CONTRACT_FIELDS)
+
+
+def _paths() -> frozenset[str]:
+    """The paths the interview asks and saves: the identity alone in Copilot mode (#1690)."""
+    return frozenset(path for path, _label in org_context.contract_fields())
 
 
 class OnboardingError(ValueError):
@@ -116,8 +120,8 @@ def apply_answers(profile: org_context.OrganizationProfile, answers: dict[str, A
         if path == "sub_sector":
             data["sub_sector"] = value
             continue
-        if path not in _PATHS:
-            raise OnboardingError(f"'{path}' is not a field of the organization profile ({', '.join(sorted(_PATHS))}).")
+        if path not in _paths():
+            raise OnboardingError(f"'{path}' is not a field of the organization profile ({', '.join(sorted(_paths()))}).")
         data = _set(data, path, value)
         saved.append(path)
     try:
@@ -137,7 +141,7 @@ def skip_fields(profile: org_context.OrganizationProfile, fields: list[str]) -> 
     paths = [str(path).strip() for path in fields if str(path).strip()]
     if not paths:
         raise OnboardingError("Name at least one field to skip.")
-    unknown = [path for path in paths if path not in _PATHS]
+    unknown = [path for path in paths if path not in _paths()]
     if unknown:
         raise OnboardingError(f"'{unknown[0]}' is not a field of the organization profile.")
     missing = set(org_context.missing_fields(profile))
@@ -152,7 +156,7 @@ def render_step(
     profile: org_context.OrganizationProfile, *, version: int | None, saved: list[str] | None = None
 ) -> str:
     """What the assistant reads after each step: what was saved, where the profile stands, what to ask next."""
-    total = len(org_context.CONTRACT_FIELDS)
+    total = len(org_context.contract_fields())
     filled = total - len(org_context.missing_fields(profile))
     lines: list[str] = []
     if saved:

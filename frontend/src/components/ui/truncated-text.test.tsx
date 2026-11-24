@@ -42,6 +42,25 @@ describe("TruncatedText", () => {
     expect(tips[0].textContent).toContain(LONG);
   });
 
+  it("an overflow under one pixel is a cut: tab stop and cut flag (UX r3 B3 on #1590)", () => {
+    // 141.1 px of text in a 140 px box: the browser draws the ellipsis, the widths read 141 / 140.
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(141);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(140);
+    render(<TruncatedText text={LONG} />);
+    const span = screen.getByText(LONG);
+    expect(span.getAttribute("tabindex")).toBe("0");
+    expect(span.hasAttribute("data-cut-text")).toBe(true);
+  });
+
+  it("a text exactly as wide as its box is not a cut", () => {
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(140);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(140);
+    render(<TruncatedText text={LONG} />);
+    const span = screen.getByText(LONG);
+    expect(span.getAttribute("tabindex")).toBeNull();
+    expect(span.hasAttribute("data-cut-text")).toBe(false);
+  });
+
   it("a multi-line clamp is measured on the height and names the whole text in the tooltip", async () => {
     vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(120);
     vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(40);
@@ -65,7 +84,7 @@ describe("TruncatedText", () => {
   it("a cut text inside a link opens the tooltip when the link takes the focus", async () => {
     cutEverything();
     render(
-      <a href="/users/1">
+      <a href="/users-and-groups/users/1">
         <TruncatedText text={LONG} />
       </a>,
     );

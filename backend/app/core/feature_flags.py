@@ -37,7 +37,6 @@ FEATURE_FLAG_ALL = "*"
 from collections.abc import Callable
 from typing import Literal
 
-# owner: platform-core — remove once the Filigran AI Gateway provider ships by default.
 # owner: platform-core — FLOW_BUILDER gates the visual flow builder while it is
 #   not announced externally: the flow library tab, the builder canvas, their ⌘K
 #   commands, the /api/v1/flows OpenAPI operations and two docs pages. NOT the
@@ -99,7 +98,6 @@ FeatureFlag = Literal[
     "DASHBOARD_STUDIO",
     "DEEP_INVESTIGATION",
     "EVALUATION",
-    "FILIGRAN_GATEWAY_PROVIDER",
     "FLOW_BUILDER",
     "MOBILE_COMPANION",
     "VIDEO_STUDIO",
@@ -115,7 +113,6 @@ KNOWN_FEATURE_FLAGS: frozenset[str] = frozenset(
         "DASHBOARD_STUDIO",
         "DEEP_INVESTIGATION",
         "EVALUATION",
-        "FILIGRAN_GATEWAY_PROVIDER",
         "FLOW_BUILDER",
         "MOBILE_COMPANION",
         "VIDEO_STUDIO",

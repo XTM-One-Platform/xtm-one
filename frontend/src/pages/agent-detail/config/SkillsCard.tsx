@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { Button } from "@/components/ui/button";
 import { CardEditActions } from "@/components/ui/card-edit-actions";
 import { Input } from "@/components/ui/input";
@@ -162,7 +163,7 @@ export function SkillsCard({
           <CardTitle className="content-base flex items-center gap-2">
             <GraduationCap className="h-4 w-4 text-accent" /> {t_i18n("Skills")}
             {attachedSkills.length > 0 && !editing && (
-              <Badge variant="secondary" className="h-4 px-1.5 content-caption leading-none">{attachedSkills.length}</Badge>
+              <CountBadge variant="secondary">{attachedSkills.length}</CountBadge>
             )}
           </CardTitle>
           <p className="content-caption text-default-secondary mt-0.5">

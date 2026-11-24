@@ -1,13 +1,13 @@
 // Settings > Organization (#8987): the profile every agent reads, its missing fields, the save and the OpenCRQ check.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter, useLocation } from "react-router-dom";
 
 import { api } from "@/lib/api";
 import { renderWithProviders, testQueryClient } from "@/testing/providers";
 import type { OrganizationContextResponse } from "@/hooks/api/useOrganizationContextApi";
-import { OrganizationSection } from "./OrganizationSection";
+import { JEWEL_WIDTHS, OrganizationSection } from "./OrganizationSection";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -17,6 +17,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 vi.mock("@/hooks/usePlatformConfig", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/usePlatformConfig")>()),
   useAgenticAIEnabled: () => agenticEnabled,
+  useIsXtmOne: () => xtmOneMode,
 }));
 
 // The tab bar registers palette commands (DetailTabs); the palette is not under test here.
@@ -26,6 +27,16 @@ vi.mock("@/lib/commands/CommandsProvider", async (importOriginal) => ({
 }));
 
 let agenticEnabled = true;
+/** Writes the router's current path, so a test reads where a link went. */
+function LocationProbe() {
+  const location = useLocation();
+  return <span data-testid="location-probe">{location.pathname + location.search}</span>;
+}
+// XTM One mode by default: Copilot mode keeps the Identity card alone (#1690), its own tests set it false.
+let xtmOneMode = true;
+beforeEach(() => {
+  xtmOneMode = true;
+});
 
 /** Opens the header "Draft" menu and picks one of its rows (section 6.1). */
 async function pickDraft(row: "From the platforms" | "With AI") {
@@ -37,17 +48,24 @@ async function draftFromPlatforms() {
   await pickDraft("From the platforms");
   fireEvent.click(await screen.findByRole("button", { name: "Quick setup" }));
 }
-/** Renders the page on one of its tabs (#12329); none is the first tab. */
+/** The cards CTEM > Inventory mounts in place of the three tabs that left Settings (#1178, #1690). */
+const INVENTORY_CARDS = {
+  business: ["crown_jewels", "shipped_products", "tracked_organizations"],
+  technology: ["tech_stack"],
+  exposure: ["assets_exposure", "asset_groups", "prioritization_policy", "outside_lens", "evidence_health"],
+} as const;
+/**
+ * Renders the page on one of its tabs (#12329); none is the first tab. The Technology and Exposure cards render
+ * as CTEM > Inventory mounts them (#1178), since Settings no longer draws them.
+ */
 function renderPage(tab?: string) {
+  const embedded = tab === "business" || tab === "technology" || tab === "exposure" ? INVENTORY_CARDS[tab] : null;
   return renderWithProviders(
-    <MemoryRouter initialEntries={[tab ? `/settings/organization/profile/${tab}` : "/settings/organization"]}>
-      <OrganizationSection />
+    <MemoryRouter initialEntries={[embedded ? "/ctem/inventory" : tab ? `/settings/organization/profile/${tab}` : "/settings/organization"]}>
+      <OrganizationSection embed={embedded ? { cards: embedded } : undefined} />
+      <LocationProbe />
     </MemoryRouter>,
   );
-}
-/** Opens a tab as a pointer does: each tab is a link to its path (UX r1 B1 on #12332). */
-function openTab(name: RegExp) {
-  fireEvent.click(screen.getByRole("tab", { name }), { button: 0 });
 }
 
 const get = vi.mocked(api.get);
@@ -68,7 +86,6 @@ const CONTEXT: OrganizationContextResponse = {
     size: "",
     crown_jewels: [{ name: "Payments", business_service: "Cards", owner: "CISO", criticality: "critical", opencrq_asset_id: "" }],
     tech_stack: [],
-    ai_systems: [],
     pir_ids: [],
     risk_appetite: { annual_loss_threshold: null, approval_threshold: null },
     loaded_hourly_rate: null,
@@ -88,6 +105,9 @@ beforeEach(() => {
     if (path === "/organization-context/pirs") return { pirs: [{ id: "pir-1", name: "Ransomware on energy" }], unavailable: null };
     if (path === "/organization-context/readers") return READERS;
     if (path === "/organization-context/import/sources") return { sections: [] };
+    if (path === "/organization-context/attack-surface/providers") return { providers: ["shodan"] };
+    // The Sources and syncs table of the Knowledge and sources tab (#1276).
+    if (path.startsWith("/organization-context/syncs") || path.startsWith("/organization-context/sources")) return [];
     throw new Error(`unexpected GET ${path}`);
   });
 });
@@ -108,6 +128,22 @@ const READERS = {
   },
 };
 
+describe("OrganizationSection primary asset widths at 1080 (#1174 UX r2 B1 and B2)", () => {
+  // The primary assets table measures 810 px in its 72rem card at 1080; Assets and Source step aside there.
+  const TABLE_AT_1080 = 810;
+  it("leaves Business service and Owner at least 120 px each in edit mode", () => {
+    const fixed = JEWEL_WIDTHS.select + JEWEL_WIDTHS.name + JEWEL_WIDTHS.criticality + JEWEL_WIDTHS.actions;
+    expect((TABLE_AT_1080 - fixed) / 2).toBeGreaterThanOrEqual(120);
+  });
+  it("leaves Business service room for its header in read mode and keeps OpenCRQ's header whole", () => {
+    const fixed = JEWEL_WIDTHS.select + JEWEL_WIDTHS.name + JEWEL_WIDTHS.criticality + JEWEL_WIDTHS.opencrq;
+    // "Business service" is 94 px of text, plus 24 px of padding and the sort mark.
+    expect((TABLE_AT_1080 - fixed) / 2).toBeGreaterThanOrEqual(94 + 24 + 16);
+    // "OpenCRQ" is 56 px of text, plus the padding and the sort mark.
+    expect(JEWEL_WIDTHS.opencrq).toBeGreaterThanOrEqual(56 + 24 + 16);
+  });
+});
+
 describe("OrganizationSection used by (#9173 S2)", () => {
   it("names the fleets reading each part, once per card, linked to the fleet page, and only in read mode", async () => {
     renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
@@ -121,16 +157,6 @@ describe("OrganizationSection used by (#9173 S2)", () => {
     expect(within(intelligence).getAllByRole("link").map((a) => a.textContent)).toEqual(["Threat Relevance Analyst"]);
     expect(identity.dataset.fields).toBe("sector regions");
     expect(within(identity).getAllByRole("link").map((a) => a.textContent)).toEqual(["Threat response"]);
-    openTab(/^Business/);
-    await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(1));
-    const [jewels] = screen.getAllByTestId("settings.organization.used-by");
-    expect(within(jewels).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["/fleets/f-1", "/fleets/f-2"]);
-    // No visible fleet reads the tech stack or the AI systems: nothing is shown there.
-    openTab(/^Technology/);
-    await waitFor(() => expect(screen.queryByTestId("settings.organization.used-by")).toBeNull());
-
-    openTab(/^Identity and risk/);
-    await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(3));
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     await waitFor(() => expect(screen.queryByTestId("settings.organization.used-by")).toBeNull());
   });
@@ -223,64 +249,83 @@ describe("OrganizationSection identity header and threshold previews (#9173 S2)"
   });
 });
 
-describe("OrganizationSection tabs (#12329)", () => {
-  it("renders five tabs, only the active panel, and opens the tab the URL names", async () => {
-    renderPage("exposure");
-    const tabs = await screen.findAllByRole("tab");
-    expect(tabs.map((tab) => tab.textContent?.replace(/\d+\/\d+.*$/, ""))).toEqual(["Identity and risk", "Business", "Technology", "Exposure", "Knowledge and sources"]);
-    expect(screen.getByRole("tab", { name: /^Exposure/ }).getAttribute("aria-selected")).toBe("true");
-    expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
-    expect(screen.getByTestId("settings.organization.assets-exposure")).toBeTruthy();
-    expect(screen.queryByTestId("settings.organization.identity")).toBeNull();
-    expect(screen.queryByTestId("settings.organization.crown-jewels")).toBeNull();
-  });
-
-  it("draws each tab as a link to its path, the active one the current page (UX r1 B1 on #12332)", async () => {
-    renderPage("business");
-    const identity = await screen.findByRole("tab", { name: /^Identity and risk/ });
-    expect(identity.tagName).toBe("A");
-    expect(identity.getAttribute("href")).toBe("/settings/organization");
-    expect(screen.getByRole("tab", { name: /^Knowledge and sources/ }).getAttribute("href")).toBe("/settings/organization/profile/knowledge");
-    const business = screen.getByRole("tab", { name: /^Business/ });
-    expect(business.getAttribute("aria-current")).toBe("page");
-    expect(identity.getAttribute("aria-current")).toBeNull();
-  });
-
-  it("falls back to the first tab on an unknown tab in the URL", async () => {
-    renderPage("nope");
-    expect(await screen.findByTestId("settings.organization.identity")).toBeTruthy();
-    expect(screen.getByRole("tab", { name: /^Identity and risk/ }).getAttribute("aria-selected")).toBe("true");
-  });
-
-  it("keeps the whole-profile edit across tabs and marks the tab holding an unsaved change", async () => {
-    put.mockResolvedValue({ ...CONTEXT, version: 4 });
+describe("OrganizationSection panels (#12329, #1690)", () => {
+  it("draws no tab bar in Settings: Identity alone, the Business cards live on CTEM > Inventory (#1690)", async () => {
     renderPage();
-    await screen.findByTestId("settings.organization.identity");
-    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
-    fireEvent.change(await screen.findByRole("textbox", { name: "Loaded hourly rate" }), { target: { value: "120" } });
-    expect(screen.getByTestId("settings.organization.tab-identity.unsaved")).toBeTruthy();
-    openTab(/^Technology/);
-    expect(await screen.findByTestId("settings.save-bar")).toBeTruthy();
-    openTab(/^Identity and risk/);
-    expect(((await screen.findByRole("textbox", { name: "Loaded hourly rate" })) as HTMLInputElement).value).toBe("120");
-    fireEvent.click(within(screen.getByTestId("settings.save-bar")).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
+    expect(await screen.findByTestId("settings.organization.identity")).toBeTruthy();
+    expect(screen.queryAllByRole("tab")).toHaveLength(0);
+    expect(screen.queryByTestId("settings.organization.tabs")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.primary-assets")).toBeNull();
+    expect(screen.queryByTestId("settings.organizations")).toBeNull();
+    // Knowledge and sources is a button of the header opening its own page (#1367, point 7), never a tab.
+    expect(screen.getByTestId("settings.organization.knowledge").textContent).toContain("Knowledge and sources");
   });
 
-  it("lists the missing fields on their own tab only, and a refused Save opens the tab of the bad field", async () => {
+  it("mounts only the cards an embedding page names, with no header, tab bar or Sources panel (#1178)", async () => {
     renderPage("exposure");
-    await screen.findByTestId("settings.organization.assets-exposure");
+    expect(await screen.findByTestId("settings.organization.assets-exposure")).toBeTruthy();
+    expect(screen.queryAllByRole("tab")).toHaveLength(0);
+    expect(screen.queryByTestId("settings.organization.tech-stack")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.primary-assets")).toBeNull();
+  });
+
+  it("mounts the three Business cards on CTEM > Inventory, never folding (#1690)", async () => {
+    renderPage("business");
+    expect(await screen.findByTestId("settings.organization.primary-assets")).toBeTruthy();
+    expect(screen.getByTestId("settings.organization.shipped-products")).toBeTruthy();
+    expect(screen.getByTestId("settings.organizations")).toBeTruthy();
+    expect(screen.queryByTestId("settings.organization.identity")).toBeNull();
+    expect(screen.queryAllByRole("button", { name: /^(Collapse|Expand)/ })).toHaveLength(0);
+  });
+
+  it("reads the Business cards with no write action for a reader (#1690)", async () => {
+    renderWithProviders(
+      <MemoryRouter initialEntries={["/ctem/inventory/business"]}>
+        <OrganizationSection embed={{ cards: INVENTORY_CARDS.business, readOnly: true }} />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByTestId("settings.organization.primary-assets")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Edit/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Check against OpenCRQ/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Restore from a past version/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Add an organization/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Draft with AI/ })).toBeNull();
+  });
+
+  it("reads a former Business, Technology or Exposure tab path as an unknown tab, with no redirect (#797)", async () => {
+    for (const path of ["/settings/organization/profile/business", "/settings/organization/profile/technology", "/settings/organization/profile/exposure?card=tech_stack"]) {
+      const view = renderWithProviders(
+        <MemoryRouter initialEntries={[path]}>
+          <OrganizationSection />
+        </MemoryRouter>,
+      );
+      expect(await screen.findByTestId("settings.organization.identity")).toBeTruthy();
+      expect(screen.queryByTestId("settings.organization.primary-assets")).toBeNull();
+      expect(screen.queryByTestId("settings.organization.tech-stack")).toBeNull();
+      view.unmount();
+    }
+  });
+
+  it("keeps Identity alone and no fields banner in Copilot mode (#1690)", async () => {
+    xtmOneMode = false;
+    renderPage();
+    expect(await screen.findByTestId("settings.organization.identity")).toBeTruthy();
+    expect(screen.queryByText("Risk appetite and costs")).toBeNull();
+    expect(screen.queryByText("Ticketing and intelligence")).toBeNull();
     expect(screen.queryByTestId("settings.organization.missing")).toBeNull();
-    openTab(/^Identity and risk/);
-    expect((await screen.findByTestId("settings.organization.missing")).textContent).toContain("Loaded hourly rate");
+    expect(screen.queryByTestId("settings.organization.overview")).toBeNull();
+  });
+
+  it("lists only the missing fields Settings draws, and a refused Save focuses the bad field", async () => {
+    renderPage();
+    const missing = await screen.findByTestId("settings.organization.missing");
+    expect(missing.textContent).toContain("Loaded hourly rate");
+    expect(missing.textContent).not.toContain("Primary assets");
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     fireEvent.change(await screen.findByRole("textbox", { name: "Loaded hourly rate" }), { target: { value: "abc" } });
-    openTab(/^Exposure/);
     fireEvent.click(within(await screen.findByTestId("settings.save-bar")).getByRole("button", { name: "Save" }));
     const rate = await screen.findByRole("textbox", { name: "Loaded hourly rate" });
     await waitFor(() => expect(document.activeElement).toBe(rate));
-    expect(screen.getByRole("tab", { name: /^Identity and risk/ }).getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByTestId("settings.organization.tab-identity.error")).toBeTruthy();
     expect(put).not.toHaveBeenCalled();
   });
 });
@@ -292,20 +337,21 @@ describe("OrganizationSection", () => {
     const missing = await screen.findByTestId("settings.organization.missing");
     expect(missing.textContent).toContain("Priority intelligence requirements (PIRs)");
     expect(missing.textContent).toContain("Loaded hourly rate");
-    openTab(/^Business/);
+  });
+
+  it("names the fleets reading the primary assets on CTEM > Inventory, linked to the fleet page (#1690)", async () => {
+    renderPage("business");
+    await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(1));
+    const [jewels] = screen.getAllByTestId("settings.organization.used-by");
+    expect(within(jewels).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["/fleets/f-1", "/fleets/f-2"]);
     expect(await screen.findByText("Payments")).toBeTruthy();
   });
 
-  it("shows the completeness per tab and opens the form on a missing field (#9173 S1c, #12329)", async () => {
-    renderPage("technology");
+  it("counts the fields not filled Settings draws and opens the form on a missing field (#9173 S1c, #1690)", async () => {
+    renderPage();
     const overview = await screen.findByTestId("settings.organization.overview");
     expect(overview.textContent).toContain("3 fields not filled");
-    // Identity and risk: 10 contract fields, 3 of them missing; Technology: both filled.
-    expect(screen.getByTestId("settings.organization.tab-identity.completeness").textContent).toBe("7/10");
-    expect(screen.getByTestId("settings.organization.tab-technology.completeness").textContent).toBe("2/2");
     expect(screen.queryByTestId("settings.save-bar")).toBeNull();
-    // The missing fields sit on their own tab: the jump starts there.
-    openTab(/^Identity and risk/);
     fireEvent.click(screen.getByRole("button", { name: "Loaded hourly rate" }));
     const rate = await screen.findByRole("textbox", { name: "Loaded hourly rate" });
     await waitFor(() => expect(document.activeElement).toBe(rate));
@@ -313,30 +359,63 @@ describe("OrganizationSection", () => {
     expect(screen.getByTestId("settings.save-bar")).toBeTruthy();
   });
 
-  it("lists the crown jewels in a table with column headers", async () => {
+  it("lists the shipped products on the Business tab, empty and filled, and marks a repository that is not owner/name (#1432)", async () => {
+    renderPage("business");
+    const card = await screen.findByTestId("settings.organization.shipped-products");
+    expect(card.textContent).toContain("No shipped product yet");
+    cleanup();
+    const base = get.getMockImplementation()!;
+    get.mockImplementation(async (path: string) =>
+      path === "/organization-context"
+        ? { ...CONTEXT, profile: { ...CONTEXT.profile, shipped_products: [{ product: "Acme Server", vendor: "Acme", cpe: "", repositories: ["acme/server"] }] } }
+        : base(path),
+    );
+    renderPage("business");
+    expect(await screen.findByText("acme/server")).toBeTruthy();
+    expect(screen.getAllByTestId("settings.organization.shipped-row")).toHaveLength(1);
+    fireEvent.click(screen.getByTestId("settings.organization.edit-shipped_products"));
+    fireEvent.click(await screen.findByRole("button", { name: /Add a shipped product/ }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Product" }), { target: { value: "Acme Agent" } });
+    const repos = screen.getByRole("textbox", { name: "Source repositories" });
+    fireEvent.change(repos, { target: { value: "agent" } });
+    fireEvent.keyDown(repos, { key: "Enter" });
+    // Not owner/name: the field is marked and the row counts as needing attention.
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Source repositories" }).getAttribute("aria-invalid")).toBe("true"));
+  });
+
+  it("refuses a shipped product with a repository that is not owner/name inline: nothing sent, no toast, the field focused (#1483 UX r1 B1)", async () => {
+    renderPage("business");
+    fireEvent.click(await screen.findByTestId("settings.organization.edit-shipped_products"));
+    fireEvent.click(await screen.findByRole("button", { name: /Add a shipped product/ }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Product" }), { target: { value: "Acme Agent" } });
+    const repos = screen.getByRole("textbox", { name: "Source repositories" });
+    fireEvent.change(repos, { target: { value: "not a repo" } });
+    fireEvent.keyDown(repos, { key: "Enter" });
+    fireEvent.click(within(await screen.findByTestId("settings.organization.list-save-bar")).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Source repositories" })));
+    expect(screen.getByRole("textbox", { name: "Source repositories" }).getAttribute("aria-invalid")).toBe("true");
+    expect(put).not.toHaveBeenCalled();
+    expect(screen.queryByText("The organization profile was not saved")).toBeNull();
+  });
+
+  it("lists the primary assets in a table with column headers", async () => {
     renderPage("business");
     await screen.findByText("Payments");
     expect(screen.getByRole("columnheader", { name: "Business service" })).toBeTruthy();
-    expect(screen.getAllByTestId("settings.organization.crown-jewel-row")).toHaveLength(1);
+    expect(screen.getAllByTestId("settings.organization.primary-asset-row")).toHaveLength(1);
   });
 
-  it("folds a list card to its header and count, and unfolds it (#12256 slice 2)", async () => {
+  it("keeps a list card on CTEM > Inventory always expanded, its count in the header (#1690, Sam 24 Nov 2026)", async () => {
+    for (const tab of ["business", "exposure"]) {
+      const view = renderPage(tab);
+      await waitFor(() => expect(screen.getAllByTestId("settings.card-count").length).toBeGreaterThan(0));
+      expect(screen.queryAllByTestId("settings.card-collapse")).toHaveLength(0);
+      view.unmount();
+    }
     renderPage("business");
-    await screen.findByText("Payments");
-    const card = screen.getByTestId("settings.organization.crown-jewels");
-    expect(card.dataset.collapsed).toBe("false");
-    // The count reads in the header, next to the title.
+    const card = await screen.findByTestId("settings.organization.primary-assets");
     expect(within(card).getByTestId("settings.card-count").textContent).toBe("1");
-    const toggle = within(card).getByTestId("settings.card-collapse");
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    fireEvent.click(toggle);
-    expect(card.dataset.collapsed).toBe("true");
-    expect(within(card).queryAllByTestId("settings.organization.crown-jewel-row")).toHaveLength(0);
-    // The anchor nav is gone with the tabs (#12329).
-    expect(screen.queryByRole("navigation", { name: "On this page" })).toBeNull();
-    fireEvent.click(within(card).getByRole("button", { name: "Expand" }));
-    await waitFor(() => expect(card.dataset.collapsed).toBe("false"));
-    expect(within(card).getAllByTestId("settings.organization.crown-jewel-row")).toHaveLength(1);
+    expect(within(card).getAllByTestId("settings.organization.primary-asset-row")).toHaveLength(1);
   });
 
   it("reads the row tables as text and edits them as fields; an empty value reads Not set, never a placeholder (UX r1 B1, B2 on #10804)", async () => {
@@ -345,29 +424,33 @@ describe("OrganizationSection", () => {
       path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: [{ product: "CrowdStrike Falcon", vendor: "CrowdStrike", cpe: "" }] } } : base(path),
     );
     renderPage("business");
-    const row = await screen.findByTestId("settings.organization.crown-jewel-row");
+    const row = await screen.findByTestId("settings.organization.primary-asset-row");
     expect(within(row).getByText("Payments")).toBeTruthy();
     expect(within(row).getByText(/^Critical/)).toBeTruthy();
     expect(within(row).queryByRole("textbox")).toBeNull();
     expect(within(row).queryByRole("combobox")).toBeNull();
-    openTab(/^Technology/);
-    const tech = (await screen.findByText("CrowdStrike Falcon")).closest("tr")!;
-    expect(within(tech).getByText("Not set")).toBeTruthy();
-    expect(within(tech).queryByRole("textbox")).toBeNull();
-    expect(screen.queryByPlaceholderText("cpe:2.3:a:vendor:product:*")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
-    openTab(/^Business/);
+    fireEvent.click(screen.getByRole("button", { name: /^Edit Primary assets/ }));
     // In edit a row still reads as text until opened (#12256): one row of fields at a time.
-    const jewel = await screen.findByTestId("settings.organization.crown-jewel-row");
+    const jewel = await screen.findByTestId("settings.organization.primary-asset-row");
     await waitFor(() => expect(within(jewel).queryByRole("textbox")).toBeNull());
-    fireEvent.click(within(screen.getByTestId("settings.organization.crown-jewel-row")).getByText("Payments"));
+    fireEvent.click(within(screen.getByTestId("settings.organization.primary-asset-row")).getByText("Payments"));
     expect(await screen.findByDisplayValue("Payments")).toBeTruthy();
     expect(screen.getAllByRole("combobox", { name: "Criticality" })).toHaveLength(1);
-    // The whole form spans the tabs: the tech stack edits on its own tab.
-    openTab(/^Technology/);
+  });
+
+  it("reads the software rows as text on CTEM > Inventory and edits a row as fields (#1178)", async () => {
+    const base = get.getMockImplementation()!;
+    get.mockImplementation(async (path: string) =>
+      path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: [{ product: "CrowdStrike Falcon", vendor: "CrowdStrike", cpe: "" }] } } : base(path),
+    );
+    renderPage("technology");
+    const tech = (await screen.findByText("CrowdStrike Falcon")).closest("tr")!;
+    // CPE and Version (CTEM-11, #928) are both empty: each reads Not set.
+    expect(within(tech).getAllByText("Not set")).toHaveLength(2);
+    expect(within(tech).queryByRole("textbox")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Edit Software/ }));
     fireEvent.click(await screen.findByText("CrowdStrike Falcon"));
     expect(await screen.findByRole("textbox", { name: "CPE (optional)" })).toBeTruthy();
-    expect(screen.queryByDisplayValue("Payments")).toBeNull();
   });
 
   it("bounds the columns so a long name is cut inside the card, in read mode and while editing (UX r2 B2 on #10804, UX r1 B2 on #12261)", async () => {
@@ -379,20 +462,20 @@ describe("OrganizationSection", () => {
         : base(path),
     );
     renderPage("business");
-    const row = await screen.findByTestId("settings.organization.crown-jewel-row");
+    const row = await screen.findByTestId("settings.organization.primary-asset-row");
     const table = row.closest("table")!;
     expect(table.dataset.layout).toBe("fixed");
-    expect(within(table).getByRole("columnheader", { name: /Crown jewel/ }).style.width).toBe("240px");
+    expect(within(table).getByRole("columnheader", { name: /Primary asset/ }).style.width).toBe("240px");
     expect(within(table).getByRole("columnheader", { name: /Criticality/ }).style.width).toBe("120px");
-    expect(within(table).getByRole("columnheader", { name: /OpenCRQ/ }).style.width).toBe("96px");
+    expect(within(table).getByRole("columnheader", { name: /OpenCRQ/ }).style.width).toBe("112px");
     expect(within(row).getByText(long)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Edit Primary assets/ }));
     // The editor keeps the read widths, so the Actions column never leaves the card (#12261 UX r1 B2; was: auto).
     await screen.findAllByTestId("settings.organization.list-editor");
-    const editTable = screen.getByTestId("settings.organization.crown-jewel-row").closest("table")!;
+    const editTable = screen.getByTestId("settings.organization.primary-asset-row").closest("table")!;
     expect(editTable.dataset.layout).toBe("fixed");
-    expect(within(editTable).getByRole("columnheader", { name: /Crown jewel/ }).style.width).toBe("240px");
-    fireEvent.click(within(screen.getByTestId("settings.organization.crown-jewel-row")).getByText(long));
+    expect(within(editTable).getByRole("columnheader", { name: /Primary asset/ }).style.width).toBe("240px");
+    fireEvent.click(within(screen.getByTestId("settings.organization.primary-asset-row")).getByText(long));
     await screen.findByDisplayValue(long);
   });
 
@@ -404,11 +487,8 @@ describe("OrganizationSection", () => {
     renderPage("technology");
     // Read mode names the row that needs attention on the card header.
     expect((await screen.findByTestId("settings.organization.attention-tech_stack")).textContent).toBe("1 needs attention");
-    fireEvent.click(screen.getByRole("button", { name: /Edit Tech stack/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Edit Software/ }));
     const bar = await screen.findByTestId("settings.organization.list-save-bar");
-    // The other card of the tab stays in read mode, its Edit waiting for this one; the tab is marked (#12329).
-    expect((screen.getByRole("button", { name: /Edit AI systems inventory/ }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId("settings.organization.tab-technology.unsaved")).toBeTruthy();
     // 25 rows a page, never the 150.
     expect(screen.getAllByTestId("settings.organization.tech-row")).toHaveLength(25);
     const save = within(bar).getByRole("button", { name: "Save" }) as HTMLButtonElement;
@@ -444,16 +524,12 @@ describe("OrganizationSection", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Edit Asset groups/ }));
     const card = screen.getByTestId("settings.organization.asset-groups");
     const bar = await within(card).findByTestId("settings.save-bar");
-    // The page Edit and the other cards' Edit wait for this card; the form is not opened.
-    expect((screen.getByTestId("settings.organization.edit") as HTMLButtonElement).disabled).toBe(true);
-    // The other cards of the tab wait for this one; the tab carries the unsaved marker once a value changed (#12329).
+    // The other cards wait for this one; the form is not opened.
     expect((screen.getByRole("button", { name: /Edit Assets and exposure/ }) as HTMLButtonElement).disabled).toBe(true);
     const save = within(bar).getByRole("button", { name: "Save" }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
-    expect(screen.queryByTestId("settings.organization.tab-exposure.unsaved")).toBeNull();
     fireEvent.change(within(card).getByDisplayValue("Edge"), { target: { value: "Edge network" } });
     expect(save.disabled).toBe(false);
-    expect(screen.getByTestId("settings.organization.tab-exposure.unsaved")).toBeTruthy();
     fireEvent.click(save);
     await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
     const [, body] = put.mock.calls[0] as [string, { profile: { asset_groups: { description: string }[]; tech_stack: unknown[] }; source: string }];
@@ -469,7 +545,8 @@ describe("OrganizationSection", () => {
     fireEvent.click(within(card).getByRole("button", { name: "Link a knowledge base" }));
     fireEvent.click(within(within(card).getByTestId("settings.save-bar")).getByRole("button", { name: "Cancel" }));
     expect(within(card).queryByTestId("settings.save-bar")).toBeNull();
-    expect((screen.getByTestId("settings.organization.edit") as HTMLButtonElement).disabled).toBe(false);
+    // The Knowledge and sources page has no profile Edit of its own (UX round 1 on #1476, B1).
+    expect(screen.queryByTestId("settings.organization.edit")).toBeNull();
     expect(put).not.toHaveBeenCalled();
     // The focus goes back to the card's Edit, never to the page body (#12271 UX r1 B3).
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: /Edit Enterprise knowledge/ })));
@@ -477,10 +554,10 @@ describe("OrganizationSection", () => {
 
   it("returns the focus to a list card's Edit on Cancel (#12271 UX r1 B3)", async () => {
     renderPage("business");
-    fireEvent.click(await screen.findByRole("button", { name: /Edit Crown jewels/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Edit Primary assets/ }));
     const bar = await screen.findByTestId("settings.organization.list-save-bar");
     fireEvent.click(within(bar).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: /Edit Crown jewels/ })));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: /Edit Primary assets/ })));
   });
 
   it("pages an exposure card in edit at 25 rows with its search, and pins an added row first (#12271 UX r1 B2)", async () => {
@@ -524,7 +601,7 @@ describe("OrganizationSection", () => {
     renderPage("technology");
     // Paste a list waits for the card's Edit.
     expect(screen.queryByTestId("settings.organization.paste-tech_stack")).toBeNull();
-    fireEvent.click(await screen.findByRole("button", { name: /Edit Tech stack/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Edit Software/ }));
     const bar = await screen.findByTestId("settings.organization.list-save-bar");
     fireEvent.click(screen.getByTestId("settings.organization.paste-tech_stack"));
     const dialog = await screen.findByTestId("settings.organization.paste-dialog");
@@ -558,20 +635,44 @@ describe("OrganizationSection", () => {
     ]);
   });
 
+  it("reads and pastes the version the organization runs on a software row, and saves it only when set (CTEM-11, #928)", async () => {
+    const base = get.getMockImplementation()!;
+    const tech = [{ product: "Jira", vendor: "Atlassian", cpe: "", version: "9.12.2" }];
+    get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: tech } } : base(path)));
+    put.mockResolvedValue({ ...CONTEXT, version: 4 });
+    renderPage("technology");
+    const row = (await screen.findByText("Jira")).closest("tr")!;
+    expect(within(row).getByText("9.12.2")).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: /Edit Software/ }));
+    const bar = await screen.findByTestId("settings.organization.list-save-bar");
+    fireEvent.click(screen.getByTestId("settings.organization.paste-tech_stack"));
+    const dialog = await screen.findByTestId("settings.organization.paste-dialog");
+    fireEvent.change(within(dialog).getByTestId("settings.organization.paste-text"), { target: { value: "nginx, F5, , 1.25.3\nSlack, Salesforce" } });
+    fireEvent.click(within(dialog).getByTestId("settings.organization.paste-add"));
+    await waitFor(() => expect(screen.queryByTestId("settings.organization.paste-dialog")).toBeNull());
+    fireEvent.click(within(bar).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
+    const [, body] = put.mock.calls[0] as [string, { profile: { tech_stack: Record<string, string>[] } }];
+    expect(body.profile.tech_stack).toEqual([
+      { product: "Jira", vendor: "Atlassian", cpe: "", version: "9.12.2" },
+      { product: "nginx", vendor: "F5", cpe: "", version: "1.25.3" },
+      // No version typed: none saved, so a profile that never declares one keeps its shape.
+      { product: "Slack", vendor: "Salesforce", cpe: "" },
+    ]);
+  });
+
   it("keeps a card's unsaved rows: page Edit and the field jumps wait, and Next still pages with an added row open (#12261 UX r1 B1, B3)", async () => {
     const base = get.getMockImplementation()!;
     const tech = Array.from({ length: 60 }, (_, i) => ({ product: `Product ${String(i).padStart(3, "0")}`, vendor: "Vendor", cpe: "" }));
     get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: tech } } : base(path)));
     renderPage("technology");
-    fireEvent.click(await screen.findByRole("button", { name: /Edit Tech stack/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Edit Software/ }));
     const editor = await screen.findByTestId("settings.organization.list-editor");
     fireEvent.click(screen.getByRole("button", { name: "Add a product" }));
     const product = await screen.findByRole("textbox", { name: "Product" });
     fireEvent.change(product, { target: { value: "Jira" } });
-    // B1: the page-wide Edit would open the whole form and drop the card's rows.
-    const pageEdit = screen.getByTestId("settings.organization.edit") as HTMLButtonElement;
-    expect(pageEdit.disabled).toBe(true);
-    fireEvent.click(pageEdit);
+    // B1: the card keeps its row (CTEM > Inventory draws no page-wide Edit, #1178).
+    expect(screen.queryByTestId("settings.organization.edit")).toBeNull();
     expect(editor.getAttribute("data-changes")).toBe("1");
     // B3: the pager moves while the added row is open.
     fireEvent.click(within(editor).getByRole("button", { name: "Next page" }));
@@ -586,7 +687,7 @@ describe("OrganizationSection", () => {
         : base(path),
     );
     renderPage("technology");
-    fireEvent.click(await screen.findByRole("button", { name: /Edit Tech stack/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Edit Software/ }));
     await screen.findByTestId("settings.organization.list-save-bar");
     const marks = screen.getAllByRole("img", { name: "Vendor is empty" });
     expect(marks).toHaveLength(1);
@@ -599,20 +700,20 @@ describe("OrganizationSection", () => {
     expect(screen.getByTestId("settings.organization.list-save-bar").textContent).toContain("No change yet");
   });
 
-  it("keeps search, sort and the pager on the crown jewels while editing (#12256; was: none while editing)", async () => {
+  it("keeps search, sort and the pager on the primary assets while editing (#12256; was: none while editing)", async () => {
     renderPage("business");
     await screen.findByText("Payments");
-    // The crown jewels card: its own search box in read mode, none while editing. The form's pickers
+    // The primary assets card: its own search box in read mode, none while editing. The form's pickers
     // (ticketing, regions) render only while editing since #10855, so the count is read inside the card.
-    const jewelsTable = () => screen.getByTestId("settings.organization.crown-jewel-row").closest("table")!;
+    const jewelsTable = () => screen.getByTestId("settings.organization.primary-asset-row").closest("table")!;
     const searchNear = () => jewelsTable().parentElement?.parentElement?.querySelectorAll("input[placeholder='Search...']").length ?? 0;
     expect(searchNear()).toBeGreaterThan(0);
     expect(jewelsTable().querySelector("th[aria-sort]")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Edit Crown jewels/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Edit Primary assets/ }));
     await screen.findByTestId("settings.organization.list-save-bar");
     expect(searchNear()).toBeGreaterThan(0);
     expect(jewelsTable().querySelector("th[aria-sort]")).toBeTruthy();
-    expect(screen.getAllByTestId("settings.organization.crown-jewel-row")).toHaveLength(1);
+    expect(screen.getAllByTestId("settings.organization.primary-asset-row")).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: "Remove" }).length).toBeGreaterThan(0);
   });
 
@@ -863,7 +964,78 @@ describe("OrganizationSection", () => {
     expect(await screen.findByText("Set Payments to Critical (criticality) in OpenCRQ")).toBeTruthy();
   });
 
-  it("marks a crown jewel linked to OpenCRQ with a named icon", async () => {
+  it("names an OpenCRQ-only level (very_high) in words on the pushed line", async () => {
+    post.mockResolvedValue({
+      applied: false,
+      plan: {
+        linked: [],
+        pushed_to_opencrq: [{ opencrq_asset_id: "a-3", name: "Ledger", criticality: "very_high" }],
+        pulled_from_opencrq: [],
+        ambiguous: [],
+        not_in_opencrq: [],
+      },
+      errors: [],
+      version: 3,
+    });
+    renderPage("business");
+    fireEvent.click(await screen.findByRole("button", { name: /Check against OpenCRQ/ }));
+    expect(await screen.findByText("Set Ledger to Very high in OpenCRQ")).toBeTruthy();
+    expect(screen.queryByText(/very_high/)).toBeNull();
+  });
+
+  it("runs the OpenCRQ primary assets sync from the card once one exists, instead of a second check (#1134 S2)", async () => {
+    const opencrqSync = { id: "s-crq", section: "crown_jewels", source: "opencrq", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: null, last_result: null };
+    const base = get.getMockImplementation();
+    get.mockImplementation(async (path: string) => (path.startsWith("/organization-context/syncs") ? [opencrqSync] : base?.(path)));
+    post.mockResolvedValue({ ...opencrqSync, last_result: { added: 0, updated: 1, removed: 0, version: 4, error: null } });
+    renderPage("business");
+    fireEvent.click(await screen.findByRole("button", { name: /Sync with OpenCRQ now/ }));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/organization-context/syncs/s-crq/run", {}));
+    expect(screen.queryByRole("button", { name: /Check against OpenCRQ/ })).toBeNull();
+  });
+
+  it("shows the one Sources and syncs table as the last block of the Knowledge and sources tab, each section chip linked to its tab filtered on that source (#1276)", async () => {
+    const base = get.getMockImplementation();
+    get.mockImplementation(async (path: string) =>
+      path.startsWith("/organization-context/sources")
+        ? [
+            { key: "opencrq", kind: "platform", display_name: "OpenCRQ", rows: { crown_jewels: 1 }, total: 1, written_by_agent: "", sync_ids: [] },
+            { key: "manual", kind: "manual", display_name: "manual", rows: { crown_jewels: 2 }, total: 2, written_by_agent: "", sync_ids: [] },
+          ]
+        : base?.(path),
+    );
+    renderPage("knowledge");
+    const panel = await screen.findByTestId("organization-sources");
+    // Its own page (#1367, point 7): a back link to the profile, no tab bar, no header button to itself.
+    expect(screen.getByRole("button", { name: /Back to Organization Profile/ })).toBeTruthy();
+    expect(screen.queryByTestId("settings.organization.tabs")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.knowledge")).toBeNull();
+    // Its own header (UX round 1 on #1476, B1): the back link first, then its title; the profile's header and
+    // fields banner stay on the profile.
+    const header = screen.getByTestId("settings.organization.knowledge-header");
+    expect(header.firstElementChild?.textContent).toContain("Back to Organization Profile");
+    expect(header.textContent).toContain("Knowledge and sources");
+    expect(screen.queryByText("Organization profile", { selector: "h3" })).toBeNull();
+    expect(screen.queryByTestId("settings.organization.edit")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.overview")).toBeNull();
+    // The table's last block of its tab (UX r1 B1, B2 on #1294): no tab bar, no card below it.
+    expect(within(screen.getByTestId("settings.organization.panel-knowledge")).getByTestId("organization-sources")).toBe(panel);
+    const rows = await within(panel).findAllByTestId("organization-sources.row");
+    expect(rows).toHaveLength(2);
+    expect(panel.textContent).toContain("Entered by hand");
+    expect(panel.textContent).not.toContain("Typed");
+    const opencrq = rows.find((row) => row.textContent?.includes("OpenCRQ"));
+    if (!opencrq) throw new Error("OpenCRQ row missing");
+    // A design-system Chip (UX r1 B1 on #1232): a button that navigates to the tab filtered on the source.
+    const chip = within(opencrq).getByTestId("organization-sources.chip");
+    expect(chip.tagName).toBe("BUTTON");
+    expect(chip.getAttribute("aria-label")).toBe("Primary assets from OpenCRQ: 1 row");
+    fireEvent.click(chip);
+    // The primary assets live on CTEM > Inventory > Business since #1690.
+    await waitFor(() => expect(screen.getByTestId("location-probe").textContent).toMatch(/^\/ctem\/inventory\/business\?/));
+  });
+
+  it("marks a primary asset linked to OpenCRQ with a named icon", async () => {
     get.mockImplementation(async (path: string) =>
       path === "/organizations" || path === "/integrations"
         ? []
@@ -892,10 +1064,129 @@ describe("OrganizationSection", () => {
     renderPage("business");
     fireEvent.click(await screen.findByRole("button", { name: /Check against OpenCRQ/ }));
     expect(await screen.findByText("Link Payments to its OpenCRQ asset")).toBeTruthy();
-    expect(screen.getByText("Add Ledger, very high in OpenCRQ, as a critical crown jewel")).toBeTruthy();
+    expect(screen.getByText("Add Ledger from OpenCRQ as a primary asset")).toBeTruthy();
     expect(post).toHaveBeenCalledWith("/organization-context/opencrq-sync", { apply: false });
     fireEvent.click(screen.getByRole("button", { name: /Apply/ }));
     await waitFor(() => expect(post).toHaveBeenCalledWith("/organization-context/opencrq-sync", { apply: true }));
+  });
+
+  it("proposes the import for an empty profile and never says the two agree while in_sync is false (#1134 S2)", async () => {
+    post.mockResolvedValue({
+      applied: false,
+      plan: {
+        linked: [],
+        pushed_to_opencrq: [],
+        pulled_from_opencrq: [{ opencrq_asset_id: "a-9", name: "Billing" }],
+        ambiguous: [],
+        not_in_opencrq: [],
+        in_sync: false,
+      },
+      errors: [],
+      version: null,
+    });
+    renderPage("business");
+    fireEvent.click(await screen.findByRole("button", { name: /Check against OpenCRQ/ }));
+    expect(await screen.findByText("Add Billing from OpenCRQ as a primary asset")).toBeTruthy();
+    expect(screen.queryByText("The primary assets and OpenCRQ already agree.")).toBeNull();
+    expect(screen.getByRole("button", { name: /Apply/ })).toBeTruthy();
+  });
+
+  it("says no OpenCRQ asset reaches the threshold, with the counts, instead of already agree (#1558)", async () => {
+    const base = get.getMockImplementation()!;
+    get.mockImplementation(async (path: string) =>
+      path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, crown_jewels: [] } } : base(path),
+    );
+    post.mockImplementation(async (_path: string, body: unknown) => {
+      const level = (body as { min_criticality?: string }).min_criticality ?? "high";
+      return {
+        applied: false,
+        plan: {
+          linked: [],
+          pushed_to_opencrq: [],
+          pulled_from_opencrq: level === "medium" ? [{ opencrq_asset_id: "a-5", name: "CRM" }] : [],
+          ambiguous: [],
+          not_in_opencrq: [],
+          in_sync: level !== "medium",
+          min_criticality: level,
+          assets_read: 1751,
+          by_criticality: { unknown: 1750, medium: 1 },
+        },
+        errors: [],
+        version: null,
+      };
+    });
+    renderPage("business");
+    fireEvent.click(await screen.findByRole("button", { name: /Check against OpenCRQ/ }));
+    const none = await screen.findByTestId("settings.organization.opencrq-none-rated");
+    expect(none.textContent).toContain("No OpenCRQ supporting asset is rated High or above: 1,751 assets read.");
+    expect(none.textContent).toContain("1,750 unrated, 1 medium");
+    expect(screen.queryByText("The primary assets and OpenCRQ already agree.")).toBeNull();
+    expect(post).toHaveBeenCalledWith("/organization-context/opencrq-sync", { apply: false });
+    // Picking medium re-runs the check at that threshold, and the plan proposes the medium asset.
+    fireEvent.click(screen.getByTestId("settings.organization.opencrq-threshold"));
+    fireEvent.click(await screen.findByRole("option", { name: "Medium or above" }));
+    await waitFor(() => expect(post).toHaveBeenLastCalledWith("/organization-context/opencrq-sync", { apply: false, min_criticality: "medium" }));
+    expect(await screen.findByText("Add CRM from OpenCRQ as a primary asset")).toBeTruthy();
+  });
+
+  it("restores the primary assets of a past version alone, from the version it starts from (#1558)", async () => {
+    const base = get.getMockImplementation()!;
+    get.mockImplementation(async (path: string) => {
+      if (path === "/organization-context") return { ...CONTEXT, version: 46, profile: { ...CONTEXT.profile, crown_jewels: [] } };
+      if (path.startsWith("/organization-context/versions?"))
+        return [
+          { version: 46, source: "form", created_at: "2026-11-23T10:00:00Z", author_user_id: null, missing_fields: [], crown_jewels: 0 },
+          { version: 28, source: "form", created_at: "2026-11-20T10:00:00Z", author_user_id: null, missing_fields: [], crown_jewels: 2 },
+        ];
+      if (path === "/organization-context/versions/28")
+        return {
+          ...CONTEXT,
+          version: 28,
+          profile: {
+            ...CONTEXT.profile,
+            crown_jewels: [
+              { name: "Payments", business_service: "", owner: "", criticality: "critical", opencrq_asset_id: "" },
+              { name: "Ledger", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" },
+            ],
+          },
+        };
+      return base(path);
+    });
+    post.mockResolvedValue({ ...CONTEXT, version: 47, profile: { ...CONTEXT.profile, crown_jewels: [{ name: "Payments" }, { name: "Ledger" }] } });
+    renderPage("business");
+    fireEvent.click(await screen.findByRole("button", { name: /Restore from a past version/ }));
+    const dialog = await screen.findByTestId("settings.organization.restore-dialog");
+    // The current version is never offered; the newest one holding primary assets is picked and previewed.
+    expect(within(dialog).queryByText("Version 46")).toBeNull();
+    expect(await within(dialog).findByText("Ledger")).toBeTruthy();
+    // The preview badges carry the criticality words of the card, never the bare "High" key (#1567 UX r2 B2).
+    expect(within(dialog).getByText("High (criticality)")).toBeTruthy();
+    expect(within(dialog).getByText("Critical (criticality)")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Restore version 28" }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/organization-context/versions/28/restore", { fields: ["crown_jewels"], based_on_version: 46 }),
+    );
+  });
+
+  it("shows a refused restore inline in the dialog and offers a reload of the versions on a 409 (#1567 UX B2)", async () => {
+    const base = get.getMockImplementation()!;
+    get.mockImplementation(async (path: string) => {
+      if (path === "/organization-context") return { ...CONTEXT, version: 46, profile: { ...CONTEXT.profile, crown_jewels: [] } };
+      if (path.startsWith("/organization-context/versions?"))
+        return [{ version: 28, source: "form", created_at: "2026-11-20T10:00:00Z", author_user_id: null, missing_fields: [], crown_jewels: 1 }];
+      if (path === "/organization-context/versions/28")
+        return { ...CONTEXT, version: 28, profile: { ...CONTEXT.profile, crown_jewels: [{ name: "Ledger", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" }] } };
+      return base(path);
+    });
+    post.mockRejectedValue(Object.assign(new Error("The profile changed since version 46 (now version 47)."), { status: 409 }));
+    renderPage("business");
+    fireEvent.click(await screen.findByRole("button", { name: /Restore from a past version/ }));
+    const dialog = await screen.findByTestId("settings.organization.restore-dialog");
+    expect(await within(dialog).findByText("Ledger")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Restore version 28" }));
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toContain("The profile changed since version 46");
+    expect(within(alert).getByRole("button", { name: "Reload the versions" })).toBeTruthy();
   });
 
   it("opens the form on the draft from the platforms, names each source, and saves it as a draft version", async () => {
@@ -918,17 +1209,13 @@ describe("OrganizationSection", () => {
     await draftFromPlatforms();
     const panel = await screen.findByTestId("settings.organization.draft");
     expect(panel.textContent).toContain("Priority intelligence requirements (PIRs) from OpenCTI");
-    expect(panel.textContent).toContain("Tech stack from OpenAEV");
+    expect(panel.textContent).toContain("Software from OpenAEV");
     expect(panel.textContent).toContain("OpenCRQ could not be read");
     // The backend's error text is never shown as is.
     expect(panel.textContent).not.toContain("tenant id");
     // The drafted PIR shows by its OpenCTI name in the picker (UX B1).
     expect(await screen.findByText("Ransomware on energy")).toBeTruthy();
-    // The draft opened the first tab it filled; the drafted tech stack is on its own tab, both marked (#12329).
-    expect(screen.getByTestId("settings.organization.tab-identity.drafted")).toBeTruthy();
-    expect(screen.getByTestId("settings.organization.tab-technology.drafted")).toBeTruthy();
-    openTab(/^Technology/);
-    expect(await screen.findByText("CrowdStrike Falcon")).toBeTruthy();
+    // The drafted software inventory is named in the panel and saved with the profile, its card living on CTEM > Inventory (#1178).
     expect(put).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: /Save/ }));
     await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
@@ -985,27 +1272,41 @@ describe("OrganizationSection", () => {
     expect(screen.getByRole("button", { name: /^Edit$/ })).toBeTruthy();
   });
 
-  it("a link to one card (?card=) opens the card's tab, focuses the card and drops the parameter (CTEM calls to action)", async () => {
+  it("a link to one card (?card=) focuses the card on CTEM > Inventory > Business (CTEM calls to action, #1690)", async () => {
     renderWithProviders(
-      <MemoryRouter initialEntries={["/settings/organization?card=crown_jewels"]}>
-        <OrganizationSection />
+      <MemoryRouter initialEntries={["/ctem/inventory/business?card=crown_jewels"]}>
+        <OrganizationSection embed={{ cards: INVENTORY_CARDS.business }} />
       </MemoryRouter>,
     );
-    // The bare path names the first tab, but the card lives on Business: the page moves there.
-    expect(await screen.findByTestId("settings.organization.panel-business")).toBeTruthy();
     await waitFor(() => expect((document.activeElement as HTMLElement | null)?.id ?? "").toMatch(/-crown_jewels$/));
   });
 
   it("lands ?card=tracked_organizations on the card root, never on a wrapper (UX r1 B2 on #108)", async () => {
     renderWithProviders(
-      <MemoryRouter initialEntries={["/settings/organization/profile/business?card=tracked_organizations"]}>
-        <OrganizationSection />
+      <MemoryRouter initialEntries={["/ctem/inventory/business?card=tracked_organizations"]}>
+        <OrganizationSection embed={{ cards: INVENTORY_CARDS.business }} />
       </MemoryRouter>,
     );
     await waitFor(() => expect((document.activeElement as HTMLElement | null)?.id ?? "").toMatch(/-tracked_organizations$/));
     // The focused element is the card itself, so the focus ring keeps the card's radius.
     expect(document.activeElement?.getAttribute("data-testid")).toBe("settings.organizations");
     expect(document.activeElement?.getAttribute("data-anchor")).toBe("card");
+  });
+
+  it("lands ?card=outside_lens on the outside lens card root (UX r1 B1 on #1159)", async () => {
+    // The card lives on CTEM > Inventory (#1178), which mounts the Exposure cards.
+    renderWithProviders(
+      <MemoryRouter initialEntries={["/ctem/inventory?card=outside_lens"]}>
+        <OrganizationSection embed={{ cards: INVENTORY_CARDS.exposure }} />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByTestId("settings.organization.panel-exposure")).toBeTruthy();
+    await waitFor(() => expect((document.activeElement as HTMLElement | null)?.id ?? "").toMatch(/-outside_lens$/));
+    expect(document.activeElement?.getAttribute("data-testid")).toBe("settings.organization.outside-lens");
+    expect(document.activeElement?.getAttribute("data-anchor")).toBe("card");
+    // Like its siblings it never folds on CTEM > Inventory (#1690).
+    const card = screen.getByTestId("settings.organization.outside-lens");
+    expect(within(card).queryAllByRole("button").some((button) => button.hasAttribute("aria-expanded"))).toBe(false);
   });
 
   it("marks the Draft button aria-busy while the draft is pending (#9102 A2)", async () => {
@@ -1058,7 +1359,7 @@ describe("OrganizationSection", () => {
     renderPage("business");
     fireEvent.click(await screen.findByRole("button", { name: /Check against OpenCRQ/ }));
     expect(await screen.findByTestId("settings.organization.opencrq-plan")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Edit Primary assets/ }));
     await waitFor(() => expect(screen.queryByTestId("settings.organization.opencrq-plan")).toBeNull());
     expect(screen.queryByRole("button", { name: /Apply/ })).toBeNull();
   });

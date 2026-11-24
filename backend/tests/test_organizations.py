@@ -13,6 +13,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -38,6 +39,7 @@ def _org(role: str = "tracked", name: str = "Acme Cloud", relationship: str | No
 
 def _row(profile: dict, version: int = 2):
     return SimpleNamespace(
+        organization_id=None,  # no asset records read: the session is a stub
         version=version,
         profile=profile,
         source="form",
@@ -197,11 +199,11 @@ async def test_category_star_lists_every_category_with_its_size(with_stack, tool
     assert "): 500 rows" in text and "tracked organizations): 1 row" in text
 
 
-async def test_a_full_500_row_tech_stack_is_read_whole_page_by_page(with_stack, tool):
+async def test_a_full_500_row_software_list_is_read_whole_page_by_page(with_stack: None, tool: Any) -> None:
     seen: list[str] = []
     offset = 0
     for _ in range(10):
-        page = await tool(category="tech_stack", offset=offset, limit=200)
+        page = await tool(category="software", offset=offset, limit=200)
         seen += [f"Product {i}" for i in range(500) if f'"Product {i}"' in page]
         if "End of the category." in page:
             break
@@ -218,9 +220,40 @@ async def test_a_query_narrows_a_category_and_the_limit_is_bounded(with_stack, t
     assert '"Other"' not in page
 
 
+async def test_the_deprecated_tech_stack_category_answers_the_software_category(with_stack: None, tool: Any) -> None:
+    page = await tool(category="tech_stack", query="microsoft", limit=10)
+    assert page.startswith("Category software ("), "#1495: tech_stack is an alias for one release"
+    assert "of 50 matching 'microsoft'" in page
+
+
 async def test_an_unknown_category_names_the_accepted_ones(with_stack, tool):
     text = await tool(category="vendors")
-    assert "No category 'vendors'" in text and "tech_stack" in text
+    assert "No category 'vendors'" in text and "software" in text
+
+
+async def test_the_saved_attack_surface_pass_is_read_back_as_a_category(
+    monkeypatch: pytest.MonkeyPatch, tool: Any
+) -> None:
+    """#1691: the CTEM-26 pass an agent saves is read with get_organization_context, not only by the pass."""
+    surface = {"enabled": True, "integration": "shodan-1", "integrations": ["gti-1"], "cadence_hours": 12}
+
+    async def _current(_db: Any, organization_id: Any = None) -> Any:
+        return _row({"name": "Us", "attack_surface": surface})
+
+    async def _list(_db: Any, **_kw: Any) -> list[Any]:
+        return [_org("primary", "Us")]
+
+    monkeypatch.setattr(oc, "current_version", _current)
+    monkeypatch.setattr(orgs, "list_organizations", _list)
+    page = await tool(category="attack_surface")
+    assert page.startswith("Category attack_surface (")
+    assert '"shodan-1"' in page and '"gti-1"' in page and '"cadence_hours": 12' in page
+    assert "- attack_surface (" in await tool(category="*")
+
+
+async def test_an_attack_surface_pass_left_at_its_defaults_has_no_row(with_stack: None, tool: Any) -> None:
+    page = await tool(category="attack_surface")
+    assert "shodan" not in page and "No category" not in page
 
 
 async def test_the_tracked_organizations_category_lists_them(with_stack, tool):

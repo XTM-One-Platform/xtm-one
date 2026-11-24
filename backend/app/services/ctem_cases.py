@@ -12,15 +12,16 @@ Design: ``dev-docs/ctem-cases.md`` sections 4 to 6.
   fix". Nothing is guessed.
 - :func:`plan_recompute` merges what ONE user sees into the shared cases
   (#11613) without touching state, owner, due date or notes: new keys become
-  cases in needs attention, an issue the user sees open is added or reopened,
+  cases in ``new``, an issue the user sees open is added or reopened,
   an issue is resolved only when that user's source read confirms it closed
   (never on absence from a narrower view), a case whose members are all
   resolved is resolved by the system unless its risk is accepted, a resolved
   case whose issues return is reopened.
 - :func:`check_transition` is the state machine: accepted risk needs an owner,
   a reason and an expiry and is refused to an agent; resolved needs evidence;
-  in progress needs an owner. :func:`expired_acceptance` returns a case whose
-  acceptance expired to needs attention.
+  a person moving a case to remediating names its owner. :func:`expired_acceptance`
+  returns a case whose acceptance expired to ``new``. The loop's own moves
+  between the open statuses are ``ctem_case_status`` (#1503).
 
 Pure functions over plain data: the API and the agent tools persist what they
 return (``ctem_cases_store``).
@@ -30,10 +31,12 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from app.models.ctem_case import CASE_STATES
+from app.models.ctem_case import CASE_STATES, OPEN_STATES, RESOLUTION_KINDS
+from app.services.ctem_fixed_version import fold_by_platform, smallest_fixing_every
 
 #: Actor of the transitions recompute and the expiry sweep make.
 SYSTEM_ACTOR = "system"
@@ -41,12 +44,21 @@ SYSTEM_ACTOR = "system"
 DEFAULT_MAX_ACCEPTANCE = timedelta(days=90)
 #: Evidence recorded when every member issue closed at source.
 CLOSED_AT_SOURCE = "every member issue closed at source"
+#: The evidence of an upgrade case the asset inventory shows fixed on every asset (#1252).
+FIXED_IN_INVENTORY = "every asset running the product runs the fixed version or later (asset inventory)"
 
 _SPACES = re.compile(r"\s+")
 
 
 class CaseRuleError(ValueError):
     """A transition or an edit the state rules refuse; the message says why."""
+
+
+#: The outcome OpenCTI gives one installed version of an issue (#1783).
+VERSION_AFFECTED = "affected"
+VERSION_NOT_AFFECTED = "not_affected"
+#: No Software of that version in OpenCTI: "version not known to OpenCTI".
+VERSION_UNKNOWN = "unknown"
 
 
 @dataclass(frozen=True)
@@ -68,6 +80,27 @@ class SourceIssue:
     assets: tuple[str, ...] = ()
     crown_jewels: tuple[str, ...] = ()
     first_seen_at: datetime | None = None
+    #: The version the organization profile declares for the matched product (CTEM-11).
+    installed_version: str | None = None
+    #: Set when OpenCTI relates no vulnerability to the declared version: the reason; no case opens.
+    not_affected: str | None = None
+    #: What OpenCTI could not tell ("version not known to OpenCTI", "fixed version unknown"), else ``None``.
+    version_note: str | None = None
+    #: The OpenCTI Software ("<name> <version>") whose ``remediates`` gave ``fixed_version`` (#928), else ``None``.
+    fixed_by: str | None = None
+    #: ``((platform, version), ...)`` when the remediating Software names its platform (#1572), else ``()``.
+    fixed_versions: tuple[tuple[str, str], ...] = ()
+    #: With installed versions: whether OpenCTI holds a Software of one of them (#928); ``None`` when none is known.
+    declared_version_known: bool | None = None
+    #: ``((version, outcome), ...)``: each installed version and what OpenCTI says of it (#1783), else ``()``.
+    version_outcomes: tuple[tuple[str, str], ...] = ()
+    #: OpenAEV finding lifecycle (CTEM-14-UI): ``open``, ``not_reproduced`` or ``resolved``;
+    #: ``None`` when the source does not carry it (OpenCTI, an OpenAEV older than the lifecycle).
+    retest_status: str | None = None
+    #: When a re-test last ended on the finding, ISO 8601, else ``None``.
+    last_tested_at: str | None = None
+    #: A re-test is queued on the finding and has not finished.
+    retest_pending: bool = False
 
     @property
     def member_id(self) -> str:
@@ -83,6 +116,8 @@ class Remediation:
     title: str
     product_label: str | None = None
     fixed_version: str | None = None
+    #: ``((platform, version), ...)``: the fix of each platform the remediation names (#1572), else ``()``.
+    fixed_versions: tuple[tuple[str, str], ...] = ()
 
 
 def _norm(value: str | None) -> str:
@@ -101,7 +136,14 @@ def remediation_of(issue: SourceIssue) -> Remediation | None:
     """R1 or R2 for one issue read alone; ``None`` when its data names no fix."""
     if issue.course_of_action_id:
         name = (issue.course_of_action_name or "").strip() or issue.course_of_action_id
-        return Remediation(key=f"coa:{_norm(issue.course_of_action_id)}", kind="course_of_action", title=name)
+        return Remediation(
+            key=f"coa:{_norm(issue.course_of_action_id)}",
+            kind="course_of_action",
+            title=name,
+            # A course of action that is a plain upgrade names its version (CTEM-11).
+            fixed_version=(issue.fixed_version or "").strip() or None,
+            fixed_versions=issue.fixed_versions,
+        )
     if issue.product and issue.product.strip():
         label = _product_label(issue.vendor, issue.product)
         vendor = _norm(issue.vendor) or "-"
@@ -115,6 +157,7 @@ def remediation_of(issue: SourceIssue) -> Remediation | None:
                 title=f"Upgrade {label} to {fixed}",
                 product_label=label,
                 fixed_version=fixed,
+                fixed_versions=issue.fixed_versions,
             )
         return Remediation(
             key=f"upgrade:{vendor}/{product}@latest",
@@ -132,16 +175,62 @@ class Grouping:
     groups: dict[str, list[SourceIssue]] = field(default_factory=dict)
     remediations: dict[str, Remediation] = field(default_factory=dict)
     no_known_fix: list[SourceIssue] = field(default_factory=list)
+    #: Issues OpenCTI does not relate to the declared version (CTEM-11): listed, never a case.
+    not_affected: list[SourceIssue] = field(default_factory=list)
 
 
-def group_issues(issues: Iterable[SourceIssue]) -> Grouping:
+def _versions_known(issue: SourceIssue) -> bool:
+    """Whether the issue's installed version, or its installed versions (#1783), are known."""
+    return bool(issue.installed_version or issue.version_outcomes)
+
+
+def _fold_upgrades(issues: list[SourceIssue]) -> list[SourceIssue]:
+    """One target per product when the profile declares its installed version (CTEM-11).
+
+    The upgrade members of one product whose installed version is declared
+    take the smallest version that fixes every one of them, so they share one
+    key. Without a declared version nothing changes.
+    """
+    targets: dict[tuple[str, str], list[str]] = {}
+    for issue in issues:
+        if issue.course_of_action_id or not (issue.product or "").strip() or not _versions_known(issue):
+            continue
+        if issue.fixed_version:
+            targets.setdefault((_norm(issue.vendor), _norm(issue.product)), []).append(issue.fixed_version.strip())
+    target = {k: smallest_fixing_every(v) for k, v in targets.items()}
+    # The per-platform fixes fold the same way (#1572); one member without them makes the fold generic.
+    per_platform: dict[tuple[str, str], list[dict[str, str]]] = {}
+    for issue in issues:
+        if issue.course_of_action_id or not (issue.product or "").strip() or not _versions_known(issue):
+            continue
+        if issue.fixed_version:
+            per_platform.setdefault((_norm(issue.vendor), _norm(issue.product)), []).append(dict(issue.fixed_versions))
+    platform_target = {k: tuple(sorted(fold_by_platform(v).items())) for k, v in per_platform.items()}
+    out: list[SourceIssue] = []
+    for issue in issues:
+        key = (_norm(issue.vendor), _norm(issue.product))
+        fixed = target.get(key)
+        if fixed and _versions_known(issue) and issue.fixed_version and not issue.course_of_action_id:
+            issue = replace(issue, fixed_version=fixed, fixed_versions=platform_target.get(key, ()))
+        out.append(issue)
+    return out
+
+
+def group_issues(all_issues: Iterable[SourceIssue]) -> Grouping:
     """Group open issues by remediation key (R1, R2, then R3 for OpenAEV CVE findings, R4).
 
     An issue is placed once per key it answers; duplicates of the same
-    ``source:external_id`` under one key are kept once.
+    ``source:external_id`` under one key are kept once. An issue whose declared
+    version OpenCTI does not relate to the vulnerability goes to ``not_affected`` (CTEM-11).
     """
-    issues = list(issues)
     out = Grouping()
+    issues: list[SourceIssue] = []
+    for issue in all_issues:
+        if issue.not_affected:
+            out.not_affected.append(issue)
+        else:
+            issues.append(issue)
+    issues = _fold_upgrades(issues)
     cve_keys: dict[str, set[str]] = {}
     pending_aev: list[SourceIssue] = []
 
@@ -183,6 +272,15 @@ class CaseSnapshot:
     state: str
     pinned_issues: list[str] = field(default_factory=list)
     members: dict[str, bool] = field(default_factory=dict)
+    #: A case with a validation plan never resolves on absence at source (#857).
+    validation_plan: bool = False
+    #: An upgrade case whose product the asset inventory shows on the fixed version or later on every
+    #: asset that runs it (#1252): it leaves the open cases even while its issues stay open at source.
+    fixed_in_inventory: bool = False
+    #: The evidence of the decision that resolved the case when a person or an agent resolved it (a gate
+    #: answered not exploitable, a passing re-test), ``None`` for a resolution recompute made (#1646): such
+    #: a closure holds while the case's issues stay as they were, whatever their state at source.
+    decided_closure: str | None = None
 
 
 @dataclass
@@ -201,6 +299,38 @@ class CasePlan:
     new_state: str | None = None  # a system transition, else ``None``
     reason: str | None = None
     evidence: str | None = None
+    #: Keys an existing case takes over: a folded upgrade target that moved (CTEM-11).
+    add_keys: list[str] = field(default_factory=list)
+
+
+def _upgrade_prefix(key: str) -> str | None:
+    """``upgrade:<vendor>/<product>@`` for an upgrade key, else ``None``."""
+    if not key.startswith("upgrade:") or "@" not in key:
+        return None
+    return key.rsplit("@", 1)[0] + "@"
+
+
+def _holder_of(key: str, members: list[SourceIssue], cases: list[CaseSnapshot]) -> CaseSnapshot | None:
+    """The existing case of the same product that already holds members of an unowned upgrade key.
+
+    The folded target of a product (section 4.2bis) moves when a member with a
+    higher fix appears, when the member that set it is patched, or the first
+    time a version is declared on an ``@latest`` case. The case that holds
+    those members keeps them and takes the new key, so no second case opens.
+    """
+    prefix = _upgrade_prefix(key)
+    if prefix is None:
+        return None
+    ids = {m.member_id for m in members}
+    best: CaseSnapshot | None = None
+    best_count = 0
+    for case in cases:
+        if not any(k.startswith(prefix) for k in case.keys):
+            continue
+        count = len(ids & set(case.members))
+        if count > best_count:
+            best, best_count = case, count
+    return best
 
 
 def plan_recompute(
@@ -233,12 +363,20 @@ def plan_recompute(
 
     seen_open: dict[str, set[str]] = {case.id: set() for case in cases}
     for issue in issues:
-        if issue.member_id in pinned:
+        if issue.member_id in pinned and not issue.not_affected:
             seen_open[pinned[issue.member_id]].add(issue.member_id)
 
     plans: list[CasePlan] = []
+    taken_keys: dict[str, list[str]] = {}
+    retarget: dict[str, Remediation] = {}
     for key, members in grouping.groups.items():
         owner = key_owner.get(key)
+        if owner is None:
+            owner = _holder_of(key, members, cases)
+            if owner is not None:
+                key_owner[key] = owner
+                taken_keys.setdefault(owner.id, []).append(key)
+                retarget[owner.id] = grouping.remediations[key]
         if owner is None:
             plans.append(
                 CasePlan(
@@ -251,7 +389,7 @@ def plan_recompute(
         seen_open[owner.id].update(m.member_id for m in members)
 
     for case in cases:
-        plan = CasePlan(case_id=case.id, remediation=None)
+        plan = CasePlan(case_id=case.id, remediation=retarget.get(case.id), add_keys=taken_keys.get(case.id, []))
         for member_id in sorted(seen_open[case.id]):
             if member_id not in case.members:
                 plan.add.append(member_id)
@@ -264,12 +402,24 @@ def plan_recompute(
         after.update({m: True for m in plan.add + plan.reopen})
         after.update({m: False for m in plan.resolve})
         any_open = any(after.values())
-        if after and not any_open and case.state in ("needs_attention", "in_progress"):
+        if case.fixed_in_inventory and case.id not in retarget:
+            # No asset is left below the fix: the case resolves (a validation plan still needs its proof)
+            # and is never reopened by issues that stay open at source on a version nobody runs.
+            if case.state in OPEN_STATES and not case.validation_plan:
+                plan.new_state = "resolved"
+                plan.evidence = FIXED_IN_INVENTORY
+        elif after and not any_open and case.state in OPEN_STATES and not case.validation_plan:
             plan.new_state = "resolved"
             plan.evidence = CLOSED_AT_SOURCE
         elif any_open and case.state == "resolved":
-            plan.new_state = "needs_attention"
-            plan.reason = "reopened: issues open again at source"
+            if case.decided_closure is None:
+                plan.new_state = "new"
+                plan.reason = "reopened: issues open again at source"
+            elif plan.add or plan.reopen or case.id in retarget:
+                # A decided closure reopens only on a changed issue: a new CVE or asset, an issue that closed
+                # and came back, or a moved fixed version; the event names the decision it overrides (#1646).
+                plan.new_state = "new"
+                plan.reason = f"reopened: issues changed since the closure decision ({case.decided_closure})"[:500]
         plans.append(plan)
     return plans
 
@@ -285,10 +435,27 @@ def check_owner(state: str, owner_user_id: object | None) -> None:
     """Raise :class:`CaseRuleError` when the case's state cannot stand without an owner."""
     if owner_user_id is not None:
         return
-    if state == "in_progress":
-        raise CaseRuleError("a case in progress needs an owner")
     if state == "accepted_risk":
         raise CaseRuleError("an accepted risk needs an owner")
+
+
+#: Validation results that prove the exposure gone (or never there).
+PASSING_RESULTS = ("passed", "not_exposed")
+
+
+def latest_validation(validations: Iterable[dict[str, Any]] | None) -> dict[str, Any] | None:
+    """The newest validation reference of a case (the list is kept oldest first), ``None`` when none."""
+    items = [v for v in (validations or []) if isinstance(v, dict)]
+    return items[-1] if items else None
+
+
+def passing(validation: dict[str, Any] | None) -> bool:
+    """A pass that proves: an entry marked inconclusive (``conclusive`` false, #1458) proves nothing."""
+    return (
+        validation is not None
+        and validation.get("result") in PASSING_RESULTS
+        and validation.get("conclusive") is not False
+    )
 
 
 def check_transition(
@@ -302,22 +469,43 @@ def check_transition(
     accepted_until: datetime | None = None,
     now: datetime,
     max_acceptance: timedelta = DEFAULT_MAX_ACCEPTANCE,
+    validation_plan: bool = False,
+    validations: Iterable[dict[str, Any]] | None = None,
+    resolution_kind: str | None = None,
+    close_without_retest_answered: bool = False,
 ) -> None:
     """Raise :class:`CaseRuleError` when the transition is refused.
 
-    ``actor_kind`` is ``user``, ``agent`` or ``system``.
+    ``actor_kind`` is ``user``, ``agent`` or ``system``. A person who moves a
+    case to ``remediating`` takes or names its owner (#1503; the loop moves it
+    there on a ticket or a decision without one). A case with a
+    validation plan resolves, or goes to ``mitigated_watching``, only when its
+    newest validation reference passed (#857): free-text evidence is not proof,
+    unless a person decided otherwise (#1675): a person's own move, or a
+    ``ctem.close_without_retest`` decision answered on the case
+    (*close_without_retest_answered*), lets it close without the re-test.
     """
     if target not in CASE_STATES:
         raise CaseRuleError(f"unknown state {target!r}")
     if target == current:
         raise CaseRuleError(f"the case is already {target}")
+    if resolution_kind is not None and resolution_kind not in RESOLUTION_KINDS:
+        raise CaseRuleError(f"unknown resolution kind {resolution_kind!r}")
     reason = (reason or "").strip()
     evidence = (evidence or "").strip()
     accepted_until = as_utc(accepted_until)
-    if target == "in_progress" and owner_user_id is None:
-        raise CaseRuleError("a case in progress needs an owner")
+    if target == "remediating" and actor_kind == "user" and owner_user_id is None:
+        raise CaseRuleError("a person moving a case to remediating names its owner")
+    if target == "waiting_decision" and actor_kind == "user" and not reason:
+        raise CaseRuleError("waiting for decision needs what the case waits on (the reason)")
     if target == "resolved" and not evidence:
         raise CaseRuleError("resolving a case needs evidence (a ticket, a change or a validation run)")
+    proven = passing(latest_validation(validations))
+    decided = actor_kind == "user" or close_without_retest_answered
+    if target in ("resolved", "mitigated_watching") and validation_plan and not proven and not decided:
+        raise CaseRuleError("this case has a validation plan: it closes only on a passing validation reference")
+    if target == "mitigated_watching" and not proven and not decided:
+        raise CaseRuleError("mitigated, watching needs a passing validation reference of the mitigation")
     if target == "accepted_risk":
         if actor_kind != "user":
             raise CaseRuleError("only a person accepts risk")
@@ -332,8 +520,8 @@ def check_transition(
         if accepted_until > now + max_acceptance:
             raise CaseRuleError(f"the expiry date is at most {max_acceptance.days} days away")
     if (
-        target == "needs_attention"
-        and current in ("resolved", "accepted_risk")
+        target in OPEN_STATES
+        and current in ("resolved", "accepted_risk", "mitigated_watching")
         and actor_kind == "agent"
         and not reason
     ):
@@ -341,7 +529,7 @@ def check_transition(
 
 
 def expired_acceptance(state: str, accepted_until: datetime | None, now: datetime) -> bool:
-    """True when an accepted risk has expired and the case returns to needs attention."""
+    """True when an accepted risk has expired and the case returns to ``new``."""
     return state == "accepted_risk" and accepted_until is not None and accepted_until <= now
 
 

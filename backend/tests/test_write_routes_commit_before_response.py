@@ -78,16 +78,21 @@ EXEMPTIONS: dict[str, tuple[frozenset[str], str]] = {
         "dict _user_creds builds (setattr on a non-ORM object), never a row of "
         "the request session",
     ),
-    # The profile import (#11780) reads OpenCTI the same way; apply commits its save itself.
-    "POST /api/v1/organization-context/import/preview": (
-        frozenset({"app.integrations.providers.opencti._common._drop_dead_draft"}),
-        "the import preview's OpenCTI read: _drop_dead_draft marks the plain headers "
-        "dict _user_creds builds, never a row of the request session",
+    # The draft and the rows previews plan on current_profile (#1543): a pydantic copy of the profile, never a row.
+    "POST /api/v1/organization-context/draft": (
+        frozenset({"app.services.organization_context_draft.merge_draft.<_fill>"}),
+        "merge_draft fills a model_copy of the OrganizationProfile current_profile answers "
+        "(a pydantic model, not an ORM row); the draft route saves nothing",
     ),
-    "POST /api/v1/organization-context/import/apply": (
-        frozenset({"app.integrations.providers.opencti._common._drop_dead_draft"}),
-        "the import's OpenCTI read: _drop_dead_draft marks the plain headers "
-        "dict _user_creds builds; the profile save commits before the response",
+    "GET /api/v1/organization-context/syncs/{sync_id}/rows-preview": (
+        frozenset({"app.services.organization_context_sources.plan_rows"}),
+        "plan_rows edits a model_copy of the OrganizationProfile current_profile answers "
+        "(a pydantic model, not an ORM row); the preview saves nothing",
+    ),
+    "GET /api/v1/organization-context/sources/{source}/rows-preview": (
+        frozenset({"app.services.organization_context_sources.plan_rows"}),
+        "plan_rows edits a model_copy of the OrganizationProfile current_profile answers "
+        "(a pydantic model, not an ORM row); the preview saves nothing",
     ),
     # The import filter picker (#11886) lists the platform's values with the same read.
     "GET /api/v1/organization-context/import/options": (
@@ -139,6 +144,12 @@ REVIEWED_ESCAPES: dict[str, str] = {
         "the ROI backfill resolver (#10006) only reads declarations, agents and home fleets "
         "through it; its only route caller, GET /roi/declarations/backfill-preview, runs "
         "the pass with dry_run=True and rolls back before answering"
+    ),
+    r"passes the session to llm_factory\(\) in app\.services\.health\.analysis\.analyse_module": (
+        "Platform Health analysis (#101 S9): the factory only resolves the routing model "
+        "and its provider (reads); analyse_module commits every write it makes (the "
+        "reservation before the model call, the booking and the analysis row after) "
+        "before POST /health/analysis/{module}/run answers"
     ),
     r"passes the session to handler\(\) in app\.services\.health\.consent\.apply_revocation": (
         "the Concierge revocation handlers (#8254) write in the caller's transaction; "

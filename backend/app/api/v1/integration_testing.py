@@ -379,6 +379,21 @@ async def test_provider_connectivity(
             f"{base_url}/graphql",
             {"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         )
+    elif provider == "odoo":
+        # The server version, the signed-in user and the companies it sees.
+        from app.integrations.providers.odoo import OdooCredential
+        from app.integrations.providers.odoo import validate_connection as odoo_validate
+
+        ok, message = await odoo_validate(
+            OdooCredential.build(
+                str(extra.get("base_url") or ""),
+                str(extra.get("database") or ""),
+                str(extra.get("login") or ""),
+                token or "",
+                str(extra.get("company_ids") or ""),
+            )
+        )
+        return {"status": "ok" if ok else "error", "message": message}
     elif provider == "metabase":
         base_url = extra.get("base_url", "").rstrip("/")
         if not base_url:
@@ -850,6 +865,25 @@ async def test_provider_connectivity(
 
         ok, message = await docusign_validate(token)
         return {"status": "ok" if ok else "error", "message": message}
+    elif provider == "pennylane":
+        # GET /me names the company and the token's scopes; a firm token names
+        # its company in the optional company_id field (X-Company-Id).
+        from app.integrations.providers.pennylane import validate_connection as pennylane_validate
+
+        company_id = str(extra.get("company_id") or "").strip()
+        credential = f"{company_id}||{token or ''}" if company_id else (token or "")
+        ok, message = await pennylane_validate(credential)
+        return {"status": "ok" if ok else "error", "message": message}
+    elif provider == "netsuite":
+        # The credential is the provider's compound token (account, mode and
+        # the M2M or TBA material): its validate_connection mints the token
+        # (M2M) and runs one SuiteQL query over the subsidiaries.
+        from app.integrations.providers.netsuite import (
+            validate_connection as netsuite_validate,
+        )
+
+        ok, message = await netsuite_validate(token)
+        return {"status": "ok" if ok else "error", "message": message}
     elif provider == "ashby":
         # Ashby uses HTTP Basic auth (the key as username) and POST-only RPC
         # endpoints. apiKey.info names the key and its permissions; a key that
@@ -857,6 +891,12 @@ async def test_provider_connectivity(
         from app.integrations.providers.ashby import validate_connection as ashby_validate
 
         ok, message = await ashby_validate(token)
+        return {"status": "ok" if ok else "error", "message": message}
+    elif provider == "quotapath":
+        # A read of the users list through the provider's own client.
+        from app.integrations.providers.quotapath import validate_connection as quotapath_validate
+
+        ok, message = await quotapath_validate(token or "")
         return {"status": "ok" if ok else "error", "message": message}
     elif provider == "wordsmith":
         # GET /me through the provider's own client: the region host, the

@@ -56,6 +56,21 @@ export function automationCount(
 }
 
 /**
+ * The automations the About tile shows (UX round 1 B2 on #1092): the health's
+ * own count, the fleet automations the header pill, the Fleets list and the
+ * CTEM loop setup read (`fleet_views.fleet_automation_counts`), so one fleet
+ * shows one figure everywhere; the members' assignments only while the health
+ * carries no count.
+ */
+export function shownAutomationCount(
+  health: (StatusHealth & { automations?: { enabled: number; total: number } }) | null | undefined,
+  assignments: readonly Pick<Assignment, "agent_id" | "enabled">[] | null | undefined,
+): AutomationCount | null {
+  if (health?.automations) return { on: health.automations.enabled, total: health.automations.total };
+  return automationCount(health, assignments);
+}
+
+/**
  * The status from the fleet's automations: none, or none on and none ever ran,
  * is Not set up; none on after a run is Paused; some on is Partially on; every
  * one on is On. `null` while the count is unknown (still loading, refused).

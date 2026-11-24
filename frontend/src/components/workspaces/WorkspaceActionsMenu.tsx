@@ -28,6 +28,7 @@
  * open (window focus, a colleague's change) would move that baseline, and
  * `Save` would write the stale draft over the change.
  */
+import { workspacePath } from "@/lib/task-routes";
 import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -150,7 +151,7 @@ export function WorkspaceActionsMenu({
             id: "open-workspace",
             label: t_i18n("Open workspace"),
             icon: FolderKanban,
-            onSelect: () => navigate(`/workspaces/${workspace.id}`),
+            onSelect: () => navigate(workspacePath(workspace.id)),
           },
         ]
       : []),

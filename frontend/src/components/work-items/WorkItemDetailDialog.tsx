@@ -44,6 +44,7 @@ import {
   Zap,
 } from "lucide-react";
 import { ChatMarkdown } from "@/components/chat/ChatMarkdown";
+import { WorkItemActivity } from "@/components/work-items/WorkItemActivity";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CopyIconButton } from "@/components/ui/copy-icon-button";
@@ -88,6 +89,7 @@ import {
   blockedReason,
   blockedWithoutReason,
   pendingBlockedRefs,
+  refReleaseSentences,
   canClose,
   offersMarkDone,
   cancelledBlockers,
@@ -138,7 +140,7 @@ function InboxLine({ inbox }: { inbox: WorkItemInboxRef }) {
   const Icon = inbox.kind === "flow" ? Workflow : Zap;
   const name = inbox.accessible && inbox.id ? (
     <Link
-      to={inbox.kind === "flow" ? `/flows/${inbox.id}/builder` : `/assignments/${inbox.id}`}
+      to={inbox.kind === "flow" ? `/flows/library/${inbox.id}` : `/agents/assignments/${inbox.id}`}
       className="text-accent hover:underline"
     >
       {inbox.name}
@@ -179,7 +181,7 @@ function WhoActs({ item, context }: { item: WorkItem; context: WorkItemContext }
     item.status === "blocked" && pickup.dispatch_attempts >= pickup.max_dispatch_attempts && pickup.dispatch_attempts > 0;
   const pullRequests = pullRequestsOf(item.payload);
   // The badge counts what the "Waits for" list shows.
-  const listedBlockers = listedBlockersOf(item);
+  const listedBlockers = item.status === "blocked" ? listedBlockersOf(item) : [];
   return (
     <Section icon={Zap} title={t_i18n("Who acts on it")}>
       <Field label={t_i18n("Owner agent")}>
@@ -237,6 +239,8 @@ function WhoActs({ item, context }: { item: WorkItem; context: WorkItemContext }
           pickup.state === "automatic" ||
           pickup.state === "waiting_until_due" ||
           pickup.state === "blocked_on_items" ||
+          pickup.state === "waiting_for_refs" ||
+          pickup.state === "waiting_for_person" ||
           pickup.state === "waiting_for_ci"
             ? "border-feedback-success-primary/30 bg-feedback-success-primary/5"
             : "border-feedback-alert-primary/30 bg-feedback-alert-primary/5",
@@ -255,6 +259,12 @@ function WhoActs({ item, context }: { item: WorkItem; context: WorkItemContext }
             date: pickup.available_at ? formatShortDateTime(pickup.available_at) : "",
             count: waitingPullRequestCount(pickup),
           })}
+          {pickup.state === "waiting_for_refs" &&
+            refReleaseSentences(pendingBlockedRefs(item)).map(({ kind, text }) => (
+              <span key={kind} className="block" data-testid="work-item-ref-release" data-kind={kind}>
+                {t_i18n(text)}
+              </span>
+            ))}
           {pickup.state === "waiting_for_ci" && item.status === "blocked" && (
             <>
               {" "}
@@ -271,14 +281,15 @@ function WhoActs({ item, context }: { item: WorkItem; context: WorkItemContext }
           <WorkItemPullRequestChips pullRequests={pullRequests} />
         </Field>
       )}
-      {pickup.state === "blocked_on_items" && listedBlockers.length ? (
+      {/* Every unfinished blocker item, whatever the pickup state (a person's decision too). */}
+      {listedBlockers.length ? (
         <Field label={t_i18n("Waits for")}>
           <WorkItemBlockers blockers={listedBlockers} />
         </Field>
       ) : null}
       {/* The pull requests, issues, reason or person it waits for. */}
       {item.status === "blocked" && (pendingBlockedRefs(item).length || item.blocked_reason?.trim() || item.needs_human) ? (
-        <Field label={pickup.state === "blocked_on_items" && listedBlockers.length ? t_i18n("Also waits for") : t_i18n("Waits for")}>
+        <Field label={listedBlockers.length ? t_i18n("Also waits for") : t_i18n("Waits for")}>
           <WorkItemBlockedWhy refs={pendingBlockedRefs(item)} reason={item.blocked_reason} needsHuman={!!item.needs_human} />
         </Field>
       ) : null}
@@ -440,7 +451,7 @@ function Timeline({ item }: { item: WorkItem }) {
   );
 }
 
-function Body({ item, actions }: { item: WorkItem; actions: WorkItemActions }) {
+function Body({ item, actions, onClose }: { item: WorkItem; actions: WorkItemActions; onClose: () => void }) {
   const { t_i18n } = useFormatter();
   const context = item.context;
   const scheduled = isScheduledItem(item) ? item : null;
@@ -449,8 +460,10 @@ function Body({ item, actions }: { item: WorkItem; actions: WorkItemActions }) {
   // An item waiting for the reader leads with its decision; the run notes
   // below it are history, folded until asked for.
   const deciding = !scheduled && waitsForAnswer(item);
+  // A bare #N and a commit SHA link to the one repository the item's PRs live in.
+  const repos = [...new Set(pullRequestsOf(item.payload).map((pr) => pr.repo))];
   const description = item.description ? (
-    <ChatMarkdown content={item.description} className="chat-markdown content-base" remoteImages={false} />
+    <WorkItemActivity description={item.description} runs={item.note_runs} repo={repos.length === 1 ? repos[0] : null} />
   ) : (
     <p className="text-default-secondary">{t_i18n("No description.")}</p>
   );
@@ -489,10 +502,10 @@ function Body({ item, actions }: { item: WorkItem; actions: WorkItemActions }) {
       </DialogHeader>
 
       <div className="max-h-[62vh] space-y-5 overflow-y-auto pr-1" data-testid="work-item-detail">
-        {deciding && <WorkItemDecisionCard item={item} canAnswer={!!actions.answer} />}
+        {deciding && <WorkItemDecisionCard item={item} canAnswer={!!actions.answer} onAnswered={onClose} />}
         {!deciding && !scheduled && offersAskTheAgent(item) && (
           <section className="rounded-sm border border-elevation-subtle p-3" data-testid="work-item-ask-agent-section">
-            <WorkItemAskAgent item={item} bordered={false} />
+            <WorkItemAskAgent item={item} bordered={false} onDone={onClose} />
           </section>
         )}
         <Facts item={item} context={context} />
@@ -610,7 +623,7 @@ export function WorkItemDetailDialog({
             <Skeleton className="h-24 w-full" />
           </div>
         ) : item ? (
-          <Body item={item} actions={actionsFor(item)} />
+          <Body item={item} actions={actionsFor(item)} onClose={onClose} />
         ) : (
           <EmptyState
             icon={ListTodo}

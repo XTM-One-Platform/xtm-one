@@ -1579,6 +1579,140 @@ async def test_get_full_task_result_hands_over_a_failed_tasks_partial_files():
         )
 
 
+async def test_get_full_task_result_pages_a_long_answer_and_still_hands_over_its_files():
+    """#1394: a long answer is read by window, its files ride on every read."""
+    ctx = FileContext()
+    handlers = _handlers(ctx)
+    ref = _ref("scores.csv")
+    answer = "A" * 60_000 + "B" * 60_000
+    payload = _completed(answer, [ref.file_id])
+    tid = str(uuid.uuid4())
+
+    with (
+        patch.object(sub_agent, "get_task_result", new=AsyncMock(return_value=payload)),
+        patch(
+            "app.services.builtin_tools.handover.load_result_file_refs",
+            new=AsyncMock(return_value=[ref]),
+        ),
+    ):
+        first = await handlers["get_full_task_result"](tid)
+        last = await handlers["get_full_task_result"](tid, offset=100_000)
+
+    assert first.startswith("[Task answer: characters 0 to 50,000 of 120,000")
+    assert "offset=50000" in first
+    assert "this is the end." in last
+    assert last.split("\n\n", 1)[1].startswith("B" * 20_000)
+    assert f'file_id="{ref.file_id}"' in first and f'file_id="{ref.file_id}"' in last
+    assert ctx.get(ref.file_id) is ref
+
+
+async def test_get_full_task_result_failed_task_ignores_the_window():
+    """A failed task's error and partial files come back whatever offset is
+    passed: the window applies to a completed answer only."""
+    ctx = FileContext()
+    handlers = _handlers(ctx)
+    partial = _ref("q1.csv")
+    payload = {
+        "task_id": str(uuid.uuid4()),
+        "status": "failed",
+        "result": None,
+        "error": "Sub-agent task timed out after 900s",
+        "result_file_ids": [partial.file_id],
+    }
+    with (
+        patch.object(sub_agent, "get_task_result", new=AsyncMock(return_value=payload)),
+        patch(
+            "app.services.builtin_tools.handover.load_result_file_refs",
+            new=AsyncMock(return_value=[partial]),
+        ),
+    ):
+        full = await handlers["get_full_task_result"](str(uuid.uuid4()), offset=500, max_chars=10)
+
+    assert full.startswith("Task failed: Sub-agent task timed out after 900s")
+    assert f'file_id="{partial.file_id}"' in full
+
+
+def test_stored_answer_keeps_a_long_answer_whole():
+    from app.services.sub_agent_result_text import stored_answer
+
+    answer = "x" * 120_000
+    assert stored_answer(answer) == answer
+    assert stored_answer("short") == "short"
+    assert stored_answer(None) == ""
+
+
+def test_stored_answer_marks_the_safety_cap():
+    from app.services.sub_agent_result_text import STORED_ANSWER_CHARS, stored_answer
+
+    stored = stored_answer("y" * (STORED_ANSWER_CHARS + 10))
+    assert len(stored) == STORED_ANSWER_CHARS
+    assert stored.endswith(
+        f"[truncated at storage: the answer was {STORED_ANSWER_CHARS + 10:,} "
+        f"characters, the first {STORED_ANSWER_CHARS:,} are kept]"
+    )
+
+
+def test_clipped_names_the_cut_and_the_read_call():
+    from app.services.sub_agent_result_text import clipped
+
+    assert clipped("short", 100, read_call="x()") == "short"
+    out = clipped("z" * 300, 100, read_call='get_full_task_result(task_id="t")')
+    assert out.startswith("z" * 100)
+    assert out.endswith(
+        '[truncated: 100 of 300 characters shown; read the rest with get_full_task_result(task_id="t")]'
+    )
+
+
+def test_answer_window_bounds():
+    from app.services.sub_agent_result_text import MAX_WINDOW_CHARS, answer_window
+
+    whole = answer_window("abc")
+    assert whole.is_whole and whole.text == "abc"
+    past = answer_window("abc", offset=10)
+    assert past.text == "" and past.offset == 3 and past.next_offset is None
+    negative = answer_window("abc", offset=-5, max_chars=2)
+    assert negative.text == "ab" and negative.next_offset == 2
+    capped = answer_window("q" * (MAX_WINDOW_CHARS + 5), max_chars=10**9)
+    assert len(capped.text) == MAX_WINDOW_CHARS
+
+
+async def test_complete_before_turn_stores_the_whole_answer_and_marks_the_run_summary():
+    """The before-turn completion keeps the whole answer on the task; the run
+    summary keeps a head that says it was cut (#1394)."""
+    task = SimpleNamespace(
+        status="pending",
+        result=None,
+        completed_at=None,
+        conversation_id=None,
+        metadata_json={},
+    )
+    answer = "S" * 120_000
+    update_run = AsyncMock()
+    db = SimpleNamespace(commit=AsyncMock())
+    with (
+        patch.object(sub_agent, "update_assignment_run", new=update_run),
+        patch.object(sub_agent, "_update_task_delegation", new=AsyncMock()),
+        patch.object(sub_agent, "publish_task_event", new=AsyncMock()),
+        patch.object(sub_agent, "_record_no_turn_ledger", new=lambda _t: None),
+        patch.object(sub_agent, "_schedule_parent_wake_if_needed", new=lambda *a, **k: None),
+    ):
+        await sub_agent._complete_task_before_turn(
+            db,
+            task,
+            task_id="tid",
+            user_id=str(uuid.uuid4()),
+            assignment_run_id=str(uuid.uuid4()),
+            answer=answer,
+            agent_name="Worker",
+        )
+
+    assert task.result == answer
+    summary = update_run.await_args.kwargs["result_summary"]
+    assert summary.startswith("S" * 10_000)
+    assert "[truncated: 10,000 of 120,000 characters shown" in summary
+    assert 'get_full_task_result(task_id="tid")' in summary
+
+
 @pytest.mark.asyncio
 async def test_record_result_files_reads_a_non_mapping_metadata_as_empty():
     """A JSON column can hold any shape; the terminal write must not fail the

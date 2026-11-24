@@ -84,7 +84,7 @@ test.describe.serial('Fleets — edit a fleet from its page', () => {
   });
 
   test('the settings side panel renames the fleet', async ({ page }) => {
-    await page.goto(`/flows/fleets/${fleetId}`);
+    await page.goto(`/fleets/${fleetId}`);
     await expect(page.getByRole('heading', { level: 1, name: FLEET_NAME })).toBeVisible();
 
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
@@ -106,7 +106,7 @@ test.describe.serial('Fleets — edit a fleet from its page', () => {
   });
 
   test('the members panel adds an agent with no home fleet', async ({ page }) => {
-    await page.goto(`/flows/fleets/${fleetId}/graph`);
+    await page.goto(`/fleets/${fleetId}/graph`);
     const picker = page.getByRole('combobox', { name: 'Add a member' });
     await picker.click();
     await picker.fill(NEWCOMER);
@@ -117,7 +117,7 @@ test.describe.serial('Fleets — edit a fleet from its page', () => {
   });
 
   test('the row menu re-parents a member under another', async ({ page }) => {
-    await page.goto(`/flows/fleets/${fleetId}/graph`);
+    await page.goto(`/fleets/${fleetId}/graph`);
     await page.getByRole('button', { name: `Actions for ${ANALYST}` }).click();
     await page.getByRole('menuitem', { name: /Change parent/ }).click();
 
@@ -138,7 +138,7 @@ test.describe.serial('Fleets — edit a fleet from its page', () => {
   });
 
   test('the row menu removes a member after a confirmation, the agent kept', async ({ page }) => {
-    await page.goto(`/flows/fleets/${fleetId}/graph`);
+    await page.goto(`/fleets/${fleetId}/graph`);
     await page.getByRole('button', { name: `Actions for ${NEWCOMER}` }).click();
     await page.getByRole('menuitem', { name: 'Remove from the fleet' }).click();
     // Removing asks first, as from the graph's node menu.

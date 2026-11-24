@@ -63,6 +63,11 @@ MAX_TOOLS = 10
 MAX_NEGATIVE_RATINGS = 10
 COMMENT_CHARS = 400
 MAX_FAILED_TRACE_IDS = 10
+#: Run statuses of a run that ended without its loop ever starting (#1416).
+_ENDED_UNSTARTED = ("failed", "cancelled")
+#: Causes of a run stopped in the queue by its deadline: ``deadline_before_start``.
+_DEADLINE_CAUSES = frozenset({"engine_deadline_exceeded", "engine_never_claimed"})
+_DEADLINE_PREFIX = "deadline exceeded"
 #: The percentile figures served, out of ``PERCENTILE_FIGURES``.
 _SERVED_FIGURES = ("wall_ms", "input_tokens", "output_tokens", "total_cost", "tool_calls", "tool_errors", "iterations")
 
@@ -105,8 +110,73 @@ async def _list_window(
     return [row[0] for row in rows], total
 
 
+async def _list_unstarted(
+    db: AsyncSession, agent_id: uuid.UUID, start: datetime, end: datetime, traces: list[Any]
+) -> tuple[list[Any], int]:
+    """The agent's runs created in the window that ended failed or cancelled before their loop started (#1416).
+
+    Such a run (a deadline reached in the queue, a refusal before setup) writes
+    no trace, so the trace listing never counts it. It is read from the run
+    records, for the same agent and window: ``started_at`` and ``llm_trace_id``
+    unset, and not named by a listed trace (``assignment_run_id``), so a run
+    with both a record and a trace counts once. Bounded like the traces.
+    """
+    from sqlalchemy import func
+
+    from app.models.assignment import AssignmentRun
+
+    traced = {t.assignment_run_id for t in traces if getattr(t, "assignment_run_id", None) is not None}
+    conditions = [
+        AssignmentRun.agent_id == agent_id,
+        AssignmentRun.status.in_(_ENDED_UNSTARTED),
+        AssignmentRun.started_at.is_(None),
+        AssignmentRun.llm_trace_id.is_(None),
+        AssignmentRun.created_at >= start,
+        AssignmentRun.created_at < end,
+    ]
+    if traced:
+        conditions.append(AssignmentRun.id.not_in([uuid.UUID(str(r)) for r in traced]))
+    total = int(await db.scalar(select(func.count()).select_from(AssignmentRun).where(*conditions)) or 0)
+    if not total:
+        return [], 0
+    rows = (
+        await db.execute(
+            select(
+                AssignmentRun.id,
+                AssignmentRun.user_id,
+                AssignmentRun.failure_cause,
+                func.substr(AssignmentRun.error, 1, len(_DEADLINE_PREFIX)).label("error_head"),
+            )
+            .where(*conditions)
+            .order_by(AssignmentRun.created_at.desc())
+            .limit(SAMPLE_RUNS)
+        )
+    ).all()
+    return list(rows), total
+
+
+def unstarted_cause(run: Any) -> str:
+    """``deadline_before_start`` for a run its deadline stopped in the queue, else ``other``."""
+    if (getattr(run, "failure_cause", None) or "") in _DEADLINE_CAUSES:
+        return "deadline_before_start"
+    if (getattr(run, "error_head", None) or "").lower().startswith(_DEADLINE_PREFIX):
+        return "deadline_before_start"
+    return "other"
+
+
 def _failed(trace: Any) -> bool:
     return (getattr(trace, "status", None) or "") == "error"
+
+
+def _stopped_unfinished(trace: Any, unfinished: frozenset[str]) -> bool:
+    """A run that ended without an error but stopped before its task was done
+    (deadline, iteration cap, budget...): the stop reason the run wrote on its
+    trace metadata (``agent_stop_reason``). Counted apart from clean successes."""
+    if _failed(trace):
+        return False
+    meta = getattr(trace, "metadata_json", None)
+    reason = meta.get("agent_stop_reason") if isinstance(meta, dict) else None
+    return isinstance(reason, str) and reason in unfinished
 
 
 def _rate(part: int, whole: int) -> float | None:
@@ -118,11 +188,26 @@ def _mean(values: Iterable[float]) -> float | None:
     return round(sum(items) / len(items), 6) if items else None
 
 
-def summarize_window(traces: list[Any], total: int) -> dict[str, Any]:
-    """The figures of one window from its listed traces (pure: unit-tested)."""
-    runs = len(traces)
+def summarize_window(
+    traces: list[Any], total: int, unstarted: list[Any] | None = None, unstarted_total: int | None = None
+) -> dict[str, Any]:
+    """The figures of one window from its listed traces and its runs failed before start (pure: unit-tested).
+
+    *unstarted* are the window's runs that ended failed or cancelled before
+    their loop started (:func:`_list_unstarted`), *unstarted_total* their count
+    when the listing is cut: they count in ``runs`` and ``failed`` and are
+    also served apart (``failed_before_start``, #1416).
+    """
+    unstarted = list(unstarted or [])
+    unstarted_total = max(int(unstarted_total if unstarted_total is not None else len(unstarted)), len(unstarted))
+    runs = len(traces) + len(unstarted)
     failed = [t for t in traces if _failed(t)]
-    causes = Counter((getattr(t, "failure_cause", None) or "unrecorded") for t in failed)
+    from app.tools.agent_loop import UNFINISHED_STOP_REASONS
+
+    partial = [t for t in traces if _stopped_unfinished(t, UNFINISHED_STOP_REASONS)]
+    partial_reasons = Counter(str(t.metadata_json["agent_stop_reason"]) for t in partial)
+    causes = Counter((getattr(t, "failure_cause", None) or "unrecorded") for t in [*failed, *unstarted])
+    before_start = Counter(unstarted_cause(r) for r in unstarted)
     rollups = [r for r in (stored_rollup(getattr(t, "metadata_json", None)) for t in traces) if r]
     tools: dict[str, dict[str, int]] = {}
     for rollup in rollups:
@@ -139,11 +224,19 @@ def summarize_window(traces: list[Any], total: int) -> dict[str, Any]:
     return {
         "runs": runs,
         # The store's count of the window: above ``runs`` when the sample is cut.
-        "runs_in_window": total,
-        "sampled": total > runs,
-        "failed": len(failed),
-        "failure_rate_pct": _rate(len(failed), runs),
+        "runs_in_window": total + unstarted_total,
+        "sampled": total + unstarted_total > runs,
+        "failed": len(failed) + len(unstarted),
+        "failure_rate_pct": _rate(len(failed) + len(unstarted), runs),
+        # Runs that ended failed or cancelled before their loop started: no trace, counted above too.
+        "failed_before_start": unstarted_total,
+        "failed_before_start_causes": dict(before_start.most_common()),
         "failure_causes": dict(causes.most_common()),
+        # Ended without an error but stopped before the task was done: not a
+        # clean success (additive keys, #1420).
+        "partial": len(partial),
+        "partial_rate_pct": _rate(len(partial), runs),
+        "partial_stop_reasons": dict(partial_reasons.most_common()),
         "tools": [
             {
                 "tool": name,
@@ -165,8 +258,10 @@ async def window_figures(
 ) -> dict[str, Any]:
     """The figures of the agent's last *days* alone, what sizes an experiment: no rating, no content read."""
     now = datetime.now(UTC)
-    rows, total = await _list_window(db, reader, agent_id, now - timedelta(days=days), now)
-    return summarize_window(rows, total)
+    start = now - timedelta(days=days)
+    rows, total = await _list_window(db, reader, agent_id, start, now)
+    unstarted, unstarted_total = await _list_unstarted(db, agent_id, start, now, rows)
+    return summarize_window(rows, total, unstarted, unstarted_total)
 
 
 def _drift(current: float | None, previous: float | None) -> float | None:
@@ -252,11 +347,17 @@ async def quality_signals(
     start = now - timedelta(days=days)
     previous_start = start - timedelta(days=days)
     agent = access.agent
+    if agent is None:
+        raise ValueError("Quality signals read one agent's access.")
 
     current_rows, current_total = await _list_window(db, reader, agent.id, start, now)
     previous_rows, previous_total = await _list_window(db, reader, agent.id, previous_start, start)
-    current = summarize_window(current_rows, current_total)
-    previous = summarize_window(previous_rows, previous_total)
+    current_unstarted, current_unstarted_total = await _list_unstarted(db, agent.id, start, now, current_rows)
+    previous_unstarted, previous_unstarted_total = await _list_unstarted(
+        db, agent.id, previous_start, start, previous_rows
+    )
+    current = summarize_window(current_rows, current_total, current_unstarted, current_unstarted_total)
+    previous = summarize_window(previous_rows, previous_total, previous_unstarted, previous_unstarted_total)
 
     result: dict[str, Any] = {
         "agent": {"id": str(agent.id), "name": agent.name},
@@ -264,7 +365,15 @@ async def quality_signals(
         "current": current,
         "previous": {
             key: previous[key]
-            for key in ("runs", "runs_in_window", "failed", "failure_rate_pct", "cost_per_run", "tokens_per_run")
+            for key in (
+                "runs",
+                "runs_in_window",
+                "failed",
+                "failure_rate_pct",
+                "failed_before_start",
+                "cost_per_run",
+                "tokens_per_run",
+            )
         },
         "drift_pct": {
             "cost_per_run": _drift(current["cost_per_run"], previous["cost_per_run"]),
@@ -276,6 +385,10 @@ async def quality_signals(
         opted_out = {str(u) for u in reader.opted_out_user_ids}
         result["failed_trace_ids"] = [
             str(t.id) for t in current_rows if _failed(t) and str(getattr(t, "user_id", None) or "") not in opted_out
+        ][:MAX_FAILED_TRACE_IDS]
+        # Run ids, beside the trace ids: the runs failed before start have no trace (#1416).
+        result["failed_before_start_run_ids"] = [
+            str(r.id) for r in current_unstarted if str(getattr(r, "user_id", None) or "") not in opted_out
         ][:MAX_FAILED_TRACE_IDS]
     try:
         result["feedback"] = await _feedback(db, reader, access, days)

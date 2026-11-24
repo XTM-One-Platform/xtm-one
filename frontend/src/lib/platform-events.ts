@@ -50,6 +50,7 @@ const PLATFORM_EVENT_LABELS = {
   "work_item.completed": "Work item completed",
   "work_item.released": "Work item released",
   "work_item.release_exhausted": "Work item no longer dispatched",
+  "work_item.past_due": "Work item past due",
   "work_item.needs_human": "Work item waits for a person",
   "work_item.wait_cycle": "Work items wait on each other",
   "run.completed": "Run completed",
@@ -71,6 +72,15 @@ const PLATFORM_EVENT_LABELS = {
   "agent_account.owner_sent": "Mailbox owner sent an email",
   "platform.release.deployed": "New release deployed",
   "integration.version.changed": "Connected platform upgraded",
+  "ctem_case.opened": "CTEM case opened",
+  "ctem_case.reopened": "CTEM case reopened",
+  "ctem_case.resolved": "CTEM case resolved",
+  "ctem_case.sla_breached": "CTEM case past its SLA",
+  "ctem_case.stalled": "CTEM case waiting on nobody",
+  "ctem_case.validation_finished": "CTEM case validation finished",
+  "ctem_case.retest_requested": "CTEM case re-test requested",
+  "ctem_signal.recorded": "CTEM signal recorded",
+  "ctem_signal.triaged": "CTEM signal triaged",
   "platform.default_model_route.changed": "Default model route changed",
   "timer.due": "Timer due",
 } as const;
@@ -161,12 +171,21 @@ export function platformTriggerEnded(
   return watch === "fired" || watch === "expired" || platformDeadlineState(config.expires_at, now) === "ended";
 }
 
+/** The scopes a platform event trigger takes (`services/platform_events`): own (the default), fleet or all. */
+export type PlatformEventScope = "own" | "fleet" | "all";
+
+/** A stored or picked scope read back as one the editor holds; anything unknown is the default, own. */
+export function platformEventScope(value: unknown): PlatformEventScope {
+  return value === "all" || value === "fleet" ? value : "own";
+}
+
 /** What the platform event editor holds while the trigger is edited. */
 export interface PlatformEventDraft {
   /** The events subscribed to: the editor picks one, a list saved by the agent builder is kept until changed. */
   events: string[];
   rows: PlatformFilterRow[];
-  scope: "own" | "all";
+  /** "own" the agent's objects, "fleet" those of its home fleet's members, "all" every one (an administrator's assignment). */
+  scope: PlatformEventScope;
   once: boolean;
   /** The subscription's deadline (an ISO instant with its offset), optional: past it the trigger no longer starts a run. */
   expiresAt?: string;
@@ -179,7 +198,7 @@ export function platformEventDraft(config: TriggerConfig | undefined): PlatformE
   return {
     events,
     rows: platformFilterRows(config?.filter as Record<string, unknown> | undefined),
-    scope: config?.scope === "all" ? "all" : "own",
+    scope: platformEventScope(config?.scope),
     once: config?.once === true,
     ...(typeof config?.expires_at === "string" && config.expires_at ? { expiresAt: config.expires_at } : {}),
   };
@@ -193,7 +212,7 @@ export function platformEventConfig(draft: PlatformEventDraft): TriggerConfig {
   // A platform event filter names payload fields, not the integration filter keys TriggerConfig types.
   const filter = platformFilterFromRows(draft.rows);
   if (filter) config.filter = filter as unknown as TriggerConfig["filter"];
-  if (draft.scope === "all") config.scope = "all";
+  if (draft.scope !== "own") config.scope = draft.scope;
   if (draft.once) config.once = true;
   if (draft.expiresAt) config.expires_at = draft.expiresAt;
   return config;

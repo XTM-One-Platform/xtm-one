@@ -21,6 +21,7 @@ import { PageSkeleton } from "@/components/ui/skeleton";
 import { AiLockedFooter, EditionBadge } from "@/components/ui/enterprise-upsell";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SampleBadge } from "@/components/ui/sample-badge";
+import { ToneBadge } from "@/components/ui/tone-badge";
 import { cn, formatCompactNumber, safeExternalUrl, saveBlobAs } from "@/lib/utils";
 import { csvBlob } from "@/lib/csv";
 import { BUTTON_ROLE_FOCUS_RING, buttonRoleProps } from "@/lib/button-role";
@@ -54,6 +55,7 @@ import { MiniTrend, PostureOrbit, signedDelta } from "./ctem/ctem-viz";
 import { CtemStatRow, type CtemHeaderStat } from "./ctem/CtemPageHeader";
 import { CtemWidgetHeader } from "./ctem/CtemWidgetHeader";
 import { ChooseFleetsDialog } from "@/components/fleets/ChooseFleetsDialog";
+import { CtemLoopSetupEntry, useDashboardSetupEntry } from "@/components/fleets/CtemLoopSetupEntry";
 import { CompanyContextNotice, ContextScoredLine } from "./ctem/CompanyContextNotice";
 import { useFleets } from "@/hooks/api/useFleetApi";
 import { useOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
@@ -84,14 +86,16 @@ import { PrioritizationFunnelCard } from "./ctem/PrioritizationFunnel";
 import { CasesCountsCard } from "./ctem/CasesCountsCard";
 import { SAMPLE_FUNNEL, funnelDisplay } from "./ctem/prioritization-funnel";
 import { ctemKpiOpenCtiHref } from "./ctem/opencti-link";
-import { ASK_AGENT_ROW_ID, type ActNowRow, type ActNowSource } from "./ctem/act-now";
+import { ACT_NOW_PRIORITY, ASK_AGENT_ROW_ID, actNowFleetWork, type ActNowRow, type ActNowSource } from "./ctem/act-now";
 import { lockedKpiFor, type KpiDef } from "./ctem/locked-kpis";
 import { deterministicNextActions, EXPECTATION_REASONS, EXPECTATION_REASON_FALLBACK, rankNextActions } from "./ctem/next-actions";
 import { postureCsv, postureCsvFilename } from "./ctem/posture-export";
 import { LifecycleHeader } from "./ctem/LifecycleHeader";
 import { ActivityFeed } from "./ctem/ActivityFeed";
 import { ActivityRow } from "./ctem/ActivityRow";
-import { deterministicActivity, feedCapacity } from "./ctem/activity-feed";
+import { deterministicActivity, feedCapacity, mergeActivity, signalActivity } from "./ctem/activity-feed";
+import { useRecentCtemSignals, type CtemSignalState } from "@/hooks/api/useCtemSignalsApi";
+import { signalsHref } from "./ctem/loop/signals-route";
 import { CoverageMatrixCard } from "./ctem/CoverageMatrixCard";
 import { ExposureStatsCard } from "./ctem/ExposureStatsCard";
 import { ValueBandCard } from "./ctem/ValueBandCard";
@@ -104,6 +108,7 @@ import {
 } from "./ctem/dashboard-context";
 import { coverageMatrix, exposureStats } from "@/lib/ctem-coverage-stats";
 import { useCtemFleetActivity } from "@/hooks/api/useCtemFleetActivity";
+import { useCtemCases, useCtemCasesOverview } from "@/hooks/api/useCtemCasesApi";
 import { inviteVisible } from "@/lib/fleet-activity";
 import { formatTimeAgo } from "@/lib/relative-time";
 
@@ -494,6 +499,13 @@ export default function CtemCommandCenter({
   const [fleetChoiceOverride, setFleetChoiceOverride] = useState<string[] | null | undefined>(undefined);
   const chosenFleetIds = fleetChoiceOverride !== undefined ? fleetChoiceOverride : user?.ctem_dashboard_fleet_ids ?? null;
   const fleetActivity = useCtemFleetActivity({ isAdmin, licensed: configLoaded && agenticLicensed, chosenIds: chosenFleetIds });
+  // The cases the reader sees, by id: a timeline row of a case run names its case (#915).
+  // Same query as the Cases card and board (shared cache), never a request per row.
+  const { data: casesRead } = useCtemCases({ throwOnError: false });
+  const casesById = useMemo(
+    () => Object.fromEntries((casesRead?.cases ?? []).map((c) => [c.id, c])),
+    [casesRead],
+  );
   const { data: allFleets } = useFleets({ optional: true, enabled: configLoaded && agenticLicensed });
   const [chooseFleetsOpen, setChooseFleetsOpen] = useState(false);
   const saveFleetChoice = useCallback(
@@ -572,7 +584,28 @@ export default function CtemCommandCenter({
   const latestRuns = useMemo(() => (recentRuns ?? []).slice(0, 6), [recentRuns]);
   // D3-4 (#9567): with no agent run, Live activity lists the deterministic
   // events the page already holds (syncs, registrations, health, validation).
-  const activityEvents = useMemo(() => deterministicActivity(posture, registrations), [posture, registrations]);
+  const deterministicEvents = useMemo(() => deterministicActivity(posture, registrations), [posture, registrations]);
+  // The CTEM loop is never hidden (#838, dev-docs/ctem-loop-visibility.md):
+  // the newest signals join the feed, refreshed by the activity stream frame
+  // ctem_signal_update, and open their loop trace.
+  const { data: recentSignals } = useRecentCtemSignals();
+  const signalEvents = useMemo(() => signalActivity(recentSignals?.signals), [recentSignals]);
+  const activityEvents = useMemo(() => mergeActivity(signalEvents, deterministicEvents), [signalEvents, deterministicEvents]);
+  // The signals of the loop are a page (#1263): a feed row opens its loop trace there.
+  const openSignalTrace = useCallback((signalId: string) => navigate(signalsHref({ signal: signalId })), [navigate]);
+  // CTEM-01-UI: the signals counter of the lifecycle card opens the Signals
+  // page filtered on the state clicked.
+  const openSignalList = useCallback((state: CtemSignalState | null) => navigate(signalsHref({ state })), [navigate]);
+  const signalCounter = useMemo(
+    () => (recentSignals ? { counts: recentSignals.counts, onOpen: openSignalList } : null),
+    [recentSignals, openSignalList],
+  );
+  // The open cases of each stage (#1621): one footer line per lifecycle column, no read per column.
+  const { data: casesOverview } = useCtemCasesOverview();
+  const lifecycleCases = useMemo(
+    () => (casesOverview ? { phases: casesOverview.phases, acceptedRisk: casesOverview.counts.accepted_risk ?? 0 } : null),
+    [casesOverview],
+  );
   // Done for you (C2 V3): every deterministic event, its axis keeps the period's.
   const timelineEvents = useMemo(() => deterministicActivity(posture, registrations, 50), [posture, registrations]);
 
@@ -598,6 +631,12 @@ export default function CtemCommandCenter({
   const dismissFleetInvite = useCallback(
     () => updateProfile.mutate({ ctem_fleet_invite_dismissed: { fleets: ctemFleetSlugs, modules: connectedLogos } }),
     [updateProfile, ctemFleetSlugs, connectedLogos],
+  );
+  // "Set up the CTEM loop" is a nudge (Sam, 23 Nov 2026): gone once the CTEM
+  // loop fleet or any fleet of the page has an automation on, or once the
+  // person closed it; not drawn while that is loading.
+  const setupEntry = useDashboardSetupEntry(
+    fleetActivity.isLoading || !configLoaded ? null : fleetActivity.tiles.map((t) => t.automationsOn),
   );
   // Every CTEM fleet off and the invitation closed: the Fleet activity card is
   // one line, so it is drawn at that height and the widgets below move up (UX
@@ -743,7 +782,7 @@ export default function CtemCommandCenter({
   const postureChange = periodChange(posture?.posture_score ?? null, compositeHistory);
   // The hero's top risk tile (S2b of #11547): the known-exploited count per
   // recorded day, read from the same key as the figure shown (tailored to the
-  // tech stack, or every KEV), so the line never mixes the two populations.
+  // software inventory, or every KEV), so the line never mixes the two populations.
   const kevHistoryKey = posture?.headline?.kev_tailored_count != null ? "kev_tailored_count" : "kev_count";
   const kevHistory = histPoints.map((p) => p.stage_metrics?.prioritization?.[kevHistoryKey] ?? null);
   const h = posture?.headline;
@@ -823,7 +862,7 @@ export default function CtemCommandCenter({
     });
   });
 
-  // Known-exploited restricted to the organization profile's tech stack (slice 2
+  // Known-exploited restricted to the organization profile's software inventory (slice 2
   // of #11213): when the backend could match the stack, the row counts only
   // those, says which products it found, and is tailored (no generic notice).
   const kevTailored = octiPresent ? h?.kev_tailored_count ?? null : null;
@@ -837,7 +876,7 @@ export default function CtemCommandCenter({
       id: "triage-kev", source: "module", stage: "prioritization", icon: ShieldAlert, tone: "text-feedback-error-primary",
       title: t_i18n("Triage {count, plural, one {{shown} known-exploited exposure} other {{shown} known-exploited exposures}}", { count: kevShown as number, shown: formatCompactNumber(kevShown as number) }),
       reason: kevTailored !== null && kevProducts.length > 0
-        ? t_i18n("Known-exploited and affects {products} in your tech stack", { products: intl.formatList(kevProducts, { type: "conjunction" }) })
+        ? t_i18n("Known-exploited and affects {products} in your software", { products: intl.formatList(kevProducts, { type: "conjunction" }) })
         : t_i18n("Actively exploited in the wild - remediate first (KEV SLA)"),
       tailored: kevTailored !== null,
       cta: "Triage",
@@ -924,7 +963,25 @@ export default function CtemCommandCenter({
   }
   // Act now: the posture rows and the setup; the queue leaves the briefing's
   // steps to the briefing widget and the chat to the hero (#10721).
-  const actNowBase: ActNowRow[] = [...recs, ...ruleRecs];
+  // A fleet working on a case (#915, CTEM-04-UI slice 3): one row per case
+  // with a run in flight, naming the member at work; it opens the case, where
+  // the run's steps are listed with the case events.
+  const fleetWorkRows: ActNowRow[] = actNowFleetWork(
+    fleetActivity.timeline,
+    Object.fromEntries(Object.values(casesById).map((c) => [c.id, c.title])),
+  ).map((work) => ({
+    id: `fleet-working-${work.caseId}`, source: "fleet", icon: Bot, tone: "text-feedback-info-primary",
+    title: t_i18n("{fleet} is working on {case}", { fleet: work.fleetName, case: work.caseTitle }),
+    reason: work.pending
+      ? t_i18n("Run queued, it starts shortly")
+      : work.agentName
+        ? t_i18n("Step in progress: {agent}", { agent: work.agentName })
+        : t_i18n("Step in progress"),
+    cta: "Open",
+    onAction: () => navigate(`/ctem/cases/${work.caseId}`, { state: { backTo: "/", backLabel: "Back to Command Center" } }),
+    priority: ACT_NOW_PRIORITY.fleet,
+  }));
+  const actNowBase: ActNowRow[] = [...recs, ...ruleRecs, ...fleetWorkRows];
   const briefingActions = briefingSteps.map((s) => s.action);
   const recommendations = [...recs, ...(briefingSteps.length === 0 ? ruleRecs : []), ...askRecs]
     .sort((a, b) => b.priority - a.priority)
@@ -1071,7 +1128,7 @@ export default function CtemCommandCenter({
           const postureBand = CTEM_BAND_CONFIG[posture?.posture_band ?? "unknown"] ?? CTEM_BAND_CONFIG.unknown;
           const orgBand = CTEM_BAND_CONFIG[qualitativePosture.band] ?? CTEM_BAND_CONFIG.unknown;
           const kevTrend = seriesChange(kevHistory);
-          const kevLabel = kevTailored !== null ? t_i18n("Known-exploited in your tech stack") : t_i18n("Known-exploited exposures");
+          const kevLabel = kevTailored !== null ? t_i18n("Known-exploited in your software") : t_i18n("Known-exploited exposures");
           const scoreCells: CtemHeaderStat[] = live
             ? [
                 {
@@ -1245,6 +1302,9 @@ export default function CtemCommandCenter({
                         <MessageSquare className="h-3.5 w-3.5" /> {t_i18n("Start chatting")}
                       </Button>
                     )}
+                    {/* The guided CTEM loop setup (#1087): administrators only, while no CTEM work runs;
+                        the CTEM loop fleet page keeps it reachable. */}
+                    {setupEntry.shown && <CtemLoopSetupEntry onDismiss={setupEntry.dismiss} />}
                     <span className="inline-flex items-center gap-1.5 text-[11px] text-default-secondary min-w-0">
                       <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent/70" />
                       <span className="truncate">
@@ -1451,14 +1511,9 @@ export default function CtemCommandCenter({
                       <div className="flex items-center gap-1.5 min-w-0">
                         <p className="content-base font-medium truncate">{r.title}</p>
                         {r.priorityLabel && CTEM_PRIORITY_CONFIG[r.priorityLabel] && (
-                          <span
-                            className={cn(
-                              "text-[9px] font-semibold uppercase tracking-wider rounded-sm px-1.5 py-0.5 shrink-0",
-                              CTEM_PRIORITY_CONFIG[r.priorityLabel].cls,
-                            )}
-                          >
-                            {CTEM_PRIORITY_CONFIG[r.priorityLabel].label}
-                          </span>
+                          <ToneBadge tone={CTEM_PRIORITY_CONFIG[r.priorityLabel].tone}>
+                            {t_i18n(CTEM_PRIORITY_CONFIG[r.priorityLabel].label)}
+                          </ToneBadge>
                         )}
                       </div>
                       {/* Two lines, full text on hover: a truncated reason loses its
@@ -1533,12 +1588,14 @@ export default function CtemCommandCenter({
           <div className="flex-1 overflow-auto min-h-0">
             {latestRuns.length > 0 ? (
               <div className="space-y-2">
+                {/* Signals stay visible beside the runs (#838): the two newest, above. */}
+                {signalEvents.length > 0 && <ActivityFeed events={signalEvents.slice(0, 2)} onOpenSignal={openSignalTrace} />}
                 {latestRuns.map((run) => <RunCard key={run.id} run={run} compact card={false} />)}
               </div>
             ) : activityEvents.length > 0 ? (
               // Only the rows the card holds whole: the oldest never hides under
               // an inner scroll (#9568 UX round 1 B1).
-              <ActivityFeed events={activityEvents.slice(0, feedCapacity(size, activityEvents.length))} />
+              <ActivityFeed events={activityEvents.slice(0, feedCapacity(size, activityEvents.length))} onOpenSignal={openSignalTrace} />
             ) : (
               <div className="grayscale opacity-50 pointer-events-none select-none divide-y divide-[var(--border-elevation-subtle)]">
                 {DEMO_ACTIVITY.slice(0, feedCapacity(size, DEMO_ACTIVITY.length)).map((row) => <DemoActivityRow key={row.id} row={row} />)}
@@ -1587,7 +1644,7 @@ export default function CtemCommandCenter({
                   <Card
                     key={digest.id}
                     className="cursor-pointer hover:bg-elevation-hover transition-all duration-300 group"
-                    onClick={() => navigate(`/runs/${digest.id}`)}
+                    onClick={() => navigate(`/operations/executions/${digest.id}`)}
                   >
                     <CardContent className="pt-5 pb-4 space-y-3">
                       <div className="flex items-center justify-between">
@@ -1653,6 +1710,7 @@ export default function CtemCommandCenter({
     fleet_timeline: (
       <FleetTimelineCard
         timeline={fleetActivity.timeline}
+        casesById={casesById}
         isLoading={fleetActivity.timelineLoading || !configLoaded}
         licensed={!configLoaded || agenticLicensed}
         lockReason={aiLockReason}
@@ -1732,6 +1790,8 @@ export default function CtemCommandCenter({
           target: postureTarget,
         } : null}
         refreshing={postureRefreshing}
+        signals={signalCounter}
+        cases={lifecycleCases}
       />
     ),
     // ── Stats and coverage (C2 V5, #11547 S2d): weekly heat map, delta bars, findings with their trend
@@ -1741,7 +1801,7 @@ export default function CtemCommandCenter({
         stats={coverageStats}
         findings={VERTICAL_KPIS[vertical].map((kpi) => {
           const present = kpi.product === "openaev" ? aevPresent : octiPresent;
-          // Known-exploited counts the tech stack's when the profile names one
+          // Known-exploited counts the software inventory's when the profile names one
           // (#11251); the figure opens its in-app stage page, never the
           // unfiltered module list (#11324).
           const value = kpi.headlineKey === "kev_count" ? kevShown : h?.[kpi.headlineKey] ?? null;

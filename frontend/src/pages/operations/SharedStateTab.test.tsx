@@ -69,7 +69,7 @@ vi.mock("@/hooks/api/useAgentApi", () => ({
 
 const { default: SharedStateTab } = await import("./SharedStateTab");
 
-function renderTab(url = "/operations/state") {
+function renderTab(url = "/operations/shared-state") {
   // A named segment: the tab shows its rows at once, without waiting for the
   // per-segment counts it lands by when the URL names none. The grid view (the
   // Operations row) is the default view of the table.
@@ -289,13 +289,13 @@ describe("Shared State toolbar", () => {
   });
 
   it.each([
-    ["/operations/state", { status: "active", stale_only: false }, "Active"],
-    ["/operations/state?sst_status=stale", { status: "active", stale_only: true }, "Stale"],
-    ["/operations/state?sst_status=resolved", { status: "resolved", stale_only: false }, "Resolved"],
-    ["/operations/state?sst_status=all", { status: undefined, stale_only: false }, "All"],
+    ["/operations/shared-state", { status: "active", stale_only: false }, "Active"],
+    ["/operations/shared-state?sst_status=stale", { status: "active", stale_only: true }, "Stale"],
+    ["/operations/shared-state?sst_status=resolved", { status: "resolved", stale_only: false }, "Resolved"],
+    ["/operations/shared-state?sst_status=all", { status: undefined, stale_only: false }, "All"],
     // The keys of the former list still land on the same view.
-    ["/operations/state?stale=stale", { status: "active", stale_only: true }, "Stale"],
-    ["/operations/state?status=resolved", { status: "resolved", stale_only: false }, "Resolved"],
+    ["/operations/shared-state?stale=stale", { status: "active", stale_only: true }, "Stale"],
+    ["/operations/shared-state?status=resolved", { status: "resolved", stale_only: false }, "Resolved"],
   ])("on %s asks %o and checks %s", (url, query, label) => {
     asked.list.length = 0;
     renderTab(url);
@@ -307,7 +307,7 @@ describe("Shared State toolbar", () => {
 
   it("sends the table's sort to the server, and none for the default order", () => {
     asked.list.length = 0;
-    renderTab("/operations/state?sst_sort=key:asc");
+    renderTab("/operations/shared-state?sst_sort=key:asc");
     expect(last(asked.list)?.sort).toBe("key");
     expect(last(asked.list)?.direction).toBe("asc");
     asked.list.length = 0;
@@ -320,14 +320,14 @@ describe("Shared State toolbar", () => {
 // the landing view (Active) and All say what is empty, as the Work Items tab.
 describe("Shared State empty state", () => {
   it.each([
-    ["/operations/state", "No active shared state"],
-    ["/operations/state?sst_status=all", "No shared state"],
-    ["/operations/state?sst_status=resolved", "No shared state matches your filters."],
-    ["/operations/state?sst_status=stale", "No shared state matches your filters."],
-    ["/operations/state?sst_status=all&sst_q=dev", "No shared state matches your filters."],
+    ["/operations/shared-state", "No active shared state"],
+    ["/operations/shared-state?sst_status=all", "No shared state"],
+    ["/operations/shared-state?sst_status=resolved", "No shared state matches your filters."],
+    ["/operations/shared-state?sst_status=stale", "No shared state matches your filters."],
+    ["/operations/shared-state?sst_status=all&sst_q=dev", "No shared state matches your filters."],
     // An owner agent picked with no entry is a filter the person set.
-    ["/operations/state?sst_f_owner=gone", "No shared state matches your filters."],
-    ["/operations/state?sst_status=all&sst_f_owner=gone", "No shared state matches your filters."],
+    ["/operations/shared-state?sst_f_owner=gone", "No shared state matches your filters."],
+    ["/operations/shared-state?sst_status=all&sst_f_owner=gone", "No shared state matches your filters."],
   ])("on %s reads %s", async (url, title) => {
     STATES = [];
     try {
@@ -360,7 +360,7 @@ describe("Shared State owner-agent filter", () => {
     asked.list.length = 0;
     asked.owners.length = 0;
     try {
-      renderTab("/operations/state?sst_f_owner=a-1");
+      renderTab("/operations/shared-state?sst_f_owner=a-1");
       expect(within(within(openFilters()).getByRole("group", { name: "Owner" })).getByRole("button", { name: /^Analyst/ })).toBeTruthy();
       expect(last(asked.list)?.owner_agent_id).toBe("a-1");
       expect(last(asked.owners)?.owner_agent_id).toBe("a-1");
@@ -371,7 +371,7 @@ describe("Shared State owner-agent filter", () => {
 
   it("keeps the choice for an owner named in the URL that holds no entry", () => {
     OWNERS = [];
-    renderTab("/operations/state?sst_f_owner=gone");
+    renderTab("/operations/shared-state?sst_f_owner=gone");
     expect(within(openFilters()).getByRole("group", { name: "Owner" })).toBeTruthy();
   });
 

@@ -99,6 +99,14 @@ With ``LAB_STALE_BUILD_SERVER_ID`` set (by ``lab.py`` under ``LAB_STALE_BUILD=on
 answers that id as ``build_id`` over the route's own answer: the Vite dev server writes another id in the page's
 ``<meta name="build-id">``, so the stale build notice renders natively. Every other field is the route's.
 
+Every lab answers ``GET /api/v1/lab/whatsapp-decision`` (and ``/index``) with the render of the WhatsApp decision
+message in every state, drawn from the real payload builder (``whatsapp_decision_preview``, #842 S12): WhatsApp
+offers no other surface a review can open.
+
+Every lab answers ``GET /api/v1/lab/locale/<en|fr|es|ja|default>?next=<path>`` (``lab_locale``, #1653): the
+language is stored on every user of the lab and the answer redirects to ``next``, so one browser ``navigate`` reloads
+the app in that language.
+
 dev-docs/reference/agentic-labs.md, "The xtm-one lab".
 """
 
@@ -112,6 +120,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import ctem_sample  # beside this file
+import lab_locale  # beside this file
+import whatsapp_decision_preview  # beside this file
 
 from app.api.v1 import ctem_metrics
 from app.main import application as backend
@@ -345,8 +355,9 @@ def tailored_ctem_posture(environ: dict) -> bool:
     """``LAB_CTEM_KEV_TAILORED=on``: the cyber KEV count is narrowed to the saved tech stack; whether it is.
 
     Nothing answers OpenCTI here, so the collector's tailoring query (``_octi_kev_tailored``) never runs: the
-    saved profile's stack (``ctem_metrics_collector._profile_tech_stack``, the route's own reader) is matched by
-    ``ctem_sample.tailored_kev`` on the posture the other switches answer. No stack, no tailored count, as live.
+    saved organization software (``ctem_metrics_collector._organization_software``, the route's own reader,
+    #1495) is matched by ``ctem_sample.tailored_kev`` on the posture the other switches answer. No stack, no
+    tailored count, as live.
     """
     if environ.get("LAB_CTEM_KEV_TAILORED", "").strip().lower() != "on":
         return False
@@ -358,7 +369,7 @@ def tailored_ctem_posture(environ: dict) -> bool:
         stage_facts, present = await collector(db, user_id, vertical)
         if vertical != ctem_sample.VERTICAL or "opencti" not in present:
             return stage_facts, present
-        return tailor_kev(stage_facts, await ctem_metrics_collector._profile_tech_stack(db)), present
+        return tailor_kev(stage_facts, await ctem_metrics_collector._organization_software(db)), present
 
     # The posture route calls the collector by the name it imported, so the route module's attribute is the one used.
     ctem_metrics.build_posture_for_user = collect
@@ -1276,14 +1287,15 @@ stub_model_catalogs(dict(os.environ))
 
 
 #: The crown jewels the lab's OpenCRQ sync plans over, in the shape ``CrownJewel`` validates: one row per plan kind
-#: against :data:`LAB_OPENCRQ_ASSETS` (linked by name, criticality pushed, ambiguous name, asset OpenCRQ lacks).
+#: against :data:`LAB_OPENCRQ_ASSETS` (linked by name, ambiguous name, a typed row linked to an asset OpenCRQ
+#: lacks). Nothing is pushed since #1591: ``pushed_to_opencrq`` stays empty.
 LAB_OPENCRQ_JEWELS = [
     {"name": "Customer portal", "criticality": "high"},
     {"name": "Payment gateway", "criticality": "critical", "opencrq_asset_id": "lab-asset-payments"},
     {"name": "Data warehouse", "criticality": "medium"},
-    {"name": "Legacy billing", "criticality": "high", "opencrq_asset_id": "lab-asset-retired"},
+    {"name": "Legacy billing", "criticality": "high", "opencrq_asset_id": "lab-asset-retired", "source": "manual"},
 ]
-#: The supporting assets the lab's OpenCRQ answers, in the shape ``supportingAssets.listSupportingAssets`` lists.
+#: The primary assets the lab's OpenCRQ answers (#1591), one row per asset.
 LAB_OPENCRQ_ASSETS = [
     {"id": "lab-asset-portal", "name": "Customer portal", "criticality": "high"},
     {"id": "lab-asset-payments", "name": "Payment gateway", "criticality": "high"},
@@ -1307,13 +1319,15 @@ def stub_opencrq_sync(environ: dict) -> bool:
 
     agreed = [False]
 
-    async def run_sync(db, *, user_id, apply, tenant_id=""):
+    async def run_sync(db, *, user_id, apply, tenant_id="", min_criticality=""):
         profile = organization_context.parse_profile({"crown_jewels": LAB_OPENCRQ_JEWELS})
         if not apply and agreed[0]:
             agreed[0] = False
             return organization_context_opencrq.SyncPlan(profile=profile), []
         agreed[0] = bool(apply)
-        return organization_context_opencrq.plan_sync(profile, [dict(a) for a in LAB_OPENCRQ_ASSETS]), []
+        threshold = min_criticality or organization_context_opencrq.DEFAULT_MIN_CRITICALITY
+        assets = [dict(a) for a in LAB_OPENCRQ_ASSETS]
+        return organization_context_opencrq.plan_sync(profile, assets, threshold), []
 
     organization_context_opencrq.run_sync = run_sync
     return True
@@ -1566,7 +1580,25 @@ def asks_ctem_posture_on_preview(scope, environ) -> bool:
     )
 
 
+async def _send_html(send, page: str) -> None:
+    body = page.encode()
+    await send({
+        "type": "http.response.start",
+        "status": 200,
+        "headers": [(b"content-type", b"text/html; charset=utf-8"), (b"content-length", str(len(body)).encode())],
+    })
+    await send({"type": "http.response.body", "body": body})
+
+
 async def application(scope, receive, send):
+    locale = lab_locale.asks_locale(scope)
+    if locale is not None:
+        await lab_locale.answer(scope, send, locale)
+        return
+    whatsapp_page = whatsapp_decision_preview.answer(scope)
+    if whatsapp_page is not None:
+        await _send_html(send, whatsapp_page)
+        return
     if asks_ctem_posture_on_preview(scope, os.environ):
         await answer_ctem_posture_on_preview(scope, receive, send)
         return

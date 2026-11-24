@@ -129,6 +129,38 @@ async def _sweep_stale(db: AsyncSession, current_slugs: set[str]) -> int:
     return removed
 
 
+async def _retired_pins(db: AsyncSession, entries: list[dict]) -> dict[str, dict]:
+    """The approval pins of the retired fleets each entry ``absorbs``, read before the sweep (CTEM-31).
+
+    Pins are a person's choice: the generic fleet that folds a retired fleet in
+    keeps them, its own pin winning on the same gate key.
+    """
+    absorbed = {old: entry["slug"] for entry in entries for old in entry.get("absorbs") or []}
+    if not absorbed:
+        return {}
+    rows = (
+        await db.execute(
+            select(Fleet.slug, Fleet.approval_pins).where(Fleet.is_builtin.is_(True), Fleet.slug.in_(absorbed))
+        )
+    ).all()
+    carried: dict[str, dict] = {}
+    for old_slug, pins in rows:
+        if isinstance(pins, dict) and pins:
+            carried.setdefault(absorbed[old_slug], {}).update(pins)
+    return carried
+
+
+def _carry_pins(fleet: Fleet, pins: dict | None) -> None:
+    """Add the retired fleets' *pins* to *fleet*; a pin it already holds wins."""
+    if not pins:
+        return
+    current = fleet.approval_pins if isinstance(fleet.approval_pins, dict) else {}
+    merged = {**pins, **current}
+    if merged != current:
+        fleet.approval_pins = merged
+        logger.info("Built-in fleet %s: kept %d pin(s) of the fleets it absorbs", fleet.slug, len(pins))
+
+
 async def _upsert_fleet(db: AsyncSession, data: dict, owner_id: uuid.UUID) -> tuple[Fleet, bool]:
     from app.services.fleets import unique_fleet_slug
     from app.services.workspaces import create_workspace
@@ -137,6 +169,18 @@ async def _upsert_fleet(db: AsyncSession, data: dict, owner_id: uuid.UUID) -> tu
     fleet = (
         await db.execute(select(Fleet).where(Fleet.is_builtin.is_(True), Fleet.slug == slug).limit(1))
     ).scalar_one_or_none()
+    if fleet is None and data.get("previous_slugs"):
+        # CTEM-31: adopt the row seeded under a former slug, so its id, workspace,
+        # level, pins and the forks pointing at it carry over.
+        fleet = (
+            await db.execute(
+                select(Fleet).where(Fleet.is_builtin.is_(True), Fleet.slug.in_(list(data["previous_slugs"]))).limit(1)
+            )
+        ).scalar_one_or_none()
+        if fleet is not None:
+            logger.info("Built-in fleet '%s' renamed to '%s'", fleet.slug, slug)
+            fleet.slug = slug
+            await db.flush()
     created = False
     if fleet is None:
         squatter = (
@@ -259,7 +303,13 @@ async def _sync_members(db: AsyncSession, fleet: Fleet, data: dict, agents: dict
     rows = (await db.execute(select(FleetMember).where(FleetMember.fleet_id == fleet.id))).scalars().all()
     by_agent: dict[uuid.UUID, FleetMember] = {}
     for row in rows:
-        if row.role == FLEET_ROLE_MEMBER and row.agent_id in wanted_ids:
+        if row.agent_id in wanted_ids and row.role == FLEET_ROLE_CONNECTED:
+            # CTEM-31 (#1048): an agent connected to the adopted row becomes a home
+            # member; the row is promoted in place, (fleet, agent) being unique.
+            row.role = FLEET_ROLE_MEMBER
+            row.collaboration_instruction = None
+            by_agent[row.agent_id] = row
+        elif row.role == FLEET_ROLE_MEMBER and row.agent_id in wanted_ids:
             by_agent[row.agent_id] = row
         elif row.role == FLEET_ROLE_MEMBER:
             if fleet.orchestrator_agent_id == row.agent_id:
@@ -430,7 +480,15 @@ async def seed_builtin_fleets(db: AsyncSession, *, platform_mode: str, fleets: l
     from app.services.fleet_docs import seed_documentation
 
     entries = fleets_for_mode(platform_mode, fleets)
-    removed = await _sweep_stale(db, {f["slug"] for f in entries})
+    pins_by_slug = await _retired_pins(db, entries)
+    # A former slug of a current entry is adopted by _upsert_fleet, never swept.
+    kept = {f["slug"] for f in entries} | {s for f in entries for s in f.get("previous_slugs") or []}
+    removed = await _sweep_stale(db, kept)
+    if removed:
+        # The swept fleets' former leads keep no check gated on them (#1400).
+        from app.services.fleets import repair_orphaned_fleet_health_checks
+
+        await repair_orphaned_fleet_health_checks(db)
     if not entries:
         await db.commit()
         if removed:
@@ -458,6 +516,9 @@ async def seed_builtin_fleets(db: AsyncSession, *, platform_mode: str, fleets: l
         fleet, was_created = await _upsert_fleet(db, data, owner_id)
         created += int(was_created)
         await _apply_seed_autonomy(db, fleet, owner_id)
+        # A seeded fleet never pauses a tool call, on any deployment (#1675).
+        fleet.enforce_gates_at_tool_level = False
+        _carry_pins(fleet, pins_by_slug.get(data["slug"]))
         await _sync_members(db, fleet, data, agents)
         await _sync_connected(db, fleet, data, agents)
         _add_entry_handovers(fleet, data, agents)

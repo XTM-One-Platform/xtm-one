@@ -106,7 +106,7 @@ function ScheduledOutcomeAction({ runId }: { runId: string }) {
   return (
     <div className="mt-1.5">
       <Button asChild variant="outline" size="sm" className="gap-1.5">
-        <Link to={`/runs/${runId}`} data-testid="scheduled-outcome-run">
+        <Link to={`/operations/executions/${runId}`} data-testid="scheduled-outcome-run">
           <Icon name="history" size={16} aria-hidden />
           {t_i18n("View the run")}
         </Link>
@@ -174,7 +174,7 @@ export function MessageFooterActions({
       {isAdmin && stored?.llm_trace_id && (
         <Tip content={t_i18n("View trace")}>
           <Link
-            to={`/traces/${stored.llm_trace_id}`}
+            to={`/observability/traces/${stored.llm_trace_id}`}
             aria-label={t_i18n("View trace")}
             className="text-default-disabled hover:text-accent focus-visible:text-accent transition-colors"
           >

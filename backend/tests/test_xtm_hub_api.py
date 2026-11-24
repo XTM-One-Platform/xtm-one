@@ -38,8 +38,9 @@ def _answer(payload: Any) -> httpx.Response:
 class _Hub:
     """A fake Hub: the capability probe answers API_TOKENS, each operation its stub."""
 
-    def __init__(self, answers: dict[str, Any]):
+    def __init__(self, answers: dict[str, Any], errors: list[dict[str, Any]] | None = None):
         self.answers = answers
+        self.errors = errors
         self.calls: list[dict[str, Any]] = []
         self.multipart: list[httpx.Request] = []
 
@@ -57,16 +58,19 @@ class _Hub:
         self.calls.append({"op": op, "query": query, "variables": operations["variables"], "headers": request.headers})
         if op not in self.answers:
             return _answer({"errors": [{"message": f"no stub for {op}"}]})
-        return _answer({"data": {op: self.answers[op]}})
+        payload: dict[str, Any] = {"data": {op: self.answers[op]}}
+        if self.errors:
+            payload["errors"] = self.errors
+        return _answer(payload)
 
 
-_Install = Callable[[dict[str, Any]], _Hub]
+_Install = Callable[..., _Hub]
 
 
 @pytest.fixture
 def fake_hub(monkeypatch: pytest.MonkeyPatch) -> _Install:
-    def install(answers: dict[str, Any]) -> _Hub:
-        fake = _Hub(answers)
+    def install(answers: dict[str, Any], errors: list[dict[str, Any]] | None = None) -> _Hub:
+        fake = _Hub(answers, errors)
 
         def factory(**kwargs: Any) -> httpx.AsyncClient:
             return egress_client(transport=httpx.MockTransport(fake), **kwargs)
@@ -131,9 +135,33 @@ def test_tool_names_follow_the_convention_and_read_or_write_as_the_operation() -
         assert by_name[tool_name].priority == 2
 
 
-def test_the_only_query_that_writes_is_named_as_a_write() -> None:
+def test_the_only_query_that_writes_is_never_offered_to_an_api_token() -> None:
     assert set(api.WRITE_QUERIES) <= set(api.root_fields("Query"))
-    assert infer_tool_type(api.OPERATIONS["updateOpenCTIManifest"][0]) == "write"
+    assert not set(api.WRITE_QUERIES) & set(api.OPERATIONS)
+
+
+def test_system_and_platform_credential_operations_are_never_tools() -> None:
+    # The Hub answers them to its own credentials only: a personal API token is
+    # always refused, so a tool would only ever fail (the deployed Hub, 20 Nov 2026).
+    for op in (
+        "deploymentRequests",
+        "updateDeploymentRequest",
+        "ingestManifestFragments",
+        "updateOpenCTIManifest",
+        "consumeProvisionedNewsFeedItems",
+        "createApiToken",
+    ):
+        assert op in api.NOT_EXPOSED, op
+        assert op not in api.OPERATIONS, op
+
+
+def test_the_vendored_schema_is_the_api_token_era_hub() -> None:
+    types = api.schema()
+    assert "currentApiToken" in api.root_fields("Query")
+    assert {"read", "read_write", "admin"} <= set(types["ApiTokenScope"].values)
+    assert "capabilities" in {f.name for f in types["Settings"].fields}
+    document = {f.name for f in types["Document"].fields}
+    assert "status" in document and "active" not in document
 
 
 def test_every_destructive_tool_says_what_it_deletes() -> None:
@@ -234,6 +262,34 @@ async def test_without_a_token_the_tool_says_it_needs_one(fake_hub: _Install) ->
     hub.build_tools(f"{_BASE}||__no_auth__", executor)
     out = await _call(executor, "list_xtm_hub_organizations")
     assert out == hub._NEEDS_HUB_KEY
+
+
+async def test_a_field_refusal_keeps_the_answer_of_the_root(fake_hub: _Install) -> None:
+    fake = fake_hub(
+        {
+            "organizations": {
+                "totalCount": 1,
+                "edges": [{"cursor": "c", "node": {"id": "o1", "name": "Acme", "members_count": None}}],
+                "pageInfo": {"hasNextPage": False},
+            }
+        },
+        errors=[{"message": "FORBIDDEN_ACCESS", "path": ["organizations", "edges", 0, "node", "members_count"]}],
+    )
+    executor, _ = _executor()
+    out = await _call(executor, "list_xtm_hub_organizations")
+    assert fake.calls[-1]["variables"] == {"first": 25, "orderBy": "name", "orderMode": "asc"}
+    assert "Acme" in out and not out.startswith("Error")
+
+
+async def test_a_refusal_names_the_hub_error_code_and_nothing_else(fake_hub: _Install) -> None:
+    fake_hub(
+        {"organizations": None},
+        errors=[{"message": "FORBIDDEN_ACCESS", "extensions": {"code": "FORBIDDEN_ACCESS"}}],
+    )
+    executor, _ = _executor()
+    out = await _call(executor, "list_xtm_hub_organizations")
+    assert out.startswith(hub._REFUSED)
+    assert "Hub error: FORBIDDEN_ACCESS." in out and "BYPASS" in out
 
 
 async def test_credential_fields_are_dropped_from_an_answer(fake_hub: _Install) -> None:

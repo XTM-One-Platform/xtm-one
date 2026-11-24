@@ -3140,7 +3140,13 @@ class FlowWalker:
         ``flow_hitl``) that deep-links to this run; the run parks until the
         respond endpoint stores the answer and releases it. The answer then
         becomes this node's output — ``{{ask.response}}`` downstream.
+
+        Options, a recommendation and a deadline (#842, S6) make it a decision
+        like any other: the park carries the normalised ask, the card shows
+        the options, and the chosen key is ``{{ask.option}}`` downstream. A
+        node without options asks for free text, as before.
         """
+        from app.services.decision_ask import flow_ask
         from app.services.notify import notify_web_user
 
         title = self._render(config.get("title") or "")
@@ -3149,6 +3155,11 @@ class FlowWalker:
             return _NodeResult(error="The question needs a title.")
         if not question.text.strip():
             return _NodeResult(error="The question text is required.")
+        deadline = self._render(str(config.get("deadline") or "")).text.strip()
+        try:
+            ask = flow_ask(question.text.strip(), config.get("options"), config.get("recommendation"), deadline)
+        except ValueError as exc:
+            return _NodeResult(error=str(exc))
         try:
             await notify_web_user(
                 self.db,
@@ -3172,6 +3183,7 @@ class FlowWalker:
                 "kind": "human",
                 "node": node["id"],
                 "question": question.text.strip(),
+                **({"ask": ask} if ask is not None else {}),
                 "released": False,
                 "parked_at": now.isoformat(),
                 "wake_at": wake.isoformat(),
@@ -3587,6 +3599,14 @@ class FlowWalker:
                     return _NodeResult(
                         error=f"The status must be one of: {', '.join(WORK_ITEM_STATUSES)}."
                     )
+                if status == "blocked":
+                    # Blocked is black or white (#762): a text cannot be the blocker.
+                    return _NodeResult(
+                        error=(
+                            "A flow cannot set a work item blocked: leave it open with a later "
+                            "not_before, or create the wait with blocked_on. Nothing was written."
+                        )
+                    )
                 # Ending an item is completing it: its holder is released and
                 # its end is reported like any other completion.
                 item = (
@@ -3598,8 +3618,6 @@ class FlowWalker:
                         work_item_id,
                         user_id=user_id,
                         status=status,
-                        # A blocked item says why: the node's text is the reason.
-                        blocked_reason=(text.text.strip() or None) if status == "blocked" else None,
                         writer=writer,
                     )
                 )
@@ -5548,6 +5566,7 @@ class FlowWalker:
                     _NodeResult(
                         outputs={
                             "response": waiting.get("response") or "",
+                            "option": waiting.get("option") or "",
                             "responded_by": waiting.get("responded_by") or "",
                         }
                     ),

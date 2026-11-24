@@ -48,6 +48,7 @@ import contextlib
 import dataclasses
 import functools
 import hashlib
+import json
 import logging
 import re
 import time
@@ -64,6 +65,7 @@ from app.services.sandbox_workspace import (
     editing,
     eviction,
     filediff,
+    images,
     installed,
     jobs,
     jsonkeys,
@@ -83,6 +85,7 @@ from app.services.sandbox_workspace import rebase as rebasing
 from app.services.sandbox_workspace.checkout import RECORD_NAME, build_record
 from app.services.sandbox_workspace.checks import MAX_ARGS, WHOLE_ARG, ChecksError
 from app.services.sandbox_workspace.detect import WORKFLOWS_DIR
+from app.services.sandbox_workspace.gitignore import GitIgnore, gitignore_paths
 from app.services.sandbox_workspace.ingest import WorkspaceIngestor, read_ref_bytes
 from app.services.sandbox_workspace.kube import KubeError
 from app.services.sandbox_workspace.manifest import QuotaExceededError, format_diff, format_size
@@ -124,6 +127,7 @@ SANDBOX_TOOL_NAMES = (
     "sandbox_apply_patch",
     "sandbox_write_file",
     "sandbox_json_keys",
+    "sandbox_convert_images",
     "materialize_repository",
     "sandbox_checkout_status",
     "sandbox_checkout_diff",
@@ -147,6 +151,7 @@ WORKSPACE_WRITE_TOOLS = frozenset(
         "sandbox_apply_patch",
         "sandbox_write_file",
         "sandbox_json_keys",
+        "sandbox_convert_images",
         "materialize_repository",
         "sandbox_checkout_rebase",
         "sandbox_diff_files",
@@ -268,10 +273,12 @@ async def _resolve_put_ref(
     marker, a unique 8+ hex prefix), then the conversation's or run's own row by id
     (``load_scoped_file_ref``), then a stored file the acting *user_id* owns in any of the user's
     conversations or runs, by id or prefix (``work_item_files.load_owned_file_ref``, the Files page's
-    "Mine" predicate). A row found joins the context as a fetched file, so ``code_interpreter`` mounts it
-    under ``attachments/`` from then on. Never another user's file.
+    "Mine" predicate), then a template asset whose container the user can see, by its full id
+    (``template_containers.load_visible_asset``, the grant ``get_template`` applies). A row found joins the
+    context as a fetched file, so ``code_interpreter`` mounts it under ``attachments/`` from then on. Never
+    another user's file.
     """
-    from app.services.builtin_tools._shared import load_scoped_file_ref, resolve_file_ref
+    from app.services.builtin_tools._shared import _file_handle_key, load_scoped_file_ref, resolve_file_ref
 
     if not isinstance(file_id, str) or not file_id.strip():
         return None, None
@@ -284,6 +291,12 @@ async def _resolve_put_ref(
         from app.services.work_item_files import load_owned_file_ref
 
         ref, refusal = await load_owned_file_ref(file_id, user_id)
+    if ref is None and refusal is None and user_id:
+        from app.llm.base import FileRef
+        from app.services.template_containers import load_visible_asset
+
+        asset = await load_visible_asset(_file_handle_key(file_id).removeprefix("file-"), user_id)
+        ref = FileRef.from_attachment(asset) if asset is not None else None
     if ref is not None and file_context is not None:
         from app.tools.base import register_fetched_file
 
@@ -710,7 +723,12 @@ def build_sandbox_workspace_tools(
         grouping: reading.Grouping | None = None,
     ) -> reading.GrepResult | ToolResult:
         """The search over an installed tree (*prefix* under node_modules, .venv) run on the files of the
-        workspace's live command container, read-only: nothing enters the manifest."""
+        workspace's live command container, read-only: nothing enters the manifest.
+
+        Each batch is one helper run and one tar round trip, so the batches are large
+        (:data:`reading.INSTALLED_READ_FILES`), and the search stops before the call's deadline
+        naming what it did not reach: one package of a few thousand small files timed the call out.
+        """
         try:
             tree, sandbox = await installed.list_tree(session, prefix, user_id=owner)
         except installed.NoLiveContainerError as exc:
@@ -723,7 +741,13 @@ def build_sandbox_workspace_tools(
             )
         result = reading.GrepResult()
         sized = [(rel, size) for rel, size in tree.files if reading.selected(rel, prefix, globs)]
-        for batch in reading.plan_grep(sized, result):
+        deadline = time.monotonic() + commands.wait_budget()
+        batches = reading.plan_grep(sized, result, batch_files=reading.INSTALLED_READ_FILES)
+        for index, batch in enumerate(batches):
+            if time.monotonic() >= deadline:
+                result.stopped = "the call's time budget ran out"
+                result.left[:0] = [rel for rest in batches[index:] for rel in rest]
+                break
             try:
                 blobs = await installed.read_files(sandbox, batch, max_bytes=reading.MAX_GREP_FILE_BYTES)
             except Exception as exc:
@@ -813,7 +837,15 @@ def build_sandbox_workspace_tools(
                 return None
             return data
 
-        for batch in reading.plan_grep(sized, result):
+        # A whole checkout is searched to its end within the call's time budget; what the budget did not
+        # reach is named (a stop at a file count missed two readers of a renamed path, #758).
+        deadline = time.monotonic() + commands.wait_budget()
+        batches = reading.plan_grep(sized, result)
+        for index, batch in enumerate(batches):
+            if time.monotonic() >= deadline:
+                result.stopped = "the call's time budget ran out"
+                result.left[:0] = [rel for rest in batches[index:] for rel in rest]
+                break
             # The reads of a batch run at once (bounded by plan_grep), the matches are taken in path order.
             blobs = await asyncio.gather(*(read(rel) for rel in batch))
             for rel, data in zip(batch, blobs, strict=True):
@@ -1130,13 +1162,17 @@ def build_sandbox_workspace_tools(
                 )
             read = " read before the time budget ran out" if not_reached else ""
             return f"No match for {pattern[:80]!r} in {planned.files_scanned} text file(s){read} under {scope}: nothing was written.{notes}"
-        stats, diffs = replacing.report(planned.changes, display)
         head = (
             f"{planned.replacements} replacement(s) in {len(planned.changes)} file(s) "
             f"of {planned.files_scanned} scanned under {scope}"
         )
         if dry_run:
+            stats, diffs = replacing.report(planned.changes, display)
             return f"Dry run, nothing written: {head}.{notes}\n{stats}\n\n{diffs}"
+        # A write answers each distinct line change once, not one hunk per site: the dry run
+        # (or sandbox_checkout_diff) is where the whole diff is read.
+        stats, _diffs = replacing.report(planned.changes, display)
+        changed = replacing.distinct_changes(planned.changes)
         try:
             plan = await session.put_tree(
                 ((c.path, c.after.encode("utf-8")) for c in planned.changes), operation="edit"
@@ -1158,7 +1194,7 @@ def build_sandbox_workspace_tools(
         outside_note = await _outside_record_note([c.path for c in planned.changes])
         return (
             f"Replaced: {head}, in one write. Workspace {format_size(plan.size_bytes)} of "
-            f"{format_size(session.limits.quota_bytes)}.{outside_note}{notes}\n{stats}\n\n{diffs}"
+            f"{format_size(session.limits.quota_bytes)}.{outside_note}{notes}\n{stats}\n\n{changed}"
         )
 
     async def sandbox_codemod(
@@ -1530,9 +1566,23 @@ def build_sandbox_workspace_tools(
         get: list[str] | None = None,
         place: dict | None = None,
         french_spacing: str | None = None,
+        set_from: str | None = None,
     ) -> str | ToolResult:
         if not isinstance(paths, list) or not paths or not all(isinstance(p, str) for p in paths):
             return _error("paths must name one or more JSON files of the workspace.")
+        if set_from:
+            # set_from: the set object is a workspace JSON file, read here, never re-sent by the model.
+            if set is not None:
+                return _error("give either 'set' or 'set_from', not both. Nothing was written.")
+            got_set = await _text_of(set_from, settle=False)
+            if isinstance(got_set, ToolResult):
+                return got_set
+            try:
+                set = json.loads(got_set[1])
+            except ValueError as exc:
+                return _error(f"set_from {set_from} is not JSON ({exc}). Nothing was written.")
+            if not isinstance(set, dict):
+                return _error(f"set_from {set_from} must hold a JSON object like 'set'. Nothing was written.")
         texts: dict[str, str] = {}
         for path in paths:
             got = await _text_of(path, settle=False)
@@ -1586,6 +1636,58 @@ def build_sandbox_workspace_tools(
             else "Nothing was written."
         )
         return head + "\n" + "\n".join(lines)
+
+    async def sandbox_convert_images(
+        conversions: list[dict[str, Any]] | dict[str, Any] | None = None, overwrite: bool = False
+    ) -> str | ToolResult:
+        try:
+            planned = images.parse(conversions)
+            current = await session.entries(refresh=True)
+        except (images.ImageError, WorkspacePathError, WorkspaceUnavailableError) as exc:
+            metrics.operation("convert_images", "refused")
+            return _error(f"{exc} Nothing was written.")
+        for conversion in planned:
+            if conversion.source not in current:
+                metrics.operation("convert_images", "refused")
+                return _error(f"{display(conversion.source)} is not a file of the workspace. Nothing was written.")
+            if conversion.target in current and conversion.target != conversion.source and not overwrite:
+                metrics.operation("convert_images", "refused")
+                return _error(
+                    f"{display(conversion.target)} already exists: pass overwrite=true to replace it. Nothing was written."
+                )
+        results: list[images.Converted] = []
+        for conversion in planned:
+            try:
+                _entry, data = await session.get_bytes(conversion.source)
+                # Pillow decodes on a thread: a large capture must not hold the event loop.
+                results.append(await asyncio.to_thread(images.convert, conversion, data))
+            except FileNotFoundError:
+                metrics.operation("convert_images", "refused")
+                return _error(f"{display(conversion.source)} changed while it was read. Nothing was written.")
+            except images.ImageError as exc:
+                metrics.operation("convert_images", "refused")
+                return _error(f"{exc} Nothing was written.")
+        try:
+            plan = await session.put_tree(((r.conversion.target, r.data) for r in results), operation="convert_images")
+        except (QuotaExceededError, WorkspaceUnavailableError) as exc:
+            metrics.operation("convert_images", "refused")
+            return _error(str(exc))
+        except Exception as exc:
+            metrics.operation("convert_images", "failed")
+            return _error(f"the images could not be written to the workspace ({format_exception_message(exc)}).")
+        metrics.operation("convert_images", "ok")
+        await audit.record(
+            "workspace_write",
+            user_id=owner,
+            workspace_id=session.workspace_id,
+            summary=f"Converted {len(results)} image(s) in the sandbox workspace",
+            details={"conversions": [[r.conversion.source, r.conversion.target] for r in results]},
+        )
+        return (
+            f"Converted {len(results)} image(s) in one write. "
+            f"Workspace {format_size(plan.size_bytes)} of {format_size(session.limits.quota_bytes)}.\n"
+            + "\n".join(r.line() for r in results)
+        )
 
     async def _archive_tree(
         provider: str,
@@ -1784,10 +1886,7 @@ def build_sandbox_workspace_tools(
             f"Checked {repository}@{ref or 'default branch'} out into {display(destination)}/: "
             f"{len(tree.files):,} file(s), {format_size(size)}"
             + (f" (under {', '.join(subs)})" if subs else "")
-            + "".join(
-                f", {w.sub_path} widened to {w.directory}/ (the directory {', '.join(w.checks)} run from)"
-                for w in tree.widened
-            )
+            + "".join(f", {w.sub_path} widened to {w.directory}/ ({w.words()})" for w in tree.widened)
             + "".join(f", {d} added (a declared check of the checkout reads it: needs)" for d in tree.needed)
             + "".join(f", {d}/ added (a requirements file under them installs from it)" for d in tree.dependencies)
             + "".join(f", {d}/ added (a Maven module under them builds against it)" for d in tree.reactor)
@@ -1849,7 +1948,10 @@ def build_sandbox_workspace_tools(
             except (FileNotFoundError, ValueError, WorkspaceUnavailableError):
                 continue
         current = str(assignment_run_id or "")
-        found = eviction.footprints(entries, records, exclude=destination, current_run=current, now=time.time())
+        ignores = {root: await _gitignore_of(record, entries) for root, record in records.items()}
+        found = eviction.footprints(
+            entries, records, exclude=destination, current_run=current, now=time.time(), ignores=ignores
+        )
         # The run each checkout carries (#11500): a clean tree of an ended run
         # goes whatever its ref, so earlier runs never hold the limit.
         others = {f.record.run_id for f in found if f.record.run_id and f.run_state != eviction.RUN_LIVE}
@@ -1897,6 +1999,17 @@ def build_sandbox_workspace_tools(
         )
         metrics.operation("checkout_evict", "ok")
         return plan, chosen
+
+    async def _gitignore_of(record: checkouts.CheckoutRecord, entries: Any) -> GitIgnore:
+        """The rules of the checkout's ``.gitignore`` files, as ``sandbox_checkout_status`` reads them."""
+        rules: list[tuple[str, bytes]] = []
+        for repo_path in gitignore_paths(p for p in map(record.repo_path, map(str, entries)) if p):
+            try:
+                _entry, data = await session.get_bytes(record.workspace_path(repo_path))
+            except (FileNotFoundError, WorkspaceUnavailableError):
+                continue
+            rules.append((repo_path, data))
+        return GitIgnore(rules)
 
     async def _ref_state(record: checkouts.CheckoutRecord) -> str:
         """Whether the recorded ref still exists, through the provider's ``repository_compare`` tool."""
@@ -2038,10 +2151,7 @@ def build_sandbox_workspace_tools(
         return (
             f"Grew the checkout at {display(record.path)}/ by {', '.join(new)} at {checkouts.origin(record)}: "
             f"{len(writes):,} file(s) written, {format_size(size)}"
-            + "".join(
-                f", {w.sub_path} widened to {w.directory}/ (the directory {', '.join(w.checks)} run from)"
-                for w in tree.widened
-            )
+            + "".join(f", {w.sub_path} widened to {w.directory}/ ({w.words()})" for w in tree.widened)
             + "".join(f", {d} added (a declared check of the checkout reads it: needs)" for d in tree.needed)
             + (
                 f"; {len(stale):,} stale file(s) an earlier checkout left there, untouched since, were "
@@ -2448,6 +2558,7 @@ def build_sandbox_workspace_tools(
         absent: set[str] = set()
         dropped: list[str] = []
         extra: list[str] = []
+        removals: list[str] = []
         if outside is not None and outside.paths:
             extra = list(outside.paths)
             lead = (
@@ -2561,11 +2672,42 @@ def build_sandbox_workspace_tools(
             ours[repo_path] = hashlib.sha256(data).hexdigest()
         for repo_path in dropped:
             ours.pop(repo_path, None)
-        steps = rebasing.plan(record_for_plan, ours, theirs, in_scope=record.covers)
-        summary = rebasing.RebaseSummary(pulled=sorted(extra))
+        # A record a from_checkout commit moved (#1029) keeps the checkout-time hash of every file the
+        # commit did not write, so the workspace holds them older than the branch commit it names when
+        # the branch gained commits the checkout never held (main merged in on the server). The branch
+        # side of each such file is read at that commit, else a file only the ref changed was kept over
+        # it and a file both changed lost what the branch had gained, reported as a clean merge.
+        refreshed: list[str] = []
+        if record.base_commit and record.commit and not _same_commit(record.base_commit, record.commit):
+            at_branch = await _archive_tree(
+                record.provider, record.repository, record.commit, scope, operation="checkout_rebase"
+            )
+            if isinstance(at_branch, ToolResult):
+                return at_branch
+            stale, gone = rebasing.stale_branch_sides(
+                {p: f for p, f in checked_out.files.items() if p not in pulled},
+                ours,
+                dict(at_branch[0].files),
+                in_scope=checked_out.covers,
+            )
+            for repo_path, data in stale.items():
+                pulled[repo_path] = data
+                ours[repo_path] = hashlib.sha256(data).hexdigest()
+            for repo_path in gone:
+                ours.pop(repo_path, None)
+                removals.append(record.workspace_path(repo_path))
+            refreshed = sorted([*stale, *gone])
+            if refreshed and base_files is None and merge_base and _same_commit(merge_base, record.commit):
+                # The branch commit is the merge base itself: its tree, not the older record, is the base.
+                base_files = dict(at_branch[0].files)
+                record_for_plan = dataclasses.replace(
+                    record, files=rebasing.base_files_of(record, base_files, checked_out=checked_out)
+                )
+        steps = rebasing.plan(record_for_plan, ours, theirs, in_scope=record.covers, checked_out=record.files)
+        summary = rebasing.RebaseSummary(pulled=sorted(extra), refreshed=refreshed)
         # The branch's files brought in are written as they are unless a step below replaces them.
         writes: dict[str, bytes] = dict(pulled)
-        removals: list[str] = [record.workspace_path(p) for p in dropped]
+        removals.extend(record.workspace_path(p) for p in dropped)
         gate = asyncio.Semaphore(6)
 
         async def merged(step: rebasing.FileStep) -> rebasing.FileMerge | tuple[None, int, str]:
@@ -2679,8 +2821,7 @@ def build_sandbox_workspace_tools(
         )
         if tree.widened:
             answer += "".join(
-                f"{w.sub_path} widened to {w.directory}/ (the directory {', '.join(w.checks)} run from at the ref).\n"
-                for w in tree.widened
+                f"{w.sub_path} widened to {w.directory}/ ({w.words()} at the ref).\n" for w in tree.widened
             )
         if base_note:
             answer += base_note + "\n"
@@ -2920,6 +3061,7 @@ def build_sandbox_workspace_tools(
                 read_base=read_baseline,
                 globs=command.affected_globs,
                 lines=command.affected == "lines",
+                whole_repository=command.affected_whole_repository,
             )
             described = files.describe(mode=command.affected, baseline=checkouts.baseline_origin(record))
             if command.narrow_args:
@@ -2961,7 +3103,26 @@ def build_sandbox_workspace_tools(
             deadline=commands.selection_deadline(),
             always=command.affected_always,
             scans=command.affected_scan_patterns,
+            # A file marked `integration` under backend-unit's -m "not integration" is collected and runs nothing.
+            excluded=affecting.excluded_markers(command.without_defaults()),
         )
+        if selection.deselected:
+            # Name the check that runs a deselected marker (integration -> backend-integration), not "the check".
+            from app.core.config import settings
+
+            try:
+                declared = await commands.checkout_checks(session, record.path, images=set(settings.opensandbox_images))
+            except ChecksError:
+                declared = None  # the generic advice stays: the checks file was read once already
+            if declared is not None:
+                selection.runners = affecting.marker_runners(
+                    (
+                        (spec.name, spec.argv, "/".join(p for p in (record.path, spec.cwd.strip("/")) if p))
+                        for spec in declared.specs.values()
+                    ),
+                    command.cwd,
+                    {m for found in selection.deselected.values() for m in found},
+                )
         if not selection.tests:
             whole = (
                 f"args [{WHOLE_ARG!r}] (the whole suite, bounded)"
@@ -3066,6 +3227,9 @@ def build_sandbox_workspace_tools(
                 + ". The tests failing on them are environmental, not a regression: grow the checkout with "
                 "materialize_repository add_paths to run them, or leave them to the pull request's CI."
             )
+            verdict = commands.missing_file_verdict(outcome, missing)
+            if verdict:
+                notes.append(verdict)
             if outcome.uncollected:
                 notes.append(commands.uncollected_note(outcome))
         stray = record.outside(outcome.written)
@@ -3203,6 +3367,7 @@ def build_sandbox_workspace_tools(
         ("sandbox_apply_patch", sandbox_apply_patch),
         ("sandbox_write_file", sandbox_write_file),
         ("sandbox_json_keys", sandbox_json_keys),
+        ("sandbox_convert_images", sandbox_convert_images),
         ("materialize_repository", materialize_repository),
         ("sandbox_checkout_status", sandbox_checkout_status),
         ("sandbox_checkout_diff", sandbox_checkout_diff),
@@ -3460,7 +3625,7 @@ def build_sandbox_workspace_tools(
         ToolDefinition(
             name="sandbox_put_file",
             description=(
-                "Copy a conversation file (an upload, a download, a generated file, a saved video frame: its file_id) into the "
+                "Copy a conversation file (an upload, a download, a generated file, a saved video frame, a template asset: its file_id) into the "
                 "code interpreter's sandbox workspace at path (path src/app.py is workspace/src/app.py), where every later "
                 "code_interpreter call finds it."
             ),
@@ -3862,7 +4027,7 @@ def build_sandbox_workspace_tools(
                 "max_replacements or when the time budget runs out (a dry_run answers what it read). Searches "
                 "every text file up to 32 MB, as sandbox_grep; a file left out is named "
                 "with its reason, and matches the replacement leaves unchanged are reported as such. Answers a "
-                "diffstat per file and the bounded diffs; dry_run=true previews."
+                "diffstat per file and each distinct change; dry_run=true: diffs."
             ),
             input_schema={
                 "type": "object",
@@ -3956,12 +4121,57 @@ def build_sandbox_workspace_tools(
             source=source,
         ),
         ToolDefinition(
+            name="sandbox_convert_images",
+            description=(
+                "Convert, resize or compress images of the sandbox workspace in one write: a PNG capture to WebP for "
+                "a README, a screenshot bounded to a width, a JPEG recompressed. The output format is the suffix of "
+                "'to' (.png, .jpg, .jpeg, .webp); a resize keeps the aspect ratio and never enlarges. Answers each "
+                "file's size before and after. Use it, not a code_interpreter Pillow script, to write an image of a "
+                "checkout. Refused with nothing written: a source absent or not an image, an animated source, an "
+                "existing target unless overwrite."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "conversions": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "from": {"type": "string", "description": "Source image, a workspace path."},
+                                "to": {
+                                    "type": "string",
+                                    "description": "Target path; its suffix is the format (may equal from).",
+                                },
+                                "max_width": {"type": "integer", "description": "Bound on the width in px."},
+                                "max_height": {"type": "integer", "description": "Bound on the height in px."},
+                                "quality": {
+                                    "type": "integer",
+                                    "description": f"JPEG and lossy WebP quality, 1-100 (default {images.DEFAULT_QUALITY}).",
+                                },
+                                "lossless": {"type": "boolean", "description": "Lossless WebP."},
+                            },
+                            "required": ["from", "to"],
+                        },
+                        "description": f"At most {images.MAX_CONVERSIONS} conversions.",
+                    },
+                    "overwrite": {
+                        "type": "boolean",
+                        "description": "Replace an existing target other than the source (default false).",
+                    },
+                },
+                "required": ["conversions"],
+            },
+            source=source,
+        ),
+        ToolDefinition(
             name="sandbox_json_keys",
             description=(
-                "Set, rename, remove or read top-level keys of i18n catalogs (JSON, or one TS/JS object literal) in "
-                "one call, each file written back in its own layout, all or nothing. Order: rename, set, remove; get "
-                "reads after. A rename plus a set of the new key changes key and value in place. Use it, not "
-                "code_interpreter or one sandbox_edit_file per file, to add a key everywhere."
+                "Set, rename, remove or read top-level keys of i18n catalogs (JSON, one TS/JS object literal, "
+                "or gettext .po keyed by msgid) in one call, each file written back in its own layout, all or "
+                "nothing. Order: rename, set, remove; get reads after. A rename plus a set of the new key changes "
+                "key and value in place. Use it, not code_interpreter or one sandbox_edit_file per file, to add a "
+                "key everywhere."
             ),
             input_schema={
                 "type": "object",
@@ -3970,6 +4180,10 @@ def build_sandbox_workspace_tools(
                     "set": {
                         "type": "object",
                         "description": 'Path ("*": every file) to {key: value}; a new key goes last unless placed.',
+                    },
+                    "set_from": {
+                        "type": "string",
+                        "description": "Instead of set: a workspace JSON file holding that object, read on the server.",
                     },
                     "place": {
                         "type": "object",
@@ -4138,7 +4352,8 @@ def build_sandbox_workspace_tools(
                         "description": (
                             "A hunk both sides changed: markers (default), or written without markers as the "
                             "ref's lines then the lines the workspace added there (ref-then-workspace: a line added "
-                            "next to a line the ref rewrote), or the workspace's then the ref's added lines."
+                            "next to a line the ref rewrote), or the workspace's then the ref's added lines; ref or "
+                            "workspace keeps that side's lines alone."
                         ),
                     },
                     "background": {

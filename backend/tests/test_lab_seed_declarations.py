@@ -88,8 +88,13 @@ def test_the_home_state_labs_are_the_same_lab_with_one_switch_each():
         "lab-group-ai-off": {"LAB_PEER_GROUP_AI": "off"},
         "lab-org-setup-prompt": {"LAB_ORG_SETUP_PROMPT": "on"},
         "lab-org-setup-prompt-light": {"LAB_ORG_SETUP_PROMPT": "on", "LAB_THEME": "light"},
+        # Organization rows written by platform syncs next to typed rows (#1345).
+        "lab-org-synced": {"LAB_ORG_SYNCED": "on"},
+        "lab-org-synced-light": {"LAB_ORG_SYNCED": "on", "LAB_THEME": "light"},
         "lab-perf-thread": {"LAB_PERF_THREAD": "on"},
         "lab-langfuse-env": {"LAB_LANGFUSE": "env"},
+        # SMTP configured on lab-only values (#1542).
+        "lab-smtp": {"LAB_SMTP": "on"},
         "lab-db-license": {"LAB_LICENSE_SOURCE": "database"},
         "lab-db-license-light": {"LAB_LICENSE_SOURCE": "database", "LAB_THEME": "light"},
         # The worker runs: a manually triggered assignment run executes on the stub model (#11297).
@@ -103,8 +108,17 @@ def test_the_home_state_labs_are_the_same_lab_with_one_switch_each():
             k: v for k, v in lab.items() if k not in ("env", "description")
         }, name
     assert not {
-        "LAB_EDITION", "LAB_DEFAULT_MODEL", "LAB_AI", "LAB_PEER_GROUP_AI", "LAB_LANGFUSE", "LAB_LICENSE_SOURCE",
-        "LAB_ORG_SETUP_PROMPT", "LAB_PERF_THREAD", "LAB_WORKER",
+        "LAB_EDITION",
+        "LAB_DEFAULT_MODEL",
+        "LAB_AI",
+        "LAB_PEER_GROUP_AI",
+        "LAB_LANGFUSE",
+        "LAB_SMTP",
+        "LAB_LICENSE_SOURCE",
+        "LAB_ORG_SETUP_PROMPT",
+        "LAB_ORG_SYNCED",
+        "LAB_PERF_THREAD",
+        "LAB_WORKER",
     } & set(lab["env"])
 
 
@@ -252,6 +266,24 @@ def test_lab_langfuse_env_hands_the_lab_keys_to_the_backend_and_the_default_does
     assert "**langfuse_env()" in _lab_source("backend_env")
 
 
+_SMTP_NAMES = ("LAB_SMTP_STATES", "LAB_SMTP_HOSTNAME", "LAB_SMTP_PORT", "LAB_SMTP_FROM", "lab_switch", "smtp_env")
+
+
+def test_lab_smtp_on_configures_a_loopback_smtp_server_and_the_default_does_not():
+    """#1542: ``LAB_SMTP=on`` makes the backend answer SMTP configured, on a host no mail leaves the lab by."""
+    assert _lab_namespace(*_SMTP_NAMES)["smtp_env"]() == {}
+    assert _lab_namespace(*_SMTP_NAMES, env={"LAB_SMTP": "off"})["smtp_env"]() == {}
+    unknown = _lab_namespace(*_SMTP_NAMES, env={"LAB_SMTP": "relay"})
+    assert unknown["smtp_env"]() == {}
+    assert unknown["logged"] == ["LAB_SMTP='relay' ignored: one of off, on"]
+    on = _lab_namespace(*_SMTP_NAMES, env={"LAB_SMTP": "On"})
+    env = on["smtp_env"]()
+    assert env["SMTP_HOSTNAME"] == "127.0.0.1" and env["SMTP_PORT"] == "9"
+    assert env["SMTP_STARTTLS"] == "false" and env["SMTP_USE_TLS"] == "false"
+    assert env["SMTP_FROM"].endswith(".invalid")
+    assert "**smtp_env()" in _lab_source("backend_env")
+
+
 def test_the_langfuse_states_are_saved_and_read_back():
     calls: list[tuple[str, str, dict | None]] = []
     answers: dict = {("GET", "/settings/langfuse"): {"has_public_key": True, "has_secret_key": True}}
@@ -362,7 +394,7 @@ def test_the_ai_lock_states_are_read_back_and_logged_only_when_switched_on():
     seeded, skipped = switched["seed_ai_lock_states"]("t", base, "peer")
     assert skipped == {}
     assert seeded["platform AI off"] == {"id": "ai-disabled", "url": f"{base}/"}
-    assert seeded["group with AI off"] == {"id": "g1", "url": f"{base}/groups/g1"}
+    assert seeded["group with AI off"] == {"id": "g1", "url": f"{base}/users-and-groups/groups/g1"}
     assert seeded["signed-in session (peer, group AI off)"]["url"] == f"{base}/login#token=peer-token"
     assert ("PUT", "/settings/platform", "t", {"ai_enabled": False}) in calls
     assert ("PUT", "/groups/g1", "t", {"ai_enabled": False}) in calls
@@ -746,7 +778,7 @@ def test_the_lab_seeds_a_non_admin_user_with_two_factor_enrolled_and_never_logs_
     ns = _lab_namespace("seed_mfa_user", "totp_code", "_created", "MFA_EMAIL", "MFA_PASSWORD", "MFA_NAME", api=api)
     ns.update(base64=__import__("base64"), hmac=__import__("hmac"), hashlib=__import__("hashlib"),
               struct=__import__("struct"), time=__import__("time"))
-    assert ns["seed_mfa_user"]("admin-token", base) == {"two-factor user": {"id": "u1", "url": f"{base}/users/u1"}}
+    assert ns["seed_mfa_user"]("admin-token", base) == {"two-factor user": {"id": "u1", "url": f"{base}/users-and-groups/users/u1"}}
     assert [(c[0], c[1], c[2]) for c in calls] == [
         ("POST", "/users", "admin-token"),
         ("POST", "/auth/login", None),
@@ -809,11 +841,49 @@ def test_the_lab_seeds_a_budget_ceiling_the_peer_cannot_exceed_and_logs_its_flee
     assert "seed_budget_ceiling(peer_token, base)" in peer and "skipped['budget ceiling']" in peer
 
 
+def test_the_lab_turns_the_decisions_read_switch_on_and_seeds_one_open_decision():
+    calls: list = []
+    answers: dict = {
+        ("POST", "/work-items"): {"id": "w1"},
+        ("GET", "/decisions/waiting?limit=200"): {"enabled": True, "items": [{"id": "work_item:w1"}]},
+    }
+
+    def api(method, path, token=None, body=None):
+        calls.append((method, path, token, body))
+        return answers.get((method, path), {})
+
+    base = "http://localhost:3100"
+    ns = _lab_namespace("seed_open_decision", "_created", "SEED_NAME", api=api)
+    assert ns["seed_open_decision"]("t", base) == {
+        "open decision": {"id": "work_item:w1", "url": f"{base}/tasks/work-items/w1"}
+    }
+    body = calls[0][3]
+    # A complete ask, as the API requires of needs_human; no owner agent, so no inbox claims it.
+    assert body["needs_human"] is True and "owner_agent_id" not in body
+    ask = body["ask"]
+    assert ask["question"] and len(ask["options"]) >= 2
+    assert ask["recommendation"] in {option["key"] for option in ask["options"]}
+
+    # The switch off, or the row missing, raises: the seed never reports a row the inbox does not show.
+    for waiting in (
+        {"enabled": False, "reason": "DECISIONS_READ_ENABLED is off", "items": []},
+        {"enabled": True, "items": []},
+    ):
+        answers[("GET", "/decisions/waiting?limit=200")] = waiting
+        with pytest.raises(RuntimeError):
+            ns["seed_open_decision"]("t", base)
+
+    env = _lab_source("backend_env")
+    assert "'DECISIONS_READ_ENABLED': os.environ.get('DECISIONS_READ_ENABLED', 'true')" in env
+    seed = _lab_source("seed_entities")
+    assert "seed_open_decision(token, base)" in seed and "skipped['open decision']" in seed
+
+
 def test_the_lab_seeds_the_friction_runs_through_the_backends_interpreter_and_logs_their_urls():
     tree = ast.parse(LAB.read_text(encoding="utf-8"))
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
     helper = ast.unparse(functions["seed_frictions"])
-    for part in ("'/work-items'", "'seed_frictions.py'", "sys.executable", "env=seed_script_env()", "/runs/",
+    for part in ("'/work-items'", "'seed_frictions.py'", "sys.executable", "env=seed_script_env()", "/operations/executions/",
                  "'run with frictions'", "'run with a live friction ledger'", "stderr_summary(process.stderr)"):
         assert part in helper, part
     # Started by path, the script has .xtm-one/lab on sys.path, not its cwd: ``app`` comes from PYTHONPATH.
@@ -1375,7 +1445,7 @@ def test_the_lab_seeds_the_ctem_fleet_event_runs_and_logs_each_fleet():
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
     helper = ast.unparse(functions["seed_ctem_fleet_event_runs"])
     for part in ("'seed_ctem_fleet_event_runs.py'", "sys.executable", "env=seed_script_env()",
-                 "CTEM fleet event run: ", "/assignments/runs/", "/activity", "agentic_steps", "/runs/"):
+                 "CTEM fleet event run: ", "/assignments/runs/", "/activity", "agentic_steps", "/operations/executions/"):
         assert part in helper, part
     seed = ast.unparse(functions["seed_entities"])
     assert "seed_ctem_fleet_event_runs(token, base)" in seed and "skipped['CTEM fleet event run']" in seed
@@ -1419,7 +1489,7 @@ def test_the_awaiting_human_seed_pauses_runs_on_approvals_and_a_question_on_two_
     assert len(ids) == len(set(ids))
     assert {r["agent_id"] for r in rows} == {"agent-a", "agent-b"}
     assert all(r["trigger_context"]["seeded_by"] == "lab" for r in rows)
-    assert module.BUILTIN_FLEET_SLUG == "ctem-threat-response"
+    assert module.BUILTIN_FLEET_SLUG == "ctem-loop"
 
     tree = ast.parse(LAB.read_text(encoding="utf-8"))
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
@@ -1604,7 +1674,7 @@ def test_the_roi_seed_plans_one_run_per_review_outcome_and_a_work_item_record():
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
     helper = ast.unparse(functions["seed_roi_records"])
     for part in ("'seed_roi_records.py'", "sys.executable", "env=seed_script_env()", "'/assignments'",
-                 "'/work-items'", "/complete", "stderr_summary(process.stderr)", "ROI review run", "/runs/"):
+                 "'/work-items'", "/complete", "stderr_summary(process.stderr)", "ROI review run", "/operations/executions/"):
         assert part in helper, part
     seed = ast.unparse(functions["seed_entities"])
     assert "seed_roi_records(token, base)" in seed and "skipped['ROI review runs']" in seed
@@ -1719,7 +1789,7 @@ def test_the_roi_fleet_seed_declares_a_unit_and_records_counted_runs_inside_the_
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
     helper = ast.unparse(functions["seed_roi_fleet"])
     for part in ("'seed_roi_fleet.py'", "sys.executable", "env=seed_script_env()", "/roi/declarations?subject_type=fleet",
-                 "'per_run'", "'/assignments'", "stderr_summary(process.stderr)", "'ROI fleet'", "/analytics/outcomes"):
+                 "'per_run'", "'/assignments'", "stderr_summary(process.stderr)", "'ROI fleet'", "/observability/outcomes"):
         assert part in helper, part
     seed = ast.unparse(functions["seed_entities"])
     assert "seed_roi_fleet(token, base, ids['fleet'])" in seed and "skipped['ROI fleet']" in seed
@@ -1781,7 +1851,7 @@ def test_the_roi_chat_seed_covers_every_state_of_the_from_chat_card():
         "'/roi/chat?window=30d'",
         "stderr_summary(process.stderr)",
         "seeded ROI chat records (",
-        "/value?scope=organization",
+        "/tasks/value?scope=organization",
         "FLEET_MEMBERS[0]",
     ):
         assert part in helper, part
@@ -1943,7 +2013,7 @@ def test_the_analytics_seed_fills_every_breakdown_past_one_page_and_aggregates()
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
     helper = ast.unparse(functions["seed_analytics_traces"])
     for part in ("'seed_analytics_traces.py'", "sys.executable", "env=seed_script_env()", "'/users'", "'/groups'",
-                 "/members", "stderr_summary(process.stderr)", "'analytics traces'", "/analytics"):
+                 "/members", "stderr_summary(process.stderr)", "'analytics traces'", "/observability"):
         assert part in helper, part
     seed = ast.unparse(functions["seed_entities"])
     assert "seed_analytics_traces(token, base)" in seed and "skipped['analytics traces']" in seed
@@ -2002,7 +2072,7 @@ def test_the_trace_sessions_seed_fills_two_pages_that_sort_on_every_column():
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
     helper = ast.unparse(functions["seed_trace_sessions"])
     for part in ("'seed_trace_sessions.py'", "sys.executable", "env=seed_script_env()", "analytics_ids.json",
-                 "stderr_summary(process.stderr)", "'trace sessions'", "/trace-sessions"):
+                 "stderr_summary(process.stderr)", "'trace sessions'", "/observability/sessions"):
         assert part in helper, part
     seed = ast.unparse(functions["seed_entities"])
     assert "seed_trace_sessions(base, peer_id)" in seed and "skipped['trace sessions']" in seed
@@ -2562,18 +2632,19 @@ def test_the_lab_answers_the_opencrq_sync_plan_from_its_fixture(monkeypatch):
             body=route.OpenCrqSyncRequest(apply=apply), db=Db(), admin=admin,
         ))
 
-    kinds = ("linked", "pushed_to_opencrq", "pulled_from_opencrq", "ambiguous", "not_in_opencrq")
+    kinds = ("linked", "pulled_from_opencrq", "ambiguous", "not_in_opencrq")
     dry = sync(False)
     assert dry.applied is False and dry.errors == [] and dry.version == 3
     assert {kind: len(dry.plan[kind]) for kind in kinds} == dict.fromkeys(kinds, 1)
-    assert dry.plan["pushed_to_opencrq"][0]["criticality"] == "very_high"
+    assert dry.plan["pushed_to_opencrq"] == []  # #1591: nothing is written to OpenCRQ
+    assert dry.plan["not_in_opencrq"] == [{"crown_jewel": "Legacy billing", "opencrq_asset_id": "lab-asset-retired"}]
     assert dry.plan["ambiguous"] == ["Data warehouse"]
     assert sync(False).plan == dry.plan
 
     applied = sync(True)
     assert applied.applied is True and applied.plan == dry.plan and saves == []
     agreed = sync(False)
-    assert all(agreed.plan[kind] == [] for kind in kinds)
+    assert all(agreed.plan[kind] == [] for kind in (*kinds, "pushed_to_opencrq"))
     assert sync(False).plan == dry.plan
 
     tree = ast.parse(LAB.read_text(encoding="utf-8"))
@@ -3135,7 +3206,7 @@ def test_the_lab_seeds_one_assignment_whose_agent_receives_and_publishes_on_slac
     helper = ast.unparse(functions["seed_channel_assignment"])
     for part in ("'receive_enabled': True", "'publish_enabled': True", "'receive_channels': [first]",
                  "'publish_channels': [first]", "'channel_config': config", "'/channel-bots/{bot}/channels'",
-                 "f'/agents/{agent}'", "'/assignments'", "/assignments/{assignment}", "receive and publish"):
+                 "f'/agents/{agent}'", "'/assignments'", "/agents/assignments/{assignment}", "receive and publish"):
         assert part in helper, part
     seed = ast.unparse(functions["seed_entities"])
     call = "seed_channel_assignment(token, base, seeded)"
@@ -3470,10 +3541,11 @@ def test_the_lab_serves_an_openapi_spec_listing_every_auth_kind_and_seeds_an_int
 
 def test_the_seeded_routes_are_routes_of_the_frontend():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
-    for route in ("/runs/:id", "/fleets/:fleetId", "/tools/:id", "/templates/:id", "/investigation-packs/:id",
-                  "/relays/:id",
+    for route in ("/operations/executions/:id", "/fleets/:fleetId", "/tools/:id", "/templates/:id", "/investigation-packs/:id",
+                  "/connections/relays/:id",
                   "/evaluations/datasets/:id", "/evaluations/:evaluationId/compare", "/evaluations/:id", "/ctem/:stage",
-                  "/workspaces/:workspaceId", "/users/:id", "/operations/:tab", "/videos/:id",
+                  "/tasks/workspaces/:workspaceId", "/tasks/work-items/:itemId", "/tasks/value", "/users-and-groups/users/:id",
+                  "/operations/shared-state", "/videos/:id",
                   "/integrations/:id/:tab?"):
         assert f'path="{route}' in app, route
 
@@ -4104,6 +4176,24 @@ def test_the_ctem_fleet_optin_seed_plans_one_fleet_per_state_and_leaves_the_othe
     }
     with pytest.raises(RuntimeError):
         module.plan({"a": [("1", False)], "b": [("2", False), ("3", False)], "c": [("4", False)]})
+    # #1048: the four built-in CTEM fleets read on, partial, paused and stale; failing is carried by
+    # the partial fleet, so every required state still renders (lab.py forks one for not set up).
+    four = module.plan(
+        {
+            "ctem-ai-security": [("a1", False), ("a2", False)],
+            "ctem-loop": [("l1", False), ("l2", True)],
+            "ctem-third-party-risk": [("t1", False)],
+            "ctem-vuln-prioritization": [("v1", True), ("v2", False)],
+        }
+    )
+    assert four == {
+        "ctem-ai-security": "partial",
+        "ctem-loop": "paused",
+        "ctem-third-party-risk": "stale",
+        "ctem-vuln-prioritization": "on",
+    }
+    assert module.extras(four) == {"ctem-ai-security": ["failing"]}
+    assert module.extras(states) == {} and module.extras(six) == {}
 
     # A KEV automation can serve the tracked organizations; one reading the primary profile cannot.
     kev = {"provider": "opencti", "provision": {"fleet": "F", "purpose": "P", "entity_types": ["Vulnerability"]}}
@@ -4481,7 +4571,7 @@ def test_lab_ctem_kev_tailored_narrows_the_cyber_kev_count_to_the_saved_stack(mo
         return stack
 
     monkeypatch.setattr(ctem_metrics, "build_posture_for_user", collect)
-    monkeypatch.setattr(ctem_metrics_collector, "_profile_tech_stack", read_stack)
+    monkeypatch.setattr(ctem_metrics_collector, "_organization_software", read_stack)
     assert module.tailored_ctem_posture({"LAB_CTEM_KEV_TAILORED": "on"}) is True
     facts, present = asyncio.run(ctem_metrics.build_posture_for_user(None, "u", "cyber"))
     assert present == {"opencti", "openaev"}
@@ -4711,6 +4801,78 @@ def test_the_lab_turns_the_platform_tools_mcp_server_on_unless_lab_xtm_mcp_is_0(
     seed = _lab_source("seed_entities")
     assert "seed_xtm_mcp(token, base)" in seed and "skipped['Platform Tools MCP Server']" in seed
     assert seed.index("seed_xtm_mcp(token, base)") < seed.index("seeded.json")
+
+
+def test_the_module_health_lab_turns_platform_health_on_through_the_real_settings_route():
+    """#101 S15d-3: ``LAB_PLATFORM_HEALTH=on`` puts Platform Health on, every other setting kept; off leaves it."""
+    calls: list = []
+    stored = {"enabled": False, "module_analyst": {"enabled": True}}
+
+    def api(method, path, token=None, body=None):
+        calls.append((method, path, token, body))
+        if method == "PUT":
+            stored.update(body)
+        return dict(stored)
+
+    base = "http://localhost:3100"
+    names = ("LAB_PLATFORM_HEALTH_STATES", "lab_switch", "seed_platform_health")
+    ns = _lab_namespace(*names, api=api)
+    assert ns["seed_platform_health"]("admin-token", base) == {} and calls == []
+    ns = _lab_namespace(*names, env={"LAB_PLATFORM_HEALTH": "on"}, api=api)
+    assert ns["seed_platform_health"]("admin-token", base) == {
+        "Platform Health": {"id": "enabled", "url": f"{base}/health"},
+    }
+    assert calls[1] == (
+        "PUT",
+        "/health/settings",
+        "admin-token",
+        {"enabled": True, "module_analyst": {"enabled": True}},
+    )
+    seed = _lab_source("seed_entities")
+    assert "seed_platform_health(token, base)" in seed and "skipped['Platform Health']" in seed
+    assert seed.index("seed_suite_registrations(token, base)") > seed.index("seed_platform_health(token, base)")
+    assert seed.index("seed_platform_health(token, base)") < seed.index("seeded.json")
+    services = _services()
+    lab = services["lab-module-health"]
+    assert "LAB_PLATFORM_HEALTH" not in services["lab"]["env"]
+    assert lab["env"] == {**services["lab-live"]["env"], "LAB_PLATFORM_HEALTH": "on", "LAB_WORKER": "1"}
+
+
+def _seed_health_findings_module():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("lab_seed_health_findings", LAB.parent / "seed_health_findings.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_health_findings_seed_covers_every_severity_module_and_status():
+    """#1303: the seeded findings carry every severity, the XTM One module and the three analyst modules (agentic)."""
+    from app.api.v1.platform_health_findings import ANALYST_MODULES, is_agentic
+    from app.models.health_check import CATEGORIES, MODULES, SEVERITIES
+
+    module = _seed_health_findings_module()
+    rows = module.results()
+    assert all(r["failing"] for r in rows) and not any(r["failing"] for r in module.results(failing=False))
+    assert {r["severity"] for r in rows} == set(SEVERITIES)
+    assert {r["module"] for r in rows} <= set(MODULES) and {r["category"] for r in rows} <= set(CATEGORIES)
+    assert {r["module"] for r in rows if is_agentic(r["check_id"])} == set(ANALYST_MODULES)
+    assert all(r["check_id"].startswith(f"{r['module']}.") for r in rows)
+    checks = [r["check_id"] for r in rows]
+    assert len(set(checks)) == len(checks) and {module.DISMISSED, module.RESOLVED} <= set(checks)
+    assert module.DISMISSED != module.RESOLVED
+
+    tree = ast.parse(LAB.read_text(encoding="utf-8"))
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    helper = ast.unparse(functions["seed_health_findings"])
+    for part in ("'seed_health_findings.py'", "sys.executable", "env=seed_script_env()", "'/health/overview'",
+                 "'/health/findings?limit=200'", "stderr_summary(process.stderr)", "'xtm_one'"):
+        assert part in helper, part
+    seed = ast.unparse(functions["seed_entities"])
+    assert "seed_health_findings(token, base)" in seed and "skipped['health findings']" in seed
+    assert seed.index("seed_platform_health(token, base)") < seed.index("seed_health_findings(token, base)")
+    assert seed.index("seed_health_findings(token, base)") < seed.index("seeded.json")
 
 
 def test_the_lab_peer_clears_its_default_agent_so_profile_renders_the_general_assistant_tools():

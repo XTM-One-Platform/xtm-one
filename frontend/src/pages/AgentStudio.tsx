@@ -20,7 +20,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * from the featured card, which reuses the existing `/agents/new` wizard.
  * The cards are the group's visible children (`hubCards`, #9301 N2c).
  */
-import { Wand2 } from "lucide-react";
 import { ResourceHub } from "@/components/ui/resource-hub";
 import { hubCards, useNavGroup } from "@/components/layout/use-nav-group";
 import { useKnowledgeBases } from "@/hooks/api/useKnowledgeBaseApi";
@@ -88,7 +87,7 @@ export default function AgentStudio() {
       description="Everything that defines what your agents know, say, and can do."
       feature={{
         to: "/agents/new",
-        icon: Wand2,
+        icon: "sparkle",
         label: "Create an agent",
         description: "Start from a template or a blank persona, then bind knowledge, tools and assignments.",
         gated: true,

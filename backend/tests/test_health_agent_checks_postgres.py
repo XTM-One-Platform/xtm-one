@@ -289,15 +289,24 @@ async def test_owned_work_items_held_by_an_ended_run_or_blocked_on_nothing_are_r
             user_id=owner.id, owner_agent_id=agent.id, title="held", status="in_progress", claimed_by_run_id=ended.id
         )
         bare = WorkItem(user_id=owner.id, owner_agent_id=agent.id, title="bare", status="blocked")
+        # Free text alone is no blocker (#762): reported like the bare one.
         named = WorkItem(
             user_id=owner.id, owner_agent_id=agent.id, title="named", status="blocked", blocked_reason="waits"
         )
-        db.add_all([held, bare, named])
+        real = WorkItem(
+            user_id=owner.id,
+            owner_agent_id=agent.id,
+            title="real",
+            status="blocked",
+            blocked_on_refs=[{"repo": "o/r", "kind": "pull_request", "number": 7, "release_on": "merged"}],
+        )
+        db.add_all([held, bare, named, real])
         await db.flush()
         await engine.run_pass(db, now=T0, checks=CHECKS)
         found = await _open(db)
         assert found["agents.orphaned_claims"].evidence["values"] == {"items": [str(held.id)], "count": 1}
-        assert found["agents.blocked_without_blocker"].evidence["values"] == {"items": [str(bare.id)], "count": 1}
+        reported = found["agents.blocked_without_blocker"].evidence["values"]
+        assert sorted(reported["items"]) == sorted([str(bare.id), str(named.id)]) and reported["count"] == 2
 
 
 async def _runs(

@@ -29,6 +29,8 @@ const SOURCES = {
           reason: "",
           filters: ["labels", "markings", "created_by", "creator", "category", "subcategory", "criticality", "internet_facing", "environment", "platform", "created_after", "filter_group"],
         },
+        { source: "intune", available: false, reason: "no Microsoft Intune integration is connected", reason_code: "not_connected", filters: [] },
+        { source: "defender", available: false, reason: "no token for the Microsoft Defender integration: authorize it again", reason_code: "no_token", filters: [] },
       ],
     },
     { section: "crown_jewels", field: "crown_jewels", sources: [{ source: "opencrq", available: true, reason: "", filters: ["min_criticality", "tenant_id"] }] },
@@ -124,6 +126,19 @@ describe("OrganizationImportDialog (#11780)", () => {
     expect(openaev.disabled).toBe(true);
     expect(openaev.textContent).toContain("not connected, or no token for this administrator");
     expect((await choice("opencti")).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("words the reason of an endpoint source from its code, never the backend's English sentence (#1251)", async () => {
+    open();
+    fireEvent.click(await choice("assets"));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    const intune = await choice("intune");
+    expect(intune.disabled).toBe(true);
+    expect(intune.textContent).toContain("Not available: no Microsoft Intune integration is connected. Connect it in Settings > Integrations.");
+    const defender = await choice("defender");
+    expect(defender.disabled).toBe(true);
+    expect(defender.textContent).toContain("the Microsoft Defender for Endpoint integration has no token. Authorize it again");
+    expect(defender.textContent).not.toContain("authorize it again");
   });
 
   it("moves the section with the arrow keys, as a radio group", async () => {
@@ -330,5 +345,17 @@ describe("OrganizationImportDialog (#11780)", () => {
     await toPreview();
     expect(await screen.findByText("OpenCTI could not be read. Nothing will be saved.")).toBeTruthy();
     expect(screen.queryByText(/upstream 502/)).toBeNull();
+    expect(screen.queryByText(/^Reason:/)).toBeNull();
+  });
+
+  it("says why a source refused the read and which permission it needs (#1556, UX round 1 B1)", async () => {
+    const reason = "CrowdStrike Falcon refused the group read (HTTP 401): it needs an API client with the Host groups: Read and Hosts: Read scopes.";
+    const failed = plan({ new: 0, updated: 0, unchanged: 0, skipped: 0 });
+    post.mockResolvedValue({ ...failed, plan: { ...failed.plan, error: reason, error_reason: reason } });
+    open();
+    await toPreview();
+    const block = await screen.findByTestId("org-import.read-error");
+    expect(block.textContent).toContain("could not be read. Nothing will be saved.");
+    expect(block.textContent).toContain(`Reason: ${reason}`);
   });
 });

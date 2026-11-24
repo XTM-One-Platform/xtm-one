@@ -178,11 +178,16 @@ export function useAssignmentRuns(
   });
 }
 
-export function useAssignmentRunDetail(runId: string) {
+export function useAssignmentRunDetail(
+  runId: string,
+  /** A 404 is an answer, not a fault: the run page renders Page not found (#797 S4). */
+  options: { notFoundIsOrdinary?: boolean } = {},
+) {
   return useQuery<AssignmentRunDetail>({
     queryKey: ["assignment-run", runId],
     queryFn: () => api.get(`/assignments/runs/${runId}`),
     enabled: !!runId,
+    ...(options.notFoundIsOrdinary ? notFoundIsOrdinary : {}),
     // Auto-refresh while the run is still in progress. ``awaiting_human``
     // polls at the STANDARD interval (HITL waits can be long and the respond
     // mutation already invalidates the cache) so a response submitted by

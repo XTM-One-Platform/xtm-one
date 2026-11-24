@@ -60,8 +60,29 @@ HEALTH_ACTOR: Final = "concierge"
 #: The principal's stable id. Never a ``users`` row.
 HEALTH_PRINCIPAL_ID: Final[uuid.UUID] = uuid.uuid5(uuid.NAMESPACE_URL, "xtm-one:platform-concierge")
 
-HealthRole = Literal["orchestrator", "memory_steward", "quality_analyst", "flow_lab", "experimenter"]
+#: The three module health checkers (#101 S15, ``dev-docs/platform-health.md`` section 13.1).
+#: ``module_analyst`` is the role the single S14 member held: kept so the cycles,
+#: recommendations and spend rows it wrote still read as Platform Health's.
+HealthRole = Literal[
+    "orchestrator",
+    "memory_steward",
+    "quality_analyst",
+    "flow_lab",
+    "experimenter",
+    "opencti_checker",
+    "openaev_checker",
+    "opencrq_checker",
+    "module_analyst",
+]
 HEALTH_ROLES: Final[frozenset[str]] = frozenset(get_args(HealthRole))
+#: The module checker role per module provider (section 13.1).
+CHECKER_ROLE_BY_PROVIDER: Final[dict[str, str]] = {
+    "opencti": "opencti_checker",
+    "openaev": "openaev_checker",
+    "opencrq": "opencrq_checker",
+}
+#: Every role a module checker cycle is booked under, the S14 alias included.
+MODULE_CHECKER_ROLES: Final[frozenset[str]] = frozenset({*CHECKER_ROLE_BY_PROVIDER.values(), "module_analyst"})
 
 
 @dataclass(frozen=True, slots=True)

@@ -43,6 +43,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tip } from "@/components/ui/tooltip";
 import { SampleBadge } from "@/components/ui/sample-badge";
+import { ToneBadge } from "@/components/ui/tone-badge";
 import { AiLockedFooter } from "@/components/ui/enterprise-upsell";
 import { useAiLockReason } from "@/hooks/useAiLockReason";
 import { useAiActionDisabled } from "@/hooks/useAiDisabled";
@@ -318,9 +319,7 @@ export default function ExposureBriefing() {
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
                               <p className="text-[13px] font-medium leading-tight">{s.action}</p>
-                              <span className={cn("text-[9px] font-semibold uppercase tracking-wider rounded-sm px-1.5 py-0.5 shrink-0", prio.cls)}>
-                                {prio.label}
-                              </span>
+                              <ToneBadge tone={prio.tone}>{t_i18n(prio.label)}</ToneBadge>
                             </div>
                             {s.rationale && (
                               <p className="text-[11px] text-default-secondary leading-snug mt-0.5">{s.rationale}</p>

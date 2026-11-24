@@ -168,7 +168,7 @@ describe("Shared state tab while its list loads", () => {
       return [];
     });
     renderWithProviders(
-      <MemoryRouter initialEntries={["/operations/state"]}>
+      <MemoryRouter initialEntries={["/operations/shared-state"]}>
         <SharedStateTab />
       </MemoryRouter>,
     );

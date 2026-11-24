@@ -82,7 +82,7 @@ def test_the_lab_starts_the_seed_and_reads_every_reason_back():
         "correlation_key_prefix=lab-stale-reasons",
         "'stale_reason'",
         "'stale reasons'",
-        "/operations/work-items?view=stale",
+        "/tasks/work-items?view=stale",
         "stderr_summary(process.stderr)",
     ):
         assert part in helper, part

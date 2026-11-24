@@ -16,7 +16,7 @@ from app.agents.builtin_fleet_docs import BUILTIN_FLEET_STRUCTURED
 from app.agents.builtin_profile_readers import BUILTIN_AGENT_PROFILE_FIELDS, PROFILE_FIELD_WORDS
 from app.services import fleet_about
 from app.services.fleet_docs import PREREQUISITE_CHECKS
-from app.services.organization_context import OrganizationProfile
+from app.services.organization_context import DERIVED_FIELDS, OrganizationProfile
 from app.services.organization_context_readers import (
     PROFILE_CHECK_FIELDS,
     readers_from_agents,
@@ -41,7 +41,7 @@ def test_every_profile_field_check_of_the_documentation_is_mapped_to_a_real_prof
         c for c in PREREQUISITE_CHECKS if c.startswith("profile:") and c != "profile:tracked_organizations"
     }
     assert profile_checks == set(PROFILE_CHECK_FIELDS)
-    fields = set(OrganizationProfile.model_fields)
+    fields = set(OrganizationProfile.model_fields) | set(DERIVED_FIELDS)
     assert set(PROFILE_CHECK_FIELDS.values()) <= fields
     # The About page and the Organization page read one mapping.
     assert fleet_about._PROFILE_FIELDS is PROFILE_CHECK_FIELDS
@@ -79,9 +79,10 @@ def test_the_built_in_ctem_fleets_name_the_fields_they_need():
     fleets = [_fleet(slug, structured) for slug, structured in BUILTIN_FLEET_STRUCTURED.items()]
     readers = readers_from_fleets(fleets)
     named = {field: [row["name"] for row in rows] for field, rows in readers.items()}
-    assert "ctem-threat-response" in named["crown_jewels"]
+    assert "ctem-loop" in named["crown_jewels"]
     assert "ctem-vuln-prioritization" in named["tech_stack"]
     assert named["ai_systems"] == ["ctem-ai-security"]
+    # The retired fleets (CTEM-31) read nothing: they are gone from the catalog.
     assert all("ctem-posture" not in names for names in named.values())
 
 
@@ -96,7 +97,7 @@ def test_every_seeded_persona_that_reads_the_profile_is_in_the_agent_table():
 
 
 def test_each_agent_entry_names_only_real_fields_its_persona_mentions():
-    fields = set(OrganizationProfile.model_fields)
+    fields = set(OrganizationProfile.model_fields) | set(DERIVED_FIELDS)
     assert set(PROFILE_FIELD_WORDS) <= fields
     for slug, read in BUILTIN_AGENT_PROFILE_FIELDS.items():
         persona = _persona(slug)
@@ -115,5 +116,5 @@ def test_only_seeded_agents_of_the_table_are_named_once_per_field():
     fork = SimpleNamespace(id=uuid.uuid4(), slug="ctem-risk-quantifier-copy", name="Copy", is_builtin=False)
     custom = SimpleNamespace(id=uuid.uuid4(), slug="ctem-risk-quantifier", name="Mine", is_builtin=False)
     readers = readers_from_agents([quantifier, fork, custom])
-    assert set(readers) == {"crown_jewels", "risk_appetite", "currency"}
+    assert set(readers) == {"crown_jewels", "risk_appetite", "currency", "fx_rates"}
     assert readers["risk_appetite"] == [{"agent_id": str(quantifier.id), "name": "Risk Quantifier"}]

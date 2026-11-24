@@ -54,7 +54,7 @@ import re
 import shlex
 import time
 import uuid
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -158,6 +158,10 @@ SAFE_ENV = {
 HARD_TIMEOUT_MARGIN = 30
 #: Characters of stdout and of stderr the run directory keeps.
 MAX_SAVED_OUTPUT = 2 * 1024 * 1024
+#: Run directories (``.xtm/runs/<id>/``) a workspace keeps: saving one more drops the oldest beyond it in the
+#: same change set, so saved results never fill the workspace's file limit (gap workspace-file-limit-drops-check-writes:
+#: 924 run directories, 2,868 files, left a check's own writes refused at the 20,000 file limit).
+MAX_KEPT_RUNS = 100
 #: Seconds a call waits for its command when no agent-loop deadline bounds the call.
 COMMAND_WAIT_SECONDS = 240
 #: Seconds kept before the call's deadline for the read-back, the save and the answer.
@@ -215,6 +219,8 @@ class ResolvedCommand:
     #: The check declares ``affected_narrows_args`` and the call gave args without ``--whole``: those args, the
     #: tail of :attr:`argv`, narrowed to the change before the run (a bare modified path to ``PATH:A-B``).
     narrow_args: tuple[str, ...] = ()
+    #: The check declares ``affected_whole_repository``: the changed files outside its directory are passed too.
+    affected_whole_repository: bool = False
     #: The install check of the same directory and image, run first when the container has no installed
     #: dependencies there (:func:`_needs_install`); ``None`` for an install, an argv or an ``install_first = false`` check.
     install: ResolvedCommand | None = None
@@ -322,6 +328,29 @@ def uncollected_note(outcome: CommandOutcome) -> str:
             f"{verdict} (the exit code also counts the files not collected)."
         )
     return text
+
+
+def missing_file_verdict(outcome: CommandOutcome, outside: list[str]) -> str:
+    """The sentence giving the run's verdict without the tests that failed on a file outside the checkout, or ``""``.
+
+    *outside* holds the workspace paths of :attr:`CommandOutcome.missing` the narrow checkout does not
+    hold. A JUnit report names each failing test with its body: a test whose body names one of them
+    failed on the checkout, not on the change. Without the count the answer said "1 failed" next to a
+    note calling it environmental, and the run was read as red (issue #1111).
+    """
+    report = outcome.report
+    if report is None or report.kind != "junit" or report.problem or not report.failures or not outside:
+        return ""
+    on_checkout = [name for name, body in report.failures if any(path in body for path in outside)]
+    if not on_checkout:
+        return ""
+    rest = len(report.failures) - len(on_checkout)
+    verdict = "the tests this checkout can run pass" if not rest else f"{rest} other test(s) fail on the change"
+    names = ", ".join(on_checkout[:3]) + (", ..." if len(on_checkout) > 3 else "")
+    return (
+        f"Without the {len(on_checkout)} test(s) failing on those files ({names}): {report.passed} passed, "
+        f"{rest} failed: {verdict} (the exit code still counts them)."
+    )
 
 
 #: A line of output saying a file was missing: Python, Node, TypeScript and the shell spell it so.
@@ -531,13 +560,33 @@ def is_node_dir(command: ResolvedCommand, entries: dict[str, Any]) -> bool:
     return node_lock_dir(command, entries) is not None
 
 
-def staged_entries(entries: dict[str, Any], cwd: str) -> tuple[dict[str, Any], str]:
+def keep_vanished_checkouts(removals: list[str]) -> tuple[list[str], list[str]]:
+    """*removals* without every checkout whose record is among them, and those checkout roots.
+
+    A command's read-back lists as removed what the container no longer holds. A checkout whose
+    own record (``.xtm-checkout.json``) went with it was not removed by the command: the container
+    lost its tree (a restart, a resumed run's stale baseline). Saving that removal deleted a whole
+    checkout from the workspace (10,094 files after a resumed backend-unit run); it is kept instead,
+    and the answer names it. A file removed inside a checkout whose record is still there stays a removal.
+    """
+    from app.services.sandbox_workspace.eviction import checkout_roots
+    from app.services.sandbox_workspace.paths import is_under
+
+    vanished = checkout_roots(removals)
+    if not vanished:
+        return removals, []
+    kept = [path for path in removals if not any(is_under(path, root) for root in vanished)]
+    return kept, vanished
+
+
+def staged_entries(entries: dict[str, Any], cwd: str, linked: Iterable[str] = ()) -> tuple[dict[str, Any], str]:
     """The part of the workspace a command of *cwd* is staged with, and the checkout root it was cut to.
 
     A command whose directory is inside a checkout (a directory holding a checkout record) gets that
     checkout and the files outside every checkout, never the other checkouts: a workspace holding
-    several large checkouts failed the upload where the one checkout passed. A command outside every
-    checkout (an argv at the workspace root) gets the whole workspace, root ``""``.
+    several large checkouts failed the upload where the one checkout passed. The checkouts in *linked*
+    (the ones a manifest's relative path names, :func:`linked_checkouts`) are staged with it. A command
+    outside every checkout (an argv at the workspace root) gets the whole workspace, root ``""``.
     """
     from app.services.sandbox_workspace.eviction import checkout_roots
     from app.services.sandbox_workspace.paths import is_under
@@ -547,9 +596,117 @@ def staged_entries(entries: dict[str, Any], cwd: str) -> tuple[dict[str, Any], s
     if not holders:
         return entries, ""
     own = max(holders, key=len)
-    others = [root for root in roots if root != own and not is_under(own, root)]
+    kept_roots = set(linked)
+    others = [root for root in roots if root != own and not is_under(own, root) and root not in kept_roots]
     kept = {path: entry for path, entry in entries.items() if not any(is_under(path, root) for root in others)}
     return kept, own
+
+
+#: The manifests whose relative paths may name another checkout (a path dependency, a local package).
+LINK_MANIFESTS = ("pyproject.toml", "package.json", "requirements.txt", "requirements-dev.txt", "setup.cfg")
+
+#: A relative path written in a manifest: ``../x``, ``./x`` (a ``file:`` prefix is cut by the search itself).
+_RELATIVE_PATH = re.compile(r"(?<![\w.])(\.\.?/[^\s\"',;\]\)}]+)")
+
+
+def link_manifest_paths(entries: Mapping[str, Any], cwd: str, root: str) -> list[str]:
+    """The manifests (:data:`LINK_MANIFESTS`) of *cwd* and of each directory up to the checkout *root*."""
+    from app.services.sandbox_workspace.paths import is_under
+
+    found: list[str] = []
+    where = cwd.strip("/")
+    while True:
+        prefix = f"{where}/" if where else ""
+        found.extend(f"{prefix}{name}" for name in LINK_MANIFESTS if f"{prefix}{name}" in entries)
+        if not where or where == root or not is_under(where, root):
+            return found
+        where = posixpath.dirname(where)
+
+
+def linked_checkouts(manifests: Mapping[str, str], own: str, roots: Iterable[str]) -> list[str]:
+    """The checkouts other than *own* that a relative path in *manifests* (path to text) resolves into.
+
+    OpenAEV injectors' ``nmap/pyproject.toml`` names ``pyoaev @ ../../client-python``: with
+    ``client-python/`` checked out beside the injectors, the install needs both in the container.
+    """
+    from app.services.sandbox_workspace.paths import is_under
+
+    others = [root for root in roots if root != own and not is_under(own, root)]
+    linked: list[str] = []
+    for path, text in manifests.items():
+        base = posixpath.dirname(path)
+        for match in _RELATIVE_PATH.finditer(text):
+            target = posixpath.normpath(posixpath.join(base, match.group(1)))
+            if target.startswith(".."):
+                continue
+            for root in others:
+                if root not in linked and (is_under(target, root) or is_under(root, target)) and target:
+                    linked.append(root)
+    return sorted(linked)
+
+
+async def build_output_ignores(workspace: Any, entries: dict[str, Any], roots: Iterable[str]) -> list[str]:
+    """The ignore patterns of a command: :data:`IGNORED_PATTERNS` plus the build-output directories of each staged checkout.
+
+    A checkout's own ``.gitignore`` names where its checks build (OpenCTI: ``build``, ``__generated__``,
+    ``coverage``): left out of the reconcile and the read-back like ``node_modules/``, those thousands of
+    untracked files stay in the container and never refuse a check's real writes at the file limit (#1639).
+    A checkout whose record or rules cannot be read adds nothing.
+    """
+    from app.services.sandbox_workspace.checkout import RECORD_NAME, CheckoutRecord, CheckoutRecordError
+    from app.services.sandbox_workspace.gitignore import build_output_patterns, gitignore_paths
+
+    patterns: list[str] = list(IGNORED_PATTERNS)
+    for root in roots:
+        if not root:
+            continue
+        record_entry = entries.get(f"{root}/{RECORD_NAME}")
+        if record_entry is None:
+            continue
+        try:
+            _entry, data = await workspace.read_entry(record_entry)
+            record = CheckoutRecord.from_json(data, path=root)
+        except (CheckoutRecordError, FileNotFoundError, ValueError):
+            continue
+        except Exception:
+            logger.warning("build output ignores: the record of %s could not be read", root, exc_info=True)
+            continue
+        rules: list[tuple[str, bytes]] = []
+        for repo_path in gitignore_paths(p for p in map(record.repo_path, entries) if p):
+            entry = entries.get(record.workspace_path(repo_path))
+            if entry is None:
+                continue
+            try:
+                _entry, rule_bytes = await workspace.read_entry(entry)
+            except Exception:
+                logger.warning("build output ignores: %s could not be read", entry.path, exc_info=True)
+                continue
+            rules.append((repo_path, rule_bytes))
+        for pattern in build_output_patterns(root, rules, record.files):
+            if pattern not in patterns:
+                patterns.append(pattern)
+    return patterns
+
+
+async def _linked_checkouts(workspace: Any, entries: dict[str, Any], cwd: str) -> list[str]:
+    """:func:`linked_checkouts` of the command's manifests, read from the workspace; ``[]`` on any read error."""
+    from app.services.sandbox_workspace.eviction import checkout_roots
+    from app.services.sandbox_workspace.paths import is_under
+
+    roots = checkout_roots(entries)
+    holders = [root for root in roots if cwd and is_under(cwd, root)]
+    if not holders or len(roots) < 2:
+        return []
+    own = max(holders, key=len)
+    manifests: dict[str, str] = {}
+    for path in link_manifest_paths(entries, cwd, own):
+        try:
+            _entry, data = await workspace.read_entry(entries[path])
+        except Exception:  # an unreadable manifest only means no linked checkout
+            logger.debug("manifest %s unreadable for linked checkouts", path, exc_info=True)
+            continue
+        manifests[path] = data[:262_144].decode("utf-8", "replace")
+    return linked_checkouts(manifests, own, roots)
 
 
 def _largest_directories(entries: dict[str, Any], top: int = 3) -> str:
@@ -884,6 +1041,7 @@ async def _resolve(
         affected_scan_patterns=spec.affected_scan_patterns,
         affected_by_default=spec.affected_by_default and not extra_args(args or []),
         narrow_args=narrow,
+        affected_whole_repository=spec.affected_whole_repository,
         install=install,
     )
     install_spec = spec if is_install_name(check) else (found.specs.get(install.check) if install else None)
@@ -1713,7 +1871,10 @@ async def _run_claimed(
             await sandbox.close()
         # Every way out of here waits on the held run or calls again (which claims again): free the container.
         claim.release()
-        if not _same_command(held_run, command) and (held_ended or not background):
+        # The same check asked again is that run only for the tree it was staged with: a file of its checkout
+        # edited since it started (a fix written after a resumed turn's replay) makes it another run.
+        same = _same_command(held_run, command) and not await _edited_since_start(workspace, held_run, command.cwd)
+        if not same and (held_ended or not background):
             # Its process exited: collect its result (saved under .xtm/runs, the container released), then start.
             # Still running (another check of this checkout, an install-first of a sibling call): this call queues
             # behind it within its own budget instead of racing it or answering busy at once.
@@ -1753,7 +1914,7 @@ async def _run_claimed(
                     )
                 )
                 return outcome
-        if _same_command(held_run, command):
+        if same:
             # The same check asked again (a resumed turn that did not know its run_id): that run, waited for.
             polled = await poll_run(
                 str(held_run.get("run_id")),
@@ -1795,18 +1956,21 @@ async def _run_claimed(
     run_id = uuid.uuid4().hex[:12]
     all_entries = await workspace.entries(refresh=True)
     # Only the checkout the command runs from (and the files outside every checkout) goes to the container.
-    entries, staged_root = staged_entries(all_entries, command.cwd)
+    linked = await _linked_checkouts(workspace, all_entries, command.cwd)
+    entries, staged_root = staged_entries(all_entries, command.cwd, linked)
     size_mb = sum(e.size for e in entries.values()) / 1e6
     total_mb = sum(e.size for e in all_entries.values()) / 1e6
+    linked_words = "".join(f", {display(root)}/" for root in linked)
     staged_words = (
-        f"staged {size_mb:.1f} MB: {display(staged_root)}/ and the files outside every checkout, of a {total_mb:.1f} MB workspace"
+        f"staged {size_mb:.1f} MB: {display(staged_root)}/{linked_words} and the files outside every checkout, of a {total_mb:.1f} MB workspace"
         if staged_root
         else f"workspace {size_mb:.1f} MB"
     )
     stage, stage_started = "upload", time.monotonic()
     try:
         await install_tool(sandbox)
-        ws_state = await reconcile(sandbox, workspace, entries, ignore=list(IGNORED_PATTERNS))
+        ignore = await build_output_ignores(workspace, entries, [staged_root, *linked] if staged_root else [])
+        ws_state = await reconcile(sandbox, workspace, entries, ignore=ignore)
         if command.install is not None:
             stage, stage_started = "install probe", time.monotonic()
             if await _needs_install(sandbox, command.install, ws_state.entries):
@@ -1878,6 +2042,8 @@ async def _run_claimed(
         "cache_key": cache_key,
         # Kept with the run so the result names it, whichever call (this one or poll_run) waits for the end.
         "cache_note": stale,
+        # The read-back leaves out what the reconcile left out: the checkout's build output too (#1639).
+        "ignore": [p for p in ignore if p not in IGNORED_PATTERNS],
     }
     await _remember_run(workspace, command.image, run)
     # Recorded: a sibling call now reads this run and queues behind it; the run itself holds no claim.
@@ -2345,6 +2511,29 @@ def _same_command(run: dict[str, Any], command: ResolvedCommand) -> bool:
     )
 
 
+async def _edited_since_start(workspace: WorkspaceSession, run: dict[str, Any], cwd: str) -> bool:
+    """Whether a file of the checkout *cwd* runs from changed after the held *run* was staged.
+
+    Its result would answer for a tree that is gone. The run's own outputs are written back at its collection,
+    after this read, and ``.xtm/`` holds run records only. ``False`` when the start time or the manifest cannot
+    be read (the run is reattached, as before).
+    """
+    try:
+        started = float(run.get("started_at") or 0.0)
+        entries = await workspace.entries(refresh=True)
+    except Exception:
+        return False
+    if not started:
+        return False
+    staged, root = staged_entries(entries, cwd)
+    for path, entry in staged.items():
+        if path.startswith(".xtm/") or (root and not is_under(path, root)):
+            continue
+        if float(getattr(entry, "mtime", 0.0) or 0.0) > started + jobs.CLOCK_SLACK:
+            return True
+    return False
+
+
 #: Commands a resume note names at most.
 _IN_FLIGHT_MAX = 5
 
@@ -2446,10 +2635,13 @@ async def _start(sandbox: Any, command: ResolvedCommand, run_id: str, entries: d
     from opensandbox.models.execd import RunCommandOpts
     from opensandbox.models.filesystem import WriteEntry
 
+    from app.services.sandbox_workspace.registry_mirror import command_env, write_maven_settings
     from app.services.sandbox_workspace.remote import REMOTE_WORKSPACE, TOOL_PATH, snapshot_json
 
     rdir = remote_run_dir(run_id)
     await sandbox.files.create_directories([WriteEntry(path=rdir, mode=700)])
+    # The Maven settings MAVEN_ARGS names, written beside each command (a pooled container may be fresh).
+    await write_maven_settings(sandbox)
     if command.report_path and "/" in command.report_path:
         # The report's directory, so a check that does not create it still writes the file.
         parent = command.report_path.rsplit("/", 1)[0]
@@ -2464,7 +2656,10 @@ async def _start(sandbox: Any, command: ResolvedCommand, run_id: str, entries: d
     where = f"{REMOTE_WORKSPACE}/{command.cwd}" if command.cwd else REMOTE_WORKSPACE
     await sandbox.commands.run(
         f"python {TOOL_PATH} exec {shlex.quote(rdir)} {shlex.quote(where)} {int(command.timeout)}",
-        opts=RunCommandOpts(background=True, working_directory="/tmp", envs=dict(SAFE_ENV)),  # noqa: S108
+        # The registry mirror's variables travel with the command too: a pooled container (poolRef) does not
+        # carry the create's env into the process execd starts, so corepack and yarn fell back to the public
+        # registries the egress policy denies.
+        opts=RunCommandOpts(background=True, working_directory="/tmp", envs={**command_env(), **SAFE_ENV}),  # noqa: S108
     )
 
 
@@ -2631,16 +2826,21 @@ async def _wait_and_finish(
                 else:
                     outcome.report = parse_report(command.report, raw.decode("utf-8", errors="replace"))
         readback = ""
+        vanished: list[str] = []
         if not lost:
             readback_started = time.monotonic()
             try:
-                scanned = await collect(sandbox, workspace, RemoteState(entries=dict(entries), bytes_read=bytes_read), ignore=list(IGNORED_PATTERNS))
+                ignore = [*IGNORED_PATTERNS, *(str(p) for p in run.get("ignore") or [])]
+                scanned = await collect(
+                    sandbox, workspace, RemoteState(entries=dict(entries), bytes_read=bytes_read), ignore=ignore
+                )
             except WorkspaceQuotaError as exc:
                 metrics.quota_refused("sandbox_run_command")
                 call.refused = str(exc)
             except Exception as exc:
                 readback = f"stage read-back, {time.monotonic() - readback_started:.0f} s: {format_exception_message(exc)}"
             else:
+                scanned.removals, vanished = keep_vanished_checkouts(scanned.removals)
                 await commit_scan(workspace, scanned, call, bytes_read=bytes_read)
         if run.get("cache_key") and outcome.exit_code == 0 and not outcome.timed_out:
             await _cache_store(sandbox, command, run["cache_key"], run_id, outcome.seconds)
@@ -2727,6 +2927,12 @@ async def _wait_and_finish(
             f"{', '.join(str(pid) for pid in survivors[:5])}): the container was discarded with them, the next "
             "command starts a new one."
         )
+    if vanished:
+        notes.append(
+            f"Kept in the workspace: {', '.join(display(root) for root in vanished[:5])}/ "
+            "(its checkout record was gone from the container when the command ended, so the whole checkout was "
+            "missing there, not removed by the command; nothing of it was deleted)."
+        )
     if readback:
         notes.append(f"What the command changed under the workspace could not be read back ({readback}).")
     elif call.refused:
@@ -2811,7 +3017,11 @@ async def _save_run(
     if failures:
         files.append((f"{run_dir}/{FAILURES_FILE}", failures.encode("utf-8")))
     try:
-        await workspace.put_tree(files, operation="run_command")
+        stale = _stale_run_files(await workspace.entries(refresh=True), run_dir)
+    except Exception:
+        stale = []
+    try:
+        await workspace.put_tree(files, remove=stale, operation="run_command")
     except (WorkspaceQuotaError, WorkspaceUnavailableError) as exc:
         logger.info("Run directory %s not written: %s", run_dir, exc)
         return ""
@@ -2819,6 +3029,28 @@ async def _save_run(
         logger.warning("Run directory %s not written: %s", run_dir, format_exception_message(exc))
         return ""
     return display(run_dir)
+
+
+def _stale_run_files(entries: Mapping[str, Any], run_dir: str, keep: int | None = None) -> list[str]:
+    """The files of the run directories older than the newest *keep* - 1 (the one being saved, *run_dir*, counts).
+
+    A run directory's age is its newest file's mtime; ``.xtm/runs/prepush/`` (the pre-push guard's records) is
+    never a run directory and is kept.
+    """
+    prefix = f"{RUNS_DIR}/"
+    newest: dict[str, float] = {}
+    files: dict[str, list[str]] = {}
+    for path, entry in entries.items():
+        if not path.startswith(prefix):
+            continue
+        run_id, sep, _rest = path[len(prefix) :].partition("/")
+        if not sep or run_id == "prepush" or f"{prefix}{run_id}" == run_dir:
+            continue
+        newest[run_id] = max(newest.get(run_id, 0.0), float(getattr(entry, "mtime", 0.0) or 0.0))
+        files.setdefault(run_id, []).append(path)
+    kept = max(0, (MAX_KEPT_RUNS if keep is None else keep) - 1)
+    old = sorted(newest, key=lambda run_id: newest[run_id], reverse=True)[kept:]
+    return [path for run_id in old for path in files[run_id]]
 
 
 async def audit_run(

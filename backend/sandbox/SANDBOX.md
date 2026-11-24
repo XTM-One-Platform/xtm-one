@@ -24,7 +24,7 @@ sandbox/
 ├── Dockerfile.sandbox.nodejs          # Node.js sandbox (separate)
 ├── Dockerfile.sandbox.dev             # Dev images for sandbox_run_command: python-dev (backend uv.lock, dev group) and nodejs-dev (frontend yarn.lock in the yarn cache, plus a bare CPython without pip for the workspace helper), built from the repository root by build-dev-image.sh
 ├── Dockerfile.sandbox.toolchain       # Generic toolchain images for any repository (no lock baked; the checkout installs its dependencies): toolchain-python (3.14 + 3.12, pip, uv, poetry, pytest, pytest-asyncio), toolchain-node (Node 24 + 26, npm, corepack yarn/pnpm), toolchain-jvm (JDK 21, Maven 3.9), toolchain-rust (stable, clippy, rustfmt; CARGO_TARGET_DIR outside the workspace), toolchain-dbt (dbt-core + dbt-postgres); behind AGENTIC_CODING only
-├── registry-mirror/nginx.conf         # Read-only npm and PyPI mirror proxy of the command containers (SANDBOX_REGISTRY_MIRROR_URL): GET/HEAD only, no credential forwarded, its security boundary in the file header
+├── registry-mirror/nginx.conf         # Read-only npm, PyPI and Maven Central mirror proxy of the command containers (SANDBOX_REGISTRY_MIRROR_URL): GET/HEAD only, no credential forwarded, its security boundary in the file header
 ├── build-dev-image.sh                 # Build one dev or toolchain image, `<target> <image>:<tag>`, from the repository root
 ├── build-image.sh                     # Build one image, `<image>:<tag>` (docker build invocation shared by create-register-images.sh + CI + the scan workflow)
 ├── create-register-images.sh          # Build + import all images into k3s as `<image>:<version>`, driven by sandbox-images.json
@@ -397,7 +397,10 @@ and `.xtm-one/stores.py`, whose pins python-dev bakes under `/opt/stores`). A
 change to them needs a new `dev.version` and its hash; the merge dispatches the
 build, then the `python-dev` and `nodejs-dev` Pools of the deployments move to
 it. The locks the images install (`backend/uv.lock`, `frontend/yarn.lock`) are
-not inputs: a dependency bump does not need a new image. The
+not inputs: a dependency bump does not need a new image. python-dev also
+carries tiktoken's `cl100k_base` encoding under `/opt/tiktoken`
+(`TIKTOKEN_CACHE_DIR`), fetched at build time, so the unit tests that count
+tokens run with no network. The
 `backend-integration` check needs the `postgres`, `redis` and `s3` artefacts of
 `stores.py` at their pins (`stores.CHECK_ARTEFACTS`); the `postgres-contrib`
 archive the product labs need is optional for it, so an image baked before a

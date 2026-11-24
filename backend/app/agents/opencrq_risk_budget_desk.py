@@ -55,6 +55,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.agents.fleet_opt_in import SEEDED_FLEET_OPT_IN
+from app.agents.gate_answered import gate_answered_assignment
 from app.services import opencrq_job_events
 
 ORCHESTRATOR = "opencrq-risk-desk-orchestrator"
@@ -66,8 +67,17 @@ FLEET_NAME = "Risk budget desk"
 
 #: Shared state of the fleet: the last register snapshot, the ranked investments, the Board packs.
 STATE_KEY = "opencrq:risk-budget-desk:state"
+#: Where the monthly snapshots trimmed from STATE_KEY (keep_last) go: history is archived, never lost.
+STATE_ARCHIVE_KEY = f"{STATE_KEY}:archive"
+#: Monthly snapshots kept in STATE_KEY: two years of trend.
+SNAPSHOTS_KEPT = 24
 #: Work-item key prefix of the recommendations the fleet files for a person.
 RECOMMENDATION_PREFIX = "opencrq:risk-budget-desk:recommendation:"
+#: Work-item key prefix of a proposed write to the register of record (a scenario, its loss
+#: estimates, the risk tolerance), followed by the write kind and the OpenCRQ id.
+APPROVAL_PREFIX = "opencrq:risk-budget-desk:approval:"
+#: Every decision key the desk files for a person: the "Gate answered" listener takes these.
+DECISION_PREFIXES: tuple[str, ...] = (RECOMMENDATION_PREFIX, APPROVAL_PREFIX)
 
 #: Existing agents the fleet works with; connected, never members.
 SHARED_AGENTS: tuple[str, ...] = ("opencrq-assistant", "ctem-risk-quantifier")
@@ -78,6 +88,10 @@ REGISTER_EVENTS: dict[str, str] = {
     "Finding re-scored": "finding_score_changed",
     "Control validation ingested": "control_validation_ingested",
 }
+
+#: A register move below this share of the last snapshot's total is noise (a
+#: Monte Carlo re-run): no explanation, no snapshot, no investment case (#1417).
+MATERIAL_MOVE_PERCENT = 1.0
 
 #: What drove a scenario's expected annual loss to move.
 DRIVERS: tuple[str, ...] = ("frequency", "magnitude", "control", "asset", "settings", "unknown")
@@ -194,6 +208,9 @@ _ROLE_BASE: dict[str, Any] = {
     "handover_agent_slugs": [],
     "handover_type_slugs": {},
     "integration_template_bindings": ["opencrq"],
+    # The three roles read the register and recommend; a person writes it in
+    # OpenCRQ. Their OpenCRQ binding is read-only, so no write tool is offered.
+    "integration_template_read_only": ["opencrq"],
     **_NO_MEMORY,
 }
 
@@ -271,7 +288,7 @@ RISK_BUDGET_DESK_AGENTS: list[dict[str, Any]] = [
 _COMMON = {
     "agent_slug": ORCHESTRATOR,
     **SEEDED_FLEET_OPT_IN,
-    "ai_label": True,
+    "ai_label": False,
     "notify_on_complete": False,
     "show_in_digest": True,
     "max_iterations": 150,
@@ -279,11 +296,20 @@ _COMMON = {
 }
 
 _EVENT_PROMPT = (
-    "OpenCRQ finished the job named in the trigger information below ({what}).\n"
-    "Run one register refresh of the risk budget desk: delegate to the Register Analyst the scenarios "
-    f"re-priced since the last snapshot in shared state {STATE_KEY}, with the driver of each move. When a "
-    "scenario crosses the risk tolerance, have the Investment Analyst price the control upgrades that "
-    "bring it back and file one recommendation work item. Answer with the run JSON."
+    "OpenCRQ finished the jobs named in the trigger information below ({what}); `covers` lists every "
+    "job this one run stands for, `run_count` how many.\n"
+    "Run ONE register refresh of the risk budget desk for all of them. First read the register total "
+    f"and compare it with the last snapshot in shared state {STATE_KEY}: when the total moved by less than "
+    f"{MATERIAL_MOVE_PERCENT:g}% and no scenario crossed the risk tolerance, stop there and answer the run "
+    "JSON with the summary 'no material move', writing nothing. Otherwise delegate to the Register Analyst "
+    "the scenarios re-priced since the last snapshot, with the driver of each move, and record the "
+    "snapshot keyed by the current month (update the entry of that month in place, never a second one; "
+    f"a new month is appended with keep_last {SNAPSHOTS_KEPT} and archive_key {STATE_ARCHIVE_KEY}). "
+    "When a scenario crosses the risk tolerance, have the Investment Analyst price the control upgrades "
+    "that bring it back and file one recommendation work item. A write the register needs (a scenario, its "
+    "loss estimates, the risk tolerance) is proposed for a person as one needs_human work item keyed "
+    f"{APPROVAL_PREFIX} followed by the write kind and the OpenCRQ id; never write it yourself. Answer "
+    "with the run JSON."
 )
 
 RISK_BUDGET_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
@@ -299,6 +325,10 @@ RISK_BUDGET_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
             "trigger_config": {
                 "provider": opencrq_job_events.PROVIDER,
                 "event": event,
+                # One refresh at a time per event: a burst of OpenCRQ jobs folds
+                # into the one queued run (event_coalescing, #1417), so two runs
+                # never read the same base and write two snapshots.
+                "max_concurrent_runs": 1,
                 # The poller already asks for these runs; the filter keeps a run
                 # from reaching the desk when another source replays the event.
                 "filter": {
@@ -352,6 +382,24 @@ RISK_BUDGET_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
             "reviews, and the decisions to ask. Answer with the run JSON."
         ),
     },
+    gate_answered_assignment(
+        _COMMON,
+        prefixes=DECISION_PREFIXES,
+        inherit_switch_from="Weekly investment review",
+        description=(
+            "A person answered a control investment recommendation or a proposed register write: "
+            "record the decision and track the write."
+        ),
+        apply=(
+            f"A key starting {RECOMMENDATION_PREFIX}: record the decision on the control in shared state "
+            f"{STATE_KEY} (funded, refused or deferred, with the reason), so the next review and the Board "
+            f"pack carry it. A key starting {APPROVAL_PREFIX}: an approved write is made by a person in "
+            "OpenCRQ, never by you; file one follow-up work item you own, recipient the person who "
+            "answered (what to set, the value, where in OpenCRQ), which a later run completes once the value "
+            "reads back in OpenCRQ, and name it in the outcome; a rejected one is recorded in shared state "
+            f"{STATE_KEY}. OpenCRQ stays read only. Answer with the run JSON."
+        ),
+    ),
 ]
 
 RISK_BUDGET_DESK_FLEET: dict[str, Any] = {

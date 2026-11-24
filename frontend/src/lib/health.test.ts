@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import {
   HEALTH_SIGNAL_LABELS,
   healthReasonLabel,
+  healthRefusalCodeKey,
   healthRefusalKey,
   defaultHealthName,
   healthTargetHref,
@@ -31,6 +32,13 @@ test("a refusal reads by its code, the generic message otherwise", () => {
   assert.equal(healthRefusalKey({ detail: { code: null } }), "{name} could not start this work.");
 });
 
+test("a budget refusal code reads its translated key, an unknown one none (#794)", () => {
+  assert.equal(healthRefusalCodeKey("concierge_disabled"), "{name} is not enabled.");
+  assert.equal(healthRefusalCodeKey("ai_disabled"), "Agentic AI is turned off on this platform.");
+  assert.equal(healthRefusalCodeKey("future_code"), null);
+  assert.equal(healthRefusalCodeKey(null), null);
+});
+
 test("a target links to its own page", () => {
   assert.deepEqual(
     [
@@ -40,7 +48,7 @@ test("a target links to its own page", () => {
       healthTargetHref(null, "x"),
       healthTargetHref("agent", null),
     ],
-    ["/agents/a1", "/flows/f1/builder", "/assignments/s1", null, null],
+    ["/agents/a1", "/flows/library/f1", "/agents/assignments/s1", null, null],
   );
 });
 

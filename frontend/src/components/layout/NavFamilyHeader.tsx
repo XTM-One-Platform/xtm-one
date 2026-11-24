@@ -10,7 +10,7 @@
  * The members come from the resolved nav model (`useNavFamily`), so the row
  * lists exactly what the reader's menu lists. A reader who sees one member
  * only (a group manager on Model usage) gets the page's own title and no tab
- * row. Detail routes (`/traces/:id`) do not render this: they light the
+ * row. Detail routes (`/observability/traces/:id`) do not render this: they light the
  * family in the menu and keep their own tabs.
  *
  * Every member page renders it first in the same root (`space-y-6`, no own
@@ -46,7 +46,7 @@ export function NavFamilyHeader({
       <ListPageHeader title={t_i18n(family ? family.label : title)} infoLabel={infoLabel} info={info} actions={actions} />
       {members.length > 1 && (
         <DetailTabs
-          tabs={members.map((member) => ({ key: member.to, label: member.label, icon: member.icon, to: member.to }))}
+          tabs={members.map((member) => ({ key: member.to, label: member.label, glyph: member.icon, to: member.to }))}
           active={to}
         />
       )}

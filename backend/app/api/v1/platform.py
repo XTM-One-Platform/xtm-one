@@ -109,6 +109,7 @@ from app.services.branding import (
 )
 from app.services.chat_turn_stream import AGENTIC_ACTION_STATUS
 from app.services.context_usage import CONTEXT_USAGE_META_KEYS, ContextUsageTracker
+from app.services.intent_aliases import canonical_intent_name, canonical_vertical
 from app.services.platform_chat_extras import (
     list_platform_chat_prompts,
     load_user_feedback_by_message,
@@ -1308,7 +1309,9 @@ def _registered_business_vertical(
     """
     if reg is not None and registration_token_state() == "published_default":
         return reg.business_vertical
-    return sent_vertical
+    # A platform build that predates a vertical rename still sends the old
+    # name; it is recorded under the current one.
+    return canonical_vertical(sent_vertical)
 
 
 @dataclass(frozen=True)
@@ -1485,6 +1488,12 @@ async def _sync_platform_intents(
     """
     from app.api.v1.helpers import get_or_create_intent, get_or_create_vertical
     from app.models.intent import Intent, PlatformIntentDeclaration
+
+    # A platform build that predates a vertical rename still declares the old
+    # vertical and intent names: they resolve to the current ones, so the old
+    # rows are never recreated next to the migrated ones.
+    business_vertical = canonical_vertical(business_vertical)
+    declared_intents = [decl.model_copy(update={"name": canonical_intent_name(decl.name)}) for decl in declared_intents]
 
     # 1. Upsert vertical from business_vertical (race-safe ON CONFLICT
     # upsert — a registration can run concurrently with the startup seed
@@ -2271,6 +2280,8 @@ async def register_platform(
     # Read under the registration lock: the version the previous heartbeat
     # committed, compared after this one's commit (integration.version.changed).
     previous_platform_version = reg.platform_version if reg else None
+    # A version change or a heartbeat back after a gap reads as a restart (#958).
+    previous_heartbeat_at = reg.last_heartbeat_at if reg else None
     await _refuse_published_default_change(request, reg, body.platform_url)
     platform_title = _registered_platform_title(reg, body.platform_title)
     business_vertical = _registered_business_vertical(reg, body.business_vertical)
@@ -2449,9 +2460,17 @@ async def register_platform(
     reg.integration_id = company_integ.id
     reg.business_vertical = business_vertical
     manifest_wanted = await _record_procedure_manifest(db, reg, body)
-    from app.services.health.snapshots import record_snapshot
+    from app.services.health.snapshots import record_snapshot, registration_restarted
 
-    await record_snapshot(db, reg, body.health, published_default=registration_token_state() == "published_default")
+    await record_snapshot(
+        db,
+        reg,
+        body.health,
+        published_default=registration_token_state() == "published_default",
+        restarted=registration_restarted(
+            previous_platform_version, body.platform_version, previous_heartbeat_at, datetime.now(UTC)
+        ),
+    )
     sign_in_client_id = await _sync_sign_in_client(db, body, platform_title)
 
     await db.commit()
@@ -3467,6 +3486,11 @@ class PlatformChatRequest(BaseModel):
     # to the XTM One viewer and none is streamed
     # (``services/platform_chat_artifacts``).
     supports_artifacts: bool = False
+    # Will this client offer the user's likely next message
+    # (``reply_suggestion``, ``services/chat_reply_suggestions.py``)? Absent,
+    # none is generated: a one-shot generation call ("Generate with AI") reads
+    # to the end of the stream and must neither wait on one nor pay for it.
+    supports_reply_suggestions: bool = False
 
 
 class PlatformChatSessionRequest(BaseModel):
@@ -6116,6 +6140,9 @@ async def send_platform_chat_message(
         # Every segment's answer: the final one carries the turn's files,
         # a fetched one when any of them names it.
         _seg_texts: list[str] = []
+        # The finished turn the stream proposes a next message after, once its
+        # ``done`` is out (``services/chat_reply_suggestions.py``).
+        _pf_suggestion_turn: dict | None = None
 
         for _seg_index in range(_MAX_STEER_SEGMENTS + 1):
             accumulated.clear()
@@ -6230,6 +6257,9 @@ async def send_platform_chat_message(
                 # real one); the resume, or the person, answers it.
                 await _close_bridge()
                 break
+            # Whether the agent answered: the stand-in below is no answer to
+            # suggest a next message after.
+            _pf_answered = bool(assistant_text and assistant_text.strip())
             if not assistant_text or not assistant_text.strip():
                 assistant_text = "I encountered an issue. Please try again."
 
@@ -6393,6 +6423,16 @@ async def send_platform_chat_message(
                 yield f"data: {json.dumps(redact_known_secrets_for_display(done_payload))}\n\n"
 
             if _is_final:
+                if body.supports_reply_suggestions and _pf_answered and _msg_id and not _client_gone:
+                    _pf_suggestion_turn = {
+                        "conversation_id": conv_id,
+                        "message_id": _msg_id,
+                        "user_id": user.id,
+                        "agent_id": conv.agent_id,
+                        "user_text": _seg_content,
+                        "assistant_text": assistant_text,
+                        "turn_meta": done_payload,
+                    }
                 break
 
             # ── Fold-in follow-up segment ────────────────────────────
@@ -6415,6 +6455,13 @@ async def send_platform_chat_message(
                     _LLMChatMessage(role="assistant", content=assistant_text),
                 ]
             _seg_content = "\n\n".join(_leftover)
+
+        if _pf_suggestion_turn is not None:
+            from app.services.chat_reply_suggestions import suggest_after_turn
+
+            _suggestion = await suggest_after_turn(**_pf_suggestion_turn)
+            if _suggestion is not None:
+                yield f"data: {json.dumps(_suggestion)}\n\n"
 
     return StreamingResponse(
         _event_stream(),

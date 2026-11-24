@@ -13,7 +13,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
-import { Navigate, useParams, useNavigate, useLocation } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useTabParam } from "@/hooks/useTabParam";
 import { useTick } from "@/hooks/useTick";
@@ -39,7 +39,6 @@ import { Button } from "@/components/ui/button";
 import { IconButton, Spinner } from "@filigran/design-system";
 import { CompanyManagedBadge } from "@/components/ui/company-managed-badge";
 import { SharedBadge } from "@/components/ui/shared-badge";
-import { NotFoundState } from "@/components/ui/not-found-state";
 import { ReadOnlyBadge } from "@/components/ui/read-only-badge";
 import { MissingVariablesBanner } from "@/components/ui/missing-variables-banner";
 import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
@@ -75,7 +74,8 @@ import { EvaluationTab } from "./agent-detail/EvaluationTab";
 import { VersioningTab } from "./agent-detail/VersioningTab";
 import { ObservabilityTab } from "./agent-detail/ObservabilityTab";
 import { FeedbackTab } from "./agent-detail/FeedbackTab";
-import { agentDetailTabs, legacyAgentTabTarget, type AgentTab } from "./agent-detail/tabs";
+import { agentDetailTabs, isAgentTab, type AgentTab } from "./agent-detail/tabs";
+import RouteNotFound from "@/pages/RouteNotFound";
 import { AgentSuccessorDialog } from "./agent-detail/AgentSuccessorDialog";
 import { useAiActionDisabled, useAiDisabledReason } from "@/hooks/useAiDisabled";
 
@@ -99,7 +99,7 @@ export default function AgentDetail() {
   const locState = location.state as { backTo?: string; backLabel?: string } | null;
   const backTo = locState?.backTo ?? "/agents";
   const backLabel = locState?.backLabel ?? "Back to Agents";
-  const { data: agent, isLoading } = useAgent(id || "");
+  const { data: agent, isLoading } = useAgent(id || "", { notFoundIsOrdinary: true });
   const { user, isAdmin } = useAuth();
 
   const isXtmOne = useIsXtmOne();
@@ -124,22 +124,13 @@ export default function AgentDetail() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [duplicateGateOpen, setDuplicateGateOpen] = useState(false);
 
-  // The former Budget tab and Overview links to the ROI section open Value (#11037).
-  const legacyTarget = id ? legacyAgentTabTarget(`/agents/${id}`, tabSegment, location.search, location.hash) : null;
-  if (legacyTarget) return <Navigate to={legacyTarget} replace state={location.state} />;
-
+  // A `:tab` segment that names no agent tab (the former `budget` included) is
+  // not found, before the agent header renders: no redirect (#797).
+  if (!isAgentTab(tabSegment)) return <RouteNotFound />;
   if (isLoading) return <DetailPageSkeleton backTo={backTo} backLabel={backLabel} tabs={6} descriptionLines={1} actions={3} />;
-  if (!agent) return (
-    <NotFoundState
-      icon={Bot}
-      title="Agent not found"
-      description="This agent may have been deleted or you don't have access."
-      actionLabel="View All Agents"
-      onAction={() => navigate("/agents")}
-      backTo="/agents"
-      backLabel="Back to Agents"
-    />
-  );
+  // An unknown id (or one you cannot read) is an address no page answers: the
+  // full Page not found, as for any unknown path (#797 S4).
+  if (!agent) return <RouteNotFound />;
 
   const Icon = ICON_MAP[agent.icon] ?? Bot;
   // In XTM One mode, builtin agents are always read-only (even for admins).

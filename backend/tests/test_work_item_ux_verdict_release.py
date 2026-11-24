@@ -63,6 +63,7 @@ async def test_the_source_reopens_after_the_verdict_comment_not_at_the_review_co
     import app.models  # noqa: F401 - every table, for ALL_TABLES
     from app.models.user import User
     from app.services.company_managed_writes import person_writer
+    from tests.work_item_owner import add_owner
 
     writer = person_writer(is_admin=False)
     async with _database() as sessions:
@@ -71,8 +72,10 @@ async def test_the_source_reopens_after_the_verdict_comment_not_at_the_review_co
             db.add(user)
             await db.commit()
         uid = str(user.id)
+        owner = await add_owner(sessions, user.id)
 
         async def create(title: str, **kwargs) -> dict:
+            kwargs.setdefault("owner_agent_id", owner)
             return await wi_service.create_work_item(user_id=uid, title=title, writer=writer, **kwargs)
 
         review = await create("UX review: opencrq #3179 on d7f2a939", correlation_key="ux:opencrq-3179")
@@ -102,6 +105,7 @@ async def test_a_review_without_a_pending_verdict_comment_releases_at_once():
     import app.models  # noqa: F401 - every table, for ALL_TABLES
     from app.models.user import User
     from app.services.company_managed_writes import person_writer
+    from tests.work_item_owner import add_owner
 
     writer = person_writer(is_admin=False)
     async with _database() as sessions:
@@ -114,7 +118,11 @@ async def test_a_review_without_a_pending_verdict_comment_releases_at_once():
             user_id=uid, title="UX review: xtm-one #12", correlation_key="ux:xtm-one-12", writer=writer
         )
         source = await wi_service.create_work_item(
-            user_id=uid, title="Merge it", blocked_on=[review["id"]], writer=writer
+            user_id=uid,
+            title="Merge it",
+            owner_agent_id=await add_owner(sessions, user.id),
+            blocked_on=[review["id"]],
+            writer=writer,
         )
         await wi_service.complete_work_item(review["id"], user_id=uid, writer=writer)
         assert (await wi_service.get_work_item(source["id"], user_id=uid))["status"] == "open"

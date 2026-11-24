@@ -16,14 +16,18 @@
 
 import { useCallback, useState } from "react";
 
-export type ViewMode = "grid" | "list";
+/**
+ * `graph`: a page that also draws its records as a graph (Tasks > Work Items) offers it;
+ * `kanban`: a page that also draws its records as status columns (CTEM Cases, #1503).
+ */
+export type ViewMode = "grid" | "list" | "graph" | "kanban";
 
 const STORAGE_PREFIX = "copilot-view:";
 
 function readStored(scope: string, fallback: ViewMode): ViewMode {
   try {
     const stored = localStorage.getItem(STORAGE_PREFIX + scope);
-    return stored === "list" || stored === "grid" ? stored : fallback;
+    return stored === "list" || stored === "grid" || stored === "graph" ? stored : fallback;
   } catch {
     // Private browsing / storage disabled — fall back to the page's default.
     return fallback;

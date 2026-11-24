@@ -39,6 +39,73 @@ _OPT_IN = (
     "the CTEM Assistant hands nothing over to it."
 )
 
+#: 1. The generic CTEM loop (CTEM-31, #1048): what it does on day one with the
+#: customer's ecosystem. Absorbs the former threat response (F1), posture (F4)
+#: and the three single-product desks, as roles.
+CTEM_LOOP_DOC: dict[str, str] = {
+    "purpose": (
+        "Run the whole CTEM loop on your software, case by case: any change in exposure becomes a "
+        "case, the case is validated, priced, decided once by you, mobilised and closed by a "
+        "passing re-test. One fleet, every trigger path, every module in its role."
+    ),
+    "use_case": (
+        "Day one, with OpenCTI, OpenAEV and OpenCRQ connected and the organization profile filled: "
+        "a new threat, a vulnerability on software you run, a credential leak, a supplier incident "
+        "or a regression is recorded as a signal, reconciled and gated on your scope. In scope, it "
+        "opens a case on the command center: the Relevance role reads OpenCTI, the Validation role "
+        "runs a read-only check in OpenAEV, the Risk role prices it in OpenCRQ, and the case waits "
+        "for one decision of yours before tickets go out (Mobilize). The re-test closes it. Around "
+        "the cases, the Posture role keeps the five stage assessments and the board report current, "
+        "the Intelligence desk answers your PIRs in OpenCTI, the Validation desk measures detection "
+        "coverage in OpenAEV and the Risk desk keeps the register priced in OpenCRQ. First result: "
+        "the stage assessments on the command center within the first week; the first case within "
+        "a day of the first in-scope signal once its automations are on."
+    ),
+    "triggers": (
+        "- **Case opened or reopened**: a CTEM case opens, reopens on a failed re-test or breaches "
+        "its SLA; one loop per case, on every trigger path (a use-case fleet takes the cases of its paths only while its own case automation is on). Cases opened before the fleet was enabled are taken on enable and on the hourly case sweep.\n"
+        "- **Gate answered**: a person answers a gate a case waits on; the loop goes on from that step, "
+        "or stops on a rejection.\n"
+        "- **Loop reminder due**: a reminder the loop set on a case is due; the person a gate still waits "
+        "on is reminded once.\n"
+        "- **New relevant threat** and **Threat activity flagged in a PIR**: the OpenCTI intake; each "
+        "delivery records a relevant threat signal, with no run of its own.\n"
+        "- **Threat signal recorded**: a threat signal an organization PIR flags at or above the policy "
+        "threshold, recorded or moved to 'to validate', is scored against the profile; a confirmed one "
+        "goes to its case. The other threat signals wait for the weekly sweep.\n"
+        "- **Weekly threat sweep** and **Re-test due**: catches what the events missed, re-runs a "
+        "validated scenario once a fix is deployed.\n"
+        "- **Weekly assessments**: the five stage assessments and the exposure briefing, on by default.\n"
+        "- **Event refresh** and **Monthly board report**: a closed case refreshes the stages it "
+        "touched; the board report on the 1st of the month.\n"
+        "- **PIR match created**: the Intelligence desk answers a PIR match in OpenCTI; with the "
+        "**Weekly PIR answer**, the **Half-year threat landscape** and the **Stale indicator clean-up**.\n"
+        "- **Simulation finished**: the Validation desk sorts every result of an OpenAEV simulation; "
+        "with the **Weekly validation plan**, the **Weekly coverage report** and its own re-tests.\n"
+        "- **Scenario re-priced**, **Finding re-scored** and **Control validation ingested**: the Risk "
+        "desk explains what moved in OpenCRQ; with the **Weekly investment review** and the "
+        "**Monthly Board pack**."
+    ),
+    "flow": (
+        "1. Signal: any trigger path records a signal; reconcile and the scope gate decide case or watchlist.\n"
+        "2. Prioritise: relevance and severity from the profile and the scope criticality.\n"
+        "3. Validate: an OpenAEV check, read-only by default.\n"
+        "4. Decide: the expected loss and the options from OpenCRQ.\n"
+        "5. Mobilize: tickets, owners and the prepared change, after your approval.\n"
+        "6. Re-test and close: the case closes only on a passing re-test, and feeds back into scope."
+    ),
+    "objects_created": (
+        "CTEM signals and cases, OpenAEV scenarios, OpenCRQ loss estimates, drafted detections, "
+        "remediation tickets (after your approval), stage assessments, exposure briefings, PIR "
+        "answers, coverage reports and board packs."
+    ),
+    "prerequisites": (
+        "OpenCTI, OpenAEV and OpenCRQ connected for the administrator who switches it on (each role "
+        "works with its own module alone), and an organization profile (sector, regions, "
+        "technology, primary assets). " + _OPT_IN
+    ),
+}
+
 CTEM_THREAT_RESPONSE_DOC: dict[str, str] = {
     "purpose": (
         "Turn a published threat into an approved, verified plan in days: is it relevant to the "
@@ -51,9 +118,17 @@ CTEM_THREAT_RESPONSE_DOC: dict[str, str] = {
         "OpenCRQ and proposes the three actions of the week, each closed by a re-test."
     ),
     "triggers": (
-        "- **New relevant threat**: an OpenCTI creation of an Intrusion Set, a Campaign or a Report.\n"
+        "- **New relevant threat**: an OpenCTI creation of an Intrusion Set or a Campaign records a relevant threat signal; no run of its own.\n"
+        "- **Threat activity flagged in a PIR**: OpenCTI flags threat activity in an organization PIR and records a relevant threat signal; no run of its own.\n"
+        "- **Threat signal recorded**: a relevant threat signal from OpenCTI that an organization PIR flags at or above the policy's threat threshold is recorded, or the scope gate moves it to 'to validate'; the run scores its relevance against the profile. A confirmed signal opens its case through the case loop; a signal below the PIR floor waits for the weekly sweep.\n"
         "- **Weekly threat sweep**: Mondays 07:00, catches what the events missed.\n"
-        "- **Re-test due**: a re-test request opened once a fix is deployed re-runs the validated scenario."
+        "- **Re-test due**: a re-test request opened once a fix is deployed re-runs the validated scenario.\n"
+        "- **Case opened or reopened**: a CTEM case on any trigger path is opened, reopened by a failed "
+        "re-test, or past its SLA, unless an active use-case fleet owns its path; the case is the record of the loop.\n"
+        "- **Gate answered**: a person answers a gate the case waits on; the decision is written on the "
+        "case and the loop goes on, or stops on a rejection.\n"
+        "- **Loop reminder due**: a reminder set on a case is due; the person a gate still waits on is "
+        "reminded once."
     ),
     "flow": (
         "1. Relevance: below the threshold the case closes as not relevant, with the reason.\n"
@@ -68,7 +143,7 @@ CTEM_THREAT_RESPONSE_DOC: dict[str, str] = {
     ),
     "prerequisites": (
         "OpenCTI, OpenAEV and OpenCRQ connected for the administrator who switches it on, and "
-        "an organization profile (sector, regions, technology, crown jewels). " + _OPT_IN
+        "an organization profile (sector, regions, technology, primary assets). " + _OPT_IN
     ),
 }
 
@@ -84,9 +159,21 @@ CTEM_VULN_PRIORITIZATION_DOC: dict[str, str] = {
     ),
     "triggers": (
         "- **New KEV or EPSS jump**: an OpenCTI creation or update of a Vulnerability.\n"
+        "- **Vulnerability on software we run**: an OpenCTI has relationship to a Vulnerability whose source is in the software inventory or the profile assets, checked before any model call.\n"
+        "- **Vulnerability flagged in a PIR**: OpenCTI flags a Vulnerability in an organization PIR; the run starts when its live PIR score reaches the policy threshold (70 by default, Settings).\n"
         "- **Vulnerability sighted**: an OpenCTI sighting, triaged at a higher priority.\n"
         "- **Daily backlog pass**: every day at 06:00, re-ranks the open cases.\n"
-        "- **Re-test due**: a re-test request opened once the fix is deployed re-validates the exposure."
+        "- **Re-test due**: a re-test request opened once the fix is deployed re-validates the exposure.\n"
+        "- **Case opened or reopened**: while this automation is on, a CTEM case on the new vulnerability "
+        "path is opened, reopened by a failed re-test, past its SLA, or an OpenAEV result it waits on arrived; "
+        "the case is the record of the loop. Off, the CTEM loop runs those cases.\n"
+        "- **OpenAEV results into cases**: listens to OpenAEV with no run of its own; a finished "
+        "simulation or a changed finding moves the case it concerns, a degraded scenario score records "
+        "a regression signal, an attack path reaching a critical asset records a proven-exploitable signal.\n"
+        "- **Analyst review mark**: listens to OpenCTI with no run of its own; when the review gate "
+        "waits, the analyst's label on the drafted Grouping approves its coverage request and resumes the run.\n"
+        "- **Gate answered**: a person answers a gate the case waits on; the decision is written on the "
+        "case and the loop goes on, or stops on a rejection."
     ),
     "flow": (
         "1. Asset match from the organization context: no matching asset closes the case, with the reason.\n"
@@ -172,7 +259,7 @@ CTEM_THIRD_PARTY_RISK_DOC: dict[str, str] = {
     "use_case": (
         "A report or an incident in OpenCTI names a tracked organization. For a supplier, the "
         "fleet builds a case: the threat or breach, the services the supplier provides and the "
-        "crown jewels behind them, the expected loss from the primary organization's OpenCRQ "
+        "primary assets behind them, the expected loss from the primary organization's OpenCRQ "
         "scenarios, and the proposed actions. A customer or partner gets an awareness case only."
     ),
     "triggers": (
@@ -212,7 +299,8 @@ OPENCTI_PIR_DESK_DOC: dict[str, str] = {
         "Vulnerability flagged in one of the organization's PIRs.\n"
         "- **Weekly PIR answer**: Mondays 07:00.\n"
         "- **Half-year threat landscape**: 1 January and 1 July, 08:00.\n"
-        "- **Stale indicator clean-up**: the 1st of each month, 06:00."
+        "- **Stale indicator clean-up**: the 1st of each month, 06:00.\n"
+        "- **Gate answered**: a person answers an indicator revocation; it is revoked or kept as decided."
     ),
     "flow": (
         "1. Triage: the PIR Triage Analyst scores the new entity against each PIR, with the evidence "
@@ -241,7 +329,7 @@ OPENAEV_DETECTION_DESK_DOC: dict[str, str] = {
     ),
     "use_case": (
         "A SOC or detection engineering team runs OpenAEV. Every week the fleet plans simulations from the "
-        "threat arsenal against the crown jewel assets and proposes each launch to a person. When a "
+        "threat arsenal against the primary assets and proposes each launch to a person. When a "
         "simulation ends, it sorts every inject and asset into blocked, detected, logged or missed, finds "
         "the root cause of each gap (no rule, no log, or a broken collector such as one silent for weeks), "
         "drafts the missing detection rule, raises the remediation and re-tests the gap once it is fixed. "
@@ -251,10 +339,11 @@ OPENAEV_DETECTION_DESK_DOC: dict[str, str] = {
         "- **Simulation finished**: an OpenAEV simulation ends (provisioned OpenAEV trigger).\n"
         "- **Weekly validation plan**: Mondays 06:00.\n"
         "- **Weekly coverage report**: Fridays 08:00.\n"
-        "- **Re-test due**: a work item keyed `openaev:detection-desk:retest:` once a remediation is done."
+        "- **Re-test due**: a work item keyed `openaev:detection-desk:retest:` once a remediation is done.\n"
+        "- **Gate answered**: a person answers a launch approval; the simulation is launched or the refusal recorded."
     ),
     "flow": (
-        "1. Plan: the orchestrator picks the techniques with no recent result against the crown jewels; the "
+        "1. Plan: the orchestrator picks the techniques with no recent result against the primary assets; the "
         "OpenAEV Scenario Creator, Payload Creator and Scenario Publisher build what is missing. Each launch "
         "waits for a person.\n"
         "2. Sort: the Coverage Gap Analyst sorts the results into blocked, detected, logged and missed, with "
@@ -272,7 +361,7 @@ OPENAEV_DETECTION_DESK_DOC: dict[str, str] = {
     ),
     "prerequisites": (
         "OpenAEV connected, with assets and at least one security platform collector, and the organization's "
-        "crown jewels and tech stack in its profile. " + _OPT_IN
+        "primary assets and software in its profile. " + _OPT_IN
     ),
 }
 
@@ -296,7 +385,8 @@ OPENCRQ_RISK_BUDGET_DESK_DOC: dict[str, str] = {
         "- **Finding re-scored**: an OpenCRQ finding score recompute job succeeded.\n"
         "- **Control validation ingested**: OpenCRQ ingested OpenAEV findings or recorded a proven posture.\n"
         "- **Weekly investment review**: Mondays 07:00.\n"
-        "- **Monthly Board pack**: the 1st of the month at 08:00."
+        "- **Monthly Board pack**: the 1st of the month at 08:00.\n"
+        "- **Gate answered**: a person answers an investment recommendation; the decision is recorded."
     ),
     "flow": (
         "1. Refresh: on an OpenCRQ event, the orchestrator compares the register with its last snapshot.\n"
@@ -316,20 +406,17 @@ OPENCRQ_RISK_BUDGET_DESK_DOC: dict[str, str] = {
     "prerequisites": (
         "OpenCRQ connected, with risk scenarios simulated at least once, and the organization's currency and "
         "risk appetite in its profile. OpenCRQ is in beta until its general availability (February 2027); "
-        "XTM One reads its treatment plans and budget reviews only. " + _OPT_IN
+        "XTM One reads its budget reviews and writes a treatment plan only through the register write gate. " + _OPT_IN
     ),
 }
 
-#: Built-in fleet slug to its seeded documentation.
+#: Built-in fleet slug to its seeded documentation: the four seeded fleets (CTEM-31). The texts of the retired fleets above stay
+#: as the role descriptions of the generic fleet's folded roles.
 BUILTIN_FLEET_DOCS: dict[str, dict[str, str]] = {
-    "ctem-threat-response": CTEM_THREAT_RESPONSE_DOC,
+    "ctem-loop": CTEM_LOOP_DOC,
     "ctem-vuln-prioritization": CTEM_VULN_PRIORITIZATION_DOC,
     "ctem-ai-security": CTEM_AI_SECURITY_DOC,
-    "ctem-posture": CTEM_POSTURE_DOC,
     "ctem-third-party-risk": CTEM_THIRD_PARTY_RISK_DOC,
-    "opencti-pir-desk": OPENCTI_PIR_DESK_DOC,
-    "openaev-detection-desk": OPENAEV_DETECTION_DESK_DOC,
-    "opencrq-risk-budget-desk": OPENCRQ_RISK_BUDGET_DESK_DOC,
 }
 
 
@@ -375,7 +462,7 @@ _NEEDS_OPENCRQ = _prereq("integration:opencrq", "OpenCRQ connected for you", _IN
 _NEEDS_SECTOR = _prereq("profile:sector", "Sector in the organization profile", profile_fix_route("sector"))
 _NEEDS_REGIONS = _prereq("profile:regions", "Regions in the organization profile", profile_fix_route("regions"))
 _NEEDS_JEWELS = _prereq(
-    "profile:crown_jewels", "Crown jewels in the organization profile", profile_fix_route("crown_jewels")
+    "profile:crown_jewels", "Primary assets in the organization profile", profile_fix_route("crown_jewels")
 )
 _NEEDS_TECH = _prereq("profile:tech_stack", "Technology in the organization profile", profile_fix_route("tech_stack"))
 _SWITCHED_ON = _prereq("manual", "An administrator switches each automation on", "")
@@ -383,8 +470,11 @@ _SWITCHED_ON = _prereq("manual", "An administrator switches each automation on",
 #: Gate impact classes (#9769, ``app.services.fleet_autonomy``): ``low`` stops
 #: waiting at the Medium autonomy level, ``high`` at Low, ``destructive`` only
 #: at Full autonomous.
-#: ``tools`` (#9769 S1b): the tool calls that are the gated action, paused
-#: in the tool path while the fleet's level gates it.
+#: A built-in gate never declares ``tools`` or ``grant`` (#1675, Sam, 24 Nov
+#: 2026): on every deployment a seeded fleet's tools are always offered and
+#: authorized, and a gate that waits is one decision item (a needs_human work
+#: item with its ask card) between steps, never a pause inside a run. The agent
+#: decides what an answer means and moves the case itself.
 #: Seeded fleets ship at Low (#10005), so the class says what still waits:
 #: an OpenAEV launch executes payloads on the organization's endpoints or AI
 #: systems, which the fleet cannot tell from production, and an executed
@@ -392,22 +482,73 @@ _SWITCHED_ON = _prereq("manual", "An administrator switches each automation on",
 #: contract clause) leaves the platform irreversibly: ``destructive``. A
 #: remediation ticket is a reversible internal write: ``low``.
 _LAUNCH_IMPACT = "destructive"
-_OPENAEV_LAUNCH_TOOLS = [
-    {"name": "manage_openaev_simulation", "when": {"action": ["status"], "status": ["RUNNING"]}},
-    {"name": "manage_openaev_atomic_testing", "when": {"action": ["launch", "relaunch"]}},
-]
-_GATE_TICKET = {
-    "key": "ticket.create",
-    "action": "Create a remediation ticket",
-    "module": "platform",
-    "approver": "Fleet manager",
-    "impact": "low",
-    "tools": [
-        {"name": "create_jira_issue"},
-        {"name": "create_servicenow_incident"},
-        {"name": "create_servicenow_change"},
-    ],
-}
+#: The action of the validation gate, in plain words (#1339).
+CTEM_VALIDATION_ACTION = "Validate: create or launch an OpenAEV scenario or atomic test"
+CTEM_VALIDATION_GATE = "ctem.validation.non_readonly"
+#: The tools a gate offers by its key alone (#1480, #1675): the CTEM analyst
+#: review validates the OpenCTI draft that holds the threat package, so a fleet
+#: with that gate is offered apply_opencti_draft with Live writes off
+#: (``fleet_autonomy.gate_tool_names``). Offered, never paused.
+GATE_OFFERED_TOOLS: dict[str, tuple[str, ...]] = {"ctem.analyst_review": ("apply_opencti_draft",)}
+
+#: The CTEM loop gate catalog (#916, CTEM-34): one key per loop stage, declared
+#: once and seeded on every CTEM loop fleet. Out of the box (the seeded Low
+#: level) two gates wait per case (Sam, 23 Nov 2026, #1339): the OpenAEV
+#: validation (``ctem.validation.non_readonly``, on a fleet that has the OpenAEV
+#: validation step) and ``ctem.mobilize``, the ``destructive`` ones; every other
+#: gate runs and the case records it as passed automatically.
+#: Full human gates makes each of them wait, Full autonomous none, and a pin
+#: (``Fleet.approval_pins``, writable on a built-in fleet, never written by the
+#: seed) moves one gate either way and survives a seed upgrade. No gate names a
+#: tool (#1675): the OpenAEV launches belong to ``ctem.validation.non_readonly``,
+#: the remediation tickets and a supplier action to ``ctem.mobilize``, the OpenCRQ
+#: treatment plan writes to ``ctem.remediation.decision``, by the persona alone.
+CTEM_GATE_KEYS: tuple[str, ...] = (
+    "ctem.validation.non_readonly",
+    "ctem.analyst_review",
+    "ctem.remediation.decision",
+    "ctem.mobilize",
+    "ctem.production_change",
+    "ctem.accept_risk",
+    "ctem.close_without_retest",
+)
+CTEM_MOBILIZE_GATE = "ctem.mobilize"
+
+
+def _ctem_gates(*, launch_tools: bool, mobilize_action: str) -> list[dict[str, Any]]:
+    """The CTEM loop gate catalog of one fleet, in loop order (:data:`CTEM_GATE_KEYS`).
+
+    *launch_tools*: the fleet has the OpenAEV validation step; its validation gate
+    then waits out of the box (``destructive``, #1339). No gate declares tools
+    (#1675): each is a decision the agent files as one work item between steps.
+    """
+
+    def gate(key: str, action: str, module: str, impact: str) -> dict[str, Any]:
+        return {"key": key, "action": action, "module": module, "approver": "Fleet manager", "impact": impact}
+
+    return [
+        gate(CTEM_VALIDATION_GATE, CTEM_VALIDATION_ACTION, "openaev", _LAUNCH_IMPACT if launch_tools else "high"),
+        gate(
+            "ctem.analyst_review",
+            "Review: an analyst checks the threat package, then its OpenCTI draft is validated and its security "
+            "coverage requested: approving publishes the package and sends the coverage to OpenAEV",
+            "opencti",
+            "low",
+        ),
+        gate(
+            "ctem.remediation.decision",
+            "Decide: choose the remediation option and record it as an OpenCRQ treatment plan",
+            "platform",
+            "high",
+        ),
+        gate(CTEM_MOBILIZE_GATE, mobilize_action, "platform", "destructive"),
+        gate("ctem.production_change", "Apply a change on production through an integration", "platform", "high"),
+        gate("ctem.accept_risk", "Accept a residual risk beyond the policy cap", "platform", "high"),
+        gate("ctem.close_without_retest", "Close a case without a passing re-test", "platform", "high"),
+    ]
+
+
+_MOBILIZE_ACTION = "Mobilize: create the tickets, notify the owners, hand over the prepared change"
 
 CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
     "purpose_line": "Turn a published threat into an approved, verified plan in days.",
@@ -416,7 +557,16 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
         {
             "module": "opencti",
             "name": "New relevant threat",
-            "filter": "An intrusion set, a campaign or a report is created",
+            # One card for the two listen-only OpenCTI intakes (New relevant threat and Threat activity
+            # flagged in a PIR): the sheet caps its triggers (fleet_datasheet.CAPS) and neither runs.
+            "filter": "An intrusion set or a campaign is created, or threat activity is flagged in an organization PIR",
+            "detail": "Records a relevant threat signal, no run of its own",
+        },
+        {
+            "module": "platform",
+            "name": "Threat signal recorded",
+            "filter": "A relevant threat signal a PIR flags at or above the policy threshold is recorded or moved to 'to validate'",
+            "detail": "One run per signal; a confirmed signal goes to its case",
         },
         {
             "module": "schedule",
@@ -429,6 +579,24 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
             "name": "Re-test due",
             "filter": "A fix is ready to be re-tested",
             "detail": "Opened by the remediation owner once the fix is deployed",
+        },
+        {
+            "module": "platform",
+            "name": "Case opened or reopened",
+            "filter": "A threat, credential leak or third-party CTEM case opens, reopens or breaches its SLA",
+            "detail": "One loop per case",
+        },
+        {
+            "module": "platform",
+            "name": "Gate answered",
+            "filter": "A person answers a gate a case waits on",
+            "detail": "The loop goes on from that step",
+        },
+        {
+            "module": "platform",
+            "name": "Loop reminder due",
+            "filter": "A reminder the loop set on a case is due",
+            "detail": "The person a gate still waits on is reminded once",
         },
     ],
     "steps": [
@@ -445,17 +613,7 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
         {"title": "Mobilization", "detail": "The top three actions, detections drafted and the ticket.", "gate": True},
         {"title": "Re-test", "detail": "The scenario runs again and closes the case."},
     ],
-    "gates": [
-        {
-            "key": "openaev.scenario.launch",
-            "action": "Launch an OpenAEV scenario",
-            "module": "openaev",
-            "approver": "Fleet manager",
-            "impact": _LAUNCH_IMPACT,
-            "tools": _OPENAEV_LAUNCH_TOOLS,
-        },
-        _GATE_TICKET,
-    ],
+    "gates": _ctem_gates(launch_tools=True, mobilize_action=_MOBILIZE_ACTION),
     "objects": [
         {"module": "openaev", "objects": ["Scenarios (after approval)"]},
         {"module": "opencrq", "objects": ["Loss estimates"]},
@@ -474,14 +632,18 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
         _SWITCHED_ON,
     ],
     "quota": [
+        {"trigger": "New relevant threat", "basis": "No run: records signals", "runs_min": 0, "runs_max": 0},
         {
-            "trigger": "New relevant threat",
-            "basis": "One run per event that passes the filters",
+            "trigger": "Threat signal recorded",
+            "basis": "One run per threat signal not yet confirmed",
             "runs_min": 4,
             "runs_max": 30,
         },
         {"trigger": "Weekly threat sweep", "basis": "One run a week", "runs_min": 4, "runs_max": 5},
         {"trigger": "Re-test due", "basis": "One run per fix re-tested", "runs_min": 0, "runs_max": 10},
+        {"trigger": "Case opened or reopened", "basis": "One run per case event", "runs_min": 0, "runs_max": 20},
+        {"trigger": "Gate answered", "basis": "One run per gate answered", "runs_min": 0, "runs_max": 40},
+        {"trigger": "Loop reminder due", "basis": "One run per reminder due", "runs_min": 0, "runs_max": 40},
     ],
 }
 
@@ -490,6 +652,18 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
     "outcome_line": "CVEs matched to real assets, validated, ticketed and closed with a re-test.",
     "triggers": [
         {"module": "opencti", "name": "New KEV or EPSS jump", "filter": "A vulnerability is created or updated"},
+        {
+            "module": "opencti",
+            "name": "Vulnerability on software we run",
+            "filter": "Software, an infrastructure or a system in the profile has a vulnerability",
+            "detail": "Kept only when the source is in the software inventory or the profile assets",
+        },
+        {
+            "module": "opencti",
+            "name": "Vulnerability flagged in a PIR",
+            "filter": "A vulnerability is flagged in an organization PIR",
+            "detail": "Kept when its live PIR score reaches the policy threshold (70 by default)",
+        },
         {
             "module": "opencti",
             "name": "Vulnerability sighted",
@@ -507,25 +681,28 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
             "filter": "A fix is ready to be re-validated",
             "detail": "Opened by the remediation owner once the fix is deployed",
         },
+        {
+            "module": "platform",
+            "name": "Case opened or reopened",
+            "filter": "A CTEM case on any other path opens, reopens or breaches its SLA",
+            "detail": "One loop per case",
+        },
     ],
     "steps": [
         {"title": "Asset match", "detail": "No matching asset closes the case, with the reason."},
-        {"title": "Exploitability", "detail": "Validated in OpenAEV.", "gate": True},
+        # Each step names the gate it stands for (#1074): the About response badges it when that gate
+        # waits at the fleet's live level and pins; the static flag is the seeded level's (Low).
+        {"title": "Exploitability", "detail": "Validated in OpenAEV.", "gate": True, "gate_key": CTEM_VALIDATION_GATE},
         {"title": "Score", "detail": "The finding is scored in OpenCRQ."},
-        {"title": "Ticket", "detail": "The remediation ticket is drafted.", "gate": True},
+        {
+            "title": "Ticket",
+            "detail": "The remediation ticket is drafted.",
+            "gate": True,
+            "gate_key": CTEM_MOBILIZE_GATE,
+        },
         {"title": "Re-test", "detail": "A re-validation closes the case."},
     ],
-    "gates": [
-        {
-            "key": "openaev.validation.launch",
-            "action": "Validate exploitability in OpenAEV",
-            "module": "openaev",
-            "approver": "Fleet manager",
-            "impact": _LAUNCH_IMPACT,
-            "tools": _OPENAEV_LAUNCH_TOOLS,
-        },
-        _GATE_TICKET,
-    ],
+    "gates": _ctem_gates(launch_tools=True, mobilize_action=_MOBILIZE_ACTION),
     "objects": [
         {"module": "openaev", "objects": ["Validations (after approval)"]},
         {"module": "opencrq", "objects": ["Finding scores"]},
@@ -539,9 +716,22 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
             "runs_min": 5,
             "runs_max": 60,
         },
+        {
+            "trigger": "Vulnerability on software we run",
+            "basis": "One run per vulnerability on software in the profile",
+            "runs_min": 0,
+            "runs_max": 40,
+        },
+        {
+            "trigger": "Vulnerability flagged in a PIR",
+            "basis": "One run per flag at or above the policy threshold",
+            "runs_min": 0,
+            "runs_max": 20,
+        },
         {"trigger": "Vulnerability sighted", "basis": "One run per sighting", "runs_min": 0, "runs_max": 20},
         {"trigger": "Daily backlog pass", "basis": "One run a day", "runs_min": 28, "runs_max": 31},
         {"trigger": "Re-test due", "basis": "One run per fix re-validated", "runs_min": 0, "runs_max": 15},
+        {"trigger": "Case opened or reopened", "basis": "One run per case event", "runs_min": 0, "runs_max": 40},
     ],
 }
 
@@ -570,19 +760,16 @@ CTEM_AI_SECURITY_STRUCTURED: dict[str, Any] = {
             "title": "AI tests",
             "detail": "Prompt injection, jailbreak, excessive agency, tool misuse, MCP tool poisoning.",
             "gate": True,
+            "gate_key": CTEM_VALIDATION_GATE,
         },
-        {"title": "Exposure", "detail": "Priced in OpenCRQ, fixes drafted and tracked to closure."},
-    ],
-    "gates": [
         {
-            "key": "openaev.ai_test.launch",
-            "action": "Run a test against an AI system",
-            "module": "openaev",
-            "approver": "Fleet manager",
-            "impact": _LAUNCH_IMPACT,
-            "tools": _OPENAEV_LAUNCH_TOOLS,
+            "title": "Exposure",
+            "detail": "Priced in OpenCRQ, fixes drafted and tracked to closure.",
+            "gate": True,
+            "gate_key": CTEM_MOBILIZE_GATE,
         },
     ],
+    "gates": _ctem_gates(launch_tools=True, mobilize_action=_MOBILIZE_ACTION),
     "objects": [
         {"module": "opencti", "objects": ["Drafts of ATLAS entities"]},
         {"module": "openaev", "objects": ["AI tests (after approval)"]},
@@ -655,17 +842,13 @@ CTEM_THIRD_PARTY_RISK_STRUCTURED: dict[str, Any] = {
             "title": "Actions",
             "detail": "Contact, compensating control, contract clause, monitoring raised.",
             "gate": True,
+            "gate_key": CTEM_MOBILIZE_GATE,
         },
     ],
-    "gates": [
-        {
-            "key": "supplier.action",
-            "action": "Any proposed action on a supplier",
-            "module": "platform",
-            "approver": "Fleet manager",
-            "impact": "destructive",
-        },
-    ],
+    "gates": _ctem_gates(
+        launch_tools=False,
+        mobilize_action="Mobilize: carry out an action on a supplier (contact, control, clause, monitoring)",
+    ),
     "objects": [
         {"module": "platform", "objects": ["Supplier-exposure cases", "Awareness cases", "Approval work items"]},
     ],
@@ -702,6 +885,7 @@ OPENCTI_PIR_DESK_STRUCTURED: dict[str, Any] = {
         {"module": "schedule", "name": "Weekly PIR answer", "filter": "Mondays at 07:00"},
         {"module": "schedule", "name": "Half-year threat landscape", "filter": "1 January and 1 July at 08:00"},
         {"module": "schedule", "name": "Stale indicator clean-up", "filter": "The 1st of each month at 06:00"},
+        {"module": "platform", "name": "Gate answered", "filter": "A person answers an indicator revocation"},
     ],
     "steps": [
         {"title": "Triage", "detail": "Scored against each PIR and the organization profile."},
@@ -742,6 +926,7 @@ OPENCTI_PIR_DESK_STRUCTURED: dict[str, Any] = {
         {"trigger": "Weekly PIR answer", "basis": "One run a week", "runs_min": 4, "runs_max": 5},
         {"trigger": "Half-year threat landscape", "basis": "Two runs a year", "runs_min": 0, "runs_max": 1},
         {"trigger": "Stale indicator clean-up", "basis": "One run a month", "runs_min": 1, "runs_max": 1},
+        {"trigger": "Gate answered", "basis": "One run per revocation answered", "runs_min": 0, "runs_max": 20},
     ],
 }
 
@@ -753,9 +938,10 @@ OPENAEV_DETECTION_DESK_STRUCTURED: dict[str, Any] = {
         {"module": "schedule", "name": "Weekly validation plan", "filter": "Mondays at 06:00"},
         {"module": "schedule", "name": "Weekly coverage report", "filter": "Fridays at 08:00"},
         {"module": "platform", "name": "Re-test due", "filter": "A re-test work item of the desk"},
+        {"module": "platform", "name": "Gate answered", "filter": "A person answers a launch approval"},
     ],
     "steps": [
-        {"title": "Plan", "detail": "Simulations from the threat arsenal against the crown jewels.", "gate": True},
+        {"title": "Plan", "detail": "Simulations from the threat arsenal against the primary assets.", "gate": True},
         {"title": "Sort", "detail": "Blocked, detected, logged or missed, per inject and asset."},
         {"title": "Root cause", "detail": "No rule, no log or a broken collector."},
         {"title": "Rule", "detail": "The missing detection rule drafted by the rule chain."},
@@ -769,7 +955,6 @@ OPENAEV_DETECTION_DESK_STRUCTURED: dict[str, Any] = {
             "module": "openaev",
             "approver": "Fleet manager",
             "impact": _LAUNCH_IMPACT,
-            "tools": _OPENAEV_LAUNCH_TOOLS,
         },
     ],
     "objects": [
@@ -795,16 +980,9 @@ OPENAEV_DETECTION_DESK_STRUCTURED: dict[str, Any] = {
         {"trigger": "Weekly validation plan", "basis": "One run a week", "runs_min": 4, "runs_max": 5},
         {"trigger": "Weekly coverage report", "basis": "One run a week", "runs_min": 4, "runs_max": 5},
         {"trigger": "Re-test due", "basis": "One run per remediated gap", "runs_min": 0, "runs_max": 60},
+        {"trigger": "Gate answered", "basis": "One run per launch answered", "runs_min": 0, "runs_max": 60},
     ],
 }
-
-#: The OpenCRQ register-of-record writes (#10593): a person's call, logged at Low (impact high).
-_OPENCRQ_REGISTER_WRITE_TOOLS = [
-    {"name": "create_opencrq_risk_scenario"},
-    {"name": "update_opencrq_risk_scenario"},
-    {"name": "update_opencrq_loss_estimates"},
-    {"name": "update_opencrq_risk_tolerance"},
-]
 
 OPENCRQ_RISK_BUDGET_DESK_STRUCTURED: dict[str, Any] = {
     "purpose_line": "A risk register priced in money, kept current, from OpenCRQ alone.",
@@ -819,6 +997,7 @@ OPENCRQ_RISK_BUDGET_DESK_STRUCTURED: dict[str, Any] = {
         },
         {"module": "schedule", "name": "Weekly investment review", "filter": "Mondays at 07:00"},
         {"module": "schedule", "name": "Monthly Board pack", "filter": "The 1st of the month at 08:00"},
+        {"module": "platform", "name": "Gate answered", "filter": "A person answers an investment recommendation"},
     ],
     "steps": [
         {"title": "Refresh", "detail": "The register compared with the last snapshot."},
@@ -830,11 +1009,10 @@ OPENCRQ_RISK_BUDGET_DESK_STRUCTURED: dict[str, Any] = {
     "gates": [
         {
             "key": "opencrq.register.write",
-            "action": "Change a risk scenario, its loss estimates or the risk tolerance",
+            "action": "Change a risk scenario, its loss estimates, the risk tolerance or a treatment plan",
             "module": "opencrq",
             "approver": "Fleet manager",
             "impact": "high",
-            "tools": _OPENCRQ_REGISTER_WRITE_TOOLS,
         },
     ],
     "objects": [
@@ -850,32 +1028,197 @@ OPENCRQ_RISK_BUDGET_DESK_STRUCTURED: dict[str, Any] = {
     "quota": [
         {
             "trigger": "Scenario re-priced",
-            "basis": "One run per successful OpenCRQ job, under its daily cap",
+            "basis": "One run per poll batch of successful OpenCRQ jobs, one at a time, under its daily cap",
             "runs_min": 4,
             "runs_max": 60,
         },
-        {"trigger": "Finding re-scored", "basis": "One run per successful job", "runs_min": 0, "runs_max": 30},
+        {
+            "trigger": "Finding re-scored",
+            "basis": "One run per poll batch of successful jobs, one at a time",
+            "runs_min": 0,
+            "runs_max": 30,
+        },
         {
             "trigger": "Control validation ingested",
-            "basis": "One run per successful ingestion",
+            "basis": "One run per poll batch of successful ingestions, one at a time",
             "runs_min": 0,
             "runs_max": 30,
         },
         {"trigger": "Weekly investment review", "basis": "One run a week", "runs_min": 4, "runs_max": 5},
         {"trigger": "Monthly Board pack", "basis": "One run a month", "runs_min": 1, "runs_max": 1},
+        {"trigger": "Gate answered", "basis": "One run per recommendation answered", "runs_min": 0, "runs_max": 10},
     ],
 }
 
-#: Built-in fleet slug to the structured parts of its seeded documentation.
+# The Platform Health fleet (#974): seeded by ``app.services.health.fleet_seed``, not
+# ``BUILTIN_FLEETS``. Read-only, switched and scheduled in Settings > Agents and
+# automations > Platform Health, so the text names no action an administrator
+# could take on the fleet itself (no role label, no handover, no automation to
+# switch on). Its live prerequisite (Platform Health on) is computed by
+# ``fleet_about.live_prerequisites``; nothing is documented as a manual step.
+PLATFORM_HEALTH_DOC: dict[str, str] = {
+    "purpose": (
+        "Keep the platform's agents, flows and memory healthy without anyone asking: Platform Health "
+        "watches quality, failures, cost and memory, investigates what degrades, and proposes the fix."
+    ),
+    "use_case": (
+        "Built in and on by default. The Memory Steward tidies agent memory every day, the Quality "
+        "Analyst and the Flow Lab review agents and flows every week, and a weekly digest summarizes "
+        "what was found and fixed. A signal (a feedback drop, a failure rate, a cost increase, a model "
+        "change) starts an investigation of the agent or flow concerned. In XTM One, the OpenCTI, OpenAEV "
+        "and OpenCRQ Health Checkers run each module's health checks once a day, read-only through the "
+        "module's integration, and report every check with its evidence."
+    ),
+    "triggers": (
+        "- **Signals**: a feedback drop, a failure rate, a cost increase or a model change on an agent or a flow.\n"
+        "- **Memory review**: daily, on the schedule set in Settings.\n"
+        "- **Quality review**: weekly, on the schedule set in Settings.\n"
+        "- **Flow review**: weekly, on the schedule set in Settings.\n"
+        "- **Weekly digest**: on the schedule set in Settings.\n"
+        "- **Module checks**: daily, on every registered OpenCTI, OpenAEV and OpenCRQ (XTM One)."
+    ),
+    "flow": (
+        "1. Detect: a schedule fires or a signal crosses its threshold.\n"
+        "2. Investigate: the specialist reads the runs, feedback and memory of the target.\n"
+        "3. Propose: a finding and, when one helps, an improvement proposal a person decides on.\n"
+        "4. Report: the weekly digest lists the cycles closed."
+    ),
+    "objects_created": "Health cycles, findings, module check reports, improvement proposals and the weekly digest.",
+    "prerequisites": (
+        "Platform Health switched on in Settings > Agents and automations > Platform Health, where its "
+        "schedules, signals and budget are set. The fleet itself is built in and read-only."
+    ),
+}
+
+PLATFORM_HEALTH_STRUCTURED: dict[str, Any] = {
+    "purpose_line": "Agents, flows and memory kept healthy, without anyone asking.",
+    "outcome_line": "Findings, improvement proposals a person decides on, and a weekly digest.",
+    "triggers": [
+        {
+            "module": "platform",
+            "name": "Signals",
+            "filter": "Feedback drop, failure rate, cost increase or model change",
+        },
+        {"module": "schedule", "name": "Memory review", "filter": "Daily, on the schedule set in Settings"},
+        {"module": "schedule", "name": "Quality review", "filter": "Weekly, on the schedule set in Settings"},
+        {"module": "schedule", "name": "Flow review", "filter": "Weekly, on the schedule set in Settings"},
+        {"module": "schedule", "name": "Weekly digest", "filter": "On the schedule set in Settings"},
+        {"module": "schedule", "name": "Module checks", "filter": "Daily, on every registered module (XTM One)"},
+    ],
+    "steps": [
+        {"title": "Detect", "detail": "A schedule fires or a signal crosses its threshold."},
+        {"title": "Investigate", "detail": "The runs, feedback and memory of the target are read."},
+        {"title": "Propose", "detail": "A finding, and an improvement proposal a person decides on.", "gate": True},
+        {"title": "Report", "detail": "The weekly digest lists the cycles closed."},
+    ],
+    "objects": [
+        {
+            "module": "platform",
+            "objects": ["Health cycles", "Findings", "Module check reports", "Improvement proposals", "Weekly digest"],
+        },
+    ],
+}
+
+
+def _loop_gates() -> list[dict[str, Any]]:
+    """The CTEM gate catalog of the generic fleet, the folded desks' decisions mapped onto it.
+
+    The detection desk's simulation launches are ``ctem.validation.non_readonly``
+    decisions; the risk desk's register writes join ``ctem.remediation.decision``
+    (impact high, logged, never waiting at the seeded level, as before). The PIR
+    desk's indicator revocation is folded into ``ctem.mobilize``'s action text.
+    No gate names a tool (#1675).
+    """
+    return _ctem_gates(
+        launch_tools=True,
+        mobilize_action=_MOBILIZE_ACTION + "; revoke a stale indicator",
+    )
+
+
+#: 1. CTEM loop, the generic fleet (CTEM-31, #1048): the triggers of the former
+#: threat response, posture and module desks under one case-driven loop.
+CTEM_LOOP_STRUCTURED: dict[str, Any] = {
+    "purpose_line": "The whole CTEM loop on your software: any change in exposure, one case, closed on proof.",
+    "outcome_line": (
+        "Cases validated, priced, decided once and closed by a re-test; posture, PIR answers, "
+        "detection coverage and the risk register kept current."
+    ),
+    "triggers": [
+        *CTEM_THREAT_RESPONSE_STRUCTURED["triggers"],
+        *CTEM_POSTURE_STRUCTURED["triggers"],
+        *(t for t in OPENCTI_PIR_DESK_STRUCTURED["triggers"] if t["module"] != "schedule"),
+        *(t for t in OPENAEV_DETECTION_DESK_STRUCTURED["triggers"] if t["module"] == "openaev"),
+        *(t for t in OPENCRQ_RISK_BUDGET_DESK_STRUCTURED["triggers"] if t["module"] == "opencrq"),
+    ],
+    "steps": [
+        {"title": "Signal", "detail": "Any trigger path; reconcile and the scope gate open a case or watch it."},
+        {"title": "Prioritise", "detail": "Relevance and severity from the profile and the scope criticality."},
+        # Each step names its gate (#1074): the About response badges it when that gate waits at the
+        # live level and pins. The static flag is the seeded level's (Low): the validation and ctem.mobilize wait.
+        {
+            "title": "Validate",
+            "detail": "An OpenAEV scenario or atomic test, after your approval.",
+            "gate": True,
+            "gate_key": CTEM_VALIDATION_GATE,
+        },
+        {
+            "title": "Decide",
+            "detail": "Expected loss and options from OpenCRQ.",
+            "gate_key": "ctem.remediation.decision",
+        },
+        {
+            "title": "Mobilize",
+            "detail": "Tickets, owners and the prepared change, after your approval.",
+            "gate": True,
+            "gate_key": CTEM_MOBILIZE_GATE,
+        },
+        {"title": "Re-test and close", "detail": "Closed only on a passing re-test; the lesson feeds the scope."},
+    ],
+    "gates": _loop_gates(),
+    "objects": [
+        {"module": "opencti", "objects": ["One case per PIR", "Hunt packages", "Detection rules"]},
+        {"module": "openaev", "objects": ["Scenarios", "Payloads"]},
+        {"module": "opencrq", "objects": ["Loss estimates"]},
+        {
+            "module": "platform",
+            "objects": [
+                "CTEM signals and cases",
+                "Remediation tickets (after approval)",
+                "Stage assessments",
+                "Exposure briefings",
+                "Board packs",
+            ],
+        },
+    ],
+    "prerequisites": [
+        _NEEDS_OPENCTI,
+        _NEEDS_OPENAEV,
+        _NEEDS_OPENCRQ,
+        _NEEDS_SECTOR,
+        _NEEDS_REGIONS,
+        _NEEDS_JEWELS,
+        _SWITCHED_ON,
+    ],
+    "quota": [
+        *CTEM_THREAT_RESPONSE_STRUCTURED["quota"],
+        *CTEM_POSTURE_STRUCTURED["quota"],
+        *(q for q in OPENCTI_PIR_DESK_STRUCTURED["quota"] if q["trigger"] == "PIR match created"),
+        *(q for q in OPENAEV_DETECTION_DESK_STRUCTURED["quota"] if q["trigger"] == "Simulation finished"),
+        *(
+            q
+            for q in OPENCRQ_RISK_BUDGET_DESK_STRUCTURED["quota"]
+            if q["trigger"] in {"Scenario re-priced", "Finding re-scored", "Control validation ingested"}
+        ),
+    ],
+}
+
+#: Built-in fleet slug to the structured parts of its seeded documentation: the four
+#: seeded fleets (CTEM-31).
 BUILTIN_FLEET_STRUCTURED: dict[str, dict[str, Any]] = {
-    "ctem-threat-response": CTEM_THREAT_RESPONSE_STRUCTURED,
+    "ctem-loop": CTEM_LOOP_STRUCTURED,
     "ctem-vuln-prioritization": CTEM_VULN_PRIORITIZATION_STRUCTURED,
     "ctem-ai-security": CTEM_AI_SECURITY_STRUCTURED,
-    "ctem-posture": CTEM_POSTURE_STRUCTURED,
     "ctem-third-party-risk": CTEM_THIRD_PARTY_RISK_STRUCTURED,
-    "opencti-pir-desk": OPENCTI_PIR_DESK_STRUCTURED,
-    "openaev-detection-desk": OPENAEV_DETECTION_DESK_STRUCTURED,
-    "opencrq-risk-budget-desk": OPENCRQ_RISK_BUDGET_DESK_STRUCTURED,
 }
 
 

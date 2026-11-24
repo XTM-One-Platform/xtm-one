@@ -155,6 +155,10 @@ class FailureCause(StrEnum):
     ENGINE_ATTEMPTS_EXHAUSTED = "engine_attempts_exhausted"
     ENGINE_DEADLINE_EXCEEDED = "engine_deadline_exceeded"
     ENGINE_ABANDONED = "engine_abandoned"
+    #: Its queue-wait bound passed before any worker started it: a capacity
+    #: story, apart from a deadline reached while running. Its execution budget
+    #: counts from its start, so this is the only deadline queued work can meet.
+    DEADLINE_EXCEEDED_BEFORE_START = "deadline_exceeded_before_start"
 
     # ── The honest bucket ───────────────────────────────────────────────
     # Everything we cannot yet attribute. This is the value the whole
@@ -198,6 +202,7 @@ BILLABLE_CANDIDATE_CAUSES: frozenset[FailureCause] = frozenset(
         FailureCause.ENGINE_ATTEMPTS_EXHAUSTED,
         FailureCause.ENGINE_DEADLINE_EXCEEDED,
         FailureCause.ENGINE_ABANDONED,
+        FailureCause.DEADLINE_EXCEEDED_BEFORE_START,
     }
 )
 

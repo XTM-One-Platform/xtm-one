@@ -678,9 +678,10 @@ def test_the_trace_probe_rides_the_source_index():
         c for c in LLMTrace.__table__.constraints if c.name == "ck_llm_traces_source_valid"
     )
     assert str(check.sqltext) == (
-        "source IN ('agent-chat', 'general-chat', 'assignment', 'flow', 'memory', 'evaluation', 'proxy')"
+        "source IN ('agent-chat', 'general-chat', 'assignment', 'flow', 'memory', 'evaluation', 'proxy', "
+        "'platform_health')"
     )
-    assert len(LLM_TRACE_SOURCES) == 7
+    assert len(LLM_TRACE_SOURCES) == 8
 
 
 def test_the_tracing_sink_accepts_exactly_the_stored_sources():

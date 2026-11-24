@@ -59,6 +59,7 @@ from app.models.agent import Agent
 from app.models.fleet import FLEET_DEFAULT_ICON, FLEET_ROLE_CONNECTED, FLEET_ROLE_MEMBER, Fleet, FleetMember
 from app.models.user import User
 from app.models.workspace import Workspace
+from app.services.fleet_autonomy import customer_gates_of
 from app.services.fleets import (
     FleetActionRefusedError,
     add_connected,
@@ -191,6 +192,25 @@ class SourceChanges:
     #: False on a fork made before the structure was kept: changed is known, the diff is not.
     diff_available: bool = False
     changes: list[dict] = field(default_factory=list)
+    #: The seeded fleet that took over a retired built-in source (CTEM-31): {fleet_id, slug, name}.
+    successor: dict | None = None
+
+
+async def retired_source_successor(db: AsyncSession, provenance: dict) -> dict | None:
+    """The seeded fleet that took over the retired built-in source of a fork, else None."""
+    from app.agents.builtin_fleets import RETIRED_FLEET_SUCCESSORS
+
+    if not provenance.get("is_builtin"):
+        return None
+    slug = RETIRED_FLEET_SUCCESSORS.get(str(provenance.get("slug") or ""))
+    if slug is None:
+        return None
+    row = (
+        await db.execute(select(Fleet).where(Fleet.is_builtin.is_(True), Fleet.slug == slug).limit(1))
+    ).scalar_one_or_none()
+    if row is None:
+        return None
+    return {"fleet_id": str(row.id), "slug": row.slug, "name": row.name}
 
 
 _CARD_FIELDS = ("name", "description", "skills", "accepted_handover_types", "orchestrator")
@@ -237,13 +257,16 @@ async def source_changes(db: AsyncSession, fork: Fleet) -> SourceChanges:
         return SourceChanges(is_fork=False)
     source = await db.get(Fleet, _uuid(provenance.get("fleet_id")))
     if source is None:
-        return SourceChanges(is_fork=True)
+        return SourceChanges(is_fork=True, successor=await retired_source_successor(db, provenance))
     live = await source_structure(db, source)
     result = SourceChanges(
         is_fork=True,
         source_exists=True,
         changed=structure_fingerprint(live) != provenance.get("fingerprint"),
     )
+    if source.is_builtin and source.slug != provenance.get("slug"):
+        # CTEM-31: the built-in source was adopted under a new slug (the generic CTEM loop).
+        result.successor = {"fleet_id": str(source.id), "slug": source.slug, "name": source.name}
     kept = provenance.get("structure")
     if isinstance(kept, dict):
         result.diff_available = True
@@ -317,7 +340,13 @@ async def fork_fleet(
         budget_config=lower_budget_to_ceiling(source.budget_config, user=user) if source.budget_config else None,
         max_iterations=clamp_max_iterations(source.max_iterations) if source.max_iterations is not None else None,
         # The approval gate catalog is configuration (#10000): the fork gates what its source gates.
-        approval_gates=[dict(g) for g in source.approval_gates] if isinstance(source.approval_gates, list) else None,
+        # Gates a person added to a built-in source (#916) join the fork's own catalog.
+        approval_gates=(
+            [dict(g) for g in source.approval_gates]
+            + [dict(g) for g in customer_gates_of(getattr(source, "customer_gates", None))]
+            if isinstance(source.approval_gates, list)
+            else None
+        ),
         # The fork keeps its source's pins, and with them whether the computed catalog is on (#10153);
         # its level is a new fleet's (create_fleet), never raised from the source's.
         approval_pins=dict(source.approval_pins) if isinstance(source.approval_pins, dict) else None,

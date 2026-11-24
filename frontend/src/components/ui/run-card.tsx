@@ -33,6 +33,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * The expand chevron is only rendered when a run has children, keeping rows
  * without sub-runs flush left with no wasted space.
  */
+import { workItemPath } from "@/lib/task-routes";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Bot, CalendarClock, Trash2, ChevronRight, ChevronDown, GitBranch, Wrench } from "lucide-react";
@@ -55,7 +56,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useDescendantRuns } from "@/hooks/api/useAssignmentApi";
 import { INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
 import { useFormatter } from "@/i18n";
-import { RunHumanInput, runHitlState } from "@/components/ui/run-human-input";
+import { RunPauseDecision, runPauseState } from "@/components/decisions/RunPauseDecision";
 import type { A2AExchange, ActionProposal, ApprovalDecision, HumanInputHistoryEntry } from "@/types";
 
 // ── Props ───────────────────────────────────────────────────────────────────
@@ -144,7 +145,7 @@ function DescendantRow({ run, depth, onDelete }: { run: RunCardRun; depth: numbe
   return (
     <div
       className="group flex items-center gap-3 py-2 pr-0 rounded-sm cursor-pointer hover:bg-elevation-hover transition-colors"
-      onClick={(e) => { e.stopPropagation(); navigate(`/runs/${run.id}`); }}
+      onClick={(e) => { e.stopPropagation(); navigate(`/operations/executions/${run.id}`); }}
     >
       {/* Visual indent spacer with vertical connection line */}
       <div className="w-6 self-stretch flex justify-center shrink-0">
@@ -271,7 +272,7 @@ export function RunCard({ run, onDelete, card = true, compact = false, onRespond
   const AgentIcon = run.agent_icon ? (ICON_MAP[run.agent_icon] ?? Bot) : null;
   const isRunning = run.status === "running";
   const isAwaitingHuman = run.status === "awaiting_human";
-  const { isHitlPending, isApprovalPending, isFreeTextPending } = runHitlState(run);
+  const { isHitlPending, isApprovalPending, isFreeTextPending } = runPauseState(run);
   const isDelegation = !!run.parent_run_id && !run.assignment_name;
   // Which A2A partner submitted this run, if any. An external run has no
   // assignment name and no parent, so without this its origin line is blank and
@@ -341,7 +342,7 @@ export function RunCard({ run, onDelete, card = true, compact = false, onRespond
                 {scheduledItemId ? (
                   <Tip content={t_i18n("Run of a scheduled work item: a one-off action, with no assignment.")}>
                     <Link
-                      to={`/operations/work-items?item=${scheduledItemId}`}
+                      to={workItemPath(scheduledItemId)}
                       onClick={(e) => e.stopPropagation()}
                       aria-label={t_i18n("Scheduled")}
                       className="inline-flex shrink-0 items-center rounded-sm text-default-secondary hover:text-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
@@ -399,7 +400,7 @@ export function RunCard({ run, onDelete, card = true, compact = false, onRespond
                 <div className="flex items-center gap-1.5">
                   <Tip content={t_i18n("Run of a scheduled work item: a one-off action, with no assignment.")}>
                     <Link
-                      to={`/operations/work-items?item=${scheduledItemId}`}
+                      to={workItemPath(scheduledItemId)}
                       onClick={(e) => e.stopPropagation()}
                       data-testid="scheduled-run-badge"
                     >
@@ -545,7 +546,7 @@ export function RunCard({ run, onDelete, card = true, compact = false, onRespond
       </div>
 
       {!compact && (
-        <RunHumanInput
+        <RunPauseDecision
           run={run}
           onRespond={onRespond}
           onDismiss={onDismiss}
@@ -582,7 +583,7 @@ export function RunCard({ run, onDelete, card = true, compact = false, onRespond
           isDelegation && "border-accent/10",
           className,
         )}
-        onClick={() => navigate(`/runs/${run.id}`)}
+        onClick={() => navigate(`/operations/executions/${run.id}`)}
       >
         <CardContent className={compact ? "p-3" : "p-4"}>{inner}</CardContent>
       </Card>
@@ -598,7 +599,7 @@ export function RunCard({ run, onDelete, card = true, compact = false, onRespond
         isDelegation && "bg-accent/[0.02]",
         className,
       )}
-      onClick={() => navigate(`/runs/${run.id}`)}
+      onClick={() => navigate(`/operations/executions/${run.id}`)}
     >
       {inner}
     </div>

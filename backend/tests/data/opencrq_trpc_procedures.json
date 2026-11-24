@@ -2,14 +2,10 @@
   "pinnedFrom": {
     "repository": "OpenCRQ-Platform/opencrq",
     "path": "back/trpc-procedures.json",
-    "commit": "b1036a9876da0166501ea7e0476954b1191996d6"
+    "commit": "043206a5dc1635137c67953ee9fa7e5501dc6b97"
   },
   "formatVersion": 1,
   "procedures": [
-    {
-      "path": "acceptInvitation",
-      "type": "mutation"
-    },
     {
       "path": "aleChangeExplain.getRunChangeGroup",
       "type": "query"
@@ -19,11 +15,23 @@
       "type": "query"
     },
     {
+      "path": "aleChangeExplain.getRunCurve",
+      "type": "query"
+    },
+    {
+      "path": "assetDependencies.createPrimaryToPrimaryLinks",
+      "type": "mutation"
+    },
+    {
       "path": "assetDependencies.createSupportToPrimaryLinks",
       "type": "mutation"
     },
     {
       "path": "assetDependencies.createSupportToSupportLinks",
+      "type": "mutation"
+    },
+    {
+      "path": "assetDependencies.deletePrimaryToPrimaryLinks",
       "type": "mutation"
     },
     {
@@ -36,6 +44,10 @@
     },
     {
       "path": "assetDependencies.getPrimaryAssetDependencyGraph",
+      "type": "query"
+    },
+    {
+      "path": "assetDependencies.getPrimaryToPrimaryLinks",
       "type": "query"
     },
     {
@@ -59,6 +71,10 @@
       "type": "query"
     },
     {
+      "path": "assetDependencies.updatePrimaryToPrimaryLinks",
+      "type": "mutation"
+    },
+    {
       "path": "assetDependencies.updateSupportToPrimaryLinks",
       "type": "mutation"
     },
@@ -68,10 +84,6 @@
     },
     {
       "path": "attackOutcomes.getAttackOutcomes",
-      "type": "query"
-    },
-    {
-      "path": "attackOutcomes.getAttackPaths",
       "type": "query"
     },
     {
@@ -115,15 +127,15 @@
       "type": "query"
     },
     {
-      "path": "budgetReviews.getBudgetReviewBuildHistory",
-      "type": "query"
-    },
-    {
       "path": "budgetReviews.getBudgetReviewControlPostures",
       "type": "query"
     },
     {
       "path": "budgetReviews.getBudgetReviewFigures",
+      "type": "query"
+    },
+    {
+      "path": "budgetReviews.getBudgetReviewRiskSeries",
       "type": "query"
     },
     {
@@ -184,6 +196,10 @@
     },
     {
       "path": "complianceAssessments.createAssessment",
+      "type": "mutation"
+    },
+    {
+      "path": "complianceAssessments.deleteAssessment",
       "type": "mutation"
     },
     {
@@ -319,6 +335,10 @@
       "type": "mutation"
     },
     {
+      "path": "controlValidation.getControlTechniqueTestReadings",
+      "type": "query"
+    },
+    {
       "path": "controlValidation.getControlValidation",
       "type": "query"
     },
@@ -331,12 +351,24 @@
       "type": "query"
     },
     {
-      "path": "countries.getCountries",
+      "path": "controlValidation.getTechniqueTestReadings",
       "type": "query"
     },
     {
-      "path": "createInitialAdminAccount",
-      "type": "mutation"
+      "path": "controlValidation.getTechniquesCoverage",
+      "type": "query"
+    },
+    {
+      "path": "controlValidation.listControlValidationEvidence",
+      "type": "query"
+    },
+    {
+      "path": "controlValidation.listControlValidationEvidenceTechniques",
+      "type": "query"
+    },
+    {
+      "path": "countries.getCountries",
+      "type": "query"
     },
     {
       "path": "crqIndicatorSettings.getCrqIndicatorSettings",
@@ -367,11 +399,19 @@
       "type": "query"
     },
     {
+      "path": "crqIndicators.getCveScenarioGains",
+      "type": "query"
+    },
+    {
       "path": "crqIndicators.getFigureFamilyDates",
       "type": "query"
     },
     {
       "path": "crqIndicators.getLatestRun",
+      "type": "query"
+    },
+    {
+      "path": "crqIndicators.getPendingComputation",
       "type": "query"
     },
     {
@@ -391,7 +431,15 @@
       "type": "query"
     },
     {
-      "path": "crqIndicators.getTefCatalogGrid",
+      "path": "crqIndicators.getTefCatalog",
+      "type": "query"
+    },
+    {
+      "path": "crqIndicators.getTefCatalogReading",
+      "type": "query"
+    },
+    {
+      "path": "crqIndicators.getTefCatalogScopeReadings",
       "type": "query"
     },
     {
@@ -404,6 +452,10 @@
     },
     {
       "path": "crqIndicators.getWhatIfResults",
+      "type": "query"
+    },
+    {
+      "path": "crqIndicators.listRunHistory",
       "type": "query"
     },
     {
@@ -495,6 +547,10 @@
       "type": "query"
     },
     {
+      "path": "dashboard.getRiskTreatmentSeries",
+      "type": "query"
+    },
+    {
       "path": "dashboard.getScenarioSummaries",
       "type": "query"
     },
@@ -508,6 +564,10 @@
     },
     {
       "path": "dashboard.getTenantHomeDashboard",
+      "type": "query"
+    },
+    {
+      "path": "dashboard.getToleranceCounts",
       "type": "query"
     },
     {
@@ -527,7 +587,27 @@
       "type": "mutation"
     },
     {
-      "path": "declineInvitation",
+      "path": "declaredEstate.comparison",
+      "type": "query"
+    },
+    {
+      "path": "declaredEstate.get",
+      "type": "query"
+    },
+    {
+      "path": "declaredEstate.history",
+      "type": "query"
+    },
+    {
+      "path": "declaredEstate.save",
+      "type": "mutation"
+    },
+    {
+      "path": "defaultThreats.getOverview",
+      "type": "query"
+    },
+    {
+      "path": "defaultThreats.setEnabled",
       "type": "mutation"
     },
     {
@@ -559,8 +639,24 @@
       "type": "query"
     },
     {
+      "path": "edition.checkWithXtmOne",
+      "type": "mutation"
+    },
+    {
+      "path": "edition.getFiligranLicense",
+      "type": "query"
+    },
+    {
+      "path": "edition.getInstance",
+      "type": "query"
+    },
+    {
       "path": "edition.getStatus",
       "type": "query"
+    },
+    {
+      "path": "edition.removeFiligranLicense",
+      "type": "mutation"
     },
     {
       "path": "events.onDataChanged",
@@ -580,6 +676,10 @@
     },
     {
       "path": "financialProfiles.getFinancialProfile",
+      "type": "query"
+    },
+    {
+      "path": "financialProfiles.getFinancialProfileHistory",
       "type": "query"
     },
     {
@@ -675,11 +775,11 @@
       "type": "query"
     },
     {
-      "path": "getInvitationByToken",
+      "path": "getMe",
       "type": "query"
     },
     {
-      "path": "getMe",
+      "path": "globalSearch.search",
       "type": "query"
     },
     {
@@ -751,26 +851,6 @@
       "type": "query"
     },
     {
-      "path": "invitations.cancelInvitation",
-      "type": "mutation"
-    },
-    {
-      "path": "invitations.checkEmail",
-      "type": "query"
-    },
-    {
-      "path": "invitations.createInvitation",
-      "type": "mutation"
-    },
-    {
-      "path": "invitations.getInvitations",
-      "type": "query"
-    },
-    {
-      "path": "invitations.resendInvitation",
-      "type": "mutation"
-    },
-    {
       "path": "isLoggedIn",
       "type": "query"
     },
@@ -835,10 +915,6 @@
       "type": "mutation"
     },
     {
-      "path": "login",
-      "type": "mutation"
-    },
-    {
       "path": "lossDrivers.getCompatibleBusinessValueCategoryIds",
       "type": "query"
     },
@@ -856,6 +932,42 @@
     },
     {
       "path": "lossDrivers.getScenarioDriverRecommendation",
+      "type": "query"
+    },
+    {
+      "path": "markingDefinitions.addMarkingToGroup",
+      "type": "mutation"
+    },
+    {
+      "path": "markingDefinitions.createMarkingDefinition",
+      "type": "mutation"
+    },
+    {
+      "path": "markingDefinitions.deleteMarkingDefinition",
+      "type": "mutation"
+    },
+    {
+      "path": "markingDefinitions.getGroupMarkings",
+      "type": "query"
+    },
+    {
+      "path": "markingDefinitions.listMarkingDefinitions",
+      "type": "query"
+    },
+    {
+      "path": "markingDefinitions.removeMarkingFromGroup",
+      "type": "mutation"
+    },
+    {
+      "path": "markingDefinitions.updateMarkingDefinition",
+      "type": "mutation"
+    },
+    {
+      "path": "members.addMembers",
+      "type": "mutation"
+    },
+    {
+      "path": "members.searchDirectory",
       "type": "query"
     },
     {
@@ -911,6 +1023,10 @@
       "type": "mutation"
     },
     {
+      "path": "onboardingWizard.getOnboardingWizard",
+      "type": "query"
+    },
+    {
       "path": "opencti.configure",
       "type": "mutation"
     },
@@ -937,6 +1053,18 @@
     {
       "path": "organizations.deleteOrganizations",
       "type": "mutation"
+    },
+    {
+      "path": "organizations.getAssetMappingEventAssets",
+      "type": "query"
+    },
+    {
+      "path": "organizations.getAssetMappingHistory",
+      "type": "query"
+    },
+    {
+      "path": "organizations.getIdentityHistory",
+      "type": "query"
     },
     {
       "path": "organizations.getOrganization",
@@ -1035,6 +1163,14 @@
       "type": "mutation"
     },
     {
+      "path": "platformMembers.addMembers",
+      "type": "mutation"
+    },
+    {
+      "path": "platformMembers.searchDirectory",
+      "type": "query"
+    },
+    {
       "path": "platformRoles.addCapabilityToPlatformRole",
       "type": "mutation"
     },
@@ -1103,10 +1239,6 @@
       "type": "query"
     },
     {
-      "path": "registerAndAcceptInvitation",
-      "type": "mutation"
-    },
-    {
       "path": "riskScenarios.createRiskScenario",
       "type": "mutation"
     },
@@ -1119,11 +1251,19 @@
       "type": "query"
     },
     {
+      "path": "riskScenarios.getCveExploitation",
+      "type": "query"
+    },
+    {
       "path": "riskScenarios.getDependencyGraph",
       "type": "query"
     },
     {
       "path": "riskScenarios.getDerivedSupportingAssets",
+      "type": "query"
+    },
+    {
+      "path": "riskScenarios.getEvidenceHealth",
       "type": "query"
     },
     {
@@ -1148,6 +1288,10 @@
     },
     {
       "path": "riskScenarios.listFindingsForRiskScenario",
+      "type": "query"
+    },
+    {
+      "path": "riskScenarios.listUniqueCvesForRiskScenario",
       "type": "query"
     },
     {
@@ -1323,6 +1467,10 @@
       "type": "query"
     },
     {
+      "path": "supportingAssets.getAttackPathReach",
+      "type": "query"
+    },
+    {
       "path": "supportingAssets.getEvidenceActivityForAsset",
       "type": "query"
     },
@@ -1368,6 +1516,10 @@
     },
     {
       "path": "supportingAssets.getTechniquesByCategory",
+      "type": "query"
+    },
+    {
+      "path": "supportingAssets.listAssetGroups",
       "type": "query"
     },
     {
@@ -1451,6 +1603,14 @@
       "type": "mutation"
     },
     {
+      "path": "tenants.renameTenant",
+      "type": "mutation"
+    },
+    {
+      "path": "tenants.setTenantDefaultLocale",
+      "type": "mutation"
+    },
+    {
       "path": "tenants.updateTenantUserProfile",
       "type": "mutation"
     },
@@ -1472,6 +1632,10 @@
     },
     {
       "path": "threats.getByCveId",
+      "type": "query"
+    },
+    {
+      "path": "threats.getCatalogKpis",
       "type": "query"
     },
     {
@@ -1504,6 +1668,10 @@
     },
     {
       "path": "threats.list",
+      "type": "query"
+    },
+    {
+      "path": "threats.listCveFindings",
       "type": "query"
     },
     {
@@ -1585,6 +1753,22 @@
     {
       "path": "users.updateUser",
       "type": "mutation"
+    },
+    {
+      "path": "xtm.connections",
+      "type": "query"
+    },
+    {
+      "path": "xtm.counterparts",
+      "type": "query"
+    },
+    {
+      "path": "xtm.lookup",
+      "type": "query"
+    },
+    {
+      "path": "xtm.products",
+      "type": "query"
     },
     {
       "path": "xtmOne.getSettings",

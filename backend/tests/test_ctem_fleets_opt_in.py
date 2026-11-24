@@ -23,6 +23,25 @@ _FLEET_ASSIGNMENTS = {
     ("ctem-vuln-prioritization-orchestrator", "Vulnerability sighted"),
     ("ctem-vuln-prioritization-orchestrator", "Daily backlog pass"),
     ("ctem-vuln-prioritization-orchestrator", "Re-test due"),
+    # OpenAEV results move the cases (CTEM-15, #918): listen-only, seeded off.
+    ("ctem-vuln-prioritization-orchestrator", "OpenAEV results into cases"),
+    # The analyst's mark resumes the review gate (CTEM-16, #1089): listen-only, seeded off.
+    ("ctem-vuln-prioritization-orchestrator", "Analyst review mark"),
+    # The loop fleets run on cases (#891): seeded off, after migration c9160fleetoptin1.
+    ("ctem-threat-response-orchestrator", "Case opened or reopened"),
+    ("ctem-vuln-prioritization-orchestrator", "Case opened or reopened"),
+    # A gate answer resumes the case (#1388): seeded off, takes the case listener's switch.
+    ("ctem-threat-response-orchestrator", "Gate answered"),
+    ("ctem-vuln-prioritization-orchestrator", "Gate answered"),
+    # The loop's own timer.due listener (#1574): seeded off, takes the case listener's switch.
+    ("ctem-threat-response-orchestrator", "Loop reminder due"),
+    # CTEM-08 (#919): the trigger rule on software we run, seeded off, after migration c9160fleetoptin1.
+    ("ctem-vuln-prioritization-orchestrator", "Vulnerability on software we run"),
+    # CTEM-08 (#919): the PIR score thresholds of the policy, seeded off, after migration c9160fleetoptin1.
+    ("ctem-vuln-prioritization-orchestrator", "Vulnerability flagged in a PIR"),
+    ("ctem-threat-response-orchestrator", "Threat activity flagged in a PIR"),
+    # #1580: the OpenCTI threat seeds listen, the signal event runs; seeded off, takes the intake's switch.
+    ("ctem-threat-response-orchestrator", "Threat signal recorded"),
     ("ctem-ai-security-orchestrator", "New AI-enabled report"),
     ("ctem-ai-security-orchestrator", "Weekly AI threat watch"),
     ("ctem-ai-security-orchestrator", "AI system registered"),
@@ -39,12 +58,19 @@ _FLEET_ASSIGNMENTS = {
             "Weekly PIR answer",
             "Half-year threat landscape",
             "Stale indicator clean-up",
+            "Gate answered",
         )
     ),
     # M2 OpenAEV detection validation desk (#10575): seeded off, after migration c9160fleetoptin1.
     *(
         ("openaev-detection-desk-orchestrator", name)
-        for name in ("Simulation finished", "Weekly validation plan", "Weekly coverage report", "Re-test due")
+        for name in (
+            "Simulation finished",
+            "Weekly validation plan",
+            "Weekly coverage report",
+            "Re-test due",
+            "Gate answered",
+        )
     ),
     # M3 OpenCRQ risk budget desk (#10593): seeded off, after migration c9160fleetoptin1.
     *(
@@ -55,6 +81,7 @@ _FLEET_ASSIGNMENTS = {
             "Control validation ingested",
             "Weekly investment review",
             "Monthly Board pack",
+            "Gate answered",
         )
     ),
 }
@@ -63,6 +90,17 @@ _FLEET_ASSIGNMENTS = {
 _SEEDED_AFTER_C9160 = {
     ("ctem-third-party-risk-orchestrator", "Tracked organization named"),
     ("ctem-third-party-risk-orchestrator", "Weekly third-party review"),
+    ("ctem-threat-response-orchestrator", "Case opened or reopened"),
+    ("ctem-vuln-prioritization-orchestrator", "Case opened or reopened"),
+    ("ctem-threat-response-orchestrator", "Gate answered"),
+    ("ctem-vuln-prioritization-orchestrator", "Gate answered"),
+    ("ctem-threat-response-orchestrator", "Loop reminder due"),
+    ("ctem-vuln-prioritization-orchestrator", "OpenAEV results into cases"),
+    ("ctem-vuln-prioritization-orchestrator", "Analyst review mark"),
+    ("ctem-vuln-prioritization-orchestrator", "Vulnerability on software we run"),
+    ("ctem-vuln-prioritization-orchestrator", "Vulnerability flagged in a PIR"),
+    ("ctem-threat-response-orchestrator", "Threat activity flagged in a PIR"),
+    ("ctem-threat-response-orchestrator", "Threat signal recorded"),
     *(k for k in _FLEET_ASSIGNMENTS if k[0] == "opencti-pir-desk-orchestrator"),
     *(k for k in _FLEET_ASSIGNMENTS if k[0] == "openaev-detection-desk-orchestrator"),
     *(k for k in _FLEET_ASSIGNMENTS if k[0] == "opencrq-risk-desk-orchestrator"),
@@ -124,7 +162,7 @@ def test_golden_dashboard_and_decay_automations_unchanged():
         weekly = seeded[(slug, f"Weekly {stage} assessment")]
         assert (weekly["trigger_type"], weekly["trigger_config"], weekly["run_as_all_users"], weekly["enabled"]) == (
             "schedule",
-            {"cron": "0 8 * * 1"},
+            {"cron": "0 8 * * 1", "fanout_audience": "ctem_users"},
             True,
             True,
         )
@@ -135,6 +173,7 @@ def test_golden_dashboard_and_decay_automations_unchanged():
         assert "admin_opt_in" not in weekly and "admin_opt_in" not in manual
     monthly = seeded[("exposure-briefing-analyst", "Monthly exposure briefing")]
     assert (monthly["trigger_type"], monthly["enabled"]) == ("schedule", True)
+    assert monthly["trigger_config"] == {"cron": "0 8 1 * *", "fanout_audience": "ctem_users"}
     assert seeded[("exposure-briefing-analyst", "Generate my exposure briefing")]["enabled"] is True
     assert seeded[("indicator-decay-guardian", "Re-check indicators about to decay")]["enabled"] is True
     hourly = seeded[("indicator-decay-guardian", "Hourly indicator decay re-check")]

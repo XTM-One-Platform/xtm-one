@@ -148,6 +148,7 @@ ee:
   - backend/app/api/v1/custom_tool_sources.py
   - backend/app/api/v1/custom_tools.py
   - backend/app/api/v1/datasets.py
+  - backend/app/api/v1/decisions.py
   - backend/app/api/v1/desktop_login.py
   - backend/app/api/v1/feedback_criteria.py
   - backend/app/api/v1/flow_*.py
@@ -274,6 +275,7 @@ ee:
   - frontend/src/components/fleets/**
   - frontend/src/components/investigation/**
   - frontend/src/components/memory/**
+  - frontend/src/components/decisions/**
   - frontend/src/components/presentation/**
   - frontend/src/components/report/**
   - frontend/src/components/roi/**
@@ -293,6 +295,7 @@ ee:
   - frontend/src/hooks/api/useCustomToolApi.ts
   - frontend/src/hooks/api/useCustomToolSourceApi.ts
   - frontend/src/hooks/api/useDatasetApi.ts
+  - frontend/src/hooks/api/useDecisionApi.ts
   - frontend/src/hooks/api/useDesktopLoginApi.ts
   - frontend/src/hooks/api/useEvaluationApi.ts
   - frontend/src/hooks/api/useFeedbackCriteriaApi.ts
@@ -408,6 +411,7 @@ ee:
   # Backend: fleets, work items, runs and triggers
   - backend/app/services/fleet*.py
   - backend/app/services/work_item_*.py
+  - backend/app/services/decision_*.py
   - backend/app/services/run_*.py
   - backend/app/services/handed_back_sweep.py
   - backend/app/services/schedule_overlap.py
@@ -423,6 +427,8 @@ ee:
   - backend/app/services/integration_event_filters.py
   - backend/app/services/event_enrichment*.py
   - backend/app/services/event_run_dedup.py
+  - backend/app/services/event_coalescing.py
+  - backend/app/services/event_batching.py
   - backend/app/services/inbound_claims.py
   - backend/app/services/ci_red_claims.py
   - backend/app/services/mail_send_guard.py
@@ -463,6 +469,7 @@ ee:
   - backend/app/api/v1/evaluation*.py
   - backend/app/api/v1/schemas/extension.py
   - backend/app/llm/agent_model.py
+  - backend/app/llm/gateway_embedding_default.py
   - backend/app/integrations/node_registry.py
   # Frontend: fleets, work items, concierge, agent graph
   - frontend/src/hooks/api/useFleetApi.ts
@@ -545,6 +552,7 @@ ee:
   - backend/app/api/v1/schemas/custom_dashboard.py
   - backend/app/services/organization_*_ai_draft.py
   - backend/app/services/organization_context_proposals.py
+  - backend/app/services/organization_context_agent_tools.py  # the profile's platform tools of the organization_context group
   - backend/app/services/organization_context_categories.py  # the organization context in each agent's prompt
   - backend/app/services/organization_context_injection.py
   - frontend/src/components/organization-context-*-select.tsx
@@ -556,6 +564,7 @@ ee:
   - frontend/src/pages/settings/OrganizationAssetsImportDialog.tsx
   - frontend/src/pages/settings/OrganizationFillAgentDialog.tsx  # creates an agent and its schedule (#11888)
   - frontend/src/pages/settings/OrganizationExposureCards.tsx
+  - frontend/src/pages/settings/OrganizationOutsideLensCard.tsx  # CTEM-26 outside lens settings (#1140)
   - frontend/src/hooks/api/useCustomDashboardApi.ts
   - frontend/src/hooks/api/useWidgetPackApi.ts
   - frontend/src/hooks/api/dashboard-access.ts
@@ -563,6 +572,8 @@ ee:
   - frontend/src/lib/*ai-draft.ts
   - frontend/src/pages/CustomDashboard*.tsx
   - frontend/src/pages/DashboardPublic.tsx
+  - frontend/src/pages/DecisionLink*.tsx
+  - frontend/src/hooks/api/useDecisionLinkApi.ts
   - frontend/src/pages/DashboardStaticRender.tsx
   - frontend/src/pages/DashboardStudio.tsx
   - frontend/src/pages/WidgetPacks.tsx
@@ -574,6 +585,11 @@ ee:
   - backend/app/api/v1/llm_proxy.py
   - backend/app/integrations/providers/openaev/autonomous.py
   - backend/app/models/agent_copy.py
+  - backend/app/models/decision.py
+  - backend/app/models/decision_hooks.py
+  - backend/app/services/decision_links.py
+  - backend/app/services/decision_router.py
+  - backend/app/services/decision_waits.py
   - backend/app/services/agentic_executions.py
   - backend/app/services/integration_tools.py
   - backend/app/services/mcp_oauth_tokens.py
@@ -582,6 +598,8 @@ ee:
   - backend/app/services/provisioning.py
   - backend/app/services/quota_exhausted_notice.py
   - backend/app/services/rollout_counters.py
+  - backend/app/services/slack_decision_cards.py
+  - backend/app/services/google_chat_decision_cards.py
   - backend/app/services/storage_purge.py
   - backend/app/services/teams_link_cards.py
   - frontend/src/components/ui/a2a-unavailable-notice.tsx
@@ -598,6 +616,7 @@ ee:
   - frontend/src/pages/ToolsAndIntegrations.tsx
   - frontend/src/pages/analytics/top-agents.tsx
   - frontend/src/pages/integration-detail/ToolsCard.tsx
+  - frontend/src/pages/profile/ReplySuggestionsCard.tsx
   - frontend/src/pages/profile/WaitingWorkItemsNotifyCard.tsx
   - frontend/src/pages/settings/ScannedToolsField.tsx
   - frontend/src/pages/settings/scanned-tools.ts
@@ -611,6 +630,7 @@ ee:
   - backend/app/services/integration_invalid_notice.py
   # Added on main since the audit (2026-11-12)
   - backend/app/services/jira_events.py
+  - backend/app/services/pennylane_events.py
   - backend/app/services/jira_webhooks.py
   - backend/app/services/wordsmith_webhooks.py
   - backend/app/services/teams_late_reply.py
@@ -625,6 +645,7 @@ ee:
   - frontend/src/pages/Intents.tsx
   - frontend/src/pages/PollVote.tsx
   - frontend/src/pages/Operations.*
+  - frontend/src/pages/Tasks.tsx
   - frontend/src/pages/operations/**
   - frontend/src/pages/WorkspaceProject.tsx
   - frontend/src/pages/integration-detail/ActivityTab.tsx
@@ -700,8 +721,12 @@ ce:
   - backend/app/data
   - backend/app/enterprise
   - backend/app/integrations/providers/aikido  # a connector
+  - backend/app/integrations/providers/airwallex  # a connector
+  - backend/app/integrations/providers/spendesk  # a connector
   - backend/app/integrations/providers/ashby  # a connector
+  - backend/app/integrations/providers/quotapath  # a connector
   - backend/app/integrations/providers/crowdsec  # a connector
+  - backend/app/integrations/providers/dealhub  # a connector
   - backend/app/integrations/providers/drata  # a connector
   - backend/app/integrations/providers/entra  # a connector
   - backend/app/integrations/providers/github  # a connector
@@ -710,11 +735,14 @@ ce:
   - backend/app/integrations/providers/jira  # a connector
   - backend/app/integrations/providers/microsoft  # a connector
   - backend/app/integrations/providers/notion  # a connector
+  - backend/app/integrations/providers/odoo  # a connector
   - backend/app/integrations/providers/opencrq  # a connector
   - backend/app/integrations/providers/opencti  # a connector
   - backend/app/integrations/providers/ovhcloud  # a connector
+  - backend/app/integrations/providers/pennylane  # a connector
   - backend/app/integrations/providers/purview  # a connector
   - backend/app/integrations/providers/recorded_future  # a connector
+  - backend/app/integrations/providers/rydoo  # a connector
   - backend/app/integrations/providers/servicenow  # a connector
   - backend/app/integrations/providers/splunk  # a connector
   - backend/app/integrations/providers/virustotal  # a connector
@@ -738,6 +766,7 @@ ce:
   - frontend/src/pages/integration-detail/openrouter
   - frontend/src/pages/integration-detail/supabase
   - frontend/src/pages/integrations
+  - frontend/src/pages/xtm-one/ctem/loop  # the CTEM loop trace and decision reason (dev-docs/ctem-loop-visibility.md)
   - frontend/src/testing
 except:
   # The tool contract, provider-agnostic: every integration provider and the

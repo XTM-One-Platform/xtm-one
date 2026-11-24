@@ -640,7 +640,7 @@ async def delivery_mode(redis: Redis, assignment: Any) -> dict:
     poller reads (not in ``POLL_INTERVALS``) arrives only through the webhook
     receivers: ``mode`` is ``webhook`` then, never a poll it does not have.
     """
-    from app.services.event_poller import POLL_INTERVALS
+    from app.services.event_poller import POLL_INTERVALS, POLL_READ_KEY_PREFIX
 
     config = getattr(assignment, "trigger_config", None) or {}
     assignment_id = getattr(assignment, "id", None)
@@ -665,12 +665,24 @@ async def delivery_mode(redis: Redis, assignment: Any) -> dict:
                 failure = _decoded(await redis.get(f"{_FAILURE_KEY_PREFIX}{assignment_id}"))
                 info["reason"] = plan.reason or failure or "the subscription is being created"
     try:
-        last_poll = _decoded(await redis.get(f"event_poll:{assignment_id}"))
-        if last_poll:
-            info["last_poll_at"] = datetime.fromtimestamp(float(last_poll), UTC).isoformat()
+        # The interval stamp is written once a poll caught up; the read stamp at
+        # every page, so a backlog read over several ticks shows its latest
+        # page and says it is still catching up (#1718).
+        stamped = _decoded(await redis.get(f"event_poll:{assignment_id}"))
+        read = _decoded(await redis.get(f"{POLL_READ_KEY_PREFIX}{assignment_id}"))
+        times = [float(value) for value in (stamped, read) if value]
+        if times:
+            info["last_poll_at"] = datetime.fromtimestamp(max(times), UTC).isoformat()
+        if read and (not stamped or float(read) > float(stamped)):
+            info["catching_up"] = True
         notified = _decoded(await redis.get(f"{NOTIFIED_KEY_PREFIX}{assignment_id}"))
         if notified:
             info["last_notification_at"] = notified
+        if info.get("mode") == "poll":
+            # Why the poller read nothing on its last pass (#1378).
+            skipped = _decoded(await redis.get(f"event_poll_skip:{assignment_id}"))
+            if skipped:
+                info["poll_skipped"] = skipped
     except Exception as exc:
         logger.debug("Could not read the delivery times of assignment %s: %r", assignment_id, exc)
     return info

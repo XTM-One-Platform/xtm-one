@@ -22,7 +22,10 @@ touches the other's, and every rebase or merge still stops on markers.
 - a key changed on one side takes that side; changed on both sides to the
   same value, that value once;
 - a key added on one side is placed after the key that precedes it on that
-  side (after the keys the workspace added there: ours first, then theirs);
+  side (after the keys the workspace added there: ours first, then theirs;
+  with ``ref_first``, theirs first, then ours: merging a base branch into a
+  pull request branch keeps the base's order, so the branch's diff against
+  the base holds its own keys only, #1116);
 - a key removed on one side and unchanged on the other is removed;
 - an object changed on both sides is merged the same way, recursively.
 
@@ -200,11 +203,79 @@ def conflicting_keys(base: str, ours: str, theirs: str) -> list[str]:
     return out
 
 
-def merge_json_objects(base: str, ours: str, theirs: str, prefer: str | None = None) -> str | None:
+def _removed(base: dict[str, Any], ours: dict[str, Any], theirs: dict[str, Any], prefix: str, out: list[str]) -> None:
+    for key, value in base.items():
+        if key not in theirs:
+            continue
+        name = f"{prefix}{key}"
+        if key not in ours:
+            out.append(name)
+        elif isinstance(value, dict) and isinstance(ours[key], dict) and isinstance(theirs[key], dict):
+            _removed(value, ours[key], theirs[key], f"{name}.", out)
+
+
+def removed_keys(base: str, ours: str, theirs: str) -> list[str]:
+    """The keys (dotted for a nested one) *base* and *theirs* hold that *ours* removed.
+
+    A three-way merge removes them without a conflict, as it should when the removal was meant; a branch that
+    wrote a stale copy of the file removes them too, so a merge answer names them for a check (#1095). Empty when a
+    side is not a JSON object or holds a key twice.
+    """
+    if any(len(text) > MAX_JSON_MERGE_BYTES for text in (base, ours, theirs)) or not base.strip():
+        return []
+    try:
+        sides = [_parse(text) for text in (base, ours, theirs)]
+    except _DuplicateKeyError:
+        return []
+    base_obj, ours_obj, theirs_obj = sides
+    if base_obj is None or ours_obj is None or theirs_obj is None:
+        return []
+    out: list[str] = []
+    _removed(base_obj, ours_obj, theirs_obj, "", out)
+    return out
+
+
+def _dropped(sides: list[dict[str, Any]], resolved: dict[str, Any], prefix: str, out: list[str]) -> None:
+    for key in sides[0]:
+        if not all(key in side for side in sides[1:]):
+            continue
+        name = f"{prefix}{key}"
+        if key not in resolved:
+            out.append(name)
+        elif isinstance(resolved[key], dict) and all(isinstance(side[key], dict) for side in sides):
+            _dropped([side[key] for side in sides], resolved[key], f"{name}.", out)
+
+
+def dropped_keys(resolved: str, *sides: str) -> list[str]:
+    """The keys (dotted for a nested one) every one of *sides* holds that *resolved* does not.
+
+    A merge of two sides never removes a key both of them hold: a resolution written by hand from a stale
+    copy of a catalog does, silently (#1311: a merge of main lost 18 catalog keys that way). Empty when a text is not a
+    JSON object, holds a key twice or is over the size the merge parses.
+    """
+    texts = (resolved, *sides)
+    if not sides or any(len(text) > MAX_JSON_MERGE_BYTES for text in texts):
+        return []
+    try:
+        parsed = [_parse(text) for text in texts]
+    except _DuplicateKeyError:
+        return []
+    if any(value is None for value in parsed):
+        return []
+    out: list[str] = []
+    _dropped([value or {} for value in parsed[1:]], parsed[0] or {}, "", out)
+    return out
+
+
+def merge_json_objects(
+    base: str, ours: str, theirs: str, prefer: str | None = None, *, ref_first: bool = False
+) -> str | None:
     """*ours* and *theirs* merged from *base* key by key, written in their layout; ``None`` when not certain.
 
     *base* empty is a file added on both sides (an empty object as base). *prefer* (``"ours"`` or ``"theirs"``)
     takes that side's value for a key changed differently on both sides instead of answering ``None``.
+    *ref_first* orders the keys by *theirs* (the ref merged in), *ours*'s own keys placed after their
+    predecessor there: the values are the same either way, only the order of keys both sides added differs.
     """
     texts = (base, ours, theirs)
     if any(len(text) > MAX_JSON_MERGE_BYTES for text in texts):
@@ -224,7 +295,12 @@ def merge_json_objects(base: str, ours: str, theirs: str, prefer: str | None = N
     if base.strip() and _layout(base, base_obj) != layout:
         return None
     try:
-        merged = _merge(base_obj, ours_obj, theirs_obj, prefer)
+        if ref_first:
+            # The same merge with the sides swapped: theirs gives the order, the preferred side stays the same.
+            swapped = {"ours": "theirs", "theirs": "ours"}.get(prefer or "")
+            merged = _merge(base_obj, theirs_obj, ours_obj, swapped)
+        else:
+            merged = _merge(base_obj, ours_obj, theirs_obj, prefer)
     except _KeyConflictError:
         return None
     return _dump(merged, layout)

@@ -110,6 +110,28 @@ export function fleetStarts(memberIds: readonly string[], assignments: readonly 
   return { events, schedules: crons.size };
 }
 
+/** The Platform Health fleet's own facts (`Fleet.health_starts`, #974), as the card reads them. */
+interface HealthStartsFacts {
+  events: boolean;
+  schedules: number;
+  modules: readonly string[];
+}
+
+/**
+ * What starts a card's fleet and what it covers: the Platform Health fleet
+ * reads its Settings schedules, signals and covered modules (its assignments
+ * are `manual`, started by the Settings cycle runner, #974); every other fleet
+ * keeps its members' automations and bindings.
+ */
+export function cardStartsAndModules(
+  healthStarts: HealthStartsFacts | null | undefined,
+  starts: FleetStarts,
+  modules: readonly string[],
+): { starts: FleetStarts; modules: readonly string[] } {
+  if (!healthStarts) return { starts, modules };
+  return { starts: { events: healthStarts.events, schedules: healthStarts.schedules }, modules: healthStarts.modules };
+}
+
 /** The integration providers the members use, sorted by displayed name, instance suffix dropped. */
 export function fleetModules(
   memberIds: readonly string[],

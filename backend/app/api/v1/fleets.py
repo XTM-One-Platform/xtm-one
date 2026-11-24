@@ -87,6 +87,8 @@ from app.api.v1.schemas.fleet import (
     AgentConnectedFleet,
     AgentFleetsResponse,
     AgentHomeFleet,
+    CaseRunEntry,
+    CaseRunsResponse,
     FleetActivityResponse,
     FleetAgentCostEntry,
     FleetApprovalGatesResponse,
@@ -97,6 +99,8 @@ from app.api.v1.schemas.fleet import (
     FleetBulkAction,
     FleetBulkOutcome,
     FleetBulkResponse,
+    FleetCapabilitySlotsResponse,
+    FleetCapabilityTypeSet,
     FleetCardResponse,
     FleetControlResponse,
     FleetCostResponse,
@@ -108,6 +112,7 @@ from app.api.v1.schemas.fleet import (
     FleetDocumentationResponse,
     FleetDocumentationRestoreRequest,
     FleetDocumentationVersion,
+    FleetEnableEstimateResponse,
     FleetEnableItemResponse,
     FleetEnableRequest,
     FleetEnableResponse,
@@ -121,6 +126,7 @@ from app.api.v1.schemas.fleet import (
     FleetGraphNode,
     FleetGraphResponse,
     FleetHealthResponse,
+    FleetHealthStartsResponse,
     FleetHierarchyNode,
     FleetInstructionsPositionRequest,
     FleetLivePrerequisite,
@@ -131,15 +137,23 @@ from app.api.v1.schemas.fleet import (
     FleetMemberMove,
     FleetMemberResponse,
     FleetMembersBulkUpdate,
+    FleetMemberSlots,
     FleetMemberUpdate,
     FleetOrganizationRunEstimate,
     FleetPrerequisiteConfirmRequest,
     FleetPrerequisiteState,
+    FleetResetRequest,
+    FleetResetResponse,
     FleetResponse,
+    FleetRunBudget,
     FleetRunEntry,
     FleetRunEstimateResponse,
     FleetRunStatsResponse,
+    FleetSetupStatusResponse,
+    FleetSetupStep,
     FleetSharedStateHygieneResponse,
+    FleetSlotBind,
+    FleetSlotSet,
     FleetSourceChange,
     FleetSourceChangesResponse,
     FleetSpecApply,
@@ -163,9 +177,11 @@ from app.services.fleet_autonomy import (
     fleet_gates,
     gate_catalog,
     normalize_level,
+    with_live_step_gates,
 )
 from app.services.fleet_control import (
     enable_fleet,
+    estimate_fleet_enable,
     fleet_control_audit_details,
     pausable_count,
     pause_fleet,
@@ -184,10 +200,13 @@ from app.services.fleet_doc_on_create import (
     schedule_pending_sections,
 )
 from app.services.fleet_flow import build_fleet_flow
+from app.services.fleet_reset import reset_builtin_fleet
 from app.services.fleet_runs import fleet_cost
 from app.services.fleet_views import (
+    HealthFleetStarts,
     build_fleet_graph,
     build_fleet_health,
+    case_runs,
     fleet_automation_counts,
     fleet_card_facts,
     fleet_run_stats,
@@ -233,6 +252,14 @@ _LABEL = "Fleet"
 _NOT_FOUND = f"{_LABEL} not found"
 
 
+def _run_budget_value(budget: FleetRunBudget | None) -> dict[str, int] | None:
+    """The stored form of a fleet's run budget (#1526): its bounds that are set, ``None`` when none is."""
+    if budget is None:
+        return None
+    stored = budget.model_dump(exclude_none=True)
+    return stored or None
+
+
 def _can_manage_fleet(user: User, fleet: Fleet, user_group_ids: list[str] | None) -> bool:
     """The ``can_manage`` a fleet response carries for *user*.
 
@@ -247,13 +274,17 @@ def _can_manage_fleet(user: User, fleet: Fleet, user_group_ids: list[str] | None
 
 
 def _lock_fixes_on_health_fleet(fleet: Fleet, lines: list[Any]) -> None:
-    """Nobody fixes a prerequisite of Platform Health from its page, administrators included.
+    """Nobody fixes a prerequisite of Platform Health from its page, but its Settings switch.
 
     Sets ``can_fix`` false on every live line of the health fleet, so the About
     page offers no Fix it link and no Fix with AI (#101 S1b, UX r2 B1 on #464).
+    The ``platform_health_off`` line keeps ``can_fix`` as computed (an
+    administrator opens Settings > Platform Health), UX r2 B3 on #980.
     """
     if is_health_fleet(fleet):
         for line in lines:
+            if getattr(line, "reason_code", "") == "platform_health_off":
+                continue
             line.can_fix = False
 
 
@@ -303,6 +334,20 @@ async def _host_workspace(db: AsyncSession, user: User, workspace_id: str, *, co
     except FleetActionRefusedError as exc:
         raise _refused(exc) from None
     return workspace
+
+
+def _health_starts(starts: HealthFleetStarts | None) -> FleetHealthStartsResponse | None:
+    """The Platform Health fleet's starts line (#974); ``None`` on every other fleet."""
+    if starts is None:
+        return None
+    return FleetHealthStartsResponse(
+        events=starts.events,
+        schedules=starts.schedules,
+        next_run_at=_iso(starts.next_run_at),
+        modules=list(starts.modules),
+        settings_route=starts.settings_route,
+        active=starts.active,
+    )
 
 
 async def _respond(db: AsyncSession, user: User, fleets: list[Fleet], user_group_ids: list[str] | None = None):
@@ -382,6 +427,7 @@ async def _respond(db: AsyncSession, user: User, fleets: list[Fleet], user_group
             exposed_agent_ids=[str(a) for a in exposed_agent_ids(f, by_fleet.get(f.id, []))],
             budget_config=f.budget_config or None,
             max_iterations=f.max_iterations,
+            run_budget=getattr(f, "run_budget", None) or None,
             member_defaults={
                 "context_inclusion": f.default_context_inclusion or "none",
                 "collaboration_instruction": f.default_collaboration_instruction or "",
@@ -399,6 +445,7 @@ async def _respond(db: AsyncSession, user: User, fleets: list[Fleet], user_group
                 fleet_paused=facts[f.id].automations.fleet_paused,
             ),
             last_run_at=_iso(facts[f.id].last_run_at),
+            health_starts=_health_starts(facts[f.id].health_starts),
             created_at=f.created_at.isoformat() if f.created_at else "",
             updated_at=f.updated_at.isoformat() if f.updated_at else "",
         )
@@ -470,6 +517,7 @@ async def create_fleet_endpoint(
     )
     fleet.budget_config = budget_config
     fleet.max_iterations = max_iterations
+    fleet.run_budget = _run_budget_value(body.run_budget)
     await apply_group_share_fields(db, fleet, body, partial=False)
     await log_audit(
         db,
@@ -574,6 +622,8 @@ async def update_fleet(
         )
     if "max_iterations" in fields:
         fleet.max_iterations = clamp_max_iterations(body.max_iterations) if body.max_iterations is not None else None
+    if "run_budget" in fields:
+        fleet.run_budget = _run_budget_value(body.run_budget)
     await apply_group_share_fields(db, fleet, body, partial=True)
     await handle_company_managed_toggle(
         db,
@@ -847,6 +897,471 @@ async def update_fleet_member(
     await db.commit()
     await db.refresh(row)
     return (await _member_responses(db, user, fleet, [row], user_group_ids))[0]
+
+
+# --- Capability slots (#914 slice 2) ------------------------------------------
+#
+# A slot binds an integration on the member's AGENT, never on the fleet: on a
+# built-in fleet that is the agent's customer layer
+# (``services.builtin_customer_layer``), which the seed never rewrites, so the
+# fleet's own write lock (``_ensure_writable``) does not apply. The agent's
+# manage rule does: company-managed takes an administrator.
+
+
+async def _connected_integrations(
+    db: AsyncSession, user: User, user_group_ids: list[str], *, include_unconnected: bool = False
+) -> list[Any]:
+    """The integrations the reader can see, connected ones only unless *include_unconnected*.
+
+    The read view passes *include_unconnected* so a visible integration of a
+    capability that is not connected yet is shown as blocked with its reason
+    (#1373); every write path binds connected integrations only.
+    """
+    from app.models.integration import Integration
+    from app.services.fleet_capability_slots import IntegrationRef
+    from app.services.integration_state import INTEGRATION_CONNECTED
+
+    query = user_visible_query(Integration, user.id, user_group_ids, is_admin=user.is_admin)
+    if not include_unconnected:
+        query = query.where(Integration.status == INTEGRATION_CONNECTED)
+    rows = (await db.execute(query)).scalars().all()
+    return [
+        IntegrationRef(
+            integration_id=str(r.id),
+            provider=r.provider,
+            name=r.name,
+            company_managed=bool(r.is_company_managed),
+            connected=r.status == INTEGRATION_CONNECTED,
+        )
+        for r in rows
+    ]
+
+
+def _slot_ref(i: Any) -> Any:
+    from app.api.v1.schemas.fleet import FleetSlotIntegration
+
+    return FleetSlotIntegration(integration_id=i.integration_id, provider=i.provider, name=i.name)
+
+
+def _blocked_ref(i: Any) -> Any:
+    from app.api.v1.schemas.fleet import FleetSlotBlockedIntegration
+
+    return FleetSlotBlockedIntegration(
+        integration_id=i.integration_id, provider=i.provider, name=i.name, reason=i.reason or "not_connected"
+    )
+
+
+def _builtin_model(builtin: Any) -> Any:
+    from app.api.v1.schemas.fleet import FleetSlotBuiltin
+
+    if builtin is None:
+        return None
+    return FleetSlotBuiltin(key=builtin.key, label=builtin.label, always_on=builtin.always_on)
+
+
+def _slot_model(state: Any) -> Any:
+    from app.api.v1.schemas.fleet import FleetCapabilitySlot
+
+    return FleetCapabilitySlot(
+        capability=state.capability,
+        label=state.label,
+        state=state.state,
+        bound=[_slot_ref(i) for i in state.bound],
+        candidates=[_slot_ref(i) for i in state.candidates],
+        builtin=_builtin_model(state.builtin),
+        blocked=[_blocked_ref(i) for i in state.blocked],
+    )
+
+
+def _type_models(members: list[FleetMemberSlots], connected: list[Any]) -> list[Any]:
+    """The member slots grouped by capability (#1201): one row per type."""
+    from app.api.v1.schemas.fleet import FleetCapabilityType, FleetCapabilityTypeMember
+    from app.services.fleet_capability_slots import (
+        BUILTIN_OPTIONS,
+        IntegrationRef,
+        SlotState,
+        TypeMember,
+        type_states,
+    )
+
+    by_id = {i.integration_id: i for i in connected}
+
+    def _ref(i: Any) -> IntegrationRef:
+        return by_id.get(i.integration_id) or IntegrationRef(
+            integration_id=i.integration_id, provider=i.provider, name=i.name
+        )
+
+    pairs = [
+        (
+            TypeMember(
+                member_id=m.member_id,
+                agent_id=m.agent_id,
+                name=m.name,
+                role_label=m.role_label,
+                can_edit=m.can_edit,
+                bound=[],
+                custom=False,
+            ),
+            [
+                SlotState(
+                    capability=s.capability,
+                    label=s.label,
+                    state=s.state,
+                    bound=[_ref(i) for i in s.bound],
+                    candidates=[_ref(i) for i in s.candidates],
+                    builtin=BUILTIN_OPTIONS.get(s.capability),
+                    blocked=[
+                        IntegrationRef(
+                            integration_id=i.integration_id, provider=i.provider, name=i.name, reason=i.reason
+                        )
+                        for i in s.blocked
+                    ],
+                )
+                for s in m.slots
+            ],
+        )
+        for m in members
+    ]
+    return [
+        FleetCapabilityType(
+            capability=t.capability,
+            label=t.label,
+            state=t.state,
+            choice=[_slot_ref(i) for i in t.choice],
+            candidates=[_slot_ref(i) for i in t.candidates],
+            members=[
+                FleetCapabilityTypeMember(
+                    member_id=m.member_id,
+                    agent_id=m.agent_id,
+                    name=m.name,
+                    role_label=m.role_label,
+                    can_edit=m.can_edit,
+                    bound=[_slot_ref(i) for i in m.bound],
+                    custom=m.custom,
+                )
+                for m in t.members
+            ],
+            builtin=_builtin_model(t.builtin),
+            blocked=[_blocked_ref(i) for i in t.blocked],
+        )
+        for t in type_states(pairs)
+    ]
+
+
+async def _member_slots(
+    db: AsyncSession, user: User, user_group_ids: list[str], row: FleetMember, agent: Agent, connected: list[Any]
+) -> FleetMemberSlots:
+    from app.api.v1.integration_catalog import PROVIDER_CATALOG
+    from app.services.fleet_capability_slots import slot_states
+
+    states = slot_states(
+        row.role_label,
+        agent.integration_bindings,
+        connected,
+        PROVIDER_CATALOG,
+        company_managed_only=bool(agent.is_company_managed),
+    )
+    return FleetMemberSlots(
+        member_id=str(row.id),
+        agent_id=str(agent.id),
+        name=agent.name,
+        role_label=row.role_label or "",
+        can_edit=can_manage(user, agent, user_group_ids),
+        slots=[_slot_model(s) for s in states],
+    )
+
+
+@router.get("/{fleet_id}/capability-slots", response_model=FleetCapabilitySlotsResponse)
+async def get_fleet_capability_slots(
+    fleet_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    _gate: None = Depends(require_agentic_ai_licensed),
+) -> FleetCapabilitySlotsResponse:
+    """Each home member's capability slots: filled, empty or unavailable (#914 slice 2).
+
+    Read only: no model call, no quota, no run. A member whose role declares
+    no slot, or whose agent the reader cannot see, is left out.
+    """
+    from app.services.fleet_capability_slots import slots_for_role
+
+    user_group_ids = await get_user_group_ids(db, user.id)
+    fleet = await _visible_fleet(db, user, fleet_id, user_group_ids)
+    rows = [
+        r
+        for r in await fleet_members(db, fleet.id)
+        if r.role == FLEET_ROLE_MEMBER and r.agent_id is not None and slots_for_role(r.role_label)
+    ]
+    agents = (
+        {
+            a.id: a
+            for a in (
+                await db.execute(
+                    select(Agent).where(
+                        Agent.id.in_([r.agent_id for r in rows]),
+                        user_visible_filter(Agent, user.id, user_group_ids, is_admin=user.is_admin),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        }
+        if rows
+        else {}
+    )
+    # Every visible integration, so one of the right type that cannot be bound is named with its reason (#1373).
+    connected = await _connected_integrations(db, user, user_group_ids, include_unconnected=True) if agents else []
+    members = [
+        await _member_slots(db, user, user_group_ids, r, agents[r.agent_id], connected)
+        for r in rows
+        if r.agent_id in agents
+    ]
+    return FleetCapabilitySlotsResponse(fleet_id=str(fleet.id), members=members, types=_type_models(members, connected))
+
+
+async def _slot_member_agent(
+    db: AsyncSession, user: User, user_group_ids: list[str], fleet_id: str, member_id: str
+) -> tuple[FleetMember, Agent]:
+    fleet = await _visible_fleet(db, user, fleet_id, user_group_ids)
+    member_uuid = parse_path_id(member_id, not_found_detail="Fleet member not found")
+    row = (
+        await db.execute(
+            select(FleetMember).where(
+                FleetMember.id == member_uuid,
+                FleetMember.fleet_id == fleet.id,
+                FleetMember.role == FLEET_ROLE_MEMBER,
+            )
+        )
+    ).scalar_one_or_none()
+    agent = (
+        (
+            await db.execute(
+                select(Agent).where(
+                    Agent.id == row.agent_id,
+                    user_visible_filter(Agent, user.id, user_group_ids, is_admin=user.is_admin),
+                )
+            )
+        ).scalar_one_or_none()
+        if row is not None and row.agent_id is not None
+        else None
+    )
+    if row is None or agent is None:
+        raise HTTPException(status_code=404, detail="Fleet member not found")
+    if not can_manage(user, agent, user_group_ids):
+        detail = (
+            "Only admins can edit company-managed agents"
+            if agent.is_company_managed
+            else "You don't have permission to edit this agent."
+        )
+        raise HTTPException(status_code=403, detail=detail)
+    return row, agent
+
+
+async def _audit_slot_change(
+    db: AsyncSession, user: User, agent: Agent, *, verb: str, capability: str, integration_id: str
+) -> None:
+    # The seed never writes ``integration_bindings``, so nothing is recorded in
+    # ``customer_fields`` for it (as on ``PUT /agents/{id}``).
+    await log_audit(
+        db,
+        user=user,
+        action="update",
+        entity_type="agent",
+        entity_id=agent.id,
+        entity_name=agent.name,
+        summary=f"{verb} an integration on the '{capability}' slot of '{agent.name}'",
+        details={"capability": capability, "integration_id": integration_id, "slug": agent.slug},
+    )
+
+
+@router.post("/{fleet_id}/members/{member_id}/slots/{capability}", response_model=FleetMemberSlots)
+async def bind_fleet_member_slot(
+    fleet_id: str,
+    member_id: str,
+    capability: str,
+    body: FleetSlotBind,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    _gate: None = Depends(require_agentic_ai_licensed),
+) -> FleetMemberSlots:
+    """Bind a connected integration to a member's capability slot, in one click (#914 slice 2).
+
+    Adds it to the member agent's ``integration_bindings``; on a built-in that
+    is the customer layer, kept by every seed run.
+    """
+    from app.api.v1.integration_catalog import PROVIDER_CATALOG
+    from app.services.fleet_capability_slots import SlotBindingRefusedError, bindings_with
+
+    user_group_ids = await get_user_group_ids(db, user.id)
+    row, agent = await _slot_member_agent(db, user, user_group_ids, fleet_id, member_id)
+    connected = await _connected_integrations(db, user, user_group_ids)
+    wanted = parse_uuid(body.integration_id, label="integration_id")
+    integration = next((i for i in connected if i.integration_id == str(wanted)), None)
+    if integration is None:
+        raise HTTPException(status_code=404, detail="Integration not found or not connected")
+    try:
+        agent.integration_bindings = bindings_with(
+            row.role_label,
+            capability,
+            agent.integration_bindings,
+            integration,
+            PROVIDER_CATALOG,
+            company_managed_only=bool(agent.is_company_managed),
+        )
+    except SlotBindingRefusedError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
+    await _audit_slot_change(
+        db, user, agent, verb="Bound", capability=capability, integration_id=integration.integration_id
+    )
+    await db.commit()
+    await db.refresh(agent)
+    return await _member_slots(db, user, user_group_ids, row, agent, connected)
+
+
+@router.delete("/{fleet_id}/members/{member_id}/slots/{capability}/{integration_id}", response_model=FleetMemberSlots)
+async def unbind_fleet_member_slot(
+    fleet_id: str,
+    member_id: str,
+    capability: str,
+    integration_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    _gate: None = Depends(require_agentic_ai_licensed),
+) -> FleetMemberSlots:
+    """Unbind an integration from a member's capability slot (#914 slice 2)."""
+    from app.api.v1.integration_catalog import PROVIDER_CATALOG
+    from app.services.fleet_capability_slots import SlotBindingRefusedError, bindings_without
+
+    user_group_ids = await get_user_group_ids(db, user.id)
+    row, agent = await _slot_member_agent(db, user, user_group_ids, fleet_id, member_id)
+    target = str(parse_path_id(integration_id, not_found_detail="This integration is not bound to that slot."))
+    try:
+        agent.integration_bindings = bindings_without(
+            row.role_label, capability, agent.integration_bindings, target, PROVIDER_CATALOG
+        )
+    except SlotBindingRefusedError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
+    await _audit_slot_change(db, user, agent, verb="Unbound", capability=capability, integration_id=target)
+    await db.commit()
+    await db.refresh(agent)
+    connected = await _connected_integrations(db, user, user_group_ids)
+    return await _member_slots(db, user, user_group_ids, row, agent, connected)
+
+
+def _wanted_integrations(integration_ids: list[str], connected: list[Any]) -> list[Any]:
+    """The connected integrations *integration_ids* name, in order; 404 on one not connected."""
+    by_id = {i.integration_id: i for i in connected}
+    out: list[Any] = []
+    for raw in dict.fromkeys(integration_ids):
+        integration = by_id.get(str(parse_uuid(raw, label="integration_id")))
+        if integration is None:
+            raise HTTPException(status_code=404, detail="Integration not found or not connected")
+        out.append(integration)
+    return out
+
+
+@router.put("/{fleet_id}/members/{member_id}/slots/{capability}", response_model=FleetMemberSlots)
+async def set_fleet_member_slot(
+    fleet_id: str,
+    member_id: str,
+    capability: str,
+    body: FleetSlotSet,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    _gate: None = Depends(require_agentic_ai_licensed),
+) -> FleetMemberSlots:
+    """Bind exactly these integrations on one member's slot: an override or a reset to the fleet choice (#1201).
+
+    The capability's other bindings on that agent are removed, every other
+    provider's binding is kept. Same checks as a one-click bind.
+    """
+    from app.api.v1.integration_catalog import PROVIDER_CATALOG
+    from app.services.fleet_capability_slots import SlotBindingRefusedError, bindings_set
+
+    user_group_ids = await get_user_group_ids(db, user.id)
+    row, agent = await _slot_member_agent(db, user, user_group_ids, fleet_id, member_id)
+    connected = await _connected_integrations(db, user, user_group_ids)
+    wanted = _wanted_integrations(body.integration_ids, connected)
+    try:
+        agent.integration_bindings = bindings_set(
+            row.role_label,
+            capability,
+            agent.integration_bindings,
+            wanted,
+            PROVIDER_CATALOG,
+            company_managed_only=bool(agent.is_company_managed),
+        )
+    except SlotBindingRefusedError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
+    await _audit_slot_change(
+        db, user, agent, verb="Set", capability=capability, integration_id=",".join(i.integration_id for i in wanted)
+    )
+    await db.commit()
+    await db.refresh(agent)
+    return await _member_slots(db, user, user_group_ids, row, agent, connected)
+
+
+@router.put("/{fleet_id}/capabilities/{capability}", response_model=FleetCapabilitySlotsResponse)
+async def set_fleet_capability(
+    fleet_id: str,
+    capability: str,
+    body: FleetCapabilityTypeSet,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    _gate: None = Depends(require_agentic_ai_licensed),
+) -> FleetCapabilitySlotsResponse:
+    """The fleet choice of a capability, written on every member slot of that type (#1201).
+
+    Each member the reader may edit gets exactly *integration_ids* on that
+    slot (same checks as a one-click bind, the company-managed rule per
+    agent). A member whose slot is custom keeps its override unless
+    *override_custom*. Every check runs before the first write: one refusal
+    writes nothing. A built-in option is never stored: an empty list leaves
+    only it active.
+    """
+    from app.api.v1.integration_catalog import PROVIDER_CATALOG
+    from app.services.fleet_capability_slots import (
+        CAPABILITIES,
+        SlotBindingRefusedError,
+        bindings_set,
+        members_to_write,
+    )
+
+    if capability not in CAPABILITIES:
+        raise HTTPException(status_code=422, detail=f"Unknown capability '{capability}'.")
+    view = await get_fleet_capability_slots(fleet_id, user=user, db=db, _gate=None)
+    state = next((t for t in view.types if t.capability == capability), None)
+    if state is None:
+        raise HTTPException(status_code=422, detail=f"No member of this fleet has a '{capability}' slot.")
+    user_group_ids = await get_user_group_ids(db, user.id)
+    connected = await _connected_integrations(db, user, user_group_ids)
+    wanted = _wanted_integrations(body.integration_ids, connected)
+    targets = members_to_write(state, override_custom=body.override_custom)
+    planned: list[tuple[Agent, dict[str, list[str]]]] = []
+    for member_id in targets:
+        row, agent = await _slot_member_agent(db, user, user_group_ids, fleet_id, member_id)
+        try:
+            planned.append(
+                (
+                    agent,
+                    bindings_set(
+                        row.role_label,
+                        capability,
+                        agent.integration_bindings,
+                        wanted,
+                        PROVIDER_CATALOG,
+                        company_managed_only=bool(agent.is_company_managed),
+                    ),
+                )
+            )
+        except SlotBindingRefusedError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=f"{agent.name}: {exc.detail}") from None
+    joined = ",".join(i.integration_id for i in wanted)
+    for agent, bindings in planned:
+        agent.integration_bindings = bindings
+        await _audit_slot_change(db, user, agent, verb="Set", capability=capability, integration_id=joined)
+    await db.commit()
+    return await get_fleet_capability_slots(fleet_id, user=user, db=db, _gate=None)
 
 
 @router.post("/{fleet_id}/members/{member_id}/instruction-draft", response_model=FleetMemberInstructionDraftResponse)
@@ -1156,6 +1671,7 @@ async def fleet_source_changes_endpoint(
         changed=found.changed,
         diff_available=found.diff_available,
         changes=[FleetSourceChange(**c) for c in found.changes],
+        successor=found.successor,
     )
 
 
@@ -1179,6 +1695,7 @@ async def _documentation_response(db: AsyncSession, user: User, fleet: Fleet) ->
     from app.services.fleet_gate_proposals import fleet_effective_gates
 
     effective = await fleet_effective_gates(db, fleet.id)
+    catalog = gate_catalog(fleet.autonomy_level, effective[1] if effective else [])
     # Any generation running on the server (#10316, #10817): the page derives its spinner from it on mount.
     generation = await generation_state(fleet.id)
     return FleetDocumentationResponse(
@@ -1191,12 +1708,13 @@ async def _documentation_response(db: AsyncSession, user: User, fleet: Fleet) ->
         out_of_date=view.out_of_date,
         local=view.local,
         restored_from=view.restored_from,
-        structured=view.structured,
+        # A step's approval badge follows the gate it names at the live level and pins (#1074).
+        structured=with_live_step_gates(view.structured, catalog),
         prerequisite_states=[FleetPrerequisiteState(**vars(s)) for s in states],
         live_prerequisites=[FleetLivePrerequisite(**vars(line)) for line in live],
         autonomy_level=effective_level(fleet.autonomy_level),
         # The gates the runs enforce, computed ones included (#10153): the page says what holds.
-        autonomy_catalog=gate_catalog(fleet.autonomy_level, effective[1] if effective else []),
+        autonomy_catalog=catalog,
         findings=view.findings,
         dismissed_findings=view.dismissed_findings,
         generating=generation.generating,
@@ -1329,7 +1847,7 @@ async def _approval_gates_response(db: AsyncSession, user: User, fleet: Fleet) -
     Also the level and the effective catalog it acts on (#10153), the same one
     the runs read (``fleet_gate_proposals.fleet_effective_gates``).
     """
-    from app.services.fleet_autonomy import effective_gates
+    from app.services.fleet_autonomy import customer_gates_of, effective_gates
     from app.services.fleet_gate_proposals import existing_approvals, fleet_configuration
 
     config = await fleet_configuration(db, fleet.id)
@@ -1339,19 +1857,24 @@ async def _approval_gates_response(db: AsyncSession, user: User, fleet: Fleet) -
     computed_on = not fleet.is_builtin and pins is not None
     level = effective_level(fleet.autonomy_level)
     group_ids = await get_user_group_ids(db, user.id)
+    customer = getattr(fleet, "customer_gates", None) if fleet.is_builtin else None
     return FleetApprovalGatesResponse(
         catalog=[dict(g) for g in fleet_gates(stored, fleet.documentation)],
         stored=isinstance(stored, list),
         proposals=proposals,
         existing_approvals=existing_approvals(config.agents, config.assignments),
         editable=not fleet.is_builtin and can_manage(user, fleet, group_ids),
+        # A built-in fleet takes added gates in its customer layer (#916).
+        customer_gates_editable=bool(fleet.is_builtin) and can_manage(user, fleet, group_ids),
+        customer_gates=[dict(g) for g in customer_gates_of(customer)],
         autonomy_level=level,
         effective_catalog=gate_catalog(
-            level, effective_gates(stored, fleet.documentation, proposals if computed_on else None, pins)
+            level, effective_gates(stored, fleet.documentation, proposals if computed_on else None, pins, customer)
         ),
         computed_catalog_on=computed_on,
         instructions_position=getattr(fleet, "instructions_position", None),
         instructions_position_announced=bool(getattr(fleet, "instructions_position_announced", None)),
+        enforce_at_tool_level=bool(getattr(fleet, "enforce_gates_at_tool_level", False)),
     )
 
 
@@ -1370,6 +1893,16 @@ async def get_fleet_approval_gates_endpoint(
     return await _approval_gates_response(db, user, fleet)
 
 
+TOOL_LEVEL_ENFORCEMENT_REFUSAL = (
+    "Only an administrator can turn the platform's tool-level pauses of a fleet's gates on or off."
+)
+#: A built-in fleet never pauses a tool call (#1675): its gates are decision items between steps.
+BUILTIN_TOOL_LEVEL_REFUSAL = (
+    "A built-in fleet never pauses its tool calls: its gates are decisions a person answers between "
+    "steps. Fork the fleet to enforce its gates at tool level."
+)
+
+
 @router.put("/{fleet_id}/autonomy", response_model=FleetApprovalGatesResponse)
 async def apply_fleet_autonomy_endpoint(
     fleet_id: str,
@@ -1383,7 +1916,8 @@ async def apply_fleet_autonomy_endpoint(
 
     Raising the level, pinning an action to run alone or removing an
     "Always wait" pin lets an action run with less approval: administrators
-    only (403). A built-in fleet takes the level only (its pins are refused).
+    only (403). A built-in fleet takes its pins too (#916, CTEM-34): they are
+    the customer's, the seed never writes them, so they survive an upgrade.
     On a custom fleet it turns the computed catalog on. One audit row
     ``autonomy_level_change`` with the level and pins before and after.
     """
@@ -1391,7 +1925,18 @@ async def apply_fleet_autonomy_endpoint(
 
     fleet = await _manageable_fleet(db, user, fleet_id)
     fields = {"autonomy_level"} if body.pins is None else {"autonomy_level", "approval_pins"}
+    if body.enforce_at_tool_level is not None:
+        fields.add("enforce_gates_at_tool_level")
     _ensure_writable(fleet, fields)
+    previous_enforced = bool(getattr(fleet, "enforce_gates_at_tool_level", False))
+    new_enforced = previous_enforced if body.enforce_at_tool_level is None else body.enforce_at_tool_level
+    if fleet.is_builtin:
+        if body.enforce_at_tool_level:
+            raise HTTPException(status_code=422, detail=BUILTIN_TOOL_LEVEL_REFUSAL)
+        previous_enforced = new_enforced = False
+    # Tool-level enforcement is an administrator's opt-in (#1467), both ways.
+    if new_enforced != previous_enforced and not user.is_admin:
+        raise HTTPException(status_code=403, detail=TOOL_LEVEL_ENFORCEMENT_REFUSAL)
     previous_level = effective_level(fleet.autonomy_level)
     previous_pins = clean_pins(getattr(fleet, "approval_pins", None))
     new_pins = clean_pins(body.pins) if body.pins is not None else previous_pins
@@ -1403,7 +1948,8 @@ async def apply_fleet_autonomy_endpoint(
     if pins_lower_approval(previous_pins, new_pins) and not user.is_admin:
         raise HTTPException(status_code=403, detail=PIN_RUN_REFUSAL)
     fleet.autonomy_level = new_level
-    if not fleet.is_builtin:
+    fleet.enforce_gates_at_tool_level = new_enforced
+    if not fleet.is_builtin or body.pins is not None:
         fleet.approval_pins = new_pins
     await log_audit(
         db,
@@ -1413,7 +1959,14 @@ async def apply_fleet_autonomy_endpoint(
         entity_id=fleet.id,
         entity_name=fleet.name,
         summary=f"Set the autonomy level of fleet '{fleet.name}' to {new_level}",
-        details={"from": previous_level, "to": new_level, "pins_from": previous_pins, "pins_to": new_pins},
+        details={
+            "from": previous_level,
+            "to": new_level,
+            "pins_from": previous_pins,
+            "pins_to": new_pins,
+            "tool_level_from": previous_enforced,
+            "tool_level_to": new_enforced,
+        },
         request=request,
     )
     await db.commit()
@@ -1476,17 +2029,22 @@ async def update_fleet_approval_gates_endpoint(
     db: AsyncSession = Depends(get_db),
     _gate: None = Depends(require_agentic_ai_licensed),
 ):
-    """Store a custom fleet's approval gate catalog (#10014): the gates its autonomy level acts on.
+    """Store a fleet's approval gate catalog (#10014): the gates its autonomy level acts on.
 
-    A built-in fleet is refused (its catalog is the seed's). Removing a stored
-    gate, a tool of one or lowering its impact lets an action run with less
-    approval: administrators only, as raising the level. Audit logged.
+    On a built-in fleet (#916, CTEM-34) the body is the gates a person adds
+    to the seeded catalog: stored in its customer layer (``customer_gates``),
+    never written by the seed, so they survive an upgrade; a seeded key is
+    refused (a pin moves a seeded gate). Removing a stored gate, a tool of one
+    or lowering its impact lets an action run with less approval:
+    administrators only, as raising the level. Audit logged.
     """
+    from app.services.fleet_autonomy import customer_gates_of
     from app.services.fleet_docs import clean_structured
     from app.services.fleet_gate_proposals import removes_a_gate
 
     fleet = await _manageable_fleet(db, user, fleet_id)
-    _ensure_writable(fleet, {"approval_gates"})
+    builtin = bool(fleet.is_builtin)
+    _ensure_writable(fleet, {"customer_gates" if builtin else "approval_gates"})
     try:
         cleaned = (clean_structured({"gates": body.gates}) or {}).get("gates") or []
     except FleetActionRefusedError as exc:
@@ -1494,13 +2052,25 @@ async def update_fleet_approval_gates_endpoint(
     keys = [str(g.get("key") or "") for g in cleaned]
     if any(not k for k in keys) or len(set(keys)) != len(keys):
         raise HTTPException(status_code=422, detail="Every approval gate needs its own key.")
-    previous = [dict(g) for g in fleet_gates(getattr(fleet, "approval_gates", None), fleet.documentation)]
+    if builtin:
+        seeded = {str(g.get("key") or "") for g in fleet_gates(getattr(fleet, "approval_gates", None), None)}
+        if seeded & set(keys):
+            raise HTTPException(
+                status_code=422,
+                detail="A built-in fleet's seeded gate cannot be redeclared; pin it to wait or run instead.",
+            )
+        previous = [dict(g) for g in customer_gates_of(getattr(fleet, "customer_gates", None))]
+    else:
+        previous = [dict(g) for g in fleet_gates(getattr(fleet, "approval_gates", None), fleet.documentation)]
     if removes_a_gate(previous, cleaned) and not user.is_admin:
         raise HTTPException(
             status_code=403,
             detail="Only an administrator can remove an approval gate, a tool of one or lower its impact; adding is open.",
         )
-    fleet.approval_gates = cleaned
+    if builtin:
+        fleet.customer_gates = cleaned or None
+    else:
+        fleet.approval_gates = cleaned
     await log_audit(
         db,
         user=user,
@@ -2545,6 +3115,68 @@ async def unset_fleet_automations(
     return await _control_response(db, fleet, outcome.changed)
 
 
+RESET_CONFIRM_MISMATCH = "Type the fleet's name exactly to confirm the reset."
+
+
+@router.post("/{fleet_id}/reset", response_model=FleetResetResponse)
+async def reset_fleet_to_factory(
+    fleet_id: str,
+    body: FleetResetRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    _gate: None = Depends(require_agentic_ai_licensed),
+) -> FleetResetResponse:
+    """Reset a built-in fleet to its factory state (#1508): automations off and not set up,
+    run-as cleared, seeded level, no pins or added gates, every member's customer layer
+    (bindings, scoping, MCP, knowledge bases, skills, tools, notes, model) cleared and its
+    definition rewritten from the seed. Ids, runs, cases, the audit trail and the workspace
+    are kept. Administrators only; ``dry_run`` answers the counts and the automations an
+    emergency stop holds; refused during an emergency stop, while a stop holds any of
+    the fleet's automations, and on a custom fleet."""
+    fleet = await _controllable_fleet(db, user, fleet_id, "reset")
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Only an administrator can reset a fleet.")
+    if not body.dry_run and (body.confirm_name or "").strip() != fleet.name:
+        raise HTTPException(status_code=422, detail=RESET_CONFIRM_MISMATCH)
+    try:
+        outcome = await reset_builtin_fleet(db, fleet, actor=user, dry_run=body.dry_run, request=request)
+    except FleetActionRefusedError as exc:
+        raise _refused(exc) from None
+    if not body.dry_run and outcome.changed:
+        await log_audit(
+            db,
+            user=user,
+            action="fleet_reset",
+            entity_type="fleet",
+            entity_id=fleet.id,
+            entity_name=fleet.name,
+            summary=f"Reset fleet '{fleet.name}' to its factory state",
+            details={"fleet_id": str(fleet.id), "before": outcome.audit_details()},
+            request=request,
+        )
+    # A dry run writes nothing; the commit answers every request the same way.
+    await db.commit()
+    counts = await fleet_automation_counts(db, fleet)
+    return FleetResetResponse(
+        fleet_id=str(fleet.id),
+        dry_run=body.dry_run,
+        automations=outcome.automations,
+        run_as_cleared=outcome.run_as_cleared,
+        bindings=outcome.bindings,
+        pins=outcome.pins,
+        gates=outcome.gates,
+        autonomy_level=outcome.autonomy_level,
+        agents=outcome.agents,
+        settings=outcome.settings,
+        documentation=outcome.documentation,
+        held_by_stop=list(outcome.held_by_stop),
+        automations_state=FleetAutomationsResponse(
+            total=counts.total, enabled=counts.enabled, paused=counts.paused, fleet_paused=counts.fleet_paused
+        ),
+    )
+
+
 ENABLE_RUN_AS_ADMIN_ONLY = "Only an administrator can pick another user for the fleet's automations to run as."
 ENABLE_RUN_AS_UNKNOWN = "run_as_user_id does not reference an active user"
 
@@ -2593,6 +3225,17 @@ async def enable_fleet_automations(
     except FleetActionRefusedError as exc:
         raise _refused(exc) from None
     changed = plan.changed
+    estimate = None
+    if body.dry_run:
+        # The expected runs a day and cost of the pick (#1538), read before anything else.
+        load = await estimate_fleet_enable(db, fleet, assignment_ids=picked)
+        estimate = FleetEnableEstimateResponse(
+            scheduled_runs_per_day=load.scheduled_runs_per_day,
+            event_automations=load.event_automations,
+            avg_cost_per_run=load.avg_cost_per_run,
+            cost_per_day=load.cost_per_day,
+            cost_days=load.cost_days,
+        )
     if not body.dry_run:
         try:
             outcome = await enable_fleet(
@@ -2618,6 +3261,11 @@ async def enable_fleet_automations(
         )
     # Before the answer, every call (a dry run wrote nothing, so it commits nothing).
     await db.commit()
+    if not body.dry_run and changed:
+        # A CTEM case fleet takes the open cases it owns that nobody ran (#1390).
+        from app.services.ctem_case_routing import catch_up_after_enable
+
+        await catch_up_after_enable(fleet.slug)
     counts = await fleet_automation_counts(db, fleet)
     return FleetEnableResponse(
         fleet_id=str(fleet.id),
@@ -2628,13 +3276,20 @@ async def enable_fleet_automations(
         missing=plan.missing,
         items=[
             FleetEnableItemResponse(
-                id=str(i.id), name=i.name, providers=list(i.providers), missing=list(i.missing), selected=i.selected
+                id=str(i.id),
+                name=i.name,
+                providers=list(i.providers),
+                missing=list(i.missing),
+                selected=i.selected,
+                runs_per_day=i.runs_per_day,
+                event_driven=i.event_driven,
             )
             for i in plan.items
         ],
         automations=FleetAutomationsResponse(
             total=counts.total, enabled=counts.enabled, paused=counts.paused, fleet_paused=counts.fleet_paused
         ),
+        estimate=estimate,
     )
 
 
@@ -2781,6 +3436,7 @@ async def get_fleet_activity(
                 trigger_type=trigger_type,
                 trigger_provider=trigger_provider,
                 trigger_event=trigger_event,
+                case_id=case_id,
             )
             for (
                 run_id,
@@ -2793,9 +3449,40 @@ async def get_fleet_activity(
                 trigger_type,
                 trigger_provider,
                 trigger_event,
+                case_id,
             ) in runs
         ],
         delegations=delegations,
+    )
+
+
+@router.get("/case-runs/{case_id}", response_model=CaseRunsResponse)
+async def get_case_runs(
+    case_id: uuid.UUID,
+    limit: int = Query(50, ge=1, le=200),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    _gate: None = Depends(require_agentic_ai_licensed),
+):
+    """The fleet runs a CTEM case's events started (#915), oldest first, the ones
+    the caller may see (``run_visible_filter``), for the case page that shows
+    the agents' steps beside the case history. An id in, runs out: the case
+    itself is read through ``GET /ctem-cases/{id}``, per viewer."""
+    runs = await case_runs(db, case_id, run_scope=run_visible_filter(user.id), limit=limit)
+    return CaseRunsResponse(
+        case_id=str(case_id),
+        runs=[
+            CaseRunEntry(
+                id=str(run_id),
+                agent_id=str(agent_id),
+                agent_name=agent_name,
+                status=run_status,
+                created_at=_iso(created_at) or "",
+                completed_at=_iso(completed_at),
+                outcome=outcome,
+            )
+            for (run_id, agent_id, agent_name, run_status, created_at, completed_at, outcome) in runs
+        ],
     )
 
 
@@ -2925,4 +3612,96 @@ async def get_fleet_run_estimate(
         window_days=ESTIMATE_DAYS,
         organizations=out,
         expected_runs_per_month=sum(o.expected_runs_per_month for o in out),
+    )
+
+
+@router.get("/setup/ctem-loop", response_model=FleetSetupStatusResponse)
+async def get_ctem_loop_setup_status(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    _gate: None = Depends(require_agentic_ai_licensed),
+) -> FleetSetupStatusResponse:
+    """Where the CTEM loop guided setup stands, step by step (#1087 slice 2).
+
+    Administrators of an XTM One platform only (403 otherwise). Each step reads
+    ``done`` or ``skipped`` as recorded for the current setup version, else
+    ``ready`` or ``todo`` from the platform as it is: the saved profile, the
+    active module registrations, the loop fleet's capability slots, its
+    autonomy level, gates and automations. Read only: no model call, no quota,
+    no write. ``resume_on`` names the step the flow opens on.
+    """
+    from app.agents.builtin_fleets import CTEM_LOOP_SLUG
+    from app.api.v1.platform_settings_helpers import get_platform_settings
+    from app.core.config import settings as app_settings
+    from app.models.platform_registration import PlatformRegistration
+    from app.services import fleet_setup_status as status_mod
+    from app.services import organization_setup_prompt as prompt
+    from app.services.fleet_autonomy import effective_gates, effective_level, gate_waits
+    from app.services.fleet_views import opt_in_state
+    from app.services.organization_context import current_version, parse_profile, software_profile
+
+    if not (user.is_admin and app_settings.is_xtm_one):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required")
+    row = await get_platform_settings(db)
+    saved = await current_version(db)
+    profile = parse_profile(saved.profile) if saved is not None else None
+    # #1495: the software count is the Software entities' (synced or typed), the profile rows before any.
+    software = (await software_profile(db))[1].tech_stack if saved is not None else []
+    profile_facts = status_mod.ProfileFacts(
+        saved=saved is not None,
+        crown_jewels=len(profile.crown_jewels) if profile else 0,
+        tech_stack=len(software),
+        ticketing_target=bool(profile and profile.ticketing.integration),
+        scope_min_criticality=profile.prioritization_policy.scope_min_criticality if profile else "",
+    )
+    modules = [
+        str(identifier)
+        for (identifier,) in (
+            await db.execute(
+                select(PlatformRegistration.platform_identifier)
+                .where(
+                    PlatformRegistration.platform_identifier.in_(status_mod.LOOP_MODULES),
+                    PlatformRegistration.status == "active",
+                )
+                .distinct()
+            )
+        ).all()
+    ]
+    fleet = (
+        await db.execute(select(Fleet).where(Fleet.is_builtin.is_(True), Fleet.slug == CTEM_LOOP_SLUG).limit(1))
+    ).scalar_one_or_none()
+    slots: dict[str, str] = status_mod.slot_summary(())
+    fleet_facts = status_mod.LoopFleetFacts()
+    if fleet is not None:
+        slot_view = await get_fleet_capability_slots(str(fleet.id), user=user, db=db, _gate=None)
+        # The Ecosystem step counts the customer's own tools: a built-in option
+        # (#1201) fills a slot without connecting anything, so it is left out here.
+        slots = status_mod.slot_summary(
+            [
+                {"capability": s.capability, "state": status_mod.external_slot_state(s.bound, s.candidates)}
+                for s in m.slots
+            ]
+            for m in slot_view.members
+        )
+        level = effective_level(fleet.autonomy_level)
+        gates = effective_gates(
+            fleet.approval_gates, fleet.documentation, pins=fleet.approval_pins, customer=fleet.customer_gates
+        )
+        counts = await fleet_automation_counts(db, fleet)
+        fleet_facts = status_mod.LoopFleetFacts(
+            fleet_id=str(fleet.id),
+            autonomy_level=level,
+            opt_in=opt_in_state(counts),
+            automations_total=counts.total,
+            automations_enabled=counts.enabled,
+            waiting_gates=tuple(str(g.get("key") or "") for g in gates if gate_waits(level, g)),
+        )
+    result = status_mod.setup_status(
+        recorded=prompt.steps_of(row), profile=profile_facts, modules=modules, slots=slots, fleet=fleet_facts
+    )
+    return FleetSetupStatusResponse(
+        version=prompt.SETUP_VERSION,
+        fleet_id=fleet_facts.fleet_id,
+        steps=[FleetSetupStep.model_validate({"key": s.key, "state": s.state, "facts": s.facts}) for s in result.steps],
+        resume_on=result.resume_on,
     )

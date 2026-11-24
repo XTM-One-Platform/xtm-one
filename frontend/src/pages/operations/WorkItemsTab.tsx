@@ -14,7 +14,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { workItemPath, workItemsPath } from "@/lib/task-routes";
 import {
   ListTodo, AlertTriangle, CheckCircle2, XCircle, Trash2, Eye,
   Clock, Hash, Circle, CircleDot, CircleDashed, Ban, CalendarClock, Hourglass, RotateCcw, User, History, GitPullRequest,
@@ -25,10 +26,13 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable, TOOLBAR_CONTROL_HEIGHT, type DataTableColumn } from "@/components/ui/data-table";
+import { WaitingForYou } from "@/components/decisions/WaitingForYou";
+import { useWaitingDecisions } from "@/hooks/api/useDecisionApi";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { SegmentedFilter } from "@/components/ui/segmented-filter";
 import { VisibilityEmptyHint } from "@/components/ui/visibility-filter";
 import { useVisibilityParam, visibilityQuery } from "@/hooks/useVisibilityParam";
+import { writeVisibility } from "@/lib/visibility";
 import { useSegmentCounts } from "@/hooks/api/useSegmentCounts";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SelectionBox } from "@/components/ui/list-control-bar";
@@ -41,7 +45,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useTick } from "@/hooks/useTick";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useViewMode } from "@/hooks/useViewMode";
-import { readTableState, type DataTableDefaults } from "@/lib/data-table-state";
+import { clearFilterParams, readTableState, type DataTableDefaults } from "@/lib/data-table-state";
 import { cn, formatShortDateTime, pluralize, formatCompactNumber } from "@/lib/utils";
 import { formatShortDateTimeIntl } from "@/lib/relative-time";
 import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
@@ -51,8 +55,9 @@ import {
 import { REFETCH_INTERVAL_STANDARD } from "@/lib/constants";
 import {
   useWorkItems, useWorkItemCount, useStaleWorkItemCount, useDeleteWorkItem,
-  useBulkDeleteWorkItems, useRequeueWorkItem, useWorkItemOwners, useWorkItemStatusCounts, type WorkItemOrder,
+  useBulkDeleteWorkItems, useRequeueWorkItem, useWorkItemGraph, useWorkItemOwners, useWorkItemStatusCounts, type WorkItemOrder,
 } from "@/hooks/api/useWorkItemApi";
+import { WorkItemGraphView } from "@/components/work-items/WorkItemGraphView";
 import { WorkItemStatusFilter, statusParamOf, statusesFromParam } from "./WorkItemStatusFilter";
 import { useFormatter } from "@/i18n";
 import { ScheduleActions } from "@/components/work-items/ScheduleActions";
@@ -62,7 +67,7 @@ import {
   WorkItemPickupBadge, WorkItemVisibilityBadge, WorkItemBlockedWhy, WorkItemNoReasonChip, pickupWording,
 } from "@/components/work-items/WorkItemContextParts";
 import { WorkItemCloseDialog, type WorkItemCloseMode } from "@/components/work-items/WorkItemCloseDialog";
-import { askableAgent, offersAskTheAgent, useAskTheAgent } from "@/components/work-items/WorkItemAskAgent";
+import { askPending, offersAskTheAgent, sendTarget, useAskTheAgent } from "@/components/work-items/WorkItemAskAgent";
 import { REQUEUE_EFFECT, STALE_REASON_LABELS, staleBadgeText } from "@/lib/work-item-effects";
 import { WorkItemDetailDialog, type WorkItemActions } from "@/components/work-items/WorkItemDetailDialog";
 import { canChangeSchedule, formatInZone, isScheduledItem, viewerTimeZone } from "@/lib/scheduled-work-items";
@@ -71,9 +76,10 @@ import { formatList } from "@/lib/format-list";
 import {
   BADGE_TIP_FOCUS, PRIORITY_LABELS, STATUS_LABELS, blockedKind, blockedReason, canClose, canRequeue, cancelledBlockers,
   listedBlockers, offersMarkDone, pullRequestsOf, unfinishedBlockers, waitingPullRequestCount, waitsForSomeone,
-  blockedWithoutReason, pendingBlockedRefs,
+  blockedWithoutReason, pendingBlockedRefs, waitsForReader,
 } from "@/lib/work-item-context";
 import { BlockedStatusBadge } from "@/components/work-items/BlockedStatusBadge";
+import { WaitingForYouBadge } from "@/components/work-items/WaitingForYouBadge";
 import type { WorkItem, WorkItemStatus } from "@/types";
 import { FleetAgentPickerGroup } from "@/components/fleets/FleetAgentPickerGroup";
 import { useFleetParam } from "@/hooks/useFleetParam";
@@ -103,6 +109,9 @@ const EMPTY_DESCRIPTIONS = {
 } as const;
 
 const ANY_AGENT = "__any__";
+
+/** The views Work Items offers: rows, cards and the dependency graph (#968). */
+const WORK_ITEM_VIEW_MODES = ["list", "grid", "graph"] as const;
 
 // The administrators' switch on a fleet's Work Items tab: "Fleet"
 // (the default, `?fleet=`, the population of the agents' `list_work_items`
@@ -236,16 +245,19 @@ const ACTIONS_COLUMN = "w-32 2xl:w-60";
  * what is filed there or owned or created by its fleet's members,
  * every segment by default. `fleet` locks it on a fleet (its page's
  * Operations tab); elsewhere `?fleet=` narrows it to what a fleet's
- * home members own or created.
+ * home members own or created. `itemInPath`: the Tasks tab (#775), where one
+ * item opens as its own path (`/tasks/work-items/<id>`) instead of `?item=`.
  */
 export default function WorkItemsTab({
   workspace,
   fleet: lockedFleet,
   emptyDescription,
   toolbarLead,
+  itemInPath = false,
 }: {
   workspace?: string;
   fleet?: string;
+  itemInPath?: boolean;
   emptyDescription?: string;
   /** A control of the host drawn first on the filter row (the fleet tab's list select), never a row of its own. */
   toolbarLead?: ReactNode;
@@ -272,14 +284,22 @@ export default function WorkItemsTab({
   // On a fleet's tab, an administrator may read Mine or All instead.
   const fleetScope = lockedFleet ? fleetListScope(searchParams.get("scope"), isAdmin) : "fleet";
   const fleet = fleetScope === "fleet" ? fleetParam : undefined;
-  // A row, or a run's "Scheduled" badge, opens one item's details.
-  const openId = searchParams.get("item");
+  // A row, or a run's "Scheduled" badge, opens one item's details: on Tasks its own path, on a host page `?item=`.
+  const { itemId: pathItemId } = useParams<{ itemId?: string }>();
+  const navigate = useNavigate();
+  const openId = itemInPath ? (pathItemId ?? null) : searchParams.get("item");
   const page = table.page;
   const pageSize = table.pageSize;
   const debouncedSearch = useDebounce(search, 300);
   const staleOnly = viewParam === "stale";
   const scheduledOnly = viewParam === "scheduled";
   const waitingForMe = viewParam === WAITING_FOR_ME_VIEW;
+  // "Waiting for me" with the read switch on is the decision inbox alone: one records list per
+  // view (UX r1 B2 on #1081). Only a server answer `enabled: false` (switch off) falls back to
+  // the per-engine work items list: while the read is pending or failed the inbox renders its
+  // own skeleton or error line with Retry (UX r2 B1 on #1081).
+  const waitingDecisions = useWaitingDecisions(waitingForMe);
+  const inboxView = waitingForMe && waitingDecisions.data?.enabled !== false;
   const sortKey = table.sort && (SORT_KEYS as readonly string[]).includes(table.sort.key) ? (table.sort.key as WorkItemOrder) : "created";
   const direction = table.sort?.direction ?? "desc";
 
@@ -302,6 +322,62 @@ export default function WorkItemsTab({
     },
     [setSearchParams],
   );
+
+  // The view (`view`, its older spelling `stale=stale` dropped): one write, back to the first page.
+  // The Filters pill's View segment and the quick filters of the row write it alike (#1001).
+  const setView = useCallback(
+    (key: string) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("stale");
+          if (key) next.set("view", key);
+          else next.delete("view");
+          next.delete(`${URL_KEY}page`);
+          next.delete("page");
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  // The "Waiting for me" chip (#1499): on, it resets every other filter (status, search, owner,
+  // fleet unless locked, scope, segment to All) in the same write so the rows shown are the
+  // chip's count; a second click clears the view alone.
+  const toggleQuickView = useCallback(
+    (key: string) => {
+      if (key !== WAITING_FOR_ME_VIEW || key === viewParam) {
+        setView(key === viewParam ? "" : key);
+        return;
+      }
+      const keys = ["view", "stale", "scope", "agent", "status", ...(lockedFleet ? [] : ["fleet"])];
+      setSearchParams(
+        (prev) => {
+          const next = clearFilterParams(prev, keys, URL_KEY);
+          if (!workspace && !lockedFleet) {
+            const all = writeVisibility(next, "all");
+            all.set("view", key);
+            return all;
+          }
+          next.set("view", key);
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [viewParam, setView, setSearchParams, lockedFleet, workspace],
+  );
+
+  // "Clear all filters" (toolbar, no-results line, empty states): every filter the count counts
+  // and the status, search and page in ONE write; the open item, the segment (`vis`), the sort
+  // and the page size stay (#1001: the table cleared only its own keys, the button looked dead).
+  // A locked fleet is the host page's, never a filter.
+  const clearAllFilters = useCallback(() => {
+    const keys = ["view", "stale", "scope", "agent", "status", ...(lockedFleet ? [] : ["fleet"])];
+    setSearchParams((prev) => clearFilterParams(prev, keys, URL_KEY), { replace: true });
+  }, [setSearchParams, lockedFleet]);
 
   // One write for the Status filter: its URL value (none = open work, `all` = every status).
   const setStatuses = useCallback(
@@ -363,6 +439,9 @@ export default function WorkItemsTab({
     },
     !landing,
   );
+  // The Graph view's one read (#968): the list's filters, no page, no sort.
+  const graphView = viewMode === "graph";
+  const { data: graph, isLoading: graphLoading } = useWorkItemGraph(filters, graphView && !landing);
   const { data: countData } = useWorkItemCount(filters, false, !landing);
   const totalMatchingCount = countData?.count ?? 0;
   // The blocked items under the other filters: how many wait on
@@ -383,6 +462,28 @@ export default function WorkItemsTab({
   // The blocked items that say nothing of what they wait for: a red
   // chip next to the status filter until each one is edited.
   const noReasonCount = useMemo(() => (blockedItems ?? []).filter((item) => blockedWithoutReason(item)).length, [blockedItems]);
+  // The quick filters' counts (#1001): the server's, under every other filter (status, search,
+  // owner, fleet, segment), never the loaded page; the view itself left out so each chip says
+  // what a click on it would show.
+  const quickBase = { ...otherFilters, stale_only: false, scheduled_only: false, waiting_for_me: false, vis };
+  // "Waiting for me" counts every open item waiting for the caller (#1499): every segment, no
+  // status, search, owner or picked fleet, so the chip reads the same number wherever the list
+  // stands and a click (which resets those filters) shows exactly that many rows. A host page's
+  // workspace or locked fleet is not a filter and stays: the lock is counted whatever `?scope=` an
+  // administrator set, since the click clears that scope and lists inside the lock.
+  const waitingFilters = { open_only: true, waiting_for_me: true, workspace, fleet: lockedFleet };
+  const { data: waitingCountData } = useWorkItemCount(waitingFilters, false, !fleetPending);
+  const { data: staleViewCountData } = useWorkItemCount({ ...quickBase, stale_only: true }, false, !landing);
+  const quickOptions = [
+    {
+      key: WAITING_FOR_ME_VIEW,
+      label: "Waiting for me",
+      icon: User,
+      count: waitingCountData?.count,
+      countPending: waitingCountData === undefined,
+    },
+    { key: "stale", label: "Stale", icon: AlertTriangle, count: staleViewCountData?.count, countPending: staleViewCountData === undefined },
+  ];
   // The same filters over every segment: the empty-Mine hint reads it.
   const { data: allSegmentsCount } = useWorkItemCount(otherFilters, false, !fleetPending);
   // Bulk delete skips server-side what the caller may not delete (a
@@ -483,12 +584,19 @@ export default function WorkItemsTab({
 
   const hasMoreBeyondVisible = deletableMatchingCount > selectableIds.length;
 
-  const openDetails = useCallback((item: WorkItem) => updateParam("item", item.id), [updateParam]);
-  const closeDetails = useCallback(() => updateParam("item", undefined), [updateParam]);
+  const openDetails = useCallback(
+    (item: WorkItem) => (itemInPath ? navigate(workItemPath(item.id, searchParams)) : updateParam("item", item.id)),
+    [itemInPath, navigate, searchParams, updateParam],
+  );
+  const closeDetails = useCallback(
+    () => (itemInPath ? navigate(workItemsPath(searchParams), { replace: true }) : updateParam("item", undefined)),
+    [itemInPath, navigate, searchParams, updateParam],
+  );
 
   const handleRequeue = useCallback(async (item: WorkItem) => {
     try {
       await requeue.mutateAsync(item.id);
+      if (openId === item.id) closeDetails();
       toast({ title: t_i18n("Work item put back in the queue"), description: t_i18n(REQUEUE_EFFECT), variant: "success" });
     } catch (e) {
       toast({
@@ -497,7 +605,7 @@ export default function WorkItemsTab({
         variant: "error",
       });
     }
-  }, [requeue, toast, t_i18n]);
+  }, [requeue, openId, closeDetails, toast, t_i18n]);
 
   const handleDelete = useCallback(async (item: WorkItem) => {
     const ok = await confirm({
@@ -606,16 +714,26 @@ export default function WorkItemsTab({
     const entries: OverflowMenuItem[] = [
       { id: "details", label: t_i18n("View details"), icon: Eye, onSelect: () => openDetails(item) },
     ];
-    if (offersAskTheAgent(item) && !isScheduledItem(item) && askableAgent(item)) {
+    if (offersAskTheAgent(item) && !isScheduledItem(item) && sendTarget(item) && !askPending(item)) {
+      // Sent at once to the item's agent, as from the dialog (#774).
       entries.push(
         {
           id: "ask-recheck",
           label: t_i18n("Ask the agent to re-check"),
           icon: RefreshCw,
           separatorBefore: true,
-          onSelect: () => askAgent(item, "recheck"),
+          disabled: askAgent.aiOff,
+          disabledReason: askAgent.aiReason ?? undefined,
+          onSelect: () => void askAgent.send(item, "recheck"),
         },
-        { id: "ask-solved", label: t_i18n("Tell the agent it's solved"), icon: CheckCheck, onSelect: () => askAgent(item, "solved") },
+        {
+          id: "ask-solved",
+          label: t_i18n("Tell the agent it's solved"),
+          icon: CheckCheck,
+          disabled: askAgent.aiOff,
+          disabledReason: askAgent.aiReason ?? undefined,
+          onSelect: () => void askAgent.send(item, "solved"),
+        },
       );
     }
     if (actions.close && canClose(item)) {
@@ -661,7 +779,9 @@ export default function WorkItemsTab({
     const scheduled = isScheduledItem(item);
     const pullRequests = pullRequestsOf(item.payload);
     const facts: OpsFact[] = [];
-    const blockers = pickup === "blocked_on_items" ? listedBlockers(item) : [];
+    // Every unfinished blocker item of a blocked item, whatever the pickup
+    // state (a person's decision too), as the drawer lists them.
+    const blockers = item.status === "blocked" ? listedBlockers(item) : [];
     if (blockers.length) {
       facts.push({ label: t_i18n("Waits for"), tone: "warning", value: <WorkItemBlockers blockers={blockers} /> });
     }
@@ -736,7 +856,7 @@ export default function WorkItemsTab({
     const pickup = context?.pickup.state;
     const pullRequests = pullRequestsOf(item.payload);
     const facts = factsOf(item);
-    const blockers = pickup === "blocked_on_items" ? listedBlockers(item) : [];
+    const blockers = item.status === "blocked" ? listedBlockers(item) : [];
     const waitsOnRefs =
       item.status === "blocked" && (pendingBlockedRefs(item).length > 0 || !!item.blocked_reason?.trim() || !!item.needs_human);
     // The meta column shows the owner, then the key, the references or the due date;
@@ -861,6 +981,10 @@ export default function WorkItemsTab({
                 </Badge>
                 </span>
                 <OpsChipStrip testId="work-item-chips">
+                {/* A decision or an item owed by the reader: the Waiting for me population (#1001). */}
+                {waitsForReader(item, user?.id) && (
+                  <WaitingForYouBadge testId="work-item-waiting-for-you" />
+                )}
                 {/* A blocked item that says nothing of what it waits for. */}
                 {!scheduled && blockedWithoutReason(item) && <WorkItemNoReasonChip />}
                 {item.is_stale && (
@@ -973,7 +1097,7 @@ export default function WorkItemsTab({
               {scheduled?.scheduled.run_id && (
                 <Tip content={t_i18n("View the run")}>
                   <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
-                    <Link to={`/runs/${scheduled.scheduled.run_id}`} aria-label={t_i18n("View the run")}>
+                    <Link to={`/operations/executions/${scheduled.scheduled.run_id}`} aria-label={t_i18n("View the run")}>
                       <History className="h-3.5 w-3.5" />
                     </Link>
                   </Button>
@@ -1016,8 +1140,12 @@ export default function WorkItemsTab({
   const emptyContent = scheduledOnly ? (
     <EmptyState icon={CalendarClock} title={emptyTitle} description={EMPTY_DESCRIPTIONS.scheduled} />
   ) : waitingForMe && !debouncedSearch && !agentParam ? (
-    // A cleared queue is good news, not a setup step: say what lands here.
-    <EmptyState icon={CheckCircle2} title={emptyTitle} description={EMPTY_DESCRIPTIONS.waiting} />
+    // A cleared queue is good news, not a setup step: say what lands here, and the way back.
+    <EmptyState icon={CheckCircle2} title={emptyTitle} description={EMPTY_DESCRIPTIONS.waiting}>
+      <Button variant="outline" size="sm" onClick={clearAllFilters} data-testid="work-items-empty-clear-all">
+        {t_i18n("Clear all filters")}
+      </Button>
+    </EmptyState>
   ) : (
     <VisibilityEmptyHint
       value={visibility}
@@ -1106,6 +1234,16 @@ export default function WorkItemsTab({
     },
   ];
 
+  const viewSwitch = (
+    <SegmentedFilter
+      ariaLabel={t_i18n("View filter")}
+      testId="work-items-view-filter"
+      options={VIEW_FILTERS}
+      value={viewParam}
+      onChange={setView}
+    />
+  );
+
   return (
     <div className="space-y-4">
       {confirmNode}
@@ -1127,10 +1265,13 @@ export default function WorkItemsTab({
         </div>
       )}
 
-      {/* One records table (dev-docs/reference/data-tables.md, slice 8d): search, Visibility,
+      {/* "Waiting for me" lists every open decision, whatever asked it (#842, S5): its own list,
+          the view switch first on its toolbar so the reader leaves it from there. */}
+      {/* Otherwise one records table (dev-docs/reference/data-tables.md, slice 8d): search, Visibility,
           the Status pill (on the row itself), the view, scope, fleet and owner filters (Filters
           pill), sort, Columns, total, page size and URL state are the table's. The grid view keeps
           each row on the Operations row contract (OpsRowGrid) as its card; the list view draws columns. */}
+      {inboxView ? <WaitingForYou toolbarLead={viewSwitch} /> : (
       <DataTable<WorkItem>
         rows={listLoading ? [] : displayItems}
         columns={columns}
@@ -1150,6 +1291,16 @@ export default function WorkItemsTab({
               content={t_i18n("Tasks agents hand to each other, kept across runs. An item is picked up only when an inbox, an assignment or a flow drains its owner agent's queue; otherwise it waits. Open one to see why you see it and what will act on it.")}
             />
             <WorkItemStatusFilter value={statuses} onChange={setStatuses} counts={statusCounts} blockedHint={blockedHint} />
+            {/* Quick filters on the row itself (#1001): the decisions owed to the reader and the stale
+                items, each with the server's count under the other filters. One active at a time, the
+                same `view` key as the Filters pill's View segment; a second click clears it. */}
+            <SegmentedFilter
+              ariaLabel={t_i18n("Quick filters")}
+              testId="work-items-quick-filters"
+              options={quickOptions}
+              value={viewParam}
+              onChange={toggleQuickView}
+            />
             {noReasonCount > 0 && (
               <Tip content={t_i18n("Show the blocked work items: each one with no reason carries a No reason chip.")} wrap>
                 {/* Icon and count on the row; the full wording is its accessible name. */}
@@ -1186,26 +1337,7 @@ export default function WorkItemsTab({
                 onChange={(key) => updateParam("scope", key || undefined)}
               />
             )}
-            <SegmentedFilter
-              ariaLabel={t_i18n("View filter")}
-              testId="work-items-view-filter"
-              options={VIEW_FILTERS}
-              value={viewParam}
-              onChange={(key) => {
-                setSearchParams(
-                  (prev) => {
-                    const next = new URLSearchParams(prev);
-                    next.delete("stale");
-                    if (key) next.set("view", key);
-                    else next.delete("view");
-                    next.delete(`${URL_KEY}page`);
-                    next.delete("page");
-                    return next;
-                  },
-                  { replace: true },
-                );
-              }}
-            />
+            {viewSwitch}
             {/* The shared Fleet + Agent pair, as on Executions. */}
             <FleetAgentPickerGroup
               testId="work-items-picker-group"
@@ -1234,6 +1366,9 @@ export default function WorkItemsTab({
           </>
         }
         externalFilterCount={moreFilterCount}
+        // A Status away from open work narrows the list too: Clear all shows for it (UX r1 B1 on #1004).
+        toolbarFilterActive={!!statusParam}
+        onClearAll={clearAllFilters}
         // The filters are the server's: the Status pill on the row, the view, scope, fleet and
         // owner in the Filters pill above (each a URL key), never a client `filters` list.
         noFilters="server-side filters: the Status pill and the Filters pill (view, scope, fleet, owner)"
@@ -1283,9 +1418,9 @@ export default function WorkItemsTab({
         rowActions={(item) => <OverflowMenu items={menuItems(item)} label={t_i18n("Work item actions")} />}
         rowActionsWidth={48}
         layout="fixed"
-        view={{ value: viewMode, onChange: setViewMode }}
+        view={{ value: viewMode, onChange: setViewMode, modes: WORK_ITEM_VIEW_MODES }}
         // One scrollbar in grid view too: the cards scroll inside, the page does not (UX r1 on #11917, B3).
-        fitGrid
+        fitGrid={!graphView}
         renderGrid={
           viewMode === "grid"
             ? (gridRows) => (
@@ -1295,7 +1430,16 @@ export default function WorkItemsTab({
                   {gridRows.map(renderItem)}
                 </div>
               )
-            : undefined
+            : graphView
+              ? () => (
+                  <WorkItemGraphView
+                    graph={graph}
+                    isLoading={graphLoading}
+                    onOpenItem={(id) => openDetails({ id } as WorkItem)}
+                    readerId={user?.id}
+                  />
+                )
+              : undefined
         }
         // The grid view's first read: a window's worth of rows on the Operations row
         // contract (OpsRowSkeleton), so the cards land without a layout shift.
@@ -1303,6 +1447,7 @@ export default function WorkItemsTab({
           <OpsListSkeleton label={t_i18n("Loading...")} pageSize={size} actionsClassName={ACTIONS_COLUMN} actions={2} />
         )}
       />
+      )}
 
       <WorkItemDetailDialog itemId={openId} onClose={closeDetails} actionsFor={actionsFor} />
       <WorkItemCloseDialog
@@ -1310,6 +1455,7 @@ export default function WorkItemsTab({
         mode={closing?.mode ?? "done"}
         onOpenChange={(open) => !open && setClosing(null)}
         returnFocusTo={focusTargetAfterClose}
+        onCompleted={(done) => openId === done.id && closeDetails()}
       />
     </div>
   );

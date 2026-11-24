@@ -29,6 +29,7 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import release_db_connection_before_loop
 from app.core.utils import format_exception_message, safe_uuid
@@ -36,7 +37,12 @@ from app.models.assignment import AssignmentRun
 from app.models.orchestration import OrchestrationExecution, OrchestrationOutboxEvent
 from app.services import assignment_run_resume, assignment_run_wake
 from app.services import orchestration_engine as engine
-from app.services.failure_causes import FailureCause, FailureContext, classify_run_failure
+from app.services.failure_causes import (
+    FailureCause,
+    FailureContext,
+    FailureDetermination,
+    classify_run_failure,
+)
 from app.services.orchestration_adapters.base import (
     AdapterContext,
     AdapterResult,
@@ -114,6 +120,167 @@ async def _bind_memory_chain(ctx: AdapterContext, run_id: object):
         return None
 
 
+#: The run status a parent holds its slot in while it waits for a delegated child.
+_LIVE_PARENT_STATUSES = ("running",)
+
+
+async def _pool_slots() -> int:
+    """The assignment slots of the instance: ``max_concurrent_runs`` x the workers claiming assignment runs
+    (one when Redis cannot say)."""
+    from app.core.config import settings
+    from app.services import worker_presence
+
+    try:
+        workers = await worker_presence.count(claiming=ADAPTER_NAME)
+    except Exception:
+        workers = None
+    return max(1, int(settings.max_concurrent_runs)) * max(1, int(workers or 1))
+
+
+async def children_of_live_parents(db: AsyncSession, due: list[OrchestrationExecution]) -> list[OrchestrationExecution]:
+    """The *due* assignment executions whose run is a delegated child of a run still running, oldest first."""
+    run_of: dict[uuid.UUID, object] = {}
+    for execution in due:
+        run_id = safe_uuid((execution.payload or {}).get("run_id"))
+        if run_id is not None:
+            run_of[execution.id] = run_id
+    if not run_of:
+        return []
+    parent_of = {
+        row[0]: row[1]
+        for row in (
+            await db.execute(
+                select(AssignmentRun.id, AssignmentRun.parent_run_id).where(
+                    AssignmentRun.id.in_(list(run_of.values())), AssignmentRun.parent_run_id.is_not(None)
+                )
+            )
+        ).all()
+    }
+    if not parent_of:
+        return []
+    live = set(
+        (
+            await db.execute(
+                select(AssignmentRun.id).where(
+                    AssignmentRun.id.in_(list(set(parent_of.values()))),
+                    AssignmentRun.status.in_(_LIVE_PARENT_STATUSES),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [e for e in due if parent_of.get(run_of.get(e.id)) in live]
+
+
+async def fair_share_deal(
+    db: AsyncSession, due: list[OrchestrationExecution], worker_id: str
+) -> list[OrchestrationExecution]:
+    """The *due* assignment executions in the order a free slot claims them
+    (``assignment_dispatch.fair_share_order``): delegated children of a live
+    parent first, then one run per fleet in turn, a fleet or agent over its
+    share of the pool after the others. An execution whose run cannot be read
+    keeps its place at the end, oldest first.
+    """
+    from sqlalchemy import func
+
+    from app.core.config import settings
+    from app.models.fleet import FLEET_ROLE_MEMBER, FleetMember
+    from app.services import assignment_dispatch
+
+    if not due or not settings.assignment_fair_share_enabled:
+        return list(due)
+    run_of: dict[uuid.UUID, object] = {}
+    for execution in due:
+        run_id = safe_uuid((execution.payload or {}).get("run_id"))
+        if run_id is not None:
+            run_of[execution.id] = run_id
+    if not run_of:
+        return list(due)
+    runs = {
+        row[0]: (row[1], row[2])
+        for row in (
+            await db.execute(
+                select(AssignmentRun.id, AssignmentRun.agent_id, AssignmentRun.parent_run_id).where(
+                    AssignmentRun.id.in_(list(run_of.values()))
+                )
+            )
+        ).all()
+    }
+    parents = {parent for _agent, parent in runs.values() if parent is not None}
+    live_parents: set[uuid.UUID] = set()
+    if parents:
+        live_parents = set(
+            (
+                await db.execute(
+                    select(AssignmentRun.id).where(
+                        AssignmentRun.id.in_(list(parents)),
+                        AssignmentRun.status.in_(_LIVE_PARENT_STATUSES),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    running = (
+        await db.execute(
+            select(AssignmentRun.agent_id, func.count(AssignmentRun.id))
+            .where(AssignmentRun.status == "running")
+            .group_by(AssignmentRun.agent_id)
+        )
+    ).all()
+    running_by_agent = {str(agent): int(count) for agent, count in running if agent is not None}
+    agents = {agent for agent, _parent in runs.values() if agent is not None} | {
+        agent for agent, _count in running if agent is not None
+    }
+    home: dict[str, str] = {}
+    if agents:
+        home = {
+            str(agent): f"fleet:{fleet}"
+            for agent, fleet in (
+                await db.execute(
+                    select(FleetMember.agent_id, FleetMember.fleet_id).where(
+                        FleetMember.agent_id.in_(list(agents)),
+                        FleetMember.role == FLEET_ROLE_MEMBER,
+                    )
+                )
+            ).all()
+        }
+
+    def group_of(agent: str) -> str:
+        return home.get(agent, f"agent:{agent}")
+
+    running_by_group: dict[str, int] = {}
+    for agent, count in running_by_agent.items():
+        running_by_group[group_of(agent)] = running_by_group.get(group_of(agent), 0) + count
+    candidates = []
+    unread = []
+    for execution in due:
+        run = runs.get(run_of.get(execution.id))
+        if run is None:
+            unread.append(execution)
+            continue
+        agent, parent = str(run[0]), run[1]
+        candidates.append(
+            assignment_dispatch.ClaimCandidate(
+                key=execution,
+                group=group_of(agent),
+                agent=agent,
+                run_at=execution.run_at,
+                child_of_live_parent=parent is not None and parent in live_parents,
+            )
+        )
+    ordered = assignment_dispatch.fair_share_order(
+        candidates,
+        running_by_group=running_by_group,
+        running_by_agent=running_by_agent,
+        pool=await _pool_slots(),
+        fleet_share=float(settings.assignment_fleet_max_share),
+        agent_share=float(settings.assignment_agent_max_share),
+    )
+    return [*ordered, *unread]
+
+
 #: What a run dead-lettered after a take-back from a worker gone fails with.
 WORKER_GONE_DEAD_LETTER_ERROR = (
     "Assignment run was abandoned by the orchestration engine: its worker was lost "
@@ -146,6 +313,22 @@ class AssignmentAdapter(OrchestrationAdapter):
     resume_when_worker_gone = True
     #: One writer per run turn: an attempt the engine took back stops before its next tool round.
     single_writer_turns = True
+
+    async def deal_claims(
+        self, db: AsyncSession, due: list[OrchestrationExecution], worker_id: str
+    ) -> list[OrchestrationExecution]:
+        """Fair share across fleets, delegated children first (``fair_share_deal``), without the runs of a
+        fleet over its run budget (``fleet_run_budget.hold_over_budget``): those stay queued."""
+        from app.services.fleet_run_budget import hold_over_budget
+
+        return await hold_over_budget(db, await fair_share_deal(db, due, worker_id))
+
+    async def deal_reserved_claims(
+        self, db: AsyncSession, due: list[OrchestrationExecution], worker_id: str
+    ) -> list[OrchestrationExecution]:
+        """What the delegation reserve may claim once the shared pool is full: the delegated runs whose parent
+        run is still running, oldest first."""
+        return await children_of_live_parents(db, due)
 
     def raised_attempt_bound(self, max_attempts: int) -> int:
         """A run queued under the old floor (4) is taken back under the task bound.
@@ -474,6 +657,13 @@ class AssignmentAdapter(OrchestrationAdapter):
         if run.status in TERMINAL_RUN_STATUSES:
             await self._settle_failed_run_charge(ctx, run)
             return
+        if engine.expired_before_start(execution):
+            # Its queue-wait bound passed before any worker started it: nothing
+            # ran, nothing was charged, no partner was started. Failed with its
+            # own cause and the wait it spent, and NO ``run.failed``: observers
+            # of that event must not add work to the queue that starved it.
+            await _fail_expired_before_start(ctx, run, execution)
+            return
         run.status = "failed"
         # A run lost once more than it may be resumed fails with the resume
         # cap's reason, never the hand-back's "runs again at once".
@@ -594,6 +784,44 @@ class AssignmentAdapter(OrchestrationAdapter):
 
         await ctx.db.commit()
         await _publish_run_failed(run, run.error)  # never raises
+
+
+#: The ``stop_reason`` of a run whose queue-wait bound passed before any worker
+#: started it: it ends ``skipped``, never ``failed``.
+EXPIRED_NOT_STARTED_STOP_REASON = "expired_not_started"
+
+
+async def _fail_expired_before_start(
+    ctx: AdapterContext, run: AssignmentRun, execution: OrchestrationExecution
+) -> None:
+    """End *run*, never started before its queue-wait bound: expired, not started.
+
+    Nothing ran and nothing broke, so the run is not failed: it ends
+    ``skipped`` with ``stop_reason`` :data:`EXPIRED_NOT_STARTED_STOP_REASON`,
+    the cause ``deadline_exceeded_before_start`` kept for the capacity
+    accounting. The run record carries ``queue_wait_seconds`` and
+    ``started: false`` under ``trigger_context['queue']``. No ``run.failed`` is
+    published.
+    """
+    waited = engine.queue_wait_seconds(execution)
+    run.status = "skipped"
+    run.stop_reason = EXPIRED_NOT_STARTED_STOP_REASON
+    run.error = engine.expired_before_start_message("The assignment run", execution)
+    run.failure_cause = FailureCause.DEADLINE_EXCEEDED_BEFORE_START.value
+    run.failure_determination = FailureDetermination.STRUCTURAL.value
+    run.trigger_context = {
+        **(run.trigger_context or {}),
+        "queue": {"queue_wait_seconds": waited, "started": False},
+    }
+    run.completed_at = datetime.now(UTC)
+    await ctx.db.commit()
+    logger.warning(
+        "Assignment run %s never started: its queue-wait bound passed after %s s; expired, not started (%s), "
+        "no run.failed",
+        run.id,
+        waited,
+        FailureCause.DEADLINE_EXCEEDED_BEFORE_START.value,
+    )
 
 
 class AssignmentRunWakeSweepAdapter(OrchestrationAdapter):

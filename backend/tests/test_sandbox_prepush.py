@@ -231,6 +231,13 @@ def test_the_repository_declares_bump_stand_ins_for_tsc_and_knip() -> None:
     assert declared["frontend-bump-knip"].stands_for == ("frontend-knip",)
     assert declared["frontend-bump-knip"].image == declared["frontend-bump-types"].image == "toolchain-node"
     assert declared["frontend-bump-types"].stands_for == ("frontend-types",)
+    # A bump's verify-classes on the build (toolchain-node) is the design-system guard's run: nodejs-dev cannot
+    # link a bumped lock, so the guard otherwise stays "never ran" after the gate passed.
+    assert declared["frontend-bump-classes"].stands_for == ("frontend-design-system-classes",)
+    assert declared["frontend-design-system-classes"].pre_push
+    assert [g.name for g in prepush.recorded_guards(declared["frontend-bump-classes"], declared)] == [
+        "frontend-design-system-classes"
+    ]
 
 
 def test_a_class_change_names_verify_classes_and_a_backend_or_test_change_does_not() -> None:

@@ -153,6 +153,21 @@ def test_extra_args_are_bounded():
         checks.extra_args(["a\x00b"])
 
 
+def test_a_call_arg_carries_an_inline_text_past_the_declared_argv_bound():
+    """An inline SQL or JSON a call passes outgrows the 512 characters of a declared argv item (#788)."""
+    sql = "SELECT " + "x" * (checks.MAX_ARG_CHARS + 100)
+    assert checks.extra_args(["--sql", sql]) == ["--sql", sql]
+    too_long = "x" * (checks.CALL_MAX_ARG_CHARS + 1)
+    with pytest.raises(checks.ChecksError) as refused:
+        checks.extra_args(["--sql", too_long])
+    text = str(refused.value)
+    assert f"items of {checks.CALL_MAX_ARG_CHARS} characters" in text
+    assert f"the longest {checks.CALL_MAX_ARG_CHARS + 1} characters" in text and "file of the checkout" in text
+    # A declared check argv keeps its own bound.
+    with pytest.raises(checks.ChecksError, match=f"items of {checks.MAX_ARG_CHARS} characters"):
+        checks.load_checks(f'[check.a]\nargv = ["{"x" * (checks.MAX_ARG_CHARS + 1)}"]\n')
+
+
 # -- the reports ---------------------------------------------------------------
 
 JUNIT = """<testsuites><testsuite name="pytest" tests="4">
@@ -1084,6 +1099,25 @@ async def test_the_replayed_check_after_a_container_restart_starts_it_anew(api, 
     assert replay.exit_code == 0 and replay.run_id != first.run_id and "done" in replay.text
 
 
+async def test_the_same_check_asked_after_an_edit_of_its_checkout_runs_on_the_new_tree(api, monkeypatch):
+    """A resumed turn edits a file, then asks the held check again: a new run on the edited tree, never the stale one."""
+    workspace = _workspace()
+    script = "import os, time; time.sleep(2); print('fixed' if os.path.exists('fix.txt') else 'stale')"
+    await workspace.put_tree(
+        [("co/.xtm-one/checks.toml", f'[check.lint]\nargv = ["python", "-c", {json.dumps(script)}]\n'.encode())]
+    )
+    monkeypatch.setattr(commands, "wait_budget", lambda *_a: 0.3)
+    first = await commands.run_command(await _resolve(workspace, check="lint"), workspace=workspace, sandbox_api=api)
+    assert first.running and first.run_id
+    monkeypatch.setattr(commands.jobs, "CLOCK_SLACK", 0.0)
+    await asyncio.sleep(0.05)
+    await workspace.put_tree([("co/fix.txt", b"1")])
+    monkeypatch.setattr(commands, "wait_budget", lambda *_a: 30.0)
+    again = await commands.run_command(await _resolve(workspace, check="lint"), workspace=workspace, sandbox_api=api)
+    assert not again.refused and not again.busy and again.exit_code == 0, again.text
+    assert again.run_id != first.run_id and "fixed" in again.text, again.text
+
+
 def test_the_in_flight_lines_skip_a_run_past_its_timeout_and_are_bounded():
     now = time.time()
     run = lambda rid, started, timeout=600: {  # noqa: E731
@@ -1856,6 +1890,26 @@ async def test_an_empty_listing_on_exit_0_is_tried_once_more():
     assert sandbox.commands.runs == 2
 
 
+def test_a_checkout_gone_with_its_record_is_never_saved_as_removed():
+    """The read-back of a container that lost a whole checkout (record included) keeps it in the workspace."""
+    removals = [
+        "co/.xtm-checkout.json",
+        "co/backend/app.py",
+        "co/README.md",
+        "other/.xtm-checkout.json-not-a-record",
+        "loose.txt",
+    ]
+    kept, vanished = commands.keep_vanished_checkouts(removals)
+    assert vanished == ["co"]
+    assert kept == ["other/.xtm-checkout.json-not-a-record", "loose.txt"]
+
+
+def test_a_file_removed_inside_a_checkout_that_keeps_its_record_stays_a_removal():
+    kept, vanished = commands.keep_vanished_checkouts(["co/backend/old.py", "co/tests/test_old.py"])
+    assert vanished == []
+    assert kept == ["co/backend/old.py", "co/tests/test_old.py"]
+
+
 async def test_an_empty_listing_twice_names_the_second_try_and_the_stderr():
     sandbox = _listing_sandbox([b"", b""], stderr="OSError: disk full")
     with pytest.raises(RuntimeError) as raised:
@@ -2103,6 +2157,26 @@ def test_staged_entries_keeps_the_nearest_checkout_and_the_loose_files():
     assert root == "a" and "b/y" not in kept and "a/inner/z" not in kept and "a/x" in kept
     kept, root = commands.staged_entries(entries, "")
     assert root == "" and kept is entries
+    # A checkout a manifest's relative path names is staged with the command's own (#1382).
+    kept, root = commands.staged_entries(entries, "a", ["b"])
+    assert root == "a" and {"a/x", "b/y", "loose.md"} <= set(kept)
+
+
+def test_linked_checkouts_reads_a_relative_path_dependency_into_a_sibling_checkout() -> None:
+    # OpenAEV injectors: nmap/pyproject.toml names pyoaev @ ../../client-python (gap sandbox-poetry-path-dep-outside-checkout).
+    manifests = {
+        "inj/nmap/pyproject.toml": '[project]\ndependencies = ["injector_common @ ../injector_common"]\n'
+        'dev = ["pyoaev @ ../../client-python"]\n'
+    }
+    roots = ["client-python", "inj", "other"]
+    assert commands.linked_checkouts(manifests, "inj", roots) == ["client-python"]
+    # A path inside the own checkout, or above the workspace, names no other checkout.
+    assert commands.linked_checkouts({"inj/a/package.json": '"x": "file:../b", "y": "../../../up"'}, "inj", roots) == []
+
+
+def test_link_manifest_paths_walks_up_to_the_checkout_root() -> None:
+    entries = dict.fromkeys(("inj/pyproject.toml", "inj/nmap/pyproject.toml", "pyproject.toml", "inj/nmap/x.py"))
+    assert commands.link_manifest_paths(entries, "inj/nmap", "inj") == ["inj/nmap/pyproject.toml", "inj/pyproject.toml"]
 
 
 async def test_an_undeclared_check_or_argv_is_refused_with_the_declared_list(api):

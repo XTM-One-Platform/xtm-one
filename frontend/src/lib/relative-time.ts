@@ -62,3 +62,14 @@ export function formatShortDateTimeIntl(intl: Pick<IntlShape, "formatDate">, iso
   if (Number.isNaN(at)) return String(iso);
   return intl.formatDate(at, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
+
+/**
+ * A calendar day with its year ("Jun 30, 2027") in the app language, for a
+ * date a record carries without a time (an expiry, "2027-06-30"). Read in
+ * UTC so a date-only value never shifts to the day before west of Greenwich.
+ */
+export function formatDayIntl(intl: Pick<IntlShape, "formatDate">, iso: string): string {
+  const at = Date.parse(iso);
+  if (Number.isNaN(at)) return String(iso);
+  return intl.formatDate(at, { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });
+}

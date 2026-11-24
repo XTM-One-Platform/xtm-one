@@ -13,10 +13,11 @@ from fastapi import FastAPI
 from app.api import deps
 from app.api.v1 import ctem_cases as api_module
 from app.core.database import get_db
-from app.models.ctem_case import CtemCase, CtemCaseEvent, CtemCaseIssue
+from app.models.ctem_case import CASE_STATES, CtemCase, CtemCaseEvent, CtemCaseIssue
 from app.services import ctem_cases as rules
 from app.services import ctem_cases_store as store
 from app.services import ctem_cases_view as view_of
+from app.services import ctem_ticketing as ticketing
 
 ORG = uuid.uuid4()
 NOW = datetime.now(UTC)
@@ -45,7 +46,7 @@ def _case(**kw) -> CtemCase:
         "fixed_version": "9.0.98",
         "keys": ["upgrade:apache/tomcat@9.0.98"],
         "pinned_issues": [],
-        "state": "needs_attention",
+        "state": "new",
         "state_since": NOW,
     }
     base.update(kw)
@@ -96,10 +97,37 @@ def api(monkeypatch):
     async def _viewer(_db, user_id, vertical, *, fresh=False):
         return seen.views.get(str(user_id), view_of.ViewerView())
 
+    async def _events_of(_db, case_ids):
+        return {case_id: [] for case_id in case_ids}
+
     monkeypatch.setattr(api_module, "get_primary", _primary)
     monkeypatch.setattr(store, "list_cases", _list)
     monkeypatch.setattr(store, "get_case", _get)
+    monkeypatch.setattr(store, "events_of", _events_of)
     monkeypatch.setattr(view_of, "viewer_view", _viewer)
+
+    async def _ticketing_target(_db):
+        # The profile read (#1032) is covered in test_ctem_ticketing; the fake session has no execute().
+        return {"connected": False, "reason": ticketing.NOT_CONNECTED, "settings": ticketing.SETTINGS_PATH}
+
+    monkeypatch.setattr(ticketing, "ticketing_target", _ticketing_target)
+
+    async def _owner_view(_db, _case):
+        # The routing read (#1390) is covered in test_ctem_case_routing; the fake session has no execute().
+        return {"slug": "ctem-loop", "name": "CTEM loop", "active": True}
+
+    from app.services import ctem_case_routing
+
+    monkeypatch.setattr(ctem_case_routing, "owner_view", _owner_view)
+
+    async def _gate_records(_db, _case_id, _history, *, viewer_id):
+        # The gate records read (#1518) is covered in test_ctem_case_gate_records; it opens its own
+        # PostgreSQL session through work_item.list_work_items, which the unit shard does not have.
+        return []
+
+    from app.services import ctem_case_gate_records_view
+
+    monkeypatch.setattr(ctem_case_gate_records_view, "gate_records", _gate_records)
     # XTM One mode: the platform mode of the test settings already is xtm_one.
     monkeypatch.setattr(api_module, "_require_xtm_one", lambda: None)
 
@@ -113,11 +141,35 @@ def api(monkeypatch):
 
 async def test_the_list_answers_the_cases_and_every_state_count(api):
     async with api.client as client:
-        response = await client.get("/api/v1/ctem-cases", params={"state": "needs_attention"})
+        response = await client.get("/api/v1/ctem-cases", params={"state": "new"})
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["counts"] == {"needs_attention": 1, "in_progress": 0, "resolved": 0, "accepted_risk": 0}
+    assert body["counts"] == {state: int(state == "new") for state in CASE_STATES}
     assert [c["title"] for c in body["cases"]] == ["Upgrade Apache Tomcat to 9.0.98"]
+
+
+async def test_a_case_carries_its_loop_fields(api):
+    """trigger path, severity, SLA, scenarios, tickets, validations and resolution are read back (#857)."""
+    api.case.trigger_path = "new_exposure"
+    api.case.severity = "P2"
+    api.case.sla_due_at = NOW
+    api.case.risk_scenario_ids = ["rs-1"]
+    api.case.validations = [{"provider": "openaev", "kind": "validation", "ref": "sim-1", "result": "passed"}]
+    api.case.validation_plan = True
+    api.case.resolution_kind = "not_exposed"
+    async with api.client as client:
+        response = await client.get("/api/v1/ctem-cases", params={"state": "new"})
+    assert response.status_code == 200, response.text
+    row = response.json()["cases"][0]
+    assert row["trigger_path"] == "new_exposure"
+    assert row["severity"] == "P2"
+    assert row["sla_due_at"] == NOW.isoformat()
+    assert row["sla_breached_at"] is None
+    assert row["risk_scenario_ids"] == ["rs-1"]
+    assert row["tickets"] == []
+    assert row["validations"][0]["ref"] == "sim-1"
+    assert row["validation_plan"] is True
+    assert row["resolution_kind"] == "not_exposed"
 
 
 async def test_the_list_without_an_organization_is_empty_never_404(api, monkeypatch):
@@ -132,7 +184,7 @@ async def test_the_list_without_an_organization_is_empty_never_404(api, monkeypa
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["cases"] == []
-    assert body["counts"] == {"needs_attention": 0, "in_progress": 0, "resolved": 0, "accepted_risk": 0}
+    assert body["counts"] == dict.fromkeys(CASE_STATES, 0)
     assert body["details_unavailable"] == []
 
 
@@ -170,10 +222,10 @@ async def test_a_case_with_no_visible_issue_is_absent_and_404(api):
     async with api.client as client:
         listed = (await client.get("/api/v1/ctem-cases")).json()
         read = await client.get(f"/api/v1/ctem-cases/{api.case.id}")
-        write = await client.patch(f"/api/v1/ctem-cases/{api.case.id}", json={"state": "in_progress"})
+        write = await client.patch(f"/api/v1/ctem-cases/{api.case.id}", json={"state": "remediating"})
     assert listed["cases"] == [] and set(listed["counts"].values()) == {0}
     assert read.status_code == 404 and write.status_code == 404
-    assert api.case.state == "needs_attention" and api.db.commits == 0 and api.db.added == []
+    assert api.case.state == "new" and api.db.commits == 0 and api.db.added == []
 
 
 async def test_a_case_shows_where_its_issues_came_from(api):
@@ -195,11 +247,11 @@ async def test_starting_a_case_sets_owner_and_state_with_history(api):
     owner = api.user.id
     async with api.client as client:
         response = await client.patch(
-            f"/api/v1/ctem-cases/{api.case.id}", json={"state": "in_progress", "owner_user_id": str(owner)}
+            f"/api/v1/ctem-cases/{api.case.id}", json={"state": "remediating", "owner_user_id": str(owner)}
         )
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["state"] == "in_progress" and body["owner_user_id"] == str(owner)
+    assert body["state"] == "remediating" and body["owner_user_id"] == str(owner)
     kinds = [e["kind"] for e in body["history"]]
     assert "owner" in kinds and "state" in kinds
     assert api.db.commits == 1
@@ -209,16 +261,16 @@ async def test_an_owner_who_sees_none_of_the_issues_is_refused(api):
     """#11613: the assignee is checked with their own source read."""
     async with api.client as client:
         response = await client.patch(
-            f"/api/v1/ctem-cases/{api.case.id}", json={"state": "in_progress", "owner_user_id": str(uuid.uuid4())}
+            f"/api/v1/ctem-cases/{api.case.id}", json={"state": "remediating", "owner_user_id": str(uuid.uuid4())}
         )
     assert response.status_code == 422 and "see this case's issues" in response.json()["detail"]
-    assert api.case.state == "needs_attention" and api.db.commits == 0 and api.db.added == []
+    assert api.case.state == "new" and api.db.commits == 0 and api.db.added == []
 
 
 async def test_an_owner_who_sees_one_issue_is_accepted(api):
     async with api.client as client:
         response = await client.patch(
-            f"/api/v1/ctem-cases/{api.case.id}", json={"state": "in_progress", "owner_user_id": str(api.admin)}
+            f"/api/v1/ctem-cases/{api.case.id}", json={"state": "remediating", "owner_user_id": str(api.admin)}
         )
     assert response.status_code == 200, response.text
     assert response.json()["owner_user_id"] == str(api.admin)
@@ -233,7 +285,7 @@ async def test_accepting_risk_without_a_reason_is_refused_and_nothing_is_written
         )
     assert response.status_code == 422
     assert "reason" in response.json()["detail"]
-    assert api.case.state == "needs_attention" and api.db.commits == 0 and api.db.added == []
+    assert api.case.state == "new" and api.db.commits == 0 and api.db.added == []
 
 
 async def test_accepting_risk_records_owner_reason_and_expiry(api):
@@ -254,7 +306,7 @@ async def test_accepting_risk_records_owner_reason_and_expiry(api):
     assert body["accepted_until"] == until.isoformat()
 
 
-@pytest.mark.parametrize("state", ["in_progress", "accepted_risk"])
+@pytest.mark.parametrize("state", ["accepted_risk"])
 async def test_removing_the_owner_of_a_case_that_needs_one_is_refused(api, state):
     owner = uuid.uuid4()
     api.case.state = state
@@ -269,7 +321,7 @@ async def test_removing_the_owner_of_a_case_that_needs_one_is_refused(api, state
     assert api.case.owner_user_id == owner and api.db.commits == 0 and api.db.added == []
 
 
-async def test_removing_the_owner_of_a_case_that_needs_attention_is_allowed(api):
+async def test_removing_the_owner_of_a_case_that_new_is_allowed(api):
     api.case.owner_user_id = uuid.uuid4()
     async with api.client as client:
         response = await client.patch(f"/api/v1/ctem-cases/{api.case.id}", json={"clear_owner": True})
@@ -285,7 +337,7 @@ async def test_a_bulk_change_applies_each_case_and_names_the_ones_refused(api):
             "/api/v1/ctem-cases/bulk",
             json={
                 "case_ids": [str(api.case.id), str(unknown)],
-                "state": "in_progress",
+                "state": "remediating",
                 "owner_user_id": str(api.user.id),
             },
         )
@@ -293,7 +345,7 @@ async def test_a_bulk_change_applies_each_case_and_names_the_ones_refused(api):
     body = response.json()
     assert body["updated"] == [str(api.case.id)]
     assert body["failed"] == [{"id": str(unknown), "reason": "Case not found"}]
-    assert api.case.state == "in_progress" and api.db.commits == 1
+    assert api.case.state == "remediating" and api.db.commits == 1
 
 
 async def test_a_bulk_accept_risk_without_a_reason_writes_nothing(api):
@@ -312,7 +364,7 @@ async def test_a_bulk_accept_risk_without_a_reason_writes_nothing(api):
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["updated"] == [] and "reason" in body["failed"][0]["reason"]
-    assert api.case.state == "needs_attention" and api.db.added == []
+    assert api.case.state == "new" and api.db.added == []
 
 
 async def test_a_merge_needs_every_case_visible_to_the_caller(api, monkeypatch):
@@ -371,6 +423,44 @@ async def test_a_split_of_an_issue_the_caller_cannot_see_is_refused(api, monkeyp
     assert response.status_code == 422 and "not an open issue" in response.json()["detail"]
     assert seen[0]["visible"] == {"opencti:vuln--1"} and seen[0]["actor"] == str(api.user.id)
     assert api.db.commits == 0
+
+
+async def test_a_case_delete_is_refused_to_a_non_administrator(api):
+    """#1723: DELETE and bulk-delete need an administrator (require_admin answers 403)."""
+    api.user.role = "user"
+    api.user.is_admin = False
+    async with api.client as client:
+        one = await client.delete(f"/api/v1/ctem-cases/{api.case.id}")
+        many = await client.post("/api/v1/ctem-cases/bulk-delete", json={"opened_by": "legacy"})
+    assert one.status_code == 403 and many.status_code == 403
+    assert api.db.commits == 0
+
+
+async def test_a_bulk_delete_as_administrator_answers_the_dry_run(api, monkeypatch):
+    """#1723: the route selects with the filter and answers the service's dry run with the unknown ids."""
+    from app.services import ctem_case_delete as case_delete
+
+    api.user.is_admin = True
+    calls: dict = {}
+
+    async def _select(_db, **kw):
+        calls["select"] = kw
+        return [api.case], []
+
+    async def _delete(_db, cases, **kw):
+        calls["delete"] = kw
+        return {"dry_run": kw["dry_run"], "count": len(cases), "cases": [{"id": str(cases[0].id)}]}
+
+    monkeypatch.setattr(case_delete, "select_cases", _select)
+    monkeypatch.setattr(case_delete, "delete_cases", _delete)
+    async with api.client as client:
+        refused = await client.post("/api/v1/ctem-cases/bulk-delete", json={})
+        response = await client.post("/api/v1/ctem-cases/bulk-delete", json={"opened_by": "legacy"})
+    assert refused.status_code == 422
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body == {"dry_run": True, "count": 1, "cases": [{"id": str(api.case.id)}], "unknown": []}
+    assert calls["select"]["opened_by"] == "legacy" and calls["delete"]["actor"] is api.user
 
 
 async def test_an_expiry_without_an_offset_is_read_as_utc(api):

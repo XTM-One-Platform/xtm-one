@@ -24,13 +24,16 @@ interface StatCardProps {
    *  its own pointer cursor and hover surface then: callers pass no
    *  `cursor-pointer` or `hover:` class of their own. */
   onClick?: () => void;
+  /** A block under the subtitle, inside the card (a status line with its action). Never on a
+   *  clickable card: a control inside a button-role card would nest interactive content. */
+  footer?: ReactNode;
 }
 
 /** Pointer cursor and hover surface of a clickable card, one treatment on every
  *  page (gate: button-role-focus-ring.test.ts). */
 const CLICKABLE_CARD = "cursor-pointer transition-colors hover:bg-elevation-hover";
 
-export function StatCard({ icon: Icon, label, value, subtitle, exact, className, iconClassName, onClick }: StatCardProps) {
+export function StatCard({ icon: Icon, label, value, subtitle, exact, className, iconClassName, onClick, footer }: StatCardProps) {
   // Static labels/subtitles are translated centrally; dynamic strings
   // (entity names, composed values) pass through untouched.
   const { t_i18n } = useFormatter();
@@ -74,6 +77,17 @@ export function StatCard({ icon: Icon, label, value, subtitle, exact, className,
           </p>
           <p className="content-caption text-default-secondary mt-0.5">{typeof subtitle === "string" ? t_i18n(subtitle) : subtitle}</p>
         </div>
+        {/* In normal flow under the subtitle, never pinned to the bottom: the subtitles of one
+            grid row end on one line, so every divider of the row shares one y and the spare
+            height of a shorter footer falls below its content, never above the divider
+            (UX round 2 B3 on #965). */}
+        {footer && !onClick ? (
+          <div className="pt-3" data-testid="stat-card-footer-wrapper">
+            <div className="border-t border-elevation-subtle pt-3" data-testid="stat-card-footer">
+              {footer}
+            </div>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

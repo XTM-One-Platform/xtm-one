@@ -19,9 +19,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * its actions row, secondary first and the one filled primary at the right
  * end (design-system "Page-title actions").
  *
- * - "Enable fleet" ("Enable N more" when some are on) opens the setup dialog
- *   (`FleetEnableDialog`: run-as, prerequisites, run estimate, Confirm; #9769
- *   S4b, UX #9835 N1). Opening the page or the dialog never enables anything.
+ * - "Set up" on a fleet nobody switched on ("Enable N more" when some are on,
+ *   "Enable fleet" when a person paused them) opens the one fleet setup
+ *   (`FleetSetupDialog`, #1151: the wizard, or the CTEM loop's guided setup).
+ *   Opening the page or the setup never enables anything.
  * - "Pause all" switches off every automation that is on, in one call
  *   (`POST /fleets/{id}/pause`); "Resume" switches back on exactly those
  *   (`POST /fleets/{id}/resume`). A toast says how many changed.
@@ -37,7 +38,7 @@ import { useFleetControl, type FleetAutomations } from "@/hooks/api/useFleetApi"
 import { useFormatter } from "@/i18n";
 
 import { fleetRefusalMessage } from "./fleet-refusals";
-import { FleetEnableDialog } from "./FleetEnableDialog";
+import { FleetSetupDialog } from "./FleetSetupDialog";
 import { FleetOptInBadge } from "./FleetOptInBadge";
 import { fleetControlState } from "./fleet-control";
 
@@ -52,12 +53,15 @@ export function FleetHeaderStatus({ automations }: { automations: FleetAutomatio
 export function FleetHeaderActions({
   fleetId,
   fleetName,
+  fleetSlug,
   automations,
   canControl,
 }: {
   fleetId: string;
-  /** Named in the Enable fleet dialog's title. */
+  /** Named in the setup's title. */
   fleetName: string;
+  /** The CTEM loop fleet opens its own guided setup (#1087). */
+  fleetSlug?: string | null;
   automations: FleetAutomations | null | undefined;
   /** `canControlFleet`: the backend refuses the others with a 403. */
   canControl: boolean;
@@ -110,10 +114,12 @@ export function FleetHeaderActions({
           <Power className="h-4 w-4" aria-hidden />
           {state.optIn === "partial"
             ? t_i18n("Enable {count} more", { count: state.enableable })
-            : t_i18n("Enable fleet")}
+            : state.optIn === "not_set_up"
+              ? t_i18n("Set up")
+              : t_i18n("Enable fleet")}
         </Button>
       )}
-      <FleetEnableDialog fleetId={fleetId} fleetName={fleetName} open={enableOpen} onOpenChange={setEnableOpen} />
+      <FleetSetupDialog fleetId={fleetId} fleetName={fleetName} fleetSlug={fleetSlug} open={enableOpen} onOpenChange={setEnableOpen} />
     </>
   );
 }

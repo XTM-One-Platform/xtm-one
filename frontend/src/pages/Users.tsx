@@ -159,14 +159,14 @@ export default function Users() {
       {/* The Users and groups family header (#9301 N3b): its h1, the page's
           help in the "i" (#10215), and one tab row Users / Groups. */}
       <NavFamilyHeader
-        to="/users"
+        to="/users-and-groups"
         title="Users"
         infoLabel={t_i18n("About users")}
         info={t_i18n("Manage users, view their resources, and control access.")}
         actions={
           <>
             <Button variant="outline" className="gap-1.5" onClick={() => setInviteOpen(true)}><Mail className="h-4 w-4" /> {t_i18n("Invite user")}</Button>
-            <Button className="gap-1.5" onClick={() => navigate("/users/new")}><Plus className="h-4 w-4" /> {t_i18n("New User")}</Button>
+            <Button className="gap-1.5" onClick={() => navigate("/users-and-groups/users/new")}><Plus className="h-4 w-4" /> {t_i18n("New User")}</Button>
           </>
         }
       />
@@ -177,7 +177,7 @@ export default function Users() {
         rows={users ?? []}
         columns={columns}
         rowKey={(u) => u.id}
-        rowHref={(u) => `/users/${u.id}`}
+        rowHref={(u) => `/users-and-groups/users/${u.id}`}
         layout="fixed"
         defaultSort={DEFAULT_SORT}
         defaultPageSize={PAGE_SIZE}

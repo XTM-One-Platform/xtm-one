@@ -25,7 +25,7 @@ import { SegmentedFilter } from "@/components/ui/segmented-filter";
 import { AiLockedFooter } from "@/components/ui/enterprise-upsell";
 import type { AiLockReason } from "@/hooks/useAiLockReason";
 import { useFormatter } from "@/i18n";
-import { formatShortDateTimeIntl, formatTimeAgo } from "@/lib/relative-time";
+import { formatDayIntl, formatShortDateTimeIntl, formatTimeAgo } from "@/lib/relative-time";
 import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
 import { cn } from "@/lib/utils";
 import { activityText } from "./activity-text";
@@ -133,7 +133,7 @@ export function DoneForYouCard({ events, runs, digests, fleetRuns, aiLockReason,
     const s = point.subject;
     switch (s.kind) {
       case "event": {
-        const text = activityText(s.event, t_i18n);
+        const text = activityText(s.event, t_i18n, (iso) => formatDayIntl(intl, iso));
         return { title: text.title, detail: text.detail };
       }
       case "run": {
@@ -151,7 +151,7 @@ export function DoneForYouCard({ events, runs, digests, fleetRuns, aiLockReason,
   };
 
   const openPoint = (point: DfyPoint) => {
-    if (point.runId) navigate(`/runs/${point.runId}`, { state: { backTo: "/", backLabel: "Back to Command Center" } });
+    if (point.runId) navigate(`/operations/executions/${point.runId}`, { state: { backTo: "/", backLabel: "Back to Command Center" } });
   };
 
   const tip = (point: DfyPoint) => {

@@ -54,13 +54,14 @@ import json
 import logging
 import re
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, TypeGuard
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.llm.base import ChatMessage, retry_llm_call
+from app.llm.base import ChatMessage, retry_llm_call, told_not_to_retry
 from app.llm.cut_answers import answer_was_cut
 from app.llm.model_limits import resolve_provider_max_output_tokens
 from app.llm.provider_errors import api_error_message, error_status
@@ -71,6 +72,7 @@ from app.services.fleet_doc_findings import (
     GATES_PRINT_KEY,
     clean_findings,
     decided_points,
+    drop_bound_integrations,
     drop_contradicted,
     gates_print,
     member_key,
@@ -203,6 +205,11 @@ def describe_cron(cron: object, timezone: object = None) -> str:
 
 def runs_per_month(cron: object) -> int | None:
     """How many times *cron* fires in :data:`QUOTA_DAYS` days, capped at 100,000; None when unreadable."""
+    return cron_fires(cron, QUOTA_DAYS)
+
+
+def cron_fires(cron: object, days: int) -> int | None:
+    """How many times *cron* fires in *days* days from a fixed Monday, capped at 100,000; None when unreadable."""
     if not isinstance(cron, str) or not cron.strip():
         return None
     from datetime import UTC, datetime, timedelta
@@ -210,7 +217,7 @@ def runs_per_month(cron: object) -> int | None:
     from croniter import CroniterBadCronError, croniter
 
     start = datetime(2026, 1, 5, tzinfo=UTC)
-    end = start + timedelta(days=QUOTA_DAYS)
+    end = start + timedelta(days=days)
     try:
         itr = croniter(cron.strip(), start)
         count = 0
@@ -554,6 +561,15 @@ def automations_by_member(context: dict[str, Any]) -> dict[str, list[str]]:
         for key in (m.get("name"), m.get("agent")):
             if key:
                 out.setdefault(member_key(key), []).extend(n for n in names if n)
+    return out
+
+
+def integrations_by_member(context: dict[str, Any]) -> dict[str, list[str]]:
+    """Each member's bound provider keys (direct and template bindings), keyed by :func:`member_key` of its name."""
+    out: dict[str, list[str]] = {}
+    for use in context.get("tools") or []:
+        if isinstance(use, dict) and use.get("member"):
+            out.setdefault(member_key(use["member"]), []).extend(str(p) for p in use.get("integrations") or [] if p)
     return out
 
 
@@ -1236,7 +1252,12 @@ def output_budget(llm: object, model: str | None) -> int:
 
 
 def is_transient(exc: BaseException) -> bool:
-    """A provider failure worth asking again: a timeout, a dropped connection, a rate limit, a server error."""
+    """A provider failure worth asking again: a timeout, a dropped connection, a rate limit, a server error.
+
+    Not one the provider says not to retry (a spent quota, a long circuit-open).
+    """
+    if told_not_to_retry(exc):
+        return False
     if isinstance(exc, TimeoutError | ConnectionError):
         return True
     name = type(exc).__name__
@@ -1303,7 +1324,21 @@ class _Parts:
         self.findings = merge_findings(self.findings, other.findings)
         self.notes.extend(other.notes)
         self.pending.extend(other.pending)
-        self.failure = self.failure or other.failure
+        if other.failure is not None and (self.failure is None or told_not_to_retry(other.failure)):
+            self.failure = other.failure
+
+    @property
+    def refused(self) -> bool:
+        """The provider said not to retry (a spent quota): every other part would meet the same refusal."""
+        return self.failure is not None and told_not_to_retry(self.failure)
+
+    async def add_each_alone(self, keys: list[str], draft_one: Callable[[str], Awaitable[_Parts]]) -> None:
+        """*keys* drafted one at a time, the rest left pending unasked once the provider refuses."""
+        for index, key in enumerate(keys):
+            if self.refused:
+                self.pending.extend(keys[index:])
+                return
+            self.add(await draft_one(key))
 
 
 def _kept_as_written(text: str) -> str:
@@ -1371,24 +1406,30 @@ async def sections_in_parts(
                 notes=[n for n in got.notes if n.get("code") == "section_cut"],
             )
             missing = [k for k in wanted if k not in got.sections]
-            for key in missing:
-                out.add(await _one_section_markdown(llm, model, budget, context, {**current, **out.sections}, key))
+            await out.add_each_alone(
+                missing,
+                lambda key: _one_section_markdown(llm, model, budget, context, {**current, **out.sections}, key),
+            )
             return out
     except FleetDocDraftError:
         pass  # unreadable: split below
     except Exception as exc:
         if not _provider_failure(exc):
             raise
-        if len(wanted) == 1:
+        if len(wanted) == 1 or told_not_to_retry(exc):
             return _Parts(pending=list(wanted), failure=exc)
         out = _Parts()
-        for key in wanted:
-            out.add(await _one_section_markdown(llm, model, budget, context, {**current, **out.sections}, key))
+        await out.add_each_alone(
+            wanted, lambda key: _one_section_markdown(llm, model, budget, context, {**current, **out.sections}, key)
+        )
         return out
     if len(wanted) == 1:
         return await _one_section_markdown(llm, model, budget, context, current, wanted[0])
     half = len(wanted) // 2
     out = await sections_in_parts(llm, model, budget, context, current, wanted[:half])
+    if out.refused:
+        out.pending.extend(wanted[half:])
+        return out
     out.add(await sections_in_parts(llm, model, budget, context, {**current, **out.sections}, wanted[half:]))
     return out
 
@@ -1516,6 +1557,9 @@ async def draft_fleet_documentation(
     except Exception as exc:
         if not _provider_failure(exc):
             raise
+        if told_not_to_retry(exc):
+            # A spent quota: every part would be refused too.
+            raise FleetDocDraftError(failure_cause(exc)) from exc
         logger.info("Fleet documentation: one-call draft failed (%s), drafted in parts", api_error_message(exc))
 
     if draft is None:
@@ -1540,6 +1584,8 @@ async def draft_fleet_documentation(
             draft = await _missing_sections(llm, model, context, {**current, **draft.sections}, missing, draft, budget)
     # A finding the configuration contradicts is dropped before storage, whatever the model wrote (#10536).
     draft.findings = drop_contradicted(draft.findings, automations_by_member(context))
+    # A missing integration the member is bound to (directly or through a template binding) is dropped too.
+    draft.findings = drop_bound_integrations(draft.findings, integrations_by_member(context))
     if whole:
         # Every home member with an empty role label (computed, never the model's): fleets of any size alike.
         draft.role_findings = role_findings(context.get("members"))

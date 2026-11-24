@@ -176,6 +176,9 @@ def test_fleet_has_one_agent_per_role():
         "experimenter",
         "flow_lab",
         "memory_steward",
+        "openaev_checker",
+        "opencrq_checker",
+        "opencti_checker",
         "orchestrator",
         "quality_analyst",
     ]
@@ -198,7 +201,49 @@ def test_every_assignment_and_handover_names_a_fleet_agent():
 def test_assignment_keys_cover_every_schedule():
     from app.services.health.cycles import SCHEDULE_KEYS
 
-    assert set(SCHEDULE_KEYS) | {"investigation"} == set(fleet_seed.ASSIGNMENT_BY_KEY)
+    # The per-target assignments: an investigation, and each module checker's (#101 S14, S15).
+    checks = set(fleet_seed.CHECKS_KEY_BY_PROVIDER.values())
+    assert set(SCHEDULE_KEYS) | {"investigation"} | checks == set(fleet_seed.ASSIGNMENT_BY_KEY)
+
+
+@pytest.mark.parametrize("provider", ["opencti", "openaev", "opencrq"])
+def test_each_module_checker_writes_no_module_and_hands_nothing_over(provider: str) -> None:
+    """Sections 12.3 and 13.1: a checker carries no tool group that writes a module, hands
+    nothing over, has its playbook skill and its own checks assignment; only the
+    orchestrator delegates to it (the module round of section 13.2).
+
+    ``health_modules`` writes inside XTM One only (recommendations on findings, section 12.4).
+    """
+    from app.services.health.identity import CHECKER_ROLE_BY_PROVIDER
+
+    spec = next(s for s in fleet_seed.FLEET_AGENTS if s.role == CHECKER_ROLE_BY_PROVIDER[provider])
+    assert spec.slug == f"health-{provider}-checker"
+    assert spec.disable_chat and spec.handovers == ()
+    assert spec.skill_slugs == (f"health-{provider}-checks",)
+    assert set(spec.builtin_tool_ids) <= {"health_modules", fleet_seed.IMPROVEMENTS_GROUP}
+    assert not set(spec.builtin_tool_ids) & fleet_seed.NON_CONSENT_TOOL_GROUPS
+    delegators = [s.slug for s in fleet_seed.FLEET_AGENTS if (spec.slug, "delegate") in s.handovers]
+    assert delegators == [fleet_seed.ORCHESTRATOR_SLUG]
+    assert fleet_seed.ASSIGNMENT_BY_KEY[fleet_seed.CHECKS_KEY_BY_PROVIDER[provider]].agent_slug == spec.slug
+
+
+def test_the_opencti_checker_is_the_s14_module_analyst_renamed_in_place() -> None:
+    """Section 13.1: same row (former slug), same assignment row (former name)."""
+    spec = next(s for s in fleet_seed.FLEET_AGENTS if s.slug == "health-opencti-checker")
+    assert "health-module-analyst" in spec.former_slugs
+    assert "Platform Health module investigation" in fleet_seed.ASSIGNMENT_BY_KEY["opencti_checks"].former_names
+    assert fleet_seed.checks_assignment_names("module_analyst") == fleet_seed.ASSIGNMENT_BY_KEY["opencti_checks"].names
+    assert fleet_seed.checks_assignment_names("quality_analyst") == ()
+
+
+def test_every_playbook_skill_is_shipped() -> None:
+    from app.agents.builtin_agents import BUILTIN_SKILLS
+    from app.agents.seed import _resolve_seed_content
+
+    slugs = {s["slug"] for s in BUILTIN_SKILLS}
+    for provider in ("opencti", "openaev", "opencrq"):
+        assert f"health-{provider}-checks" in slugs
+        assert _resolve_seed_content("skill_content", f"health-{provider}-checks")
 
 
 def test_every_persona_file_exists():

@@ -319,6 +319,16 @@ class CreateAssignmentRequest(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def _validate_batch_window(self) -> CreateAssignmentRequest:
+        # A batch window on an event trigger only, 0 to 600 seconds.
+        from app.services.event_batching import window_error
+
+        error = window_error(self.trigger_type, self.trigger_config)
+        if error is not None:
+            raise ValueError(error)
+        return self
+
+    @model_validator(mode="after")
     def _validate_work_item_concurrency(self) -> CreateAssignmentRequest:
         # A work_item inbox runs 1 to 10 items in parallel.
         from app.services.assignment_dispatch import work_item_concurrency_error
@@ -632,6 +642,9 @@ class AssignmentRunResponse(_RunOutcome, _ShownAsRead):
     # iteration cap, the wall clock, the per-run budget, ... NULL when it
     # ended on its own terms (``AssignmentRun.stop_reason``).
     stop_reason: str | None = None
+    # Integrations whose calls failed authentication in this run (#1454):
+    # ``[{integration, status, first_tool, tools}]``; NULL when none did.
+    integration_auth_failures: list[dict[str, Any]] | None = None
     human_input_question: str | None = None
     human_input_response: str | None = None
     human_input_history: list | None = None
@@ -925,6 +938,8 @@ class AssignmentRunDetailResponse(_RunOutcome, _ShownAsRead):
     failure_determination: str | None = None
     # Why a completed run stopped early — see AssignmentRunResponse.
     stop_reason: str | None = None
+    # Integration auth failures of the run — see AssignmentRunResponse (#1454).
+    integration_auth_failures: list[dict[str, Any]] | None = None
     human_input_question: str | None = None
     human_input_response: str | None = None
     human_input_history: list | None = None

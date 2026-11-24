@@ -59,7 +59,9 @@ logger = logging.getLogger(__name__)
 
 #: What the cycle runner starts: one fleet-wide schedule per specialist, the
 #: per-target investigation, and the weekly digest.
-AssignmentKey = Literal["memory", "quality", "flows", "investigation", "digest"]
+AssignmentKey = Literal[
+    "memory", "quality", "flows", "investigation", "digest", "opencti_checks", "openaev_checks", "opencrq_checks"
+]
 
 #: Tool groups shipped by levels 3 and 8 (ids registered in ``builtin_tool_groups``).
 IMPROVEMENTS_GROUP: Final = "improvement_proposals"
@@ -140,6 +142,10 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
             ("health-quality-analyst", "delegate"),
             ("health-flow-lab", "delegate"),
             ("health-experimenter", "delegate"),
+            # The module round (#101 S15, dev-docs/platform-health.md section 13.2).
+            ("health-opencti-checker", "delegate"),
+            ("health-openaev-checker", "delegate"),
+            ("health-opencrq-checker", "delegate"),
         ),
         former_slugs=("concierge",),
     ),
@@ -184,6 +190,37 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
         icon="Scale",
         builtin_tool_ids=("health_experiments", "health_sandbox", "flow_lab", IMPROVEMENTS_GROUP),
         skill_slugs=("health-experimenter",),
+    ),
+    # One health checker per module (#101 S15, dev-docs/platform-health.md section 13.1).
+    # The OpenCTI checker is the S14 Module Analyst renamed in place, so its cycles,
+    # recommendations, spend rows and agentic findings keep their history.
+    FleetAgentSpec(
+        slug="health-opencti-checker",
+        former_slugs=("health-module-analyst",),
+        role="opencti_checker",
+        name="OpenCTI Health Checker",
+        description="Runs the OpenCTI health checks read-only, with evidence, and recommends on the module's findings.",
+        icon="Radar",
+        builtin_tool_ids=("health_modules", IMPROVEMENTS_GROUP),
+        skill_slugs=("health-opencti-checks",),
+    ),
+    FleetAgentSpec(
+        slug="health-openaev-checker",
+        role="openaev_checker",
+        name="OpenAEV Health Checker",
+        description="Runs the OpenAEV health checks read-only, with evidence, and recommends on the module's findings.",
+        icon="Radar",
+        builtin_tool_ids=("health_modules", IMPROVEMENTS_GROUP),
+        skill_slugs=("health-openaev-checks",),
+    ),
+    FleetAgentSpec(
+        slug="health-opencrq-checker",
+        role="opencrq_checker",
+        name="OpenCRQ Health Checker",
+        description="Runs the OpenCRQ health checks read-only, with evidence, and recommends on the module's findings.",
+        icon="Radar",
+        builtin_tool_ids=("health_modules", IMPROVEMENTS_GROUP),
+        skill_slugs=("health-opencrq-checks",),
     ),
 )
 
@@ -244,14 +281,48 @@ FLEET_ASSIGNMENTS: Final[tuple[FleetAssignmentSpec, ...]] = (
         prompt=(
             "List the Platform Health cycles closed since `since` and summarize them for administrators: "
             "consolidations, findings, experiments, proposals filed, applied and rolled back, budget spent, "
-            "and everything skipped with its reason. Use the cycles' own figures and statuses; a cycle that "
+            "and everything skipped with its reason. Add a Modules part for the module investigation cycles: "
+            "cycles run, recommendations attached, agentic findings opened and resolved, and the module checkers' "
+            "spend against their own ceiling; per module, give the check rounds of the week and the checks that "
+            "failed most exactly as the trigger's `modules` states them (say the part is unavailable when the "
+            "trigger carries `modules_unavailable`). Use the cycles' own figures and statuses; a cycle that "
             "is not completed is never reported as completed. Write in the language the trigger names (`language`)."
         ),
         show_in_digest=True,
         timeout_seconds=900,
         max_iterations=15,
     ),
+    # One cycle per registration (target type ``module``), started by the triggers of
+    # section 12.2 and the module round of section 13.2, never by a schedule of its own.
+    *(
+        FleetAssignmentSpec(
+            key=f"{module}_checks",  # type: ignore[arg-type]
+            agent_slug=f"health-{module}-checker",
+            name=f"Platform Health {label} checks",
+            # The S14 Module Analyst's assignment, renamed in place with its agent.
+            former_names=("Platform Health module investigation",) if module == "opencti" else (),
+            description=f"Runs the {label} health checks on one registration: daily, after its findings changed, or on demand.",
+            prompt=(
+                f"Run every check of your {label} health playbook on the registration the trigger names "
+                "(`target_id`, a platform registration), in order, through your read tools only: record each "
+                "check's verdict with the evidence you read, report a check whose tool you do not hold as not run "
+                "with its reason, and attach a recommendation to each open finding the evidence explains. Store "
+                "every verdict in one record_module_check_report call before you end. Never "
+                f"write to the module. {_REPORT}"
+            ),
+            timeout_seconds=1800,
+            max_iterations=30,
+        )
+        for module, label in (("opencti", "OpenCTI"), ("openaev", "OpenAEV"), ("opencrq", "OpenCRQ"))
+    ),
 )
+
+#: The seeded checks assignment of each module provider (section 13.1).
+CHECKS_KEY_BY_PROVIDER: Final[dict[str, AssignmentKey]] = {
+    "opencti": "opencti_checks",
+    "openaev": "openaev_checks",
+    "opencrq": "opencrq_checks",
+}
 
 ROLE_BY_SLUG: Final[dict[str, str]] = {spec.slug: spec.role for spec in FLEET_AGENTS}
 #: Former seed slug -> current slug (the Concierge's agents, until S1 of #101).
@@ -260,7 +331,25 @@ RENAMED_FLEET_AGENT_SLUGS: Final[dict[str, str]] = {
 }
 ASSIGNMENT_BY_KEY: Final[dict[str, FleetAssignmentSpec]] = {spec.key: spec for spec in FLEET_ASSIGNMENTS}
 
-_FLEET_DESCRIPTION: Final = "The platform's improvement fleet: memory, quality, flows and experiments."
+
+def checks_assignment_names(role: str | None) -> tuple[str, ...]:
+    """The seeded names of the checks assignment of the checker holding *role*; empty otherwise.
+
+    The S14 alias ``module_analyst`` reads as the OpenCTI checker, the row it was renamed to.
+    """
+    from app.services.health.identity import CHECKER_ROLE_BY_PROVIDER
+
+    if role == "module_analyst":
+        role = CHECKER_ROLE_BY_PROVIDER["opencti"]
+    for provider, checker_role in CHECKER_ROLE_BY_PROVIDER.items():
+        if checker_role == role:
+            return ASSIGNMENT_BY_KEY[CHECKS_KEY_BY_PROVIDER[provider]].names
+    return ()
+
+
+_FLEET_DESCRIPTION: Final = (
+    "The platform's improvement fleet: memory, quality, flows, experiments and module health checks."
+)
 
 
 async def _skill_ids_by_slug(db: AsyncSession, slugs: set[str]) -> dict[str, str]:
@@ -397,6 +486,7 @@ async def _ensure_assignment(db: AsyncSession, spec: FleetAssignmentSpec, agent:
         existing.show_in_digest = spec.show_in_digest
         existing.timeout_seconds = spec.timeout_seconds
         existing.max_iterations = spec.max_iterations
+        existing.ai_label = False
         existing.is_company_managed = True
         return False
     db.add(
@@ -410,6 +500,8 @@ async def _ensure_assignment(db: AsyncSession, spec: FleetAssignmentSpec, agent:
             trigger_config={},
             prompt=spec.prompt,
             enabled=True,
+            # Platform-seeded: no AI label prompt, so its items and notes carry no "[AI-generated]" prefix.
+            ai_label=False,
             show_in_digest=spec.show_in_digest,
             timeout_seconds=spec.timeout_seconds,
             max_iterations=spec.max_iterations,
@@ -470,6 +562,18 @@ async def _ensure_fleet(db: AsyncSession, agents: dict[str, Agent], owner_id: uu
     ).scalar_one_or_none()
     if member is not None and fleet.orchestrator_agent_id != orchestrator.id:
         await set_orchestrator(db, fleet, orchestrator.id)
+    # No generic weekly fleet health check on this fleet (#974): Platform Health
+    # checks itself, and the copy an earlier boot seeded (born off, never run)
+    # made the read-only fleet read "Not set up" forever.
+    from app.services.fleets import drop_fleet_health_check
+
+    await drop_fleet_health_check(db, orchestrator.id)
+    # Its About page (#974): written at seed and rewritten when the shipped text changes.
+    from app.agents.builtin_fleet_docs import PLATFORM_HEALTH_DOC, PLATFORM_HEALTH_STRUCTURED
+    from app.services.fleet_docs import seed_documentation
+
+    await db.flush()
+    await seed_documentation(db, fleet, PLATFORM_HEALTH_DOC, PLATFORM_HEALTH_STRUCTURED)
     return fleet
 
 

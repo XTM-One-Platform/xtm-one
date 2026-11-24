@@ -4521,6 +4521,30 @@ def unfinished_stop_reason(response: ChatResponse | None) -> str | None:
     return reason if reason in UNFINISHED_STOP_REASONS else None
 
 
+_OUTPUT_TOKEN_KEYS: tuple[str, ...] = ("output_tokens", "completion_tokens")
+
+
+def deadline_stop_without_output(response: ChatResponse | None) -> bool:
+    """The loop stopped on its wall clock before any model call produced output.
+
+    A run that starts late, with less of its deadline left than one model call
+    needs, goes straight to the forced-answer shortcut: its answer is the canned
+    ``FORCED_ANSWER_TIMEOUT_MESSAGE``, no model wrote a token of it. That is a
+    run the deadline never let start, not a completed one. Read off the run's
+    accumulated usage (every returned call merges its output tokens into it),
+    never off the text.
+    """
+    if getattr(response, "stop_reason", None) != DEADLINE_STOP_REASON:
+        return False
+    usage = getattr(response, "usage", None) or {}
+    produced = 0
+    for key in _OUTPUT_TOKEN_KEYS:
+        value = usage.get(key) if isinstance(usage, dict) else None
+        if isinstance(value, (int, float)):
+            produced += int(value)
+    return produced <= 0
+
+
 def _with_limit_stop(response: ChatResponse, limit_stop: str | None) -> ChatResponse:
     """Mark *response* with the loop limit it ended on, when it ended on one.
 
@@ -5087,6 +5111,24 @@ def collect_pending_wait_task_ids(messages: list[ChatMessage]) -> list[str]:
             if found:
                 return found
     return found
+
+
+def never_started_task_ids(live_ids: list[str], statuses: dict[str, str], answer: str) -> list[str]:
+    """The open children a tool-free final answer may leave behind, or ``[]``.
+
+    Non-empty only when every id of *live_ids* reads ``pending`` in *statuses*
+    (queued, never started: a running, unknown or unread child keeps the park)
+    and *answer* is a deliverable, not a "waiting for" narration. The run then
+    ends on its answer instead of parking on implicit waits for a child that
+    may not start within its budget; the child keeps running on its own.
+    """
+    if not live_ids or not (answer or "").strip():
+        return []
+    if any(statuses.get(tid) != "pending" for tid in live_ids):
+        return []
+    if _WAITING_NARRATION_RE.search(answer[-600:]):
+        return []
+    return list(live_ids)
 
 
 def collect_spawned_task_ids(messages: list[ChatMessage]) -> list[str]:
@@ -6699,17 +6741,98 @@ def _is_curation_stub(content: str) -> bool:
 #: back through :data:`_REFETCHABLE_STUB_RE`, derived from this same string so
 #: the writer and the matcher cannot drift). The loop breaker keys on it.
 #: ``{tool}`` is the tool's LLM-visible name, ``{chars}`` the cleared
-#: body's length with thousands separators.
+#: body's length with thousands separators, ``{target}`` what the call
+#: addressed (`` for path=a.py, offset_line=100``, :func:`_tool_call_target`)
+#: or empty: a model whose read windows were cleared is told WHICH window
+#: went, so it re-reads that one alone instead of every range of the file
+#: (gap reread-after-context-prune, run 3350c28d: the same windows read 2-3
+#: times after two resumes).
 _REFETCHABLE_STUB_TEMPLATE = (
-    "[Earlier {tool} result ({chars} chars) cleared to keep the working context "
-    "focused — it is stale and re-fetchable. Re-call the tool only if you still "
-    "need this exact data.]"
+    "[Earlier {tool} result{target} ({chars} chars) cleared to keep the working "
+    "context focused — it is stale and re-fetchable. Re-call the tool only if you "
+    "still need this exact data.]"
 )
 _REFETCHABLE_STUB_RE = re.compile(
     re.escape(_REFETCHABLE_STUB_TEMPLATE)
     .replace(re.escape("{tool}"), r"[^\n]+?")
+    .replace(re.escape("{target}"), r"(?: for [^\n\]]+?)?")
     .replace(re.escape("{chars}"), r"\d{1,3}(?:,\d{3})*")
 )
+
+#: The arguments that ADDRESS what a call read (a file, a window of it, a
+#: document, a page), in the order the stub names them. Generic names only:
+#: a body argument (content, code, query text) is never echoed into a stub.
+_TOOL_CALL_TARGET_KEYS = (
+    "path",
+    "file_id",
+    "document_id",
+    "url",
+    "repository",
+    "ref",
+    "symbol",
+    "section",
+    "key",
+    "offset_line",
+    "max_lines",
+    "offset",
+    "max_chars",
+    "page",
+)
+#: Ceiling on one value and on the whole target segment of a stub.
+_TOOL_CALL_TARGET_VALUE_MAX = 120
+_TOOL_CALL_TARGET_MAX = 240
+
+
+def _tool_call_target(arguments: object) -> str:
+    """`` for path=a.py, offset_line=100`` from a call's arguments, or ``""``.
+
+    Only the scalar arguments named in :data:`_TOOL_CALL_TARGET_KEYS`, each
+    on one line without ``]`` (the stub's terminator) and bounded, so the
+    segment always matches :data:`_REFETCHABLE_STUB_RE`.
+    """
+    if not isinstance(arguments, dict):
+        return ""
+    parts: list[str] = []
+    for key in _TOOL_CALL_TARGET_KEYS:
+        value = arguments.get(key)
+        if value is None or value == "" or isinstance(value, (dict, list, tuple, set)):
+            continue
+        flat = " ".join(str(value).split()).replace("]", ")")
+        if len(flat) > _TOOL_CALL_TARGET_VALUE_MAX:
+            flat = flat[: _TOOL_CALL_TARGET_VALUE_MAX - 3].rstrip() + "..."
+        parts.append(f"{key}={flat}")
+    if not parts:
+        return ""
+    segment = ", ".join(parts)
+    if len(segment) > _TOOL_CALL_TARGET_MAX:
+        segment = segment[: _TOOL_CALL_TARGET_MAX - 3].rstrip() + "..."
+    return f" for {segment}"
+
+
+def _tool_call_arguments_by_result(messages: list[ChatMessage]) -> dict[int, object]:
+    """Index of each tool result in *messages* -> the arguments of its call.
+
+    Paired in TRANSCRIPT ORDER, never through a global ``tool_call_id`` map
+    (``backend/app/tools/AGENTS.md``; :func:`collect_task_labels`): an id is
+    only unique within the response that minted it, so a result consumes the
+    oldest still-unanswered call carrying its id (FIFO per id). A result whose
+    call was pruned finds nothing pending and gets no entry.
+    """
+    pending: dict[str, deque[object]] = {}
+    found: dict[int, object] = {}
+    for index, m in enumerate(messages):
+        if m.role == "assistant" and m.tool_calls:
+            for tc in m.tool_calls:
+                call_id = getattr(tc, "id", None)
+                if call_id:
+                    pending.setdefault(str(call_id), deque()).append(getattr(tc, "arguments", None))
+            continue
+        if m.role != "tool":
+            continue
+        queue = pending.get(str(m.tool_call_id or ""))
+        if queue:
+            found[index] = queue.popleft()
+    return found
 
 
 def _is_refetchable_stub(content: str) -> bool:
@@ -7530,6 +7653,7 @@ def _clear_stale_tool_results(
     freed = 0
     cleared = 0
     budget_exceeded = False
+    call_arguments: dict[int, object] | None = None
     for position, idx in enumerate(reversed(tool_indices)):
         msg = messages[idx]
         body = msg.content or ""
@@ -7565,9 +7689,14 @@ def _clear_stale_tool_results(
             _drop_tool_result_files(msg, replace_content=stub)
         else:
             # The ONE stub that invites a re-call (``_is_refetchable_stub``):
-            # the loop breaker forgives the re-read it invites.
+            # the loop breaker forgives the re-read it invites. It names what
+            # the call addressed, so the re-read is that window alone.
+            if call_arguments is None:
+                call_arguments = _tool_call_arguments_by_result(messages)
             msg.content = _REFETCHABLE_STUB_TEMPLATE.format(
-                tool=msg.name or "tool", chars=f"{body_len:,}"
+                tool=msg.name or "tool",
+                target=_tool_call_target(call_arguments.get(idx)),
+                chars=f"{body_len:,}",
             )
         freed += body_len - len(msg.content or "")
         # The stub still occupies space in the live context; count it so the
@@ -11749,6 +11878,10 @@ async def run_agent_loop(
     # Wait pauses are not "acting" time: Stage-1 / wall-clock "stop exploring"
     # nudges must not fire because the parent spent five minutes parked.
     _wait_paused_total = 0.0
+    # Children already ``pending`` (queued, never started) at an implicit park
+    # of this run: a final answer is only allowed to leave them behind once
+    # they stayed ``pending`` through one whole park (#1661).
+    _parked_pending_ids: set[str] = set()
     _last_round_was_wait = False
     # One-shot: set at a wait-budget hand-off when an interactive user opened
     # this turn and the model re-waited on background tasks it did NOT spawn
@@ -14478,6 +14611,7 @@ async def run_agent_loop(
                 # Implicit wait (or a wait-budget hand-off) keeps the parent
                 # in the loop. No extra system-prompt text.
                 _live_spawned: list[str] = []
+                _spawn_statuses: dict[str, str] = {}
                 _spawned_ids = collect_spawned_task_ids(messages)
                 if _spawned_ids and wait_condition is not None:
                     try:
@@ -14499,6 +14633,30 @@ async def run_agent_loop(
                         ]
                 elif _spawned_ids:
                     _live_spawned = list(_spawned_ids)
+                # A final answer while every open child is still ``pending``
+                # (queued, never started) parks once, as before: a child is
+                # ``pending`` for the moments before a worker picks it up, and
+                # a delegating run stays open until its child finishes. When
+                # the same children are still ``pending`` after that whole
+                # park, the run ends on its answer instead of parking again:
+                # a child that never started may never start within this run's
+                # budget. They are left to run on their own and named on the
+                # response (``pending_task_ids``) and the iteration outcome.
+                _never_started = never_started_task_ids(_live_spawned, _spawn_statuses, response.content or "")
+                _first_park_pending: list[str] = []
+                if _never_started and not set(_never_started) <= _parked_pending_ids:
+                    _first_park_pending = _never_started
+                    _never_started = []
+                if _never_started:
+                    logger.info(
+                        "Agent loop iter %d: final answer with %d never-started "
+                        "background task(s); ending the run instead of parking",
+                        iteration + 1,
+                        len(_never_started),
+                    )
+                    response.pending_task_ids = list(_never_started)
+                    _iter_outcome["detached_task_ids"] = list(_never_started)
+                    _live_spawned = []
                 if (
                     _live_spawned
                     and _wait_definition is not None
@@ -14656,6 +14814,9 @@ async def run_agent_loop(
                         _wait_paused_total += _implicit_result.elapsed
                         _waive_wait_round(WAIT_TOOL_NAME)
                         _forget_reads_after_pause()
+                        # Only a park that really paused counts as the one
+                        # chance a never-started child gets to start.
+                        _parked_pending_ids.update(_first_park_pending)
                     # Suppress next-round nudges only when the park REALLY
                     # paused — a refused park (steered, already-done) spent no
                     # time, so budget / wall-clock warnings must still fire.

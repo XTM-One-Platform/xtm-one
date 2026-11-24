@@ -17,9 +17,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * Fleets (`/fleets`) - the fleets the user can see, a page of its own (#9301
  * N2c). It was the Fleets tab of Agentic Flow (`/flows/fleets`), so the
  * "Fleets" and "Agentic Flow" rows of the Agents group opened the same page;
- * one fleet opens on `/fleets/:fleetId/:tab?` (About by default). Every
- * former `/flows/fleets...` URL redirects here, query and hash kept
- * (`FleetsLegacyRedirect` in App.tsx).
+ * one fleet opens on `/fleets/:fleetId/:tab?` (About by default). The former
+ * addresses are not redirected (#797).
  *
  * The header is the shared `ListPageHeader` (#9301 N3, as the other list
  * pages of the menu): the h1 "Fleets" with the one-line definition of a fleet

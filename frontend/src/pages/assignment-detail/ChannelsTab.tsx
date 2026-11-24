@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { SettingsSwitchField } from "@/components/ui/settings-form";
 import { useUpdateAssignment } from "@/hooks/api/useAssignmentApi";
 import { useChannelBots, useChannelBotChannelsMap } from "@/hooks/api/useChannelBotApi";
@@ -166,7 +167,7 @@ export function ChannelsTab({ assignment, agent, canManage, onUpdate }: Channels
               {(() => {
                 const count = Object.keys(effectiveConfig).length;
                 return count > 0 && !editing
-                  ? <Badge variant="secondary" className="text-[9px] h-4 px-1.5">{count}</Badge>
+                  ? <CountBadge variant="secondary">{count}</CountBadge>
                   : null;
               })()}
               <Badge className="text-[9px] bg-feedback-error-primary/10 text-feedback-error-primary border border-feedback-error-primary/20 gap-1 ml-1"><AlertTriangle className="h-3 w-3" /> {t_i18n("Danger Zone")}</Badge>

@@ -38,7 +38,7 @@ import {
   OPS_ROW_CARD, OPS_ROW_HEIGHT, OpsChipStrip, OpsHoverCard, OpsMoreToken, OpsRowAction, OpsRowGrid, OpsToken, OpsUpdated,
 } from "@/components/ui/operations-list";
 import type { OpsFact } from "@/components/ui/operations-list";
-import { RunHumanInput, runHitlState } from "@/components/ui/run-human-input";
+import { RunPauseDecision, runPauseState } from "@/components/decisions/RunPauseDecision";
 import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import { STATUS_CONFIG, runStatusConfig } from "@/lib/constants";
@@ -74,7 +74,7 @@ export function assignmentRunLine(
   run: AssignmentRunDetail,
   t_i18n: Translate,
 ): { text: string; tone: "warning" | "error" | "neutral" } | null {
-  const { isApprovalPending, isFreeTextPending } = runHitlState(run);
+  const { isApprovalPending, isFreeTextPending } = runPauseState(run);
   if (isApprovalPending) return { text: t_i18n("Approval needed"), tone: "warning" };
   if (isFreeTextPending && run.human_input_question) {
     return { text: summaryPreview(run.human_input_question, 160), tone: "warning" };
@@ -247,7 +247,7 @@ export function AssignmentExecutionRow({
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
   const formatTime = useFormatTime();
-  const { isHitlPending } = runHitlState(run);
+  const { isHitlPending } = runPauseState(run);
   const [answering, setAnswering] = useState(false);
   const cfg = runStatusConfig(run);
   const StatusIcon = cfg.icon;
@@ -258,7 +258,7 @@ export function AssignmentExecutionRow({
   // The row shows the status, the line, the agent and the run id; "+N" counts the rest.
   const hiddenFacts = Math.max(0, facts.length - 3 - (line && line.tone !== "warning" ? 1 : 0));
   const canDelete = !run.is_company_managed || isAdmin;
-  const open = () => navigate(`/runs/${run.id}`);
+  const open = () => navigate(`/operations/executions/${run.id}`);
   const answerPanelId = `execution-answer-${run.id}`;
 
   return (
@@ -352,7 +352,7 @@ export function AssignmentExecutionRow({
         </div>
         {isHitlPending && answering && (
           <div id={answerPanelId} className="px-4 pb-3" onClick={(e) => e.stopPropagation()} data-testid="execution-answer">
-            <RunHumanInput
+            <RunPauseDecision
               run={run}
               showResolved={false}
               onRespond={onRespond}
@@ -379,7 +379,7 @@ export function FlowExecutionRow({ run, typeBadge }: { run: FlowRunSummary; type
   const errorTone = runErrorIsNeutral(run) ? "neutral" : "error";
   // The row shows the status, the trigger, the line and the run id; "+N" counts the rest.
   const hiddenFacts = Math.max(0, facts.length - 3 - (run.error || summary ? 1 : 0));
-  const open = () => navigate(`/flows/${run.flow_id}/builder?run=${run.id}`);
+  const open = () => navigate(`/flows/library/${run.flow_id}?run=${run.id}`);
   const trigger = t_i18n(run.trigger_type.replace("_", " "));
 
   return (

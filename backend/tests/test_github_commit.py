@@ -1003,10 +1003,11 @@ async def test_files_of_the_run_count_toward_the_size_bound(monkeypatch):
             message="x",
             files=[{"path": "a.png", "file_id": "f1"}, {"path": "b.md", "content": "123"}],
             branch="main",
-            file_context=_file_context({"f1": b"1234"}),
+            file_context=_file_context({"f1": b"1234567"}),
         )
 
-    assert "7 bytes, over the 6" in result
+    # A file of the run alone over the cap fits no split commit (#764: a set over it otherwise splits).
+    assert result.startswith("Error: file 'f1' is") and "upload limit of a GitHub commit" in result
     assert fake.calls == []
 
 
@@ -1954,3 +1955,89 @@ async def test_a_single_checkout_file_over_the_cap_is_refused_before_any_request
     )
     assert fake.calls == []
     assert sink.advanced == []
+
+
+@pytest.mark.asyncio
+async def test_a_files_change_set_over_the_cap_lands_as_consecutive_signed_commits():
+    # #764: files[] over the byte cap of one signed commit takes the split path from_checkout uses.
+    commit, _ = _commit_tool()
+    fake = _CountingGitHub()
+    files = [
+        {"path": "src/app.py", "content": "new\n"},
+        {"path": "src/en.json", "content": "e" * 5},
+        {"path": "src/ja.json", "content": "j" * 8},
+    ]
+    with patch(_SAFE_REQUEST, new=fake), patch.object(contents, "_MAX_COMMIT_CONTENT_BYTES", 10):
+        result = await commit(repo="acme/app", message="feat(app): x (#1)", files=files, branch="feat/x")
+
+    assert isinstance(result, str) and result.startswith("Committed the change set to branch 'feat/x'"), result
+    assert [_committed_paths(c) for c in fake.commits] == [["src/app.py", "src/en.json"], ["src/ja.json"]]
+    assert "Part 2 of 2" in fake.commits[1]["message"]["body"]
+    # The target moves once, to the last part, and the scratch branch is dropped.
+    assert fake.urls("patch") == [f"{API}/git/refs/heads/feat/x"]
+    assert fake.payload("patch", f"{API}/git/refs/heads/feat/x") == {"sha": "2" * 40, "force": False}
+    assert len(fake.urls("delete")) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_split_files_commit_of_a_checkout_file_moves_its_record_to_the_last_part():
+    # #766 review: a workspace_path file of a checkout committed through the split path
+    # moves its record as the single-commit path does, so a later from_checkout sees no overlap.
+    commit, _ = _commit_tool()
+    sink = _FilesAdvanceSink({"src/ja.json": b"j" * 8})
+    fake = _CountingGitHub()
+    files = [
+        {"path": "src/app.py", "content": "new\n"},
+        {"path": "src/en.json", "content": "e" * 5},
+        {"path": "src/ja.json", "file_id": "w1"},
+    ]
+    with (
+        patch(_SAFE_REQUEST, new=fake),
+        patch.object(contents, "current_workspace", return_value=sink),
+        patch.object(contents, "_MAX_COMMIT_CONTENT_BYTES", 10),
+    ):
+        result = await commit(
+            repo="acme/app",
+            message="feat(app): x (#1)",
+            files=files,
+            branch="feat/x",
+            file_context=_workspace_file_context("w1", "app/src/ja.json", b"j" * 8),
+        )
+
+    assert isinstance(result, str) and result.startswith("Committed the change set to branch 'feat/x'"), result
+    assert len(fake.commits) == 2
+    assert f"Checkout record moved to {'2' * 8} by files." in result
+    [moved] = sink.files_advanced
+    assert (moved["repository"], moved["branch"], moved["parent"], moved["commit"]) == (
+        "acme/app",
+        "feat/x",
+        TIP,
+        "2" * 40,
+    )
+    assert moved["written"] == {"app/src/ja.json": ("src/ja.json", b"j" * 8)}
+    assert moved["committed"] == ["src/app.py", "src/en.json", "src/ja.json"]
+    assert sink.advanced == []
+
+
+@pytest.mark.asyncio
+async def test_a_files_change_set_over_the_cap_with_a_single_file_too_large_is_refused():
+    commit, _ = _commit_tool()
+    fake = _CountingGitHub()
+    files = [{"path": "src/app.py", "content": "new\n"}, {"path": "src/ja.json", "content": "j" * 11}]
+    with patch(_SAFE_REQUEST, new=fake), patch.object(contents, "_MAX_COMMIT_CONTENT_BYTES", 10):
+        result = await commit(repo="acme/app", message="x", files=files, branch="feat/x")
+
+    assert result == (
+        "Error: src/ja.json is 11 bytes, over the 10 one signed commit may carry, so no split can commit it; "
+        "nothing was committed."
+    )
+    assert fake.commits == []
+    assert fake.urls("patch") == []
+
+
+def test_split_files_change_set_keeps_the_refusal_for_an_edits_entry():
+    staged = [("a.py", "x" * 8, None), ("b.py", contents._Edits([]), None)]
+    with patch.object(contents, "_MAX_COMMIT_CONTENT_BYTES", 5):
+        refused = contents._split_files_change_set(staged, 8)
+
+    assert isinstance(refused, str) and "an 'edits' entry cannot be split" in refused

@@ -27,10 +27,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *   /fleets/:fleetId/operations/:list?    Operations (runs when no list)
  *   /fleets/:fleetId/roi                  ROI (managers only)
  *
- * The links written before (`?view=<tab>`, `?ops=<list>`, `?mode=flow`,
- * `?view=graph&mode=flow`) are read once by `legacyFleetLocation` and
- * replaced by their path; an unknown tab or list lands on something that
- * exists (About, the runs).
+ * The former query links (`?view=<tab>`, `?ops=<list>`, `?mode=flow`) are not
+ * read: no redirect (#797). An unknown tab segment is not found.
  */
 
 export type FleetView = "graph" | "flow" | "about" | "members" | "approval" | "schedule" | "roi" | "operations";
@@ -66,9 +64,6 @@ const FLEET_VIEW_SEGMENTS = {
   roi: "roi",
 } as const satisfies Record<FleetView, string>;
 
-/** The views the legacy `?view=` named. */
-const LEGACY_VIEWS: readonly FleetView[] = ["graph", "flow", "schedule", "members", "approval", "roi", "about"];
-
 /** The view a fleet opens on: its first tab (Sam, 8 Nov 2026). */
 export const FLEET_DEFAULT_VIEW: FleetView = "about";
 
@@ -97,36 +92,6 @@ export function fleetViewPath(fleetId: string, view: FleetView, list?: FleetOpsL
   if (view === FLEET_DEFAULT_VIEW) return base;
   if (view === "operations") return `${base}/operations/${list ?? "runs"}`;
   return `${base}/${FLEET_VIEW_SEGMENTS[view]}`;
-}
-
-/**
- * The view a legacy query named, or null when it names none: `?ops=<list>`
- * (Operations), `?view=<tab>`, the Graph tab's former switch
- * `?view=graph&mode=flow` and `?mode=flow` (Data flow, #9829 / #9980).
- */
-export function readLegacyFleetView(params: URLSearchParams): FleetView | null {
-  if (params.has("ops")) return "operations";
-  const view = params.get("view");
-  if ((view === null || view === "graph") && params.get("mode") === "flow") return "flow";
-  if (view === null) return null;
-  return LEGACY_VIEWS.find((v) => v === view) ?? FLEET_DEFAULT_VIEW;
-}
-
-/**
- * Where a legacy fleet link goes: its path and the query left once `view`,
- * `ops` and `mode` are taken out (the lists' filters and `?window=` kept).
- * Null when the query names no view: nothing to redirect.
- */
-export function legacyFleetLocation(fleetId: string, params: URLSearchParams): string | null {
-  const view = readLegacyFleetView(params);
-  if (view === null) return null;
-  const list = view === "operations" ? readFleetOpsList(params.get("ops")) : undefined;
-  const rest = new URLSearchParams(params);
-  for (const key of ["view", "ops", "mode"]) rest.delete(key);
-  // A list embedded in Operations owned `?view=` (the work items' Stale / Scheduled segment): kept.
-  if (view === "operations" && params.get("view")) rest.set("view", params.get("view") as string);
-  const query = rest.toString();
-  return `${fleetViewPath(fleetId, view, list)}${query ? `?${query}` : ""}`;
 }
 
 /**

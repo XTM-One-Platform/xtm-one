@@ -35,13 +35,15 @@ The provider is split by domain:
 * ``threats``      - the threat catalog, threats relevant to a risk
                      scenario, and threats citing a CVE.
 * ``treatment``    - risk treatment plans and budget reviews, with their
-                     simulated loss reduction and return.
+                     simulated loss reduction and return; creates and
+                     updates a plan and its control moves (CTEM-18).
 * ``control_validation`` - control posture proven by attack simulations.
 * ``dashboard``    - the risk dashboard (exposure, tolerance, top controls,
                      active threats).
 * ``connectors``   - connector health and syncs.
 
-The tools of the last six modules are read-only.
+The tools of the last six modules are read-only, except the treatment plan
+writes of ``treatment``.
 
 Token format passed by the dispatcher: ``base_url||api_token`` (the
 ``extra_config`` base_url is prepended by ``_get_token`` in
@@ -57,6 +59,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from app.core.module_versions import RegisteredVersionFn
 from app.integrations.http import parse_compound_token
 from app.services.integration_read_only import withhold_tools
 from app.tools.base import CallableToolExecutor, ToolDefinition, ToolResult
@@ -79,6 +82,7 @@ from .crq import register as register_crq
 from .dashboard import register as register_dashboard
 from .findings import register as register_findings
 from .frameworks import register as register_frameworks
+from .health_reads import register as register_health_reads
 from .mitre import register as register_mitre
 from .ops import register as register_ops
 from .procedure_manifest import INSTANCE_LABEL, ManifestProbe, ProbeLater, hidden_refusal
@@ -153,7 +157,11 @@ def _withhold_unserved_tools(
 
 
 def build_tools(
-    token: str, executor: CallableToolExecutor, **_kwargs: Any
+    token: str,
+    executor: CallableToolExecutor,
+    *,
+    registered_version_fn: RegisteredVersionFn | None = None,
+    **_kwargs: Any,
 ) -> list[ToolDefinition]:
     """Build OpenCRQ integration tools.
 
@@ -163,6 +171,8 @@ def build_tools(
     serve; ``None``: there is none, every tool is built and no input is checked;
     :data:`~.procedure_manifest.PROBE`: each call reads the manifest first, once
     per build. Without the keyword every tool is built and nothing is ever probed.
+    ``registered_version_fn`` (injected for an integration a registration owns) reads
+    the version XTM One registered, named beside ``get_opencrq_platform_version``'s answer.
     """
     base_url, api_token = parse_compound_token(token, 2)
     # Normalise exactly once so all downstream uses (tRPC endpoints,
@@ -183,7 +193,9 @@ def build_tools(
         return []
 
     tools: list[ToolDefinition] = []
-    tools += register_frameworks(base_url, headers, executor)
+    tools += register_frameworks(
+        base_url, headers, executor, registered_version_fn=registered_version_fn
+    )
     tools += register_assessments(base_url, headers, executor)
     tools += register_risk(base_url, headers, executor)
     tools += register_crq(base_url, headers, executor)
@@ -197,6 +209,7 @@ def build_tools(
     tools += register_control_validation(base_url, headers, executor)
     tools += register_dashboard(base_url, headers, executor)
     tools += register_connectors(base_url, headers, executor)
+    tools += register_health_reads(base_url, headers, executor)
     if "opencrq_manifest" in _kwargs:
         manifest = _kwargs["opencrq_manifest"]
         # One probe per build: what the build's tools and, through the headers, every call's field check read the manifest from.

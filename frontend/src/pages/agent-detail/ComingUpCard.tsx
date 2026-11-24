@@ -21,6 +21,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * Its entries are the Schedule view's own rows, so an entry reads the
  * same here and there.
  */
+import { workItemPath } from "@/lib/task-routes";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, CalendarClock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -90,7 +91,7 @@ export function ComingUpCard({ agent }: { agent: Agent }) {
                 item={entry.item}
                 nowMs={nowMs}
                 zone={zone}
-                onOpen={() => navigate(`/operations/work-items?item=${entry.item.id}`)}
+                onOpen={() => navigate(workItemPath(entry.item.id))}
               />
             ) : (
               <ScheduleRow
@@ -98,7 +99,7 @@ export function ComingUpCard({ agent }: { agent: Agent }) {
                 s={entry.schedule}
                 nowMs={nowMs}
                 zone={zone}
-                onClick={() => navigate(`/assignments/${entry.schedule.assignment_id}`)}
+                onClick={() => navigate(`/agents/assignments/${entry.schedule.assignment_id}`)}
               />
             ),
           )

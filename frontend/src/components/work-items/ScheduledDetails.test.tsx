@@ -122,7 +122,7 @@ describe("the scheduled marker", () => {
     );
     expect(screen.getByText('{"message_id": "1700000000000"}')).toBeTruthy();
     const link = screen.getByText("View the run").closest("a");
-    expect(link?.getAttribute("href")).toBe("/runs/99999999-8888-7777-6666-555555555555");
+    expect(link?.getAttribute("href")).toBe("/operations/executions/99999999-8888-7777-6666-555555555555");
   });
 
   it("keeps the link token on a link in the toned outcome", () => {

@@ -18,6 +18,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * Sources - is read-only everywhere else and changed from its workspace.
  * `link` is off where the badge sits inside another link (a list card).
  */
+import { workspacePath } from "@/lib/task-routes";
 import { FolderKanban } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -51,7 +52,7 @@ export function ManagedByWorkspaceBadge({
   return (
     <Tip content={`${managedBy}. ${t_i18n("Read-only here: its documents and sources are changed from the workspace.")}`}>
       {link ? (
-        <Link to={`/workspaces/${workspace.id}`} className="rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-focus">
+        <Link to={workspacePath(workspace.id)} className="rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-focus">
           {badge}
         </Link>
       ) : (

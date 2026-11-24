@@ -5,22 +5,26 @@
 # and read the diff before committing it: every added line is a tool that
 # will run unattended on every deployment, including scheduled runs nobody
 # is watching. Tools held back by hand live in HAND_GATED, not here.
-#
-# 128 tools; 52 read-classified tools deliberately held back.
+# No count in this header: a count line changes with every added tool and
+# made every two tool PRs conflict on it; the diff of the body is the count.
 
 openaev:export_openaev_scenario
 openaev:full_text_search_openaev
 openaev:get_openaev_asset
 openaev:get_openaev_asset_group
 openaev:get_openaev_attack_pattern
+openaev:get_openaev_data_health
+openaev:get_openaev_error_rate
 openaev:get_openaev_exercise
 openaev:get_openaev_injector_contract
 openaev:get_openaev_payload
+openaev:get_openaev_platform_health
 openaev:get_openaev_run_scope
 openaev:get_openaev_scenario
 openaev:get_openaev_team
 openaev:get_openaev_vulnerability
 openaev:list_openaev_domains
+openaev:list_openaev_expectations_due
 openaev:list_openaev_kill_chain_phases
 openaev:list_openaev_tags
 openaev:query_openaev_analytics
@@ -41,6 +45,7 @@ openaev:search_openaev_scenarios
 openaev:search_openaev_teams
 opencrq:get_opencrq_asset_posture
 opencrq:get_opencrq_attack_outcome
+opencrq:get_opencrq_attack_path_reach
 opencrq:get_opencrq_budget_review
 opencrq:get_opencrq_compliance_assessment
 opencrq:get_opencrq_control_capability
@@ -50,7 +55,9 @@ opencrq:get_opencrq_crq_run
 opencrq:get_opencrq_crq_settings
 opencrq:get_opencrq_crq_what_if
 opencrq:get_opencrq_cve
+opencrq:get_opencrq_cve_exploitation
 opencrq:get_opencrq_cve_finding
+opencrq:get_opencrq_data_health
 opencrq:get_opencrq_evidence
 opencrq:get_opencrq_financial_profile
 opencrq:get_opencrq_financial_summary
@@ -60,6 +67,8 @@ opencrq:get_opencrq_group
 opencrq:get_opencrq_job
 opencrq:get_opencrq_loss_driver
 opencrq:get_opencrq_mitre_technique
+opencrq:get_opencrq_organization
+opencrq:get_opencrq_platform_health
 opencrq:get_opencrq_platform_rbac
 opencrq:get_opencrq_platform_version
 opencrq:get_opencrq_risk_dashboard
@@ -115,20 +124,30 @@ opencrq:list_opencrq_users
 opencrq:search_opencrq_cves
 opencrq:search_opencrq_mitre_techniques
 opencti:get_opencti_container_full
+opencti:get_opencti_data_health
 opencti:get_opencti_draft_info
 opencti:get_opencti_entity
 opencti:get_opencti_entity_history
 opencti:get_opencti_entity_stats
+opencti:get_opencti_error_rate
+opencti:get_opencti_licence
+opencti:get_opencti_managers
+opencti:get_opencti_platform_queues
 opencti:get_opencti_platform_version
 opencti:get_opencti_relationship
 opencti:get_opencti_top_related
+opencti:list_opencti_background_tasks
 opencti:list_opencti_capabilities
+opencti:list_opencti_connector_states
 opencti:list_opencti_drafts
 opencti:list_opencti_entities
+opencti:list_opencti_feed_states
 opencti:list_opencti_labels
 opencti:list_opencti_markings
 opencti:list_opencti_observables
+opencti:list_opencti_playbook_states
 opencti:list_opencti_relationships
+opencti:list_opencti_stream_consumers
 opencti:list_opencti_subtypes
 opencti:query_opencti_activity
 opencti:query_opencti_catalog

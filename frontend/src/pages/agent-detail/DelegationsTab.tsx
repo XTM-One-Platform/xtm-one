@@ -429,7 +429,7 @@ function DelegationCard({
                   className="gap-1.5 content-compact"
                   onClick={(e) => {
                     e.stopPropagation();
-                    navigate(`/runs/${assignmentRunId}`);
+                    navigate(`/operations/executions/${assignmentRunId}`);
                   }}
                 >
                   <ExternalLink className="h-3 w-3" />

@@ -51,6 +51,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.agents.fleet_opt_in import SEEDED_FLEET_OPT_IN
+from app.agents.gate_answered import gate_answered_assignment
 
 ORCHESTRATOR = "openaev-detection-desk-orchestrator"
 GAP_ANALYST = "openaev-coverage-gap-analyst"
@@ -64,6 +65,8 @@ STATE_KEY = "openaev:detection-desk:state"
 RETEST_PREFIX = "openaev:detection-desk:retest:"
 #: Work-item key prefix of the remediation items (one per gap).
 REMEDIATION_PREFIX = "openaev:detection-desk:gap:"
+#: Work-item key prefix of the launch approvals the fleet files for a person (#1388).
+LAUNCH_PREFIX = "openaev:detection-desk:launch:"
 
 #: Existing agents the fleet works with; connected, never members.
 SHARED_AGENTS: tuple[str, ...] = (
@@ -256,7 +259,8 @@ DETECTION_DESK_AGENTS: list[dict[str, Any]] = [
         "icon": "Gauge",
         "output_schema": _REPORT_SCHEMA,
         "tags": ["builtin", "openaev", "detection", "fleet"],
-        "builtin_tool_ids": ["generate_file"],
+        # shared_state: the open gaps it reports are read from openaev:detection-desk:state (#1631).
+        "builtin_tool_ids": ["shared_state", "generate_file"],
         "integration_template_bindings": ["openaev"],
     },
 ]
@@ -264,7 +268,7 @@ DETECTION_DESK_AGENTS: list[dict[str, Any]] = [
 _COMMON = {
     "agent_slug": ORCHESTRATOR,
     **SEEDED_FLEET_OPT_IN,
-    "ai_label": True,
+    "ai_label": False,
     "notify_on_complete": False,
     "show_in_digest": True,
     "max_iterations": 150,
@@ -310,8 +314,9 @@ DETECTION_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
         "prompt": (
             "Weekly validation plan. Read the organization context, the open gaps in shared state "
             f"{STATE_KEY} and the OpenAEV threat arsenal. Have the scenarios that cover the techniques "
-            "with no recent result built or reused against the crown jewel assets, and propose each "
-            "launch as an approval: a launch waits for a person. Check every collector for results in "
+            "with no recent result built or reused against the primary assets, and propose each "
+            f"launch as an approval keyed {LAUNCH_PREFIX} followed by the scenario id: a launch waits "
+            "for a person. Check every collector for results in "
             "the last 14 days and name the silent ones. Answer with the run JSON."
         ),
     },
@@ -335,11 +340,23 @@ DETECTION_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
         "trigger_config": {"correlation_prefix": RETEST_PREFIX},
         "prompt": (
             "A re-test is due for the gap in the work item below. Propose the re-run of the "
-            "simulation (or the atomic test) that found it as an approval: a launch waits for a "
-            f"person. Record the re-test in shared state {STATE_KEY}; the gap closes only when the "
+            "simulation (or the atomic test) that found it as an approval keyed "
+            f"{LAUNCH_PREFIX} followed by the scenario id: a launch waits for a person. Record the "
+            f"re-test in shared state {STATE_KEY}; the gap closes only when the "
             "re-run result shows the control. Answer with the run JSON."
         ),
     },
+    gate_answered_assignment(
+        _COMMON,
+        prefixes=(LAUNCH_PREFIX,),
+        inherit_switch_from="Simulation finished",
+        description="A person answered a launch approval: launch the simulation, or record the refusal.",
+        apply=(
+            "Approved: launch exactly the simulation the approval named, and record it in shared "
+            f"state {STATE_KEY}; its results come back through Simulation finished. Rejected or "
+            "deferred: record the decision and the reason there. Answer with the run JSON."
+        ),
+    ),
 ]
 
 DETECTION_DESK_FLEET: dict[str, Any] = {

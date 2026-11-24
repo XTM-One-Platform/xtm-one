@@ -269,6 +269,18 @@ def build_builtin_tool_member_catalog(*, include_disabled: bool = False) -> dict
     ua_defs, _ = build_user_admin_tools(user_id=None, caller_is_admin=False)
     catalog["user_admin"] = _extract(ua_defs)
 
+    # Read-only CTEM signals and cases (#1337), from the real builder.
+    from app.services.builtin_tools import build_ctem_read_tools
+
+    cr_defs, _ = build_ctem_read_tools(user_id="", agent_id="")
+    catalog["ctem_read"] = _extract(cr_defs)
+
+    # CTEM administrator repairs (#1778), from the real builder.
+    from app.services.builtin_tools import build_ctem_repair_tools
+
+    crp_defs, _ = build_ctem_repair_tools(user_id="")
+    catalog["ctem_repair"] = _extract(crp_defs)
+
     # Memory Steward (#8258): every call checks the work is Platform Health's.
     from app.services.builtin_tools import build_memory_steward_tools
 
@@ -283,6 +295,10 @@ def build_builtin_tool_member_catalog(*, include_disabled: bool = False) -> dict
     from app.services.builtin_tools import build_flow_lab_tools
 
     catalog["flow_lab"] = _extract(build_flow_lab_tools("")[0])
+    # Module Analyst (#101 S14a-2b): same, one session per call.
+    from app.services.builtin_tools.health_modules import build_health_module_tools
+
+    catalog["health_modules"] = _extract(build_health_module_tools("")[0])
 
     # Fleets (#7030): every call opens its own session and loads the caller.
     from app.services.builtin_tools import build_fleet_tools

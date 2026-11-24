@@ -89,6 +89,67 @@ async def test_the_browser_tool_names_the_missing_api_and_the_alternatives(monke
     assert "Use get_content or screenshot instead." in result.content
 
 
+async def test_a_selector_outlines_the_first_element_it_matches(monkeypatch):
+    region = SimpleNamespace(aria_snapshot=AsyncMock(return_value=OUTLINE))
+    matched = SimpleNamespace(first=region)
+    session = _install_session(monkeypatch, matched)
+
+    result = await browser_tool.browser_snapshot("agent:conv", "main")
+
+    assert result == OUTLINE
+    session.page.locator.assert_called_once_with("main")
+    region.aria_snapshot.assert_awaited_once_with(timeout=browser_tool.SNAPSHOT_SELECTOR_TIMEOUT_MS)
+
+
+async def test_a_selector_with_nothing_to_outline_names_it(monkeypatch):
+    region = SimpleNamespace(aria_snapshot=AsyncMock(return_value=""))
+    _install_session(monkeypatch, SimpleNamespace(first=region))
+
+    result = await browser_tool.browser_snapshot("agent:conv", "[role=dialog]")
+
+    assert result == "No accessibility tree available for '[role=dialog]' on this page."
+
+
+async def test_the_browser_tool_passes_the_selector_to_the_snapshot(monkeypatch):
+    region = SimpleNamespace(aria_snapshot=AsyncMock(return_value=OUTLINE))
+    session = _install_session(monkeypatch, SimpleNamespace(first=region))
+    _defs, executor = build_browser_tool("agent:conv")
+
+    result = await executor.execute_tool(
+        ToolCall(id="call-1", name="browser", arguments={"action": "snapshot", "selector": "nav"})
+    )
+
+    assert result.content == OUTLINE
+    session.page.locator.assert_called_once_with("nav")
+
+
+def test_a_short_outline_is_answered_whole():
+    assert browser_tool.bound_snapshot(OUTLINE, scope="the page") == OUTLINE
+
+
+def test_a_long_outline_is_cut_at_a_line_and_names_the_selector():
+    line = '- link "Integration":\n'
+    outline = line * 5_000  # about 110,000 characters, a whole catalog page
+
+    result = browser_tool.bound_snapshot(outline, scope="the page", limit=1_000)
+
+    head, _, notice = result.partition("\n\n[")
+    assert len(head) <= 1_000
+    assert head.endswith('"Integration":')
+    assert f"of {len(outline):,} characters" in notice
+    assert "pass selector" in notice
+
+
+async def test_the_page_outline_is_bounded(monkeypatch):
+    outline = '- link "Integration":\n' * 5_000
+    _install_session(monkeypatch, SimpleNamespace(aria_snapshot=AsyncMock(return_value=outline)))
+
+    result = await browser_tool.browser_snapshot("agent:conv")
+
+    assert len(result) < browser_tool.MAX_PAGE_CONTENT_CHARS + 300
+    assert "[Snapshot of the page truncated at" in result
+
+
 def test_the_installed_playwright_ships_the_api_the_snapshot_reads():
     """Tripwire for a Playwright bump: the call above must exist and take no required argument."""
     async_api = pytest.importorskip("playwright.async_api")

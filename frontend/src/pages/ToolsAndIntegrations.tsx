@@ -72,30 +72,30 @@ export default function ToolsAndIntegrations() {
       isLoading: integrations.isLoading,
       detailTo: (item) => `/integrations/${item.id}`,
     },
-    "/browser-profiles": {
+    "/connections": {
       /* Created from a dialog on the list page, like variables. */
-      createTo: "/browser-profiles?new=1",
+      createTo: "/connections?new=1",
       requiresAi: false,  // a saved sign-in is managed with AI off
       description: "Saved sign-ins to web applications: the agents you give one browse signed in, without seeing the credentials.",
       items: browserProfiles.data?.map((p) => ({ id: p.id, name: p.name, updated_at: p.updated_at ?? p.created_at ?? "" })),
       isLoading: browserProfiles.isLoading,
     },
-    "/variables": {
+    "/connections/variables": {
       /* Variables are created from a dialog on the list page rather than a
          route of their own, so the card deep-links that dialog open. */
-      createTo: "/variables?new=1",
+      createTo: "/connections/variables?new=1",
       gatedCreate: true,
       requiresAi: false,  // custom variables are not AI
       description: "Named values reused across prompts, tools and integrations instead of hard-coded strings.",
       items: variables.data,
       isLoading: variables.isLoading,
     },
-    "/relays": {
+    "/connections/relays": {
       requiresAi: false,  // relays carry integration traffic, not AI
       description: "Pull-based relays that reach the services inside your networks, with no inbound flow.",
       items: relayGroups.data?.map((g) => ({ id: g.id, name: g.name, updated_at: g.updated_at ?? g.created_at ?? "" })),
       isLoading: relayGroups.isLoading,
-      detailTo: (item) => `/relays/${item.id}`,
+      detailTo: (item) => `/connections/relays/${item.id}`,
     },
   });
 

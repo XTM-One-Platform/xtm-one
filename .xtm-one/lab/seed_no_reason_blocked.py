@@ -8,7 +8,7 @@ produce the legacy state ``blocked_why`` answers ``missing`` for. This writes, t
 ``blocked_on_refs``, no ``blocked_reason`` and no ``needs_human``, with no owner agent (so no inbox
 dispatches them), idempotent by correlation key:
 
-* ``operations``: unscoped, listed by ``/operations/work-items``;
+* ``operations``: unscoped, listed by ``/tasks/work-items``;
 * ``fleet``: filed in the workspace of the fleet given (the lab's locked fleet) with no owner, so
   ``?fleet=<id>`` keeps it (``fleet_work_items_clause``) and the fleet's Operations > Work items
   list renders the chip too. Left out when no fleet is given.

@@ -48,7 +48,8 @@ frontend/src/
 │   ├── Work.tsx             ← /work (hub: what agents PRODUCE: operations, presentations, files)
 │   ├── AgentStudio.tsx      ← /agent-studio (hub: what agents are MADE OF: knowledge, prompts, templates, skills)
 │   ├── ToolsAndIntegrations.tsx ← /tools-and-integrations (hub: what agents ACT THROUGH: MCP servers first, then tools, integrations, variables)
-│   ├── Operations.tsx       ← /operations/:tab? (shell: Executions = TaskHistory, BackgroundTasks, operations/ tabs; `/tasks`, `/background-tasks`, `/work-items`, `/workspaces` redirect here)
+│   ├── Operations.tsx       ← /operations/<tab> (what is running or past: Executions = TaskHistory, BackgroundTasks, Shared State, Worksets)
+│   ├── Tasks.tsx            ← /tasks/<tab> (what to do and follow: Work Items `/tasks/work-items[/<id>]`, Value `/tasks/value[/<table>]`, Workspaces `/tasks/workspaces[/<id>]`; links built by lib/task-routes.ts, no alias of a former path)
 │   ├── operations/          ← tabs.ts (the tab list), WorkItemsTab, SharedStateTab, WorksetsTab, WorkspacesTab
 │   ├── TaskHistory.tsx      ← The Executions tab of /operations
 │   ├── Presentations.tsx    ← /presentations (deck library, paged by the server: Mine / Shared / Company, present / edit-with-assistant / share / duplicate / delete)
@@ -69,7 +70,7 @@ frontend/src/
 │   ├── NewAgentImport.tsx   ← /agents/new/import
 │   ├── Flows.tsx            ← /flows/:tab? (shell → flows/ tabs: Flows library, Live Map, Schedule)
 │   ├── flows/               ← LibraryTab (flow list, default tab), MapTab, ScheduleTab (thin wrapper of `ScheduleView`, reads `?agent=`)
-│   ├── flow-builder/        ← /flows/:id/builder, the visual flow builder canvas: `index.tsx` shell, `FlowCanvas` (@xyflow/react), `NodeLibraryPanel`, `NodeConfigPanel` + `VariableInput`, `FlowNode`, `TypedEdge`, `QuickAddMenu`, `BuilderToolbar`, `VersionHistoryPanel`, `RunsPanel`, `useFlowEditor` (reducer + 50-step undo/redo), `graph-adapter` (FlowGraph ⇄ React Flow), `connection-rules` (drag-time mirror of the server matrix), `auto-layout` (dagre), `flow-builder.css` (React Flow theming through platform tokens)
+│   ├── flow-builder/        ← /flows/library/:id, the visual flow builder canvas: `index.tsx` shell, `FlowCanvas` (@xyflow/react), `NodeLibraryPanel`, `NodeConfigPanel` + `VariableInput`, `FlowNode`, `TypedEdge`, `QuickAddMenu`, `BuilderToolbar`, `VersionHistoryPanel`, `RunsPanel`, `useFlowEditor` (reducer + 50-step undo/redo), `graph-adapter` (FlowGraph ⇄ React Flow), `connection-rules` (drag-time mirror of the server matrix), `auto-layout` (dagre), `flow-builder.css` (React Flow theming through platform tokens)
 │   ├── Integrations.tsx     ← /integrations (integration list)
 │   ├── IntegrationDetail.tsx ← /integrations/:id/:tab? (shell → integration-detail/ tabs)
 │   ├── integration-detail/  ← OverviewTab, ConfigTab, ActivityTab, OpenAPISpecTab, NovaRulesTab, ConfigurationCard, StatusCard, EventTriggersCard, WebhooksCard, ToolsCard, KBsUsingCard, ConnectedAccountsCard, YourAccountCard, provider-tabs (provider-contributed tabs), openrouter/
@@ -99,7 +100,7 @@ frontend/src/
 │   ├── Settings.tsx         ← /settings/:tab?/:section? (shell → settings/ sections)
 │   ├── settings/            ← GeneralAssistantSection (+ GeneralAssistantSkills: the company-managed skills the General Assistant carries, a section of its Configure panel, filtered by name and description, with ga-skills.ts for the catalog and the choice; ResourceToggleCard: the compact attach/detach card and the 1/2/3-column grid every resource section of that panel uses, its tooltip leading with the full name), GAHandoverPicker, MusicGenerationSection (Settings > AI models > Music generation), ProviderCard, ModelDirectory, ModelPricingSection, DepartmentsSection (Settings > Observability > Departments: the department mapping, its preview, the directory import and "apply to history"), QuotasSection, SSOConfigSection, EmergencyStopTokenSection (Settings > Security > Emergency stop: generate / rotate / revoke the `xes-…` token, shown once, with the printable procedure from `lib/emergency-procedure.ts`), OAuthDefaultsSection, ObservabilitySection, ChannelManagement, IntegrationsSection, IntegrationCatalogSection, MemoryPurgeSection, MCPEndpointSection, FeedbackCriteriaSection, ToolApprovalsSection, XtmHubRegistrationCard, SecuritySection (the Security tab's URL-backed sections: audit / options / approvals / authentication / api-keys / emergency / memory), SecurityAuditSection + security-audit.ts (the `GET /security-audit` report: findings and security controls), SecurityOptionsSection, PlatformModelSetting (one platform-wide model choice in Settings → AI: routing, decision model)
 │   ├── Profile.tsx + profile/ ← /profile/:tab? (profile, tool approvals, channels & bots, agent accounts, memory, quotas, API keys, MCP endpoint); /profile/agent-accounts/:accountId/:tab? opens one agent account
-│   ├── Desktop.tsx + desktop/ ← /desktop (XTM One Desktop runners); RunnerDetail.tsx ← /runners/:id
+│   ├── Desktop.tsx + desktop/ ← /desktop (XTM One Desktop runners); RunnerDetail.tsx ← /desktop/runners/:id
 │   ├── Relays.tsx / RelayGroupDetail.tsx + relay-group-detail/ ← /relays, /relays/:id/:tab?
 │   ├── Users.tsx / UserDetail.tsx / NewUser.tsx ← /users, /users/:id/:tab?, /users/new (admin)
 │   ├── Groups.tsx / GroupDetail.tsx / NewGroup.tsx ← /groups, /groups/:id/:tab?, /groups/new (detail and create admin-only)

@@ -1,4 +1,17 @@
 {
+  "add_opencrq_treatment_plan_moves": [
+    {
+      "procedures": [
+        "treatmentPlans.addTreatmentPlanMoves"
+      ],
+      "fields": [
+        "moves",
+        "planId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
   "create_opencrq_asset_evidence": [
     {
       "procedures": [
@@ -137,6 +150,21 @@
       "closed": true
     }
   ],
+  "create_opencrq_treatment_plan": [
+    {
+      "procedures": [
+        "treatmentPlans.createTreatmentPlan"
+      ],
+      "fields": [
+        "moves",
+        "organizationId"
+      ],
+      "conditional": [
+        "moves"
+      ],
+      "closed": false
+    }
+  ],
   "delete_opencrq_asset_evidence": [
     {
       "procedures": [
@@ -226,6 +254,18 @@
       "fields": [
         "attackOutcomeId",
         "organizationId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_attack_path_reach": [
+    {
+      "procedures": [
+        "supportingAssets.getAttackPathReach"
+      ],
+      "fields": [
+        "supportingAssetId"
       ],
       "conditional": [],
       "closed": true
@@ -356,6 +396,16 @@
   "get_opencrq_crq_what_if": [
     {
       "procedures": [
+        "crqIndicators.getLatestRun"
+      ],
+      "fields": [
+        "riskScenarioId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
         "crqIndicators.getWhatIfResults"
       ],
       "fields": [
@@ -377,6 +427,20 @@
       "closed": true
     }
   ],
+  "get_opencrq_cve_exploitation": [
+    {
+      "procedures": [
+        "riskScenarios.getCveExploitation"
+      ],
+      "fields": [
+        "cveId",
+        "limit",
+        "riskScenarioId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
   "get_opencrq_cve_finding": [
     {
       "procedures": [
@@ -384,6 +448,26 @@
       ],
       "fields": [
         "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_data_health": [
+    {
+      "procedures": [
+        "jobs.listAllRuns"
+      ],
+      "fields": [
+        "enqueuedFrom",
+        "enqueuedTo",
+        "finishedFrom",
+        "finishedTo",
+        "kinds",
+        "limit",
+        "offset",
+        "startedTo",
+        "statuses"
       ],
       "conditional": [],
       "closed": true
@@ -511,6 +595,16 @@
       ],
       "conditional": [],
       "closed": true
+    },
+    {
+      "procedures": [
+        "jobs.getRun"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
     }
   ],
   "get_opencrq_loss_driver": [
@@ -532,6 +626,38 @@
       ],
       "fields": [
         "externalId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_organization": [
+    {
+      "procedures": [
+        "organizations.getOrganization"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_platform_health": [
+    {
+      "procedures": [
+        "jobs.listAllRuns"
+      ],
+      "fields": [
+        "enqueuedFrom",
+        "enqueuedTo",
+        "finishedFrom",
+        "finishedTo",
+        "kinds",
+        "limit",
+        "offset",
+        "startedTo",
+        "statuses"
       ],
       "conditional": [],
       "closed": true
@@ -844,6 +970,18 @@
     {
       "procedures": [
         "connectors.listRuns"
+      ],
+      "fields": [
+        "source"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "list_opencrq_connectors": [
+    {
+      "procedures": [
+        "connectors.getStreamState"
       ],
       "fields": [
         "source"
@@ -1304,6 +1442,17 @@
   "run_opencrq_crq_simulation": [
     {
       "procedures": [
+        "crqIndicators.enqueueFamilyRecompute"
+      ],
+      "fields": [
+        "family",
+        "riskScenarioId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
         "crqIndicators.enqueueSimulation"
       ],
       "fields": [
@@ -1320,6 +1469,19 @@
       ],
       "fields": [
         "query"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "set_opencrq_treatment_plan_moves": [
+    {
+      "procedures": [
+        "treatmentPlans.setTreatmentPlanScope"
+      ],
+      "fields": [
+        "moves",
+        "planId"
       ],
       "conditional": [],
       "closed": true
@@ -1702,6 +1864,19 @@
         "actHalfLifeAuthoredDays",
         "actHalfLifeObservedDays",
         "confidenceGate"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "update_opencrq_treatment_plan": [
+    {
+      "procedures": [
+        "treatmentPlans.updateTreatmentPlan"
+      ],
+      "fields": [
+        "id",
+        "values"
       ],
       "conditional": [],
       "closed": true

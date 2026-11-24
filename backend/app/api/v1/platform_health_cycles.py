@@ -65,6 +65,48 @@ class CycleStartResponse(BaseModel):
     run_id: uuid.UUID
 
 
+class ModuleInvestigationStart(BaseModel):
+    """What "Investigate now" did on one registration of the module (section 12.7)."""
+
+    registration_id: uuid.UUID
+    cycle_id: uuid.UUID | None
+    run_id: uuid.UUID | None
+    #: ``None`` when the cycle started, else ``start_cycle``'s refusal code (``cycle_open``, budget, ...).
+    refusal: str | None
+    #: With ``cycle_open``: the cycle already investigating it.
+    open_cycle_id: uuid.UUID | None = None
+
+
+class ModuleInvestigationResponse(BaseModel):
+    module: str
+    items: list[ModuleInvestigationStart]
+
+
+class ModuleCheckReport(BaseModel):
+    """The latest check report of one registration of the module (#101 S15c, section 13.6)."""
+
+    report_id: uuid.UUID
+    registration_id: uuid.UUID
+    cycle_id: uuid.UUID
+    started_at: datetime | None
+    finished_at: datetime
+    passed: int
+    warned: int
+    failed: int
+    not_run: int
+    #: ``[{"id", "verdict", "category", "evidence", "recommendation", "reason", "finding_id"}]``.
+    checks: list[dict[str, Any]]
+
+
+class ModuleCheckReportsResponse(BaseModel):
+    module: str
+    items: list[ModuleCheckReport]
+    #: Whether the checks have a usable "Run checks as" user (12.3): ``ok``, ``not_set`` (none
+    #: configured) or ``no_access`` (the user cannot read this module). The card shows one
+    #: state for the last two instead of a "not run" line per check.
+    run_as: Literal["ok", "not_set", "no_access"] = "ok"
+
+
 class CycleResponse(BaseModel):
     id: uuid.UUID
     specialist: str
@@ -81,6 +123,9 @@ class CycleResponse(BaseModel):
     signal: dict | None
     digest: dict | None
     requested_by_me: bool
+    #: The target's name: a module cycle's registration title (13.8), an agent's, flow's or
+    #: assignment's name; ``None`` when the target no longer exists.
+    target_name: str | None = None
 
 
 class SignalResponse(BaseModel):
@@ -131,7 +176,12 @@ class ImprovementListResponse(BaseModel):
 
 
 def _cycle_response(
-    cycle: HealthCycle, record: HealthCycleRun | None, user: User, *, narrative_readable: bool
+    cycle: HealthCycle,
+    record: HealthCycleRun | None,
+    user: User,
+    *,
+    narrative_readable: bool,
+    target_name: str | None = None,
 ) -> CycleResponse:
     digest = record.digest if record else None
     if digest and not narrative_readable:
@@ -152,6 +202,7 @@ def _cycle_response(
         signal=record.signal if record else None,
         digest=digest,
         requested_by_me=bool(record and record.requested_by_user_id == user.id),
+        target_name=target_name,
     )
 
 
@@ -220,6 +271,129 @@ async def request_cycle(
     return CycleStartResponse(cycle_id=result.cycle_id, run_id=result.run_id)
 
 
+@router.post(
+    "/modules/{module}/investigate",
+    response_model=ModuleInvestigationResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def investigate_module(
+    module: str,
+    request: Request,
+    user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+    # Agentic work: refused while AI is off or unlicensed, before any cycle opens.
+    _agentic_gate: None = Depends(require_agentic_ai),
+) -> ModuleInvestigationResponse:
+    """ "Run checks now": the module checker's round on every active registration of *module* (13.2, 13.8).
+
+    Administrators, XTM One mode, Platform Health and the Module Analyst on; the
+    cycle is the analyst's own (its quota exemption and ceiling apply), a
+    registration already under investigation answers its open cycle.
+    """
+    from app.api.v1.platform_health_findings import ANALYST_MODULES, present_modules
+    from app.services.audit import log_audit
+    from app.services.health.cycles import start_cycle
+    from app.services.health.fleet_seed import CHECKS_KEY_BY_PROVIDER
+    from app.services.health.module_analyst import active_registrations
+    from app.services.health.settings import load_health_settings
+
+    if module not in ANALYST_MODULES or module not in present_modules():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown health module")
+    health = await load_health_settings(db)
+    if not health.enabled or not health.module_analyst.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "module_analyst_off", "message": "The Module Analyst is switched off."},
+        )
+    registrations = await active_registrations(db, module, health.module_analyst.excluded_registration_ids)
+    if not registrations:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "no_registration", "message": "No active registration of this module to check."},
+        )
+    items: list[ModuleInvestigationStart] = []
+    for registration_id in registrations:
+        result = await start_cycle(
+            db,
+            key=CHECKS_KEY_BY_PROVIDER[module],
+            trigger="on_demand",
+            target_type="module",
+            target_id=registration_id,
+            requested_by_user_id=user.id,
+            payload={"module_trigger": "on_demand"},
+        )
+        items.append(
+            ModuleInvestigationStart(
+                registration_id=registration_id,
+                cycle_id=result.cycle_id,
+                run_id=result.run_id,
+                refusal=result.refusal,
+                open_cycle_id=result.open_cycle_id,
+            )
+        )
+        if result.started:
+            await log_audit(
+                db,
+                user=user,
+                action="trigger",
+                entity_type="health_cycle",
+                entity_id=result.cycle_id,
+                entity_name=module,
+                summary=f"Asked Platform Health to run the {module} checks",
+                details={"target_type": "module", "target_id": str(registration_id)},
+                request=request,
+            )
+    await db.commit()
+    return ModuleInvestigationResponse(module=module, items=items)
+
+
+@router.get("/modules/{module}/checks", response_model=ModuleCheckReportsResponse)
+async def list_module_check_reports(
+    module: str,
+    _admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> ModuleCheckReportsResponse:
+    """The latest check report per registration of *module* (section 13.6, administrators).
+
+    Stored rows only, no model: readable with AI off. A registration whose checker never
+    stored a report is absent; a module of another mode answers 404.
+    """
+    from app.api.v1.platform_health_findings import ANALYST_MODULES, present_modules
+    from app.models.health_module_analyst import HealthModuleCheckReport
+    from app.services.health.run_as import run_as_state
+
+    if module not in ANALYST_MODULES or module not in present_modules():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown health module")
+    run_as = await run_as_state(db, module)
+    rows = (
+        await db.execute(
+            select(HealthModuleCheckReport)
+            .where(HealthModuleCheckReport.module == module)
+            .order_by(HealthModuleCheckReport.registration_id, HealthModuleCheckReport.finished_at.desc())
+            .distinct(HealthModuleCheckReport.registration_id)
+        )
+    ).scalars()
+    return ModuleCheckReportsResponse(
+        module=module,
+        run_as=run_as,
+        items=[
+            ModuleCheckReport(
+                report_id=row.id,
+                registration_id=row.registration_id,
+                cycle_id=row.cycle_id,
+                started_at=row.started_at,
+                finished_at=row.finished_at,
+                passed=row.passed,
+                warned=row.warned,
+                failed=row.failed,
+                not_run=row.not_run,
+                checks=list(row.checks or []),
+            )
+            for row in rows
+        ],
+    )
+
+
 @router.get("/cycles", response_model=list[CycleResponse])
 async def list_cycles(
     target_type: Literal["agent", "flow", "assignment"] | None = None,
@@ -238,10 +412,20 @@ async def list_cycles(
         query = query.where(HealthCycle.target_type == target_type, HealthCycle.target_id == target_id)
     if cycle_status:
         query = query.where(HealthCycle.status == cycle_status)
-    rows = await db.execute(query.order_by(HealthCycle.opened_at.desc()).limit(limit).offset(offset))
+    rows = (await db.execute(query.order_by(HealthCycle.opened_at.desc()).limit(limit).offset(offset))).all()
     # A non-admin lists one target's cycles (``_require_target_reader``): one check covers every row.
     readable = await may_read_cycle_narrative(db, user, group_ids, target_type, target_id)
-    return [_cycle_response(cycle, record, user, narrative_readable=readable) for cycle, record in rows.all()]
+    names = await _target_names(db, [cycle for cycle, _ in rows])
+    return [
+        _cycle_response(
+            cycle,
+            record,
+            user,
+            narrative_readable=readable,
+            target_name=names.get((cycle.target_type, cycle.target_id)),
+        )
+        for cycle, record in rows
+    ]
 
 
 @router.get("/cycles/{cycle_id}", response_model=CycleResponse)
@@ -258,26 +442,36 @@ async def get_cycle(cycle_id: str, user: User = Depends(get_current_user), db: A
     if row is None or not await may_read_cycle(db, user, group_ids, row[0].target_type, row[0].target_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=CYCLE_NOT_FOUND)
     readable = await may_read_cycle_narrative(db, user, group_ids, row[0].target_type, row[0].target_id)
-    return _cycle_response(row[0], row[1], user, narrative_readable=readable)
+    names = await _target_names(db, [row[0]])
+    return _cycle_response(
+        row[0], row[1], user, narrative_readable=readable, target_name=names.get((row[0].target_type, row[0].target_id))
+    )
 
 
 async def _target_names(db: AsyncSession, states: list) -> dict[tuple[str, uuid.UUID], str]:
-    """The name of every signal's target, one query per kind; a deleted target is absent.
+    """The name of every signal's or cycle's target, one query per kind; a deleted target is absent.
 
-    The caller already reads these targets (``_require_target_reader``): an
-    administrator lists every signal, anyone else one target they manage.
+    A module cycle's target is a platform registration, named by its title (13.8). The
+    caller already reads these targets (``_require_target_reader``): an administrator
+    lists every signal and cycle, anyone else one target they manage.
     """
     from app.models.agent import Agent
     from app.models.assignment import Assignment
     from app.models.flow import Flow
+    from app.models.platform_registration import PlatformRegistration
 
-    models = {"agent": Agent, "flow": Flow, "assignment": Assignment}
+    columns = {
+        "agent": (Agent.id, Agent.name),
+        "flow": (Flow.id, Flow.name),
+        "assignment": (Assignment.id, Assignment.name),
+        "module": (PlatformRegistration.id, PlatformRegistration.platform_title),
+    }
     names: dict[tuple[str, uuid.UUID], str] = {}
-    for kind, model in models.items():
-        ids = {s.target_id for s in states if s.target_type == kind}
+    for kind, (id_column, name_column) in columns.items():
+        ids = {s.target_id for s in states if s.target_type == kind and s.target_id is not None}
         if not ids:
             continue
-        rows = await db.execute(select(model.id, model.name).where(model.id.in_(ids)))
+        rows = await db.execute(select(id_column, name_column).where(id_column.in_(ids)))
         names.update({(kind, row_id): name for row_id, name in rows.all()})
     return names
 

@@ -497,6 +497,10 @@ async def dispatch_delivery(integration_id: str, payload: Any) -> dict[str, Any]
 
     if not isinstance(payload, Mapping) or not isinstance(payload.get("issue"), Mapping):
         return {"status": "ignored", "reason": "not a Jira issue webhook delivery", "triggered": [], "count": 0}
+    # A CTEM case whose ticket this is moves at once (#917); the sync pull is the safety net.
+    from app.services import ctem_ticketing
+
+    await ctem_ticketing.apply_jira_delivery(integration_id, dict(payload))
     matched = {str(i) for i in payload.get("matchedWebhookIds") or []}
     redis = await redis_client()
     triggered: list[dict[str, Any]] = []

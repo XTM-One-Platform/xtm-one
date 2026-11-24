@@ -222,7 +222,8 @@ export function VariableInput({
                   />
                 </span>
                 <span className="w-full truncate content-caption text-default-secondary">
-                  {suggestion.nodeLabel} · {suggestion.outputLabel}
+                  {suggestion.nodeLabel} ·{" "}
+                  {/[{}›]/.test(suggestion.outputLabel) ? suggestion.outputLabel : t_i18n(suggestion.outputLabel)}
                   {suggestion.sample !== undefined && suggestion.sample !== null && (
                     <span className="font-mono-plex"> = {String(suggestion.sample)}</span>
                   )}

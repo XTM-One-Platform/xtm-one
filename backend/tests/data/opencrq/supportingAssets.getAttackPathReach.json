@@ -1,0 +1,55 @@
+{
+  "procedure": "supportingAssets.getAttackPathReach",
+  "source": "built from getAttackPathReach of OpenCRQ's asset-dependencies service (043206a5) and its unit test: a hop runs from toAssetId (nearer the origin) to fromAssetId (the asset reached), one hop per pair, proven over inferred, ordered by depth; the primary assets behind the reached assets",
+  "data": {
+    "origin": {
+      "assetId": "019edb28-0038-7000-8000-000000000002",
+      "name": "Edge bastion (OpenSSH)",
+      "derivedName": null,
+      "exposure": "internet_facing",
+      "criticality": "high"
+    },
+    "reachedAssets": [
+      {
+        "assetId": "019edb28-0038-7000-8000-000000000003",
+        "depth": 1,
+        "name": "Jump host",
+        "derivedName": null,
+        "exposure": "internal",
+        "criticality": "medium"
+      },
+      {
+        "assetId": "e5f6a7b8-c9d0-4e1f-aa3b-4c5d6e7f8a9b",
+        "depth": 2,
+        "name": "Core Banking System (Temenos T24)",
+        "derivedName": null,
+        "exposure": "internal",
+        "criticality": "very_high"
+      }
+    ],
+    "hops": [
+      {
+        "fromAssetId": "019edb28-0038-7000-8000-000000000003",
+        "toAssetId": "019edb28-0038-7000-8000-000000000002",
+        "nature": "proven",
+        "evidenceRef": "sim-2026-11-20",
+        "lastReportedAt": "2026-11-20T09:00:00.000Z"
+      },
+      {
+        "fromAssetId": "e5f6a7b8-c9d0-4e1f-aa3b-4c5d6e7f8a9b",
+        "toAssetId": "019edb28-0038-7000-8000-000000000003",
+        "nature": "inferred",
+        "evidenceRef": null,
+        "lastReportedAt": "2026-11-21T09:00:00.000Z"
+      }
+    ],
+    "primaryAssets": [
+      {
+        "primaryAssetId": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+        "primaryAssetName": "Credit Decision Process",
+        "throughAssetIds": ["e5f6a7b8-c9d0-4e1f-aa3b-4c5d6e7f8a9b"]
+      }
+    ],
+    "staleAfterDays": 30
+  }
+}

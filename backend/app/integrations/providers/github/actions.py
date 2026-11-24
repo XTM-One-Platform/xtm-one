@@ -754,19 +754,22 @@ def register(
         lines.append("\nUse get_github_job_logs(job_id=...) to read a failing job's logs.")
         return "\n".join(lines)
 
-    async def get_github_job_logs(repo: str, job_id: int, failures_only: bool = False, tail: bool = False) -> str:
-        """Download a workflow job's logs: failures first, the raw tail, or the whole log into the workspace."""
+    async def get_github_job_logs(
+        repo: str, job_id: int, failures_only: bool = False, tail: bool = False, patch: bool = False
+    ) -> str:
+        """Download a workflow job's logs: failures first, the raw tail, the diff it printed, or the whole log."""
         owner, name, rerr = parse_repo(repo)
         if rerr:
             return rerr
         raw_tail = tail is True or str(tail).lower() == "true"
+        want_patch = patch is True or str(patch).lower() == "true"
         ingest = workspace_ingest_requested()
         # A published log never changes: a repeated read is answered from the
         # cache, not by downloading tens of megabytes again (#9098). The whole
         # log for the workspace is never cached.
         cache_key = None
         if not ingest:
-            mode = "tail" if raw_tail else ("failures" if failures_only else "default")
+            mode = "patch" if want_patch else ("tail" if raw_tail else ("failures" if failures_only else "default"))
             cache_key = _job_log_cache_key(headers, owner, name, job_id, mode)
             cached = await _job_log_cache_get(cache_key)
             if cached is not None:
@@ -845,6 +848,28 @@ def register(
                 return err
             if not text.strip():
                 return f"Job {job_id} has no logs (it may not have started, or logs expired)."
+            if want_patch:
+                # The unified diff a formatter or generator check printed, as
+                # sandbox_apply_patch takes it: no timestamp, no clipped line (#1477).
+                extracted = await asyncio.to_thread(ci_logs.extract_patch, text)
+                if extracted is None:
+                    # Error: prefix: the ingest writes nothing to the workspace.
+                    return (
+                        f"Error: the log of job {job_id} in {repo} holds no unified diff "
+                        "(no diff --git or ---/+++ block with a complete hunk)."
+                    )
+                if ingest or cache_key is None:
+                    return extracted
+                files = ci_logs.patch_file_count(extracted)
+                body = extracted
+                if len(body) > _MAX_LOG_CHARS:
+                    body = body[:_MAX_LOG_CHARS] + f"\n... [cut at {_MAX_LOG_CHARS:,} of {len(extracted):,} chars]"
+                answer = (
+                    f"Unified diff printed by job {job_id} in {repo}: {files} file(s). to_workspace_path writes it "
+                    "whole, and sandbox_apply_patch takes that file with the checkout directory.\n\n" + body
+                )
+                await _job_log_cache_set(cache_key, answer)
+                return answer
             if ingest or cache_key is None:
                 # Bound for the sandbox workspace: the whole log, uncut.
                 return text
@@ -1403,8 +1428,8 @@ def register(
                 "runner's FAILURES and short summary sections, linter and compiler findings) under the step that "
                 "produced them, then the log's last lines; a log with no failure cue comes as its last 40,000 "
                 "characters. failures_only=true drops the last lines; tail=true returns the raw last 40,000 "
-                "characters whatever the log holds. to_workspace_path puts the whole log in the sandbox workspace "
-                "instead. A completed job whose log was never published (a lost runner) answers its steps and "
+                "characters whatever the log holds; patch=true only the unified diff it printed. to_workspace_path puts "
+                "the whole log (or the patch) in the sandbox workspace instead. A completed job whose log was never published (a lost runner) answers its steps and "
                 "check-run annotations; the id of another app's check run answers that run's output, annotations "
                 "and details link. Use the job_id from list_github_workflow_jobs."
             ),
@@ -1420,6 +1445,11 @@ def register(
                     "tail": {
                         "type": "boolean",
                         "description": "Return the raw last 40,000 characters instead of the failures (default false).",
+                        "default": False,
+                    },
+                    "patch": {
+                        "type": "boolean",
+                        "description": "Only the unified diff the log printed, for sandbox_apply_patch (default false).",
                         "default": False,
                     },
                 },

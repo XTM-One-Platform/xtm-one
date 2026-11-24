@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SearchInput } from "@/components/ui/search-input";
@@ -395,7 +396,7 @@ export function AssetsTab({
           <Paperclip className="h-4 w-4 text-accent" />
           {t_i18n("Assets")}
           {assets.length > 0 && (
-            <Badge variant="secondary" className="text-[9px] h-4 px-1.5">{assets.length}</Badge>
+            <CountBadge variant="secondary">{assets.length}</CountBadge>
           )}
         </CardTitle>
         {canManage && (

@@ -1521,6 +1521,8 @@ def build_tools(
             },
             source=src,
             priority=2,
+            # "hunt" is no verb the name classifier reads; the hunt is two GETs on hunting and telemetry data.
+            read_only=True,
         ),
         # ── 4. Threat Intelligence IOCs ───────────────────────────────────
         ToolDefinition(

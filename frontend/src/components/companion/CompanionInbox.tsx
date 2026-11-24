@@ -38,13 +38,13 @@ import {
 } from "@/hooks/api/useAssignmentApi";
 import { useDismissNotification, useMarkNotificationsRead, useNotifications } from "@/hooks/api/useNotificationApi";
 import { useFormatter } from "@/i18n";
-import { notificationSubtitle, UNREAD_UNTIL_ANSWERED } from "@/lib/notification-kinds";
+import { canMarkAllRead as anyReadable, decisionSource, isDecisionKind, notificationSubtitle, readsOnOpen } from "@/lib/notification-kinds";
 import { cn, timeAgo } from "@/lib/utils";
 import type { NotificationItem } from "@/types";
 
 function KindIcon({ item }: { item: NotificationItem }) {
   const className = "h-4 w-4 shrink-0";
-  if (item.kind === "hitl" || item.kind === "flow_hitl" || item.kind === "run_action_request" || item.kind === "work_item_waiting") return <Hand className={cn(className, "text-feedback-warning-primary")} aria-hidden="true" />;
+  if (isDecisionKind(item.kind) || item.kind === "run_action_request") return <Hand className={cn(className, "text-feedback-warning-primary")} aria-hidden="true" />;
   if (item.kind === "reminder") return <AlarmClock className={cn(className, "text-accent")} aria-hidden="true" />;
   if (item.kind === "agent_message") return <Bot className={cn(className, "text-filigran-ia-primary")} aria-hidden="true" />;
   if (item.kind === "builtin_tools_outside_allowlist") return <Sparkles className={cn(className, "text-accent")} aria-hidden="true" />;
@@ -111,8 +111,8 @@ export function CompanionInbox() {
 
   if (isLoading) return <PageSkeleton cards={3} />;
   const items = feed?.items ?? [];
-  // An entry unread until answered has no read state to clear.
-  const canMarkAllRead = items.some((item) => item.unread && !UNREAD_UNTIL_ANSWERED.has(item.kind));
+  // A decision still waiting stays unread until answered; opening another entry reads it (#991).
+  const canMarkAllRead = anyReadable(items);
 
   return (
     <div className="flex flex-col gap-4">
@@ -135,7 +135,8 @@ export function CompanionInbox() {
       ) : (
         <ul className="flex flex-col gap-3">
           {items.map((item) => {
-            const waiting = item.kind === "hitl" && item.run_id;
+            // A run decision is answered in place; a flow or work item one opens its page (#842, S4).
+            const waiting = decisionSource(item) === "run" && item.run_id;
             return (
               <li key={item.id}>
                 <Card
@@ -149,7 +150,7 @@ export function CompanionInbox() {
                     type="button"
                     className="flex w-full items-start gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
                     onClick={() => {
-                      if (item.unread && !UNREAD_UNTIL_ANSWERED.has(item.kind)) dismiss.mutate(item.id);
+                      if (readsOnOpen(item)) dismiss.mutate(item.id);
                       navigate(item.route);
                     }}
                   >

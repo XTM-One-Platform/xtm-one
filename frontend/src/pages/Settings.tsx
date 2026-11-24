@@ -75,12 +75,13 @@ import { cn, isFeatureEnabled, modelChoiceValue, modelOptionLabel, parseModelCho
 import { useFormatter } from "@/i18n";
 import { DetailTabs } from "@/components/ui/detail-tabs";
 import { ListPageHeader } from "@/components/ui/list-page-header";
-import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { SectionNav, type SectionNavItem } from "@/components/ui/section-nav";
+import RouteNotFound from "@/pages/RouteNotFound";
 import {
   automationsSection,
   DEFAULT_SETTINGS_TAB,
-  legacySettingsTarget,
+  isSettingsTab,
   pickSection,
   SETTINGS_TABS,
   settingsSectionPath,
@@ -168,14 +169,12 @@ const USAGE_SECTIONS: readonly SectionNavItem<UsageSection>[] = [
 type AddProviderMode = "reasoning" | "embedding" | "image" | "all";
 
 /**
- * `/settings/:tab?/:section?`: an old tab route (#9173) is redirected to its
- * new place with its query and hash kept, before the page renders.
+ * `/settings/:tab?/:section?`: a segment that is not a section is not found,
+ * a former tab route included (#797: no redirect).
  */
 export default function Settings() {
   const { tab } = useParams<{ tab?: string }>();
-  const { search, hash } = useLocation();
-  const legacy = legacySettingsTarget(tab, search, hash);
-  if (legacy) return <Navigate to={legacy} replace />;
+  if (!isSettingsTab(tab)) return <RouteNotFound />;
   return <SettingsPage />;
 }
 
@@ -194,10 +193,6 @@ function SettingsPage() {
   const tab: SettingsTab = (SETTINGS_TABS as readonly string[]).includes(rawTab ?? "") ? (rawTab as SettingsTab) : DEFAULT_SETTINGS_TAB;
 
   const { data: authConfig } = useAuthConfig();
-  const gatewayProviderEnabled = isFeatureEnabled(
-    authConfig?.enabled_features,
-    "FILIGRAN_GATEWAY_PROVIDER",
-  );
   // The video and music models serve the Video Studio alone. Speech
   // stays: the chat reads answers aloud with it.
   const videoStudioEnabled = isFeatureEnabled(authConfig?.enabled_features, "VIDEO_STUDIO");
@@ -466,15 +461,13 @@ function SettingsPage() {
     image: "Add Image Provider",
     all: "Add Provider",
   };
-  // Addable provider types — the Filigran AI Gateway hides here while its
-  // feature flag is off, and a video-only provider while the Video Studio is
-  // (nothing else generates video); a provider only its integration creates
-  // (LM Studio) never shows; providers already configured keep working
-  // regardless (they're rendered from `providers` data, not this list).
+  // Addable provider types — a video-only provider hides while the Video
+  // Studio is off (nothing else generates video); a provider only its
+  // integration creates (LM Studio) never shows; providers already configured
+  // keep working regardless (they're rendered from `providers` data, not this list).
   const addableProviderKeys = Object.keys(PROVIDER_DISPLAY_NAMES).filter(
     (provider) =>
-      (provider !== "filigran_gateway" || gatewayProviderEnabled)
-      && (SINGLE_CAPABILITY_PROVIDERS[provider] !== "video" || videoStudioEnabled)
+      (SINGLE_CAPABILITY_PROVIDERS[provider] !== "video" || videoStudioEnabled)
       && addableByHand(provider),
   );
   const allowedProvidersByMode: Record<AddProviderMode, string[]> = {
@@ -1289,6 +1282,24 @@ function SettingsPage() {
             isSaving={updateGAConfig.isPending}
             onSave={(model, providerId, done) => updateGAConfig.mutate({ routing_model: model, routing_provider_id: providerId }, { onSuccess: done })}
           />
+
+          {/* ─── Reply suggestions, generated on the routing model ─── */}
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-sm bg-elevation-default p-3.5" data-testid="settings.reply-suggestions">
+            <div className="min-w-0">
+              <label htmlFor={`${fieldId}-reply-suggestions`} className="content-base text-default-primary">{t_i18n("Reply suggestions")}</label>
+              <p className="content-compact text-default-secondary">
+                {gaConfig?.routing_model
+                  ? t_i18n("Once an agent has answered, the routing model proposes the user's next message in the chat's message box (Tab to use it). Each user can turn it off in their profile.")
+                  : t_i18n("Needs a routing model: with none set, no reply suggestion is generated.")}
+              </p>
+            </div>
+            <Switch
+              id={`${fieldId}-reply-suggestions`}
+              checked={gaConfig?.reply_suggestions_enabled !== false}
+              disabled={!isAdmin || updateGAConfig.isPending}
+              onCheckedChange={(checked) => updateGAConfig.mutate({ reply_suggestions_enabled: checked })}
+            />
+          </div>
 
           {/* ─── Fallback Model ─── */}
           <div className="mt-6">

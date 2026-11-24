@@ -132,6 +132,21 @@ class ExtraFieldOption(BaseModel):
     label: str
 
 
+class ExtraFieldInput(BaseModel):
+    """The control and rule of one extra field (catalog ``extra_field_inputs``).
+
+    ``domains``: a list of domain names, drawn as tags; ``integer``: a whole
+    number within ``minimum`` and ``maximum``, prefilled with ``default``. The
+    create and update routes refuse a value outside the rule (422).
+    """
+
+    kind: str
+    minimum: int | None = None
+    maximum: int | None = None
+    default: str | None = None
+    help: str | None = None
+
+
 class ProviderCatalogVariant(BaseModel):
     """The facets of a catalog entry that one selector value changes."""
 
@@ -165,6 +180,10 @@ class ProviderCatalogItem(BaseModel):
     # the customer's network, LM Studio): creating or saving one without a
     # group is a 422, and the form offers no "Direct" route.
     requires_relay: bool = False
+    # Created by an administrator, as a company-managed integration only (the
+    # platform email): the form sets and locks the company-managed switch, and
+    # the server refuses any other creation.
+    company_managed_only: bool = False
     # Entries whose shape depends on one operator choice: ``variant_selector``
     # names the fact (``a2a_direction`` for A2A) and ``variants`` maps each of
     # its values to the facets that differ. The base entry is the default.
@@ -181,6 +200,9 @@ class ProviderCatalogItem(BaseModel):
     # missing from this model is dropped by Pydantic with every backend test
     # still passing.
     extra_field_visible_when: dict[str, dict[str, list[str]]] | None = None
+    # The typed control of an extra field (a domain list, a bounded number);
+    # absent, the field is a text input. Dropped by Pydantic if missing here.
+    extra_field_inputs: dict[str, ExtraFieldInput] | None = None
     description: str | None = None
     logo: str | None = None
     integration_types: list[str] = []
@@ -252,6 +274,10 @@ class IntegrationResponse(BaseModel):
     #: The result of the last connectivity test: ``untested`` (a typed
     #: credential nobody tested), ``ok`` or ``error``; None before any (#11837).
     connection_test_status: str | None = None
+    #: Why the status left ``connected`` (the refresh sweep's verdict) and when
+    #: the status last changed (#1665); None when nothing was recorded.
+    status_reason: str | None = None
+    status_reason_at: datetime | None = None
     name: str
     # The suffix its tools carry (``<tool>__<slug>``) when an agent binds
     # several integrations of this provider; a rename never changes it.

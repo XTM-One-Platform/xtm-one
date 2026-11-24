@@ -23,6 +23,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * Built on the shared InfoPopover (UX r1 B6): Escape, focus, scroll and flip
  * are the ones every info bubble has.
  */
+import { VALUE_METHODOLOGY_PATH } from "@/lib/task-routes";
 import { BookOpen, Info } from "lucide-react";
 import { useMemo } from "react";
 import { useIntl } from "react-intl";
@@ -35,7 +36,7 @@ import { exactCount, exactCurrency, formatCount } from "@/lib/number-format";
 import { RATE_ROLE_NAMES, roiComputation, shownLabel, SHOWN_LABEL_NAMES, SOURCE_NAMES, type RoiFigures, type RoiMetric } from "@/lib/roi-figure";
 
 /** The methodology page every popover links to (#9836 R7b, design 10.6). */
-const ROI_METHODOLOGY_PATH = "/value/methodology";
+const ROI_METHODOLOGY_PATH = VALUE_METHODOLOGY_PATH;
 
 const METHODOLOGY_LINK_CLASS =
   "mt-3 inline-flex h-7 items-center gap-1 content-compact font-medium text-accent underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus";

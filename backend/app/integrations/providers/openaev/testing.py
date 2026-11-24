@@ -3,8 +3,9 @@
 """OpenAEV atomic testing + payload management tools.
 
 * ``manage_openaev_atomic_testing`` - one-off inject tests: search/get/create/
-  update/delete and launch/relaunch/duplicate (``AtomicTestingApi``). Launch
-  and relaunch EXECUTE against the targeted assets.
+  update/delete and launch/relaunch/stop/duplicate (``AtomicTestingApi``).
+  Launch and relaunch EXECUTE against the targeted assets; stop ends a
+  running test (``POST /api/atomic-testings/{id}/stop``).
 * ``manage_openaev_payload`` - payload management gaps: list/get/update/delete/
   duplicate/upsert (``PayloadApi``). Payload creation with injector-contract
   polling stays in the core ``create_openaev_payload`` tool.
@@ -31,6 +32,7 @@ from ._common import (
     mirror_content_targets,
     stored_targets_line,
 )
+from .read_scope import area_scope, count_text, with_scope
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +184,65 @@ def stored_atomic_input(stored: Any, changes: dict[str, Any]) -> tuple[dict[str,
     return body, ""
 
 
+def readiness_line(answer: Any) -> str:
+    """Why OpenAEV holds an atomic test back from launch, from its read or write answer.
+
+    OpenAEV (from openaev #9569) lists the contract fields left empty under
+    ``inject_missing_mandatory_fields`` and refuses the launch with a 400
+    naming them; an older version only answers ``inject_ready`` false. A ready
+    test, or an answer without ``inject_ready``, adds no line.
+    """
+    if not isinstance(answer, dict) or answer.get("inject_ready") is not False:
+        return ""
+    missing = answer.get("inject_missing_mandatory_fields")
+    fields = [str(f) for f in missing if f] if isinstance(missing, list) else []
+    if fields:
+        return (
+            "NOT READY: mandatory field(s) "
+            + ", ".join(fields)
+            + " of its injector contract are empty, so a launch is refused (it "
+            "would run and reach no target). Set them with 'update' (content "
+            "JSON, or asset_ids / asset_group_ids for the targets)."
+        )
+    return (
+        "NOT READY: OpenAEV reports this atomic test not ready to launch and "
+        "this version does not name the field; compare its content with the "
+        "mandatory fields of its injector contract."
+    )
+
+
+def contract_mandatory_fields(contract: Any) -> list[str]:
+    """``key [type]`` of each mandatory field an injector contract declares.
+
+    Read from ``injector_contract_content`` (a JSON string or an object); a
+    field mandatory only under a condition, or in a group of alternatives, is
+    marked so. Absent or malformed content answers an empty list.
+    """
+    content = contract.get("injector_contract_content") if isinstance(contract, dict) else None
+    if isinstance(content, str):
+        try:
+            content = json.loads(content)
+        except (TypeError, ValueError):
+            return []
+    if not isinstance(content, dict) or not isinstance(content.get("fields"), list):
+        return []
+    out: list[str] = []
+    for field in content["fields"]:
+        if not isinstance(field, dict) or not field.get("key"):
+            continue
+        conditional = bool(field.get("mandatoryConditionFields"))
+        groups = field.get("mandatoryGroups")
+        if not (field.get("mandatory") or conditional or (isinstance(groups, list) and groups)):
+            continue
+        item = f"{field['key']} [{field.get('type', '?')}]"
+        if conditional:
+            item += " (when its condition holds)"
+        elif isinstance(groups, list) and groups and not field.get("mandatory"):
+            item += " (one of: " + ", ".join(str(g) for g in groups) + ")"
+        out.append(item)
+    return out
+
+
 def register(
     base_url: str, headers: dict[str, str], executor: CallableToolExecutor
 ) -> list[ToolDefinition]:
@@ -264,7 +325,13 @@ def register(
             data = resp.json()
             items = data.get("content", data) if isinstance(data, dict) else data
             if not items:
-                return "No atomic tests found."
+                # OpenAEV answers an empty page to a grant-limited identity (#1444).
+                scope, cause = await area_scope(headers, "assessment")
+                return with_scope(
+                    "No atomic tests found" + (": " + count_text(0, scope) if scope != "full" else "") + ".",
+                    scope,
+                    cause,
+                )
             lines = [f"Atomic tests ({len(items)}):"]
             for i in items:
                 lines.append(
@@ -285,8 +352,8 @@ def register(
             stored = await _stored_inject(inject_id)
             # A read adds the line only from relations it could read: no claim
             # when the inject read failed.
-            line = inject_targets_line(stored)
-            return f"{line}\n{json_answer(answer)}" if line else json_answer(answer)
+            head = [t for t in (readiness_line(answer), inject_targets_line(stored)) if t]
+            return "\n".join([*head, json_answer(answer)])
 
         if action in ("create", "update"):
             if action == "create" and (not title or not injector_contract_id):
@@ -347,7 +414,32 @@ def register(
             lines = [f"{verb} atomic test '{i.get('inject_title')}' (id: {i.get('inject_id')})."]
             stored = await _stored_inject(str(i.get("inject_id") or inject_id or ""))
             targets = stored_targets_line(i, stored, body.get("inject_assets"), body.get("inject_asset_groups"))
-            lines += [t for t in (targets_note, targets) if t]
+            lines += [t for t in (targets_note, targets, readiness_line(i)) if t]
+            if action == "create":
+                contract_id = str(body.get("inject_injector_contract") or "")
+                read, read_err = await _api(
+                    base_url,
+                    headers,
+                    "get",
+                    f"/api/injector_contracts/{contract_id}",
+                    "read the mandatory fields of the injector contract",
+                    retry_transient=True,
+                )
+                contract: Any = None
+                if not read_err and read is not None:
+                    try:
+                        contract = read.json()
+                    except ValueError:
+                        contract = None
+                mandatory = contract_mandatory_fields(contract)
+                if mandatory:
+                    lines.append("Mandatory fields of its injector contract: " + "; ".join(mandatory) + ".")
+                elif contract is None:
+                    lines.append(
+                        "Mandatory fields of its injector contract: not readable "
+                        "(the contract read failed); read them with "
+                        "get_openaev_injector_contract."
+                    )
             return "\n".join(lines)
 
         if action == "delete":
@@ -375,6 +467,8 @@ def register(
                 f"{action} atomic test",
             )
             if err:
+                # OpenAEV's own reason is part of err (a not-ready test is
+                # refused with a 400 naming the empty mandatory fields).
                 return err
             i = resp.json() if resp.content else {}
             if action == "duplicate":
@@ -432,18 +526,34 @@ def register(
             return recurrence_answer(inject_id, recurrence, recurrence_start, recurrence_end)
 
         if action in ("stop", "cancel", "abort"):
+            if not inject_id:
+                return f"inject_id is required for action '{action}'."
+            _, err = await _api(
+                base_url,
+                headers,
+                "post",
+                f"/api/atomic-testings/{inject_id}/stop",
+                "stop atomic test",
+            )
+            if err:
+                # OpenAEV answers 400 with its reason when the test is not
+                # running (queuing, executing or pending); an instance older
+                # than the stop route answers 404/405.
+                return (
+                    f"{err}\nOnly a queuing, executing or pending atomic test can be "
+                    "stopped. On an OpenAEV without the stop route, 'delete' the "
+                    "test to keep a job not yet fetched from running."
+                )
             return (
-                f"OpenAEV has no '{action}' for an atomic test: no API route stops "
-                "one execution (cancel exists for a whole simulation only). To keep "
-                "a queued job from running, 'delete' the test before an agent or "
-                "injector fetches it; an execution already picked up keeps running "
-                "and must be stopped on the executing side. 'relaunch' does not "
-                "stop the running execution either."
+                f"Stopped atomic test {inject_id}: the agent jobs not picked up yet "
+                "are withdrawn and the test ends in ERROR with a trace naming who "
+                "stopped it. A command an agent already started is NOT interrupted "
+                "on the endpoint."
             )
 
         return (
             f"Unknown action '{action}'. Valid actions: list, get, create, update, "
-            "delete, launch, relaunch, duplicate, recurrence."
+            "delete, launch, relaunch, stop, duplicate, recurrence."
         )
 
     async def manage_openaev_payload(
@@ -595,14 +705,16 @@ def register(
                 "targeted assets), 'duplicate' (inject_id), 'recurrence' "
                 "(inject_id + recurrence, recurrence_start, recurrence_end: send "
                 "all three, a field left out is cleared; each scheduled run gives "
-                "the test a NEW inject id). Every launch, "
+                "the test a NEW inject id). A test whose mandatory contract "
+                "fields are empty is NOT READY: create, update and get name the "
+                "fields and launch is refused. Every launch, "
                 "relaunch or scheduled run ARCHIVES the previous results and "
                 "creates fresh expectations for all targets, so re-read the "
                 "results afterwards instead of reusing earlier verdicts. "
-                "OpenAEV cannot stop a running atomic test: 'relaunch' runs a "
-                "copy under a NEW inject id and deletes the original, and "
-                "'delete' only keeps a job not yet fetched from running; an "
-                "execution already picked up is never stopped."
+                "'stop' (inject_id) ends a queuing, executing or pending test: "
+                "jobs not yet fetched are withdrawn, a command already started "
+                "is not interrupted. 'relaunch' runs a copy under a NEW inject "
+                "id and deletes the original."
             ),
             input_schema={
                 "type": "object",
@@ -611,7 +723,7 @@ def register(
                         "type": "string",
                         "enum": [
                             "list", "get", "create", "update", "delete", "launch",
-                            "relaunch", "duplicate", "recurrence",
+                            "relaunch", "stop", "duplicate", "recurrence",
                         ],
                     },
                     "inject_id": {"type": "string"},

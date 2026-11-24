@@ -45,7 +45,11 @@ LEGACY = {
 
 def _row(profile: dict, version: int = 4):
     return SimpleNamespace(
-        version=version, profile=profile, source="form", created_at=datetime(2026, 11, 13, 8, 0, tzinfo=UTC)
+        organization_id=None,  # no asset records read: the session is a stub
+        version=version,
+        profile=profile,
+        source="form",
+        created_at=datetime(2026, 11, 13, 8, 0, tzinfo=UTC),
     )
 
 
@@ -146,13 +150,29 @@ def test_an_asset_validates_its_vocabularies():
 # ── OpenAEV taxonomy (#11781) ───────────────────────────────────────────────
 
 
-def test_the_taxonomy_is_openaevs_twelve_categories_and_each_subcategory_has_one_category():
-    assert len(oc.ASSET_CATEGORIES) == 12
+def test_the_taxonomy_is_openaevs_thirteen_categories_and_each_subcategory_has_one_category():
+    assert len(oc.ASSET_CATEGORIES) == 13
     assert oc.ASSET_CATEGORIES[-1] == "generic_asset"
-    assert sum(len(subs) for subs in oc.ASSET_TAXONOMY.values()) == len(oc.ASSET_SUBCATEGORIES) == 80
+    assert sum(len(subs) for subs in oc.ASSET_TAXONOMY.values()) == len(oc.ASSET_SUBCATEGORIES) == 85
     assert oc.ASSET_SUBCATEGORIES["database"] == "cloud_resource"
     assert oc.ASSET_SUBCATEGORIES["edr"] == "security_platform"
     assert oc.ASSET_CRITICALITIES == ("unknown", "low", "medium", "high", "very_high")
+
+
+def test_a_repository_is_a_source_code_asset():
+    # xtm-one #1233: additive, the exact values of OpenAEV's AssetSubCategory naming.
+    assert oc.ASSET_TAXONOMY["source_code"] == (
+        "code_repository",
+        "ci_cd_pipeline",
+        "package_registry",
+        "software_package",
+        "code_other",
+    )
+    repo = oc.AssetEntry(name="xtm-one", category="source_code", subcategory="code_repository")
+    assert (repo.category, repo.subcategory) == ("source_code", "code_repository")
+    assert oc.AssetEntry.model_validate({"name": "a", "type": "ci_cd_pipeline"}).category == "source_code"
+    with pytest.raises(ValueError, match="not a subcategory of source_code"):
+        oc.AssetEntry(name="x", category="source_code", subcategory="container_image")
 
 
 @pytest.mark.parametrize(

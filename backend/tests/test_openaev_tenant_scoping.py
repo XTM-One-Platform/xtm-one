@@ -288,6 +288,9 @@ async def test_scenario_inject_and_launch_target_the_default_tenant(monkeypatch)
         f"{BASE}/api/tenants/t1/scenarios/s1/injects",
         f"{BASE}/api/tenants/t1/scenarios/s1/exercise/running",
         f"{BASE}/api/tenants/t1/exercises/search",
+        # The list came back empty: its answer reads the caller's rights (#1444),
+        # on the unscoped identity route.
+        f"{BASE}/api/me",
     ]
     assert transport.settings_calls == 1
 

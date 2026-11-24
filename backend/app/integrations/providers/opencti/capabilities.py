@@ -68,6 +68,8 @@ TOOL_CAPABILITIES: dict[str, Requirement] = {
     # pirRelationships admits KNOWLEDGE or PIRAPI, but its resolver answers no
     # user without PIRAPI (getPirWithAccessCheck, every release with PIRs).
     "query_opencti_pir_relationships": _all("PIRAPI"),
+    # securityCoverage / securityCoverages: KNOWLEDGE
+    "manage_opencti_security_coverage": _all("KNOWLEDGE"),
     # audits / auditsNumber, whatever stream; the stream check is added by
     # ``_audit_stream_requirement``.
     "query_opencti_activity": (
@@ -110,6 +112,13 @@ ACTION_CAPABILITIES: dict[str, dict[str, Requirement]] = {
         # pirFlagElement / pirUnflagElement
         "flag": _all(_BYPASS),
         "unflag": _all(_BYPASS),
+    },
+    "manage_opencti_security_coverage": {
+        # securityCoverageAdd / securityCoverageFieldPatch: KNOWLEDGE_KNUPDATE
+        "create": _all("KNOWLEDGE_KNUPDATE"),
+        "update": _all("KNOWLEDGE_KNUPDATE"),
+        # securityCoverageDelete: KNOWLEDGE_KNUPDATE_KNDELETE
+        "delete": _all("KNOWLEDGE_KNUPDATE_KNDELETE"),
     },
 }
 

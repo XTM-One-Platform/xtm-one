@@ -1183,7 +1183,7 @@ async def _store_and_publish_refresh_notification(
         summary=summary,
         extra_data={
             "notification_source": "llm_analytics_refresh",
-            "dashboard_path": "/analytics",
+            "dashboard_path": "/observability",
             "status": status_value,
         },
     )
@@ -1197,7 +1197,7 @@ async def _store_and_publish_refresh_notification(
             "title": title,
             "summary": summary,
             "notification_source": "llm_analytics_refresh",
-            "dashboard_path": "/analytics",
+            "dashboard_path": "/observability",
             "status": status_value,
         }
     )

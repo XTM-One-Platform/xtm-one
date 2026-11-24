@@ -418,11 +418,19 @@ def tool(
     required: list[str] | None = None,
     *,
     priority: int = 1,
+    always_ask: bool = False,
 ) -> ToolDefinition:
     schema: dict[str, Any] = {"type": "object", "properties": properties or {}}
     if required:
         schema["required"] = required
-    return ToolDefinition(name=name, description=description, input_schema=schema, source=SOURCE, priority=priority)
+    return ToolDefinition(
+        name=name,
+        description=description,
+        input_schema=schema,
+        source=SOURCE,
+        priority=priority,
+        always_ask=always_ask,
+    )
 
 
 LIMIT = {"type": "integer", "description": "Items to read in detail (default 25, max 100)."}

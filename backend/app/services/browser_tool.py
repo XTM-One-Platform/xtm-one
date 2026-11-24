@@ -91,6 +91,8 @@ logger = logging.getLogger(__name__)
 
 SESSION_TIMEOUT_SECONDS = 300  # 5 minutes of inactivity
 MAX_PAGE_CONTENT_CHARS = 50_000
+#: How long the ``snapshot`` action waits for the element its ``selector`` names.
+SNAPSHOT_SELECTOR_TIMEOUT_MS = 5_000
 #: Ceiling on an ``evaluate`` result. A script that returns
 #: ``canvas.toDataURL()`` puts a 200 KB base64 blob into the model's context
 #: for nothing it can read; the cut says so and names the tools that carry an
@@ -128,6 +130,8 @@ MAX_CONCURRENT_HOP_CHECKS = 4
 DEFAULT_VIEWPORT = {"width": 1280, "height": 720}
 VIEWPORT_WIDTH_BOUNDS = (320, 3840)
 VIEWPORT_HEIGHT_BOUNDS = (240, 2160)
+#: The device pixel ratios the ``viewport`` action takes (``scale``): 2 captures a 1440 x 900 page at 2880 x 1800.
+VIEWPORT_SCALE_BOUNDS = (1, 3)
 #: The values the ``emulate_media`` action takes for each CSS media feature it emulates, by its argument name; a
 #: feature not emulated answers what the browser reports by default (no reduced motion, light).
 MEDIA_FEATURES: dict[str, tuple[str, ...]] = {
@@ -546,6 +550,9 @@ class BrowserSession:
     #: The page size the ``viewport`` action set, kept with the session's state for the one re-created after
     #: it; ``None`` = the default size.
     viewport: dict[str, int] | None = None
+    #: The device pixel ratio the ``viewport`` action set (``scale``): a context option, so a change re-creates the
+    #: session (:func:`browser_set_viewport`); kept with the session's state like the viewport. 1 = the default.
+    scale: float = 1
     #: The media features the ``emulate_media`` action set (``reduced_motion``, ``color_scheme``), kept with the
     #: session's state like the viewport; ``None`` = none emulated.
     media: dict[str, str] | None = None
@@ -593,6 +600,9 @@ _cleanup_task: asyncio.Task | None = None
 _kept_states: dict[str, tuple[dict, float]] = {}
 #: The page size and the last URL kept with :data:`_kept_states`, by key.
 _kept_pages: dict[str, dict[str, Any]] = {}
+#: The page size and pixel ratio the next launch of a key opens with, whatever was kept: set by a ``viewport`` action
+#: that changes the pixel ratio, which re-creates the session (:func:`browser_set_viewport`), even with nothing kept.
+_next_launch: dict[str, dict[str, Any]] = {}
 #: The stamp (writer, kept_at) of the shared copy this process last wrote or started from, by this process's id and
 #: key: a shared copy with another stamp was written since by another process (:func:`_newer_elsewhere`), no clock
 #: compared.
@@ -716,6 +726,8 @@ async def _remember_state(key: str, session: BrowserSession, *, over_newer: bool
     page: dict[str, Any] = {}
     if session.viewport:
         page["viewport"] = dict(session.viewport)
+    if _scale_of(session) != 1:
+        page["scale"] = _scale_of(session)
     if session.media:
         page["media"] = dict(session.media)
     if session.offline:
@@ -1025,6 +1037,9 @@ async def _shared_entry(key: str) -> tuple[dict, dict[str, Any], dict[str, Any]]
     if isinstance(viewport, dict):
         with contextlib.suppress(ValueError):  # a size out of bounds: the default one
             page["viewport"] = viewport_size(viewport.get("width"), viewport.get("height"))
+    scale = _kept_scale(data.get("scale"))
+    if scale != 1:
+        page["scale"] = scale
     media = _kept_media(data.get("media"))
     if media:
         page["media"] = media
@@ -1098,6 +1113,7 @@ async def _close_session(key: str, *, forget: bool = False) -> None:
     if forget:
         _kept_states.pop(key, None)
         _kept_pages.pop(key, None)
+        _next_launch.pop(key, None)
         _known_stamps.pop((_PROCESS_ID, key), None)
         await _forget_shared_state(key)
     if session and not session.closed:
@@ -1358,11 +1374,15 @@ async def _launch_session(session_key: str, *, reopen_kept_page: bool = False) -
                 stamp.get("kept_at", local[1] if local is not None else "an unknown time"),
                 kept_page.get("url") or "unknown",
             )
-        viewport = kept_page.get("viewport")
-        media = _kept_media(kept_page.get("media"))
-        offline = kept_page.get("offline") is True
+        # A pixel ratio changed by the viewport action re-created the session: what it set wins over the kept page.
+        opened = {**kept_page, **_next_launch.pop(session_key, {})}
+        viewport = opened.get("viewport")
+        scale = _kept_scale(opened.get("scale"))
+        media = _kept_media(opened.get("media"))
+        offline = opened.get("offline") is True
         context = await browser.new_context(
             viewport=dict(viewport or DEFAULT_VIEWPORT),
+            device_scale_factor=scale,
             user_agent="FiligranCopilot/1.0 (Browser Tool)",
             storage_state=kept_state,
             offline=offline,
@@ -1383,6 +1403,7 @@ async def _launch_session(session_key: str, *, reopen_kept_page: bool = False) -
             page=page,
             redirects=redirects,
             viewport=dict(viewport) if viewport else None,
+            scale=scale,
             media=media or None,
             offline=offline,
         )
@@ -1445,6 +1466,9 @@ def _restored_notice(
     viewport = page.get("viewport")
     if viewport:
         restored += f", viewport {viewport['width']} x {viewport['height']} px restored"
+    scale = _kept_scale(page.get("scale"))
+    if scale != 1:
+        restored += f", pixel ratio {scale:g} restored"
     media = _kept_media(page.get("media"))
     if media:
         restored += f", emulated media {_media_text(media)} restored"
@@ -2096,6 +2120,8 @@ async def _share_landed_page(session_key: str, session: BrowserSession, landed: 
     page["url"] = landed
     if session.viewport:
         page["viewport"] = dict(session.viewport)
+    if _scale_of(session) != 1:
+        page["scale"] = _scale_of(session)
     if session.media:
         page["media"] = dict(session.media)
     if session.offline:
@@ -2118,9 +2144,14 @@ async def _share_kept_viewport(session_key: str, session: BrowserSession) -> Non
     if kept is None:
         return
     page = dict(_kept_pages.get(session_key) or {})
-    if page.get("viewport") == session.viewport:
+    scale = _scale_of(session)
+    if page.get("viewport") == session.viewport and _kept_scale(page.get("scale")) == scale:
         return
     page["viewport"] = dict(session.viewport)
+    if scale != 1:
+        page["scale"] = scale
+    else:
+        page.pop("scale", None)
     _kept_pages[session_key] = page
     await _share_state(session_key, kept[0], page)
 
@@ -2537,13 +2568,33 @@ async def browser_get_content(session_key: str) -> str:
         return f"{note}URL: {snapshot.get('url')}\nTitle: {snapshot.get('title')}\n\n{text}"
 
 
-async def browser_snapshot(session_key: str) -> str:
-    """Get an accessibility tree snapshot of the current page.
+def bound_snapshot(snapshot: str, *, scope: str, limit: int = MAX_PAGE_CONTENT_CHARS) -> str:
+    """*snapshot* cut at a line boundary under *limit* characters, the cut said and how to narrow it. Pure.
+
+    A catalog page answered 95,426 characters in one call: the outline is cut
+    like ``get_content`` and the answer names the ``selector`` that reads one
+    region of the page instead.
+    """
+    if len(snapshot) <= limit:
+        return snapshot
+    head = snapshot[:limit]
+    cut = head.rfind("\n")
+    if cut > 0:
+        head = head[:cut]
+    return (
+        f"{head}\n\n[Snapshot of {scope} truncated at {len(head):,} of {len(snapshot):,} characters: "
+        "pass selector (a CSS selector, e.g. 'main' or '[role=dialog]') to outline one region.]"
+    )
+
+
+async def browser_snapshot(session_key: str, selector: str = "") -> str:
+    """Get an accessibility tree snapshot of the current page, or of the element *selector* matches first.
 
     Returns a structured representation of interactive elements,
     headings, and key content — much more useful for agents than
-    raw HTML or plain text.
+    raw HTML or plain text. The outline is bounded (:func:`bound_snapshot`).
     """
+    scope = selector.strip() or "body"
     session = await _get_or_create_session(session_key)
     async with session.lock:
         session.last_used = time.time()
@@ -2551,7 +2602,10 @@ async def browser_snapshot(session_key: str) -> str:
         # Page.accessibility was removed in Playwright 1.57 and Page.aria_snapshot
         # only exists from 1.59; Locator.aria_snapshot (1.49+) ships in every
         # release without the former, and the page-level call snapshots the body.
-        aria_snapshot = getattr(session.page.locator("body"), "aria_snapshot", None)
+        target = session.page.locator(scope)
+        if scope != "body":
+            target = target.first
+        aria_snapshot = getattr(target, "aria_snapshot", None)
         if aria_snapshot is None:
             raise RuntimeError(
                 "The snapshot action needs Playwright's ARIA snapshot API "
@@ -2559,11 +2613,14 @@ async def browser_snapshot(session_key: str) -> str:
                 "installed Playwright does not provide. Use get_content or "
                 "screenshot instead."
             )
-        snapshot = await aria_snapshot()
+        # A selector that matches nothing fails within SNAPSHOT_SELECTOR_TIMEOUT_MS, never the 30 s default.
+        snapshot = await (aria_snapshot(timeout=SNAPSHOT_SELECTOR_TIMEOUT_MS) if scope != "body" else aria_snapshot())
         await _remember_state(session_key, session)  # as get_content
         if not snapshot or not snapshot.strip():
+            if scope != "body":
+                return f"No accessibility tree available for '{scope}' on this page."
             return "No accessibility tree available for this page."
-        return snapshot
+        return bound_snapshot(snapshot, scope="the page" if scope == "body" else f"'{scope}'")
 
 
 async def _describe_click_timeout(page: Any, selector: str, waited_ms: int, exc: Exception) -> str:
@@ -3010,6 +3067,31 @@ async def browser_drag(session_key: str, selector: str, dx: object, dy: object, 
         )
 
 
+def viewport_scale(scale: object) -> float:
+    """The device pixel ratio *scale* asks for (``None``: 1), or ``ValueError`` saying the bounds."""
+    if scale is None:
+        return 1
+    low, high = VIEWPORT_SCALE_BOUNDS
+    if isinstance(scale, bool) or not isinstance(scale, int | float) or not math.isfinite(scale):
+        raise ValueError(f"'scale' is a number from {low} to {high}.")
+    if not low <= scale <= high:
+        raise ValueError(f"'scale' is {low} to {high}, got {scale:g}.")
+    return float(scale)
+
+
+def _kept_scale(value: object) -> float:
+    """The pixel ratio a kept page names, 1 when it names none or one out of bounds."""
+    try:
+        return viewport_scale(value)
+    except ValueError:
+        return 1
+
+
+def _scale_of(session: BrowserSession) -> float:
+    """*session*'s pixel ratio; 1 for a session installed or stubbed without one."""
+    return _kept_scale(getattr(session, "scale", 1))
+
+
 def viewport_size(width: object, height: object) -> dict[str, int]:
     """The page size *width* x *height* asks for, or ``ValueError`` saying the bounds."""
     def whole(value: object) -> int:
@@ -3111,14 +3193,47 @@ async def _page_holds_viewport(session: BrowserSession) -> str | None:
     )
 
 
-async def browser_set_viewport(session_key: str, width: object, height: object) -> str:
+async def _rescale_session(
+    session_key: str, session: BrowserSession, size: dict[str, int], scale: float
+) -> BrowserSession:
+    """Re-create *session* at pixel ratio *scale* and size *size*: ``device_scale_factor`` is a context option.
+
+    Its cookies, storage and page are kept (:func:`_close_session` without forgetting) and the new context opens
+    with them, back on the page it was on (:attr:`BrowserSession.resume_url`); the restore notice is not said, the
+    action's own answer says what changed. A profile session is refused: its sign-in lives with its policy.
+    """
+    if not _keeps_state(session):
+        raise ValueError("'scale' cannot change on a session signed in with a browser profile; close it first.")
+    _next_launch[session_key] = {
+        "viewport": dict(size),
+        "scale": scale,
+        **({"media": dict(session.media)} if session.media else {}),
+        **({"offline": True} if session.offline else {}),
+    }
+    url = str(getattr(session.page, "url", "") or "")
+    async with _session_lock(session_key):
+        await _close_session(session_key)
+        fresh = await _launch_session(session_key, reopen_kept_page=True)
+    _notices.pop(session_key, None)
+    if fresh.resume_url is None and _origin_of(url):
+        fresh.resume_url = url  # nothing kept (a page with no storage): it is still opened again
+    return fresh
+
+
+async def browser_set_viewport(session_key: str, width: object, height: object, scale: object = None) -> str:
     """Resize the session's page; kept until the session closes, a new session opens at 1280 x 720.
 
+    *scale* sets the device pixel ratio (1 to 3) screenshots are taken at: a context option, so a change re-creates
+    the session on its page, signed in as it was (:func:`_rescale_session`); ``None`` keeps the current one.
     Returns once the page itself reports the new size (bounded, :func:`_await_viewport_applied`), so a capture, a
     click or an ``evaluate`` in the next call runs on the resized layout.
     """
     size = viewport_size(width, height)
+    ratio = None if scale is None else viewport_scale(scale)
     session = await _get_or_create_session(session_key)
+    if ratio is not None and ratio != _scale_of(session):
+        async with session.lock:
+            session = await _rescale_session(session_key, session, size, ratio)
     async with session.lock:
         session.last_used = time.time()
         await _reopen_resumed_page(session_key, session)
@@ -3138,8 +3253,9 @@ async def browser_set_viewport(session_key: str, width: object, height: object) 
                 f"Viewport set to {size['width']} x {size['height']} px on {session.page.url}, but after "
                 f"{_VIEWPORT_SETTLE_SECONDS:g} s {reported}: read it again before a capture or a measure."
             )
+        ratio_note = f" at pixel ratio {_scale_of(session):g}" if _scale_of(session) != 1 else ""
         return (
-            f"Viewport set to {size['width']} x {size['height']} px on {session.page.url}: the page reports "
+            f"Viewport set to {size['width']} x {size['height']} px{ratio_note} on {session.page.url}: the page reports "
             f"{seen[0]} x {seen[1]} px (window.innerWidth x innerHeight), screenshots, evaluate and the page's "
             "layout now use it."
         )

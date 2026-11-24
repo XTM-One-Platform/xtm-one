@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { CardEditActions } from "@/components/ui/card-edit-actions";
 import { Switch } from "@/components/ui/switch";
 import { Tip } from "@/components/ui/tooltip";
@@ -217,7 +218,7 @@ export function KnowledgeSection({
             <CardTitle className="content-base flex items-center gap-2">
               <BookOpen className="h-4 w-4 text-accent" /> {t_i18n("Knowledge Bases")}
               {(agent.knowledge_base_ids || []).length > 0 && !editingKbs && (
-                <Badge variant="secondary" className="text-[9px] h-4 px-1.5">{(agent.knowledge_base_ids || []).length}</Badge>
+                <CountBadge variant="secondary">{(agent.knowledge_base_ids || []).length}</CountBadge>
               )}
             </CardTitle>
             {companyManaged && <p className="content-caption text-feedback-warning-primary mt-0.5 flex items-center gap-1"><Building2 className="h-3 w-3" /> {t_i18n("Only company-managed knowledge bases are shown.")}</p>}

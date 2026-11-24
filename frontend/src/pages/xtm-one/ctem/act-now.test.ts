@@ -7,8 +7,8 @@ import { Zap } from "lucide-react";
 
 import en from "@/i18n/lang/en.json";
 import {
-  ACT_NOW_COLLAPSED, ACT_NOW_MAX, ASK_AGENT_ROW_ID, actNowAskAiPrompt, actNowGroup, actNowGroupCounts, actNowIsGeneric, actNowOffersAskAi,
-  actNowPriorityLabel, actNowQueue, type ActNowRow,
+  ACT_NOW_COLLAPSED, ACT_NOW_MAX, ASK_AGENT_ROW_ID, actNowAskAiPrompt, actNowFleetWork, actNowGroup, actNowGroupCounts, actNowIsGeneric, actNowOffersAskAi,
+  actNowPriorityLabel, actNowQueue, actNowShowsPriority, type ActNowRow,
 } from "./act-now";
 
 const t = (text: string, values: Record<string, string> = {}) =>
@@ -104,6 +104,13 @@ describe("actNowQueue", () => {
     expect(actNowPriorityLabel(row("a", 50, { priorityLabel: "high" }))).toBe("high");
   });
 
+  it("shows no priority label on a fleet working row, a label on every other row (UX round 1 on #920, B2)", () => {
+    expect(actNowShowsPriority(row("f", 60, { source: "fleet" }))).toBe(false);
+    for (const source of ["work_item", "approval", "module", "setup"] as const) {
+      expect(actNowShowsPriority(row("x", 60, { source }))).toBe(true);
+    }
+  });
+
   it("merges the facts of one stage that quote the same figure into one phrase (#11213)", () => {
     const merge = (subjects: string[]) => `${subjects.join(" and ")}: 232 failed expectations`;
     const q = actNowQueue([
@@ -142,7 +149,7 @@ describe("actNowQueue", () => {
     expect(generic).toContain("Why it is there: Actively exploited.");
     expect(generic).toContain("This action is generic");
     expect(generic).toContain("guide me step by step");
-    const tailored = actNowAskAiPrompt(t, { title: "Patch", reason: "Crown jewel", tailored: true });
+    const tailored = actNowAskAiPrompt(t, { title: "Patch", reason: "Primary asset", tailored: true });
     expect(tailored).toContain("ranked by our organization context");
     expect(tailored).not.toContain("(stage:");
   });
@@ -154,5 +161,46 @@ describe("actNowQueue", () => {
     actNowAskAiPrompt(record, { title: "a", reason: "b", stage: "c" });
     actNowAskAiPrompt(record, { title: "a", reason: "b", tailored: true });
     for (const key of seen) expect(catalog[key]).toBe(key);
+  });
+});
+
+describe("actNowFleetWork (#915)", () => {
+  const run = (runId: string, at: string, over: Partial<Parameters<typeof actNowFleetWork>[0][number]> = {}) => ({
+    runId, at, fleetName: "Vulnerability prioritization", agentName: "Triage", outcome: "running", caseId: "c-1", ...over,
+  });
+
+  it("keeps one entry per case, its newest in-flight run, and counts the others", () => {
+    const work = actNowFleetWork(
+      [
+        run("old", "2026-11-21T10:00:00Z", { agentName: "Orchestrator" }),
+        run("new", "2026-11-21T11:00:00Z"),
+        run("done", "2026-11-21T12:00:00Z", { outcome: "succeeded" }),
+        run("q", "2026-11-21T09:00:00Z", { caseId: "c-2", outcome: "pending", agentName: null }),
+      ],
+      { "c-1": "Upgrade nginx", "c-2": "Disable HTTP/2" },
+    );
+    expect(work).toEqual([
+      { caseId: "c-1", caseTitle: "Upgrade nginx", fleetName: "Vulnerability prioritization", agentName: "Triage", pending: false, runId: "new", others: 1 },
+      { caseId: "c-2", caseTitle: "Disable HTTP/2", fleetName: "Vulnerability prioritization", agentName: null, pending: true, runId: "q", others: 0 },
+    ]);
+  });
+
+  it("leaves out a run with no case, a finished run and a case the reader cannot see", () => {
+    expect(actNowFleetWork(
+      [
+        run("a", "2026-11-21T10:00:00Z", { caseId: null }),
+        run("b", "2026-11-21T10:00:00Z", { outcome: "failed" }),
+        run("c", "2026-11-21T10:00:00Z", { caseId: "hidden" }),
+      ],
+      { "c-1": "Upgrade nginx" },
+    )).toEqual([]);
+  });
+
+  it("puts a fleet row in the working group, after what waits for the reader", () => {
+    expect(actNowGroup(row("f", 60, { source: "fleet" }))).toBe("working");
+    const q = actNowQueue([row("f", 98, { source: "fleet" }), row("w", 98, { source: "work_item" })]);
+    expect(q.map((r) => r.id)).toEqual(["w", "f"]);
+    expect(actNowOffersAskAi({ source: "fleet" })).toBe(false);
+    expect(actNowIsGeneric([row("f", 60, { source: "fleet" })])).toBe(false);
   });
 });

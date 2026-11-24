@@ -80,6 +80,17 @@ const names = () =>
     .map((row) => within(row).getAllByRole("cell")[0].textContent);
 
 describe("DataTable", () => {
+  // #1176: grouping keeps the sort inside each group and names each group with its count.
+  it("groups rows under a header row with their count, the sort kept inside each group", () => {
+    renderTable({
+      defaultSort: { key: "runs", direction: "desc" },
+      groupBy: { value: (row) => row.status, label: (value) => `Group ${value}` },
+    });
+    const groups = screen.getAllByTestId("data-table-group-row");
+    expect(groups.map((row) => row.textContent)).toEqual(["Group active2 rows", "Group paused1 row"]);
+    expect(names()).toEqual(["Group active2 rows", "Charlie report", "Alpha mailbox", "Group paused1 row", "Bravo triage"]);
+  });
+
   it("filters by a column value, counts the filter and clears it", () => {
     renderTable();
     const pill = screen.getAllByRole("button", { name: /Status/ }).find((button) => button.hasAttribute("aria-expanded"));
@@ -90,6 +101,15 @@ describe("DataTable", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Clear all filters" })[0]);
     expect(names()).toHaveLength(3);
     expect(screen.getByTestId("location").textContent).not.toContain("f_status");
+  });
+
+  // UX round 1 on xtm-one #1004, B1: a toolbar filter (a Status pill) counted on its own
+  // pill still offers Clear all, which runs the page's clear.
+  it("offers Clear all for a toolbar filter outside the Filters badge", () => {
+    const onClearAll = vi.fn();
+    renderTable({ toolbarFilterActive: true, onClearAll });
+    fireEvent.click(screen.getAllByRole("button", { name: "Clear all filters" })[0]);
+    expect(onClearAll).toHaveBeenCalledTimes(1);
   });
 
   describe("lists every filter's options alphabetically (#12289)", () => {
@@ -227,7 +247,10 @@ describe("DataTable", () => {
 
   it("keeps the no-results row on the visible part of a table wider than its card (UX round 3 on #10601, A1)", () => {
     const original = globalThis.ResizeObserver;
-    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(800);
+    // The card is 800 px; its scroll area's client box leaves out the 1 px border and a 6 px vertical scrollbar.
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.dataset.testid === "data-table-scroll" ? 792 : 800;
+    });
     globalThis.ResizeObserver = class {
       observe() {}
       unobserve() {}
@@ -239,8 +262,9 @@ describe("DataTable", () => {
       fireEvent.change(screen.getByRole("searchbox"), { target: { value: "zulu" } });
       act(() => vi.advanceTimersByTime(300));
       const content = screen.getByTestId("data-table-no-results");
-      // As wide as the scroll area inside its 1 px border, whatever the table's own width.
-      expect(content.style.width).toBe("798px");
+      // As wide as the scroll area's client box, whatever the table's own width: a full-width row past it
+      // overflowed by the scrollbar's width (UX round 1 on #1356, B1).
+      expect(content.style.width).toBe("792px");
       expect(within(content).getByRole("button", { name: "Clear all filters" })).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
@@ -582,7 +606,7 @@ describe("DataTable", () => {
       expect(columnsButton.textContent).toBe("Columns");
       const pageSize = screen.getByRole("combobox", { name: "Rows per page" });
       expect(pageSize.getAttribute("data-compact")).toBe("true");
-      expect(pageSize.textContent).toBe("10");
+      expect(pageSize.textContent).toBe("25");
     } finally {
       width.mockRestore();
       globalThis.ResizeObserver = original;

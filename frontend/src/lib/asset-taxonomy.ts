@@ -20,6 +20,7 @@ export const ASSET_CATEGORY_LABELS = {
   saas_application: "SaaS application",
   ai_target: "AI system (asset category)",
   security_platform: "Security platform",
+  source_code: "Source code",
   generic_asset: "Other asset (to classify)",
 } as const;
 
@@ -107,6 +108,11 @@ const ASSET_SUBCATEGORY_LABELS = {
   llm_firewall: "LLM firewall",
   ai_gateway: "AI gateway",
   vulnerability_scanner: "Vulnerability scanner",
+  code_repository: "Code repository",
+  ci_cd_pipeline: "CI/CD pipeline",
+  package_registry: "Package registry",
+  software_package: "Software package",
+  code_other: "Other code asset",
 } as const;
 
 type AssetSubcategory = keyof typeof ASSET_SUBCATEGORY_LABELS;
@@ -139,6 +145,8 @@ const ASSET_TAXONOMY: Record<AssetCategory, readonly AssetSubcategory[]> = {
   saas_application: ["saas_app", "saas_tenant"],
   ai_target: ["llm_model", "ai_agent", "mcp_server", "rag_pipeline"],
   security_platform: ["edr", "xdr", "siem", "soar", "ndr", "ispm", "email_security", "llm_firewall", "ai_gateway", "vulnerability_scanner"],
+  // What the organization builds and ships (#1233); a third-party dependency is the repository's SBOM software, not an asset.
+  source_code: ["code_repository", "ci_cd_pipeline", "package_registry", "software_package", "code_other"],
   generic_asset: [],
 };
 

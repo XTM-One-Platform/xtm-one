@@ -54,7 +54,8 @@ test.describe.serial('Flows — builder create/save/run lifecycle', () => {
     await page.goto('/flows/library');
     await page.getByRole('button', { name: /New flow/ }).click();
 
-    await expect(page).toHaveURL(/\/flows\/[0-9a-f-]{36}\/builder/);
+    // The builder lives under its menu entry: /flows/library/<id> (#797 S4).
+    await expect(page).toHaveURL(/\/flows\/library\/[0-9a-f-]{36}(?:[?#]|$)/);
     builderUrl = page.url();
 
     // Rename the fresh "Untitled flow" so cleanup and later assertions can
@@ -181,7 +182,7 @@ test.describe('Flows — seeded examples', () => {
     }
     test.skip(!exampleId, 'No seeded example flows on this platform');
 
-    await page.goto(`/flows/${exampleId}/builder`);
+    await page.goto(`/flows/library/${exampleId}`);
     // Example graphs carry several nodes and edges — rendering both proves
     // the catalog-driven canvas can display a real saved document.
     await expect(page.locator('.react-flow__node').first()).toBeVisible();
@@ -227,7 +228,7 @@ test.describe('Flows - read-only builder', () => {
           await route.fulfill({ json: { ...(await response.json()), can_manage: false } });
         },
       );
-      await page.goto(`/flows/${flowId}/builder`);
+      await page.goto(`/flows/library/${flowId}`);
       await page.locator('.react-flow__node').first().click();
 
       const row = page
@@ -275,7 +276,7 @@ test.describe('Flows - node catalog refresh', () => {
       flowId = (await resp.json()).id;
 
       const catalogLoaded = page.waitForResponse((r) => isCatalog(r.url()) && r.ok());
-      await page.goto(`/flows/${flowId}/builder`);
+      await page.goto(`/flows/library/${flowId}`);
       await catalogLoaded;
       const node = page.locator('.react-flow__node').first();
       await expect(node).toBeVisible();
@@ -337,7 +338,7 @@ test.describe('Flows - selections the catalog does not list', () => {
       expect(resp.ok()).toBeTruthy();
       flowId = (await resp.json()).id;
 
-      await page.goto(`/flows/${flowId}/builder`);
+      await page.goto(`/flows/library/${flowId}`);
       await page.locator('.react-flow__node').first().click();
 
       // Shown first and counted, rather than counted and nowhere to be seen.

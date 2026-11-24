@@ -12,9 +12,10 @@
 #                 ruff, mypy, vulture) in /opt/venv, git, the data
 #                 stores of the backend's integration tests under
 #                 /opt/stores (PostgreSQL 16 + pgvector, Dragonfly, Silo;
-#                 .xtm-one/stores.py), and Playwright's headless
+#                 .xtm-one/stores.py), Playwright's headless
 #                 Chromium under /ms-playwright (the lab's presentation
-#                 export). Non-root.
+#                 export) and tiktoken's cl100k_base encoding under
+#                 /opt/tiktoken (TIKTOKEN_CACHE_DIR). Non-root.
 #   nodejs-dev  - Node 24 + yarn (corepack, the version package.json pins)
 #                 with the frontend's yarn.lock fully in the yarn global cache,
 #                 so `yarn install --immutable` in a checkout links node_modules
@@ -69,6 +70,15 @@ RUN for attempt in 1 2 3; do \
     done; \
     exit 1
 
+# The tokenizer data the backend's chunking loads (tiktoken cl100k_base): its
+# first use downloads it, which the dev container's missing network refuses,
+# so the unit tests that count tokens would only pass in CI. Fetched once here
+# with the locked tiktoken (it checks the file's sha256), copied into python-dev
+# below under TIKTOKEN_CACHE_DIR.
+RUN mkdir -p /opt/tiktoken \
+    && TIKTOKEN_CACHE_DIR=/opt/tiktoken /opt/venv/bin/python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')" \
+    && test -n "$(ls -A /opt/tiktoken)"
+
 # ---------------------------------------------------------------------------
 # Stage 1b: stores-fetch - the integration tests' data stores. Never shipped
 # as such: only /opt/stores is copied out. .xtm-one/stores.py fetches each
@@ -96,6 +106,9 @@ RUN apt-get update \
 RUN groupadd -g 1000 sandboxuser && useradd -u 1000 -g sandboxuser -m sandboxuser
 
 COPY --from=python-builder /opt/venv /opt/venv
+# The tiktoken encoding fetched in python-builder: owned by root, read-only
+# for sandboxuser, read offline through TIKTOKEN_CACHE_DIR.
+COPY --from=python-builder /opt/tiktoken /opt/tiktoken
 # The stores (hardening rule 2, a named runtime exception): a PostgreSQL 16
 # server with pgvector, a Redis-API server (Dragonfly) and an S3 server
 # (Silo), owned by root, executable by sandboxuser. The backend-integration
@@ -109,7 +122,8 @@ ENV PATH="/opt/venv/bin:$PATH" \
     VIRTUAL_ENV="/opt/venv" \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_INDEX=1 \
-    UV_OFFLINE=1
+    UV_OFFLINE=1 \
+    TIKTOKEN_CACHE_DIR=/opt/tiktoken
 
 # Headless Chromium for the lab (hardening rule 2, a named runtime exception):
 # the presentation export (PDF, PPTX) and the other Playwright

@@ -25,11 +25,16 @@ migrations and seeded data, not a stub (xtm-one #11799, item 5):
 6. Without XTM One the backend runs in Community Edition, where a user reaches one tenant: the first of their
    memberships by id (``visibleTenants``, ``back/src/features/app-router/tenant-edition-utils.ts``), Acme Bank
    for the seeded administrator. ``/lab/tenant/<name>`` (case-insensitive, e.g. ``Tarnwick Industries``, the
-   seeded tenant with no asset groups, or ``Fresh Start``, the one with no organization) makes that tenant the one
-   shown (:func:`select_tenant`), then opens ``/``; an unknown name answers 404 with the seeded names.
+   seeded tenant with no asset groups, or ``Fresh Start``, born as a tenant created from the platform administration:
+   its ``Enterprise`` risk scope and its Get started wizard, nothing else) makes that tenant the one shown
+   (:func:`select_tenant`), then opens ``?next=<path>``; an unknown name answers 404 with the seeded names.
 7. Feature flags (``feature_flags``, the closed registry of ``utils/src/feature-flags.ts``): every flag on by
    default (``*``), so a screen behind a development flag renders; ``LAB_OPENCRQ_FEATURE_FLAGS`` narrows them
    (comma-separated names, ``none`` for none). The lab-up line names them.
+8. OpenCTI: off by default (no ``connectors.opencti``: every OpenCTI surface reads unavailable). ``LAB_OPENCRQ_OPENCTI=live``
+   (``[service.lab-opencrq-opencti]``, which starts ``lab-opencti`` first) connects the Fresh Start tenant to the
+   lab's OpenCTI (:func:`opencti_connectors`): its Get started Threats step and Integrations > OpenCTI then talk to
+   a running OpenCTI.
 """
 
 from __future__ import annotations
@@ -85,6 +90,8 @@ NODE26 = (
     "shErYZlvlAWQ1bOJEJyCPnF035NiPBnItTbUQZnn87dO0NKZ/o3tQ7ALrlRDdfUsfIozu8BD5l2fk+ma4ho4NA==",
 )
 SESSION: dict[str, str] = {}
+#: ``Tenant_FreshStart`` of ``module/src/platform-seed/data/ids.ts``: the seeded tenant with the Get started wizard.
+FRESH_START_TENANT = "c3e1f5a7-2d84-4b96-9f1c-6a0e8d2b4f57"
 
 
 def missing_sub_paths(where: Path) -> list[str]:
@@ -125,6 +132,21 @@ def next_path(query: str) -> str:
     return wanted if wanted.startswith("/") and not wanted.startswith("//") and "\\" not in wanted else "/"
 
 
+def opencti_connectors(value: str | None = None) -> dict:
+    """The OpenCTI part of the config: empty unless ``LAB_OPENCRQ_OPENCTI`` is ``live``.
+
+    ``live`` points the Fresh Start tenant at the lab's OpenCTI (``[service.lab-opencti]``, its lab-only admin
+    token), per tenant as ``config-schema.ts`` keys it, and names it in the product switcher (``xtm.opencti_url``).
+    """
+    raw = os.environ.get("LAB_OPENCRQ_OPENCTI", "") if value is None else value
+    if raw.strip().lower() != "live":
+        return {}
+    return {
+        "connectors": {"opencti": {FRESH_START_TENANT: {"url": lab.LIVE_OPENCTI_URL, "token": lab.CTEM_OPENCTI_TOKEN}}},
+        "xtm": {"opencti_url": lab.LIVE_OPENCTI_URL},
+    }
+
+
 def local_config(admin_email: str = LAB_ADMIN_EMAIL) -> dict:
     """``back/config/development.local.json`` for the lab's PostgreSQL and ports, the platform seed on."""
     return {
@@ -150,6 +172,7 @@ def local_config(admin_email: str = LAB_ADMIN_EMAIL) -> dict:
         "feature_flags": feature_flags(),
         # Required by the config parse; nothing answers there, so the Ask Ariane launcher reads unavailable.
         "xtm_one": {"url": "http://127.0.0.1:9", "token": "lab", "platform_url": f"http://localhost:{PORT}"},
+        **opencti_connectors(),
     }
 
 
@@ -328,7 +351,8 @@ def main() -> None:
         f"lab up: http://localhost:{PORT}/lab/sign-in signs in as {LAB_ADMIN_EMAIL} (OpenCRQ built from {root.name}/, "
         f"seeded); theme at /lab/theme/dark or /lab/theme/light; language at /lab/locale/<{'|'.join(LOCALES)}|default>; "
         f"tenant at /lab/tenant/<name> ({tenant_names()}); ?next=<path> after a switch; "
-        f"feature flags: {', '.join(feature_flags()) or 'none'}"
+        f"feature flags: {', '.join(feature_flags()) or 'none'}; "
+        f"opencti: {'lab OpenCTI on the Fresh Start tenant' if opencti_connectors() else 'off'}"
     )
     while True:
         for child in lab.CHILDREN:

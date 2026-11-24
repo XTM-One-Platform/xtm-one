@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
 
 type CopyState = "idle" | "copied" | "error";
 
-async function writeToClipboard(text: string): Promise<void> {
+export async function writeToClipboard(text: string): Promise<void> {
   // Prefer the async Clipboard API, but fall through to the legacy fallback
   // when it is missing OR rejects at runtime — an insecure origin, a denied
   // permission, or an unfocused document surfaces as a rejected promise (not a

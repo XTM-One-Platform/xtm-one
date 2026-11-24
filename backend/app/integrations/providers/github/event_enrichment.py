@@ -32,6 +32,10 @@ read too (``GET /repos/{repo}/commits/{sha}/status``, on a candidate green head
 only): a pending status counts as a pending check and a red one as a failed
 check (``status:<context>``), weighed against the base's required contexts
 when they were read, so a status still running never wakes a green filter.
+A head whose newest status changed under ``STATUS_SETTLE_SECONDS`` (60 s) ago
+is held pending (``status:settling``): a status app creates the statuses of a
+later stage only after the earlier one ended, and the head watch reads the
+head again before it wakes green.
 
 The red side has its own facts, because a workflow run completes only when its
 last job ends (a slow or hung shard holds a failed one back for up to its
@@ -124,6 +128,17 @@ A filter key under ``enriched.run`` reads the facet :data:`RUN_FACET` on a
 red-check filter adds ``"enriched.run.no_jobs": false`` to leave such a run
 out, and a listener on ``enriched.run.no_jobs`` true with ``attempt`` 1 re-runs
 it once (``manage_github_workflow_run`` action ``rerun``).
+
+A red the head commit did not cause (the same required check already red on its
+parent, a bot commit on a pull request red for days) wakes a red-check filter
+like a new one. A filter key under ``enriched.head.parent`` reads the facet
+:data:`PARENT_FACET`, on a head with a counted red only (two more reads: the
+commit, then its first parent's check runs): ``sha`` (the parent, ``null`` when
+none or not read), ``failed_names`` (the head's counted reds already red on the
+parent), ``new_failed_names`` (the others) and ``unchanged_red`` (at least one
+counted red and none new). A green head, no parent or an unreadable parent reads
+``unchanged_red`` false, so ``{"enriched.head.parent.unchanged_red": {"ne":
+true}}`` never drops a wake blind (xtm-one #752).
 """
 
 from __future__ import annotations
@@ -192,6 +207,10 @@ _REQUIRED_PREFIX = "enriched.head.required."
 RUN_FACET = "run"
 _RUN_KEY = "enriched.run"
 _RUN_PREFIX = "enriched.run."
+#: The facet naming the head's reds against its first parent (``enriched.head.parent``).
+PARENT_FACET = "parent"
+_PARENT_KEY = "enriched.head.parent"
+_PARENT_PREFIX = "enriched.head.parent."
 #: The conclusions of a run whose job count is read: a green run is never ``no_jobs``.
 _NO_JOBS_CONCLUSIONS = frozenset({"failure", "cancelled", "startup_failure", "timed_out"})
 #: Where a completion event names itself: its id and what changes on a re-run.
@@ -252,6 +271,8 @@ def facets(event_key: str, payload: dict, keys: tuple[str, ...]) -> frozenset[st
         parts.add(REQUIRED_FACET)
     if _event_name(event_key) == "workflow_run" and any(key == _RUN_KEY or key.startswith(_RUN_PREFIX) for key in keys):
         parts.add(RUN_FACET)
+    if any(key == _PARENT_KEY or key.startswith(_PARENT_PREFIX) for key in keys):
+        parts.add(PARENT_FACET)
     return frozenset(parts)
 
 
@@ -576,6 +597,12 @@ def workflows_not_created(
 
 #: A pending stand-in for the workflow runs of a push GitHub has not created yet.
 NOT_CREATED_WORKFLOWS = {"id": "not-created", "name": "not-created", "status": "queued"}
+#: How long after a head's newest commit status changed its statuses may still grow
+#: (a status app's next stage): CircleCI created the build-* statuses of
+#: OpenAEV-Platform/collectors #690 16 s after its last test-* status passed.
+STATUS_SETTLE_SECONDS = 60
+#: A pending stand-in for the commit statuses a status app has not created yet.
+STATUSES_SETTLING = {"name": "status:settling", "status": "pending", "conclusion": None}
 
 
 def with_running_workflows(checks: dict[str, Any], running: list[dict[str, Any]]) -> dict[str, Any]:
@@ -598,7 +625,10 @@ def with_running_workflows(checks: dict[str, Any], running: list[dict[str, Any]]
 
 
 def with_commit_statuses(
-    checks: dict[str, Any], statuses: list[Any], required: frozenset[str] | None = None
+    checks: dict[str, Any],
+    statuses: list[Any],
+    required: frozenset[str] | None = None,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """*checks* with the head's commit statuses weighed: a pending or red status holds a green head. Pure.
 
@@ -609,20 +639,35 @@ def with_commit_statuses(
     *required* names it or names nothing (a red outside the base's required
     contexts is ``failed_not_required``, as for a check run). A status named in
     ``stale_optional`` was already left out by :func:`with_stale_optional`.
+
+    A status app creates the statuses of a later stage only once the earlier
+    stage ended (CircleCI: the ``build-*`` jobs about 15 s after the last
+    ``test-*`` one), so a head whose statuses all passed is held as pending
+    (``status:settling``) while its newest status changed less than
+    :data:`STATUS_SETTLE_SECONDS` before *now*: the head watch reads it again,
+    and it wakes green only once no new status appeared in that window.
     """
     left_out = {s.get("name") for s in checks.get("stale_optional") or [] if isinstance(s, dict)}
     pending: list[dict[str, Any]] = []
     red: list[str] = []
     red_optional: list[str] = []
+    changed: list[datetime] = []
     for status in statuses:
         if not isinstance(status, dict):
             continue
         context = str(status.get("context") or "?")
         state = status.get("state") or "pending"
+        moment = _parse_time(status.get("updated_at"))
+        if moment is not None:
+            changed.append(moment)
         if state == "pending" and context not in left_out:
             pending.append({"name": f"status:{context}", "status": "pending", "conclusion": None})
         elif state in ("error", "failure"):
             (red if not required or context in required else red_optional).append(f"status:{context}")
+    if not pending and not red and changed:
+        age = ((now or _now()) - max(changed)).total_seconds()
+        if age < STATUS_SETTLE_SECONDS:
+            pending.append(dict(STATUSES_SETTLING))
     if not pending and not red and not red_optional:
         return checks
     held = bool(pending or red)
@@ -775,6 +820,50 @@ async def _run_jobs_total(client: Any, repo_base: str, run_id: Any, token: str) 
     return total
 
 
+def parent_facts(head_failed: list[Any], parent_sha: str | None, parent_runs: list[Any] | None) -> dict[str, Any]:
+    """``enriched.head.parent``: the head's counted reds placed against its parent's latest check runs. Pure.
+
+    *parent_runs* ``None`` (no parent, or not read) keeps every red new.
+    """
+    names = [name for name in head_failed if isinstance(name, str)]
+    parent_red: set[str] = set()
+    if parent_runs is not None:
+        runs = gh_checks.latest_check_runs([run for run in parent_runs if isinstance(run, dict)])
+        parent_red = {
+            str(run.get("name"))
+            for run in runs
+            if run.get("status") == "completed" and run.get("conclusion") in FAILED_CONCLUSIONS
+        }
+    unchanged = [name for name in names if name in parent_red]
+    new = [name for name in names if name not in parent_red]
+    return {
+        "sha": parent_sha if parent_runs is not None else None,
+        "failed_names": unchanged,
+        "new_failed_names": new,
+        "unchanged_red": bool(names) and not new,
+    }
+
+
+async def _parent(client: Any, repo_base: str, sha: str, token: str, head_failed: list[Any]) -> dict[str, Any]:
+    """``enriched.head.parent`` read from GitHub; a red-free head reads nothing."""
+    if not head_failed:
+        return parent_facts([], None, None)
+    try:
+        commit = await _get(
+            client, f"{repo_base}/commits/{sha}", "read the parent of a commit", token, {"per_page": "1"}
+        )
+        parents = commit.get("parents") if isinstance(commit, dict) else None
+        first = parents[0] if isinstance(parents, list) and parents and isinstance(parents[0], dict) else {}
+        parent_sha = first.get("sha") if isinstance(first.get("sha"), str) else None
+        if parent_sha is None:
+            return parent_facts(head_failed, None, None)
+        runs = await _check_runs(client, f"{repo_base}/commits/{parent_sha}", token)
+    except EnrichmentError:
+        # An unreadable parent keeps the wake: every red reads new.
+        return parent_facts(head_failed, None, None)
+    return parent_facts(head_failed, parent_sha, runs)
+
+
 def _delivered_check_run_id(event_key: str, payload: dict) -> int | None:
     """The id of the check run a ``check_run`` completion delivers, ``None`` on any other event."""
     if _event_name(event_key) != "check_run" or not is_completion(event_key, payload):
@@ -804,20 +893,22 @@ async def fetch(event_key: str, payload: dict, token: str, *, facets: frozenset[
     with_checks = ci_event and (facets is None or CHECKS_FACET in facets)
     with_required = ci_event and facets is not None and REQUIRED_FACET in facets
     with_run = _event_name(event_key) == "workflow_run" and facets is not None and RUN_FACET in facets
+    with_parent = ci_event and facets is not None and PARENT_FACET in facets
     checks: dict[str, Any] | None = None
     required: dict[str, Any] | None = None
     run: dict[str, Any] | None = None
+    parent: dict[str, Any] | None = None
     async with egress_client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
         check_runs: list[Any] = []
         statuses: list[Any] | None = None
-        if with_checks or with_required:
+        if with_checks or with_required or with_parent:
             pulls, check_runs = await asyncio.gather(_pulls(client, base, token), _check_runs(client, base, token))
         else:
             pulls = await _pulls(client, base, token)
         facts = facts_from_pulls(event_key, payload, pulls, sha)
         branch = _base_branch(facts["pull_request"])
         contexts: frozenset[str] | None = None
-        if branch is not None and (with_required or (with_checks and has_red(check_runs))):
+        if branch is not None and (with_required or ((with_checks or with_parent) and has_red(check_runs))):
             # A red is weighed against the base branch's required checks: one read, on a red head only.
             contexts = await gh_checks.read_required_contexts(client, _headers(token), owner, name, branch)
         if with_checks:
@@ -857,6 +948,10 @@ async def fetch(event_key: str, payload: dict, token: str, *, facets: frozenset[
                 check_runs,
                 _delivered_completion_time(event_key, payload),
             )
+        if with_parent:
+            # Only the head's counted reds are weighed, as in enriched.head.checks.
+            counted = check_facts(check_runs, required=contexts or None)["failed_names"]
+            parent = await _parent(client, repo_base, sha, token, counted)
         if with_run:
             delivered = payload.get("workflow_run")
             jobs_total = None
@@ -875,6 +970,8 @@ async def fetch(event_key: str, payload: dict, token: str, *, facets: frozenset[
         facts["head"]["checks"] = checks
     if required is not None:
         facts["head"]["required"] = required
+    if parent is not None:
+        facts["head"]["parent"] = parent
     return facts
 
 

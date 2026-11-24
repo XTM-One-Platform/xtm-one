@@ -6,7 +6,7 @@
  * of a fleet run). An administrator fills it once; each save is a new
  * version. The overview names how complete it is and the fields not filled,
  * the same list the agents report instead of guessing; a missing field opens
- * the form on it. The crown jewels reconcile with OpenCRQ's supporting assets:
+ * the form on it. The primary assets reconcile with OpenCRQ's supporting assets:
  * "Check against OpenCRQ" shows the plan, "Apply" writes it. Administrators
  * only. Built on the settings form kit (#9173, S1c). Five real tabs (#12329):
  * every card sits in one tab (lib/organization-profile-tabs.ts), the tab is a
@@ -15,11 +15,10 @@
  * drafted and invalid markers.
  */
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
-import { DetailTabs } from "@/components/ui/detail-tabs";
-import { cn } from "@/lib/utils";
 import { landOnCard } from "@/lib/land-on-card";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Bot, Building2, Coins, Import, Link2, Lock, MessageSquare, Pencil, Plus, RefreshCw, Server, Shield, Sparkles, Ticket } from "lucide-react";
+import { Bot, Building2, Coins, Import, Link2, Lock, MessageSquare, Package, Pencil, Plus, RefreshCw, Server, Shield, Sparkles, Ticket } from "lucide-react";
+import { TagInput } from "@/components/ui/tag-input";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,7 +26,6 @@ import { CountryFlag } from "@/components/ui/country-flag";
 import { ExpandableChipList } from "@/components/ui/expandable-chip-list";
 import { SECTION_BAR_ANCHOR_CLASS } from "@/components/ui/section-index";
 import { InfoTip } from "@/components/ui/info-tip";
-import { PAGE_STICKY_BAR_ATTRIBUTE } from "@/hooks/useFitToViewport";
 import { SettingsReadField, SettingsReadGrid } from "@/components/ui/settings-read-view";
 import { DataTable, type DataTableColumn, type DataTableFilter, type SortValue } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
@@ -40,6 +38,7 @@ import {
   type SettingsCardFold,
   SettingsField,
   SettingsFieldGrid,
+  SettingsGroupTitle,
   SettingsSaveBar,
   settingsFieldHintId,
   settingsFieldLabelId,
@@ -50,17 +49,18 @@ import { useIntegrationElements, useIntegrations } from "@/hooks/api/useIntegrat
 import { useToast } from "@/components/ui/toast";
 import { AgenticGateDialogControlled } from "@/components/ui/license-gate-dialog";
 import { OverflowMenu, type OverflowMenuItem } from "@/components/ui/overflow-menu";
-import { useAgenticAIEnabled } from "@/hooks/usePlatformConfig";
+import { useAgenticAIEnabled, useIsXtmOne } from "@/hooks/usePlatformConfig";
 import { useAiActionDisabled } from "@/hooks/useAiDisabled";
 import { OrganizationAiDraftDialog } from "./OrganizationAiDraftDialog";
 import { OrganizationAssetsImportDialog } from "./OrganizationAssetsImportDialog";
 import { OrganizationFillAgentDialog } from "./OrganizationFillAgentDialog";
-import { OrganizationImportDialog } from "./OrganizationImportDialog";
+import { OrganizationImportDialog, PROFILE_IMPORT_SECTIONS } from "./OrganizationImportDialog";
 import { EXPOSURE_SECTIONS, type ExposureCard, type ExposureIssue, OrganizationExposureCards, exposureIssueFromRefusal, exposureIssues } from "./OrganizationExposureCards";
 import { primeOrganizationOnboarding } from "@/lib/organization-onboarding";
 import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import {
+  type OpenCrqLevel,
   type OpenCrqSyncResponse,
   type OrganizationDraftResponse,
   type OrganizationProfile,
@@ -68,6 +68,8 @@ import {
   useDraftOrganizationContext,
   useOpenCrqSync,
   useOrganizationContext,
+  useOrganizationSyncs,
+  useRunOrganizationSync,
   useOrganizationPirs,
   useOrganizationReaders,
   useSaveOrganizationContext,
@@ -79,31 +81,46 @@ import {
   CURRENCIES,
   FIELD_HELP,
   FIELD_LABELS,
+  IMPORT_SOURCE_NAMES,
+  IMPORT_SOURCE_PROVIDER,
   PLATFORM_NAMES,
   type ProfileForm,
   SIZE_BANDS,
   TICKETING_PROJECT_ELEMENT,
   formatAmount,
+  isSupportedRecordType,
   fromForm,
   toForm,
   unreadablePlatform,
 } from "@/lib/organization-profile";
 import { distinctName, OrganizationPirsView, pirLabels, PirsUnreadable, usePirText } from "./OrganizationPirs";
 import { OrganizationUsedBy } from "./OrganizationUsedBy";
+import { OrganizationTicketingSync } from "./OrganizationTicketingSync";
 import { type BulkField, type ListEditColumn, ListSaveBar, OrganizationListEditor } from "./OrganizationListEditor";
 import { OrganizationListPasteDialog } from "./OrganizationListPasteDialog";
-import { addRow, addRows, attentionCount, changeCounts, committedValues, type EditRow, fieldSuggestions, LIST_ISSUES, LIST_RULES, rowIssues, startRows } from "@/lib/organization-list-edit";
+import { addRow, addRows, attentionCount, changeCounts, committedValues, type EditRow, fieldSuggestions, isRepository, LIST_ISSUES, LIST_RULES, rowIssues, startRows } from "@/lib/organization-list-edit";
 import type { PasteSpec } from "@/lib/organization-list-paste";
 import { TrackedOrganizations } from "./TrackedOrganizations";
-import { OrganizationSyncsCard } from "./OrganizationSyncsCard";
+import { OrganizationSourcesSyncs } from "./OrganizationSourcesSyncs";
+import { useSyncedRemoval } from "./OrganizationSyncedRemoval";
+import { ProviderLogo } from "@/components/ui/provider-logo";
+import { MIN_CRITICALITY_LABELS } from "@/lib/organization-import-filters";
+import { columnEditable, LOCAL_FIELDS, SOURCE_KIND_LABELS, sourceKind, sourcePlatform, type Provenance } from "@/lib/organization-provenance";
 import { OrganizationContextInjectionCard } from "./OrganizationContextInjectionCard";
+import { OrganizationCrownJewelsRestoreDialog } from "./OrganizationCrownJewelsRestoreDialog";
+import { OrganizationProposalsCard } from "./OrganizationProposalsCard";
+import { OrganizationEvidenceHealthCard } from "./OrganizationEvidenceHealthCard";
+import { OrganizationOutsideLensCard } from "./OrganizationOutsideLensCard";
 import {
   PROFILE_CARD_PARAM,
   PROFILE_CARD_TAB,
   PROFILE_TABS,
   PROFILE_TAB_LABELS,
+  type ProfileCard,
   type ProfileTab,
   changedTabs,
+  isInventoryTab,
+  profileFieldHref,
   groupByTab,
   parseProfileCard,
   profileTabOfPath,
@@ -112,11 +129,7 @@ import {
   tabsOfFields,
 } from "@/lib/organization-profile-tabs";
 import { Icon, Spinner } from "@filigran/design-system";
-
-/** @i18n-keys */
-const AI_KIND_LABELS = { assistant: "Assistant", agent: "Agent", model_api: "Model API", embedded: "Embedded" } as const;
-/** @i18n-keys */
-const EXPOSURE_LABELS = { internal: "Internal", partner: "Partner", public: "Public" } as const;
+import { BackButton } from "@/components/ui/back-button";
 
 const NO_SIZE = "none";
 const NO_VALUE = "none";
@@ -125,14 +138,19 @@ const NO_VALUE = "none";
 const COUNTRY_CODES = Object.keys(ISO_3166_NUMERIC);
 
 /** The lists edited in their own card (#12256). */
-const LIST_KEYS = ["crown_jewels", "tech_stack", "ai_systems"] as const;
+const LIST_KEYS = ["crown_jewels", "shipped_products", "tech_stack"] as const;
 /** @i18n-keys */
-const LIST_TITLES = { crown_jewels: "Crown jewels and business services", tech_stack: "Tech stack", ai_systems: "AI systems inventory" } as const;
+const LIST_TITLES = {
+  crown_jewels: "Primary assets and business services",
+  shipped_products: "Shipped products",
+  tech_stack: "Software",
+} as const;
 type ListKey = (typeof LIST_KEYS)[number];
 /** The exposure tables edited in their own card (#12256 slice 2). @i18n-keys */
 const EXPOSURE_TITLES = {
   assets_exposure: "Assets and exposure",
   asset_groups: "Asset groups",
+  prioritization_policy: "Prioritization policy",
   accepted_risks: "Accepted risks",
   enterprise_knowledge: "Enterprise knowledge",
 } as const;
@@ -145,13 +163,26 @@ const MISSING_TARGET: Record<string, string> = {
   ticketing: "ticketing-integration",
 };
 
-/** The contract fields of each tab, for its completeness on the tab bar (#12329). */
-const TAB_FIELDS: Record<ProfileTab, string[]> = Object.fromEntries(
-  PROFILE_TABS.map((tab) => [tab, Object.keys(FIELD_LABELS).filter((path) => tabOfField(path) === tab)]),
-) as Record<ProfileTab, string[]>;
+/**
+ * The fixed columns of the primary assets table, read and edit (UX r2 B1 and B2 on #1174). Below a
+ * 72rem card (1080) Assets and Source step aside, so Business service and Owner keep about 150 px
+ * each, their headers whole and their inputs usable on a synced row. Business service and Owner
+ * share what is left; OpenCRQ holds its header and the sort mark.
+ */
+export const JEWEL_WIDTHS = { select: 32, name: 240, criticality: 120, assets: 200, opencrq: 112, source: 112, actions: 96 } as const;
+/** The card width below which Assets and Source of the primary assets table go to the Columns pill. */
+const JEWEL_STEP_ASIDE = "6xl" as const;
 
-/** The values of the crown jewels' OpenCRQ filter. @i18n-keys */
+/** The values of the primary assets' OpenCRQ filter. @i18n-keys */
 const OPENCRQ_LINK_LABELS = { linked: "Linked to OpenCRQ", not_linked: "Not linked to OpenCRQ" } as const;
+/** The OpenCRQ assets read, counted by criticality, when none reaches the check's threshold (#1558). @i18n-keys */
+const OPENCRQ_COUNT_LABELS = {
+  unknown: "{count, plural, one {# unrated} other {# unrated}}",
+  low: "{count, plural, one {# low} other {# low}}",
+  medium: "{count, plural, one {# medium} other {# medium}}",
+  high: "{count, plural, one {# high} other {# high}}",
+  very_high: "{count, plural, one {# very high} other {# very high}}",
+} as const;
 /**
  * An amount field: the room for its unit goes on the inner input element (the
  * library's className lands on the wrapper), so the field keeps the column
@@ -159,22 +190,52 @@ const OPENCRQ_LINK_LABELS = { linked: "Linked to OpenCRQ", not_linked: "Not link
  */
 const AMOUNT_INPUT_CLASS = "[&_input]:pr-36";
 
-export function OrganizationSection() {
+/**
+ * The cards of the profile one page mounts alone (#1178, Sam 22 Nov 2026): CTEM > Inventory edits the software inventory,
+ * the AI systems, the assets and exposure, the asset groups, the policy and the outside lens with the same cards,
+ * the same per-card edit and the same Save as Settings, nothing stored twice. Without it the whole profile page.
+ */
+export type OrganizationEmbed = {
+  cards: readonly ProfileCard[];
+  /** A reader's view (#1511): the cards at rest, no Edit (the outside lens and evidence health cards gate theirs too). */
+  readOnly?: boolean;
+};
+
+export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {}) {
   const { t_i18n, locale, intl } = useFormatter();
+  // The whole page, or only the cards an embedding page names.
+  const full = !embed;
+  const show = (card: ProfileCard) => !embed || embed.cards.includes(card);
+  // On CTEM > Inventory the card edits the hand-declared software only, while the Software list also counts the
+  // software of the assets: its empty text says so instead of claiming nothing is matched (UX round 1 on #1254, B4).
+  const techEmptyLabel = embed
+    ? t_i18n("No software declared by hand. The Software list also counts the software of your assets.")
+    : t_i18n("No product yet: vulnerabilities cannot be matched to what you run.");
   const fieldId = useId();
   const nf = useNumberFormat();
   const { toast } = useToast();
+  // A reader (embed.readOnly) never reads an administrators-only route: a 403 would reach the page's error
+  // boundary and replace the whole Inventory page (UX r1 B1 on #1540).
+  const reader = embed?.readOnly === true;
+  const synced = useSyncedRemoval(!reader);
   const { data, isLoading } = useOrganizationContext();
   // In the reader's locale, as every date next to a DataTable (data-table-locale-dates gate).
   const savedAt = data?.created_at ? intl.formatDate(new Date(data.created_at), { dateStyle: "medium", timeStyle: "short" }) : "";
   const save = useSaveOrganizationContext();
   const sync = useOpenCrqSync();
+  // One mechanism for OpenCRQ (#1134 S2): once primary assets sync from OpenCRQ, the card's OpenCRQ
+  // button runs that sync (its filters, links and direction), never a second set of rules.
+  const { data: profileSyncs } = useOrganizationSyncs("profile", !reader);
+  const opencrqJewelSync = (Array.isArray(profileSyncs) ? profileSyncs : []).find((entry) => entry.section === "crown_jewels" && entry.source === "opencrq");
+  const runSyncNow = useRunOrganizationSync();
   const drafting = useDraftOrganizationContext();
   const [form, setForm] = useState<ProfileForm | null>(null);
   // The draft the form was opened from: the save is then recorded with source "draft".
   const [draft, setDraft] = useState<OrganizationDraftResponse | null>(null);
   const [draftFailed, setDraftFailed] = useState(false);
   const [plan, setPlan] = useState<OpenCrqSyncResponse | null>(null);
+  // "Restore from a past version" on the primary-asset card (#1558).
+  const [restoreOpen, setRestoreOpen] = useState(false);
   // The amount field the last Save refused: marked aria-invalid (the Input adapter draws the error border) until edited.
   const [invalidField, setInvalidField] = useState<AmountField | null>(null);
   // The exposure rows are checked live once a Save was refused for them (UX B3), and the API's refusal is drawn on its row.
@@ -197,30 +258,20 @@ export function OrganizationSection() {
   // returns to the previous one; the query (?setup=1) is kept.
   const location = useLocation();
   const navigate = useNavigate();
-  const tab = profileTabOfPath(location.pathname);
+  // Settings draws its own tabs only: a tab whose cards live on CTEM > Inventory reads as an unknown tab, the first one.
+  const pathTab = profileTabOfPath(location.pathname);
+  const tab = embed ? PROFILE_CARD_TAB[embed.cards[0]] : isInventoryTab(pathTab) ? PROFILE_TABS[0] : pathTab;
   const [focusRetry, setFocusRetry] = useState(0);
   // The card landing in progress (landOnCard), ended by the next landing or when the page unmounts.
   const endCardLanding = useRef<(() => void) | null>(null);
+  // A tab whose cards live on CTEM > Inventory is never opened from Settings (#1690): the form stays where it is.
   const goToTab = (next: ProfileTab | null) => {
-    if (!next || next === tab) return;
+    if (embed || !next || next === tab || isInventoryTab(next)) return;
     navigate({ pathname: profileTabPath(next), search: location.search });
   };
-  // Whether the tab bar is stuck under the top bar (UX r1 B2 on #12332): a 1 px sentinel above it
-  // leaves the viewport's top band once the bar sticks.
-  const tabBarSentinel = useRef<HTMLDivElement>(null);
-  const [tabBarStuck, setTabBarStuck] = useState(false);
-  useEffect(() => {
-    const sentinel = tabBarSentinel.current;
-    if (!sentinel || typeof IntersectionObserver === "undefined") return;
-    const header = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--fds-header-height")) || 68;
-    const observer = new IntersectionObserver(([entry]) => setTabBarStuck(!entry.isIntersecting && entry.boundingClientRect.top < header), {
-      rootMargin: `-${header}px 0px 0px 0px`,
-    });
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  });
-  // The tabs a draft (from the platforms or with AI) filled: marked until the form is saved or cancelled.
-  const [draftedTabs, setDraftedTabs] = useState<ReadonlySet<ProfileTab>>(() => new Set());
+  // Copilot mode keeps the Identity card alone (#1690, Sam 24 Nov 2026): no risk appetite, ticketing or case sync,
+  // no fields-not-filled banner; the stored values stay untouched.
+  const xtmOne = useIsXtmOne();
 
   const editing = form !== null;
   // The list cards in edit (#12256): one card alone from its own Edit, or the three while the whole
@@ -255,6 +306,16 @@ export function OrganizationSection() {
       if (open) for (const other of LIST_KEYS) if (other !== key && next[other]?.open) next[other] = { ...next[other]!, open: null } as never;
       return next;
     });
+  // A shipped product kept with a repository that is not owner/name: the API refuses it, so nothing is sent;
+  // the row opens with its field marked and focused, the card in view, never a toast (UX r1 B1 on #1483).
+  const refuseBadRepositories = (): boolean => {
+    const bad = listRows("shipped_products").find((row) => !row.removed && row.value.product.trim() && !row.value.repositories.every(isRepository));
+    if (!bad) return false;
+    goToTab(tabOfField("shipped_products"));
+    setListOpen("shipped_products", bad.key);
+    setFocusTarget(`${fieldId}-shipped_products-repositories`);
+    return true;
+  };
   /** The open form with each list as its editor holds it. */
   const withLists = (base: ProfileForm): ProfileForm =>
     LIST_KEYS.reduce((next, key) => (listEdits[key] ? { ...next, [key]: committedValues(listEdits[key]!.rows as EditRow<unknown>[]) } : next), base);
@@ -279,7 +340,7 @@ export function OrganizationSection() {
   }, [locale]);
   const countryName = (code: string) => regionNames?.of(code) ?? code;
   // Read in view mode too (#9615): a saved PIR is named, never shown by its id; cached 5 minutes.
-  const pirs = useOrganizationPirs(true);
+  const pirs = useOrganizationPirs(!reader);
   const pirText = usePirText();
   const savedPirs = useMemo(
     () => pirLabels(current?.pir_ids ?? [], current?.pir_names ?? {}, pirs.data, pirs.isLoading),
@@ -436,14 +497,19 @@ export function OrganizationSection() {
   const stopListEdit = () => {
     focusCardEdit(listCard);
     setListEdits({});
+    synced.reset();
   };
   // A list card's Save writes the saved profile with that list alone changed (whole-profile PUT).
   const saveList = (key: ListKey) => {
     if (!data || !listEdits[key]) return;
+    if (key === "shipped_products" && refuseBadRepositories()) return;
     const parsed = fromForm({ ...toForm(data.profile), [key]: committedValues(listEdits[key]!.rows as EditRow<unknown>[]) });
     if ("invalid" in parsed) return;
+    const kept = committedValues(listEdits[key]!.rows as EditRow<Provenance>[]);
     save.mutate({ profile: parsed.profile as OrganizationProfile, source: "form" }, {
       onSuccess: () => {
+        // The synced rows removed with "Exclude from this sync" go on their sync's exclusions (#1134).
+        synced.commit(kept);
         stopListEdit();
         toast({ title: t_i18n("Organization profile saved"), variant: "success" });
       },
@@ -481,10 +547,9 @@ export function OrganizationSection() {
     setRefusedIssue(null);
     setScoreInvalid(false);
     setSetupGuide(false);
-    setDraftedTabs(new Set());
   };
   // Leaving the page with an unsaved edit asks first (#12329); a tab switch never loses it.
-  const leaveGuard = editing || listEdits.crown_jewels !== undefined || listEdits.tech_stack !== undefined || listEdits.ai_systems !== undefined || exposureEdit !== null;
+  const leaveGuard = editing || LIST_KEYS.some((key) => listEdits[key] !== undefined) || exposureEdit !== null;
   useEffect(() => {
     if (!leaveGuard) return;
     const warn = (event: BeforeUnloadEvent) => event.preventDefault();
@@ -510,9 +575,21 @@ export function OrganizationSection() {
   // parameter leaves the URL in place, so Back returns to the page the link was on.
   const requestedCard = parseProfileCard(searchParams.get(PROFILE_CARD_PARAM));
   useEffect(() => {
-    if (!requestedCard || !data) return;
+    if (!requestedCard || !data || !show(requestedCard)) return;
     const cardTab = PROFILE_CARD_TAB[requestedCard];
-    if (cardTab !== tab) {
+    // A card Settings does not draw reads as an unknown card: the parameter is dropped, nothing opens.
+    if (!embed && isInventoryTab(cardTab)) {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete(PROFILE_CARD_PARAM);
+          return next;
+        },
+        { replace: true },
+      );
+      return;
+    }
+    if (!embed && cardTab !== tab) {
       navigate({ pathname: profileTabPath(cardTab), search: location.search }, { replace: true });
       return;
     }
@@ -531,9 +608,16 @@ export function OrganizationSection() {
       },
       { replace: true },
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- show() reads embed, fixed for the page's life
   }, [requestedCard, data, tab, fieldId, navigate, location.search, setSearchParams]);
   // A missing field opens its tab first, then the form on the field (#12329).
   const jumpTo = (path: string) => {
+    // A field whose card moved to CTEM > Inventory opens it there (#1178).
+    const fieldTab = tabOfField(path);
+    if (!embed && fieldTab && isInventoryTab(fieldTab)) {
+      navigate(profileFieldHref(path));
+      return;
+    }
     setFolded(new Set());
     goToTab(tabOfField(path));
     if (!editing) startEdit();
@@ -548,10 +632,8 @@ export function OrganizationSection() {
         setDraft(result);
         setListEdits({});
         setForm(toForm(result.profile));
-        // The form opens on the first tab the platforms filled; each filled tab is marked.
-        const filledTabs = tabsOfFields(result.filled.map((row) => row.field));
-        setDraftedTabs(new Set(filledTabs));
-        goToTab(filledTabs[0] ?? null);
+        // The form opens on the first Settings tab the platforms filled.
+        goToTab(tabsOfFields(result.filled.map((row) => row.field))[0] ?? null);
       },
       // Inline with Retry (section 6.1), a catalogued sentence, never the backend's text.
       onError: () => setDraftFailed(true),
@@ -610,6 +692,14 @@ export function OrganizationSection() {
     }
     setInvalidField(null);
     if (scoreInvalid) return;
+    if (refuseBadRepositories()) return;
+    // A ServiceNow table the CTEM case sync cannot write to is shown inline on the Record type
+    // field (#923 UX round 3 B1): nothing is sent, the field is focused, never a toast.
+    if (form.ticketing.sync && !isSupportedRecordType(ticketingIntegration?.provider ?? "", form.ticketing.sync.record_type)) {
+      goToTab(tabOfField("ticketing"));
+      setFocusTarget(`${fieldId}-ticketing-sync-record-type`);
+      return;
+    }
     // The exposure rows the API would refuse are marked on their row, nothing is sent (UX B3).
     if (exposureIssues(form).length > 0) {
       setCheckExposure(true);
@@ -633,21 +723,25 @@ export function OrganizationSection() {
     });
   };
 
-  const runSync = (apply: boolean) =>
+  // The threshold of the check (#1558): the one the last plan answered (the saved sync's filter by default), or the level picked.
+  const runSync = (apply: boolean, level?: OpenCrqLevel) =>
     sync.mutate(
-      { apply },
+      { apply, ...((level ?? plan?.plan.min_criticality) ? { min_criticality: level ?? plan?.plan.min_criticality } : {}) },
       {
         onSuccess: (result) => {
           setPlan(result.applied ? null : result);
-          if (result.applied) toast({ title: t_i18n("Crown jewels synchronized with OpenCRQ"), variant: "success" });
+          if (result.applied) toast({ title: t_i18n("Primary assets synchronized with OpenCRQ"), variant: "success" });
         },
         onError: (err) => toast({ title: t_i18n("OpenCRQ could not be read"), description: err.message, variant: "error" }),
       },
     );
 
-  /** The translated criticality, never the raw enum value inside a translated sentence. */
-  const criticalityLabel = (value: string) =>
-    value in CRITICALITY_LABELS ? t_i18n(CRITICALITY_LABELS[value as keyof typeof CRITICALITY_LABELS]) : value;
+  /** The translated criticality, never the raw enum value inside a translated sentence: a profile level, else an OpenCRQ level (very_high), which the push rows carry (UX B1). */
+  const criticalityLabel = (value: string) => {
+    if (value in CRITICALITY_LABELS) return t_i18n(CRITICALITY_LABELS[value as keyof typeof CRITICALITY_LABELS]);
+    if (value in MIN_CRITICALITY_LABELS) return t_i18n(MIN_CRITICALITY_LABELS[value as keyof typeof MIN_CRITICALITY_LABELS]);
+    return value;
+  };
   /** The helper and the bubble of a field, from the field contract (UX B3). */
   const help = (key: keyof typeof FIELD_HELP) => ({ helper: t_i18n(FIELD_HELP[key].helper), info: t_i18n(FIELD_HELP[key].info) });
   const text = (key: "name" | "sector" | "sub_sector", title: string, placeholder?: string) => {
@@ -730,7 +824,7 @@ export function OrganizationSection() {
     );
   };
   /**
-   * The three lists (crown jewels, tech stack, AI systems) read on the shared DataTable (data
+   * The three lists (primary assets, software inventory, AI systems) read on the shared DataTable (data
    * tables slice 9): search, filters, sort, CSV and the pager. In edit they keep all of it on the
    * list editor (#12256, OrganizationListEditor): one row open at a time, the order frozen.
    */
@@ -741,6 +835,54 @@ export function OrganizationSection() {
   // "Not set" takes the table's compact text so every row keeps one height (UX r2 B1 on #10804).
   const readCell = (value: string) =>
     value.trim() ? <TruncatedText text={value} /> : <span className="content-compact text-default-secondary">{t_i18n("Not set")}</span>;
+  /** Where a row came from (#1134): the platform's logo and name, or Typed, CSV, API, Agent. */
+  const sourceLabel = (value: Provenance) => {
+    const kind = sourceKind(value.source);
+    return kind === "platform" ? (IMPORT_SOURCE_NAMES[sourcePlatform(value.source)] ?? value.source ?? "") : t_i18n(SOURCE_KIND_LABELS[kind]);
+  };
+  const sourceCell = (value: Provenance) => {
+    const platform = sourcePlatform(value.source);
+    return (
+      <span className="flex min-w-0 items-center gap-2">
+        {platform && <ProviderLogo provider={IMPORT_SOURCE_PROVIDER[platform] ?? platform} decorative className="h-4 w-4 shrink-0" />}
+        <TruncatedText text={sourceLabel(value)} />
+      </span>
+    );
+  };
+  // Source steps aside below a 72rem card (UX r1 B1 and B2 on #1174): at 1080 the fixed 128 px cut
+  // Business service and Owner to nothing. The lock tip and the Source filter still name it there.
+  const SOURCE_WIDTH = JEWEL_WIDTHS.source;
+  const sourceColumn = <R extends { value: Provenance }>(): DataTableColumn<R> => ({
+    key: "source",
+    header: "Source",
+    hideable: true,
+    hideBelow: JEWEL_STEP_ASIDE,
+    width: SOURCE_WIDTH,
+    cell: ({ value }) => sourceCell(value),
+    interactive: true,
+    sortValue: ({ value }) => sourceLabel(value).toLowerCase(),
+    firstSort: "asc",
+    csv: ({ value }) => value.source ?? "manual",
+  });
+  const sourceFilter = <R extends { value: Provenance }>(): DataTableFilter<R> => ({
+    key: "source",
+    label: "Source",
+    values: ({ value }) => [sourceLabel(value)],
+  });
+  const sourceEdit = <V extends Provenance>(): ListEditColumn<V> => ({
+    key: "source",
+    header: "Source",
+    hideable: true,
+    hideBelow: JEWEL_STEP_ASIDE,
+    width: SOURCE_WIDTH,
+    read: (v) => sourceCell(v),
+    sortValue: (v) => sourceLabel(v).toLowerCase(),
+    firstSort: "asc",
+  });
+  const lockedFor = (key: keyof typeof LOCAL_FIELDS) => ({
+    tip: (value: Provenance) => synced.lockTip(value),
+    column: (value: Provenance, column: string) => !columnEditable(value.source, column, LOCAL_FIELDS[key]),
+  });
   // Read mode lays the columns out fixed (names 240, enums 120, OpenCRQ 96, the rest share what
   // is left) so a long name is cut with its tooltip inside the card, never scrolled (UX r2 B2 on #10804).
   const readWidth = (px: number) => px;
@@ -756,12 +898,11 @@ export function OrganizationSection() {
   });
   type JewelRow = { index: number; value: ProfileForm["crown_jewels"][number] };
   type TechRow = { index: number; value: ProfileForm["tech_stack"][number] };
-  type AiRow = { index: number; value: ProfileForm["ai_systems"][number] };
   const jewelColumns: DataTableColumn<JewelRow>[] = [
     {
       key: "name",
-      header: "Crown jewel",
-      width: readWidth(240),
+      header: "Primary asset",
+      width: readWidth(JEWEL_WIDTHS.name),
       cell: ({ value }) => readCell(value.name),
       interactive: true,
       sortValue: sortable<JewelRow>(({ value }) => value.name.toLowerCase()),
@@ -793,7 +934,7 @@ export function OrganizationSection() {
       header: "Criticality",
       hideable: true,
       headerClassName: "w-44",
-      width: readWidth(120),
+      width: readWidth(JEWEL_WIDTHS.criticality),
       cell: ({ value }) => readCell(value.criticality ? optionLabel(CRITICALITY_LABELS, value.criticality) : ""),
       interactive: true,
       sortValue: sortable<JewelRow>(({ value }) => Object.keys(CRITICALITY_LABELS).indexOf(value.criticality)),
@@ -801,10 +942,12 @@ export function OrganizationSection() {
       csv: ({ value }) => value.criticality,
     },
     {
-      // The crown jewel > asset link is edited on the crown jewel row (#11543 S3, placement rule).
+      // The primary asset > asset link is edited on the primary asset row (#11543 S3, placement rule).
       key: "assets",
       header: "Assets",
       hideable: true,
+      // Steps aside at 1080 so Business service reads whole (UX r2 B2 on #1174); the Columns pill brings it back.
+      hideBelow: JEWEL_STEP_ASIDE,
       cell: ({ value }) => readCell((value.asset_names ?? []).join(", ")),
       interactive: true,
       csv: ({ value }) => (value.asset_names ?? []).join("; "),
@@ -813,8 +956,9 @@ export function OrganizationSection() {
       key: "opencrq",
       header: "OpenCRQ",
       hideable: true,
-      headerClassName: "w-24",
-      width: readWidth(96),
+      // 112 px: the header and its sort mark read whole (96 cut it, UX r2 B2 on #1174).
+      headerClassName: "w-28",
+      width: readWidth(JEWEL_WIDTHS.opencrq),
       cell: ({ value }) =>
         value.opencrq_asset_id ? (
           <Tip content={t_i18n("Linked to OpenCRQ")}>
@@ -827,11 +971,13 @@ export function OrganizationSection() {
       sortValue: sortable<JewelRow>(({ value }) => !!value.opencrq_asset_id),
       csv: ({ value }) => value.opencrq_asset_id,
     },
+    sourceColumn<JewelRow>(),
   ];
   const jewelFilters: DataTableFilter<JewelRow>[] = [
     // Ordinal scale: low to critical, never alphabetical (#12289).
     optionFilter<JewelRow>("criticality", "Criticality", CRITICALITY_LABELS, ({ value }) => value.criticality, true),
     optionFilter<JewelRow>("opencrq", "OpenCRQ", OPENCRQ_LINK_LABELS, ({ value }) => (value.opencrq_asset_id ? "linked" : "not_linked")),
+    sourceFilter<JewelRow>(),
   ];
   const techColumns: DataTableColumn<TechRow>[] = [
     {
@@ -865,63 +1011,35 @@ export function OrganizationSection() {
       firstSort: "asc",
       csv: ({ value }) => value.cpe,
     },
+    {
+      // The version the organization runs (CTEM-11, #928): a case then names the version to reach.
+      key: "version",
+      header: "Version (optional)",
+      hideable: true,
+      width: readWidth(180),
+      cell: ({ value }) => readCell(value.version ?? ""),
+      interactive: true,
+      sortValue: sortable<TechRow>(({ value }) => (value.version ?? "").toLowerCase()),
+      firstSort: "asc",
+      csv: ({ value }) => value.version ?? "",
+    },
+    sourceColumn<TechRow>(),
+  ];
+  type ShippedRow = { index: number; value: ProfileForm["shipped_products"][number] };
+  const shippedColumns: DataTableColumn<ShippedRow>[] = [
+    { key: "product", header: "Product", width: readWidth(240), cell: ({ value }) => readCell(value.product), interactive: true, sortValue: sortable<ShippedRow>(({ value }) => value.product.toLowerCase()), firstSort: "asc", csv: ({ value }) => value.product },
+    { key: "vendor", header: "Vendor", hideable: true, width: readWidth(200), cell: ({ value }) => readCell(value.vendor), interactive: true, sortValue: sortable<ShippedRow>(({ value }) => value.vendor.toLowerCase()), firstSort: "asc", csv: ({ value }) => value.vendor },
+    { key: "cpe", header: "CPE (optional)", hideable: true, width: readWidth(240), cell: ({ value }) => readCell(value.cpe), interactive: true, sortValue: sortable<ShippedRow>(({ value }) => value.cpe.toLowerCase()), firstSort: "asc", csv: ({ value }) => value.cpe },
+    { key: "repositories", header: "Source repositories", hideable: true, cell: ({ value }) => readCell(value.repositories.join(", ")), interactive: true, sortValue: sortable<ShippedRow>(({ value }) => value.repositories.join(",").toLowerCase()), firstSort: "asc", csv: ({ value }) => value.repositories.join(" ") },
   ];
   const techFilters: DataTableFilter<TechRow>[] = [
     { key: "vendor", label: "Vendor", values: ({ value }) => [value.vendor.trim()] },
-  ];
-  const aiColumns: DataTableColumn<AiRow>[] = [
-    {
-      key: "name",
-      header: "AI system",
-      width: readWidth(240),
-      cell: ({ value }) => readCell(value.name),
-      interactive: true,
-      sortValue: sortable<AiRow>(({ value }) => value.name.toLowerCase()),
-      firstSort: "asc",
-      csv: ({ value }) => value.name,
-    },
-    {
-      key: "kind",
-      header: "Kind",
-      hideable: true,
-      headerClassName: "w-44",
-      width: readWidth(120),
-      cell: ({ value }) => readCell(value.kind ? optionLabel(AI_KIND_LABELS, value.kind) : ""),
-      interactive: true,
-      sortValue: sortable<AiRow>(({ value }) => optionLabel(AI_KIND_LABELS, value.kind)),
-      csv: ({ value }) => value.kind,
-    },
-    {
-      key: "exposure",
-      header: "Exposure",
-      hideable: true,
-      headerClassName: "w-40",
-      width: readWidth(120),
-      cell: ({ value }) => readCell(value.exposure ? optionLabel(EXPOSURE_LABELS, value.exposure) : ""),
-      interactive: true,
-      sortValue: sortable<AiRow>(({ value }) => Object.keys(EXPOSURE_LABELS).indexOf(value.exposure)),
-      csv: ({ value }) => value.exposure,
-    },
-    {
-      key: "owner",
-      header: "Owner",
-      hideable: true,
-      cell: ({ value }) => readCell(value.owner),
-      interactive: true,
-      sortValue: sortable<AiRow>(({ value }) => value.owner.toLowerCase()),
-      firstSort: "asc",
-      csv: ({ value }) => value.owner,
-    },
-  ];
-  const aiFilters: DataTableFilter<AiRow>[] = [
-    optionFilter<AiRow>("kind", "Kind", AI_KIND_LABELS, ({ value }) => value.kind),
-    // Ordinal scale: internal, partner, public (#12289).
-    optionFilter<AiRow>("exposure", "Exposure", EXPOSURE_LABELS, ({ value }) => value.exposure, true),
+    sourceFilter<TechRow>(),
   ];
   // The list editors (#12256): the same columns, a closed row read as text, the open one as fields.
   type Jewel = ProfileForm["crown_jewels"][number];
   type Tech = ProfileForm["tech_stack"][number];
-  type AiSystem = ProfileForm["ai_systems"][number];
+  type Shipped = ProfileForm["shipped_products"][number];
   const pick = (labels: Record<string, string>, value: string, label: string, onChange: (value: string) => void) => (
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger className="w-full min-w-0" aria-label={t_i18n(label)}>
@@ -942,7 +1060,7 @@ export function OrganizationSection() {
   // The values a free-text field already holds in its list, offered as it is typed (slice 2): 150 rows stay consistent.
   const suggestId = (key: ListKey, field: string) => `${fieldId}-${key}-${field}-suggestions`;
   const jewelEdit: ListEditColumn<Jewel>[] = [
-    { key: "name", header: "Crown jewel", width: readWidth(240), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("Crown jewel", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
+    { key: "name", header: "Primary asset", width: readWidth(JEWEL_WIDTHS.name), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("Primary asset", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
     { key: "business_service", header: "Business service", hideable: true, read: (v) => readCell(v.business_service), edit: (v, set) => editText("Business service", v.business_service, (business_service) => set({ business_service })), sortValue: (v) => v.business_service.toLowerCase(), firstSort: "asc" },
     { key: "owner", header: "Owner", hideable: true, read: (v) => readCell(v.owner), edit: (v, set) => editText("Owner", v.owner, (owner) => set({ owner }), false, "Owner", suggestId("crown_jewels", "owner")), sortValue: (v) => v.owner.toLowerCase(), firstSort: "asc" },
     { key: "criticality", header: "Criticality", hideable: true, headerClassName: "w-44", width: readWidth(120), read: (v) => readCell(v.criticality ? optionLabel(CRITICALITY_LABELS, v.criticality) : ""), edit: (v, set) => pick(CRITICALITY_LABELS, v.criticality, "Criticality", (criticality) => set({ criticality })), sortValue: (v) => Object.keys(CRITICALITY_LABELS).indexOf(v.criticality), firstSort: "desc" },
@@ -951,7 +1069,9 @@ export function OrganizationSection() {
       header: "Assets",
       hideable: true,
       // 200 px so "Link assets" and the chevron fit; Business service and Owner share the rest (UX r2 B1 on #12261).
-      width: readWidth(200),
+      // Below 72rem it steps aside, else the two local fields of a synced row kept 61 px (UX r2 B1 on #1174).
+      hideBelow: JEWEL_STEP_ASIDE,
+      width: readWidth(JEWEL_WIDTHS.assets),
       read: (v) => readCell((v.asset_names ?? []).join(", ")),
       edit: (v, set) => {
         const names = v.asset_names ?? [];
@@ -973,17 +1093,47 @@ export function OrganizationSection() {
         );
       },
     },
+    sourceEdit<Jewel>(),
   ];
+  // Edit mode: the CPE input takes what is left, so the fixed columns give it 100 px more at 1080,
+  // Vendor scale (UX round 3 B2 on #931: 240/200/180 left CPE 62 px, header and input clipped).
   const techEdit: ListEditColumn<Tech>[] = [
-    { key: "product", header: "Product", width: readWidth(240), read: (v) => readCell(v.product), edit: (v, set, bad) => editText("Product", v.product, (product) => set({ product }), bad), sortValue: (v) => v.product.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
-    { key: "vendor", header: "Vendor", hideable: true, width: readWidth(200), read: (v) => readCell(v.vendor), edit: (v, set, bad) => editText("Vendor", v.vendor, (vendor) => set({ vendor }), bad, "Vendor", suggestId("tech_stack", "vendor")), sortValue: (v) => v.vendor.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.vendor] },
+    { key: "product", header: "Product", width: readWidth(200), read: (v) => readCell(v.product), edit: (v, set, bad) => editText("Product", v.product, (product) => set({ product }), bad), sortValue: (v) => v.product.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
+    { key: "vendor", header: "Vendor", hideable: true, width: readWidth(160), read: (v) => readCell(v.vendor), edit: (v, set, bad) => editText("Vendor", v.vendor, (vendor) => set({ vendor }), bad, "Vendor", suggestId("tech_stack", "vendor")), sortValue: (v) => v.vendor.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.vendor] },
     { key: "cpe", header: "CPE (optional)", hideable: true, read: (v) => readCell(v.cpe), edit: (v, set, bad) => editText("CPE (optional)", v.cpe, (cpe) => set({ cpe }), bad, "cpe:2.3:a:vendor:product:*"), sortValue: (v) => v.cpe.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.cpe] },
+    { key: "version", header: "Version (optional)", hideable: true, width: readWidth(160), read: (v) => readCell(v.version ?? ""), edit: (v, set) => editText("Version (optional)", v.version ?? "", (version) => set({ version }), false, "1.25.3"), sortValue: (v) => (v.version ?? "").toLowerCase(), firstSort: "asc" },
+    sourceEdit<Tech>(),
   ];
-  const aiEdit: ListEditColumn<AiSystem>[] = [
-    { key: "name", header: "AI system", width: readWidth(240), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("AI system", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
-    { key: "kind", header: "Kind", hideable: true, headerClassName: "w-44", width: readWidth(120), read: (v) => readCell(v.kind ? optionLabel(AI_KIND_LABELS, v.kind) : ""), edit: (v, set) => pick(AI_KIND_LABELS, v.kind, "Kind", (kind) => set({ kind })), sortValue: (v) => optionLabel(AI_KIND_LABELS, v.kind) },
-    { key: "exposure", header: "Exposure", hideable: true, headerClassName: "w-40", width: readWidth(120), read: (v) => readCell(v.exposure ? optionLabel(EXPOSURE_LABELS, v.exposure) : ""), edit: (v, set) => pick(EXPOSURE_LABELS, v.exposure, "Exposure", (exposure) => set({ exposure })), sortValue: (v) => Object.keys(EXPOSURE_LABELS).indexOf(v.exposure) },
-    { key: "owner", header: "Owner", hideable: true, read: (v) => readCell(v.owner), edit: (v, set) => editText("Owner", v.owner, (owner) => set({ owner }), false, "Owner", suggestId("ai_systems", "owner")), sortValue: (v) => v.owner.toLowerCase(), firstSort: "asc" },
+  // What the organization ships (#1432): a vulnerability on one of these resolves to its repositories in CTEM.
+  const shippedEdit: ListEditColumn<Shipped>[] = [
+    { key: "product", header: "Product", width: readWidth(200), read: (v) => readCell(v.product), edit: (v, set, bad) => editText("Product", v.product, (product) => set({ product }), bad), sortValue: (v) => v.product.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
+    { key: "vendor", header: "Vendor", hideable: true, width: readWidth(160), read: (v) => readCell(v.vendor), edit: (v, set) => editText("Vendor", v.vendor, (vendor) => set({ vendor }), false, "Vendor", suggestId("shipped_products", "vendor")), sortValue: (v) => v.vendor.toLowerCase(), firstSort: "asc" },
+    // Below 72rem CPE steps aside to the Columns pill with Source, so the repositories column keeps at least
+    // 240 px for its tag input (UX r1 B2 on #1483: at 1080 it had 58 px, header and chips cut).
+    { key: "cpe", header: "CPE (optional)", hideable: true, hideBelow: JEWEL_STEP_ASIDE, width: readWidth(240), read: (v) => readCell(v.cpe), edit: (v, set, bad) => editText("CPE (optional)", v.cpe, (cpe) => set({ cpe }), bad, "cpe:2.3:a:vendor:product:*"), sortValue: (v) => v.cpe.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.cpe] },
+    {
+      key: "repositories",
+      header: "Source repositories",
+      hideable: true,
+      // No fixed width: the column takes what Product, Vendor and the stepped-aside columns leave.
+      read: (v) => readCell(v.repositories.join(", ")),
+      edit: (v, set, bad) => (
+        <TagInput
+          id={`${fieldId}-shipped_products-repositories`}
+          value={v.repositories}
+          onChange={(repositories) => set({ repositories })}
+          preserveCase
+          suggestFromPlatformTags={false}
+          placeholder={t_i18n("owner/name, Enter to add")}
+          aria-label={t_i18n("Source repositories")}
+          aria-invalid={bad || undefined}
+          invalidTags={v.repositories.filter((repo) => !isRepository(repo))}
+        />
+      ),
+      sortValue: (v) => v.repositories.join(",").toLowerCase(),
+      firstSort: "asc",
+      issues: [LIST_ISSUES.repository],
+    },
   ];
   /** Per list (slice 2): the fields the selection toolbar sets, the free-text fields suggested from the list, and "Paste a list". */
   const LIST_BULK = {
@@ -993,25 +1143,21 @@ export function OrganizationSection() {
       { key: "business_service", label: "Business service" },
     ],
     tech_stack: [{ key: "vendor", label: "Vendor", suggestions: suggestId("tech_stack", "vendor") }],
-    ai_systems: [
-      { key: "owner", label: "Owner", suggestions: suggestId("ai_systems", "owner") },
-      { key: "kind", label: "Kind", options: AI_KIND_LABELS },
-      { key: "exposure", label: "Exposure", options: EXPOSURE_LABELS },
-    ],
+    shipped_products: [{ key: "vendor", label: "Vendor", suggestions: suggestId("shipped_products", "vendor") }],
   } as const;
-  const LIST_SUGGESTED: { [K in ListKey]: readonly (keyof ProfileForm[K][number] & string)[] } = { crown_jewels: ["owner"], tech_stack: ["vendor"], ai_systems: ["owner"] };
+  const LIST_SUGGESTED: { [K in ListKey]: readonly (keyof ProfileForm[K][number] & string)[] } = { crown_jewels: ["owner"], shipped_products: ["vendor"], tech_stack: ["vendor"] };
   const choiceWords = (labels: Record<string, string>) => Object.fromEntries(Object.entries(labels).map(([key, label]) => [key, [label, t_i18n(label)]]));
   const header = (label: string) => [label, t_i18n(label)];
   const PASTE = {
     crown_jewels: {
-      title: "Paste crown jewels",
+      title: "Paste primary assets",
       example: "Customer portal, Online sales, Jane Doe, critical",
-      fieldLabels: { name: "Crown jewel", business_service: "Business service", owner: "Owner", criticality: "Criticality" },
+      fieldLabels: { name: "Primary asset", business_service: "Business service", owner: "Owner", criticality: "Criticality" },
       spec: {
         fields: ["name", "business_service", "owner", "criticality"],
         empty: { name: "", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" },
         name: "name",
-        headers: { name: header("Crown jewel"), business_service: header("Business service"), owner: header("Owner"), criticality: header("Criticality"), opencrq_asset_id: header("OpenCRQ") },
+        headers: { name: header("Primary asset"), business_service: header("Business service"), owner: header("Owner"), criticality: header("Criticality"), opencrq_asset_id: header("OpenCRQ") },
         choices: { criticality: choiceWords(CRITICALITY_LABELS) },
         identity: LIST_RULES.crown_jewels.identity,
       } as PasteSpec<Jewel>,
@@ -1019,27 +1165,27 @@ export function OrganizationSection() {
     tech_stack: {
       title: "Paste products",
       example: "Jira, Atlassian",
-      fieldLabels: { product: "Product", vendor: "Vendor", cpe: "CPE (optional)" },
+      fieldLabels: { product: "Product", vendor: "Vendor", cpe: "CPE (optional)", version: "Version (optional)" },
       spec: {
-        fields: ["product", "vendor", "cpe"],
-        empty: { product: "", vendor: "", cpe: "" },
+        fields: ["product", "vendor", "cpe", "version"],
+        empty: { product: "", vendor: "", cpe: "", version: "" },
         name: "product",
-        headers: { product: header("Product"), vendor: header("Vendor"), cpe: header("CPE (optional)") },
+        headers: { product: header("Product"), vendor: header("Vendor"), cpe: header("CPE (optional)"), version: [...header("Version (optional)"), "Version"] },
         identity: LIST_RULES.tech_stack.identity,
       } as PasteSpec<Tech>,
     },
-    ai_systems: {
-      title: "Paste AI systems",
-      example: "Support chatbot, assistant, public, Jane Doe",
-      fieldLabels: { name: "AI system", kind: "Kind", exposure: "Exposure", owner: "Owner" },
+    // The repositories are added on the row once pasted: a line holds one value per field.
+    shipped_products: {
+      title: "Paste shipped products",
+      example: "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
+      fieldLabels: { product: "Product", vendor: "Vendor", cpe: "CPE (optional)" },
       spec: {
-        fields: ["name", "kind", "exposure", "owner"],
-        empty: { name: "", kind: "assistant", owner: "", exposure: "internal", openaev_asset_id: "" },
-        name: "name",
-        headers: { name: header("AI system"), kind: header("Kind"), exposure: header("Exposure"), owner: header("Owner") },
-        choices: { kind: choiceWords(AI_KIND_LABELS), exposure: choiceWords(EXPOSURE_LABELS) },
-        identity: LIST_RULES.ai_systems.identity,
-      } as PasteSpec<AiSystem>,
+        fields: ["product", "vendor", "cpe"],
+        empty: { product: "", vendor: "", cpe: "", repositories: [] },
+        name: "product",
+        headers: { product: header("Product"), vendor: header("Vendor"), cpe: header("CPE (optional)") },
+        identity: LIST_RULES.shipped_products.identity,
+      } as PasteSpec<Shipped>,
     },
   };
   /** `ordered` as optionFilter: an ordinal scale keeps its order. */
@@ -1070,6 +1216,8 @@ export function OrganizationSection() {
         <OrganizationListEditor
           {...props}
           bulkFields={LIST_BULK[key] as unknown as BulkField<ProfileForm[K][number]>[]}
+          locked={key in LOCAL_FIELDS ? lockedFor(key as keyof typeof LOCAL_FIELDS) : undefined}
+          confirmRemove={synced.confirmRemove}
           rows={rows}
           onRows={(next) => setListRows(key, next)}
           issues={rowIssues(rows, (value) => rules.check(value), rules.identity)}
@@ -1123,7 +1271,7 @@ export function OrganizationSection() {
   };
   /** The card's Edit (read mode), or nothing while this card or the whole form is open. */
   const listEditAction = (key: ListKey) =>
-    !editing && listEdits[key] === undefined ? (
+    !reader && !editing && listEdits[key] === undefined ? (
       <Tip content={cardOpen ? t_i18n("Save or cancel the edit first.") : ""} wrap="auto">
         <Button
           variant="secondary"
@@ -1139,7 +1287,7 @@ export function OrganizationSection() {
     ) : null;
   /** An exposure card's Edit (read mode, #12256 slice 2), or nothing while the whole form or this card is open. */
   const exposureEditAction = (card: ExposureCard) =>
-    !editing && exposureEdit?.card !== card ? (
+    !embed?.readOnly && !editing && exposureEdit?.card !== card ? (
       <Tip content={cardOpen ? t_i18n("Save or cancel the edit first.") : ""} wrap="auto">
         <Button
           variant="secondary"
@@ -1173,7 +1321,8 @@ export function OrganizationSection() {
       editing ||
       ((LIST_KEYS as readonly string[]).includes(section) && listEdits[section as ListKey] !== undefined) ||
       (exposureEdit !== null && (exposureEdit.card === section || (exposureEdit.card === "accepted_risks" && section === "prioritization_policy")));
-    if (open) return { meta: count === null ? undefined : nf.count(count) };
+    // On CTEM > Inventory the cards never fold (#1690, Sam 24 Nov 2026): a static header, always expanded.
+    if (open || embed) return { meta: count === null ? undefined : nf.count(count) };
     return {
       meta: count === null ? undefined : nf.count(count),
       collapsed: folded.has(section),
@@ -1209,79 +1358,34 @@ export function OrganizationSection() {
       : t_i18n("Scenarios above {amount} per year are flagged for approval", { amount: money(value) });
   };
 
+  // "Already agree" only on the backend's in_sync (#1134 S2): an empty profile against a non-empty
+  // OpenCRQ is an import to propose, never agreement. An older backend without it: nothing listed.
   const planEmpty =
     plan &&
+    (plan.plan.in_sync ?? true) &&
     !plan.plan.linked.length &&
     !plan.plan.pushed_to_opencrq.length &&
     !plan.plan.pulled_from_opencrq.length &&
     !plan.plan.ambiguous.length &&
     !plan.plan.not_in_opencrq.length;
+  // Nothing to link and no asset at the threshold (#1558): the plan says so with the counts, never "already agree".
+  const noneRated = !!planEmpty && (current?.crown_jewels.length ?? 0) === 0 && plan?.plan.assets_read !== undefined;
+  const ratedCounts = plan?.plan.by_criticality
+    ? (Object.entries(plan.plan.by_criticality) as [keyof typeof OPENCRQ_COUNT_LABELS, number][])
+        .filter(([level]) => level in OPENCRQ_COUNT_LABELS)
+        .map(([level, count]) => t_i18n(OPENCRQ_COUNT_LABELS[level], { count }))
+        .join(", ")
+    : "";
 
-  const missing = data?.missing_fields ?? [];
-  // Per tab (#12329): the unsaved changes (the whole form, or the card in edit alone), the fields
-  // a draft filled, and the fields a Save refused, each marked on the tab that holds them.
-  const unsavedTabs: ReadonlySet<ProfileTab> = editing
-    ? saved
-      ? changedTabs(saved, withLists(form))
-      : new Set()
-    : listCard
-      ? new Set([tabOfField(listCard)!])
-      : exposureEdit && exposureDirty(exposureEdit)
-        ? new Set([tabOfField(exposureEdit.card)!])
-        : new Set();
-  const errorTabs = new Set<ProfileTab>([
-    ...(invalidField ? [tabOfField(invalidField)!] : []),
-    ...(scoreInvalid || refusedIssue || (checkExposure && current !== null && exposureIssues((editing ? form : exposureEdit?.form) ?? current).length > 0)
-      ? ["exposure" as const]
-      : []),
-  ]);
-  /** A tab of the bar: its link, label, completeness and markers (unsaved, drafted, invalid). */
-  const profileTab = (key: ProfileTab) => {
-    const total = TAB_FIELDS[key].length;
-    const left = missing.filter((path) => tabOfField(path) === key).length;
-    const trailing = (
-      <>
-        {total > 0 && (
-          <>
-            <span aria-hidden className="content-compact tabular-nums text-default-secondary" data-testid={`settings.organization.tab-${key}.completeness`}>
-              {total - left}/{total}
-            </span>
-            <span className="sr-only">{t_i18n("{filled} of {total} fields filled", { filled: total - left, total })}</span>
-          </>
-        )}
-        {draftedTabs.has(key) && (
-          <span data-testid={`settings.organization.tab-${key}.drafted`} className="inline-flex">
-            <Icon name="sparkles" size={16} aria-hidden className="text-accent" />
-            <span className="sr-only">{t_i18n("Drafted")}</span>
-          </span>
-        )}
-        {unsavedTabs.has(key) && (
-          <span data-testid={`settings.organization.tab-${key}.unsaved`} className="inline-flex">
-            <span aria-hidden className="h-2 w-2 rounded-full bg-accent" />
-            <span className="sr-only">{t_i18n("Unsaved changes")}</span>
-          </span>
-        )}
-        {errorTabs.has(key) && (
-          <span data-testid={`settings.organization.tab-${key}.error`} className="inline-flex">
-            <Icon name="circle-alert" size={16} aria-hidden className="text-feedback-error-primary" />
-            <span className="sr-only">{t_i18n("Errors")}</span>
-          </span>
-        )}
-      </>
-    );
-    return {
-      key,
-      label: PROFILE_TAB_LABELS[key],
-      to: profileTabPath(key),
-      trailing,
-      testId: `settings.organization.tab-${key}`,
-    };
-  };
+  // The fields not filled that Settings still draws (#1690): the Business, Technology and Exposure fields are
+  // reported on CTEM > Inventory, and Copilot mode reports none (Sam: "we don't care").
+  const missing = xtmOne ? (data?.missing_fields ?? []).filter((path) => { const owner = tabOfField(path); return owner !== null && !isInventoryTab(owner); }) : [];
   /** The exposure cards a tab draws (#12329): the exposure tab three, the knowledge tab one. */
   const exposureCards = (cards: readonly (typeof EXPOSURE_SECTIONS)[number][]) =>
     current && (
       <OrganizationExposureCards
         cards={cards}
+        readOnly={reader}
         current={!editing && exposureEdit ? exposureEdit.form : current}
         editing={editing}
         fieldId={fieldId}
@@ -1297,7 +1401,13 @@ export function OrganizationSection() {
         editAction={exposureEditAction}
         saveBar={(card) =>
           !editing && exposureEdit?.card === card ? (
-            <SettingsSaveBar dirty={exposureDirty(exposureEdit)} saving={save.isPending} saveDisabled={!exposureDirty(exposureEdit)} onSave={saveExposure} onCancel={stopExposureEdit} />
+            <SettingsSaveBar
+              dirty={exposureDirty(exposureEdit)}
+              saving={save.isPending}
+              saveDisabled={!exposureDirty(exposureEdit) || scoreInvalid}
+              onSave={saveExposure}
+              onCancel={stopExposureEdit}
+            />
           ) : null
         }
         fold={(section) =>
@@ -1316,6 +1426,8 @@ export function OrganizationSection() {
     );
   /** The fields not filled in a tab, at the top of its panel: each opens the form on it. */
   const missingIn = (key: ProfileTab) => {
+    // An embedding page shows the cards alone: the missing fields open the whole form, on Settings.
+    if (embed) return null;
     const paths = missing.filter((path) => tabOfField(path) === key);
     if (paths.length === 0) return null;
     return (
@@ -1335,7 +1447,23 @@ export function OrganizationSection() {
 
   return (
     <div data-testid="settings.organization" className="space-y-4">
+      {/* The Knowledge and sources page draws its own header, like its siblings (Inventory sources, the asset page):
+          the back link first, then its title; the profile's Draft, Edit and fields banner stay on the profile
+          (UX round 1 on #1476, B1). */}
+      {full && tab === "knowledge" && (
+        <div className="space-y-2" data-testid="settings.organization.knowledge-header">
+          <BackButton to={profileTabPath("identity")} label="Back to Organization Profile" />
+          <h3 className="flex items-center gap-2 title-xs">
+            {t_i18n(PROFILE_TAB_LABELS.knowledge)}
+            <InfoTip
+              label={t_i18n("About the knowledge and sources")}
+              content={t_i18n("The procedures and reference documents agents search, the organization context they preload, and the sources that feed the primary assets and PIRs.")}
+            />
+          </h3>
+        </div>
+      )}
       {/* A short header (#12329): the title with its explanation in a bubble, the version line, Draft and Edit. */}
+      {full && tab !== "knowledge" && (
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 max-w-3xl space-y-1">
           <h3 className="flex items-center gap-2 title-xs">
@@ -1346,7 +1474,7 @@ export function OrganizationSection() {
                 <div className="max-w-xs space-y-1 content-compact">
                   <p>
                     {t_i18n(
-                      "What every agent and fleet reads before it ranks, scopes or estimates: your sector, regions, crown jewels, tech stack, AI systems, intelligence requirements, risk appetite and costs. Agents cite the fields they used and name the ones not filled, never guess them. Each save is a new version.",
+                      "What every agent and fleet reads before it ranks, scopes or estimates: your sector, regions, primary assets, software, AI systems, intelligence requirements, risk appetite and costs. Agents cite the fields they used and name the ones not filled, never guess them. Each save is a new version.",
                     )}
                   </p>
                   <p data-testid="settings.organization.shared">{t_i18n("Shared context: the whole profile is visible to every user and every agent of this XTM One platform.")}</p>
@@ -1367,6 +1495,12 @@ export function OrganizationSection() {
         </div>
         {(!editing || setupGuide) && (
           <div className="flex shrink-0 items-center gap-2">
+            {/* Knowledge and sources is a page of its own, opened from here (#1367, point 7: a button, not a tab). */}
+            {full && (
+              <Button variant="secondary" className="gap-1.5" onClick={() => goToTab("knowledge")} data-testid="settings.organization.knowledge">
+                <Icon name="database" size={16} aria-hidden /> {t_i18n(PROFILE_TAB_LABELS.knowledge)}
+              </Button>
+            )}
             {/* One "Draft" menu (section 6.1): the free deterministic draft and the metered AI draft. */}
             <OverflowMenu
               label={t_i18n("Draft")}
@@ -1393,6 +1527,7 @@ export function OrganizationSection() {
           </div>
         )}
       </div>
+      )}
 
       {setupGuide && editing && (
         <p data-testid="settings.organization.setup-guide" className="rounded-sm border border-elevation-subtle p-3 content-base">
@@ -1402,7 +1537,7 @@ export function OrganizationSection() {
 
       {/* One compact row instead of the four figure cards (#12329): the completeness is per tab on the tab
           bar, the fields not filled sit at the top of their tab, and onboarding stays one click away. */}
-      {missing.length > 0 && !editing && (
+      {full && missing.length > 0 && !editing && tab !== "knowledge" && (
         <div data-testid="settings.organization.overview" className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-elevation-subtle px-3 py-2 content-base">
           <p>
             {t_i18n("{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}", {
@@ -1416,7 +1551,7 @@ export function OrganizationSection() {
         </div>
       )}
 
-      {draftFailed && !editing && (
+      {full && draftFailed && !editing && (
         <div role="alert" data-testid="settings.organization.draft-error" className="flex items-center justify-between gap-3 rounded-sm border border-alert-error bg-alert-error p-3 content-base">
           <p className="space-x-1">
             <span className="font-medium">{t_i18n("The draft could not be made")}</span>
@@ -1477,21 +1612,9 @@ export function OrganizationSection() {
       )}
 
       {current && (
-        // Five real tabs (#12329): the URL holds the active one, only its panel is rendered, and the
-        // bar sticks under the top bar (the tables' sticky heads stop under it).
+        // The URL holds the panel (#12329): Settings draws no tab bar since #1690 (Identity, and Knowledge
+        // through its button); the Business, Technology and Exposure cards live on CTEM > Inventory.
         <div className="space-y-4">
-          {/* The bar is a row of links (UX r1 B1): the shared DetailTabs, so a tab opens in a new tab
-              and Back returns to the previous one. It sits on the content grid, transparent at rest;
-              stuck under the top bar it takes the page surface and the separator of the sticky bars
-              (UX r1 B2). The sentinel above it tells when it is stuck. */}
-          <div ref={tabBarSentinel} aria-hidden className="h-px" />
-          <div
-            {...{ [PAGE_STICKY_BAR_ATTRIBUTE]: "" }}
-            data-stuck={tabBarStuck || undefined}
-            className={cn("sticky top-[var(--fds-header-height,68px)] z-20 flex py-1", tabBarStuck && "border-b border-elevation-subtle bg-elevation-default")}
-          >
-            <DetailTabs tabs={PROFILE_TABS.map(profileTab)} active={tab} ariaLabel={t_i18n("Organization profile")} testId="settings.organization.tabs" />
-          </div>
           {tab === "identity" && (
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.identity)} className="space-y-4" data-testid="settings.organization.panel-identity">
           {missingIn("identity")}
@@ -1572,6 +1695,8 @@ export function OrganizationSection() {
             )}
           </SettingsCard>
 
+          {xtmOne && (
+          <>
           <SettingsCard
             id={`${fieldId}-risk_appetite`}
             className={SECTION_BAR_ANCHOR_CLASS}
@@ -1751,7 +1876,25 @@ export function OrganizationSection() {
               </SettingsField>
             </SettingsFieldGrid>
             )}
+            {/* How CTEM cases sync with the target (#917): part of the profile form, read by the next sync. */}
+            <div className="space-y-3 border-t border-elevation-subtle-soft pt-4" data-testid="settings.organization.ticketing-sync-group">
+              <SettingsGroupTitle icon={RefreshCw}>{t_i18n("CTEM case sync")}</SettingsGroupTitle>
+              <p className="content-compact text-default-secondary">
+                {current.ticketing.integration
+                  ? t_i18n("How CTEM cases open, update and close their tickets. A change applies to the next sync.")
+                  : t_i18n("No ticketing connected: cases stay in XTM One. Set the ticketing integration above to sync them.")}
+              </p>
+              <OrganizationTicketingSync
+                idPrefix={`${fieldId}-ticketing-sync`}
+                sync={current.ticketing.sync}
+                provider={ticketingIntegration?.provider ?? ""}
+                editing={editing}
+                onChange={(sync) => update({ ticketing: { ...current.ticketing, sync } })}
+              />
+            </div>
           </SettingsCard>
+          </>
+          )}
           </div>
           )}
 
@@ -1764,19 +1907,59 @@ export function OrganizationSection() {
             data-anchor="card"
             {...cardFold("crown_jewels", current.crown_jewels.length)}
             tabIndex={-1}
-            data-testid="settings.organization.crown-jewels"
+            data-testid="settings.organization.primary-assets"
             icon={Shield}
-            title={t_i18n("Crown jewels and business services")}
+            title={t_i18n("Primary assets and business services")}
             description={t_i18n("What the business cannot lose, ranked by criticality.")}
             action={
               <>
                 {attention("crown_jewels")}
+                {/* The OpenCRQ check and the restore write the profile: administrators only, a reader sees the list (#1690). */}
+                {!reader && (
                 <Tip content={editing || cardOpen ? t_i18n("Save or cancel the edit first.") : ""} wrap="auto">
-                  <Button variant="secondary" className="gap-1.5" disabled={editing || cardOpen !== null || sync.isPending} onClick={() => runSync(false)} aria-busy={sync.isPending || undefined}>
-                    {sync.isPending && <Spinner size="sm" tone="inherit" />}{!sync.isPending && <RefreshCw className="h-3.5 w-3.5" />}
-                    {t_i18n("Check against OpenCRQ")}
-                  </Button>
+                  {opencrqJewelSync ? (
+                    <Button
+                      variant="secondary"
+                      className="gap-1.5"
+                      data-testid="settings.organization.opencrq-run-now"
+                      disabled={editing || cardOpen !== null || runSyncNow.isPending}
+                      aria-busy={runSyncNow.isPending || undefined}
+                      onClick={() =>
+                        runSyncNow.mutate(opencrqJewelSync.id, {
+                          onSuccess: (result) =>
+                            result.last_result?.error
+                              ? toast({ title: t_i18n("The OpenCRQ sync failed"), description: result.last_result.error, variant: "error" })
+                              : toast({ title: t_i18n("Primary assets synchronized with OpenCRQ"), variant: "success" }),
+                          onError: (err) => toast({ title: t_i18n("OpenCRQ could not be read"), description: err.message, variant: "error" }),
+                        })
+                      }
+                    >
+                      {runSyncNow.isPending && <Spinner size="sm" tone="inherit" />}{!runSyncNow.isPending && <RefreshCw className="h-3.5 w-3.5" />}
+                      {t_i18n("Sync with OpenCRQ now")}
+                    </Button>
+                  ) : (
+                    <Button variant="secondary" className="gap-1.5" disabled={editing || cardOpen !== null || sync.isPending} onClick={() => runSync(false)} aria-busy={sync.isPending || undefined}>
+                      {sync.isPending && <Spinner size="sm" tone="inherit" />}{!sync.isPending && <RefreshCw className="h-3.5 w-3.5" />}
+                      {t_i18n("Check against OpenCRQ")}
+                    </Button>
+                  )}
                 </Tip>
+                )}
+                {!reader && !listOpen("crown_jewels") && (
+                  // An icon button: a third labelled action wraps the card title at 1080 (UX round 1 B1, #1567).
+                  <Tip content={editing || cardOpen ? t_i18n("Save or cancel the edit first.") : t_i18n("Restore from a past version")} wrap="auto">
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      aria-label={t_i18n("Restore from a past version")}
+                      data-testid="settings.organization.primary-assets-restore"
+                      disabled={editing || cardOpen !== null}
+                      onClick={() => setRestoreOpen(true)}
+                    >
+                      <Icon name="rotate-ccw" size={16} aria-hidden />
+                    </Button>
+                  </Tip>
+                )}
                 {listEditAction("crown_jewels")}
                 {pasteAction("crown_jewels")}
                 {listOpen("crown_jewels") && (
@@ -1785,7 +1968,7 @@ export function OrganizationSection() {
                     className="gap-1.5"
                     onClick={() => addListRow("crown_jewels", { name: "", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" })}
                   >
-                    <Plus className="h-3.5 w-3.5" /> {t_i18n("Add a crown jewel")}
+                    <Plus className="h-3.5 w-3.5" /> {t_i18n("Add a primary asset")}
                   </Button>
                 )}
               </>
@@ -1798,11 +1981,11 @@ export function OrganizationSection() {
               searchFields: (v) => [v.name, v.business_service, v.owner],
               rowLabel: (v) => v.name,
               storageKey: "settings-organization-crown-jewels",
-              rowTestId: "settings.organization.crown-jewel-row",
-              emptyLabel: t_i18n("No crown jewel yet: agents cannot rank by business impact."),
+              rowTestId: "settings.organization.primary-asset-row",
+              emptyLabel: t_i18n("No primary asset yet: agents cannot rank by business impact."),
             }) ??
               (current.crown_jewels.length === 0 ? (
-                <p className="text-default-secondary">{t_i18n("No crown jewel yet: agents cannot rank by business impact.")}</p>
+                <p className="text-default-secondary">{t_i18n("No primary asset yet: agents cannot rank by business impact.")}</p>
               ) : (
                 <DataTable
                   rows={current.crown_jewels.map((value, index) => ({ index, value }))}
@@ -1812,17 +1995,27 @@ export function OrganizationSection() {
                   searchFields={(row) => [row.value.name, row.value.business_service, row.value.owner]}
                   searchPlaceholder={t_i18n("Search...")}
                   filters={jewelFilters}
-                  exportName="crown-jewels"
+                  exportName="primary-assets"
                   urlKey="ocj_"
-                  storageKey="settings-organization-crown-jewels"
-                  emptyLabel={t_i18n("No crown jewel yet: agents cannot rank by business impact.")}
-                  rowTestId="settings.organization.crown-jewel-row"
+                  storageKey="settings-organization-primary-assets"
+                  emptyLabel={t_i18n("No primary asset yet: agents cannot rank by business impact.")}
+                  rowTestId="settings.organization.primary-asset-row"
                 />
               ))}
             {plan && (
               <div data-testid="settings.organization.opencrq-plan" className="mt-3 space-y-1.5 rounded-sm border border-elevation-subtle p-3">
-                {planEmpty ? (
-                  <p>{t_i18n("The crown jewels and OpenCRQ already agree.")}</p>
+                {noneRated ? (
+                  <div className="space-y-1" data-testid="settings.organization.opencrq-none-rated">
+                    <p>
+                      {t_i18n("{count, plural, =0 {No OpenCRQ supporting asset is rated {threshold} or above: no asset read.} one {No OpenCRQ supporting asset is rated {threshold} or above: # asset read.} other {No OpenCRQ supporting asset is rated {threshold} or above: # assets read.}}", {
+                        count: plan.plan.assets_read ?? 0,
+                        threshold: t_i18n(MIN_CRITICALITY_LABELS[plan.plan.min_criticality ?? "high"]),
+                      })}
+                    </p>
+                    {ratedCounts && <p className="text-default-secondary">{t_i18n("By criticality: {counts}", { counts: ratedCounts })}</p>}
+                  </div>
+                ) : planEmpty ? (
+                  <p>{t_i18n("The primary assets and OpenCRQ already agree.")}</p>
                 ) : (
                   <ul className="list-disc space-y-1 pl-5">
                     {plan.plan.linked.map((row) => (
@@ -1832,7 +2025,7 @@ export function OrganizationSection() {
                       <li key={`p-${row.opencrq_asset_id}`}>{t_i18n("Set {name} to {criticality} in OpenCRQ", { name: row.name, criticality: criticalityLabel(row.criticality) })}</li>
                     ))}
                     {plan.plan.pulled_from_opencrq.map((row) => (
-                      <li key={`u-${row.opencrq_asset_id}`}>{t_i18n("Add {name}, very high in OpenCRQ, as a critical crown jewel", { name: row.name })}</li>
+                      <li key={`u-${row.opencrq_asset_id}`}>{t_i18n("Add {name} from OpenCRQ as a primary asset", { name: row.name })}</li>
                     ))}
                     {plan.plan.ambiguous.map((name) => (
                       <li key={`a-${name}`}>{t_i18n("{name} matches several OpenCRQ assets: link it by hand", { name })}</li>
@@ -1845,6 +2038,31 @@ export function OrganizationSection() {
                 {plan.errors.map((error) => (
                   <p key={error} className="text-default-secondary">{error}</p>
                 ))}
+                {plan.plan.min_criticality && (
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <span id={`${fieldId}-opencrq-threshold`} className="content-compact text-default-secondary">
+                      {t_i18n("Pull OpenCRQ assets rated")}
+                    </span>
+                    <div className="w-40">
+                      <Select
+                        value={plan.plan.min_criticality}
+                        disabled={editing || sync.isPending}
+                        onValueChange={(value) => runSync(false, value as OpenCrqLevel)}
+                      >
+                        <SelectTrigger aria-labelledby={`${fieldId}-opencrq-threshold`} data-testid="settings.organization.opencrq-threshold">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(Object.keys(MIN_CRITICALITY_LABELS) as OpenCrqLevel[]).map((level) => (
+                            <SelectItem key={level} value={level}>
+                              {t_i18n("{level} or above", { level: t_i18n(MIN_CRITICALITY_LABELS[level]) })}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
                 <div className="flex gap-2 pt-1">
                   {!planEmpty && (
                     <Button className="gap-1.5" disabled={editing || sync.isPending} onClick={() => runSync(true)}>
@@ -1857,17 +2075,72 @@ export function OrganizationSection() {
                 </div>
               </div>
             )}
+            <OrganizationCrownJewelsRestoreDialog open={restoreOpen} onOpenChange={setRestoreOpen} currentVersion={data?.version ?? null} />
+          </SettingsCard>
+
+          {/* What the organization ships (#1432), apart from the software inventory it runs: CTEM resolves a vulnerability on one to its repositories. */}
+          <SettingsCard
+            id={`${fieldId}-shipped_products`}
+            className={SECTION_BAR_ANCHOR_CLASS}
+            data-anchor="card"
+            {...cardFold("shipped_products", current.shipped_products.length)}
+            tabIndex={-1}
+            data-testid="settings.organization.shipped-products"
+            icon={Package}
+            title={t_i18n("Shipped products")}
+            description={t_i18n("The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.")}
+            action={
+              <>
+                {attention("shipped_products")}
+                {listEditAction("shipped_products")}
+                {pasteAction("shipped_products")}
+                {listOpen("shipped_products") && (
+                  <Button variant="secondary" className="gap-1.5" onClick={() => addListRow("shipped_products", { product: "", vendor: "", cpe: "", repositories: [] })}>
+                    <Plus className="h-3.5 w-3.5" /> {t_i18n("Add a shipped product")}
+                  </Button>
+                )}
+              </>
+            }
+          >
+            {listEditor("shipped_products", {
+              columns: shippedEdit,
+              filters: [{ key: "vendor", label: "Vendor", values: (v: Shipped) => [v.vendor.trim()] }],
+              searchFields: (v) => [v.product, v.vendor, v.cpe, ...v.repositories],
+              rowLabel: (v) => v.product,
+              storageKey: "settings-organization-shipped-products",
+              rowTestId: "settings.organization.shipped-row",
+              emptyLabel: t_i18n("No shipped product yet: a vulnerability on a product you ship stays unresolved."),
+            }) ??
+              (current.shipped_products.length === 0 ? (
+                <p className="text-default-secondary">{t_i18n("No shipped product yet: a vulnerability on a product you ship stays unresolved.")}</p>
+              ) : (
+                <DataTable
+                  rows={current.shipped_products.map((value, index) => ({ index, value }))}
+                  columns={shippedColumns}
+                  layout={tableLayout}
+                  rowKey={(row) => String(row.index)}
+                  searchFields={(row) => [row.value.product, row.value.vendor, row.value.cpe, ...row.value.repositories]}
+                  searchPlaceholder={t_i18n("Search...")}
+                  filters={[{ key: "vendor", label: "Vendor", values: ({ value }) => [value.vendor.trim()] }]}
+                  exportName="shipped-products"
+                  urlKey="osp_"
+                  storageKey="settings-organization-shipped-products"
+                  emptyLabel={t_i18n("No shipped product yet: a vulnerability on a product you ship stays unresolved.")}
+                  rowTestId="settings.organization.shipped-row"
+                />
+              ))}
           </SettingsCard>
 
           {/* The tracked organizations (#9157, M2): added from this page; the first-login setup sets up the primary only. */}
           {/* The landing anchor sits on the card root, so its focus ring keeps the card's radius (UX r1 B2 on #108). */}
-          <TrackedOrganizations id={`${fieldId}-tracked_organizations`} className={SECTION_BAR_ANCHOR_CLASS} data-anchor="card" tabIndex={-1} />
+          <TrackedOrganizations id={`${fieldId}-tracked_organizations`} className={SECTION_BAR_ANCHOR_CLASS} data-anchor="card" tabIndex={-1} readOnly={reader} />
           </div>
           )}
 
           {tab === "technology" && (
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.technology)} className="space-y-4" data-testid="settings.organization.panel-technology">
           {missingIn("technology")}
+          {show("tech_stack") && (
           <SettingsCard
             id={`${fieldId}-tech_stack`}
             className={SECTION_BAR_ANCHOR_CLASS}
@@ -1876,15 +2149,19 @@ export function OrganizationSection() {
             tabIndex={-1}
             data-testid="settings.organization.tech-stack"
             icon={Server}
-            title={t_i18n("Tech stack")}
-            description={t_i18n("The products you run, matched against vulnerabilities.")}
+            title={t_i18n("Software")}
+            description={
+              embed
+                ? t_i18n("The software you declare by hand. The Software list adds the software of your assets.")
+                : t_i18n("The products you run, matched against vulnerabilities.")
+            }
             action={
               <>
                 {attention("tech_stack")}
                 {listEditAction("tech_stack")}
                 {pasteAction("tech_stack")}
                 {listOpen("tech_stack") && (
-                  <Button variant="secondary" className="gap-1.5" onClick={() => addListRow("tech_stack", { product: "", vendor: "", cpe: "" })}>
+                  <Button variant="secondary" className="gap-1.5" onClick={() => addListRow("tech_stack", { product: "", vendor: "", cpe: "", version: "" })}>
                     <Plus className="h-3.5 w-3.5" /> {t_i18n("Add a product")}
                   </Button>
                 )}
@@ -1895,14 +2172,14 @@ export function OrganizationSection() {
             {listEditor("tech_stack", {
               columns: techEdit,
               filters: [{ key: "vendor", label: "Vendor", values: (v: Tech) => [v.vendor.trim()] }],
-              searchFields: (v) => [v.product, v.vendor, v.cpe],
+              searchFields: (v) => [v.product, v.vendor, v.cpe, v.version],
               rowLabel: (v) => v.product,
               storageKey: "settings-organization-tech-stack",
               rowTestId: "settings.organization.tech-row",
-              emptyLabel: t_i18n("No product yet: vulnerabilities cannot be matched to what you run."),
+              emptyLabel: techEmptyLabel,
             }) ??
               (current.tech_stack.length === 0 ? (
-                <p className="text-default-secondary">{t_i18n("No product yet: vulnerabilities cannot be matched to what you run.")}</p>
+                <p className="text-default-secondary">{techEmptyLabel}</p>
               ) : (
                 <DataTable
                   rows={current.tech_stack.map((value, index) => ({ index, value }))}
@@ -1915,69 +2192,27 @@ export function OrganizationSection() {
                   exportName="tech-stack"
                   urlKey="ots_"
                   storageKey="settings-organization-tech-stack"
-                  emptyLabel={t_i18n("No product yet: vulnerabilities cannot be matched to what you run.")}
+                  emptyLabel={techEmptyLabel}
                 />
               ))}
           </SettingsCard>
+          )}
 
-          <SettingsCard
-            id={`${fieldId}-ai_systems`}
-            className={SECTION_BAR_ANCHOR_CLASS}
-            data-anchor="card"
-            {...cardFold("ai_systems", current.ai_systems.length)}
-            tabIndex={-1}
-            data-testid="settings.organization.ai-systems"
-            icon={Bot}
-            title={t_i18n("AI systems inventory")}
-            description={t_i18n("The AI systems the AI security fleet tests.")}
-            action={
-              <>
-                {attention("ai_systems")}
-                {listEditAction("ai_systems")}
-                {pasteAction("ai_systems")}
-                {listOpen("ai_systems") && (
-                  <Button variant="secondary" className="gap-1.5" onClick={() => addListRow("ai_systems", { name: "", kind: "assistant", owner: "", exposure: "internal", openaev_asset_id: "" })}>
-                    <Plus className="h-3.5 w-3.5" /> {t_i18n("Add an AI system")}
-                  </Button>
-                )}
-              </>
-            }
-          >
-            <OrganizationUsedBy fields={["ai_systems"]} readers={usedBy} agents={usedByAgents} />
-            {listEditor("ai_systems", {
-              columns: aiEdit,
-              filters: [valueFilter("kind", "Kind", AI_KIND_LABELS, (v: AiSystem) => v.kind), valueFilter("exposure", "Exposure", EXPOSURE_LABELS, (v: AiSystem) => v.exposure, true)], // exposure: ordinal (#12289)
-              searchFields: (v) => [v.name, v.owner, optionLabel(AI_KIND_LABELS, v.kind)],
-              rowLabel: (v) => v.name,
-              storageKey: "settings-organization-ai-systems",
-              rowTestId: "settings.organization.ai-system-row",
-              emptyLabel: t_i18n("No AI system yet: the AI security fleet has nothing to test."),
-            }) ??
-              (current.ai_systems.length === 0 ? (
-                <p className="text-default-secondary">{t_i18n("No AI system yet: the AI security fleet has nothing to test.")}</p>
-              ) : (
-                <DataTable
-                  rows={current.ai_systems.map((value, index) => ({ index, value }))}
-                  columns={aiColumns}
-                  layout={tableLayout}
-                  rowKey={(row) => String(row.index)}
-                  searchFields={(row) => [row.value.name, row.value.owner, t_i18n(AI_KIND_LABELS[row.value.kind as keyof typeof AI_KIND_LABELS] ?? row.value.kind)]}
-                  searchPlaceholder={t_i18n("Search...")}
-                  filters={aiFilters}
-                  exportName="ai-systems"
-                  urlKey="oai_"
-                  storageKey="settings-organization-ai-systems"
-                  emptyLabel={t_i18n("No AI system yet: the AI security fleet has nothing to test.")}
-                />
-              ))}
-          </SettingsCard>
           </div>
           )}
 
           {tab === "exposure" && (
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.exposure)} className="space-y-4" data-testid="settings.organization.panel-exposure">
             {missingIn("exposure")}
-            {exposureCards(["assets_exposure", "asset_groups", "prioritization_policy"])}
+            {/* The field changes proposed outside the form, the loop trace's scope proposal first among them (CTEM-30). */}
+            {full && <OrganizationProposalsCard />}
+            {exposureCards((["assets_exposure", "asset_groups", "prioritization_policy"] as const).filter(show))}
+            {/* Owned domains, address ranges and the outside lens pass (CTEM-26 slice 2, #1140). */}
+            {show("outside_lens") && <OrganizationOutsideLensCard id={`${fieldId}-outside_lens`} fold={cardFold("outside_lens", null)} />}
+            {/* The OpenCRQ evidence health pass, on by default (#1344): the signal sources' Turn on lands here. */}
+            {show("evidence_health") && (
+              <OrganizationEvidenceHealthCard id={`${fieldId}-evidence_health`} fold={cardFold("evidence_health", null)} />
+            )}
           </div>
           )}
 
@@ -1986,10 +2221,12 @@ export function OrganizationSection() {
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.knowledge)} className="space-y-4" data-testid="settings.organization.panel-knowledge">
             {missingIn("knowledge")}
             {exposureCards(["enterprise_knowledge"])}
-            {/* The imports saved with a schedule (#11913): no model, so they stay with AI off too. */}
-            <OrganizationSyncsCard />
             {/* The platform default of the organization summary cascade (#11533). */}
             <OrganizationContextInjectionCard />
+            {/* Sources and syncs (#1276), the tab's last block so the table fits the window under the
+                tab bar: one scroller, nothing below the list (UX r1 B1, B2 on #1294). The business profile's
+                sources here, the inventory's on CTEM > Inventory > Sources (#1178). */}
+            <OrganizationSourcesSyncs scope="profile" onAddSource={() => setPlatformImportOpen(true)} disabled={editing || cardOpen !== null || drafting.isPending} />
           </div>
           )}
 
@@ -2014,7 +2251,6 @@ export function OrganizationSection() {
                   const drafted = PROFILE_TABS.filter((key) => changedTabs(before, next).has(key));
                   setListEdits({});
                   setForm(next);
-                  setDraftedTabs((prev) => new Set([...prev, ...drafted]));
                   goToTab(drafted[0] ?? null);
                 }
               : undefined
@@ -2025,11 +2261,14 @@ export function OrganizationSection() {
       )}
       {assetsImportOpen && <OrganizationAssetsImportDialog open={assetsImportOpen} onOpenChange={setAssetsImportOpen} />}
       {pasteFor && listOpen(pasteFor) && pasteDialog(pasteFor)}
+      {synced.element}
       {fillAgentOpen && <OrganizationFillAgentDialog open={fillAgentOpen} onOpenChange={setFillAgentOpen} />}
       {platformImportOpen && (
         <OrganizationImportDialog
           open={platformImportOpen}
           onOpenChange={setPlatformImportOpen}
+          // The inventory sections are imported from CTEM > Inventory > Sources only (#1367, point 5).
+          sections={PROFILE_IMPORT_SECTIONS}
           quickSetupPending={drafting.isPending}
           onQuickSetup={() => {
             setPlatformImportOpen(false);

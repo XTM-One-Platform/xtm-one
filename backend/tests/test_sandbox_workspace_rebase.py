@@ -142,6 +142,22 @@ def test_plan_add_add_is_a_merge() -> None:
     assert plan(record, {"n.txt": _sha(b"x")}, {"n.txt": b"y"}) == [FileStep("n.txt", Step.MERGE)]
 
 
+def test_plan_keeps_a_branch_file_the_squash_on_the_ref_carries_as_checked_out() -> None:
+    """A file the branch added, edited since, then squashed onto the ref unchanged: no add-add merge."""
+    pushed, edited = b"a\nb\n", b"a\nb\nc\n"
+    checked_out = _record({"snapshots.py": pushed})
+    merge_base = _record({})
+    steps = plan(merge_base, {"snapshots.py": _sha(edited)}, {"snapshots.py": pushed}, checked_out=checked_out.files)
+    assert steps == [FileStep("snapshots.py", Step.KEEP)]
+    # Without what the checkout wrote, the same three sides are a whole-file add-add merge.
+    assert plan(merge_base, {"snapshots.py": _sha(edited)}, {"snapshots.py": pushed}) == [
+        FileStep("snapshots.py", Step.MERGE)
+    ]
+    # The ref changed it past the checkout: still merged.
+    moved = plan(merge_base, {"snapshots.py": _sha(edited)}, {"snapshots.py": b"z\n"}, checked_out=checked_out.files)
+    assert moved == [FileStep("snapshots.py", Step.MERGE)]
+
+
 def test_plan_leaves_a_tracked_file_outside_the_sub_paths_alone() -> None:
     record = _record({"src/a.py": b"a", "README.md": b"r"}, sub_paths=("src",))
     steps = plan(record, {"src/a.py": _sha(b"a"), "README.md": _sha(b"r")}, {"src/a.py": b"a"}, in_scope=record.covers)

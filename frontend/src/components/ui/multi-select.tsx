@@ -19,7 +19,7 @@
  * (`lib/select-options.ts`): alphabetical unless `sort={false}`, every typed
  * word found anywhere in the label.
  */
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import {
   Combobox,
   ComboboxChips,
@@ -38,6 +38,14 @@ import { cn } from "@/lib/utils";
 interface MultiSelectOption {
   value: string;
   label: string;
+  /** A 16 px mark before the label in the list (a provider logo, the XTM One emblem; #1373). */
+  icon?: ReactNode;
+  /**
+   * Always selected and never removable (an always-on built-in option, #1373): its row is shown
+   * checked and inert, no change from the field drops it, and the field draws no remove or clear
+   * control for it (UX r1 B1 of #1376): it reads as the field's value, its icon before the text.
+   */
+  locked?: boolean;
 }
 
 interface MultiSelectProps {
@@ -73,6 +81,12 @@ interface MultiSelectProps {
   maxVisibleChips?: number | "fit";
 }
 
+/** Hides the first one or two chips of the row: the locked values, always first (UX r1 B1 of #1376). */
+const LOCKED_CHIP_HIDING = {
+  1: "[&>li:first-child]:hidden",
+  2: "[&>li:nth-child(-n+2)]:hidden",
+} as const;
+
 export function MultiSelect({
   options,
   selected,
@@ -95,14 +109,26 @@ export function MultiSelect({
     () => (sort ? sortByLabel(options, (option) => option.label, locale) : options),
     [options, sort, locale],
   );
+  const locked = useMemo(() => new Set(options.filter((o) => o.locked).map((o) => o.value)), [options]);
+  // The locked values come first, so their chips are the first items of the chip row, the ones
+  // the field hides: a value nobody can remove never carries a remove control (UX r1 B1 of #1376).
   const value = useMemo(
-    () => ordered.filter((option) => selected.includes(option.value)),
+    () =>
+      ordered
+        .filter((option) => selected.includes(option.value))
+        .sort((a, b) => Number(Boolean(b.locked)) - Number(Boolean(a.locked))),
     [ordered, selected],
   );
+  const lockedSelected = value.filter((option) => option.locked);
+  const onlyLocked = lockedSelected.length > 0 && lockedSelected.length === value.length;
+  const hasIcons = options.some((option) => option.icon);
 
   const handleChange = (next: MultiSelectOption | MultiSelectOption[] | null) => {
     if (disabled) return;
-    const nextValues = (Array.isArray(next) ? next : next ? [next] : []).map((o) => o.value);
+    // A locked option stays selected whatever the field reports (a clear, a chip removal).
+    const nextValues = [
+      ...new Set([...(Array.isArray(next) ? next : next ? [next] : []).map((o) => o.value), ...selected.filter((v) => locked.has(v))]),
+    ];
     // One `onToggle` per actual change, in both directions — the call sites
     // treat each value as an independent filter.
     for (const added of nextValues.filter((v) => !selected.includes(v))) onToggle(added);
@@ -117,14 +143,31 @@ export function MultiSelect({
       onValueChange={handleChange}
       getOptionLabel={(option) => option.label}
       isOptionEqualToValue={(a, b) => a.value === b.value}
+      isOptionDisabled={locked.size > 0 ? (option) => locked.has(option.value) : undefined}
+      renderOption={
+        hasIcons
+          ? (option) => (
+              <span className="flex min-w-0 items-center gap-2">
+                {option.icon}
+                <span className="min-w-0 truncate">{option.label}</span>
+              </span>
+            )
+          : undefined
+      }
       filterOptions={(candidates, query) => candidates.filter((option) => matchesQuery(query, [option.label]))}
       disabled={disabled}
-      maxVisibleChips={maxVisibleChips}
+      // A capped row measures every chip, the hidden locked ones too: with a locked value the row
+      // wraps instead, its locked chips hidden by position (they are always first).
+      maxVisibleChips={lockedSelected.length > 0 ? undefined : maxVisibleChips}
       className={cn(className)}
     >
-      <ComboboxField className={fieldHeightClasses(height)}>
+      <ComboboxField
+        className={fieldHeightClasses(height)}
+        startIcon={lockedSelected.length > 0 ? lockedSelected[0].icon : undefined}
+      >
         <ComboboxChips
           aria-label={ariaLabel ?? placeholder}
+          className={lockedSelected.length > 0 ? LOCKED_CHIP_HIDING[Math.min(lockedSelected.length, 2) as 1 | 2] : undefined}
           overflowLabel={(count, labels) => t_i18n("+{count} more: {labels}", { count, labels: labels.join(", ") })}
         />
         {/* The visible placeholder switches to the search hint as soon as
@@ -140,10 +183,13 @@ export function MultiSelect({
           id={id}
           aria-label={ariaLabel ?? placeholder}
           aria-describedby={ariaDescribedBy}
-          placeholder={selected.length ? searchPlaceholder : placeholder}
+          // Only locked values: the field reads them, whole, as its value (UX r1 B1 of #1376).
+          placeholder={
+            onlyLocked ? lockedSelected.map((option) => option.label).join(", ") : selected.length ? searchPlaceholder : placeholder
+          }
         />
         <ComboboxControls>
-          {!disabled && <ComboboxClear />}
+          {!disabled && !onlyLocked && <ComboboxClear />}
           <ComboboxTrigger />
         </ComboboxControls>
       </ComboboxField>

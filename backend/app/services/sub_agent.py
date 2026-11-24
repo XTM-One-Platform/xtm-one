@@ -117,6 +117,7 @@ from app.services.sub_agent_files import (
     task_turn_file_refs,
     with_task_attempt_fence,
 )
+from app.services.sub_agent_result_text import RUN_SUMMARY_CHARS, clipped, stored_answer
 from app.services.tool_scaffolding import (
     fold_tool_scaffolding,
     transcript_tool_names,
@@ -971,7 +972,7 @@ async def create_sub_agent_task(
             )
 
         from app.services import background_checkpoint
-        from app.services.orchestration_engine import create_execution
+        from app.services.orchestration_engine import create_execution, queued_deadline
 
         # Effective wall-clock budget: inherited from the parent assignment
         # run when provided; chat spawns (``timeout_seconds is None``) derive
@@ -988,13 +989,15 @@ async def create_sub_agent_task(
                 evaluation_chain=bool((extra_metadata or {}).get(EVALUATION_CHAIN_KEY)),
             )
         _effective_timeout = resolve_sub_agent_timeout(timeout_seconds)
-        deadline_at = (
+        # Counted from the task's START (``queued_deadline``): until a worker
+        # claims it, ``deadline_at`` is the queue-wait bound; the claim sets it
+        # to start + budget, so a task queued behind a saturated pool keeps its
+        # whole budget. None (timeout disabled): no deadline at all.
+        deadline_at, start_budget = queued_deadline(
+            datetime.now(UTC),
             None
             if _effective_timeout is None
-            else datetime.now(UTC)
-            + timedelta(
-                seconds=_effective_timeout + settings.orchestration_grace_seconds
-            )
+            else _effective_timeout + settings.orchestration_grace_seconds,
         )
         await create_execution(
             own_db,
@@ -1033,6 +1036,7 @@ async def create_sub_agent_task(
                 # And the partner it answers: the run history the task may
                 # read is that partner's own (``a2a.partner_runs``).
                 PARTNER_PRINCIPAL_PAYLOAD_KEY: partner_principal_payload(),
+                **start_budget,
             },
             deadline_at=deadline_at,
             dedup_key=f"sub_agent_task:{task.id}",
@@ -2048,6 +2052,55 @@ async def cancel_sub_agent_tasks_for_scope(
             user_id or "platform",
         )
     return len(tasks), executions_cancelled
+
+
+#: Why a background task that never started stopped with the run that spawned it.
+PARENT_ENDED_TASK_REASON = "Cancelled: the run that spawned it ended before it started."
+
+
+async def cancel_unstarted_tasks_of_ended_run(db: AsyncSession, run_id: str | uuid.UUID) -> list[str]:
+    """Cancel the background tasks *run_id* spawned that no worker ever started.
+
+    A run that ends (its final answer, its deadline) leaves nobody to collect a
+    task still waiting in the queue: started later, its result would have no
+    consumer. Each such task ends ``cancelled`` with
+    :data:`PARENT_ENDED_TASK_REASON`, its delivery suppressed, its execution
+    cancelled and its delegation row concluded. A task already running keeps
+    running and delivers as it always did. Commits; returns the cancelled ids.
+    """
+    from app.models.orchestration import TERMINAL_EXECUTION_STATES
+    from app.services.orchestration_engine import cancel_execution, get_execution_by_dedup_key
+
+    tasks = (
+        (
+            await db.execute(
+                select(SubAgentTask)
+                .where(
+                    SubAgentTask.status == "pending",
+                    SubAgentTask.started_at.is_(None),
+                    SubAgentTask.metadata_json["parent_run_id"].astext == str(run_id),
+                )
+                .order_by(SubAgentTask.id)
+                .with_for_update(skip_locked=True)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not tasks:
+        return []
+    now = datetime.now(UTC)
+    for task in tasks:
+        execution = await get_execution_by_dedup_key(db, f"sub_agent_task:{task.id}")
+        if execution is not None and execution.state not in TERMINAL_EXECUTION_STATES:
+            await cancel_execution(db, execution_id=execution.id)
+        _mark_task_cancelled(task, now=now, error=PARENT_ENDED_TASK_REASON)
+        _record_no_turn_ledger(task)
+        await _update_task_delegation(db, str(task.id), "cancelled", error=PARENT_ENDED_TASK_REASON)
+    await db.commit()
+    ids = [str(task.id) for task in tasks]
+    logger.info("Run %s ended: cancelled %d background task(s) it spawned that never started: %s", run_id, len(ids), ids)
+    return ids
 
 
 async def lock_sub_agent_tasks_for_runs(
@@ -3391,6 +3444,9 @@ async def _execute_sub_agent_task(
     budget_timeout: float | None = effective_timeout
     deadline_cut = False
     loop_deadline: float | None = None
+    # The turn stopped on its wall clock before any model output: the
+    # deadline's timeout, whatever bound fired.
+    deadline_stop_no_output = False
 
     # Read by the timeout and exception handlers below, which can run before
     # the task was read.
@@ -4061,6 +4117,13 @@ async def _execute_sub_agent_task(
                 # down, and handed back an apology written for a chat reader:
                 # the task ran out of time, whatever that text says.
                 raise TimeoutError(turn_errors.get("error") or "loop timeout")
+            if loop_outcome.get("deadline_stop_without_output"):
+                # The deadline left no time for a model call: the answer is
+                # the forced-answer notice, not work. The task fails as the
+                # deadline's timeout (free, ``engine_deadline_exceeded``) and
+                # its parent is woken on a failure.
+                deadline_stop_no_output = True
+                raise TimeoutError("deadline stop without model output")
             if turn_cut:
                 # Cancelled with no stop of this worker (an operator cancel, a
                 # lease lost): its text is the cut's apology, not an answer, so
@@ -4156,7 +4219,9 @@ async def _execute_sub_agent_task(
                     and _resp.count("```") == 2
                 ):
                     _resp = _strip_code_fences(_resp)
-                task2.result = _resp[:50_000]
+                # The whole answer: a cut here was silent and the parent could
+                # never read the rest (``sub_agent_result_text``).
+                task2.result = stored_answer(_resp)
                 task2.completed_at = datetime.now(UTC)
                 # Record the files the loop produced. A wait-budget
                 # continuation was handed the files its predecessor wrote (they
@@ -4181,7 +4246,11 @@ async def _execute_sub_agent_task(
                     db,
                     assignment_run_id,
                     "completed",
-                    result_summary=agent_response[:10_000],
+                    result_summary=clipped(
+                        agent_response,
+                        RUN_SUMMARY_CHARS,
+                        read_call=f'get_full_task_result(task_id="{task_id}")',
+                    ),
                     messages=chat_messages,
                 )
 
@@ -4316,12 +4385,18 @@ async def _execute_sub_agent_task(
         # that bound, is the task's own. The turn's own ``wait_for`` runs on
         # whole seconds (``chat_loop_timeout_within``), so it may fire up to a
         # second before that bound.
-        deadline_timeout = (
+        deadline_timeout = deadline_stop_no_output or (
             deadline_cut
             and loop_deadline is not None
             and time.monotonic() >= loop_deadline - 1.0
         )
-        if deadline_timeout:
+        if deadline_stop_no_output:
+            error_msg = (
+                "Task stopped by its deadline before any model output: the "
+                f"deadline left too little of its {int(budget_timeout or 0)}s "
+                "budget for a model call"
+            )
+        elif deadline_timeout:
             error_msg += (
                 f", what its deadline left of its {int(budget_timeout or 0)}s budget"
             )
@@ -5015,12 +5090,19 @@ async def _complete_task_before_turn(
     an evaluation's chain gets an empty ledger (``_record_no_turn_ledger``).
     """
     task.status = "completed"
-    task.result = answer[:50_000]
+    task.result = stored_answer(answer)
     task.completed_at = datetime.now(UTC)
     _record_no_turn_ledger(task)
     if assignment_run_id:
         await update_assignment_run(
-            db, assignment_run_id, "completed", result_summary=answer[:10_000]
+            db,
+            assignment_run_id,
+            "completed",
+            result_summary=clipped(
+                answer,
+                RUN_SUMMARY_CHARS,
+                read_call=f'get_full_task_result(task_id="{task_id}")',
+            ),
         )
     await _update_task_delegation(db, task_id, "completed", result=answer)
     await db.commit()
@@ -5117,6 +5199,7 @@ async def update_assignment_run(
         )
         wr = wr_result.scalar_one_or_none()
         if wr:
+            previous_status = wr.status
             wr.status = status
             wr.completed_at = datetime.now(UTC)
             if status in ("completed", "failed", "cancelled"):
@@ -5151,5 +5234,62 @@ async def update_assignment_run(
                         assignment_run_id,
                         format_exception_message(ser_err),
                     )
+            # A delegated child run (no assignment) ends here, never through the
+            # engine: it raises run.completed / run.failed itself. An assignment
+            # run is published by the engine at its own ending.
+            if wr.assignment_id is None and status in ("completed", "failed") and previous_status != status:
+                _publish_delegated_run_ended_after_commit(db, wr, status, error)
     except Exception as e:
         logger.warning("Failed to update AssignmentRun %s: %s", assignment_run_id, format_exception_message(e))
+
+
+def _publish_delegated_run_ended_after_commit(db: AsyncSession, run: Any, status: str, error: str | None) -> None:
+    """Raise ``run.completed`` / ``run.failed`` for a delegated child run once *db* commits.
+
+    The event carries ``parent_run_id`` (and the delegating run's agent in
+    scope), as an assignment run's does. A snapshot of the row is taken now:
+    the ORM object is expired by the commit. A rolled-back ending publishes
+    nothing. Never raises.
+    """
+    try:
+        from types import SimpleNamespace
+
+        from sqlalchemy import event as sa_event
+
+        snapshot = SimpleNamespace(
+            id=run.id,
+            agent_id=run.agent_id,
+            assignment_id=run.assignment_id,
+            parent_run_id=run.parent_run_id,
+            trigger_context=run.trigger_context,
+            user_id=run.user_id,
+            is_company_managed=run.is_company_managed,
+            stop_reason=getattr(run, "stop_reason", None),
+        )
+        name = f"run.{status}"
+        reason = status
+
+        def _after_commit(_session: Any) -> None:
+            try:
+                from app.services.assignment_engine import publish_run_event
+
+                task = asyncio.get_running_loop().create_task(
+                    publish_run_event(snapshot, name, reason=reason, error=error)
+                )
+                _DELEGATED_RUN_EVENT_TASKS.add(task)
+                task.add_done_callback(_DELEGATED_RUN_EVENT_TASKS.discard)
+            except RuntimeError:
+                logger.debug("%s of delegated run %s not published: no event loop", name, snapshot.id)
+
+        sa_event.listen(db.sync_session, "after_commit", _after_commit, once=True)
+    except Exception as exc:
+        logger.warning(
+            "run.%s of delegated run %s not scheduled: %s",
+            status,
+            getattr(run, "id", None),
+            format_exception_message(exc),
+        )
+
+
+# Strong references to the in-flight publishes, so a pending task is never collected.
+_DELEGATED_RUN_EVENT_TASKS: set[asyncio.Task[None]] = set()

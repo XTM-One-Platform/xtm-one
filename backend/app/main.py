@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
 from html import escape as html_escape
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 from urllib.parse import urlsplit
 
 import structlog
@@ -40,6 +40,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.a2a import grants as a2a_grants
 from app.a2a import hooks as a2a_hooks
+from app.a2a import ticket_push as a2a_ticket_push
 from app.api import auth_sso, oauth_callbacks
 from app.api.deps import CodedHTTPException
 from app.api.v1 import (
@@ -71,12 +72,14 @@ from app.api.v1 import (
     csp_reports,
     ctem_cases,
     ctem_metrics,
+    ctem_signals,
     custom_dashboards,
     custom_tool_sources,
     custom_tools,
     dashboard_public,
     dashboard_widget_packs,
     datasets,
+    decisions,
     desktop_login,
     email_signatures,
     evaluations,
@@ -126,6 +129,7 @@ from app.api.v1 import (
     platform_access_notices,
     platform_chat_workspaces,
     platform_health,
+    platform_health_analysis,
     platform_health_companion,
     platform_health_cycles,
     platform_health_findings,
@@ -212,6 +216,9 @@ from app.services.registered_platform_origins import (
     registered_platform_origins,
 )
 from app.services.vault.errors import SecretUnavailableError
+
+if TYPE_CHECKING:
+    from app.llm.env_listing import SeedListing
 
 setup_logging(
     debug=settings.debug, log_level=settings.log_level, log_format=settings.log_format
@@ -363,8 +370,9 @@ async def _autonomous_loop() -> None:
     warnings and integration event polling.
 
     A tick that overruns the 55s TTL simply loses the lock to expiry and
-    the next worker may start a fresh (serialized-by-DB, idempotent)
-    tick — the same overrun semantics as before.
+    the next worker may start a fresh tick alongside it. Its sweeps are
+    idempotent, except a per-user fan-out still in progress, which a
+    per-assignment claim keeps to one tick (``_fanout_claim``).
 
     A tick that RAISES also keeps the window marker: the failed window
     is not retried by another worker (deliberate — every sweep inside
@@ -558,12 +566,17 @@ async def _a2a_reaper_loop() -> None:
     announcements come after it, for the same reason.
     """
     from app.a2a.client.delegation import spawn_run_cancel
-    from app.a2a.tasks import announce_missed, announce_state, reap_stale_tasks
+    from app.a2a.tasks import announce_missed, announce_state, reap_stale_tasks, resume_handed_back_tasks
+    from app.api.v1.a2a_server import _spawn_task_run
     from app.core.database import async_session
 
     while True:
         try:
             async with async_session() as db:
+                # The tasks a stopping worker handed back resume here, under
+                # the same task id, from their checkpoint.
+                for handed_back_task in await resume_handed_back_tasks(db):
+                    _spawn_task_run(handed_back_task)
                 tasks: list = []
                 cancelled_runs: list = []
                 reaped = await reap_stale_tasks(
@@ -628,7 +641,7 @@ def _load_dotenv_files() -> None:
     load_dotenv_files()
 
 
-async def _seed_listed_models(providers: list[tuple[str, str]], models_editable: bool) -> dict[str, list[str]]:
+async def _seed_listed_models(providers: list[tuple[str, str]], models_editable: bool) -> dict[str, "SeedListing"]:
     """List the models of the seeded providers whose catalog is their listing.
 
     Which ones: ``app.llm.env_listing.catalogs_to_list``. Done before the
@@ -647,7 +660,7 @@ async def _seed_listed_models(providers: list[tuple[str, str]], models_editable:
         rows = (await db.execute(_sel(LLMProviderConfig))).scalars().all()
     names = catalogs_to_list(providers, rows, models_editable)
     listed = {n: await list_models_for_seed(n, k) for n, k in providers if n in names}
-    return {n: models for n, models in listed.items() if models}
+    return {n: listing for n, listing in listed.items() if listing}
 
 
 async def _seed_llm_providers_from_env() -> set[str]:
@@ -698,13 +711,14 @@ async def _seed_llm_providers_from_env() -> set[str]:
         env_provider_keys,
         listing_platform_model,
     )
+    from app.llm.env_listing import declared_default as _declared_default
     from app.llm.env_listing import listing_default as _listing_default
+    from app.llm.env_listing import replaced_alias as _replaced_alias
     from app.llm.env_models import (
         env_models_for,
         merge_env_models,
         resolve_default_model,
     )
-    from app.llm.router import PROVIDER_MAP
     from app.models.llm_config import LLMProviderConfig
 
     providers_to_seed = env_provider_keys()
@@ -775,10 +789,13 @@ async def _seed_llm_providers_from_env() -> set[str]:
             # catalog is never touched (historical "optional" contract), except
             # by a listing (``_seed_listed_models``).
             env_models = env_models_for(provider_name)
-            listed = listed_models.get(provider_name)
+            listing = listed_models.get(provider_name)
+            listed = listing.models if listing else None
             # A listing is alphabetical: the provider's own default (the gateway's
-            # ``default`` alias) when listed, else the stored one, else the first.
-            declared_default = getattr(PROVIDER_MAP.get(provider_name), "default_model", None)
+            # marked chat model, else its ``default`` alias) when listed, else the
+            # stored one, else the first.
+            declared_default = _declared_default(provider_name, listing and listing.chat_default, listed or [])
+            replaced = _replaced_alias(provider_name, declared_default)
             if listed and not models_editable:
                 env_models = listed
             seed_lists[provider_name] = env_models or listed or []
@@ -809,7 +826,7 @@ async def _seed_llm_providers_from_env() -> set[str]:
                         # Pinned regime: the env list IS the catalog.
                         existing.available_models = env_models
                         existing.default_model = (
-                            _listing_default(existing.default_model, declared_default, env_models)
+                            _listing_default(existing.default_model, declared_default, env_models, replaced)
                             if listed
                             else env_models[0]
                         )
@@ -850,9 +867,9 @@ async def _seed_llm_providers_from_env() -> set[str]:
                 db.add(cfg)
                 await db.flush()
                 logger.info("LLM env seed: provisioned %s provider", provider_name)
-            if listed and models_editable and cfg.available_models in (None, cfg.env_models):
+            if listing and models_editable and cfg.available_models in (None, cfg.env_models):
                 # Editable: refreshed until an admin edits it (it then differs from the snapshot).
-                apply_listing(cfg, listed)
+                apply_listing(cfg, listing.models, listing.chat_default)
             seeded_rows[provider_name] = cfg
 
             # The catalog the row actually ends up with (merged in editable
@@ -882,6 +899,7 @@ async def _seed_llm_providers_from_env() -> set[str]:
                     # Under BYOLLM an empty default of a configured install is
                     # the administrator's choice, not a gap.
                     fill_empty_defaults=not install_configured_before_boot,
+                    replaces=replaced if listed else None,
                 )
 
         async def _sync_compound_provider_base_url(
@@ -2671,6 +2689,16 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.debug("Telemetry shutdown error", exc_info=True)
 
+    # Close the traces of the turns the drain above did not see end, as
+    # interrupted, before the flush and the dispatcher drain below: a turn
+    # cut by the stop otherwise leaves no trace (written only at its end).
+    try:
+        from app.services.langfuse_tracing import close_open_traces_on_shutdown
+
+        await close_open_traces_on_shutdown("web_process_stopped")
+    except Exception:
+        logger.debug("Open traces not closed on shutdown", exc_info=True)
+
     # Flush buffered Langfuse traces so OTEL-batched spans queued in the SDK's
     # background exporter are not lost on SIGTERM / deploys (no-op when
     # Langfuse is disabled; never raises).
@@ -4334,6 +4362,7 @@ for _health_prefix, _in_schema in ((HEALTH_API_PREFIX, True), (CONCIERGE_ALIAS_P
         platform_health_cycles.router,
         platform_health_companion.router,
         platform_health_findings.router,
+        platform_health_analysis.router,
     ):
         application.include_router(_health_router, prefix=_health_prefix, tags=["health"], include_in_schema=_in_schema)
 
@@ -4369,6 +4398,7 @@ application.include_router(
 application.include_router(
     work_items.router, prefix="/api/v1/work-items", tags=["work-items"]
 )
+application.include_router(decisions.router, prefix="/api/v1/decisions", tags=["decisions"])
 application.include_router(
     shared_state.router, prefix="/api/v1/shared-state", tags=["shared-state"]
 )
@@ -4652,6 +4682,7 @@ application.include_router(
     ctem_metrics.router, prefix="/api/v1/ctem-metrics", tags=["ctem-metrics"]
 )
 application.include_router(ctem_cases.router, prefix="/api/v1/ctem-cases", tags=["ctem-cases"])
+application.include_router(ctem_signals.router, prefix="/api/v1/ctem-signals", tags=["ctem-signals"])
 application.include_router(
     organization_context.router,
     prefix="/api/v1/organization-context",
@@ -4695,6 +4726,10 @@ application.include_router(mcp_xtm.router, prefix="/mcp", tags=["mcp-xtm"])
 # an exposure whose boundary no longer matches it, and chat coming back would
 # resolve it. See ``app.a2a.hooks.register_a2a_hooks``.
 a2a_hooks.register_a2a_hooks()
+
+# A ticket a partner's A2A task filed changed status: the partner's callbacks on
+# that task are told (identity and status only). See ``app.a2a.ticket_push``.
+a2a_ticket_push.register_ticket_push()
 
 # platform.default_model_route.changed: a session listener, so every writer of a
 # default model route (Settings page, agent tool, provider deletion, env seed)

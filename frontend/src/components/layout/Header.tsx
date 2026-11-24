@@ -17,7 +17,7 @@ import { AboutDialog } from "./AboutDialog";
 import { Tip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { formatTimeAgo } from "@/lib/relative-time";
-import { notificationSubtitle, UNREAD_UNTIL_ANSWERED } from "@/lib/notification-kinds";
+import { canMarkAllRead as anyReadable, decisionSource, hasUnreadApproval, isWaitingDecision, notificationSubtitle, readsOnOpen } from "@/lib/notification-kinds";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { useDesktopBridge, useRunnersEnabled } from "@/hooks/useDesktop";
 import { useTick } from "@/hooks/useTick";
@@ -80,10 +80,10 @@ export function Header() {
   };
 
   const allNotifs = feed?.items ?? [];
-  // HITL runs and waiting work items are ALWAYS unread (they need action);
-  // the server says so too, and marking them read does nothing.
+  // A decision still waiting stays unread until answered, whatever is opened
+  // or marked (#991); opening or dismissing any other entry reads it (#901).
   const unreadNotifs = allNotifs.filter((item) => item.unread);
-  const canMarkAllRead = unreadNotifs.some((item) => !UNREAD_UNTIL_ANSWERED.has(item.kind));
+  const canMarkAllRead = anyReadable(allNotifs);
 
   const markAllRead = useCallback(() => markRead.mutate(), [markRead]);
 
@@ -148,7 +148,7 @@ export function Header() {
             {unreadNotifs.length > 0 && (
               <span className={cn(
                 "absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold",
-                allNotifs.some((item) => item.kind === "hitl") ? "bg-feedback-alert-primary text-on-feedback-fill animate-pulse" : "bg-accent text-negative-primary",
+                hasUnreadApproval(allNotifs) ? "bg-feedback-alert-primary text-on-feedback-fill animate-pulse" : "bg-accent text-negative-primary",
               )}>
                 {unreadNotifs.length}
               </span>
@@ -168,9 +168,12 @@ export function Header() {
               </div>
               <div className="max-h-96 overflow-y-auto">
                 {allNotifs.length > 0 ? allNotifs.map((item) => {
-                  const isHitl = item.kind === "hitl";
-                  // Pinned until answered: no read dot, no "Mark as read", the warning chrome.
-                  const isPinned = UNREAD_UNTIL_ANSWERED.has(item.kind);
+                  // One decision kind, three sources (#842, S4): the run's hand,
+                  // the flow's question, the work item's hand.
+                  const source = decisionSource(item);
+                  // Pinned until answered: the warning chrome, no read dot, no
+                  // "Mark as read"; opening it does not read it (#991).
+                  const isPinned = isWaitingDecision(item) && item.unread;
                   const isAnalyticsRefresh = item.kind === "analytics_refresh";
                   const unread = isPinned || item.unread;
                   return (
@@ -180,21 +183,23 @@ export function Header() {
                         "px-4 py-3 border-b border-elevation-subtle-soft last:border-0 hover:bg-elevation-hover transition-colors cursor-pointer relative group",
                         isPinned ? "bg-feedback-warning-primary/[0.05] border-l-2 border-l-feedback-warning-primary/50" : unread && "bg-accent/[0.03]",
                       )}
-                      /* Opening a notification IS reading it; an entry pinned until
-                         answered has no read state to write. */
-                      onClick={() => { if (!isPinned) markOneRead(item.id); navigate(item.route); setShowNotifs(false); }}
+                      /* Opening a notification reads it (#901), except a decision
+                         still waiting, read only by its answer (#991). */
+                      onClick={() => { if (readsOnOpen(item)) markOneRead(item.id); navigate(item.route); setShowNotifs(false); }}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 min-w-0">
                           {unread && !isPinned && <span className="flex h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />}
-                          {isHitl ? (
-                            <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-feedback-warning-primary/20 animate-pulse">
-                              <Hand className="h-2.5 w-2.5 text-feedback-warning-primary" />
-                            </span>
-                          ) : item.kind === "flow_hitl" ? (
-                            <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-feedback-warning-primary/20 animate-pulse">
-                              <MessageCircleQuestion className="h-2.5 w-2.5 text-feedback-warning-primary" />
-                            </span>
+                          {source ? (
+                            /* One decision kind, one treatment (UX round 1, B1): the same
+                               12 px glyph for every source, no opacity animation; only the
+                               glyph changes (question for a flow), and an answered decision
+                               is dimmed by its colour token (#901). */
+                            source === "flow_run" ? (
+                              <MessageCircleQuestion className={cn("h-3 w-3 shrink-0", item.unread ? "text-feedback-warning-primary" : "text-default-secondary")} />
+                            ) : (
+                              <Hand className={cn("h-3 w-3 shrink-0", item.unread ? "text-feedback-warning-primary" : "text-default-secondary")} />
+                            )
                           ) : isAnalyticsRefresh ? (
                             <LayoutDashboard className="h-3 w-3 text-accent shrink-0" />
                           ) : item.kind === "flow" ? (
@@ -209,7 +214,7 @@ export function Header() {
                             <Key className="h-3 w-3 text-feedback-warning-primary shrink-0" />
                           ) : item.kind === "agent_account" ? (
                             <UserCog className="h-3 w-3 text-accent shrink-0" />
-                          ) : item.kind === "run_action_request" || item.kind === "work_item_waiting" ? (
+                          ) : item.kind === "run_action_request" ? (
                             <Hand className="h-3 w-3 text-feedback-warning-primary shrink-0" />
                           ) : item.kind === "reminder" ? (
                             <AlarmClock className="h-3 w-3 text-accent shrink-0" />

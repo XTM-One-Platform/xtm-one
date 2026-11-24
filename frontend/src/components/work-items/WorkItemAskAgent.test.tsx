@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { askAgentPrompt, offersAskTheAgent } from "@/components/work-items/WorkItemAskAgent";
+import { askPending, explainPrompt, offersAskTheAgent } from "@/components/work-items/WorkItemAskAgent";
 import { CLOSE_EFFECTS, REQUEUE_EFFECT, STALE_REASON_LABELS, staleBadgeText, staleReasonText } from "@/lib/work-item-effects";
 
 const identity = (text: string, values?: Record<string, string>) =>
@@ -17,22 +17,28 @@ describe("Ask the agent on every item (#9879)", () => {
     expect(offersAskTheAgent({ status: "cancelled" })).toBe(false);
   });
 
-  it("It's solved names the item and leaves room for the person's words", () => {
-    const prompt = askAgentPrompt(identity, blocked, "solved");
+  it("words Explain around the wait, naming the item", () => {
+    const prompt = explainPrompt(identity, blocked);
     expect(prompt).toContain("item-1");
-    expect(prompt).toContain("Waits on PR 12");
-    expect(prompt).toContain("[what changed]");
-    expect(prompt).toContain("Verify it live");
-  });
-
-  it("words Explain and Re-check around the wait when no decision is asked", () => {
-    expect(askAgentPrompt(identity, blocked, "explain")).toContain("what it waits for");
-    expect(askAgentPrompt(identity, blocked, "recheck")).toContain("still pending");
+    expect(prompt).toContain("what it waits for");
   });
 
   it("keeps the decision wording on an item waiting for the reader", () => {
     const deciding = { ...blocked, needs_human: true };
-    expect(askAgentPrompt(identity, deciding, "explain")).toContain("the decision, the options");
+    expect(explainPrompt(identity, deciding)).toContain("the decision, the options");
+  });
+});
+
+describe("a send waits for its agent once (#774)", () => {
+  const at = "2026-11-20T22:00:00Z";
+  const now = Date.parse(at) + 60_000;
+  it("is pending while nothing moved and under ten minutes passed", () => {
+    expect(askPending({ payload: { _ask: { at } }, last_activity_at: at }, now)).toBe(true);
+  });
+  it("is over once the item moved, after ten minutes, or with no send", () => {
+    expect(askPending({ payload: { _ask: { at } }, last_activity_at: "2026-11-20T22:00:30Z" }, now)).toBe(false);
+    expect(askPending({ payload: { _ask: { at } }, last_activity_at: at }, Date.parse(at) + 11 * 60_000)).toBe(false);
+    expect(askPending({ payload: {}, last_activity_at: at }, now)).toBe(false);
   });
 });
 

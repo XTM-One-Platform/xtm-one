@@ -17,7 +17,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * FlowBuilder — the visual flow composition surface.
  *
  * Full-height three-pane layout: node library, canvas, config drawer. Lives on
- * `/flows/:id/builder` rather than as a tab of `/flows` so the canvas gets the
+ * `/flows/library/:id` rather than as a tab of `/flows` so the canvas gets the
  * whole viewport — a builder squeezed under a page title and a tab bar is the
  * thing this feature exists to stop being.
  *
@@ -29,11 +29,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
-  Sparkles, Workflow,
+  Sparkles,
 } from "lucide-react";
 import { ReactFlowProvider, useNodesInitialized, useReactFlow } from "@xyflow/react";
 import { PageSkeleton } from "@/components/ui/skeleton";
-import { NotFoundState } from "@/components/ui/not-found-state";
+import RouteNotFound from "@/pages/RouteNotFound";
 import { CompanyManagedBanner } from "@/components/ui/company-managed-banner";
 import { OwnerDeactivatedNotice } from "@/components/ui/owner-deactivated-notice";
 import { SharedBanner } from "@/components/ui/shared-banner";
@@ -129,7 +129,7 @@ function BuilderInner({ flowId }: { flowId: string }) {
   const nodesInitialized = useNodesInitialized();
   const pendingFitRef = useRef(false);
 
-  const { data: flow, isLoading, isError } = useFlow(flowId);
+  const { data: flow, isLoading } = useFlow(flowId, { notFoundIsOrdinary: true });
   const {
     data: catalog, isRefetchError: catalogStale, isFetching: catalogFetching, refetch: refetchCatalog,
   } = useFlowNodeCatalog();
@@ -1469,7 +1469,7 @@ function BuilderInner({ flowId }: { flowId: string }) {
             : t_i18n("Everything in the file was imported cleanly."),
           variant: partial ? "info" : "success",
         });
-        navigate(`/flows/${imported.id}/builder`);
+        navigate(`/flows/library/${imported.id}`);
       } catch (err) {
         toast({
           title: t_i18n("Import failed"),
@@ -1623,19 +1623,8 @@ function BuilderInner({ flowId }: { flowId: string }) {
   }, [deepLinkOwnerAccess, flow, canEditOwnership, setSearchParams]);
 
   if (isLoading) return <PageSkeleton cards={2} />;
-  if (isError || !flow) {
-    return (
-      <NotFoundState
-        icon={Workflow}
-        title="Flow not found"
-        description="This flow may have been deleted, or you may not have access to it."
-        actionLabel="View all flows"
-        onAction={() => navigate("/flows")}
-        backTo="/flows"
-        backLabel="Back to Flows"
-      />
-    );
-  }
+  // An unknown id (or one you cannot read) is an address no page answers (#797 S4).
+  if (!flow) return <RouteNotFound />;
 
   return (
     // Fills the content area below the app header. `min-h-0` lets the canvas

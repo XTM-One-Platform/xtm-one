@@ -356,8 +356,8 @@ test.describe.serial('A2A in the UI: inbound versus outbound', () => {
         "No credentials needed: this integration will use the provider's free unauthenticated API (may be rate limited).",
       ),
     ).toBeVisible();
-    for (const key of ['card_urls', 'token_url', 'client_id', 'client_secret']) {
-      await expect(page.getByPlaceholder(key)).toHaveCount(0);
+    for (const name of ['Partner agent card URLs', 'Token URL', 'Client ID', 'Client secret']) {
+      await expect(page.getByLabel(name, { exact: true })).toHaveCount(0);
     }
   });
 
@@ -367,33 +367,30 @@ test.describe.serial('A2A in the UI: inbound versus outbound', () => {
     await new IntegrationPage(page).selectProvider('OAuth A2A');
     await page.getByRole('button', { name: /Outbound: our agents task a partner/ }).click();
 
-    // The label is the catalog DESCRIPTION and the placeholder is the field
-    // KEY, both straight from the backend with no translation in between.
-    await expect(
-      page.getByText(
-        'Partner agent card URLs — the exact location each agent publishes its card at, separated by commas or new lines. One partner may expose several agents; each becomes its own delegation tool (required)',
-      ),
-    ).toBeVisible();
-    await expect(
-      page.getByText(
-        'Partner token endpoint, where the client id and secret are exchanged for a bearer (required)',
-      ),
-    ).toBeVisible();
-    await expect(page.getByText('Client ID the partner issued you (required)')).toBeVisible();
-    await expect(page.getByText('Client secret the partner issued you (required)')).toBeVisible();
+    // The field's name is read off the catalog DESCRIPTION (its explanation
+    // goes to the info bubble, or off the key when the description is a
+    // sentence), straight from the backend with no translation in between.
+    const cardUrls = page.getByLabel('Partner agent card URLs', { exact: true });
+    const tokenUrl = page.getByLabel('Token URL', { exact: true });
+    const clientId = page.getByLabel('Client ID', { exact: true });
+    const clientSecret = page.getByLabel('Client secret', { exact: true });
+    await expect(cardUrls).toBeVisible();
+    await expect(tokenUrl).toBeVisible();
+    await expect(clientId).toBeVisible();
+    await expect(clientSecret).toBeVisible();
 
     // Only the secret is masked: _urls, _url and _id are exempted by name.
-    await expect(page.getByPlaceholder('card_urls')).toHaveAttribute('type', 'text');
-    await expect(page.getByPlaceholder('token_url')).toHaveAttribute('type', 'text');
-    await expect(page.getByPlaceholder('client_id')).toHaveAttribute('type', 'text');
-    await expect(page.getByPlaceholder('client_secret')).toHaveAttribute('type', 'password');
+    await expect(cardUrls).toHaveAttribute('type', 'text');
+    await expect(tokenUrl).toHaveAttribute('type', 'text');
+    await expect(clientId).toHaveAttribute('type', 'text');
+    await expect(clientSecret).toHaveAttribute('type', 'password');
     await expect(page.getByText('No credentials needed:')).toHaveCount(0);
 
     // A variant's extra_fields REPLACE the base map rather than merging with
     // it, so switching back empties the form instead of keeping four inputs
     // the inbound direction would never send.
     await page.getByRole('button', { name: /Inbound: a partner tasks our agents/ }).click();
-    await expect(page.getByPlaceholder('card_urls')).toHaveCount(0);
+    await expect(cardUrls).toHaveCount(0);
     await expect(page.getByText('No credentials needed:')).toBeVisible();
   });
 
@@ -627,7 +624,7 @@ test.describe.serial('A2A in the UI: inbound versus outbound', () => {
     // Hidden from the read view, never from the edit form: a partner without
     // discovery is how the list gets maintained.
     await one.page.getByRole('button', { name: 'Edit', exact: true }).click();
-    await expect(one.page.getByPlaceholder('card_urls')).toHaveValue(cardUrl);
+    await expect(one.page.getByLabel('Partner agent card URLs', { exact: true })).toHaveValue(cardUrl);
     await expect(one.page.getByPlaceholder('Stored: type to replace')).toHaveCount(1);
   });
 
@@ -1030,15 +1027,23 @@ test.describe.serial('A2A in the UI: inbound versus outbound', () => {
     // registration: without that the label never asks, and the 503 below
     // would never be served.
     const page = one.page;
+    // The handlers stay installed for the whole test and fall back once the
+    // backend is back: removing the last route while the click's lazy route
+    // chunk is in flight leaves that request pending for good (#1192).
+    let recovered = false;
     const list = (url: URL) => url.pathname === '/api/v1/integrations';
     await page.route(list, async (route) => {
+      if (recovered) {
+        await route.fallback();
+        return;
+      }
       const response = await route.fetch();
       const rows = (await response.json()) as Array<Record<string, unknown>>;
       const json = rows.map((row) => (row.id === outboundReg.id ? { ...row, a2a_direction: null } : row));
       await route.fulfill({ response, json });
     });
     const lookup = (url: URL) => url.pathname.endsWith(`/api/v1/a2a/client/${outboundReg.id}`);
-    await page.route(lookup, (route) => route.fulfill({ status: 503, body: '' }));
+    await page.route(lookup, (route) => (recovered ? route.fallback() : route.fulfill({ status: 503, body: '' })));
     const failed = page.waitForResponse((r) => lookup(new URL(r.url())) && r.status() === 503);
     await page.goto(`/agents/${delegatingAgent.id}`);
     await failed;
@@ -1050,8 +1055,7 @@ test.describe.serial('A2A in the UI: inbound versus outbound', () => {
     // The backend is back. The row opens the integration in-app, and that page
     // reads the direction afresh instead of inheriting the failure the label
     // tolerated: a strict read mounting on a cached error throws it unretried.
-    await page.unroute(lookup);
-    await page.unroute(list);
+    recovered = true;
     await outbound.click();
     await expect(page.getByText('Outbound: our agents task this partner')).toBeVisible();
 

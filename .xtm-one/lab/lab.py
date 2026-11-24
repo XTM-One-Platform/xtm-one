@@ -1650,8 +1650,12 @@ def backend_env() -> dict[str, str]:
         # A platform cost ceiling, so the non-admin peer meets the blocked-limit states of the Budget tab and
         # the fleet Run defaults on real rows (``seed_budget_ceiling``); a declaration's env sets ``0`` for none.
         "AGENT_LOOP_MAX_COST_USD": os.environ.get("AGENT_LOOP_MAX_COST_USD", LAB_BUDGET_CEILING_USD),
+        # The decisions read switch (off by default in production): on in every lab, so ``GET /decisions/waiting``
+        # answers the open decision ``seed_open_decision`` writes; a declaration's env sets ``false``.
+        "DECISIONS_READ_ENABLED": os.environ.get("DECISIONS_READ_ENABLED", "true"),
         **edition_env(),
         **langfuse_env(),
+        **smtp_env(),
     }
 
 
@@ -1701,6 +1705,30 @@ LAB_ORG_SETUP_PROMPT_STATES = ("off", "on")
 #: the lab profile (name and sector); ``complete`` saves ``LAB_ORG_COMPLETE_PROFILE``. Each but ``default`` is
 #: read back as ``context.state`` of ``GET /ctem-metrics/posture`` (``seed_org_context``).
 LAB_ORG_CONTEXT_STATES = ("default", "missing", "partial", "complete")
+#: ``LAB_ORG_SYNCED`` values (#1345): ``on`` saves the profile with rows a platform sync wrote next to typed rows
+#: (``seed_org_synced``), so the Source column, locked rows, bulk Set and the synced-removal dialog render natively.
+LAB_ORG_SYNCED_STATES = ("off", "on")
+#: The rows ``LAB_ORG_SYNCED=on`` saves, per section: the platform whose disabled sync writes them (a source of
+#: ``organization_context_import.SECTION_SOURCES``) and the rows, synced ones carrying an ``external_id``; a row
+#: without one is typed. Each synced row gets the ``sync_id`` of its section's sync at seed time.
+LAB_ORG_SYNCED_ROWS = {
+    "crown_jewels": ("opencrq", (
+        {"name": "Payments platform", "business_service": "Card payments", "criticality": "critical",
+         "external_id": "lab-opencrq-asset-1"},
+        {"name": "Customer data lake", "criticality": "high", "external_id": "lab-opencrq-asset-2"},
+        {"name": "Internal wiki", "criticality": "low"},
+    )),
+    "tech_stack": ("openaev", (
+        {"vendor": "Microsoft", "product": "Exchange Server", "external_id": "lab-openaev-software-1"},
+        {"vendor": "Fortinet", "product": "FortiOS", "external_id": "lab-openaev-software-2"},
+        {"vendor": "Atlassian", "product": "Confluence Data Center"},
+    )),
+    "ai_systems": ("openaev", (
+        {"name": "Customer support assistant", "kind": "assistant", "exposure": "public",
+         "external_id": "lab-openaev-ai-1"},
+        {"name": "Code review agent", "kind": "agent", "exposure": "internal"},
+    )),
+}
 #: ``LAB_PERF_THREAD`` values: ``on`` seeds a 200-message conversation and a short one for the administrator
 #: (``seed_perf_thread.py``), so long-thread scroll, open and switch timings need no hand-edited seed.
 LAB_PERF_THREAD_STATES = ("off", "on")
@@ -1755,6 +1783,14 @@ LAB_LANGFUSE_SECRET_KEY = "sk-lf-lab-only-never-used-outside-the-lab"  # noqa: S
 #: Its host: the discard port of the loopback, so a tracing client the backend builds is refused at once and
 #: nothing leaves the lab (the client then waits its cooldown before trying again).
 LAB_LANGFUSE_HOST = "http://127.0.0.1:9"
+#: ``LAB_SMTP`` values: ``off`` leaves SMTP unconfigured (every lab), ``on`` hands the backend lab-only ``SMTP_*``
+#: values, so ``is_email_configured()`` answers true and the screens that need an SMTP server render (#1542).
+LAB_SMTP_STATES = ("off", "on")
+#: The lab's SMTP server: the discard port of the loopback, so a send is refused at connect, the caller's failure
+#: path runs and no mail leaves the lab.
+LAB_SMTP_HOSTNAME = "127.0.0.1"
+LAB_SMTP_PORT = "9"
+LAB_SMTP_FROM = "lab-only-sender@example.invalid"
 
 
 def lab_switch(name: str, values: tuple[str, ...]) -> str:
@@ -1781,6 +1817,24 @@ def langfuse_env() -> dict[str, str]:
         "LANGFUSE_PUBLIC_KEY": LAB_LANGFUSE_PUBLIC_KEY,
         "LANGFUSE_SECRET_KEY": LAB_LANGFUSE_SECRET_KEY,
         "LANGFUSE_HOST": LAB_LANGFUSE_HOST,
+    }
+
+
+def smtp_env() -> dict[str, str]:
+    """``LAB_SMTP=on``: lab-only ``SMTP_*`` values, so the backend answers SMTP configured (#1542).
+
+    The host is the loopback's discard port: ``is_email_configured()`` answers true, the Platform email
+    integration and the send buttons are offered, and a send is refused at connect (no mail leaves the lab).
+    ``off`` (the default) leaves the backend's environment as it is. Lab-only.
+    """
+    if lab_switch("LAB_SMTP", LAB_SMTP_STATES) != "on":
+        return {}
+    return {
+        "SMTP_HOSTNAME": LAB_SMTP_HOSTNAME,
+        "SMTP_PORT": LAB_SMTP_PORT,
+        "SMTP_FROM": LAB_SMTP_FROM,
+        "SMTP_STARTTLS": "false",
+        "SMTP_USE_TLS": "false",
     }
 
 
@@ -1959,7 +2013,7 @@ SEEDS: list[tuple[str, str, object]] = [
         "name": f"{SEED_NAME} template", "description": "Seeded by the lab.",
     }))),
     ("investigation pack", "/investigation-packs/{id}", _builtin_pack),
-    ("relay group", "/relays/{id}", lambda token, _: _created(api("POST", "/relays/groups", token, {
+    ("relay group", "/connections/relays/{id}", lambda token, _: _created(api("POST", "/relays/groups", token, {
         "name": f"{SEED_NAME} relay group", "description": "Seeded by the lab.",
     }))),
     ("dataset", "/evaluations/datasets/{id}", lambda token, _: _created(api("POST", "/datasets", token, {
@@ -2003,6 +2057,32 @@ def seed_theme(token: str, who: str = "administrator") -> str:
         return "dark"
     log(f"theme: {theme} (the {who}'s preference)")
     return theme
+
+
+def seed_language(token: str, who: str = "administrator") -> str:
+    """Store ``LAB_LOCALE`` (en, fr, es, ja) as the language of one seeded user; answer the language stored (#1653).
+
+    Called beside :func:`seed_theme` for the administrator and the peer, before their signed-in links print, so
+    both identities open in that language. Unset: nothing is stored (``auto``). At run time any lab switches with
+    ``/api/v1/lab/locale/<lang>?next=<path>`` (``lab_locale``, answered by ``lab_asgi``).
+    """
+    import lab_locale  # beside this file
+
+    raw = os.environ.get(lab_locale.LAB_LOCALE_ENV, "").strip()
+    if not raw:
+        return "auto"
+    language = lab_locale.resolve(raw)
+    if language is None:
+        if who == "administrator":
+            log(f"LAB_LOCALE={raw!r} ignored: one of {', '.join(lab_locale.LOCALES)}")
+        return "auto"
+    try:
+        api("PUT", "/settings/preferences", token, {"language": language})
+    except Exception as exc:  # noqa: BLE001 - the seed never stops the lab
+        log(f"language not set for the {who}: {exc}")
+        return "auto"
+    log(f"language: {language} (the {who}'s preference)")
+    return language
 
 
 #: The lab's second account: a non-admin peer, so a list shows what another owner shared with
@@ -2065,20 +2145,21 @@ def seed_peer(token: str, base: str) -> tuple[dict[str, dict[str, str]], dict[st
         if not peer_token:
             raise RuntimeError("the peer's sign-in answered no access token")
         seed_theme(peer_token, "peer")
+        seed_language(peer_token, "peer")
         admin = _created(api("GET", "/auth/me", token))
     except Exception as exc:  # noqa: BLE001 - the seed never stops the lab
         return seeded, {"peer user": str(exc)[:200]}
-    seeded["peer user"] = {"id": peer, "url": f"{base}/users/{peer}"}
+    seeded["peer user"] = {"id": peer, "url": f"{base}/users-and-groups/users/{peer}"}
     seeded["signed-in session (peer)"] = {"id": PEER_EMAIL, "url": signed_in_url(base, peer_token)}
     log_session("signed-in session (peer)", seeded["signed-in session (peer)"])
     rows: list[tuple[str, str, object]] = [
-        # The administrator opens /operations/workspaces: "Shared by Lab peer" on this row.
-        ("workspace shared by the peer", "/workspaces/{id}", lambda: _shared_workspace(peer_token, admin, "peer")),
-        ("workspace shared with the peer", "/workspaces/{id}", lambda: _shared_workspace(token, peer, "administrator")),
-        ("peer work item", "/operations/work-items", lambda: _created(api("POST", "/work-items", peer_token, {
+        # The administrator opens /tasks/workspaces: "Shared by Lab peer" on this row.
+        ("workspace shared by the peer", "/tasks/workspaces/{id}", lambda: _shared_workspace(peer_token, admin, "peer")),
+        ("workspace shared with the peer", "/tasks/workspaces/{id}", lambda: _shared_workspace(token, peer, "administrator")),
+        ("peer work item", "/tasks/work-items", lambda: _created(api("POST", "/work-items", peer_token, {
             "title": f"{SEED_NAME} work item of the peer", "description": "Seeded by the lab, owned by the peer.",
         }))),
-        ("peer shared state", "/operations/state", lambda: _created(api("POST", "/shared-state", peer_token, {
+        ("peer shared state", "/operations/shared-state", lambda: _created(api("POST", "/shared-state", peer_token, {
             "key": "lab-peer-sample", "label": f"{SEED_NAME} state of the peer", "value": {"seeded_by": "lab"},
         }))),
     ]
@@ -2154,7 +2235,7 @@ def seed_mfa_user(token: str, base: str) -> dict[str, dict[str, str]]:
     row = api("GET", f"/users/{user}", token)
     if not isinstance(row, dict) or row.get("mfa_enabled") is not True:
         raise RuntimeError("GET /users/{id} does not answer mfa_enabled true after the enrollment")
-    return {"two-factor user": {"id": user, "url": f"{base}/users/{user}"}}
+    return {"two-factor user": {"id": user, "url": f"{base}/users-and-groups/users/{user}"}}
 
 
 #: The lab's account nobody's assistant can change a fleet for: its General Assistant override carries no
@@ -2286,7 +2367,7 @@ def seed_workspace_work_item(token: str, base: str, workspace: str) -> dict[str,
     item = _created(row)
     if not isinstance(row, dict) or row.get("workspace_id") != workspace:
         raise RuntimeError(f"the work item was not filed in workspace {workspace}: {str(row)[:120]}")
-    return {"workspace work item": {"id": item, "url": f"{base}/operations/work-items"}}
+    return {"workspace work item": {"id": item, "url": f"{base}/tasks/work-items"}}
 
 
 def seed_budget_ceiling(peer_token: str, base: str) -> dict[str, dict[str, str]]:
@@ -3206,6 +3287,64 @@ def seed_xtm_mcp(token: str, base: str) -> dict[str, dict[str, str]]:
     return {"Platform Tools MCP Server": {"id": "xtm_mcp_enabled", "url": f"{base}/profile/mcp"}}
 
 
+#: ``LAB_PLATFORM_HEALTH``: ``off`` (default) leaves Platform Health off, as on a new platform; ``on`` turns it on
+#: (#101 S15d-3), so the module round of the registered modules runs in ``[service.lab-module-health]``.
+LAB_PLATFORM_HEALTH_STATES = ("off", "on")
+
+
+def seed_platform_health(token: str, base: str) -> dict[str, dict[str, str]]:
+    """Platform Health on under ``LAB_PLATFORM_HEALTH=on`` (#101 S15d-3); nothing otherwise.
+
+    Turned on through the real ``GET`` then ``PUT /health/settings`` (every other setting kept as read, the
+    module checks included), read back on ``GET /health/settings``. May raise: the caller logs and skips.
+    """
+    if lab_switch("LAB_PLATFORM_HEALTH", LAB_PLATFORM_HEALTH_STATES) != "on":
+        return {}
+    settings = api("GET", "/health/settings", token)
+    if not isinstance(settings, dict):
+        raise RuntimeError("GET /health/settings answered no settings object")
+    api("PUT", "/health/settings", token, {**settings, "enabled": True})
+    after = api("GET", "/health/settings", token)
+    if not isinstance(after, dict) or after.get("enabled") is not True:
+        raise RuntimeError("GET /health/settings answers Platform Health off after the change")
+    return {"Platform Health": {"id": "enabled", "url": f"{base}/health"}}
+
+
+def seed_health_findings(token: str, base: str) -> dict[str, dict[str, str]]:
+    """Open, dismissed and resolved Platform Health findings on real rows, XTM One mode only (#1303).
+
+    A check opens a finding on its second failing pass and the Module Analyst needs a live model, so a fresh lab
+    shows 0 open findings everywhere: ``seed_health_findings.py`` writes them through the engine's own writer.
+    Read back on ``GET /health/overview`` (open counts above 0) and ``GET /health/findings`` (every open id
+    listed). Logged ``seeded health findings: <url>``. May raise: the caller logs and skips.
+    """
+    if os.environ.get("PLATFORM_MODE", "") != "xtm_one":
+        return {}
+    admin = _created(api("GET", "/auth/me", token))
+    out = ROOT / "health_findings.json"
+    process = subprocess.run(
+        [sys.executable, str(CHECKOUT / ".xtm-one" / "lab" / "seed_health_findings.py"), admin, str(out)],
+        cwd=CHECKOUT / "backend", env=seed_script_env(), capture_output=True, text=True, timeout=120,
+    )
+    if process.returncode != 0:
+        raise RuntimeError(f"seed_health_findings.py exited with {process.returncode}: {stderr_summary(process.stderr)}")
+    written = json.loads(out.read_text())
+    overview = api("GET", "/health/overview", token)
+    cards = overview.get("modules") if isinstance(overview, dict) else None
+    if not sum(card.get("critical", 0) + card.get("warning", 0) + card.get("info", 0) for card in cards or []):
+        raise RuntimeError("GET /health/overview answers 0 open findings after the seed")
+    listed = api("GET", "/health/findings?limit=200", token)
+    shown = {f.get("id") for f in (listed.get("items") if isinstance(listed, dict) else None) or []}
+    if not written["open"] or set(written["open"]) - shown:
+        raise RuntimeError(f"GET /health/findings lists {len(shown)} of the {len(written['open'])} seeded open findings")
+    url = f"{base}/health"
+    return {
+        "health findings": {"id": ",".join(written["open"]), "url": url},
+        "health findings dismissed": {"id": ",".join(written["dismissed"]), "url": url},
+        "health findings resolved": {"id": ",".join(written["resolved"]), "url": url},
+    }
+
+
 #: The agent whose welcome screen shows suggestion chips: ``GET /chat/suggestions`` answers an agent's own
 #: ``web_suggested_prompts`` and nothing else, so with no agent carrying some the chatbot's welcome screen
 #: never renders its chips. The third is long enough for the design system's Chip to cut it at 250 px.
@@ -3331,8 +3470,8 @@ def seed_frictions(token: str, agent: str, base: str) -> dict[str, dict[str, str
         raise RuntimeError(f"seed_frictions.py exited with {process.returncode}: {stderr_summary(process.stderr)}")
     runs = json.loads(out.read_text())
     return {
-        "run with frictions": {"id": runs["settled"], "url": f"{base}/runs/{runs['settled']}"},
-        "run with a live friction ledger": {"id": runs["live"], "url": f"{base}/runs/{runs['live']}"},
+        "run with frictions": {"id": runs["settled"], "url": f"{base}/operations/executions/{runs['settled']}"},
+        "run with a live friction ledger": {"id": runs["live"], "url": f"{base}/operations/executions/{runs['live']}"},
     }
 
 
@@ -3356,11 +3495,11 @@ def seed_relay_requests(token: str, group: str, base: str) -> dict[str, dict[str
     total = page.get("total") if isinstance(page, dict) else None
     if total != written["requests"]:
         raise RuntimeError(f"GET /relays/groups/{group}/requests answers total {total}, {written['requests']} written")
-    url = f"{base}/relays/{group}/activity"
+    url = f"{base}/connections/relays/{group}/activity"
     log(f"seeded relay requests: {url}")
     return {
         "relay group activity": {"id": group, "url": url},
-        "relay with a long name": {"id": written["relays"][0], "url": f"{base}/relays/{group}"},
+        "relay with a long name": {"id": written["relays"][0], "url": f"{base}/connections/relays/{group}"},
     }
 
 
@@ -3469,12 +3608,12 @@ def seed_roi_records(token: str, base: str) -> dict[str, dict[str, str]]:
     # Back-dated weekly history, so the Value page's trend draws with no override (#10067).
     log(f"seeded ROI trend weeks: {rows.get('trend_weeks', 0)}")
     seeded = {
-        f"ROI review run ({outcome})": {"id": run, "url": f"{base}/runs/{run}"}
+        f"ROI review run ({outcome})": {"id": run, "url": f"{base}/operations/executions/{run}"}
         for outcome, run in rows["runs"].items()
     }
-    seeded["ROI review work item"] = {"id": item, "url": f"{base}/operations/work-items?item={item}"}
+    seeded["ROI review work item"] = {"id": item, "url": f"{base}/tasks/work-items/{item}"}
     seeded["ROI review agent"] = {"id": agent, "url": f"{base}/agents/{agent}"}
-    seeded["ROI review assignment"] = {"id": assignment, "url": f"{base}/assignments/{assignment}"}
+    seeded["ROI review assignment"] = {"id": assignment, "url": f"{base}/agents/assignments/{assignment}"}
     return seeded
 
 
@@ -3529,7 +3668,7 @@ def seed_roi_chat_records(
     total = series.get("total_lines") if isinstance(series, dict) else None
     if total is None or total < len(records):
         raise RuntimeError(f"GET /roi/chat answered {total} lines of {len(records)} seeded")
-    url = f"{base}/value?scope=organization"
+    url = f"{base}/tasks/value?scope=organization"
     log(f"seeded ROI chat records ({len(records)}): {url}")
     log(f"seeded fleet chat stamped: {stamped}")
     return {"ROI chat records": {"id": ",".join(records.values()), "url": url}}
@@ -3606,7 +3745,7 @@ def seed_roi_fleet(token: str, base: str, fleet: str) -> dict[str, dict[str, str
     ``PUT /roi/declarations?subject_type=fleet`` declares the unit; a lab assignment of the fleet's
     orchestrator carries the runs, and ``seed_roi_fleet.py`` writes their ``roi_run_records`` rows
     with the fleet through the backend's own models (no API writes one). ``GET /roi?window=30d`` then
-    answers the fleet in ``fleets``. Logged as ``seeded ROI fleet: <base>/analytics/outcomes``. May
+    answers the fleet in ``fleets``. Logged as ``seeded ROI fleet: <base>/observability/outcomes``. May
     raise: the caller logs and skips.
     """
     orchestrator = LAB_AGENTS.get("Orchestrator")
@@ -3629,7 +3768,7 @@ def seed_roi_fleet(token: str, base: str, fleet: str) -> dict[str, dict[str, str
     if process.returncode != 0:
         raise RuntimeError(f"seed_roi_fleet.py exited with {process.returncode}: {stderr_summary(process.stderr)}")
     json.loads(out.read_text())
-    return {"ROI fleet": {"id": fleet, "url": f"{base}/analytics/outcomes"}}
+    return {"ROI fleet": {"id": fleet, "url": f"{base}/observability/outcomes"}}
 
 
 def seed_roi_under_k(token: str, base: str, peer: str) -> dict[str, dict[str, str]]:
@@ -3719,7 +3858,7 @@ def seed_roi_chat_only(token: str, base: str) -> dict[str, dict[str, str]]:
     remainder = next((r for r in rows if isinstance(r, dict) and r.get("key") == "no_agent"), None)
     if not remainder or not remainder.get("hours"):
         raise RuntimeError(f"GET /roi?window=7d: no no_agent row with hours in By agent ({remainder})")
-    url = f"{base}/value?scope=organization&window=7d"
+    url = f"{base}/tasks/value?scope=organization&window=7d"
     log(f"seeded ROI chat-only (organization): {url}")
     seeded = {"ROI chat-only no_agent remainder": {"id": "no_agent", "url": url}}
     for scope, subject, url in (("agent", agent, f"{base}/agents/{agent}"), ("fleet", fleet, f"{base}/flows/fleets/{fleet}")):
@@ -3821,13 +3960,13 @@ def seed_group_manager(token: str, base: str, peer: str) -> dict[str, dict[str, 
     """The group "Lab managed group" with the peer (*peer*) as its manager and member (#9734).
 
     So the peer's /analytics renders the group-manager view and its subtitle names the group, with
-    no hand-made group during a review. Logged as ``seeded group manager (peer): <base>/groups/<id>``.
+    no hand-made group during a review. Logged as ``seeded group manager (peer): <base>/users-and-groups/groups/<id>``.
     May raise: the caller logs and skips.
     """
     group = _created(api("POST", "/groups", token, {"name": LAB_MANAGED_GROUP}))
     api("POST", f"/groups/{group}/members", token, {"user_ids": [peer]})
     api("POST", f"/groups/{group}/managers", token, {"user_ids": [peer]})
-    return {"group manager (peer)": {"id": group, "url": f"{base}/groups/{group}"}}
+    return {"group manager (peer)": {"id": group, "url": f"{base}/users-and-groups/groups/{group}"}}
 
 
 #: The LLM Analytics seed: agents, users and groups past one page (10) of every breakdown table.
@@ -3844,7 +3983,7 @@ def seed_analytics_traces(token: str, base: str) -> dict[str, dict[str, str]]:
     Twenty lab agents, fifteen users spread over three groups (created through the API), then
     ``seed_analytics_traces.py`` writes the traces and runs the platform's daily-stats backfill
     through the backend's own models: no API writes an ``llm_traces`` row. Logged as
-    ``seeded analytics traces: <base>/analytics``. May raise: the caller logs and skips.
+    ``seeded analytics traces: <base>/observability``. May raise: the caller logs and skips.
     """
     agents = [_seed_agent(token, f"analytics agent {n:02d}") for n in range(1, ANALYTICS_AGENTS + 1)]
     users = [
@@ -3869,7 +4008,7 @@ def seed_analytics_traces(token: str, base: str) -> dict[str, dict[str, str]]:
             f"seed_analytics_traces.py exited with {process.returncode}: {stderr_summary(process.stderr)}"
         )
     counts = json.loads(out.read_text())
-    return {"analytics traces": {"id": str(counts["traces"]), "url": f"{base}/analytics"}}
+    return {"analytics traces": {"id": str(counts["traces"]), "url": f"{base}/observability"}}
 
 
 #: The production-shaped membership ``LAB_FIGURES_SCALE=large`` gives one analytics user (#87): as many groups as
@@ -3894,7 +4033,7 @@ def seed_analytics_wide_member(token: str, base: str) -> dict[str, dict[str, str
     Creates the groups of :func:`analytics_wide_group_names` through ``POST /groups`` and adds
     :data:`ANALYTICS_WIDE_MEMBER_EMAIL` (seeded by :func:`seed_analytics_traces`, read from
     ``analytics_ids.json``) to each. Read back: ``GET /traces/analytics/cost-by-user`` names that user with at
-    least that many ``group_names``. Logged ``seeded analytics wide member (<n> groups): <base>/analytics?
+    least that many ``group_names``. Logged ``seeded analytics wide member (<n> groups): <base>/observability?
     breakdown=users``. May raise: the caller logs and skips.
     """
     ids = json.loads((ROOT / "analytics_ids.json").read_text())
@@ -3909,7 +4048,7 @@ def seed_analytics_wide_member(token: str, base: str) -> dict[str, dict[str, str
     held = len(row.get("group_names") or []) if row else 0
     if held < len(names):
         raise RuntimeError(f"GET /traces/analytics/cost-by-user names {ANALYTICS_WIDE_MEMBER_EMAIL} in {held} groups")
-    url = f"{base}/analytics?breakdown=users"
+    url = f"{base}/observability?breakdown=users"
     log(f"seeded analytics wide member ({held} groups): {url}")
     return {"analytics wide member": {"id": user, "url": url}}
 
@@ -4014,7 +4153,7 @@ def seed_trace_sessions(base: str, peer_id: str | None) -> dict[str, dict[str, s
     writes an ``llm_traces`` row, so ``seed_trace_sessions.py`` writes the conversations, the traces
     (each with a ``conversation_id``) and their spans through the backend's own models, with its
     interpreter and environment; one session belongs to the peer when it was seeded. Logged
-    ``seeded trace sessions: <base>/trace-sessions``. May raise: the caller logs and skips.
+    ``seeded trace sessions: <base>/observability/sessions``. May raise: the caller logs and skips.
     """
     ids = ROOT / "analytics_ids.json"
     out = ROOT / "trace_sessions.json"
@@ -4028,7 +4167,7 @@ def seed_trace_sessions(base: str, peer_id: str | None) -> dict[str, dict[str, s
             f"seed_trace_sessions.py exited with {process.returncode}: {stderr_summary(process.stderr)}"
         )
     counts = json.loads(out.read_text())
-    return {"trace sessions": {"id": str(counts["sessions"]), "url": f"{base}/trace-sessions"}}
+    return {"trace sessions": {"id": str(counts["sessions"]), "url": f"{base}/observability/sessions"}}
 
 
 def seed_operations(token: str, agent: str, base: str) -> dict[str, dict[str, str]]:
@@ -4063,7 +4202,7 @@ def seed_operations(token: str, agent: str, base: str) -> dict[str, dict[str, st
 
 
 def seed_stale_reasons(token: str, base: str) -> dict[str, dict[str, str]]:
-    """One work item per ``stale_reason``, so ``/operations/work-items?view=stale`` renders every reason (#9905).
+    """One work item per ``stale_reason``, so ``/tasks/work-items?view=stale`` renders every reason (#9905).
 
     Through the API a lab only produces ``past_due``: ``seed_stale_reasons.py`` writes the four items
     through the backend's ``WorkItem`` model with aged timestamps, with its interpreter and
@@ -4085,7 +4224,43 @@ def seed_stale_reasons(token: str, base: str) -> dict[str, dict[str, str]]:
     if wrong:
         raise RuntimeError(f"stale reasons not read back: {', '.join(wrong)}")
     return {"stale reasons": {"id": ",".join(f"{r}={i}" for r, i in ids.items()),
-                              "url": f"{base}/operations/work-items?view=stale"}}
+                              "url": f"{base}/tasks/work-items?view=stale"}}
+
+
+def seed_open_decision(token: str, base: str) -> dict[str, dict[str, str]]:
+    """One work item waiting for the administrator's decision, so the decisions inbox renders a real row.
+
+    Created through the API with ``needs_human`` and a complete ask, no owner agent (no inbox claims
+    it): the dual write opens its ``decisions`` row. Read back from ``GET /decisions/waiting``, which
+    the lab turns on with ``DECISIONS_READ_ENABLED`` (``backend_env``): a switch off, or the item
+    missing from the inbox, raises. Logged ``seeded open decision: <url>``. May raise: the caller
+    logs and skips.
+    """
+    item = _created(api("POST", "/work-items", token, {
+        "title": f"{SEED_NAME} decision waiting for you",
+        "description": "Seeded by the lab: a work item parked for a person's decision.",
+        "correlation_key": "lab-open-decision",
+        "dedupe": True,
+        "dedupe_by": "key",
+        "needs_human": True,
+        "ask": {
+            "question": "Ship the seeded change to every lab?",
+            "context": "Seeded by the lab so the decisions inbox shows one open row.\nAnswering it changes nothing.",
+            "options": [
+                {"key": "A", "label": "Ship it", "effect": "The item reopens with this answer."},
+                {"key": "B", "label": "Hold it", "effect": "The item reopens with this answer."},
+            ],
+            "recommendation": "A",
+        },
+    }))
+    inbox = api("GET", "/decisions/waiting?limit=200", token)
+    if not isinstance(inbox, dict) or inbox.get("enabled") is not True:
+        reason = inbox.get("reason") if isinstance(inbox, dict) else str(inbox)[:120]
+        raise RuntimeError(f"the decisions inbox is off: {reason}")
+    ids = {str(row.get("id")) for row in inbox.get("items") or [] if isinstance(row, dict)}
+    if f"work_item:{item}" not in ids:
+        raise RuntimeError(f"the open decision of work item {item} is not in GET /decisions/waiting")
+    return {"open decision": {"id": f"work_item:{item}", "url": f"{base}/tasks/work-items/{item}"}}
 
 
 def seed_no_reason_blocked(token: str, base: str, fleet: str | None) -> dict[str, dict[str, str]]:
@@ -4121,7 +4296,7 @@ def seed_no_reason_blocked(token: str, base: str, fleet: str | None) -> dict[str
     if wrong:
         raise RuntimeError(f"no-reason blocked items not read back: {', '.join(wrong)}")
     seeded = {"no-reason blocked work items": {"id": ids["operations"],
-                                              "url": f"{base}/operations/work-items?vis=all"}}
+                                              "url": f"{base}/tasks/work-items?vis=all"}}
     if "fleet" in ids:
         seeded["no-reason blocked work items in the fleet"] = {
             "id": ids["fleet"], "url": f"{base}/fleets/{fleet}/operations/work-items"}
@@ -4160,10 +4335,11 @@ def seed_scheduled_one_offs(token: str, base: str) -> dict[str, dict[str, str]]:
             wrong.append(state)
     if wrong:
         raise RuntimeError(f"scheduled one-offs not read back: {', '.join(wrong)}")
-    url = f"{base}/operations/work-items?view=scheduled"
+    # One item opens as its own path over the Scheduled view (#775): /tasks/work-items/<id>?view=scheduled.
+    url = f"{base}/tasks/work-items"
     return {
-        "scheduled one-off": {"id": ids["upcoming"], "url": f"{url}&item={ids['upcoming']}"},
-        "scheduled one-off (missed)": {"id": ids["missed"], "url": f"{url}&item={ids['missed']}"},
+        "scheduled one-off": {"id": ids["upcoming"], "url": f"{url}/{ids['upcoming']}?view=scheduled"},
+        "scheduled one-off (missed)": {"id": ids["missed"], "url": f"{url}/{ids['missed']}?view=scheduled"},
     }
 
 
@@ -4237,8 +4413,8 @@ def seed_concierge_signals(token: str, agent: str, base: str) -> dict[str, dict[
                                                        "url": f"{base}/concierge/signals"},
         f"concierge cycles ({len(rows['cycles'])} new)": {"id": ",".join(rows["cycles"]),
                                                          "url": f"{base}/concierge/cycles"},
-        "concierge flow target": {"id": rows["flow"], "url": f"{base}/flows/{rows['flow']}/builder"},
-        "concierge assignment target": {"id": assignment, "url": f"{base}/assignments/{assignment}"},
+        "concierge flow target": {"id": rows["flow"], "url": f"{base}/flows/library/{rows['flow']}"},
+        "concierge assignment target": {"id": assignment, "url": f"{base}/agents/assignments/{assignment}"},
     }
 
 
@@ -4616,7 +4792,8 @@ def seed_kb_activity(token: str, base: str) -> dict[str, dict[str, str]]:
 
 #: The second administrator who owns a sync, with an address long enough to wrap in the Runs as column (#65).
 ORG_SYNC_OWNER_EMAIL = "lab-organization-sync-owner-with-a-long-address@lab-sample-subsidiary.filigran.io"
-ORG_SYNC_OWNER_PASSWORD = "lab-only-password-sync-owner"
+#: Passes ``check_password_policy`` (a letter and a digit): a password it refuses skips the whole seed (#1368).
+ORG_SYNC_OWNER_PASSWORD = "lab-only-password-sync-owner-1"
 
 
 def seed_org_syncs(token: str, base: str) -> dict[str, dict[str, str]]:
@@ -5354,7 +5531,9 @@ def seed_ctem_fleet_optin(token: str, base: str) -> dict[str, dict[str, str]]:
     if not any(row["state"] == "not_set_up" for row in states.values()):
         source = sorted(states.items())[0][1]["id"]
         states["lab-fork"] = {"id": _ctem_not_set_up_fork(token, source), "state": "not_set_up"}
-    missing = [s for s in CTEM_FLEET_OPTIN_REQUIRED if s not in {row["state"] for row in states.values()}]
+    # A health state carried by another fleet (``also``: four built-in CTEM fleets, #1048) counts too.
+    seen = {row["state"] for row in states.values()} | {s for row in states.values() for s in row.get("also") or []}
+    missing = [s for s in CTEM_FLEET_OPTIN_REQUIRED if s not in seen]
     if missing:
         raise RuntimeError(f"CTEM fleet opt-in states missing: {', '.join(missing)} ({str(states)[:300]})")
     on = next((row for row in states.values() if row["state"] == "on"), None)
@@ -5365,11 +5544,12 @@ def seed_ctem_fleet_optin(token: str, base: str) -> dict[str, dict[str, str]]:
     if not (runs or 0) > 0:
         raise RuntimeError(f"the fleet seeded on reads no run estimate: {str(estimate)[:300]}")
     for row in states.values():
-        if row["state"] in ("stale", "failing"):
+        health_state = next((s for s in (row["state"], *(row.get("also") or [])) if s in ("stale", "failing")), None)
+        if health_state is not None:
             health = api("GET", f"/fleets/{row['id']}/health", token)
             status = health.get("status") if isinstance(health, dict) else None
-            if status != row["state"]:
-                raise RuntimeError(f"the fleet seeded {row['state']} reads health {status!r}")
+            if status != health_state:
+                raise RuntimeError(f"the fleet seeded {health_state} reads health {status!r}")
     ids = ",".join(f"{slug}={row['state']}" for slug, row in sorted(states.items()))
     return {"CTEM fleet opt-in states": {"id": ids, "url": f"{base}/"}}
 
@@ -5507,7 +5687,7 @@ def seed_ctem_fleet_event_runs(token: str, base: str) -> tuple[dict[str, dict[st
         if gaps:
             skipped[label] = f"run {fleet['run']} read back with {', '.join(gaps)}"
             continue
-        seeded[label] = {"id": fleet["run"], "url": f"{base}/runs/{fleet['run']}"}
+        seeded[label] = {"id": fleet["run"], "url": f"{base}/operations/executions/{fleet['run']}"}
     return seeded, skipped
 
 
@@ -5859,7 +6039,7 @@ def seed_suite_registrations(token: str, base: str) -> tuple[dict[str, dict[str,
                 "trigger_type": "integration_event",
                 "trigger_config": {"provider": provider, "event": listed[0]["event"], "integration_id": integration},
             }))
-            seeded[entity] = {"id": assignment, "url": f"{base}/assignments/{assignment}"}
+            seeded[entity] = {"id": assignment, "url": f"{base}/agents/assignments/{assignment}"}
         except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
             skipped[entity] = str(exc)[:600]
     return seeded, skipped
@@ -5905,7 +6085,11 @@ def seed_ctem_screens(token: str, base: str) -> dict[str, dict[str, str]]:
     ``lab_asgi`` answers the Cases source read with ``ctem_sample.SCREENS_ISSUES``; this runs the real recompute
     (``POST /ctem-cases/recompute``), which groups them and writes the cases, then reads the list back. A restart
     recomputes into the same cases (stable keys); a 429 (one recompute per minute) keeps the cases already there.
+
+    Since #1529 the recompute opens a case only through the scope gate, so the scope comes first
+    (:func:`seed_ctem_screens_scope`): without it every issue is a watchlisted signal and the list is empty.
     """
+    seed_ctem_screens_scope(token)
     try:
         answer = api("POST", "/ctem-cases/recompute?vertical=cyber", token)
     except RuntimeError as exc:
@@ -5927,6 +6111,65 @@ def seed_ctem_screens(token: str, base: str) -> dict[str, dict[str, str]]:
         f"CTEM cases ({len(cases)})": {"id": ",".join(c["id"] for c in cases), "url": f"{base}/ctem/cases"},
         "CTEM stages scored and funnel": {"id": ",".join(scored), "url": f"{base}/ctem/prioritization"},
     }
+
+
+def seed_ctem_gates(token: str, base: str) -> dict[str, dict[str, str]]:
+    """The gate decision records of the first CTEM case (#1628), read back. May raise.
+
+    The recompute writes no gate work item, decision row or ``gate`` event, and no API writes a decision in a
+    chosen state: ``seed_ctem_gates.py`` writes them through the backend's own models (one gate answered,
+    waiting, expired, cancelled and passed automatically), with its interpreter and environment. Read back on
+    ``GET /ctem-cases/{id}``: its ``gates`` carry at least the answered, waiting and passed records. A restart
+    finds the gate items by their keys and writes nothing.
+    """
+    admin = _created(api("GET", "/auth/me", token))
+    listed = api("GET", "/ctem-cases?vertical=cyber&limit=50", token)
+    cases = listed.get("cases") if isinstance(listed, dict) else None
+    if not cases:
+        raise RuntimeError(f"no CTEM case to seed the gates on: {str(listed)[:300]}")
+    case_id = str(cases[0]["id"])
+    out = ROOT / "ctem_gates.json"
+    process = subprocess.run(
+        [sys.executable, str(CHECKOUT / ".xtm-one" / "lab" / "seed_ctem_gates.py"), admin, case_id, str(out)],
+        cwd=CHECKOUT / "backend", env=seed_script_env(), capture_output=True, text=True, timeout=120,
+    )
+    if process.returncode != 0:
+        raise RuntimeError(f"seed_ctem_gates.py exited with {process.returncode}: {stderr_summary(process.stderr)}")
+    case = api("GET", f"/ctem-cases/{case_id}", token)
+    statuses = {g.get("key"): g.get("status") for g in (case.get("gates") or [])} if isinstance(case, dict) else {}
+    wanted = {"answered", "waiting", "passed_automatically"}
+    if not wanted <= set(statuses.values()):
+        raise RuntimeError(f"the CTEM case gates read back {statuses}")
+    return {f"CTEM case gates ({len(statuses)})": {"id": case_id, "url": f"{base}/ctem/cases/{case_id}"}}
+
+
+def seed_ctem_screens_scope(token: str) -> None:
+    """Declare the scope the screens issues land in (#1529): tech stack products and the assets running them.
+
+    Adds ``ctem_sample.SCREENS_TECH_STACK`` to the saved profile (the products already there are kept) and
+    writes ``ctem_sample.SCREENS_ASSETS`` through the asset records (``source`` ``lab``, stable external ids,
+    so a restart updates nothing). Read back: the gate resolves each issue to a ``very_high`` asset and opens
+    its case. ``LAB_ORG_CONTEXT=missing`` declares nothing: that lab renders the screens with no profile. May raise.
+    """
+    if lab_switch("LAB_ORG_CONTEXT", LAB_ORG_CONTEXT_STATES) == "missing":
+        return
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import ctem_sample  # beside this file, standard library only
+
+    current = api("GET", "/organization-context", token)
+    profile = dict(current.get("profile") or {}) if isinstance(current, dict) else {}
+    stack = list(profile.get("tech_stack") or [])
+    have = {str(entry.get("product", "")).lower() for entry in stack}
+    missing = [dict(entry) for entry in ctem_sample.SCREENS_TECH_STACK if entry["product"].lower() not in have]
+    if missing or not profile.get("name"):
+        profile = {**LAB_ORG_PROFILE, **profile, "tech_stack": stack + missing}
+        body = {"profile": profile, "source": "form"}
+        if isinstance(current, dict) and current.get("version") is not None:
+            body["based_on_version"] = current["version"]
+        api("PUT", "/organization-context", token, body)
+    api("POST", "/organization-context/assets/records/batch", token, {
+        "rows": [dict(row) for row in ctem_sample.SCREENS_ASSETS],
+    })
 
 
 def seed_video_ready_render(token: str, base: str) -> dict[str, dict[str, str]]:
@@ -5953,6 +6196,28 @@ def seed_video_ready_render(token: str, base: str) -> dict[str, dict[str, str]]:
         raise RuntimeError(f"the video read back without its ready render: {str(video)[:300]}")
     url = f"{base}/videos/{written['video']}"
     return {"video ready render": {"id": written["render"], "url": url}}
+
+
+def seed_report(token: str, base: str) -> dict[str, dict[str, str]]:
+    """One generated report with every block kind, found again on a restart. May raise.
+
+    No API creates a report and the lab's stub model cannot call ``generate_report``: ``seed_report.py`` writes it
+    through the platform's own ``save_report`` (the tool's validation), with the backend's interpreter and
+    environment. Read back on ``GET /reports/{id}``.
+    """
+    admin = _created(api("GET", "/auth/me", token))
+    out = ROOT / "report.json"
+    process = subprocess.run(
+        [sys.executable, str(CHECKOUT / ".xtm-one" / "lab" / "seed_report.py"), admin, str(out)],
+        cwd=CHECKOUT / "backend", env=seed_script_env(), capture_output=True, text=True, timeout=120,
+    )
+    if process.returncode != 0:
+        raise RuntimeError(f"seed_report.py exited with {process.returncode}: {stderr_summary(process.stderr)}")
+    written = json.loads(out.read_text())
+    report = api("GET", f"/reports/{written['report']}", token)
+    if not isinstance(report, dict) or str(report.get("id") or "") != written["report"]:
+        raise RuntimeError(f"the report read back without its id: {str(report)[:300]}")
+    return {"report": {"id": written["report"], "url": f"{base}/reports/{written['report']}"}}
 
 
 def seed_ctem_posture_history(token: str, base: str) -> dict[str, str]:
@@ -6387,7 +6652,7 @@ def seed_provisioning_states(
             )
         json.loads(out.read_text())
         for kind, assignment in created.items():
-            seeded[f"provisioning {kind}"] = {"id": assignment, "url": f"{base}/assignments/{assignment}"}
+            seeded[f"provisioning {kind}"] = {"id": assignment, "url": f"{base}/agents/assignments/{assignment}"}
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
         skipped["provisioning states"] = str(exc)[:600]
     return seeded, skipped
@@ -6500,7 +6765,7 @@ def seed_channel_assignment(token: str, base: str, seeded: dict[str, dict[str, s
         "prompt": "Post the digest of the channel.", "trigger_type": "manual", "trigger_config": {},
     }))
     return {f"channel assignment ({', '.join(sorted(config))} receive and publish)": {
-        "id": assignment, "url": f"{base}/assignments/{assignment}",
+        "id": assignment, "url": f"{base}/agents/assignments/{assignment}",
     }}
 
 
@@ -6642,7 +6907,7 @@ def seed_event_integrations(token: str, base: str) -> tuple[dict[str, dict[str, 
                     "provider": spec["body"]["provider"], "event": spec["event"], "integration_id": integration,
                 },
             }))
-            seeded[entity] = {"id": assignment, "url": f"{base}/assignments/{assignment}"}
+            seeded[entity] = {"id": assignment, "url": f"{base}/agents/assignments/{assignment}"}
             if spec["event"] == "new_email" and "email event trigger" not in skipped:
                 seeded["email event trigger"] = seeded[entity]
         except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
@@ -7034,6 +7299,7 @@ def seed_entities() -> None:
         except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
             skipped["database licence"] = str(exc)[:600]
     theme = seed_theme(token)
+    seed_language(token)
     ids: dict[str, str] = {}
     for entity, route, create in SEEDS:
         try:
@@ -7086,6 +7352,14 @@ def seed_entities() -> None:
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
         skipped["Platform Tools MCP Server"] = str(exc)[:600]
     try:
+        seeded.update(seed_platform_health(token, base))
+    except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+        skipped["Platform Health"] = str(exc)[:600]
+    try:
+        seeded.update(seed_health_findings(token, base))
+    except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+        skipped["health findings"] = str(exc)[:600]
+    try:
         seeded.update(seed_chat_suggestions(token, base))
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
         skipped["chat suggestions"] = str(exc)[:600]
@@ -7100,6 +7374,10 @@ def seed_entities() -> None:
         seeded.update(seed_stale_reasons(token, base))
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
         skipped["stale reasons"] = str(exc)[:600]
+    try:
+        seeded.update(seed_open_decision(token, base))
+    except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+        skipped["open decision"] = str(exc)[:600]
     if seeds_kb_stale_embeddings():
         try:
             seeded.update(seed_kb_stale_embeddings(token, base))
@@ -7250,6 +7528,13 @@ def seed_entities() -> None:
             raise SystemExit(f"lab: video ready render not seeded: {str(exc)[:600]}") from None
     else:
         skipped["video ready render"] = "LAB_EDITION=community: the Video Studio is Enterprise Edition"
+    if lab_switch("LAB_EDITION", LAB_EDITIONS) != "community":
+        try:
+            seeded.update(seed_report(token, base))
+        except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+            skipped["report"] = str(exc)[:600]
+    else:
+        skipped["report"] = "LAB_EDITION=community: reports are Enterprise Edition"
     try:
         seeded.update(seed_github_integration(token, base))
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
@@ -7382,6 +7667,12 @@ def seed_entities() -> None:
             seeded["org setup prompt"] = seed_org_setup_prompt(token, base)
         except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
             skipped["org setup prompt"] = str(exc)[:600]
+    if lab_switch("LAB_ORG_SYNCED", LAB_ORG_SYNCED_STATES) == "on":
+        # After seed_org_ai_draft_stub: the lab profile is kept, the three sections are replaced.
+        try:
+            seeded["org synced rows"] = seed_org_synced(token, base)
+        except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+            skipped["org synced rows"] = str(exc)[:600]
     try:
         seeded["OpenCRQ sync stub"] = seed_opencrq_sync_stub(token, base)
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
@@ -7641,6 +7932,11 @@ def seed_entities() -> None:
             seeded.update(seed_ctem_screens(token, base))
         except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
             skipped["CTEM cases and scored stages"] = str(exc)[:600]
+        try:
+            # After seed_ctem_screens (the cases): the case page's gate records (#1628).
+            seeded.update(seed_ctem_gates(token, base))
+        except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+            skipped["CTEM case gates"] = str(exc)[:600]
     if mode == "xtm_one" and lab_switch("LAB_ORG_CONTEXT", LAB_ORG_CONTEXT_STATES) != "default":
         # After seed_org_ai_draft_stub (the lab profile, or none under missing).
         try:
@@ -7959,6 +8255,51 @@ def seed_stale_build_notice(token: str, base: str) -> dict[str, str]:
     return {"id": f"page {page_build}, server {server_build}", "url": f"{base}/"}
 
 
+def seed_org_synced(token: str, base: str) -> dict[str, str]:
+    """``LAB_ORG_SYNCED=on``: profile rows a platform sync wrote, next to typed rows, on the real API (#1345).
+
+    Saves one disabled sync per section of :data:`LAB_ORG_SYNCED_ROWS` (kept when one exists for that section and
+    source), then the next profile version: the saved profile with those sections replaced by the rows, each synced
+    row carrying ``source`` and ``sync_id`` of its section's sync. Read back: ``GET /organization-context`` lists,
+    per section, every synced row with its ``sync_id``. Logged ``seeded org synced rows: <base>/settings/organization``.
+    May raise: the caller logs it as not seeded.
+    """
+    existing = api("GET", "/organization-context/syncs", token)
+    syncs = {
+        (r.get("section"), r.get("source")): str(r.get("id"))
+        for r in (existing if isinstance(existing, list) else [])
+        if isinstance(r, dict) and r.get("id")
+    }
+    current = api("GET", "/organization-context", token)
+    profile = dict((current.get("profile") if isinstance(current, dict) else None) or LAB_ORG_PROFILE)
+    expected: dict[str, set[tuple[str, str]]] = {}
+    for section, (source, rows) in LAB_ORG_SYNCED_ROWS.items():
+        sync = syncs.get((section, source)) or _created(api("POST", "/organization-context/syncs", token, {
+            "section": section, "source": source, "frequency": "daily", "hour": 6, "minute": 0,
+            "timezone": "UTC", "enabled": False,
+        }))
+        profile[section] = [
+            {**row, "source": source, "sync_id": sync} if row.get("external_id") else dict(row) for row in rows
+        ]
+        expected[section] = {(str(row["external_id"]), sync) for row in rows if row.get("external_id")}
+    saved = api("PUT", "/organization-context", token, {"profile": profile, "source": "form"})
+    version = saved.get("version") if isinstance(saved, dict) else None
+    read = api("GET", "/organization-context", token)
+    stored = (read.get("profile") if isinstance(read, dict) else None) or {}
+    for section, wanted in expected.items():
+        got = {
+            (str(r.get("external_id")), str(r.get("sync_id")))
+            for r in stored.get(section) or []
+            if isinstance(r, dict) and r.get("external_id")
+        }
+        if not wanted <= got:
+            raise RuntimeError(f"saved, but GET /organization-context answers {section} {sorted(got)[:5]}")
+    url = f"{base}/settings/organization"
+    log(f"seeded org synced rows: {url}")
+    total = sum(len(rows) for rows in expected.values())
+    return {"id": f"version {version}, {total} synced rows in {len(expected)} sections", "url": url}
+
+
 def seed_org_setup_prompt(token: str, base: str) -> dict[str, str]:
     """``LAB_ORG_SETUP_PROMPT=on``: the first-login organization setup dialog (#9173 S3) on the real API.
 
@@ -7973,8 +8314,9 @@ def seed_org_setup_prompt(token: str, base: str) -> dict[str, str]:
     return {"id": "propose true", "url": f"{base}/"}
 
 
-#: The plan kinds Check against OpenCRQ must answer one row each in a lab (``lab_asgi.stub_opencrq_sync``).
-OPENCRQ_SYNC_PLAN_KINDS = ("linked", "pushed_to_opencrq", "pulled_from_opencrq", "ambiguous", "not_in_opencrq")
+#: The plan kinds Check against OpenCRQ must answer one row each in a lab (``lab_asgi.stub_opencrq_sync``);
+#: ``pushed_to_opencrq`` stays empty since #1591 (nothing is written to OpenCRQ).
+OPENCRQ_SYNC_PLAN_KINDS = ("linked", "pulled_from_opencrq", "ambiguous", "not_in_opencrq")
 
 
 def seed_opencrq_sync_stub(token: str, base: str) -> dict[str, str]:
@@ -7991,6 +8333,8 @@ def seed_opencrq_sync_stub(token: str, base: str) -> dict[str, str]:
     plan = answer.get("plan") if isinstance(answer, dict) else None
     if not isinstance(plan, dict) or any(len(plan.get(kind) or []) != 1 for kind in OPENCRQ_SYNC_PLAN_KINDS):
         raise RuntimeError(f"the OpenCRQ sync answered {str(answer)[:300]}")
+    if plan.get("pushed_to_opencrq"):
+        raise RuntimeError(f"the OpenCRQ sync answered a push {str(answer)[:300]}")
     if answer.get("applied") is not False or answer.get("errors") != [] or "version" not in answer:
         raise RuntimeError(f"the OpenCRQ sync answered {str(answer)[:300]}")
     return {"id": f"{len(OPENCRQ_SYNC_PLAN_KINDS)} plan rows", "url": f"{base}/settings/organization"}
@@ -8097,7 +8441,7 @@ def seed_ai_lock_states(
             me = api("GET", "/auth/me", peer_token)
             if not isinstance(me, dict) or not me.get("ai_disabled_by_group"):
                 raise RuntimeError("the peer's /auth/me does not answer ai_disabled_by_group true")
-            seeded["group with AI off"] = {"id": group, "url": f"{base}/groups/{group}"}
+            seeded["group with AI off"] = {"id": group, "url": f"{base}/users-and-groups/groups/{group}"}
             seeded["signed-in session (peer, group AI off)"] = {
                 "id": PEER_EMAIL, "url": signed_in_url(base, peer_token),
             }

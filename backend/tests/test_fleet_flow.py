@@ -161,6 +161,29 @@ def test_handovers_stay_inside_the_fleet_and_hidden_agents_keep_a_placeholder() 
     assert trigger.assignment_name == ""
 
 
+def test_implicit_reads_draw_a_read_edge_never_a_write_and_merge_with_a_binding() -> None:
+    """#101 S15f: a module checker reads its module's integration without a binding."""
+    cti, aev = _integration("opencti"), _integration("openaev", status="disconnected")
+    checker = _agent("OpenCTI Health Checker")
+    bound = _agent("Bound", integration_bindings={"opencti": [str(cti.id)]})
+    flow = assemble_fleet_flow(
+        agents=[checker, bound],
+        assignments=[],
+        integrations={cti.id: cti, aev.id: aev},
+        implicit_reads={checker.id: [("opencti", cti.id), ("openaev", aev.id)], bound.id: [("opencti", cti.id)]},
+    )
+    edges = [(e.source, e.target, e.kind) for e in flow.edges]
+    assert (f"agent:{checker.id}", f"output:integration:opencti:{cti.id}", EDGE_READ) in edges
+    assert (f"agent:{checker.id}", f"output:integration:openaev:{aev.id}", EDGE_READ) in edges
+    # A member bound to the same integration keeps its one edge, the binding's access.
+    assert [e for e in edges if e[0] == f"agent:{bound.id}"] == [
+        (f"agent:{bound.id}", f"output:integration:opencti:{cti.id}", EDGE_WRITE)
+    ]
+    nodes = {n.id: n for n in flow.nodes}
+    assert nodes[f"output:integration:openaev:{aev.id}"].reason == "not connected"
+    assert sum(1 for n in flow.nodes if n.id == f"output:integration:opencti:{cti.id}") == 1
+
+
 def test_the_flow_is_deterministic() -> None:
     gh = _integration("github")
     a = _agent("A", integration_bindings={"github": [str(gh.id)]})

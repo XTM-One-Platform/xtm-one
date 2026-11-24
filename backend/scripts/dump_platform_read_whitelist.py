@@ -41,13 +41,13 @@ _HEADER = """\
 # and read the diff before committing it: every added line is a tool that
 # will run unattended on every deployment, including scheduled runs nobody
 # is watching. Tools held back by hand live in HAND_GATED, not here.
-#
-# {count} tools; {gated} read-classified tools deliberately held back.
+# No count in this header: a count line changes with every added tool and
+# made every two tool PRs conflict on it; the diff of the body is the count.
 """
 
 
 def render() -> str:
-    from app.services.hitl_whitelist_platform import HAND_GATED, platform_read_tools
+    from app.services.hitl_whitelist_platform import platform_read_tools
 
     by_provider = platform_read_tools()
     body = [
@@ -55,10 +55,7 @@ def render() -> str:
         for provider in sorted(by_provider)
         for name in sorted(by_provider[provider])
     ]
-    header = _HEADER.format(
-        count=len(body), gated=len(HAND_GATED)
-    )
-    return header + "\n" + "\n".join(body) + "\n"
+    return _HEADER + "\n" + "\n".join(body) + "\n"
 
 
 _INTEGRATION_HEADER = """\
@@ -72,14 +69,12 @@ _INTEGRATION_HEADER = """\
 #   python -m scripts.dump_platform_read_whitelist
 # Only providers a deployment has actually connected contribute at runtime;
 # this lists what each WOULD contribute, which is what review needs to see.
-#
-# {count} tools across {providers} providers; {gated} held back by hand.
+# No count in this header: it made every two tool PRs conflict on one line.
 """
 
 
 def render_integrations() -> str:
     from app.services.hitl_whitelist_derived import provider_read_tools
-    from app.services.hitl_whitelist_platform import HAND_GATED
 
     by_provider = provider_read_tools()
     body = [
@@ -87,10 +82,7 @@ def render_integrations() -> str:
         for provider in sorted(by_provider)
         for name in sorted(by_provider[provider])
     ]
-    header = _INTEGRATION_HEADER.format(
-        count=len(body), providers=len(by_provider), gated=len(HAND_GATED)
-    )
-    return header + "\n" + "\n".join(body) + "\n"
+    return _INTEGRATION_HEADER + "\n" + "\n".join(body) + "\n"
 
 
 def main() -> int:

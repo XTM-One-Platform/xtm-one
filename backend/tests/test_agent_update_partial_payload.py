@@ -100,6 +100,8 @@ class _DummyAgent:
         self.shared_user_ids = None
         self.shared_user_permissions = None
         self.access_restricted = False
+        self.customer_notes = None
+        self.customer_fields = None
         self.created_at = datetime.now(UTC)
         self.updated_at = datetime.now(UTC)
 

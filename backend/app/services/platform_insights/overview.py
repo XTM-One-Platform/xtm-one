@@ -132,6 +132,7 @@ async def get_platform_overview(db: AsyncSession, scope: InsightScope, args: dic
     from app.api.v1.admin_objects import active_entity_arms, objects_union
     from app.api.v1.platform_settings_helpers import get_platform_settings
     from app.core.feature_flags import resolve_enabled_feature_flags
+    from app.core.module_versions import registered_modules
     from app.services.branding import get_cached_branding
 
     now = datetime.now(UTC)
@@ -202,6 +203,10 @@ async def get_platform_overview(db: AsyncSession, scope: InsightScope, args: dic
         "assignments_by_trigger_type": await _grouped(db, Assignment.trigger_type, *owned(Assignment)),
         "assignments_by_state": await _grouped(db, assignment_state, *owned(Assignment)),
         "integrations_by_provider": await _grouped(db, Integration.provider, *owned(Integration)),
+        # The version each connected module registered, the string the CTEM Command Center
+        # chips show: the source of a build baseline, never a module's own live read (#888).
+        # Every caller: GET /platform/registrations already serves it.
+        "registered_modules": await registered_modules(db),
         "knowledge_bases": {"count": int(kb[0]), "documents": int(kb[1]), "chunks": int(kb[2])},
         "mcp_servers": await _grouped(
             db, case((MCPServer.enabled.is_(True), "enabled"), else_="disabled"), *owned(MCPServer)

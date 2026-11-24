@@ -62,7 +62,7 @@ async function openListView(page: Page) {
       await route.fulfill({ response, json: [ROW, ...items].slice(0, 20) });
     },
   );
-  await page.goto('/operations/work-items?vis=mine');
+  await page.goto('/tasks/work-items?vis=mine');
 }
 
 // The children of every cell of the matched rows whose box ends past their

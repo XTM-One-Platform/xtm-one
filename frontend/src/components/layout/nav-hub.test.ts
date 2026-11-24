@@ -9,7 +9,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { Bot } from "lucide-react";
 
 import { resolveNav, type NavFlags } from "./nav-model.ts";
 import { findNavGroup, hubCards, hubPages } from "./nav-hub.ts";
@@ -37,7 +36,7 @@ const flagSets = (): NavFlags[] => {
       for (const [aiEnabled, aiLicensed] of [[true, true], [false, true], [true, false], [false, false]]) {
         out.push({
           chat: on, customVariables: on, relays: on, xtmOne, aiAdoption: on, aiEnabled, aiLicensed,
-          deepInvestigation: on, videoStudio: on, dashboardStudio: on, evaluation: on, health: on, intents: on,
+          deepInvestigation: on, videoStudio: on, dashboardStudio: on, evaluation: on, health: on, intents: on, ctemCases: xtmOne,
         });
       }
     }
@@ -86,8 +85,8 @@ test("for every role, mode, flag set and AI state, a hub's cards are its group's
 
 test("a visible child without card data fails loudly, never a silent missing card", () => {
   const group = {
-    kind: "group" as const, id: "x", label: "X", icon: Bot,
-    children: [{ kind: "leaf" as const, to: "/a", label: "A", icon: Bot }],
+    kind: "group" as const, id: "x", label: "X", icon: "bot" as const,
+    children: [{ kind: "leaf" as const, to: "/a", label: "A", icon: "bot" as const }],
   };
   assert.throws(() => hubCards(group, {}), /hub "x" has no card data for its child \/a/);
   assert.deepEqual(hubCards(group, { "/a": null }), []);
@@ -100,8 +99,8 @@ test("Tools & Integrations keeps one card per connection page: the Connections f
     assert.ok(group);
     return hubPages(group).map((page) => page.to);
   };
-  assert.deepEqual(routes(base), ["/mcp-servers", "/tools", "/integrations", "/browser-profiles", "/variables", "/relays"]);
-  assert.deepEqual(routes({ ...base, customVariables: false, relays: false }), ["/mcp-servers", "/tools", "/integrations", "/browser-profiles"]);
+  assert.deepEqual(routes(base), ["/mcp-servers", "/tools", "/integrations", "/connections", "/connections/variables", "/connections/relays"]);
+  assert.deepEqual(routes({ ...base, customVariables: false, relays: false }), ["/mcp-servers", "/tools", "/integrations", "/connections"]);
 });
 
 test("the Agents hub: non-admins get no Intents card, Community Edition reads Fleets unlicensed", () => {

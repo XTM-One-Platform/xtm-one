@@ -167,10 +167,12 @@ def test_circleci_run_lines_become_checks_at_the_checkout_root() -> None:
     found = _detect({".circleci/config.yml": CIRCLECI}, extra=("client/tests/test_x.py", "client/pyproject.toml"))
     argv = _argv(found)
     formats = {name: a for name, a in argv.items() if name.startswith("python-format")}
-    assert ("isort", "--profile", "black", "--check", ".") in formats.values()
-    assert ("black", "--check", ".") in formats.values()
-    # The job directory written in a line is the checkout root.
-    assert argv["python-lint"] == ("flake8", "--ignore=E,W", ".")
+    # `pip install black isort --user` before them: the tools run in the environment that holds them (#714).
+    tools = ("uv", "run", "--no-project", "--with", "black", "--with", "isort")
+    assert (*tools, "isort", "--profile", "black", "--check", ".") in formats.values()
+    assert (*tools, "black", "--check", ".") in formats.values()
+    # The job directory written in a line is the checkout root; the alpine/flake8 job image carries flake8.
+    assert argv["python-lint"] == ("uv", "run", "--no-project", "--with", "flake8", "flake8", "--ignore=E,W", ".")
     # A step below the job directory runs in that directory; a parameter or a directory outside the checkout is skipped.
     assert argv["client:python-unit"] == ("python", "-m", "pytest", "tests")
     assert not any("unittest" in a or a == ("python", "-m", "pytest") for a in argv.values())
@@ -620,6 +622,7 @@ def test_npm_and_pnpm_use_their_lock_and_run():
     pkg = json.dumps({"scripts": {"test": "jest"}})
     assert _argv(_detect({"package.json": pkg}, extra=("package-lock.json",))) == {
         "node-install": ("npm", "ci"),
+        "node-relock": ("npm", "install", "--package-lock-only", "--ignore-scripts"),
         "node-unit": ("npm", "run", "test"),
     }
     assert _argv(_detect({"package.json": pkg}, extra=("pnpm-lock.yaml",)))["node-install"] == (
@@ -674,6 +677,41 @@ def test_root_generate_check_and_test_scripts_are_checks_of_their_own():
     assert found.checks["node-check-bundle-size"].image == found.checks["node-install"].image
 
 
+def test_a_code_generator_script_is_a_check_whatever_its_name():
+    """A narrow checkout has no generated sources: the codegen script must be offered before types or unit."""
+    root = json.dumps({"packageManager": "yarn@4.18.1", "workspaces": ["graphql", "front"]})
+    graphql = json.dumps(
+        {
+            "scripts": {
+                "check-ts": "tsc -b",
+                "build:types": "graphql-codegen --config graphql-codegen.ts",
+                "build:prod": "run build:types && node builder/builder.ts",
+                "test": "vitest run",
+            }
+        }
+    )
+    front = json.dumps(
+        {
+            "scripts": {
+                "relay": "relay-compiler relay.config.json",
+                "build": "yarn relay && vite build",
+                "dev": "yarn relay && vite",
+                "lint": "eslint .",
+            }
+        }
+    )
+    found = _detect(
+        {"package.json": root, "graphql/package.json": graphql, "front/package.json": front}, extra=("yarn.lock",)
+    )
+    argv = _argv(found)
+    assert argv["graphql:node-build-types"] == ("yarn", "build:types")
+    assert argv["front:node-relay"] == ("yarn", "relay")
+    # A script that only calls another script by name is not a generator of its own.
+    assert not {"graphql:node-build-prod", "front:node-dev"} & set(argv)
+    names = list(found.checks)
+    assert names.index("node-install") < names.index("front:node-relay")
+
+
 def test_a_workspace_member_namespaced_generator_and_gate_scripts_are_checks():
     """A front package of a Yarn workspace: its i18n scripts were met in CI only, and argv is refused."""
     root = json.dumps(
@@ -708,6 +746,35 @@ def test_a_workspace_member_namespaced_generator_and_gate_scripts_are_checks():
     assert not {"front:node-fds-css", "front:node-lint-fix", "node-lint-lint", "node-knip-fix"} & set(argv)
 
 
+def test_a_hyphenated_gate_or_generator_script_is_a_check() -> None:
+    """OpenAEV's front names its i18n gate ``i18n-checker``: it was met in CI only, and argv is refused."""
+    front = json.dumps(
+        {
+            "packageManager": "yarn@4.18.1",
+            "scripts": {
+                "i18n-checker": "npm run generate-i18n-checker-constant && node scripts/i18n-checker.js",
+                "generate-i18n-checker-constant": "tsc src/constants/Lang.ts --outDir scripts/constants",
+                "extract-translation": "node scripts/extract-i18n-keyword.js",
+                "check-licenses": "license-checker-rseidelsohn --production --summary",
+                "check-ts": "tsc",
+                "sort-translation": "node scripts/sort-translation-files.js",
+                "generate-types-from-api": "swagger-typescript-api generate --path=${API_URL:-http://localhost:8080}/api-docs",
+                "generate-test-e2e": "yarn playwright codegen http://localhost:3001/",
+                "show-report-e2e": "start test-results/report.html",
+            },
+        }
+    )
+    argv = _argv(_detect({"openaev-front/package.json": front}, extra=("openaev-front/yarn.lock",)))
+    assert argv["openaev-front:node-i18n-checker"] == ("yarn", "i18n-checker")
+    assert argv["openaev-front:node-generate-i18n-checker-constant"] == ("yarn", "generate-i18n-checker-constant")
+    assert argv["openaev-front:node-extract-translation"] == ("yarn", "extract-translation")
+    assert argv["openaev-front:node-check-licenses"] == ("yarn", "check-licenses")
+    # check-ts is the types kind; no gate word, a URL (a live API) or an end-to-end word leaves a script out.
+    assert argv["openaev-front:node-types"] == ("yarn", "check-ts") and "openaev-front:node-check-ts" not in argv
+    left_out = {"sort-translation", "generate-types-from-api", "generate-test-e2e", "show-report-e2e"}
+    assert not {f"openaev-front:node-{name}" for name in left_out} & set(argv)
+
+
 def test_a_named_script_a_workflow_already_runs_is_not_offered_twice():
     flow = "jobs:\n  ci:\n    steps:\n      - run: npm ci\n      - run: npm run check:lint\n"
     pkg = json.dumps({"scripts": {"check:lint": "eslint .", "generate:docs": "typedoc"}})
@@ -727,6 +794,15 @@ def test_python_uv_poetry_and_requirements():
     reqs = _argv(_detect({}, extra=("requirements.txt", "requirements-dev.txt", ".flake8", "conftest.py")))
     assert reqs["python-install"] == ("python", "-m", "pip", "install", "-r", "requirements-dev.txt", "-r", "requirements.txt")
     assert reqs["python-lint"] == ("flake8", ".") and "python-unit" in reqs
+
+
+def test_a_django_project_without_pytest_gets_its_manage_py_test_check() -> None:
+    django = _argv(_detect({}, extra=("requirements.txt", "manage.py", "app/tests.py")))
+    assert django["python-unit"] == ("python", "manage.py", "test", "--noinput")
+    with_pytest = _argv(_detect({}, extra=("requirements.txt", "manage.py", "conftest.py")))
+    assert with_pytest["python-unit"][:3] == ("python", "-m", "pytest")
+    assert detect.classify(["python", "manage.py", "test", "--noinput"]) == ("python", "unit")
+    assert detect.classify(["python", "manage.py", "makemigrations", "--check"]) is None
 
 
 def test_python_reports_are_parsed():
@@ -821,6 +897,18 @@ def test_an_image_key_that_is_not_configured_falls_back_to_the_next_then_names_t
     pkg = json.dumps({"scripts": {"test": "jest"}})
     assert _detect({"package.json": pkg}, images={"nodejs"}).checks["node-unit"].image == "nodejs"
     assert _detect({"Cargo.toml": ""}, images={"python"}).checks["rust-unit"].image == "toolchain-rust"
+
+
+def test_a_helm_chart_gets_lint_and_template_checks_on_a_toolchain_image() -> None:
+    found = _detect(
+        {"charts/app/Chart.yaml": "name: app\n", "charts/app/charts/sub/Chart.yaml": "name: sub\n"},
+        images={"python-dev", "toolchain-node"},
+    )
+    lint, template = found.checks["charts/app:helm-lint"], found.checks["charts/app:helm-parse"]
+    assert (lint.argv, lint.default_args, lint.cwd) == (("helm", "lint"), (".",), "charts/app")
+    assert template.argv == ("helm", "template", "xtm-check", ".")
+    assert lint.image == template.image == "toolchain-node"
+    assert not any(name.startswith("charts/app/charts/sub:") for name in found.checks)
 
 
 def test_the_generic_toolchain_images_are_preferred_over_a_repositorys_locked_dev_images():
@@ -964,6 +1052,54 @@ def test_a_checkout_of_a_check_directory_takes_the_paths_its_checks_need():
     assert detect.check_needs([], declared) == []
     with pytest.raises(checks.ChecksError, match=r"\[check.x\] needs '\.\./out' must be a relative path"):
         checks.load_checks('[check.x]\nargv = ["x"]\nneeds = ["../out"]\n')
+
+
+def test_a_sub_path_inside_a_package_is_widened_to_the_package_root():
+    """opencrq front/src/x: front/config.ts and the assets a test imports sit at the package root."""
+    sizes = {
+        "package.json": 10,
+        "front/package.json": 10,
+        "front/config.ts": 10,
+        "front/src/x/a.ts": 10,
+        "front/node_modules/dep/package.json": 10,
+        "back/src/b.py": 10,
+        "big/package.json": 10,
+        "big/src/huge.bin": 100,
+    }
+    kept, widened = detect.widen_to_package_roots(
+        ["front/src/x", "front/src/y", "back/src", "big/src"], sizes, max_bytes=50
+    )
+    # The repository root's package.json never widens, nor a package past the bound, nor a node_modules one.
+    assert kept == ["front", "back/src", "big/src"]
+    assert [(w.sub_path, w.directory, w.words()) for w in widened] == [
+        ("front/src/x", "front", "the package it sits in"),
+        ("front/src/y", "front", "the package it sits in"),
+    ]
+    assert detect.widen_to_package_roots(["front"], sizes) == (["front"], [])
+
+
+def test_a_narrow_checkout_of_a_package_source_directory_keeps_the_package_root():
+    import io
+    import tarfile
+
+    from app.services.sandbox_workspace.repository import extract_tree
+
+    members = {
+        "r-sha/front/package.json": b"{}",
+        "r-sha/front/config.ts": b"export default {}\n",
+        "r-sha/front/src/a/x.ts": b"",
+        "r-sha/back/main.py": b"",
+    }
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        for name, content in members.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(content)
+            archive.addfile(info, io.BytesIO(content))
+    tree = extract_tree(buffer.getvalue(), sub_paths=["front/src/a"], max_bytes=1024 * 1024)
+    written = {path for path, _ in tree.files}
+    assert tree.sub_paths == ["front"] and "front/config.ts" in written and "back/main.py" not in written
+    assert [(w.sub_path, w.directory) for w in tree.widened] == [("front/src/a", "front")]
 
 
 def test_nothing_is_widened_without_a_declaration_or_a_check_directory():
@@ -1343,6 +1479,53 @@ def test_a_narrow_checkout_of_a_member_keeps_the_sibling_it_links_by_workspace()
     assert "platform/graphql/package.json" in written and "platform/graphql/src/index.ts" not in written
 
 
+def test_an_eslint_config_import_by_member_name_adds_that_member() -> None:
+    manifests = {
+        "package.json": json.dumps({"name": "app", "workspaces": ["eslint-rules", "front", "back"]}).encode(),
+        "eslint-rules/package.json": _pkg("eslint-rules"),
+        "front/package.json": _pkg("@app/front"),
+        "back/package.json": _pkg("@app/back"),
+    }
+    configs = {
+        "eslint.config.ts": b"import json from '@eslint/json';\nimport { x } from 'eslint-rules/src/rules';",
+        "front/local.eslint.config.ts": b"import { linguiRules } from \"eslint-rules/src/rules\";\nimport('./local.ts');",
+    }
+    assert detect.is_lint_config("front/local.eslint.config.ts") and detect.is_lint_config("eslint.config.mjs")
+    assert not detect.is_lint_config("front/eslint.config.test.ts")
+    assert detect.lint_config_member_dirs(configs, manifests, ["front"]) == ["eslint-rules"]
+    assert detect.lint_config_member_dirs(configs, manifests, ["front/src"]) == ["eslint-rules"]
+    assert detect.lint_config_member_dirs(configs, manifests, ["front", "eslint-rules"]) == [], "already kept"
+    assert detect.lint_config_member_dirs(configs, manifests, ["eslint-rules/src"]) == [], "the member holding it"
+    assert detect.lint_config_member_dirs({"eslint.config.ts": b"import x from 'react';"}, manifests, ["front"]) == []
+
+
+def test_a_narrow_checkout_keeps_the_member_its_eslint_config_imports() -> None:
+    import io
+    import tarfile
+
+    from app.services.sandbox_workspace.repository import extract_tree
+
+    members = {
+        "r-sha/package.json": json.dumps({"name": "app", "workspaces": ["eslint-rules", "front"]}).encode(),
+        "r-sha/yarn.lock": b"",
+        "r-sha/eslint.config.ts": b"import { rules } from 'eslint-rules/src/rules';",
+        "r-sha/eslint-rules/package.json": _pkg("eslint-rules"),
+        "r-sha/eslint-rules/src/rules.ts": b"export const rules = [];",
+        "r-sha/front/package.json": _pkg("@app/front"),
+        "r-sha/front/src/a.ts": b"",
+    }
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        for name, content in members.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(content)
+            archive.addfile(info, io.BytesIO(content))
+    tree = extract_tree(buffer.getvalue(), sub_paths=["front"], max_bytes=10 * 1024 * 1024)
+    written = {path for path, _ in tree.files}
+    assert tree.workspace_links == ["eslint-rules"]
+    assert "eslint-rules/src/rules.ts" in written
+
+
 def test_a_patch_resolution_keeps_the_patch_file_it_names():
     sizes = {
         "package.json": 10,
@@ -1515,9 +1698,44 @@ def test_a_tool_line_with_no_install_before_it_is_kept_as_written():
     workflow = LINT_WORKFLOW.replace("      - run: uv pip install flake8\n", "")
     found = _detect({".github/workflows/ci-lint.yml": workflow}, images={*IMAGES, "toolchain-python"})
     assert found.checks["python-lint"].argv == ("uv", "run", "flake8", "--ignore=E,W")
+    # A bare tool line the job installed the tool for runs with it too (#714).
     bare = LINT_WORKFLOW.replace("uv run flake8", "flake8")
     found = _detect({".github/workflows/ci-lint.yml": bare}, images={*IMAGES, "toolchain-python"})
-    assert found.checks["python-lint"].argv == ("flake8", "--ignore=E,W"), "only a uv run line gets the job's tools"
+    assert found.checks["python-lint"].argv == (
+        "uv",
+        "run",
+        "--no-project",
+        "--with",
+        "flake8",
+        "flake8",
+        "--ignore=E,W",
+    )
+    # A version-pinned or extras install names the tool by its package name; the pin stays in --with.
+    pinned = bare.replace("uv pip install flake8", 'pip install "flake8>=6" black[jupyter]==24.1.0')
+    found = _detect({".github/workflows/ci-lint.yml": pinned}, images={*IMAGES, "toolchain-python"})
+    assert found.checks["python-lint"].argv[:3] == ("uv", "run", "--no-project")
+    assert "flake8>=6" in found.checks["python-lint"].argv
+    assert detect._requirement_name("Black[jupyter]==24.1.0") == "black"
+    assert detect._requirement_name("pip>=24") == "pip"
+    # A bare tool the job did not install, a pip self-upgrade, a types line and a launcher are kept.
+    other = LINT_WORKFLOW.replace("uv run flake8", "pylint").replace(
+        "uv pip install flake8", "pip3 install -U pip certifi"
+    )
+    found = _detect({".github/workflows/ci-lint.yml": other}, images={*IMAGES, "toolchain-python"})
+    assert found.checks["python-lint"].argv == ("pylint", "--ignore=E,W")
+    assert detect._installed(["pip3", "install", "-U", "pip", "setuptools", "wheel", "certifi"], "", frozenset()) == [
+        "--with",
+        "certifi",
+    ]
+    tools = ["--with", "mypy"]
+    assert detect._with_job_tools("python", "types", ["mypy", "."], ["mypy", "."], tools, "") == ["mypy", "."]
+    assert detect._with_job_tools(
+        "python", "lint", ["poetry", "run", "flake8"], ["poetry", "run", "flake8"], tools, ""
+    ) == [
+        "poetry",
+        "run",
+        "flake8",
+    ]
 
 
 def test_a_project_requiring_an_older_python_runs_on_the_one_the_image_carries():
@@ -2068,6 +2286,33 @@ def test_referenced_files_spare_an_add_paths_widening_to_the_whole_backend():
     )
     assert tree.sub_paths == ["frontend"] and tree.referenced == ["backend/tests/fixtures/f.json"]
     assert "backend/app/main.py" not in written and "backend" not in tree.sub_paths
+
+
+@pytest.mark.parametrize(
+    ("files", "extra", "relock"),
+    [
+        (
+            {"package.json": '{"packageManager": "yarn@4.5.0"}'},
+            ("yarn.lock", ".yarnrc.yml"),
+            ("yarn", "install", "--mode=update-lockfile"),
+        ),
+        (
+            {"package.json": "{}"},
+            ("pnpm-lock.yaml",),
+            ("pnpm", "install", "--lockfile-only", "--config.strict-dep-builds=false"),
+        ),
+        ({"package.json": "{}"}, ("package-lock.json",), ("npm", "install", "--package-lock-only", "--ignore-scripts")),
+    ],
+)
+def test_a_locked_node_install_gets_a_relock_check_that_rewrites_the_lock(files, extra, relock):
+    found = _detect(files, extra=extra)
+    spec = found.checks["node-relock"]
+    assert (*spec.argv, *spec.default_args) == relock
+    assert spec.install_first is False and not commands.is_install_name(spec.name)
+
+
+def test_an_unlocked_node_install_gets_no_relock_check():
+    assert "node-relock" not in _detect({"package.json": "{}"}).checks
 
 
 def test_broken_files_detect_nothing_instead_of_raising():

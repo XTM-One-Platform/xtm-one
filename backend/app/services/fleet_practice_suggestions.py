@@ -46,6 +46,13 @@ without a person's click. Computed on each read, no model call, never stored;
 a fixed suggestion goes at the next read. A dismissal is stored like a
 finding's (``documentation.dismissed_findings``) and holds while the member it
 names is unchanged. New kinds join :data:`PRACTICE_KINDS` and :func:`practice_suggestions`.
+
+Only what the reader can change is suggested (#1510): every kind, computed here or written by the
+model with the documentation, names the surface its fix changes (:data:`KIND_SURFACES`), and
+:func:`suggestion_editable` drops a suggestion whose surface is locked: on a built-in fleet every
+surface but the ones the built-in lock leaves to the customer (:func:`builtin_editable_surfaces`, read
+off the lock's own field sets), and on a built-in member agent its seeded mechanics. A fork of a
+built-in fleet is a normal fleet and gets every suggestion.
 """
 
 from __future__ import annotations
@@ -89,6 +96,77 @@ APPLICABLE_KINDS: frozenset[str] = frozenset(
 LISTENER_EVENTS: frozenset[str] = frozenset({"work_item.completed", "run.orphaned", "run.failed"})
 #: The skill section the listener suggestion points to.
 SKILL_NAME = "Fleet design and operations"
+
+#: The surface the fix of each kind changes (#1510). ``agent_mechanics``: the seeded definition of a member
+#: (chat, handovers, assignments, persona, knowledge wiring the persona relies on); ``agent_integrations``:
+#: its integration bindings; ``fleet_members``: the membership and role labels; ``fleet_gates``: the gates
+#: a person adds to the fleet. A kind not listed is ``agent_mechanics``, the locked default.
+KIND_SURFACES: dict[str, str] = {
+    "member_cannot_consult_orchestrator": "agent_mechanics",
+    "member_chat_open": "agent_mechanics",
+    "owner_without_inbox": "agent_mechanics",
+    "orchestrator_without_listeners": "agent_mechanics",
+    # A working knowledge base only works when the orchestrator's persona writes it and the members'
+    # read it: seeded mechanics on a built-in, so the binding alone is not a fix the reader can make.
+    "fleet_without_working_knowledge": "agent_mechanics",
+    "orchestrator_cannot_write_knowledge": "agent_mechanics",
+    "member_missing_working_knowledge": "agent_mechanics",
+    "several_writers_on_working_knowledge": "agent_mechanics",
+    # The kinds the model writes with the documentation (``fleet_doc_findings.FINDING_KINDS``).
+    "description_mismatch": "agent_mechanics",
+    "missing_automation": "agent_mechanics",
+    "no_gate_on_sensitive_action": "fleet_gates",
+    "missing_integration": "agent_integrations",
+    "member_without_role": "fleet_members",
+    "other": "agent_mechanics",
+}
+
+
+def surface_of(kind: object) -> str:
+    """The surface a suggestion of *kind* changes (:data:`KIND_SURFACES`, else ``agent_mechanics``)."""
+    return KIND_SURFACES.get(str(kind or ""), "agent_mechanics")
+
+
+def builtin_editable_surfaces() -> frozenset[str]:
+    """The surfaces a person may still change on a built-in fleet, read off the built-in lock itself.
+
+    ``fleet_gates`` while ``customer_gates`` is a writable field of a built-in fleet
+    (``fleets.BUILTIN_FLEET_WRITABLE_FIELDS``); ``agent_integrations`` while ``integration_bindings`` is
+    in the customer layer of a built-in agent (``builtin_customer_layer.INTEGRATION_LAYER_FIELDS``). The
+    membership and the seeded mechanics are never writable there.
+    """
+    from app.services.builtin_customer_layer import INTEGRATION_LAYER_FIELDS
+    from app.services.fleets import BUILTIN_FLEET_WRITABLE_FIELDS
+
+    out: set[str] = set()
+    if "customer_gates" in BUILTIN_FLEET_WRITABLE_FIELDS:
+        out.add("fleet_gates")
+    if "integration_bindings" in INTEGRATION_LAYER_FIELDS:
+        out.add("agent_integrations")
+    return frozenset(out)
+
+
+def agent_locked(agent: object) -> bool:
+    """Whether *agent*'s seeded mechanics are locked to a reader: a built-in in XTM One mode, as
+    ``helpers.writable_agent_error`` refuses it."""
+    from app.core.config import settings
+
+    return bool(getattr(agent, "is_builtin", False)) and bool(settings.is_xtm_one)
+
+
+def suggestion_editable(fleet: object, suggestion: Mapping[str, Any], locked_agent_ids: Iterable[str] = ()) -> bool:
+    """Whether a reader managing *fleet* can apply the fix of *suggestion* (#1510).
+
+    On a built-in fleet, only the surfaces of :func:`builtin_editable_surfaces`. Elsewhere, a suggestion
+    on a member in *locked_agent_ids* (its ``agent_id``) keeps only those surfaces too; every other
+    suggestion stays.
+    """
+    surface = surface_of(suggestion.get("kind"))
+    if getattr(fleet, "is_builtin", False):
+        return surface in builtin_editable_surfaces()
+    if surface.startswith("agent_") and str(suggestion.get("agent_id") or "") in set(locked_agent_ids):
+        return surface in builtin_editable_surfaces()
+    return True
 
 
 def is_practice_kind(kind: object) -> bool:
@@ -168,6 +246,21 @@ def _suggestion(kind: str, agent: Agent, subject: str, finding: str, fix: str) -
     return item
 
 
+#: The platform event a decision listener hears: an answered item going from blocked back to open.
+WORK_ITEM_LISTENER_EVENTS: frozenset[str] = frozenset({"work_item.status_changed"})
+
+
+def takes_work_items(assignment: object) -> bool:
+    """Whether *assignment* takes its agent's work items: a work_item trigger, or a platform_event
+    listener on their status changes (the seeded "Gate answered" listener, #1388)."""
+    trigger = getattr(assignment, "trigger_type", None)
+    if trigger == "work_item":
+        return True
+    return trigger == "platform_event" and bool(
+        _event_names(getattr(assignment, "trigger_config", None)) & WORK_ITEM_LISTENER_EVENTS
+    )
+
+
 def _event_names(config: object) -> set[str]:
     raw = (config or {}).get("event") if isinstance(config, dict) else None
     if isinstance(raw, str):
@@ -178,10 +271,12 @@ def _event_names(config: object) -> set[str]:
 
 
 async def practice_suggestions(db: AsyncSession, fleet: Fleet) -> list[dict[str, Any]]:
-    """Every practice suggestion of *fleet* as it is configured now, each shaped like a finding.
+    """Every practice suggestion of *fleet* the reader can apply, as it is configured now, each shaped like a
+    finding.
 
     ``{id, kind, member, subject, finding, suggested_fix, source: "practice", applicable, agent_id}``; the id
-    hashes the kind, the member and the subject (:func:`fleet_doc_findings.finding_id`).
+    hashes the kind, the member and the subject (:func:`fleet_doc_findings.finding_id`). None on a built-in
+    fleet, and none on a built-in member: their fixes change locked configuration (#1510).
     """
     from app.models.assignment import Assignment
     from app.models.work_item import WORK_ITEM_OPEN_STATUSES, WorkItem
@@ -190,6 +285,9 @@ async def practice_suggestions(db: AsyncSession, fleet: Fleet) -> list[dict[str,
     # The practices are about a fleet around its orchestrator: a fleet without one gets none yet.
     orchestrator_id = getattr(fleet, "orchestrator_agent_id", None)
     if orchestrator_id is None:
+        return []
+    # Every practice changes a member's mechanics: nothing to read on a built-in fleet (#1510).
+    if not any(suggestion_editable(fleet, {"kind": kind}) for kind in PRACTICE_KINDS):
         return []
     rows = await fleet_members(db, fleet.id)
     home_ids = [r.agent_id for r in rows if r.agent_id is not None and r.role == FLEET_ROLE_MEMBER]
@@ -203,7 +301,7 @@ async def practice_suggestions(db: AsyncSession, fleet: Fleet) -> list[dict[str,
         .scalars()
         .all()
     )
-    inbox = {a.agent_id for a in assignments if a.trigger_type == "work_item"}
+    inbox = {a.agent_id for a in assignments if takes_work_items(a)}
     counted = (
         await db.execute(
             select(WorkItem.owner_agent_id, func.count())
@@ -273,7 +371,8 @@ async def practice_suggestions(db: AsyncSession, fleet: Fleet) -> list[dict[str,
     if orchestrator is not None:
         members = [agents[a] for a in home_ids if a != orchestrator_id and a in agents]
         out.extend(await _knowledge_suggestions(db, orchestrator, members))
-    return out
+    locked = {str(a.id) for a in agents.values() if agent_locked(a)}
+    return [s for s in out if suggestion_editable(fleet, s, locked)]
 
 
 async def _knowledge_names(db: AsyncSession, ids: Iterable[str]) -> dict[str, str]:
@@ -402,16 +501,21 @@ async def apply_back_consult(db: AsyncSession, fleet: Fleet, member_agent: Agent
 
 __all__ = [
     "APPLICABLE_KINDS",
+    "KIND_SURFACES",
     "KNOWLEDGE_KINDS",
     "LISTENER_EVENTS",
     "PRACTICE_KINDS",
+    "agent_locked",
     "apply_back_consult",
     "apply_knowledge_suggestion",
     "back_consult_handovers",
     "bound_knowledge",
+    "builtin_editable_surfaces",
     "can_consult",
     "is_practice_kind",
     "practice_suggestions",
+    "suggestion_editable",
+    "surface_of",
     "working_knowledge",
     "written_knowledge",
 ]

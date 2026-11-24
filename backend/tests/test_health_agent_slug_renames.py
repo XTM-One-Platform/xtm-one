@@ -38,7 +38,8 @@ def test_no_seed_spec_carries_a_concierge_slug() -> None:
 
 
 def test_every_former_slug_maps_to_one_current_slug() -> None:
-    assert fleet_seed.RENAMED_FLEET_AGENT_SLUGS == _FORMER
+    # S15a-1 (#101): the S14 Module Analyst is renamed in place to the OpenCTI Health Checker.
+    assert fleet_seed.RENAMED_FLEET_AGENT_SLUGS == {**_FORMER, "health-module-analyst": "health-opencti-checker"}
     current = {spec.slug for spec in fleet_seed.FLEET_AGENTS}
     assert set(fleet_seed.RENAMED_FLEET_AGENT_SLUGS) & current == set()
 

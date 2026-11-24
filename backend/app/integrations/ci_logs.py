@@ -225,6 +225,8 @@ class Summary:
     #: With no block: the step the job stopped in and its last lines before the post-job cleanup.
     stopped_step: str = ""
     stopped_lines: list[str] = field(default_factory=list)
+    #: Failure blocks left out because an earlier block is the same but for numbers and addresses.
+    repeated_blocks: int = 0
 
 
 def _bounded(line: str) -> str:
@@ -357,9 +359,62 @@ def _failure_blocks(lines: list[str]) -> list[list[str]]:
     return blocks
 
 
+#: What makes two failure blocks the same failure: a memory address, then a standalone number
+#: (a pid, a thread id, a line or frame number, a duration). A digit inside a name
+#: (``test_shard_2``, ``worker3``) is kept, so two different tests never fold into one.
+_HEX_ADDRESS = re.compile(r"0x[0-9a-fA-F]+")
+_DIGITS = re.compile(r"(?<![\w.])\d+(?:\.\d+)?(?![\w])")
+#: Non-blank lines a block needs before a repeat of it is folded: a one-line cue repeated
+#: by several steps stays, each under its step.
+MIN_FOLDED_LINES = 3
+
+
+def _block_key(block: list[str]) -> tuple[str, ...]:
+    """*block* with its addresses and numbers masked: equal keys are one failure printed again."""
+    return tuple(_DIGITS.sub("#", _HEX_ADDRESS.sub("0x#", ln.strip())) for ln in block if ln.strip())
+
+
+def _collapse_repeats(blocks: list[tuple[str, list[str]]]) -> tuple[list[tuple[str, list[str]]], int]:
+    """*blocks* with every block equal to an earlier one (:func:`_block_key`) dropped, the first one counting them.
+
+    A setup error retried by a test runner, or one crash printed by every worker,
+    writes the same block (a C stack of a hundred lines) once per attempt: the
+    reader needs it once and the count, not seven copies filling the summary
+    and squeezing the other failures out. Returns the blocks kept and the
+    number dropped.
+    """
+    first: dict[tuple[str, ...], int] = {}
+    repeats: list[int] = []
+    kept: list[tuple[str, list[str]]] = []
+    for step, block in blocks:
+        # The test runner's report (pytest FAILURES, short test summary) is never folded.
+        key = _block_key(block) if not _SECTION.match(block[0] if block else "") else ()
+        if len(key) < MIN_FOLDED_LINES:
+            key = ()
+        if key and key in first:
+            repeats[first[key]] += 1
+            continue
+        if key:
+            first[key] = len(kept)
+        kept.append((step, block))
+        repeats.append(0)
+    for k, count in enumerate(repeats):
+        if count:
+            step, block = kept[k]
+            kept[k] = (
+                step,
+                [
+                    *block,
+                    f"[the same block, but for numbers and addresses, appears {count} more time(s) in the log: shown once]",
+                ],
+            )
+    return kept, sum(repeats)
+
+
 def summarize(text: str) -> Summary:
     out = Summary(total_lines=text.count("\n") + (1 if text and not text.endswith("\n") else 0))
     steps = split_steps(text)
+    collected: list[tuple[str, list[str]]] = []
     for step in steps:
         blocks = _failure_blocks(step.lines)
         # A line a pytest section already shows (its short summary, its raise locations) is not repeated.
@@ -372,9 +427,9 @@ def summarize(text: str) -> Summary:
         if not blocks and not findings:
             continue
         out.steps_failed.append(step.name or "(no step marker)")
-        for block in blocks:
-            out.blocks.append((step.name, block))
-            out.kept_lines += len(block)
+        collected.extend((step.name, block) for block in blocks)
+    out.blocks, out.repeated_blocks = _collapse_repeats(collected)
+    out.kept_lines += sum(len(block) for _, block in out.blocks)
     if not out.blocks and not out.findings:
         out.stopped_step, out.stopped_lines = _stopped_at(steps)
     return out
@@ -405,6 +460,108 @@ def last_lines(text: str, *, count: int = LAST_LINES, max_chars: int = MAX_LAST_
         kept.append(line)
         used += len(line) + 1
     return list(reversed(kept))
+
+
+_DIFF_GIT = re.compile(r"^diff --git ")
+_OLD_FILE = re.compile(r"^--- (a/|/dev/null)")
+_NEW_FILE = re.compile(r"^\+\+\+ (b/|/dev/null)")
+_HUNK = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
+#: Header lines git writes between ``diff --git`` and ``---`` (modes, index, renames, binary).
+_GIT_HEADER = re.compile(
+    r"^(index |old mode |new mode |deleted file mode |new file mode |similarity index |dissimilarity index |"
+    r"rename from |rename to |copy from |copy to |Binary files )"
+)
+
+
+def _patch_line(raw: str) -> str:
+    """A raw log line as the diff printed it: the runner timestamp and colours removed, never clipped."""
+    return _ANSI.sub("", _TIMESTAMP.sub("", raw.rstrip("\r").lstrip("\ufeff")))
+
+
+def _hunk_end(lines: list[str], start: int) -> int | None:
+    """The index after the hunk whose ``@@`` header is ``lines[start]``, or ``None`` when it is cut short.
+
+    The header's counts say how many old and new lines follow; a blank line is a context line
+    that lost its leading space in the log, a ``\\ No newline`` marker counts for neither side.
+    """
+    match = _HUNK.match(lines[start])
+    if match is None:
+        return None
+    old = int(match.group(1)) if match.group(1) is not None else 1
+    new = int(match.group(2)) if match.group(2) is not None else 1
+    index = start + 1
+    while old > 0 or new > 0:
+        if index >= len(lines):
+            return None
+        line = lines[index]
+        if line.startswith("\\"):
+            index += 1
+            continue
+        tag = line[:1]
+        if tag == "-":
+            old -= 1
+        elif tag == "+":
+            new -= 1
+        elif tag in (" ", ""):
+            old -= 1
+            new -= 1
+        else:
+            return None
+        if old < 0 or new < 0:
+            return None
+        index += 1
+    while index < len(lines) and lines[index].startswith("\\"):
+        index += 1
+    return index
+
+
+def extract_patch(text: str) -> str | None:
+    """The unified diff(s) a job log printed, as ``git apply`` and ``sandbox_apply_patch`` take them.
+
+    A formatter or generator check (``ruff format --diff``, ``git diff --exit-code`` after
+    codegen, prettier, spotless) prints the change it wants. Each file block starts at a
+    ``diff --git`` line or a ``--- a/`` line directly followed by ``+++ b/``; its hunks are
+    kept while their ``@@`` counts are met, so the runner's next line (``##[error]``, the
+    tool's verdict) never joins the patch. A context line the log printed blank is written
+    back with its leading space. ``None`` when no block has a complete hunk.
+    """
+    lines = [_patch_line(raw) for raw in text.splitlines()]
+    out: list[str] = []
+    index = 0
+    while index < len(lines):
+        header: list[str] = []
+        cursor = index
+        if _DIFF_GIT.match(lines[cursor]):
+            header.append(lines[cursor])
+            cursor += 1
+            while cursor < len(lines) and _GIT_HEADER.match(lines[cursor]):
+                header.append(lines[cursor])
+                cursor += 1
+        if not (cursor + 1 < len(lines) and _OLD_FILE.match(lines[cursor]) and _NEW_FILE.match(lines[cursor + 1])):
+            index += 1
+            continue
+        header += [lines[cursor], lines[cursor + 1]]
+        cursor += 2
+        hunks: list[str] = []
+        while cursor < len(lines) and _HUNK.match(lines[cursor]):
+            end = _hunk_end(lines, cursor)
+            if end is None:
+                break
+            hunks += [line if line else " " for line in lines[cursor:end]]
+            cursor = end
+        if hunks:
+            out += header + hunks
+            index = cursor
+        else:
+            index += 1
+    if not out:
+        return None
+    return "\n".join(out) + "\n"
+
+
+def patch_file_count(patch: str) -> int:
+    """How many files a patch :func:`extract_patch` returned changes (its ``+++`` lines)."""
+    return sum(1 for line in patch.splitlines() if _NEW_FILE.match(line))
 
 
 def _clip_line(line: str) -> str:
@@ -514,7 +671,8 @@ def format_summary(summary: Summary, *, title: str, log_chars: int | None = None
     what = f"{found:,} finding line(s) and " if found else ""
     order = "the test runner's report first, then the findings" if found else "the test runner's report first"
     lines: list[str] = [
-        f"{title}: {what}{len(summary.blocks)} failure block(s) in step(s) "
+        f"{title}: {what}{len(summary.blocks)} failure block(s)"
+        f"{f' ({summary.repeated_blocks} repeat(s) of them folded)' if summary.repeated_blocks else ''} in step(s) "
         f"{', '.join(repr(s) for s in summary.steps_failed)}; {summary.kept_lines:,} of {summary.total_lines:,} lines "
         f"kept, {order}.{whole}",
     ]

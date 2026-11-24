@@ -10,8 +10,33 @@ import {
   becomesAutomatic,
   effectiveAutonomyLevel,
   isAutonomyRaise,
+  nextPins,
+  pinLowersApproval,
   selectableLevels,
 } from "./fleet-autonomy";
+
+describe("gate pins (#916, CTEM-34)", () => {
+  it("sends the whole pin map, the other gates' pins kept and a cleared pin dropped", () => {
+    const pinned: FleetAutonomyGate[] = [
+      { ...gateOf("a"), pin: "wait" },
+      { ...gateOf("b"), pin: "run" },
+      gateOf("c"),
+    ];
+    expect(nextPins(pinned, "c", "wait")).toEqual({ a: "wait", b: "run", c: "wait" });
+    expect(nextPins(pinned, "a", null)).toEqual({ b: "run" });
+  });
+
+  it("names the pin changes that lower approval, as the backend refuses them to non-administrators", () => {
+    expect(pinLowersApproval(null, "run")).toBe(true);
+    expect(pinLowersApproval("wait", null)).toBe(true);
+    expect(pinLowersApproval("run", null)).toBe(false);
+    expect(pinLowersApproval(null, "wait")).toBe(false);
+  });
+});
+
+function gateOf(key: string): FleetAutonomyGate {
+  return { key, action: key, module: "platform", impact: "high", gated: true, by_level: { full_gates: true, medium: true, low: false, autonomous: false } };
+}
 
 // The backend matrix (`fleet_autonomy.is_gated`) for each impact, as `gate_catalog` returns it.
 const gate = (action: string, impact: FleetAutonomyGate["impact"]): FleetAutonomyGate => {

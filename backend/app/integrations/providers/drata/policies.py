@@ -18,6 +18,25 @@ from ._common import (
     _full_name,
 )
 
+# Window of policy text one call returns; offset / max_chars page the rest.
+_POLICY_TEXT_DEFAULT_CHARS = 10_000
+_POLICY_TEXT_MAX_CHARS = 50_000
+
+
+def _policy_text_window(version_id: int, text: str, offset: int, max_chars: int) -> str:
+    """One window of a policy text, with its range, total and the next offset."""
+    total = len(text)
+    size = max_chars if max_chars > 0 else _POLICY_TEXT_DEFAULT_CHARS
+    size = min(size, _POLICY_TEXT_MAX_CHARS)
+    start = max(offset, 0)
+    if total and start >= total:
+        return f"Policy Version {version_id} Content: offset {start} is past the end of the text ({total} characters)."
+    end = min(start + size, total)
+    header = f"Policy Version {version_id} Content, characters {start} to {end} of {total}"
+    if end < total:
+        header += f"; {total - end} more: call again with offset={end}"
+    return f"{header}:\n\n{text[start:end]}"
+
 
 def register(
     base_url: str,
@@ -96,7 +115,57 @@ def register(
                 for g in groups:
                     lines.append(f"  {g.get('name', 'Unnamed')} (source: {g.get('source', 'N/A')})")
 
+            lines.extend(await _approval_lines(client, policy_id))
             return "\n".join(lines)
+
+    async def _approval_lines(client: Any, policy_id: int) -> list[str]:
+        """The approval workflow of a policy: the latest version's state and the approver tiers.
+
+        The policy object carries only ``approvedAt``; who approves and whether a
+        newer version waits for approval live in the policy versions and the
+        approval configuration. A read that fails is named, never dropped.
+        """
+        out = ["\nApproval workflow:"]
+        versions, verr = await _common._paginated_fetch(
+            client, f"{base_url}/policies/{policy_id}/policy-versions", headers, {}
+        )
+        if verr:
+            out.append(f"  Versions: not readable ({verr[:160]})")
+        else:
+            waiting = [v for v in versions if v.get("policyVersionStatus") == "NEEDS_APPROVAL"]
+            unpublished = [v for v in versions if v.get("policyVersionStatus") == "APPROVED" and not v.get("current")]
+            latest = max(versions, key=lambda v: v.get("id") or 0, default=None)
+            if latest is not None:
+                out.append(
+                    f"  Latest version: {latest.get('version', '?')}.{latest.get('subVersion', '0')} "
+                    f"(ID: {latest.get('id')}) status {latest.get('policyVersionStatus', 'N/A')}, "
+                    f"current: {latest.get('current', False)}, approved: {latest.get('approvedAt') or 'not yet'}, "
+                    f"updated: {latest.get('updatedAt', 'N/A')}"
+                )
+            out.append(f"  Versions awaiting approval: {len(waiting)}; approved but not published: {len(unpublished)}")
+        resp, cerr = await _common.safe_request(  # type: ignore[attr-defined]  # patched here by the tests
+            client,
+            "get",
+            f"{base_url}/policies/{policy_id}/approval-configuration",
+            _PROVIDER,
+            "get policy approval configuration",
+            headers=headers,
+        )
+        if cerr or resp is None:
+            out.append(f"  Approvers: not readable ({(cerr or 'no response')[:160]})")
+            return out
+        tiers = (resp.json() or {}).get("reviewGroups") or []
+        if not tiers:
+            out.append("  Approvers: no approval tier configured")
+        for tier in sorted(tiers, key=lambda t: t.get("tier") or 0):
+            approvers = (
+                ", ".join(f"{_full_name(a)} <{a.get('email', '?')}>" for a in tier.get("approvers") or []) or "none"
+            )
+            out.append(
+                f"  Tier {tier.get('tier', '?')} {tier.get('name', 'Unnamed')}: "
+                f"{tier.get('consensusRule', '?')} of {approvers}, {tier.get('timeline', '?')} day(s)"
+            )
+        return out
 
     async def list_drata_policy_versions(policy_id: int) -> str:
         """List all versions of a specific policy."""
@@ -119,7 +188,9 @@ def register(
                     f"Type: {v.get('type', 'N/A')} | "
                     f"Current: {v.get('current', False)} | "
                     f"Owner: {owner_name} | "
-                    f"Published: {v.get('publishedAt', 'N/A')}"
+                    f"Published: {v.get('publishedAt', 'N/A')} | "
+                    f"Approved: {v.get('approvedAt') or 'not yet'} | "
+                    f"Updated: {v.get('updatedAt', 'N/A')}"
                 ]
                 desc = v.get("description", "")
                 if desc:
@@ -136,8 +207,14 @@ def register(
                 empty_msg=f"No versions found for policy {policy_id}.",
             )
 
-    async def get_drata_policy_version_content(policy_id: int, version_id: int) -> str:
-        """Get the HTML content of a specific policy version. Returns the full policy text."""
+    async def get_drata_policy_version_content(
+        policy_id: int, version_id: int, offset: int = 0, max_chars: int = _POLICY_TEXT_DEFAULT_CHARS
+    ) -> str:
+        """Get the text of a policy version, one window at a time.
+
+        The answer names the range shown, the total length and the offset of
+        the next window, so a policy of any length is read whole.
+        """
         async with egress_client(timeout=30) as client:
             resp, err = await _common.safe_request(
                 client,
@@ -155,7 +232,7 @@ def register(
                 html = resp.text
                 text = re.sub(r"<[^>]+>", "", html)
                 text = re.sub(r"\s+", " ", text).strip()
-                return f"Policy Version {version_id} Content:\n\n{text[:10000]}"
+                return _policy_text_window(version_id, text, offset, max_chars)
 
             data = resp.json()
             lines = [
@@ -273,7 +350,10 @@ def register(
         ),
         ToolDefinition(
             name="get_drata_policy",
-            description="Get a specific Drata policy by ID with linked controls and assigned groups.",
+            description=(
+                "Get a specific Drata policy by ID with linked controls, assigned groups and its "
+                "approval workflow: the latest version's status and the approver tiers."
+            ),
             input_schema={
                 "type": "object",
                 "properties": {
@@ -286,7 +366,7 @@ def register(
         ),
         ToolDefinition(
             name="list_drata_policy_versions",
-            description="List all versions of a specific Drata policy.",
+            description="List all versions of a specific Drata policy with their status and approval date.",
             input_schema={
                 "type": "object",
                 "properties": {
@@ -299,12 +379,23 @@ def register(
         ),
         ToolDefinition(
             name="get_drata_policy_version_content",
-            description="Get the full text content of a specific policy version from Drata.",
+            description=(
+                "Get the text of a Drata policy version by window: the answer names "
+                "the characters shown, the total and the offset of the next window."
+            ),
             input_schema={
                 "type": "object",
                 "properties": {
                     "policy_id": {"type": "integer"},
                     "version_id": {"type": "integer"},
+                    "offset": {
+                        "type": "integer",
+                        "description": "First character to return (default 0)",
+                    },
+                    "max_chars": {
+                        "type": "integer",
+                        "description": "Characters to return (default 10000, at most 50000)",
+                    },
                 },
                 "required": ["policy_id", "version_id"],
             },

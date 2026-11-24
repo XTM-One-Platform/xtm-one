@@ -44,6 +44,18 @@ logger = logging.getLogger(__name__)
 ALL_SECTIONS = "all"
 #: The sections a sync may keep up to date: the import's, never a typed field.
 SYNCABLE_SECTIONS: tuple[str, ...] = ("assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs")
+#: Where each section's syncs are configured (#1134 S2, Sam 22 Nov 2026): the business profile
+#: in Settings > Organization, the inventory in CTEM > Inventory. The global ``all`` schedule is in both.
+#: Primary assets (``crown_jewels``) are an Inventory source since they moved to Inventory > Business
+#: (#1690): their OpenCRQ sync is listed next to the asset sources (Sam, 24 Nov 2026).
+SECTION_SCOPES: dict[str, tuple[str, ...]] = {
+    "profile": ("pirs",),
+    "inventory": ("assets", "asset_groups", "tech_stack", "ai_systems", "crown_jewels"),
+}
+#: The primary-asset source every platform with OpenCRQ connected gets by default: daily, links on.
+DEFAULT_PRIMARY_ASSET_SYNC: dict[str, Any] = {"section": "crown_jewels", "source": "opencrq", "frequency": "daily"}
+#: How many administrators :func:`ensure_default_primary_asset_sync` tries as the owner.
+DEFAULT_OWNER_CANDIDATES = 5
 #: How long a run may hold its lock before another run may take it.
 LOCK_SECONDS = 900
 #: Read errors that mean the owner cannot read the platform any more: the sync pauses.
@@ -54,6 +66,15 @@ class SyncRefusedError(ValueError):
     """A sync definition the API refuses (an unknown section, source or schedule)."""
 
 
+#: Most source ids one sync may exclude.
+MAX_EXCLUSIONS = 1000
+
+
+def clean_exclusions(ids: list[str]) -> list[str]:
+    """Source ids stripped, deduplicated in order, empty ones dropped, bounded (#1134)."""
+    return [i for i in dict.fromkeys(str(v).strip()[:200] for v in ids) if i][:MAX_EXCLUSIONS]
+
+
 def zone(name: str) -> ZoneInfo:
     """The time zone *name*, or UTC when it is unknown."""
     try:
@@ -62,14 +83,32 @@ def zone(name: str) -> ZoneInfo:
         return ZoneInfo("UTC")
 
 
-def validate(*, section: str, source: str, frequency: str, hour: int, minute: int, weekday: int, timezone: str) -> None:
+def validate(
+    *,
+    section: str,
+    source: str,
+    frequency: str,
+    hour: int,
+    minute: int,
+    weekday: int,
+    timezone: str,
+    direction: str = "inbound",
+) -> None:
     """Refuse a definition the scheduler could not run; nothing returned when it is valid."""
     from app.services import organization_context_import as imp
+    from app.services import organization_context_outbound as outbound
 
     if section != ALL_SECTIONS and section not in SYNCABLE_SECTIONS:
         raise SyncRefusedError(f"section must be one of {', '.join((*SYNCABLE_SECTIONS, ALL_SECTIONS))}")
     if section != ALL_SECTIONS and source not in imp.SECTION_SOURCES[section]:
         raise SyncRefusedError(f"{source or 'no source'} cannot feed {section}")
+    if direction not in outbound.SYNC_DIRECTIONS:
+        raise SyncRefusedError("direction must be inbound or outbound")
+    if direction == outbound.OUTBOUND and (
+        section == ALL_SECTIONS or not outbound.supports(section, source, direction)
+    ):
+        reason = outbound.directions(section, source)[1] if section != ALL_SECTIONS else "Sync all has no direction."
+        raise SyncRefusedError(f"{section} to {source or 'no source'} cannot be outbound: {reason}")
     if frequency not in ("hourly", "daily", "weekly"):
         raise SyncRefusedError("frequency must be hourly, daily or weekly")
     if not (0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= weekday <= 6):
@@ -88,19 +127,24 @@ def define(
     source: str = "",
     filters: dict[str, Any] | None = None,
     batch_type: str = "",
-    remove_gone: bool = False,
+    remove_gone: bool = True,
+    excluded_external_ids: list[str] | None = None,
     frequency: str = "daily",
     hour: int = 6,
     minute: int = 0,
     weekday: int = 0,
     timezone: str = "UTC",
     enabled: bool = True,
+    direction: str | None = None,
 ) -> None:
     """Write a validated definition on *sync*, saved by *owner_id*; refused with :class:`SyncRefusedError`.
 
     Shared by the REST routes and the agent tools, so both save the same rows.
     Saving again is how a paused sync resumes: it then reads with this owner's token.
+    *direction* omitted keeps the stored one (inbound for a new sync) and the rows an outbound run created.
     """
+    stored_direction = getattr(sync, "direction", None) or "inbound"
+    direction = direction or stored_direction
     all_sections = section == ALL_SECTIONS
     source = "" if all_sections else source
     validate(
@@ -111,12 +155,23 @@ def define(
         minute=minute,
         weekday=weekday,
         timezone=timezone,
+        direction=direction,
     )
+    if stored_direction != direction:
+        # The rows created on the platform belong to the outbound run that made them: a new direction starts clean.
+        sync.outbound_ids = {}
+    elif getattr(sync, "outbound_ids", None) is None:
+        sync.outbound_ids = {}
+    sync.direction = direction
     sync.section = section
     sync.source = source
     sync.filters = {} if all_sections else dict(filters or {})
     sync.batch_type = "" if all_sections else (batch_type or "")[:64]
     sync.remove_gone = False if all_sections else bool(remove_gone)
+    if excluded_external_ids is not None:
+        sync.excluded_external_ids = [] if all_sections else clean_exclusions(excluded_external_ids)
+    elif getattr(sync, "excluded_external_ids", None) is None:
+        sync.excluded_external_ids = []
     sync.frequency = frequency
     sync.hour, sync.minute, sync.weekday = hour, minute, weekday
     sync.timezone = timezone
@@ -126,12 +181,17 @@ def define(
     sync.next_run_at = next_run(sync, datetime.now(UTC)) if enabled else None
 
 
-async def all_syncs(db: AsyncSession) -> list[OrganizationContextSync]:
-    """Every sync, the global ``all`` schedule first, then in the order they were saved."""
+def in_scope(section: str, scope: str) -> bool:
+    """Whether a sync of *section* shows in *scope* (empty: every scope)."""
+    return not scope or section == ALL_SECTIONS or section in SECTION_SCOPES.get(scope, ())
+
+
+async def all_syncs(db: AsyncSession, scope: str = "") -> list[OrganizationContextSync]:
+    """Every sync of *scope*, the global ``all`` schedule first, then in the order they were saved."""
     rows = (
         (await db.execute(select(OrganizationContextSync).order_by(OrganizationContextSync.created_at))).scalars().all()
     )
-    return sorted(rows, key=lambda r: r.section != ALL_SECTIONS)
+    return sorted((r for r in rows if in_scope(r.section, scope)), key=lambda r: r.section != ALL_SECTIONS)
 
 
 async def global_sync_exists(db: AsyncSession) -> bool:
@@ -207,6 +267,28 @@ def sync_provenance(plan: Any, sync: OrganizationContextSync, owner: User) -> di
     return sources
 
 
+def _links_changed(links: Any) -> bool:
+    """Whether a primary-asset link sync summary wrote anything (#1591 S3)."""
+    return isinstance(links, dict) and any(int(links.get(k) or 0) for k in ("added", "updated", "removed"))
+
+
+async def _recheck_held_signals(db: AsyncSession) -> dict[str, int] | dict[str, str]:
+    """#1591 S3: decide again the watchlist signals held for scope; never fails the sync."""
+    from app.services import ctem_scope_gate_store
+    from app.services.organizations import get_primary
+
+    try:
+        primary = await get_primary(db)
+        if primary is None:
+            return {}
+        async with db.begin_nested():
+            await db.flush()
+            return await ctem_scope_gate_store.recheck_held(db, organization_id=primary.id, since=datetime.now(UTC))
+    except Exception as exc:
+        logger.warning("CTEM held signals not decided again after the sync", exc_info=True)
+        return {"error": format_exception_message(exc)[:300]}
+
+
 async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: str) -> dict[str, Any]:
     """Run one section sync now and record its result on the row (the caller commits).
 
@@ -227,6 +309,9 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
             sync.paused_reason = reason
             result["error"] = reason
             return result
+        if (getattr(sync, "direction", None) or "inbound") == "outbound":
+            await _run_outbound(db, sync, owner, result, trigger=trigger)
+            return result
         plan, _version = await imp.preview_import(
             db,
             user_id=owner.id,
@@ -235,19 +320,60 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
             filters=sync.filters or {},
             batch_type=sync.batch_type,
             remove_gone=sync.remove_gone,
+            excluded_ids=list(getattr(sync, "excluded_external_ids", None) or []),
+            sync_id=str(sync.id),
         )
         result["added"], result["updated"] = len(plan.new), len(plan.updated)
-        result["removed"] = len(plan.gone) if plan.remove_gone else 0
+        # Superseded rows (#1591: an older build's supporting-asset crown jewels) count as removed, so a run
+        # that only drops them still saves the cleaned profile.
+        result["removed"] = (
+            (len(plan.gone) - len(plan.gone_kept) if plan.remove_gone else 0)
+            + len(plan.excluded_removed)
+            + len(plan.superseded)
+        )
+        result["excluded"] = len(plan.excluded)
         if plan.error:
             result["error"] = plan.error[:500]
             if _pausing(plan.error):
                 sync.paused_reason = plan.error[:500]
+        elif plan.on_records:
+            # Assets and asset groups (#1543): row writes by (source, external_id), no profile version.
+            if plan.has_writes:
+                result["rows_written"] = await imp.apply_record_import(
+                    db, plan, actor=f"sync:{sync.id}:{owner.id}"[:120]
+                )
         elif (plan.new or plan.updated or result["removed"]) and plan.profile is not None:
             saved = await org_context.save_version(
                 db, plan.profile, source="draft", author_user_id=owner.id, sources=sync_provenance(plan, sync, owner)
             )
             result["version"] = saved.version
-        if result["version"] is not None or result["error"]:
+        if not plan.error and sync.section == "crown_jewels" and sync.source == "opencrq" and plan.profile is not None:
+            # Supporting asset -> primary asset links (#1591), on unless the sync's filter says "false".
+            from app.services import organization_context_opencrq_links as opencrq_links
+
+            links = await opencrq_links.sync_links_for(
+                db, user_id=owner.id, filters=sync.filters or {}, jewels=list(plan.profile.crown_jewels)
+            )
+            if links is not None:
+                result["links"] = links
+        if not plan.error and plan.software:
+            # An endpoint source (#1251): the software follows its devices even when no device row changed.
+            result["software_changed"] = await imp.store_endpoint_software(db, plan, user_id=owner.id)
+        if not plan.error and (_links_changed(result.get("links")) or result.get("software_changed")):
+            # #1591 S3: a link or a device's software changed: the watchlist signals held for scope are decided again.
+            result["ctem_rechecked"] = await _recheck_held_signals(db)
+        if plan.software_rows:
+            result["software_rows"] = plan.software_rows
+        if plan.software_error:
+            # Devices synced but their software could not be read: said, never a silent zero (#1251).
+            result["software_unread"] = len(plan.software_unread)
+            result["software_error"] = plan.software_error[:500]
+        if (
+            result["version"] is not None
+            or result.get("rows_written")
+            or result["error"]
+            or result.get("software_error")
+        ):
             await log_audit(
                 db,
                 user=owner,
@@ -261,7 +387,16 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
                         f"failed: {result['error']}"
                         if result["error"]
                         else f"{result['added']} added, {result['updated']} updated, {result['removed']} removed, "
-                        f"version {result['version']}"
+                        + (
+                            f"version {result['version']}"
+                            if result["version"] is not None
+                            else "written to the asset records"
+                        )
+                        + (
+                            f"; software of {result['software_unread']} device(s) unreadable: {result['software_error']}"
+                            if result.get("software_error")
+                            else ""
+                        )
                     )
                 )[:500],
                 details={**result, "trigger": trigger},
@@ -271,6 +406,123 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
         sync.last_run_at = datetime.now(UTC)
         sync.last_result = dict(result)
         await _release_lock(sync.id)
+
+
+async def _run_outbound(
+    db: AsyncSession, sync: OrganizationContextSync, owner: User, result: dict[str, Any], *, trigger: str
+) -> None:
+    """An outbound run (#1134 S3): the platform follows the profile; counts are the platform's rows."""
+    from app.services import organization_context_outbound as outbound
+    from app.services.audit import log_audit
+
+    plan, ids = await outbound.run_outbound(db, sync, user_id=owner.id, apply=True)
+    sync.outbound_ids = ids
+    result["direction"] = "outbound"
+    result["added"], result["updated"], result["removed"] = len(plan.create), len(plan.update), len(plan.delete)
+    result["skipped_platform_rows"] = len(plan.skipped)
+    if plan.error:
+        result["error"] = plan.error[:500]
+        if _pausing(plan.error):
+            sync.paused_reason = plan.error[:500]
+    if result["error"] or result["added"] or result["updated"] or result["removed"]:
+        await log_audit(
+            db,
+            user=owner,
+            action="trigger",
+            entity_type="organization_context_sync",
+            entity_id=sync.id,
+            entity_name=f"{sync.section} to {sync.source}",
+            summary=(
+                f"Outbound organization sync of {sync.section} to {sync.source} ({trigger}): "
+                + (
+                    f"failed: {result['error']}"
+                    if result["error"]
+                    else f"{result['added']} created, {result['updated']} updated, {result['removed']} deleted"
+                )
+            )[:500],
+            details={**result, "trigger": trigger, "plan": plan.summary()},
+        )
+
+
+async def _default_owner(db: AsyncSession) -> User | None:
+    """The first active administrator who can read the company-managed OpenCRQ, or None."""
+    from app.services.organization_context_opencrq import _opencrq_connection
+
+    admins = (
+        (
+            await db.execute(
+                select(User)
+                .where(User.role == "admin", User.is_active.is_(True))
+                .order_by(User.created_at)
+                .limit(DEFAULT_OWNER_CANDIDATES)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for admin in admins:
+        try:
+            connection = await _opencrq_connection(db, str(admin.id))
+        except Exception as exc:  # one unreadable administrator never stops the others
+            logger.warning(
+                "Primary-asset source: OpenCRQ unreadable for %s: %s", admin.id, format_exception_message(exc)
+            )
+            continue
+        if not isinstance(connection, str):
+            return admin
+    return None
+
+
+async def ensure_default_primary_asset_sync(db: AsyncSession) -> OrganizationContextSync | None:
+    """Create the default OpenCRQ primary-asset source when OpenCRQ is connected and none exists (the caller commits).
+
+    The source is on, daily at 06:00 UTC, the supporting-asset links on (#1591 default). Turning it off keeps
+    the row, so it is never created again; a source an administrator deleted is never created again either
+    (the audit trail says so). Answers the row created, or None when nothing was created.
+    """
+    from app.models.audit_log import AuditLog
+
+    section, source = DEFAULT_PRIMARY_ASSET_SYNC["section"], DEFAULT_PRIMARY_ASSET_SYNC["source"]
+    exists = await db.execute(
+        select(OrganizationContextSync.id)
+        .where(OrganizationContextSync.section == section, OrganizationContextSync.source == source)
+        .limit(1)
+    )
+    if exists.first() is not None:
+        return None
+    deleted = await db.execute(
+        select(AuditLog.id)
+        .where(
+            AuditLog.entity_type == "organization_context_sync",
+            AuditLog.action == "delete",
+            AuditLog.entity_name == f"{section} from {source}",
+        )
+        .limit(1)
+    )
+    if deleted.first() is not None:
+        return None
+    # Connected = an administrator reads the company-managed OpenCRQ (_opencrq_connection applies the
+    # integration visibility and access_restricted rules); none can: nothing is created.
+    owner = await _default_owner(db)
+    if owner is None:
+        return None
+    row = OrganizationContextSync()
+    define(row, owner_id=owner.id, section=section, source=source, frequency=DEFAULT_PRIMARY_ASSET_SYNC["frequency"])
+    db.add(row)
+    await db.flush()
+    from app.services.audit import log_audit
+
+    await log_audit(
+        db,
+        user=owner,
+        action="create",
+        entity_type="organization_context_sync",
+        entity_id=row.id,
+        entity_name=f"{section} from {source}",
+        summary="Primary assets from OpenCRQ scheduled daily by default (OpenCRQ connected)",
+        details={"default": True, **DEFAULT_PRIMARY_ASSET_SYNC},
+    )
+    return row
 
 
 async def section_syncs(db: AsyncSession) -> list[OrganizationContextSync]:
@@ -320,6 +572,12 @@ async def run_due_syncs(db: AsyncSession, *, now: datetime | None = None) -> int
     Each sync commits on its own, so one that fails never undoes another.
     """
     now = now or datetime.now(UTC)
+    try:
+        if await ensure_default_primary_asset_sync(db) is not None:
+            await db.commit()
+    except Exception as exc:  # the default source never stops the due syncs
+        logger.error("Default primary-asset source not created: %s", format_exception_message(exc), exc_info=True)
+        await db.rollback()
     due_ids = list(
         (
             await db.execute(

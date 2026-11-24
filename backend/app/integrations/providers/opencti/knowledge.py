@@ -869,6 +869,7 @@ def register_knowledge(
     hitl_approval_fn: Callable[[str], Awaitable[bool]] | None = None,
     persist_file_fn: Callable[[str, bytes, str], Awaitable[Any]] | None = None,
     live_writes: bool = False,
+    gated_draft_validation: bool = False,
 ) -> list[ToolDefinition]:
     """Build the OpenCTI STIX knowledge, draft, NLQ-filter and dev tools.
 
@@ -900,8 +901,14 @@ def register_knowledge(
     the user has open in the UI still receives the changes. Off, no tool that
     writes outside a draft is registered and no agent-facing text names the
     setting: when the option is gone, it is gone from the tools.
+
+    ``gated_draft_validation`` (#1480) offers ``apply_opencti_draft`` with Live
+    writes off: the run's fleet declares a gate naming that tool (the CTEM
+    loop's ``ctem.analyst_review``), so the validation of a draft the loop
+    staged is a person's decision, or the fleet's policy, never the model's.
     """
     _draft_id = draft_id
+    _offer_apply = live_writes or gated_draft_validation
     # Drafts this build created (create_opencti_draft, the autonomous gate):
     # the only ones delete_opencti_draft may remove with the setting off.
     _created_drafts: set[str] = set()
@@ -4768,12 +4775,13 @@ def register_knowledge(
 
     executor.register("delete_opencti_draft", delete_opencti_draft)
 
-    if live_writes:
+    if _offer_apply:
 
         async def apply_opencti_draft(draft_id: str) -> str:
             """Validate (apply) a draft workspace: its staged changes are
-            written to the live graph. Offered only when the integration's Live
-            writes setting is on. Answers the draft's name and final status.
+            written to the live graph. Offered when the integration's Live
+            writes setting is on, or when the run's fleet gates this tool
+            (#1480). Answers the draft's name and final status.
             """
             did = (draft_id or "").strip()
             if not did:
@@ -5246,7 +5254,7 @@ def register_knowledge(
             source="integration:opencti",
         )
     )
-    if live_writes:
+    if _offer_apply:
         _tools.append(
             ToolDefinition(
                 name="apply_opencti_draft",
@@ -5254,8 +5262,13 @@ def register_knowledge(
                 description=(
                     "Validate (apply) an open OpenCTI draft workspace: its staged "
                     "changes are written to the live graph, with no further review. "
-                    "Offered because this integration allows live writes. Answers "
-                    "the draft's name and its final status."
+                    + (
+                        "Offered because this integration allows live writes. "
+                        if live_writes
+                        else "A gate of this fleet decides it: the call waits for its approval "
+                        "unless the fleet's level lets it run. "
+                    )
+                    + "Answers the draft's name and its final status."
                 ),
                 input_schema={
                     "type": "object",

@@ -1262,6 +1262,8 @@ def build_tools(
             },
             source=src,
             priority=1,
+            # "run" reads as a write to the name classifier; a Deep Visibility query only reads events.
+            read_only=True,
         ),
         # ── 4. Threat Intelligence IOCs ───────────────────────────────────
         ToolDefinition(

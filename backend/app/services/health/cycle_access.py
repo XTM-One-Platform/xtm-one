@@ -192,7 +192,7 @@ async def evidence_links(
         if kind == "trace":
             agent_id = (await db.execute(select(LLMTrace.agent_id).where(LLMTrace.id == ref_id))).scalar_one_or_none()
             if await agent_chats_readable(agent_id):
-                href = f"/traces/{ref_id}"
+                href = f"/observability/traces/{ref_id}"
         elif kind == "rating":
             agent_id = await _rating_agent_id(db, ref_id)
             if await agent_chats_readable(agent_id):
@@ -202,12 +202,12 @@ async def evidence_links(
                 await db.execute(select(AssignmentRun.agent_id).where(AssignmentRun.id == ref_id))
             ).scalar_one_or_none()
             if await agent_chats_readable(agent_id):
-                href = f"/runs/{ref_id}"
+                href = f"/operations/executions/{ref_id}"
         elif kind == "flow_run":
             flow_id = (await db.execute(select(FlowRun.flow_id).where(FlowRun.id == ref_id))).scalar_one_or_none()
             target = await resolve_target(db, user, user_group_ids, "flow", flow_id) if flow_id else None
             if target is not None:
-                href = f"/flows/{flow_id}/builder"
+                href = f"/flows/library/{flow_id}"
         elif kind == "evaluation_run" and user.is_admin and evaluation_enabled():
             href = f"/evaluations/runs/{ref_id}"
         links.append(EvidenceLink(kind, str(ref_id) if href else None, href, href is None))

@@ -20,7 +20,7 @@ and its rules are documented in ``app.models.fleet`` and
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -36,6 +36,14 @@ class FleetSkill(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str = Field(default="", max_length=2000)
     tags: list[str] = Field(default_factory=list, max_length=20)
+
+
+class FleetRunBudget(BaseModel):
+    """The optional run budget of a fleet (#1526): over the home members' runs of the last rolling hour, new
+    runs are held in the queue (never failed) until usage is back under it. A bound left out is unbounded."""
+
+    runs_per_hour: int | None = Field(default=None, ge=1, le=100_000)
+    tokens_per_hour: int | None = Field(default=None, ge=1, le=10_000_000_000)
 
 
 class FleetCreate(BaseModel):
@@ -55,6 +63,8 @@ class FleetCreate(BaseModel):
     budget_config: AgentBudgetConfig | None = None
     #: Iteration cap default of the home members; their own wins.
     max_iterations: int | None = Field(default=None, ge=1)
+    #: Optional run budget of the fleet (#1526); omitted = none.
+    run_budget: FleetRunBudget | None = None
 
 
 class OrganizationScope(BaseModel):
@@ -100,6 +110,8 @@ class FleetUpdate(BaseModel):
     budget_config: AgentBudgetConfig | None = None
     #: ``null`` clears the fleet's iteration default.
     max_iterations: int | None = Field(default=None, ge=1)
+    #: ``null`` clears the fleet's run budget (#1526).
+    run_budget: FleetRunBudget | None = None
     #: The fields given replace the fleet's member defaults; ``null`` in one
     #: puts it back to the column default.
     member_defaults: FleetMemberDefaults | None = None
@@ -202,6 +214,122 @@ class FleetMemberResponse(BaseModel):
     created_at: str
 
 
+class FleetSlotIntegration(BaseModel):
+    """An integration as a capability slot shows it (#914 slice 2)."""
+
+    integration_id: str
+    provider: str
+    #: Empty when the reader cannot see the bound integration.
+    name: str = ""
+
+
+class FleetSlotBlockedIntegration(FleetSlotIntegration):
+    """An integration of the capability the member cannot take, and why (#1373).
+
+    ``not_company_managed``: connected, but the member agent is company-managed
+    and takes company-managed integrations only. ``not_connected``: visible to
+    the reader but not connected yet (a sign-in to finish).
+    """
+
+    reason: Literal["not_company_managed", "not_connected"]
+
+
+class FleetSlotBuiltin(BaseModel):
+    """A capability's built-in option (#1201): served by XTM One, never stored as a binding."""
+
+    key: str
+    label: str
+    #: Always active: an external integration adds to it and it cannot be removed.
+    always_on: bool = True
+
+
+class FleetCapabilitySlot(BaseModel):
+    """One capability a member's role can use, and how it is filled."""
+
+    capability: str
+    label: str
+    #: ``filled`` (bound), ``empty`` (a connected one can be bound) or
+    #: ``unavailable`` (none connected).
+    state: Literal["filled", "empty", "unavailable"]
+    bound: list[FleetSlotIntegration] = Field(default_factory=list)
+    candidates: list[FleetSlotIntegration] = Field(default_factory=list)
+    #: The built-in option, when the capability has one: it fills the slot by itself.
+    builtin: FleetSlotBuiltin | None = None
+    #: Integrations of the capability this member cannot take, with the reason (#1373).
+    blocked: list[FleetSlotBlockedIntegration] = Field(default_factory=list)
+
+
+class FleetMemberSlots(BaseModel):
+    """The capability slots of one home member."""
+
+    member_id: str
+    agent_id: str
+    name: str = ""
+    role_label: str = ""
+    #: Whether the reader may bind or unbind on this member's agent.
+    can_edit: bool = False
+    slots: list[FleetCapabilitySlot] = Field(default_factory=list)
+
+
+class FleetCapabilityTypeMember(BaseModel):
+    """One member using a capability type, in the expanded type row (#1201)."""
+
+    member_id: str
+    agent_id: str
+    name: str = ""
+    role_label: str = ""
+    can_edit: bool = False
+    bound: list[FleetSlotIntegration] = Field(default_factory=list)
+    #: Its bound set differs from the fleet choice: an override ("Custom").
+    custom: bool = False
+
+
+class FleetCapabilityType(BaseModel):
+    """A capability across the fleet's members: one row of the type view (#1201)."""
+
+    capability: str
+    label: str
+    #: ``connected`` (every member filled), ``partial`` (some), ``not_bound``
+    #: (none, a connected one can be bound), ``not_usable`` (none can be bound,
+    #: one of the type exists but is ``blocked``, #1373) or ``none_connected``.
+    state: Literal["connected", "partial", "not_bound", "not_usable", "none_connected"]
+    #: The fleet choice: the bound set most members share.
+    choice: list[FleetSlotIntegration] = Field(default_factory=list)
+    candidates: list[FleetSlotIntegration] = Field(default_factory=list)
+    members: list[FleetCapabilityTypeMember] = Field(default_factory=list)
+    builtin: FleetSlotBuiltin | None = None
+    #: What no member can take, with the reason (#1373): the row says it instead of "Connect one".
+    blocked: list[FleetSlotBlockedIntegration] = Field(default_factory=list)
+
+
+class FleetCapabilitySlotsResponse(BaseModel):
+    fleet_id: str
+    members: list[FleetMemberSlots] = Field(default_factory=list)
+    #: The same slots grouped by capability (#1201): one row per type.
+    types: list[FleetCapabilityType] = Field(default_factory=list)
+
+
+class FleetCapabilityTypeSet(BaseModel):
+    """The fleet choice of a capability, written on every member slot of that type (#1201)."""
+
+    #: Exactly the integrations bound; empty leaves the built-in option alone (when any).
+    integration_ids: list[str] = Field(default_factory=list, max_length=20)
+    #: Also write the members whose slot is custom (an override); otherwise they keep it.
+    override_custom: bool = False
+
+
+class FleetSlotSet(BaseModel):
+    """Exactly the integrations bound on one member's slot: an override or a reset (#1201)."""
+
+    integration_ids: list[str] = Field(default_factory=list, max_length=20)
+
+
+class FleetSlotBind(BaseModel):
+    """Bind one connected integration to a member's slot."""
+
+    integration_id: str = Field(min_length=1, max_length=64)
+
+
 class FleetMemberMove(BaseModel):
     """Move a home member to another fleet in one transaction."""
 
@@ -259,6 +387,8 @@ class FleetResponse(BaseModel):
     #: Run defaults of the home members, ``null`` = none.
     budget_config: dict | None = None
     max_iterations: int | None = None
+    #: The fleet's run budget (#1526), ``null`` = none.
+    run_budget: dict[str, int] | None = None
     #: What a member row inherits while its own field is unset: the two
     #: connected settings (strings) and ``organization_scope`` (an object).
     member_defaults: dict[str, str | dict] = Field(default_factory=dict)
@@ -281,6 +411,9 @@ class FleetResponse(BaseModel):
     automations: FleetAutomationsResponse | None = None
     #: The newest run of a home member the caller may see; ``null`` = never run.
     last_run_at: str | None = None
+    #: The Platform Health fleet only (#974): what starts it and what it covers, from
+    #: Settings > Platform Health; ``null`` on every other fleet.
+    health_starts: FleetHealthStartsResponse | None = None
     created_at: str
     updated_at: str
 
@@ -322,6 +455,28 @@ class FleetOrganizationRunEstimate(BaseModel):
     expected_runs_per_month: int
     #: Why no figure could be read (no OpenCTI connection, the primary's own triggers), else null.
     note: str | None = None
+
+
+class FleetSetupStep(BaseModel):
+    """One step of the CTEM loop guided setup (#1087 slice 2)."""
+
+    key: Literal["organization", "modules", "ecosystem", "gates", "preview", "enable"]
+    #: ``done`` / ``skipped`` as recorded for the current setup version, else ``ready`` (already in
+    #: place on the platform) or ``todo``.
+    state: Literal["done", "skipped", "ready", "todo"]
+    #: What the step shows, read live (counts, connected modules, slot states, level, opt-in).
+    facts: dict[str, Any] = Field(default_factory=dict)
+
+
+class FleetSetupStatusResponse(BaseModel):
+    """Where the CTEM loop guided setup stands; read only, administrators."""
+
+    version: str
+    #: The CTEM loop fleet, null when it is not seeded on this instance.
+    fleet_id: str | None = None
+    steps: list[FleetSetupStep] = Field(default_factory=list)
+    #: The step the flow opens on; null when every step is done or skipped.
+    resume_on: str | None = None
 
 
 class FleetRunEstimateResponse(BaseModel):
@@ -465,6 +620,24 @@ class FleetMemberHealthResponse(BaseModel):
     stale_work_items: int
 
 
+class FleetHealthStartsResponse(BaseModel):
+    """What starts the Platform Health fleet (#974, ``fleet_views.HealthFleetStarts``):
+    its Settings schedules and signals, never its ``manual`` assignments."""
+
+    #: A signal pass is on: an investigation starts on an event.
+    events: bool = False
+    #: The schedules switched on in Settings > Platform Health.
+    schedules: int = 0
+    #: The soonest next start of those schedules (ISO 8601); ``null`` when none is on.
+    next_run_at: str | None = None
+    #: The modules it covers, XTM One modes only (``xtm_one`` then the registered ones).
+    modules: list[str] = Field(default_factory=list)
+    #: Where an administrator switches and schedules it.
+    settings_route: str = ""
+    #: Platform Health is on in Settings; off, ``next_run_at`` is ``null`` (nothing starts).
+    active: bool = True
+
+
 class FleetAutomationsResponse(BaseModel):
     """The opt-in state of a fleet's automations (#9566,
     ``app.services.fleet_views.automation_counts``): on a built-in fleet only
@@ -515,6 +688,24 @@ class FleetEnableItemResponse(BaseModel):
     missing: list[str]
     #: Part of this call (every automation when the request named none).
     selected: bool = True
+    #: Runs a day its schedule starts (0 for a trigger that is not a schedule, #1538).
+    runs_per_day: float = 0.0
+    #: It runs once per event: its daily count is not known ahead.
+    event_driven: bool = False
+
+
+class FleetEnableEstimateResponse(BaseModel):
+    """The expected load of the automations picked (#1538): an order of magnitude, not a quote."""
+
+    #: Runs a day the picked schedules start (their cron over 30 days, divided by 30).
+    scheduled_runs_per_day: float
+    #: Picked automations that run once per event: their rate depends on the events.
+    event_automations: int
+    #: Mean cost of one run of the picked automations over ``cost_days``; None when none ran.
+    avg_cost_per_run: float | None = None
+    #: ``avg_cost_per_run`` times ``scheduled_runs_per_day``; None without a cost history.
+    cost_per_day: float | None = None
+    cost_days: int
 
 
 class FleetEnableResponse(BaseModel):
@@ -532,6 +723,45 @@ class FleetEnableResponse(BaseModel):
     items: list[FleetEnableItemResponse]
     #: The fleet's automations after the call.
     automations: FleetAutomationsResponse
+    #: On a dry run, the expected runs a day and cost of the picked automations (#1538); None otherwise.
+    estimate: FleetEnableEstimateResponse | None = None
+
+
+class FleetResetRequest(BaseModel):
+    """Reset a built-in fleet to its factory state (#1508). ``dry_run`` answers the counts
+    for the confirmation dialog; a real reset needs ``confirm_name``, the fleet's name typed."""
+
+    dry_run: bool = False
+    confirm_name: str | None = Field(default=None, max_length=200)
+
+
+class FleetResetResponse(BaseModel):
+    """What a reset changed (or, on a dry run, would change)."""
+
+    fleet_id: str
+    dry_run: bool
+    #: Automations switched off or re-stamped as never set up.
+    automations: int
+    #: Automations whose run-as user is cleared.
+    run_as_cleared: int
+    #: Integrations, knowledge bases, skills, MCP servers and custom tools unbound from the members.
+    bindings: int
+    #: Approval pins removed.
+    pins: int
+    #: Gates a person added, removed.
+    gates: int
+    #: The level the fleet moves back to, ``null`` when it is already there.
+    autonomy_level: str | None = None
+    #: Member agents whose configuration is rewritten from the seed.
+    agents: int
+    #: Fleet settings put back to their default, by name.
+    settings: list[str]
+    #: Whether a local documentation version is replaced by the shipped one.
+    documentation: bool
+    #: Automations an emergency stop holds, left as they are.
+    held_by_stop: list[str]
+    #: The fleet's automations after the call.
+    automations_state: FleetAutomationsResponse
 
 
 FleetBulkActionName = Literal["pause", "resume", "set_autonomy"]
@@ -640,6 +870,28 @@ class FleetRunEntry(BaseModel):
     trigger_type: str | None = None
     trigger_provider: str | None = None
     trigger_event: str | None = None
+    #: The CTEM case the run works on, when a case event started it (#915). An
+    #: id only: the case is read through ``GET /ctem-cases/{id}``, per viewer.
+    case_id: str | None = None
+
+
+class CaseRunEntry(BaseModel):
+    """One run working on a CTEM case (#915), for the case page."""
+
+    id: str
+    agent_id: str
+    agent_name: str | None = None
+    status: str
+    created_at: str
+    completed_at: str | None
+    outcome: str = "other"
+
+
+class CaseRunsResponse(BaseModel):
+    """The runs the caller may see that a CTEM case's events started, oldest first."""
+
+    case_id: str
+    runs: list[CaseRunEntry]
 
 
 class FleetActivityResponse(BaseModel):
@@ -695,6 +947,14 @@ class FleetSourceChange(BaseModel):
     fields: list[str] = Field(default_factory=list)
 
 
+class FleetSourceSuccessor(BaseModel):
+    """The seeded fleet that took over a retired built-in fleet (CTEM-31)."""
+
+    fleet_id: str
+    slug: str
+    name: str
+
+
 class FleetSourceChangesResponse(BaseModel):
     """Whether, and how, the source of a fork changed since the fork (#9174)."""
 
@@ -705,6 +965,8 @@ class FleetSourceChangesResponse(BaseModel):
     #: False on a fork older than the kept structure: the diff is not known.
     diff_available: bool
     changes: list[FleetSourceChange]
+    #: The seeded fleet that took over a retired built-in source (CTEM-31), else ``null``.
+    successor: FleetSourceSuccessor | None = None
 
 
 class FleetPrerequisiteState(BaseModel):
@@ -844,6 +1106,10 @@ class FleetApprovalGatesResponse(BaseModel):
     existing_approvals: list[dict] = Field(default_factory=list)
     #: Whether the reader may write the catalog (a manager of a custom fleet).
     editable: bool = False
+    #: Gates a person added to a built-in fleet (#916, CTEM-34), kept across seed upgrades.
+    customer_gates: list[dict[str, object]] = Field(default_factory=list)
+    #: Whether the reader may add gates to a built-in fleet (its manager): ``PUT approval-gates`` writes them.
+    customer_gates_editable: bool = False
     #: The fleet's level and the gates it acts on (#10153): declared + computed,
     #: each with ``source``, ``pin``, ``tools``, ``gated`` and ``by_level``
     #: (``fleet_autonomy.gate_catalog``), so the cursor previews every step.
@@ -857,6 +1123,9 @@ class FleetApprovalGatesResponse(BaseModel):
     instructions_position: str | None = None
     #: Whether the members are told it in their run prompt (a person moved it).
     instructions_position_announced: bool = False
+    #: Whether the platform also pauses the tool calls of a waiting gate (#1467).
+    #: Off by default: the gates are instructions to the members.
+    enforce_at_tool_level: bool = False
 
 
 class FleetInstructionsPositionRequest(BaseModel):
@@ -877,6 +1146,9 @@ class FleetAutonomyApplyRequest(BaseModel):
     level: Literal["full_gates", "medium", "low", "autonomous"]
     #: ``{gate key: "wait" | "run"}``; omitted, the stored pins are kept.
     pins: dict[str, Literal["wait", "run"]] | None = Field(default=None, max_length=200)
+    #: Opt the fleet in to (or out of) tool-level pauses (#1467), administrators
+    #: only; omitted, the stored value is kept.
+    enforce_at_tool_level: bool | None = None
 
 
 class FleetApprovalGatesUpdateRequest(BaseModel):

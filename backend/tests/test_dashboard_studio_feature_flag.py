@@ -170,7 +170,7 @@ def test_with_the_flag_on_the_agent_builder_names_the_tool(monkeypatch):
 
 def test_the_frontend_offers_nothing_with_the_flag_off():
     nav = _read_frontend("src", "components", "layout", "nav-model.ts")
-    assert _has(nav, 'leaf("/dashboards", LayoutGrid, "Dashboards", (f) => f.dashboardStudio)')
+    assert _has(nav, 'leaf("/dashboards", "layout-dashboard", "Dashboards", (f) => f.dashboardStudio)')
     assert _has(_read_frontend("src", "components", "layout", "Sidebar.tsx"), "dashboardStudio: dashboardStudioEnabled,")
     # The top bar search resolves the nav with the shared flags (#11201).
     assert "useNavFlags()" in _read_frontend("src", "components", "layout", "GlobalSearch.tsx")

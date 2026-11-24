@@ -32,6 +32,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { ChatMarkdown } from "@/components/chat/ChatMarkdown";
 import { MaskedCost } from "@/components/ui/masked-cost";
 import { Tip } from "@/components/ui/tooltip";
@@ -2112,7 +2113,7 @@ export function SpanInspector({
               <div className="px-3 pb-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <p className="content-base font-medium">Intermediate Steps</p>
-                  <Badge variant="outline">{intermediateSteps.length}</Badge>
+                  <CountBadge variant="outline">{intermediateSteps.length}</CountBadge>
                 </div>
                 <div className="space-y-1.5">
                   {intermediateSteps.slice(0, 30).map((step) => (

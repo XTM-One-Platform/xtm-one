@@ -192,6 +192,7 @@ ASSET_CATEGORIES = [
     "saas_application",
     "ai_target",
     "security_platform",
+    "source_code",
     "generic_asset",
 ]
 
@@ -244,6 +245,13 @@ ASSET_SUBCATEGORIES: dict[str, tuple[str, ...]] = {
         "llm_firewall",
         "ai_gateway",
         "vulnerability_scanner",
+    ),
+    "source_code": (
+        "code_repository",
+        "ci_cd_pipeline",
+        "package_registry",
+        "software_package",
+        "code_other",
     ),
     "generic_asset": (),
 }

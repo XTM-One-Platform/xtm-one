@@ -264,7 +264,8 @@ def test_a_warning_counts_only_when_the_step_has_no_error() -> None:
 
 
 def test_the_timing_table_goes_first_when_space_runs_out() -> None:
-    filler = "\n".join(f"error: long failure detail {i} " + "x" * 500 for i in range(30))
+    # Thirty distinct failures (a name each, not a bare number, which the repeat folding masks).
+    filler = "\n".join(f"error: long failure detail case_{i} " + "x" * 500 for i in range(30))
     out = _answer(OPENCTI_ESLINT.replace("+ yarn lint\n", f"+ yarn lint\n{filler}\n", 1))
     assert "@stylistic/indent-binary-ops" in out
     assert "timing table line(s) dropped to fit" in out

@@ -43,6 +43,7 @@ import {
 import { Tip } from "@/components/ui/tooltip";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SettingsField, SettingsFieldGrid, SettingsGroupTitle, SettingsSwitchField, focusFirstInvalidField, settingsFieldHintId } from "@/components/ui/settings-form";
@@ -1062,7 +1063,7 @@ function ChannelToolsDialog({
                       <div className="flex items-center gap-1.5">
                         <BookOpen className="h-3 w-3 text-feedback-success-primary" />
                         <h4 className="content-caption font-semibold uppercase tracking-wider text-feedback-success-primary">{t_i18n("Read Tools")}</h4>
-                        <Badge variant="outline" className="content-caption ml-1">{readTools.length}</Badge>
+                        <CountBadge variant="outline" className="ml-1">{readTools.length}</CountBadge>
                       </div>
                     </div>
                     {readTools.map((tool, idx) => (
@@ -1077,7 +1078,7 @@ function ChannelToolsDialog({
                       <div className="flex items-center gap-1.5">
                         <Pencil className="h-3 w-3 text-feedback-warning-primary" />
                         <h4 className="content-caption font-semibold uppercase tracking-wider text-feedback-warning-primary">{t_i18n("Write Tools")}</h4>
-                        <Badge variant="outline" className="content-caption ml-1">{writeTools.length}</Badge>
+                        <CountBadge variant="outline" className="ml-1">{writeTools.length}</CountBadge>
                       </div>
                     </div>
                     {writeTools.map((tool, idx) => (

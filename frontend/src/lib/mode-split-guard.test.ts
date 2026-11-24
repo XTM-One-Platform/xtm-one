@@ -47,6 +47,8 @@ type ModeClass = "domain content" | "licence and edition" | "built-in agents" | 
 const MODE_READERS: Record<string, [ModeClass, string]> = {
   "App.tsx": ["domain content", "CTEM lifecycle, exposure briefing and Intents routes, CTEM home dashboard"],
   "components/companion/CompanionToday.tsx": ["domain content", "CTEM home dashboard vs general dashboard"],
+  "components/fleets/CtemLoopSetupEntry.tsx": ["domain content", "'Set up the CTEM loop' entry of the command center and the CTEM loop fleet page, XTM One mode only (#1087)"],
+  "components/fleets/FleetSetupDialog.tsx": ["domain content", "the CTEM loop fleet's Set up opens its versioned guided setup in XTM One mode only, the generic fleet wizard otherwise (#1151)"],
   "components/layout/AboutDialog.tsx": ["branding", "product name and edition in the About dialog"],
   "components/layout/OrganizationSetupPrompt.tsx": ["domain content", "first-login organization (CTEM) profile setup, XTM One mode only"],
   "components/layout/Sidebar.tsx": ["plumbing", "passes the mode to nav-model.ts, whose entries are gated here"],
@@ -71,9 +73,16 @@ const MODE_READERS: Record<string, [ModeClass, string]> = {
   "pages/UserDetail.tsx": ["licence and edition", "LLM proxy usage and quota rows follow the proxy (Copilot product)"],
   "pages/Value.tsx": ["domain content", "page subtitle per mode (exposure management vs agents); figures and tables identical"],
   "pages/agent-detail/ConfigTab.tsx": ["built-in agents", "built-in agents are product-managed in XTM One mode"],
-  "pages/settings/ParametersSection.tsx": ["domain content", "XTM Hub registration card; edition badge (licence)"],
+  "pages/xtm-one/ctem/CaseWorkCard.tsx": ["domain content", "the case work card offers the built-in CTEM loop setup in XTM One mode only (#1266)"],
+  "pages/settings/HealthModuleAnalystBlock.tsx": ["domain content", "Module Analyst spend limits of Platform Health (OpenCTI, OpenAEV, OpenCRQ modules); Copilot mode has no module"],
+  "pages/settings/HealthModuleThresholdsBlock.tsx": ["domain content", "OpenCTI / OpenAEV module thresholds of Platform Health; Copilot mode has no module"],
+  "pages/settings/HealthRunAsBlock.tsx": ["domain content", "'Run checks as' user of the Platform Health module checks (OpenCTI, OpenAEV, OpenCRQ modules); Copilot mode has no module (#1351)"],
+  "pages/settings/OrganizationSection.tsx": ["domain content", "Copilot mode keeps the Identity card alone: risk appetite, ticketing and CTEM case sync are CTEM inputs, and no fields-not-filled banner (#1690)"],
+  "pages/settings/ParametersSection.tsx": ["domain content", "XTM Hub registration card; Reset onboarding card (guided setup, XTM One mode only); edition badge (licence)"],
   "pages/settings/QuotasSection.tsx": ["licence and edition", "agentic quota source and edition cards"],
   "pages/settings/RoiUnitsSection.tsx": ["domain content", "title and order of the mode's built-in ROI catalog"],
+  "pages/agent-detail/AddAssignmentPanel.tsx": ["domain content", "the CTEM signal tile of the trigger picker, XTM One only (#1409)"],
+  "pages/assignment-detail/TriggerCard.tsx": ["domain content", "the CTEM signal tile of the trigger picker, XTM One only (#1409)"],
 };
 
 const READS_MODE = /\buseIsXtmOne\(|\bisXtmOneMode\(|\bplatform_mode\s*[!=]==/;

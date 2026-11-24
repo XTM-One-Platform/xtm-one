@@ -18,7 +18,7 @@ const EXPLOITABLE = {
   filterGroups: [],
 };
 
-/** The tailored exploitable filter: the tech stack AND the exploitable group. */
+/** The tailored exploitable filter: the software inventory AND the exploitable group. */
 const TAILORED_EXPLOITABLE = {
   mode: "and",
   filters: [
@@ -59,7 +59,7 @@ test("a GraphQL list key becomes the one string key OpenCTI's URL reads, operato
   });
 });
 
-test("the tailored exploitable link keeps the tech stack filter and its KEV / EPSS group", () => {
+test("the tailored exploitable link keeps the software filter and its KEV / EPSS group", () => {
   const href = openCtiListHref("https://cti.example/", OPENCTI_VULNERABILITIES_PATH, TAILORED_EXPLOITABLE)!;
   assert.ok(href.startsWith("https://cti.example/dashboard/arsenal/vulnerabilities?filters="));
   const group = parse(href);

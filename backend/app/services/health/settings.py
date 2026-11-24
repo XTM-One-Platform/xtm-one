@@ -56,6 +56,32 @@ class HealthBudgetCaps(BaseModel):
     month_cost_usd: Decimal | None = Field(default=Decimal("100"), ge=0, le=MAX_COST_USD, decimal_places=6)
 
 
+class HealthAnalysisSettings(BaseModel):
+    """The analysis layer (#101 S9, ``dev-docs/platform-health.md`` section 6): off by default.
+
+    The ceilings are hard: an analysis reserves its worst case on the day and the
+    month before the model call and is refused over any of them. A ceiling an
+    administrator clears (``None``) refuses every analysis (``ceiling_not_set``).
+
+    The defaults come from the lab measurement of dev-docs section 6: one analysis of a
+    module at the most findings it reads costs at most 8,000 tokens; 6 modules
+    twice a day is 96,000 tokens, rounded to 100,000 a day and 31 days of it a
+    month. The dollar ceilings price that at the measured blended rate of a
+    top-tier model (about 7 USD per million tokens), rounded up.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    day_tokens: int | None = Field(default=100_000, ge=0, le=MAX_TOKENS)
+    day_cost_usd: Decimal | None = Field(default=Decimal("1"), ge=0, le=MAX_COST_USD, decimal_places=6)
+    month_tokens: int | None = Field(default=3_100_000, ge=0, le=MAX_TOKENS)
+    month_cost_usd: Decimal | None = Field(default=Decimal("31"), ge=0, le=MAX_COST_USD, decimal_places=6)
+
+    def ceilings_set(self) -> bool:
+        return None not in (self.day_tokens, self.day_cost_usd, self.month_tokens, self.month_cost_usd)
+
+
 #: The longest any Platform Health duration (watch, shadow, signal window) may be set to.
 MAX_DURATION_DAYS = 90
 
@@ -120,6 +146,113 @@ class HealthSignalSettings(BaseModel):
     model_change_enabled: bool = True
 
 
+class HealthOpenCTIThresholds(BaseModel):
+    """The editable (E) thresholds of the OpenCTI checks (#101 S10b, dev-docs section 4.3)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    connector_stale_minutes: int = Field(default=30, ge=5, le=10_080)
+    connector_errors_max: int = Field(default=10, ge=0, le=1_000_000)
+    queue_depth_max: int = Field(default=100_000, ge=0, le=1_000_000_000)
+    search_disk_max_percent: float = Field(default=85, gt=0, lt=100)
+    ingestion_lag_minutes: int = Field(default=15, ge=1, le=10_080)
+
+
+class HealthOpenAEVThresholds(BaseModel):
+    """The editable (E) thresholds of the OpenAEV checks (#101 S10b, dev-docs section 4.4)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    integration_silent_minutes: int = Field(default=60, ge=5, le=10_080)
+    agents_offline_max_percent: float = Field(default=50, ge=0, lt=100)
+
+
+#: The most recipients the alert emails may list.
+MAX_ALERT_RECIPIENTS = 20
+
+
+def _valid_recipient(value: str) -> str:
+    """A trimmed, lower-cased address: one ``@``, a dotted domain, no space or control character."""
+    value = value.strip().lower()
+    local, at, domain = value.partition("@")
+    if (
+        not at
+        or not local
+        or "@" in domain
+        or "." not in domain.strip(".")
+        or len(value) > 254
+        or any(char.isspace() or unicodedata.category(char) in _REFUSED_NAME_CATEGORIES for char in value)
+    ):
+        raise ValueError("not an email address")
+    return value
+
+
+class HealthAlertEmailSettings(BaseModel):
+    """The alert emails (#101 S12, dev-docs section 7): off by default.
+
+    On, with recipients and SMTP configured: one email per critical finding open
+    continuously for ``alert_after_minutes`` (``immediate``, once per open episode,
+    #958) and one daily digest of the open findings at or above ``min_severity``
+    (``digest``).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    recipients: list[str] = Field(default_factory=list, max_length=MAX_ALERT_RECIPIENTS)
+    min_severity: Literal["critical", "warning", "info"] = "warning"
+    immediate: bool = True
+    digest: bool = True
+    #: How long a critical finding stays open before its immediate email goes out (#958):
+    #: a finding a restart opened resolves before and never mails.
+    alert_after_minutes: int = Field(default=15, ge=0, le=24 * 60)
+
+    @field_validator("recipients")
+    @classmethod
+    def _recipients(cls, values: list[str]) -> list[str]:
+        return list(dict.fromkeys(_valid_recipient(value) for value in values))
+
+
+class HealthModuleAnalystSettings(BaseModel):
+    """The Module Analyst (#101 S14, dev-docs section 12.1): on by default in XTM One mode.
+
+    ``change_min_interval_minutes`` is the debounce of section 12.2: at most one
+    change-triggered cycle per registration in that window. A registration listed in
+    ``excluded_registration_ids`` gets no cycle.
+
+    The ceilings are its own (section 12.5), outside the agentic quota: tokens and
+    dollars per UTC day and month on the ``health_module_analyst_spend`` ledger, and
+    a token cap per cycle. A ceiling an administrator clears (``None``) refuses every
+    model call (``ceiling_not_set``). The defaults are those of section 12.6, kept
+    after the S14b-3 lab measurement (about 22,600 tokens per module per quiet cycle).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    change_min_interval_minutes: int = Field(default=120, ge=15, le=24 * 60)
+    excluded_registration_ids: list[uuid.UUID] = Field(default_factory=list, max_length=MAX_SCOPE_IDS)
+    cycle_tokens: int | None = Field(default=80_000, ge=0, le=MAX_TOKENS)
+    day_tokens: int | None = Field(default=500_000, ge=0, le=MAX_TOKENS)
+    day_cost_usd: Decimal | None = Field(default=Decimal("4"), ge=0, le=MAX_COST_USD, decimal_places=6)
+    month_tokens: int | None = Field(default=10_000_000, ge=0, le=MAX_TOKENS)
+    month_cost_usd: Decimal | None = Field(default=Decimal("60"), ge=0, le=MAX_COST_USD, decimal_places=6)
+
+    def ceilings_set(self) -> bool:
+        return None not in (
+            self.cycle_tokens,
+            self.day_tokens,
+            self.day_cost_usd,
+            self.month_tokens,
+            self.month_cost_usd,
+        )
+
+    @field_validator("excluded_registration_ids")
+    @classmethod
+    def _unique(cls, ids: list[uuid.UUID]) -> list[uuid.UUID]:
+        return list(dict.fromkeys(ids))
+
+
 #: The longest name Platform Health may be given.
 MAX_NAME_LENGTH = 40
 
@@ -167,6 +300,20 @@ class HealthSettings(BaseModel):
     flow_shadow_days: int = Field(default=3, ge=1, le=MAX_DURATION_DAYS)
     flow_watch_days: int = Field(default=7, ge=1, le=MAX_DURATION_DAYS)
     flow_shadow_min_pairs: int = Field(default=5, ge=1, le=1_000)
+    #: The analysis layer and its ceiling (#101 S9).
+    analysis: HealthAnalysisSettings = Field(default_factory=HealthAnalysisSettings)
+    #: The editable check thresholds per module (#101 S10b), read on the next pass.
+    opencti: HealthOpenCTIThresholds = Field(default_factory=HealthOpenCTIThresholds)
+    openaev: HealthOpenAEVThresholds = Field(default_factory=HealthOpenAEVThresholds)
+    #: The alert emails (#101 S12), off by default.
+    alert_emails: HealthAlertEmailSettings = Field(default_factory=HealthAlertEmailSettings)
+    #: The Module Analyst's switch, debounce and exclusions (#101 S14a-2b).
+    module_analyst: HealthModuleAnalystSettings = Field(default_factory=HealthModuleAnalystSettings)
+    #: Whom the module checkers' reads act as (section 12.3): the platform-managed JWT of
+    #: OpenCTI, OpenAEV and OpenCRQ is minted for this user. ``None``: no module read runs and
+    #: each module card asks for one; there is no other fallback (no service account, no seed
+    #: owner, no administrator by default).
+    module_run_as_user_id: uuid.UUID | None = None
 
     @field_validator("name")
     @classmethod
@@ -177,6 +324,94 @@ class HealthSettings(BaseModel):
     @classmethod
     def _unique(cls, ids: list[uuid.UUID]) -> list[uuid.UUID]:
         return list(dict.fromkeys(ids))
+
+
+# ── The spend lock (#1202) ────────────────────────────────────────────────
+
+#: The variable that unlocks the spend ceilings (``Settings.platform_health_spend_limits_unlocked``).
+SPEND_LIMITS_ENV_VAR = "PLATFORM_HEALTH_SPEND_LIMITS_UNLOCKED"
+#: Why a spend ceiling is read-only, as the API reports it (``locked_reason``).
+SPEND_LIMITS_LOCKED_REASON = "environment"
+
+#: Every spend ceiling of Platform Health, by block: what bounds a spend that runs
+#: outside the agentic quota (dev-docs/platform-health.md sections 6, 7 and 12.5).
+#: The switches (``analysis.enabled``, ``module_analyst.enabled``) are not here:
+#: turning them off only lowers the spend.
+SPEND_FIELDS: dict[str, tuple[str, ...]] = {
+    "budget": ("cycle_tokens", "cycle_cost_usd", "month_tokens", "month_cost_usd"),
+    "analysis": ("day_tokens", "day_cost_usd", "month_tokens", "month_cost_usd"),
+    "module_analyst": ("cycle_tokens", "day_tokens", "day_cost_usd", "month_tokens", "month_cost_usd"),
+}
+
+
+class SpendLimitsLockedError(Exception):
+    """A write changed a spend ceiling while they are locked."""
+
+    def __init__(self, fields: list[str]) -> None:
+        self.fields = fields
+        super().__init__(
+            "Platform Health spends outside the agentic quota, so its spend ceilings are locked at their "
+            f"defaults. Set {SPEND_LIMITS_ENV_VAR}=true to change them. Refused: {', '.join(fields)}."
+        )
+
+
+def spend_limits_unlocked() -> bool:
+    """Whether the stored spend ceilings apply (the variable is true), read on every call."""
+    from app.core.config import settings
+
+    return bool(getattr(settings, "platform_health_spend_limits_unlocked", False))
+
+
+def _spend_defaults() -> HealthSettings:
+    return HealthSettings()
+
+
+def _with_spend_values(target: HealthSettings, source: HealthSettings) -> HealthSettings:
+    """*target* with every spend ceiling taken from *source*, every other field kept."""
+    update = {
+        block: getattr(target, block).model_copy(update={key: getattr(getattr(source, block), key) for key in keys})
+        for block, keys in SPEND_FIELDS.items()
+    }
+    return target.model_copy(update=update)
+
+
+def apply_spend_lock(stored: HealthSettings) -> HealthSettings:
+    """The settings in force: the stored ones, their spend ceilings at the defaults while locked."""
+    if spend_limits_unlocked():
+        return stored
+    return _with_spend_values(stored, _spend_defaults())
+
+
+def changed_spend_fields(new: HealthSettings, current: HealthSettings) -> list[str]:
+    """The ``block.key`` of each spend ceiling *new* sets to another value than *current*."""
+    return [
+        f"{block}.{key}"
+        for block, keys in SPEND_FIELDS.items()
+        for key in keys
+        if getattr(getattr(new, block), key) != getattr(getattr(current, block), key)
+    ]
+
+
+def describe_spend_limits(stored: HealthSettings) -> list[dict[str, object]]:
+    """Each spend ceiling with its value in force, default, stored value and source, for the API."""
+    unlocked = spend_limits_unlocked()
+    defaults = _spend_defaults()
+    described = []
+    for block, keys in SPEND_FIELDS.items():
+        for key in keys:
+            default = getattr(getattr(defaults, block), key)
+            value = getattr(getattr(stored, block), key)
+            described.append(
+                {
+                    "block": block,
+                    "key": key,
+                    "value": value if unlocked else default,
+                    "default": default,
+                    "stored": value,
+                    "source": "database" if unlocked and value != default else "default",
+                }
+            )
+    return described
 
 
 def _read(stored: object) -> HealthSettings:
@@ -198,7 +433,17 @@ def _read(stored: object) -> HealthSettings:
 
 
 async def load_health_settings(db: AsyncSession) -> HealthSettings:
-    """The stored settings, their defaults when none (read on every call: no cache)."""
+    """The settings in force, their defaults when none (read on every call: no cache).
+
+    While the spend ceilings are locked (#1202, the default) they read as their
+    built-in defaults whatever the row holds: every reader of a ceiling (the
+    budget, the analysis, the Module Analyst, the digest) goes through here.
+    """
+    return apply_spend_lock(await load_stored_health_settings(db))
+
+
+async def load_stored_health_settings(db: AsyncSession) -> HealthSettings:
+    """What the row holds, spend ceilings included whether they apply or not."""
     from app.models.platform_settings import PlatformSettings
 
     stored = (
@@ -214,28 +459,40 @@ async def load_health_settings(db: AsyncSession) -> HealthSettings:
 async def save_health_settings(
     db: AsyncSession, new: HealthSettings, *, actor: User, request: Request | None = None
 ) -> tuple[HealthSettings, HealthSettings]:
-    """Store *new*; ``(before, after)``. Audited, flushed, not committed.
+    """Store *new*; ``(before, after)``, the settings in force. Audited, flushed, not committed.
 
     The caller applies the revocation a narrowed scope implies, in the same
     transaction. The name is a display text only: the built-in fleet's rows
     keep the platform's name (``read_only``, #101).
+
+    While the spend ceilings are locked (#1202), a *new* that changes one of
+    them from the value in force raises :class:`SpendLimitsLockedError` and
+    writes nothing; one that sends them back unchanged saves its other fields
+    and the row keeps its stored ceilings, so unlocking finds them again.
     """
     from app.api.v1.platform_settings_helpers import get_platform_settings
     from app.services.audit import log_audit
 
     row = await get_platform_settings(db)
-    before = _read(row.health_settings)
-    row.health_settings = new.model_dump(mode="json")
+    stored = _read(row.health_settings)
+    before = apply_spend_lock(stored)
+    to_store = new
+    if not spend_limits_unlocked():
+        refused = changed_spend_fields(new, before)
+        if refused:
+            raise SpendLimitsLockedError(refused)
+        to_store = _with_spend_values(new, stored)
+    row.health_settings = to_store.model_dump(mode="json")
     await log_audit(
         db,
         user=actor,
         action="configure",
         entity_type="health_settings",
         summary="Updated the Platform Health settings",
-        details={"before": before.model_dump(mode="json"), "after": new.model_dump(mode="json")},
+        details={"before": stored.model_dump(mode="json"), "after": to_store.model_dump(mode="json")},
         request=request,
     )
-    return before, new
+    return before, apply_spend_lock(to_store)
 
 
 def scope_narrowed(before: HealthSettings, after: HealthSettings) -> bool:

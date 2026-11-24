@@ -17,7 +17,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEntityListScope } from "@/hooks/useEntityListScope";
-import { api, unavailableIsOrdinary } from "@/lib/api";
+import { api, notFoundIsOrdinary, unavailableIsOrdinary } from "@/lib/api";
 import { entityListKey, entityListPath } from "@/lib/entity-list-scope";
 import type {
   EntityListOptions,
@@ -144,11 +144,16 @@ export function useFlows(options?: EntityListOptions) {
   });
 }
 
-export function useFlow(id: string) {
+export function useFlow(
+  id: string,
+  /** A 404 is an answer, not a fault: the builder renders Page not found (#797 S4). */
+  options: { notFoundIsOrdinary?: boolean } = {},
+) {
   return useQuery<Flow>({
     queryKey: ["flow", id],
     queryFn: () => api.get(`/flows/${id}`),
     enabled: !!id,
+    ...(options.notFoundIsOrdinary ? notFoundIsOrdinary : {}),
   });
 }
 

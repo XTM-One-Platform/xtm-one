@@ -11,6 +11,7 @@
 import { useState, type ReactElement } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ModulePivotLink } from "@/components/ui/module-pivot-link";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
 import { cn } from "@/lib/utils";
@@ -29,7 +30,7 @@ const TOP_CVES_SHOWN = 5;
  * One grid on the list, each row a subgrid of it: every row shares the column
  * tracks and one row height, whatever a cell holds (UX round 1 of #12096, B1).
  */
-function TopCves({ rows }: { rows: TopVulnerability[] }) {
+function TopCves({ rows, openctiUrl }: { rows: TopVulnerability[]; openctiUrl?: string | null }) {
   const { t_i18n } = useFormatter();
   const { count, exactCount, percent } = useNumberFormat();
   const [expanded, setExpanded] = useState(false);
@@ -38,11 +39,11 @@ function TopCves({ rows }: { rows: TopVulnerability[] }) {
   return (
     <div className="space-y-2">
       <ul
-        className="grid grid-cols-[minmax(0,1fr)_auto_auto_3rem] gap-x-3 divide-y divide-[var(--border-elevation-subtle)] content-compact"
+        className="grid grid-cols-[minmax(0,1fr)_auto_auto_3rem_1.5rem] gap-x-3 divide-y divide-[var(--border-elevation-subtle)] content-compact"
         data-testid="ctem-prioritization-top-cves-list"
       >
         {shown.map((v, i) => (
-          <li key={`${v.name ?? "cve"}-${i}`} className="col-span-4 grid h-9 grid-cols-subgrid items-center">
+          <li key={`${v.name ?? "cve"}-${i}`} className="col-span-5 grid h-9 grid-cols-subgrid items-center">
             <span className="truncate font-medium" title={v.name ?? undefined}>
               {v.name}
             </span>
@@ -54,6 +55,10 @@ function TopCves({ rows }: { rows: TopVulnerability[] }) {
               {t_i18n("EPSS")} {percent(v.epss)}
             </span>
             <span className="text-right">{v.kev && <Badge variant="destructive">{t_i18n("KEV")}</Badge>}</span>
+            {/* "Open in OpenCTI" (#1357): the cell stays, empty, when the id or the base URL is unknown, so the tracks hold. */}
+            <span className="flex justify-end">
+              <ModulePivotLink module="opencti" baseUrl={openctiUrl} id={v.id} iconOnly testId="ctem-top-cve-pivot" />
+            </span>
           </li>
         ))}
       </ul>
@@ -142,10 +147,13 @@ export function PrioritizationMix({
   viz,
   connected,
   onConnect,
+  openctiUrl,
 }: {
   viz: CtemStageViz | undefined;
   connected: { opencti: boolean; openaev: boolean; opencrq: boolean };
   onConnect: () => void;
+  /** The connected OpenCTI's base URL: each top CVE then opens in OpenCTI (#1357). */
+  openctiUrl?: string | null;
 }) {
   const { t_i18n } = useFormatter();
   const { count, percent } = useNumberFormat();
@@ -163,7 +171,7 @@ export function PrioritizationMix({
           head={[t_i18n("Vulnerability"), t_i18n("CVSS"), t_i18n("EPSS"), t_i18n("KEV")]}
           rows={topCves.map((v) => [v.name ?? "", count(v.cvss), percent(v.epss), v.kev ? t_i18n("KEV") : ""])}
         />
-        <TopCves rows={topCves} />
+        <TopCves rows={topCves} openctiUrl={openctiUrl} />
         <p className="content-compact text-default-secondary">{t_i18n("The highest CVSS base scores in OpenCTI, with EPSS and known exploitation")}</p>
       </HeroCard>,
     );
@@ -209,13 +217,15 @@ export function PrioritizationMix({
   }
 
   if (dataCards.length === 0 && gapCards.length === 0) return null;
-  // Same layout rules as Discovery and Scoping (UX rounds of #12027 and #12076).
+  // Same layout rules as Discovery and Scoping (UX rounds of #12027 and #12076; equal
+  // heights per row, Sam, 24 Nov 2026, #1612).
   return (
     <div className="space-y-5" data-testid="ctem-prioritization-mix">
       {dataCards.length > 0 && (
         <div
-          className={cn("grid items-start gap-5", dataCards.length > 1 && "2xl:grid-cols-2")}
+          className={cn("grid gap-5 [&>section]:h-full", dataCards.length > 1 && "2xl:grid-cols-2")}
           data-testid="ctem-prioritization-data-row"
+          data-align="stretch"
           data-wide-columns={dataCards.length > 1 ? 2 : 1}
         >
           {dataCards}

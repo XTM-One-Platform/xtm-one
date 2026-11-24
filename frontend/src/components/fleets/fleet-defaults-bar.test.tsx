@@ -16,7 +16,7 @@ function fleet(member_defaults: FleetMemberDefaults): Fleet {
   return { id: "f", name: "Fleet", member_defaults } as unknown as Fleet;
 }
 
-function bar(defaults: FleetMemberDefaults) {
+function bar(defaults: FleetMemberDefaults, onDirtyChange?: (dirty: boolean) => void) {
   return (
     <FleetDefaultsBar
       fleet={fleet(defaults)}
@@ -26,6 +26,7 @@ function bar(defaults: FleetMemberDefaults) {
       saving={false}
       onSave={vi.fn()}
       onApplyPreset={vi.fn()}
+      onDirtyChange={onDirtyChange}
     />
   );
 }
@@ -35,6 +36,30 @@ const context = () => screen.getByRole("combobox", { name: "Fleet default: Conve
 const saveDefaults = () => screen.queryByRole("button", { name: "Save defaults" });
 
 describe("FleetDefaultsBar", () => {
+  it("shows the form directly, with no nested Edit or Hide toggle (#1387)", () => {
+    render(bar({ context_inclusion: "summary", collaboration_instruction: "" }));
+    expect(instruction()).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Apply a preset" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Hide" })).not.toBeInTheDocument();
+  });
+
+  it("tells the Members section about an unsaved edit, so a fold never hides it (#1387)", () => {
+    const onDirtyChange = vi.fn();
+    render(bar({ context_inclusion: "none", collaboration_instruction: "" }, onDirtyChange));
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+    fireEvent.change(instruction(), { target: { value: "Draft" } });
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("stays open after the stored defaults change (a save remounts the form)", () => {
+    const { rerender } = render(bar({ context_inclusion: "none", collaboration_instruction: "" }));
+    rerender(bar({ context_inclusion: "summary", collaboration_instruction: "Hand off to the SOC" }));
+    expect(instruction()).toHaveValue("Hand off to the SOC");
+  });
+
   it("shows the server values after a preset is applied on the defaults, with no dirty footer", () => {
     const { rerender } = render(bar({ context_inclusion: "none", collaboration_instruction: "" }));
     expect(instruction()).toHaveValue("");

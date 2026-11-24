@@ -857,6 +857,14 @@ class AssignmentRun(Base):
     # produced, it is just not passed off as complete.
     stop_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
+    # --- Degraded by integration auth failures (#1454) ---
+    # ``[{integration, status, first_tool, tools}]``: the integrations whose
+    # calls failed authentication in this run, ``status`` "401" (credential
+    # rejected, no further call sent in the run) or "403" (forbidden on the
+    # listed tools only). NULL when every integration answered. A completed
+    # run carrying it is degraded: its result was produced without that data.
+    integration_auth_failures: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
+
     # Retry tracking – how many times this run has been retried
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
 

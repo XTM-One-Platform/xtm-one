@@ -6,6 +6,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { E2E_DIR, deal, parseShard, readTimings, specFiles } from "../tests_e2e/shards.ts";
@@ -64,4 +66,14 @@ test("E2E_SHARD reads <index>/<total> and nothing else", () => {
   for (const bad of ["0/3", "4/3", "1/0", "2", "a/b", "1/3/5"]) {
     assert.throws(() => parseShard(bad), /E2E_SHARD/, bad);
   }
+});
+
+test("a table a run's select job handed out is read, and one that does not read stops the job", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "e2e-shards-"));
+  const table = path.join(dir, "e2e.json");
+  writeFileSync(table, JSON.stringify({ "agents.spec.ts": 42 }));
+  assert.deepEqual(readTimings(table, true), { "agents.spec.ts": 42 });
+  // Falling back alone would deal the files unlike the other jobs: a spec would run twice or never.
+  assert.throws(() => readTimings(path.join(dir, "missing.json"), true), /E2E_SHARD_TIMINGS/);
+  assert.deepEqual(readTimings(path.join(dir, "missing.json"), false), {});
 });

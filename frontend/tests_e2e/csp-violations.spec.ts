@@ -577,10 +577,10 @@ test.describe('Content-Security-Policy - signed in', () => {
     try {
       const violations = await watchViolations(context);
 
-      await visit(page, '/traces');
+      await visit(page, '/observability/traces');
       await expect(page.getByRole('heading', { name: 'Observability', level: 1 })).toBeVisible();
 
-      await visit(page, `/flows/${flowId}/builder`);
+      await visit(page, `/flows/library/${flowId}`);
       await expect(page.locator('.react-flow__pane')).toBeVisible();
       await page.locator('.react-flow__pane').dblclick({ position: { x: 260, y: 140 } });
       const quickAdd = page.getByTestId('flow-quick-add');

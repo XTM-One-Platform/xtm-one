@@ -15,6 +15,8 @@ The provider is split by domain:
                      sub-types, decay rules, retention rules, exclusion lists.
 * ``audit``        - platform activity / history audit queries.
 * ``pir``          - Priority Intelligence Requirements.
+* ``security_coverage`` - security coverages, the test requests OpenAEV builds
+                     its scenarios from (CTEM-16).
 * ``ingestion``    - RSS/CSV/JSON/TAXII feeds + intake forms.
 * ``markings``     - marking definitions, and the marking / author ref
                      resolvers the ingestion and marking tools share.
@@ -38,6 +40,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from app.core.module_versions import RegisteredVersionFn
 from app.integrations.http import RefreshableHeaders, parse_compound_token
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
@@ -48,6 +51,7 @@ from .capabilities import install_capability_gate
 from .connectors import register as register_connectors
 from .customization import register as register_customization
 from .data_sharing import register as register_data_sharing
+from .health_reads import register as register_health_reads
 from .ids import install_short_id_guard
 from .ingestion import register as register_ingestion
 from .knowledge import register_knowledge
@@ -56,6 +60,7 @@ from .naming import platform_names_lookup
 from .notifications import register as register_notifications
 from .pir import register as register_pir
 from .playbooks import register as register_playbooks
+from .security_coverage import register as register_security_coverage
 from .workspaces import register as register_workspaces
 
 logger = logging.getLogger(__name__)
@@ -68,11 +73,14 @@ def build_tools(
     executor: CallableToolExecutor,
     *,
     platform_names_sink: Callable[[Any], None] | None = None,
+    registered_version_fn: RegisteredVersionFn | None = None,
     **_kwargs: Any,
 ) -> list[ToolDefinition]:
     """Build OpenCTI integration tools.
 
-    ``token`` is ``base_url||api_token`` (compound format).
+    ``token`` is ``base_url||api_token`` (compound format). ``registered_version_fn``
+    (injected for an integration a registration owns) reads the version XTM One
+    registered, named beside the live answer of ``get_opencti_platform_version``.
     """
     base_url, api_token = parse_compound_token(token, 2)
     # ``parse_compound_token`` does not normalise - strip whitespace and the
@@ -119,6 +127,9 @@ def build_tools(
     # The integration's opt-in Live writes setting: the draft gate is skipped
     # as above, and apply_opencti_draft is offered. Off by default.
     live_writes: bool = bool(_kwargs.get("live_writes"))
+    # The run's fleet gates apply_opencti_draft (#1480, the CTEM loop's analyst
+    # review): the tool is offered with Live writes off, the gate decides it.
+    gated_draft_validation: bool = bool(_kwargs.get("gated_draft_validation"))
 
     # Set when the agent has human-in-the-loop enabled: a callback that verifies
     # a human actually approved a given irreversible action (see
@@ -144,6 +155,7 @@ def build_tools(
         autonomous=autonomous,
         direct_mutations=direct_mutations,
         live_writes=live_writes,
+        gated_draft_validation=gated_draft_validation,
         hitl_approval_fn=hitl_approval_fn,
         persist_file_fn=_kwargs.get("persist_file_fn"),
     )
@@ -151,15 +163,17 @@ def build_tools(
     # only scope STIX knowledge changes, not platform configuration.
     tools += register_playbooks(base_url, headers, executor)
     tools += register_workspaces(base_url, headers, executor)
-    tools += register_access(base_url, headers, executor)
+    tools += register_access(base_url, headers, executor, registered_version_fn=registered_version_fn)
     tools += register_notifications(base_url, headers, executor)
     tools += register_customization(base_url, headers, executor)
     tools += register_audit(base_url, headers, executor)
     tools += register_pir(base_url, headers, executor)
+    tools += register_security_coverage(base_url, headers, executor)
     tools += register_ingestion(base_url, headers, executor)
     tools += register_markings(base_url, headers, executor)
     tools += register_data_sharing(base_url, headers, executor)
     tools += register_connectors(base_url, headers, executor)
+    tools += register_health_reads(base_url, headers, executor)
     # Unattended runs act for a user who did not ask for anything (a per-user
     # fan-out runs as every user in turn): never send a query the user's role
     # cannot pass, or OpenCTI records it as their unauthorized access.

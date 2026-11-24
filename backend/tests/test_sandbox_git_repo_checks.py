@@ -105,6 +105,37 @@ def test_the_command_exit_code_is_kept_and_the_repository_removed_on_failure(tmp
 
 
 @needs_git
+def test_two_git_repo_checks_at_once_on_one_checkout_each_get_their_own_repository(tmp_path):
+    """Gap sandbox-git-lock-parallel-checks: editions and agents-md-hygiene run in one round collided.
+
+    Both made ``<checkout>/.git``: one failed on the ``.git/config`` lock, the other
+    found no repository once the first one's trap had removed it.
+    """
+    co = _tree(tmp_path)
+    gate = co / "gate"
+    script = (
+        'test ! -e .git && cd "$(git rev-parse --show-toplevel)" && '
+        'touch "$1" && while [ ! -e "$2" ]; do sleep 0.05; done && git ls-files README.md'
+    )
+    spec = _spec(f'[check.a]\nargv = ["sh", "-c", {json.dumps(script)}, "x"]\ngit_repo = true\n')
+    gate.mkdir()
+    # Each run waits for the other to have made its repository, so both are alive at the same time.
+    first = subprocess.Popen(  # noqa: S603
+        list(checks.command_argv(spec, [str(gate / "a"), str(gate / "b")])),
+        cwd=co,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    second = _run(checks.command_argv(spec, [str(gate / "b"), str(gate / "a")]), co)
+    out, err = first.communicate(timeout=60)
+    assert first.returncode == 0, err
+    assert second.returncode == 0, second.stderr
+    assert out.split() == ["README.md"] and second.stdout.split() == ["README.md"]
+    assert not (co / ".git").exists()
+
+
+@needs_git
 def test_a_checkout_that_holds_its_own_repository_is_run_as_it_is(tmp_path):
     co = _tree(tmp_path)
     subprocess.run(["git", "init", "-q"], cwd=co, check=True)  # noqa: S607

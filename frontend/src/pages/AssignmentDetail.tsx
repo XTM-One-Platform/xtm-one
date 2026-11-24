@@ -28,7 +28,7 @@ import { EmergencyStopBadge } from "@/components/ui/emergency-stop-badge";
 import { isEmergencyStopped } from "@/lib/emergency-stop";
 import { Button } from "@/components/ui/button";
 import { DetailPageSkeleton } from "@/components/ui/detail-page-skeleton";
-import { NotFoundState } from "@/components/ui/not-found-state";
+import RouteNotFound from "@/pages/RouteNotFound";
 import { useToast } from "@/components/ui/toast";
 import { Tip } from "@/components/ui/tooltip";
 import { ReadOnlyBadge } from "@/components/ui/read-only-badge";
@@ -48,6 +48,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useIsXtmOne } from "@/hooks/usePlatformConfig";
 import { canManageEntity, cn, formatCompactNumber, isEntityShared } from "@/lib/utils";
 import { assignmentTracesPath } from "@/lib/trace-links";
+import { triggerTile } from "@/lib/ctem-signal-trigger";
 import { useFormatter } from "@/i18n";
 import { useAiActionDisabled, useAiDisabledReason } from "@/hooks/useAiDisabled";
 import { AiDisabledTip } from "@/components/ui/ai-disabled";
@@ -92,8 +93,10 @@ export default function AssignmentDetail() {
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
 
   const qc = useQueryClient();
-  const { data: assignment, isLoading } = useAssignment(id || "");
-  const { data: runs } = useAssignmentRuns(id || "", 10);
+  const { data: assignment, isLoading } = useAssignment(id || "", { notFoundIsOrdinary: true });
+  // The runs are read once the assignment answered: an unknown id 404s on both reads, and the runs'
+  // 404 thrown to the section boundary would beat Page not found below (#797 S4).
+  const { data: runs } = useAssignmentRuns(assignment ? assignment.id : "", 10);
 
   const update = useUpdateAssignment();
   const remove = useDeleteAssignment();
@@ -124,17 +127,8 @@ export default function AssignmentDetail() {
         actions={2}
       />
     );
-  if (!assignment) return (
-    <NotFoundState
-      icon={Zap}
-      title="Assignment not found"
-      description="This assignment may have been deleted or you don't have access."
-      actionLabel="View All Agents"
-      onAction={() => navigate("/agents")}
-      backTo="/agents"
-      backLabel="Back to Agents"
-    />
-  );
+  // An unknown id (or one you cannot read) is an address no page answers (#797 S4).
+  if (!assignment) return <RouteNotFound />;
 
   const hasManageRights = agent ? canManageEntity(agent, user?.id, isAdmin) : false;
   const { canManage, canToggle, canChooseRunAs, canRunNow } = assignmentEditRights({
@@ -164,7 +158,9 @@ export default function AssignmentDetail() {
       : []),
   ];
 
-  const TriggerIcon = TRIGGER_ICONS[assignment.trigger_type] ?? Zap;
+  // A CTEM signal trigger reads as its own tile (#1409), as the Trigger card does.
+  const tile = triggerTile(assignment.trigger_type, assignment.trigger_config);
+  const TriggerIcon = TRIGGER_ICONS[tile] ?? Zap;
   const cronExpr = assignment.trigger_type === "schedule" ? assignment.trigger_config.cron : null;
   // The header icon follows the badge: an ended platform trigger is never tinted as active.
   const tint = assignmentStatusTint(assignmentDisplayStatus(assignment));
@@ -186,7 +182,7 @@ export default function AssignmentDetail() {
                 ) : (
                   <AssignmentStatusBadge assignment={assignment} />
                 )}
-                <Badge variant="outline">{t_i18n(TRIGGER_LABELS[assignment.trigger_type] ?? assignment.trigger_type)}</Badge>
+                <Badge variant="outline">{t_i18n(TRIGGER_LABELS[tile] ?? assignment.trigger_type)}</Badge>
                 {cronExpr && <Badge variant="outline">{describeCron(cronExpr)}</Badge>}
                 {assignment.delay && <Badge variant="outline"><Clock className="h-2.5 w-2.5 mr-0.5" />{t_i18n("{delay} delay", { delay: assignment.delay })}</Badge>}
                 {assignment.dry_run && <Badge variant="warning"><FlaskConical className="h-2.5 w-2.5 mr-0.5" />{t_i18n("Dry run")}</Badge>}

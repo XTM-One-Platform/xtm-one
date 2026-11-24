@@ -144,9 +144,60 @@ def test_no_consolidated_management_tool_is_read():
         for tool in tools
         if tool.tool_type == "read"
         and tool.name not in READ_OVERRIDES
+        and tool.name not in DECLARED_READ_ONLY_HUNTS
         and tool.name.split("_")[0] in {"manage", "edit", "set", "run"}
     ]
     assert not offenders, f"consolidated mutating tools presented as read: {offenders}"
+
+
+#: Hunting tools whose definition declares ``read_only``: each only queries
+#: telemetry (KQL, Deep Visibility, ES|QL, EQL, HarfangLab hunting GETs).
+#: The NetSuite pair queries too: ``run_netsuite_suiteql`` refuses anything
+#: but a SELECT (or WITH ... SELECT), and ``run_netsuite_saved_search`` runs a
+#: saved search by id through the companion RESTlet's read action.
+DECLARED_READ_ONLY_HUNTS = {
+    "run_defender_hunting_query": "defender",
+    "run_sentinelone_dv_query": "sentinelone",
+    "run_elastic_esql_query": "elastic_security",
+    "run_elastic_eql_query": "elastic_security",
+    "hunt_harfanglab_process_hash": "harfanglab",
+    "run_netsuite_suiteql": "netsuite",
+    "run_netsuite_saved_search": "netsuite",
+}
+
+
+def test_declared_read_only_hunts_carry_the_read_badge() -> None:
+    """The name classifier still calls them writes ("run", unknown "hunt");
+    the definition's declaration is what makes the catalog badge a read, as a
+    read-only binding already keeps them. The approval whitelist still derives
+    from the name alone: widening it is a separate decision."""
+    catalog = build_provider_tools()
+    for name, provider in DECLARED_READ_ONLY_HUNTS.items():
+        assert infer_tool_type(name) == "write"
+        tool = next(t for t in catalog[provider] if t.name == name)
+        assert tool.tool_type == "read", name
+
+
+def test_a_read_only_binding_keeps_the_declared_hunts() -> None:
+    from app.integrations.providers import defender
+    from app.services.integration_read_only import withhold_write_tools
+    from app.tools.base import CallableToolExecutor
+
+    executor = CallableToolExecutor()
+    defs = defender.build_tools(token="tenant||client||secret", executor=executor)
+    kept = {d.name for d in withhold_write_tools(defs, executor, integration_label="Defender")}
+    assert "run_defender_hunting_query" in kept
+    assert "create_defender_indicator" not in kept
+
+
+def test_definition_tool_type_reads_the_declaration_then_the_name() -> None:
+    from types import SimpleNamespace
+
+    from app.services.tool_classification import definition_tool_type
+
+    assert definition_tool_type(SimpleNamespace(name="run_x_query", read_only=True)) == "read"
+    assert definition_tool_type(SimpleNamespace(name="run_x_query", read_only=False)) == "write"
+    assert definition_tool_type(SimpleNamespace(name="list_x")) == "read"
 
 
 # "lookup" is a leading read verb, and only a leading one. The verbs

@@ -218,7 +218,8 @@ SCOPING_MIX: dict[str, list[dict]] = {
 PRIORITIZATION_MIX: dict[str, list[dict]] = {
     "severity_distribution": [dict(row) for row in SCOPING_MIX["vulnerabilities_by_severity"]],
     "top_vulnerabilities": [
-        {"name": name, "cvss": cvss, "severity": severity, "epss": epss, "kev": kev}
+        # ``id``: the row's OpenCTI id, the "Open in OpenCTI" pivot (#1357); a stable lab value per CVE.
+        {"id": f"vulnerability--lab-{name.lower()}", "name": name, "cvss": cvss, "severity": severity, "epss": epss, "kev": kev}
         for name, cvss, severity, epss, kev in (
             ("CVE-2024-21762", 9.8, "CRITICAL", 0.94, True),
             ("CVE-2024-23113", 9.8, "CRITICAL", 0.71, True),
@@ -401,3 +402,25 @@ SCREENS_ISSUES: tuple[dict, ...] = (
 )
 #: The cases a recompute of :data:`SCREENS_ISSUES` creates (one per remediation key).
 SCREENS_CASES = 4
+
+#: The scope the screens lab declares before its recompute: since #1529 a case opens only through the scope
+#: gate, which resolves a vulnerability to the profile's tech stack and the assets running it. Each product of
+#: :data:`SCREENS_ISSUES` with a fix is in the stack and runs on a ``very_high`` asset (``critical`` on the scope
+#: scale, above the default ``high`` threshold), so each remediation key opens its case.
+SCREENS_TECH_STACK: tuple[dict, ...] = (
+    {"vendor": "Fortinet", "product": "FortiOS", "cpe": ""},
+    {"vendor": "Ivanti", "product": "Connect Secure", "cpe": ""},
+    {"vendor": "Apache", "product": "Tomcat", "cpe": ""},
+    {"vendor": "Microsoft", "product": "Windows Server", "cpe": ""},
+)
+#: The asset records that run them (``POST /organization-context/assets/records/batch``, stable external ids).
+SCREENS_ASSETS: tuple[dict, ...] = (
+    {"name": "fw-paris-01", "category": "network_device", "criticality": "very_high", "internet_facing": "yes",
+     "tech_stack": ["FortiOS"], "source": "lab", "external_id": "lab-screens-fw-paris-01"},
+    {"name": "vpn-gw-01", "category": "network_device", "criticality": "very_high", "internet_facing": "yes",
+     "tech_stack": ["Connect Secure"], "source": "lab", "external_id": "lab-screens-vpn-gw-01"},
+    {"name": "app-portal-01", "category": "host", "criticality": "very_high", "internet_facing": "yes",
+     "tech_stack": ["Tomcat"], "source": "lab", "external_id": "lab-screens-app-portal-01"},
+    {"name": "fs-paris-01", "category": "host", "criticality": "very_high", "internet_facing": "no",
+     "tech_stack": ["Windows Server"], "source": "lab", "external_id": "lab-screens-fs-paris-01"},
+)

@@ -199,22 +199,22 @@ describe("DetailTabs across routes", () => {
   afterEach(() => vi.restoreAllMocks());
 
   const FAMILY = [
-    { key: "/analytics", label: "Model usage", icon: Activity, to: "/analytics" },
-    { key: "/analytics/outcomes", label: "Outcomes", icon: ListChecks, to: "/analytics/outcomes" },
-    { key: "/traces", label: "Traces", icon: Clock, to: "/traces" },
+    { key: "/observability", label: "Model usage", icon: Activity, to: "/observability" },
+    { key: "/observability/outcomes", label: "Outcomes", icon: ListChecks, to: "/observability/outcomes" },
+    { key: "/observability/traces", label: "Traces", icon: Clock, to: "/observability/traces" },
   ];
 
   it("links each tab to its own route and marks the page's tab active", () => {
     stubLayout(2000);
     renderWithProviders(
-      <MemoryRouter initialEntries={["/traces"]}>
+      <MemoryRouter initialEntries={["/observability/traces"]}>
         <Routes>
-          <Route path="/traces" element={<DetailTabs tabs={FAMILY} active="/traces" />} />
+          <Route path="/observability/traces" element={<DetailTabs tabs={FAMILY} active="/observability/traces" />} />
         </Routes>
       </MemoryRouter>,
     );
-    expect(screen.getByRole("tab", { name: "Outcomes" })).toHaveAttribute("href", "/analytics/outcomes");
-    expect(screen.getByRole("tab", { name: "Model usage" })).toHaveAttribute("href", "/analytics");
+    expect(screen.getByRole("tab", { name: "Outcomes" })).toHaveAttribute("href", "/observability/outcomes");
+    expect(screen.getByRole("tab", { name: "Model usage" })).toHaveAttribute("href", "/observability");
     expect(screen.getByRole("tab", { name: "Traces" })).toHaveAttribute("data-state", "active");
   });
 });

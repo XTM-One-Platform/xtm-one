@@ -24,7 +24,7 @@ import json as _json
 import logging
 import random
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -1223,8 +1223,24 @@ def _extract_retry_after(exc: Exception) -> float | None:
 _RATE_LIMIT_ERROR_CODES = frozenset({"ThrottlingException", "TooManyRequestsException"})
 
 
+def gateway_error_envelope(body: object) -> Mapping:
+    """An error body's ``error`` envelope (the AI Gateway's), or the body itself when unwrapped; ``{}`` otherwise."""
+    if isinstance(body, Mapping) and isinstance(body.get("error"), Mapping):
+        body = body["error"]
+    return body if isinstance(body, Mapping) else {}
+
+
+def told_not_to_retry(exc: BaseException) -> bool:
+    """Whether the provider's response says ``x-should-retry: false``: a wait past what a client retry covers."""
+    headers = getattr(getattr(exc, "response", None), "headers", None)
+    if not isinstance(headers, Mapping):
+        return False
+    value = headers.get("x-should-retry")
+    return isinstance(value, str) and value.lower() == "false"
+
+
 def is_rate_limit_error(exc: BaseException) -> bool:
-    """Whether a provider SDK error is a rate limit (HTTP 429 or its Bedrock form)."""
+    """Whether a provider SDK error is a rate limit (HTTP 429, its Bedrock form, or the AI Gateway's throttle or shedding)."""
     for status in (
         getattr(exc, "status_code", None),
         getattr(exc, "code", None),
@@ -1232,6 +1248,15 @@ def is_rate_limit_error(exc: BaseException) -> bool:
     ):
         if status == 429:
             return True
+    # The gateway answers an upstream throttle, or the circuit it opened, with a 502 it marks
+    # ``retryable: true``: the only errors it marks so, a plain provider fault says nothing.
+    # Its own load shedding is a 503 ``gateway_overloaded``.
+    error = gateway_error_envelope(getattr(exc, "body", None))
+    status = getattr(exc, "status_code", None)
+    if status == 502 and error.get("code") == "provider_error":
+        return error.get("retryable") is True
+    if status == 503 and error.get("code") == "gateway_overloaded":
+        return True
     response = getattr(exc, "response", None)
     if isinstance(response, dict):
         code = (response.get("Error") or {}).get("Code")
@@ -1246,7 +1271,7 @@ async def _note_llm_rate_limit() -> None:
 
         await note_rate_limited("llm")
     except Exception:
-        logger.debug("Could not report an LLM 429 to assignment dispatch", exc_info=True)
+        logger.debug("Could not report an LLM rate limit to assignment dispatch", exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1345,14 +1370,15 @@ async def retry_llm_call[T](
         try:
             return await fn()
         except Exception as exc:
+            if is_rate_limit_error(exc):
+                # Met by an assignment's run, it halves that assignment's
+                # concurrency for a while; anywhere else, nothing. Noted
+                # whether retried or not (``x-should-retry: false``).
+                await _note_llm_rate_limit()
             if not is_retryable(exc):
                 raise
 
             last_exc = exc
-            if is_rate_limit_error(exc):
-                # Met by an assignment's run, it halves that assignment's
-                # concurrency for a while; anywhere else, nothing.
-                await _note_llm_rate_limit()
 
             if attempt >= max_retries:
                 logger.error(
@@ -1709,7 +1735,9 @@ class ChatResponse:
             * ``"cancelled"`` / ``"timeout"`` — runtime aborts.
 
         pending_task_ids: Background task ids still in flight when
-            ``stop_reason`` is ``waiting_on_tasks``.
+            ``stop_reason`` is ``waiting_on_tasks``, or the never-started
+            children a final answer left running on their own
+            (``agent_loop.never_started_task_ids``).
         _provider_extra: Opaque provider data carried to ChatMessage.
         trace_metadata: Facts only the provider knows about the REQUEST this
             answers (Anthropic: ``thinking_replay``), merged by the
@@ -2837,6 +2865,9 @@ class BaseLLMProvider(ABC):
         Providers without speech return an empty list (the default).
         """
         return []
+
+    async def load_speech_capabilities(self, model: str | None) -> None:
+        """Read what *model* speaks with before the sync checks below; the default has nothing to read."""
 
     def speech_takes_style(self, model: str) -> bool | None:
         """Whether speech *model* follows a written delivery instruction (``SpeechRequest.style``); ``None`` when unknown."""

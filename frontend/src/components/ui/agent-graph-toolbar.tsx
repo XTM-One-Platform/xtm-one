@@ -56,6 +56,11 @@ export interface AgentGraphToolbarProps {
   /** The layout picked; no layout control when absent (the map's Schedule view). */
   layout?: GraphLayout;
   onLayoutChange?: (layout: GraphLayout) => void;
+  /**
+   * The layouts offered, in this order; every layout by default. A graph where
+   * one of them means nothing leaves it out (the work items graph has no org chart, #1062).
+   */
+  layouts?: readonly GraphLayout[];
   /** The toolbar's accessible name; "Graph toolbar" by default. */
   ariaLabel?: string;
   /**
@@ -334,9 +339,12 @@ function CounterList({ counters }: { counters: AgentGraphCounter[] }) {
   );
 }
 
+const ALL_LAYOUTS: readonly GraphLayout[] = ["force", "hierarchy-tb", "hierarchy-lr", "radial", "orgchart"];
+
 export function AgentGraphToolbar({
   layout,
   onLayoutChange,
+  layouts = ALL_LAYOUTS,
   ariaLabel,
   counters,
   legend,
@@ -356,13 +364,14 @@ export function AgentGraphToolbar({
     setPicked(next);
     onLayoutChange?.(next);
   };
-  const options: { key: GraphLayout; label: string }[] = [
-    { key: "force", label: t_i18n("Force") },
-    { key: "hierarchy-tb", label: t_i18n("Top down") },
-    { key: "hierarchy-lr", label: t_i18n("Left to right") },
-    { key: "radial", label: t_i18n("Radial") },
-    { key: "orgchart", label: t_i18n("Org chart") },
-  ];
+  const labels: Record<GraphLayout, string> = {
+    force: t_i18n("Force"),
+    "hierarchy-tb": t_i18n("Top down"),
+    "hierarchy-lr": t_i18n("Left to right"),
+    radial: t_i18n("Radial"),
+    orgchart: t_i18n("Org chart"),
+  };
+  const options = layouts.map((key) => ({ key, label: labels[key] }));
   return (
     <div
       role="toolbar"

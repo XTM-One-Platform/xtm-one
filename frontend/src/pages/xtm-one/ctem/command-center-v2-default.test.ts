@@ -18,7 +18,7 @@ import { CTEM_WIDGETS, valueBandCarriesTopLine } from "./dashboard-layout.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-const DEFAULT = ["hero", "lifecycle_band", "prioritization_funnel", "briefing", "act_now", "cases", "stats_coverage", "done_for_you", "fleets_row"] as const;
+const DEFAULT = ["hero", "lifecycle_band", "cases", "prioritization_funnel", "briefing", "act_now", "stats_coverage", "done_for_you", "fleets_row"] as const;
 const CATALOG = [
   "value_band",
   "kpi_posture",
@@ -47,7 +47,7 @@ test("every widget id of the command center still exists: none lost, none added 
   assert.deepEqual([...widgetIds(CTEM_WIDGETS)].sort(), [...DEFAULT, ...CATALOG].sort());
 });
 
-test("the default layout reads hero, lifecycle, funnel, briefing, Act now, Cases, stats, Done for you, fleets, at full width, with no gap or overlap", () => {
+test("the default layout reads hero, lifecycle, Cases, funnel, briefing, Act now, stats, Done for you, fleets, at full width, with no gap or overlap (#1621)", () => {
   const layout = defaultLayout(CTEM_WIDGETS);
   assert.deepEqual(readingOrder(layout.items).map((item) => item.i), [...DEFAULT]);
   let row = 0;

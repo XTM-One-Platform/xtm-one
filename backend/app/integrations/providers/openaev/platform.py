@@ -23,9 +23,38 @@ import json
 import logging
 from typing import Any
 
+from app.core.module_versions import RegisteredVersionFn, version_answer
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
-from ._common import PlatformCapabilities, _api, _search_body, json_answer
+from ._common import PlatformCapabilities, _api, _search_body, is_not_found_error, json_answer
+from .engine_schema import engine_entity_of, engine_filter_keys
+
+
+async def _engine_keys_lines(base_url: str, headers: dict[str, str], class_name: str) -> list[str]:
+    """The engine filter keys of the entity indexing *class_name*, for query_openaev_analytics.
+
+    The analytics engine filters on its own indexed fields, not on the model
+    attributes above (asset_tags there is base_tags_side here).
+    """
+    entity = engine_entity_of(class_name)
+    if not entity:
+        return []
+    keys, err = await engine_filter_keys(_api, base_url, headers, [entity])
+    if err or not keys:
+        return [f"Engine keys of '{entity}' for query_openaev_analytics: unavailable ({err or 'none reported'})."]
+    lines = [
+        f"Engine keys of '{entity}' ({len(keys)}) - the ONLY keys query_openaev_analytics "
+        "accepts (the model keys above are for search tools):"
+    ]
+    for name in sorted(keys):
+        entry = keys[name]
+        line = f"  - {name}"
+        if entry["type"]:
+            line += f" ({entry['type']})"
+        if entry["operators"]:
+            line += f" operators: {', '.join(sorted(entry['operators']))}"
+        lines.append(line)
+    return lines
 
 
 def _version_from_body(body: str | None) -> str:
@@ -111,6 +140,144 @@ _CATALOG_ID_IS_NOT_AN_INSTANCE = (
     "shows each connector_instance_id) or connector_instance_id."
 )
 
+#: Runtime fields of a connector instance get, in the order they are shown. An
+#: OpenAEV that does not send one leaves it out of the answer (older builds send
+#: only the id and the two statuses). The keys are the ones OpenAEV already uses
+#: for the instance (ConnectorInstancePersisted) and for the composer
+#: (XtmComposerInstanceOutput.connector_image).
+_INSTANCE_RUNTIME_FIELDS = (
+    ("connector_image", "image"),
+    ("connector_instance_started_at", "started at"),
+    ("connector_instance_restart_count", "restart count"),
+    ("connector_instance_is_in_reboot_loop", "in reboot loop"),
+)
+
+
+#: Requested statuses (the operator's intent, REQUESTED_STATUS_TYPE) and the
+#: actual state each one aims for.
+_REQUESTED_TO_STATE = {"starting": "started", "stopping": "stopped"}
+
+#: Fields of a connector instance get already shown on their own line.
+_INSTANCE_SHOWN_KEYS = frozenset(
+    {
+        "connector_instance_id",
+        "connector_instance_current_status",
+        "connector_instance_requested_status",
+        "connector_instance_configurations",
+        *(key for key, _ in _INSTANCE_RUNTIME_FIELDS),
+    }
+)
+
+
+def _instance_status_lines(data: dict[str, object]) -> list[str]:
+    """The actual state and the requested intent of action='get', never confused.
+
+    OpenAEV keeps two fields: the current status (what the container is) and the
+    requested status (what the operator asked: keep it running or stopped). A
+    requested 'starting' next to a current 'started' is a running instance.
+    """
+    current = data.get("connector_instance_current_status")
+    requested = data.get("connector_instance_requested_status")
+    lines = [
+        f"  state (actual): {current if current else 'not reported'}",
+        f"  requested (intent): {requested if requested else 'not reported'}",
+    ]
+    target = _REQUESTED_TO_STATE.get(str(requested or "").lower())
+    if target and current:
+        if str(current).lower() == target:
+            lines.append(f"  reading: {current}, as requested")
+        else:
+            lines.append(
+                f"  reading: {current}; the request '{requested}' has not been reached yet "
+                f"(the state becomes {target} when XTM Composer applies it)"
+            )
+    return lines
+
+
+def _raw_scalar_lines(data: dict[str, object], shown: frozenset[str]) -> list[str]:
+    """The other scalar fields OpenAEV sent, as returned, so nothing is hidden."""
+    extra = [
+        (key, value)
+        for key, value in sorted(data.items())
+        if key not in shown and isinstance(value, str | int | float | bool) and value != ""
+    ]
+    if not extra:
+        return []
+    return ["  raw fields:"] + [f"    {key}: {value}" for key, value in extra]
+
+
+#: Connector fields of query_openaev_connectors shown after the name, when sent.
+_CONNECTOR_FIELD_SUFFIXES = ("_type", "_external", "_last_execution", "_updated_at")
+
+
+def _connector_field_text(c: dict[str, object], kind: str) -> str:
+    """Type, external, last execution and updated at of one connector, as sent."""
+    prefix = kind[:-1]
+    parts: list[str] = []
+    for suffix in _CONNECTOR_FIELD_SUFFIXES:
+        value = c.get(f"{prefix}{suffix}")
+        if value is None or value == "":
+            continue
+        if isinstance(value, bool):
+            value = "yes" if value else "no"
+        parts.append(f"{suffix[1:].replace('_', ' ')}: {value}")
+    return f" {{{', '.join(parts)}}}" if parts else ""
+
+
+#: Most log lines OpenAEV stores per instance (ConnectorInstanceLogService.LOG_SIZE_LIMIT).
+_MAX_LOG_TAIL = 100
+
+
+def _instance_runtime_lines(data: dict[str, object]) -> list[str]:
+    """The image and container lines of action='get', each only when OpenAEV sends it.
+
+    When OpenAEV reports no start time, the answer says so, so a reader never
+    takes a missing line for a confirmed rolling-image restart.
+    """
+    lines: list[str] = []
+    for key, label in _INSTANCE_RUNTIME_FIELDS:
+        value = data.get(key)
+        if value is None or value == "":
+            continue
+        if isinstance(value, bool):
+            value = "yes" if value else "no"
+        lines.append(f"  {label}: {value}")
+    if not data.get("connector_instance_started_at"):
+        lines.append(
+            "  started at: not reported by this OpenAEV (whether a new image was pulled cannot be read from here)"
+        )
+    return lines
+
+
+#: The XTM Composer fields of ``GET /api/settings`` (OpenAEV #9612), in the
+#: order they are shown.
+_COMPOSER_FIELDS = (
+    ("xtm_composer_version", "version"),
+    ("xtm_composer_image", "image"),
+    ("xtm_composer_last_connectivity_check", "last connectivity check"),
+)
+
+
+def _composer_lines(settings: object) -> list[str]:
+    """The XTM Composer the OpenAEV settings report, as answer lines.
+
+    The version and image are the ones XTM Composer itself reports at
+    registration and on each connectivity refresh ('unknown' for an XTM
+    Composer too old to report one). An OpenAEV that predates these fields, or
+    with no XTM Composer registered, is named as such: the platform version is
+    never shown in place of the Composer's.
+    """
+    if not isinstance(settings, dict) or not any(key in settings for key, _ in _COMPOSER_FIELDS):
+        return [
+            "XTM Composer: not reported by this OpenAEV (no XTM Composer registered, "
+            "or an OpenAEV release that does not expose its version and image)."
+        ]
+    lines = ["XTM Composer:"]
+    for key, label in _COMPOSER_FIELDS:
+        value = settings.get(key)
+        lines.append(f"  {label}: {value if value else 'not reported'}")
+    return lines
+
 
 def register(
     base_url: str,
@@ -118,6 +285,7 @@ def register(
     executor: CallableToolExecutor,
     *,
     capabilities: PlatformCapabilities,
+    registered_version_fn: RegisteredVersionFn | None = None,
 ) -> list[ToolDefinition]:
     async def query_openaev_connectors(kind: str = "injectors") -> str:
         kind = (kind or "injectors").strip().lower()
@@ -147,16 +315,25 @@ def register(
                 or c.get("collector_id")
                 or c.get("executor_id")
             )
-            active = c.get("injector_state") or c.get("collector_last_execution") or ""
+            active = c.get("injector_state") or ""
             instance = c.get("connector_instance")
             iid = instance.get("connector_instance_id") if isinstance(instance, dict) else None
             ids = f"id: {cid}, connector_instance_id: {iid}" if iid else f"id: {cid}"
-            lines.append(f"- {name} ({ids}){f' [{active}]' if active else ''}")
+            fields = _connector_field_text(c, kind)
+            lines.append(f"- {name} ({ids}){f' [{active}]' if active else ''}{fields}")
         lines.append(
             "A connector with a connector_instance_id was deployed from the catalog: "
-            "manage_openaev_connector_instance takes that id, or this connector id as "
-            "connector_id. A connector without one is registered externally."
+            "manage_openaev_connector_instance takes that id as connector_instance_id, "
+            "or this connector id as connector_id (with connector_kind for a collector "
+            "or executor). A connector without one is registered externally."
         )
+        # The XTM Composer that deploys the catalog connectors: a failed settings
+        # read leaves the connector list whole and says so.
+        sresp, serr = await _api(base_url, headers, "get", "/api/settings", "read the XTM Composer")
+        if serr:
+            lines.append(f"XTM Composer: could not be read ({serr})")
+        else:
+            lines.extend(_composer_lines(sresp.json() if sresp is not None else None))
         return "\n".join(lines)
 
     async def _related_ids(connector_id: str, kind: str) -> tuple[dict[str, Any] | None, str]:
@@ -177,7 +354,7 @@ def register(
                 f"resolve the connector instance of {k[:-1]} {connector_id}",
             )
             if err:
-                if len(kinds) > 1 and "404" in err:
+                if len(kinds) > 1 and is_not_found_error(err):
                     continue
                 return None, err
             data = resp.json() if resp is not None else None
@@ -303,8 +480,14 @@ def register(
         config: str = "",
         connector_id: str = "",
         connector_kind: str = "",
+        tail: int = _MAX_LOG_ENTRIES,
     ) -> str:
         action = (action or "").strip().lower()
+        try:
+            log_tail = int(tail or _MAX_LOG_ENTRIES)
+        except (TypeError, ValueError):
+            log_tail = _MAX_LOG_ENTRIES
+        log_tail = max(1, min(log_tail, _MAX_LOG_TAIL))
         connector_instance_id = (connector_instance_id or "").strip()
         connector_id = (connector_id or "").strip()
         kind = (connector_kind or "").strip().lower()
@@ -318,7 +501,27 @@ def register(
             if connector_id:
                 ids, found = await _related_ids(connector_id, kind)
                 if ids is None:
-                    return found
+                    # A connector instance id passed as connector_id: OpenAEV
+                    # knows no connector by it, but it names an instance.
+                    if not is_not_found_error(found) and not found.startswith("No injector"):
+                        return found
+                    instance_resp, instance_err = await _api(
+                        base_url,
+                        headers,
+                        "get",
+                        f"/api/connector-instances/{connector_id}",
+                        "get connector instance",
+                    )
+                    if instance_err:
+                        return found
+                    instance = instance_resp.json() if instance_resp is not None else None
+                    ids = {
+                        "connector_instance_id": connector_id,
+                        "catalog_connector_id": (instance or {}).get("catalog_connector_id")
+                        if isinstance(instance, dict)
+                        else None,
+                    }
+                    found = "connector instances"
                 instance_id = ids.get("connector_instance_id")
                 if not instance_id:
                     return (
@@ -331,7 +534,11 @@ def register(
                 connector_instance_id = str(instance_id)
                 if not catalog_connector_id:
                     catalog_connector_id = ids.get("catalog_connector_id") or ""
-                resolved_from = f" (resolved from {found[:-1]} {connector_id})"
+                resolved_from = (
+                    " (connector_id was a connector instance id)"
+                    if found == "connector instances"
+                    else f" (resolved from {found[:-1]} {connector_id})"
+                )
             elif catalog_connector_id and action != "update_config":
                 return _CATALOG_ID_IS_NOT_AN_INSTANCE
             elif catalog_connector_id:
@@ -342,7 +549,7 @@ def register(
 
         def _instance_err(err: str) -> str:
             # The usual mistake: a connector or catalog id passed as the instance id.
-            if resolved_from or "404" not in err:
+            if resolved_from or not is_not_found_error(err):
                 return err
             return (
                 f"{err} If {connector_instance_id} is an injector, collector or "
@@ -415,12 +622,9 @@ def register(
             lines = [
                 f"Connector instance {data.get('connector_instance_id')}{resolved_from}"
             ]
-            lines.append(
-                f"  current status: {data.get('connector_instance_current_status')}"
-            )
-            lines.append(
-                f"  requested status: {data.get('connector_instance_requested_status')}"
-            )
+            lines.extend(_instance_status_lines(data))
+            lines.extend(_instance_runtime_lines(data))
+            lines.extend(_raw_scalar_lines(data, _INSTANCE_SHOWN_KEYS))
             return "\n".join(lines)
 
         if action == "update_config":
@@ -463,7 +667,11 @@ def register(
             )
             if err:
                 return _instance_err(err)
-            return f"Connector instance {connector_instance_id} is now {status}."
+            return (
+                f"Connector instance {connector_instance_id}: requested status set to {status}. "
+                f"This is the intent; action='get' shows the actual state once XTM Composer "
+                f"applies it."
+            )
 
         if action == "logs":
             if not connector_instance_id:
@@ -476,14 +684,14 @@ def register(
                 "post",
                 f"/api/connector-instances/{connector_instance_id}/logs/search",
                 "search connector instance logs",
-                json=_search_body(size=_MAX_LOG_ENTRIES),
+                json=_search_body(size=log_tail),
             )
             if err:
                 return _instance_err(err)
             data = resp.json()
             page = data if isinstance(data, dict) else {}
             content = page.get("content")
-            items = content[:_MAX_LOG_ENTRIES] if isinstance(content, list) else []
+            items = content[:log_tail] if isinstance(content, list) else []
             if not items:
                 return f"No logs for connector instance {connector_instance_id}{resolved_from}."
             # Oldest first, so the most recent entry reads last. Capped by entry
@@ -569,10 +777,13 @@ def register(
                 "list filterable attributes",
                 params={"filterableOnly": "true"}, json=[],
             )
-            if err:
-                return err
-            schemas = resp.json() or []
+            schemas = (resp.json() or []) if resp is not None and not err else []
             if not schemas:
+                engine_lines = await _engine_keys_lines(base_url, headers, class_name)
+                if engine_lines:
+                    return "\n".join(engine_lines)
+                if err:
+                    return err
                 return (
                     f"No filterable attributes reported for '{class_name}'. Check "
                     "the class name (it is the OpenAEV model class, e.g. Asset)."
@@ -598,6 +809,7 @@ def register(
                 "instead of returning an error, so always take keys from this list "
                 "rather than guessing."
             )
+            lines.extend(await _engine_keys_lines(base_url, headers, class_name))
             return "\n".join(lines)
 
         if action == "get":
@@ -637,15 +849,19 @@ def register(
             resp, err = await _api(
                 base_url, headers, "get", "/api/settings/version", "get version"
             )
+            version = "" if err else _version_from_body(resp.text if resp is not None else "")[:200]
             if err:
-                return err
-            version = _version_from_body(resp.text if resp is not None else "")
-            if not version:
-                return (
+                answer = err
+            elif not version:
+                answer = (
                     "OpenAEV answered GET /api/settings/version without a version "
                     "(empty body): the platform version could not be read."
                 )
-            return f"OpenAEV version: {json.dumps({'version': version[:200]})}"
+            else:
+                answer = f"OpenAEV version: {json.dumps({'version': version})}"
+            if registered_version_fn is None:
+                return answer
+            return version_answer("OpenAEV", answer, version, await registered_version_fn())
 
         if action == "update_policies":
             if not extra:
@@ -688,7 +904,8 @@ def register(
             description=(
                 "List OpenAEV connectors (read-only). kind: 'injectors' (inject "
                 "delivery types), 'collectors' (security platform data collectors), or "
-                "'executors' (agent execution backends)."
+                "'executors' (agent execution backends). Also shows the XTM Composer "
+                "version, image and last connectivity check."
             ),
             input_schema={
                 "type": "object",
@@ -743,7 +960,9 @@ def register(
                 "parameters), 'get' (connector_instance_id), 'update_config' "
                 "(connector_instance_id + catalog_connector_id + config), "
                 "'start'/'stop' (connector_instance_id), 'logs' "
-                "(connector_instance_id), 'delete' (connector_instance_id). For a "
+                "(connector_instance_id, tail), 'delete' (connector_instance_id). "
+                "'get' shows the actual state apart from the requested intent and "
+                "the other fields OpenAEV returns. For a "
                 "connector deployed from the UI, pass its injector, collector or "
                 "executor id as connector_id instead of connector_instance_id. "
                 "Requires Enterprise Edition with a running XTM Composer; secret "
@@ -786,6 +1005,12 @@ def register(
                         "enum": ["injector", "collector", "executor"],
                         "description": "Kind of connector_id; tried in turn when omitted.",
                     },
+                    "tail": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": _MAX_LOG_TAIL,
+                        "description": "logs: most recent lines to return (default 50).",
+                    },
                     "config": {
                         "type": "string",
                         "description": (
@@ -807,7 +1032,8 @@ def register(
                 "tenant id and which PREVIEW FEATURES are enabled - check this "
                 "first when an endpoint unexpectedly 404s, because disabled "
                 "preview features answer 404 rather than 403), 'filter_keys' "
-                "(class_name - the valid filter 'key' names for an entity; "
+                "(class_name - the valid filter 'key' names for an entity, and "
+                "the engine keys query_openaev_analytics accepts; "
                 "OpenAEV silently coerces an unknown filter operator to 'eq' "
                 "instead of erroring, so never guess keys), 'get' (full "
                 "settings), 'get_runtime' (the runtime settings in full: inject "

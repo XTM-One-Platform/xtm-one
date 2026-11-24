@@ -42,6 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.health import HealthCycle
 from app.models.health_cycle import HealthCycleRun
+from app.services.health.identity import MODULE_CHECKER_ROLES
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,8 @@ class Window:
     target_type: str | None
     target_id: uuid.UUID | None
     fleet_agent_ids: list[uuid.UUID]
+    #: The cycle the digest is built for (its check report is keyed by it).
+    cycle_id: uuid.UUID | None = None
 
 
 @dataclass
@@ -78,6 +81,15 @@ class CycleDigest:
     proposals: dict[str, Any] | None = None
     budget: dict[str, Any] = field(default_factory=dict)
     dry_run_writes: int | None = None
+    #: A Module Analyst cycle (#101 S14d, dev-docs 12.7): recommendations it attached, by confidence.
+    recommendations: dict[str, int] | None = None
+    #: A Module Analyst cycle: agentic findings of its registration opened and resolved in the window.
+    agentic_findings: dict[str, int] | None = None
+    #: A module checker cycle (#101 S15c, dev-docs 13.8): its check report's counts and failing checks.
+    check_report: dict[str, Any] | None = None
+    #: The weekly digest (#101 S15e, dev-docs 13.8): its trigger's Modules part, per module, as the
+    #: schedule computed it from the stored reports (``cycles._digest_payload``), never a model's count.
+    modules: dict[str, Any] | None = None
     skipped: list[dict[str, Any]] = field(default_factory=list)
     #: Sections a lower level could not give (not installed, failed): shown as such.
     unavailable: list[str] = field(default_factory=list)
@@ -160,6 +172,111 @@ async def _proposals(db: AsyncSession, w: Window) -> dict[str, Any] | None:
     }
 
 
+async def _recommendations(db: AsyncSession, w: Window) -> dict[str, int] | None:
+    """Recommendations attached to the module registration's findings in the window, by confidence."""
+    from app.models.health_module_analyst import RECOMMENDATION_CONFIDENCES, HealthFindingRecommendation
+
+    if w.target_type != "module" or w.target_id is None:
+        return None
+    rows = await db.execute(
+        select(HealthFindingRecommendation.confidence, func.count())
+        .where(
+            HealthFindingRecommendation.registration_id == w.target_id,
+            HealthFindingRecommendation.created_at >= w.since,
+            HealthFindingRecommendation.created_at < w.until,
+        )
+        .group_by(HealthFindingRecommendation.confidence)
+    )
+    counts = {confidence: 0 for confidence in RECOMMENDATION_CONFIDENCES}
+    counts.update({str(confidence): int(count) for confidence, count in rows.all()})
+    return {"attached": sum(counts.values()), **counts}
+
+
+async def _agentic_findings(db: AsyncSession, w: Window) -> dict[str, int] | None:
+    """Agentic findings (``<module>.agentic.<slug>``) of the registration opened and resolved in the window."""
+    from app.models.health_check import HealthCheckFinding
+
+    if w.target_type != "module" or w.target_id is None:
+        return None
+    scoped = (
+        HealthCheckFinding.check_id.contains(".agentic."),
+        HealthCheckFinding.subject["registration_id"].astext == str(w.target_id),
+    )
+    opened = await db.scalar(
+        select(func.count()).where(
+            *scoped, HealthCheckFinding.first_seen >= w.since, HealthCheckFinding.first_seen < w.until
+        )
+    )
+    resolved = await db.scalar(
+        select(func.count()).where(
+            *scoped, HealthCheckFinding.resolved_at >= w.since, HealthCheckFinding.resolved_at < w.until
+        )
+    )
+    return {"opened": int(opened or 0), "resolved": int(resolved or 0)}
+
+
+async def _check_report(db: AsyncSession, w: Window) -> dict[str, Any] | None:
+    """The check report the module checker stored in this cycle (13.6): counts and the checks not passed.
+
+    ``recorded`` is false when the run stored none, which the digest lists as skipped work.
+    """
+    from app.models.health_module_analyst import HealthModuleCheckReport
+
+    if w.target_type != "module" or w.cycle_id is None:
+        return None
+    row = (
+        await db.execute(select(HealthModuleCheckReport).where(HealthModuleCheckReport.cycle_id == w.cycle_id))
+    ).scalar_one_or_none()
+    if row is None:
+        return {"recorded": False}
+    return {
+        "recorded": True,
+        "report_id": str(row.id),
+        "passed": int(row.passed),
+        "warned": int(row.warned),
+        "failed": int(row.failed),
+        "not_run": int(row.not_run),
+        "not_passed": [
+            {"id": entry.get("id"), "verdict": entry.get("verdict"), "finding_id": entry.get("finding_id")}
+            for entry in (row.checks or [])
+            if isinstance(entry, dict) and entry.get("verdict") != "pass"
+        ],
+    }
+
+
+async def _module_analyst_budget(db: AsyncSession, run: Any, cap_tokens: int | None) -> dict[str, Any]:
+    """A Module Analyst cycle's spend: its run's traces against its own per-cycle cap (dev-docs 12.5).
+
+    Its cycle row carries nothing (``cycles._book_runs`` books it at zero on its own ledger), so
+    the fleet figures would read 0 against the fleet cap; ``ledger`` says which ceiling applies.
+    """
+    from decimal import Decimal
+
+    from app.models.llm_trace import LLMTrace
+
+    tokens, cost = 0, Decimal(0)
+    if run is not None:
+        used = func.coalesce(
+            LLMTrace.total_tokens,
+            func.coalesce(LLMTrace.input_tokens, 0) + func.coalesce(LLMTrace.output_tokens, 0),
+        )
+        row = (
+            await db.execute(
+                select(func.coalesce(func.sum(used), 0), func.coalesce(func.sum(LLMTrace.total_cost), 0)).where(
+                    LLMTrace.assignment_run_id == run.id
+                )
+            )
+        ).one()
+        tokens, cost = int(row[0] or 0), Decimal(row[1] or 0)
+    return {
+        "ledger": "module_analyst",
+        "spent_tokens": tokens,
+        "spent_cost_usd": str(cost),
+        "cap_tokens": cap_tokens,
+        "cap_cost_usd": None,
+    }
+
+
 def _target(w: Window) -> tuple[str, uuid.UUID] | None:
     return (w.target_type, w.target_id) if w.target_id is not None else None
 
@@ -171,6 +288,9 @@ _SECTIONS: Final[dict[str, Section]] = {
     "experiments": _experiments,
     "proposals": _proposals,
     "dry_run_writes": _dry_run_writes,
+    "recommendations": _recommendations,
+    "agentic_findings": _agentic_findings,
+    "check_report": _check_report,
 }
 #: Which sections each specialist's cycle reports.
 _SECTIONS_BY_SPECIALIST: Final[dict[str, tuple[str, ...]]] = {
@@ -178,6 +298,12 @@ _SECTIONS_BY_SPECIALIST: Final[dict[str, tuple[str, ...]]] = {
     "quality_analyst": ("findings", "experiments", "proposals", "dry_run_writes"),
     "flow_lab": ("findings", "experiments", "proposals", "dry_run_writes"),
     "experimenter": ("experiments", "proposals", "dry_run_writes"),
+    # What a module checker attached to its registration's findings and the agentic findings it
+    # opened (#101 S14d, S15); ``module_analyst`` reads the cycles the S14 member closed.
+    **{
+        role: ("check_report", "recommendations", "agentic_findings", "proposals", "dry_run_writes")
+        for role in sorted(MODULE_CHECKER_ROLES)
+    },
     # An investigation delegates to every specialist; the weekly digest reads cycles.
     "orchestrator": ("findings", "experiments", "proposals", "dry_run_writes"),
 }
@@ -196,6 +322,21 @@ async def _load_section(db: AsyncSession, name: str, w: Window) -> tuple[Any, bo
     except Exception:
         logger.exception("Platform Health digest: section %s failed", name)
         return None, False
+
+
+def _weekly_modules(run: Any) -> tuple[dict[str, Any] | None, bool]:
+    """The Modules part the weekly digest's trigger carries, and whether its read failed.
+
+    ``(None, False)`` for any other run; ``(None, True)`` when the schedule could not read the
+    reports (``modules_unavailable``), which the page shows as unavailable, never as 0.
+    """
+    payload = getattr(run, "trigger_payload", None) if run is not None else None
+    if not isinstance(payload, dict):
+        return None, False
+    if payload.get("modules_unavailable"):
+        return None, True
+    modules = payload.get("modules")
+    return (modules, False) if isinstance(modules, dict) else (None, False)
 
 
 def digest_status(cycle_status: str, run_status: str | None, skipped: list[dict]) -> str:
@@ -222,8 +363,10 @@ async def build_digest(db: AsyncSession, cycle: HealthCycle) -> CycleDigest:
         target_type=cycle.target_type,
         target_id=cycle.target_id,
         fleet_agent_ids=await fleet_agent_ids(db),
+        cycle_id=cycle.id,
     )
-    caps = (await load_health_settings(db)).budget
+    health = await load_health_settings(db)
+    caps = health.budget
     digest = CycleDigest(
         cycle_id=str(cycle.id),
         specialist=cycle.specialist,
@@ -237,12 +380,16 @@ async def build_digest(db: AsyncSession, cycle: HealthCycle) -> CycleDigest:
         run_status=run.status if run is not None else None,
         stop_reason=cycle.stop_reason,
         signal=record.signal if record is not None else None,
-        budget={
-            "spent_tokens": int(cycle.spent_tokens),
-            "spent_cost_usd": str(cycle.spent_cost_usd),
-            "cap_tokens": caps.cycle_tokens,
-            "cap_cost_usd": str(caps.cycle_cost_usd) if caps.cycle_cost_usd is not None else None,
-        },
+        budget=(
+            await _module_analyst_budget(db, run, health.module_analyst.cycle_tokens)
+            if cycle.specialist in MODULE_CHECKER_ROLES
+            else {
+                "spent_tokens": int(cycle.spent_tokens),
+                "spent_cost_usd": str(cycle.spent_cost_usd),
+                "cap_tokens": caps.cycle_tokens,
+                "cap_cost_usd": str(caps.cycle_cost_usd) if caps.cycle_cost_usd is not None else None,
+            }
+        ),
     )
     for name in _SECTIONS_BY_SPECIALIST.get(cycle.specialist, ()):
         value, available = await _load_section(db, name, window)
@@ -250,6 +397,9 @@ async def build_digest(db: AsyncSession, cycle: HealthCycle) -> CycleDigest:
             setattr(digest, name, value)
         else:
             digest.unavailable.append(name)
+    digest.modules, modules_unavailable = _weekly_modules(run)
+    if modules_unavailable:
+        digest.unavailable.append("modules")
 
     if run is None:
         digest.skipped.append({"what": "run", "reason": cycle.stop_reason or "not_started"})
@@ -261,6 +411,8 @@ async def build_digest(db: AsyncSession, cycle: HealthCycle) -> CycleDigest:
         count = (digest.experiments or {}).get(status)
         if count:
             digest.skipped.append({"what": "experiments", "reason": status, "count": int(count)})
+    if digest.check_report is not None and not digest.check_report.get("recorded"):
+        digest.skipped.append({"what": "check_report", "reason": "not_recorded"})
     unmeasured = ((digest.proposals or {}).get("by_verdict") or {}).get("unmeasured")
     if unmeasured:
         digest.skipped.append({"what": "measurement", "reason": "unmeasured", "count": int(unmeasured)})

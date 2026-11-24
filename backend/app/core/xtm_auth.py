@@ -47,6 +47,8 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _XTM_JWT_TTL_MINUTES = 10
+#: How long a token this platform signs lives, in seconds (``expires_in`` of the exchange).
+XTM_JWT_TTL_SECONDS = _XTM_JWT_TTL_MINUTES * 60
 
 #: The longest an incoming cross-platform token may live (``exp - iat``). Every
 #: product signs for 10 minutes; the margin covers a signer that reads its clock

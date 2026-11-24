@@ -365,6 +365,10 @@ class AgentResponse(BaseModel):
     is_company_managed: bool = False
     #: Runs, traces, work items and state hidden from non-admins (#11624).
     hide_activity_from_non_admins: bool = False
+    #: A built-in's organization notes, appended after its persona (#914).
+    customer_notes: str | None = None
+    #: The customer-layer fields set on a built-in, kept across seed runs (#914).
+    customer_fields: list[str] | None = None
     shared_group_ids: list[str] | None = None
     shared_group_permissions: dict[str, str] | None = None
     shared_user_ids: list[str] | None = None
@@ -749,6 +753,9 @@ class UpdateAgentRequest(BaseModel):
     is_company_managed: bool | None = None
     #: Admin only (#11624): hide this agent's activity from non-admins.
     hide_activity_from_non_admins: bool | None = None
+    #: A built-in's organization notes (#914), appended after its persona;
+    #: null or "" clears them. Bounded by CUSTOMER_NOTES_MAX_CHARS.
+    customer_notes: str | None = Field(default=None, max_length=4000)
     # Owner (``user_id``) transfer — admin only. Reassigns the agent (and its
     # assignments) to another user. Ignored when omitted or unchanged.
     user_id: str | None = None

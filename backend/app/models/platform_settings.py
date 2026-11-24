@@ -18,6 +18,7 @@ Fields owned by this table:
 
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSON, UUID
@@ -209,6 +210,15 @@ class PlatformSettings(Base):
     # not silently open it on a deployment that never asked for it.
     xtm_mcp_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
+    )
+
+    # Reply suggestions: once a chat turn is done, the routing model proposes
+    # the user's next message as ghost text in the composer
+    # (``services/chat_reply_suggestions.py``). Default ON, but nothing is
+    # generated while no ``routing_model`` is set; each user may turn it off
+    # (``User.reply_suggestions_enabled``).
+    reply_suggestions_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
     )
 
     # Organization summary in every agent's system prompt (#11533): the
@@ -445,6 +455,13 @@ class PlatformSettings(Base):
     organization_setup_prompted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     organization_setup_prompted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     organization_setup_prompt_outcome: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Versioned since #1087 (CTEM-33): the setup version the answer above belongs to
+    # (``ctem-loop-1``...). NULL with an answer = the unversioned #9173 proposal, so an
+    # upgrade to a build carrying a setup version proposes that version once.
+    setup_prompt_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # The steps of the guided flow done or skipped, for one version:
+    # ``{"version": "ctem-loop-1", "steps": {"organization": "done", ...}}``.
+    setup_prompt_progress: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True, default=None)
 
     # --- Timestamps ───────────────────────────────────────────────────────
     created_at: Mapped[datetime] = mapped_column(

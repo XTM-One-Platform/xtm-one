@@ -362,7 +362,7 @@ describe("the account page", () => {
     };
     at("/profile/agent-accounts/acct/sent", <AgentAccountReplyCard reply={full} />);
     const hrefs = screen.getAllByRole("link", { name: /that produced this send/ }).map((a) => a.getAttribute("href"));
-    expect(hrefs).toEqual(["/agents/ag-1", "/chat?c=cv-1", "/runs/rn-1", "/assignments/as-1"]);
+    expect(hrefs).toEqual(["/agents/ag-1", "/chat?c=cv-1", "/operations/executions/rn-1", "/agents/assignments/as-1"]);
   });
 
   it("renders no origin link when the origin names no id", () => {

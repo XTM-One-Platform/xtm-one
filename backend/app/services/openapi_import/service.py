@@ -52,6 +52,7 @@ from app.services.openapi_import.operations import (
     analyze_spec,
     auth_url_base,
     is_builtin_tool_name,
+    method_access,
 )
 from app.services.openapi_import.schema import clean_text
 from app.services.openapi_import.security import AuthOption
@@ -188,7 +189,8 @@ def resolve_auth_option(analysis: SpecAnalysis, option_id: str | None) -> AuthOp
     """The chosen (or default) authentication option; refuses unsupported ones."""
     option = analysis.auth_option(option_id or analysis.default_auth_option)
     if option is None:
-        raise OpenAPIImportError(f"Unknown authentication option '{option_id}'.")
+        valid = ", ".join(o.id for o in analysis.auth_options if o.supported) or "none"
+        raise OpenAPIImportError(f"Unknown authentication option '{option_id}'. Valid options: {valid}.")
     if not option.supported:
         raise OpenAPIImportError(
             f"Authentication '{option.label}' is not supported: {option.unsupported_reason}."
@@ -209,10 +211,13 @@ async def analyze_source(
     content: str | None,
     tool_prefix: str | None = None,
     archive: bytes | None = None,
+    server_url_fallback: str | None = None,
 ) -> tuple[SpecDocument, SpecAnalysis]:
     """Load, bundle and convert a source (parsing and conversion off the event loop).
 
     *archive* is an uploaded ZIP of spec files, instead of *url* / *content*.
+    *server_url_fallback* (the server URL of the integration a replacement is
+    for) resolves relative OAuth URLs when the document has no base of its own.
     """
     if archive is not None:
         if (url or "").strip() or (content or "").strip():
@@ -221,9 +226,15 @@ async def analyze_source(
     else:
         document, spec_archive = await load_spec_source(url=url, content=content), None
     document, bundle_warnings = await bundle_external_refs(document, archive=spec_archive)
-    discovery = await fetch_discovery(document, auth_url_base(document))
+    discovery = await fetch_discovery(document, auth_url_base(document, server_url_fallback))
     analysis = await run_parse(
-        functools.partial(analyze_spec, document, tool_prefix=tool_prefix, discovery=discovery)
+        functools.partial(
+            analyze_spec,
+            document,
+            tool_prefix=tool_prefix,
+            discovery=discovery,
+            server_url_fallback=server_url_fallback,
+        )
     )
     analysis.warnings = [*bundle_warnings, *analysis.warnings]
     return document, analysis
@@ -239,10 +250,15 @@ async def prepare_import(
     tool_prefix: str | None,
     tool_overrides: dict[str, Any] | None = None,
     archive: bytes | None = None,
+    server_url_fallback: str | None = None,
 ) -> ImportPlan:
     """Load, convert and validate an import request (raises OpenAPIImportError)."""
     document, analysis = await analyze_source(
-        url=url, content=content, tool_prefix=tool_prefix, archive=archive
+        url=url,
+        content=content,
+        tool_prefix=tool_prefix,
+        archive=archive,
+        server_url_fallback=server_url_fallback,
     )
     selected = resolve_selection(analysis, selected_operations)
     option = resolve_auth_option(analysis, auth_option_id)
@@ -542,8 +558,29 @@ def imported_operations(active_tools: list[Any] | None) -> list[dict[str, str]]:
         method = str(execution.get("method") or "").upper()
         path = str(execution.get("path") or "")
         operation = str(meta.get("operation") or f"{method} {path}".strip())
-        out.append({"name": name, "method": method, "path": path, "operation": operation})
+        out.append(
+            {
+                "name": name,
+                "method": method,
+                "path": path,
+                "operation": operation,
+                "access": method_access(method),
+            }
+        )
     return out
+
+
+def operation_table(active_tools: list[Any] | None, *, limit: int = 60) -> str:
+    """One line per imported operation: tool, access, ``METHOD /path``.
+
+    The access is the one a read-only binding enforces (:func:`method_access`),
+    so a caller reads the table instead of rebuilding it from the spec.
+    """
+    operations = imported_operations(active_tools)
+    lines = [f"  - {op['name']} [{op['access']}] `{op['method']} {op['path']}`" for op in operations[:limit]]
+    if len(operations) > limit:
+        lines.append(f"  - and {len(operations) - limit} more")
+    return "\n".join(lines)
 
 
 #: Words that betray a GET with a side effect (APIs do misuse GET): such an

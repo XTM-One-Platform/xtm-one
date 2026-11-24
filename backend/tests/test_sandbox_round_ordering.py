@@ -96,6 +96,7 @@ def test_every_workspace_writing_tool_is_counted_and_no_reader_is():
         "sandbox_apply_patch",
         "sandbox_write_file",
         "sandbox_json_keys",
+        "sandbox_convert_images",
         "materialize_repository",
         "sandbox_checkout_rebase",
         "sandbox_diff_files",

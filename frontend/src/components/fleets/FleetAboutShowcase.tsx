@@ -66,7 +66,6 @@ import { cn, formatCompactNumber, timeAgo } from "@/lib/utils";
 
 import {
   aboutStatus,
-  automationCount,
   checklistGroups,
   clampChips,
   INTEGRATION_CARD_PROVIDERS_MAX,
@@ -75,6 +74,7 @@ import {
   moduleLabel,
   quotaEstimate,
   quotaRange,
+  shownAutomationCount,
   setupPrerequisites,
   successRate,
   triggerKinds,
@@ -85,6 +85,7 @@ import { FleetAboutSteps } from "./FleetAboutSteps";
 import { FleetAboutSuggestions } from "./FleetAboutSuggestions";
 import { FleetModuleMark as ModuleMark } from "./FleetModuleMark";
 import { FleetOptInBadge } from "./FleetOptInBadge";
+import { FleetTriggerList } from "./FleetTriggerList";
 
 /** The member status chip's variant, as on the Members tab. */
 const MEMBER_STATUS_VARIANT = {
@@ -203,7 +204,9 @@ export function FleetAboutShowcase({
   const [metShown, setMetShown] = useState(false);
   const [stepsExpanded, setStepsExpanded] = useState(false);
   const s = doc.structured ?? {};
-  const automations = automationCount(health, assignments);
+  // One count source with the header pill and the CTEM loop setup (UX r1 B2 on #1092): the health's automations
+  // (Platform Health counts itself there, #974); the members' assignments only while the health has no count.
+  const automations = shownAutomationCount(health, assignments);
   // One status source with the header pill (UX r1 B2): the health's automations, as `FleetHeaderStatus` reads them.
   const status = fleetOptIn(health?.automations) ?? aboutStatus(health, automations);
   const last = lastRunAt(health);
@@ -431,10 +434,17 @@ export function FleetAboutShowcase({
             }
           />
         )}
-        {((s.steps?.length ?? 0) > 0 || kinds.length > 0) && (
+        {((s.steps?.length ?? 0) > 0 || kinds.length > 0 || (s.triggers?.length ?? 0) > 0) && (
           <Section id="about-flow" title={t_i18n("How it works")}>
             <Card className="flex-1">
               <CardContent className="flex flex-col gap-3 p-4">
+                {/* What starts it (#1319): every documented trigger, the same list as the setup wizard's first step. */}
+                {(s.triggers?.length ?? 0) > 0 && (
+                  <div className="space-y-1.5 content-compact" data-testid="about-triggers">
+                    <h3 className="content-caption font-semibold text-default-secondary">{t_i18n("What starts it")}</h3>
+                    <FleetTriggerList triggers={s.triggers} testId="about-trigger" />
+                  </div>
+                )}
                 <FleetAboutSteps structured={s} onExpandedChange={setStepsExpanded} />
               </CardContent>
             </Card>

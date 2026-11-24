@@ -2,39 +2,54 @@
 
 /**
  * The visual language every CTEM Cases screen shares (dev-docs/ctem-cases.md
- * section 7.0): one DS Chip severity per state and per priority, owners as the
- * DS Avatar, "Unassigned" in secondary text, never a warning colour.
+ * section 7.0): one hot tone per state and per priority (the shared outlined
+ * ToneBadge, the hot hues of Work items and Tasks, #1267), owners as the DS Avatar,
+ * "Unassigned" in secondary text, never a warning colour.
  */
-import { Avatar, Chip } from "@filigran/design-system";
+import { Avatar, Icon } from "@filigran/design-system";
+import { type HotTone, ToneBadge } from "@/components/ui/tone-badge";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import type { CtemCasePriority, CtemCaseState } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { CTEM_PRODUCT_INFO } from "@/lib/constants";
 import { formatList } from "@/lib/format-list";
 
-type ChipSeverity = "neutral" | "info" | "low" | "medium" | "high" | "critical";
-
-/** One colour per state, everywhere (7.0): alert, info, success, neutral. */
-const CASE_STATE_SEVERITY: Record<CtemCaseState, ChipSeverity> = {
-  needs_attention: "medium",
-  in_progress: "info",
-  resolved: "low",
+/**
+ * One colour per status, everywhere (7.0, #1267, #1503), from the six hot tones:
+ * new orange, waiting for decision red (a person is the blocker), the three
+ * statuses agents work in (analyzing, remediating, validating) blue, mitigated,
+ * watching yellow (still watched, with the DS eye icon), resolved green,
+ * accepted risk neutral.
+ */
+const CASE_STATE_TONE: Record<CtemCaseState, HotTone> = {
+  new: "orange",
+  analyzing: "blue",
+  waiting_decision: "red",
+  remediating: "blue",
+  validating: "blue",
+  mitigated_watching: "yellow",
+  resolved: "green",
   accepted_risk: "neutral",
 };
 
 /** English labels, translated where drawn. */
 export const CASE_STATE_LABEL: Record<CtemCaseState, string> = {
-  needs_attention: "Needs attention",
-  in_progress: "In progress",
+  new: "New",
+  analyzing: "Analyzing",
+  waiting_decision: "Waiting for decision",
+  remediating: "Remediating",
+  validating: "Validating",
+  mitigated_watching: "Mitigated, watching",
   resolved: "Resolved",
   accepted_risk: "Accepted risk",
 };
 
-const CASE_PRIORITY_SEVERITY: Record<CtemCasePriority, ChipSeverity> = {
-  critical: "critical",
-  high: "high",
-  medium: "medium",
-  low: "low",
+/** One colour per priority: critical red, high orange, medium yellow, low green. */
+const CASE_PRIORITY_TONE: Record<CtemCasePriority, HotTone> = {
+  critical: "red",
+  high: "orange",
+  medium: "yellow",
+  low: "green",
 };
 
 export const CASE_PRIORITY_LABEL: Record<CtemCasePriority, string> = {
@@ -47,14 +62,26 @@ export const CASE_PRIORITY_LABEL: Record<CtemCasePriority, string> = {
 /** Higher first: the sort value of a priority. */
 export const CASE_PRIORITY_RANK: Record<CtemCasePriority, number> = { critical: 4, high: 3, medium: 2, low: 1 };
 
+/**
+ * The DS icon a state carries inside its badge, before the label, so the
+ * badge keeps the left edge and baseline of its siblings (UX round 2 of #857,
+ * B1).
+ */
+const CASE_STATE_ICON: Partial<Record<CtemCaseState, "eye">> = { mitigated_watching: "eye" };
+
 export function CaseStateChip({ state }: { state: CtemCaseState }) {
   const { t_i18n } = useFormatter();
-  return <Chip label={t_i18n(CASE_STATE_LABEL[state])} severity={CASE_STATE_SEVERITY[state]} className="shrink-0" />;
+  const icon = CASE_STATE_ICON[state];
+  return (
+    <ToneBadge tone={CASE_STATE_TONE[state]} icon={icon ? <Icon name={icon} size={16} aria-hidden /> : undefined}>
+      {t_i18n(CASE_STATE_LABEL[state])}
+    </ToneBadge>
+  );
 }
 
 export function CasePriorityChip({ priority }: { priority: CtemCasePriority }) {
   const { t_i18n } = useFormatter();
-  return <Chip label={t_i18n(CASE_PRIORITY_LABEL[priority])} severity={CASE_PRIORITY_SEVERITY[priority]} className="shrink-0" />;
+  return <ToneBadge tone={CASE_PRIORITY_TONE[priority]}>{t_i18n(CASE_PRIORITY_LABEL[priority])}</ToneBadge>;
 }
 
 /**
@@ -67,7 +94,7 @@ export function CasePriorityChip({ priority }: { priority: CtemCasePriority }) {
 export function useCasesEmptyLabel(detailsUnavailable: readonly string[] | undefined): { label: string; unread: boolean } {
   const { t_i18n, intl } = useFormatter();
   const products = detailsUnavailable ?? [];
-  if (products.length === 0) return { label: t_i18n("No open exposure on your stack"), unread: false };
+  if (products.length === 0) return { label: t_i18n("No open exposure on your software"), unread: false };
   // The API sends product ids ("openaev"): show their display names.
   const names = products.map((p) => CTEM_PRODUCT_INFO[p]?.name ?? p);
   return {

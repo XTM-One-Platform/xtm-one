@@ -269,7 +269,8 @@ class OpenAISpeechMixin:
         import openai
 
         notes: list[str] = []
-        voices = await self.list_voices(request.model)
+        # A passed-through voice needs no listing, nor a listing that may fail.
+        voices = [] if request.voice and not self.speech_voices_are_fixed else await self.list_voices(request.model)
         if self.speech_voices_are_fixed:
             voice = pick_voice(voices, request.voice, None, notes)
         elif request.voice or voices:
@@ -291,7 +292,7 @@ class OpenAISpeechMixin:
             what for what, given in (("the style", request.style), ("the IPA of its terms", guide)) if given
         )
         if request.style or guide:
-            if _takes_instructions(request.model):
+            if self.speech_takes_style(request.model) is not False and _takes_instructions(request.model):
                 kwargs["instructions"] = "\n\n".join(part for part in (request.style, guide) if part)
             else:
                 notes.append(f"{request.model} takes no delivery instruction: spoken without {dropped}.")

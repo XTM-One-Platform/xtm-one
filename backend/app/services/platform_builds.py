@@ -212,6 +212,10 @@ async def record_running_build(db: AsyncSession) -> None:
     from app.services.builtin_tool_release_notice import schedule_release_notice
 
     schedule_release_notice(deployed)
+    # The decision cards parked before readable asks, rewritten for their reader once (#776).
+    from app.services.work_item_ask_backfill import schedule_readable_ask_backfill
+
+    schedule_readable_ask_backfill(deployed)
 
 
 async def touch_running_build_if_due() -> None:
@@ -225,6 +229,12 @@ async def touch_running_build_if_due() -> None:
 
     async with async_session() as db:
         await record_running_build(db)
+    # A pass the boot call could not run (agentic AI not yet allowed, no
+    # routing model) is asked again here until one process runs it.
+    from app.services.work_item_ask_backfill import schedule_if_due
+
+    version, git_sha = running_build()
+    schedule_if_due({"version": version, "git_sha": git_sha or None})
 
 
 @dataclass(frozen=True)

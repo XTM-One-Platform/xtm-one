@@ -30,6 +30,7 @@ _NO_DB = cast(AsyncSession, None)
 
 def _row(profile: dict[str, Any] | None, version: int = 2) -> SimpleNamespace:
     return SimpleNamespace(
+        organization_id=None,  # no asset records read: the session is a stub
         version=version,
         created_at=datetime(2026, 11, 13, 6, 0, tzinfo=UTC),
         source="form",
@@ -109,12 +110,18 @@ def test_basic_block_names_the_identity_and_indexes_every_category() -> None:
     assert "2e+06 EUR" in text
     assert "SCADA" not in text, "a category's rows are not in the basic block"
     for category in cats.CATEGORIES:
+        if category.name in cats.OPTIONAL_CATEGORIES:
+            # Named only once filled (shipped products): the block keeps its size.
+            assert f"- {category.name} (" not in text
+            continue
         assert f"- {category.name} (" in text, f"{category.name} missing from the index"
-    assert "- crown_jewels (" in text and "): 2 rows;" in text
+    assert "- primary_assets (" in text and "): 2 rows;" in text
+    assert "- crown_jewels (" not in text, "#1591: the deprecated alias is never announced"
     assert ": 1 row;" in text
     assert "- tracked_organizations (tracked organizations): 3 rows" in text
-    assert "- tech_stack (" in text and "): not filled" in text
-    assert 'get_organization_context(category="crown_jewels")' in text
+    assert "- software (" in text and "): not filled" in text
+    assert "- tech_stack (" not in text, "the deprecated alias is never announced"
+    assert 'get_organization_context(category="primary_assets")' in text
     assert "UNTRUSTED" in text, "the profile is data a person typed: quarantined"
     assert len(text) <= inj.SUMMARY_MAX_CHARS
 
@@ -127,11 +134,13 @@ def test_the_index_is_generated_from_the_model() -> None:
     list_fields = {
         field
         for field, info in oc.OrganizationProfile.model_fields.items()
-        if get_origin(info.annotation) is list and field not in ("regions", "onboarding_skipped")
+        if get_origin(info.annotation) is list and field not in ("regions", "onboarding_skipped", "fx_rates")
     }
-    # The one object field read as a category (#11543): its rules are its rows.
-    assert {c.field for c in cats.CATEGORIES if c.field} == list_fields | {"prioritization_policy"}
-    assert {"crown_jewels", "tech_stack", "pirs", "tracked_organizations"} <= set(cats.CATEGORY_NAMES)
+    # The object fields read as a category (#11543, #1691): their rules or settings are their rows.
+    assert {c.field for c in cats.CATEGORIES if c.field} == list_fields | {"prioritization_policy", "attack_surface"}
+    assert {"primary_assets", "software", "pirs", "tracked_organizations"} <= set(cats.CATEGORY_NAMES)
+    assert "crown_jewels" not in cats.CATEGORY_NAMES, "#1591: a deprecated alias, never a category of its own"
+    assert "tech_stack" not in cats.CATEGORY_NAMES, "#1495: a deprecated alias, never a category of its own"
     assert {"assets_exposure", "prioritization_policy", "enterprise_knowledge"} <= set(cats.CATEGORY_NAMES)
 
 
@@ -154,7 +163,7 @@ def test_the_basic_block_cap_holds_whatever_the_list_lengths() -> None:
     assert len(text) <= inj.SUMMARY_MAX_CHARS
     # About 500 tokens: 4 characters a token is the bound the cap encodes.
     assert inj.SUMMARY_MAX_CHARS // 4 <= 500
-    assert "Product 499" not in text, "the tech stack stays behind the tool"
+    assert "Product 499" not in text, "the software stays behind the tool"
     assert "): 500 rows" in text
     assert not text.endswith("..."), "never cut: the block does not grow with a list"
     assert len(text) - len(small) < 400, "only the counts and the name grew"
@@ -168,10 +177,14 @@ def test_the_basic_block_cap_holds_whatever_the_list_lengths() -> None:
     [
         ([], None, None, []),
         (["pirs"], None, None, ["pirs"]),
-        (["pirs"], ["tech_stack"], None, ["tech_stack"]),
-        (["pirs"], ["tech_stack"], [], []),
-        (["pirs"], [], ["crown_jewels"], ["crown_jewels"]),
-        ([], ["tech_stack", "gone_from_the_model", "tech_stack"], None, ["tech_stack"]),
+        (["pirs"], ["software"], None, ["software"]),
+        (["pirs"], ["software"], [], []),
+        # #1495: a stored selection naming the deprecated tech_stack reads as software.
+        (["pirs"], ["tech_stack"], None, ["software"]),
+        # #1591: a stored selection naming the deprecated crown_jewels reads as primary_assets.
+        (["pirs"], [], ["crown_jewels"], ["primary_assets"]),
+        (["crown_jewels", "primary_assets"], None, None, ["primary_assets"]),
+        ([], ["tech_stack", "gone_from_the_model", "software"], None, ["software"]),
     ],
 )
 def test_categories_most_specific_explicit_list_wins(
@@ -191,8 +204,10 @@ def test_check_categories_reads_lists_strings_and_refuses_unknown_names() -> Non
     assert check_categories(None) is None
     assert check_categories("inherit") is None
     assert check_categories("none") == []
-    assert check_categories("Tech_Stack, crown_jewels") == ["tech_stack", "crown_jewels"]
-    with pytest.raises(ValueError, match="tech_stack"):
+    assert check_categories("Software, primary_assets") == ["software", "primary_assets"]
+    assert check_categories("crown_jewels") == ["primary_assets"], "#1591: the deprecated alias answers primary_assets"
+    assert check_categories("Tech_Stack, software") == ["software"], "the deprecated alias answers software"
+    with pytest.raises(ValueError, match="software"):
         check_categories(["vendors"])
 
 
@@ -242,25 +257,25 @@ BIG_STACK = {
 }
 
 
-async def test_an_agent_with_tech_stack_selected_gets_it_preloaded_capped_with_the_rest_named(
+async def test_an_agent_with_software_selected_gets_it_preloaded_capped_with_the_rest_named(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.services import organization_context_categories as cats
 
     await _with(monkeypatch, platform=True, profile=BIG_STACK)
     agent = SimpleNamespace(
-        id=uuid.uuid4(), organization_context_mode="inherit", organization_context_categories=["tech_stack"]
+        id=uuid.uuid4(), organization_context_mode="inherit", organization_context_categories=["software"]
     )
     text = await inj.organization_summary_for(_NO_DB, agent=agent)
-    preloaded = "Preloaded tech_stack" + text.split("Preloaded tech_stack", 1)[1]
+    preloaded = "Preloaded software" + text.split("Preloaded software", 1)[1]
     assert "Product 0" in preloaded
     assert "Product 499" not in preloaded
-    assert 'get_organization_context(category="tech_stack", offset=' in preloaded
+    assert 'get_organization_context(category="software", offset=' in preloaded
     assert len(preloaded) <= cats.PRELOAD_MAX_CHARS
     # An assignment's own empty list preloads nothing, for that assignment only.
     assignment = SimpleNamespace(organization_context_mode="inherit", organization_context_categories=[])
     assert "Preloaded" not in await inj.organization_summary_for(_NO_DB, agent=agent, assignment=assignment)
-    assert "Preloaded tech_stack" in await inj.organization_summary_for(_NO_DB, agent=agent)
+    assert "Preloaded software" in await inj.organization_summary_for(_NO_DB, agent=agent)
 
 
 async def test_global_default_preloads_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -367,13 +382,13 @@ def test_every_seeded_agent_resolves_on_with_the_tools() -> None:
             )
 
 
-def test_vulnerability_agents_preload_the_tech_stack() -> None:
+def test_vulnerability_agents_preload_the_software() -> None:
     from app.agents.builtin_agents import BUILTIN_AGENTS
 
     by_slug = {agent["slug"]: agent for agent in BUILTIN_AGENTS}
     for slug in ("ctem-vuln-prioritization-orchestrator", "ctem-vuln-triage-analyst", "ctem-remediation-coordinator"):
         if slug in by_slug:
-            assert "tech_stack" in by_slug[slug]["organization_context_categories"], slug
+            assert "software" in by_slug[slug]["organization_context_categories"], slug
 
 
 def test_the_seed_never_writes_the_mode_so_an_opt_out_survives_a_refresh() -> None:
@@ -436,3 +451,105 @@ def test_a_complete_profile_adds_no_notice() -> None:
 def test_the_tool_reading_carries_the_notice_too() -> None:
     assert "Organization context incomplete: missing " in oc.render_for_agent(cast(Any, _row(PROFILE)))
     assert "Organization context incomplete: missing " in oc.render_for_agent(None)
+
+
+# -- The notice is CTEM-scoped (#1384) ----------------------------------------
+
+
+def test_a_run_that_is_not_ctem_work_gets_no_notice_and_no_ctem_only_field() -> None:
+    text = inj.render_summary(_row(PROFILE), ctem_work=False)
+    assert text.startswith(inj.SUMMARY_HEADER)
+    assert "Acme Energy" in text and "EUR" in text, "the identity is kept"
+    assert "Categories:" in text, "the category index is kept"
+    assert "Not filled: " in text and "Never guess a missing field." in text
+    assert "Organization context incomplete" not in text
+    tail = text.split("Not filled: ", 1)[1]
+    labels = dict(oc.CONTRACT_FIELDS)
+    for path in oc.CTEM_ONLY_FIELDS:
+        assert labels[path] not in tail, path
+    for reading in (
+        oc.render_for_agent(cast(Any, _row(PROFILE)), ctem_work=False),
+        oc.render_for_agent(None, ctem_work=False),
+    ):
+        assert "Organization context incomplete" not in reading
+        assert "loaded hourly rate" not in reading
+
+
+def test_a_ctem_run_keeps_the_notice_as_today() -> None:
+    assert inj.render_summary(_row(PROFILE), ctem_work=True) == inj.render_summary(_row(PROFILE))
+    assert "Organization context incomplete: missing " in inj.render_summary(_row(PROFILE), ctem_work=True)
+
+
+@pytest.mark.parametrize(
+    ("agent", "expected"),
+    [
+        (SimpleNamespace(slug="ctem-risk-quantifier", is_builtin=True, builtin_tool_ids=["ctem_read"]), True),
+        (SimpleNamespace(slug="ctem-threat-relevance-analyst", is_builtin=True, builtin_tool_ids=[]), True),
+        (SimpleNamespace(slug="ctem-remediation-coordinator", is_builtin=True, builtin_tool_ids=None), True),
+        (SimpleNamespace(slug="ctem-threat-relevance-analyst", is_builtin=False, builtin_tool_ids=[]), False),
+        (SimpleNamespace(slug="chief-of-staff", is_builtin=False, builtin_tool_ids=["files", "web"]), False),
+        (None, False),
+    ],
+)
+def test_holding_ctem_tools_is_the_built_in_ctem_agents_and_the_read_group(agent: object, expected: bool) -> None:
+    assert oc.holds_ctem_tools(agent) is expected
+
+
+@pytest.mark.parametrize(
+    ("slug", "is_builtin", "forked_from", "expected"),
+    [
+        ("ctem-loop", True, None, True),
+        ("ctem-threat-response", True, None, True),
+        ("ctem-loop", False, None, False),
+        ("my-loop", False, {"slug": "ctem-loop", "is_builtin": True}, True),
+        ("my-loop", False, {"slug": "ctem-loop", "is_builtin": False}, False),
+        ("ceo-office", False, None, False),
+    ],
+)
+def test_a_ctem_fleet_is_a_seeded_ctem_fleet_or_a_fork_of_one(
+    slug: str, is_builtin: bool, forked_from: object, expected: bool
+) -> None:
+    assert oc.is_ctem_fleet(slug=slug, is_builtin=is_builtin, forked_from=forked_from) is expected
+
+
+async def test_the_summary_of_an_agent_in_no_fleet_without_ctem_tools_has_no_notice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.services.fleet_runs as fleet_runs
+
+    await _with(monkeypatch, platform=True)
+
+    async def _no_fleet(_db: object, _agent_id: object) -> fleet_runs.FleetRunDefaults:
+        return fleet_runs.NO_FLEET
+
+    monkeypatch.setattr(fleet_runs, "home_fleet_defaults", _no_fleet)
+    plain = SimpleNamespace(
+        id=uuid.uuid4(), slug="writer", is_builtin=False, builtin_tool_ids=[], organization_context_mode="inherit"
+    )
+    text = await inj.organization_summary_for(_NO_DB, agent=plain)
+    assert text.startswith(inj.SUMMARY_HEADER) and "Never guess a missing field." in text
+    assert "Organization context incomplete" not in text
+    ctem = SimpleNamespace(
+        id=uuid.uuid4(), slug="x", is_builtin=False, builtin_tool_ids=["ctem_read"], organization_context_mode="inherit"
+    )
+    assert "Organization context incomplete: missing " in await inj.organization_summary_for(_NO_DB, agent=ctem)
+
+
+async def test_the_summary_of_a_ctem_fleet_member_has_the_notice(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.services.fleet_runs as fleet_runs
+
+    await _with(monkeypatch, platform=True)
+    fleet_id = uuid.uuid4()
+
+    async def _home(_db: object, _agent_id: object) -> fleet_runs.FleetRunDefaults:
+        return fleet_runs.FleetRunDefaults(fleet_id=fleet_id)
+
+    async def _ctem(_db: object, wanted: object) -> bool:
+        return wanted == fleet_id
+
+    monkeypatch.setattr(fleet_runs, "home_fleet_defaults", _home)
+    monkeypatch.setattr(oc, "ctem_fleet", _ctem)
+    member = SimpleNamespace(
+        id=uuid.uuid4(), slug="m", is_builtin=False, builtin_tool_ids=[], organization_context_mode="inherit"
+    )
+    assert "Organization context incomplete: missing " in await inj.organization_summary_for(_NO_DB, agent=member)

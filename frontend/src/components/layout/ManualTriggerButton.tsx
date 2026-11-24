@@ -123,7 +123,7 @@ export function ManualTriggerButton() {
                     "flex items-center justify-between rounded-sm px-3 py-2.5 cursor-pointer transition-all hover:bg-elevation-hover",
                     isRunning ? "bg-accent/[0.03]" : "bg-transparent",
                   )}
-                  onClick={() => { navigate(`/assignments/${wf.id}`); setOpen(false); }}
+                  onClick={() => { navigate(`/agents/assignments/${wf.id}`); setOpen(false); }}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className={cn(

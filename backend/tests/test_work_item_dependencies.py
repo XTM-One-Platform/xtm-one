@@ -26,10 +26,15 @@ def test_the_dependency_note_unblocks_only_when_every_blocker_is_done():
     assert wi_service._dependency_note([A, B], {A: "done", B: "in_progress"}, NOW) is None
     note = wi_service._dependency_note([A, B], {A: "done", B: "done"}, NOW)
     assert note["unblocked"] is True and note["text"] == f"unblocked: {A}, {B} done"
-    # Cancelled or gone, nothing left running: still blocked, with the reason.
+    # Cancelled or gone, nothing left running: surfaced to its owner with the reason (#762).
     note = wi_service._dependency_note([A, B], {A: "cancelled"}, NOW)
-    assert note["unblocked"] is False
+    assert note is not None
+    assert note["unblocked"] is False and note["surfaced"] is True
     assert f"{A} cancelled" in note["text"] and f"{B} no longer exists" in note["text"]
+    assert note["text"].startswith("surfaced: ")
+    # One done, one cancelled: surfaced too, nothing would release the cancelled one.
+    mixed = wi_service._dependency_note([A, B], {A: "done", B: "cancelled"}, NOW)
+    assert mixed is not None and mixed["surfaced"] is True
     # One still running: wait, say nothing yet.
     assert wi_service._dependency_note([A, B], {A: "cancelled", B: "open"}, NOW) is None
 
@@ -119,3 +124,39 @@ def test_an_item_blocked_on_items_is_never_stale_a_plain_blocked_one_still_is():
 def test_the_pickup_state_of_an_item_blocked_on_items():
     assert pickup_state({"status": "blocked", "blocked_on": [A]}, [], NOW) == "blocked_on_items"
     assert pickup_state({"status": "blocked", "blocked_on": []}, [], NOW) == "blocked"
+
+
+OWNER = str(uuid.uuid4())
+PR = {"repo": "o/r", "kind": "pull_request", "number": 7, "release_on": "merged_or_closed"}
+ISSUE = {"repo": "o/r", "kind": "issue", "number": 8, "release_on": "closed"}
+DEPLOY = {"repo": "o/r", "kind": "deployment", "number": 7, "release_on": "deployed"}
+RUN = {"repo": "o/r", "kind": "workflow_run", "workflow": "deploy.yml", "after": "2026-11-21T00:00:00Z", "release_on": "succeeded"}
+
+
+def _blocked(**fields) -> dict:
+    return {"status": "blocked", "owner_agent_id": OWNER, "blocked_on": [], "blocked_on_refs": [], **fields}
+
+
+def test_an_item_waiting_for_references_waits_and_is_never_not_picked_up():
+    """#861: every reference kind the platform releases reads as a wait, not 'Blocked: not picked up'."""
+    for ref in (PR, ISSUE, DEPLOY, RUN):
+        assert pickup_state(_blocked(blocked_on_refs=[ref]), [], NOW) == "waiting_for_refs"
+    # Items and references: the items name the state, the references are listed beside them.
+    assert pickup_state(_blocked(blocked_on=[A], blocked_on_refs=[PR]), [], NOW) == "blocked_on_items"
+    # Every reference already satisfied: nothing left to release it, it needs an action.
+    merged = {**PR, "state": "merged"}
+    deployed = {**DEPLOY, "state": "deployed"}
+    assert pickup_state(_blocked(blocked_on_refs=[merged, deployed]), [], NOW) == "blocked"
+    # No owner: nothing would resume it once released, it stays an action.
+    assert pickup_state(_blocked(owner_agent_id=None, blocked_on_refs=[PR]), [], NOW) == "blocked"
+
+
+def test_an_item_waiting_for_a_person_waits_for_the_answer():
+    """#861: the decision card reopens it; alone or with items and references."""
+    assert pickup_state(_blocked(needs_human=True), [], NOW) == "waiting_for_person"
+    assert pickup_state(_blocked(needs_human=True, blocked_on=[A], blocked_on_refs=[PR]), [], NOW) == "waiting_for_person"
+
+
+def test_a_legacy_reason_only_item_stays_blocked():
+    """#861: the only blocked shape that needs someone keeps the red state."""
+    assert pickup_state(_blocked(blocked_reason="waits for the partner"), [], NOW) == "blocked"

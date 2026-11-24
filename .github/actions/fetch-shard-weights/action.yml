@@ -1,0 +1,58 @@
+name: Fetch the shard weights
+description: >-
+  Download an artifact the nightly runs of a workflow published on main, newest
+  first, each run's copy in its own directory under `path` (named by its run
+  id). Only scheduled runs on main are read: a pull request or a merge group
+  cannot publish what this fetches. Nothing found leaves `path` empty, and the
+  caller falls back on the committed tables (backend/scripts/shard_weights.py).
+  The job needs `actions: read`.
+inputs:
+  workflow:
+    description: The workflow file whose nightly runs published the artifact (ci.yml, e2e.yml).
+    required: true
+  artifact:
+    description: The artifact's name.
+    required: true
+  path:
+    description: Where each run's copy goes, in a directory named by the run id.
+    required: true
+  runs:
+    description: How many nightly runs to take it from, newest first.
+    default: "1"
+  max-age-days:
+    description: A nightly run older than this is not read.
+    default: "14"
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        WORKFLOW: ${{ inputs.workflow }}
+        ARTIFACT: ${{ inputs.artifact }}
+        DEST: ${{ inputs.path }}
+        WANTED: ${{ inputs.runs }}
+        MAX_AGE_DAYS: ${{ inputs.max-age-days }}
+      run: |
+        set -uo pipefail
+        mkdir -p "$DEST"
+        since=$(date -u -d "$MAX_AGE_DAYS days ago" +%Y-%m-%dT%H:%M:%SZ)
+        # Bounded: a fetch that stalls gives way to the committed weights, never
+        # cancels the job, whose timeout would fail the run over its weights.
+        if ! runs=$(timeout 60 gh api "repos/$REPO/actions/workflows/$WORKFLOW/runs?branch=main&event=schedule&status=completed&per_page=20" \
+              --jq ".workflow_runs[] | select(.created_at >= \"$since\") | .id"); then
+          echo "::notice::The nightly runs of $WORKFLOW could not be listed: the committed shard weights deal this run."
+          exit 0
+        fi
+        found=0
+        for run in $runs; do
+          [ "$found" -ge "$WANTED" ] && break
+          if timeout 120 gh run download "$run" --repo "$REPO" --name "$ARTIFACT" --dir "$DEST/$run" >/dev/null 2>&1; then
+            found=$((found + 1))
+            echo "$ARTIFACT from nightly run $run"
+          else
+            rm -rf "${DEST:?}/$run"
+          fi
+        done
+        [ "$found" -gt 0 ] || echo "::notice::No nightly run of $WORKFLOW published $ARTIFACT: the committed shard weights deal this run."

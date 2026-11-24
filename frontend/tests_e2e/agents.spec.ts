@@ -409,7 +409,8 @@ test.describe.serial('Agents — CRUD lifecycle', () => {
 
 test.describe.serial('Agents — Observability access (non-admin owner)', () => {
   const OWNER_AGENT_NAME = `E2E Owner Obs Agent ${Date.now()}`;
-  const TRACE_ID = 'e2e-owner-observability-trace';
+  // A trace id is a UUID: TraceDetail renders Page not found for any other segment (#822).
+  const TRACE_ID = '5d1c0a7e-0000-4000-8000-0000000e2e02';
   let ownerUserId = '';
   let ownerAgentId = '';
   let ownerAgentUrl = '';
@@ -661,7 +662,7 @@ test.describe.serial('Agents — Observability access (non-admin owner)', () => 
     await expect(traceRow).toBeVisible();
     await expect(traceRow.getByRole('link', { name: 'Owner Observability Trace' })).toHaveCount(0);
     await traceRow.getByText('Owner Observability Trace', { exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/traces/${TRACE_ID}`));
+    await expect(page).toHaveURL(new RegExp(`/observability/traces/${TRACE_ID}`));
     await expect(page.getByRole('heading', { name: 'Owner Observability Trace', level: 1 })).toBeVisible();
   });
 
@@ -762,10 +763,10 @@ test.describe.serial('Agents — Observability access (non-admin owner)', () => 
     const ratingRow = page.locator('tr', { hasText: 'Wrong totals in the digest' });
     await expect(ratingRow).toBeVisible();
     await expect(ratingRow.getByRole('link')).toHaveCount(1);
-    await expect(ratingRow.getByRole('link')).toHaveAttribute('href', `/runs/${RUN_ID}`);
+    await expect(ratingRow.getByRole('link')).toHaveAttribute('href', `/operations/executions/${RUN_ID}`);
     await expect(ratingRow.getByRole('link', { name: 'Wrong totals in the digest' })).toHaveCount(0);
     await ratingRow.getByText('Wrong totals in the digest', { exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/runs/${RUN_ID}`));
+    await expect(page).toHaveURL(new RegExp(`/operations/executions/${RUN_ID}`));
   });
 
   for (const decision of [

@@ -184,9 +184,10 @@ def format_parent_wake_prompt(
     if truncated:
         parts.append(
             f"The result below was truncated at {_PARENT_WAKE_RESULT_CHARS} "
-            "characters. You MUST call "
+            f"of {len(raw.strip()):,} characters. You MUST call "
             f"get_full_task_result({task_id}) and read the complete output "
-            "before answering."
+            "before answering; a long answer comes by window, each read naming "
+            "the next offset to pass until it says the end."
         )
         parts.append(body)
     elif body:

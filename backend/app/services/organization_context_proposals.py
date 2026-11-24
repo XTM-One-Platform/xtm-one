@@ -15,7 +15,7 @@
 
 The design is ``dev-docs/ctem-fleets.md`` section 6.1, "Chat". The CTEM
 Assistant and the Platform Health call ``propose_organization_context_change``
-for "add Salesforce to our tech stack" or "we just acquired X, track it";
+for "add Salesforce to our software" or "we just acquired X, track it";
 the tool stores an :class:`OrganizationContextProposal` and NEVER writes a
 profile. An administrator accepts or rejects it, field by field, in
 Settings > Organization: accepting saves the next profile version with
@@ -58,11 +58,41 @@ class ProposalError(ValueError):
     """A proposal that cannot be stored or decided; the message names why."""
 
 
+#: Policy settings of the primary profile a proposal may name besides the contract fields:
+#: the CTEM watchlist's "propose to raise the scope" (CTEM-30, #937). An administrator
+#: still accepts it field by field; nothing is applied on proposal.
+PROPOSABLE_POLICY_PATHS: tuple[str, ...] = ("prioritization_policy.scope_min_criticality",)
+#: Outside-lens settings of the primary profile an agent may set or propose (CTEM-26): the
+#: owned domains, the address ranges (CIDR, validated by the profile model) and the attack
+#: surface pass. They stay exposure fields: out of the always-on block and of missing_fields.
+PROPOSABLE_EXPOSURE_PATHS: tuple[str, ...] = ("owned_domains", "address_ranges", "attack_surface")
+#: The reference exchange rates the risk agents cite to convert a figure (#1383): an
+#: administrator sets them by API or through an agent; not a contract field.
+PROPOSABLE_RATE_PATHS: tuple[str, ...] = ("fx_rates",)
+#: What the organization ships, with its repositories (#1432): the CTEM scope gate resolves a
+#: vulnerability on one of them to its repositories. Not a contract field.
+PROPOSABLE_PRODUCT_PATHS: tuple[str, ...] = ("shipped_products",)
+#: The knowledge bases of the organization's procedures (#11543), linked by an agent as by the form (#1691).
+#: Linking grants nothing: a reader only searches the linked bases it can read already.
+PROPOSABLE_KNOWLEDGE_PATHS: tuple[str, ...] = ("enterprise_knowledge",)
+
+
 def _contract_paths(role: str) -> tuple[str, ...]:
     from app.services.organizations import TRACKED_CONTRACT_FIELDS
 
-    fields = org_context.CONTRACT_FIELDS if role == "primary" else TRACKED_CONTRACT_FIELDS
-    return tuple(path for path, _label in fields)
+    if role == "primary":
+        if org_context.identity_only():
+            # Copilot mode (#1690): an agent proposes or writes the identity alone.
+            return tuple(path for path, _label in org_context.contract_fields())
+        return (
+            tuple(path for path, _label in org_context.CONTRACT_FIELDS)
+            + PROPOSABLE_POLICY_PATHS
+            + PROPOSABLE_EXPOSURE_PATHS
+            + PROPOSABLE_RATE_PATHS
+            + PROPOSABLE_PRODUCT_PATHS
+            + PROPOSABLE_KNOWLEDGE_PATHS
+        )
+    return tuple(path for path, _label in TRACKED_CONTRACT_FIELDS)
 
 
 def _get(data: dict[str, Any], path: str) -> Any:
@@ -221,6 +251,7 @@ async def apply_changes(
     organization: str = "",
     changes: list[dict[str, Any]] | None = None,
     agent_name: str = "",
+    based_on_version: int | None = None,
 ) -> dict[str, Any]:
     """Apply *changes* to *organization*'s profile at once, as a new version (the caller commits).
 
@@ -232,7 +263,9 @@ async def apply_changes(
     with source ``ai_draft``, authored by *author_user_id*, the agent and
     the basis kept per field in ``sources``, so Settings > Organization
     shows who changed what and can roll it back. Answers
-    ``{organization_id, organization, version, fields}``.
+    ``{organization_id, organization, version, fields}``. *based_on_version*
+    given and another version saved since refuses, nothing saved (#1676, the
+    guard of the Settings > Organization PUT, #1473).
     """
     from app.services import organizations as orgs
 
@@ -242,6 +275,12 @@ async def apply_changes(
             raise ProposalError(f"No active organization is named {organization!r} (or several are).")
         target = await orgs.ensure_primary(db)
     current = await org_context.current_version(db, target.id)
+    latest = current.version if current is not None else None
+    if based_on_version is not None and latest != based_on_version:
+        raise ProposalError(
+            f"the profile changed since version {based_on_version} (now version {latest}). "
+            "Read get_organization_context again and apply your change on the new version."
+        )
     data = orgs.parse_for(target, current.profile if current else {}).model_dump(mode="json")
     kept = validate_field_changes(target, data, list(changes or []))
     source = f"{AGENT_SOURCE_PREFIX}{agent_name}".strip()[:300] if agent_name.strip() else CHAT_SOURCE
@@ -448,6 +487,9 @@ __all__ = [
     "MAX_CHANGES",
     "MAX_NEW_TRACKED",
     "MAX_TRACKED_DRAFT_ROWS",
+    "PROPOSABLE_EXPOSURE_PATHS",
+    "PROPOSABLE_KNOWLEDGE_PATHS",
+    "PROPOSABLE_POLICY_PATHS",
     "ProposalError",
     "apply_changes",
     "decide",

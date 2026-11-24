@@ -34,7 +34,7 @@ from app.llm.identity import (
 from app.llm.music import MusicGenerationError, MusicProviderBusyError, MusicReference, MusicRequest
 from app.llm.openai_compat import is_retryable_openai
 from app.tools.base import ToolDefinition
-from tests.gateway_helpers import gateway_refusal_body
+from tests.gateway_helpers import gateway_refusal_body, gateway_throttle_body
 
 GATEWAY_URL = "http://gateway.local:8080"
 AUD = _normalize_url(GATEWAY_URL)
@@ -372,6 +372,147 @@ class TestRetryableFalse:
     async def test_only_retryable_false_tells_the_sdk_not_to_resend(self, answer, header):
         await _obey_retryable_false(answer)
         assert answer.headers.get("x-should-retry") == header
+
+
+class TestGatewayThrottle:
+    """A gateway throttle backs the assignment off, and a chat call is sent once per retry (#1468)."""
+
+    @pytest.mark.parametrize(
+        ("status", "body", "expected"),
+        [
+            (502, gateway_throttle_body(), True),
+            (502, gateway_throttle_body(circuit_open=True), True),
+            (502, gateway_throttle_body(unwrapped=True), True),
+            # A plain provider fault says nothing; an upstream 4xx says ``retryable: false``.
+            (502, {"error": {"message": "provider error: boom", "code": "provider_error"}}, False),
+            (502, gateway_refusal_body(), False),
+            (502, "<html>Bad Gateway</html>", False),
+            (500, gateway_throttle_body(), False),
+            # The gateway shedding load: the caller should slow down too.
+            (503, {"error": {"message": "gateway overloaded", "code": "gateway_overloaded", "retry_after_seconds": 1}},
+             True),
+            (503, {"error": {"message": "unavailable", "code": "service_unavailable"}}, False),
+        ],
+        ids=["throttled", "circuit-open", "unwrapped", "plain-fault", "refusal", "html", "not-502", "overloaded",
+             "other-503"],
+    )
+    def test_only_a_gateway_throttle_counts_as_a_rate_limit(self, status, body, expected):
+        from app.llm.base import is_rate_limit_error
+
+        response = httpx.Response(status, request=httpx.Request("POST", f"{GATEWAY_URL}/v1/chat/completions"))
+        exc = openai.APIStatusError("throttled", response=response, body=body)
+        assert is_rate_limit_error(exc) is expected
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("call", ["chat", "chat_stream", "chat_stream_with_tools"])
+    async def test_a_throttled_chat_is_sent_once_per_retry_and_backs_off(self, monkeypatch, call):
+        from app.llm import base
+        from app.services import assignment_dispatch
+
+        noted: list[str] = []
+
+        async def _note(source):
+            noted.append(source)
+
+        monkeypatch.setattr(assignment_dispatch, "note_rate_limited", _note)
+        monkeypatch.setattr(base.random, "uniform", lambda _a, _b: 0)
+        calls: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v1/models":
+                return httpx.Response(200, json={"object": "list", "data": []})
+            calls.append(request)
+            return httpx.Response(502, json=gateway_throttle_body())
+
+        set_llm_caller(USER_ID, EMAIL)
+        provider = _mock_provider(handler)
+        messages = [ChatMessage(role="user", content="hi")]
+        with pytest.raises(openai.InternalServerError):
+            if call == "chat":
+                await provider.chat(messages, model="m")
+            elif call == "chat_stream":
+                async for _ in provider.chat_stream(messages, model="m"):
+                    pass
+            else:
+                await provider.chat_stream_with_tools(messages, model="m")
+        assert len(calls) == base.LLM_MAX_RETRIES + 1
+        assert noted and set(noted) == {"llm"}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("status", "body", "retry_after"),
+        [
+            (429, {"error": {"message": "quota exceeded", "type": "quota_exceeded", "code": "quota_exceeded",
+                             "retry_after_seconds": 86400}}, 86400),
+            (502, {"error": {**gateway_throttle_body(circuit_open=True)["error"], "retry_after_seconds": 120}}, 120),
+        ],
+        ids=["quota-exceeded", "long-circuit-open"],
+    )
+    @pytest.mark.parametrize("call", ["chat", "chat_stream", "chat_stream_with_tools"])
+    async def test_a_wait_past_60s_is_sent_once_and_backs_off(self, monkeypatch, call, status, body, retry_after):
+        # The gateway adds ``x-should-retry: false`` past 60 s (#1536).
+        from app.llm import base
+        from app.services import assignment_dispatch
+
+        # No real back-off: a wrong retry fails on the call count, not after minutes of waits.
+        monkeypatch.setattr(base, "_extract_retry_after", lambda _exc: None)
+        monkeypatch.setattr(base.random, "uniform", lambda _a, _b: 0)
+
+        noted: list[str] = []
+
+        async def _note(source):
+            noted.append(source)
+
+        monkeypatch.setattr(assignment_dispatch, "note_rate_limited", _note)
+        calls: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v1/models":
+                return httpx.Response(200, json={"object": "list", "data": []})
+            calls.append(request)
+            headers = {"retry-after": str(retry_after), "x-should-retry": "false"}
+            return httpx.Response(status, json=body, headers=headers)
+
+        set_llm_caller(USER_ID, EMAIL)
+        provider = _mock_provider(handler)
+        messages = [ChatMessage(role="user", content="hi")]
+        with pytest.raises(openai.APIStatusError):
+            if call == "chat":
+                await provider.chat(messages, model="m")
+            elif call == "chat_stream":
+                async for _ in provider.chat_stream(messages, model="m"):
+                    pass
+            else:
+                await provider.chat_stream_with_tools(messages, model="m")
+        assert len(calls) == 1
+        assert noted == ["llm"]
+
+    def test_the_chat_client_is_built_once_per_client(self):
+        provider = _mock_provider(lambda _r: httpx.Response(200))
+        first = provider._chat_client()
+        assert provider._chat_client() is first
+        assert first.max_retries == 0
+        provider.client = provider.client.with_options(timeout=5)
+        assert provider._chat_client() is not first
+
+    @pytest.mark.asyncio
+    async def test_an_embedding_keeps_the_sdk_retry(self):
+        # Nothing above the SDK retries an embedding.
+        answers = iter([
+            httpx.Response(502, json=gateway_throttle_body(), headers={"retry-after-ms": "1"}),
+            httpx.Response(200, json={
+                "object": "list", "data": [{"object": "embedding", "index": 0, "embedding": [0.1]}],
+                "model": "e", "usage": {"prompt_tokens": 1, "total_tokens": 1},
+            }),
+        ])
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v1/models":
+                return httpx.Response(200, json={"object": "list", "data": []})
+            return next(answers)
+
+        set_llm_caller(USER_ID, EMAIL)
+        assert await _mock_provider(handler).embed("hello", model="e") == [0.1]
 
 
 class TestChatAndModels:
@@ -1515,9 +1656,46 @@ class TestImageEdits:
         for model in ("gemini-2.5-flash-image", "house-image"):
             assert provider.image_reference_limit(model) == 3 and not provider.image_takes_mask(model)
 
+    @pytest.mark.asyncio
+    async def test_the_listed_image_mask_decides_over_the_model_family(self):
+        # The gateway judges by the provider the edit is routed to (XTM-One-Platform/ai-gateway#369).
+        provider = _listing_provider(
+            {"id": "gpt-image-1", "owned_by": "openai", "types": ["image"], "image_edit": True, "image_mask": False},
+            {"id": "house-image", "owned_by": "gemini", "types": ["image"], "image_edit": True, "image_mask": True},
+            {"id": "gpt-image-2", "owned_by": "openai", "types": ["image"], "image_edit": True, "image_mask": True},
+        )
+        await provider.load_image_capabilities("gpt-image-1")
+        assert provider.image_reference_limit("gpt-image-1") == 3 and not provider.image_takes_mask("gpt-image-1")
+        assert provider.image_takes_mask("house-image") and provider.image_takes_mask("gpt-image-2")
+
+    @pytest.mark.asyncio
+    async def test_a_relisting_without_image_mask_falls_back_to_the_model_family(self):
+        listed = [{"id": "gpt-image-1", "owned_by": "openai", "types": ["image"], "image_edit": True, "image_mask": False}]
+        set_llm_caller(USER_ID, EMAIL)
+        provider = _mock_provider(lambda r: httpx.Response(200, json={"object": "list", "data": listed}))
+        await provider.list_image_models()
+        assert not provider.image_takes_mask("gpt-image-1")
+        # A gateway older than 1.261120.0 lists no ``image_mask``; a value that is no bool says nothing either.
+        for unsaid in ({}, {"image_mask": None}):
+            listed[0].pop("image_mask", None)
+            listed[0].update(unsaid)
+            await provider.list_image_models()
+            assert provider.image_takes_mask("gpt-image-1")
+
+    @pytest.mark.asyncio
+    async def test_a_model_no_longer_listed_is_no_longer_edited_with(self):
+        listed = [{"id": "gpt-image-1", "owned_by": "openai", "types": ["image"], "image_edit": True, "image_mask": True}]
+        set_llm_caller(USER_ID, EMAIL)
+        provider = _mock_provider(lambda r: httpx.Response(200, json={"object": "list", "data": listed}))
+        await provider.list_image_models()
+        assert provider.image_takes_mask("gpt-image-1")
+        listed[0] = {"id": "gpt-image-2", "owned_by": "openai", "types": ["image"]}
+        await provider.list_image_models()
+        assert provider.image_reference_limit("gpt-image-1") == 0 and not provider.image_takes_mask("gpt-image-1")
+
     def test_a_credential_pinned_to_gemini_takes_no_mask(self):
         provider = FiligranGatewayProvider(api_key=f"{GATEWAY_URL}||gemini")
-        provider._editing_models.add("house-image")
+        provider._image_edit_masks["house-image"] = None
         assert provider.image_reference_limit("house-image") == 3 and not provider.image_takes_mask("house-image")
 
     @pytest.mark.asyncio
@@ -1634,3 +1812,400 @@ async def test_the_image_tool_offers_pictures_for_a_gateway_model_that_edits(mon
     (definition,), _executor = await media.build_image_generation_tool(None, str(USER_ID))
     properties = definition.input_schema["properties"]
     assert properties["reference_file_ids"]["maxItems"] == 3 and "mask_file_id" in properties
+
+
+class TestListedDefaults:
+    """The gateway's ``"default_for": [...]`` per entry (XTM-One-Platform/ai-gateway#391), read for #746 and #1421."""
+
+    _LISTING = (
+        {"id": "gpt-image-1", "type": "image", "types": ["image"], "image_edit": True},
+        {"id": "gpt-image-2", "type": "image", "types": ["image"], "image_edit": True, "default_for": ["image"]},
+        {"id": "gpt-4o-mini-tts", "type": "speech", "types": ["speech"], "default_for": ["speech"]},
+        {"id": "gpt-6", "type": "chat", "types": ["chat"]},
+    )
+
+    @staticmethod
+    def _counting(entries, listed: list[httpx.Request], answer: httpx.Response | None = None):
+        data = [{"object": "model", "owned_by": "acme", **e} for e in entries]
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            listed.append(request)
+            return answer or httpx.Response(200, json={"object": "list", "data": data})
+
+        set_llm_caller(USER_ID, EMAIL)
+        return _mock_provider(handler)
+
+    @pytest.mark.asyncio
+    async def test_the_model_marked_default_per_type(self):
+        provider = _listing_provider(*self._LISTING)
+        assert await provider.marked_default_model("image") == "gpt-image-2"
+        assert await provider.marked_default_model("speech") == "gpt-4o-mini-tts"
+        assert await provider.marked_default_model("chat") is None
+
+    @pytest.mark.asyncio
+    async def test_the_chat_and_embedding_defaults_are_read(self):
+        provider = _listing_provider(
+            {"id": "claude-sonnet-5", "types": ["chat"], "default_for": ["chat"]},
+            {"id": "text-embedding-3-large", "types": ["embedding"], "default_for": ["embedding"]},
+        )
+        assert await provider.marked_default_model("chat") == "claude-sonnet-5"
+        assert await provider.marked_default_model("embedding") == "text-embedding-3-large"
+
+    @pytest.mark.asyncio
+    async def test_a_model_is_default_for_the_types_it_names_only(self):
+        provider = _listing_provider(
+            # A chat model that also draws is the image default, not the chat one.
+            {"id": "gemini-3-image", "type": "chat", "types": ["chat", "image"], "default_for": ["image"]},
+            {"id": "gpt-6", "types": ["chat"], "default_for": ["chat"]},
+            # An entry declaring no type is never taken by its id's look.
+            {"id": "tts-1", "default_for": ["speech"]},
+            # Named for a type the entry does not declare.
+            {"id": "gpt-6-mini", "types": ["chat"], "default_for": ["image"]},
+        )
+        assert await provider.marked_default_model("image") == "gemini-3-image"
+        assert await provider.marked_default_model("chat") == "gpt-6"
+        assert await provider.marked_default_model("speech") is None
+
+    @pytest.mark.asyncio
+    async def test_the_old_default_flag_is_not_read(self):
+        provider = _listing_provider(
+            {"id": "gpt-image-2", "types": ["image"], "default": True},
+            {"id": "gpt-6", "types": ["chat"], "default": True},
+        )
+        assert await provider.marked_default_model("image") is None
+        assert await provider.marked_default_model("chat") is None
+
+    @pytest.mark.asyncio
+    async def test_an_older_gateway_marks_none(self):
+        provider = _listing_provider({"id": "gpt-image-2", "types": ["image"]}, {"id": "tts-1", "types": ["speech"]})
+        assert await provider.marked_default_model("image") is None
+        assert await provider.marked_default_model("speech") is None
+
+    @pytest.mark.asyncio
+    async def test_the_listing_is_reused_then_read_again(self):
+        from app.llm import gateway_provider
+
+        listed: list[httpx.Request] = []
+        provider = self._counting(self._LISTING, listed)
+        await provider.marked_default_model("image")
+        await provider.marked_default_model("speech")
+        assert len(listed) == 1
+        assert provider._listed_defaults_until - gateway_provider.time.monotonic() > 290
+        # A new gateway default reaches the platform once the listing is stale.
+        provider._listed_defaults_until = 0.0
+        await provider.marked_default_model("image")
+        assert len(listed) == 2
+
+    @pytest.mark.asyncio
+    async def test_a_failed_listing_keeps_the_last_defaults_read(self):
+        answers = [httpx.Response(200, json={"object": "list", "data": [
+            {"id": "gpt-image-2", "object": "model", "owned_by": "openai", "types": ["image"], "default_for": ["image"]},
+        ]}), httpx.Response(503, json={"error": {"message": "down"}})]
+        set_llm_caller(USER_ID, EMAIL)
+        provider = _mock_provider(lambda _r: answers.pop(0))
+        assert await provider.marked_default_model("image") == "gpt-image-2"
+        provider._listed_defaults_until = 0.0
+        assert await provider.marked_default_model("image") == "gpt-image-2" and not answers
+
+    @pytest.mark.asyncio
+    async def test_a_failed_listing_marks_none_and_is_not_asked_again_at_once(self):
+        listed: list[httpx.Request] = []
+        provider = self._counting((), listed, httpx.Response(503, json={"error": {"message": "down"}}))
+        assert await provider.marked_default_model("image") is None
+        assert await provider.marked_default_model("speech") is None
+        assert len(listed) == 1
+
+
+class TestImageFallsBackToTheGatewayDefault:
+    """#746: with no image model chosen, the gateway's default draws, after every other fallback."""
+
+    _LISTING = (
+        {"id": "gpt-image-1", "types": ["image"]},
+        {"id": "gpt-image-2", "types": ["image"], "default_for": ["image"]},
+    )
+
+    @pytest.fixture
+    def resolve(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from app.llm import router
+
+        state = {
+            "ps": SimpleNamespace(image_provider_id=None, image_provider=None, image_model=None),
+            "gateway": _listing_provider(*self._LISTING),
+        }
+
+        async def _ps(_db):
+            return state["ps"]
+
+        async def _cached(config):
+            return state["gateway"] if config.provider == "filigran_gateway" else f"provider:{config.provider}"
+
+        async def _allowed(*_a, **_kw):
+            return None
+
+        class _Db:
+            def __init__(self, configs):
+                self.configs = configs
+
+            async def execute(self, _statement):
+                return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: list(self.configs)))
+
+        monkeypatch.setattr(router, "_get_platform_settings", _ps)
+        monkeypatch.setattr(router, "_cached_provider", _cached)
+        monkeypatch.setattr(router, "ensure_not_excluded", _allowed)
+
+        async def _resolve(*providers: str):
+            configs = [SimpleNamespace(id=uuid.uuid4(), provider=p) for p in providers]
+            return await router.get_image_provider(_Db(configs))
+
+        _resolve.state = state
+        return _resolve
+
+    @pytest.mark.asyncio
+    async def test_the_gateway_default_draws_when_nothing_else_does(self, resolve):
+        assert await resolve("anthropic", "filigran_gateway") == (resolve.state["gateway"], "gpt-image-2")
+
+    @pytest.mark.asyncio
+    async def test_a_built_in_default_comes_first(self, resolve):
+        assert await resolve("filigran_gateway", "openai") == ("provider:openai", "gpt-image-1")
+
+    @pytest.mark.asyncio
+    async def test_the_admins_choice_wins(self, resolve):
+        from types import SimpleNamespace
+
+        resolve.state["ps"] = SimpleNamespace(
+            image_provider_id=None, image_provider="filigran_gateway", image_model="gpt-image-1"
+        )
+        assert await resolve("filigran_gateway") == (resolve.state["gateway"], "gpt-image-1")
+
+    @pytest.mark.asyncio
+    async def test_no_default_marked_is_todays_refusal(self, resolve):
+        resolve.state["gateway"] = _listing_provider({"id": "gpt-image-2", "types": ["image"]})
+        with pytest.raises(ValueError, match="image-capable provider is required"):
+            await resolve("filigran_gateway")
+
+
+class TestSpeechVoices:
+    """A Gemini speech model through the gateway offers Gemini's prebuilt voices (#703)."""
+
+    _LISTING = (
+        {"id": "gemini-3.8-flash-tts", "owned_by": "gemini", "types": ["speech"]},
+        {"id": "house-voice", "owned_by": "gemini", "types": ["speech"]},
+        {"id": "gpt-4o-mini-tts", "owned_by": "openai", "types": ["speech"]},
+        {"id": "acme-voice-1", "types": ["speech"]},
+    )
+
+    @staticmethod
+    def _gateway(spoken: list[httpx.Request]) -> FiligranGatewayProvider:
+        """*spoken* collects every request: speech calls and listings."""
+        data = [{"object": "model", "owned_by": "acme", **e} for e in TestSpeechVoices._LISTING]
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            spoken.append(request)
+            if request.url.path.endswith("/audio/speech"):
+                return httpx.Response(200, content=b"ID3", headers={"content-type": "audio/mpeg"})
+            return httpx.Response(200, json={"object": "list", "data": data})
+
+        set_llm_caller(USER_ID, EMAIL)
+        return _mock_provider(handler)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("model", ["gemini-3.8-flash-tts", "house-voice"])
+    async def test_a_gemini_model_lists_the_prebuilt_voices_default_first(self, model):
+        from app.llm.gemini_provider import GeminiProvider
+
+        voices = await self._gateway([]).list_voices(model)
+        assert [v.id for v in voices] == [name for name, _trait in GeminiProvider._PREBUILT_VOICES]
+        assert voices[0].id == "Kore"
+
+    @pytest.mark.asyncio
+    async def test_a_gemini_model_speaks_with_the_default_voice_unless_named(self):
+        from app.llm.speech import SpeechRequest
+
+        spoken: list[httpx.Request] = []
+        provider = self._gateway(spoken)
+        await provider.synthesize_speech(SpeechRequest(model="house-voice", text="Hi"))
+        await provider.synthesize_speech(SpeechRequest(model="house-voice", text="Hi", voice="Puck"))
+        speech = [r for r in spoken if r.url.path.endswith("/audio/speech")]
+        assert [json.loads(r.content)["voice"] for r in speech] == ["Kore", "Puck"]
+        assert speech[0].headers["X-Target-Provider"] == "gemini"
+
+    @pytest.mark.asyncio
+    async def test_other_vendors_keep_their_voices(self):
+        from app.llm.speech import OPENAI_VOICES
+
+        asked: list[httpx.Request] = []
+        provider = self._gateway(asked)
+        assert [v.id for v in await provider.list_voices("gpt-4o-mini-tts")] == list(OPENAI_VOICES)
+        assert asked == []  # an OpenAI model's voices are known without listing the gateway
+        assert await provider.list_voices("acme-voice-1") == []
+
+
+class TestElevenLabsVoices:
+    """An ElevenLabs speech model through the gateway speaks the account's voices (#713)."""
+
+    _LISTING = (
+        {"id": "eleven_multilingual_v2", "owned_by": "elevenlabs", "types": ["speech"]},
+        {"id": "narrator", "owned_by": "elevenlabs", "types": ["speech"]},
+        {"id": "gpt-4o-mini-tts", "owned_by": "openai", "types": ["speech"]},
+    )
+    _VOICES = (
+        {"id": "v-rachel", "name": "Rachel", "category": "premade", "description": "calm",
+         "labels": {"accent": "american", "gender": "female"}, "preview_url": "https://x/1.mp3"},
+        {"id": "v-clone", "name": "My clone", "category": "cloned"},
+    )
+
+    @staticmethod
+    def _gateway(
+        seen: list[httpx.Request], voices_status: int = 200, voices: tuple = _VOICES
+    ) -> FiligranGatewayProvider:
+        """*seen* collects every request: speech calls and listings."""
+        models = [{"object": "model", **e} for e in TestElevenLabsVoices._LISTING]
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            if request.url.path.endswith("/audio/speech"):
+                return httpx.Response(200, content=b"ID3", headers={"content-type": "audio/mpeg"})
+            if request.url.path.endswith("/audio/voices"):
+                if voices_status != 200:
+                    return httpx.Response(voices_status, json={"error": {"message": "no voices"}})
+                return httpx.Response(200, json={"object": "list", "data": list(voices)})
+            return httpx.Response(200, json={"object": "list", "data": models})
+
+        set_llm_caller(USER_ID, EMAIL)
+        return _mock_provider(handler)
+
+    @staticmethod
+    def _voice_reads(seen: list[httpx.Request]) -> list[httpx.Request]:
+        return [r for r in seen if r.url.path.endswith("/audio/voices")]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("model", ["eleven_multilingual_v2", "narrator"])
+    async def test_an_elevenlabs_model_lists_the_account_voices_its_own_first(self, model):
+        seen: list[httpx.Request] = []
+        voices = await self._gateway(seen).list_voices(model)
+        assert [(v.id, v.name, v.category) for v in voices] == [
+            ("v-clone", "My clone", "cloned"),
+            ("v-rachel", "Rachel", "premade"),
+        ]
+        assert voices[1].description == "american, female"
+        (read,) = self._voice_reads(seen)
+        assert read.headers["X-Target-Provider"] == "elevenlabs"
+        assert read.url.params["model"] == model
+
+    @pytest.mark.asyncio
+    async def test_the_voices_are_read_once_per_model_then_reused(self):
+        seen: list[httpx.Request] = []
+        provider = self._gateway(seen)
+        first = await provider.list_voices("eleven_multilingual_v2")
+        assert await provider.list_voices("eleven_multilingual_v2") == first
+        await provider.list_voices("narrator")
+        assert [r.url.params["model"] for r in self._voice_reads(seen)] == ["eleven_multilingual_v2", "narrator"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [403, 503])
+    async def test_a_failed_listing_is_read_once_then_raises_until_it_may_have_recovered(self, status):
+        seen: list[httpx.Request] = []
+        provider = self._gateway(seen, voices_status=status)
+        for _ in range(2):
+            with pytest.raises(RuntimeError, match="voices"):
+                await provider.list_voices("eleven_multilingual_v2")
+        assert len(self._voice_reads(seen)) == 1  # no SDK retry, and the failure is kept for a while
+
+    @pytest.mark.asyncio
+    async def test_a_failed_listing_still_speaks_with_the_voice_id_asked(self):
+        from app.llm.speech import SpeechRequest
+
+        seen: list[httpx.Request] = []
+        provider = self._gateway(seen, voices_status=404)
+        result = await provider.synthesize_speech(SpeechRequest(model="eleven_v3", text="Hi", voice="v-rachel"))
+        (speech,) = [r for r in seen if r.url.path.endswith("/audio/speech")]
+        assert json.loads(speech.content)["voice"] == result.voice == "v-rachel"
+        with pytest.raises(RuntimeError, match="voices"):
+            await provider.synthesize_speech(SpeechRequest(model="eleven_v3", text="Hi"))
+
+    @pytest.mark.asyncio
+    async def test_speech_goes_to_elevenlabs_whenever_its_voices_do(self):
+        from app.llm.speech import SpeechRequest
+
+        seen: list[httpx.Request] = []
+        provider = self._gateway(seen)
+        # eleven_v3 is not in the listing: its voices and its speech both name ElevenLabs.
+        await provider.synthesize_speech(SpeechRequest(model="eleven_v3", text="Hi"))
+        (speech,) = [r for r in seen if r.url.path.endswith("/audio/speech")]
+        assert speech.headers["X-Target-Provider"] == "elevenlabs"
+
+    @pytest.mark.asyncio
+    async def test_an_alias_is_known_as_elevenlabs_once_its_speech_capabilities_are_loaded(self):
+        provider = self._gateway([])
+        await provider.load_speech_capabilities("narrator")
+        assert provider.speech_takes_style("narrator") is False
+
+    @pytest.mark.asyncio
+    async def test_speech_always_names_a_voice_id(self):
+        from app.llm.speech import SpeechRequest
+
+        seen: list[httpx.Request] = []
+        provider = self._gateway(seen)
+        unnamed = await provider.synthesize_speech(SpeechRequest(model="eleven_multilingual_v2", text="Hi"))
+        by_name = await provider.synthesize_speech(SpeechRequest(model="narrator", text="Hi", voice="rachel"))
+        unknown = await provider.synthesize_speech(SpeechRequest(model="narrator", text="Hi", voice="Bob"))
+        speech = [r for r in seen if r.url.path.endswith("/audio/speech")]
+        assert [json.loads(r.content)["voice"] for r in speech] == ["v-clone", "v-rachel", "v-clone"]
+        assert speech[1].headers["X-Target-Provider"] == "elevenlabs"
+        assert (unnamed.voice, by_name.voice, unknown.voice) == ("v-clone", "v-rachel", "v-clone")
+        assert unknown.notes == ['Voice "Bob" is not offered by this model: spoken with My clone.']
+
+    @pytest.mark.asyncio
+    async def test_no_delivery_instruction_is_sent(self):
+        from app.llm.speech import SpeechRequest
+
+        seen: list[httpx.Request] = []
+        provider = self._gateway(seen)
+        assert provider.speech_takes_style("eleven_multilingual_v2") is False
+        result = await provider.synthesize_speech(
+            SpeechRequest(model="eleven_multilingual_v2", text="Hi", voice="v-rachel", style="warm")
+        )
+        (speech,) = [r for r in seen if r.url.path.endswith("/audio/speech")]
+        assert "instructions" not in json.loads(speech.content)
+        assert result.notes and "delivery instruction" in result.notes[0]
+
+    def test_inline_phonemes_reach_the_models_that_honour_them(self):
+        from app.llm.speech import PronunciationSupport
+
+        provider = self._gateway([])
+        assert provider.speech_pronunciation("eleven_flash_v2") == PronunciationSupport(ssml="inline", phoneme=True)
+        assert provider.speech_pronunciation("eleven_multilingual_v2") == PronunciationSupport()
+
+    @pytest.mark.asyncio
+    async def test_an_openai_model_keeps_its_voices_without_a_voice_read(self):
+        from app.llm.speech import OPENAI_VOICES
+
+        seen: list[httpx.Request] = []
+        provider = self._gateway(seen)
+        assert [v.id for v in await provider.list_voices("gpt-4o-mini-tts")] == list(OPENAI_VOICES)
+        assert self._voice_reads(seen) == []
+
+    @pytest.mark.asyncio
+    async def test_an_empty_library_is_reused_too(self):
+        seen: list[httpx.Request] = []
+        provider = self._gateway(seen, voices=())
+        assert await provider.list_voices("eleven_multilingual_v2") == []
+        assert await provider.list_voices("eleven_multilingual_v2") == []
+        assert len(self._voice_reads(seen)) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_target_pinned_elsewhere_is_not_elevenlabs_whatever_the_id(self):
+        seen: list[httpx.Request] = []
+        set_llm_caller(USER_ID, EMAIL)
+        provider = FiligranGatewayProvider(
+            api_key=f"{GATEWAY_URL}||openai",
+            http_client=httpx.AsyncClient(
+                auth=XtmJwtAuth(AUD, "openai"),
+                transport=httpx.MockTransport(lambda r: seen.append(r) or httpx.Response(404)),
+            ),
+        )
+        assert await provider.list_voices("eleven_v3") == []
+        assert provider.speech_takes_style("eleven_v3") is None
+        assert seen == []

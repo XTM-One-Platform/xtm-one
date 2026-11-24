@@ -106,17 +106,6 @@ test.describe('Settings — AI Models tab', () => {
 
   test.describe('conditional fields are labelled too', () => {
     test.beforeEach(async ({ page }) => {
-      // Offer the Filigran AI Gateway (behind a feature flag) in the served
-      // auth config, so its Gateway URL field can be reached.
-      await page.route((url) => url.pathname === '/api/v1/auth/config', async (route) => {
-        const response = await route.fetch();
-        const json = await response.json();
-        const features = Array.isArray(json.enabled_features) ? json.enabled_features : [];
-        await route.fulfill({
-          response,
-          json: { ...json, enabled_features: [...features, 'FILIGRAN_GATEWAY_PROVIDER'] },
-        });
-      });
       // No agent default yet, so the dialog offers the Agent Default Model select.
       await page.route((url) => url.pathname === '/api/v1/settings/general-assistant', async (route) => {
         if (route.request().method() !== 'GET') return route.fallback();

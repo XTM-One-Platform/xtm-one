@@ -214,7 +214,7 @@ async def test_the_cyber_posture_of_a_plain_analyst_sends_no_gated_query(monkeyp
         return []
 
     monkeypatch.setattr(collector, "_user_creds", creds)
-    monkeypatch.setattr(collector, "_profile_tech_stack", no_stack)
+    monkeypatch.setattr(collector, "_organization_software", no_stack)
     stage_facts, present = await collector.build_posture_for_user(None, str(uuid.uuid4()), "cyber")
     assert "opencti" in present
     gated = {"CtemPirs", "CtemPirIds", "CtemPlaybooks", "CtemPirRel"}
@@ -235,7 +235,7 @@ async def test_the_posture_of_a_user_with_the_capabilities_reads_them(monkeypatc
         return []
 
     monkeypatch.setattr(collector, "_user_creds", creds)
-    monkeypatch.setattr(collector, "_profile_tech_stack", no_stack)
+    monkeypatch.setattr(collector, "_organization_software", no_stack)
     await collector.build_posture_for_user(None, str(uuid.uuid4()), "cyber")
     assert {"CtemPirs", "CtemPirIds", "CtemPlaybooks"} <= set(operations)
 

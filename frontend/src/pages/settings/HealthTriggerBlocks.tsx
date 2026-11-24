@@ -23,16 +23,21 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import { useId } from "react";
 import { CalendarClock, FlaskConical, Hourglass, Radio } from "lucide-react";
 
+import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { SettingsField, SettingsSwitchField, settingsFieldHintId, settingsFieldLabelId } from "@/components/ui/settings-form";
 import { SettingsReadField } from "@/components/ui/settings-read-view";
+import { Switch } from "@/components/ui/switch";
+import { TruncatedText } from "@/components/ui/truncated-text";
 import { useHealthScheduleMarks } from "@/hooks/api/useHealthApi";
 import { useFormatter } from "@/i18n";
 import { useHealthName } from "@/hooks/api/useHealthApi";
-import { healthRefusalKey } from "@/lib/health";
+import { healthRefusalKey, isScheduleFiring } from "@/lib/health";
 import { COMMON_TIMEZONES } from "@/lib/constants";
-import { formatShortDateTime } from "@/lib/utils";
+import { humanizeCron, nextCronRun } from "@/lib/cron";
+import { formatCompactInZone } from "@/lib/scheduled-work-items";
+import { cn } from "@/lib/utils";
 import type { HealthSchedules, HealthSettings, HealthSignalSettings } from "@/types";
 import { BlockTitle, type BlockProps } from "./health-block";
 
@@ -62,7 +67,8 @@ const SCHEDULE_INFO = {
   digest: "On: Platform Health writes a summary of the cycles closed since the last one, on the cron expression below. Off: no digest is written.",
 } as const;
 
-function NumberField({
+/** A bounded number with its unit; `display` writes the value at rest (a count with its thousands separator). */
+export function NumberField({
   label,
   info,
   unit,
@@ -72,6 +78,7 @@ function NumberField({
   step = 1,
   editing,
   onChange,
+  display = String,
 }: {
   label: string;
   info: string;
@@ -82,18 +89,24 @@ function NumberField({
   step?: number;
   editing: boolean;
   onChange: (value: number) => void;
+  display?: (value: number) => string;
 }) {
   const { t_i18n } = useFormatter();
   const id = useId();
   // At rest (#10855): the number and its unit as text, never a disabled input.
-  if (!editing) return <SettingsReadField label={label} info={info} mono value={Number.isFinite(value) ? `${value} ${unit}` : ""} />;
+  if (!editing) return <SettingsReadField label={label} info={info} mono value={Number.isFinite(value) ? `${display(value)} ${unit}` : ""} />;
+  // Out of bounds (or empty): the bound line turns into the field's inline error
+  // and the input is marked aria-invalid, so the reason Save is off sits at the field.
+  const invalid = !Number.isFinite(value) || value < min || value > max;
+  const bounds = t_i18n("From {min} to {max} {unit}.", { min, max, unit });
   return (
-    <SettingsField id={id} label={label} info={info} helper={t_i18n("From {min} to {max} {unit}.", { min, max, unit })}>
+    <SettingsField id={id} label={label} info={info} helper={invalid ? undefined : bounds} error={invalid ? bounds : undefined}>
       <div className="flex items-center gap-2">
         <Input
           id={id}
           aria-labelledby={settingsFieldLabelId(id)}
           aria-describedby={settingsFieldHintId(id)}
+          aria-invalid={invalid}
           type="number"
           inputMode="decimal"
           min={min}
@@ -152,101 +165,163 @@ function SwitchRow({
   );
 }
 
+const CRON_INFO =
+  "Five fields: minute, hour, day of month, month, day of week, e.g. 0 3 * * * for every day at 03:00 in the timezone of this section. The scheduler reads it at each tick.";
+const TIMEZONE_INFO =
+  "The timezone the cron expressions of this section are read in, e.g. Europe/Paris. Every schedule of Platform Health uses it. UTC unless chosen.";
+
+/**
+ * When each specialist's fleet-wide cycle starts (#735): one table row per
+ * specialist (switch, cron, how it reads, last and next run), the timezone on
+ * the block's header line. Same draft and Save as the page's other blocks; the
+ * server validates the cron expressions and the timezone (422).
+ */
 export function ScheduleBlock({ draft, editing, onChange }: BlockProps) {
-  const { t_i18n } = useFormatter();
+  const { t_i18n, locale } = useFormatter();
   const healthName = useHealthName();
   const { data: marks = [] } = useHealthScheduleMarks();
   const timezoneId = useId();
+  const timezone = draft.schedules.timezone || "UTC";
   const set = (patch: Partial<HealthSchedules>) => onChange({ ...draft, schedules: { ...draft.schedules, ...patch } });
+  const when = (iso: string) => formatCompactInZone(iso, timezone, locale);
   return (
-    <div>
-      <BlockTitle
-        icon={CalendarClock}
-        title={t_i18n("Schedule")}
-        hint={t_i18n("When each specialist's fleet-wide cycle starts. Each run opens a budget cycle first.")}
-      />
-      <div className="space-y-2">
-        {SCHEDULE_KEYS.map((key) => {
-          const last = marks.find((mark) => mark.schedule === key);
-          const label = t_i18n(SCHEDULE_LABELS[key]);
-          return (
-            <SwitchRow
-              key={key}
-              title={label}
-              description={t_i18n(SCHEDULE_HINTS[key])}
-              info={t_i18n(SCHEDULE_INFO[key])}
-              checked={draft.schedules[`${key}_enabled`]}
-              editing={editing}
-              onToggle={(on) => set({ [`${key}_enabled`]: on } as Partial<HealthSchedules>)}
-            >
-              <CronField
-                schedule={label}
-                value={draft.schedules[key]}
-                editing={editing}
-                onChange={(value) => set({ [key]: value } as Partial<HealthSchedules>)}
-              />
-              {last && (
-                <p className="self-end content-compact text-default-secondary">
-                  {t_i18n("Last fired {when}", { when: formatShortDateTime(last.fired_at) })}
-                  {last.refusal && ` · ${t_i18n(healthRefusalKey({ detail: { code: last.refusal } }), { name: healthName })}`}
-                </p>
-              )}
-            </SwitchRow>
-          );
-        })}
-        {!editing ? (
-          <SettingsReadField
-            className="max-w-xs"
-            label={t_i18n("Timezone")}
-            info={t_i18n("The timezone the cron expressions above are read in, e.g. Europe/Paris. Every schedule of Platform Health uses it. UTC unless chosen.")}
-            value={draft.schedules.timezone.replace(/_/g, " ")}
-          />
-        ) : (
-        <SettingsField
-          id={timezoneId}
-          className="max-w-xs"
-          label={t_i18n("Timezone")}
-          info={t_i18n("The timezone the cron expressions above are read in, e.g. Europe/Paris. Every schedule of Platform Health uses it. UTC unless chosen.")}
-          helper={t_i18n("The cron expressions above run in this timezone.")}
-        >
-          <SearchableSelect
-            id={timezoneId}
-            aria-labelledby={settingsFieldLabelId(timezoneId)}
-            aria-describedby={settingsFieldHintId(timezoneId)}
-            options={["UTC", ...COMMON_TIMEZONES].map((tz) => ({ value: tz, label: tz.replace(/_/g, " ") }))}
-            value={draft.schedules.timezone}
-            onValueChange={(timezone) => set({ timezone })}
-            className="h-9"
-          />
-        </SettingsField>
-        )}
+    <div data-testid="settings.health.schedule">
+      <div className="mb-2 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <BlockTitle
+          icon={CalendarClock}
+          title={t_i18n("Schedule")}
+          hint={t_i18n("When each specialist's fleet-wide cycle starts. Each run opens a budget cycle first.")}
+        />
+        <div className="flex items-center gap-2" data-testid="settings.health.schedule.timezone">
+          <label id={settingsFieldLabelId(timezoneId)} htmlFor={timezoneId} className="content-compact text-default-secondary">
+            {t_i18n("Timezone")}
+          </label>
+          <InfoTip content={<div className="max-w-xs content-compact">{t_i18n(TIMEZONE_INFO)}</div>} label={t_i18n("About this field")} />
+          {editing ? (
+            <SearchableSelect
+              id={timezoneId}
+              aria-labelledby={settingsFieldLabelId(timezoneId)}
+              options={["UTC", ...COMMON_TIMEZONES].map((tz) => ({ value: tz, label: tz.replace(/_/g, " ") }))}
+              value={draft.schedules.timezone}
+              onValueChange={(tz) => set({ timezone: tz })}
+              className="w-56"
+            />
+          ) : (
+            <span id={timezoneId} className="content-base font-medium">
+              {timezone.replace(/_/g, " ")}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full table-fixed content-compact" data-testid="settings.health.schedule.table">
+          {/* Fixed widths sized to the all-valid layout: a row flipping to "Invalid cron" while typing never moves a column (the short
+              message fits the When cell whole, about 109 px at 1080, in en, fr, es and ja).
+              Status fits its longest value in en, fr, es and ja ("Desactivado", about 68 px) at 1080; Last run and Next run fit
+              "Dernière exécution" / "Prochaine exécution" (about 108 / 116 px plus padding) at 1080 and wrap rather than overflow below it. */}
+          <colgroup>
+            <col className="w-[19%]" />
+            <col className="w-[11%]" />
+            <col className="w-[23%]" />
+            <col className="w-[15%]" />
+            <col className="w-[16%]" />
+            <col className="w-[16%]" />
+          </colgroup>
+          <thead>
+            <tr className="border-b border-elevation-subtle-soft text-left text-default-secondary">
+              <th className="whitespace-nowrap py-1.5 pr-3 font-medium">{t_i18n("Name")}</th>
+              <th className="whitespace-nowrap py-1.5 pr-3 font-medium">{t_i18n("Status")}</th>
+              <th className="whitespace-nowrap py-1.5 pr-3 font-medium">{t_i18n("Cron expression")}</th>
+              <th className="whitespace-nowrap py-1.5 pr-3 font-medium">{t_i18n("When")}</th>
+              <th className="py-1.5 pr-3 font-medium">{t_i18n("Last run")}</th>
+              <th className="py-1.5 font-medium">{t_i18n("Next run")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {SCHEDULE_KEYS.map((key) => {
+              const label = t_i18n(SCHEDULE_LABELS[key]);
+              const cron = draft.schedules[key];
+              const enabled = draft.schedules[`${key}_enabled`];
+              const next = nextCronRun(cron, timezone);
+              const mark = marks.find((m) => m.schedule === key);
+              const fired = isScheduleFiring(mark) ? mark : undefined;
+              const switchId = `${timezoneId}-${key}-switch`;
+              const cronId = `${timezoneId}-${key}-cron`;
+              return (
+                <tr key={key} className="border-b border-elevation-subtle-soft last:border-b-0" data-testid={`settings.health.schedule.row.${key}`}>
+                  <td className="py-1.5 pr-3">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span id={`${switchId}-label`} className="min-w-0">
+                        <TruncatedText text={label} className="content-base font-medium" />
+                      </span>
+                      <InfoTip
+                        label={t_i18n("About this field")}
+                        content={
+                          <div className="max-w-xs space-y-1 content-compact">
+                            <p>{t_i18n(SCHEDULE_HINTS[key])}</p>
+                            <p>{t_i18n(SCHEDULE_INFO[key])}</p>
+                          </div>
+                        }
+                      />
+                    </span>
+                  </td>
+                  <td className="py-1.5 pr-3">
+                    {editing ? (
+                      <Switch
+                        id={switchId}
+                        aria-labelledby={`${switchId}-label`}
+                        checked={enabled}
+                        onCheckedChange={(on) => set({ [`${key}_enabled`]: on } as Partial<HealthSchedules>)}
+                      />
+                    ) : (
+                      <span className={cn("whitespace-nowrap", enabled ? "text-default-primary" : "text-default-secondary")}>{enabled ? t_i18n("On") : t_i18n("Off")}</span>
+                    )}
+                  </td>
+                  <td className="py-1.5 pr-3">
+                    {editing ? (
+                      <span className="flex items-center gap-1">
+                        <Input
+                          id={cronId}
+                          aria-label={t_i18n("When {schedule} starts.", { schedule: label })}
+                          aria-invalid={next === null || undefined}
+                          aria-describedby={next === null ? `${cronId}-error` : undefined}
+                          value={cron}
+                          onChange={(event) => set({ [key]: event.target.value } as Partial<HealthSchedules>)}
+                          className="w-36 [&_input]:font-mono-plex"
+                        />
+                        <InfoTip content={<div className="max-w-xs content-compact">{t_i18n(CRON_INFO)}</div>} label={t_i18n("About this field")} />
+                      </span>
+                    ) : (
+                      <span className="font-mono-plex content-base">{cron.trim()}</span>
+                    )}
+                  </td>
+                  {(() => {
+                    const reading = next === null ? t_i18n("Invalid cron") : `${humanizeCron(cron.trim(), locale)} (${timezone.replace(/_/g, " ")})`;
+                    const last = `${fired ? when(fired.fired_at) : t_i18n("Never")}${fired?.refusal ? ` · ${t_i18n(healthRefusalKey({ detail: { code: fired.refusal } }), { name: healthName })}` : ""}`;
+                    const upcoming = enabled && next ? when(next.toISOString()) : t_i18n("Not scheduled");
+                    return (
+                      <>
+                        <td className={cn("py-1.5 pr-3", next === null ? "text-feedback-error-primary" : "text-default-secondary")}>
+                          <span id={next === null ? `${cronId}-error` : undefined} className="block min-w-0">
+                            <TruncatedText text={reading} />
+                          </span>
+                        </td>
+                        <td className="py-1.5 pr-3 text-default-secondary" data-testid={`settings.health.schedule.last.${key}`}>
+                          <TruncatedText text={last} />
+                        </td>
+                        <td className="py-1.5 text-default-secondary" data-testid={`settings.health.schedule.next.${key}`}>
+                          <TruncatedText text={upcoming} />
+                        </td>
+                      </>
+                    );
+                  })()}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
-  );
-}
-
-/** The cron expression of one schedule. */
-function CronField({ schedule, value, editing, onChange }: { schedule: string; value: string; editing: boolean; onChange: (value: string) => void }) {
-  const { t_i18n } = useFormatter();
-  const id = useId();
-  const info = t_i18n("Five fields: minute, hour, day of month, month, day of week, e.g. 0 3 * * * for every day at 03:00 in the timezone below. The scheduler reads it at each tick.");
-  if (!editing) return <SettingsReadField label={t_i18n("Cron expression")} info={info} mono value={value.trim()} />;
-  return (
-    <SettingsField
-      id={id}
-      label={t_i18n("Cron expression")}
-      info={t_i18n("Five fields: minute, hour, day of month, month, day of week, e.g. 0 3 * * * for every day at 03:00 in the timezone below. The scheduler reads it at each tick.")}
-      helper={t_i18n("When {schedule} starts.", { schedule })}
-    >
-      <Input
-        id={id}
-        aria-labelledby={settingsFieldLabelId(id)}
-        aria-describedby={settingsFieldHintId(id)}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-44 font-mono-plex"
-      />
-    </SettingsField>
   );
 }
 

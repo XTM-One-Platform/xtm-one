@@ -51,7 +51,7 @@ export function AdminApiKeyRow({
         <div className="flex flex-wrap items-center gap-3 content-caption text-default-secondary">
           {showOwner && (
             <span className="inline-flex items-center gap-1.5">
-              <Link to={`/users/${apiKey.owner_id}`} className="font-medium text-default-secondary hover:text-accent hover:underline">
+              <Link to={`/users-and-groups/users/${apiKey.owner_id}`} className="font-medium text-default-secondary hover:text-accent hover:underline">
                 {ownerLabel}
               </Link>
               {!apiKey.owner_active && (
