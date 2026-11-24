@@ -20846,7 +20846,7 @@
   "Entered by hand": "Saisi à la main",
   "{added} added, {updated} updated, {removed} removed": "{added} ajoutés, {updated} mis à jour, {removed} supprimés",
   "View history": "Voir l'historique",
-  "Remove or hand over the rows of {name}": "Supprimer ou reprendre les lignes de {name}",
+  "Remove or hand over the rows": "Supprimer ou reprendre les lignes",
   "Written by agent {name}": "Écrit par l'agent {name}",
   "Every enabled section sync": "Toutes les synchronisations de section actives",
   "No row yet": "Aucune ligne pour l'instant",

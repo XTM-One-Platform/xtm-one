@@ -20846,7 +20846,7 @@
   "Entered by hand": "手入力",
   "{added} added, {updated} updated, {removed} removed": "追加 {added}、更新 {updated}、削除 {removed}",
   "View history": "履歴を表示",
-  "Remove or hand over the rows of {name}": "{name} の行を削除または引き継ぐ",
+  "Remove or hand over the rows": "行を削除または引き継ぐ",
   "Written by agent {name}": "エージェント {name} が書き込み",
   "Every enabled section sync": "有効なすべてのセクション同期",
   "No row yet": "まだ行がありません",
