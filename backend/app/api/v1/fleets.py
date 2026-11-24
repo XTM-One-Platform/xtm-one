@@ -1896,6 +1896,11 @@ async def get_fleet_approval_gates_endpoint(
 TOOL_LEVEL_ENFORCEMENT_REFUSAL = (
     "Only an administrator can turn the platform's tool-level pauses of a fleet's gates on or off."
 )
+#: A built-in fleet never pauses a tool call (#1675): its gates are decision items between steps.
+BUILTIN_TOOL_LEVEL_REFUSAL = (
+    "A built-in fleet never pauses its tool calls: its gates are decisions a person answers between "
+    "steps. Fork the fleet to enforce its gates at tool level."
+)
 
 
 @router.put("/{fleet_id}/autonomy", response_model=FleetApprovalGatesResponse)
@@ -1925,6 +1930,10 @@ async def apply_fleet_autonomy_endpoint(
     _ensure_writable(fleet, fields)
     previous_enforced = bool(getattr(fleet, "enforce_gates_at_tool_level", False))
     new_enforced = previous_enforced if body.enforce_at_tool_level is None else body.enforce_at_tool_level
+    if fleet.is_builtin:
+        if body.enforce_at_tool_level:
+            raise HTTPException(status_code=422, detail=BUILTIN_TOOL_LEVEL_REFUSAL)
+        previous_enforced = new_enforced = False
     # Tool-level enforcement is an administrator's opt-in (#1467), both ways.
     if new_enforced != previous_enforced and not user.is_admin:
         raise HTTPException(status_code=403, detail=TOOL_LEVEL_ENFORCEMENT_REFUSAL)

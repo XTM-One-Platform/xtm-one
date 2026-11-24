@@ -470,8 +470,11 @@ _SWITCHED_ON = _prereq("manual", "An administrator switches each automation on",
 #: Gate impact classes (#9769, ``app.services.fleet_autonomy``): ``low`` stops
 #: waiting at the Medium autonomy level, ``high`` at Low, ``destructive`` only
 #: at Full autonomous.
-#: ``tools`` (#9769 S1b): the tool calls that are the gated action, paused
-#: in the tool path while the fleet's level gates it.
+#: A built-in gate never declares ``tools`` or ``grant`` (#1675, Sam, 24 Nov
+#: 2026): on every deployment a seeded fleet's tools are always offered and
+#: authorized, and a gate that waits is one decision item (a needs_human work
+#: item with its ask card) between steps, never a pause inside a run. The agent
+#: decides what an answer means and moves the case itself.
 #: Seeded fleets ship at Low (#10005), so the class says what still waits:
 #: an OpenAEV launch executes payloads on the organization's endpoints or AI
 #: systems, which the fleet cannot tell from production, and an executed
@@ -479,71 +482,14 @@ _SWITCHED_ON = _prereq("manual", "An administrator switches each automation on",
 #: contract clause) leaves the platform irreversibly: ``destructive``. A
 #: remediation ticket is a reversible internal write: ``low``.
 _LAUNCH_IMPACT = "destructive"
-_OPENAEV_LAUNCH_TOOLS = [
-    {"name": "manage_openaev_simulation", "when": {"action": ["status"], "status": ["RUNNING"]}},
-    {"name": "manage_openaev_atomic_testing", "when": {"action": ["launch", "relaunch"]}},
-]
-#: The coverage request of the review step (CTEM-16, #1089): OpenAEV builds and
-#: schedules its scenario from it, so it is what an analyst review would hold.
-_COVERAGE_REQUEST_TOOLS = [
-    {"name": "manage_opencti_security_coverage", "when": {"action": ["create"]}},
-]
-#: The analyst review (#1480): validating the OpenCTI draft that holds the threat
-#: package and its coverage publishes both, and only then does the coverage reach
-#: OpenAEV. One decision with the coverage request: the approved request's answer
-#: names its draft, and that grant lets the draft's validation run without a
-#: second pause. A fleet with this gate is offered apply_opencti_draft with Live
-#: writes off (``fleet_autonomy.gate_tool_names``).
-_THREAT_PACKAGE_REVIEW_TOOLS = [
-    *_COVERAGE_REQUEST_TOOLS,
-    {"name": "apply_opencti_draft"},
-]
-_THREAT_PACKAGE_REVIEW_GRANT = {"objects": ["draft_id"], "fresh": []}
-#: Every call that creates or starts an OpenAEV validation (Sam, 23 Nov 2026, #1339): the
-#: gate ``ctem.validation.non_readonly`` of a fleet that has the OpenAEV validation step.
-#: Reads (list, get, results, healthcheck, status reads) are not listed and stay free.
-#: The coverage request is NOT one of them (#1467): it is the decision of the review
-#: step, ``ctem.analyst_review`` alone, one decision and one gate key per call.
-_OPENAEV_VALIDATION_TOOLS = [
-    {"name": "create_openaev_scenario"},
-    {"name": "import_openaev_scenario"},
-    {"name": "manage_openaev_scenario", "when": {"action": ["launch", "schedule_recurrence", "duplicate"]}},
-    {"name": "manage_openaev_simulation", "when": {"action": ["create", "duplicate"]}},
-    *_OPENAEV_LAUNCH_TOOLS,
-    {"name": "add_openaev_inject_to_scenario"},
-    {"name": "manage_openaev_inject", "when": {"action": ["create", "duplicate", "trigger"]}},
-    {"name": "create_openaev_atomic_testing"},
-    {
-        "name": "manage_openaev_atomic_testing",
-        "when": {"action": ["create", "duplicate", "recurrence"]},
-    },
-]
-#: One decision per validation (#1339): an approved call of the gate covers the later
-#: calls of the same gate on the objects it named or created (a scenario, a simulation,
-#: an atomic test, an inject). A call that names a new target or a new schedule asks again.
-_OPENAEV_VALIDATION_GRANT = {
-    "objects": ["scenario_id", "exercise_id", "inject_id", "parent_id"],
-    "fresh": [
-        "asset_ids",
-        "asset_group_ids",
-        "team_ids",
-        "recurrence",
-        "recurrence_cron",
-        "recurrence_start",
-        "recurrence_end",
-        "start_date",
-    ],
-}
 #: The action of the validation gate, in plain words (#1339).
 CTEM_VALIDATION_ACTION = "Validate: create or launch an OpenAEV scenario or atomic test"
 CTEM_VALIDATION_GATE = "ctem.validation.non_readonly"
-_TICKET_TOOLS = [
-    {"name": "create_jira_issue"},
-    {"name": "create_servicenow_incident"},
-    {"name": "create_servicenow_change"},
-    # #917: the Mobilization role opens a case's ticket through the sync layer.
-    {"name": "sync_ctem_case_ticket", "when": {"create": ["true"]}},
-]
+#: The tools a gate offers by its key alone (#1480, #1675): the CTEM analyst
+#: review validates the OpenCTI draft that holds the threat package, so a fleet
+#: with that gate is offered apply_opencti_draft with Live writes off
+#: (``fleet_autonomy.gate_tool_names``). Offered, never paused.
+GATE_OFFERED_TOOLS: dict[str, tuple[str, ...]] = {"ctem.analyst_review": ("apply_opencti_draft",)}
 
 #: The CTEM loop gate catalog (#916, CTEM-34): one key per loop stage, declared
 #: once and seeded on every CTEM loop fleet. Out of the box (the seeded Low
@@ -553,10 +499,10 @@ _TICKET_TOOLS = [
 #: gate runs and the case records it as passed automatically.
 #: Full human gates makes each of them wait, Full autonomous none, and a pin
 #: (``Fleet.approval_pins``, writable on a built-in fleet, never written by the
-#: seed) moves one gate either way and survives a seed upgrade. The former
-#: tool gates map onto these keys: the OpenAEV launches are
-#: ``ctem.validation.non_readonly``, the remediation tickets and a supplier
-#: action are ``ctem.mobilize``.
+#: seed) moves one gate either way and survives a seed upgrade. No gate names a
+#: tool (#1675): the OpenAEV launches belong to ``ctem.validation.non_readonly``,
+#: the remediation tickets and a supplier action to ``ctem.mobilize``, the OpenCRQ
+#: treatment plan writes to ``ctem.remediation.decision``, by the persona alone.
 CTEM_GATE_KEYS: tuple[str, ...] = (
     "ctem.validation.non_readonly",
     "ctem.analyst_review",
@@ -569,64 +515,33 @@ CTEM_GATE_KEYS: tuple[str, ...] = (
 CTEM_MOBILIZE_GATE = "ctem.mobilize"
 
 
-#: The OpenCRQ treatment plan writes (CTEM-18, #1055). On a CTEM loop fleet they
-#: record the remediation decision, so they follow ``ctem.remediation.decision``
-#: (runs out of the box, a pin makes it wait); on the risk budget desk they are
-#: ``opencrq.register.write``.
-OPENCRQ_TREATMENT_PLAN_WRITE_TOOLS: list[dict[str, str]] = [
-    {"name": "create_opencrq_treatment_plan"},
-    {"name": "update_opencrq_treatment_plan"},
-    {"name": "set_opencrq_treatment_plan_moves"},
-    {"name": "add_opencrq_treatment_plan_moves"},
-]
-
-
-def _ctem_gates(*, launch_tools: bool, mobilize_tools: bool, mobilize_action: str) -> list[dict[str, Any]]:
+def _ctem_gates(*, launch_tools: bool, mobilize_action: str) -> list[dict[str, Any]]:
     """The CTEM loop gate catalog of one fleet, in loop order (:data:`CTEM_GATE_KEYS`).
 
     *launch_tools*: the fleet has the OpenAEV validation step; its validation gate
-    then covers every creating or starting call and waits out of the box
-    (``destructive``, #1339). Without it the gate is stated to the agent only.
+    then waits out of the box (``destructive``, #1339). No gate declares tools
+    (#1675): each is a decision the agent files as one work item between steps.
     """
 
-    def gate(key: str, action: str, module: str, impact: str, tools: list | None = None) -> dict[str, Any]:
-        out: dict[str, Any] = {"key": key, "action": action, "module": module, "approver": "Fleet manager"}
-        out["impact"] = impact
-        if tools:
-            out["tools"] = [
-                {**t, "when": {k: list(v) for k, v in t["when"].items()}} if "when" in t else dict(t) for t in tools
-            ]
-        return out
+    def gate(key: str, action: str, module: str, impact: str) -> dict[str, Any]:
+        return {"key": key, "action": action, "module": module, "approver": "Fleet manager", "impact": impact}
 
-    validation = gate(
-        CTEM_VALIDATION_GATE,
-        CTEM_VALIDATION_ACTION,
-        "openaev",
-        _LAUNCH_IMPACT if launch_tools else "high",
-        _OPENAEV_VALIDATION_TOOLS if launch_tools else None,
-    )
-    if launch_tools:
-        validation["grant"] = {k: list(v) for k, v in _OPENAEV_VALIDATION_GRANT.items()}
-    review = gate(
-        "ctem.analyst_review",
-        "Review: an analyst checks the threat package, then its OpenCTI draft is validated and its security "
-        "coverage requested: approving publishes the package and sends the coverage to OpenAEV",
-        "opencti",
-        "low",
-        _THREAT_PACKAGE_REVIEW_TOOLS,
-    )
-    review["grant"] = {k: list(v) for k, v in _THREAT_PACKAGE_REVIEW_GRANT.items()}
     return [
-        validation,
-        review,
+        gate(CTEM_VALIDATION_GATE, CTEM_VALIDATION_ACTION, "openaev", _LAUNCH_IMPACT if launch_tools else "high"),
+        gate(
+            "ctem.analyst_review",
+            "Review: an analyst checks the threat package, then its OpenCTI draft is validated and its security "
+            "coverage requested: approving publishes the package and sends the coverage to OpenAEV",
+            "opencti",
+            "low",
+        ),
         gate(
             "ctem.remediation.decision",
             "Decide: choose the remediation option and record it as an OpenCRQ treatment plan",
             "platform",
             "high",
-            OPENCRQ_TREATMENT_PLAN_WRITE_TOOLS,
         ),
-        gate(CTEM_MOBILIZE_GATE, mobilize_action, "platform", "destructive", _TICKET_TOOLS if mobilize_tools else None),
+        gate(CTEM_MOBILIZE_GATE, mobilize_action, "platform", "destructive"),
         gate("ctem.production_change", "Apply a change on production through an integration", "platform", "high"),
         gate("ctem.accept_risk", "Accept a residual risk beyond the policy cap", "platform", "high"),
         gate("ctem.close_without_retest", "Close a case without a passing re-test", "platform", "high"),
@@ -698,7 +613,7 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
         {"title": "Mobilization", "detail": "The top three actions, detections drafted and the ticket.", "gate": True},
         {"title": "Re-test", "detail": "The scenario runs again and closes the case."},
     ],
-    "gates": _ctem_gates(launch_tools=True, mobilize_tools=True, mobilize_action=_MOBILIZE_ACTION),
+    "gates": _ctem_gates(launch_tools=True, mobilize_action=_MOBILIZE_ACTION),
     "objects": [
         {"module": "openaev", "objects": ["Scenarios (after approval)"]},
         {"module": "opencrq", "objects": ["Loss estimates"]},
@@ -787,7 +702,7 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
         },
         {"title": "Re-test", "detail": "A re-validation closes the case."},
     ],
-    "gates": _ctem_gates(launch_tools=True, mobilize_tools=True, mobilize_action=_MOBILIZE_ACTION),
+    "gates": _ctem_gates(launch_tools=True, mobilize_action=_MOBILIZE_ACTION),
     "objects": [
         {"module": "openaev", "objects": ["Validations (after approval)"]},
         {"module": "opencrq", "objects": ["Finding scores"]},
@@ -854,7 +769,7 @@ CTEM_AI_SECURITY_STRUCTURED: dict[str, Any] = {
             "gate_key": CTEM_MOBILIZE_GATE,
         },
     ],
-    "gates": _ctem_gates(launch_tools=True, mobilize_tools=False, mobilize_action=_MOBILIZE_ACTION),
+    "gates": _ctem_gates(launch_tools=True, mobilize_action=_MOBILIZE_ACTION),
     "objects": [
         {"module": "opencti", "objects": ["Drafts of ATLAS entities"]},
         {"module": "openaev", "objects": ["AI tests (after approval)"]},
@@ -932,7 +847,6 @@ CTEM_THIRD_PARTY_RISK_STRUCTURED: dict[str, Any] = {
     ],
     "gates": _ctem_gates(
         launch_tools=False,
-        mobilize_tools=False,
         mobilize_action="Mobilize: carry out an action on a supplier (contact, control, clause, monitoring)",
     ),
     "objects": [
@@ -1041,7 +955,6 @@ OPENAEV_DETECTION_DESK_STRUCTURED: dict[str, Any] = {
             "module": "openaev",
             "approver": "Fleet manager",
             "impact": _LAUNCH_IMPACT,
-            "tools": _OPENAEV_LAUNCH_TOOLS,
         },
     ],
     "objects": [
@@ -1070,16 +983,6 @@ OPENAEV_DETECTION_DESK_STRUCTURED: dict[str, Any] = {
         {"trigger": "Gate answered", "basis": "One run per launch answered", "runs_min": 0, "runs_max": 60},
     ],
 }
-
-#: The OpenCRQ register-of-record writes (#10593): a person's call, logged at Low (impact high).
-_OPENCRQ_REGISTER_WRITE_TOOLS = [
-    {"name": "create_opencrq_risk_scenario"},
-    {"name": "update_opencrq_risk_scenario"},
-    {"name": "update_opencrq_loss_estimates"},
-    {"name": "update_opencrq_risk_tolerance"},
-    # CTEM-18: a treatment plan written to OpenCRQ is a register-of-record write too.
-    *OPENCRQ_TREATMENT_PLAN_WRITE_TOOLS,
-]
 
 OPENCRQ_RISK_BUDGET_DESK_STRUCTURED: dict[str, Any] = {
     "purpose_line": "A risk register priced in money, kept current, from OpenCRQ alone.",
@@ -1110,7 +1013,6 @@ OPENCRQ_RISK_BUDGET_DESK_STRUCTURED: dict[str, Any] = {
             "module": "opencrq",
             "approver": "Fleet manager",
             "impact": "high",
-            "tools": _OPENCRQ_REGISTER_WRITE_TOOLS,
         },
     ],
     "objects": [
@@ -1219,23 +1121,18 @@ PLATFORM_HEALTH_STRUCTURED: dict[str, Any] = {
 
 
 def _loop_gates() -> list[dict[str, Any]]:
-    """The CTEM gate catalog of the generic fleet, the folded desks' tool gates mapped onto it.
+    """The CTEM gate catalog of the generic fleet, the folded desks' decisions mapped onto it.
 
-    The detection desk's simulation launches are already ``ctem.validation.non_readonly``
-    tools; the risk desk's register writes join ``ctem.remediation.decision`` (impact high,
-    logged, never waiting at the seeded level, as before). The PIR desk's indicator
-    revocation declared no tool and is folded into ``ctem.mobilize``'s action text: out of
-    the box one gate waits, ``ctem.mobilize``.
+    The detection desk's simulation launches are ``ctem.validation.non_readonly``
+    decisions; the risk desk's register writes join ``ctem.remediation.decision``
+    (impact high, logged, never waiting at the seeded level, as before). The PIR
+    desk's indicator revocation is folded into ``ctem.mobilize``'s action text.
+    No gate names a tool (#1675).
     """
-    gates = _ctem_gates(
+    return _ctem_gates(
         launch_tools=True,
-        mobilize_tools=True,
         mobilize_action=_MOBILIZE_ACTION + "; revoke a stale indicator",
     )
-    for gate in gates:
-        if gate["key"] == "ctem.remediation.decision":
-            gate["tools"] = [dict(t) for t in _OPENCRQ_REGISTER_WRITE_TOOLS]
-    return gates
 
 
 #: 1. CTEM loop, the generic fleet (CTEM-31, #1048): the triggers of the former

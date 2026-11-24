@@ -4,15 +4,17 @@
 
 A case moves scoping -> validation -> mobilization. Under human in the loop
 each phase that waits is one ``needs_human`` work item keyed by its gate
-(``ctem_case_gate_records.GATE_ITEM_PREFIXES``). Three rules hold at the
-write of such an item, whatever the prompt says:
+(``ctem_case_gate_records.GATE_ITEM_PREFIXES``).
 
-- :func:`refuse_mobilize_before_review`: a ``ctem.mobilize`` decision is
-  never parked for a person while a ``ctem.analyst_review`` or
-  ``ctem.validation.non_readonly`` decision of the same case still waits for
-  one: the person would answer mobilize before knowing what validation
-  proves. The loop files it once those are answered (its "Gate answered"
-  assignment re-plans the case).
+The order of the decisions is the agent's judgement, stated in its persona,
+never a refusal (#1675): :func:`mobilize_before_review_warning` answers a
+warning when a ``ctem.mobilize`` decision is filed while a
+``ctem.analyst_review`` or ``ctem.validation.non_readonly`` decision of the
+same case still waits, and the item is written.
+
+Two card-hygiene rules hold at the write, whatever the prompt says, because
+they protect what a person reads, not the order of the work:
+
 - :func:`refuse_question_change`: an open gate whose question changes is
   cancelled with a note naming its replacement and filed again, never edited
   in place: the stored decision and the cards already sent keep the question
@@ -68,28 +70,31 @@ def prerequisite_keys(case_id: str) -> list[str]:
 
 
 def mobilize_blocked_message(waiting: list[str]) -> str:
-    """The refusal of a mobilize decision filed before its review and validation are answered. Pure."""
+    """The warning on a mobilize decision filed before its review and validation are answered. Pure."""
     return (
-        "a ctem.mobilize decision waits behind the review and validation of its case: "
-        f"{', '.join(waiting)} still wait(s) for a person. Mobilize after they are answered "
-        "(the Gate answered run re-plans the case); nothing was written"
+        "this ctem.mobilize decision was filed while the review and validation of its case still wait: "
+        f"{', '.join(waiting)}. The person may answer mobilize before knowing what validation proves; "
+        "if that was not your intent, cancel it and file it again once they are answered"
     )
 
 
-async def refuse_mobilize_before_review(
+async def mobilize_before_review_warning(
     db: Any,
     correlation_key: object,
     needs_human: object,
     *,
     user_id: uuid.UUID | None,
     workspace_id: uuid.UUID | None,
-) -> None:
-    """``ValueError`` when a mobilize decision is parked for a person ahead of its review or validation."""
+) -> str | None:
+    """The warning when a mobilize decision is parked ahead of its review or validation, else ``None``.
+
+    Never a refusal (#1675): the agent decides the order; the item is written.
+    """
     if not needs_human:
-        return
+        return None
     found = gate_of(correlation_key)
     if found is None or found[0] != MOBILIZE:
-        return
+        return None
     from sqlalchemy import or_, select
 
     from app.models.work_item import WORK_ITEM_OPEN_STATUSES, WorkItem
@@ -98,7 +103,7 @@ async def refuse_mobilize_before_review(
     if workspace_id is not None:
         scopes.append(WorkItem.workspace_id == workspace_id)
     if not scopes:
-        return
+        return None
     waiting = (
         (
             await db.execute(
@@ -113,8 +118,7 @@ async def refuse_mobilize_before_review(
         .scalars()
         .all()
     )
-    if waiting:
-        raise ValueError(mobilize_blocked_message(sorted({str(k) for k in waiting})))
+    return mobilize_blocked_message(sorted({str(k) for k in waiting})) if waiting else None
 
 
 def _question(ask: object) -> str:
@@ -153,9 +157,9 @@ __all__ = [
     "MOBILIZE",
     "MOBILIZE_PREREQUISITES",
     "gate_of",
+    "mobilize_before_review_warning",
     "mobilize_blocked_message",
     "prerequisite_keys",
-    "refuse_mobilize_before_review",
     "refuse_question_change",
     "refuse_run_pointer",
 ]

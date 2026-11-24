@@ -1162,6 +1162,7 @@ def build_work_item_tools(
         if item.get("blocked_on"):
             lines.append(_blocked_on_line(item["blocked_on"]))
         lines.extend(_blocked_why_lines(item))
+        lines.extend(f"  - Warning: {w}" for w in item.get("warnings") or ())
         if item.get("fleet_impact"):
             lines.append(_fleet_impact_line(item["fleet_impact"]))
         if attached:
@@ -1367,6 +1368,8 @@ def build_work_item_tools(
             f"Updated work item **{item['title']}** (id: `{item['id']}`, "
             f"status: {item['status']}, priority: {item['priority']})."
         )
+        for warning in item.get("warnings") or ():
+            msg += f"\n  - Warning: {warning}"
         # Another writer finished the item this run held: the read-back says stop (#11554).
         from app.services.work_item_preflight import finished_under_holder_text
 
