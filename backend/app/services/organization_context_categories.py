@@ -87,11 +87,21 @@ SOFTWARE_FIELD = "tech_stack"
 SOFTWARE = "software"
 #: Deprecated since #1495 (kept one release): ``tech_stack`` answers the ``software`` category.
 TECH_STACK_ALIAS = "tech_stack"
+#: The profile field the primary assets are stored under (#1591: OpenCRQ's primary assets, the stored key kept).
+PRIMARY_ASSETS_FIELD = "crown_jewels"
+#: The category of the organization's primary assets (#1591), in OpenCRQ's words.
+PRIMARY_ASSETS = "primary_assets"
+#: Deprecated since #1591 (kept one release): ``crown_jewels`` answers the ``primary_assets`` category.
+CROWN_JEWELS_ALIAS = "crown_jewels"
+#: Each deprecated category name, to the category it answers.
+CATEGORY_ALIASES: dict[str, str] = {TECH_STACK_ALIAS: SOFTWARE, CROWN_JEWELS_ALIAS: PRIMARY_ASSETS}
 
 
 def _category_name(field: str) -> str:
     if field == SOFTWARE_FIELD:
         return SOFTWARE
+    if field == PRIMARY_ASSETS_FIELD:
+        return PRIMARY_ASSETS
     # ``pir_ids`` is read as ``pirs``: a category names what it lists.
     return field[: -len("_ids")] + "s" if field.endswith("_ids") else field
 
@@ -120,9 +130,9 @@ AI_SYSTEMS_ALIAS = Category(
 
 
 def canonical_name(name: object) -> str:
-    """*name* lower-cased, a deprecated alias read as the category it answers (``tech_stack`` -> ``software``)."""
+    """*name* lower-cased, a deprecated alias read as the category it answers (``crown_jewels`` -> ``primary_assets``)."""
     wanted = str(name or "").strip().lower()
-    return SOFTWARE if wanted == TECH_STACK_ALIAS else wanted
+    return CATEGORY_ALIASES.get(wanted, wanted)
 
 
 def get(name: str) -> Category | None:
