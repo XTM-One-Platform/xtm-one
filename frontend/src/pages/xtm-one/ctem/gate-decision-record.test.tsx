@@ -325,6 +325,8 @@ describe("the gate cards read the record first", () => {
     expect(screen.getByTestId("ctem-case-remediation-not-filed").textContent).toContain("No remediation decision was filed");
     expect(screen.queryByTestId("ctem-case-remediation-elsewhere")).toBeNull();
     expect(screen.queryByText(/Waiting for you list/)).toBeNull();
+    // Nothing to answer: no "Answer the decision" next step beside the not-filed line.
+    expect(screen.queryByText("Answer the decision to let the case go on.")).toBeNull();
   });
 
   it("a waiting gate whose decision exists but is not readable keeps the Waiting for you sentence", () => {
@@ -332,6 +334,7 @@ describe("the gate cards read the record first", () => {
     render(<CaseValidation caseId="c1" validations={[]} history={[ev({})]} gates={[rec(filed)]} />);
     expect(screen.getByTestId("ctem-case-validation-elsewhere")).toBeTruthy();
     expect(screen.queryByTestId("ctem-case-validation-not-filed")).toBeNull();
+    expect(screen.getByText("Answer the decision to let the case go on.")).toBeTruthy();
   });
 
   it("an older API without records keeps the event line", () => {
