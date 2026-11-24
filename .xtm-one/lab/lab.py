@@ -8552,7 +8552,8 @@ def chatbot_origin(root: Path, package: Path) -> str:
     version = json.loads((package / "package.json").read_text(encoding="utf-8")).get("version", "?")
     where = str(root.relative_to(CHECKOUT.resolve())) if root.is_relative_to(CHECKOUT.resolve()) else str(root)
     origin = f"{CHATBOT_NAME} {version} from {where}"
-    record = root / ".xtm-checkout.json"
+    # The sandbox's checkout record: ".xtm-checkout", ".xtm-checkout.json" on a checkout written before the rename.
+    record = next((root / n for n in (".xtm-checkout", ".xtm-checkout.json") if (root / n).is_file()), root / ".xtm-checkout")
     if record.is_file():
         data = json.loads(record.read_text(encoding="utf-8"))
         ref = f" ({data['ref']})" if data.get("ref") else ""

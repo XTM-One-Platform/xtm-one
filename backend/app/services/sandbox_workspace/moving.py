@@ -38,7 +38,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
-from app.services.sandbox_workspace.checkout import RECORD_NAME
+from app.services.sandbox_workspace.checkout import is_record_name
 from app.services.sandbox_workspace.manifest import ManifestEntry
 from app.services.sandbox_workspace.paths import display, is_under, normalize
 
@@ -122,7 +122,7 @@ def plan(
                 raise MoveError(
                     f"{display(targets[new])} and {display(old)} would both land on {display(new)}. Nothing was written."
                 )
-            if old == src and old.rsplit("/", 1)[-1] == RECORD_NAME:
+            if old == src and is_record_name(old):
                 raise MoveError(
                     f"{display(old)} is a checkout record: it describes the checkout it sits in and is not {verb} "
                     "alone. Take the whole checkout directory instead. Nothing was written."

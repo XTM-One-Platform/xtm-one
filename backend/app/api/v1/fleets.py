@@ -3638,17 +3638,19 @@ async def get_ctem_loop_setup_status(
     from app.services import organization_setup_prompt as prompt
     from app.services.fleet_autonomy import effective_gates, effective_level, gate_waits
     from app.services.fleet_views import opt_in_state
-    from app.services.organization_context import current_version, parse_profile
+    from app.services.organization_context import current_version, parse_profile, software_profile
 
     if not (user.is_admin and app_settings.is_xtm_one):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required")
     row = await get_platform_settings(db)
     saved = await current_version(db)
     profile = parse_profile(saved.profile) if saved is not None else None
+    # #1495: the software count is the Software entities' (synced or typed), the profile rows before any.
+    software = (await software_profile(db))[1].tech_stack if saved is not None else []
     profile_facts = status_mod.ProfileFacts(
         saved=saved is not None,
         crown_jewels=len(profile.crown_jewels) if profile else 0,
-        tech_stack=len(profile.tech_stack) if profile else 0,
+        tech_stack=len(software),
         ticketing_target=bool(profile and profile.ticketing.integration),
         scope_min_criticality=profile.prioritization_policy.scope_min_criticality if profile else "",
     )

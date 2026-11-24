@@ -2646,8 +2646,8 @@ export interface TriggerConfig {
   express_lane?: { correlation_prefixes: string[]; slots: number };
   /** Dotted path into the trigger payload: queued runs sharing its value start one at a time, in arrival order. */
   ordering_key?: string;
-  /** platform_event triggers: "own" (the default) takes the events on the agent's own objects, "all" every one (an administrator's assignment). */
-  scope?: "own" | "all";
+  /** platform_event triggers: "own" (the default) takes the events on the agent's own objects, "fleet" those of its home fleet's members, "all" every one (an administrator's assignment). */
+  scope?: "own" | "fleet" | "all";
   /** platform_event triggers: a one-off watch, the first matching event starts one run and the subscription ends. */
   once?: boolean;
   /** platform_event one-off watch: the event that fired it, written by the server; saving without it re-arms the watch. */

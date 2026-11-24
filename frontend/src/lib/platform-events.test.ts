@@ -14,6 +14,7 @@ import {
   platformDeadlineSavable,
   platformDeadlineState,
   platformTriggerEnded,
+  platformEventScope,
 } from "./platform-events.ts";
 
 test("an event's family is its name up to the first dot", () => {
@@ -104,4 +105,15 @@ test("a save from the editor keeps a deadline set through the API", () => {
     expires_at: "2026-11-02T09:00:00Z",
   });
   assert.equal("expires_at" in platformEventConfig(platformEventDraft({ event: "run.failed" })), false);
+});
+
+test("a fleet scope reads back as fleet and saves unchanged; own stays the default", () => {
+  const stored = { event: "work_item.past_due", scope: "fleet" as const };
+  const draft = platformEventDraft(stored);
+  assert.equal(draft.scope, "fleet");
+  assert.deepEqual(platformEventConfig(draft), { event: "work_item.past_due", scope: "fleet" });
+  assert.deepEqual(platformEventConfig(platformEventDraft({ event: "run.failed", scope: "all" })), { event: "run.failed", scope: "all" });
+  assert.equal("scope" in platformEventConfig(platformEventDraft({ event: "run.failed", scope: "own" })), false);
+  assert.equal(platformEventScope("anything"), "own");
+  assert.equal(platformEventScope(undefined), "own");
 });

@@ -40,7 +40,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.services.sandbox_workspace.checkout import (
-    RECORD_NAME,
+    RECORD_NAMES,
     CheckoutChanges,
     CheckoutRecord,
     CheckoutRecordError,
@@ -90,7 +90,7 @@ def fingerprint(record: CheckoutRecord, entries: Mapping[str, object], spec: Che
     pairs: list[str] = []
     for workspace_path, entry in entries.items():
         repo_path = record.repo_path(str(workspace_path))
-        if repo_path is None or repo_path == RECORD_NAME or is_generated(repo_path):
+        if repo_path is None or repo_path in RECORD_NAMES or is_generated(repo_path):
             continue
         if _guarded(repo_path, spec):
             pairs.append(f"{repo_path}\0{getattr(entry, 'sha256', '') or ''}")
@@ -177,7 +177,11 @@ async def _context(session: Any, checkout: str) -> tuple[CheckoutRecord, dict[st
         root = normalize(checkout)
     except WorkspacePathError:
         return None
-    raw_record = await _read(session, f"{root}/{RECORD_NAME}")
+    raw_record = None
+    for name in RECORD_NAMES:
+        raw_record = await _read(session, f"{root}/{name}")
+        if raw_record is not None:
+            break
     raw_checks = await _read(session, f"{root}/{CHECKS_FILE}")
     if raw_record is None or raw_checks is None:
         return None

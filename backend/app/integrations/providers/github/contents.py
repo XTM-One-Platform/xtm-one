@@ -3162,7 +3162,7 @@ def register(
                         "description": (
                             "A sandbox workspace directory written by materialize_repository: commit what the "
                             "sandbox changed under it (edited and new files written, removed files deleted), computed "
-                            "from its .xtm-checkout.json record. Instead of 'files' and 'delete_paths'; nothing is "
+                            "from its .xtm-checkout record. Instead of 'files' and 'delete_paths'; nothing is "
                             "committed when the checkout is unchanged. Over the change-count or size cap of one "
                             "commit it is split into consecutive signed commits in this one call."
                         ),
