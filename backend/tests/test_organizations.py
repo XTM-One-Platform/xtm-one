@@ -231,6 +231,31 @@ async def test_an_unknown_category_names_the_accepted_ones(with_stack, tool):
     assert "No category 'vendors'" in text and "software" in text
 
 
+async def test_the_saved_attack_surface_pass_is_read_back_as_a_category(
+    monkeypatch: pytest.MonkeyPatch, tool: Any
+) -> None:
+    """#1691: the CTEM-26 pass an agent saves is read with get_organization_context, not only by the pass."""
+    surface = {"enabled": True, "integration": "shodan-1", "integrations": ["gti-1"], "cadence_hours": 12}
+
+    async def _current(_db: Any, organization_id: Any = None) -> Any:
+        return _row({"name": "Us", "attack_surface": surface})
+
+    async def _list(_db: Any, **_kw: Any) -> list[Any]:
+        return [_org("primary", "Us")]
+
+    monkeypatch.setattr(oc, "current_version", _current)
+    monkeypatch.setattr(orgs, "list_organizations", _list)
+    page = await tool(category="attack_surface")
+    assert page.startswith("Category attack_surface (")
+    assert '"shodan-1"' in page and '"gti-1"' in page and '"cadence_hours": 12' in page
+    assert "- attack_surface (" in await tool(category="*")
+
+
+async def test_an_attack_surface_pass_left_at_its_defaults_has_no_row(with_stack: None, tool: Any) -> None:
+    page = await tool(category="attack_surface")
+    assert "shodan" not in page and "No category" not in page
+
+
 async def test_the_tracked_organizations_category_lists_them(with_stack, tool):
     text = await tool(category="tracked_organizations")
     assert "Acme Cloud" in text and "rows 1-1 of 1" in text
