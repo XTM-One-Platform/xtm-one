@@ -1,27 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * The Software tab of CTEM > Inventory (#1495 slice 2, replaces the Tech stack tab): one row per software entity
+ * The Software tab of CTEM > Inventory (#1495 slice 2, replaces the retired product list tab): one row per software entity
  * (vendor and product across every asset and SBOM) with its type, its version and asset counts, its CPE and how sure
  * it is, and its sources; each row opens the software's page. Paged and filtered on the server, the row pattern of
  * the Assets tab (#1476).
  */
-import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
-import { useToast } from "@/components/ui/toast";
 import { TruncatedText } from "@/components/ui/truncated-text";
-import { type SoftwareFilterKey, type SoftwareSummary, useDeleteSoftware, useSoftwareList } from "@/hooks/api/useOrganizationAssetsApi";
-import { useAuth } from "@/hooks/useAuth";
+import { type SoftwareFilterKey, type SoftwareSummary, useSoftwareList } from "@/hooks/api/useOrganizationAssetsApi";
 import { useFormatter } from "@/i18n";
 import { readTableState, storedPageSize } from "@/lib/data-table-state";
 import { formatCount } from "@/lib/number-format";
 import { CPE_STATE_LABELS, SOFTWARE_ORIGIN_LABELS, SOFTWARE_TYPE_LABELS, assetFieldLabel, softwarePath, sourceLabel } from "./inventory";
 import { SourceLogo } from "./inventory-icons";
-import { BULK_ACTION } from "./InventoryProfileTabs";
-import { softwareDeletable } from "./inventory-entries";
 
 const SOFTWARE_URL_KEY = "s_";
 const SOFTWARE_STORAGE_KEY = "ctem-inventory-software";
@@ -49,27 +42,6 @@ export function SoftwareTab() {
     limit: table.pageSize,
     filters: picked,
   });
-  // Selection and bulk Delete (#1729), the Asset groups pattern: a synced software is skipped and counted.
-  const { isAdmin } = useAuth();
-  const { toast } = useToast();
-  const remove = useDeleteSoftware();
-  const [selected, setSelected] = useState<string[]>([]);
-  const [toDelete, setToDelete] = useState<string[] | null>(null);
-  const picks = softwareDeletable((data?.items ?? []).filter((s) => selected.includes(s.id)));
-  const onDelete = () => {
-    if (!toDelete) return;
-    remove.mutate(toDelete, {
-      onSuccess: (out) => {
-        setSelected([]);
-        if (out.refused.length > 0) {
-          toast({ title: t_i18n("Nothing was deleted"), description: out.refused.map((r) => r.reason).join("\n"), variant: "error" });
-          if (out.written === 0) return;
-        }
-        toast({ title: t_i18n("{count, plural, one {# entry deleted} other {# entries deleted}}", { count: out.written }), variant: "success" });
-      },
-      onError: (e) => toast({ title: t_i18n("Nothing was deleted"), description: e.message, variant: "error" }),
-    });
-  };
 
   const filters: DataTableFilter<SoftwareSummary>[] = SOFTWARE_FILTERS.map(({ key, label, field, values }) => ({
     key,
@@ -146,32 +118,11 @@ export function SoftwareTab() {
   ];
 
   return (
-    <>
     <DataTable<SoftwareSummary>
       rows={data?.items ?? []}
       columns={columns}
       rowKey={(s) => s.id}
       rowHref={(s) => softwarePath(s.id)}
-      selection={
-        isAdmin
-          ? {
-              selected,
-              onChange: setSelected,
-              actions: (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className={BULK_ACTION}
-                  onClick={() => setToDelete(picks.ids)}
-                  disabled={remove.isPending || picks.ids.length === 0}
-                  data-testid="ctem-software-bulk-delete"
-                >
-                  {t_i18n("Delete")}
-                </Button>
-              ),
-            }
-          : undefined
-      }
       server={{ total: data?.total ?? 0 }}
       urlKey={SOFTWARE_URL_KEY}
       storageKey={SOFTWARE_STORAGE_KEY}
@@ -187,15 +138,5 @@ export function SoftwareTab() {
       noResultsLabel={t_i18n("No software matches this search")}
       rowTestId="ctem-inventory-software-row"
     />
-    <ConfirmDialog
-      open={toDelete !== null}
-      onOpenChange={(o) => !o && setToDelete(null)}
-      variant="danger"
-      title={t_i18n("Delete these entries?")}
-      description={t_i18n("The entries entered by hand are deleted. A synced entry stays: its sync owns it.")}
-      confirmLabel={t_i18n("Delete")}
-      onConfirm={onDelete}
-    />
-    </>
   );
 }
