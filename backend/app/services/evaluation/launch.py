@@ -40,6 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.agent import Agent
 from app.models.dataset import Dataset, DatasetEntry, EvaluationDataset
 from app.models.evaluation import Evaluation, EvaluationAgent, EvaluationPlaceboComparison, EvaluationRun
+from app.models.user import User
 from app.services.evaluation.constants import MODEL_INDEPENDENT
 from app.services.evaluation.fanout import evaluation_has_runs, resolve_effective_models
 from app.services.evaluation.metric_package import family_is_valid
@@ -121,8 +122,33 @@ async def check_dataset_families(db: AsyncSession, evaluation: Evaluation) -> No
         )
 
 
+#: Why an evaluation whose owner lost the right to run it does not launch.
+OWNER_CANNOT_RUN = (
+    "This evaluation's owner is no longer an active administrator, so it does not run. "
+    "Copy it to run it as yourself."
+)
+
+
+async def check_owner_may_run(db: AsyncSession, evaluation: Evaluation) -> None:
+    """Refuse an evaluation whose owner is no longer an active administrator.
+
+    Its runs act as its owner, whoever starts them (a schedule, an approval,
+    another admin's trigger): evaluations are an administrators' tool, so an
+    owner demoted or deactivated since stops them. An ownerless evaluation
+    (Platform Health's, behind its own consent gate) has no owner to check.
+    """
+    owner_id = getattr(evaluation, "user_id", None)
+    if owner_id is None:
+        return
+    owner = (await db.execute(select(User.role, User.is_active).where(User.id == owner_id))).one_or_none()
+    if owner is None or owner.role != "admin" or not owner.is_active:
+        raise LaunchRefusedError(OWNER_CANNOT_RUN, status_code=409)
+
+
 async def check_launchable(db: AsyncSession, evaluation: Evaluation) -> None:
-    """The checks every launch that runs an agent passes: family, callback secret, dataset families."""
+    """The checks every launch that runs an agent passes: an owner who may run it,
+    family, callback secret, dataset families."""
+    await check_owner_may_run(db, evaluation)
     check_family(evaluation)
     check_callback_secret(evaluation)
     await check_dataset_families(db, evaluation)

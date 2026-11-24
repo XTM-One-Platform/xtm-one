@@ -324,6 +324,8 @@ async def resolve_exact_toolset(db, agent, user_id: str, *, pinned: dict | None 
         read_only_integration_ids,
     )
     from app.services.integration_tools import (
+        BindingBasis,
+        ToolBindings,
         build_channel_tools,
         build_integration_tools,
         flatten_bindings,
@@ -396,7 +398,11 @@ async def resolve_exact_toolset(db, agent, user_id: str, *, pinned: dict | None 
     if effective:
         definitions, executor = await build_integration_tools(
             db,
-            effective,
+            ToolBindings(
+                effective,
+                basis=BindingBasis.CALLER_CHECKED,
+                reason="shadow_invisible_bindings for the item's user, without the agent's lending",
+            ),
             context={
                 "source": swi.SCHEDULED_TRIGGER_TYPE,
                 "agent": agent.name,

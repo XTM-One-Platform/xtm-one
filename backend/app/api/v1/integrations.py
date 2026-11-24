@@ -4529,14 +4529,14 @@ async def test_integration_tool(
     if integration.status not in ("connected", "configured"):
         return {"status": "error", "message": "Integration is not connected"}
 
-    from app.services.integration_tools import build_integration_tools
+    from app.services.integration_tools import BindingBasis, ToolBindings, build_integration_tools
     from app.tools.base import ToolCall
 
     bindings = {integration.provider: str(integration.id)}
     try:
         defs, executor = await build_integration_tools(
             db,
-            bindings,
+            ToolBindings(bindings, basis=BindingBasis.CALLER_CHECKED, reason="the route's integration access check"),
             context={
                 "source": "tool_test",
                 "integration": integration.name,

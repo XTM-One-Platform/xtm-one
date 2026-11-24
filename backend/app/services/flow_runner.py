@@ -4680,7 +4680,7 @@ class FlowWalker:
         return outcome
 
     async def _exec_integration(self, config: dict) -> _NodeResult:
-        from app.services.integration_tools import build_integration_tools
+        from app.services.integration_tools import BindingBasis, ToolBindings, build_integration_tools
         from app.tools.base import ToolCall
 
         integration_id = config.get("integration_id")
@@ -4702,7 +4702,11 @@ class FlowWalker:
 
         definitions, executor = await build_integration_tools(
             self.db,
-            {integration.provider: str(integration.id)},
+            ToolBindings(
+                {integration.provider: str(integration.id)},
+                basis=BindingBasis.UNCHECKED,
+                reason="a flow Integration node: checked on save only",
+            ),
             context=flow_integration_context(self.user.id),
         )
         known = {d.name for d in definitions}
@@ -6390,11 +6394,13 @@ async def _call_tool_by_name(
         .all()
     )
     if integrations:
-        from app.services.integration_tools import build_integration_tools
+        from app.services.integration_tools import BindingBasis, ToolBindings, build_integration_tools
 
         bindings = {i.provider: str(i.id) for i in integrations}
         definitions, executor = await build_integration_tools(
-            db, bindings, context=flow_integration_context(user.id)
+            db,
+            ToolBindings(bindings, basis=BindingBasis.CALLER_CHECKED, reason="the caller's own integrations"),
+            context=flow_integration_context(user.id),
         )
         if any(d.name == tool_name for d in definitions):
             result = await executor.execute_tool(

@@ -228,7 +228,7 @@ A placebo comparison's run is refused by `trigger-from-runs`, `replay` and `resc
 - `reuse`: `inherit` (default, writes nothing), `on` or `off`, stored as the `manual` `reuse` parameter, winning over a `reuse` key in `params`; else 422 (§7).
 - `placebo`, `confirm_write_tools`, `placebo_seed`: `dev-docs/agent-placebo-evaluation.md`.
 
-A launch refusal (`check_launchable`, `plan_launch` in `services/evaluation/launch.py`) carries its own status: 400, 422 for an unavailable model.
+A launch refusal (`check_launchable`, `plan_launch` in `services/evaluation/launch.py`) carries its own status: 400, 422 for an unavailable model, 409 when the evaluation's owner is no longer an active administrator (`check_owner_may_run`: its runs act as its owner, whoever starts them; an ownerless evaluation is not checked).
 
 **Re-run and re-score** (§8):
 

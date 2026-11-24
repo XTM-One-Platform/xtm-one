@@ -2257,11 +2257,15 @@ async def _run_public_agent_turn(
             READ_ONLY_CONTEXT_KEY,
             read_only_integration_ids,
         )
-        from app.services.integration_tools import build_integration_tools
+        from app.services.integration_tools import BindingBasis, ToolBindings, build_integration_tools
 
         integ_defs, integ_exec = await build_integration_tools(
             db,
-            agent.integration_bindings,
+            ToolBindings(
+                agent.integration_bindings,
+                basis=BindingBasis.OWNER_RUN,
+                reason="the public widget acts as the agent's owner, behind the web_embed opt-in",
+            ),
             context={
                 "source": "public_chat",
                 "agent": agent.name,

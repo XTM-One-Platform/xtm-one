@@ -815,7 +815,7 @@ async def test_channel_bot_tool(
     if bot.status != "connected":
         return {"status": "error", "message": "Channel bot is not connected"}
 
-    from app.services.integration_tools import build_integration_tools
+    from app.services.integration_tools import BindingBasis, ToolBindings, build_integration_tools
     from app.tools.base import ToolCall
 
     # Build tools using the bot's credentials via the integration tools system.
@@ -825,7 +825,7 @@ async def test_channel_bot_tool(
     try:
         defs, executor = await build_integration_tools(
             db,
-            bindings,
+            ToolBindings(bindings, basis=BindingBasis.CALLER_CHECKED, reason="the route's channel bot access check"),
             context={"source": "channel_bot_tool_test", "bot": bot.name},
             channel_bot_mode=True,
         )

@@ -16,7 +16,7 @@ External services agents call as tools (OAuth or API key).
 
 - **Credentials only in the DB**, Fernet-encrypted per integration, set in the UI, never env vars.
 - **An OAuth token is personal**: who may use it: `services/integration_credentials.py` (`oauth_credentials_usable[_clause]()`, `require_oauth_credentials_usable()`); consent is written only by `apply_oauth_share_consent()`. A new read of a token column fails `test_integration_credential_gate.py` until listed there.
-- **Bound credentials are used as bound** through `build_integration_tools()`, except `credential_mode = per_user`: every reader resolves it via `services/integration_user_credentials.resolve_token_holder()`, never the holder's token for someone else.
+- **Bound credentials are used as bound** through `build_integration_tools()`, which takes `ToolBindings` naming the ground they act on (`BindingBasis`; an agent's bindings come from `resolve_agent_integration_bindings(...).tool_bindings`), except `credential_mode = per_user`: every reader resolves it via `services/integration_user_credentials.resolve_token_holder()`, never the holder's token for someone else.
 - **A credential refusal is never silent**: the 403 says how the token gets shared; a chat turn tells model and user.
 - **HTTP through `http.py`**: `safe_request` / `format_http_error` / `format_network_error`, never `raise_for_status()` or inline handling; `parse_compound_token` for `||` tokens (`greedy_last=True` when the last field is a secret).
 - **Retry transient 5xx only on idempotent calls** (`retry_statuses=TRANSIENT_RETRY_STATUSES`), never a write.

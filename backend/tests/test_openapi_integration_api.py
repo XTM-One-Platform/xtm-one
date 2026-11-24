@@ -26,7 +26,7 @@ from app.integrations.oauth_token_grants import clear_token_cache
 from app.models.integration import Integration
 from app.models.integration_openapi_spec import IntegrationOpenAPISpec
 from app.services import web_fetch
-from app.services.integration_tools import build_integration_tools
+from app.services.integration_tools import BindingBasis, ToolBindings, build_integration_tools
 from app.services.web_fetch import FetchedBytes
 from app.tools.base import ToolCall
 from tests.a2a_chat_gate import stub_chat_gate
@@ -381,7 +381,7 @@ def test_tools_listing_hides_the_credential_parameter(api):
 async def test_runtime_tools_call_the_api_with_the_credential(api, monkeypatch):
     created = _create(api)
     seen = _mock_api(monkeypatch, lambda r: httpx.Response(200, json={"id": 7, "name": "Rex"}))
-    defs, executor = await build_integration_tools(api.db, {"openapi": created["id"]})
+    defs, executor = await build_integration_tools(api.db, ToolBindings({"openapi": created["id"]}, basis=BindingBasis.CALLER_CHECKED, reason="test"))
     names = {d.name for d in defs}
     assert "petstore_get_pet_by_id" in names
     assert all(d.source == "integration:openapi" and d.entity_id == created["id"] for d in defs)
@@ -397,7 +397,7 @@ async def test_runtime_tools_call_the_api_with_the_credential(api, monkeypatch):
 async def test_public_operations_do_not_carry_the_credential(api, monkeypatch):
     created = _create(api, openapi={"content": PETSTORE_V3, "auth_option": "api_key", "selected_operations": ["GET /user/logout"]})
     seen = _mock_api(monkeypatch, lambda r: httpx.Response(200, json={}))
-    _defs, executor = await build_integration_tools(api.db, {"openapi": created["id"]})
+    _defs, executor = await build_integration_tools(api.db, ToolBindings({"openapi": created["id"]}, basis=BindingBasis.CALLER_CHECKED, reason="test"))
     await executor.execute_tool(ToolCall(id="1", name="petstore_logout_user", arguments={}))
     assert "api_key" not in seen[0].headers
 
@@ -414,7 +414,7 @@ async def test_two_openapi_integrations_on_one_agent_keep_their_own_account(api,
         extra_config={"base_url": "https://staging.petstore.test/api/v3"},
     )
     seen = _mock_api(monkeypatch, lambda r: httpx.Response(200, json={"id": 7}))
-    defs, executor = await build_integration_tools(api.db, {"openapi": [prod["id"], staging["id"]]})
+    defs, executor = await build_integration_tools(api.db, ToolBindings({"openapi": [prod["id"], staging["id"]]}, basis=BindingBasis.CALLER_CHECKED, reason="test"))
     by_entity: dict[str, set[str]] = {}
     for d in defs:
         by_entity.setdefault(d.entity_id, set()).add(d.name)
@@ -466,7 +466,7 @@ async def test_client_credentials_runtime(api, monkeypatch):
         return httpx.Response(200, json={"tree": []})
 
     seen = _mock_api(monkeypatch, handler)
-    _defs, executor = await build_integration_tools(api.db, {"openapi": created["id"]})
+    _defs, executor = await build_integration_tools(api.db, ToolBindings({"openapi": created["id"]}, basis=BindingBasis.CALLER_CHECKED, reason="test"))
     for _ in range(2):
         result = await executor.execute_tool(
             ToolCall(id="1", name="acme_inventory_get_category_tree", arguments={})
@@ -580,7 +580,7 @@ async def test_the_api_key_is_optional(api, monkeypatch):
     created = _create(api, api_key=None)
     assert created["status"] == "connected"
     seen = _mock_api(monkeypatch, lambda r: httpx.Response(200, json={"id": 1}))
-    defs, executor = await build_integration_tools(api.db, {"openapi": created["id"]})
+    defs, executor = await build_integration_tools(api.db, ToolBindings({"openapi": created["id"]}, basis=BindingBasis.CALLER_CHECKED, reason="test"))
     assert "petstore_get_pet_by_id" in {d.name for d in defs}
     result = await executor.execute_tool(ToolCall(id="1", name="petstore_get_pet_by_id", arguments={"petId": 1}))
     assert not result.is_error, result.content
@@ -610,7 +610,7 @@ async def test_tools_can_be_renamed_and_described_at_creation(api):
     assert set(tools) == {"find_pet", "petstore_get_inventory"}
     assert tools["find_pet"]["description"] == "Look up one pet by its id."
     assert tools["petstore_get_inventory"]["description"] == "Stock per pet status."
-    defs, _executor = await build_integration_tools(api.db, {"openapi": created["id"]})
+    defs, _executor = await build_integration_tools(api.db, ToolBindings({"openapi": created["id"]}, basis=BindingBasis.CALLER_CHECKED, reason="test"))
     assert {d.name for d in defs} == {"find_pet", "petstore_get_inventory"}
 
     spec = api.client.get(f"/api/v1/integrations/{created['id']}/openapi").json()

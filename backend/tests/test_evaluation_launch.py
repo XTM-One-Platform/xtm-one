@@ -20,6 +20,7 @@ from app.api.v1.schemas.evaluation import TriggerEvaluationFromRunsRequest
 from app.models.agent import Agent
 from app.models.evaluation import Evaluation, EvaluationAgent, EvaluationRun
 from app.models.orchestration import OrchestrationExecution
+from app.models.user import User
 from app.services import autonomous
 from app.services.evaluation.resume_secret import stored_trigger_config
 from tests.evaluation_database import (
@@ -183,6 +184,64 @@ async def test_a_scheduled_launch_checks_no_model_the_engine_does_not(setup, exp
             assert await autonomous._process_scheduled_evaluations(s) == 1
 
         assert [(r.model_id, r.is_default_model) for r in await _runs(sm, evaluation.id)] == expected
+    finally:
+        await cleanup()
+
+
+_OWNER_LOST_ADMIN = [
+    pytest.param({"role": "user"}, id="demoted"),
+    pytest.param({"is_active": False}, id="deactivated"),
+]
+
+
+@pytest.mark.parametrize("change", _OWNER_LOST_ADMIN)
+async def test_a_schedule_stops_once_its_owner_may_no_longer_run_it(caplog, change):
+    """The runs act as the owner: an owner no longer an active admin starts none."""
+    sm, cleanup = await _make_db_full()
+    try:
+        async with sm() as s:
+            owner, _agent, evaluation = await _scheduled(s)
+            for column, value in change.items():
+                setattr(owner, column, value)
+            await s.commit()
+            with caplog.at_level(logging.WARNING, logger=autonomous.logger.name):
+                assert await autonomous._process_scheduled_evaluations(s) == 0
+
+        assert await _runs(sm, evaluation.id) == []
+        assert await _executions(sm) == 0
+        assert any("no longer an active administrator" in r.getMessage() for r in caplog.records)
+    finally:
+        await cleanup()
+
+
+@pytest.mark.parametrize("change", _OWNER_LOST_ADMIN)
+async def test_another_admin_s_run_button_refuses_it_too(change):
+    sm, cleanup = await _make_db_full()
+    try:
+        async with sm() as s:
+            owner, _agent, evaluation = await _scheduled(s)
+            for column, value in change.items():
+                setattr(owner, column, value)
+            other = User(email="b@x.io", full_name="Other", hashed_password="x", role="admin")
+            s.add(other)
+            await s.commit()
+            with pytest.raises(HTTPException) as refused:
+                await evaluations_api.trigger_evaluation(evaluation_id=str(evaluation.id), body=None, user=other, db=s)
+
+        assert refused.value.status_code == 409
+        assert await _runs(sm, evaluation.id) == []
+    finally:
+        await cleanup()
+
+
+async def test_an_ownerless_evaluation_has_no_owner_to_check():
+    sm, cleanup = await _make_db_full()
+    try:
+        async with sm() as s:
+            _admin_user, _agent, evaluation = await _scheduled(s)
+            evaluation.user_id = None
+            await s.commit()
+            assert await autonomous._process_scheduled_evaluations(s) == 1
     finally:
         await cleanup()
 
