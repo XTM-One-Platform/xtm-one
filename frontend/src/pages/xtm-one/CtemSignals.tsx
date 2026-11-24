@@ -19,7 +19,7 @@
  * section of the page (`?signal=<id>`), never a modal.
  *
  * Above the list, the summary strip (SignalsSummaryStrip): signals in 30 days,
- * to validate, cases opened and the trigger paths connected with the sources'
+ * unmatched, the signals with a case and the trigger paths connected with the sources'
  * logos, so the page never reads empty (Sam, 22 Nov 2026).
  */
 import { useEffect, useMemo, useRef, useState } from "react";
