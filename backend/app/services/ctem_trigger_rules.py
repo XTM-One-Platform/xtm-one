@@ -5,7 +5,7 @@
 An ``integration_event`` assignment on OpenCTI may declare, in its
 ``trigger_config``, ``"runs_in_profile": "source"``: a delivery of a
 relationship (``has`` from a Software, Infrastructure or System to a
-Vulnerability) then starts a run only when its source names a software
+Vulnerability) then starts a run only when its source names a tech stack
 product or an asset of the primary organization profile. The receiver reads
 the rule after the signature check and before the trigger's filter, gate or
 run: a relationship on software the organization does not run costs no model
@@ -95,7 +95,7 @@ def drop_reason(profile: Any, payload: object) -> str | None:
     if profile is None:
         return "runs_in_profile: the organization profile is not saved yet"
     if not runs_in_profile(profile, name):
-        return f"runs_in_profile: {name[:120]} is not in the software inventory or the assets"
+        return f"runs_in_profile: {name[:120]} is not in the tech stack or the assets"
     return None
 
 
@@ -153,6 +153,25 @@ def threshold_for(policy: Any, kind: str) -> int:
     if kind == "vulnerability":
         return int(policy.pir_min_score_vulnerability)
     return int(policy.pir_min_score_threat)
+
+
+#: The evidence key and event field (#1678): a relevant threat signal whose delivery named a PIR
+#: score at or above the policy's ``pir_min_score_threat``. The seeded threat signal run filters on it.
+PIR_FLOOR_KEY = "pir_floor_met"
+
+
+def pir_floor_met(pirs: object, threshold: int) -> bool:
+    """Whether one PIR match (``[{pir_id, score_at_delivery}]``) reaches *threshold*. Pure.
+
+    The score is the one at delivery, possibly the previous one (see
+    ``ctem_signal_listeners._pir_matches``): the run it starts reads the live
+    score before acting. No PIR match is below the floor.
+    """
+    for pir in pirs if isinstance(pirs, list) else []:
+        score = pir.get("score_at_delivery") if isinstance(pir, Mapping) else None
+        if isinstance(score, int | float) and not isinstance(score, bool) and score >= threshold:
+            return True
+    return False
 
 
 def pir_drop_reason(kind: str, threshold: int, live_scores: Mapping[str, float | None]) -> str | None:

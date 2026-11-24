@@ -44,7 +44,7 @@ _OPT_IN = (
 #: and the three single-product desks, as roles.
 CTEM_LOOP_DOC: dict[str, str] = {
     "purpose": (
-        "Run the whole CTEM loop on your software, case by case: any change in exposure becomes a "
+        "Run the whole CTEM loop on your stack, case by case: any change in exposure becomes a "
         "case, the case is validated, priced, decided once by you, mobilised and closed by a "
         "passing re-test. One fleet, every trigger path, every module in its role."
     ),
@@ -70,8 +70,9 @@ CTEM_LOOP_DOC: dict[str, str] = {
         "on is reminded once.\n"
         "- **New relevant threat** and **Threat activity flagged in a PIR**: the OpenCTI intake; each "
         "delivery records a relevant threat signal, with no run of its own.\n"
-        "- **Threat signal recorded**: a threat signal recorded or moved to 'to validate' is scored "
-        "against the profile; a confirmed one goes to its case.\n"
+        "- **Threat signal recorded**: a threat signal an organization PIR flags at or above the policy "
+        "threshold, recorded or moved to 'to validate', is scored against the profile; a confirmed one "
+        "goes to its case. The other threat signals wait for the weekly sweep.\n"
         "- **Weekly threat sweep** and **Re-test due**: catches what the events missed, re-runs a "
         "validated scenario once a fix is deployed.\n"
         "- **Weekly assessments**: the five stage assessments and the exposure briefing, on by default.\n"
@@ -119,7 +120,7 @@ CTEM_THREAT_RESPONSE_DOC: dict[str, str] = {
     "triggers": (
         "- **New relevant threat**: an OpenCTI creation of an Intrusion Set or a Campaign records a relevant threat signal; no run of its own.\n"
         "- **Threat activity flagged in a PIR**: OpenCTI flags threat activity in an organization PIR and records a relevant threat signal; no run of its own.\n"
-        "- **Threat signal recorded**: a relevant threat signal from OpenCTI is recorded, or the scope gate moves it to 'to validate'; the run scores its relevance against the profile. A confirmed signal opens its case through the case loop.\n"
+        "- **Threat signal recorded**: a relevant threat signal from OpenCTI that an organization PIR flags at or above the policy's threat threshold is recorded, or the scope gate moves it to 'to validate'; the run scores its relevance against the profile. A confirmed signal opens its case through the case loop; a signal below the PIR floor waits for the weekly sweep.\n"
         "- **Weekly threat sweep**: Mondays 07:00, catches what the events missed.\n"
         "- **Re-test due**: a re-test request opened once a fix is deployed re-runs the validated scenario.\n"
         "- **Case opened or reopened**: a CTEM case on any trigger path is opened, reopened by a failed "
@@ -158,7 +159,7 @@ CTEM_VULN_PRIORITIZATION_DOC: dict[str, str] = {
     ),
     "triggers": (
         "- **New KEV or EPSS jump**: an OpenCTI creation or update of a Vulnerability.\n"
-        "- **Vulnerability on software we run**: an OpenCTI has relationship to a Vulnerability whose source is in the software inventory or the profile assets, checked before any model call.\n"
+        "- **Vulnerability on software we run**: an OpenCTI has relationship to a Vulnerability whose source is in the tech stack or the profile assets, checked before any model call.\n"
         "- **Vulnerability flagged in a PIR**: OpenCTI flags a Vulnerability in an organization PIR; the run starts when its live PIR score reaches the policy threshold (70 by default, Settings).\n"
         "- **Vulnerability sighted**: an OpenCTI sighting, triaged at a higher priority.\n"
         "- **Daily backlog pass**: every day at 06:00, re-ranks the open cases.\n"
@@ -360,7 +361,7 @@ OPENAEV_DETECTION_DESK_DOC: dict[str, str] = {
     ),
     "prerequisites": (
         "OpenAEV connected, with assets and at least one security platform collector, and the organization's "
-        "primary assets and software in its profile. " + _OPT_IN
+        "primary assets and tech stack in its profile. " + _OPT_IN
     ),
 }
 
@@ -649,7 +650,7 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
         {
             "module": "platform",
             "name": "Threat signal recorded",
-            "filter": "A relevant threat signal is recorded or moved to 'to validate'",
+            "filter": "A relevant threat signal a PIR flags at or above the policy threshold is recorded or moved to 'to validate'",
             "detail": "One run per signal; a confirmed signal goes to its case",
         },
         {
@@ -740,7 +741,7 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
             "module": "opencti",
             "name": "Vulnerability on software we run",
             "filter": "Software, an infrastructure or a system in the profile has a vulnerability",
-            "detail": "Kept only when the source is in the software inventory or the profile assets",
+            "detail": "Kept only when the source is in the tech stack or the profile assets",
         },
         {
             "module": "opencti",
@@ -1240,7 +1241,7 @@ def _loop_gates() -> list[dict[str, Any]]:
 #: 1. CTEM loop, the generic fleet (CTEM-31, #1048): the triggers of the former
 #: threat response, posture and module desks under one case-driven loop.
 CTEM_LOOP_STRUCTURED: dict[str, Any] = {
-    "purpose_line": "The whole CTEM loop on your software: any change in exposure, one case, closed on proof.",
+    "purpose_line": "The whole CTEM loop on your stack: any change in exposure, one case, closed on proof.",
     "outcome_line": (
         "Cases validated, priced, decided once and closed by a re-test; posture, PIR answers, "
         "detection coverage and the risk register kept current."

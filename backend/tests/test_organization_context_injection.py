@@ -135,8 +135,8 @@ def test_the_index_is_generated_from_the_model() -> None:
         for field, info in oc.OrganizationProfile.model_fields.items()
         if get_origin(info.annotation) is list and field not in ("regions", "onboarding_skipped", "fx_rates")
     }
-    # The one object field read as a category (#11543): its rules are its rows.
-    assert {c.field for c in cats.CATEGORIES if c.field} == list_fields | {"prioritization_policy"}
+    # The object fields read as a category (#11543, #1691): their rules or settings are their rows.
+    assert {c.field for c in cats.CATEGORIES if c.field} == list_fields | {"prioritization_policy", "attack_surface"}
     assert {"crown_jewels", "software", "pirs", "tracked_organizations"} <= set(cats.CATEGORY_NAMES)
     assert "tech_stack" not in cats.CATEGORY_NAMES, "#1495: a deprecated alias, never a category of its own"
     assert {"assets_exposure", "prioritization_policy", "enterprise_knowledge"} <= set(cats.CATEGORY_NAMES)
@@ -161,7 +161,7 @@ def test_the_basic_block_cap_holds_whatever_the_list_lengths() -> None:
     assert len(text) <= inj.SUMMARY_MAX_CHARS
     # About 500 tokens: 4 characters a token is the bound the cap encodes.
     assert inj.SUMMARY_MAX_CHARS // 4 <= 500
-    assert "Product 499" not in text, "the software stays behind the tool"
+    assert "Product 499" not in text, "the tech stack stays behind the tool"
     assert "): 500 rows" in text
     assert not text.endswith("..."), "never cut: the block does not grow with a list"
     assert len(text) - len(small) < 400, "only the counts and the name grew"
