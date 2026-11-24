@@ -115,6 +115,18 @@ def test_the_outside_lens_settings_are_fields_of_the_primary_profile_only():
         assert path not in proposals._contract_paths("tracked")
 
 
+def test_enterprise_knowledge_is_a_field_an_agent_can_change_on_the_primary_profile() -> None:
+    """#1691: update/propose link the procedure knowledge bases as the Settings form does."""
+    link = {"knowledge_base_id": "8a0b3c1e-0000-4000-8000-000000000001", "label": "SOPs", "kind": "sop"}
+    kept = proposals.validate_field_changes(PRIMARY, {}, [{"field": "enterprise_knowledge", "value": [link]}])
+    assert kept[0]["value"] == [link]
+    assert "enterprise_knowledge" not in proposals._contract_paths("tracked")
+    with pytest.raises(proposals.ProposalError, match="enterprise_knowledge"):
+        proposals.validate_field_changes(
+            PRIMARY, {}, [{"field": "enterprise_knowledge", "value": [{**link, "kind": "novel"}]}]
+        )
+
+
 @pytest.mark.parametrize(
     ("change", "message"),
     [

@@ -72,6 +72,9 @@ PROPOSABLE_RATE_PATHS: tuple[str, ...] = ("fx_rates",)
 #: What the organization ships, with its repositories (#1432): the CTEM scope gate resolves a
 #: vulnerability on one of them to its repositories. Not a contract field.
 PROPOSABLE_PRODUCT_PATHS: tuple[str, ...] = ("shipped_products",)
+#: The knowledge bases of the organization's procedures (#11543), linked by an agent as by the form (#1691).
+#: Linking grants nothing: a reader only searches the linked bases it can read already.
+PROPOSABLE_KNOWLEDGE_PATHS: tuple[str, ...] = ("enterprise_knowledge",)
 
 
 def _contract_paths(role: str) -> tuple[str, ...]:
@@ -84,6 +87,7 @@ def _contract_paths(role: str) -> tuple[str, ...]:
             + PROPOSABLE_EXPOSURE_PATHS
             + PROPOSABLE_RATE_PATHS
             + PROPOSABLE_PRODUCT_PATHS
+            + PROPOSABLE_KNOWLEDGE_PATHS
         )
     return tuple(path for path, _label in TRACKED_CONTRACT_FIELDS)
 
@@ -472,6 +476,7 @@ __all__ = [
     "MAX_NEW_TRACKED",
     "MAX_TRACKED_DRAFT_ROWS",
     "PROPOSABLE_EXPOSURE_PATHS",
+    "PROPOSABLE_KNOWLEDGE_PATHS",
     "PROPOSABLE_POLICY_PATHS",
     "ProposalError",
     "apply_changes",
