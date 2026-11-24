@@ -20,7 +20,7 @@ batches of row updates, a no-op on re-run (rule 2). The downgrade is a no-op:
 the old value was the column default, not a choice anyone made (rule 6).
 
 Revision ID: x1735noailabel01
-Revises: w1665intreason01
+Revises: p1591primcat01
 Create Date: 2026-11-24 07:10:00.000000
 """
 
@@ -33,7 +33,7 @@ from alembic import op
 revision: str = "x1735noailabel01"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "w1665intreason01"
+down_revision: str | Sequence[str] | None = "p1591primcat01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
