@@ -15552,8 +15552,6 @@
   "Who you are, where you operate and how large you are.": "Qui vous êtes, où vous opérez et quelle est votre taille.",
   "Risk appetite and costs": "Appétence au risque et coûts",
   "The amounts agents weigh a risk and a cost against.": "Les montants auxquels les agents comparent un risque et un coût.",
-  "Ticketing and intelligence": "Ticketing et renseignement",
-  "Where agents open tickets and which OpenCTI PIRs they follow.": "Où les agents ouvrent des tickets et quels PIR OpenCTI ils suivent.",
   "What the business cannot lose, ranked by criticality.": "Ce que l'entreprise ne peut pas perdre, classé par criticité.",
   "The products you run, matched against vulnerabilities.": "Les produits que vous utilisez, rapprochés des vulnérabilités.",
   "The AI systems the AI security fleet tests.": "Les systèmes d'IA que la flotte de sécurité de l'IA teste.",
