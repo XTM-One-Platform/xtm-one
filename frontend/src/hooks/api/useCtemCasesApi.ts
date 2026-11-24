@@ -8,31 +8,11 @@
  */
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, notFoundIsOrdinary } from "@/lib/api";
-import { REFETCH_INTERVAL_SLOW, type CtemStageKey } from "@/lib/constants";
+import { REFETCH_INTERVAL_SLOW } from "@/lib/constants";
 import { isNetworkError, retryQuery } from "@/lib/query-outage-policy";
 
-/**
- * The statuses of a case in lifecycle order (backend models/ctem_case.CASE_STATES, #1503): the
- * loop moves a case through the open ones itself; a person accepts risk.
- */
-export const CTEM_CASE_STATES = [
-  "new",
-  "analyzing",
-  "waiting_decision",
-  "remediating",
-  "validating",
-  "mitigated_watching",
-  "resolved",
-  "accepted_risk",
-] as const;
+export const CTEM_CASE_STATES = ["needs_attention", "in_progress", "mitigated_watching", "resolved", "accepted_risk"] as const;
 export type CtemCaseState = (typeof CTEM_CASE_STATES)[number];
-/** The statuses a case is still worked in (an SLA runs, a new signal joins it): backend OPEN_STATES. */
-export const CTEM_OPEN_CASE_STATES = ["new", "analyzing", "waiting_decision", "remediating", "validating"] as const;
-
-/** True for a status the case is still worked in. */
-export function isOpenCaseState(state: string | null | undefined): boolean {
-  return (CTEM_OPEN_CASE_STATES as readonly string[]).includes(state ?? "");
-}
 export type CtemCasePriority = "critical" | "high" | "medium" | "low";
 
 /** A case as one list row (`summary` in backend/app/services/ctem_cases_view.py). */
@@ -75,10 +55,6 @@ export interface CtemCaseSummary {
   resolution_kind?: string | null;
   /** Ticket references (#891); the one with `sync` is the ticket the sync manages (#917). */
   tickets?: CtemCaseTicket[];
-  /** The CTEM phase the case is in, from its history (#1490, #1503); null with no event, absent on an older API. */
-  phase?: CtemStageKey | null;
-  /** The gate the case waits on now: its key, who (a user id, a role or a policy, as the loop wrote it) and since when (#1503). */
-  waiting_on?: { gate: string | null; by: string | null; since: string | null } | null;
 }
 
 /** Where a synced ticket stands against its case (backend ctem_case_loop.TICKET_SYNC_STATES, #917). */
@@ -176,6 +152,35 @@ export interface CtemCaseEvent {
   to: string | null;
   reason: string | null;
   evidence: string | null;
+  /**
+   * The audit trail (#1490): the CTEM phase the event belongs to, its autonomy class, who acted
+   * (and the agent's name when the viewer may see it), one sentence for a note, the task, run and
+   * item ids a note names. Absent on an API older than #1494.
+   */
+  phase?: string;
+  autonomy?: string;
+  actor_type?: "person" | "agent" | "system";
+  actor_name?: string | null;
+  headline?: string | null;
+  refs?: { kind: "task" | "run" | "item"; id: string; full: boolean }[];
+  /** A waiting gate: its later answer, null while it still waits. */
+  answer?: { at: string | null; outcome: string | null; by: string | null; option: string | null } | null;
+  /** The answer of a gate: since when it waited. */
+  waited_since?: string | null;
+}
+
+/** One CTEM phase of a case (#1490): when it was entered and left, its time and counts. */
+export interface CtemCasePhase {
+  phase: string;
+  entered_at: string | null;
+  exited_at: string | null;
+  seconds: number;
+  events: number;
+  runs: number;
+  /** Gates of the phase still waiting for a person. */
+  waiting: number;
+  current: boolean;
+  autonomy?: Record<string, number>;
 }
 
 /**
@@ -316,6 +321,9 @@ export interface CtemCaseDetail extends CtemCaseSummary {
   keys: string[];
   issues: CtemCaseIssue[];
   history: CtemCaseEvent[];
+  /** The phases of the audit trail in CTEM order (#1490); absent on an API older than #1494. */
+  phases?: CtemCasePhase[];
+  current_phase?: string | null;
   /** Absent on an API older than #936. */
   exploitation?: CtemCaseExploitation[];
   /** Null before triage read it; absent on an API older than #1289. */
@@ -558,18 +566,6 @@ export function useUpdateCtemCase(id: string) {
   return useMutation<CtemCaseDetail, Error, CtemCaseUpdate>({
     mutationFn: (body) => api.patch(`/ctem-cases/${id}`, body),
     onSuccess: (data) => {
-      qc.setQueryData(["ctem-cases", "case", id], data);
-      void qc.invalidateQueries({ queryKey: ["ctem-cases", "list"] });
-    },
-  });
-}
-
-/** One case's status changed from the list (the Kanban's drop, #1503): the case id goes with the change. */
-export function useMoveCtemCase() {
-  const qc = useQueryClient();
-  return useMutation<CtemCaseDetail, Error, CtemCaseUpdate & { id: string }>({
-    mutationFn: ({ id, ...body }) => api.patch(`/ctem-cases/${id}`, body),
-    onSuccess: (data, { id }) => {
       qc.setQueryData(["ctem-cases", "case", id], data);
       void qc.invalidateQueries({ queryKey: ["ctem-cases", "list"] });
     },
