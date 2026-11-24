@@ -21550,7 +21550,7 @@
   "{count, plural, one {# signal sent back to the scope gate} other {# signals sent back to the scope gate}}": "{count, plural, one {# signal sent back to the scope gate} other {# signals sent back to the scope gate}}",
   "Recommended gates": "Recommended gates",
   "Every other gate runs and the case records it.": "Every other gate runs and the case records it.",
-  "{count, plural, one {This gate waits for a decision:} other {These # gates wait for a decision:}}": "{count, plural, one {This gate waits for a decision:} other {These # gates wait for a decision:}}",
+  "{count, plural, =0 {No gate waits for a decision.} one {This gate waits for a decision:} other {These # gates wait for a decision:}}": "{count, plural, =0 {No gate waits for a decision.} one {This gate waits for a decision:} other {These # gates wait for a decision:}}",
   "Add gates": "Add gates",
   "Nothing waits for a person. Every action is still logged and reported in Operations.": "Nothing waits for a person. Every action is still logged and reported in Operations.",
   "The level the CTEM loop is seeded with. Every gate that runs is recorded on the case.": "The level the CTEM loop is seeded with. Every gate that runs is recorded on the case.",

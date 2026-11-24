@@ -72,7 +72,7 @@ export function CtemSetupGateChoice({ fleetId, level: storedLevel }: { fleetId: 
       recommendedWaits.length > 0 ? (
         <span className="block space-y-1">
           <span className="block">
-            {t_i18n("{count, plural, one {This gate waits for a decision:} other {These # gates wait for a decision:}}", {
+            {t_i18n("{count, plural, =0 {No gate waits for a decision.} one {This gate waits for a decision:} other {These # gates wait for a decision:}}", {
               count: recommendedWaits.length,
             })}
           </span>
