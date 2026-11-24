@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * The Asset groups tab of CTEM > Inventory (#1178; the AI systems tab retired by #1501: an AI system is an asset of
- * category AI target). The asset groups are rows of their own table since #1543 (`GET /asset-groups`, written one
+ * The Asset groups tab of CTEM > Inventory (#1178). The asset groups are rows of their own table since #1543 (`GET /asset-groups`, written one
  * row API call per group). The list is short, so search, filters and export run in the page. A row opens the group's
  * page (#1556): its fields and its member assets; the Assets column counts them from the membership index.
  */

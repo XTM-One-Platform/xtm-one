@@ -181,7 +181,7 @@ const AMOUNT_INPUT_CLASS = "[&_input]:pr-36";
 
 /**
  * The cards of the profile one page mounts alone (#1178, Sam 22 Nov 2026): CTEM > Inventory edits the software inventory,
- * the AI systems, the assets and exposure, the asset groups, the policy and the outside lens with the same cards,
+ * the assets and exposure, the asset groups, the policy and the outside lens with the same cards,
  * the same per-card edit and the same Save as Settings, nothing stored twice. Without it the whole profile page.
  */
 export type OrganizationEmbed = {
@@ -783,7 +783,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     );
   };
   /**
-   * The three lists (primary assets, software inventory, AI systems) read on the shared DataTable (data
+   * The two lists (primary assets, software inventory) read on the shared DataTable (data
    * tables slice 9): search, filters, sort, CSV and the pager. In edit they keep all of it on the
    * list editor (#12256, OrganizationListEditor): one row open at a time, the order frozen.
    */
