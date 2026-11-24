@@ -129,6 +129,15 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         )
         return None if rendered is None else (case, rows, rendered)
 
+    async def _view_only(db: AsyncSession, rows: list[Any], vertical: str) -> str | None:
+        """The refusal of a write on a case the acting person sees only through a CTEM view right (#1748)."""
+        from app.services import ctem_access
+        from app.services import ctem_cases_view as view_of
+
+        if await view_of.acts_on_case(db, str(scope), rows, vertical):
+            return None
+        return f"Refused: {ctem_access.VIEW_ONLY_MESSAGE} Nothing was changed."
+
     async def _list(
         state: str = "", priority: str = "", owner_user_id: str = "", limit: int = 20, offset: int = 0
     ) -> str:
@@ -229,7 +238,13 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 org_id, vertical = await _context(db)
                 if org_id is None or scope is None:
                     return "No organization is set up yet: no case can be created."
+                from app.services import ctem_access
+
                 view = await view_of.viewer_view(db, str(scope), vertical)
+                visible = set(view.open_ids)
+                if await ctem_access.level(db, scope) == "view":
+                    # A CTEM view right is strictly read only (#1748).
+                    return f"Refused: {ctem_access.VIEW_ONLY_MESSAGE} Nothing was changed."
                 pending = case_loop.PendingEvents()
                 case = await store.create_manual_case(
                     db,
@@ -237,7 +252,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     vertical=vertical,
                     title=title,
                     member_ids=[str(i) for i in (issue_ids or [])],
-                    visible=set(view.open_ids),
+                    visible=visible,
                     actor=agent_id,
                     reason=(reason or "").strip() or None,
                     events=pending,
@@ -290,6 +305,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 if shown is None:
                     return f"No case {case_id}."
                 case, rows, _ = shown
+                refused = await _view_only(db, rows, vertical)
+                if refused:
+                    return refused
                 owner = _uuid(owner_user_id)
                 if owner and owner != case.owner_user_id:
                     owner_view = await view_of.viewer_view(db, str(owner), vertical)
@@ -389,6 +407,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 shown = await _shown(db, wanted, org_id, vertical)
                 if shown is None:
                     return f"No case {case_id}."
+                refused = await _view_only(db, shown[1], vertical)
+                if refused:
+                    return refused
                 await case_loop.record_validation(
                     db,
                     shown[0],
@@ -446,6 +467,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 shown = await _shown(db, wanted, org_id, vertical)
                 if shown is None:
                     return f"No case {case_id}."
+                refused = await _view_only(db, shown[1], vertical)
+                if refused:
+                    return refused
                 case_loop.record_ticket(
                     db, shown[0], integration=integration, key=key, url=url or None, status=status, actor=agent_id
                 )
@@ -484,6 +508,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 shown = await _shown(db, wanted, org_id, vertical) if org_id and scope else None
                 if shown is None:
                     return f"No case {case_id}."
+                refused = await _view_only(db, shown[1], vertical)
+                if refused:
+                    return refused
                 case = shown[0]
                 figures = await _opencrq_readable(db)
                 if answered_option:
@@ -654,6 +681,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 shown = await _shown(db, wanted, org_id, vertical)
                 if shown is None:
                     return f"No case {case_id}."
+                refused = await _view_only(db, shown[1], vertical)
+                if refused:
+                    return refused
                 pending = case_loop.PendingEvents()
                 answer = await ctem_ticketing.sync_one(
                     db,
