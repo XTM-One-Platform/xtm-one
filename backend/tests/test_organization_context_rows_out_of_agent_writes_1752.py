@@ -23,7 +23,7 @@ from app.services import organization_context_proposals as proposals
 PRIMARY = SimpleNamespace(role="primary")
 
 
-@pytest.mark.parametrize("field", ["assets_exposure", "asset_groups", "ai_systems"])
+@pytest.mark.parametrize("field", ["assets_exposure", "asset_groups"])
 def test_a_row_field_change_is_refused_with_the_row_tool_named(field: str) -> None:
     with pytest.raises(proposals.ProposalError, match="upsert_organization_rows") as caught:
         proposals.validate_field_changes(PRIMARY, {}, [{"field": field, "value": [{"name": "host-1"}]}])
@@ -31,7 +31,7 @@ def test_a_row_field_change_is_refused_with_the_row_tool_named(field: str) -> No
 
 
 def test_the_refusal_names_the_section_that_writes_the_rows() -> None:
-    assert "(section assets)" in proposals.row_field_refusal("ai_systems")
+    assert "(section assets)" in proposals.row_field_refusal("assets_exposure")
     assert "(section asset_groups)" in proposals.row_field_refusal("asset_groups")
 
 
@@ -78,7 +78,6 @@ def test_the_ai_draft_prompt_sends_counts_not_rows() -> None:
     assert "assets_exposure" not in data
     assert "asset_groups" not in data
     assert data["row_counts"]["assets_exposure"] == 51
-    assert "ai_systems" not in data
     assert data["sector"] == "Retail"
 
 
@@ -90,23 +89,27 @@ def test_the_ai_draft_prompt_size_does_not_grow_with_the_inventory() -> None:
 
 
 def test_a_drafted_row_field_is_never_proposed() -> None:
-    """The draft proposes profile fields; an ``ai_systems`` answer never becomes a profile proposal."""
+    """The draft proposes profile fields; an ``assets_exposure`` answer never becomes a profile proposal."""
     current = org_context.parse_profile({"name": "Acme"})
     evidence = ai.Evidence(texts={"description": "x"})
     answer = json.dumps(
         {
             "proposals": [
-                {"field": "ai_systems", "value": [{"name": "Bot", "kind": "assistant"}], "source": "description"},
+                {
+                    "field": "assets_exposure",
+                    "value": [{"name": "Bot", "category": "ai_target"}],
+                    "source": "description",
+                },
                 {"field": "sector", "value": "Retail", "source": "description"},
             ]
         }
     )
     found, not_supported, _pirs, notes = ai.parse_proposals(answer, current, evidence)
     assert [p.field for p in found] == ["sector"]
-    assert any("ai_systems" in n for n in notes)
-    assert "ai_systems" not in not_supported
+    assert any("assets_exposure" in n for n in notes)
+    assert "assets_exposure" not in not_supported
 
 
 def test_the_draft_prompt_never_asks_for_rows() -> None:
-    assert "ai_systems:" not in ai._SYSTEM
-    assert "ai_systems" not in ai.CONTRACT_PATHS
+    assert "assets_exposure:" not in ai._SYSTEM
+    assert "assets_exposure" not in ai.CONTRACT_PATHS

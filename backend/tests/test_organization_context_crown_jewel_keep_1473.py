@@ -260,21 +260,8 @@ def test_restored_profile_takes_the_named_fields_only() -> None:
         raise AssertionError("an unknown field must be refused")
 
 
-def test_a_version_saved_before_1501_restores_its_ai_systems() -> None:
-    """The legacy ``ai_systems`` of a past version come back as ``ai_target`` assets (#1501 review)."""
-    past = oc.parse_profile(
-        {"name": "Then", "ai_systems": [{"name": "Copilot", "kind": "agent", "exposure": "internal"}]}
-    ).model_dump(mode="json")
-    current = oc.parse_profile({"name": "Now", "assets_exposure": [{"name": "Web", "category": "host"}]}).model_dump(
-        mode="json"
-    )
-
-    merged, fields = oc.restored_profile(current, past, ["ai_systems"])
-    restored = oc.parse_profile(merged)
-    assert fields == ["ai_systems"]
-    assert [a.name for a in restored.ai_systems] == ["Copilot"]
-    assert [a.name for a in restored.assets_exposure if a.category != "ai_target"] == ["Web"]
-    assert restored.name == "Now"
-
-    whole, _ = oc.restored_profile(current, past, [])
-    assert [a.name for a in oc.parse_profile(whole).ai_systems] == ["Copilot"]
+def test_ai_systems_is_not_a_restorable_field() -> None:
+    """#1844: no ai_systems alias; a restore naming it is refused like any unknown field."""
+    current = oc.parse_profile({"name": "Now"}).model_dump(mode="json")
+    with pytest.raises(ValueError, match="ai_systems"):
+        oc.restored_profile(current, current, ["ai_systems"])
