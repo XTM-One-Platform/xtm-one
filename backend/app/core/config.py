@@ -3048,6 +3048,17 @@ class Settings(BaseSettings):
     # all egress is denied unless explicitly listed here.  Applied to both
     # custom-tool sandboxes (JS + Python) and the code-interpreter sandbox.
     opensandbox_network_allow: str = ""
+    # Outbound internet for the OpenSandbox code interpreter (one-shot runs and
+    # the session kernel) and nothing else: on, its container is created under
+    # a default-allow egress policy whose deny rules keep out the cloud metadata
+    # endpoints, the cluster's internal names and the private, loopback,
+    # link-local and CGNAT ranges (``_sandbox_selector.OPEN_EGRESS_DENY``), and
+    # its import hook gives back the HTTP stack (socket, http, urllib, requests,
+    # httpx, aiohttp); the escape primitives stay blocked. The local code
+    # interpreter shares the backend's network and is never opened. The
+    # deployment's network policy of the code interpreter's Pool stays the
+    # packet-level floor. Off (the default): every egress denied, as before.
+    code_interpreter_open_egress: bool = False
     # Read-only npm and PyPI mirror proxy of the command and service containers
     # (sandbox_run_command, sandbox_start_service): its host joins their egress
     # allow-list and the registry variables point at it. Empty: off, the dev
