@@ -7,7 +7,7 @@
 // from the issue fields of the viewer's own read, never from a history sentence.
 
 import { describe, expect, it, vi } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { renderWithProviders } from "@/testing/providers";
@@ -118,12 +118,19 @@ describe("CtemCaseDetail target version (#928)", () => {
     expect(within(other).getByText("Closed")).toBeInTheDocument();
   });
 
-  it("names the new target version on a retargeted history row", () => {
+  it("names the new target version on a retargeted history row, in the dialog the row opens", () => {
     state.fixedVersion = "1.25.5";
     page();
-    const history = screen.getByTestId("ctem-case-history");
-    expect(within(history).getByText("Changed the target version")).toBeInTheDocument();
-    expect(within(history).getByText("1.25.5")).toBeInTheDocument();
+    // The Table is the default view (#1679): a row opens the event dialog with its details.
+    const trail = screen.getByTestId("ctem-audit-trail");
+    const row = within(trail)
+      .getAllByTestId("ctem-audit-row")
+      .find((r) => r.textContent?.includes("Changed the target version"));
+    expect(row).toBeDefined();
+    fireEvent.click(row as HTMLElement);
+    const what = within(screen.getByTestId("ctem-case-event-dialog")).getByTestId("ctem-case-event-what");
+    expect(within(what).getByText("Changed the target version")).toBeInTheDocument();
+    expect(within(what).getByText("1.25.5")).toBeInTheDocument();
   });
 
   it("says the fixed version is unknown on an upgrade case without one, and only then", () => {

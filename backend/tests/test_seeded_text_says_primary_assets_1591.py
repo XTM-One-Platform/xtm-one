@@ -16,7 +16,6 @@ SEED_DATA = APP / "agents" / "seed_data"
 PYTHON_SEEDS = (
     APP / "agents" / "builtin_agents.py",
     APP / "agents" / "builtin_fleet_docs.py",
-    APP / "agents" / "builtin_profile_readers.py",
     APP / "agents" / "openaev_detection_desk.py",
     APP / "agents" / "ctem_third_party_risk.py",
 )
