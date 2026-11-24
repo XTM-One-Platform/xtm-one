@@ -46,10 +46,16 @@ ALL_SECTIONS = "all"
 SYNCABLE_SECTIONS: tuple[str, ...] = ("assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs")
 #: Where each section's syncs are configured (#1134 S2, Sam 22 Nov 2026): the business profile
 #: in Settings > Organization, the inventory in CTEM > Inventory. The global ``all`` schedule is in both.
+#: Primary assets (``crown_jewels``) are an Inventory source since they moved to Inventory > Business
+#: (#1690): their OpenCRQ sync is listed next to the asset sources (Sam, 24 Nov 2026).
 SECTION_SCOPES: dict[str, tuple[str, ...]] = {
-    "profile": ("crown_jewels", "pirs"),
-    "inventory": ("assets", "asset_groups", "tech_stack", "ai_systems"),
+    "profile": ("pirs",),
+    "inventory": ("assets", "asset_groups", "tech_stack", "ai_systems", "crown_jewels"),
 }
+#: The primary-asset source every platform with OpenCRQ connected gets by default: daily, links on.
+DEFAULT_PRIMARY_ASSET_SYNC: dict[str, Any] = {"section": "crown_jewels", "source": "opencrq", "frequency": "daily"}
+#: How many administrators :func:`ensure_default_primary_asset_sync` tries as the owner.
+DEFAULT_OWNER_CANDIDATES = 5
 #: How long a run may hold its lock before another run may take it.
 LOCK_SECONDS = 900
 #: Read errors that mean the owner cannot read the platform any more: the sync pauses.
@@ -438,6 +444,87 @@ async def _run_outbound(
         )
 
 
+async def _default_owner(db: AsyncSession) -> User | None:
+    """The first active administrator who can read the company-managed OpenCRQ, or None."""
+    from app.services.organization_context_opencrq import _opencrq_connection
+
+    admins = (
+        (
+            await db.execute(
+                select(User)
+                .where(User.role == "admin", User.is_active.is_(True))
+                .order_by(User.created_at)
+                .limit(DEFAULT_OWNER_CANDIDATES)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for admin in admins:
+        try:
+            connection = await _opencrq_connection(db, str(admin.id))
+        except Exception as exc:  # one unreadable administrator never stops the others
+            logger.warning(
+                "Primary-asset source: OpenCRQ unreadable for %s: %s", admin.id, format_exception_message(exc)
+            )
+            continue
+        if not isinstance(connection, str):
+            return admin
+    return None
+
+
+async def ensure_default_primary_asset_sync(db: AsyncSession) -> OrganizationContextSync | None:
+    """Create the default OpenCRQ primary-asset source when OpenCRQ is connected and none exists (the caller commits).
+
+    The source is on, daily at 06:00 UTC, the supporting-asset links on (#1591 default). Turning it off keeps
+    the row, so it is never created again; a source an administrator deleted is never created again either
+    (the audit trail says so). Answers the row created, or None when nothing was created.
+    """
+    from app.models.audit_log import AuditLog
+
+    section, source = DEFAULT_PRIMARY_ASSET_SYNC["section"], DEFAULT_PRIMARY_ASSET_SYNC["source"]
+    exists = await db.execute(
+        select(OrganizationContextSync.id)
+        .where(OrganizationContextSync.section == section, OrganizationContextSync.source == source)
+        .limit(1)
+    )
+    if exists.first() is not None:
+        return None
+    deleted = await db.execute(
+        select(AuditLog.id)
+        .where(
+            AuditLog.entity_type == "organization_context_sync",
+            AuditLog.action == "delete",
+            AuditLog.entity_name == f"{section} from {source}",
+        )
+        .limit(1)
+    )
+    if deleted.first() is not None:
+        return None
+    # Connected = an administrator reads the company-managed OpenCRQ (_opencrq_connection applies the
+    # integration visibility and access_restricted rules); none can: nothing is created.
+    owner = await _default_owner(db)
+    if owner is None:
+        return None
+    row = OrganizationContextSync()
+    define(row, owner_id=owner.id, section=section, source=source, frequency=DEFAULT_PRIMARY_ASSET_SYNC["frequency"])
+    db.add(row)
+    await db.flush()
+    from app.services.audit import log_audit
+
+    await log_audit(
+        db,
+        user=owner,
+        action="create",
+        entity_type="organization_context_sync",
+        entity_id=row.id,
+        entity_name=f"{section} from {source}",
+        summary="Primary assets from OpenCRQ scheduled daily by default (OpenCRQ connected)",
+        details={"default": True, **DEFAULT_PRIMARY_ASSET_SYNC},
+    )
+    return row
+
+
 async def section_syncs(db: AsyncSession) -> list[OrganizationContextSync]:
     """Every enabled, unpaused section sync, in the order they were saved (what ``all`` runs)."""
     return list(
@@ -485,6 +572,12 @@ async def run_due_syncs(db: AsyncSession, *, now: datetime | None = None) -> int
     Each sync commits on its own, so one that fails never undoes another.
     """
     now = now or datetime.now(UTC)
+    try:
+        if await ensure_default_primary_asset_sync(db) is not None:
+            await db.commit()
+    except Exception as exc:  # the default source never stops the due syncs
+        logger.error("Default primary-asset source not created: %s", format_exception_message(exc), exc_info=True)
+        await db.rollback()
     due_ids = list(
         (
             await db.execute(
