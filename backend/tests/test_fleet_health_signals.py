@@ -204,7 +204,12 @@ async def test_an_orchestrator_gets_the_tool_and_the_skill_once():
     agent = SimpleNamespace(builtin_tool_ids=["web"], builtin_allowed_tools=None, skill_ids=[])
     assert await grant_fleet_health_advisory(db, agent)
     assert "platform" in agent.builtin_tool_ids
-    assert agent.builtin_allowed_tools["platform"] == ["get_fleet_health", "dismiss_fleet_health_findings"]
+    assert agent.builtin_allowed_tools["platform"] == [
+        "get_fleet_health",
+        "dismiss_fleet_health_findings",
+        "regenerate_fleet_documentation",
+        "list_fleet_doc_findings",
+    ]
     assert agent.skill_ids == [str(skill_id)]
     # Idempotent.
     assert not await grant_fleet_health_advisory(db, agent)
@@ -233,6 +238,40 @@ async def test_an_orchestrator_also_gets_the_fleet_design_practices_skill():
     assert await grant_fleet_health_advisory(db, agent)
     assert agent.skill_ids == [str(health), str(design)]
     assert not await grant_fleet_health_advisory(db, agent)
+
+
+@pytest.mark.asyncio
+async def test_an_orchestrator_on_the_health_tools_alone_gets_the_documentation_tools():
+    """#1631: an orchestrator granted before the documentation tools gets them at the next backfill."""
+    from app.services.fleets import FLEET_DOC_FUNCTIONS, grant_fleet_health_advisory
+
+    agent = SimpleNamespace(
+        builtin_tool_ids=["platform"],
+        builtin_allowed_tools={"platform": ["get_fleet_health", "dismiss_fleet_health_findings"]},
+        skill_ids=[],
+    )
+    assert await grant_fleet_health_advisory(_Db([]), agent)
+    assert set(FLEET_DOC_FUNCTIONS) <= set(agent.builtin_allowed_tools["platform"])
+    assert not await grant_fleet_health_advisory(_Db([]), agent)
+
+
+def test_the_documentation_tools_granted_are_platform_fleet_functions():
+    """#1631: the regeneration rule line of the seeded orchestrator personas names a granted tool."""
+    from app.services.builtin_tool_aliases import BUILTIN_GROUP_ALIASES
+    from app.services.fleets import FLEET_DOC_FUNCTIONS
+
+    group, functions = BUILTIN_GROUP_ALIASES["fleets"]
+    assert group == "platform"
+    platform_fleet_tools = set(functions)
+    assert set(FLEET_DOC_FUNCTIONS) <= platform_fleet_tools
+
+
+def test_the_coverage_reporter_reads_the_desk_state():
+    """#1631: its persona reads openaev:detection-desk:state; the seed gives it the shared-state tools."""
+    from app.agents import openaev_detection_desk as desk
+
+    reporter = next(a for a in desk.DETECTION_DESK_AGENTS if a["slug"] == desk.COVERAGE_REPORTER)
+    assert "shared_state" in reporter["builtin_tool_ids"]
 
 
 def test_the_fleet_design_skill_is_seeded_as_suggestions():
