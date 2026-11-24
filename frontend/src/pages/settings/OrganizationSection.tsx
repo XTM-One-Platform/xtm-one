@@ -106,6 +106,8 @@ import { OrganizationCrownJewelsRestoreDialog } from "./OrganizationCrownJewelsR
 import { OrganizationProposalsCard } from "./OrganizationProposalsCard";
 import { OrganizationEvidenceHealthCard } from "./OrganizationEvidenceHealthCard";
 import { OrganizationOutsideLensCard } from "./OrganizationOutsideLensCard";
+import { OrganizationFxRatesCard } from "./OrganizationFxRatesCard";
+import { OrganizationPirDetailsCard } from "./OrganizationPirDetailsCard";
 import {
   PROFILE_CARD_PARAM,
   PROFILE_CARD_TAB,
@@ -1833,6 +1835,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               />
             </div>
           </SettingsCard>
+          {/* The reference rates and the PIR details (#1773): their own cards, saved through PATCH alone. */}
+          {!editing && <OrganizationFxRatesCard id={`${fieldId}-fx_rates`} />}
+          {!editing && <OrganizationPirDetailsCard id={`${fieldId}-pir_details`} />}
           </>
           )}
           </div>
