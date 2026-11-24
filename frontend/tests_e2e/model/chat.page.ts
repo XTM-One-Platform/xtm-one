@@ -1,4 +1,4 @@
-import type { Locator, Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 /**
  * The /chat page: the shared `@filigran/chatbot` panel, through its
@@ -41,6 +41,16 @@ export class ChatPage {
   /** The button that sends the composer's text. */
   sendButton(): Locator {
     return this.root().getByTestId('filigran-chat-composer').getByRole('button', { name: 'Send', exact: true });
+  }
+
+  /** The composer's Stop, shown in place of Send while a turn runs. */
+  stopButton(): Locator {
+    return this.root().getByTestId('filigran-chat-composer').getByRole('button', { name: 'Stop generating', exact: true });
+  }
+
+  /** Wait until no turn is running, so the next send starts a new turn. */
+  async waitForTurnSettled(timeout = 60_000): Promise<void> {
+    await expect(this.stopButton()).toHaveCount(0, { timeout });
   }
 
   /** The notice under the composer that AI can be wrong. */

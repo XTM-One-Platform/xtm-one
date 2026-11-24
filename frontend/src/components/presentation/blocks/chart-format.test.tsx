@@ -5,7 +5,7 @@
  * import that `node --test` cannot resolve, so its rules are exercised here,
  * and the figure `ChartCanvas` draws from them is read off its SVG the way
  * the PPTX extractor reads it. The table of every format rule is
- * `tests_e2e/chart-format.spec.ts`; the PPTX number formats that mirror these
+ * `tests_unit/chart-format.test.ts`; the PPTX number formats that mirror these
  * decimals are pinned in `backend/tests/test_chart_export.py`.
  */
 import { describe, expect, it, vi } from "vitest";

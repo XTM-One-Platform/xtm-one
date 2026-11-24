@@ -55,7 +55,7 @@ test.describe.serial('Users — admin management', () => {
     await userPage.gotoList();
     await page.getByText(USER_EMAIL).first().click();
     await userPage.waitForDetail();
-    await expect(page.getByText(/^User$|^Admin$/i).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('entity-page-header-meta').getByText(/^User$|^Admin$/)).toBeVisible({ timeout: 10_000 });
   });
 
   test.afterAll(async () => {

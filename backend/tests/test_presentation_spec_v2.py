@@ -577,11 +577,11 @@ def test_frontend_agenda_layout_mirrors_the_backend_rule():
     agenda_rules = re.sub(r"/\*.*?\*/", "", agenda_css, flags=re.DOTALL)
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b|rgb\(", agenda_rules), "hard-coded colour in the agenda styles"
     # The strings above pin the SOURCE; the rule is also EXECUTED, without a
-    # page, by the Playwright table spec (like `logo-position.spec.ts`), which
+    # page, by the vitest table test (like `logo-position.test.ts`), which
     # runs the same thresholds table as `test_auto_agenda_columns_follows_the_
     # documented_rule` and walks every count x columns x flow through
     # `agendaRowGroups`.
-    spec = (FRONTEND_ROOT / "tests_e2e" / "agenda-layout.spec.ts").read_text(encoding="utf-8")
+    spec = (FRONTEND_ROOT / "tests_unit" / "agenda-layout.test.ts").read_text(encoding="utf-8")
     assert "from '../src/components/presentation/agenda-layout'" in spec
     for name in ("autoAgendaColumns", "agendaStyle", "agendaRowGroups", "resolveAgendaLayout"):
         assert f"{name}(" in spec, name
