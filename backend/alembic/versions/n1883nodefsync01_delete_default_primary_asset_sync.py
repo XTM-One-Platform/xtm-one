@@ -13,7 +13,7 @@ assets it imported stay as they are (still marked ``source: opencrq``). A sync a
 person created or edited stays. Data-only and idempotent; no downgrade.
 
 Revision ID: n1883nodefsync01
-Revises: c1748ctemgrp01
+Revises: s1495swsection01
 Create Date: 2026-11-24 12:45:00.000000
 """
 
@@ -26,7 +26,7 @@ from alembic import op
 revision: str = "n1883nodefsync01"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "c1748ctemgrp01"
+down_revision: str | Sequence[str] | None = "s1495swsection01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
