@@ -36,6 +36,7 @@ from app.integrations.providers.rydoo.webhooks import TRIGGER_EVENTS as RYDOO_TR
 from app.integrations.providers.spendesk.webhooks import EVENT_TYPES as SPENDESK_EVENT_TYPES
 from app.integrations.providers.spendesk.webhooks import TRIGGER_EVENTS as SPENDESK_TRIGGER_EVENTS
 from app.services.dealhub_events import catalog_events as _dealhub_catalog_events
+from app.services.opencrq_job_events import FILTER_KEYS as _OPENCRQ_FILTER_KEYS
 from app.services.tool_classification import definition_tool_type
 from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
 
@@ -594,6 +595,17 @@ _GITHUB_PAYLOAD_FILTER_KEYS: dict[str, str] = {
         'Combinators: {"all": [filter, ...]}, {"any": [filter, ...]}, {"not": filter}, nesting; '
         'e.g. {"not": {"sender.login": {"ends_with": "[bot]"}}}'
     ),
+}
+
+#: A HubSpot CRM event: the object-type scope plus the payload filter on the
+#: delivered event (``webhooks._hubspot_filter_reason``).
+_HUBSPOT_FILTER_KEYS: dict[str, str] = {
+    "scope": 'The CRM entity types, as {"crm_object_type": ["deal", ...]} (the Scope picker)',
+    "propertyName": 'entity_updated: only changes of this property (a list means any), e.g. "dealstage"',
+    "propertyValue": "entity_updated: only this new value; operators allowed",
+    "changeSource": 'Only changes from this source, e.g. {"ne": "INTEGRATION"}',
+    "operators": _GITHUB_PAYLOAD_FILTER_KEYS["operators"],
+    "all / any / not": _GITHUB_PAYLOAD_FILTER_KEYS["all / any / not"],
 }
 
 #: A GitHub CI or push event: the payload filter plus the open pull request
@@ -2070,18 +2082,21 @@ PROVIDER_CATALOG = {
                 "label": "Entity created",
                 "description": "Triggers when a contact, company, deal, or other CRM entity is created in HubSpot.",
                 "mechanism": "webhook",
+                "filter_keys": _HUBSPOT_FILTER_KEYS,
             },
             {
                 "event": "entity_updated",
                 "label": "Entity property updated",
                 "description": "Triggers when a property on a CRM entity is changed in HubSpot (e.g. email, stage, amount).",
                 "mechanism": "webhook",
+                "filter_keys": _HUBSPOT_FILTER_KEYS,
             },
             {
                 "event": "entity_deleted",
                 "label": "Entity deleted",
                 "description": "Triggers when a contact, company, deal, or other CRM entity is deleted in HubSpot.",
                 "mechanism": "webhook",
+                "filter_keys": _HUBSPOT_FILTER_KEYS,
             },
         ],
         "element_types": [
@@ -6318,18 +6333,21 @@ PROVIDER_CATALOG = {
                 "label": "Risk scenarios recomputed",
                 "description": "Triggers when a CRQ simulation or the re-pricing of risk scenarios finishes in OpenCRQ. Uses polling (every minute).",
                 "mechanism": "polling",
+                "filter_keys": _OPENCRQ_FILTER_KEYS,
             },
             {
                 "event": "finding_score_changed",
                 "label": "Finding scores recomputed",
                 "description": "Triggers when OpenCRQ finishes recomputing finding scores. Uses polling (every minute).",
                 "mechanism": "polling",
+                "filter_keys": _OPENCRQ_FILTER_KEYS,
             },
             {
                 "event": "control_validation_ingested",
                 "label": "Control validation ingested",
                 "description": "Triggers when OpenCRQ finishes ingesting OpenAEV results or recording the proven posture. Uses polling (every minute).",
                 "mechanism": "polling",
+                "filter_keys": _OPENCRQ_FILTER_KEYS,
             },
         ],
         "setup_guide": {

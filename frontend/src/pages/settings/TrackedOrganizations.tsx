@@ -98,9 +98,13 @@ const sameInput = (a: OrganizationInput, b: OrganizationInput) =>
  * The card's root attributes a host page sets: a landing anchor (id, scroll margin, `data-anchor`,
  * `tabIndex`) goes on the card itself, never on a wrapper, so its focus ring keeps the card's radius.
  */
-type TrackedOrganizationsProps = Omit<HTMLAttributes<HTMLDivElement>, "title" | "children"> & { "data-anchor"?: string };
+type TrackedOrganizationsProps = Omit<HTMLAttributes<HTMLDivElement>, "title" | "children"> & {
+  "data-anchor"?: string;
+  /** A reader's view on CTEM > Inventory (#1690): the list at rest, no Add, Draft, Edit or Archive (administrators only). */
+  readOnly?: boolean;
+};
 
-export function TrackedOrganizations(cardProps: TrackedOrganizationsProps = {}) {
+export function TrackedOrganizations({ readOnly = false, ...cardProps }: TrackedOrganizationsProps = {}) {
   const { t_i18n } = useFormatter();
   const fieldId = useId();
   const { toast } = useToast();
@@ -247,7 +251,7 @@ export function TrackedOrganizations(cardProps: TrackedOrganizationsProps = {}) 
   ];
   const openctiError = identities.isError ? t_i18n("OpenCTI did not answer. Check the OpenCTI integration, then search again.") : undefined;
 
-  const columns: DataTableColumn<Organization>[] = [
+  const allColumns: DataTableColumn<Organization>[] = [
     {
       key: "name",
       header: "Name",
@@ -315,6 +319,8 @@ export function TrackedOrganizations(cardProps: TrackedOrganizationsProps = {}) 
       ),
     },
   ];
+  // A reader has no action on a row: the Actions column is left out rather than drawn empty.
+  const columns = readOnly ? allColumns.filter((column) => column.key !== "actions") : allColumns;
 
   const isNew = editing?.id === "new";
   const dirty = !!editing && !sameInput(editing.initial, editing.value);
@@ -466,6 +472,7 @@ export function TrackedOrganizations(cardProps: TrackedOrganizationsProps = {}) 
         "The providers, customers, partners and subsidiaries your organization depends on or serves. Monitoring starts off: nothing is watched in OpenCTI and no run is counted until you enable it.",
       )}
       action={
+        readOnly ? undefined : (
         <span className="inline-flex gap-2">
           <Button
             variant="secondary"
@@ -479,6 +486,7 @@ export function TrackedOrganizations(cardProps: TrackedOrganizationsProps = {}) 
             <Plus className="h-4 w-4" /> {t_i18n("Add an organization")}
           </Button>
         </span>
+        )
       }
     >
       {ConfirmEl}

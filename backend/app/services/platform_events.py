@@ -228,7 +228,16 @@ _CTEM_CASE_KEYS = (
 _CTEM_CASE_VALIDATION_KEYS = (*_CTEM_CASE_KEYS, "openaev.event", "openaev.resource_type", "openaev.resource_id")
 #: A CTEM signal event carries the signal id and its routing only (#1409): the run reads the
 #: read the signal with list_ctem_signals signal_id, under its own permissions.
-_CTEM_SIGNAL_KEYS = ("signal_id", "trigger_path", "lens", "source_provider", "subject_kind", "verdict", "case_id")
+_CTEM_SIGNAL_KEYS = (
+    "signal_id",
+    "trigger_path",
+    "lens",
+    "source_provider",
+    "subject_kind",
+    "verdict",
+    "case_id",
+    "pir_floor_met",
+)
 _VIDEO_KEYS = (
     "job_kind",
     "job_id",
@@ -302,7 +311,8 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
     },
     "run.completed": {
         "description": (
-            "An assignment run completed. stop_reason names why a run stopped before its task was done "
+            "A run completed: an assignment run, or a delegated child run (no assignment; parent_run_id "
+            "names the run that delegated it). stop_reason names why a run stopped before its task was done "
             "(deadline, budget_exhausted, max_iterations, timeout, waiting_on_tasks...): the run still "
             "completes with a partial result; null when it ended on its own terms. partial is true exactly "
             "when stop_reason is set."
@@ -310,7 +320,10 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
         "filter_keys": _RUN_KEYS,
     },
     "run.failed": {
-        "description": "An assignment run failed.",
+        "description": (
+            "A run failed: an assignment run, or a delegated child run (no assignment; parent_run_id "
+            "names the run that delegated it)."
+        ),
         "filter_keys": (*_RUN_KEYS, "error"),
     },
     "run.orphaned": {
@@ -491,7 +504,8 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
             "A CTEM signal was seen for the first time (services/ctem_signals.py), after the scope gate gave it "
             "its first verdict; a re-sighting raises nothing. Payload: signal_id, trigger_path, lens, "
             "source_provider, subject_kind, verdict (confirmed, to_validate, watchlist, discarded, or null when "
-            "the gate did not run), case_id; read the signal with list_ctem_signals signal_id. Heard only when the user the "
+            "the gate did not run), case_id, pir_floor_met (a relevant threat's PIR score reached the policy threshold); "
+            "read the signal with list_ctem_signals signal_id. Heard only when the user the "
             "subscription runs as reads the signal (an administrator, or its recorder; a listener's signal is "
             "an administrator's only)."
         ),

@@ -38,6 +38,7 @@ const RESULT_LABEL = {
   not_exposed: "Not exposed",
   failed: "Failed",
   pending: "Pending",
+  inconclusive: "Inconclusive",
 } as const;
 
 const RESULT_TONE: Record<keyof typeof RESULT_LABEL, HotTone> = {

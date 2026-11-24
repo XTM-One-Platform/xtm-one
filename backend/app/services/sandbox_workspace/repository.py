@@ -57,6 +57,7 @@ from app.services.sandbox_workspace.detect import (
     release_note_dirs,
     subdirectory_dependencies,
     widen_to_check_dirs,
+    widen_to_package_roots,
     workspace_dependency_dirs,
     workspace_member_manifests,
 )
@@ -221,15 +222,19 @@ def extract_tree(
     tree = ExtractedTree(root=root)
     if wanted:
         declared = _declared_checks(data, root)
-        wanted, tree.widened = widen_to_check_dirs(wanted, declared)
-        tree.needed = check_needs(wanted, declared)
-        wanted = [*wanted, *tree.needed]
-        tree.sub_paths = list(wanted)
         sizes: dict[str, int] = {}
         for name, member in members:
             rel = _relative(name, root)
             if rel and member.is_file:
                 sizes[rel] = member.size
+        wanted, tree.widened = widen_to_check_dirs(wanted, declared)
+        # A sub_path inside a JavaScript package no declared check covers takes the package root: its unit
+        # and type checks load the package's own config and assets (front/config.ts beside front/src).
+        wanted, by_package = widen_to_package_roots(wanted, sizes)
+        tree.widened = [*tree.widened, *by_package]
+        tree.needed = check_needs(wanted, declared)
+        wanted = [*wanted, *tree.needed]
+        tree.sub_paths = list(wanted)
         requirements: dict[str, bytes] = {}
         workspace_roots: dict[str, bytes] = {}
         referencing: dict[str, bytes] = {}

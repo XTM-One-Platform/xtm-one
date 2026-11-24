@@ -29,6 +29,7 @@ from typing import Any
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import _api, _search_body, _validate_filter_group, json_answer
+from .engine_schema import engine_filter_keys, widget_entities, widget_key_error
 
 logger = logging.getLogger(__name__)
 
@@ -364,6 +365,14 @@ def register(
         time_note, time_err = _apply_time_range(config)
         if time_err:
             return f"widget_config refused, nothing queried. {time_err}"
+        # The engine filters on its own indexed fields: a JPA attribute name
+        # (asset_tags) is a 400 'Unknown field' after the call, so check the keys
+        # first. An unreadable schema leaves the query unchecked, never refused.
+        entities = widget_entities(config)
+        engine_keys, _schema_err = await engine_filter_keys(_api, base_url, headers, entities)
+        key_err = widget_key_error(config, engine_keys, entities)
+        if key_err:
+            return f"widget_config refused, nothing queried. {key_err}"
 
         params: dict = {}
         if parameters:
@@ -835,9 +844,10 @@ def register(
                 "entity is a filter {key: 'base_entity', values: [...]}: valid "
                 f"values are {', '.join(_BASE_ENTITIES)} ('endpoint' was "
                 "retired for 'asset'); any other value is refused, as OpenAEV "
-                "would answer 0. time_range (ALL_TIME, LAST_DAY, LAST_WEEK, "
-                "LAST_MONTH, LAST_QUARTER, LAST_SEMESTER, LAST_YEAR, CUSTOM, "
-                "DEFAULT) defaults to ALL_TIME when left out, because OpenAEV's "
+                "would answer 0. Filter keys are engine fields (base_tags_side, "
+                "not asset_tags), checked before the query. time_range "
+                "(ALL_TIME, LAST_DAY, LAST_WEEK, LAST_MONTH, LAST_QUARTER, "
+                "LAST_SEMESTER, LAST_YEAR, CUSTOM, DEFAULT) defaults to ALL_TIME when left out, because OpenAEV's "
                 "DEFAULT means LAST_QUARTER (90 days) on an ad-hoc query; the "
                 "answer names the range applied."
             ),

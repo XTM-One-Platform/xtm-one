@@ -209,6 +209,109 @@ def test_the_job_payload_scenario_ids_travel_on_the_event() -> None:
     assert "risk_scenario_ids" not in opencrq_job_events.run_event(plain, "x", base_url="", tenant_id="t")["entity"]
 
 
+def _priced(run_id: str, finished: str, summary: dict[str, Any], key: str = "currentStep") -> dict[str, Any]:
+    import json
+
+    return {**_run(run_id, finished, kind="crq-price-recompute"), key: json.dumps(summary)}
+
+
+def test_the_moved_scenarios_of_a_price_pass_travel_on_the_event() -> None:
+    """Today's OpenCRQ summary (moved, movedCount; no movedAle) read from currentStep (#1663)."""
+    run = _priced("p", "2026-11-06T07:00:00Z", {"walked": 3, "priced": 2, "moved": ["s1", "s2"], "movedCount": 2})
+    payload = opencrq_job_events.run_event(run, "risk_scenario_recomputed", base_url="", tenant_id="t")
+    for target in (payload, payload["entity"]):
+        assert target["moved_scenario_ids"] == ["s1", "s2"]
+        assert target["moved_count"] == 2
+        assert "moved_ale" not in target
+    assert payload["entity"]["progress_message"] == run["currentStep"]
+    assert payload["tenant_id"] == "t" and payload["kind"] == "crq-price-recompute"
+
+
+def test_the_legacy_progress_message_key_is_still_read() -> None:
+    run = _priced("p", "2026-11-06T07:00:00Z", {"moved": ["s1"]}, key="progressMessage")
+    payload = opencrq_job_events.run_event(run, "risk_scenario_recomputed", base_url="", tenant_id="t")
+    assert payload["moved_scenario_ids"] == ["s1"] and payload["moved_count"] == 1
+
+
+def test_a_run_without_a_json_summary_moved_nothing() -> None:
+    plain = {**_run("a", "2026-11-06T07:00:00Z"), "currentStep": "Simulating 3 scenarios"}
+    payload = opencrq_job_events.run_event(plain, "risk_scenario_recomputed", base_url="", tenant_id="t")
+    assert payload["moved_scenario_ids"] == [] and payload["moved_count"] == 0
+    broken = {**_run("b", "2026-11-06T07:00:00Z"), "currentStep": "{not json"}
+    assert opencrq_job_events.run_event(broken, "x", base_url="", tenant_id="t")["moved_scenario_ids"] == []
+
+
+def test_moved_ale_travels_when_opencrq_reports_it() -> None:
+    summary = {
+        "moved": ["s1", "s2"],
+        "movedCount": 140,
+        "movedAle": [
+            {"riskScenarioId": "s1", "aleBefore": 100, "aleAfter": 150.5, "aleDelta": 50.5},
+            {"riskScenarioId": "s2", "aleBefore": None, "aleAfter": 10, "aleDelta": None},
+            {"aleBefore": 1},
+        ],
+    }
+    payload = opencrq_job_events.run_event(
+        _priced("p", "2026-11-06T07:00:00Z", summary), "risk_scenario_recomputed", base_url="", tenant_id="t"
+    )
+    assert payload["moved_count"] == 140
+    assert payload["moved_ale"] == [
+        {"risk_scenario_id": "s1", "ale_before": 100.0, "ale_after": 150.5, "ale_delta": 50.5},
+        {"risk_scenario_id": "s2", "ale_before": None, "ale_after": 10.0, "ale_delta": None},
+    ]
+
+
+def test_a_coalesced_page_merges_the_moved_scenarios() -> None:
+    first = _priced(
+        "a",
+        "2026-11-06T07:00:00Z",
+        {
+            "moved": ["s1"],
+            "movedCount": 1,
+            "movedAle": [{"riskScenarioId": "s1", "aleBefore": 1, "aleAfter": 2, "aleDelta": 1}],
+        },
+    )
+    second = _priced(
+        "b",
+        "2026-11-06T07:01:00Z",
+        {
+            "moved": ["s1", "s2"],
+            "movedCount": 2,
+            "movedAle": [{"riskScenarioId": "s1", "aleBefore": 2, "aleAfter": 3, "aleDelta": 1}],
+        },
+    )
+    simulation = {**_run("c", "2026-11-06T07:02:00Z"), "payload": {"riskScenarioId": "s9"}}
+    (event,) = opencrq_job_events.coalesce_events(
+        [first, second, simulation], "risk_scenario_recomputed", base_url="", tenant_id="t"
+    )
+    assert event["moved_scenario_ids"] == event["entity"]["moved_scenario_ids"] == ["s1", "s2"]
+    assert event["moved_count"] == 3
+    assert event["moved_ale"] == [{"risk_scenario_id": "s1", "ale_before": 2.0, "ale_after": 3.0, "ale_delta": 1.0}]
+    assert event["kind"] == ["crq-price-recompute", "crq-simulation"]
+    assert event["risk_scenario_ids"] == ["s9"]
+    assert [c["moved_scenario_ids"] for c in event["covers"]] == [["s1"], ["s1", "s2"], []]
+
+
+def test_the_trigger_filter_reacts_to_a_moved_scenario() -> None:
+    from app.services.integration_event_filters import event_filter_reason
+
+    run = _priced("p", "2026-11-06T07:00:00Z", {"moved": ["s1", "s2"], "movedCount": 2})
+    (event,) = opencrq_job_events.coalesce_events([run], "risk_scenario_recomputed", base_url="", tenant_id="t9")
+    assert event_filter_reason("risk_scenario_recomputed", event, {"moved_scenario_ids": "s2"}) is None
+    assert event_filter_reason("risk_scenario_recomputed", event, {"moved_scenario_ids": ["s7", "s1"]}) is None
+    assert event_filter_reason("risk_scenario_recomputed", event, {"moved_scenario_ids": "s7"}) is not None
+    assert event_filter_reason("risk_scenario_recomputed", event, {"moved_count": {"ne": 0}}) is None
+    assert event_filter_reason("risk_scenario_recomputed", event, {"kind": "crq-price-recompute"}) is None
+    # The tenant the poller reads is also a payload field: the filter keeps its events.
+    assert event_filter_reason("risk_scenario_recomputed", event, {"tenant_id": "t9"}) is None
+
+
+def test_the_catalog_declares_the_filter_keys_of_every_event() -> None:
+    for entry in PROVIDER_CATALOG["opencrq"]["available_events"]:
+        assert set(entry["filter_keys"]) == set(opencrq_job_events.FILTER_KEYS)
+    assert {"moved_scenario_ids", "tenant_id"} <= set(opencrq_job_events.FILTER_KEYS)
+
+
 def test_the_coalesce_key_is_per_tenant_and_event() -> None:
     assert opencrq_job_events.coalesce_key("risk_scenario_recomputed", "a") != opencrq_job_events.coalesce_key(
         "risk_scenario_recomputed", "b"

@@ -89,7 +89,9 @@ async def _temp_database() -> AsyncIterator[async_sessionmaker]:
                     ),
                     {"db": db_name},
                 )
-                await conn.execute(text(f'DROP DATABASE IF EXISTS "{db_name}"'))
+                # A session opened after the terminate (a task the code under
+                # test spawned) would make a plain DROP fail: FORCE closes it.
+                await conn.execute(text(f'DROP DATABASE IF EXISTS "{db_name}" WITH (FORCE)'))
         finally:
             await cleanup.dispose()
 

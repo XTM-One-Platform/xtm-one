@@ -23,7 +23,7 @@ persists its answer in ``models/organization_asset.py`` and answers the reads:
   row write of ``organization_asset_records`` refreshes its own identity
   clusters, so this is one indexed probe after the first build).
 - The software the assets run is read as Software entities by
-  ``organization_software_store`` (#1495); the tech stack read it replaced is gone.
+  ``organization_software_store`` (#1495); the software read it replaced is gone.
 
 Since #1543 the asset records are the source of the rows; the store is their canonical view.
 """
@@ -1067,6 +1067,8 @@ async def get_asset(
     return {
         **_summary(asset, names, int(soft_total)),
         "groups": await _asset_groups(db, organization_id, asset.id),
+        # #1591 S3: the primary assets the asset supports (directly or through a group), with role and source.
+        "primary_assets": await _asset_primary_assets(db, organization_id, asset.id),
         "fields": asset.fields or {},
         "explanation": identity.Canonical(
             id=asset.canonical_key, records=[], merged_on=list(asset.merged_on or [])
@@ -1096,6 +1098,14 @@ async def get_asset(
             "limit": limit,
         },
     }
+
+
+async def _asset_primary_assets(
+    db: AsyncSession, organization_id: uuid.UUID, asset_id: uuid.UUID
+) -> list[dict[str, Any]]:
+    from app.services.ctem_primary_assets import asset_primary_assets
+
+    return await asset_primary_assets(db, organization_id, asset_id)
 
 
 async def _asset_groups(db: AsyncSession, organization_id: uuid.UUID, asset_id: uuid.UUID) -> list[dict[str, str]]:

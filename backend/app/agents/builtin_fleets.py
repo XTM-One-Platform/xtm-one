@@ -152,7 +152,7 @@ CTEM_LOOP_FLEET: dict[str, Any] = {
     "absorbs": ["ctem-posture", PIR_DESK_FLEET["slug"], DETECTION_DESK_FLEET["slug"], RISK_BUDGET_DESK_FLEET["slug"]],
     "name": "CTEM loop",
     "description": (
-        "The whole CTEM loop on your stack, case by case: any change in exposure (a CVE, a threat, "
+        "The whole CTEM loop on your software, case by case: any change in exposure (a CVE, a threat, "
         "a leak, a supplier event, a regression) is reconciled, gated on your scope, opened as a "
         "case, validated in OpenAEV, priced in OpenCRQ, mobilised with one decision of yours and "
         "closed by a passing re-test. It also keeps the posture, the PIR answers, the detection "

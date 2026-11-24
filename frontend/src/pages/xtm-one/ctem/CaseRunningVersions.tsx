@@ -4,7 +4,7 @@
  * "Running versions" on an upgrade case page (#1252, dev-docs/ctem-cases.md
  * section 4.2ter): the versions of the case's product the organization's assets
  * run, read from the asset inventory (Intune, Defender, an SBOM, OpenAEV),
- * never typed in the tech stack. Each version shows how many assets run it,
+ * never typed in the software inventory. Each version shows how many assets run it,
  * where it stands against the fixed version when one is known, and the sources
  * that report it as their logos (an SBOM, a CSV import or a hand entry has no
  * brand: it gets a glyph and its name). With no fixed version the card says so

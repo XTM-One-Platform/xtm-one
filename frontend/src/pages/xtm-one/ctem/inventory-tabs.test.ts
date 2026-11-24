@@ -10,7 +10,7 @@ function tabOfPath(path: string): string | null {
   if (path === INVENTORY_PATH) return INVENTORY_TABS[0].key;
   const prefix = `${INVENTORY_PATH}/`;
   if (!path.startsWith(prefix)) return null;
-  // A retired tab (#1495: Tech stack) redirects to the tab that replaced it.
+  // A retired tab (#1495: tech-stack) redirects to the tab that replaced it.
   const tab = path.slice(prefix.length);
   return RETIRED_TABS[tab] ?? tab;
 }

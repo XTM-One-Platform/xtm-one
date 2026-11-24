@@ -24,7 +24,7 @@ from app.agents.fleet_seed import SEEDED_FLEET_AUTONOMY_LEVEL
 from app.agents.seed import SEED_DATA_DIR
 from app.integrations.providers.opencti import build_tools
 from app.integrations.providers.opencti.capabilities import required_capabilities
-from app.services.fleet_autonomy import effective_gates, gated_tool_rules, rule_matches
+from app.services.fleet_autonomy import effective_gates, gated_tool_rules
 from app.tools.base import CallableToolExecutor, ToolCall
 
 TOKEN = "https://demo.opencti.io||test-token"
@@ -241,10 +241,13 @@ def _review_gate(slug: str) -> dict[str, Any]:
 
 
 @pytest.mark.parametrize("slug", _LOOP_FLEETS)
-def test_the_review_gate_maps_onto_the_coverage_request(slug: str) -> None:
+def test_the_review_gate_offers_the_draft_validation_and_names_no_tool(slug: str) -> None:
     gate = _review_gate(slug)
-    # The draft holding the package is validated under the same decision (#1480).
-    assert gate["tools"] == [{"name": TOOL, "when": {"action": ["create"]}}, {"name": "apply_opencti_draft"}]
+    # The draft holding the package is offered by the gate's key (#1480, #1675), never paused.
+    assert "tools" not in gate
+    from app.services.fleet_autonomy import gate_tool_names
+
+    assert "apply_opencti_draft" in gate_tool_names([gate])
 
 
 @pytest.mark.parametrize("slug", _LOOP_FLEETS)
@@ -262,10 +265,9 @@ def test_the_orchestrators_draft_the_package_and_request_its_coverage(persona: s
 
 
 @pytest.mark.parametrize("slug", _LOOP_FLEETS)
-def test_the_coverage_request_waits_when_pinned_or_at_full_gates(slug: str) -> None:
+def test_the_coverage_request_never_pauses_even_pinned_or_at_full_gates(slug: str) -> None:
+    """#1675: pinned wait, the review is a decision item; the request call itself runs."""
     gates = BUILTIN_FLEET_STRUCTURED[slug]["gates"]
     pinned = effective_gates(gates, None, pins={_GATE: "wait"})
     for rules in (gated_tool_rules(SEEDED_FLEET_AUTONOMY_LEVEL, pinned), gated_tool_rules("full_gates", gates)):
-        (rule,) = [r for r in rules if r["key"] == _GATE and r["name"] == TOOL]
-        assert rule_matches(rule, TOOL, {"action": "create", "covered_id": "g1", "name": "n"})
-        assert not rule_matches(rule, TOOL, {"action": "get", "coverage_id": "sc1"})
+        assert not [r for r in rules if r["name"] == TOOL]

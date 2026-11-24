@@ -188,8 +188,11 @@ RETRY_REFUSALS: Final = frozenset(
 )
 
 #: ``change``: the open finding set changed (12.2). ``round``: the orchestrator's daily
-#: module round (13.2), which replaced the S14 ``daily`` branch.
-ModuleTrigger = Literal["change", "round"]
+#: module round (13.2), which replaced the S14 ``daily`` branch. ``deploy``: an open
+#: agentic finding comes from another check logic than the running build's (13.6, #1732).
+ModuleTrigger = Literal["change", "round", "deploy"]
+#: ``last_value`` key of the build a ``deploy`` round was last taken for.
+DEPLOY_KEY: Final = "deploy_build"
 
 
 def empty_set_hash() -> str:
@@ -218,6 +221,24 @@ def due_trigger(
     if current_hash != last_hash and (fired_at is None or now - fired_at >= change_min_interval):
         return "change"
     return None
+
+
+def deploy_due(
+    *,
+    stale: bool,
+    build: str,
+    last_value: Mapping[str, Any] | None,
+    fired_at: datetime | None,
+    now: datetime,
+    change_min_interval: timedelta,
+) -> bool:
+    """Whether a registration is due its ``deploy`` round: an open agentic finding is *stale*
+    (another check logic produced it) and no deploy round was taken yet for *build*, past the
+    same debounce as a change. Taken once per build: a finding the new playbook no longer
+    reports stays marked stale, never re-triggers."""
+    if not stale or (last_value or {}).get(DEPLOY_KEY) == build:
+        return False
+    return fired_at is None or now - fired_at >= change_min_interval
 
 
 def round_due(fired_at: datetime | None, now: datetime) -> bool:
@@ -278,10 +299,12 @@ async def active_registrations(db: AsyncSession, provider: str, excluded: Iterab
     return [rid for rid, identifier in await _module_registrations(db, excluded) if identifier == provider]
 
 
-async def _finding_set_hashes(db: AsyncSession) -> dict[str, str]:
-    """The open finding set hash per registration id (as text), registrations with an open finding only."""
+async def _finding_set_hashes(db: AsyncSession) -> tuple[dict[str, str], set[str]]:
+    """The open finding set hash per registration id (as text), registrations with an open finding
+    only, and the registrations holding a stale agentic finding (another check logic, #1732)."""
     from app.models.health_check import STATUS_OPEN, HealthCheckFinding
     from app.services.health.analysis import finding_set_hash
+    from app.services.health.check_reports import is_stale
 
     rows = (
         await db.execute(
@@ -292,12 +315,15 @@ async def _finding_set_hashes(db: AsyncSession) -> dict[str, str]:
         )
     ).scalars()
     grouped: dict[str, list[HealthCheckFinding]] = {}
+    stale: set[str] = set()
     for row in rows:
         subject = row.subject if isinstance(row.subject, dict) else {}
         registration = subject.get("registration_id")
         if registration:
             grouped.setdefault(str(registration), []).append(row)
-    return {registration: finding_set_hash(findings) for registration, findings in grouped.items()}
+            if is_stale(row.module, row.evidence):
+                stale.add(str(registration))
+    return {registration: finding_set_hash(findings) for registration, findings in grouped.items()}, stale
 
 
 async def _start(
@@ -307,9 +333,10 @@ async def _start(
     trigger: ModuleTrigger,
     current_hash: str,
     now: datetime,
+    build: str = "",
 ) -> bool:
     """Start one cycle of *provider*'s checker on *registration_id* and record what came of it;
-    whether it started. Commits."""
+    whether it started. Commits. A ``deploy`` round records *build* as taken."""
     from app.models.health_cycle import HealthSignalState
     from app.services.health.cycles import start_cycle
     from app.services.health.fleet_seed import CHECKS_KEY_BY_PROVIDER
@@ -341,7 +368,10 @@ async def _start(
         # covers the set, the registration left the scope): the set is taken.
         state.fired_at = now
         state.cycle_id = result.cycle_id if result.started else result.open_cycle_id
+        taken = (state.last_value or {}).get(DEPLOY_KEY)
         state.last_value = {"hash": current_hash, "trigger": trigger}
+        if trigger == "deploy" or taken:
+            state.last_value[DEPLOY_KEY] = build if trigger == "deploy" else taken
     await db.commit()
     if not result.started:
         logger.info("Platform Health module analyst on %s (%s): no cycle (%s)", registration_id, trigger, result.refusal)
@@ -378,7 +408,8 @@ async def run_module_triggers(db: AsyncSession, *, now: datetime) -> int:
     registrations = await _module_registrations(db, health.module_analyst.excluded_registration_ids)
     if not registrations:
         return 0
-    hashes = await _finding_set_hashes(db)
+    hashes, stale = await _finding_set_hashes(db)
+    build = str(app_settings.app_version or "")
     states = {
         state.target_id: state
         for state in (
@@ -402,15 +433,24 @@ async def run_module_triggers(db: AsyncSession, *, now: datetime) -> int:
             now=now,
             change_min_interval=interval,
         )
+        if trigger is None and deploy_due(
+            stale=str(registration_id) in stale,
+            build=build,
+            last_value=state.last_value if state is not None else None,
+            fired_at=fired_at,
+            now=now,
+            change_min_interval=interval,
+        ):
+            trigger = "deploy"
         if trigger is None and round_due(fired_at, now):
             trigger = "round"
         if trigger is not None:
             due.append((registration_id, provider, trigger, current))
-    # Changes first: a round entry waits for the next pass when the pass is full.
-    due.sort(key=lambda item: item[2] != "change")
+    # Changes first, then deploys: a round entry waits for the next pass when the pass is full.
+    due.sort(key=lambda item: {"change": 0, "deploy": 1}.get(item[2], 2))
     started = 0
     for registration_id, provider, trigger, current in due[:MAX_STARTS_PER_PASS]:
-        started += int(await _start(db, registration_id, provider, trigger, current, now))
+        started += int(await _start(db, registration_id, provider, trigger, current, now, build))
     return started
 
 

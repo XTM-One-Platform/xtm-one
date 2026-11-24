@@ -452,9 +452,9 @@ async def _build_posture_payload(
     headline = {
         # Cyber
         "kev_count": prio.get("kev_count"),
-        # Known-exploited restricted to the organization profile's tech stack, and
+        # Known-exploited restricted to the organization profile's software inventory, and
         # the matched products (at most 3) the Act now row cites; None without a
-        # tech stack or when OpenCTI could not answer (#11213).
+        # software or when OpenCTI could not answer (#11213).
         "kev_tailored_count": prio.get("kev_tailored_count"),
         "kev_tailored_products": prio.get("kev_tailored_products"),
         "critical_count": prio.get("critical_count"),
@@ -564,7 +564,7 @@ def _payload_age_seconds(payload: Any) -> float | None:
 async def _profile_stamp(db: AsyncSession | None) -> str | None:
     """The organization profile version a posture is built from, ``None`` when none is saved.
 
-    The build reads the profile (tech stack, assets and exposure, policy), so a
+    The build reads the profile (software, assets and exposure, policy), so a
     posture stamped with another version is stale whatever its age: a profile
     saved, imported or synced shows on the next load (rebuilt in the background).
     """

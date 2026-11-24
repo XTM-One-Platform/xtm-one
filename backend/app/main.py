@@ -566,12 +566,17 @@ async def _a2a_reaper_loop() -> None:
     announcements come after it, for the same reason.
     """
     from app.a2a.client.delegation import spawn_run_cancel
-    from app.a2a.tasks import announce_missed, announce_state, reap_stale_tasks
+    from app.a2a.tasks import announce_missed, announce_state, reap_stale_tasks, resume_handed_back_tasks
+    from app.api.v1.a2a_server import _spawn_task_run
     from app.core.database import async_session
 
     while True:
         try:
             async with async_session() as db:
+                # The tasks a stopping worker handed back resume here, under
+                # the same task id, from their checkpoint.
+                for handed_back_task in await resume_handed_back_tasks(db):
+                    _spawn_task_run(handed_back_task)
                 tasks: list = []
                 cancelled_runs: list = []
                 reaped = await reap_stale_tasks(
@@ -2683,6 +2688,16 @@ async def lifespan(app: FastAPI):
         await shutdown_telemetry()
     except Exception:
         logger.debug("Telemetry shutdown error", exc_info=True)
+
+    # Close the traces of the turns the drain above did not see end, as
+    # interrupted, before the flush and the dispatcher drain below: a turn
+    # cut by the stop otherwise leaves no trace (written only at its end).
+    try:
+        from app.services.langfuse_tracing import close_open_traces_on_shutdown
+
+        await close_open_traces_on_shutdown("web_process_stopped")
+    except Exception:
+        logger.debug("Open traces not closed on shutdown", exc_info=True)
 
     # Flush buffered Langfuse traces so OTEL-batched spans queued in the SDK's
     # background exporter are not lost on SIGTERM / deploys (no-op when

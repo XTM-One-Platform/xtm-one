@@ -277,12 +277,15 @@ Assignments (on the orchestrator):
 |---|---|---|
 | New relevant threat | `integration_event` OpenCTI create on Intrusion-Set, Campaign, Report (S2), listen-only (#1580) | Provisions the OpenCTI trigger; the webhook route records the `relevant_threat` signal, no run |
 | Threat activity flagged in a PIR | `integration_event` OpenCTI PIR playbook, listen-only (#1580) | Provisions the PIR playbook; the delivery records the `relevant_threat` signal, no run |
-| Threat signal recorded | `platform_event` `ctem_signal.recorded` and `ctem_signal.triaged`, filter `trigger_path` `relevant_threat`, `source_provider` `opencti`, verdict `to_validate` or none; `max_concurrent_runs` 5, ordered by `signal_id`; takes the switch of New relevant threat on upgrade | Triage of a signal the case loop does not own yet; a confirmed signal opens its case through the case loop |
+| Threat signal recorded | `platform_event` `ctem_signal.recorded` and `ctem_signal.triaged`, filter `trigger_path` `relevant_threat`, `source_provider` `opencti`, `pir_floor_met` true (#1678: the listener stamps it when a PIR score at delivery reaches the policy's `pir_min_score_threat`; below it the signal waits for the weekly sweep), verdict `to_validate` or none; `max_concurrent_runs` 5, ordered by `signal_id`; takes the switch of New relevant threat on upgrade | Triage of a signal the case loop does not own yet; a confirmed signal opens its case through the case loop |
 | Weekly threat sweep | `schedule` `0 7 * * 1` | Catches what events missed |
 | Re-test due | `work_item` prefix `ctem:f1:retest:` | Re-runs the validated scenario after a fix |
 
-Loop: relevance (score against sector, regions, tech stack, PIRs; below the
-threshold the case closes as "not relevant", with the reason) -> OpenAEV
+Loop: relevance (score against sector, regions, tech stack, PIRs; one rule,
+`CTEM_RELEVANCE_RULE` in `builtin_agents.py`, read by the analyst, the
+orchestrator and the prompts (#1678): relevant at a score of 50 or more, or on
+a PIR flag at or above `pir_min_score_threat`; otherwise the case closes as
+"not relevant", with the reason) -> OpenAEV
 scenario proposed (approval) -> results read -> OpenCRQ expected loss updated
 -> top 3 actions, detections drafted, ticket (approval) -> re-test closes the
 case. Units: threat triaged, scenario built, loss updated, action closed.
@@ -1264,8 +1267,17 @@ kinds and `event_poller` polls them every 60 s.
   inclusive, so the run at the cursor comes back and the seen set skips it
   (`message_id` = `opencrq:<tenant>:<run id>`). The first poll starts from now.
 - The run receives `entity`: run id, kind, status, enqueued, started and
-  finished times, processed and expected totals, progress message, trigger,
-  attempt, tenant and the instance URL.
+  finished times, processed and expected totals, progress message (OpenCRQ's
+  `currentStep`), trigger, attempt, tenant and the instance URL.
+- Moved scenarios (#1663): a `crq-price-recompute` run's progress message is
+  a JSON summary; its `moved` ids, `movedCount` and, when OpenCRQ reports it,
+  `movedAle` travel as `moved_scenario_ids`, `moved_count` and `moved_ale`
+  (`risk_scenario_id`, `ale_before`, `ale_after`, `ale_delta`) on the payload
+  top level and the entity, merged across a coalesced page. The filter keys
+  of every OpenCRQ event (`FILTER_KEYS`, declared in the catalog) are
+  `tenant_id`, `kind`, `risk_scenario_ids`, `moved_scenario_ids` and
+  `moved_count`, all payload fields, so `{"moved_scenario_ids": "<id>"}`
+  runs the assignment when that scenario moved.
 - Coalescing (#1417): a poll page is ONE event, not one per job. The newest
   run is the entity and the `message_id`; `covers` lists the runs of the page
   (their own `message_id`s, marked seen at dispatch), `run_count` counts them,
@@ -1983,30 +1995,31 @@ each UI PR, the wireframes above are ASCII).
 risk) declare one gate per loop stage, from
 `app.agents.builtin_fleet_docs.CTEM_GATE_KEYS`:
 
-| Key | Stage | Impact | Tools paused |
-|---|---|---|---|
-| `ctem.validation.non_readonly` | Validate: create or launch an OpenAEV scenario or atomic test | destructive (high on third-party risk, which has no OpenAEV step) | every call that creates or starts a validation: scenario create, import, duplicate, launch, schedule_recurrence; simulation create, duplicate, status RUNNING; inject create, duplicate, trigger (and `add_openaev_inject_to_scenario`); atomic test create, duplicate, launch, relaunch, recurrence; the coverage request |
-| `ctem.analyst_review` | Review of the threat package before its security coverage is requested | low | the coverage request (`manage_opencti_security_coverage` action `create`) |
-| `ctem.remediation.decision` | Decide the remediation option and record it as an OpenCRQ treatment plan | high | the four treatment plan writes (CTEM-18) |
-| `ctem.mobilize` | Tickets, owners notified, prepared change handed over: one decision per case | destructive | the Jira and ServiceNow ticket tools |
-| `ctem.production_change` | A change applied on production through an integration | high | none |
-| `ctem.accept_risk` | Residual risk accepted beyond the policy cap | high | none |
-| `ctem.close_without_retest` | A case closed with no passing re-test | high | none |
+| Key | Stage | Impact |
+|---|---|---|
+| `ctem.validation.non_readonly` | Validate: create or launch an OpenAEV scenario or atomic test | destructive (high on third-party risk, which has no OpenAEV step) |
+| `ctem.analyst_review` | Review of the threat package before its security coverage is requested | low |
+| `ctem.remediation.decision` | Decide the remediation option and record it as an OpenCRQ treatment plan | high |
+| `ctem.mobilize` | Tickets, owners notified, prepared change handed over: one decision per case | destructive |
+| `ctem.production_change` | A change applied on production through an integration | high |
+| `ctem.accept_risk` | Residual risk accepted beyond the policy cap | high |
+| `ctem.close_without_retest` | A case closed with no passing re-test | high |
 
+No seeded gate names a tool or a grant (#1675, Sam, 24 Nov 2026): every tool
+is offered and runs when called; a gate that waits is one decision item the
+orchestrator files between two steps (`needs_human`, its ask card), and the
+Gate answered run reads the answer and sets the case's next state itself. The
+analyst review still offers `apply_opencti_draft` with Live writes off, by its
+key (`builtin_fleet_docs.GATE_OFFERED_TOOLS`), never paused.
 At the seeded level (Low) two gates wait per case (Sam, 23 Nov 2026): the
 OpenAEV validation (on the three fleets with the OpenAEV validation step) and
 `ctem.mobilize`; every other gate runs and the case records it as passed
-automatically. The reads (list, get, results, healthcheck, status reads) stay
-free. One decision per validation: the validation gate carries a grant
-(`DocGate.grant`, `fleet_autonomy._ValidationGrants`): the call a person
-approved covers the later calls of the same gate on the objects it named or
-created (scenario, simulation, inject or atomic test id, read from its
-arguments and its answer) within the turn, so the creation and the launch of
-that validation do not pause twice; a call that names a new target
-(`asset_ids`, `asset_group_ids`, `team_ids`), a new schedule (`recurrence*`,
-`start_date`) or another object asks again. The coverage request is under
-`ctem.analyst_review` alone (#1467): one decision, one gate key per call. Full human gates: every gate
-waits. Full autonomous: nothing waits. A pin (`wait` or `run`) moves one gate
+automatically. Reads and drafts are never a decision. One decision per
+validation: its ask names the scenario or atomic test, its targets, schedule
+and safe mode, and the answer covers creating and launching exactly that; a
+new target, schedule or object is a new decision, by the persona. The coverage
+request is under `ctem.analyst_review` alone (#1467). Full human gates: every
+gate waits. Full autonomous: nothing waits. A pin (`wait` or `run`) moves one gate
 either way on a built-in fleet too. The former keys (`ticket.create`,
 `openaev.*.launch`, `supplier.action`) are gone from these fleets: a ticket is
 the Mobilize action, so one Mobilize decision covers every ticket of its case.
@@ -2165,11 +2178,16 @@ By design XTM One enables no programmatic tool-level gate by default (#1467,
 Sam, 23 Nov 2026): a fleet's gates are instructions. The run prompt states
 the level and what waits (`fleet_autonomy_block`), the member asks once
 through a decision item with its ask card, and once a person answered it the
-run acts with no second pause. The platform pauses tool calls only for a fleet
-an administrator opted in (`Fleet.enforce_gates_at_tool_level`, off for every
-fleet and never written by the seed; `PUT /fleets/{id}/autonomy`
-`enforce_at_tool_level`, administrators only, audited in
-`autonomy_level_change`; `fleet_autonomy.fleet_enforces_at_tool_level`). On an
+run acts with no second pause. A built-in (seeded) fleet never pauses a tool
+call, on any deployment (#1675, Sam, 24 Nov 2026): the seed forces
+`Fleet.enforce_gates_at_tool_level` off at every boot, `PUT
+/fleets/{id}/autonomy` refuses `enforce_at_tool_level: true` on it (422, fork
+the fleet to enforce), `fleet_autonomy.fleet_enforces_at_tool_level` answers
+false for it whatever is stored, and a built-in member of a built-in fleet
+never gets an in-run approval card (`hitl_whitelist.seeded_fleet_member`, read
+by `resolve_approve_tool_calls`). The platform pauses tool calls only for a
+custom fleet an administrator opted in (`enforce_at_tool_level`, administrators
+only, audited in `autonomy_level_change`). On an
 opted-in fleet, a gate that names tools pauses those calls wherever a member of the fleet
 acts, not only in its automations: `execute_assignment_run` wraps its gate
 with `make_fleet_autonomy_gate`, and `run_agent_chat` (chat, channel threads

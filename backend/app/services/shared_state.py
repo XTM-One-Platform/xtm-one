@@ -433,6 +433,7 @@ _RETENTION_FIELDS = (
     "overflow_fields",
     "item_key",
     "keep_fields",
+    "roll_open",
 )
 
 # What a field moved to the overflow key of a retention holds instead (#12177).
@@ -461,6 +462,9 @@ def retention_shape(policy: object) -> dict:
     open items themselves fit ``max_chars``: after the roll, their longest
     fields move to ``overflow_key`` (:func:`compact_open_items`); the named
     fields, the identifying field and the fields ``archive_when`` reads stay.
+    ``roll_open`` (#1760, needs ``archive_key``) bounds a list of open items:
+    once the terminal items cannot bring a list or the value under its bound,
+    the oldest open items roll into the archive too (a copy, never a drop).
     """
     if policy is None or policy == {}:
         return {}
@@ -536,6 +540,16 @@ def retention_shape(policy: object) -> dict:
             if (error := list_match_error(match)) is not None:
                 raise ValueError(f"retention archive_when: {error}")
         out["archive_when"] = archive_when
+    roll_open = policy.get("roll_open")
+    if roll_open is not None:
+        if not isinstance(roll_open, bool):
+            raise ValueError("retention roll_open must be true or false")
+        if roll_open and "archive_key" not in out:
+            raise ValueError(
+                "retention roll_open needs an archive_key: the open items it rolls are kept there, never dropped"
+            )
+        if roll_open:
+            out["roll_open"] = True
     return out
 
 
@@ -649,6 +663,15 @@ def append_at_path(value: dict[str, Any], path: Sequence[str], items: list[Any])
     return out, added
 
 
+def _spillable(field_value: object) -> bool:
+    """Whether a field may move to the overflow key by size: text and containers, never a scalar (#1760).
+
+    A number, a boolean or null is what an ``increment`` adds to and a
+    ``where_json`` compares: as a pointer both would fail on the item.
+    """
+    return isinstance(field_value, (str, list, dict))
+
+
 def spill_items(value: dict[str, Any], policy: dict[str, Any]) -> dict[str, dict[str, dict[str, Any]]]:
     """Bound each item of the policy's lists (in place); answer the fields moved, per list and item (#12177).
 
@@ -659,7 +682,10 @@ def spill_items(value: dict[str, Any], policy: dict[str, Any]) -> dict[str, dict
     to write to ``overflow_key``. A field already holding a pointer and the
     identifying field never move. Without ``overflow_key`` an item over the
     cap is refused (``ValueError``, nothing written), as is an item to spill
-    that has no identifying value to key its overflow by.
+    that has no identifying value to key its overflow by. By size, a field
+    moves only when it is text or a container longer than its pointer: a
+    number, a boolean, a ``keep_fields`` field and a field ``archive_when``
+    reads stay, so increments, filters and the terminal rule keep working.
     """
     cap = policy.get("max_item_chars")
     target = policy.get("overflow_key")
@@ -667,6 +693,8 @@ def spill_items(value: dict[str, Any], policy: dict[str, Any]) -> dict[str, dict
     if not cap and not forced:
         return {}
     id_field = policy.get("item_key") or "id"
+    # What filters, increments and the terminal rule read stays on the item (#1760).
+    stay = set(policy.get("keep_fields") or ()) | _archive_rule_fields(policy.get("archive_when"))
     names = [n for n in (policy.get("lists") or list(value)) if isinstance(value.get(n), list)]
     spilled: dict[str, dict[str, dict[str, Any]]] = {}
     for name in names:
@@ -705,8 +733,16 @@ def spill_items(value: dict[str, Any], policy: dict[str, Any]) -> dict[str, dict
                 moved[field] = new_item[field]
                 new_item[field] = f"{OVERFLOW_POINTER}{target}/{name}/{identity}#{field}"
             if cap:
+                pointer_size = len(json.dumps(f"{OVERFLOW_POINTER}{target}/{name}/{identity}#"))
                 rest = sorted(
-                    (f for f in movable if f not in moved),
+                    (
+                        f
+                        for f in movable
+                        if f not in moved
+                        and f not in stay
+                        and _spillable(new_item[f])
+                        and value_size(new_item[f]) > pointer_size + len(f)
+                    ),
                     key=lambda f: value_size(new_item[f]),
                     reverse=True,
                 )
@@ -966,6 +1002,9 @@ def unmatched_archive_rule(value: object, policy: dict[str, Any] | None) -> obje
         return None
     rule: object = policy.get("archive_when")
     cap = policy.get("max_chars")
+    if policy.get("roll_open"):
+        # The open items roll too: a rule matching nothing blocks no roll (#1760).
+        return None
     if rule is None or not isinstance(cap, int) or value_size(value) <= cap:
         return None
     names = [n for n in (policy.get("lists") or list(value)) if isinstance(value.get(n), list)]
@@ -1025,14 +1064,21 @@ def roll_lists(
     """
     appended = appended or {}
     archive_when = policy.get("archive_when")
+    roll_open = bool(policy.get("roll_open")) and archive_when is not None
     names = [
         n for n in (policy.get("lists") or list(value)) if isinstance(value.get(n), list)
     ]
 
     def movable(name: str) -> list[int]:
+        # With roll_open (#1760) the terminal items come first, then the
+        # oldest open ones: an open list is bounded, its items archived.
         items = value[name]
         tail = min(len(items), appended.get(name, 0))
-        return [i for i in range(len(items) - tail) if is_terminal_item(items[i], archive_when)]
+        terminal = [i for i in range(len(items) - tail) if is_terminal_item(items[i], archive_when)]
+        if not roll_open:
+            return terminal
+        done = set(terminal)
+        return terminal + [i for i in range(len(items) - tail) if i not in done]
 
     rolled: dict[str, list[Any]] = {}
     bounds = [
@@ -1059,9 +1105,13 @@ def roll_lists(
     excess = value_size(value) - min(limits)
     if excess <= 0:
         return rolled
-    candidates = sorted((index, name) for name in names for index in movable(name))
+    candidates = (
+        sorted((rank, index, name) for name in names for rank, index in enumerate(movable(name)))
+        if roll_open
+        else sorted((0, index, name) for name in names for index in movable(name))
+    )
     cut: dict[str, set[int]] = {}
-    for index, name in candidates:
+    for _rank, index, name in candidates:
         if excess <= 0:
             break
         excess -= value_size(value[name][index]) + 2
@@ -2626,6 +2676,7 @@ async def upsert_state(
                     f"the value under {'.'.join(value_path)!r} is not an object, so its lists "
                     "cannot be changed; nothing was written"
                 )
+            nested_dropped: dict[str, list[Any]] = {}
             nested, changes = apply_list_ops(
                 dict(held or {}),
                 append=append,
@@ -2635,8 +2686,15 @@ async def upsert_state(
                 update=update,
                 fold=fold,
                 guard_trim=guard_trim,
+                dropped=nested_dropped,
                 replaced_items=replaced_items,
             )
+            if expect_dropped is not None and nested_dropped != expect_dropped:
+                raise ValueError(
+                    "the list changed between the archive and the write: the items it "
+                    "would drop now are not the ones archived; the archive holds a copy, "
+                    "the list was not written: read it and write again"
+                )
             new_value = write_at_path(base_value, value_path, nested, replace=True)
             list_changes.clear()
             list_changes.update({f"{'.'.join(value_path)}.{name}": counts for name, counts in changes.items()})

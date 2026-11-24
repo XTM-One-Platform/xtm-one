@@ -120,7 +120,7 @@ export function CasesInPhaseCard({ stage, backTo }: { stage: CtemStageKey | "gov
     governance ? casesListHref({ state }) : `${casesListHref({ phase: stage })}&state=${state}`;
 
   const empty = !anyCase
-    ? t_i18n("No case yet: cases appear when a signal matches your scope or open issues on your stack share a fix.")
+    ? t_i18n("No case yet: cases appear when a signal matches your scope or open issues on your software share a fix.")
     : governance
       ? t_i18n("No decision waiting and no accepted risk.")
       : t_i18n("No open case in {stage}: every case is in another phase or resolved.", { stage: stageLabel });

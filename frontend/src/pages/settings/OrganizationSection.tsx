@@ -15,8 +15,6 @@
  * drafted and invalid markers.
  */
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
-import { DetailTabs } from "@/components/ui/detail-tabs";
-import { cn } from "@/lib/utils";
 import { landOnCard } from "@/lib/land-on-card";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Bot, Building2, Coins, Import, Link2, Lock, MessageSquare, Package, Pencil, Plus, RefreshCw, Server, Shield, Sparkles, Ticket } from "lucide-react";
@@ -28,7 +26,6 @@ import { CountryFlag } from "@/components/ui/country-flag";
 import { ExpandableChipList } from "@/components/ui/expandable-chip-list";
 import { SECTION_BAR_ANCHOR_CLASS } from "@/components/ui/section-index";
 import { InfoTip } from "@/components/ui/info-tip";
-import { PAGE_STICKY_BAR_ATTRIBUTE } from "@/hooks/useFitToViewport";
 import { SettingsReadField, SettingsReadGrid } from "@/components/ui/settings-read-view";
 import { DataTable, type DataTableColumn, type DataTableFilter, type SortValue } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
@@ -52,7 +49,7 @@ import { useIntegrationElements, useIntegrations } from "@/hooks/api/useIntegrat
 import { useToast } from "@/components/ui/toast";
 import { AgenticGateDialogControlled } from "@/components/ui/license-gate-dialog";
 import { OverflowMenu, type OverflowMenuItem } from "@/components/ui/overflow-menu";
-import { useAgenticAIEnabled } from "@/hooks/usePlatformConfig";
+import { useAgenticAIEnabled, useIsXtmOne } from "@/hooks/usePlatformConfig";
 import { useAiActionDisabled } from "@/hooks/useAiDisabled";
 import { OrganizationAiDraftDialog } from "./OrganizationAiDraftDialog";
 import { OrganizationAssetsImportDialog } from "./OrganizationAssetsImportDialog";
@@ -119,7 +116,6 @@ import {
   PROFILE_CARD_TAB,
   PROFILE_TABS,
   PROFILE_TAB_LABELS,
-  SETTINGS_PROFILE_TABS,
   type ProfileCard,
   type ProfileTab,
   changedTabs,
@@ -167,11 +163,6 @@ const MISSING_TARGET: Record<string, string> = {
   ticketing: "ticketing-integration",
 };
 
-/** The contract fields of each tab, for its completeness on the tab bar (#12329). */
-const TAB_FIELDS: Record<ProfileTab, string[]> = Object.fromEntries(
-  PROFILE_TABS.map((tab) => [tab, Object.keys(FIELD_LABELS).filter((path) => tabOfField(path) === tab)]),
-) as Record<ProfileTab, string[]>;
-
 /**
  * The fixed columns of the crown jewels table, read and edit (UX r2 B1 and B2 on #1174). Below a
  * 72rem card (1080) Assets and Source step aside, so Business service and Owner keep about 150 px
@@ -200,7 +191,7 @@ const OPENCRQ_COUNT_LABELS = {
 const AMOUNT_INPUT_CLASS = "[&_input]:pr-36";
 
 /**
- * The cards of the profile one page mounts alone (#1178, Sam 22 Nov 2026): CTEM > Inventory edits the tech stack,
+ * The cards of the profile one page mounts alone (#1178, Sam 22 Nov 2026): CTEM > Inventory edits the software inventory,
  * the AI systems, the assets and exposure, the asset groups, the policy and the outside lens with the same cards,
  * the same per-card edit and the same Save as Settings, nothing stored twice. Without it the whole profile page.
  */
@@ -273,26 +264,14 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const [focusRetry, setFocusRetry] = useState(0);
   // The card landing in progress (landOnCard), ended by the next landing or when the page unmounts.
   const endCardLanding = useRef<(() => void) | null>(null);
+  // A tab whose cards live on CTEM > Inventory is never opened from Settings (#1690): the form stays where it is.
   const goToTab = (next: ProfileTab | null) => {
-    if (embed || !next || next === tab) return;
+    if (embed || !next || next === tab || isInventoryTab(next)) return;
     navigate({ pathname: profileTabPath(next), search: location.search });
   };
-  // Whether the tab bar is stuck under the top bar (UX r1 B2 on #12332): a 1 px sentinel above it
-  // leaves the viewport's top band once the bar sticks.
-  const tabBarSentinel = useRef<HTMLDivElement>(null);
-  const [tabBarStuck, setTabBarStuck] = useState(false);
-  useEffect(() => {
-    const sentinel = tabBarSentinel.current;
-    if (!sentinel || typeof IntersectionObserver === "undefined") return;
-    const header = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--fds-header-height")) || 68;
-    const observer = new IntersectionObserver(([entry]) => setTabBarStuck(!entry.isIntersecting && entry.boundingClientRect.top < header), {
-      rootMargin: `-${header}px 0px 0px 0px`,
-    });
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  });
-  // The tabs a draft (from the platforms or with AI) filled: marked until the form is saved or cancelled.
-  const [draftedTabs, setDraftedTabs] = useState<ReadonlySet<ProfileTab>>(() => new Set());
+  // Copilot mode keeps the Identity card alone (#1690, Sam 24 Nov 2026): no risk appetite, ticketing or case sync,
+  // no fields-not-filled banner; the stored values stay untouched.
+  const xtmOne = useIsXtmOne();
 
   const editing = form !== null;
   // The list cards in edit (#12256): one card alone from its own Edit, or the three while the whole
@@ -568,7 +547,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     setRefusedIssue(null);
     setScoreInvalid(false);
     setSetupGuide(false);
-    setDraftedTabs(new Set());
   };
   // Leaving the page with an unsaved edit asks first (#12329); a tab switch never loses it.
   const leaveGuard = editing || LIST_KEYS.some((key) => listEdits[key] !== undefined) || exposureEdit !== null;
@@ -654,10 +632,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         setDraft(result);
         setListEdits({});
         setForm(toForm(result.profile));
-        // The form opens on the first tab the platforms filled; each filled tab is marked.
-        const filledTabs = tabsOfFields(result.filled.map((row) => row.field));
-        setDraftedTabs(new Set(filledTabs));
-        goToTab(filledTabs[0] ?? null);
+        // The form opens on the first Settings tab the platforms filled.
+        goToTab(tabsOfFields(result.filled.map((row) => row.field))[0] ?? null);
       },
       // Inline with Retry (section 6.1), a catalogued sentence, never the backend's text.
       onError: () => setDraftFailed(true),
@@ -848,7 +824,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     );
   };
   /**
-   * The three lists (crown jewels, tech stack, AI systems) read on the shared DataTable (data
+   * The three lists (crown jewels, software inventory, AI systems) read on the shared DataTable (data
    * tables slice 9): search, filters, sort, CSV and the pager. In edit they keep all of it on the
    * list editor (#12256, OrganizationListEditor): one row open at a time, the order frozen.
    */
@@ -1295,7 +1271,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   };
   /** The card's Edit (read mode), or nothing while this card or the whole form is open. */
   const listEditAction = (key: ListKey) =>
-    !editing && listEdits[key] === undefined ? (
+    !reader && !editing && listEdits[key] === undefined ? (
       <Tip content={cardOpen ? t_i18n("Save or cancel the edit first.") : ""} wrap="auto">
         <Button
           variant="secondary"
@@ -1345,7 +1321,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       editing ||
       ((LIST_KEYS as readonly string[]).includes(section) && listEdits[section as ListKey] !== undefined) ||
       (exposureEdit !== null && (exposureEdit.card === section || (exposureEdit.card === "accepted_risks" && section === "prioritization_policy")));
-    if (open) return { meta: count === null ? undefined : nf.count(count) };
+    // On CTEM > Inventory the cards never fold (#1690, Sam 24 Nov 2026): a static header, always expanded.
+    if (open || embed) return { meta: count === null ? undefined : nf.count(count) };
     return {
       meta: count === null ? undefined : nf.count(count),
       collapsed: folded.has(section),
@@ -1400,66 +1377,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         .join(", ")
     : "";
 
-  const missing = data?.missing_fields ?? [];
-  // Per tab (#12329): the unsaved changes (the whole form, or the card in edit alone), the fields
-  // a draft filled, and the fields a Save refused, each marked on the tab that holds them.
-  const unsavedTabs: ReadonlySet<ProfileTab> = editing
-    ? saved
-      ? changedTabs(saved, withLists(form))
-      : new Set()
-    : listCard
-      ? new Set([tabOfField(listCard)!])
-      : exposureEdit && exposureDirty(exposureEdit)
-        ? new Set([tabOfField(exposureEdit.card)!])
-        : new Set();
-  const errorTabs = new Set<ProfileTab>([
-    ...(invalidField ? [tabOfField(invalidField)!] : []),
-    ...(scoreInvalid || refusedIssue || (checkExposure && current !== null && exposureIssues((editing ? form : exposureEdit?.form) ?? current).length > 0)
-      ? ["exposure" as const]
-      : []),
-  ]);
-  /** A tab of the bar: its link, label, completeness and markers (unsaved, drafted, invalid). */
-  const profileTab = (key: ProfileTab) => {
-    const total = TAB_FIELDS[key].length;
-    const left = missing.filter((path) => tabOfField(path) === key).length;
-    const trailing = (
-      <>
-        {total > 0 && (
-          <>
-            <span aria-hidden className="content-compact tabular-nums text-default-secondary" data-testid={`settings.organization.tab-${key}.completeness`}>
-              {total - left}/{total}
-            </span>
-            <span className="sr-only">{t_i18n("{filled} of {total} fields filled", { filled: total - left, total })}</span>
-          </>
-        )}
-        {draftedTabs.has(key) && (
-          <span data-testid={`settings.organization.tab-${key}.drafted`} className="inline-flex">
-            <Icon name="sparkles" size={16} aria-hidden className="text-accent" />
-            <span className="sr-only">{t_i18n("Drafted")}</span>
-          </span>
-        )}
-        {unsavedTabs.has(key) && (
-          <span data-testid={`settings.organization.tab-${key}.unsaved`} className="inline-flex">
-            <span aria-hidden className="h-2 w-2 rounded-full bg-accent" />
-            <span className="sr-only">{t_i18n("Unsaved changes")}</span>
-          </span>
-        )}
-        {errorTabs.has(key) && (
-          <span data-testid={`settings.organization.tab-${key}.error`} className="inline-flex">
-            <Icon name="circle-alert" size={16} aria-hidden className="text-feedback-error-primary" />
-            <span className="sr-only">{t_i18n("Errors")}</span>
-          </span>
-        )}
-      </>
-    );
-    return {
-      key,
-      label: PROFILE_TAB_LABELS[key],
-      to: profileTabPath(key),
-      trailing,
-      testId: `settings.organization.tab-${key}`,
-    };
-  };
+  // The fields not filled that Settings still draws (#1690): the Business, Technology and Exposure fields are
+  // reported on CTEM > Inventory, and Copilot mode reports none (Sam: "we don't care").
+  const missing = xtmOne ? (data?.missing_fields ?? []).filter((path) => { const owner = tabOfField(path); return owner !== null && !isInventoryTab(owner); }) : [];
   /** The exposure cards a tab draws (#12329): the exposure tab three, the knowledge tab one. */
   const exposureCards = (cards: readonly (typeof EXPOSURE_SECTIONS)[number][]) =>
     current && (
@@ -1692,23 +1612,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       )}
 
       {current && (
-        // Five real tabs (#12329): the URL holds the active one, only its panel is rendered, and the
-        // bar sticks under the top bar (the tables' sticky heads stop under it).
+        // The URL holds the panel (#12329): Settings draws no tab bar since #1690 (Identity, and Knowledge
+        // through its button); the Business, Technology and Exposure cards live on CTEM > Inventory.
         <div className="space-y-4">
-          {/* The bar is a row of links (UX r1 B1): the shared DetailTabs, so a tab opens in a new tab
-              and Back returns to the previous one. It sits on the content grid, transparent at rest;
-              stuck under the top bar it takes the page surface and the separator of the sticky bars
-              (UX r1 B2). The sentinel above it tells when it is stuck. */}
-          {full && tab !== "knowledge" && <div ref={tabBarSentinel} aria-hidden className="h-px" />}
-          {full && tab !== "knowledge" && (
-          <div
-            {...{ [PAGE_STICKY_BAR_ATTRIBUTE]: "" }}
-            data-stuck={tabBarStuck || undefined}
-            className={cn("sticky top-[var(--fds-header-height,68px)] z-20 flex py-1", tabBarStuck && "border-b border-elevation-subtle bg-elevation-default")}
-          >
-            <DetailTabs tabs={SETTINGS_PROFILE_TABS.filter((key) => key !== "knowledge").map(profileTab)} active={tab} ariaLabel={t_i18n("Organization profile")} testId="settings.organization.tabs" />
-          </div>
-          )}
           {tab === "identity" && (
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.identity)} className="space-y-4" data-testid="settings.organization.panel-identity">
           {missingIn("identity")}
@@ -1789,6 +1695,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             )}
           </SettingsCard>
 
+          {xtmOne && (
+          <>
           <SettingsCard
             id={`${fieldId}-risk_appetite`}
             className={SECTION_BAR_ANCHOR_CLASS}
@@ -1985,6 +1893,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               />
             </div>
           </SettingsCard>
+          </>
+          )}
           </div>
           )}
 
@@ -2004,6 +1914,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             action={
               <>
                 {attention("crown_jewels")}
+                {/* The OpenCRQ check and the restore write the profile: administrators only, a reader sees the list (#1690). */}
+                {!reader && (
                 <Tip content={editing || cardOpen ? t_i18n("Save or cancel the edit first.") : ""} wrap="auto">
                   {opencrqJewelSync ? (
                     <Button
@@ -2032,7 +1944,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                     </Button>
                   )}
                 </Tip>
-                {!listOpen("crown_jewels") && (
+                )}
+                {!reader && !listOpen("crown_jewels") && (
                   // An icon button: a third labelled action wraps the card title at 1080 (UX round 1 B1, #1567).
                   <Tip content={editing || cardOpen ? t_i18n("Save or cancel the edit first.") : t_i18n("Restore from a past version")} wrap="auto">
                     <Button
@@ -2165,7 +2078,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             <OrganizationCrownJewelsRestoreDialog open={restoreOpen} onOpenChange={setRestoreOpen} currentVersion={data?.version ?? null} />
           </SettingsCard>
 
-          {/* What the organization ships (#1432), apart from the tech stack it runs: CTEM resolves a vulnerability on one to its repositories. */}
+          {/* What the organization ships (#1432), apart from the software inventory it runs: CTEM resolves a vulnerability on one to its repositories. */}
           <SettingsCard
             id={`${fieldId}-shipped_products`}
             className={SECTION_BAR_ANCHOR_CLASS}
@@ -2220,7 +2133,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
 
           {/* The tracked organizations (#9157, M2): added from this page; the first-login setup sets up the primary only. */}
           {/* The landing anchor sits on the card root, so its focus ring keeps the card's radius (UX r1 B2 on #108). */}
-          <TrackedOrganizations id={`${fieldId}-tracked_organizations`} className={SECTION_BAR_ANCHOR_CLASS} data-anchor="card" tabIndex={-1} />
+          <TrackedOrganizations id={`${fieldId}-tracked_organizations`} className={SECTION_BAR_ANCHOR_CLASS} data-anchor="card" tabIndex={-1} readOnly={reader} />
           </div>
           )}
 
@@ -2338,7 +2251,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                   const drafted = PROFILE_TABS.filter((key) => changedTabs(before, next).has(key));
                   setListEdits({});
                   setForm(next);
-                  setDraftedTabs((prev) => new Set([...prev, ...drafted]));
                   goToTab(drafted[0] ?? null);
                 }
               : undefined

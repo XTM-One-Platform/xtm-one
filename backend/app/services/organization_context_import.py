@@ -3,7 +3,7 @@
 """Import one section of the organization profile from one connected platform (#11780).
 
 The no-model path of Settings > Organization: the administrator picks a
-section (assets, asset groups, AI systems, tech stack, crown jewels, PIRs),
+section (assets, asset groups, AI systems, software, crown jewels, PIRs),
 a source platform able to feed it (OpenAEV, OpenCTI, OpenCRQ), the filters
 that source supports, and gets a preview before anything is written: the
 source's own count of matching entities, then what the profile would gain

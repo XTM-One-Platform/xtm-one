@@ -30,7 +30,12 @@ writes a short explanation and an order of fixes. It runs:
   categories, subject ids and measured values only. An agentic finding of a
   module checker (``check_reports.py``, ``evidence.source`` ``module_checker``)
   also carries the tool reads of its evidence and the checker's recommendation,
-  bounded, because its measured values live there (#1638).
+  bounded, because its measured values live there (#1638). It also carries when
+  its evidence was read, the build whose check logic produced it and ``stale``
+  when that logic is not the running one or the evidence is over a day old
+  (#1732): the instruction forbids a rollback, restart or other disruptive
+  action from a stale finding and :func:`guard_summary` removes any line that
+  still proposes one, pointing to Run checks now instead.
 
 **Hard ceiling.** Before the call, the worst case (the prompt's estimated input
 plus the output cap, priced with the model's price row) is reserved on the day
@@ -52,6 +57,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -63,7 +69,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.health_analysis import HealthAnalysisSpend, HealthModuleAnalysis
 from app.models.health_check import STATUS_OPEN, HealthCheckFinding
-from app.services.health.check_reports import AGENTIC_SEGMENT
+from app.services.health.check_reports import (
+    AGENTIC_SEGMENT,
+    MAX_EVIDENCE_AGE,
+    evidence_time,
+    finding_check_logic,
+    is_stale,
+)
 from app.services.health.check_reports import SOURCE as AGENTIC_SOURCE
 from app.services.health.settings import HealthAnalysisSettings
 
@@ -108,7 +120,20 @@ SYSTEM_PROMPT = (
     "name it. Explain in at most 120 words what the findings say together, "
     "then list the fixes in the order an administrator should apply them, one line "
     "each, starting with the critical ones. State only what the evidence shows; when "
-    "two findings share a cause, say so. Plain text, no greeting, no markdown table."
+    "two findings share a cause, say so. A finding marked stale was produced by an "
+    "older check logic than the running build, or its evidence is over a day old: "
+    "never recommend a rollback, a downgrade, a restart or any other disruptive action "
+    "from it and never name a build to roll back to; say it may be outdated and "
+    "recommend Run checks now on the module card instead. "
+    "Plain text, no greeting, no markdown table."
+)
+
+#: A line of a summary proposing a disruptive action (rollback, downgrade, revert, restart).
+_DISRUPTIVE = re.compile(r"\b(roll(?:ing)?[ -]?back|downgrad\w*|revert\w*|restart\w*|redeploy\w*)\b", re.IGNORECASE)
+#: The line that replaces a disruptive recommendation made on stale evidence.
+STALE_ADVICE = (
+    "Some findings come from an older check logic or evidence over a day old: "
+    "use Run checks now on the module card before acting on them."
 )
 
 _SEVERITY_ORDER = {"critical": 0, "warning": 1, "info": 2}
@@ -163,7 +188,32 @@ def _bounded_values(values: Any) -> Any:
     return values if len(text) <= MAX_VALUES_CHARS else {"cut": text[:MAX_VALUES_CHARS]}
 
 
-def _finding_entry(row: HealthCheckFinding) -> dict[str, Any]:
+def finding_is_stale(row: HealthCheckFinding, now: datetime) -> bool:
+    """An agentic finding of another check logic, or whose evidence is over :data:`MAX_EVIDENCE_AGE` old."""
+    evidence = row.evidence or {}
+    if evidence.get("source") != AGENTIC_SOURCE:
+        return False
+    if is_stale(row.module, evidence):
+        return True
+    read_at = evidence_time(evidence)
+    return read_at is None or now - read_at > MAX_EVIDENCE_AGE
+
+
+def guard_summary(summary: str, *, stale: bool) -> str:
+    """The output contract: with a stale finding in the prompt, no line proposes a disruptive action.
+
+    Each such line is dropped and :data:`STALE_ADVICE` closes the summary once.
+    """
+    if not stale:
+        return summary
+    lines = summary.splitlines()
+    kept = [line for line in lines if not _DISRUPTIVE.search(line)]
+    if len(kept) == len(lines):
+        return summary
+    return "\n".join([*kept, STALE_ADVICE]).strip()
+
+
+def _finding_entry(row: HealthCheckFinding, now: datetime) -> dict[str, Any]:
     evidence = row.evidence or {}
     entry: dict[str, Any] = {
         "check": row.check_id,
@@ -187,18 +237,30 @@ def _finding_entry(row: HealthCheckFinding) -> dict[str, Any]:
         for c in reads
     ]
     entry["recommendation"] = (row.recommendation or "")[:MAX_RECOMMENDATION_CHARS] or None
+    read_at = evidence_time(evidence)
+    entry["evidence_at"] = read_at.isoformat() if read_at is not None else None
+    entry["check_build"] = (finding_check_logic(evidence) or {}).get("build")
+    entry["stale"] = finding_is_stale(row, now)
     return entry
 
 
-def build_prompt(module: str, rows: list[HealthCheckFinding]) -> str:
+def build_prompt(module: str, rows: list[HealthCheckFinding], now: datetime | None = None) -> str:
     """The variable part: the module and its findings as JSON, no free text a person wrote.
 
     A deterministic finding carries its values and threshold; an agentic finding its
     check name without the ``agentic`` segment, its tool reads and the checker's
     recommendation (:func:`_finding_entry`).
     """
-    findings = [_finding_entry(row) for row in rows[:MAX_FINDINGS]]
-    payload = {"module": module, "open_findings": len(rows), "findings": findings}
+    from app.core.config import settings as app_settings
+
+    at = now or datetime.now(UTC)
+    findings = [_finding_entry(row, at) for row in rows[:MAX_FINDINGS]]
+    payload = {
+        "module": module,
+        "open_findings": len(rows),
+        "running_build": str(app_settings.app_version or ""),
+        "findings": findings,
+    }
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
 
 
@@ -370,7 +432,8 @@ async def analyse_module(
     if not model:
         return await _refuse(REFUSED_NO_MODEL)
     price = await resolve_model_price_any(db, model)
-    prompt = build_prompt(module, rows)
+    prompt = build_prompt(module, rows, now)
+    stale = any(finding_is_stale(row, now) for row in rows[:MAX_FINDINGS])
     worst_in = estimate_input_tokens(SYSTEM_PROMPT, prompt)
     worst = price_usage({"input_tokens": worst_in, "output_tokens": MAX_OUTPUT_TOKENS}, price)
     if worst is None:
@@ -410,7 +473,7 @@ async def analyse_module(
             max_tokens=MAX_OUTPUT_TOKENS,
         )
         usage = response.usage or {}
-        summary = (response.content or "").strip()
+        summary = guard_summary((response.content or "").strip(), stale=stale)
     except Exception as exc:
         end_trace(trace, error=str(exc)[:500], usage=usage, model=model)
         logger.warning("Platform Health analysis of %s failed: %s", module, exc)

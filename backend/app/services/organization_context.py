@@ -3,7 +3,7 @@
 """The organization profile: one structured, versioned context every agent reads.
 
 The contract is ``dev-docs/ctem-fleets.md`` section 6 (#8987): sector,
-regions, size, crown jewels, tech stack, AI systems inventory, PIRs, risk
+regions, size, crown jewels, software, AI systems inventory, PIRs, risk
 appetite, loaded hourly rate and currency, ticketing target. It replaces
 the free-text ``company-context`` knowledge base as the source agents
 reason from: a stage analyst ranks by the crown jewels it reads here and
@@ -280,7 +280,7 @@ class TechStackEntry(BaseModel):
 
 
 class ShippedProduct(BaseModel):
-    """A product the organization ships (#1432), apart from the tech stack it runs.
+    """A product the organization ships (#1432), apart from the software it runs.
 
     ``repositories`` are the ``owner/name`` of its source repositories: a
     vulnerability on the product (matched by CPE, then by product and vendor)
@@ -946,7 +946,7 @@ class OrganizationProfile(BaseModel):
     crown_jewels: list[CrownJewel] = Field(default_factory=list, max_length=200)
     tech_stack: list[TechStackEntry] = Field(default_factory=list, max_length=500)
     #: What the organization ships, with its source repositories (#1432). Not a contract
-    #: field: a vendor-free organization ships nothing; the tech stack is what it runs.
+    #: field: a vendor-free organization ships nothing; the software is what it runs.
     shipped_products: list[ShippedProduct] = Field(default_factory=list, max_length=200)
     #: No ``ai_systems`` list since #1501: an AI system is an asset of category ``ai_target``
     #: (``assets_exposure``); a profile saved before reads its rows there (:func:`ai_system_asset`).
@@ -1153,7 +1153,7 @@ CONTRACT_FIELDS: tuple[tuple[str, str], ...] = (
     ("sector", "sector"),
     ("regions", "regions of operation"),
     ("size", "organization size"),
-    ("crown_jewels", "crown jewels and business services"),
+    ("crown_jewels", "primary assets and business services"),
     ("tech_stack", "software"),
     ("ai_systems", "AI systems inventory"),
     ("pir_ids", "priority intelligence requirements (PIRs)"),
@@ -1172,10 +1172,30 @@ def _value(profile: OrganizationProfile, path: str) -> Any:
     return value
 
 
+#: The identity fields: in Copilot mode the profile is these alone (#1690). Copilot has
+#: no CTEM loop, so its agents need who the company is and nothing else; the other
+#: fields stay stored untouched, so switching the mode never loses data.
+IDENTITY_FIELDS: frozenset[str] = frozenset({"name", "sector", "sub_sector", "regions", "size"})
+
+
+def identity_only() -> bool:
+    """Whether the profile is read and reported as its identity alone: a Copilot-like platform (#1690)."""
+    from app.core.config import settings
+
+    return bool(settings.is_copilot_like)
+
+
+def contract_fields() -> tuple[tuple[str, str], ...]:
+    """The contract fields of this platform's mode: :data:`CONTRACT_FIELDS`, the identity alone in Copilot mode."""
+    if identity_only():
+        return tuple(field for field in CONTRACT_FIELDS if field[0] in IDENTITY_FIELDS)
+    return CONTRACT_FIELDS
+
+
 def missing_fields(profile: OrganizationProfile) -> list[str]:
-    """The contract fields *profile* leaves empty, by path, in contract order."""
+    """The contract fields *profile* leaves empty, by path, in contract order (the identity alone in Copilot mode)."""
     missing: list[str] = []
-    for path, _label in CONTRACT_FIELDS:
+    for path, _label in contract_fields():
         value = _value(profile, path)
         if path == "ticketing":
             empty = not (value.integration and value.project)
@@ -1752,7 +1772,7 @@ def _insert_before(data: dict[str, Any], before: str, key: str, value: Any) -> d
 def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     """The profile as dumped before #11543: the parts it added left out, an empty crown jewel link too.
 
-    An empty tech stack version (CTEM-11) is left out the same way, and so are
+    An empty software version (CTEM-11) is left out the same way, and so are
     empty reference exchange rates (#1383), and
     ticketing sync settings left at their defaults (#917) and the provenance of
     a typed row (#1134: ``source`` manual, no ``external_id``, no ``sync_id``).
@@ -1836,8 +1856,9 @@ def render_for_agent(
 
     from app.services.content_safety import wrap_untrusted
 
+    identity = identity_only()
     if row is None:
-        every = missing_for_run([path for path, _label in CONTRACT_FIELDS], ctem_work=ctem_work)
+        every = missing_for_run([path for path, _label in contract_fields()], ctem_work=ctem_work)
         labels = dict(CONTRACT_FIELDS)
         return (
             "No organization profile is saved yet. Every field is missing: "
@@ -1854,9 +1875,11 @@ def render_for_agent(
         if value not in ("", [], None)
         and not (isinstance(value, dict) and not any(value.values()))
         and key != "onboarding_skipped"
+        # Copilot mode: the identity alone reaches an agent (#1690).
+        and (not identity or key in IDENTITY_FIELDS)
     }
     labels = dict(CONTRACT_FIELDS)
-    exposure = exposure_line(profile, asset_counts)
+    exposure = "" if identity else exposure_line(profile, asset_counts)
     lines = [
         f"Organization profile, version {row.version} (saved {row.created_at:%Y-%m-%d %H:%M} UTC, source {row.source}).",
         "Cite the fields you used. Fields not filled: "

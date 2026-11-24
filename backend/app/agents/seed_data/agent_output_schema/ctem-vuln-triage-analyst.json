@@ -13,7 +13,7 @@
           "matched_assets": {
             "type": "array",
             "items": {"type": "string"},
-            "description": "Tech stack products or OpenCRQ assets running the affected software"
+            "description": "Software products or OpenCRQ assets running the affected software"
           },
           "score": {"type": ["integer", "null"], "minimum": 0, "maximum": 100, "description": "Finding score; null when not matched"},
           "score_terms": {

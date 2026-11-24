@@ -438,6 +438,25 @@ async def test_a_subscribed_assignment_is_not_polled_until_graph_says_it_missed_
     assert f"graph_sub_catchup:{wf.id}" not in redis.values
 
 
+async def test_the_last_poll_shown_follows_the_pages_read_while_a_backlog_is_still_read():
+    """#1718: the interval stamp is written once a poll caught up, so a backlog read
+    over several ticks showed the end of the previous catch-up as its last poll."""
+    redis = _Redis()
+    wf = _assignment()
+    now = datetime.now(UTC).timestamp()
+    redis.values[f"event_poll:{wf.id}"] = str(now - 3600)
+    redis.values[f"{event_poller.POLL_READ_KEY_PREFIX}{wf.id}"] = str(now)
+
+    mode = await subs.delivery_mode(redis, wf)
+    assert mode["last_poll_at"] == datetime.fromtimestamp(now, UTC).isoformat()
+    assert mode["catching_up"] is True
+
+    redis.values[f"event_poll:{wf.id}"] = str(now)
+    mode = await subs.delivery_mode(redis, wf)
+    assert mode["last_poll_at"] == datetime.fromtimestamp(now, UTC).isoformat()
+    assert "catching_up" not in mode, "caught up: both stamps agree"
+
+
 async def test_a_lapsed_subscription_polls_on_from_the_last_event_notified(monkeypatch):
     redis = _Redis()
     wf = _assignment()

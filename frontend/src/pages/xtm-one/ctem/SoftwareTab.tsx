@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * The Software tab of CTEM > Inventory (#1495 slice 2, replaces the Tech stack tab): one row per software entity
+ * The Software tab of CTEM > Inventory (#1495 slice 2, replaces the retired product list tab): one row per software entity
  * (vendor and product across every asset and SBOM) with its type, its version and asset counts, its CPE and how sure
  * it is, and its sources; each row opens the software's page. Paged and filtered on the server, the row pattern of
  * the Assets tab (#1476).

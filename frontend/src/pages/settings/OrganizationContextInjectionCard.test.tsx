@@ -19,7 +19,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   get.mockImplementation(async (path: string) => {
     if (path === "/organization-context/injection")
-      return { enabled: true, categories: [], available_categories: ["crown_jewels", "tech_stack"] };
+      return { enabled: true, categories: [], available_categories: ["primary_assets", "software"] };
     throw new Error(`unexpected GET ${path}`);
   });
   put.mockImplementation(async (_path: string, body: unknown) => body);

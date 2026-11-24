@@ -29,7 +29,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * model at load: Refresh is the only thing that generates.
  *
  * The analyst reads the organization profile (sector, regions, crown jewels,
- * tech stack, PIRs) to rank what it reports; while no profile was ever saved
+ * software inventory, PIRs) to rank what it reports; while no profile was ever saved
  * the briefing is generic, and the shared notice says so with the setup call
  * to action (#11324).
  */

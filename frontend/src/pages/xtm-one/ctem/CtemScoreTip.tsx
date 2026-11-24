@@ -17,7 +17,7 @@
  * in-context score is `ctem_context_scoring.qualitative_stage_score`, the
  * measured score times 0.4 + 0.6 x the share of the stage's context fields
  * filled (Prioritization also averages in the known-exploited CVEs of the
- * declared tech stack). It is content for `Tip`: no trigger, no state, no
+ * declared software inventory). It is content for `Tip`: no trigger, no state, no
  * request.
  */
 import type { ReactNode } from "react";

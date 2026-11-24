@@ -145,24 +145,16 @@ def test_units_count_each_scenario_each_case_and_one_pack():
     assert roi.count_units(BUILTIN_ROI_UNITS[m3.BOARD_REPORTER], pack) == 1
 
 
-def test_register_writes_are_gated_and_nothing_waits_at_low():
-    # In the loop the register writes are tools of ctem.remediation.decision (impact high).
+def test_register_writes_are_a_decision_and_nothing_waits_at_low() -> None:
+    # In the loop the register writes belong to ctem.remediation.decision (impact high),
+    # by the persona: the gate names no tool (#1675), so no write pauses at any level.
     gates = BUILTIN_FLEET_STRUCTURED[CTEM_LOOP_SLUG]["gates"]
     decision = next(g for g in gates if g["key"] == "ctem.remediation.decision")
     assert decision["impact"] == "high"
     catalog = {e["key"]: e["gated"] for e in gate_catalog("low", gates)}
     assert catalog["ctem.remediation.decision"] is False
-    names = {r["name"] for r in gated_tool_rules("full_gates", [decision])}
-    assert names == {
-        "create_opencrq_risk_scenario",
-        "update_opencrq_risk_scenario",
-        "update_opencrq_loss_estimates",
-        "update_opencrq_risk_tolerance",
-        "create_opencrq_treatment_plan",
-        "update_opencrq_treatment_plan",
-        "set_opencrq_treatment_plan_moves",
-        "add_opencrq_treatment_plan_moves",
-    }
+    assert "tools" not in decision
+    assert gated_tool_rules("full_gates", [decision]) == []
 
 
 def test_the_seeded_documentation_names_every_automation_and_the_known_limits():
