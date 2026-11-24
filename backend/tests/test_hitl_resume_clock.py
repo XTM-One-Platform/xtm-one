@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import Any
 
 from app.services import hitl_resume_clock as clock
 from app.services.builtin_tools.prompting import format_datetime_prompt
@@ -25,11 +26,11 @@ from app.services.schedule_overlap import wall_time_refusal
 T0 = datetime(2026, 11, 24, 4, 0, tzinfo=UTC)
 
 
-def _run(**context):
+def _run(**context: Any) -> SimpleNamespace:
     return SimpleNamespace(trigger_context=dict(context), started_at=T0)
 
 
-def test_a_pause_is_counted_apart_and_summed():
+def test_a_pause_is_counted_apart_and_summed() -> None:
     run = _run(type="work_item")
     clock.mark_paused(run, now=T0)
     assert clock.close_pause(run, now=T0 + timedelta(minutes=10)) == 600
@@ -40,26 +41,26 @@ def test_a_pause_is_counted_apart_and_summed():
     assert run.trigger_context["type"] == "work_item"
 
 
-def test_a_run_paused_before_the_fix_adds_nothing():
+def test_a_run_paused_before_the_fix_adds_nothing() -> None:
     run = _run()
     assert clock.close_pause(run, now=T0) is None
     assert clock.awaiting_human_seconds(run) is None
 
 
-def test_an_unreadable_start_of_pause_never_raises():
+def test_an_unreadable_start_of_pause_never_raises() -> None:
     run = _run(**{clock.AWAITING_HUMAN_SINCE_KEY: "not a time"})
     assert clock.close_pause(run, now=T0) is None
     assert clock.AWAITING_HUMAN_SINCE_KEY not in run.trigger_context
 
 
-def test_the_wall_time_leaves_the_pause_out():
+def test_the_wall_time_leaves_the_pause_out() -> None:
     run = _run(**{clock.AWAITING_HUMAN_SECONDS_KEY: 3000})
     now = T0 + timedelta(seconds=3300)
     assert wall_time_refusal(run, effective_timeout=600, now=now) is None
     assert wall_time_refusal(_run(), effective_timeout=600, now=now) is not None
 
 
-def test_the_prompt_clock_is_restamped_with_its_local_line():
+def test_the_prompt_clock_is_restamped_with_its_local_line() -> None:
     stale = (
         "persona\n\nCurrent date and time (UTC): Monday, November 23, 2026 at 01:00 UTC\n"
         "User's local time (Europe/Paris): Monday, November 23, 2026 at 02:00\n\nRun context"
@@ -75,11 +76,11 @@ def test_the_prompt_clock_is_restamped_with_its_local_line():
     assert fresh.count("Current date and time (UTC): ") == 1
 
 
-def test_a_prompt_without_clock_is_unchanged():
+def test_a_prompt_without_clock_is_unchanged() -> None:
     assert clock.restamp_prompt_clock("no clock here") == "no clock here"
 
 
-def test_a_utc_only_clock_is_restamped():
+def test_a_utc_only_clock_is_restamped() -> None:
     stale = "x\nCurrent date and time (UTC): Monday, November 23, 2026 at 01:00 UTC\ny"
     fresh = clock.restamp_prompt_clock(stale)
     assert "at 01:00 UTC" not in fresh
