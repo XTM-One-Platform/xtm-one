@@ -220,7 +220,7 @@ def test_each_module_checker_writes_no_module_and_hands_nothing_over(provider: s
     spec = next(s for s in fleet_seed.FLEET_AGENTS if s.role == CHECKER_ROLE_BY_PROVIDER[provider])
     assert spec.slug == f"health-{provider}-checker"
     assert spec.disable_chat and spec.handovers == ()
-    assert spec.skill_slugs == (f"health-{provider}-checks",)
+    assert spec.skill_slugs == ("health-module-checks",)
     assert spec.builtin_tool_ids == (fleet_seed.SPECIALISTS_GROUP,)
     assert set(spec.specialist_functions) == {
         "list_module_findings",
@@ -247,11 +247,14 @@ def test_the_opencti_checker_is_the_s14_module_analyst_renamed_in_place() -> Non
 def test_every_playbook_skill_is_shipped() -> None:
     from app.agents.builtin_agents import BUILTIN_SKILLS
     from app.agents.seed import _resolve_seed_content
+    from app.services.health.check_reports import module_playbook
 
     slugs = {s["slug"] for s in BUILTIN_SKILLS}
+    assert "health-module-checks" in slugs
+    assert not {f"health-{p}-checks" for p in ("opencti", "openaev", "opencrq")} & slugs
+    assert _resolve_seed_content("skill_content", "health-module-checks")
     for provider in ("opencti", "openaev", "opencrq"):
-        assert f"health-{provider}-checks" in slugs
-        assert _resolve_seed_content("skill_content", f"health-{provider}-checks")
+        assert "| Check |" in module_playbook(provider), provider
 
 
 def test_every_persona_file_exists():

@@ -38,6 +38,7 @@ from app.agents.opencti_pir_desk import PIR_DESK_AGENTS, PIR_DESK_ASSIGNMENTS
 from app.agents.output_schema import NlqOutputSchema, cti_stix_transformer_schema
 from app.core.config import settings
 from app.core.feature_flags import FeatureFlag
+from app.models.agent_skill import INTERNAL_SKILL_TAG
 from app.models.general_assistant_config import DEFAULT_GA_BUILTIN_TOOL_IDS, DEFAULT_MAX_ITERATIONS
 
 logger = logging.getLogger(__name__)
@@ -4081,7 +4082,7 @@ BUILTIN_SKILLS: list[dict] = [
         ),
         "compatibility": "health_specialists",
         "content": "memory-steward",
-        "tags": ["builtin", "health", "memory"],
+        "tags": ["builtin", "health", "memory", INTERNAL_SKILL_TAG],
         "platform_targets": ["global"],
         "bind_to_agent_slugs": [],
     },
@@ -4288,7 +4289,7 @@ BUILTIN_SKILLS: list[dict] = [
         ),
         "compatibility": "health_specialists",
         "content": "health-quality-analyst",
-        "tags": ["builtin", "health", "quality"],
+        "tags": ["builtin", "health", "quality", INTERNAL_SKILL_TAG],
         "platform_targets": ["global"],
     },
     {
@@ -4303,7 +4304,7 @@ BUILTIN_SKILLS: list[dict] = [
         ),
         "compatibility": "health_specialists",
         "content": "health-experimenter",
-        "tags": ["builtin", "health", "evaluation"],
+        "tags": ["builtin", "health", "evaluation", INTERNAL_SKILL_TAG],
         "platform_targets": ["global"],
     },
     {
@@ -4318,27 +4319,26 @@ BUILTIN_SKILLS: list[dict] = [
         ),
         "compatibility": "health_specialists",
         "content": "health-flow-lab",
-        "tags": ["builtin", "health", "flows"],
+        "tags": ["builtin", "health", "flows", INTERNAL_SKILL_TAG],
         "platform_targets": ["global"],
     },
-    # Platform Health S15 (#101, dev-docs/platform-health.md section 13.4): the check
-    # playbook of each module health checker. Seeded unbound; the fleet seed binds each
-    # to its checker. The checks grow by edits of these files within the 13.4 scope.
-    *(
-        {
-            "slug": f"health-{module}-checks",
-            "name": f"Platform Health {label} health checks",
-            "description": (
-                f"The {label} health checks Platform Health runs on a registered {label} platform, read-only: "
-                "each check, what it reads, its warn and fail thresholds, and the report it ends with."
-            ),
-            "compatibility": "health_specialists",
-            "content": f"health-{module}-checks",
-            "tags": ["builtin", "health", "modules", module],
-            "platform_targets": ["xtm_one", "dev"],
-        }
-        for module, label in (("opencti", "OpenCTI"), ("openaev", "OpenAEV"), ("opencrq", "OpenCRQ"))
-    ),
+    # Platform Health S15 (#101, dev-docs/platform-health.md section 13.4), one skill since
+    # #1943: the check playbook of every module health checker, one section per module.
+    # Seeded unbound; the fleet seed binds it to each checker. The checks grow by edits of
+    # this file within the 13.4 scope; each module's findings track its own section's hash.
+    {
+        "slug": "health-module-checks",
+        "name": "Platform Health: module checks",
+        "description": (
+            "The health checks Platform Health runs on a registered OpenCTI, OpenAEV or OpenCRQ platform, "
+            "read-only: one section per module with each check, what it reads, its warn and fail thresholds, "
+            "and the report it ends with."
+        ),
+        "compatibility": "health_specialists",
+        "content": "health-module-checks",
+        "tags": ["builtin", "health", "modules", "opencti", "openaev", "opencrq"],
+        "platform_targets": ["xtm_one", "dev"],
+    },
 ]
 
 #: Built-in skill slugs renamed in place: former slug -> current slug. The seed
@@ -4349,6 +4349,9 @@ RENAMED_BUILTIN_SKILL_SLUGS: dict[str, str] = {
     "concierge-quality-analyst": "health-quality-analyst",
     "concierge-experimenter": "health-experimenter",
     "concierge-flow-lab": "health-flow-lab",
+    # #1943: the OpenCTI playbook's row becomes the one module checks skill (its id and
+    # history kept); the OpenAEV and OpenCRQ rows are deleted as stale.
+    "health-opencti-checks": "health-module-checks",
 }
 
 # The CTI skills (cti-skills pack, Liberty91, MIT), shipped in XTM One mode.

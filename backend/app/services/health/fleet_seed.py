@@ -241,7 +241,7 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
         icon="Radar",
         builtin_tool_ids=(SPECIALISTS_GROUP,),
         specialist_functions=(*_MODULES, *_PROPOSALS),
-        skill_slugs=("health-opencti-checks",),
+        skill_slugs=("health-module-checks",),
     ),
     FleetAgentSpec(
         slug="health-openaev-checker",
@@ -251,7 +251,7 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
         icon="Radar",
         builtin_tool_ids=(SPECIALISTS_GROUP,),
         specialist_functions=(*_MODULES, *_PROPOSALS),
-        skill_slugs=("health-openaev-checks",),
+        skill_slugs=("health-module-checks",),
     ),
     FleetAgentSpec(
         slug="health-opencrq-checker",
@@ -261,7 +261,7 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
         icon="Radar",
         builtin_tool_ids=(SPECIALISTS_GROUP,),
         specialist_functions=(*_MODULES, *_PROPOSALS),
-        skill_slugs=("health-opencrq-checks",),
+        skill_slugs=("health-module-checks",),
     ),
 )
 

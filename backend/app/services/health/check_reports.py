@@ -70,14 +70,44 @@ CHECK_LOGIC_KEY: Final = "check_logic"
 MAX_EVIDENCE_AGE: Final = timedelta(hours=24)
 
 
-@functools.cache
-def _skill_hash(module: str) -> str:
-    """The first 16 hex of the sha256 of *module*'s checker playbook as this build ships it."""
+#: The one module checks skill (#1943): shared rules and report, then one ``## <Label>`` section per module.
+MODULE_CHECKS_SKILL_SLUG: Final = "health-module-checks"
+#: The section heading of each module in :data:`MODULE_CHECKS_SKILL_SLUG`.
+MODULE_SECTION_LABELS: Final[dict[str, str]] = {"opencti": "OpenCTI", "openaev": "OpenAEV", "opencrq": "OpenCRQ"}
+
+
+def module_playbook(module: str) -> str:
+    """The part of the module checks skill that is *module*'s playbook: the shared rules and
+    report (everything before the first module section) and *module*'s own section.
+
+    Empty when the build ships no such section, so a module without one hashes as empty.
+    """
     from app.agents.seed import SEED_DATA_DIR
 
-    path = SEED_DATA_DIR / "skill_content" / f"health-{module}-checks.md"
-    body = path.read_bytes() if path.is_file() else b""
-    return hashlib.sha256(body).hexdigest()[:16]
+    path = SEED_DATA_DIR / "skill_content" / f"{MODULE_CHECKS_SKILL_SLUG}.md"
+    label = MODULE_SECTION_LABELS.get(module)
+    if label is None or not path.is_file():
+        return ""
+    text = path.read_text(encoding="utf-8")
+    headings = {f"## {name}" for name in MODULE_SECTION_LABELS.values()}
+    shared: list[str] = []
+    own: list[str] = []
+    current: list[str] | None = shared
+    for line in text.splitlines(keepends=True):
+        if line.rstrip() in headings:
+            current = own if line.rstrip() == f"## {label}" else None
+        if current is not None:
+            current.append(line)
+    return "".join(shared) + "".join(own) if own else ""
+
+
+@functools.cache
+def _skill_hash(module: str) -> str:
+    """The first 16 hex of the sha256 of *module*'s checker playbook as this build ships it:
+    its section of the module checks skill with the shared rules, so an edit of another
+    module's section leaves this module's findings current (#1742, #1943).
+    """
+    return hashlib.sha256(module_playbook(module).encode("utf-8")).hexdigest()[:16]
 
 
 def check_logic_version(module: str) -> dict[str, str]:
