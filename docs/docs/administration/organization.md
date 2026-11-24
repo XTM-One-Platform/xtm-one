@@ -124,6 +124,15 @@ The **Priority intelligence requirements (PIRs)** are not on this page: pick the
 
 A value that is not valid (a region that is not a country code, an amount that is not a number) is refused, and the message names the field.
 
+### Pause and resume CTEM case opening
+
+The **Case opening** switch sits on the header of **CTEM > Cases** and of **CTEM > Signals > Sources**, for administrators. It is on by default.
+
+- **Off**: a confirmed signal opens no case. It stays confirmed and waits; the Cases list says how many signals are waiting. Case deadlines, announcements and the stall reminder keep running, and a case can still be split by hand.
+- **On again**: every waiting signal opens (or joins) its case at once, without waiting for the next scheduled pass, and the Cases list fills while you watch. A message says how many signals are being opened.
+
+Other users see a **Case opening paused** badge while it is off. Every change is in the audit log.
+
 ## Crown jewels and business services
 
 The crown jewels are the assets that matter most to the business. Without them, agents cannot rank findings by business impact. In edit mode, `Add a crown jewel` adds a row with:

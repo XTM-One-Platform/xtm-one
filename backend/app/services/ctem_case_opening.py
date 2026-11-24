@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """The administrator switch that pauses and resumes CTEM case opening (#1951).
 
 A confirmed, in-scope signal opens (or joins) its case on three paths, all
@@ -73,11 +75,12 @@ async def may_open_waiting(db: AsyncSession, vertical: str) -> bool:
     return await is_on(db, vertical)
 
 
-
 async def waiting_count(db: AsyncSession) -> int:
     """The confirmed signals that wait for their case (``case_id`` null)."""
     value = await db.scalar(
-        select(func.count()).select_from(CtemSignal).where(CtemSignal.state == "confirmed", CtemSignal.case_id.is_(None))
+        select(func.count())
+        .select_from(CtemSignal)
+        .where(CtemSignal.state == "confirmed", CtemSignal.case_id.is_(None))
     )
     return int(value or 0)
 
@@ -164,9 +167,7 @@ async def drain(vertical: str, *, session_factory: Any = None, max_passes: int =
                 break
     except Exception:
         logger.exception("CTEM case opening drain of %s stopped after %s passes", vertical, totals["passes"])
-    logger.info(
-        "CTEM case opening drain of %s: %s in %.1f s", vertical, totals, time.monotonic() - started
-    )
+    logger.info("CTEM case opening drain of %s: %s in %.1f s", vertical, totals, time.monotonic() - started)
     return totals
 
 

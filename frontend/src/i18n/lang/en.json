@@ -21668,5 +21668,14 @@
   "Auto join updated": "Auto join updated",
   "Auto join could not be updated": "Auto join could not be updated",
   "Single sign-on users join this group": "Single sign-on users join this group",
-  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are."
+  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.",
+  "Case opening": "Case opening",
+  "Case opening on": "Case opening on",
+  "Case opening paused": "Case opening paused",
+  "Case opening is paused.": "Case opening is paused.",
+  "Case opening was not changed": "Case opening was not changed",
+  "Off: confirmed signals wait and open no case. On: every waiting signal opens its case at once.": "Off: confirmed signals wait and open no case. On: every waiting signal opens its case at once.",
+  "{count, plural, one {Case opening on: opening cases for # waiting signal} other {Case opening on: opening cases for # waiting signals}}": "{count, plural, one {Case opening on: opening cases for # waiting signal} other {Case opening on: opening cases for # waiting signals}}",
+  "{count, plural, =0 {No confirmed signal is waiting.} one {# confirmed signal is waiting.} other {# confirmed signals are waiting.}}": "{count, plural, =0 {No confirmed signal is waiting.} one {# confirmed signal is waiting.} other {# confirmed signals are waiting.}}",
+  "CTEM case opening turned on or off": "CTEM case opening turned on or off"
 }
