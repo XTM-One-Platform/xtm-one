@@ -26,6 +26,9 @@ _FLEETS = {
 }
 #: Keys the personas name that are not gates: the case loop, the re-test and the counters.
 _NOT_GATES = re.compile(r"^ctem:f[12]:((case|retest|state):)?$")
+#: Catalog keys kept for decision items filed before #1832, which the personas no longer name:
+#: the launch gate is keyed ``ctem:validation:`` followed by the case id.
+_LEGACY_ONLY = frozenset({"ctem:f1:launch:"})
 
 
 def _gate_assignment(slug: str) -> dict[str, Any]:
@@ -47,7 +50,8 @@ def test_every_gate_key_the_persona_names_is_covered_by_the_trigger(slug: str) -
     named = _persona_keys(slug)
     assert named, slug
     # The persona still names its catalog, every key of it under the listened namespace.
-    assert set(_FLEETS[slug]) <= named, (slug, set(_FLEETS[slug]) - named)
+    assert set(_FLEETS[slug]) - _LEGACY_ONLY <= named, (slug, set(_FLEETS[slug]) - _LEGACY_ONLY - named)
+    assert not _LEGACY_ONLY & named, (slug, _LEGACY_ONLY & named)
     uncovered = {k for k in named if not k.startswith(prefixes)}
     assert uncovered == set(), (slug, uncovered)
 

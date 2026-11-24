@@ -72,7 +72,8 @@ def test_the_trigger_listens_to_pir_matches_on_four_entity_types():
     event = next(a for a in m1.PIR_DESK_ASSIGNMENTS if a["trigger_type"] == "integration_event")
     spec = read_provision_spec(event["trigger_config"])
     assert spec is not None
-    assert sorted(spec["entity_types"]) == ["Campaign", "Intrusion-Set", "Report", "Vulnerability"]
+    # Threat activity is the CTEM loop's PIR trigger (#1832): one owner per entity type.
+    assert sorted(spec["entity_types"]) == ["Report", "Vulnerability"]
     assert spec["event_types"] == ["create"]
     assert spec["organization_context"] == ["pir_ids"]
     assert spec["fleet"] == m1.FLEET_NAME

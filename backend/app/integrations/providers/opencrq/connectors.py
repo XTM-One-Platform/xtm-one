@@ -1,9 +1,19 @@
-"""OpenCRQ connector status tools (read-only).
+"""OpenCRQ connector tools.
 
 * ``list_opencrq_connectors``      - every connector with its health, last
                                      sync and schedule.
 * ``list_opencrq_connector_syncs`` - one connector's recent syncs, or the
                                      state of the OpenCTI live stream.
+* ``configure_opencrq_connector``  - bind a service account (and the OpenCTI
+                                     live stream), switch the OpenCTI stream
+                                     on or off, set a run schedule.
+* ``run_opencrq_connector``        - sync now, reconnect the stream or reset
+                                     the state.
+
+The writes are OpenCRQ's own procedures (integrations-router.ts configure,
+opencti-router.ts configure and setEnabled, connectors-router.ts setSchedule,
+syncNow, reconnectStream, resetState); OpenCRQ checks the
+manage-security capability on each and its refusal is returned as is.
 """
 
 from __future__ import annotations
@@ -42,6 +52,17 @@ CONNECTOR_SOURCES = [
 _STREAM_SOURCE = "opencti"
 
 _COMPLETED_PAGE = 10
+
+#: SCHEDULE_CADENCES (module job-schedules/cadence.ts).
+SCHEDULE_CADENCES = ["manual", "hourly", "every_6_hours", "every_12_hours", "daily", "weekly"]
+_TIMED_CADENCES = ("daily", "weekly")
+
+#: action -> what the call does, in words.
+_RUN_ACTIONS: dict[str, str] = {
+    "sync_now": "sync now",
+    "reconnect_stream": "reconnect the stream at its live tail",
+    "reset_state": "reset the connector state",
+}
 
 _CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]+")
 
@@ -234,8 +255,198 @@ def register(
                 lines.append(more)
         return "\n".join(lines)
 
+    async def configure_opencrq_connector(
+        source: str = "",
+        service_account_id: str = "",
+        new_service_account_name: str = "",
+        stream_id: str = "",
+        enabled: bool | None = None,
+        cadence: str = "",
+        at_minute: int | None = None,
+        weekday: int | None = None,
+        time_zone: str = "",
+        tenant_id: str = "",
+    ) -> str:
+        source = _text(source).lower()
+        if source not in CONNECTOR_SOURCES:
+            return "source must be one of: " + ", ".join(CONNECTOR_SOURCES) + "."
+        account = _text(service_account_id)
+        new_account = _text(new_service_account_name)
+        stream = _text(stream_id)
+        cadence = _text(cadence).lower()
+        if account and new_account:
+            return "Give service_account_id or new_service_account_name, not both."
+        bind = bool(account or new_account)
+        if source == _STREAM_SOURCE and bind and not stream:
+            return "Binding opencti also needs stream_id (an OpenCTI live stream id)."
+        if stream and source != _STREAM_SOURCE:
+            return "stream_id applies to opencti only."
+        if enabled is not None and source != _STREAM_SOURCE:
+            return (
+                f"OpenCRQ has no on/off switch for {source}: it runs once a service account "
+                "is bound and on its schedule (cadence manual stops the scheduled runs)."
+            )
+        schedule: dict[str, object] | None = None
+        if cadence:
+            if source == _STREAM_SOURCE:
+                return "opencti is a live stream and has no run schedule."
+            if cadence not in SCHEDULE_CADENCES:
+                return "cadence must be one of: " + ", ".join(SCHEDULE_CADENCES) + "."
+            timed = cadence in _TIMED_CADENCES
+            minute = _as_int(at_minute) if at_minute is not None else None
+            day = _as_int(weekday) if weekday is not None else None
+            zone = _text(time_zone)
+            if timed and (minute is None or not 0 <= minute < 1440 or not zone):
+                return f"cadence {cadence} needs at_minute (0-1439, minute of the day) and time_zone (IANA)."
+            if not timed and (minute is not None or zone):
+                return f"cadence {cadence} takes no at_minute or time_zone."
+            if cadence == "weekly" and (day is None or not 0 <= day <= 6):
+                return "cadence weekly needs weekday (0 Sunday to 6 Saturday)."
+            if cadence != "weekly" and day is not None:
+                return f"cadence {cadence} takes no weekday."
+            schedule = {
+                "source": source,
+                "cadence": cadence,
+                "atMinute": minute if timed else None,
+                "weekday": day if cadence == "weekly" else None,
+                "timeZone": zone if timed else None,
+            }
+        if not bind and enabled is None and schedule is None:
+            return (
+                "Nothing to change: give a service account (service_account_id or "
+                "new_service_account_name), enabled (opencti) or a cadence."
+            )
+        tenant, err = await _resolve_tenant(base_url, headers, _text(tenant_id))
+        if err or tenant is None:
+            return err or "No OpenCRQ tenant resolved."
+        done: list[str] = []
+
+        def _partial(error: object) -> str:
+            applied = f" Already applied: {'; '.join(done)}." if done else ""
+            return f"{error}{applied}"
+
+        if bind:
+            choice: dict[str, object] = (
+                {"newServiceAccount": {"name": new_account[:255]}} if new_account else {"serviceAccountId": account}
+            )
+            # OpenCTI is bound with its live stream through its own router; every
+            # other connector is an INTEGRATION_SOURCES entry of integrations.configure.
+            if source == _STREAM_SOURCE:
+                bound, err = await _trpc(
+                    base_url,
+                    headers,
+                    "opencti.configure",
+                    "configure connector",
+                    input={**choice, "streamId": stream},
+                    mutation=True,
+                    tenant_id=tenant,
+                )
+            else:
+                bound, err = await _trpc(
+                    base_url,
+                    headers,
+                    "integrations.configure",
+                    "configure connector",
+                    input={"source": source, **choice},
+                    mutation=True,
+                    tenant_id=tenant,
+                )
+            if err:
+                return _partial(err)
+            bound_id = (bound or {}).get("serviceAccountId") if isinstance(bound, dict) else None
+            line = f"service account {bound_id or account or 'none'} bound"
+            if new_account:
+                line += f" (created as {new_account[:80]})"
+            if stream:
+                line += f", live stream {stream[:80]}"
+            done.append(line)
+        if enabled is not None:
+            _, err = await _trpc(
+                base_url,
+                headers,
+                "opencti.setEnabled",
+                "switch connector",
+                input={"enabled": bool(enabled)},
+                mutation=True,
+                tenant_id=tenant,
+            )
+            if err:
+                return _partial(err)
+            done.append("switched on" if enabled else "switched off")
+        if schedule is not None:
+            _, err = await _trpc(
+                base_url,
+                headers,
+                "connectors.setSchedule",
+                "set connector schedule",
+                input=schedule,
+                mutation=True,
+                tenant_id=tenant,
+            )
+            if err:
+                return _partial(err)
+            done.append(f"schedule {cadence}")
+        return f"OpenCRQ connector {source}: {'; '.join(done)}. list_opencrq_connectors reads its state now."
+
+    async def run_opencrq_connector(source: str = "", action: str = "", tenant_id: str = "") -> str:
+        source = _text(source).lower()
+        if source not in CONNECTOR_SOURCES:
+            return "source must be one of: " + ", ".join(CONNECTOR_SOURCES) + "."
+        action = _text(action).lower()
+        if action not in _RUN_ACTIONS:
+            return "action must be one of: " + ", ".join(_RUN_ACTIONS) + "."
+        if source == _STREAM_SOURCE and action == "sync_now":
+            return "opencti is a live stream: use reconnect_stream or reset_state."
+        if source != _STREAM_SOURCE and action == "reconnect_stream":
+            return f"{source} runs as a job and holds no stream: use sync_now."
+        tenant, err = await _resolve_tenant(base_url, headers, _text(tenant_id))
+        if err or tenant is None:
+            return err or "No OpenCRQ tenant resolved."
+        words = _RUN_ACTIONS[action]
+        payload = {"source": source}
+        # One literal procedure per action: dump_opencrq_tool_procedures reads them off the source.
+        if action == "sync_now":
+            answer, err = await _trpc(
+                base_url,
+                headers,
+                "connectors.syncNow",
+                words,
+                input=payload,
+                mutation=True,
+                tenant_id=tenant,
+            )
+        elif action == "reconnect_stream":
+            answer, err = await _trpc(
+                base_url,
+                headers,
+                "connectors.reconnectStream",
+                words,
+                input=payload,
+                mutation=True,
+                tenant_id=tenant,
+            )
+        else:
+            answer, err = await _trpc(
+                base_url,
+                headers,
+                "connectors.resetState",
+                words,
+                input=payload,
+                mutation=True,
+                tenant_id=tenant,
+            )
+        if err:
+            return err
+        job = answer.get("jobId") if isinstance(answer, dict) else None
+        line = f"OpenCRQ connector {source}: {words} done."
+        if job:
+            line += f" Run id: {job}; list_opencrq_connector_syncs follows it."
+        return line
+
     executor.register("list_opencrq_connectors", list_opencrq_connectors)
     executor.register("list_opencrq_connector_syncs", list_opencrq_connector_syncs)
+    executor.register("configure_opencrq_connector", configure_opencrq_connector)
+    executor.register("run_opencrq_connector", run_opencrq_connector)
 
     return [
         ToolDefinition(
@@ -264,6 +475,60 @@ def register(
                     **TENANT_PROP,
                 },
                 "required": ["source"],
+            },
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="configure_opencrq_connector",
+            description=(
+                "Configure an OpenCRQ connector: bind the service account it runs as "
+                "(opencti also takes its live stream), switch the OpenCTI stream on "
+                "or off, or set its run schedule. Needs the manage-security capability."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "source": {"type": "string", "enum": CONNECTOR_SOURCES},
+                    "service_account_id": {
+                        "type": "string",
+                        "description": "Existing service account UUID (list_opencrq_service_accounts).",
+                    },
+                    "new_service_account_name": {
+                        "type": "string",
+                        "description": "Create the service account under this name and bind it.",
+                    },
+                    "stream_id": {
+                        "type": "string",
+                        "description": "opencti only: the OpenCTI live stream id, with the account.",
+                    },
+                    "enabled": {"type": "boolean", "description": "opencti only: stream on or off."},
+                    "cadence": {"type": "string", "enum": SCHEDULE_CADENCES},
+                    "at_minute": {
+                        "type": "integer",
+                        "description": "daily and weekly: minute of the day, 0-1439.",
+                    },
+                    "weekday": {"type": "integer", "description": "weekly: 0 Sunday to 6 Saturday."},
+                    "time_zone": {"type": "string", "description": "daily and weekly: IANA zone."},
+                    **TENANT_PROP,
+                },
+                "required": ["source"],
+            },
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="run_opencrq_connector",
+            description=(
+                "Act on an OpenCRQ connector now: sync_now, reconnect_stream (opencti) "
+                "or reset_state. Confirm with the user; manage-security for all but sync_now."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "source": {"type": "string", "enum": CONNECTOR_SOURCES},
+                    "action": {"type": "string", "enum": list(_RUN_ACTIONS)},
+                    **TENANT_PROP,
+                },
+                "required": ["source", "action"],
             },
             source=_SOURCE,
         ),
