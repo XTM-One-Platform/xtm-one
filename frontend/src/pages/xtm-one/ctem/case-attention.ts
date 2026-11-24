@@ -119,13 +119,16 @@ export function caseAttention(c: AttentionInput, now: number, weights: CaseAtten
   let score = weights.priority[c.priority] ?? 0;
   if (score > 0) reasons.push({ kind: "priority", priority: c.priority });
   // A reason whose points are set to 0 is dropped from the score and from the why line (UX r2 B1 on #1260).
-  if (c.kev_count > 0 && weights.kev > 0) {
+  // A null count is unknown for this reader (scope-limited): it adds no points and names no reason.
+  const kev = c.kev_count ?? 0;
+  const crownJewels = c.crown_jewel_count ?? 0;
+  if (kev > 0 && weights.kev > 0) {
     score += weights.kev;
-    reasons.push({ kind: "kev", count: c.kev_count, assets: c.asset_count });
+    reasons.push({ kind: "kev", count: kev, assets: c.asset_count ?? 0 });
   }
-  if (c.crown_jewel_count > 0 && weights.crownJewel > 0) {
+  if (crownJewels > 0 && weights.crownJewel > 0) {
     score += weights.crownJewel;
-    reasons.push({ kind: "crown_jewel", count: c.crown_jewel_count });
+    reasons.push({ kind: "crown_jewel", count: crownJewels });
   }
   const due = c.sla_due_at ?? c.due_at;
   const dueMs = due ? Date.parse(due) : Number.NaN;
@@ -167,7 +170,7 @@ export function rankByAttention<T extends AttentionInput & Pick<CtemCaseSummary,
     .sort(
       (a, b) =>
         b.attention.score - a.attention.score ||
-        b.kase.kev_count - a.kase.kev_count ||
+        (b.kase.kev_count ?? 0) - (a.kase.kev_count ?? 0) ||
         (caseOpenedAt(a.kase) ?? "").localeCompare(caseOpenedAt(b.kase) ?? ""),
     );
 }

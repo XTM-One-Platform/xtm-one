@@ -346,6 +346,14 @@ def visible_members(rows: list[CtemCaseIssue], view: ViewerView) -> list[CtemCas
 
 SEVERITY_PRIORITY: dict[str, str] = {"P1": "critical", "P2": "high", "P3": "medium"}
 
+#: The aggregates computed from member details: null for a viewer missing the details of an open member.
+DETAIL_AGGREGATES: tuple[str, ...] = ("asset_count", "crown_jewel_count", "kev_count", "max_cvss", "max_epss")
+#: Why they are null: the reader repeats it instead of reading "none".
+AGGREGATES_RESTRICTED_REASON = (
+    "unknown for this reader: some open issues of the case are not readable with their details "
+    "(outside your scope, or their product did not answer); this is not a zero"
+)
+
 
 def case_priority(severity: str | None, details: list[Any]) -> str:
     """The priority a case shows: its loop severity when set, else the default policy."""
@@ -361,6 +369,13 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         return None
     details = [view.issues[_member_id(r)] for r in visible if r.open and _member_id(r) in view.issues]
     agg = rules.aggregates(details)
+    # Open product members this viewer has no details of (hidden by scope, or seen before from a
+    # product that does not answer now): the detail aggregates would count only part of the case,
+    # so they are null with a reason, never a silent 0 a reader takes for "none". Signal members
+    # carry no issue details for anyone and never restrict them.
+    without_details = sum(1 for r in rows if r.open and r.source != SIGNAL_SOURCE and _member_id(r) not in view.issues)
+    if without_details:
+        agg = {**agg, **{key: None for key in DETAIL_AGGREGATES}}
     unavailable = sorted({r.source for r in visible if r.source != SIGNAL_SOURCE and _member_id(r) not in view.issues})
     return {
         "id": str(case.id),
@@ -385,6 +400,11 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         "issue_count": len(rows),
         "open_issue_count": sum(1 for r in rows if r.open),
         "restricted_count": len(rows) - len(visible),
+        # The open members read without their details, and whether the detail aggregates are
+        # therefore unknown for this viewer (null, never 0).
+        "members_without_details": without_details,
+        "aggregates_restricted": bool(without_details),
+        "aggregates_reason": AGGREGATES_RESTRICTED_REASON if without_details else None,
         "asset_count": agg["asset_count"],
         "crown_jewel_count": agg["crown_jewel_count"],
         "kev_count": agg["kev_count"],
@@ -775,6 +795,16 @@ def list_for_viewer(
     rows.sort(key=lambda r: (_PRIORITY_RANK.get(r["priority"], 9), -r["open_issue_count"], r["id"]))
     start = max(0, offset)
     return rows[start : start + max(1, limit)], counts
+
+
+def hidden_case_count(cases: list[tuple[CtemCase, list[CtemCaseIssue]]], view: ViewerView) -> int:
+    """The open cases of the organization this viewer sees none of: a count only, never named.
+
+    Answered beside a list so its length is never read as the organization total.
+    """
+    from app.models.ctem_case import OPEN_STATES
+
+    return sum(1 for case, members in cases if case.state in OPEN_STATES and not visible_members(members, view))
 
 
 def names_asset(rows: list[CtemCaseIssue], view: ViewerView, asset: str) -> bool:

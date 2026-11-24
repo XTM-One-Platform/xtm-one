@@ -263,7 +263,26 @@ same way.
   when they name none (an OpenCTI-only case), the device count of the case's
   latest `versions` snapshot, with `asset_count_source` `issues`, `inventory`
   (and `asset_count_as_of`) or `unknown`: then `asset_count` is `null` with
-  `asset_count_reason`, never a silent 0.
+  `asset_count_reason`, never a silent 0. The single case read
+  (`GET /ctem/cases/{id}`, `get_ctem_case`) applies the same rule
+  (`version_history.with_asset_count` on the hydrated case), so the list row
+  and the case read answer the same `asset_count`, source and marker.
+- scope-limited aggregates: `summary()` counts the open product members the
+  viewer reads WITHOUT their details (outside their scope, or seen before from
+  a product that does not answer now) as `members_without_details`. When it is
+  above 0, `asset_count`, `crown_jewel_count`, `kev_count`, `max_cvss` and
+  `max_epss` are `null` with `aggregates_restricted: true` and
+  `aggregates_reason` (`ctem_cases_view.AGGREGATES_RESTRICTED_REASON`), and
+  `with_asset_count` never counts from the issues then (inventory count, else
+  `unknown` with `NO_COUNT_RESTRICTED`). A 0 is a real 0 only when every open
+  product member was read with its details. Chosen basis: the viewer's own
+  read, marked; no link-based count is computed, because the ids of members a
+  viewer cannot read are never served (ids-only rule of the case loop). Signal
+  members carry no issue details for anyone and never restrict. The list
+  answers `hidden_cases` (API top level; `scope.hidden_cases` in
+  `list_ctem_cases`): the open cases the viewer sees none of, a count only, so
+  a page is never read as the organization total. Tests:
+  `tests/test_ctem_case_scope_limited_aggregates.py`.
 - where the per-platform fix comes from (slice 2 of #1572): the OpenCTI reader
   reads each Software that `remediates` the vulnerability with its `cpe`;
   `ctem_fixed_version.platform_of_software` takes the platform from the CPE
@@ -995,7 +1014,10 @@ section 5, #1359) for the signal members of a case, read by the case view's
 rule (`ctem_cases_view.signal_members`, the admin flag alone); under `own`,
 `hidden_by_scope` counts the case-bound signals the person does not see:
 across the organization for `list_ctem_cases`, bound to that case alone for
-`get_ctem_case` (its note then says "on this case").
+`get_ctem_case` (its note then says "on this case"). `list_ctem_cases` also
+answers `scope.hidden_cases`, the open cases the person sees none of; a `null`
+aggregate on a case means unknown for this reader, never none (section on
+scope-limited aggregates above).
 Tests: `tests/test_ctem_read_tools.py`.
 
 ### 8.1bis Signals and cases on any agent: the `ctem` group

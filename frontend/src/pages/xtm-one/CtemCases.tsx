@@ -489,7 +489,8 @@ export default function CtemCases() {
           {
             key: "crown_jewels",
             label: "Primary assets",
-            values: (c) => [c.crown_jewel_count > 0 ? "yes" : "no"],
+            // Null is unknown for this reader: in neither option, never "No primary asset".
+            values: (c) => (c.crown_jewel_count == null ? [] : [c.crown_jewel_count > 0 ? "yes" : "no"]),
             options: [
               { value: "yes", label: t_i18n("Touches a primary asset") },
               { value: "no", label: t_i18n("No primary asset") },
@@ -498,7 +499,7 @@ export default function CtemCases() {
           {
             key: "kev",
             label: "KEV",
-            values: (c) => [c.kev_count > 0 ? "yes" : "no"],
+            values: (c) => (c.kev_count == null ? [] : [c.kev_count > 0 ? "yes" : "no"]),
             options: [
               { value: "yes", label: t_i18n("Has a KEV issue") },
               { value: "no", label: t_i18n("No KEV issue") },
