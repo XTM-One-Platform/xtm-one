@@ -117,6 +117,14 @@ Any other host joins the baseline silently; the pass counts it as
 its evidence. The first pass after this change has no previous summary, so it
 raises no path 7: it records the summary the next pass compares with.
 
+Only the organization's own hosts are part of the surface (`in_scope`): a name
+under an owned domain, or a host or IP inside an owned address range (a declared
+asset always counts). A provider also answers other names, such as the reverse
+DNS of a shared hosting IP: such a name raises nothing on any path (5, 6 or 7),
+is never stored in the baseline, is counted as `out_of_scope` in the pass
+summary, and is named in `shared_ip_names` in the evidence of the owned hosts on
+the same IP.
+
 Credit budget per pass (Shodan): up to `_SHODAN_DNS_PAGES` (5) pages of
 `/dns/domain` and `_SHODAN_SEARCH_PAGES` (3) pages of 100 matches of each host
 search, so at most 8 query credits per owned domain and 3 per range. GTI ASM
@@ -124,7 +132,7 @@ keeps its 5 projects and 10 pages of 100.
 
 Every committed pass is stored (`ctem_surface_passes`, `models/ctem_surface_pass.py`):
 time, provider label, hosts observed, the coverage list, the statuses, the counts
-per path (with `recorded` and `new_host_withheld`) and the time of the pass it
+per path (with `recorded`, `new_host_withheld` and `out_of_scope`) and the time of the pass it
 compared with. An administrator reads the latest ones with
 `GET /api/v1/ctem-signals/attack-surface/passes?limit=N` (`truncated` true when
 a read hit its bound), so a pass that found nothing is still visible.

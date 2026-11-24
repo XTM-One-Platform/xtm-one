@@ -246,6 +246,17 @@ def _owned_domain(host: str, domains: Iterable[str]) -> str:
     return ""
 
 
+def in_scope(host: str, ip: str, domains: Iterable[str], ranges: Iterable[str]) -> bool:
+    """Whether a host a provider returned is the organization's own: a name under an owned
+    domain, or an address (the host itself or its IP) inside an owned range.
+
+    A provider answers other names too (the reverse DNS of a shared hosting IP, another
+    tenant's name on the same address): those are context, never a host of the surface.
+    """
+    ranges = list(ranges)
+    return bool(_owned_domain(host, domains) or (ip and _in_ranges(ip, ranges)) or _in_ranges(host, ranges))
+
+
 def _declared(profile: Any) -> dict[str, Any]:
     """The profile's assets by every key a host can match (name, external id)."""
     out: dict[str, Any] = {}
@@ -266,12 +277,17 @@ def diff(
     previous: PreviousPass | None = None,
     statuses: dict[str, str] | None = None,
     withheld: dict[str, str] | None = None,
+    out_of_scope: dict[str, str] | None = None,
 ) -> list[Finding]:
     """The differences between this pass, the previous one and the profile (no I/O).
 
     *previous* and *statuses* decide whether a host absent from the baseline is
     new (:func:`new_host_withheld`); a host that is not lands in *withheld*
     with the reason and joins the baseline silently.
+
+    A host that is neither declared nor :func:`in_scope` raises nothing on any path: it
+    lands in *out_of_scope* (host to IP) and is named as ``shared_ip_names`` in the
+    evidence of the owned hosts on the same IP.
     """
     surface = getattr(profile, "attack_surface", None)
     stale_days = int(getattr(surface, "stale_after_days", 14) or 14)
@@ -281,6 +297,19 @@ def diff(
     first_pass = not baseline
     found: list[Finding] = []
     seen: set[str] = set()
+    foreign: dict[str, str] = {}
+    for obs in observations:
+        name = host_key(obs.host)
+        if not name or name in declared or (obs.ip and host_key(obs.ip) in declared):
+            continue
+        if not in_scope(name, obs.ip, domains, ranges):
+            foreign.setdefault(name, obs.ip)
+    if out_of_scope is not None:
+        out_of_scope.update(foreign)
+    names_by_ip: dict[str, list[str]] = {}
+    for name, ip in foreign.items():
+        if ip:
+            names_by_ip.setdefault(ip, []).append(name)
 
     def _evidence(obs: Observation, **extra: Any) -> dict[str, Any]:
         data: dict[str, Any] = {
@@ -297,6 +326,8 @@ def diff(
             data["cert_names"] = obs.cert_names[:20]
         if len(obs.providers) > 1:
             data["providers"] = obs.providers
+        if obs.ip and names_by_ip.get(obs.ip):
+            data["shared_ip_names"] = names_by_ip[obs.ip][:20]
         data.update(extra)
         return data
 
@@ -305,6 +336,8 @@ def diff(
         if not host or host in seen:
             continue
         seen.add(host)
+        if host in foreign:
+            continue
         asset = declared.get(host) or (declared.get(host_key(obs.ip)) if obs.ip else None)
         before = baseline.get(host)
         owned = _owned_domain(host, domains)
@@ -395,6 +428,8 @@ def diff(
     limit = now - timedelta(days=stale_days)
     for host, before in baseline.items():
         if host in seen or before.last_seen_at > limit:
+            continue
+        if host not in declared and not in_scope(host, "", domains, ranges):
             continue
         days = max(stale_days, (now - before.last_seen_at).days)
         found.append(
@@ -507,6 +542,7 @@ async def run_pass(
     previous = await _previous_pass(db, organization_id)
     rows = await _baseline(db, organization_id)
     withheld: dict[str, str] = {}
+    out_of_scope: dict[str, str] = {}
     findings = diff(
         profile,
         observations,
@@ -516,11 +552,12 @@ async def run_pass(
         previous=previous,
         statuses=statuses,
         withheld=withheld,
+        out_of_scope=out_of_scope,
     )
 
     for obs in observations:
         host = host_key(obs.host)
-        if not host:
+        if not host or host in out_of_scope:
             continue
         row = rows.get(host)
         ports = [{"port": p.port, "transport": p.transport, "product": p.product} for p in obs.ports]
@@ -577,6 +614,7 @@ async def run_pass(
         counts["recorded"] += 1
         counts[finding.trigger_path] = counts.get(finding.trigger_path, 0) + 1
     counts["new_host_withheld"] = len(withheld)
+    counts["out_of_scope"] = len(out_of_scope)
     db.add(
         CtemSurfacePass(
             organization_id=organization_id,

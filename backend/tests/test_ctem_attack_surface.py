@@ -191,6 +191,38 @@ def test_read_statuses_name_truncated_empty_and_complete_reads() -> None:
     }
 
 
+def test_a_provider_name_outside_the_owned_domains_is_context_never_a_new_host() -> None:
+    """Owned domain only, no ranges: the reverse DNS of a shared hosting IP raises nothing."""
+    profile = _profile(address_ranges=[])
+    baseline = {"shop.corp.example": _base("shop.corp.example", 443)}
+    observed = [
+        _obs("www.corp.example", "198.51.100.7", 80, reads=[READ]),
+        _obs("host-7.hosting.example", "198.51.100.7", 80, reads=[READ]),
+    ]
+    out_of_scope: dict[str, str] = {}
+    found = _diff(observed, baseline, profile, previous=PREVIOUS, statuses=COMPLETE, out_of_scope=out_of_scope)
+    assert [(f.trigger_path, f.host, f.detail) for f in found] == [("surface_drift", "www.corp.example", "new_host")]
+    assert found[0].evidence["shared_ip_names"] == ["host-7.hosting.example"]
+    assert out_of_scope == {"host-7.hosting.example": "198.51.100.7"}
+
+
+def test_a_foreign_name_on_an_owned_address_is_in_scope() -> None:
+    found = _diff(
+        [_obs("edge.cdn.example", "203.0.113.30", 443, reads=[READ])],
+        {"shop.corp.example": _base("shop.corp.example", 443)},
+        previous=PREVIOUS,
+        statuses=COMPLETE,
+    )
+    assert [(f.trigger_path, f.host) for f in found] == [("surface_drift", "edge.cdn.example")]
+
+
+def test_an_out_of_scope_host_raises_no_path_6_either() -> None:
+    profile = _profile(address_ranges=[])
+    assert _diff([_obs("gone.hosting.example", "198.51.100.8", resolves=False)], {}, profile) == []
+    stale = {"old.hosting.example": _base("old.hosting.example", 80, days_ago=30)}
+    assert _diff([], stale, profile) == []
+
+
 def test_the_first_pass_sets_the_baseline_and_raises_no_drift() -> None:
     assert _diff([_obs("dev.corp.example", "203.0.113.20", 22)], {}) == []
 
