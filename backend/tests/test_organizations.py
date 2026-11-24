@@ -221,8 +221,8 @@ async def test_a_query_narrows_a_category_and_the_limit_is_bounded(with_stack, t
 
 
 async def test_the_retired_tech_stack_category_is_unknown(with_stack: None, tool: Any) -> None:
-    page = await tool(category="software", query="microsoft", limit=10)
-    assert not page.startswith("Category software ("), "#1495: no software alias (Sam, 24 Nov 2026)"
+    page = await tool(category="tech_stack", query="microsoft", limit=10)
+    assert not page.startswith("Category tech_stack ("), "#1495: no tech_stack alias (Sam, 24 Nov 2026)"
 
 
 async def test_an_unknown_category_names_the_accepted_ones(with_stack, tool):

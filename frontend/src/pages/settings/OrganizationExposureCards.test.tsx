@@ -25,7 +25,7 @@ const BASE: ProfileForm = {
   regions: [],
   size: "",
   crown_jewels: [],
-  tech_stack: [],
+  software: [],
   pir_ids: [],
   annual_loss_threshold: "",
   approval_threshold: "",

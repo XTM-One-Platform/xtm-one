@@ -11,7 +11,7 @@ from app.services import organization_context_rows as rows
 
 def test_software_sections_cover_the_deprecated_alias() -> None:
     assert set(rows.SOFTWARE_SECTIONS) == {"software"}
-    assert "software" not in rows.ROW_SECTIONS, "no alias (Sam, 24 Nov 2026)"
+    assert "tech_stack" not in rows.ROW_SECTIONS, "no alias (Sam, 24 Nov 2026)"
     assert set(rows.SOFTWARE_SECTIONS) <= set(rows.ROW_SECTIONS)
 
 
