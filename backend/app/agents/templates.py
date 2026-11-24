@@ -346,7 +346,7 @@ BUILTIN_TEMPLATES: list[dict] = [
         "description": (
             "Monitor messaging channels for questions and auto-answer using your knowledge bases. "
             "Works with Microsoft Teams, Slack, Google Chat, and any connected messaging platform. "
-            "Labels AI-generated answers, escalates uncertain questions to humans, and learns your "
+            "Escalates uncertain questions to humans and learns your "
             "communication style from sent messages."
         ),
         "icon": "MessageSquare",
@@ -370,8 +370,7 @@ BUILTIN_TEMPLATES: list[dict] = [
             "1. Search the knowledge base (documentation, wikis, FAQs) for relevant information\n"
             "2. Use `search_google_web` or `web_fetch` to supplement KB results when needed\n"
             "3. Provide a helpful, accurate answer directly in the channel\n"
-            "4. Label your response as AI-generated so recipients know it's automated\n"
-            "5. Match the communication style of the account owner when possible\n\n"
+            "4. Match the communication style of the account owner when possible\n\n"
             "If you are not confident in your answer or the question is outside your "
             "knowledge, escalate to the user rather than guessing. Always prefer "
             "citing knowledge base sources when available."
@@ -384,7 +383,7 @@ BUILTIN_TEMPLATES: list[dict] = [
                     "connected messaging platform), check if it's a relevant question and "
                     "answer using knowledge bases. Change the trigger provider/event to match "
                     "your messaging platform (microsoft/new_teams_message, slack/new_slack_message, "
-                    "etc.). AI-generated label is applied to all responses."
+                    "etc.). Switch the AI label on in the assignment settings to label every response."
                 ),
                 "trigger_type": "integration_event",
                 "trigger_config": {
@@ -410,7 +409,6 @@ BUILTIN_TEMPLATES: list[dict] = [
                     "Search the knowledge bases for relevant information. If knowledge base "
                     "results are insufficient, use `search_google_web` or `web_fetch` to find "
                     "additional information from public documentation.\n\n"
-                    "Your response will be automatically labeled as AI-generated.\n\n"
                     "If you are **not confident** in your answer (low relevance results, "
                     "ambiguous question, or the topic is outside your knowledge), use "
                     "`request_human_input` to escalate to the user with the question and "
@@ -419,7 +417,7 @@ BUILTIN_TEMPLATES: list[dict] = [
                     "Keep the answer concise and actionable. When referencing KB sources, "
                     "mention which document or page the answer came from."
                 ),
-                "ai_label": True,
+                "ai_label": False,
                 "notify_on_complete": False,
                 "show_in_digest": False,
                 "human_in_the_loop": True,
@@ -806,7 +804,7 @@ BUILTIN_TEMPLATES: list[dict] = [
                     "Use `store_memory` to remember the classification pattern for future "
                     "reference."
                 ),
-                "ai_label": True,
+                "ai_label": False,
                 "notify_on_complete": False,
                 "show_in_digest": False,
                 "human_in_the_loop": False,
@@ -852,7 +850,7 @@ BUILTIN_TEMPLATES: list[dict] = [
                     "other GitHub write tool — only leave a comment on the PR.\n\n"
                     "Store any new convention patterns in memory."
                 ),
-                "ai_label": True,
+                "ai_label": False,
                 "notify_on_complete": False,
                 "show_in_digest": False,
                 "human_in_the_loop": False,
@@ -926,7 +924,7 @@ BUILTIN_TEMPLATES: list[dict] = [
                     "- Suggested fix if possible\n\n"
                     "Be concise and technical. Engineers appreciate directness."
                 ),
-                "ai_label": True,
+                "ai_label": False,
                 "notify_on_complete": True,
                 "show_in_digest": True,
                 "human_in_the_loop": False,

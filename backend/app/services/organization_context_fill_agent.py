@@ -171,6 +171,8 @@ async def ensure_fill_agent(
                 trigger_config=new_trigger_config("schedule", config),
                 prompt=fill_prompt(provider, name, apply=True),
                 human_in_the_loop=False,
+                # Platform-created: no AI label prompt on what it writes.
+                ai_label=False,
                 enabled=True,
             )
             db.add(assignment)

@@ -285,7 +285,7 @@ RISK_BUDGET_DESK_AGENTS: list[dict[str, Any]] = [
 _COMMON = {
     "agent_slug": ORCHESTRATOR,
     **SEEDED_FLEET_OPT_IN,
-    "ai_label": True,
+    "ai_label": False,
     "notify_on_complete": False,
     "show_in_digest": True,
     "max_iterations": 150,
