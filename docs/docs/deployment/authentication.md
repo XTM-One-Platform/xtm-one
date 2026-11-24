@@ -294,6 +294,8 @@ SAML supports automatic group mapping from IdP group claims (enabled by default)
 
 Both settings live under the SAML section of `Settings` → `Security` → `Authentication`. See [Groups](../administration/users-and-groups.md#groups) for how groups control entity sharing.
 
+The mapping manages only the memberships it created: it never removes someone from a group they joined by hand, through SCIM, or through [Auto join](../administration/users-and-groups.md#auto-join), which adds every single sign-on user (OIDC or SAML) to the groups that have it on, at every sign-in.
+
 ## Session lifetime and idle timeout
 
 A sign-in - local, OIDC, SAML, or the XTM One Desktop sign-in through the browser - opens a web session. Two settings bound it, in `Settings` → `Security` → `Security options` (section **Authentication**), or with their environment variable, which then wins and locks the field:

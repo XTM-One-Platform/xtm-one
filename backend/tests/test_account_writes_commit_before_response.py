@@ -190,6 +190,7 @@ def _group(**overrides):
         "created_by": None,
         "quota_config": None,
         "kind": "auto",
+        "auto_join": False,
         "created_at": None,
         "updated_at": None,
     }

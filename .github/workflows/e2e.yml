@@ -488,6 +488,13 @@ jobs:
           E2E_SHARD_TIMINGS: ${{ runner.temp }}/shard-weights/e2e.json
         run: yarn test:e2e --project=${{ matrix.project }}
 
+      # Retries keep a run green when a test fails then passes; this lists those
+      # tests in the job summary and annotates their line, without failing the job.
+      - name: Report flaky tests
+        if: always()
+        working-directory: frontend
+        run: node scripts/e2e-flaky-report.mjs test-results/timings.json >> "$GITHUB_STEP_SUMMARY"
+
       # Where the disk stands at its fullest - the image, the stack's data,
       # node_modules, the browsers and the results - so "Remove unused SDKs"
       # and "Free the build cache" can be judged on numbers.

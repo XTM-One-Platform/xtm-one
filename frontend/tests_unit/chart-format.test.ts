@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+// @vitest-environment node
+import { describe, expect, it as test } from 'vitest';
 import {
   AXIS_COMPACT_FROM,
   MAX_LABELLED_VALUES,
@@ -35,7 +36,7 @@ import type { DeckChartBlock, DeckChartSeries } from '../src/types';
 // ticks, value labels, tooltips, the gauge dial), which colour a series takes
 // and what the legend names; the PPTX writer mirrors these rules when it
 // builds the editable chart. It is plain TypeScript with no DOM, so it is
-// exercised here directly, like `logo-position.spec.ts`. The rendered figure
+// exercised here directly, like `logo-position.test.ts`. The rendered figure
 // (the same strings in SVG glyphs, the palette as computed colours) is
 // asserted on a live deck in `presentation-charts.spec.ts`.
 // ---------------------------------------------------------------------------
@@ -58,7 +59,7 @@ const series = (name: string, tone?: DeckChartSeries['tone']): DeckChartSeries =
   ...(tone ? { tone } : {}),
 });
 
-test.describe('Chart value formatting', () => {
+describe('Chart value formatting', () => {
   test('should write a currency compact with the sign of its unit, glued for a symbol and spaced for a code', () => {
     const cases: ReadonlyArray<[number, string | undefined, string]> = [
       // The BOD deck's own numbers: the two the issue names.
@@ -157,7 +158,7 @@ test.describe('Chart value formatting', () => {
   });
 });
 
-test.describe('Chart reading rules', () => {
+describe('Chart reading rules', () => {
   test('should give the template palette to the untoned series in order and a semantic colour to a toned one', () => {
     const colors = seriesColors([series('Actual'), series('Plan', 'muted'), series('Forecast')]);
     expect(colors).toEqual(['var(--deck-chart-1)', 'var(--deck-muted)', 'var(--deck-chart-2)']);
@@ -279,7 +280,7 @@ test.describe('Chart reading rules', () => {
   });
 });
 
-test.describe('Two value axes', () => {
+describe('Two value axes', () => {
   /** New logos and ASP: a count on the left-hand axis, a price on the right-hand one. */
   const logos = block({
     kind: 'combo',
@@ -372,7 +373,7 @@ test.describe('Two value axes', () => {
   });
 });
 
-test.describe('Chart legend hidden series', () => {
+describe('Chart legend hidden series', () => {
   const ids = (...names: string[]) => legendIdentities(names);
   const hide = (...names: string[]) => new Set(ids(...names));
   /** The toggles a click leaves, read back as the positions they hide in `names`. */
