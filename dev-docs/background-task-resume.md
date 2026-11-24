@@ -407,21 +407,37 @@ again keeps the link: the lost-run trace (`tracing/background_run.py`,
 `build_lost_run_trace`) reads it from the task's `resumes` and carries the same
 `metadata.resumed_from`.
 
-## 7. An inbound A2A task cut by a platform stop fails with a reason
+## 7. An inbound A2A task cut by a platform stop resumes under the same task id (#1657)
 
 `a2a.tasks.execute_task_run` runs in the web process that received the task.
-Its `CancelledError` path wrote `cancelled` whatever cut it, so a deployment
-reported the task `canceled` to a partner that never asked. Now
-`platform_interruption(cancel_event)`: a cut while the process records a stop
-signal or a recycle (`worker_shutdown.cut_cause()`), with no cancel asked
-(`cancel_event` unset by the partner or a revoke), fails the task at once with
+It now checkpoints its completed tool rounds like an assignment run
+(`assignment_run_resume.checkpoint_for`, `on_checkpoint` on `run_agent_chat`).
+When its worker stops (`TurnWoundDown` at an iteration boundary, or a
+`CancelledError` while `worker_shutdown.cut_cause()` records a stop or a
+recycle with no cancel asked), `_hand_back` flushes the checkpoint and, under
+the task row then the run row, puts the run back to `pending` with the
+hand-back recorded (`background_checkpoint.handed_back`) and the task's lease
+refreshed. No terminal write: the partner polling (or resending the same
+message id, which `find_existing_task` answers with the same task) reads
+`submitted`/`working`, never `failed`.
+
+The A2A reaper loop of every live worker (`main._a2a_reaper_loop`) runs
+`resume_handed_back_tasks` first: a hand-back older than
+`HAND_BACK_SETTLE_SECONDS`, on a task with no cancel asked, is dispatched
+again (`_spawn_task_run`); a stopping worker resumes nothing. The executor's
+conditional claim (`pending` to `running`) keeps two dispatches from running
+it twice. The resumed run reads the checkpoint (`load_replay`), passes the
+same bounds as an assignment run (`resume_refused`: past them the task fails
+with their reason), records the resume as graceful (`_record_resume`, the
+hand-back cleared) with the claim, keeps its first `started_at`, and replays
+the checkpointed rounds into the prompt history.
+
+When the hand-back cannot be written (the run no longer `running`, or the
+write fails), the former behaviour stands: the task fails with
 `INTERRUPTED_ERROR_TEXT` ("External task interrupted by a platform restart
-(...) before it finished; send the task again"), a partner-visible prefix of
-`failure_detail`, so the task's `status.message` says why. A partner's cancel,
-or a cut of unknown cause, stays `canceled`; the reaper
-(`reap_stale_tasks`, a lease later) stays the fallback for a process killed
-before its `finally` ran. Not resumed: the partner owns the retry, and
-resending is what the reason asks.
+(...) before it finished; send the task again"). A partner's cancel, or a cut
+of unknown cause, stays `canceled`; the reaper (`reap_stale_tasks`, a lease
+later) stays the fallback for a process killed before its hand-back.
 
 ## 8. An assignment run cut by a rollout resumes the same way
 
