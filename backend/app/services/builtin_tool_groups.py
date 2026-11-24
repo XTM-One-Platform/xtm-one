@@ -291,6 +291,17 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         agent_keyed=True,
     ),
     BuiltinToolGroup(
+        # CTEM signal and case tools on any agent (#1748): the owner's CTEM rights
+        # (administrator, decide, view or own signals) decide the reach.
+        id="ctem",
+        name="CTEM",
+        tagline="Record, triage and manage CTEM signals and cases within the rights of the person you act for",
+        detail="Lets the agent record, list, dismiss, restore and re-check CTEM signals, and open, read and manage CTEM cases: owner, due date, notes, state, validation, tickets and remediation decisions. It acts for the person the turn or run acts for, with the rights of the CTEM pages: an administrator or a member of a group with the CTEM decide right reads and acts on every signal and case, a view right reads them and every change is refused, anyone else works on the signals they recorded and the cases they can see.",
+        category="security",
+        icon="ScanEye",
+        agent_keyed=True,
+    ),
+    BuiltinToolGroup(
         id="stix_extractor",
         # Off by default and never reached through Threat Intelligence: one call reads a
         # report through hundreds of model calls (up to 30 min), so an agent carries it
@@ -322,7 +333,7 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         id="organization_context",
         name="Organization Profile Editing",
         tagline="Administrators only: update the organization profile, or propose a change for review",
-        detail="Lets the agent change the organization profile (crown jewels, software, risk appetite and the other fields of Settings > Organization) for the administrator it acts for: each change is saved as a new version authored by that administrator, with the agent and the basis kept, so the history can roll it back. It can also propose a change for an administrator to review. Only an administrator can bind it, and the tools are offered only on a turn that acts for an administrator; every agent keeps reading the profile without it.",
+        detail="Lets the agent change the organization profile (crown jewels, software, AI systems, risk appetite and the other fields of Settings > Organization) for the administrator it acts for: each change is saved as a new version authored by that administrator, with the agent and the basis kept, so the history can roll it back. It can also propose a change for an administrator to review. Only an administrator can bind it, and the tools are offered only on a turn that acts for an administrator; every agent keeps reading the profile without it.",
         category="platform",
         icon="Building2",
         agent_keyed=True,
