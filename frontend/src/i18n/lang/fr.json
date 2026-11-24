@@ -20628,7 +20628,6 @@
   "Left for later: Members screen": "Laissé pour plus tard : écran Membres",
   "Complete on the Members screen": "Compléter dans l'écran Membres",
   "Run estimate": "Estimation des exécutions",
-  "Expected load": "Charge attendue",
   "I will do it later": "Je le ferai plus tard",
   "Autonomy": "Autonomie",
   "Run as and automations": "Exécuter en tant que et automatisations",
@@ -21426,12 +21425,12 @@
   "Resolving a case needs evidence: set it from the case page.": "Résoudre un cas demande une preuve : définissez-le depuis la page du cas.",
   "Accepting risk needs a reason and an expiry date: set it from the case page.": "Accepter le risque demande un motif et une date d'expiration : définissez-le depuis la page du cas.",
   "Remediating needs an owner: assign the case first.": "En remédiation demande un responsable : assignez d'abord le cas.",
-  "{count, plural, =0 {No scheduled run a day.} one {About # scheduled run a day.} other {About # scheduled runs a day.}}": "{count, plural, =0 {Aucune exécution planifiée par jour.} one {Environ # exécution planifiée par jour.} other {Environ # exécutions planifiées par jour.}}",
-  "{count, plural, one {About # scheduled run a month.} other {About # scheduled runs a month.}}": "{count, plural, one {Environ # exécution planifiée par mois.} other {Environ # exécutions planifiées par mois.}}",
-  "{count, plural, one {About # scheduled run a year.} other {About # scheduled runs a year.}}": "{count, plural, one {Environ # exécution planifiée par an.} other {Environ # exécutions planifiées par an.}}",
-  "{count, plural, one {# automation runs once per event, as often as its events arrive.} other {# automations run once per event, as often as their events arrive.}}": "{count, plural, one {# automatisation s’exécute une fois par événement, aussi souvent que ses événements arrivent.} other {# automatisations s’exécutent une fois par événement, aussi souvent que leurs événements arrivent.}}",
-  "No cost yet: these automations have not run in the last {days, plural, one {# day} other {# days}}.": "Pas encore de coût : ces automatisations ne se sont pas exécutées {days, plural, one {le dernier # jour} other {ces # derniers jours}}.",
-  "About {cost} a day for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "Environ {cost} par jour pour les exécutions planifiées, d’après le coût moyen de leurs exécutions {days, plural, one {du dernier # jour} other {des # derniers jours}}.",
-  "About {cost} a month for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "Environ {cost} par mois pour les exécutions planifiées, d’après le coût moyen de leurs exécutions {days, plural, one {du dernier # jour} other {des # derniers jours}}.",
-  "About {cost} a year for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "Environ {cost} par an pour les exécutions planifiées, d’après le coût moyen de leurs exécutions {days, plural, one {du dernier # jour} other {des # derniers jours}}."
+  "{count, plural, one {+# not in the inventory} other {+# not in the inventory}}": "{count, plural, one {+# hors de l'inventaire} other {+# hors de l'inventaire}}",
+  "This asset is in no asset group.": "Cet actif n'appartient à aucun groupe d'actifs.",
+  "Asset group not found": "Groupe d'actifs introuvable",
+  "This asset group does not exist any more: its source may have removed it, or it was deleted.": "Ce groupe d'actifs n'existe plus : sa source l'a peut-être retiré, ou il a été supprimé.",
+  "Members last synced": "Membres synchronisés le",
+  "About this asset group": "À propos de ce groupe d'actifs",
+  "{count, plural, one {# more member its source names is not in the inventory yet} other {# more members its source names are not in the inventory yet}}": "{count, plural, one {# autre membre nommé par sa source n'est pas encore dans l'inventaire} other {# autres membres nommés par sa source ne sont pas encore dans l'inventaire}}",
+  "No asset of the inventory is in this group yet.": "Aucun actif de l'inventaire n'est encore dans ce groupe."
 }
