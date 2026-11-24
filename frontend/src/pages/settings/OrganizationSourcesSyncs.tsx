@@ -90,6 +90,7 @@ const SOURCE_SCHEDULE_LABELS = {
 const SECTION_COUNT_LABELS = {
   crown_jewels: "{count, plural, one {# primary asset} other {# primary assets}}",
   tech_stack: "{count, plural, one {# software entry} other {# software entries}}",
+  ai_systems: "{count, plural, one {# AI system} other {# AI systems}}",
   assets_exposure: "{count, plural, one {# asset} other {# assets}}",
   asset_groups: "{count, plural, one {# asset group} other {# asset groups}}",
 } as const satisfies Record<SourcedSection, string>;
@@ -128,7 +129,8 @@ const ROW_STATE_LABELS = {
 const SECTION_FIELD: Partial<Record<OrganizationSync["section"], SourcedSection>> = {
   assets: "assets_exposure",
   asset_groups: "asset_groups",
-  tech_stack: "tech_stack",
+  ai_systems: "ai_systems",
+  software: "tech_stack",
   crown_jewels: "crown_jewels",
 };
 
@@ -149,7 +151,7 @@ const canPurgeSource = (source: OrganizationSource) => source.kind === "agent" |
 interface Props {
   /**
    * The sections listed: "profile" (primary assets) in Settings, "inventory" (assets, asset groups,
-   * software inventory) on the CTEM Inventory, "" every section. A Sync all schedule saved before #1548 shows in each.
+   * software inventory, AI systems) on the CTEM Inventory, "" every section. A Sync all schedule saved before #1548 shows in each.
    */
   scope?: OrganizationSyncScope;
   /** Opens the step-by-step import (platform, section, filters with a live preview, schedule, review). */

@@ -101,7 +101,7 @@ button, the browser extension or a playbook; stays outside fleets),
 | `opencti-dashboard-creator`, `opencti-dashboard-widget-creator` | Chat, handover | ONE-OFF | Widget creator consulted by F4 for the board dashboard |
 | `opencti-detection-rule-converter` | Handover from threat hunt | FOLD into F1 and F2 as consulted member (detections drafted) | Shared member: a fleet may connect it rather than own it |
 | `opencti-threat-hunt-creator` | Chat, handover | FOLD into F1 (hunt package for a relevant threat) | None |
-| `openaev-scenario-creator` | Chat, handover | FOLD into F1 and F3 (scenario built) | Read the organization's assets and AI targets from the context contract before choosing targets |
+| `openaev-scenario-creator` | Chat, handover | FOLD into F1 and F3 (scenario built) | Read the organization's assets and AI systems from the context contract before choosing targets |
 | `openaev-payload-creator` | `aev.attack_path_additional_agent`, handover | FOLD into F1, F2, F3 as consulted member | None |
 | `openaev-scenario-publisher` | Handover | ONE-OFF (catalogue PR) | None |
 | `openaev-attack-path-orchestrator` | `aev.attack_path_orchestrator` | ONE-OFF (autonomous pentest) | None in this program |
@@ -171,7 +171,12 @@ Common rules:
   item of the case, no armed `ctem-loop-reminder:` timer and no case event for
   `CTEM_CASE_STALL_HOURS` (default 6), once per stall window, and the owning
   fleet re-runs its loop; every loop run ends on an ask to a named person with a
-  deadline, an armed reminder, or a terminal state. A use-case
+  deadline, an armed reminder, or a terminal state. A deferred or not-validated
+  answer records when to ask again and arms `ctem-loop-reminder:<case id>`. A
+  case opened from a signal starts with an owner (`services/ctem_case_owner.py`):
+  the owner of an affected asset's records, else of one of their asset groups,
+  else `CTEM_CASE_DEFAULT_OWNER`, matched to an active account by email only;
+  an `owner` case event records how it was found. A use-case
   fleet takes the cases of its own paths only while its case automation is
   enabled (Vulnerability management: `new_vulnerability`). The owner is
   computed when the event is published (`services/ctem_case_routing.py`
@@ -284,7 +289,7 @@ Assignments (on the orchestrator):
 | New relevant threat | `integration_event` OpenCTI create on Intrusion-Set, Campaign, Report (S2), listen-only (#1580) | Provisions the OpenCTI trigger; the webhook route records the `relevant_threat` signal, no run |
 | Threat activity flagged in a PIR | `integration_event` OpenCTI PIR playbook, listen-only (#1580) | Provisions the PIR playbook; the delivery records the `relevant_threat` signal, no run |
 | Threat signal recorded | `platform_event` `ctem_signal.recorded` and `ctem_signal.triaged`, filter `trigger_path` `relevant_threat`, `source_provider` `opencti`, `pir_floor_met` true (#1678: the listener stamps it when a PIR score at delivery reaches the policy's `pir_min_score_threat`; below it the signal waits for the weekly sweep), verdict `to_validate` or none; `max_concurrent_runs` 5, ordered by `signal_id`; takes the switch of New relevant threat on upgrade | Triage of a signal the case loop does not own yet; a confirmed signal opens its case through the case loop |
-| Weekly threat sweep | `schedule` `0 7 * * 1` | Catches what events missed |
+| Weekly threat sweep | `schedule` `30 6 * * 1` (#1832) | Catches what events missed: records a signal per relevant entity created or updated in 7 days |
 | Re-test due | `work_item` prefix `ctem:f1:retest:` | Re-runs the validated scenario after a fix |
 
 Loop: relevance (score against sector, regions, tech stack, PIRs; one rule,
@@ -325,7 +330,7 @@ AI red team injectors, template assignment `cti-adversary-analyst`
 `04-mitre-atlas-mapping`. Orchestrator `ctem-ai-security-orchestrator`;
 members `ctem-ai-threat-analyst` (ATLAS mapping, consults
 `cti-ttp-harvester-filigran-ai`), `ctem-threat-relevance-analyst` (relevance
-to the organization's AI targets), `openaev-scenario-creator` (AI tests:
+to the organization's AI systems), `openaev-scenario-creator` (AI tests:
 prompt injection, jailbreak, excessive agency, tool misuse, MCP tool
 poisoning), `ctem-risk-quantifier` (AI risk scenario in OpenCRQ),
 `ctem-remediation-coordinator`; connected `ctem-assistant`,
@@ -348,7 +353,7 @@ assignments and the `ctem-ai-security` entry of `BUILTIN_FLEETS`
 (`builtin_agents.py` and `builtin_fleets.py` extend their lists with them):
 
 - `ctem-ai-security-orchestrator` (Orchestrator, exposed): JSON case output
-  (matched AI targets, proposed tests, status, missing context), tools
+  (matched AI systems, proposed tests, status, missing context), tools
   `work_items` and `shared_state`, bindings `opencti` and `openaev`, delegates
   to the analyst and the four agents shared with F1. Each proposed test is a
   work item `ctem:f3:approval:` + system + test with `needs_human` true; the
@@ -390,7 +395,7 @@ Orchestrator `ctem-posture-orchestrator`; members the five stage analysts
 |---|---|---|
 | Weekly assessments | existing weekly stage assignments, kept | Unchanged |
 | Event refresh | `platform_event` `work_item.completed` on keys `ctem:f1:`, `ctem:f2:`, `ctem:f3:` | Refreshes the stages the closed case touched, debounced to one refresh per stage per hour |
-| Monthly board report | `schedule` `0 9 1 * *` on the orchestrator, an hour after the monthly briefing | Board-ready report: stage scores and trend, F1-F3 outcomes, loss avoided, ROI |
+| Monthly board report | `schedule` `0 11 1 * *` on the orchestrator, after the monthly briefing and the OpenCRQ Board pack (#1832) | Board-ready report: stage scores and trend, the CTEM cases of the month (`ctem_read`), loss avoided, ROI |
 
 The existing assignments keep their names (a renamed seed is swept and born
 again). F4 adds one orchestrator and two assignments; it changes no stage
@@ -574,7 +579,7 @@ from it, provenance `restored from v<n>` (administrators). The free-text
 | regions of operation | ISO country list | F1, F3 relevance |
 | crown jewels | assets with business service and owner | F1, F2 prioritization, OpenCRQ |
 | tech stack | CPE / product list | F2 asset match, stage prioritization |
-| AI targets (assets of category `ai_target`) | name, subcategory, provider, endpoint, model, owner, internet facing, OpenAEV id | F3 |
+| AI systems inventory | name, kind (assistant, agent, model API), owner, exposure, OpenAEV asset id | F3 |
 | PIRs | OpenCTI PIR ids (`manage_opencti_pir` exists today) | F1, F3 relevance |
 | risk appetite | loss threshold per year, approval threshold | F1, F2, F3 approvals and ranking |
 | loaded hourly rate, currency | number | ROI (section 5) |
@@ -754,7 +759,7 @@ answers:
   are answered: ISO regions and currency, the size band, tech stack entries
   with vendor, product and a CPE only when one is matched, crown jewels
   linked to an OpenCRQ asset when the name matches exactly one (the rule of
-  the OpenCRQ sync above), AI targets with kind and exposure, PIRs matched
+  the OpenCRQ sync above), AI systems with kind and exposure, PIRs matched
   to existing OpenCTI PIR ids. A PIR the model suggests creating is answered
   under `suggested_pirs` and never created.
 - Amounts (risk appetite thresholds, loaded hourly rate) carry their
@@ -1368,7 +1373,7 @@ in an expected loss for the primary organization and proposed actions.
   direction `supplies` or `consumes`, the crown jewels it supports, the
   OpenCRQ supporting asset id when linked), and `contacts_owner` (the
   internal owner of the relationship, a user, never the third party's
-  contact). Crown jewels, AI targets, risk appetite, rate and ticketing
+  contact). Crown jewels, AI systems, risk appetite, rate and ticketing
   stay primary-only: the loss is always the primary's.
 - API: `GET /api/v1/organizations` (list), `POST` / `PATCH` / archive for
   tracked ones (administrators), and the per-organization profile at
@@ -2169,7 +2174,7 @@ What waits and what runs alone at Low, per seeded fleet
 
 Reclassified with #10005: the three OpenAEV launches (`high` to
 `destructive`) because an executed inject runs payloads on the
-organization's endpoints or AI targets, which the fleet cannot tell from
+organization's endpoints or AI systems, which the fleet cannot tell from
 production, and cannot be undone; the supplier action (`high` to
 `destructive`) because contacting a third party or changing a contract
 clause leaves the platform irreversibly. Agents lower a level freely and
@@ -2273,9 +2278,11 @@ team can act on. Module `app/agents/opencti_pir_desk.py`.
 | `opencti-assistant`, `opencti-entity-insights`, `opencti-dashboard-creator` (connected) | Chat, context, dashboards | exempt |
 
 Automations (all opt-in, off): `PIR match created` (provisioned OpenCTI
-trigger: create of Report, Intrusion-Set, Campaign or Vulnerability with
+trigger: create of Report or Vulnerability with
 `organization_context: ["pir_ids"]`, so only entities flagged in one of the
-organization's PIRs reach it), `Weekly PIR answer` (Mondays 07:00),
+organization's PIRs reach it; threat activity, Intrusion-Set and Campaign, is
+the CTEM loop's `Threat activity flagged in a PIR`, one owner per entity type,
+and each STIX id is triaged once, #1832), `Weekly PIR answer` (Mondays 07:00),
 `Half-year threat landscape` (1 January and 1 July), `Stale indicator
 clean-up` (monthly). One gate: `indicator.revoke`, impact destructive, so it
 waits at Low: the orchestrator files one approval work item per indicator
@@ -2346,8 +2353,8 @@ the source; OpenCTI is never required.
 Automations (all opt-in, off): `Scenario re-priced`, `Finding re-scored`
 and `Control validation ingested` (the OpenCRQ job-run events of
 `services/opencrq_job_events.py`, polled every 60 s, no provisioning),
-`Weekly investment review` (Mondays 07:00), `Monthly Board pack` (the 1st
-at 08:00). One gate: `opencrq.register.write` (create or update a scenario,
+`Weekly investment review` (Mondays 07:30), `Monthly Board pack` (the 1st
+at 10:00; staggered off the PIR answer and after the briefing, #1832). One gate: `opencrq.register.write` (create or update a scenario,
 its loss estimates, the risk tolerance), impact high, so it runs logged at
 Low and waits at the higher levels; the personas propose such a change as a
 `needs_human` work item and never make it.
