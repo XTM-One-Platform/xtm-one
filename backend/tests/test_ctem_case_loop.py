@@ -556,7 +556,7 @@ async def test_a_failed_validation_on_an_open_case_only_records_it():
 
 
 @pytest.mark.asyncio
-async def test_a_validation_records_safe_mode_and_run_order_when_given() -> None:
+async def test_a_validation_records_the_run_order_when_given() -> None:
     case = _case()
     await loop.record_validation(
         cast("AsyncSession", FakeSession()),
@@ -565,17 +565,16 @@ async def test_a_validation_records_safe_mode_and_run_order_when_given() -> None
         kind="validation",
         ref="sc-1",
         result="pending",
-        safe_mode=True,
         run_order=[" DMZ web ", "", "Core"] + [f"g{i}" for i in range(30)],
         now=NOW,
     )
     entry = case.validations[-1]
-    assert entry["safe_mode"] is True
+    assert "safe_mode" not in entry
     assert entry["run_order"][:2] == ["DMZ web", "Core"] and len(entry["run_order"]) == loop.RUN_ORDER_MAX
 
 
 @pytest.mark.asyncio
-async def test_a_validation_without_safe_mode_keeps_the_entry_shape() -> None:
+async def test_a_validation_without_run_order_keeps_the_entry_shape() -> None:
     case = _case()
     await loop.record_validation(
         cast("AsyncSession", FakeSession()), case, provider="openaev", kind="check", ref="r", result="pending", now=NOW

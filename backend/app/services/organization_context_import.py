@@ -118,9 +118,9 @@ SOURCE_FILTERS: dict[tuple[str, str], tuple[str, ...]] = {
     ("asset_groups", "servicenow"): ("search",),
     ("ai_systems", "openaev"): ("tags", "search"),
     ("tech_stack", "openaev"): ("type",),
-    # The sync's filter link_supporting_assets (#1591, on unless "false") is read by the link import; its
-    # switch in the import dialog comes with the primary-assets UI slice.
-    ("crown_jewels", "opencrq"): ("min_criticality", "tenant_id"),
+    # link_supporting_assets (#1591, on unless "false") is read by the link import, not by the preview;
+    # listed so the add and edit dialogs of the Inventory source show its switch (#1754).
+    ("crown_jewels", "opencrq"): ("min_criticality", "tenant_id", "link_supporting_assets"),
     ("pirs", "opencti"): ("pir_ids",),
 }
 #: The OpenCTI System attributes of OpenCTI-Platform/opencti#19943 (the OpenAEV asset taxonomy on a System):

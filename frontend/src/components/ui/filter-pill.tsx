@@ -126,6 +126,20 @@ export function filterPanelAlign(
   return overflowsRight && fitsFromRight ? "right" : "left";
 }
 
+/** The smallest height a fitted panel keeps, in px, so a pill near the bottom still opens a usable panel. */
+const MIN_FITTED_PANEL_HEIGHT = 160;
+
+/**
+ * The tallest a fitted panel may be: the space left between its top edge and
+ * the viewport's bottom edge, less the viewport margin. The panel scrolls inside
+ * itself past that height, so an open Filters panel never makes the page scroll
+ * (design standards s.3, one scroller; UX r1 B1 on #1822: the panel ran to
+ * y 1602 in a 1080 viewport and hid its last facet below the fold).
+ */
+export function filterPanelMaxHeight(panelTop: number, viewportHeight: number): number {
+  return Math.max(MIN_FITTED_PANEL_HEIGHT, Math.floor(viewportHeight - panelTop - VIEWPORT_MARGIN));
+}
+
 /**
  * The floating panel under a pill; the caller sets its padding and content.
  *
@@ -135,16 +149,29 @@ export function filterPanelAlign(
  * resize: measured once at open, a right-aligned panel kept its edge after the
  * pill moved left and opened 26 px past the content area (UX r1 B2 on #10402).
  */
-export function FilterPillPanel({ className, children, ...rest }: HTMLAttributes<HTMLDivElement>) {
+export function FilterPillPanel({
+  className,
+  children,
+  style,
+  fitViewport = false,
+  ...rest
+}: HTMLAttributes<HTMLDivElement> & {
+  /** Cap the panel's height at the space left below it, with its own scroller. */
+  fitViewport?: boolean;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [align, setAlign] = useState<"left" | "right">("left");
+  const [maxHeight, setMaxHeight] = useState<number | undefined>(undefined);
 
   const measure = useCallback(() => {
     const panel = ref.current;
     const anchor = panel ? (panel.offsetParent ?? panel.parentElement) : null;
     if (!panel || !anchor) return;
     setAlign(filterPanelAlign(anchor.getBoundingClientRect(), panel.offsetWidth, document.documentElement.clientWidth));
-  }, []);
+    if (fitViewport) {
+      setMaxHeight(filterPanelMaxHeight(panel.getBoundingClientRect().top, document.documentElement.clientHeight));
+    }
+  }, [fitViewport]);
 
   // After every render: the toolbar may have moved the pill (same value, no re-render).
   useLayoutEffect(measure);
@@ -170,8 +197,10 @@ export function FilterPillPanel({ className, children, ...rest }: HTMLAttributes
       className={cn(
         "absolute top-full z-50 mt-1.5 w-72 rounded-sm border border-elevation-subtle layer-2 bg-elevation-default shadow-overlay",
         align === "right" ? "right-0" : "left-0",
+        fitViewport && "overflow-y-auto overscroll-contain",
         className,
       )}
+      style={fitViewport && maxHeight !== undefined ? { ...style, maxHeight } : style}
       {...rest}
     >
       {children}
@@ -211,7 +240,13 @@ export function FiltersPill({ label, count, children, testId }: FiltersPillProps
         onClick={() => setOpen((v) => !v)}
       />
       {open && (
-        <FilterPillPanel id={panelId} role="group" aria-label={label} className="w-max min-w-72 space-y-3 p-3">
+        <FilterPillPanel
+          id={panelId}
+          role="group"
+          aria-label={label}
+          fitViewport
+          className="w-max min-w-72 space-y-3 p-3"
+        >
           {children}
         </FilterPillPanel>
       )}

@@ -42,7 +42,6 @@ CTEM_CASE_TOOL_NAMES: tuple[str, ...] = (
     "create_ctem_case",
     "update_ctem_case",
     "record_ctem_case_validation",
-    "assess_ctem_validation_inject",
     "record_ctem_case_ticket",
     "decide_ctem_case_remediation",
     "sync_ctem_case_ticket",
@@ -381,29 +380,21 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         kind: str = "retest",
         mitigation_only: bool = False,
         note: str = "",
-        safe_mode: bool | None = None,
         run_order: list[str] | None = None,
         conclusive: bool | None = None,
-        inject_class: str = "",
         not_tested: list[str] | None = None,
         evidence_type: str = "",
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_case_loop as case_loop
         from app.services import ctem_cases as rules
-        from app.services.ctem_inject_effects import checked_safe_mode
 
-        klass = (inject_class or "").strip() or None
         untested = [str(i).strip() for i in (not_tested or []) if str(i).strip()]
         if untested:
             # #1458: an id with no template was not tested; no negative is ever recorded for it.
             note = ("not tested (no template): " + ", ".join(untested) + ". " + (note or "")).strip()
             if result in rules.PASSING_RESULTS:
                 conclusive = False
-        safe_mode = safe_mode if isinstance(safe_mode, bool) else None
-        warning = None
-        if safe_mode is True:
-            safe_mode, warning = checked_safe_mode(safe_mode, klass)
         wanted = _uuid(case_id)
         if wanted is None:
             return "case_id must be the id list_ctem_cases answers."
@@ -428,10 +419,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     result=result,
                     mitigation_only=bool(mitigation_only),
                     note=note or None,
-                    safe_mode=safe_mode,
                     run_order=[str(n) for n in run_order] if isinstance(run_order, list) else None,
                     conclusive=conclusive if isinstance(conclusive, bool) else None,
-                    inject_class=klass,
                     evidence_type=(evidence_type or "").strip() or None,
                     actor=agent_id,
                     events=pending,
@@ -455,82 +444,12 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                             "evidence (a version inventory showing every in-scope endpoint at or above the fixed "
                             "build, evidence_type remediation)"
                         )
-                if warning:
-                    answer["warning"] = warning
                 return _dump(answer)
         except rules.CaseRuleError as exc:
             return f"Refused: {exc}. Nothing was changed."
         except Exception:
             logger.warning("CTEM case validation failed", exc_info=True)
             return "Error: the validation could not be recorded right now. Say so; nothing was changed."
-
-    async def _assess(
-        subject: str = "",
-        injector: str = "",
-        template: str = "",
-        contract_read_only: bool | None = None,
-        target_is_lab: bool = False,
-        passive_option: str = "",
-        templates: list[str] | None = None,
-        requested_ids: list[str] | None = None,
-        authored_payload: bool = False,
-        command: str = "",
-        target_count: int | None = None,
-        inventory_count: int | None = None,
-        inventory_label: str = "",
-        remediation_kind: str = "",
-        passive_reads_version: bool = False,
-        version_check: str = "",
-        draft_text: str = "",
-    ) -> str:
-        from app.services.ctem_inject_effects import (
-            classify_inject,
-            classify_templates,
-            mobilize_done_criterion,
-            template_coverage,
-            validation_gate_ask,
-            wording_problems,
-        )
-
-        texts = [str(t) for t in (templates or []) if str(t).strip()] + ([template] if template.strip() else [])
-        flag = contract_read_only if isinstance(contract_read_only, bool) else None
-        authored = bool(authored_payload) or bool((command or "").strip())
-        effects = (
-            classify_templates(texts)
-            if texts and not authored
-            else classify_inject(
-                injector=injector, template=None, contract_read_only=flag, authored_payload=authored, command=command
-            )
-        )
-        count = target_count if isinstance(target_count, int) and not isinstance(target_count, bool) else None
-        cited = inventory_count if isinstance(inventory_count, int) and not isinstance(inventory_count, bool) else None
-        wanted = [str(i) for i in (requested_ids or []) if str(i).strip()]
-        coverage = template_coverage(texts, wanted) if (texts or wanted) else None
-        ask = validation_gate_ask(
-            effects,
-            subject=(subject or "proposed").strip()[:200],
-            target_is_lab=bool(target_is_lab),
-            passive_option=passive_option or "",
-            coverage=coverage,
-            target_count=count,
-            inventory_count=cited,
-            inventory_label=inventory_label or "",
-            remediation_kind=remediation_kind or "",
-            passive_reads_version=bool(passive_reads_version),
-        )
-        body: dict[str, Any] = {
-            "effects": effects.to_dict(),
-            "gate_ask": ask,
-            "mobilize": mobilize_done_criterion(
-                effects, remediation_kind=remediation_kind or "", target_count=count, version_check=version_check
-            ),
-        }
-        if coverage is not None:
-            body["coverage"] = coverage.to_dict()
-        problems = wording_problems(effects.classification, draft_text)
-        if problems:
-            body["draft_refused"] = problems
-        return _dump(body)
 
     async def _ticket(case_id: str, integration: str = "", key: str = "", url: str = "", status: str = "open") -> str:
         from app.core.database import async_session
@@ -851,7 +770,6 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
     executor.register("create_ctem_case", _create)
     executor.register("update_ctem_case", _update)
     executor.register("record_ctem_case_validation", _validation)
-    executor.register("assess_ctem_validation_inject", _assess)
     executor.register("record_ctem_case_ticket", _ticket)
     executor.register("decide_ctem_case_remediation", _remediation)
     executor.register("sync_ctem_case_ticket", _sync_ticket)
@@ -1013,10 +931,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             name="record_ctem_case_validation",
             description=(
                 "Write a validation or re-test result on a CTEM case: the validation module's simulation, "
-                "scenario or test id and its result. A conclusive passed or not_exposed resolves the case "
-                "(mitigation_only: mitigated, watching, the re-test stays on); a pass of an intrusive or unknown "
-                "inject (inject_class from assess_ctem_validation_inject) is inconclusive unless conclusive is true "
-                "(the fixed version proven): the case stays open. failed reopens a resolved case; pending only records."
+                "scenario or test id and its result. A passed or not_exposed resolves the case "
+                "(mitigation_only: mitigated, watching, the re-test stays on) unless you set conclusive false "
+                "(the check does not prove the exposure gone): the case stays open. failed reopens a resolved case; "
+                "pending only records."
             ),
             input_schema={
                 "type": "object",
@@ -1031,19 +949,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "kind": {"type": "string", "description": "validation or retest (default retest)."},
                     "mitigation_only": {"type": "boolean"},
                     "note": {"type": "string"},
-                    "safe_mode": {
-                        "type": "boolean",
-                        "description": "True only when every inject that ran was classified read_only; else recorded false.",
-                    },
-                    "inject_class": {
-                        "type": "string",
-                        "enum": ["read_only", "intrusive", "unknown"],
-                        "description": "The classification assess_ctem_validation_inject answered for the inject that ran.",
-                    },
                     "not_tested": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Requested ids assess_ctem_validation_inject found no template for.",
+                        "description": "Requested ids with no template: not tested, never recorded as a negative.",
                     },
                     "evidence_type": {
                         "type": "string",
@@ -1064,48 +973,6 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     },
                 },
                 "required": ["case_id", "provider", "ref", "result"],
-            },
-            source=_SOURCE,
-        ),
-        ToolDefinition(
-            name="assess_ctem_validation_inject",
-            description=(
-                "Read what a proposed validation inject does to its target before the gate "
-                "ctem.validation.non_readonly: read_only, intrusive or unknown, the requests that change state, "
-                "the cleanup, whether it needs credentials, what a no-match proves, the gate ask (title, safe "
-                "mode, targets, evidence per option) and the mobilize done criterion built from it. Write the "
-                "ask from this answer only."
-            ),
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "subject": {"type": "string", "description": "What it tests, e.g. the CVE id."},
-                    "injector": {"type": "string", "description": "The injector, e.g. nuclei."},
-                    "template": {"type": "string", "description": "The Nuclei template's YAML, whole."},
-                    "templates": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Every selected template.",
-                    },
-                    "requested_ids": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "The CVE or template ids asked for; one with no template is not tested.",
-                    },
-                    "contract_read_only": {"type": "boolean", "description": "The contract's own flag, if any."},
-                    "target_is_lab": {"type": "boolean", "description": "True for a lab asset only."},
-                    "passive_option": {"type": "string", "description": "A read-only check to offer instead."},
-                    "passive_reads_version": {"type": "boolean", "description": "The passive check reads versions."},
-                    "authored_payload": {"type": "boolean", "description": "A payload written for this run."},
-                    "command": {"type": "string", "description": "The authored payload's exact command text."},
-                    "target_count": {"type": "integer", "description": "Targets the inject runs on."},
-                    "inventory_count": {"type": "integer", "description": "Targets the context cites."},
-                    "inventory_label": {"type": "string", "description": "What it counts, e.g. workstations."},
-                    "remediation_kind": {"type": "string", "description": "The case's remediation_kind."},
-                    "version_check": {"type": "string", "description": "A non-intrusive re-test, e.g. a version read."},
-                    "draft_text": {"type": "string", "description": "Your drafted gate title and text, checked."},
-                },
-                "required": ["subject"],
             },
             source=_SOURCE,
         ),
