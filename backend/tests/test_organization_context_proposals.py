@@ -80,7 +80,7 @@ def test_a_tracked_organization_has_its_own_contract():
     kept = proposals.validate_field_changes(TRACKED, {}, [{"field": "sector", "value": "Cloud"}])
     assert kept[0]["value"] == "Cloud"
     with pytest.raises(proposals.ProposalError, match="not a field"):
-        proposals.validate_field_changes(TRACKED, {}, [{"field": "tech_stack", "value": []}])
+        proposals.validate_field_changes(TRACKED, {}, [{"field": "software", "value": []}])
 
 
 def test_new_tracked_organizations_are_checked():

@@ -51,7 +51,7 @@ async function draftFromPlatforms() {
 /** The cards CTEM > Inventory mounts in place of the three tabs that left Settings (#1178, #1690). */
 const INVENTORY_CARDS = {
   business: ["crown_jewels", "shipped_products", "tracked_organizations"],
-  technology: ["tech_stack"],
+  technology: ["software"],
   exposure: ["prioritization_policy", "outside_lens", "evidence_health"],
 } as const;
 /**
@@ -86,7 +86,7 @@ const CONTEXT: OrganizationContextResponse = {
     regions: ["FR"],
     size: "",
     crown_jewels: [{ name: "Payments", business_service: "Cards", owner: "CISO", criticality: "critical", opencrq_asset_id: "" }],
-    tech_stack: [],
+    software: [],
     pir_ids: [],
     risk_appetite: { annual_loss_threshold: null, approval_threshold: null },
     loaded_hourly_rate: null,
@@ -251,7 +251,7 @@ describe("OrganizationSection panels (#12329, #1690)", () => {
   });
 
   it("reads a former Business, Technology or Exposure tab path as an unknown tab, with no redirect (#797)", async () => {
-    for (const path of ["/settings/organization/profile/business", "/settings/organization/profile/technology", "/settings/organization/profile/exposure?card=tech_stack"]) {
+    for (const path of ["/settings/organization/profile/business", "/settings/organization/profile/technology", "/settings/organization/profile/exposure?card=software"]) {
       const view = renderWithProviders(
         <MemoryRouter initialEntries={[path]}>
           <OrganizationSection />
@@ -377,7 +377,7 @@ describe("OrganizationSection", () => {
   it("reads the row tables as text and edits them as fields; an empty value reads Not set, never a placeholder (UX r1 B1, B2 on #10804)", async () => {
     const base = get.getMockImplementation()!;
     get.mockImplementation(async (path: string) =>
-      path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: [{ product: "CrowdStrike Falcon", vendor: "CrowdStrike", cpe: "" }] } } : base(path),
+      path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, software: [{ product: "CrowdStrike Falcon", vendor: "CrowdStrike", cpe: "" }] } } : base(path),
     );
     renderPage("business");
     const row = await screen.findByTestId("settings.organization.primary-asset-row");
@@ -397,7 +397,7 @@ describe("OrganizationSection", () => {
   it("reads the software rows as text on CTEM > Inventory and edits a row as fields (#1178)", async () => {
     const base = get.getMockImplementation()!;
     get.mockImplementation(async (path: string) =>
-      path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: [{ product: "CrowdStrike Falcon", vendor: "CrowdStrike", cpe: "" }] } } : base(path),
+      path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, software: [{ product: "CrowdStrike Falcon", vendor: "CrowdStrike", cpe: "" }] } } : base(path),
     );
     renderPage("technology");
     const tech = (await screen.findByText("CrowdStrike Falcon")).closest("tr")!;
@@ -438,11 +438,11 @@ describe("OrganizationSection", () => {
   it("edits one list card alone, counts its changes, undoes a removal and patches that list alone (#12256, #1752)", async () => {
     const base = get.getMockImplementation()!;
     const tech = Array.from({ length: 150 }, (_, i) => ({ product: `Product ${String(i).padStart(3, "0")}`, vendor: i === 7 ? "" : "Vendor", cpe: "" }));
-    get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: tech } } : base(path)));
+    get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, software: tech } } : base(path)));
     patch.mockResolvedValue({ ...CONTEXT, version: 4 });
     renderPage("technology");
     // Read mode names the row that needs attention on the card header.
-    expect((await screen.findByTestId("settings.organization.attention-tech_stack")).textContent).toBe("1 needs attention");
+    expect((await screen.findByTestId("settings.organization.attention-software")).textContent).toBe("1 needs attention");
     fireEvent.click(screen.getByRole("button", { name: /Edit Software/ }));
     const bar = await screen.findByTestId("settings.organization.list-save-bar");
     // 25 rows a page, never the 150.
@@ -465,13 +465,13 @@ describe("OrganizationSection", () => {
     fireEvent.click(save);
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
     expect(put).not.toHaveBeenCalled();
-    const [path, body] = patch.mock.calls[0] as [string, { fields: Record<string, unknown> & { tech_stack: { product: string }[] }; based_on_version: number }];
+    const [path, body] = patch.mock.calls[0] as [string, { fields: Record<string, unknown> & { software: { product: string }[] }; based_on_version: number }];
     expect(path).toBe("/organization-context");
     // The network check of #1752: the card's own list alone travels, never another field or an asset row.
-    expect(Object.keys(body.fields)).toEqual(["tech_stack"]);
+    expect(Object.keys(body.fields)).toEqual(["software"]);
     expect(body.based_on_version).toBe(CONTEXT.version);
-    expect(body.fields.tech_stack).toHaveLength(151);
-    expect(body.fields.tech_stack[150].product).toBe("Jira");
+    expect(body.fields.software).toHaveLength(151);
+    expect(body.fields.software[150].product).toBe("Jira");
   });
 
   it("draws no asset or group table on the Exposure tab: the rows are on their row APIs, never on the profile (#1752 slice 3b)", async () => {
@@ -508,14 +508,14 @@ describe("OrganizationSection", () => {
   it("pastes a list into a card in edit, skips the rows already there, sets a vendor on the selected rows and saves (#12256 slice 2)", async () => {
     const base = get.getMockImplementation()!;
     const tech = [{ product: "Jira", vendor: "Atlassian", cpe: "" }, { product: "Slack", vendor: "", cpe: "" }];
-    get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: tech } } : base(path)));
+    get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, software: tech } } : base(path)));
     patch.mockResolvedValue({ ...CONTEXT, version: 4 });
     renderPage("technology");
     // Paste a list waits for the card's Edit.
-    expect(screen.queryByTestId("settings.organization.paste-tech_stack")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.paste-software")).toBeNull();
     fireEvent.click(await screen.findByRole("button", { name: /Edit Software/ }));
     const bar = await screen.findByTestId("settings.organization.list-save-bar");
-    fireEvent.click(screen.getByTestId("settings.organization.paste-tech_stack"));
+    fireEvent.click(screen.getByTestId("settings.organization.paste-software"));
     const dialog = await screen.findByTestId("settings.organization.paste-dialog");
     fireEvent.change(within(dialog).getByTestId("settings.organization.paste-text"), { target: { value: "jira, atlassian\nNotion; Notion Labs\n, nobody" } });
     const preview = within(dialog).getByTestId("settings.organization.paste-preview");
@@ -539,8 +539,8 @@ describe("OrganizationSection", () => {
     expect(bar.textContent).toContain("1 added, 1 edited");
     fireEvent.click(within(bar).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
-    const [, body] = patch.mock.calls[0] as [string, { fields: { tech_stack: { product: string; vendor: string }[] } }];
-    expect(body.fields.tech_stack).toEqual([
+    const [, body] = patch.mock.calls[0] as [string, { fields: { software: { product: string; vendor: string }[] } }];
+    expect(body.fields.software).toEqual([
       { product: "Jira", vendor: "Atlassian", cpe: "" },
       { product: "Slack", vendor: "Acme", cpe: "" },
       { product: "Notion", vendor: "Acme", cpe: "" },
@@ -550,22 +550,22 @@ describe("OrganizationSection", () => {
   it("reads and pastes the version the organization runs on a software row, and saves it only when set (CTEM-11, #928)", async () => {
     const base = get.getMockImplementation()!;
     const tech = [{ product: "Jira", vendor: "Atlassian", cpe: "", version: "9.12.2" }];
-    get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: tech } } : base(path)));
+    get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, software: tech } } : base(path)));
     patch.mockResolvedValue({ ...CONTEXT, version: 4 });
     renderPage("technology");
     const row = (await screen.findByText("Jira")).closest("tr")!;
     expect(within(row).getByText("9.12.2")).toBeTruthy();
     fireEvent.click(await screen.findByRole("button", { name: /Edit Software/ }));
     const bar = await screen.findByTestId("settings.organization.list-save-bar");
-    fireEvent.click(screen.getByTestId("settings.organization.paste-tech_stack"));
+    fireEvent.click(screen.getByTestId("settings.organization.paste-software"));
     const dialog = await screen.findByTestId("settings.organization.paste-dialog");
     fireEvent.change(within(dialog).getByTestId("settings.organization.paste-text"), { target: { value: "nginx, F5, , 1.25.3\nSlack, Salesforce" } });
     fireEvent.click(within(dialog).getByTestId("settings.organization.paste-add"));
     await waitFor(() => expect(screen.queryByTestId("settings.organization.paste-dialog")).toBeNull());
     fireEvent.click(within(bar).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
-    const [, body] = patch.mock.calls[0] as [string, { fields: { tech_stack: Record<string, string>[] } }];
-    expect(body.fields.tech_stack).toEqual([
+    const [, body] = patch.mock.calls[0] as [string, { fields: { software: Record<string, string>[] } }];
+    expect(body.fields.software).toEqual([
       { product: "Jira", vendor: "Atlassian", cpe: "", version: "9.12.2" },
       { product: "nginx", vendor: "F5", cpe: "", version: "1.25.3" },
       // No version typed: none saved, so a profile that never declares one keeps its shape.
@@ -576,7 +576,7 @@ describe("OrganizationSection", () => {
   it("keeps a card's unsaved rows: page Edit and the field jumps wait, and Next still pages with an added row open (#12261 UX r1 B1, B3)", async () => {
     const base = get.getMockImplementation()!;
     const tech = Array.from({ length: 60 }, (_, i) => ({ product: `Product ${String(i).padStart(3, "0")}`, vendor: "Vendor", cpe: "" }));
-    get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: tech } } : base(path)));
+    get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, software: tech } } : base(path)));
     renderPage("technology");
     fireEvent.click(await screen.findByRole("button", { name: /Edit Software/ }));
     const editor = await screen.findByTestId("settings.organization.list-editor");
@@ -595,7 +595,7 @@ describe("OrganizationSection", () => {
     const base = get.getMockImplementation()!;
     get.mockImplementation(async (path: string) =>
       path === "/organization-context"
-        ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: [{ product: "Concord", vendor: "", cpe: "" }, { product: "Jira", vendor: "Atlassian", cpe: "" }] } }
+        ? { ...CONTEXT, profile: { ...CONTEXT.profile, software: [{ product: "Concord", vendor: "", cpe: "" }, { product: "Jira", vendor: "Atlassian", cpe: "" }] } }
         : base(path),
     );
     renderPage("technology");
@@ -996,10 +996,10 @@ describe("OrganizationSection", () => {
       if (path !== "/organization-context/draft") throw new Error(`unexpected POST ${path}`);
       return {
         based_on_version: 3,
-        profile: { ...CONTEXT.profile, pir_ids: ["pir-1"], tech_stack: [{ product: "CrowdStrike Falcon", vendor: "", cpe: "" }] },
+        profile: { ...CONTEXT.profile, pir_ids: ["pir-1"], software: [{ product: "CrowdStrike Falcon", vendor: "", cpe: "" }] },
         filled: [
           { field: "pir_ids", source: "opencti", detail: "1 PIR(s)" },
-          { field: "tech_stack", source: "openaev", detail: "1 product(s)" },
+          { field: "software", source: "openaev", detail: "1 product(s)" },
         ],
         unavailable: ["OpenCRQ: no OpenCRQ integration is connected (tenant id 42)"],
         missing_fields: ["size", "loaded_hourly_rate"],

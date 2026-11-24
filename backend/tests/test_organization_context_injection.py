@@ -120,7 +120,7 @@ def test_basic_block_names_the_identity_and_indexes_every_category() -> None:
     assert ": 1 row;" in text
     assert "- tracked_organizations (tracked organizations): 3 rows" in text
     assert "- software (" in text and "): not filled" in text
-    assert "- tech_stack (" not in text, "the retired name is never announced"
+    assert "- software (" not in text, "the retired name is never announced"
     assert 'get_organization_context(category="primary_assets")' in text
     assert "UNTRUSTED" in text, "the profile is data a person typed: quarantined"
     assert len(text) <= inj.SUMMARY_MAX_CHARS
@@ -140,7 +140,7 @@ def test_the_index_is_generated_from_the_model() -> None:
     assert {c.field for c in cats.CATEGORIES if c.field} == list_fields | {"prioritization_policy", "attack_surface"}
     assert {"primary_assets", "software", "pirs", "tracked_organizations"} <= set(cats.CATEGORY_NAMES)
     assert "crown_jewels" not in cats.CATEGORY_NAMES, "#1591: a deprecated alias, never a category of its own"
-    assert "tech_stack" not in cats.CATEGORY_NAMES, "#1495: retired, no alias"
+    assert "software" not in cats.CATEGORY_NAMES, "#1495: retired, no alias"
     assert {"assets_exposure", "prioritization_policy", "enterprise_knowledge"} <= set(cats.CATEGORY_NAMES)
 
 
@@ -154,7 +154,7 @@ def test_the_basic_block_cap_holds_whatever_the_list_lengths() -> None:
         "name": "N" * 200,
         "regions": ["FR", "DE", "US", "GB", "JP", "AU", "SG", "SA", "ES", "IT"] * 3,
         "crown_jewels": [{"name": f"Jewel {i} " + "x" * 150, "criticality": "high"} for i in range(200)],
-        "tech_stack": [{"product": f"Product {i}", "vendor": "Vendor", "cpe": "cpe:2.3:a:v:p:1"} for i in range(500)],
+        "software": [{"product": f"Product {i}", "vendor": "Vendor", "cpe": "cpe:2.3:a:v:p:1"} for i in range(500)],
         "pir_ids": [f"pir-{i}" for i in range(100)],
         "pir_names": {f"pir-{i}": "P" * 250 for i in range(100)},
     }
@@ -179,12 +179,12 @@ def test_the_basic_block_cap_holds_whatever_the_list_lengths() -> None:
         (["pirs"], None, None, ["pirs"]),
         (["pirs"], ["software"], None, ["software"]),
         (["pirs"], ["software"], [], []),
-        # #1495: tech_stack is retired with no alias (Sam, 24 Nov 2026): a stored selection naming it drops it.
-        (["pirs"], ["tech_stack"], None, []),
+        # #1495: software is retired with no alias (Sam, 24 Nov 2026): a stored selection naming it drops it.
+        (["pirs"], ["software"], None, []),
         # #1591: a stored selection naming the deprecated crown_jewels reads as primary_assets.
         (["pirs"], [], ["crown_jewels"], ["primary_assets"]),
         (["crown_jewels", "primary_assets"], None, None, ["primary_assets"]),
-        ([], ["tech_stack", "gone_from_the_model", "software"], None, ["software"]),
+        ([], ["software", "gone_from_the_model", "software"], None, ["software"]),
     ],
 )
 def test_categories_most_specific_explicit_list_wins(
@@ -206,7 +206,7 @@ def test_check_categories_reads_lists_strings_and_refuses_unknown_names() -> Non
     assert check_categories("none") == []
     assert check_categories("Software, primary_assets") == ["software", "primary_assets"]
     assert check_categories("crown_jewels") == ["primary_assets"], "#1591: the deprecated alias answers primary_assets"
-    with pytest.raises(ValueError, match="tech_stack unknown"):
+    with pytest.raises(ValueError, match="software unknown"):
         check_categories("Tech_Stack, software")
     with pytest.raises(ValueError, match="software"):
         check_categories(["vendors"])
@@ -254,7 +254,7 @@ async def _with(
 
 BIG_STACK = {
     **PROFILE,
-    "tech_stack": [{"product": f"Product {i}", "vendor": f"Vendor {i % 7}"} for i in range(500)],
+    "software": [{"product": f"Product {i}", "vendor": f"Vendor {i % 7}"} for i in range(500)],
 }
 
 
@@ -416,7 +416,7 @@ def test_the_tool_is_built_only_when_the_cascade_keeps_it(source: str, needle: s
 
 COMPLETE = {
     **PROFILE,
-    "tech_stack": [{"product": "Windows", "vendor": "Microsoft"}],
+    "software": [{"product": "Windows", "vendor": "Microsoft"}],
     "risk_appetite": {"annual_loss_threshold": 2_000_000, "approval_threshold": 50_000},
     "loaded_hourly_rate": 120,
     "ticketing": {"integration": "jira", "project": "SEC"},

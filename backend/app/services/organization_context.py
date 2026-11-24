@@ -262,7 +262,7 @@ class CrownJewel(BaseModel):
         return self
 
 
-class TechStackEntry(BaseModel):
+class SoftwareEntry(BaseModel):
     model_config = _Strict
 
     product: str = Field(min_length=1, max_length=200)
@@ -990,7 +990,7 @@ class OrganizationProfile(BaseModel):
     regions: list[str] = Field(default_factory=list, max_length=250)
     size: Literal["", "1-50", "51-250", "251-1000", "1001-5000", "5001-20000", "20000+"] = ""
     crown_jewels: list[CrownJewel] = Field(default_factory=list, max_length=200)
-    tech_stack: list[TechStackEntry] = Field(default_factory=list, max_length=500)
+    software: list[SoftwareEntry] = Field(default_factory=list, max_length=500)
     #: What the organization ships, with its source repositories (#1432). Not a contract
     #: field: a vendor-free organization ships nothing; the software is what it runs.
     shipped_products: list[ShippedProduct] = Field(default_factory=list, max_length=200)
@@ -1122,7 +1122,7 @@ CONTRACT_FIELDS: tuple[tuple[str, str], ...] = (
     ("regions", "regions of operation"),
     ("size", "organization size"),
     ("crown_jewels", "primary assets and business services"),
-    ("tech_stack", "software"),
+    ("software", "software"),
     ("pir_ids", "priority intelligence requirements (PIRs)"),
     ("risk_appetite.annual_loss_threshold", "risk appetite: annual loss threshold"),
     ("risk_appetite.approval_threshold", "risk appetite: approval threshold"),
@@ -1427,9 +1427,9 @@ async def software_profile(
     software = await software_store.matcher_software(db, row.organization_id)
     if not software:
         return row, profile
-    typed = [{"vendor": e.vendor, "product": e.product, "cpe": e.cpe, "version": e.version} for e in profile.tech_stack]
+    typed = [{"vendor": e.vendor, "product": e.product, "cpe": e.cpe, "version": e.version} for e in profile.software]
     entries = [
-        TechStackEntry(
+        SoftwareEntry(
             product=entry["product"][:200],
             vendor=entry["vendor"][:200],
             cpe=entry["cpe"][:300],
@@ -1439,7 +1439,7 @@ async def software_profile(
         for entry in software_store.matcher_entries(software, typed)
     ]
     # model_copy does not validate: the store may hold more software than a typed list may.
-    return row, profile.model_copy(update={"tech_stack": entries})
+    return row, profile.model_copy(update={"software": entries})
 
 
 async def list_versions(
@@ -1786,10 +1786,10 @@ def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     for jewel in dumped.get("crown_jewels") or []:
         if not jewel.get("asset_names"):
             jewel.pop("asset_names", None)
-    for entry in dumped.get("tech_stack") or []:
+    for entry in dumped.get("software") or []:
         if not entry.get("version"):
             entry.pop("version", None)
-    for key in ("crown_jewels", "tech_stack"):
+    for key in ("crown_jewels", "software"):
         for row in dumped.get(key) or []:
             _drop_typed_provenance(row)
     if not dumped.get("fx_rates"):

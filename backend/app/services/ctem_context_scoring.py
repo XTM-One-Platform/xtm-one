@@ -38,10 +38,10 @@ from app.services.ctem_scoring import band
 #: The context fields each stage is judged against, by contract path
 #: (``organization_context.CONTRACT_FIELDS``).
 STAGE_CONTEXT_FIELDS: dict[str, tuple[str, ...]] = {
-    "scoping": ("crown_jewels", "tech_stack", "sector", "regions"),
+    "scoping": ("crown_jewels", "software", "sector", "regions"),
     "discovery": ("pir_ids", "sector", "regions"),
-    "prioritization": ("tech_stack", "crown_jewels", "pir_ids"),
-    "validation": ("crown_jewels", "tech_stack"),
+    "prioritization": ("software", "crown_jewels", "pir_ids"),
+    "validation": ("crown_jewels", "software"),
     "remediation": ("crown_jewels", "risk_appetite.approval_threshold", "ticketing"),
 }
 

@@ -62,7 +62,7 @@ _LABELS: dict[str, str] = {
     "shipped_products": "shipped products",
     "prioritization_policy": "prioritization policy",
     "attack_surface": "attack surface pass: enabled, provider integrations, cadence",
-    "tech_stack": "software: vendor, product, type, versions, CPE, asset count",
+    "software": "software: vendor, product, type, versions, CPE, asset count",
     ENTERPRISE_KNOWLEDGE: "procedures and reference documents, read by query",
 }
 #: Rows a page answers by default, and at most.
@@ -82,7 +82,7 @@ class Category:
 
 
 #: The profile field the Software category reads before the store is built (#1495).
-SOFTWARE_FIELD = "tech_stack"
+SOFTWARE_FIELD = "software"
 #: The category of the organization's software (#1495): the Software entity. No alias (Sam, 24 Nov 2026).
 SOFTWARE = "software"
 #: The profile field the primary assets are stored under (#1591: OpenCRQ's primary assets, the stored key kept).

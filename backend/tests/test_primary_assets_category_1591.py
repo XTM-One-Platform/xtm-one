@@ -31,7 +31,7 @@ def test_the_category_reads_the_stored_profile_key() -> None:
 def test_the_old_name_answers_the_same_category() -> None:
     assert cats.get("crown_jewels") is cats.get("primary_assets")
     assert cats.get("Crown_Jewels") is cats.get("primary_assets")
-    assert cats.get("tech_stack") is None, "#1495: no tech_stack alias (Sam, 24 Nov 2026)"
+    assert cats.get("software") is None, "#1495: no software alias (Sam, 24 Nov 2026)"
 
 
 def test_a_stored_selection_naming_both_keeps_one() -> None:

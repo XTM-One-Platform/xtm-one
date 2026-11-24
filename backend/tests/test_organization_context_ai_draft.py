@@ -92,7 +92,7 @@ def test_an_unsupported_missing_field_is_named_never_guessed():
     answer = {"proposals": [{"field": "sector", "value": "Energy", "source": "description", "confidence": "high"}]}
     _p, not_supported, _s, _n = ai.parse_proposals(json.dumps(answer), oc.OrganizationProfile(), _evidence())
     assert "sector" not in not_supported
-    assert "tech_stack" in not_supported and "loaded_hourly_rate" in not_supported
+    assert "software" in not_supported and "loaded_hourly_rate" in not_supported
 
 
 def test_an_inferred_amount_is_flagged_check_this():

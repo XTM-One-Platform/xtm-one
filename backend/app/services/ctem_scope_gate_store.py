@@ -577,7 +577,7 @@ def inventory_additions(profile: Any, rows: list[Any]) -> dict[str, list[Any]]:
     signals count.
     """
     have_assets = {gate.stable_key(a.name) for a in profile.assets_exposure}
-    have_products = {e.product.strip().lower() for e in profile.tech_stack}
+    have_products = {e.product.strip().lower() for e in profile.software}
     have_domains = {d.lower() for d in profile.owned_domains}
     assets: list[str] = []
     products: list[str] = []
@@ -630,7 +630,7 @@ async def add_to_inventory(
             }
             for name in added["assets"]
         ]
-        data["tech_stack"] = list(data.get("tech_stack") or []) + [
+        data["software"] = list(data.get("software") or []) + [
             {"product": name, "source": INVENTORY_SOURCE} for name in added["products"]
         ]
         data["owned_domains"] = list(data.get("owned_domains") or []) + added["domains"]
@@ -638,7 +638,7 @@ async def add_to_inventory(
         basis = f"added from the CTEM Signals page by {actor}"[:500]
         touched = [
             f
-            for f, key in (("assets_exposure", "assets"), ("tech_stack", "products"), ("owned_domains", "domains"))
+            for f, key in (("assets_exposure", "assets"), ("software", "products"), ("owned_domains", "domains"))
             if added[key]
         ]
         saved = await org_context.save_version(

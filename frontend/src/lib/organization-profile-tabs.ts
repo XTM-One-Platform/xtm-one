@@ -44,7 +44,7 @@ export const PROFILE_CARD_TAB = {
   crown_jewels: "business",
   shipped_products: "business",
   tracked_organizations: "business",
-  tech_stack: "technology",
+  software: "technology",
   assets_exposure: "exposure",
   asset_groups: "exposure",
   prioritization_policy: "exposure",
@@ -61,7 +61,7 @@ export type ProfileCard = keyof typeof PROFILE_CARD_TAB;
  * mounts the card with its edit (OrganizationSection embed).
  */
 export const INVENTORY_CARD_PATH: Partial<Record<ProfileCard, string>> = {
-  tech_stack: "/ctem/inventory/software",
+  software: "/ctem/inventory/software",
   // The business inputs have their own Inventory tab (#1690).
   crown_jewels: "/ctem/inventory/business",
   shipped_products: "/ctem/inventory/business",
@@ -103,7 +103,7 @@ export const PROFILE_FIELD_CARD = {
   pir_names: "ticketing",
   crown_jewels: "crown_jewels",
   shipped_products: "shipped_products",
-  tech_stack: "tech_stack",
+  software: "software",
   assets_exposure: "assets_exposure",
   asset_groups: "asset_groups",
   prioritization_policy: "prioritization_policy",

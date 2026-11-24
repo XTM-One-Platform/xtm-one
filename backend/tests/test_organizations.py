@@ -181,7 +181,7 @@ _STACK = [{"product": f"Product {i}", "vendor": "Microsoft" if i % 10 == 0 else 
 @pytest.fixture
 def with_stack(monkeypatch):
     async def _current(_db, organization_id=None):
-        return _row({"name": "Us", "tech_stack": _STACK, "crown_jewels": [{"name": "ERP", "criticality": "high"}]})
+        return _row({"name": "Us", "software": _STACK, "crown_jewels": [{"name": "ERP", "criticality": "high"}]})
 
     async def _list(_db, **_kw):
         return [_org("primary", "Us"), _org()]
@@ -221,8 +221,8 @@ async def test_a_query_narrows_a_category_and_the_limit_is_bounded(with_stack, t
 
 
 async def test_the_retired_tech_stack_category_is_unknown(with_stack: None, tool: Any) -> None:
-    page = await tool(category="tech_stack", query="microsoft", limit=10)
-    assert not page.startswith("Category software ("), "#1495: no tech_stack alias (Sam, 24 Nov 2026)"
+    page = await tool(category="software", query="microsoft", limit=10)
+    assert not page.startswith("Category software ("), "#1495: no software alias (Sam, 24 Nov 2026)"
 
 
 async def test_an_unknown_category_names_the_accepted_ones(with_stack, tool):

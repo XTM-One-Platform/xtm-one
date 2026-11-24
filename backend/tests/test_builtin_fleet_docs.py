@@ -155,7 +155,7 @@ _PROFILE_ROUTES = {
     "profile:regions": "/settings/organization?card=identity",
     "profile:crown_jewels": "/settings/organization/profile/business?card=crown_jewels",
     "profile:tracked_organizations": "/settings/organization/profile/business?card=tracked_organizations",
-    "profile:tech_stack": "/settings/organization/profile/technology?card=tech_stack",
+    "profile:software": "/settings/organization/profile/technology?card=software",
 }
 
 
