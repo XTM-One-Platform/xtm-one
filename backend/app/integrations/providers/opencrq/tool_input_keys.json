@@ -595,6 +595,16 @@
       ],
       "conditional": [],
       "closed": true
+    },
+    {
+      "procedures": [
+        "jobs.getRun"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
     }
   ],
   "get_opencrq_loss_driver": [

@@ -1,0 +1,31 @@
+{
+  "procedure": "jobs.getRun",
+  "source": "rebuilt: RunDetailSchema of OpenCRQ back/src/features/app-router/jobs/run-contract.ts (JobRunListItemSchema plus answeredById), for the job of jobs.getJob.json",
+  "data": {
+    "id": "01a13ab0-0bfb-74da-b3e3-2f187831218b",
+    "kind": "crq-simulation",
+    "status": "succeeded",
+    "enqueuedAt": "2026-10-14T13:52:58.363Z",
+    "startedAt": "2026-10-14T13:52:58.377Z",
+    "claimedAt": "2026-10-14T13:52:58.370Z",
+    "finishedAt": "2026-10-14T13:53:41.902Z",
+    "processedTotal": 12,
+    "expectedTotal": 12,
+    "currentStep": "simulated 12 of 12 scenarios",
+    "attempt": 1,
+    "maxAttempts": 3,
+    "priority": 0,
+    "runAfter": "2026-10-14T13:52:58.363Z",
+    "heartbeatAt": null,
+    "leaseExpiresAt": null,
+    "lastError": null,
+    "errorCount": 0,
+    "stepCounts": [],
+    "triggeredBy": "user",
+    "triggeredById": "0f3c2b1a-9d8e-4f7a-b6c5-d4e3f2a1b0c9",
+    "absorbedAsk": false,
+    "interactive": true,
+    "payload": "{\"riskScenarioIds\":[\"5b0e7c3d-2f1a-4e9b-8c7d-6a5b4c3d2e1f\",\"9c8b7a6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d\"]}",
+    "answeredById": null
+  }
+}
