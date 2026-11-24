@@ -317,6 +317,9 @@ def _sync_agent_fields(
     agent.persona = _resolve_seed_content("agent_persona", data.get("persona", data["slug"]))
     agent.output_format = data.get("output_format", "markdown")
     agent.output_schema = with_builtin_roi_unit(data["slug"], _resolve_seed_schema(data.get("output_schema")))
+    # A seeded agent a fleet calls with its own output_schema accepts it (#1837): without the
+    # flag the caller's schema is refused before the agent runs.
+    agent.accept_caller_output_format = bool(data.get("accept_caller_output_format", False))
     agent.disable_chat = data.get("disable_chat", False)
     agent.hide_runs = data.get("hide_runs", False)
     agent.max_iterations = data.get("max_iterations")

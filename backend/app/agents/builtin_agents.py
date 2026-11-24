@@ -2228,6 +2228,8 @@ CTEM_FLEET_AGENTS: list[dict] = [
         ),
         "icon": "Target",
         "output_schema": "ctem-threat-relevance-analyst",
+        # The loop and the use-case orchestrators pass their own scoring schema (#1837).
+        "accept_caller_output_format": True,
         "tags": ["builtin", "ctem", "fleet"],
         "handover_agent_slugs": ["opencti-threat-hunt-creator"],
         "handover_type_slugs": {"opencti-threat-hunt-creator": "consult"},
