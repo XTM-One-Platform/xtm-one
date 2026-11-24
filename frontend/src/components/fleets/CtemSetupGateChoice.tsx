@@ -21,7 +21,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * one decision item between steps (#1705): the setup adds no tool pause and no
  * approval card. Reducing approval names the actions that run alone first.
  */
-import { ShieldCheck, SlidersHorizontal, Zap } from "lucide-react";
+import { Icon } from "@filigran/design-system";
 import { useState, type KeyboardEvent } from "react";
 
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -47,7 +47,12 @@ import { FleetAutonomyStrip } from "./FleetAutonomyStrip";
 import { fleetRefusalMessage } from "./fleet-refusals";
 import { FleetGateMark } from "./FleetModuleMark";
 
-const CHOICE_ICONS = { autonomous: Zap, recommended: ShieldCheck, custom: SlidersHorizontal } as const;
+type ChoiceIconProps = { className?: string };
+const AutonomousIcon = ({ className }: ChoiceIconProps) => <Icon name="zap" size={16} className={className} aria-hidden />;
+const RecommendedIcon = ({ className }: ChoiceIconProps) => <Icon name="shield-check" size={16} className={className} aria-hidden />;
+const CustomIcon = ({ className }: ChoiceIconProps) => <Icon name="sliders-horizontal" size={16} className={className} aria-hidden />;
+
+const CHOICE_ICONS = { autonomous: AutonomousIcon, recommended: RecommendedIcon, custom: CustomIcon } as const;
 
 export function CtemSetupGateChoice({ fleetId, level: storedLevel }: { fleetId: string; level: string | null | undefined }) {
   const { t_i18n } = useFormatter();
