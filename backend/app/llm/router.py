@@ -653,6 +653,8 @@ _NOT_INPUT_STATUSES = frozenset({401, 403, 404, 408, 413, 429})
 # only a path into the conversation points at the input, not one into ``tools``.
 _FIELD_PATH = re.compile(r"^[\w\[\]]+(?:\.[\w\[\]]+)+:\s*")
 _INPUT_PATHS = ("messages", "input", "contents")
+# OpenAI words a tool schema or refused-parameter 400 without a path: configuration too.
+_CONFIG_WORDING = re.compile(r"\btools?\b|\bfunctions?\b|\bschema\b|\bunsupported (?:parameter|value)\b", re.IGNORECASE)
 # Gemini's "Please retry or report in ...": retrying the same input cannot help.
 _RETRY_ADVICE = re.compile(r"[.\s]*\bplease retry\b.*$", re.IGNORECASE | re.DOTALL)
 _NAMED_LIMIT = re.compile(
@@ -701,7 +703,7 @@ def _refused_input(exc: BaseException) -> str | None:
     path = _FIELD_PATH.match(message)
     if path is not None and not path.group(0).startswith(_INPUT_PATHS):
         return None
-    if not _INPUT_MEDIUM.search(message):
+    if _CONFIG_WORDING.search(message) or not _INPUT_MEDIUM.search(message):
         return None
     reason = _RETRY_ADVICE.sub("", message[path.end() :] if path else message).strip().rstrip(".")
     return _bounded(redact_secrets(reason), _LEG_TEXT_LIMIT) if reason else None

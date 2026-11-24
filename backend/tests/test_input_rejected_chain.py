@@ -143,6 +143,24 @@ def test_a_tool_schema_path_naming_a_medium_is_not_the_input():
     assert input_rejection(exc) is None
 
 
+def _openai_refusal(message: str) -> openai.BadRequestError:
+    body = {"message": message, "type": "invalid_request_error", "param": None, "code": None}
+    response = httpx.Response(400, json={"error": body}, request=httpx.Request("POST", "https://api.openai.com/v1/x"))
+    return openai.BadRequestError(f"Error code: 400 - {body}", response=response, body=body)
+
+
+def test_an_openai_tool_or_parameter_refusal_naming_a_medium_is_not_the_input():
+    for message in (
+        "Invalid schema for function 'search': In context=('properties', 'file'), 'type' is required.",
+        "Invalid 'tools[0].function.name': document is not a valid name.",
+        "Unsupported value: 'temperature' does not support 0.2 with this model. See the document.",
+    ):
+        exc = _openai_refusal(message)
+        assert input_rejection(exc) is None, message
+        assert classify_run_failure(exc).cause is FailureCause.MODEL_REJECTED_REQUEST
+        assert "attachment" not in _friendly_error_message(exc)
+
+
 def test_a_bedrock_refusal_of_the_image_is_an_input_rejection():
     from botocore.exceptions import ClientError
 
