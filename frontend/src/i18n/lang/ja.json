@@ -21140,6 +21140,7 @@
   "No trigger path matches these filters": "これらのフィルターに一致するトリガーパスはありません",
   "CTEM Read": "CTEM 読み取り",
   "Read the CTEM signals and cases the person you act for can see, read-only": "代理で操作する相手が閲覧できる CTEM のシグナルとケースを読み取り専用で参照します",
+  "Record, triage and manage CTEM signals and cases within the rights of the person you act for": "代理する人物の権限の範囲で CTEM シグナルとケースを記録、トリアージ、管理します",
   "Lets the agent list the CTEM signals with their evidence, list the CTEM cases with their counts by state, and read one case with its issues, history, who opened it and why each empty section is empty. It acts for the person the turn or run acts for, with the same rules as the CTEM pages: a case they cannot see does not exist for the agent, an issue they cannot see is a Restricted row. It writes nothing. XTM One mode only.": "エージェントが CTEM シグナルを証拠付きで一覧表示し、CTEM ケースを状態別の件数付きで一覧表示し、1 件のケースをその課題、履歴、作成者、空のセクションが空である理由とともに読み取れるようにします。ターンまたは実行の代理対象者として、CTEM ページと同じルールで動作します。その人が閲覧できないケースはエージェントにとって存在せず、閲覧できない課題は制限付きの行になります。何も書き込みません。XTM One モードのみ。",
   "CTEM Repair": "CTEM 修復",
   "Run checks as": "チェックの実行ユーザー",
@@ -21547,5 +21548,6 @@
   "{count, plural, one {# case and its history} other {# cases and their history}}": "{count, plural, other {#件のケースとその履歴}}",
   "{count, plural, one {# open work item cancelled} other {# open work items cancelled}}": "{count, plural, other {#件の未完了の作業項目をキャンセル}}",
   "{count, plural, one {# timer cancelled} other {# timers cancelled}}": "{count, plural, other {#件のタイマーをキャンセル}}",
-  "{count, plural, one {# signal sent back to the scope gate} other {# signals sent back to the scope gate}}": "{count, plural, other {#件のシグナルをスコープゲートに戻す}}"
+  "{count, plural, one {# signal sent back to the scope gate} other {# signals sent back to the scope gate}}": "{count, plural, other {#件のシグナルをスコープゲートに戻す}}",
+  "Lets the agent record, list, dismiss, restore and re-check CTEM signals, and open, read and manage CTEM cases: owner, due date, notes, state, validation, tickets and remediation decisions. It acts for the person the turn or run acts for, with the rights of the CTEM pages: an administrator or a member of a group with the CTEM decide right reads and acts on every signal and case, a view right reads them and every change is refused, anyone else works on the signals they recorded and the cases they can see.": "エージェントが CTEM シグナルを記録、一覧表示、却下、復元、再評価し、CTEM ケースを作成、閲覧、管理できるようにします（担当者、期限、メモ、状態、検証、チケット、修復の判断）。ターンまたは実行が代理する人物として、CTEM ページと同じ権限で動作します。管理者または CTEM の決定権を持つグループのメンバーはすべてのシグナルとケースを閲覧して操作でき、閲覧権では閲覧のみで変更はすべて拒否され、それ以外の人は自分が記録したシグナルと閲覧できるケースを扱います。"
 }
