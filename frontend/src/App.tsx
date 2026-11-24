@@ -53,7 +53,6 @@ const CtemCaseDetail = lazyWithRetry(() => import("@/pages/xtm-one/CtemCaseDetai
 const CtemInventory = lazyWithRetry(() => import("@/pages/xtm-one/CtemInventory"));
 const CtemAssetDetail = lazyWithRetry(() => import("@/pages/xtm-one/CtemAssetDetail"));
 const CtemSoftwareDetail = lazyWithRetry(() => import("@/pages/xtm-one/CtemSoftwareDetail"));
-const CtemAssetGroupDetail = lazyWithRetry(() => import("@/pages/xtm-one/CtemAssetGroupDetail"));
 /* Hub pages for the three nav groups that have one — the parent label in the
  * sidebar is a real destination, not just an expand/collapse row. */
 const Work = lazyWithRetry(() => import("@/pages/Work"));
@@ -684,13 +683,14 @@ export default function App() {
         <Route path="/dashboard" element={<Page><CommandCenterRoute /></Page>} />
         <Route path="/ctem/governance" element={<XtmOneRoute><Page><CtemGovernance /></Page></XtmOneRoute>} />
         <Route path="/ctem/cases" element={<XtmOneRoute><Page><CtemCases /></Page></XtmOneRoute>} />
+        {/* The Cases Kanban view is a path, never ?view= (#10203, #1503); a static segment ranks above :id. */}
+        <Route path="/ctem/cases/kanban" element={<XtmOneRoute><Page><CtemCases /></Page></XtmOneRoute>} />
         <Route path="/ctem/signals" element={<XtmOneRoute><Page><CtemSignals /></Page></XtmOneRoute>} />
         <Route path="/ctem/signals/:tab" element={<XtmOneRoute><Page><CtemSignals /></Page></XtmOneRoute>} />
         <Route path="/ctem/cases/:id" element={<XtmOneRoute><Page><CtemCaseDetail /></Page></XtmOneRoute>} />
         {/* CTEM > Inventory (#1178). */}
         <Route path="/ctem/inventory/assets/:id" element={<XtmOneRoute><Page><CtemAssetDetail /></Page></XtmOneRoute>} />
         <Route path="/ctem/inventory/software/:id" element={<XtmOneRoute><Page><CtemSoftwareDetail /></Page></XtmOneRoute>} />
-        <Route path="/ctem/inventory/asset-groups/:id" element={<XtmOneRoute><Page><CtemAssetGroupDetail /></Page></XtmOneRoute>} />
         <Route path="/ctem/inventory/:tab?" element={<XtmOneRoute><Page><CtemInventory /></Page></XtmOneRoute>} />
         <Route path="/ctem/:stage" element={<XtmOneRoute><Page><CtemStageDetail /></Page></XtmOneRoute>} />
         <Route path="/briefing" element={<XtmOneRoute><Page><ExposureBriefing /></Page></XtmOneRoute>} />

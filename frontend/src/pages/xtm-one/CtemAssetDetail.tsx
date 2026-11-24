@@ -32,7 +32,7 @@ import { EntityPageHeader } from "@/components/ui/entity-page-header";
 import { AssetOverviewCard, AssetSection } from "./ctem/AssetOverview";
 import { recordRefs } from "./ctem/inventory-entries";
 import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
-import { INVENTORY_PATH, assetGroupPath, isCodeRepository, softwarePath, sourceLabel } from "./ctem/inventory";
+import { INVENTORY_PATH, isCodeRepository, softwarePath, sourceLabel } from "./ctem/inventory";
 import { CategoryMark, SourceLogo } from "./ctem/inventory-icons";
 
 /** The Software (or Dependencies) table opens at 25 rows, the platform's page size; the picker changes it. */
@@ -42,7 +42,7 @@ const SOFTWARE_PAGE_SIZE = 25;
 const AssetGlyph = ({ className }: { className?: string }) => <Icon name="server" size={16} className={className} />;
 
 /** The cases still to work: a resolved one is history, read from the Cases page. */
-const OPEN_STATES = new Set(["needs_attention", "in_progress", "mitigated_watching", "accepted_risk"]);
+const OPEN_STATES = new Set(["new", "analyzing", "waiting_decision", "remediating", "validating", "mitigated_watching", "accepted_risk"]);
 
 export default function CtemAssetDetail() {
   const { t_i18n, intl } = useFormatter();
@@ -316,26 +316,6 @@ export default function CtemAssetDetail() {
               <Link to="/settings/organization?card=crown_jewels" className="inline-flex items-center gap-1.5 text-sm underline-offset-2 hover:underline">
                 <Icon name="gem" size={16} className="text-default-secondary" aria-hidden />
                 {j.name}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </AssetSection>
-
-      <AssetSection
-        id="asset-groups"
-        title={t_i18n("Asset groups")}
-        count={data?.groups?.length ?? 0}
-        empty={!isLoading && (data?.groups?.length ?? 0) === 0}
-        emptyLabel={t_i18n("This asset is in no asset group.")}
-      >
-        {/* The groups any of its records belongs to (#1556), each opening its group page. */}
-        <ul className="flex flex-wrap gap-2" data-testid="ctem-asset-groups">
-          {(data?.groups ?? []).map((g) => (
-            <li key={g.id}>
-              <Link to={assetGroupPath(g.id)} className="inline-flex items-center gap-1.5 text-sm underline-offset-2 hover:underline">
-                <SourceLogo source={g.source || "manual"} />
-                {g.name}
               </Link>
             </li>
           ))}
