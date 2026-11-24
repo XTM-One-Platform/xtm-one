@@ -3188,6 +3188,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#auto-join" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Auto join
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#terms-of-use" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3992,6 +4003,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#auto-join" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Auto join
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#terms-of-use" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4161,10 +4183,10 @@
 <li><strong>Sharing.</strong> A resource shared with a group is shared with its current members. Adding someone to the group gives them access; removing them takes it away.</li>
 <li><strong>Settings for a team.</strong> A group can carry quotas and an AI switch, and can be reserved an LLM provider or kept off one (see <a href="../settings/#reserving-a-provider-for-teams">Reserving a provider for teams</a> and <a href="../settings/#keeping-people-off-a-provider">Keeping people off a provider</a>).</li>
 </ul>
-<p>With SAML, groups can also be created and filled from the identity provider at every sign-in (see <a href="../../deployment/authentication/#group-mapping">Group mapping</a>).</p>
+<p>With SAML, groups can also be created and filled from the identity provider at every sign-in (see <a href="../../deployment/authentication/#group-mapping">Group mapping</a>). A group with <a href="#auto-join">Auto join</a> on takes in everyone who signs in through single sign-on.</p>
 <p>A group's page has four tabs:</p>
 <ul>
-<li><code>Overview</code>: its name, description and <code>Kind</code>, with the <code>AI access</code> card. The kind (<code>Org unit</code>, <code>Access list</code>, <code>Distribution list</code>, or <code>Not classified</code>) tells LLM Analytics which groups are org units.</li>
+<li><code>Overview</code>: its name, description and <code>Kind</code>, with the <code>AI access</code> and <code>Auto join</code> cards. The kind (<code>Org unit</code>, <code>Access list</code>, <code>Distribution list</code>, or <code>Not classified</code>) tells LLM Analytics which groups are org units.</li>
 <li><code>Members</code>: add members with <code>Add Member</code>, remove them, and search or filter by role. From a user's page, the <code>Groups</code> tab does the same with <code>Add to Group</code>.</li>
 <li><code>Managers</code>: the people who follow the AI usage of the group's members. See <a href="#group-managers">Group managers</a>.</li>
 <li><code>Quotas</code>: the limit each member gets. A user's own quota wins over the group's; with no group limit, members inherit the platform default.</li>
@@ -4182,6 +4204,15 @@
 </ul>
 <p>A person in several groups is cut off as soon as one of them has AI off. An administrator is held to it like everyone else: nothing an administrator needs to undo it (the groups page, the settings) uses a model. Everything that does not need a model keeps working, the same list as <a href="../running-without-ai/#what-keeps-working">Running without AI</a>.</p>
 <p>Members read the change within seconds; a replica that did not serve it follows within five. Switching it on or off is recorded in the audit log, with the previous value. The platform-wide switch wins: with AI off for the platform, a group's setting changes nothing.</p>
+<h2 id="auto-join">Auto join</h2>
+<p>The <code>Auto join</code> card's <code>Single sign-on users join this group</code> switch (default: off) adds everyone who signs in through single sign-on, OIDC or SAML, to the group at every sign-in: an account created at its first sign-in, an account an administrator created for a single sign-on user, and an existing account alike. The <code>Groups</code> list marks such a group with an <code>Auto join</code> badge. It is the way to give every single sign-on user a group's shares, quotas, AI access or provider reservation without adding each one by hand.</p>
+<ul>
+<li><strong>Once per person.</strong> Someone already in the group, however they joined, is left as is. Each membership it adds is recorded in the audit log, with the sign-in as the actor.</li>
+<li><strong>Only single sign-on.</strong> Local accounts, accounts provisioned through SCIM and accounts created through the API join only when they sign in through single sign-on.</li>
+<li><strong>With SAML group mapping.</strong> The mapping manages only the memberships it created, so it never removes one that auto join added, even when the assertion does not name the group.</li>
+<li><strong>Removing someone.</strong> An administrator can remove a member from the <code>Members</code> tab; while the switch stays on, the next single sign-on adds them again.</li>
+</ul>
+<p>Switching it on adds nobody at once: each person joins at their next single sign-on. Switching it off removes nobody. Both are recorded in the audit log with the previous value.</p>
 <h2 id="terms-of-use">Terms of Use</h2>
 <p>The Terms of Use are accepted once for the whole platform, by an administrator, not by each user: there is no per-user acceptance to follow here. See <a href="../../deployment/authentication/#terms-of-use-acceptance">Terms of Use acceptance</a>.</p>
 <h2 id="next-step">Next step</h2>
@@ -4208,7 +4239,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 17, 2026 15:06:51 UTC"><span class="timeago" datetime="2026-11-17T15:06:51+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 17, 2026 15:06:51 UTC">2026-11-17</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 24, 2026 16:59:10 UTC"><span class="timeago" datetime="2026-11-24T16:59:10+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 24, 2026 16:59:10 UTC">2026-11-24</span>
   </span>
 
     
@@ -4235,6 +4266,11 @@
 
     
     <nav>
+      
+        <a href="https://github.com/SamuelHassine" class="md-author" title="@SamuelHassine">
+          
+          <img src="https://avatars.githubusercontent.com/u/1334279?v=4&amp;size=72" alt="SamuelHassine">
+        </a>
       
         <a href="https://github.com/Letullier-Thibert" class="md-author" title="@Letullier-Thibert">
           
