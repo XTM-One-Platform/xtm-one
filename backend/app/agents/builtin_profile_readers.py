@@ -64,8 +64,8 @@ BUILTIN_AGENT_PROFILE_FIELDS: dict[str, tuple[str, ...]] = {
 PROFILE_FIELD_WORDS: dict[str, str] = {
     "sector": "sector",
     "regions": "region",
-    "crown_jewels": "primary asset",
-    "tech_stack": "tech stack",
+    "crown_jewels": "crown jewel",
+    "tech_stack": "software",
     "ai_systems": "ai system",
     "pir_ids": "pir",
     "risk_appetite": "risk appetite",
