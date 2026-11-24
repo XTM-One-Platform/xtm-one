@@ -42,6 +42,13 @@ import {
   type OpenedByGroup,
 } from "./opened-by-groups";
 
+/**
+ * The row action column of the expanded table holds the "Loop trace" button in
+ * every locale: fr "Parcours dans la boucle" measures 196 px, es 173 px, en and
+ * ja 125 px (UX round 1 of #1896), plus the cell padding.
+ */
+const LOOP_TRACE_ACTIONS_WIDTH = 220;
+
 const LENS_LABEL: Record<string, string> = { inside: "Inside", outside: "Outside", world: "World" };
 /** Subjects drawn as chips on a group line before "+N more". */
 const SUBJECT_CHIPS = 4;
@@ -216,7 +223,7 @@ function SignalTable({ id, signals }: { id: string; signals: CtemSignal[] }) {
         emptyLabel={t_i18n("No signal matches the filter.")}
         noResultsLabel={t_i18n("No signal matches the filter.")}
         rowActions={(s) => <LoopTraceButton signalId={s.id} subject={signalSubject(s)} compact />}
-        rowActionsWidth={140}
+        rowActionsWidth={LOOP_TRACE_ACTIONS_WIDTH}
         rowTestId="ctem-case-opened-by-signal"
       />
     </div>

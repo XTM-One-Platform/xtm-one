@@ -92,6 +92,14 @@ describe("CaseOpenedBy compact", () => {
     expect(within(table).getAllByRole("link", { name: /^See the loop trace of CVE-2026-/ })).toHaveLength(10);
   });
 
+  it("sizes the loop trace column for the longest locale label (fr, 196 px measured)", () => {
+    current = [...thirty];
+    renderWithProviders(<MemoryRouter><CaseOpenedBy caseId="c1" /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId("ctem-case-opened-by-toggle"));
+    const header = within(screen.getByTestId("ctem-case-opened-by-table")).getByTestId("data-table-actions-header");
+    expect(parseInt(header.style.width, 10)).toBeGreaterThanOrEqual(210);
+  });
+
   it("filters the expanded table above ten signals", async () => {
     current = [...thirty];
     renderWithProviders(<MemoryRouter><CaseOpenedBy caseId="c1" /></MemoryRouter>);
