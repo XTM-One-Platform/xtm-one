@@ -735,6 +735,7 @@ def register(
         order_by: str = "created_at",
         order_mode: str = "desc",
         limit: int = 25,
+        after: str = "",
     ) -> str:
         if not pir_id:
             return "pir_id is required."
@@ -745,16 +746,17 @@ def register(
             except (ValueError, TypeError) as exc:
                 return f"filters must be a valid JSON string (FilterGroup): {exc}"
         query = (
-            "query PirRels($pirId: ID!, $first: Int, $orderBy: PirRelationshipOrdering,"
+            "query PirRels($pirId: ID!, $first: Int, $after: ID, $orderBy: PirRelationshipOrdering,"
             " $orderMode: OrderingMode, $fromTypes: [String], $fromId: [String],"
             " $confidences: [Int], $search: String, $filters: FilterGroup,"
             " $startDate: DateTime, $endDate: DateTime) {"
-            "  pirRelationships(pirId: $pirId, first: $first, orderBy: $orderBy,"
+            "  pirRelationships(pirId: $pirId, first: $first, after: $after, orderBy: $orderBy,"
             "    orderMode: $orderMode, fromTypes: $fromTypes, fromId: $fromId,"
             "    confidences: $confidences, search: $search, filters: $filters,"
             "    startDate: $startDate, endDate: $endDate) {"
             "    edges { node { id pir_score fromId fromType toId created_at"
-            "      from { ... on StixDomainObject { representative { main } } } } } } }"
+            "      from { ... on StixDomainObject { representative { main } } } } }"
+            "    pageInfo { endCursor hasNextPage globalCount } } }"
         )
         # ``pirRelationships`` cannot sort by ``pir_score`` (its resolver strips
         # ``pirId`` before the sort builder runs, raising "You should provide a
@@ -766,6 +768,7 @@ def register(
             {
                 "pirId": pir_id,
                 "first": min(max(limit, 1), 200),
+                "after": after or None,
                 "orderBy": order,
                 "orderMode": "asc" if order_mode == "asc" else "desc",
                 "fromTypes": from_types or None,
@@ -782,7 +785,11 @@ def register(
         nodes = _edges(data, "pirRelationships")
         if not nodes:
             return f"No flagged relationships found for PIR {pir_id}."
-        lines = [f"PIR {pir_id} flagged relationships ({len(nodes)}):"]
+        page = (data.get("pirRelationships") or {}).get("pageInfo") or {}
+        total = page.get("globalCount")
+        total = total if isinstance(total, int) and total >= len(nodes) else None
+        shown = f"{len(nodes)} shown of {total}" if total is not None else f"{len(nodes)} shown"
+        lines = [f"PIR {pir_id} flagged relationships ({shown}):"]
         for n in nodes:
             source = (n.get("from") or {}).get("representative") or {}
             name = source.get("main") or n.get("fromId")
@@ -790,6 +797,8 @@ def register(
                 f"- [{n.get('fromType')}] {name} "
                 f"score={n.get('pir_score')} since {n.get('created_at')}"
             )
+        if page.get("hasNextPage") and page.get("endCursor"):
+            lines.append(f"\nNext page: call again with after='{page['endCursor']}'.")
         lines.append(
             "\nTip: to rank the flagged ENTITIES by PIR score (with their "
             "matching criteria), use query_opencti_pir_entities."
@@ -916,6 +925,10 @@ def register(
                     "order_by": {"type": "string", "enum": ["created_at", "updated_at"], "default": "created_at", "description": "pir_score is not sortable on relationships; use query_opencti_pir_entities to rank by score."},
                     "order_mode": {"type": "string", "enum": ["asc", "desc"], "default": "desc"},
                     "limit": {"type": "integer", "default": 25},
+                    "after": {
+                        "type": "string",
+                        "description": "Cursor of the next page, as the previous answer names it.",
+                    },
                 },
                 "required": ["pir_id"],
             },

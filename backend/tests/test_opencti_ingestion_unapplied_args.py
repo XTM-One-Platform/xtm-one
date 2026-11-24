@@ -1,4 +1,4 @@
-"""manage_opencti_ingestion refuses every field the action does not apply.
+"""manage_opencti_ingestion names every field the action does not apply as ignored; the action runs.
 
 A partner listed RSS feeds with ``uri`` set and got the whole list back as if it
 had been filtered on that URL. Each action now names the fields it ignores,
@@ -59,13 +59,12 @@ async def _run(executor, arguments):
         ({"action": "list", "feed_type": "rss", "label_import": True}, "label_import"),
     ],
 )
-async def test_unapplied_field_is_refused_and_nothing_is_sent(monkeypatch, arguments, named):
-    executor, stub = _build(monkeypatch)
+async def test_unapplied_field_is_named_as_ignored_and_the_action_runs(monkeypatch, arguments, named):
+    executor, _stub = _build(monkeypatch)
     result = await _run(executor, arguments)
     assert f"action '{arguments['action']}' does not apply" in result.content, result.content
     assert named in result.content
-    assert "nothing was written" in result.content
-    assert stub.calls == []
+    assert "ignored and the rest ran" in result.content
 
 
 async def test_list_with_its_own_fields_runs(monkeypatch):

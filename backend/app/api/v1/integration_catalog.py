@@ -8471,6 +8471,49 @@ PROVIDER_CATALOG = {
             ),
         },
     },
+    "kubernetes": {
+        "name": "Kubernetes",
+        "description": (
+            "Kubernetes, read-only - a cluster's services with their type, cluster IP, "
+            "ports, node ports and external IPs, its namespaces and its nodes' addresses"
+        ),
+        "logo": "/logos/kubernetes.svg",
+        "category": "integration",
+        "integration_category": "exposure_management",
+        "integration_types": ["cloud_security"],
+        "available_events": [],
+        # A service account token, sent as a Bearer token.
+        "auth_type": "api_key",
+        "supported_auth_types": ["api_key"],
+        "fields": ["api_key"],
+        "extra_fields": {
+            "base_url": "API server URL (e.g. https://k8s.company.com:6443, the 'server' of your kubeconfig)",
+            "ca_cert": "Optional - the cluster CA certificate (PEM, the base64-decoded 'certificate-authority-data' of your kubeconfig) when the API server's certificate is not publicly signed",
+        },
+        "extra_field_required_when": {"base_url": {}},
+        "setup_guide": {
+            "title": "Kubernetes Read-only Service Account Setup",
+            "url": "https://kubernetes.io/docs/reference/access-authn-authz/service-accounts-admin/",
+            "steps": [
+                "Create a service account, e.g. 'kubectl create serviceaccount copilot-reader -n kube-system'.",
+                "Create a ClusterRole with get and list on services, namespaces and nodes only, and bind it to the service account with a ClusterRoleBinding.",
+                "Create a token for it, e.g. 'kubectl create token copilot-reader -n kube-system --duration=8760h' (or a long-lived Secret of type kubernetes.io/service-account-token).",
+                "Paste the token in the 'API Key' field, the API server URL in 'base_url' and, for a private CA, the cluster CA certificate (PEM) in 'ca_cert'.",
+                "Click 'Test Connection' (lists one namespace).",
+            ],
+            "permissions": [
+                {
+                    "scope": "get, list on services, namespaces, nodes (ClusterRole)",
+                    "description": "List services with their ports and node ports, namespaces, and the nodes' addresses. Nothing is written.",
+                },
+            ],
+            "notes": (
+                "Every tool is a read. The token is stored encrypted here and only sent to the "
+                "configured API server, whose certificate is verified against the pasted CA or "
+                "the public roots, never skipped."
+            ),
+        },
+    },
     "zendesk": {
         "name": "Zendesk",
         "description": (
@@ -10442,6 +10485,8 @@ _SHAPED_DUMMIES: dict[str, str] = {
     "rydoo": "__dummy__||__dummy__",
     # Spendesk's token is environment||client_id||client_secret.
     "spendesk": "production||__dummy__||__dummy__",
+    # Kubernetes' token is base_url||ca_segment||token (no CA: an empty segment).
+    "kubernetes": "https://dummy.example.com||||__dummy__",
 }
 
 # Sentinel needs a 6-part compound token (tenant||client_id||secret||sub||rg||ws)

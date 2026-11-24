@@ -10,6 +10,7 @@ with the reason, and nothing is written.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -133,6 +134,51 @@ async def test_an_ask_on_an_item_a_live_run_holds_keeps_the_claim_and_steers_the
     assert steer.await_count == 1
     assert steer.await_args is not None
     assert steer.await_args.args[1] == run_id
+
+
+@pytest.mark.asyncio
+async def test_an_ask_through_the_inbox_lifts_a_pickup_deferral() -> None:
+    """Re-check on a deferred item of an inbox agent: the inbox takes it now (#1862).
+
+    A ``not_before`` ahead (here the unchanged-red deferral, recorded in the
+    payload) kept the item off ``list_dispatchable_work_items`` until then, so
+    the stamped note said "sent" and no run started.
+    """
+    writer = person_writer(is_admin=False)
+    later = datetime.now(UTC) + timedelta(hours=1)
+    async with _temp_database() as sessions:
+        async with sessions() as session:
+            person = await _make_user(session, email="deferred@example.com")
+            owner = await _make_agent(session, name="Inbox desk")
+            item = _row(person, title="deferred", owner_agent_id=owner.id, status="blocked", description="brief")
+            item.not_before = later
+            item.payload = {wi_service.RED_DEFERRED_UNTIL_KEY: later.isoformat(), "kept": 1}
+            session.add(item)
+            await session.commit()
+            item_id = str(item.id)
+
+        async with _pointed_at_db(sessions):
+            uid = str(person.id)
+            spawn = AsyncMock(return_value=object())
+            inbox = SimpleNamespace(owner_agent_id=str(owner.id))
+            with (
+                patch("app.services.sub_agent.create_sub_agent_task", spawn),
+                patch.object(wi_service, "load_assignment_inboxes", AsyncMock(return_value=[inbox])),
+            ):
+                sent = await wi_service.ask_work_item(item_id, user_id=uid, action="recheck", writer=writer)
+        async with sessions() as session:
+            row = await session.get(WorkItem, uuid.UUID(item_id))
+            assert row is not None
+            status, not_before, payload = row.status, row.not_before, dict(row.payload or {})
+
+    assert sent is not None
+    assert sent["via"] == "inbox"
+    assert spawn.await_count == 0
+    assert status == "open"
+    assert not_before is None
+    assert wi_service.RED_DEFERRED_UNTIL_KEY not in payload
+    assert payload["kept"] == 1
+    assert payload["_ask"]["action"] == "recheck"
 
 
 def test_the_run_prompt_quotes_the_person_as_data() -> None:
