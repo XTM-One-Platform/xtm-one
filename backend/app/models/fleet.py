@@ -252,6 +252,14 @@ class Fleet(VisibilityColumns, Base):
     hide_activity_from_non_admins: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+    #: The CTEM cases this fleet runs (#1966, ``services/ctem_case_routing.py``):
+    #: ``{"paths": null | [trigger path, ...], "key": "ctem:..."}``, ``paths``
+    #: null = every path, ``key`` the prefix of its case work items
+    #: (``<key>:case:<case id>``). Taken only while one of its home members'
+    #: CTEM case automations is on. The seed writes it on a built-in fleet
+    #: (``case_ownership`` of ``BUILTIN_FLEETS``), a fork copies it, an
+    #: administrator sets it on any other fleet. NULL = runs no case.
+    case_ownership: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now, server_default=func.now()
     )

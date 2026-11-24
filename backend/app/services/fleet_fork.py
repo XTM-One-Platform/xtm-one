@@ -47,6 +47,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Literal
@@ -72,6 +73,8 @@ from app.services.fleets import (
 )
 
 ForkMembers = Literal["copy", "keep"]
+#: The built-in tool group of the CTEM signal and case tools (``builtin_tool_groups``, #1748).
+CTEM_TOOL_GROUP = "ctem"
 FORK_MEMBER_MODES: tuple[str, ...] = ("copy", "keep")
 
 
@@ -399,6 +402,7 @@ async def fork_fleet(
     orchestrator_copy = result.copied_agents.get(source.orchestrator_agent_id) if source.orchestrator_agent_id else None
     if orchestrator_copy is not None:
         await set_orchestrator(db, fork, orchestrator_copy.id)
+    await _carry_case_ownership(db, source, fork, result.copied_agents.values())
 
     # The member configuration as it is (#9162 R3, scope 4): the fleet
     # defaults, and on every copied row its own overrides, NULL kept NULL so
@@ -509,6 +513,30 @@ async def _fork_workspace(
         description=f"Where the fleet {fleet_name} works.",
         is_company_managed=False,
     )
+
+
+async def _carry_case_ownership(db: AsyncSession, source: Fleet, fork: Fleet, copies: Iterable[Agent]) -> None:
+    """A fork of a fleet that runs CTEM cases runs them too, once enabled (#1966).
+
+    The declaration is copied (its own work item key), the copied "Case opened
+    or reopened" automations (switched off like every copied one) are pointed
+    at the fork, so they never hear the source's cases, and the copies get the
+    ``ctem`` tool group (a built-in source holds the case tools by being built-in).
+    """
+    from app.services.ctem_case_routing import parse_declaration, point_case_listeners
+
+    declared = parse_declaration(source.case_ownership)
+    if declared is None:
+        return
+    paths, _ = declared
+    fork.case_ownership = {"paths": list(paths) if paths is not None else None, "key": f"ctem:fleet-{fork.id}"}
+    copies = list(copies)
+    for agent in copies:
+        groups = list(agent.builtin_tool_ids or [])
+        if CTEM_TOOL_GROUP not in groups:
+            agent.builtin_tool_ids = [*groups, CTEM_TOOL_GROUP]
+    await db.flush()
+    await point_case_listeners(db, fork, [a.id for a in copies])
 
 
 def _uuid(value: object) -> uuid.UUID | None:
