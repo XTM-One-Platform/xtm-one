@@ -361,9 +361,8 @@ async def _lock_base(db: AsyncSession, current: OrganizationContextVersion | Non
 
 #: The fields a ``PATCH`` never sets: the asset and group rows have their own API since #1543.
 _ROW_FIELDS: frozenset[str] = frozenset({"assets_exposure", "asset_groups"})
-#: The row fields a ``PUT`` or a restore ignores once the records own the rows (#1752); ``ai_systems``
-#: is the derived alias of the ``ai_target`` assets (#1501).
-_IGNORED_ROW_FIELDS: tuple[str, ...] = ("assets_exposure", "asset_groups", "ai_systems")
+#: The row fields a ``PUT`` or a restore ignores once the records own the rows (#1752).
+_IGNORED_ROW_FIELDS: tuple[str, ...] = ("assets_exposure", "asset_groups")
 
 
 def _with_rows(
@@ -2105,7 +2104,7 @@ class ImportSourcesResponse(BaseModel):
 
 
 class ImportRequest(BaseModel):
-    section: Literal["assets", "asset_groups", "ai_systems", "software", "crown_jewels", "pirs"]
+    section: Literal["assets", "asset_groups", "software", "crown_jewels", "pirs"]
     source: Literal[
         "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
     ]
@@ -2172,7 +2171,7 @@ class ImportFilterOptionsResponse(BaseModel):
 
 @router.get("/import/options", response_model=ImportFilterOptionsResponse)
 async def list_organization_import_options(
-    section: Literal["assets", "asset_groups", "ai_systems", "software", "crown_jewels", "pirs"],
+    section: Literal["assets", "asset_groups", "software", "crown_jewels", "pirs"],
     source: Literal[
         "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
     ],
@@ -2292,7 +2291,7 @@ async def apply_organization_import(
 
 class OrganizationSyncRequest(BaseModel):
     #: A section of the import, or ``all`` for the global schedule that runs every section sync.
-    section: Literal["assets", "asset_groups", "ai_systems", "software", "crown_jewels", "pirs", "all"]
+    section: Literal["assets", "asset_groups", "software", "crown_jewels", "pirs", "all"]
     source: Literal[
         "openaev",
         "opencti",
