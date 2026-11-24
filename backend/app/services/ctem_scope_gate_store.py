@@ -248,7 +248,7 @@ async def default_scenario_reader(db: AsyncSession) -> uuid.UUID | None:
         await db.execute(
             select(sync.owner_user_id)
             .where(
-                sync.section == "crown_jewels",
+                sync.section == "primary_assets",
                 sync.source == "opencrq",
                 sync.enabled.is_(True),
                 sync.owner_user_id.is_not(None),
@@ -407,12 +407,8 @@ async def evaluate_after_record(db: AsyncSession, row: CtemSignal, *, created: b
         return pending
     verdict = signals.verdict_of(row.state)
     try:
-        # #1951: nothing opens while an administrator paused case opening; the signal waits confirmed.
-        from app.services import ctem_case_opening
-
-        if await ctem_case_opening.is_on(db, "cyber"):
-            async with db.begin_nested():
-                await ctem_case_loop.open_from_signal(db, row, events=pending)
+        async with db.begin_nested():
+            await ctem_case_loop.open_from_signal(db, row, events=pending)
     except Exception:
         pending.items.clear()
         logger.warning("CTEM case not opened for signal %s; the sweep retries", getattr(row, "id", "?"), exc_info=True)
@@ -485,7 +481,7 @@ async def recheck_parked(
 ) -> dict[str, int]:
     """#1505: the unmatched signals decided before the organization's newest profile version, decided again.
 
-    A change to assets, groups, crown jewels, owned domains, software or
+    A change to assets, groups, primary assets, owned domains, software or
     shipped products writes a new profile version; every ``to_validate``
     signal last decided before it is decided again, *batch* per call, oldest
     first. Each is read with its recorder's OpenCRQ read. A signal the gate
@@ -544,7 +540,7 @@ async def _decide_again(db: AsyncSession, rows: list[CtemSignal], *, now: dateti
 
 
 #: The watchlist reasons an inventory link or a software change can lift (#1591 S3).
-HELD_BY_SCOPE: tuple[str, ...] = ("crown_jewel_below_policy", "criticality_unknown", "below_scope_threshold")
+HELD_BY_SCOPE: tuple[str, ...] = ("primary_asset_below_policy", "criticality_unknown", "below_scope_threshold")
 
 
 async def recheck_held(
@@ -558,7 +554,7 @@ async def recheck_held(
     """#1591 S3: the watchlist signals held for scope, decided before *since*, decided again.
 
     Run after a primary-asset link sync or an endpoint software change completes:
-    a signal held by ``crown_jewel_below_policy``, ``criticality_unknown`` or
+    a signal held by ``primary_asset_below_policy``, ``criticality_unknown`` or
     ``below_scope_threshold`` whose decision predates the change is decided
     again, *batch* per call, oldest first. Idempotent: a decided signal's
     ``updated_at`` moves past *since*, so the next call skips it. A signal the

@@ -60,7 +60,7 @@ export interface CtemCaseSummary {
   aggregates_restricted?: boolean;
   aggregates_reason?: string | null;
   asset_count: number | null;
-  crown_jewel_count: number | null;
+  primary_asset_count: number | null;
   kev_count: number | null;
   max_cvss: number | null;
   max_epss: number | null;
@@ -149,7 +149,7 @@ export interface CtemCaseVisibleIssue {
   epss?: number | null;
   kev?: boolean;
   assets?: string[];
-  crown_jewels?: string[];
+  primary_assets?: string[];
   first_seen_at?: string | null;
   details_unavailable?: boolean;
   /** Version knowledge from the viewer's own OpenCTI read (CTEM-11, #946): the declared version, the fix and where it came from. */
@@ -596,7 +596,7 @@ export interface CtemCasesOverviewCase {
   state_since: string | null;
   waiting_on: { gate: string | null; by: string | null; since: string | null } | null;
   /** The primary asset the case touches among the issues the caller sees; null when none. */
-  crown_jewel: string | null;
+  primary_asset: string | null;
 }
 
 /** One CTEM phase of the overview: its open and waiting cases and the five that need attention first. */
@@ -774,41 +774,5 @@ export function useSplitCtemCase() {
   return useMutation<CtemCaseDetail, Error, { title: string; issue_ids: string[]; reason?: string }>({
     mutationFn: (body) => api.post("/ctem-cases/split", body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ctem-cases"] }),
-  });
-}
-
-/** Whether case opening runs, and the confirmed signals that wait for their case (#1951). */
-export interface CtemCaseOpening {
-  vertical: string;
-  on: boolean;
-  waiting: number;
-}
-
-/** The answer of a change: `draining` when the waiting signals are opening their cases now. */
-export interface CtemCaseOpeningChange extends CtemCaseOpening {
-  changed: boolean;
-  draining: boolean;
-}
-
-/** GET /ctem-cases/opening: read by everyone who reads cases; polled while signals wait. */
-export function useCtemCaseOpening() {
-  return useQuery<CtemCaseOpening>({
-    queryKey: ["ctem-cases", "opening"],
-    queryFn: () => api.get("/ctem-cases/opening"),
-    retry: ctemCasesRetry,
-    // While cases open from the waiting signals the count falls: read it again every few seconds.
-    refetchInterval: (query) => (query.state.data?.on && query.state.data.waiting > 0 ? 3000 : REFETCH_INTERVAL_SLOW),
-  });
-}
-
-/** PUT /ctem-cases/opening, administrators only: pause or resume case opening. */
-export function useSetCtemCaseOpening() {
-  const qc = useQueryClient();
-  return useMutation<CtemCaseOpeningChange, Error, { on: boolean }>({
-    mutationFn: (body) => api.put("/ctem-cases/opening", body),
-    onSuccess: (data) => {
-      qc.setQueryData(["ctem-cases", "opening"], { vertical: data.vertical, on: data.on, waiting: data.waiting });
-      void qc.invalidateQueries({ queryKey: ["ctem-cases", "list"] });
-    },
   });
 }

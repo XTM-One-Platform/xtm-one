@@ -44,7 +44,7 @@ progress, resolved, accepted risk).
    (#11613).** Cases (the fix and the workflow: state, owner, due date,
    history) are shared by the organization; their content is not. The
    database stores ids and workflow only: no name, CVE, score, KEV, asset,
-   crown jewel, priority or count. Every read renders the case for the viewer
+   primary asset, priority or count. Every read renders the case for the viewer
    from the viewer's OWN source read (their JWT, the same reads recompute
    makes; `services/ctem_cases_view.py`), cached per user and vertical for
    5 minutes. XTM One mirrors no group, role, marking, organization or scope.
@@ -53,7 +53,7 @@ progress, resolved, accepted risk).
    - A member issue the viewer cannot see is a row `{"restricted": true}`,
      nothing else: no id, source, name, score, asset or link (OpenCTI's
      "Restricted" pattern). The member count shows the total and the
-     restricted count; priority, scores, assets and crown jewels are
+     restricted count; priority, scores, assets and primary assets are
      computed on the visible issues only and may differ from one viewer to
      the next. A history line about an issue they cannot see shows
      "Restricted".
@@ -270,7 +270,7 @@ same way.
 - scope-limited aggregates: `summary()` counts the open product members the
   viewer reads WITHOUT their details (outside their scope, or seen before from
   a product that does not answer now) as `members_without_details`. When it is
-  above 0, `asset_count`, `crown_jewel_count`, `kev_count`, `max_cvss` and
+  above 0, `asset_count`, `primary_asset_count`, `kev_count`, `max_cvss` and
   `max_epss` are `null` with `aggregates_restricted: true` and
   `aggregates_reason` (`ctem_cases_view.AGGREGATES_RESTRICTED_REASON`), and
   `with_asset_count` never counts from the issues then (inventory count, else
@@ -527,7 +527,7 @@ downgrade deletes the shared rows and restores the columns.
 | resolved -> needs attention | member issues open again (system) or a user | system, user |
 
 Priority comes from the prioritization policy of #11543 (KEV always in, CVSS and
-EPSS thresholds, internet exposure, crown jewel criticality). Without a policy
+EPSS thresholds, internet exposure, primary asset criticality). Without a policy
 the priority is computed from KEV, max CVSS and max EPSS with the platform
 defaults, labelled "default policy" in the case.
 
@@ -558,7 +558,7 @@ Due date: set by the user, or suggested from the priority SLA of the policy
   hue (needs attention `feedback-warning-primary`, in progress
   `feedback-info-primary`, mitigated `feedback-alert-primary`, resolved
   `feedback-success-primary`, accepted risk `feedback-neutral-primary`). AI purple is never used on Cases (it is the AI
-  colour only): crown jewels are a `neutral` Chip with the shield icon.
+  colour only): primary assets are a `neutral` Chip with the shield icon.
 - **Owners** are the DS `Avatar` (initials, name in its tooltip); unassigned
   reads "Unassigned" in secondary text, never a warning colour.
 - **Period switch**: the shared `SegmentedFilter` (`size="sm"`, radio). One
@@ -649,7 +649,7 @@ then the existing AI assessment and facts grid unchanged.
   30 d", never an empty gap.
 - **Top cases** under each open column: the three highest-priority cases
   (title on one line with ellipsis and its full text in the tooltip, priority
-  Chip, issue count, crown jewel Chip, owner Avatar or "Unassigned", age),
+  Chip, issue count, primary asset Chip, owner Avatar or "Unassigned", age),
   each a link to its page.
 - **Resolved** column: cases resolved in the period, the median time to
   resolve, and the issues they closed ("22 cases, 412 issues closed"; the
@@ -714,7 +714,7 @@ then the existing AI assessment and facts grid unchanged.
 - **The shared `DataTable`, its own toolbar anatomy (B2)**, one row at 1080
   and 1728 in en, fr, es and ja: search ("Search fix, product or CVE"), ONE
   `FiltersPill` holding the facets (owner: me / unassigned / a person,
-  priority, crown jewel, source, product, overdue, accepted risk expiring in
+  priority, primary asset, source, product, overdue, accepted risk expiring in
   14 days) with its count badge, "Clear all filters" (an icon with its
   tooltip in compact mode), then right: `TotalChip`, Columns, page size, CSV
   export. Active filters show as the pill's count and the panel's checked
@@ -725,9 +725,9 @@ then the existing AI assessment and facts grid unchanged.
   and "14 CVEs from OpenCTI and OpenAEV" in its tooltip; the sub line is
   gone, so every row is one line), Issues, Owner (Avatar + name, truncate),
   Due ("6 Nov" with the error-tone "Overdue" Chip), State (Chip). Hidden below
-  `xl` and offered in Columns: Crown jewels, Assets, KEV, In state. At 1728
+  `xl` and offered in Columns: Primary assets, Assets, KEV, In state. At 1728
   every column shows.
-- **Sort (round 2 B3)**: Priority, Fix, Issues, Crown jewels, Assets, KEV,
+- **Sort (round 2 B3)**: Priority, Fix, Issues, Primary assets, Assets, KEV,
   Owner, Due and In state are sortable. Default: Priority descending, then
   Due ascending (the most urgent case on top), `?sort=priority&dir=desc` in
   the URL; a click on the active column flips the direction, another column
@@ -798,7 +798,7 @@ with "Ranking points" on the band (a dialog, "Reset to defaults", saved with
 |---|---|---|
 | Priority critical / high / medium / low | `priority_*` | 40 / 25 / 10 / 0 |
 | At least one KEV issue | `kev` | 15 |
-| At least one crown jewel touched | `crown_jewel` | 15 |
+| At least one primary asset touched | `primary_asset` | 15 |
 | SLA breached or due date passed | `overdue` | 20 |
 | Due within `due_soon_days` (1 to 90, default 3) | `due_soon` | 10 |
 | No owner | `no_owner` | 5 |
@@ -827,7 +827,7 @@ the Settings form carries it whole.
   (`ctem/CasesBulkActions.tsx`); `case-actions.test.ts` fails when the two
   drift apart. Split stays in the Issues table selection.
 - Summary: the shared `StatCard` row (issues, KEV, max CVSS, max EPSS, assets,
-  crown jewels, first seen), wrapping to two rows at 1080; each value's
+  primary assets, first seen), wrapping to two rows at 1080; each value's
   tooltip names its source and read time.
 - "Why this case" sentence: the key rule that grouped it (R1 / R2 / R3) and
   the policy rules that set its priority.
@@ -898,7 +898,7 @@ the Settings form carries it whole.
   read before signals (legacy)". Legacy cases are labelled, not backfilled:
   their members carry no reference that maps one signal per case for every
   viewer.
-- Assets and crown jewels (from #11543 when present; otherwise "Link assets
+- Assets and primary assets (from #11543 when present; otherwise "Link assets
   in Settings > Organization").
 - History: vertical event list with actor (person Avatar, or the system or
   agent icon of 7.0), time
@@ -953,7 +953,7 @@ cases the caller sees, with the list's visibility rule, so each count equals
 the list it links to: `counts` by status, `open`, per CTEM phase (`phases`,
 keyed by `ctem_case_audit.PHASES`) the open and waiting cases, the counts by
 status and the five open cases that need attention first (waiting for a
-decision, then priority, then the oldest status; each with the crown jewel it
+decision, then priority, then the oldest status; each with the primary asset it
 touches among the issues the caller sees), `no_phase_open` (open cases with no
 event yet: in the band, in no stage card), `waiting` (the open cases waiting
 for a decision with their gate, the oldest one and its age in hours) and
@@ -1107,18 +1107,6 @@ The third brick of the spine: signal (`dev-docs/ctem-signals.md`) -> reconcile a
 **A person's answer resumes the case, whatever its key.** The seeded "Gate answered" listener of each CTEM loop (`agents/gate_answered.py`, `builtin_agents._gate_answered_assignment`) hears `work_item.status_changed` from blocked to open on every own item keyed `ctem:` whose event carries `answered: true`. Only `work_item.answer_work_item` sets that flag (`publish_transition(answered=True)`), so a decision the loop keyed outside its gate catalog (an evidence request such as `ctem:f1:version-read:`, an operational blocker such as `ctem:f1:jira-reauth:`) resumes the case, and a dependency release of a case or re-test item wakes nothing. The catalog `CTEM_F*_GATE_PREFIXES` still names the gates the case page draws and the personas file. Answers of different decisions run side by side: every seeded "Gate answered" listener names `max_concurrent_runs` (`GATE_ANSWERED_CONCURRENCY`, 5) over the one-run default of seeded event triggers, and `ordering_key: correlation_key`, so two answers on one decision key run one at a time in arrival order; the seed rewrites the trigger of an existing install at boot. The "Case opened or reopened" listeners of every case fleet and the loop's "Loop reminder due" do the same (#1923, `CTEM_CASE_LISTENER_CONCURRENCY`, 5): case events ordered by `case_id`, reminders by their timer key `ctem-loop-reminder:CASE_ID`, so one case's events run in order and another case's never wait behind them.
 
 **Visibility.** A `signal` member is shown to a viewer under the signal API's rule (an administrator, or the user it was recorded for); a case with no member the viewer sees stays absent, as before (#11613).
-
-### 9bis.1 Case opening: the administrator switch (#1951)
-
-**One persisted setting, per vertical.** `platform_settings.ctem_case_opening` (JSON, migration `c1951caseopen01`) holds `{vertical: false}` for a vertical whose case opening is paused; NULL or a missing vertical is on, the behaviour before the switch, so a fresh install opens cases. Never an environment variable. `services/ctem_case_opening.py` owns it.
-
-**Off: nothing opens, the signals wait.** The three paths that open a case from a confirmed signal read the switch first: the scope gate's confirmation (`ctem_scope_gate_store.evaluate_after_record`), a source read (`ctem_cases_store._case_of_signal`) and the scheduled sweep (`ctem_case_loop.sweep`, through `open_waiting`). A confirmed signal stays `confirmed` with `case_id` null. The rest of the sweep (SLA breaches, announce, stall) keeps running; a manual split still creates a case.
-
-**On again: an immediate drain.** `PUT /api/v1/ctem-cases/opening {on: true}` starts `ctem_case_opening.drain` in the background: sweep batches (`SWEEP_BATCH`) back to back, each in its own transaction under `pg_advisory_xact_lock(hashtext('ctem-case-drain:<vertical>'))`, committed, then its events and live frames published, so the Cases list fills while the viewer watches. It stops when a pass opens and joins nothing, when case opening is paused again, or after `DRAIN_MAX_PASSES` (100); it logs its totals. Two concurrent drains never open a fix twice: the second pass waits for the first's commit and then finds those signals linked.
-
-**API.** `GET /api/v1/ctem-cases/opening` answers `{vertical, on, waiting}` (`waiting`: confirmed signals with no case) to anyone who reads cases. `PUT` takes `{on, vertical?}`, `require_admin`; a change writes one audit row (`entity_type` `ctem_case_opening`, who, when, on or off) and raises the platform-wide event `ctem_case.opening_changed` (`vertical`, `on`, `changed_by`, `waiting`); the same value again changes nothing (`changed: false`). It answers `{vertical, on, waiting, changed, draining}`.
-
-**Screens.** `CaseOpeningSwitch` is a discreet control for administrators only (Sam, 24 Nov 2026); anyone else sees nothing in every state. On Cases it sits in the table toolbar beside Group by and Views, a 32 px control with their border, padding and label, drawn disabled until the setting is read so the toolbar never shifts; on the Signal sources header it is the same control. Its tooltip is one line, with the waiting count while it is off. While it is off the empty Cases list keeps its usual sentence and adds one muted line, "Case opening is off" (`CaseOpeningOffEmptyState`). Turning it on or off toasts one line, "Case opening on" or "Case opening off"; the opening read is polled every 3 s while signals wait.
 
 ## 10. Slices
 
