@@ -11,7 +11,8 @@
  * need attention first (waiting first, then priority, then the oldest status)
  * with their priority, age, last change and the crown jewel they touch; a link
  * to the phase's list. Governance & Risk carries no case phase: the card counts
- * the decisions waiting and the risks accepted, across phases.
+ * the decisions waiting and the risks accepted, across phases, under its own
+ * title "Decisions and accepted risks" (#1624, UX B2).
  */
 import { Link } from "react-router-dom";
 
@@ -82,7 +83,7 @@ export function CasesInPhaseCard({ stage, backTo }: { stage: CtemStageKey | "gov
   const { data, isError } = useCtemCasesOverview();
   const stageLabel = t_i18n(stage === "governance" ? "Governance & Risk" : CTEM_STAGE_CONFIG[stage].label);
   const from = { backTo, backLabel: t_i18n("Back to {stage}", { stage: stageLabel }) };
-  const title = t_i18n("Cases in this phase");
+  const title = stage === "governance" ? t_i18n("Decisions and accepted risks") : t_i18n("Cases in this phase");
 
   if (isError) {
     return (

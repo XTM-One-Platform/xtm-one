@@ -92,4 +92,14 @@ describe("CasesInPhaseCard", () => {
     expect(screen.getByTestId("ctem-phase-count-waiting_decision").getAttribute("href")).toBe("/ctem/cases?state=waiting_decision");
     expect(screen.getByTestId("ctem-phase-count-accepted_risk").textContent).toBe("Accepted risk: 2 cases");
   });
+
+  it("titles the Governance & Risk card for what it counts, the stage pages by their phase (UX B2)", () => {
+    overview.value = { data: read(), isError: false };
+    const { unmount } = draw("governance");
+    expect(screen.getByRole("heading", { name: "Decisions and accepted risks" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Cases in this phase" })).toBeNull();
+    unmount();
+    draw("remediation");
+    expect(screen.getByRole("heading", { name: "Cases in this phase" })).toBeTruthy();
+  });
 });
