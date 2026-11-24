@@ -42,7 +42,6 @@ const PROFILE = {
     size: "",
     crown_jewels: [],
     tech_stack: [],
-    ai_systems: [],
     pir_ids: [],
     risk_appetite: { annual_loss_threshold: null, approval_threshold: null },
     loaded_hourly_rate: null,
