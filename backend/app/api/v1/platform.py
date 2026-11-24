@@ -3714,7 +3714,7 @@ def classify_platform_turn_failure(exc: BaseException) -> PlatformTurnFailure:
     credential is 502, and anything else is 500. Only 429 and 503 are
     retryable.
     """
-    from app.llm.router import is_provider_unavailable_error
+    from app.llm.router import input_rejection, is_provider_unavailable_error
     from app.services.failure_causes import (
         FailureCause,
         classify_run_failure,
@@ -3735,7 +3735,8 @@ def classify_platform_turn_failure(exc: BaseException) -> PlatformTurnFailure:
         )
     last, last_status = last_provider_failure(exc)
     detail = format_exception_message(exc)[:500]
-    cause = classify_run_failure(last).cause
+    # Every model refused the turn's files: a refusal, even when the last leg is the gateway's 502.
+    cause = FailureCause.MODEL_REJECTED_REQUEST if input_rejection(exc) else classify_run_failure(last).cause
     legs = tuple(leg.as_dict() for leg in getattr(exc, "legs", ()) or ())
     if _is_statement_timeout(exc):
         return PlatformTurnFailure(503, PLATFORM_CHAT_DATABASE_TIMEOUT, True, detail, last_status, legs=legs)

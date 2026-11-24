@@ -642,8 +642,8 @@ def _classify_own_exception(exc: BaseException) -> FailureClassification | None:
                 ",".join(categories)[:_LEGS_DETAIL_LIMIT] or None,
                 leg_dicts,
             )
-        # Every model refused the input (an image too large): heuristic, the
-        # input is told from a refused parameter by the refusal's wording.
+        # Every model refused a turn that carried files (an image too large):
+        # heuristic, the refusal names no file, so the attachment is inferred.
         if getattr(exc, "input_rejected", None):
             return FailureClassification(
                 FailureCause.MODEL_REJECTED_REQUEST,
@@ -676,20 +676,6 @@ def _classify_request_too_large(exc: BaseException) -> FailureClassification | N
     if is_request_too_large_error(exc):
         return _heuristic(FailureCause.REQUEST_TOO_LARGE, _exception_label(exc))
     return None
-
-
-def _classify_input_rejection(exc: BaseException) -> FailureClassification | None:
-    """One model refusing the input, direct (400) or behind the gateway (its 502).
-
-    Ahead of the status step, which reads the gateway's 502 as an overload.
-    """
-    try:
-        from app.llm.router import input_rejection
-    except Exception:  # pragma: no cover - defensive
-        return None
-    if input_rejection(exc) is None:
-        return None
-    return _heuristic(FailureCause.MODEL_REJECTED_REQUEST, _exception_label(exc, exception_status_code(exc)))
 
 
 def _classify_by_status(exc: BaseException) -> FailureClassification | None:
@@ -770,8 +756,7 @@ def classify_run_failure(
     Order is precision-first — context signals the site *observed*, then our
     own exception classes, then a status code read off the SDK exception, then
     exception types, and only then the message. The first four are structural;
-    the last is not, and is tagged accordingly. One exception: a refused input
-    is read off the refusal's wording ahead of the status, a HEURISTIC.
+    the last is not, and is tagged accordingly.
     """
     context = ctx or FailureContext()
 
@@ -787,7 +772,6 @@ def classify_run_failure(
 
     for step in (
         _classify_own_exception,
-        _classify_input_rejection,
         _classify_by_status,
         _classify_by_type,
         # Structural, and deliberately ranked above every heuristic below it —

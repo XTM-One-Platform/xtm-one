@@ -561,6 +561,7 @@ class AllProvidersFailedError(Exception):
         *,
         skipped: list[tuple[str, str]] | None = None,
         tried: list[tuple[str | None, ...]] | None = None,
+        carried_files: bool = False,
     ):
         self.failures = failures
         # ``(provider, model)`` failover targets left out because the model
@@ -583,8 +584,8 @@ class AllProvidersFailedError(Exception):
         self.content_declined = any(leg.kind == "declined" for leg in self.legs) and all(
             leg.kind == "declined" for leg in self.legs[:-1]
         )
-        # Every leg refused the input itself (an image too large): what the refusal said.
-        self.input_rejected = _chain_input_rejection(failures)
+        # The turn carried files and every leg refused the request itself: what the refusal said.
+        self.input_rejected = _chain_input_rejection(failures) if carried_files else None
         providers = ", ".join(name for name, _ in failures)
         clauses = "; ".join(f"{leg.label}: {leg.outcome()}" for leg in self.legs)
         message = f"All configured AI providers failed ({providers})"
@@ -644,44 +645,41 @@ def is_request_too_large_error(exc: Exception) -> bool:
     return _is_size_error(exc)
 
 
-# A refusal of the input names it; a refused parameter (temperature, a tool
-# schema) is configuration, and changing the input would not help.
-_INPUT_MEDIUM = re.compile(r"\b(?:image|pdf|document|file|audio|video|attachment)s?\b", re.IGNORECASE)
-# 4xx answering something other than the input: credentials, model, timeout, size, throttle.
-_NOT_INPUT_STATUSES = frozenset({401, 403, 404, 408, 413, 429})
-# The field path a 400 leads with (``messages.0.content.1.image.source.base64.data: ``);
-# only a path into the conversation points at the input, not one into ``tools``.
-_FIELD_PATH = re.compile(r"^[\w\[\]]+(?:\.[\w\[\]]+)+:\s*")
+# 400/422: the request itself was refused, not the credentials, the model, the size or the rate.
+_REFUSED_REQUEST_STATUSES = frozenset({400, 422})
+# The field a 400 names, as a leading path (``messages.0.content.1.image.source.base64.data: ``,
+# ``temperature: ``) or as OpenAI's ``param``: the input only when it points into the conversation.
+_FIELD_PATH = re.compile(r"^[\w\[\]]+(?:\.[\w\[\]]+)*:\s+")
 _INPUT_PATHS = ("messages", "input", "contents")
-# OpenAI words a tool schema or refused-parameter 400 without a path: configuration too.
-_CONFIG_WORDING = re.compile(r"\btools?\b|\bfunctions?\b|\bschema\b|\bunsupported (?:parameter|value)\b", re.IGNORECASE)
 # Gemini's "Please retry or report in ...": retrying the same input cannot help.
 _RETRY_ADVICE = re.compile(r"[.\s]*\bplease retry\b.*$", re.IGNORECASE | re.DOTALL)
-_NAMED_LIMIT = re.compile(
-    r"\d[\d,.]*\s*(?:px|pixels?|[kmg]i?b|bytes|pages?|tokens?|seconds?|minutes?)\b", re.IGNORECASE
-)
 
 
 def input_rejection(exc: BaseException) -> str | None:
-    """What the refusal said when every model refused the request's input, else ``None``.
+    """What the refusal said when every model refused a turn that carried files, else ``None``."""
+    return exc.input_rejected if isinstance(exc, AllProvidersFailedError) else None
 
-    Takes a raw provider error or an :class:`AllProvidersFailedError` (every leg refused).
-    """
-    if isinstance(exc, AllProvidersFailedError):
-        return exc.input_rejected
-    return _refused_input(exc)
+
+def carries_files(messages: Iterable[object]) -> bool:
+    """Whether any message of the request carries a file or an image."""
+    for message in messages or ():
+        get = message.get if isinstance(message, Mapping) else partial(getattr, message)
+        if get("files", None) or get("images", None):
+            return True
+    return False
 
 
 def _chain_input_rejection(failures: list[tuple[str, Exception]]) -> str | None:
-    reasons = [_refused_input(exc) for _, exc in failures]
+    reasons = [_refused_request(exc) for _, exc in failures]
     if not reasons or None in reasons:
         return None
-    # The wording that names a limit ("8000 pixels") tells the user what to change.
-    return next((reason for reason in reasons if _NAMED_LIMIT.search(reason)), reasons[0])
+    # The wording with a number names the limit ("8000 pixels"): it tells the user what to change.
+    return next((reason for reason in reasons if any(c.isdigit() for c in reason)), reasons[0])
 
 
-def _refused_input(exc: BaseException) -> str | None:
-    """The provider's message when *exc* refused the request's input, else ``None``."""
+def _refused_request(exc: BaseException) -> str | None:
+    """The provider's message when *exc* refused the request itself (a 400 / 422 not about a parameter
+    or a tool), directly, as the gateway's ``502`` for an upstream 4xx, or as a stream's error event."""
     from app.core.redaction import redact_secrets
 
     if isinstance(exc, ModelDeclinedError | ContextOverflowError) or _is_size_error(exc):
@@ -697,13 +695,13 @@ def _refused_input(exc: BaseException) -> str | None:
             exc, openai.APIStatusError | openai.APIConnectionError | openai.APIResponseValidationError
         ):
             return None
-    elif not 400 <= status < 500 or status in _NOT_INPUT_STATUSES:
+    elif status not in _REFUSED_REQUEST_STATUSES:
         return None
     message = (message or "").strip()
     path = _FIELD_PATH.match(message)
-    if path is not None and not path.group(0).startswith(_INPUT_PATHS):
-        return None
-    if _CONFIG_WORDING.search(message) or not _INPUT_MEDIUM.search(message):
+    param = getattr(exc, "param", None) or gateway_error_envelope(error_body(exc)).get("param")
+    field = param if isinstance(param, str) and param else (path.group(0) if path else None)
+    if field is not None and not field.startswith(_INPUT_PATHS):
         return None
     reason = _RETRY_ADVICE.sub("", message[path.end() :] if path else message).strip().rstrip(".")
     return _bounded(redact_secrets(reason), _LEG_TEXT_LIMIT) if reason else None
@@ -2622,6 +2620,8 @@ class FailoverLLMProvider(BaseLLMProvider):
         self,
         failures: list[tuple[str, Exception]],
         tried: list[tuple[str | None, ...]] | None = None,
+        *,
+        carried_files: bool = False,
     ) -> AllProvidersFailedError:
         """The error of a failover chain with no target left.
 
@@ -2636,7 +2636,7 @@ class FailoverLLMProvider(BaseLLMProvider):
                 for provider, model in self._fallback_candidates()
                 if not self._can_chat(provider, model)
             ]
-        return AllProvidersFailedError(failures, skipped=skipped, tried=tried)
+        return AllProvidersFailedError(failures, skipped=skipped, tried=tried, carried_files=carried_files)
 
     @staticmethod
     def _capped_out(provider: BaseLLMProvider, failures: list[tuple[str, Exception]]) -> bool:
@@ -3003,7 +3003,9 @@ class FailoverLLMProvider(BaseLLMProvider):
                         fallback.provider_name, method_name, target,
                         format_exception_message(fb_exc),
                     )
-                    raise AllProvidersFailedError(failures, tried=tried) from fb_exc
+                    raise AllProvidersFailedError(
+                        failures, tried=tried, carried_files=carries_files(messages)
+                    ) from fb_exc
                 if (
                     watched is not None
                     and watched.emitted
@@ -3014,14 +3016,16 @@ class FailoverLLMProvider(BaseLLMProvider):
                         exc=fb_exc,
                     )
                 ):
-                    raise AllProvidersFailedError(failures, tried=tried) from fb_exc
+                    raise AllProvidersFailedError(
+                        failures, tried=tried, carried_files=carries_files(messages)
+                    ) from fb_exc
                 logger.warning(
                     "Fallback LLM provider '%s' %s also failed (%s): %s",
                     fallback.provider_name, method_name, target,
                     format_exception_message(fb_exc),
                 )
 
-        raise self._chain_exhausted(failures, tried)
+        raise self._chain_exhausted(failures, tried, carried_files=carries_files(messages))
 
     async def chat(
         self,
@@ -3178,7 +3182,9 @@ class FailoverLLMProvider(BaseLLMProvider):
                         target,
                         format_exception_message(fb_exc),
                     )
-                    raise AllProvidersFailedError(failures, tried=tried) from fb_exc
+                    raise AllProvidersFailedError(
+                        failures, tried=tried, carried_files=carries_files(messages)
+                    ) from fb_exc
                 # Same guard as the primary's.
                 if fallback_yielded and not await self._restart_stream(
                     on_stream_reset,
@@ -3186,7 +3192,9 @@ class FailoverLLMProvider(BaseLLMProvider):
                     source=fallback.provider_name,
                     exc=fb_exc,
                 ):
-                    raise AllProvidersFailedError(failures, tried=tried) from fb_exc
+                    raise AllProvidersFailedError(
+                        failures, tried=tried, carried_files=carries_files(messages)
+                    ) from fb_exc
                 logger.warning(
                     "Fallback LLM provider '%s' stream also failed (%s): %s",
                     fallback.provider_name,
@@ -3194,7 +3202,7 @@ class FailoverLLMProvider(BaseLLMProvider):
                     format_exception_message(fb_exc),
                 )
 
-        raise self._chain_exhausted(failures, tried)
+        raise self._chain_exhausted(failures, tried, carried_files=carries_files(messages))
 
     async def chat_stream_with_tools(
         self, messages, tools=None, *, on_token=None, model=None,
