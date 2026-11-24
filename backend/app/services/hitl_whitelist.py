@@ -383,14 +383,15 @@ async def resolve_approve_tool_calls(db: AsyncSession, agent) -> bool:
     return agent_asks(None, install_default_asks(default))
 
 
-async def seeded_fleet_member(db: AsyncSession, agent) -> bool:
+async def seeded_fleet_member(db: AsyncSession, agent: object) -> bool:
     """Whether *agent* is a built-in agent of a built-in (seeded) fleet: never an in-run approval card (#1675).
 
     A seeded fleet's tools are always offered and authorized on every
     deployment; its gates are decision items between steps. ``False`` on a
     failed read, so the agent's own switch decides as before.
     """
-    if agent is None or not getattr(agent, "is_builtin", False) or getattr(agent, "id", None) is None:
+    agent_id = getattr(agent, "id", None)
+    if agent is None or not getattr(agent, "is_builtin", False) or agent_id is None:
         return False
     try:
         from app.models.fleet import Fleet, FleetMember
@@ -399,7 +400,7 @@ async def seeded_fleet_member(db: AsyncSession, agent) -> bool:
             found = await db.scalar(
                 select(FleetMember.id)
                 .join(Fleet, Fleet.id == FleetMember.fleet_id)
-                .where(FleetMember.agent_id == agent.id, Fleet.is_builtin.is_(True))
+                .where(FleetMember.agent_id == agent_id, Fleet.is_builtin.is_(True))
                 .limit(1)
             )
     except Exception:

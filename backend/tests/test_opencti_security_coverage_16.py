@@ -24,7 +24,7 @@ from app.agents.fleet_seed import SEEDED_FLEET_AUTONOMY_LEVEL
 from app.agents.seed import SEED_DATA_DIR
 from app.integrations.providers.opencti import build_tools
 from app.integrations.providers.opencti.capabilities import required_capabilities
-from app.services.fleet_autonomy import effective_gates, gated_tool_rules, rule_matches
+from app.services.fleet_autonomy import effective_gates, gated_tool_rules
 from app.tools.base import CallableToolExecutor, ToolCall
 
 TOKEN = "https://demo.opencti.io||test-token"

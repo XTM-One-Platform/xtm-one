@@ -120,7 +120,7 @@ def test_one_analysis_counts_one_simulation_and_each_closed_gap_one_retest():
     assert roi.count_units(BUILTIN_ROI_UNITS[m2.COVERAGE_REPORTER], report) == 2
 
 
-def test_in_the_loop_a_simulation_launch_is_the_validation_decision_never_a_tool_pause():
+def test_in_the_loop_a_simulation_launch_is_the_validation_decision_never_a_tool_pause() -> None:
     # Sam, 23 Nov 2026 (#1339): out of the box two CTEM gates wait, ctem.mobilize and the
     # OpenAEV validation. Sam, 24 Nov 2026 (#1675): the wait is a decision item, no tool pauses.
     gates = BUILTIN_FLEET_STRUCTURED[CTEM_LOOP_SLUG]["gates"]

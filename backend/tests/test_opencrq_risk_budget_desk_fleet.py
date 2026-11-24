@@ -145,7 +145,7 @@ def test_units_count_each_scenario_each_case_and_one_pack():
     assert roi.count_units(BUILTIN_ROI_UNITS[m3.BOARD_REPORTER], pack) == 1
 
 
-def test_register_writes_are_a_decision_and_nothing_waits_at_low():
+def test_register_writes_are_a_decision_and_nothing_waits_at_low() -> None:
     # In the loop the register writes belong to ctem.remediation.decision (impact high),
     # by the persona: the gate names no tool (#1675), so no write pauses at any level.
     gates = BUILTIN_FLEET_STRUCTURED[CTEM_LOOP_SLUG]["gates"]

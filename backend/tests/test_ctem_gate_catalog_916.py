@@ -61,7 +61,7 @@ def test_full_gates_waits_on_every_gate_and_autonomous_on_none(slug):
     assert not any(e["gated"] for e in gate_catalog("autonomous", _gates(slug)))
 
 
-def test_the_mobilize_decision_never_pauses_a_ticket_tool():
+def test_the_mobilize_decision_never_pauses_a_ticket_tool() -> None:
     """#1675: one Mobilize decision item covers the tickets of its case; no ticket call pauses."""
     for slug in ("ctem-loop", "ctem-vuln-prioritization"):
         mobilize = next(g for g in _gates(slug) if g["key"] == CTEM_MOBILIZE_GATE)

@@ -443,7 +443,7 @@ async def test_the_mobilization_tool_path_without_ticketing_is_a_reason(monkeypa
     assert answer == {"connected": False, "reason": tk.NOT_CONNECTED, "settings": tk.SETTINGS_PATH}
 
 
-def test_the_ticket_creation_is_never_paused_by_the_mobilize_gate():
+def test_the_ticket_creation_is_never_paused_by_the_mobilize_gate() -> None:
     """#1675: the Mobilize decision is one work item; sync_ctem_case_ticket always runs."""
     from app.agents.builtin_fleet_docs import BUILTIN_FLEET_STRUCTURED
     from app.services.fleet_autonomy import AUTONOMY_LEVELS, gated_tool_rules
