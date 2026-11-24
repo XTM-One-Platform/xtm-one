@@ -20628,6 +20628,7 @@
   "Left for later: Members screen": "Left for later: Members screen",
   "Complete on the Members screen": "Complete on the Members screen",
   "Run estimate": "Run estimate",
+  "Expected load": "Expected load",
   "I will do it later": "I will do it later",
   "Autonomy": "Autonomy",
   "Run as and automations": "Run as and automations",
@@ -21433,12 +21434,12 @@
   "About this asset group": "About this asset group",
   "{count, plural, one {# more member its source names is not in the inventory yet} other {# more members its source names are not in the inventory yet}}": "{count, plural, one {# more member its source names is not in the inventory yet} other {# more members its source names are not in the inventory yet}}",
   "No asset of the inventory is in this group yet.": "No asset of the inventory is in this group yet.",
-  "Fix not known for this platform": "Fix not known for this platform",
-  "{count, plural, =0 {No asset is below the fixed version of its platform} one {# asset still below the fixed version of its platform} other {# assets still below the fixed version of their platform}}": "{count, plural, =0 {No asset is below the fixed version of its platform} one {# asset still below the fixed version of its platform} other {# assets still below the fixed version of their platform}}",
-  "{count, plural, =0 {No asset runs the fixed version of its platform yet} one {# asset runs the fixed version of its platform or later} other {# assets run the fixed version of their platform or later}}": "{count, plural, =0 {No asset runs the fixed version of its platform yet} one {# asset runs the fixed version of its platform or later} other {# assets run the fixed version of their platform or later}}",
-  "Fixed version per platform: {list}": "Fixed version per platform: {list}",
-  "{version} names no platform while the assets run several: an asset not below it is not read as fixed.": "{version} names no platform while the assets run several: an asset not below it is not read as fixed.",
-  "{count, plural, one {# asset is on a platform with no known fix} other {# assets are on a platform with no known fix}}": "{count, plural, one {# asset is on a platform with no known fix} other {# assets are on a platform with no known fix}}",
-  "{count, plural, one {# asset runs several versions and is counted in each of its rows} other {# assets run several versions and are counted in each of their rows}}": "{count, plural, one {# asset runs several versions and is counted in each of its rows} other {# assets run several versions and are counted in each of their rows}}",
-  "Not known": "Not known"
+  "{count, plural, =0 {No scheduled run a day.} one {About # scheduled run a day.} other {About # scheduled runs a day.}}": "{count, plural, =0 {No scheduled run a day.} one {About # scheduled run a day.} other {About # scheduled runs a day.}}",
+  "{count, plural, one {About # scheduled run a month.} other {About # scheduled runs a month.}}": "{count, plural, one {About # scheduled run a month.} other {About # scheduled runs a month.}}",
+  "{count, plural, one {About # scheduled run a year.} other {About # scheduled runs a year.}}": "{count, plural, one {About # scheduled run a year.} other {About # scheduled runs a year.}}",
+  "{count, plural, one {# automation runs once per event, as often as its events arrive.} other {# automations run once per event, as often as their events arrive.}}": "{count, plural, one {# automation runs once per event, as often as its events arrive.} other {# automations run once per event, as often as their events arrive.}}",
+  "No cost yet: these automations have not run in the last {days, plural, one {# day} other {# days}}.": "No cost yet: these automations have not run in the last {days, plural, one {# day} other {# days}}.",
+  "About {cost} a day for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "About {cost} a day for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.",
+  "About {cost} a month for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "About {cost} a month for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.",
+  "About {cost} a year for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "About {cost} a year for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}."
 }
