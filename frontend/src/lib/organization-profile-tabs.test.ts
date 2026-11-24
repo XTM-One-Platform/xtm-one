@@ -31,11 +31,10 @@ describe("organization profile tabs", () => {
     for (const path of Object.keys(FIELD_LABELS)) expect(tabOfField(path), path).not.toBeNull();
   });
 
-  it("maps every exposure card, the tracked organizations and the agent context to a tab", () => {
+  it("maps every exposure card, the tracked organizations, the imports and the agent context to a tab", () => {
     for (const card of EXPOSURE_SECTIONS) expect(tabOfField(card), card).not.toBeNull();
     expect(PROFILE_CARD_TAB.tracked_organizations).toBe("business");
-    // The PIR sources live on the Prioritization policy card since #1938: no imports card on the knowledge tab.
-    expect("scheduled_imports" in PROFILE_CARD_TAB).toBe(false);
+    expect(PROFILE_CARD_TAB.scheduled_imports).toBe("knowledge");
     expect(PROFILE_CARD_TAB.context_injection).toBe("knowledge");
   });
 
@@ -78,7 +77,7 @@ describe("organization profile tabs", () => {
     expect(profileFieldHref("prioritization_policy")).toBe("/ctem/inventory/exposure?card=prioritization_policy");
     expect(profileFieldHref("accepted_risks")).toBe("/ctem/inventory/exposure?card=prioritization_policy");
     expect(profileFieldHref("assets_exposure")).toBe("/ctem/inventory?card=assets_exposure");
-    expect(profileFieldHref("tech_stack")).toBe("/ctem/inventory/software?card=tech_stack");
+    expect(profileFieldHref("software")).toBe("/ctem/inventory/software?card=software");
     expect(profileFieldHref("tracked_organizations")).toBe("/ctem/inventory/business?card=tracked_organizations");
     expect(profileFieldHref("sector")).toBe("/settings/organization?card=identity");
     expect(profileFieldHref("risk_appetite.approval_threshold")).toBe("/settings/organization?card=risk_appetite");
@@ -100,9 +99,9 @@ describe("organization profile tabs", () => {
   });
 
   it("names the tabs a change touches and groups items by tab in tab order", () => {
-    expect([...changedTabs({ name: "a", tech_stack: [] }, { name: "a", tech_stack: [{ product: "x" }] })]).toEqual(["technology"]);
-    expect(tabsOfFields(["tech_stack", "pir_ids", "size", "nope"])).toEqual(["identity", "technology", "exposure"]);
-    const groups = groupByTab([{ f: "tech_stack" }, { f: "size" }, { f: "nope" }], (item) => item.f);
+    expect([...changedTabs({ name: "a", software: [] }, { name: "a", software: [{ product: "x" }] })]).toEqual(["technology"]);
+    expect(tabsOfFields(["software", "pir_ids", "size", "nope"])).toEqual(["identity", "technology", "exposure"]);
+    const groups = groupByTab([{ f: "software" }, { f: "size" }, { f: "nope" }], (item) => item.f);
     expect(groups.map((group) => group.tab)).toEqual(["identity", "technology", null]);
   });
 });

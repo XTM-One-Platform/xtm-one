@@ -134,12 +134,12 @@ const NO_VALUE = "none";
 const COUNTRY_CODES = Object.keys(ISO_3166_NUMERIC);
 
 /** The lists edited in their own card (#12256). */
-const LIST_KEYS = ["crown_jewels", "shipped_products", "tech_stack"] as const;
+const LIST_KEYS = ["crown_jewels", "shipped_products", "software"] as const;
 /** @i18n-keys */
 const LIST_TITLES = {
   crown_jewels: "Primary assets and business services",
   shipped_products: "Shipped products",
-  tech_stack: "Software",
+  software: "Software",
 } as const;
 type ListKey = (typeof LIST_KEYS)[number];
 /** The exposure tables edited in their own card (#12256 slice 2). @i18n-keys */
@@ -643,8 +643,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const [assetsImportOpen, setAssetsImportOpen] = useState(false);
   // "From the platforms" (#11780): the import stepper; its "Quick setup" runs today's one-click draft.
   const [platformImportOpen, setPlatformImportOpen] = useState(false);
-  // The OpenCTI PIR import of the Prioritization policy card (#1938): the PIRs section alone, no Quick setup.
-  const [pirImportOpen, setPirImportOpen] = useState(false);
   // "From a connected integration" (#11888): an agent reads it and previews the assets in a chat.
   const [fillAgentOpen, setFillAgentOpen] = useState(false);
   // The chat onboarding (#11224): a new chat with the default assistant interviews for the fields left.
@@ -874,7 +872,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     ordered,
   });
   type JewelRow = { index: number; value: ProfileForm["crown_jewels"][number] };
-  type TechRow = { index: number; value: ProfileForm["tech_stack"][number] };
+  type TechRow = { index: number; value: ProfileForm["software"][number] };
   const jewelColumns: DataTableColumn<JewelRow>[] = [
     {
       key: "name",
@@ -1015,7 +1013,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   ];
   // The list editors (#12256): the same columns, a closed row read as text, the open one as fields.
   type Jewel = ProfileForm["crown_jewels"][number];
-  type Tech = ProfileForm["tech_stack"][number];
+  type Tech = ProfileForm["software"][number];
   type Shipped = ProfileForm["shipped_products"][number];
   const pick = (labels: Record<string, string>, value: string, label: string, onChange: (value: string) => void) => (
     <Select value={value} onValueChange={onChange}>
@@ -1078,7 +1076,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // Vendor scale (UX round 3 B2 on #931: 240/200/180 left CPE 62 px, header and input clipped).
   const techEdit: ListEditColumn<Tech>[] = [
     { key: "product", header: "Product", width: readWidth(200), read: (v) => readCell(v.product), edit: (v, set, bad) => editText("Product", v.product, (product) => set({ product }), bad), sortValue: (v) => v.product.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
-    { key: "vendor", header: "Vendor", hideable: true, width: readWidth(160), read: (v) => readCell(v.vendor), edit: (v, set, bad) => editText("Vendor", v.vendor, (vendor) => set({ vendor }), bad, "Vendor", suggestId("tech_stack", "vendor")), sortValue: (v) => v.vendor.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.vendor] },
+    { key: "vendor", header: "Vendor", hideable: true, width: readWidth(160), read: (v) => readCell(v.vendor), edit: (v, set, bad) => editText("Vendor", v.vendor, (vendor) => set({ vendor }), bad, "Vendor", suggestId("software", "vendor")), sortValue: (v) => v.vendor.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.vendor] },
     { key: "cpe", header: "CPE (optional)", hideable: true, read: (v) => readCell(v.cpe), edit: (v, set, bad) => editText("CPE (optional)", v.cpe, (cpe) => set({ cpe }), bad, "cpe:2.3:a:vendor:product:*"), sortValue: (v) => v.cpe.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.cpe] },
     { key: "version", header: "Version (optional)", hideable: true, width: readWidth(160), read: (v) => readCell(v.version ?? ""), edit: (v, set) => editText("Version (optional)", v.version ?? "", (version) => set({ version }), false, "1.25.3"), sortValue: (v) => (v.version ?? "").toLowerCase(), firstSort: "asc" },
     sourceEdit<Tech>(),
@@ -1121,10 +1119,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       { key: "criticality", label: "Criticality", options: CRITICALITY_LABELS },
       { key: "business_service", label: "Business service" },
     ],
-    tech_stack: [{ key: "vendor", label: "Vendor", suggestions: suggestId("tech_stack", "vendor") }],
+    software: [{ key: "vendor", label: "Vendor", suggestions: suggestId("software", "vendor") }],
     shipped_products: [{ key: "vendor", label: "Vendor", suggestions: suggestId("shipped_products", "vendor") }],
   } as const;
-  const LIST_SUGGESTED: { [K in ListKey]: readonly (keyof ProfileForm[K][number] & string)[] } = { crown_jewels: ["owner"], shipped_products: ["vendor"], tech_stack: ["vendor"] };
+  const LIST_SUGGESTED: { [K in ListKey]: readonly (keyof ProfileForm[K][number] & string)[] } = { crown_jewels: ["owner"], shipped_products: ["vendor"], software: ["vendor"] };
   const choiceWords = (labels: Record<string, string>) => Object.fromEntries(Object.entries(labels).map(([key, label]) => [key, [label, t_i18n(label)]]));
   const header = (label: string) => [label, t_i18n(label)];
   const PASTE = {
@@ -1141,7 +1139,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         identity: LIST_RULES.crown_jewels.identity,
       } as PasteSpec<Jewel>,
     },
-    tech_stack: {
+    software: {
       title: "Paste products",
       example: "Jira, Atlassian",
       fieldLabels: { product: "Product", vendor: "Vendor", cpe: "CPE (optional)", version: "Version (optional)" },
@@ -1150,7 +1148,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         empty: { product: "", vendor: "", cpe: "", version: "" },
         name: "product",
         headers: { product: header("Product"), vendor: header("Vendor"), cpe: header("CPE (optional)"), version: [...header("Version (optional)"), "Version"] },
-        identity: LIST_RULES.tech_stack.identity,
+        identity: LIST_RULES.software.identity,
       } as PasteSpec<Tech>,
     },
     // The repositories are added on the row once pasted: a line holds one value per field.
@@ -1182,7 +1180,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   ) => {
     if (!listOpen(key)) return null;
     const rows = listRows(key);
-    const rules = LIST_RULES[key] as unknown as { check: (value: ProfileForm[K][number]) => ReturnType<typeof LIST_RULES.tech_stack.check>; identity: (value: ProfileForm[K][number]) => string };
+    const rules = LIST_RULES[key] as unknown as { check: (value: ProfileForm[K][number]) => ReturnType<typeof LIST_RULES.software.check>; identity: (value: ProfileForm[K][number]) => string };
     return (
       <>
         {LIST_SUGGESTED[key].map((field) => (
@@ -1283,7 +1281,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   /** "4 need attention", on the card's header in read mode. */
   const attention = (key: ListKey) => {
     if (!saved || listOpen(key)) return null;
-    const rules = LIST_RULES[key] as unknown as { check: (value: unknown) => ReturnType<typeof LIST_RULES.tech_stack.check>; identity: (value: unknown) => string };
+    const rules = LIST_RULES[key] as unknown as { check: (value: unknown) => ReturnType<typeof LIST_RULES.software.check>; identity: (value: unknown) => string };
     const count = attentionCount(saved[key] as unknown[], rules.check, rules.identity);
     return count ? (
       <Badge variant="warning" data-testid={`settings.organization.attention-${key}`}>
@@ -1415,23 +1413,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         </div>
       </SettingsField>
     );
-  /**
-   * The OpenCTI PIR sources and syncs, under the PIR list of the Prioritization policy (#1938): the profile scope of
-   * the syncs (section pirs). Off only while the policy itself is being saved, never for another card's edit. Never
-   * mounted for a reader: the syncs and sources routes are administrators-only (a 403 would reach the card).
-   */
-  const policySaving = patch.isPending || save.isPending;
-  const pirSources = reader ? undefined : (
-    <OrganizationSourcesSyncs
-      variant="section"
-      scope="profile"
-      title={t_i18n("PIR sources")}
-      description={t_i18n("The OpenCTI imports and syncs that keep the PIR list up to date.")}
-      onAddSource={() => setPirImportOpen(true)}
-      disabled={policySaving}
-      disabledReason={t_i18n("Wait for the prioritization policy to be saved.")}
-    />
-  );
   /** The exposure cards a tab draws (#12329): the exposure tab three, the knowledge tab one. */
   const exposureCards = (cards: readonly (typeof EXPOSURE_SECTIONS)[number][]) =>
     current && (
@@ -1439,7 +1420,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         cards={cards}
         readOnly={reader}
         pirList={pirList}
-        pirSources={pirSources}
         current={!editing && exposureEdit ? exposureEdit.form : current}
         editing={editing}
         fieldId={fieldId}
@@ -1512,7 +1492,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             {t_i18n(PROFILE_TAB_LABELS.knowledge)}
             <InfoTip
               label={t_i18n("About the knowledge and sources")}
-              content={t_i18n("The procedures and reference documents agents search, and the organization context they preload.")}
+              content={t_i18n("The procedures and reference documents agents search, the organization context they preload, and the sources that feed the primary assets and PIRs.")}
             />
           </h3>
         </div>
@@ -1584,7 +1564,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       </div>
       )}
 
-      {setupGuide && editing && tab !== "knowledge" && (
+      {setupGuide && editing && (
         <p data-testid="settings.organization.setup-guide" className="rounded-sm border border-elevation-subtle p-3 content-base">
           {t_i18n("Start from a draft: Draft > From the platforms reads OpenCTI, OpenAEV and OpenCRQ, Draft > With AI proposes values to review. Nothing is saved until you click Save.")}
         </p>
@@ -2022,12 +2002,12 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           {tab === "technology" && (
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.technology)} className="space-y-4" data-testid="settings.organization.panel-technology">
           {missingIn("technology")}
-          {show("tech_stack") && (
+          {show("software") && (
           <SettingsCard
-            id={`${fieldId}-tech_stack`}
+            id={`${fieldId}-software`}
             className={SECTION_BAR_ANCHOR_CLASS}
             data-anchor="card"
-            {...cardFold("tech_stack", current.tech_stack.length)}
+            {...cardFold("software", current.software.length)}
             tabIndex={-1}
             data-testid="settings.organization.tech-stack"
             icon={Server}
@@ -2039,18 +2019,18 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             }
             action={
               <>
-                {attention("tech_stack")}
-                {listEditAction("tech_stack")}
-                {pasteAction("tech_stack")}
-                {listOpen("tech_stack") && (
-                  <Button variant="secondary" className="gap-1.5" onClick={() => addListRow("tech_stack", { product: "", vendor: "", cpe: "", version: "" })}>
+                {attention("software")}
+                {listEditAction("software")}
+                {pasteAction("software")}
+                {listOpen("software") && (
+                  <Button variant="secondary" className="gap-1.5" onClick={() => addListRow("software", { product: "", vendor: "", cpe: "", version: "" })}>
                     <Plus className="h-3.5 w-3.5" /> {t_i18n("Add a product")}
                   </Button>
                 )}
               </>
             }
           >
-            {listEditor("tech_stack", {
+            {listEditor("software", {
               columns: techEdit,
               filters: [{ key: "vendor", label: "Vendor", values: (v: Tech) => [v.vendor.trim()] }],
               searchFields: (v) => [v.product, v.vendor, v.cpe, v.version],
@@ -2059,11 +2039,11 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               rowTestId: "settings.organization.tech-row",
               emptyLabel: techEmptyLabel,
             }) ??
-              (current.tech_stack.length === 0 ? (
+              (current.software.length === 0 ? (
                 <p className="text-default-secondary">{techEmptyLabel}</p>
               ) : (
                 <DataTable
-                  rows={current.tech_stack.map((value, index) => ({ index, value }))}
+                  rows={current.software.map((value, index) => ({ index, value }))}
                   columns={techColumns}
                   layout={tableLayout}
                   rowKey={(row) => String(row.index)}
@@ -2105,12 +2085,15 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             {exposureCards(["enterprise_knowledge"])}
             {/* The platform default of the organization summary cascade (#11533). */}
             <OrganizationContextInjectionCard />
+            {/* Sources and syncs (#1276), the tab's last block so the table fits the window under the
+                tab bar: one scroller, nothing below the list (UX r1 B1, B2 on #1294). The business profile's
+                sources here, the inventory's on CTEM > Inventory > Sources (#1178). */}
+            <OrganizationSourcesSyncs scope="profile" onAddSource={() => setPlatformImportOpen(true)} disabled={editing || cardOpen !== null || drafting.isPending} />
           </div>
           )}
 
-          {/* One save bar for the whole form, sticky at the bottom (#12329); none on Knowledge and sources, whose
-              cards save on their own and which no draft fills (#1938). */}
-          {editing && tab !== "knowledge" && <SettingsSaveBar dirty={dirty} saving={save.isPending} saveDisabled={scoreInvalid} onSave={submit} onCancel={stopEditing} />}
+          {/* One save bar for the whole form, on every tab, sticky at the bottom (#12329). */}
+          {editing && <SettingsSaveBar dirty={dirty} saving={save.isPending} saveDisabled={scoreInvalid} onSave={submit} onCancel={stopEditing} />}
         </div>
       )}
 
@@ -2155,7 +2138,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           }}
         />
       )}
-      {pirImportOpen && <OrganizationImportDialog open={pirImportOpen} onOpenChange={setPirImportOpen} sections={PROFILE_IMPORT_SECTIONS} />}
       <AgenticGateDialogControlled open={aiGateOpen} onOpenChange={setAiGateOpen} feature={t_i18n("Draft with AI")} />
     </div>
   );
