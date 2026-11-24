@@ -101,7 +101,7 @@ import { useSyncedRemoval } from "./OrganizationSyncedRemoval";
 import { ProviderLogo } from "@/components/ui/provider-logo";
 import { columnEditable, LOCAL_FIELDS, SOURCE_KIND_LABELS, sourceKind, sourcePlatform, type Provenance } from "@/lib/organization-provenance";
 import { OrganizationContextInjectionCard } from "./OrganizationContextInjectionCard";
-import { OrganizationPrimaryAssetsRestoreDialog } from "./OrganizationPrimaryAssetsRestoreDialog";
+import { OrganizationCrownJewelsRestoreDialog } from "./OrganizationCrownJewelsRestoreDialog";
 import { OrganizationProposalsCard } from "./OrganizationProposalsCard";
 import { OrganizationEvidenceHealthCard } from "./OrganizationEvidenceHealthCard";
 import { OrganizationOutsideLensCard } from "./OrganizationOutsideLensCard";
@@ -134,10 +134,10 @@ const NO_VALUE = "none";
 const COUNTRY_CODES = Object.keys(ISO_3166_NUMERIC);
 
 /** The lists edited in their own card (#12256). */
-const LIST_KEYS = ["primary_assets", "shipped_products", "software"] as const;
+const LIST_KEYS = ["crown_jewels", "shipped_products", "software"] as const;
 /** @i18n-keys */
 const LIST_TITLES = {
-  primary_assets: "Primary assets and business services",
+  crown_jewels: "Primary assets and business services",
   shipped_products: "Shipped products",
   software: "Software",
 } as const;
@@ -643,6 +643,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const [assetsImportOpen, setAssetsImportOpen] = useState(false);
   // "From the platforms" (#11780): the import stepper; its "Quick setup" runs today's one-click draft.
   const [platformImportOpen, setPlatformImportOpen] = useState(false);
+  // The OpenCTI PIR import of the Prioritization policy card (#1938): the PIRs section alone, no Quick setup.
+  const [pirImportOpen, setPirImportOpen] = useState(false);
   // "From a connected integration" (#11888): an agent reads it and previews the assets in a chat.
   const [fillAgentOpen, setFillAgentOpen] = useState(false);
   // The chat onboarding (#11224): a new chat with the default assistant interviews for the fields left.
@@ -871,7 +873,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     options: Object.entries(labels).map(([value, name]) => ({ value, label: t_i18n(name) })),
     ordered,
   });
-  type JewelRow = { index: number; value: ProfileForm["primary_assets"][number] };
+  type JewelRow = { index: number; value: ProfileForm["crown_jewels"][number] };
   type TechRow = { index: number; value: ProfileForm["software"][number] };
   const jewelColumns: DataTableColumn<JewelRow>[] = [
     {
@@ -1012,7 +1014,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     sourceFilter<TechRow>(),
   ];
   // The list editors (#12256): the same columns, a closed row read as text, the open one as fields.
-  type Jewel = ProfileForm["primary_assets"][number];
+  type Jewel = ProfileForm["crown_jewels"][number];
   type Tech = ProfileForm["software"][number];
   type Shipped = ProfileForm["shipped_products"][number];
   const pick = (labels: Record<string, string>, value: string, label: string, onChange: (value: string) => void) => (
@@ -1037,7 +1039,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const jewelEdit: ListEditColumn<Jewel>[] = [
     { key: "name", header: "Primary asset", width: readWidth(JEWEL_WIDTHS.name), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("Primary asset", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
     { key: "business_service", header: "Business service", hideable: true, read: (v) => readCell(v.business_service), edit: (v, set) => editText("Business service", v.business_service, (business_service) => set({ business_service })), sortValue: (v) => v.business_service.toLowerCase(), firstSort: "asc" },
-    { key: "owner", header: "Owner", hideable: true, read: (v) => readCell(v.owner), edit: (v, set) => editText("Owner", v.owner, (owner) => set({ owner }), false, "Owner", suggestId("primary_assets", "owner")), sortValue: (v) => v.owner.toLowerCase(), firstSort: "asc" },
+    { key: "owner", header: "Owner", hideable: true, read: (v) => readCell(v.owner), edit: (v, set) => editText("Owner", v.owner, (owner) => set({ owner }), false, "Owner", suggestId("crown_jewels", "owner")), sortValue: (v) => v.owner.toLowerCase(), firstSort: "asc" },
     { key: "criticality", header: "Criticality", hideable: true, headerClassName: "w-44", width: readWidth(120), read: (v) => readCell(v.criticality ? optionLabel(CRITICALITY_LABELS, v.criticality) : ""), edit: (v, set) => pick(CRITICALITY_LABELS, v.criticality, "Criticality", (criticality) => set({ criticality })), sortValue: (v) => Object.keys(CRITICALITY_LABELS).indexOf(v.criticality), firstSort: "desc" },
     {
       key: "assets",
@@ -1114,19 +1116,19 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   ];
   /** Per list (slice 2): the fields the selection toolbar sets, the free-text fields suggested from the list, and "Paste a list". */
   const LIST_BULK = {
-    primary_assets: [
-      { key: "owner", label: "Owner", suggestions: suggestId("primary_assets", "owner") },
+    crown_jewels: [
+      { key: "owner", label: "Owner", suggestions: suggestId("crown_jewels", "owner") },
       { key: "criticality", label: "Criticality", options: CRITICALITY_LABELS },
       { key: "business_service", label: "Business service" },
     ],
     software: [{ key: "vendor", label: "Vendor", suggestions: suggestId("software", "vendor") }],
     shipped_products: [{ key: "vendor", label: "Vendor", suggestions: suggestId("shipped_products", "vendor") }],
   } as const;
-  const LIST_SUGGESTED: { [K in ListKey]: readonly (keyof ProfileForm[K][number] & string)[] } = { primary_assets: ["owner"], shipped_products: ["vendor"], software: ["vendor"] };
+  const LIST_SUGGESTED: { [K in ListKey]: readonly (keyof ProfileForm[K][number] & string)[] } = { crown_jewels: ["owner"], shipped_products: ["vendor"], software: ["vendor"] };
   const choiceWords = (labels: Record<string, string>) => Object.fromEntries(Object.entries(labels).map(([key, label]) => [key, [label, t_i18n(label)]]));
   const header = (label: string) => [label, t_i18n(label)];
   const PASTE = {
-    primary_assets: {
+    crown_jewels: {
       title: "Paste primary assets",
       example: "Customer portal, Online sales, Jane Doe, critical",
       fieldLabels: { name: "Primary asset", business_service: "Business service", owner: "Owner", criticality: "Criticality" },
@@ -1136,7 +1138,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         name: "name",
         headers: { name: header("Primary asset"), business_service: header("Business service"), owner: header("Owner"), criticality: header("Criticality"), opencrq_asset_id: header("OpenCRQ") },
         choices: { criticality: choiceWords(CRITICALITY_LABELS) },
-        identity: LIST_RULES.primary_assets.identity,
+        identity: LIST_RULES.crown_jewels.identity,
       } as PasteSpec<Jewel>,
     },
     software: {
@@ -1413,6 +1415,23 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         </div>
       </SettingsField>
     );
+  /**
+   * The OpenCTI PIR sources and syncs, under the PIR list of the Prioritization policy (#1938): the profile scope of
+   * the syncs (section pirs). Off only while the policy itself is being saved, never for another card's edit. Never
+   * mounted for a reader: the syncs and sources routes are administrators-only (a 403 would reach the card).
+   */
+  const policySaving = patch.isPending || save.isPending;
+  const pirSources = reader ? undefined : (
+    <OrganizationSourcesSyncs
+      variant="section"
+      scope="profile"
+      title={t_i18n("PIR sources")}
+      description={t_i18n("The OpenCTI imports and syncs that keep the PIR list up to date.")}
+      onAddSource={() => setPirImportOpen(true)}
+      disabled={policySaving}
+      disabledReason={t_i18n("Wait for the prioritization policy to be saved.")}
+    />
+  );
   /** The exposure cards a tab draws (#12329): the exposure tab three, the knowledge tab one. */
   const exposureCards = (cards: readonly (typeof EXPOSURE_SECTIONS)[number][]) =>
     current && (
@@ -1420,6 +1439,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         cards={cards}
         readOnly={reader}
         pirList={pirList}
+        pirSources={pirSources}
         current={!editing && exposureEdit ? exposureEdit.form : current}
         editing={editing}
         fieldId={fieldId}
@@ -1492,7 +1512,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             {t_i18n(PROFILE_TAB_LABELS.knowledge)}
             <InfoTip
               label={t_i18n("About the knowledge and sources")}
-              content={t_i18n("The procedures and reference documents agents search, the organization context they preload, and the sources that feed the primary assets and PIRs.")}
+              content={t_i18n("The procedures and reference documents agents search, and the organization context they preload.")}
             />
           </h3>
         </div>
@@ -1564,7 +1584,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       </div>
       )}
 
-      {setupGuide && editing && (
+      {setupGuide && editing && tab !== "knowledge" && (
         <p data-testid="settings.organization.setup-guide" className="rounded-sm border border-elevation-subtle p-3 content-base">
           {t_i18n("Start from a draft: Draft > From the platforms reads OpenCTI, OpenAEV and OpenCRQ, Draft > With AI proposes values to review. Nothing is saved until you click Save.")}
         </p>
@@ -1869,10 +1889,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.business)} className="space-y-4" data-testid="settings.organization.panel-business">
           {missingIn("business")}
           <SettingsCard
-            id={`${fieldId}-primary_assets`}
+            id={`${fieldId}-crown_jewels`}
             className={SECTION_BAR_ANCHOR_CLASS}
             data-anchor="card"
-            {...cardFold("primary_assets", current.primary_assets.length)}
+            {...cardFold("crown_jewels", current.crown_jewels.length)}
             tabIndex={-1}
             data-testid="settings.organization.primary-assets"
             icon={Shield}
@@ -1880,8 +1900,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             description={t_i18n("What the business cannot lose, ranked by criticality.")}
             action={
               <>
-                {attention("primary_assets")}
-                {!reader && !listOpen("primary_assets") && (
+                {attention("crown_jewels")}
+                {!reader && !listOpen("crown_jewels") && (
                   // An icon button: a third labelled action wraps the card title at 1080 (UX round 1 B1, #1567).
                   <Tip content={editing || cardOpen ? t_i18n("Save or cancel the edit first.") : t_i18n("Restore from a past version")} wrap="auto">
                     <Button
@@ -1896,13 +1916,13 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                     </Button>
                   </Tip>
                 )}
-                {listEditAction("primary_assets")}
-                {pasteAction("primary_assets")}
-                {listOpen("primary_assets") && (
+                {listEditAction("crown_jewels")}
+                {pasteAction("crown_jewels")}
+                {listOpen("crown_jewels") && (
                   <Button
                     variant="secondary"
                     className="gap-1.5"
-                    onClick={() => addListRow("primary_assets", { name: "", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" })}
+                    onClick={() => addListRow("crown_jewels", { name: "", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" })}
                   >
                     <Plus className="h-3.5 w-3.5" /> {t_i18n("Add a primary asset")}
                   </Button>
@@ -1910,20 +1930,20 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               </>
             }
           >
-            {listEditor("primary_assets", {
+            {listEditor("crown_jewels", {
               columns: jewelEdit,
               filters: [valueFilter("criticality", "Criticality", CRITICALITY_LABELS, (v: Jewel) => v.criticality, true)], // ordinal scale (#12289)
               searchFields: (v) => [v.name, v.business_service, v.owner],
               rowLabel: (v) => v.name,
-              storageKey: "settings-organization-primary-assets",
+              storageKey: "settings-organization-crown-jewels",
               rowTestId: "settings.organization.primary-asset-row",
               emptyLabel: t_i18n("No primary asset yet: agents cannot rank by business impact."),
             }) ??
-              (current.primary_assets.length === 0 ? (
+              (current.crown_jewels.length === 0 ? (
                 <p className="text-default-secondary">{t_i18n("No primary asset yet: agents cannot rank by business impact.")}</p>
               ) : (
                 <DataTable
-                  rows={current.primary_assets.map((value, index) => ({ index, value }))}
+                  rows={current.crown_jewels.map((value, index) => ({ index, value }))}
                   columns={jewelColumns}
                   layout={tableLayout}
                   rowKey={(row) => String(row.index)}
@@ -1937,7 +1957,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                   rowTestId="settings.organization.primary-asset-row"
                 />
               ))}
-            <OrganizationPrimaryAssetsRestoreDialog open={restoreOpen} onOpenChange={setRestoreOpen} currentVersion={data?.version ?? null} />
+            <OrganizationCrownJewelsRestoreDialog open={restoreOpen} onOpenChange={setRestoreOpen} currentVersion={data?.version ?? null} />
           </SettingsCard>
 
           {/* What the organization ships (#1432), apart from the software inventory it runs: CTEM resolves a vulnerability on one to its repositories. */}
@@ -2085,15 +2105,12 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             {exposureCards(["enterprise_knowledge"])}
             {/* The platform default of the organization summary cascade (#11533). */}
             <OrganizationContextInjectionCard />
-            {/* Sources and syncs (#1276), the tab's last block so the table fits the window under the
-                tab bar: one scroller, nothing below the list (UX r1 B1, B2 on #1294). The business profile's
-                sources here, the inventory's on CTEM > Inventory > Sources (#1178). */}
-            <OrganizationSourcesSyncs scope="profile" onAddSource={() => setPlatformImportOpen(true)} disabled={editing || cardOpen !== null || drafting.isPending} />
           </div>
           )}
 
-          {/* One save bar for the whole form, on every tab, sticky at the bottom (#12329). */}
-          {editing && <SettingsSaveBar dirty={dirty} saving={save.isPending} saveDisabled={scoreInvalid} onSave={submit} onCancel={stopEditing} />}
+          {/* One save bar for the whole form, sticky at the bottom (#12329); none on Knowledge and sources, whose
+              cards save on their own and which no draft fills (#1938). */}
+          {editing && tab !== "knowledge" && <SettingsSaveBar dirty={dirty} saving={save.isPending} saveDisabled={scoreInvalid} onSave={submit} onCancel={stopEditing} />}
         </div>
       )}
 
@@ -2138,6 +2155,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           }}
         />
       )}
+      {pirImportOpen && <OrganizationImportDialog open={pirImportOpen} onOpenChange={setPirImportOpen} sections={PROFILE_IMPORT_SECTIONS} />}
       <AgenticGateDialogControlled open={aiGateOpen} onOpenChange={setAiGateOpen} feature={t_i18n("Draft with AI")} />
     </div>
   );

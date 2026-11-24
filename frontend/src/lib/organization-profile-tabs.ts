@@ -41,7 +41,7 @@ export const PROFILE_CARD_TAB = {
   identity: "identity",
   risk_appetite: "identity",
   ticketing: "identity",
-  primary_assets: "business",
+  crown_jewels: "business",
   shipped_products: "business",
   tracked_organizations: "business",
   software: "technology",
@@ -51,7 +51,6 @@ export const PROFILE_CARD_TAB = {
   outside_lens: "exposure",
   evidence_health: "exposure",
   enterprise_knowledge: "knowledge",
-  scheduled_imports: "knowledge",
   context_injection: "knowledge",
 } as const satisfies Record<string, ProfileTab>;
 export type ProfileCard = keyof typeof PROFILE_CARD_TAB;
@@ -63,7 +62,7 @@ export type ProfileCard = keyof typeof PROFILE_CARD_TAB;
 export const INVENTORY_CARD_PATH: Partial<Record<ProfileCard, string>> = {
   software: "/ctem/inventory/software",
   // The business inputs have their own Inventory tab (#1690).
-  primary_assets: "/ctem/inventory/business",
+  crown_jewels: "/ctem/inventory/business",
   shipped_products: "/ctem/inventory/business",
   tracked_organizations: "/ctem/inventory/business",
   assets_exposure: "/ctem/inventory",
@@ -102,7 +101,7 @@ export const PROFILE_FIELD_CARD = {
   ticketing: "ticketing",
   pir_ids: "prioritization_policy",
   pir_names: "prioritization_policy",
-  primary_assets: "primary_assets",
+  crown_jewels: "crown_jewels",
   shipped_products: "shipped_products",
   software: "software",
   assets_exposure: "assets_exposure",
