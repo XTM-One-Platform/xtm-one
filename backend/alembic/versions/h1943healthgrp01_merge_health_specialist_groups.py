@@ -117,32 +117,51 @@ def _table_exists(bind: sa.engine.Connection, table: str) -> bool:
     return sa.inspect(bind).has_table(table)
 
 
+def _decoded(value: Any, expected: type) -> Any:
+    """*value* as stored, decoded when the driver answered text; ``None`` when it is not of the *expected* type.
+
+    A JSON column holding the JSON literal ``null`` is not SQL ``NULL``: ``IS NOT NULL``
+    keeps the row and the driver answers Python ``None``, which ``json.loads`` refuses.
+    Such a row, and any value that is not a list (ids) or an object (allow lists),
+    names no group and is left as it is.
+    """
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return None
+    return value if isinstance(value, expected) else None
+
+
+def rewrite_rows(
+    bind: Any,
+    table: str,
+    column: str,
+    expected: type,
+    merge: Any,
+) -> None:
+    """Rewrite every row of *table* whose *column* changes under *merge*."""
+    rows = bind.execute(sa.text(f"SELECT id, {column} FROM {table} WHERE {column} IS NOT NULL")).fetchall()  # noqa: S608
+    for row_id, value in rows:
+        current = _decoded(value, expected)
+        if current is None:
+            continue
+        new = merge(current)
+        if new != current:
+            bind.execute(
+                sa.text(f"UPDATE {table} SET {column} = CAST(:v AS JSON) WHERE id = :id"),  # noqa: S608
+                {"v": json.dumps(new), "id": row_id},
+            )
+
+
 def upgrade() -> None:
     bind = op.get_bind()
     for table, column in _ID_COLUMNS:
-        if not _table_exists(bind, table):
-            continue
-        rows = bind.execute(sa.text(f"SELECT id, {column} FROM {table} WHERE {column} IS NOT NULL")).fetchall()  # noqa: S608
-        for row_id, value in rows:
-            ids = value if isinstance(value, list) else json.loads(value)
-            new = merged_ids(ids)
-            if new != ids:
-                bind.execute(
-                    sa.text(f"UPDATE {table} SET {column} = CAST(:v AS JSON) WHERE id = :id"),  # noqa: S608
-                    {"v": json.dumps(new), "id": row_id},
-                )
+        if _table_exists(bind, table):
+            rewrite_rows(bind, table, column, list, merged_ids)
     for table, column in _MAP_COLUMNS:
-        if not _table_exists(bind, table):
-            continue
-        rows = bind.execute(sa.text(f"SELECT id, {column} FROM {table} WHERE {column} IS NOT NULL")).fetchall()  # noqa: S608
-        for row_id, value in rows:
-            allowed = value if isinstance(value, dict) else json.loads(value)
-            new = merged_map(allowed)
-            if new != allowed:
-                bind.execute(
-                    sa.text(f"UPDATE {table} SET {column} = CAST(:v AS JSON) WHERE id = :id"),  # noqa: S608
-                    {"v": json.dumps(new), "id": row_id},
-                )
+        if _table_exists(bind, table):
+            rewrite_rows(bind, table, column, dict, merged_map)
 
 
 def downgrade() -> None:
