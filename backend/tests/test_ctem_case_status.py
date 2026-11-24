@@ -96,7 +96,8 @@ def test_triage_starts_the_analysis_once() -> None:
     assert len(db.states()) == 1
 
 
-def test_gate_waits_then_the_answer_moves_on() -> None:
+def test_gate_waits_then_the_answer_leaves_the_state_to_the_agent() -> None:
+    """#1675: the answer is recorded, the Gate answered run sets the next state itself."""
     db = _Recorder()
     case = _case("analyzing")
     loop.record_gate(
@@ -107,10 +108,8 @@ def test_gate_waits_then_the_answer_moves_on() -> None:
     loop.record_gate(
         _db(db), case, key="ctem.remediation.decision", outcome="answered", by="the CISO", actor=AGENT, now=later
     )
-    assert case.state == "remediating"
-    assert case.state_since == later
-    moves = db.states()
-    assert moves == [("analyzing", "waiting_decision", AGENT), ("waiting_decision", "remediating", AGENT)]
+    assert case.state == "waiting_decision"
+    assert db.states() == [("analyzing", "waiting_decision", AGENT)]
     reasons = [r.reason for r in db.rows if isinstance(r, CtemCaseEvent) and r.kind == "state"]
     assert "the CISO" in (reasons[0] or "")
 

@@ -432,7 +432,7 @@ def _check(target: str, **kw) -> None:
     rules.check_transition(
         current=kw.pop("current", "remediating"),
         target=target,
-        actor_kind="user",
+        actor_kind=kw.pop("actor_kind", "user"),
         owner_user_id=uuid.uuid4(),
         now=NOW,
         **kw,
@@ -440,11 +440,30 @@ def _check(target: str, **kw) -> None:
 
 
 def test_resolve_is_refused_without_proof_when_the_case_has_a_validation_plan():
+    # An agent closes a planned case only on a passing reference (#857).
     with pytest.raises(rules.CaseRuleError, match="validation plan"):
-        _check("resolved", evidence="ticket closed", validation_plan=True)
+        _check("resolved", evidence="ticket closed", validation_plan=True, actor_kind="agent")
     with pytest.raises(rules.CaseRuleError, match="validation plan"):
-        _check("resolved", evidence="ok", validation_plan=True, validations=[{"result": "failed"}])
-    _check("resolved", evidence="ok", validation_plan=True, validations=[{"result": "passed"}])
+        _check(
+            "resolved",
+            evidence="ok",
+            validation_plan=True,
+            validations=[{"result": "failed"}],
+            actor_kind="agent",
+        )
+    _check("resolved", evidence="ok", validation_plan=True, validations=[{"result": "passed"}], actor_kind="agent")
+
+
+def test_a_person_or_an_answered_decision_closes_a_planned_case_without_the_retest():
+    # #1675: a person's own move, or an answered ctem.close_without_retest decision, is the proof.
+    _check("resolved", evidence="ticket closed", validation_plan=True)
+    _check(
+        "resolved",
+        evidence="ticket closed",
+        validation_plan=True,
+        actor_kind="agent",
+        close_without_retest_answered=True,
+    )
 
 
 def test_resolve_without_a_plan_still_takes_evidence_only():
@@ -453,8 +472,9 @@ def test_resolve_without_a_plan_still_takes_evidence_only():
 
 def test_mitigated_watching_needs_a_passing_reference():
     with pytest.raises(rules.CaseRuleError, match="passing validation"):
-        _check("mitigated_watching")
-    _check("mitigated_watching", validations=[{"result": "passed", "mitigation_only": True}])
+        _check("mitigated_watching", actor_kind="agent")
+    _check("mitigated_watching", validations=[{"result": "passed", "mitigation_only": True}], actor_kind="agent")
+    _check("mitigated_watching")  # a person decided (#1675)
 
 
 def test_unknown_resolution_kind_is_refused():

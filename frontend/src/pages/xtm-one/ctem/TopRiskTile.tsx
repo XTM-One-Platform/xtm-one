@@ -6,7 +6,7 @@
  * gauge, so a reader names the posture and the top risk within five seconds.
  *
  * - the figure is the posture's known-exploited count, restricted to the
- *   organization's tech stack when the backend could match it (the same
+ *   organization's software inventory when the backend could match it (the same
  *   figure the Act now row reads), compact, its exact value on hover;
  * - the sparkline is the same count over the recorded days of
  *   `GET /ctem-metrics/posture/history` at a fixed token height (h-8), so
@@ -31,7 +31,7 @@ export interface TopRiskTileProps {
   count: number | null;
   /** The count on each recorded day, oldest first (`null` on a day without it). */
   history: (number | null)[];
-  /** True when the count is restricted to the organization's tech stack. */
+  /** True when the count is restricted to the organization's software inventory. */
   tailored: boolean;
   /** Opens the Prioritization page. */
   onOpen: () => void;

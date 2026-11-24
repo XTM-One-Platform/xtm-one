@@ -311,7 +311,8 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
     },
     "run.completed": {
         "description": (
-            "An assignment run completed. stop_reason names why a run stopped before its task was done "
+            "A run completed: an assignment run, or a delegated child run (no assignment; parent_run_id "
+            "names the run that delegated it). stop_reason names why a run stopped before its task was done "
             "(deadline, budget_exhausted, max_iterations, timeout, waiting_on_tasks...): the run still "
             "completes with a partial result; null when it ended on its own terms. partial is true exactly "
             "when stop_reason is set."
@@ -319,7 +320,10 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
         "filter_keys": _RUN_KEYS,
     },
     "run.failed": {
-        "description": "An assignment run failed.",
+        "description": (
+            "A run failed: an assignment run, or a delegated child run (no assignment; parent_run_id "
+            "names the run that delegated it)."
+        ),
         "filter_keys": (*_RUN_KEYS, "error"),
     },
     "run.orphaned": {

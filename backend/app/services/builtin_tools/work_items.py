@@ -50,6 +50,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from app.core.utils import format_exception_message
+from app.models.work_item import WORK_ITEM_TERMINAL_STATUSES
 from app.services.company_managed_writes import (
     CompanyManagedWriteRefusedError,
     agent_writer,
@@ -617,7 +618,7 @@ _BLOCKED_WHY_SCHEMA: dict[str, dict] = {
     "ask": {
         "type": "object",
         "description": (
-            "{question, context, options:[{key,label,effect}], recommendation: option key, deadline, "
+            "{question, context, options:[{key,label,effect,keeps_waiting?}], recommendation: option key, deadline, "
             "links:[{label,url}]}. needs_human: all but deadline, links; 2+ options. Plain words; "
             "no timestamp, id, key or 'card sent' (use blocked_reason). "
             "Good: 'Post Legal's comment asking for the 4 missing documents?'. "
@@ -678,6 +679,9 @@ def _blocked_why_lines(item: dict) -> list[str]:
         lines.append(f"  - blocked on {bound}: it goes back to open with no write from you.")
     if item.get("blocked_reason"):
         lines.append(f"  - blocked reason: {item['blocked_reason']}")
+    if item.get("status") in WORK_ITEM_TERMINAL_STATUSES:
+        # A finished item waits for nobody: no person line, no pending ask (#1719).
+        return lines
     if item.get("needs_human"):
         lines.append("  - needs a person (needs_human): nothing releases it by itself.")
         if item.get("recipient_line"):
@@ -1162,6 +1166,7 @@ def build_work_item_tools(
         if item.get("blocked_on"):
             lines.append(_blocked_on_line(item["blocked_on"]))
         lines.extend(_blocked_why_lines(item))
+        lines.extend(f"  - Warning: {w}" for w in item.get("warnings") or ())
         if item.get("fleet_impact"):
             lines.append(_fleet_impact_line(item["fleet_impact"]))
         if attached:
@@ -1367,6 +1372,8 @@ def build_work_item_tools(
             f"Updated work item **{item['title']}** (id: `{item['id']}`, "
             f"status: {item['status']}, priority: {item['priority']})."
         )
+        for warning in item.get("warnings") or ():
+            msg += f"\n  - Warning: {warning}"
         # Another writer finished the item this run held: the read-back says stop (#11554).
         from app.services.work_item_preflight import finished_under_holder_text
 

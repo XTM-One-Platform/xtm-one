@@ -10,7 +10,7 @@ those inputs and writes the decision on the signal. The design, the
 severity formula and the decision record are ``dev-docs/ctem-scope-gate.md``.
 
 1. **Reconcile** ("does the signal survive the cross-check?"): the subject
-   is resolved to profile assets, asset groups, crown jewels or tech stack
+   is resolved to profile assets, asset groups, crown jewels or software
    products on stable keys (hostname, IP, URL host, cloud id, external id);
    the lenses that saw the same subject are counted. A verdict that
    contradicts it (``not_exposed``, ``not_affected``, ``false_positive``,
@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
+from app.services.ctem_primary_assets import PrimaryAssetIndex
 from app.services.organization_context import AssetEntry, OrganizationProfile, ShippedProduct
 
 #: Version of the decision record; a reader keys on it.
@@ -218,6 +219,9 @@ class Resolution:
     shipped: list[dict[str, Any]] = field(default_factory=list)
     #: #1432: their source repositories (``owner/name``), the subject's assets.
     repositories: list[str] = field(default_factory=list)
+    #: #1591 S3: the primary assets reached through the inventory links, each with its chain
+    #: (software -> asset or asset group -> primary asset, role, link source).
+    primary_assets: list[dict[str, Any]] = field(default_factory=list)
     #: #1720: the software references the tech stack and shipped products were matched against.
     software_refs: list[str] = field(default_factory=list)
 
@@ -231,6 +235,7 @@ class Resolution:
             or self.domains
             or self.repositories
             or self.hosted_domains
+            or self.primary_assets
         )
 
 
@@ -264,7 +269,7 @@ def host_owned_domain(profile: OrganizationProfile, ref: str) -> str:
 
 
 def _product_matches(product: str, ref: str) -> bool:
-    """A tech stack product named in a software reference (a name, or a CPE's product part)."""
+    """A software product named in a software reference (a name, or a CPE's product part)."""
     p, r = product.strip().lower(), ref.strip().lower()
     if not p or not r:
         return False
@@ -350,7 +355,7 @@ def threat_software(evidence: dict[str, Any]) -> list[str]:
 
 
 def runs_in_profile(profile: OrganizationProfile, name: str) -> list[str]:
-    """The tech stack products and assets of *profile* a software or asset *name* names (CTEM-08).
+    """The software products and assets of *profile* a software or asset *name* names (CTEM-08).
 
     *name* is the source of an OpenCTI ``has`` relationship (a Software name
     or CPE, an Infrastructure or System name). Empty: the organization does
@@ -369,8 +374,15 @@ def runs_in_profile(profile: OrganizationProfile, name: str) -> list[str]:
     return list(dict.fromkeys(found))
 
 
-def resolve(profile: OrganizationProfile, facts: SignalFacts) -> Resolution:
-    """Resolve the subject (and the assets its evidence names) to the profile."""
+def resolve(
+    profile: OrganizationProfile, facts: SignalFacts, primary_assets: PrimaryAssetIndex | None = None
+) -> Resolution:
+    """Resolve the subject (and the assets its evidence names) to the profile.
+
+    With *primary_assets* (#1591 S3), the software the signal names and the subject's
+    keys are also followed to the inventory assets that run it and the primary assets
+    they or their groups support.
+    """
     out = Resolution()
     keys = [stable_key(facts.subject_ref), stable_key(facts.source_external_id)]
     keys += [stable_key(v) for v in _evidence_list(facts.evidence, "assets", "asset", "hostnames", "urls", "ips")]
@@ -409,6 +421,9 @@ def resolve(profile: OrganizationProfile, facts: SignalFacts) -> Resolution:
         ):
             out.products.append(entry.product)
     _resolve_shipped(profile, software, out)
+    if primary_assets is not None:
+        refs = list(dict.fromkeys([*software, *out.products]))
+        out.primary_assets = primary_assets.reach(refs, keys)
     if out.products:
         names = {p.lower() for p in out.products}
         for asset in profile.assets_exposure:
@@ -464,9 +479,14 @@ def _jewels_of(profile: OrganizationProfile, resolution: Resolution) -> list[tup
     names = {a.name.lower() for a in resolution.assets} | {a.group.lower() for a in resolution.assets if a.group}
     names |= {g.lower() for g in resolution.groups}
     named = {n.lower() for n in resolution.crown_jewels}
+    linked = {str(h["primary_asset_key"]) for h in resolution.primary_assets}
     out: list[tuple[str, str]] = []
     for jewel in profile.crown_jewels:
-        if jewel.name.lower() in named or names & {n.lower() for n in jewel.asset_names}:
+        if (
+            jewel.name.lower() in named
+            or names & {n.lower() for n in jewel.asset_names}
+            or " ".join(jewel.name.split()).casefold()[:200] in linked
+        ):
             out.append((jewel.name, jewel.criticality))
     return out
 
@@ -523,13 +543,18 @@ def decide(
     *,
     related: list[RelatedSignal] | None = None,
     scenarios: ScenarioIndex | None = None,
+    primary_assets: PrimaryAssetIndex | None = None,
     today: date,
 ) -> Decision:
-    """Both gates on one signal; the record lists every input it read."""
+    """Both gates on one signal; the record lists every input it read.
+
+    *primary_assets* (#1591 S3) is the organization's inventory link index
+    (``ctem_primary_assets.load_index``); every path that decides passes it.
+    """
     related = list(related or [])
     scenarios = scenarios or ScenarioIndex()
     policy = profile.prioritization_policy
-    resolution = resolve(profile, facts)
+    resolution = resolve(profile, facts, primary_assets)
     confidence, lenses, proven = _confidence(facts, related)
     contradicted = [r.id for r in related if r.verdict in CONTRADICTING_VERDICTS]
     if _verdict(facts.evidence) in CONTRADICTING_VERDICTS:
@@ -558,6 +583,8 @@ def decide(
             "repositories": resolution.repositories,
             "software_refs": resolution.software_refs,
             "hosted_under": resolution.hosted_domains,
+            "primary_assets": resolution.primary_assets,
+            "inventory_links_read": bool(primary_assets is not None and primary_assets.loaded),
             "lenses": lenses,
             "confidence": confidence,
             "proven": proven,
@@ -610,7 +637,7 @@ def decide(
             )
         return done(
             "to_validate",
-            "subject not resolved to an asset, a crown jewel, the tech stack or a shipped product",
+            "subject not resolved to an asset, a crown jewel, the software inventory or a shipped product",
             code="subject_unresolved",
             params={"keys": len(resolution.keys), "software": len(resolution.software_refs)},
         )
@@ -621,7 +648,15 @@ def decide(
         if asset.criticality in ASSET_TO_SCOPE:
             sources.append({"from": "asset", "name": asset.name, "criticality": ASSET_TO_SCOPE[asset.criticality]})
     jewels = _jewels_of(profile, resolution)
-    sources += [{"from": "crown_jewel", "name": n, "criticality": c} for n, c in jewels]
+    chains: dict[str, list[dict[str, Any]]] = {}
+    for hit in resolution.primary_assets:
+        chains.setdefault(str(hit["primary_asset_key"]), []).append(hit)
+    for n, c in jewels:
+        source: dict[str, Any] = {"from": "crown_jewel", "name": n, "criticality": c}
+        chain = chains.get(" ".join(n.split()).casefold()[:200])
+        if chain:
+            source["chain"] = chain[:5]
+        sources.append(source)
     sources += [
         {"from": "owned_domain", "name": d, "criticality": policy.identity_criticality} for d in resolution.domains
     ]
@@ -639,6 +674,8 @@ def decide(
         "criticality": criticality or None,
         "sources": sources,
         "threshold": threshold,
+        # #1591 S3: where the threshold comes from (the policy's scope field, else its default).
+        "threshold_source": "policy" if "scope_min_criticality" in policy.model_fields_set else "default",
         "require_risk_scenario": policy.require_risk_scenario,
         "opencrq": {"connected": scenarios.connected, "note": "" if scenarios.connected else scenarios.note},
         "risk_scenarios": [{"id": s.id, "name": s.name} for s in held],

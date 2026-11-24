@@ -1,4 +1,4 @@
-"""The ``s1495swprofile01`` revision: the profile's tech stack rows become hand-typed software (#1495, slice 3b).
+"""The ``s1495swprofile01`` revision: the profile's ``tech_stack`` rows become hand-typed software (#1495, slice 3b).
 
 Executed against PostgreSQL: every row of the current profile version survives
 as a Software, a hand CPE kept as the override (set on an existing synced

@@ -81,9 +81,9 @@ type SignalRuleFact =
  * from its evidence and its decision record, never claiming more than they
  * prove (#1000 UX round 1 B2):
  * - `software`: the source of the relationship. The listener writes it for
- *   every relationship to a vulnerability, before any tech stack match, so the
+ *   every relationship to a vulnerability, before any software inventory match, so the
  *   rule "vulnerability on software we run" is named only when the scope gate
- *   resolved the signal to a tech stack product (`matched`); `checked` says the
+ *   resolved the signal to a software inventory product (`matched`); `checked` says the
  *   gate has read it at all.
  * - `pir`: the highest PIR score at delivery. The run gate reads the live score,
  *   so this is a fact about the PIR flag, never a claim that the rule fired.

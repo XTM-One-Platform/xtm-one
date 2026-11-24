@@ -62,12 +62,12 @@ A figure that has no data yet is shown greyed as a sample, so you see what the c
 
 When the rows come from module-wide figures rather than from your [organization context](../administration/organization.md), the card says `These actions are generic`, and administrators get `Set up organization context` to fill it in.
 
-When the organization context lists a tech stack, the known-exploited row counts only the known-exploited vulnerabilities that OpenCTI relates to the software of that stack (matched by CPE, else by product and vendor), and its line names the products it matched, for example `Known-exploited and affects Fortinet FortiOS in your tech stack`. This row is then tailored, so the generic notice no longer counts it. Without a tech stack, or when OpenCTI holds no matching software, the row keeps the module-wide count.
+When the organization context lists a software inventory, the known-exploited row counts only the known-exploited vulnerabilities that OpenCTI relates to the software of that stack (matched by CPE, else by product and vendor), and its line names the products it matched, for example `Known-exploited and affects Fortinet FortiOS in your software inventory`. This row is then tailored, so the generic notice no longer counts it. Without a software inventory, or when OpenCTI holds no matching software, the row keeps the module-wide count.
 
 The same notice appears on the other widgets whose content does not use your organization context yet:
 
-- `Exposure briefing` says `This briefing is generic` while no organization context was ever saved: the briefing analyst reads the sector, regions, crown jewels, tech stack and PIRs of the context to rank its findings. Set it up, then generate the briefing again.
-- `Stats and coverage` says `These figures are module-wide` when its known-exploited figure counts every such vulnerability in OpenCTI because the context has no tech stack. Each figure under `Findings` opens the stage page that holds it.
+- `Exposure briefing` says `This briefing is generic` while no organization context was ever saved: the briefing analyst reads the sector, regions, crown jewels, software inventory and PIRs of the context to rank its findings. Set it up, then generate the briefing again.
+- `Stats and coverage` says `These figures are module-wide` when its known-exploited figure counts every such vulnerability in OpenCTI because the context has no software inventory. Each figure under `Findings` opens the stage page that holds it.
 
 Administrators get the `Set up organization context` (or `Review organization context`) action; other users are told that an administrator can set it up.
 
@@ -79,7 +79,7 @@ The switcher at the top right of the Dashboard chooses the vertical the command 
 
 The `Exposure lifecycle` row shows one card per stage: `Scoping`, `Discovery`, `Prioritization`, `Validation` and `Remediation`. Each card gives the stage score and its main figures, its trend, the agent that analyses it (`Owned by` its name), and, when a module that feeds it is missing, a button to connect it.
 
-Click a card to open the stage page. It shows the stage score, the AI assessment of the stage (a headline, what it means and a `Recommended action`), all its metrics, its history and the modules that feed it. `Refresh` (or `Generate`, the first time) writes a new assessment for you and your current vertical, using only what you can see in the connected modules. The `Company Context` card invites you to describe your tech stack, crown-jewel assets and risk priorities in the Company Context knowledge base, so the analyst can judge what actually matters to you.
+Click a card to open the stage page. It shows the stage score, the AI assessment of the stage (a headline, what it means and a `Recommended action`), all its metrics, its history and the modules that feed it. `Refresh` (or `Generate`, the first time) writes a new assessment for you and your current vertical, using only what you can see in the connected modules. The `Company Context` card invites you to describe your software inventory, crown-jewel assets and risk priorities in the Company Context knowledge base, so the analyst can judge what actually matters to you.
 
 The sixth card, `Governance & Risk`, is reserved for OpenCRQ: until an OpenCRQ platform joins, it shows greyed sample figures.
 

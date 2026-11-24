@@ -114,6 +114,14 @@ Then, in order, each check stops at the first that fails, with its reason:
 
 All pass: outcome `case`, state `confirmed`, with a severity.
 
+### 3.1 Primary assets reached through the inventory (#1591, S3)
+
+`services/ctem_primary_assets.py` reads, once per organization and decision pass, the inventory assets that reach a primary asset through `organization_crown_jewel_links` (sources `manual`, `opencrq`, `rule`; a removed link reaches nothing): directly, or as a member of a linked asset group. For each it keeps what the asset runs: its own software list, its OS family (Intune, Defender) and the installed software endpoint sources report (`organization_asset_software`). A signal's software (names, CPEs, matched tech stack products) or subject key reaching such an asset adds the primary asset to `crown_jewels` with its chain (`scope.sources[].chain`: software, asset, through, through_kind, source, roles) and to `reconcile.primary_assets`; `reconcile.inventory_links_read` says the index was read. The legacy name list (`asset_names`) is still read for one release.
+
+Every path decides with the same index and the same OpenCRQ read: a `system` signal recorded by a listener reads OpenCRQ with the owner of the enabled OpenCRQ primary-asset sync. The per-signal path (`evaluate_after_record`, called in a loop by intake such as `record_matches`) builds the index once per session and organization and the OpenCRQ read once per session and reader, kept 5 minutes in `session.info`; the batch paths pass theirs in. `recheck_held` filters the held reasons in SQL before its batch limit, so watchlist rows held for another reason never starve them. After a sync that wrote links or changed a device's software, `recheck_held` decides again the watchlist signals held by `crown_jewel_below_policy`, `criticality_unknown` or `below_scope_threshold` (500 per call, idempotent); the case sweep then opens one case per fix key. `scope.threshold_source` says whether `scope_min_criticality` is the policy's or the default.
+
+OpenCRQ Dependency Rule links come through `assetDependencies.getSupportToPrimaryLinksByPrimaryAssetId` (field `source: rule`, `ruleId`) and are stored with source `rule`; an OpenCRQ supporting asset is matched to an inventory record by its OpenCRQ id, then by name or device hostname.
+
 ## 4. Severity and SLA
 
 Points = scope criticality (low 1, medium 2, high 3, critical 4) + lens

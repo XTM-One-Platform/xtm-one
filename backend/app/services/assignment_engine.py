@@ -522,6 +522,17 @@ async def _publish_run_ended(run: AssignmentRun, name: str, *, reason: str, erro
     sandbox workspace is collected here too, in a task of its own.
     """
     _collect_run_workspace(run)
+    await publish_run_event(run, name, reason=reason, error=error)
+
+
+async def publish_run_event(run: Any, name: str, *, reason: str, error: str | None = None) -> None:
+    """Publish run event *name* for *run*, scoped as every ``run.*`` event; never raises.
+
+    *run* is an ``AssignmentRun`` or a snapshot carrying the same attributes
+    (id, agent_id, assignment_id, parent_run_id, trigger_context, user_id,
+    is_company_managed, stop_reason): a delegated child run ends outside the
+    engine (``sub_agent.update_assignment_run``) and publishes through here.
+    """
     from app.services import platform_events
 
     try:

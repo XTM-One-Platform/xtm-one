@@ -4,12 +4,10 @@
   coverage ``coverage_drafted`` and never ``coverage_requested``; past the case
   SLA it is ``draft_overdue``. Once the Grouping page and the live ids are
   written (validated, new internal id included), ``coverage_requested``.
-- The gate: ``ctem.analyst_review`` names the coverage request and
-  ``apply_opencti_draft``, with a grant on ``draft_id``, so the approved
-  request covers the validation of the draft its answer names (one decision);
-  another draft asks again.
-- The tool: ``apply_opencti_draft`` is offered with Live writes off only when
-  the run's fleet gates it (``gate_tool_names``).
+- The gate: ``ctem.analyst_review`` is a decision item, never a tool pause
+  (#1675): it declares no tools and no grant, and every call runs.
+- The tool: ``apply_opencti_draft`` is offered with Live writes off when the
+  run's fleet has the analyst review gate, by its key (``gate_tool_names``).
 """
 
 from __future__ import annotations
@@ -130,15 +128,13 @@ def test_validated_package_without_coverage_is_not_requested() -> None:
 
 
 def _review_gate() -> dict[str, Any]:
-    gates = _ctem_gates(launch_tools=True, mobilize_tools=True, mobilize_action="mobilize")
+    gates = _ctem_gates(launch_tools=True, mobilize_action="mobilize")
     return next(g for g in gates if g["key"] == "ctem.analyst_review")
 
 
-def test_analyst_review_gate_names_the_draft_validation_with_a_grant() -> None:
+def test_analyst_review_gate_offers_the_draft_validation_by_its_key() -> None:
     gate = _review_gate()
-    names = [t["name"] for t in gate["tools"]]
-    assert names == ["manage_opencti_security_coverage", "apply_opencti_draft"]
-    assert gate["grant"] == {"objects": ["draft_id"], "fresh": []}
+    assert "tools" not in gate and "grant" not in gate
     assert "publishes the package and sends the coverage to OpenAEV" in gate["action"]
     assert "apply_opencti_draft" in fleet_autonomy.gate_tool_names([gate])
 
@@ -147,31 +143,12 @@ def _call(call_id: str, name: str, arguments: dict[str, Any]) -> SimpleNamespace
     return SimpleNamespace(id=call_id, name=name, arguments=arguments)
 
 
-def test_approved_coverage_request_covers_the_validation_of_its_draft() -> None:
-    from app.tools.base import HumanInputRequestedError
-
-    gate = {**_review_gate(), "pin": fleet_autonomy.PIN_WAIT}
-    rules = fleet_autonomy.gated_tool_rules("full_gates", [gate])
-    request = _call("c1", "manage_opencti_security_coverage", {"action": "create", "covered_id": GROUPING})
-    check = fleet_autonomy.make_fleet_autonomy_gate(None, rules, approved_call_ids={"c1"})
-    check(request)
-    answer = SimpleNamespace(
-        is_error=False,
-        content=f"Created security coverage 'x' (id: {COVERAGE}) on Grouping {GROUPING} in OpenCTI draft {DRAFT}: ...",
-    )
-    check.observe(request, answer)
-    check(_call("c2", "apply_opencti_draft", {"draft_id": DRAFT}))
-    with pytest.raises(HumanInputRequestedError):
-        check(_call("c3", "apply_opencti_draft", {"draft_id": str(uuid.uuid4())}))
-
-
-def test_unapproved_validation_waits() -> None:
-    from app.tools.base import HumanInputRequestedError
-
+def test_the_review_gate_never_pauses_the_request_or_the_draft_validation() -> None:
+    """#1675: pinned wait, full human gates, the calls still run; the wait is a decision item."""
     gate = {**_review_gate(), "pin": fleet_autonomy.PIN_WAIT}
     check = fleet_autonomy.make_fleet_autonomy_gate(None, fleet_autonomy.gated_tool_rules("full_gates", [gate]))
-    with pytest.raises(HumanInputRequestedError):
-        check(_call("c1", "apply_opencti_draft", {"draft_id": DRAFT}))
+    check(_call("c1", "manage_opencti_security_coverage", {"action": "create", "covered_id": GROUPING}))
+    check(_call("c2", "apply_opencti_draft", {"draft_id": DRAFT}))
 
 
 def _tool_names(**kwargs: Any) -> set[str]:

@@ -41,7 +41,7 @@ import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntr
 import { AssetMatchingCard, InventorySourcesCard } from "./ctem/InventorySourcesCard";
 import { SoftwareTab } from "./ctem/SoftwareTab";
 import { INVENTORY_LABEL, INVENTORY_PATH, assetCategory, assetCategoryLabel, assetFieldLabel, criticalityShortLabel, sourceLabel } from "./ctem/inventory";
-import { EXPOSURE_TAB_CARDS, INVENTORY_TABS, RETIRED_TABS, type InventoryTab } from "./ctem/inventory-tabs";
+import { BUSINESS_TAB_CARDS, EXPOSURE_TAB_CARDS, INVENTORY_TABS, RETIRED_TABS, type InventoryTab } from "./ctem/inventory-tabs";
 
 /**
  * The retired AI systems tab (#1501: an AI system is an asset of category AI target): its old link lands on the
@@ -426,6 +426,9 @@ function InventoryPage() {
       {tab === "exposure" ? (
         // Read for everyone; each card's Edit is drawn for administrators only (#1511).
         <OrganizationSection embed={{ cards: EXPOSURE_TAB_CARDS, readOnly: !isAdmin }} />
+      ) : tab === "business" ? (
+        // The business inputs moved from Settings > Organization (#1690): read for everyone, Edit for administrators.
+        <OrganizationSection embed={{ cards: BUSINESS_TAB_CARDS, readOnly: !isAdmin }} />
       ) : tab === "asset-groups" ? (
         <AssetGroupsTab add={add} />
       ) : tab === "software" ? (

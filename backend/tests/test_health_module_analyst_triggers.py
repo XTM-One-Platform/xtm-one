@@ -58,6 +58,28 @@ def test_the_round_waits_for_the_next_utc_day() -> None:
     assert module_analyst.round_due(NOW - timedelta(hours=13), NOW) is True
 
 
+def _deploy(stale: bool, last: dict[str, Any] | None, fired_at: datetime | None, build: str = "B") -> bool:
+    return module_analyst.deploy_due(
+        stale=stale, build=build, last_value=last, fired_at=fired_at, now=NOW, change_min_interval=TWO_HOURS
+    )
+
+
+def test_a_stale_finding_after_a_deploy_starts_one_deploy_round() -> None:
+    """#1732: a finding from build A on an instance on build B is re-checked at once, once per build."""
+    assert _deploy(True, {"hash": "h"}, NOW - timedelta(hours=3)) is True
+    assert _deploy(True, {"hash": "h", module_analyst.DEPLOY_KEY: "B"}, NOW - timedelta(hours=3)) is False
+    assert _deploy(True, {"hash": "h", module_analyst.DEPLOY_KEY: "A"}, NOW - timedelta(hours=3)) is True
+
+
+def test_the_same_build_starts_nothing() -> None:
+    assert _deploy(False, {"hash": "h"}, NOW - timedelta(hours=3)) is False
+
+
+def test_a_deploy_round_keeps_the_debounce() -> None:
+    assert _deploy(True, {"hash": "h"}, NOW - timedelta(minutes=30)) is False
+    assert _deploy(True, None, None) is True
+
+
 def test_a_change_cycle_covers_the_day_for_the_round() -> None:
     """A registration any cycle covered this UTC day is not handed to the round again (13.2)."""
     assert module_analyst.round_due(NOW - timedelta(minutes=5), NOW) is False

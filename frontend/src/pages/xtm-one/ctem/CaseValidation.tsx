@@ -35,6 +35,7 @@ const RESULT_LABEL = {
   not_exposed: "Not exposed",
   failed: "Failed",
   pending: "Pending",
+  inconclusive: "Inconclusive",
 } as const;
 
 /** Product names of the validation providers a case can carry. */
