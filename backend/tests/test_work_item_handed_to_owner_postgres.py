@@ -4,8 +4,10 @@ The item carries its creator's ``user_id``; the owner agent's runs act as
 the owner agent's own person. Sam's decision on #858: the owner agent's
 runs read, list and claim such an item when (1) the creator may open the
 owner agent (shared with them), or (2) the creating agent's home fleet and
-the owner agent's home fleet are connected. Any other hand-off is refused
-at creation with the owner agent's name, never written and dropped.
+the owner agent's home fleet are connected; Sam's decision on #1967 adds (3)
+the creating agent holds a configured handover to the owner agent, the
+exposure rule kept. Any other hand-off is refused at creation with the
+owner agent's name, never written and dropped.
 """
 
 from __future__ import annotations
@@ -194,6 +196,67 @@ async def test_a_group_share_reaches_only_items_its_members_created() -> None:
 
     assert mine["id"] in listed
     assert theirs["id"] not in listed
+
+
+@pytest.mark.asyncio
+async def test_a_configured_handover_lets_the_owner_agent_read_claim_and_complete() -> None:
+    """Grant 3 (#1967): the creating agent's handover reaches an agent the person cannot open."""
+    async with _temp_database() as sessions:
+        async with sessions() as session:
+            creator = await _make_user(session, email="legal@example.com")
+            holder = await _make_user(session, email="dso-owner@example.com")
+            creating = await _private_agent(session, creator, name="Legal assistant")
+            owner = await _private_agent(session, holder, name="DSO assistant")
+            creating.handover_agent_ids = [str(owner.id)]
+            creating.handover_types = {str(owner.id): "consult"}
+            await session.commit()
+
+        async with _pointed_at_db(sessions):
+            item = await _hand(creator=creator, creating_agent=creating, owner_agent=owner, title="handover")
+            reader = agent_writer(is_company_managed=False, agent_id=owner.id)
+            listed = await wi_service.list_work_items(
+                user_id=str(holder.id), reader=reader, owner_agent_id=str(owner.id)
+            )
+            claimed = await wi_service.claim_work_item(
+                item["id"], agent_id=str(owner.id), user_id=str(holder.id), writer=reader
+            )
+            done = await wi_service.complete_work_item(
+                item["id"], user_id=str(holder.id), result="answered", writer=reader
+            )
+            # The person gains nothing on the owner agent's items by the grant.
+            person = await wi_service.get_work_item(item["id"], user_id=str(holder.id))
+
+    assert item["id"] in {i["id"] for i in listed}
+    assert claimed is not None
+    assert done is not None and done["status"] == "done"
+    assert person is None
+
+
+@pytest.mark.asyncio
+async def test_a_handover_to_a_non_exposed_member_of_another_fleet_is_still_refused() -> None:
+    """The exposure rule wins over grant 3: a hidden member stays out of reach."""
+    async with _temp_database() as sessions:
+        async with sessions() as session:
+            creator = await _make_user(session, email="outside@example.com")
+            holder = await _make_user(session, email="fleet-owner@example.com")
+            creating = await _private_agent(session, creator, name="Outside desk")
+            orchestrator = await _private_agent(session, holder, name="Fleet orchestrator")
+            hidden = await _private_agent(session, holder, name="Hidden member")
+            fleet = await _fleet(session, holder, orchestrator, name="Closed")
+            fleet.orchestrator_agent_id = orchestrator.id
+            from app.models.fleet import FLEET_ROLE_MEMBER, FleetMember
+
+            session.add(FleetMember(id=uuid.uuid4(), fleet_id=fleet.id, agent_id=hidden.id, role=FLEET_ROLE_MEMBER))
+            creating.handover_agent_ids = [str(hidden.id), str(orchestrator.id)]
+            await session.commit()
+
+        async with _pointed_at_db(sessions):
+            with pytest.raises(wi_service.OwnerAgentUnreachableError, match="Hidden member"):
+                await _hand(creator=creator, creating_agent=creating, owner_agent=hidden, title="hidden")
+            # The orchestrator is always exposed: the same handover reaches it.
+            item = await _hand(creator=creator, creating_agent=creating, owner_agent=orchestrator, title="entry")
+
+    assert item["title"] == "entry"
 
 
 @pytest.mark.asyncio

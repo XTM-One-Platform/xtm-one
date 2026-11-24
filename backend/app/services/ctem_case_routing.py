@@ -1,41 +1,48 @@
 # SPDX-License-Identifier: Apache-2.0
 
-"""Which fleet runs a CTEM case, and the catch-up of the cases nobody runs (#1390).
+"""Which fleet runs a CTEM case, and the catch-up of the cases nobody runs (#1390, #1966).
 
-dev-docs/ctem-fleets.md section 14 (CTEM-31): the CTEM loop owns every case,
-on every trigger path. A use-case fleet (``CTEM_CASE_FLEETS`` with ``paths``)
-takes the cases of its own paths only while its case automation is enabled;
-otherwise the loop takes them. Exactly one fleet runs a case:
+dev-docs/ctem-fleets.md section 14: a fleet declares the trigger paths whose
+cases it runs (``Fleet.case_ownership``: ``paths`` null for every path, or a
+list; ``key`` the prefix of its case work items). The built-in declarations
+are seeded from ``BUILTIN_FLEETS`` (the CTEM loop: every path; Vulnerability
+management: ``new_vulnerability``); a fork copies its source's, an
+administrator sets one on any other fleet (``PUT /fleets/{id}/case-ownership``).
+A declaration counts only while one of the fleet's home members holds an
+enabled "Case opened or reopened" automation. Exactly one fleet runs a case:
 
-- :func:`owner_of` is the routing table (pure).
-- :func:`stamp_owners` writes ``owner_fleet`` on the case events about to be
-  published; each fleet's "Case opened or reopened" automation filters on it.
+- :func:`owner_of` is the routing table (pure). Precedence, among the active
+  declarations holding the path: a list of paths beats every path; then a
+  fleet that is not built-in beats a built-in one (a fork takes over from its
+  source); then the oldest fleet, then the token. With no active declaration
+  the case belongs to the CTEM loop (inactive: the case page says so).
+- :func:`stamp_owners` writes ``owner_fleet`` (the owner token, :func:`token_of`)
+  on the case events about to be published; each fleet's "Case opened or
+  reopened" automation filters on its own token.
 - :func:`catch_up` starts the loop of the open cases their owner never took
   (case events fire once, so a case opened before its fleet was enabled was
-  never heard): on fleet enable and on the scheduled case sweep (hourly by
-  default, ``CTEM_CASE_SWEEP_SECONDS``), so an enable made through a tool is
-  caught up within the hour and a daily pass is a floor. Idempotent (an
-  ``owner_requested`` case event per owner, an open ``<key>:case:<id>`` item),
-  bounded (``CATCH_UP_BATCH``), P1 first, then the soonest SLA.
+  never heard): on fleet enable, pause and reset (the paths a fleet gives
+  back are taken by the next owner at once), on an ownership change, and on
+  the scheduled case sweep (hourly by default, ``CTEM_CASE_SWEEP_SECONDS``).
+  Idempotent (an ``owner_requested`` case event per owner, an open
+  ``<key>:case:<id>`` item of ANY declared key blocks a second run), bounded
+  (``CATCH_UP_BATCH``), P1 first, then the soonest SLA.
 """
 
 from __future__ import annotations
 
 import hashlib
 import logging
+import uuid
 from collections.abc import Iterable, MutableMapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.builtin_agents import (
-    CTEM_CASE_ASSIGNMENT_NAME,
-    CTEM_CASE_FLEETS,
-    CTEM_LOOP_CASE_FLEET,
-    CTEM_USE_CASE_FLEETS,
-)
+from app.agents.builtin_agents import CTEM_CASE_ASSIGNMENT_NAME, CTEM_LOOP_CASE_FLEET
 from app.models.ctem_case import OPEN_STATES, CtemCase, CtemCaseEvent
 
 logger = logging.getLogger(__name__)
@@ -48,65 +55,143 @@ OWNER_REQUESTED = "owner_requested"
 CATCH_UP_BATCH = 100
 #: Most open cases one pass reads (the most urgent first).
 SCAN_MAX = 2000
+#: The owner token of a fleet that is not built-in: its id (a fork's slug is unique per owner only).
+CUSTOM_OWNER_PREFIX = "fleet:"
 _SEVERITY_ORDER = {"P1": 0, "P2": 1, "P3": 2}
+_FAR_PAST = datetime.min.replace(tzinfo=UTC)
 
 
-def owner_of(trigger_path: str | None, active: Iterable[str]) -> str:
-    """The fleet slug that runs a case on *trigger_path*, given the *active* use-case fleets.
+@dataclass(frozen=True)
+class CaseFleet:
+    """One fleet's case declaration, as routing reads it."""
 
-    The first active use-case fleet declaring the path, else the CTEM loop.
-    """
-    on = set(active)
-    for slug in CTEM_USE_CASE_FLEETS:
-        if slug in on and trigger_path in (CTEM_CASE_FLEETS[slug]["paths"] or ()):
-            return slug
-    return CTEM_LOOP_CASE_FLEET
+    token: str
+    fleet_id: str
+    slug: str
+    name: str
+    paths: tuple[str, ...] | None
+    key: str
+    is_builtin: bool
+    created_at: datetime
+    active: bool
 
 
-async def active_case_fleets(db: AsyncSession) -> set[str]:
-    """The fleet slugs whose "Case opened or reopened" automation is enabled (by orchestrator slug)."""
-    from app.models.agent import Agent
+def token_of(fleet: Any) -> str:
+    """The ``owner_fleet`` value of *fleet*: its slug when built-in, ``fleet:<id>`` otherwise."""
+    if getattr(fleet, "is_builtin", False):
+        return str(fleet.slug)
+    return f"{CUSTOM_OWNER_PREFIX}{fleet.id}"
+
+
+def listener_filter(token: str) -> dict[str, Any]:
+    """The payload filter of the "Case opened or reopened" automation of the fleet holding *token*."""
+    return {OWNER_KEY: {"eq": token}}
+
+
+def parse_declaration(value: Any) -> tuple[tuple[str, ...] | None, str] | None:
+    """``(paths, key)`` of a stored ``case_ownership``, ``None`` when unset or unreadable."""
+    if not isinstance(value, dict):
+        return None
+    key = value.get("key")
+    if not isinstance(key, str) or not key:
+        return None
+    paths = value.get("paths")
+    if paths is None:
+        return None, key
+    if not isinstance(paths, list) or not paths or not all(isinstance(p, str) for p in paths):
+        return None
+    return tuple(paths), key
+
+
+def _rank(fleet: CaseFleet) -> tuple[int, int, datetime, str]:
+    created = fleet.created_at
+    if created is not None and created.tzinfo is None:
+        created = created.replace(tzinfo=UTC)
+    return (0 if fleet.paths is not None else 1, 1 if fleet.is_builtin else 0, created or _FAR_PAST, fleet.token)
+
+
+def owner_fleet(trigger_path: str | None, fleets: Iterable[CaseFleet]) -> CaseFleet | None:
+    """The active fleet that runs a case on *trigger_path*, by the precedence of the module docstring."""
+    holding = [f for f in fleets if f.active and (f.paths is None or trigger_path in f.paths)]
+    return min(holding, key=_rank) if holding else None
+
+
+def owner_of(trigger_path: str | None, fleets: Iterable[CaseFleet]) -> str:
+    """The owner token of a case on *trigger_path*; the CTEM loop's when no active fleet holds it."""
+    found = owner_fleet(trigger_path, fleets)
+    return found.token if found is not None else CTEM_LOOP_CASE_FLEET
+
+
+async def case_fleets(db: AsyncSession) -> list[CaseFleet]:
+    """Every live fleet declaring case ownership, ``active`` when a home member's case automation is on."""
     from app.models.assignment import Assignment
+    from app.models.fleet import FLEET_ROLE_MEMBER, Fleet, FleetMember
 
-    by_agent = {spec["agent"]: slug for slug, spec in CTEM_CASE_FLEETS.items()}
     rows = (
-        await db.execute(
-            select(Agent.slug)
-            .join(Assignment, Assignment.agent_id == Agent.id)
-            .where(
-                Agent.slug.in_(sorted(by_agent)),
-                Assignment.name == CTEM_CASE_ASSIGNMENT_NAME,
-                Assignment.enabled.is_(True),
+        (await db.execute(select(Fleet).where(Fleet.is_archived.is_(False), Fleet.case_ownership.is_not(None))))
+        .scalars()
+        .all()
+    )
+    declared = [(f, parse_declaration(f.case_ownership)) for f in rows]
+    declared = [(f, d) for f, d in declared if d is not None]
+    if not declared:
+        return []
+    on = {
+        fid
+        for (fid,) in (
+            await db.execute(
+                select(FleetMember.fleet_id)
+                .join(Assignment, Assignment.agent_id == FleetMember.agent_id)
+                .where(
+                    FleetMember.fleet_id.in_([f.id for f, _ in declared]),
+                    FleetMember.role == FLEET_ROLE_MEMBER,
+                    Assignment.name == CTEM_CASE_ASSIGNMENT_NAME,
+                    Assignment.enabled.is_(True),
+                )
+                .distinct()
             )
+        ).all()
+    }
+    return [
+        CaseFleet(
+            token=token_of(f),
+            fleet_id=str(f.id),
+            slug=str(f.slug),
+            name=str(f.name),
+            paths=decl[0],
+            key=decl[1],
+            is_builtin=bool(f.is_builtin),
+            created_at=f.created_at,
+            active=f.id in on,
         )
-    ).all()
-    return {by_agent[slug] for (slug,) in rows if slug in by_agent}
+        for f, decl in declared
+    ]
 
 
-async def _active_now() -> set[str]:
+async def _fleets_now() -> list[CaseFleet]:
     from app.core.database import async_session
 
     async with async_session() as db:
-        return await active_case_fleets(db)
+        return await case_fleets(db)
 
 
-async def stamp_owners(datas: Iterable[MutableMapping[str, Any]], *, active: set[str] | None = None) -> None:
+async def stamp_owners(datas: Iterable[MutableMapping[str, Any]], *, fleets: list[CaseFleet] | None = None) -> None:
     """Write ``owner_fleet`` on every case event payload in *datas* that has a ``case_id``. Never raises.
 
-    An unreadable activation leaves the payload unstamped: the CTEM loop's
-    filter (``owner_fleet`` not a use-case fleet) still takes it.
+    An unreadable routing leaves the payload unstamped: the CTEM loop's
+    filter (``owner_fleet`` is ``ctem-loop`` or absent) still takes it.
     """
     pending = [d for d in datas if d.get("case_id") and OWNER_KEY not in d]
     if not pending:
         return
-    if active is None:
+    if fleets is None:
         try:
-            active = await _active_now()
+            fleets = await _fleets_now()
         except Exception:
             logger.warning("CTEM case owners not computed; the CTEM loop takes the events", exc_info=True)
             return
     for data in pending:
-        data[OWNER_KEY] = owner_of(data.get("trigger_path"), active)
+        data[OWNER_KEY] = owner_of(data.get("trigger_path"), fleets)
 
 
 def _catch_up_event_id(case_id: object, owner: str) -> str:
@@ -121,11 +206,11 @@ def _sort_key(case: CtemCase) -> tuple[int, float]:
     return (_SEVERITY_ORDER.get(case.severity or "", 9), due.timestamp() if due else float("inf"))
 
 
-async def _open_case_item_ids(db: AsyncSession, case_ids: list[str]) -> set[str]:
-    """The case ids (among *case_ids*) that already have an open ``<fleet key>:case:<id>`` work item."""
+async def _open_case_item_ids(db: AsyncSession, case_ids: list[str], case_keys: Iterable[str]) -> set[str]:
+    """The case ids (among *case_ids*) that already have an open ``<key>:case:<id>`` item of any declared key."""
     from app.models.work_item import WORK_ITEM_OPEN_STATUSES, WorkItem
 
-    keys = {f"{spec['key']}:case:{cid}": cid for cid in case_ids for spec in CTEM_CASE_FLEETS.values()}
+    keys = {f"{key}:case:{cid}": cid for cid in case_ids for key in set(case_keys)}
     if not keys:
         return set()
     rows = (
@@ -142,13 +227,14 @@ async def _open_case_item_ids(db: AsyncSession, case_ids: list[str]) -> set[str]
 async def plan_catch_up(
     db: AsyncSession, *, only: set[str] | None = None, limit: int = CATCH_UP_BATCH
 ) -> list[tuple[CtemCase, str]]:
-    """The open cases to hand to their active owner, most urgent first: ``(case, owner)``.
+    """The open cases to hand to their active owner, most urgent first: ``(case, owner token)``.
 
     A case is left out when no active fleet owns it, when it already has an
-    open case item, or when the catch-up already asked that owner. *only*
-    narrows to the cases owned by those fleets (the fleet just enabled).
+    open case item (any fleet's), or when the catch-up already asked that
+    owner. *only* narrows to the cases owned by those tokens (the fleet just enabled).
     """
-    active = await active_case_fleets(db)
+    fleets = await case_fleets(db)
+    active = {f.token for f in fleets if f.active}
     if not active:
         return []
     # P1 before P2 before P3 (the labels sort that way), then the soonest SLA; bounded read.
@@ -177,13 +263,13 @@ async def plan_catch_up(
     already = {(str(cid), owner) for cid, owner in asked_rows}
     picked: list[tuple[CtemCase, str]] = []
     for case in sorted(cases, key=_sort_key):
-        owner = owner_of(case.trigger_path, active)
+        owner = owner_of(case.trigger_path, fleets)
         if owner not in active or (only is not None and owner not in only):
             continue
         if (str(case.id), owner) in already:
             continue
         picked.append((case, owner))
-    taken = await _open_case_item_ids(db, [str(c.id) for c, _ in picked])
+    taken = await _open_case_item_ids(db, [str(c.id) for c, _ in picked], (f.key for f in fleets))
     return [(c, o) for c, o in picked if str(c.id) not in taken][:limit]
 
 
@@ -229,18 +315,63 @@ async def catch_up(*, only: set[str] | None = None, now: datetime | None = None)
         return 0
 
 
-async def catch_up_after_enable(fleet_slug: str | None) -> int:
-    """The catch-up of the fleet just enabled (a CTEM case fleet only); 0 for any other fleet."""
-    if fleet_slug not in CTEM_CASE_FLEETS:
+async def catch_up_after_change(fleet: Any) -> int:
+    """The catch-up after *fleet*'s case automations or declaration changed; 0 for a fleet declaring none.
+
+    Every owner is caught up, not only *fleet*: the paths a paused fleet gives
+    back are taken by the next owner at once, and an enabled fleet takes its own.
+    """
+    if parse_declaration(getattr(fleet, "case_ownership", None)) is None:
         return 0
-    return await catch_up(only={fleet_slug})
+    return await catch_up()
+
+
+async def point_case_listeners(db: AsyncSession, fleet: Any, agent_ids: Iterable[uuid.UUID]) -> int:
+    """Point the "Case opened or reopened" automations of *agent_ids* at *fleet*'s owner token.
+
+    A fork's listener copied from its source would hear the source's cases;
+    rewritten here, it hears only the cases routed to the fork. Answers how
+    many were rewritten. The caller flushes and commits.
+    """
+    from app.models.assignment import Assignment
+
+    ids = list(agent_ids)
+    if not ids:
+        return 0
+    rows = (
+        (
+            await db.execute(
+                select(Assignment).where(
+                    Assignment.agent_id.in_(ids),
+                    Assignment.name == CTEM_CASE_ASSIGNMENT_NAME,
+                    Assignment.trigger_type == "platform_event",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for row in rows:
+        row.trigger_config = {**(row.trigger_config or {}), "filter": listener_filter(token_of(fleet))}
+    return len(rows)
 
 
 async def owner_view(db: AsyncSession, case: CtemCase) -> dict[str, Any]:
-    """The case page's owner line: ``{slug, name, active}``; ``active`` false when no active fleet owns it."""
+    """The case page's owner line: ``{slug, name, active, fleet_id}``; ``active`` false when no active fleet owns it."""
     from app.models.fleet import Fleet
 
-    active = await active_case_fleets(db)
-    slug = owner_of(case.trigger_path, active)
-    name = (await db.execute(select(Fleet.name).where(Fleet.slug == slug).limit(1))).scalar_one_or_none()
-    return {"slug": slug, "name": name or slug, "active": slug in active}
+    fleets = await case_fleets(db)
+    found = owner_fleet(case.trigger_path, fleets)
+    if found is not None:
+        return {"slug": found.slug, "name": found.name, "active": True, "fleet_id": found.fleet_id}
+    row = (
+        await db.execute(
+            select(Fleet.id, Fleet.name).where(Fleet.is_builtin.is_(True), Fleet.slug == CTEM_LOOP_CASE_FLEET).limit(1)
+        )
+    ).first()
+    return {
+        "slug": CTEM_LOOP_CASE_FLEET,
+        "name": row[1] if row else CTEM_LOOP_CASE_FLEET,
+        "active": False,
+        "fleet_id": str(row[0]) if row else None,
+    }

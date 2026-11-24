@@ -524,6 +524,9 @@ async def seed_builtin_fleets(db: AsyncSession, *, platform_mode: str, fleets: l
         _add_entry_handovers(fleet, data, agents)
         await _add_member_back_consults(db, fleet)
         _seed_approval_gates(fleet, builtin_fleet_structured(data))
+        # The CTEM cases it runs (#1966): configuration written from code on every boot.
+        ownership = data.get("case_ownership")
+        fleet.case_ownership = dict(ownership) if ownership else None
         structured = await _with_computed_facts(db, fleet, builtin_fleet_structured(data))
         await seed_documentation(db, fleet, builtin_fleet_documentation(data), structured)
     await db.commit()
