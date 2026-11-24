@@ -44,6 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import cast
 from sqlalchemy.types import Text
 
+from app.core.json_sql import when_json_parseable
 from app.models.decision import Decision, public_id
 
 #: Seconds a read switch verdict is reused by this process.
@@ -217,7 +218,11 @@ async def waiting_for(
         reach = or_(
             reach,
             Decision.recipient.like("group:%")
-            & cast(Decision.ask, JSONB)["recipient_groups"].has_any(cast(groups, ARRAY(Text))),
+            # A row whose ask PostgreSQL cannot parse is left out, never aborting the inbox.
+            & when_json_parseable(
+                Decision.ask,
+                cast(Decision.ask, JSONB)["recipient_groups"].has_any(cast(groups, ARRAY(Text))),
+            ),
         )
     if fleet_id is None or not every_recipient:
         query = query.where(reach)
