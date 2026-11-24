@@ -21081,6 +21081,7 @@
   "Off: pick the OpenCRQ integration to read": "Désactivée : choisissez l’intégration OpenCRQ à lire",
   "OpenCRQ integration": "Intégration OpenCRQ",
   "The single connected one": "L’unique intégration connectée",
+  "None picked: several are connected": "Aucune choisie : plusieurs sont connectées",
   "Re-test delay": "Délai de re-test",
   "Re-test delay (days)": "Délai de re-test (jours)",
   "The OpenCRQ pass that finds decayed evidence and blind spots.": "La passe OpenCRQ qui trouve les preuves expirées et les angles morts.",

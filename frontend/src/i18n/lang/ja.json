@@ -21120,6 +21120,7 @@
   "Off: pick the OpenCRQ integration to read": "オフ: 読み取る OpenCRQ 連携を選択してください",
   "OpenCRQ integration": "OpenCRQ 連携",
   "The single connected one": "接続済みの唯一の連携",
+  "None picked: several are connected": "未選択：複数の連携が接続されています",
   "Re-test delay": "再テスト期限",
   "Re-test delay (days)": "再テスト期限 (日)",
   "The OpenCRQ pass that finds decayed evidence and blind spots.": "期限切れのエビデンスと死角を見つける OpenCRQ パス。",
