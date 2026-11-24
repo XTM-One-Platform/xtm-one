@@ -8,6 +8,7 @@
  */
 
 import type { Provenance } from "./organization-provenance";
+import type { FxRate, PirDetail } from "./organization-reference";
 
 export interface ProfileLike {
   name: string;
@@ -35,6 +36,10 @@ export interface ProfileLike {
   pir_ids: string[];
   /** The last known OpenCTI name of each saved PIR (#9615): the page never labels a PIR with its id. */
   pir_names?: Record<string, string>;
+  /** What the organization says about each PIR it follows (#1773), edited on its own card. */
+  pir_details?: Record<string, PirDetail>;
+  /** The reference exchange rates (#1383), edited on their own card since #1773. */
+  fx_rates?: FxRate[];
   risk_appetite: { annual_loss_threshold: number | null; approval_threshold: number | null };
   loaded_hourly_rate: number | null;
   currency: string;
@@ -344,6 +349,20 @@ export interface AssetGroupRow {
   tags: string[];
   source: string;
   external_id: string;
+  /** The criticality a member of unknown criticality takes (#1773); absent on an older backend: unknown. */
+  criticality?: AssetGroupCriticality;
+  /** Assets that join the group by rule, besides those naming it (#1773); absent: none. */
+  membership_rule?: GroupMembershipRule;
+}
+
+export const ASSET_GROUP_CRITICALITIES = ["unknown", "low", "medium", "high", "very_high"] as const;
+export type AssetGroupCriticality = (typeof ASSET_GROUP_CRITICALITIES)[number];
+
+/** An asset joins the group when it carries one of the tags, is of one of the categories, or its name holds the text. */
+export interface GroupMembershipRule {
+  tags: string[];
+  categories: string[];
+  name_contains: string;
 }
 
 export interface PrioritizationPolicy {
@@ -634,6 +653,9 @@ export function toForm(profile: ProfileLike): ProfileForm {
     regions: [...profile.regions],
     pir_ids: [...profile.pir_ids],
     pir_names: { ...(profile.pir_names ?? {}) },
+    // The reference rates and the PIR details have their own cards (#1773): carried whole so no other save resets them.
+    ...(profile.pir_details ? { pir_details: profile.pir_details } : {}),
+    ...(profile.fx_rates ? { fx_rates: profile.fx_rates } : {}),
     crown_jewels: profile.crown_jewels.map((jewel) => ({ ...jewel })),
     tech_stack: profile.tech_stack.map((entry) => ({ ...entry })),
     shipped_products: (profile.shipped_products ?? []).map((entry) => ({ ...entry, repositories: [...entry.repositories] })),
@@ -718,6 +740,8 @@ export function fromForm(form: ProfileForm): { profile: ProfileLike } | { invali
         regions: [...new Set(form.regions.map((code) => code.trim().toUpperCase()).filter(Boolean))],
         pir_ids: [...new Set(form.pir_ids.map((id) => id.trim()).filter(Boolean))],
         pir_names: pirNamesOf(form.pir_ids, form.pir_names ?? {}),
+        ...(form.pir_details ? { pir_details: form.pir_details } : {}),
+        ...(form.fx_rates ? { fx_rates: form.fx_rates } : {}),
         crown_jewels: form.crown_jewels.filter((jewel) => jewel.name.trim()),
         // An empty version is left out: the saved shape of a profile that never declares one stays the same.
         tech_stack: form.tech_stack
