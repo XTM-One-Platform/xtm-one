@@ -314,17 +314,6 @@ which carry no brand, by a glyph; the name in the tooltip and for screen
 readers). With no fixed version the card says it is unknown and what was
 checked; with no asset running the product it says the versions come from the
 assets. Nothing on the page asks the user to type a version in the tech stack.
-Per platform (slice 3 of #1572): when a row names a `platform` the table adds a
-Platform column, and when the case carries `fixed_versions` a Fixed version
-column (the row's own platform fix) and the line "Fixed version per platform:
-Windows: 36.0 and macOS: 37.0"; the totals then read "below / on the fixed
-version of their platform". A row whose `status_reason` is "fix not known for
-this platform" reads that status, never "Cannot be compared" alone; a
-`platform_unverified` answer says the generic fix names no platform while the
-assets run several, and `assets_fix_not_known_for_platform` is counted in its
-own line. `assets_multi_version` above 0 adds the line that those assets are
-counted in each of their rows, so the row sum above the asset count reads as
-explained. A single-platform answer draws the card as before.
 
 ### 4.3 Recompute
 
@@ -605,9 +594,30 @@ then the existing AI assessment and facts grid unchanged.
   link); its action slot holds only the quiet freshness line of s.4.3, never a
   refresh button. Export CSV is in the table toolbar. The totals live in the
   table toolbar's `TotalChip`, not in the title row.
-- State tabs: the shared `SegmentedFilter` (`overflow="menu"`, radio) with
-  exact counts: Needs attention, In progress, Resolved ("All time" in its
-  tooltip, A1), Accepted risk, All.
+- One full list, no state tabs and no "Act on this first" band (#1503):
+  quick filter chips above the table (`QuickFilterChips`), each with its
+  count and in the URL: the scope (`?state=`: Open by default, Waiting for
+  decision, Closed, All) and the toggles (`?c_q=`: Mine, Unassigned, Overdue,
+  Critical and high). A case Waiting for decision says what it waits on, who
+  and since when (the "Waits on" column; `waiting_on` on each list row: the
+  newest unanswered waiting gate, `ctem_case_audit.open_wait`).
+- **List and Kanban (#1503)**: the toolbar's view switch draws the same rows
+  (quick filters, search and filters applied) at `/ctem/cases` or as columns
+  at `/ctem/cases/kanban`, a path never a query (#10203), the query kept.
+  Columns are the eight statuses in lifecycle order, or the five CTEM phases
+  when grouped by CTEM phase (`phase` on each list row:
+  `ctem_case_audit.current_phase` of the history the viewer is served; a
+  case with no event yet sits in a last "Phase not known yet" column). Cards:
+  title, urgency, owner, due, what a waiting case waits on, the loop line. In
+  the status layout a card is dragged to another column to change its status
+  (`PATCH /ctem-cases/{id}`); New, Analyzing, Remediating and Validating are
+  set by a drop (an unowned case moved to Remediating takes the person
+  dropping it as owner), Waiting for decision, Mitigated watching, Resolved
+  and Accepted risk are refused with their reason (each needs what a drop
+  cannot carry: the case page sets them), and the API's own refusal is shown
+  the same way. The Mobilization stage page's flow strip (7.1) stays a strip.
+- Group by (`?c_group=`, both views in the list): owner, status, CTEM phase,
+  priority, fix family.
 - **The shared `DataTable`, its own toolbar anatomy (B2)**, one row at 1080
   and 1728 in en, fr, es and ja: search ("Search fix, product or CVE"), ONE
   `FiltersPill` holding the facets (owner: me / unassigned / a person,
