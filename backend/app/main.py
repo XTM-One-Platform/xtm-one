@@ -566,12 +566,17 @@ async def _a2a_reaper_loop() -> None:
     announcements come after it, for the same reason.
     """
     from app.a2a.client.delegation import spawn_run_cancel
-    from app.a2a.tasks import announce_missed, announce_state, reap_stale_tasks
+    from app.a2a.tasks import announce_missed, announce_state, reap_stale_tasks, resume_handed_back_tasks
+    from app.api.v1.a2a_server import _spawn_task_run
     from app.core.database import async_session
 
     while True:
         try:
             async with async_session() as db:
+                # The tasks a stopping worker handed back resume here, under
+                # the same task id, from their checkpoint.
+                for handed_back_task in await resume_handed_back_tasks(db):
+                    _spawn_task_run(handed_back_task)
                 tasks: list = []
                 cancelled_runs: list = []
                 reaped = await reap_stale_tasks(
