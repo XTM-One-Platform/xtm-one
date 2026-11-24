@@ -52,14 +52,14 @@ beforeEach(() => {
 
 describe("CompanyContextNotice on the home dashboard", () => {
   it("asks an administrator to set the context up when none is saved", () => {
-    notice({ state: "missing", missing_fields: ["primary_assets"] });
+    notice({ state: "missing", missing_fields: ["crown_jewels"] });
     expect(screen.getByText("Set up your organization context")).toBeTruthy();
     expect(screen.getByTestId("ctem-context-missing")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Set up organization context" }).getAttribute("href")).toContain("/settings/organization");
   });
 
   it("names the empty fields when the context is partial, with the link", () => {
-    notice({ state: "partial", missing_fields: ["tech_stack", "primary_assets"] });
+    notice({ state: "partial", missing_fields: ["software", "crown_jewels"] });
     expect(screen.getByText("Your organization context is incomplete")).toBeTruthy();
     expect(screen.getByTestId("ctem-context-partial").textContent).toContain("Software, Primary assets and business services");
     expect(screen.getByRole("link", { name: "Complete organization context" })).toBeTruthy();
@@ -67,17 +67,17 @@ describe("CompanyContextNotice on the home dashboard", () => {
 
   it("is never shown to a user who cannot edit the organization context", () => {
     auth.isAdmin = false;
-    const { container } = notice({ state: "partial", missing_fields: ["tech_stack"] });
+    const { container } = notice({ state: "partial", missing_fields: ["software"] });
     expect(container.textContent).toBe("");
-    notice({ state: "missing", missing_fields: ["primary_assets"] });
+    notice({ state: "missing", missing_fields: ["crown_jewels"] });
     expect(screen.queryByTestId("ctem-context-missing")).toBeNull();
   });
 
   it("is dismissed per user, stays hidden on reload, comes back when a new field goes missing", () => {
-    const partial = { state: "partial" as const, missing_fields: ["tech_stack", "primary_assets"] };
+    const partial = { state: "partial" as const, missing_fields: ["software", "crown_jewels"] };
     const first = notice(partial);
     fireEvent.click(screen.getByRole("button", { name: "Dismiss until a new field is missing" }));
-    expect(auth.writes).toEqual([{ organization_context_notice_dismissed: ["tech_stack", "primary_assets"] }]);
+    expect(auth.writes).toEqual([{ organization_context_notice_dismissed: ["software", "crown_jewels"] }]);
     first.unmount();
 
     // Reload: the stored list is read back from the user.
@@ -86,12 +86,12 @@ describe("CompanyContextNotice on the home dashboard", () => {
     reload.unmount();
 
     // A field filled since: still hidden.
-    const fewer = notice({ state: "partial", missing_fields: ["tech_stack"] });
+    const fewer = notice({ state: "partial", missing_fields: ["software"] });
     expect(fewer.container.textContent).toBe("");
     fewer.unmount();
 
     // A newly missing field: shown again.
-    notice({ state: "partial", missing_fields: ["tech_stack", "primary_assets", "currency"] });
+    notice({ state: "partial", missing_fields: ["software", "crown_jewels", "currency"] });
     expect(screen.getByTestId("ctem-context-partial")).toBeTruthy();
   });
 
@@ -117,8 +117,8 @@ describe("CompanyContextNotice on the home dashboard", () => {
 describe("CompanyContextNotice on a brief", () => {
   it("shows every reader the missing fields, with no close control and no link", () => {
     auth.isAdmin = false;
-    auth.dismissed = ["tech_stack"];
-    notice({ state: "partial", missing_fields: ["tech_stack"] }, "brief");
+    auth.dismissed = ["software"];
+    notice({ state: "partial", missing_fields: ["software"] }, "brief");
     expect(screen.getByText("Organization context incomplete")).toBeTruthy();
     expect(screen.getByTestId("ctem-context-partial").textContent).toContain("Missing: Software. The analysis would be sharper with them.");
     expect(screen.queryByRole("button")).toBeNull();
@@ -126,7 +126,7 @@ describe("CompanyContextNotice on a brief", () => {
   });
 
   it("gives an administrator the link, still not dismissible", () => {
-    notice({ state: "missing", missing_fields: ["primary_assets"] }, "brief");
+    notice({ state: "missing", missing_fields: ["crown_jewels"] }, "brief");
     expect(screen.getByText("No organization context")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Set up organization context" })).toBeTruthy();
     expect(screen.queryByRole("button")).toBeNull();

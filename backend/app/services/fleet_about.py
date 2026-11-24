@@ -38,8 +38,8 @@ from sqlalchemy import select
 PROFILE_CHECK_FIELDS: dict[str, str] = {
     "profile:sector": "sector",
     "profile:regions": "regions",
-    "profile:primary_assets": "primary_assets",
-    "profile:tech_stack": "tech_stack",
+    "profile:crown_jewels": "crown_jewels",
+    "profile:software": "software",
     # The AI security fleet needs AI targets: the assets of category ai_target (#1844).
     "profile:ai_targets": "assets_exposure",
 }
@@ -229,8 +229,8 @@ LABEL_MCP_SERVER = "MCP server"
 PROFILE_LABELS = {
     "profile:sector": "Sector in the organization profile",
     "profile:regions": "Regions in the organization profile",
-    "profile:primary_assets": "Primary assets in the organization profile",
-    "profile:tech_stack": "Technology in the organization profile",
+    "profile:crown_jewels": "Primary assets in the organization profile",
+    "profile:software": "Technology in the organization profile",
     "profile:ai_targets": "AI target assets in the inventory",
     "profile:tracked_organizations": "A tracked organization with monitoring on",
 }

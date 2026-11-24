@@ -717,7 +717,7 @@ def lab_org_import_read(section: str, source: str, batch_type: str = ""):
         rows = [imp.openaev_asset_group(group) for group in LAB_ORG_IMPORT_OPENAEV_GROUPS]
     elif (section, source) == ("software", "openaev"):
         names = [str(p.get("asset_name") or p.get("security_platform_name")) for p in LAB_ORG_IMPORT_OPENAEV_PLATFORMS]
-        rows = [imp.TechStackEntry(product=name) for name in names]
+        rows = [imp.SoftwareEntry(product=name) for name in names]
     else:
         return None
     rows = [row for row in rows if row]
@@ -1286,7 +1286,7 @@ def stub_model_catalogs(environ: dict) -> dict[str, bool]:
 stub_model_catalogs(dict(os.environ))
 
 
-#: The primary assets the lab's OpenCRQ sync plans over, in the shape ``PrimaryAsset`` validates: one row per plan kind
+#: The crown jewels the lab's OpenCRQ sync plans over, in the shape ``CrownJewel`` validates: one row per plan kind
 #: against :data:`LAB_OPENCRQ_ASSETS` (linked by name, ambiguous name, a typed row linked to an asset OpenCRQ
 #: lacks). Nothing is pushed since #1591: ``pushed_to_opencrq`` stays empty.
 LAB_OPENCRQ_JEWELS = [
@@ -1320,7 +1320,7 @@ def stub_opencrq_sync(environ: dict) -> bool:
     agreed = [False]
 
     async def run_sync(db, *, user_id, apply, tenant_id="", min_criticality=""):
-        profile = organization_context.parse_profile({"primary_assets": LAB_OPENCRQ_JEWELS})
+        profile = organization_context.parse_profile({"crown_jewels": LAB_OPENCRQ_JEWELS})
         if not apply and agreed[0]:
             agreed[0] = False
             return organization_context_opencrq.SyncPlan(profile=profile), []

@@ -28,7 +28,7 @@ Layers, in order (the PR body carries the same table):
   vulnerabilities to the profile assets; not available, with the reachability
   split of the assets read, when the profile holds assets but no join exists
   for the counted set; not configured only when the profile holds no asset.
-* ``business_impact``, ``policy``: read the primary asset to asset mapping and
+* ``business_impact``, ``policy``: read the crown jewel to asset mapping and
   the prioritization policy of the organization context (proposal B). Not
   configured until those fields exist.
 * ``open_issues``: the CTEM Cases (proposal C). Not available until it ships.
@@ -51,10 +51,10 @@ EXPOSED_NOT_LINKED = "assets_not_linked"
 #: Layer key -> (source, the organization context category that unlocks it, or None).
 LAYERS: tuple[tuple[str, str, str | None], ...] = (
     ("known", "opencti", None),
-    ("relevant", "organization", "tech_stack"),
+    ("relevant", "organization", "software"),
     ("exploitable", "opencti", None),
     ("exposed", "organization", "assets"),
-    ("business_impact", "organization", "primary_assets"),
+    ("business_impact", "organization", "crown_jewels"),
     ("policy", "organization", "prioritization_policy"),
     ("open_issues", "ctem_cases", None),
 )

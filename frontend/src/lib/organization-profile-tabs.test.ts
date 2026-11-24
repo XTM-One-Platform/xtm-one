@@ -48,6 +48,9 @@ describe("organization profile tabs", () => {
     expect(tabOfField("risk_appetite.approval_threshold")).toBe("identity");
     expect(tabOfField("approval_threshold")).toBe("identity");
     expect(tabOfField("ticketing.project")).toBe("identity");
+    // The PIR list moved to the Prioritization policy of CTEM > Inventory (#1889).
+    expect(tabOfField("pir_ids")).toBe("exposure");
+    expect(profileFieldHref("pir_ids")).toBe("/ctem/inventory/exposure?card=prioritization_policy");
     expect(tabOfField("accepted_risks")).toBe("exposure");
     expect(tabOfField("enterprise_knowledge")).toBe("knowledge");
     expect(tabOfField("unknown_field")).toBeNull();
@@ -69,12 +72,12 @@ describe("organization profile tabs", () => {
   });
 
   it("links a field to its tab and card, never to the bare first tab when the field lives elsewhere", () => {
-    expect(profileFieldHref("primary_assets")).toBe("/ctem/inventory/business?card=primary_assets");
+    expect(profileFieldHref("crown_jewels")).toBe("/ctem/inventory/business?card=crown_jewels");
     // The technology and exposure cards live on CTEM > Inventory (#1178).
     expect(profileFieldHref("prioritization_policy")).toBe("/ctem/inventory/exposure?card=prioritization_policy");
     expect(profileFieldHref("accepted_risks")).toBe("/ctem/inventory/exposure?card=prioritization_policy");
     expect(profileFieldHref("assets_exposure")).toBe("/ctem/inventory?card=assets_exposure");
-    expect(profileFieldHref("tech_stack")).toBe("/ctem/inventory/software?card=tech_stack");
+    expect(profileFieldHref("software")).toBe("/ctem/inventory/software?card=software");
     expect(profileFieldHref("tracked_organizations")).toBe("/ctem/inventory/business?card=tracked_organizations");
     expect(profileFieldHref("sector")).toBe("/settings/organization?card=identity");
     expect(profileFieldHref("risk_appetite.approval_threshold")).toBe("/settings/organization?card=risk_appetite");
@@ -89,16 +92,16 @@ describe("organization profile tabs", () => {
   });
 
   it("parses the card of the URL, null for none or an unknown key", () => {
-    expect(parseProfileCard("primary_assets")).toBe("primary_assets");
+    expect(parseProfileCard("crown_jewels")).toBe("crown_jewels");
     expect(parseProfileCard("toString")).toBeNull();
     expect(parseProfileCard("nope")).toBeNull();
     expect(parseProfileCard(null)).toBeNull();
   });
 
   it("names the tabs a change touches and groups items by tab in tab order", () => {
-    expect([...changedTabs({ name: "a", tech_stack: [] }, { name: "a", tech_stack: [{ product: "x" }] })]).toEqual(["technology"]);
-    expect(tabsOfFields(["tech_stack", "pir_ids", "nope"])).toEqual(["identity", "technology"]);
-    const groups = groupByTab([{ f: "tech_stack" }, { f: "size" }, { f: "nope" }], (item) => item.f);
+    expect([...changedTabs({ name: "a", software: [] }, { name: "a", software: [{ product: "x" }] })]).toEqual(["technology"]);
+    expect(tabsOfFields(["software", "pir_ids", "size", "nope"])).toEqual(["identity", "technology", "exposure"]);
+    const groups = groupByTab([{ f: "software" }, { f: "size" }, { f: "nope" }], (item) => item.f);
     expect(groups.map((group) => group.tab)).toEqual(["identity", "technology", null]);
   });
 });

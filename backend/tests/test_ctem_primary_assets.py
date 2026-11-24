@@ -17,11 +17,9 @@ WORKSTATIONS = "Employee workstations (laptops and desktops)"
 def _profile(**policy: object) -> oc.OrganizationProfile:
     return oc.parse_profile(
         {
-            "primary_assets": [
-                {"name": WORKSTATIONS, "criticality": "high", "source": "opencrq", "external_id": "pa-1"}
-            ],
-            "tech_stack": [{"product": "Windows"}],
-            "prioritization_policy": {"min_primary_asset_criticality": "medium", "cvss_min": 7, **policy},
+            "crown_jewels": [{"name": WORKSTATIONS, "criticality": "high", "source": "opencrq", "external_id": "pa-1"}],
+            "software": [{"product": "Windows"}],
+            "prioritization_policy": {"min_crown_jewel_criticality": "medium", "cvss_min": 7, **policy},
         }
     )
 
@@ -52,17 +50,17 @@ def _cve(**evidence: object) -> gate.SignalFacts:
     )
 
 
-def test_without_links_a_windows_cve_stays_held_by_the_primary_asset_policy() -> None:
+def test_without_links_a_windows_cve_stays_held_by_the_crown_jewel_policy() -> None:
     decision = gate.decide(_profile(), _cve(), today=TODAY)
     assert decision.outcome == "watchlist"
-    assert decision.record["reason_code"] == "primary_asset_below_policy"
+    assert decision.record["reason_code"] == "crown_jewel_below_policy"
     assert decision.record["reconcile"]["inventory_links_read"] is False
 
 
 def test_a_link_through_an_asset_group_of_intune_devices_opens_the_case_with_the_chain() -> None:
     decision = gate.decide(_profile(), _cve(), primary_assets=_index(), today=TODAY)
     assert decision.outcome == "case" and decision.state == "confirmed"
-    jewel = next(s for s in decision.record["scope"]["sources"] if s["from"] == "primary_asset")
+    jewel = next(s for s in decision.record["scope"]["sources"] if s["from"] == "crown_jewel")
     assert jewel["name"] == WORKSTATIONS and jewel["criticality"] == "high"
     hop = jewel["chain"][0]
     assert hop["software"] == "Windows" and hop["asset"] == "LAPTOP-042"
@@ -88,7 +86,7 @@ def test_software_the_devices_do_not_run_reaches_nothing() -> None:
 def test_the_link_removed_sends_it_back_to_the_watchlist() -> None:
     empty = pa.PrimaryAssetIndex(loaded=True)
     decision = gate.decide(_profile(), _cve(), primary_assets=empty, today=TODAY)
-    assert decision.outcome == "watchlist" and decision.record["reason_code"] == "primary_asset_below_policy"
+    assert decision.outcome == "watchlist" and decision.record["reason_code"] == "crown_jewel_below_policy"
     assert decision.record["reconcile"]["inventory_links_read"] is True
 
 

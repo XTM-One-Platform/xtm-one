@@ -8,6 +8,7 @@
  */
 
 import type { Provenance } from "./organization-provenance";
+import type { FxRate, PirDetail } from "./organization-reference";
 
 export interface ProfileLike {
   name: string;
@@ -15,7 +16,7 @@ export interface ProfileLike {
   sub_sector: string;
   regions: string[];
   size: string;
-  primary_assets: ({
+  crown_jewels: ({
     name: string;
     business_service: string;
     owner: string;
@@ -25,7 +26,7 @@ export interface ProfileLike {
     asset_names?: string[];
   } & Provenance)[];
   /** `version`: the version the organization runs, optional (CTEM-11, #894): cases then name the version to reach. */
-  tech_stack: ({ product: string; vendor: string; cpe: string; version?: string } & Provenance)[];
+  software: ({ product: string; vendor: string; cpe: string; version?: string } & Provenance)[];
   /**
    * What the organization ships, apart from what it runs (#1432): a vulnerability on one of these products (by CPE,
    * then product and vendor) resolves to its source repositories (`owner/name`). Absent on a profile that declares none.
@@ -34,6 +35,10 @@ export interface ProfileLike {
   pir_ids: string[];
   /** The last known OpenCTI name of each saved PIR (#9615): the page never labels a PIR with its id. */
   pir_names?: Record<string, string>;
+  /** What the organization says about each PIR it follows (#1773), edited on its own card. */
+  pir_details?: Record<string, PirDetail>;
+  /** The reference exchange rates (#1383), edited on their own card since #1773. */
+  fx_rates?: FxRate[];
   risk_appetite: { annual_loss_threshold: number | null; approval_threshold: number | null };
   loaded_hourly_rate: number | null;
   currency: string;
@@ -84,7 +89,7 @@ export interface CaseAttentionProfile {
   priority_medium: number;
   priority_low: number;
   kev: number;
-  primary_asset: number;
+  crown_jewel: number;
   overdue: number;
   due_soon: number;
   due_soon_days: number;
@@ -343,6 +348,20 @@ export interface AssetGroupRow {
   tags: string[];
   source: string;
   external_id: string;
+  /** The criticality a member of unknown criticality takes (#1773); absent on an older backend: unknown. */
+  criticality?: AssetGroupCriticality;
+  /** Assets that join the group by rule, besides those naming it (#1773); absent: none. */
+  membership_rule?: GroupMembershipRule;
+}
+
+const ASSET_GROUP_CRITICALITIES = ["unknown", "low", "medium", "high", "very_high"] as const;
+type AssetGroupCriticality = (typeof ASSET_GROUP_CRITICALITIES)[number];
+
+/** An asset joins the group when it carries one of the tags, is of one of the categories, or its name holds the text. */
+export interface GroupMembershipRule {
+  tags: string[];
+  categories: string[];
+  name_contains: string;
 }
 
 export interface PrioritizationPolicy {
@@ -350,7 +369,7 @@ export interface PrioritizationPolicy {
   epss_min: number | null;
   kev_always_in: boolean;
   internet_exposure_required: boolean;
-  min_primary_asset_criticality: string;
+  min_crown_jewel_criticality: string;
   exclusions: { kind: string; value: string; reason: string }[];
   accepted_risks: { subject: string; scope: string; owner: string; expires_on: string; reason: string }[];
   /** CTEM-08: the live PIR score (0 to 100) a flagged vulnerability must reach before a fleet run starts. Backend default 70. */
@@ -470,8 +489,8 @@ export const FIELD_LABELS = {
   sector: "Sector",
   regions: "Regions of operation",
   size: "Organization size",
-  primary_assets: "Primary assets and business services",
-  tech_stack: "Software",
+  crown_jewels: "Primary assets and business services",
+  software: "Software",
   pir_ids: "Priority intelligence requirements (PIRs)",
   "risk_appetite.annual_loss_threshold": "Risk tolerance per scenario",
   "risk_appetite.approval_threshold": "Escalation threshold",
@@ -632,8 +651,11 @@ export function toForm(profile: ProfileLike): ProfileForm {
     regions: [...profile.regions],
     pir_ids: [...profile.pir_ids],
     pir_names: { ...(profile.pir_names ?? {}) },
-    primary_assets: profile.primary_assets.map((jewel) => ({ ...jewel })),
-    tech_stack: profile.tech_stack.map((entry) => ({ ...entry })),
+    // The reference rates and the PIR details have their own cards (#1773): carried whole so no other save resets them.
+    ...(profile.pir_details ? { pir_details: profile.pir_details } : {}),
+    ...(profile.fx_rates ? { fx_rates: profile.fx_rates } : {}),
+    crown_jewels: profile.crown_jewels.map((jewel) => ({ ...jewel })),
+    software: profile.software.map((entry) => ({ ...entry })),
     shipped_products: (profile.shipped_products ?? []).map((entry) => ({ ...entry, repositories: [...entry.repositories] })),
     annual_loss_threshold: numberText(profile.risk_appetite.annual_loss_threshold),
     approval_threshold: numberText(profile.risk_appetite.approval_threshold),
@@ -716,9 +738,11 @@ export function fromForm(form: ProfileForm): { profile: ProfileLike } | { invali
         regions: [...new Set(form.regions.map((code) => code.trim().toUpperCase()).filter(Boolean))],
         pir_ids: [...new Set(form.pir_ids.map((id) => id.trim()).filter(Boolean))],
         pir_names: pirNamesOf(form.pir_ids, form.pir_names ?? {}),
-        primary_assets: form.primary_assets.filter((jewel) => jewel.name.trim()),
+        ...(form.pir_details ? { pir_details: form.pir_details } : {}),
+        ...(form.fx_rates ? { fx_rates: form.fx_rates } : {}),
+        crown_jewels: form.crown_jewels.filter((jewel) => jewel.name.trim()),
         // An empty version is left out: the saved shape of a profile that never declares one stays the same.
-        tech_stack: form.tech_stack
+        software: form.software
           .filter((entry) => entry.product.trim())
           .map(({ version, ...entry }) => (version?.trim() ? { ...entry, version: version.trim() } : entry)),
         // Always sent, an empty list included, so removing the last row clears it: the server keeps the stored list

@@ -30,11 +30,11 @@ export const FUNNEL_MIN_WIDTH_PCT = 14;
 
 /** The profile field each layer a not configured state asks for: its call to action opens the card that edits it. */
 export const FUNNEL_LAYER_FIELD: Partial<Record<CtemFunnelLayerKey, string>> = {
-  relevant: "tech_stack",
+  relevant: "software",
   exposed: "assets_exposure",
-  business_impact: "primary_assets",
+  business_impact: "crown_jewels",
   policy: "prioritization_policy",
-  open_issues: "tech_stack",
+  open_issues: "software",
 };
 
 /** Settings > Organization, on the tab and card of the field a not configured layer needs (#12329 tabs). */
@@ -155,7 +155,7 @@ export function withCasesLayer(funnel: CtemFunnel, cases: FunnelCases | undefine
       if (!isCasesLayer(layer)) return layer;
       return buildable
         ? { ...layer, count: cases.open, drop: null, state: "live", category: null }
-        : { ...layer, count: null, drop: null, state: "not_configured", category: "tech_stack" };
+        : { ...layer, count: null, drop: null, state: "not_configured", category: "software" };
     }),
   };
 }
@@ -484,7 +484,7 @@ export const SAMPLE_FUNNEL: CtemFunnel = {
     { key: "relevant", count: 512, drop: 3702, state: "live", source: "organization", category: null },
     { key: "exploitable", count: 21, drop: 491, state: "live", source: "opencti", category: null, basis: "relevant" },
     { key: "exposed", count: null, drop: null, state: "not_configured", source: "organization", category: "assets" },
-    { key: "business_impact", count: null, drop: null, state: "not_configured", source: "organization", category: "primary_assets" },
+    { key: "business_impact", count: null, drop: null, state: "not_configured", source: "organization", category: "crown_jewels" },
     { key: "policy", count: null, drop: null, state: "not_configured", source: "organization", category: "prioritization_policy" },
     { key: "open_issues", count: null, drop: null, state: "not_available", source: "ctem_cases", category: null },
   ],

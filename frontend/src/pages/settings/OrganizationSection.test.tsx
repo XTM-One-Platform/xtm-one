@@ -50,8 +50,8 @@ async function draftFromPlatforms() {
 }
 /** The cards CTEM > Inventory mounts in place of the three tabs that left Settings (#1178, #1690). */
 const INVENTORY_CARDS = {
-  business: ["primary_assets", "shipped_products", "tracked_organizations"],
-  technology: ["tech_stack"],
+  business: ["crown_jewels", "shipped_products", "tracked_organizations"],
+  technology: ["software"],
   exposure: ["prioritization_policy", "outside_lens", "evidence_health"],
 } as const;
 /**
@@ -85,8 +85,8 @@ const CONTEXT: OrganizationContextResponse = {
     sub_sector: "",
     regions: ["FR"],
     size: "",
-    primary_assets: [{ name: "Payments", business_service: "Cards", owner: "CISO", criticality: "critical", opencrq_asset_id: "" }],
-    tech_stack: [],
+    crown_jewels: [{ name: "Payments", business_service: "Cards", owner: "CISO", criticality: "critical", opencrq_asset_id: "" }],
+    software: [],
     pir_ids: [],
     risk_appetite: { annual_loss_threshold: null, approval_threshold: null },
     loaded_hourly_rate: null,
@@ -251,7 +251,7 @@ describe("OrganizationSection panels (#12329, #1690)", () => {
   });
 
   it("reads a former Business, Technology or Exposure tab path as an unknown tab, with no redirect (#797)", async () => {
-    for (const path of ["/settings/organization/profile/business", "/settings/organization/profile/technology", "/settings/organization/profile/exposure?card=tech_stack"]) {
+    for (const path of ["/settings/organization/profile/business", "/settings/organization/profile/technology", "/settings/organization/profile/exposure?card=software"]) {
       const view = renderWithProviders(
         <MemoryRouter initialEntries={[path]}>
           <OrganizationSection />
@@ -293,7 +293,8 @@ describe("OrganizationSection", () => {
     renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     expect((await screen.findByTestId("settings.organization.identity")).textContent).toContain("Acme");
     const missing = await screen.findByTestId("settings.organization.missing");
-    expect(missing.textContent).toContain("Priority intelligence requirements (PIRs)");
+    // The PIR list is reported on CTEM > Inventory with the Prioritization policy (#1889), never on Settings.
+    expect(missing.textContent).not.toContain("Priority intelligence requirements (PIRs)");
     expect(missing.textContent).toContain("Loaded hourly rate");
   });
 
@@ -306,7 +307,8 @@ describe("OrganizationSection", () => {
   it("counts the fields not filled Settings draws and opens the form on a missing field (#9173 S1c, #1690)", async () => {
     renderPage();
     const overview = await screen.findByTestId("settings.organization.overview");
-    expect(overview.textContent).toContain("3 fields not filled");
+    // size and loaded_hourly_rate; pir_ids is reported on CTEM > Inventory with the Prioritization policy (#1889).
+    expect(overview.textContent).toContain("2 fields not filled");
     expect(screen.queryByTestId("settings.save-bar")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Loaded hourly rate" }));
     const rate = await screen.findByRole("textbox", { name: "Loaded hourly rate" });
@@ -377,7 +379,7 @@ describe("OrganizationSection", () => {
   it("reads the row tables as text and edits them as fields; an empty value reads Not set, never a placeholder (UX r1 B1, B2 on #10804)", async () => {
     const base = get.getMockImplementation()!;
     get.mockImplementation(async (path: string) =>
-      path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: [{ product: "CrowdStrike Falcon", vendor: "CrowdStrike", cpe: "" }] } } : base(path),
+      path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, software: [{ product: "CrowdStrike Falcon", vendor: "CrowdStrike", cpe: "" }] } } : base(path),
     );
     renderPage("business");
     const row = await screen.findByTestId("settings.organization.primary-asset-row");
@@ -397,7 +399,7 @@ describe("OrganizationSection", () => {
   it("reads the software rows as text on CTEM > Inventory and edits a row as fields (#1178)", async () => {
     const base = get.getMockImplementation()!;
     get.mockImplementation(async (path: string) =>
-      path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: [{ product: "CrowdStrike Falcon", vendor: "CrowdStrike", cpe: "" }] } } : base(path),
+      path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, software: [{ product: "CrowdStrike Falcon", vendor: "CrowdStrike", cpe: "" }] } } : base(path),
     );
     renderPage("technology");
     const tech = (await screen.findByText("CrowdStrike Falcon")).closest("tr")!;
@@ -414,7 +416,7 @@ describe("OrganizationSection", () => {
     const base = get.getMockImplementation()!;
     get.mockImplementation(async (path: string) =>
       path === "/organization-context"
-        ? { ...CONTEXT, profile: { ...CONTEXT.profile, primary_assets: [{ name: long, business_service: "", owner: "", criticality: "critical", opencrq_asset_id: "" }] } }
+        ? { ...CONTEXT, profile: { ...CONTEXT.profile, crown_jewels: [{ name: long, business_service: "", owner: "", criticality: "critical", opencrq_asset_id: "" }] } }
         : base(path),
     );
     renderPage("business");
@@ -438,11 +440,11 @@ describe("OrganizationSection", () => {
   it("edits one list card alone, counts its changes, undoes a removal and patches that list alone (#12256, #1752)", async () => {
     const base = get.getMockImplementation()!;
     const tech = Array.from({ length: 150 }, (_, i) => ({ product: `Product ${String(i).padStart(3, "0")}`, vendor: i === 7 ? "" : "Vendor", cpe: "" }));
-    get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: tech } } : base(path)));
+    get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, software: tech } } : base(path)));
     patch.mockResolvedValue({ ...CONTEXT, version: 4 });
     renderPage("technology");
     // Read mode names the row that needs attention on the card header.
-    expect((await screen.findByTestId("settings.organization.attention-tech_stack")).textContent).toBe("1 needs attention");
+    expect((await screen.findByTestId("settings.organization.attention-software")).textContent).toBe("1 needs attention");
     fireEvent.click(screen.getByRole("button", { name: /Edit Software/ }));
     const bar = await screen.findByTestId("settings.organization.list-save-bar");
     // 25 rows a page, never the 150.
@@ -465,13 +467,13 @@ describe("OrganizationSection", () => {
     fireEvent.click(save);
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
     expect(put).not.toHaveBeenCalled();
-    const [path, body] = patch.mock.calls[0] as [string, { fields: Record<string, unknown> & { tech_stack: { product: string }[] }; based_on_version: number }];
+    const [path, body] = patch.mock.calls[0] as [string, { fields: Record<string, unknown> & { software: { product: string }[] }; based_on_version: number }];
     expect(path).toBe("/organization-context");
     // The network check of #1752: the card's own list alone travels, never another field or an asset row.
-    expect(Object.keys(body.fields)).toEqual(["tech_stack"]);
+    expect(Object.keys(body.fields)).toEqual(["software"]);
     expect(body.based_on_version).toBe(CONTEXT.version);
-    expect(body.fields.tech_stack).toHaveLength(151);
-    expect(body.fields.tech_stack[150].product).toBe("Jira");
+    expect(body.fields.software).toHaveLength(151);
+    expect(body.fields.software[150].product).toBe("Jira");
   });
 
   it("draws no asset or group table on the Exposure tab: the rows are on their row APIs, never on the profile (#1752 slice 3b)", async () => {
@@ -508,14 +510,14 @@ describe("OrganizationSection", () => {
   it("pastes a list into a card in edit, skips the rows already there, sets a vendor on the selected rows and saves (#12256 slice 2)", async () => {
     const base = get.getMockImplementation()!;
     const tech = [{ product: "Jira", vendor: "Atlassian", cpe: "" }, { product: "Slack", vendor: "", cpe: "" }];
-    get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: tech } } : base(path)));
+    get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, software: tech } } : base(path)));
     patch.mockResolvedValue({ ...CONTEXT, version: 4 });
     renderPage("technology");
     // Paste a list waits for the card's Edit.
-    expect(screen.queryByTestId("settings.organization.paste-tech_stack")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.paste-software")).toBeNull();
     fireEvent.click(await screen.findByRole("button", { name: /Edit Software/ }));
     const bar = await screen.findByTestId("settings.organization.list-save-bar");
-    fireEvent.click(screen.getByTestId("settings.organization.paste-tech_stack"));
+    fireEvent.click(screen.getByTestId("settings.organization.paste-software"));
     const dialog = await screen.findByTestId("settings.organization.paste-dialog");
     fireEvent.change(within(dialog).getByTestId("settings.organization.paste-text"), { target: { value: "jira, atlassian\nNotion; Notion Labs\n, nobody" } });
     const preview = within(dialog).getByTestId("settings.organization.paste-preview");
@@ -539,8 +541,8 @@ describe("OrganizationSection", () => {
     expect(bar.textContent).toContain("1 added, 1 edited");
     fireEvent.click(within(bar).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
-    const [, body] = patch.mock.calls[0] as [string, { fields: { tech_stack: { product: string; vendor: string }[] } }];
-    expect(body.fields.tech_stack).toEqual([
+    const [, body] = patch.mock.calls[0] as [string, { fields: { software: { product: string; vendor: string }[] } }];
+    expect(body.fields.software).toEqual([
       { product: "Jira", vendor: "Atlassian", cpe: "" },
       { product: "Slack", vendor: "Acme", cpe: "" },
       { product: "Notion", vendor: "Acme", cpe: "" },
@@ -550,22 +552,22 @@ describe("OrganizationSection", () => {
   it("reads and pastes the version the organization runs on a software row, and saves it only when set (CTEM-11, #928)", async () => {
     const base = get.getMockImplementation()!;
     const tech = [{ product: "Jira", vendor: "Atlassian", cpe: "", version: "9.12.2" }];
-    get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: tech } } : base(path)));
+    get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, software: tech } } : base(path)));
     patch.mockResolvedValue({ ...CONTEXT, version: 4 });
     renderPage("technology");
     const row = (await screen.findByText("Jira")).closest("tr")!;
     expect(within(row).getByText("9.12.2")).toBeTruthy();
     fireEvent.click(await screen.findByRole("button", { name: /Edit Software/ }));
     const bar = await screen.findByTestId("settings.organization.list-save-bar");
-    fireEvent.click(screen.getByTestId("settings.organization.paste-tech_stack"));
+    fireEvent.click(screen.getByTestId("settings.organization.paste-software"));
     const dialog = await screen.findByTestId("settings.organization.paste-dialog");
     fireEvent.change(within(dialog).getByTestId("settings.organization.paste-text"), { target: { value: "nginx, F5, , 1.25.3\nSlack, Salesforce" } });
     fireEvent.click(within(dialog).getByTestId("settings.organization.paste-add"));
     await waitFor(() => expect(screen.queryByTestId("settings.organization.paste-dialog")).toBeNull());
     fireEvent.click(within(bar).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
-    const [, body] = patch.mock.calls[0] as [string, { fields: { tech_stack: Record<string, string>[] } }];
-    expect(body.fields.tech_stack).toEqual([
+    const [, body] = patch.mock.calls[0] as [string, { fields: { software: Record<string, string>[] } }];
+    expect(body.fields.software).toEqual([
       { product: "Jira", vendor: "Atlassian", cpe: "", version: "9.12.2" },
       { product: "nginx", vendor: "F5", cpe: "", version: "1.25.3" },
       // No version typed: none saved, so a profile that never declares one keeps its shape.
@@ -576,7 +578,7 @@ describe("OrganizationSection", () => {
   it("keeps a card's unsaved rows: page Edit and the field jumps wait, and Next still pages with an added row open (#12261 UX r1 B1, B3)", async () => {
     const base = get.getMockImplementation()!;
     const tech = Array.from({ length: 60 }, (_, i) => ({ product: `Product ${String(i).padStart(3, "0")}`, vendor: "Vendor", cpe: "" }));
-    get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: tech } } : base(path)));
+    get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, software: tech } } : base(path)));
     renderPage("technology");
     fireEvent.click(await screen.findByRole("button", { name: /Edit Software/ }));
     const editor = await screen.findByTestId("settings.organization.list-editor");
@@ -595,7 +597,7 @@ describe("OrganizationSection", () => {
     const base = get.getMockImplementation()!;
     get.mockImplementation(async (path: string) =>
       path === "/organization-context"
-        ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: [{ product: "Concord", vendor: "", cpe: "" }, { product: "Jira", vendor: "Atlassian", cpe: "" }] } }
+        ? { ...CONTEXT, profile: { ...CONTEXT.profile, software: [{ product: "Concord", vendor: "", cpe: "" }, { product: "Jira", vendor: "Atlassian", cpe: "" }] } }
         : base(path),
     );
     renderPage("technology");
@@ -692,17 +694,40 @@ describe("OrganizationSection", () => {
     expect(await screen.findByText("Currency of the amounts", { selector: "label" })).toBeTruthy();
   });
 
-  it("shows no region or PIR picker at rest, and the pickers tied to their help line on Edit (UX round 2 B2, #10855)", async () => {
+  it("shows no region picker at rest, and the picker tied to its help line on Edit (UX round 2 B2, #10855)", async () => {
     renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     await screen.findByTestId("settings.organization.identity");
-    // Read mode shows the regions and the PIRs as names, with no picker at all (#9615, #10855).
     expect(screen.queryByRole("combobox", { name: "Regions of operation" })).toBeNull();
-    expect(screen.queryByRole("combobox", { name: "Priority intelligence requirements (PIRs)" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     const regions = await screen.findByRole("combobox", { name: "Regions of operation" });
     expect(regions).not.toBeDisabled();
     expect(document.getElementById(regions.getAttribute("aria-describedby") ?? "")).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "Priority intelligence requirements (PIRs)" })).not.toBeDisabled();
+  });
+
+  // The PIR list lives on the Prioritization policy of CTEM > Inventory > Exposure policy (#1889).
+  const renderPolicy = () =>
+    renderWithProviders(
+      <MemoryRouter initialEntries={["/ctem/inventory/exposure"]}>
+        <OrganizationSection embed={{ cards: ["prioritization_policy"] }} />
+      </MemoryRouter>,
+    );
+  const editPolicy = async () => fireEvent.click(await screen.findByTestId("settings.organization.edit-prioritization_policy"));
+
+  it("draws the PIR list on the Prioritization policy only, never on Settings, edited with the card (#1889)", async () => {
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    await screen.findByTestId("settings.organization.identity");
+    expect(screen.queryByText("Priority intelligence requirements (PIRs)")).toBeNull();
+    expect(screen.queryByText("Ticketing and intelligence")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
+    await screen.findByRole("combobox", { name: "Regions of operation" });
+    expect(screen.queryByRole("combobox", { name: "Priority intelligence requirements (PIRs)" })).toBeNull();
+    cleanup();
+    renderPolicy();
+    const card = await screen.findByTestId("settings.organization.prioritization-policy");
+    expect(await within(card).findByText("Priority intelligence requirements (PIRs)")).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "Priority intelligence requirements (PIRs)" })).toBeNull();
+    await editPolicy();
+    expect(await screen.findByRole("combobox", { name: "Priority intelligence requirements (PIRs)" })).not.toBeDisabled();
   });
 
   const withPirs = (pirs: unknown, profile: Partial<OrganizationContextResponse["profile"]>) =>
@@ -721,27 +746,28 @@ describe("OrganizationSection", () => {
       { pirs: [{ id: "1ef07227-6f37", name: "Ransomware on energy" }], unavailable: null, opencti_url: "https://cti.example" },
       { pir_ids: ["1ef07227-6f37"] },
     );
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    renderPolicy();
     const link = await screen.findByRole("link", { name: "Ransomware on energy" });
     expect(link.getAttribute("href")).toBe("https://cti.example/dashboard/pirs/1ef07227-6f37");
     expect(screen.queryByText("1ef07227-6f37")).toBeNull();
     expect(screen.queryByPlaceholderText("Search a PIR")).toBeNull();
   });
 
-  it("marks a PIR OpenCTI no longer has, with its last known name, and offers to remove it (#9615)", async () => {
+  it("marks a PIR OpenCTI no longer has, with its last known name, and removes it with the card's Save (#9615, #1889)", async () => {
     withPirs({ pirs: [], unavailable: null, opencti_url: "https://cti.example" }, { pir_ids: ["pir-gone"], pir_names: { "pir-gone": "Old campaign" } });
-    put.mockResolvedValue({ ...CONTEXT, version: 4 });
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    patch.mockResolvedValue({ ...CONTEXT, version: 4 });
+    renderPolicy();
     // The state leads, so a chip cut at its width still says it; the chip carries the whole label as its title (UX round 1 B2).
     const chip = await screen.findByText("No longer in OpenCTI: Old campaign");
     expect(screen.getByTitle("No longer in OpenCTI: Old campaign")).toBeTruthy();
     expect(chip).toBeTruthy();
     expect(screen.queryByText("pir-gone")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
-    fireEvent.click(await screen.findByRole("button", { name: /Save/ }));
-    await waitFor(() => expect(put).toHaveBeenCalled());
-    const [, body] = put.mock.calls[0] as [string, { profile: { pir_ids: string[] } }];
-    expect(body.profile.pir_ids).toEqual([]);
+    fireEvent.click(within(await screen.findByTestId("settings.save-bar")).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    const [, body] = patch.mock.calls[0] as [string, { fields: { pir_ids: string[] } }];
+    expect(body.fields.pir_ids).toEqual([]);
+    expect(put).not.toHaveBeenCalled();
   });
 
   it("writes a missing PIR out whole under the edit picker, state first (UX round 1 B2)", async () => {
@@ -749,9 +775,9 @@ describe("OrganizationSection", () => {
       pir_ids: ["pir-1", "pir-gone"],
       pir_names: { "pir-gone": "Initial access brokers selling our domains" },
     });
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    renderPolicy();
     await screen.findByText("No longer in OpenCTI: Initial access brokers selling our domains");
-    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
+    await editPolicy();
     const list = await screen.findByRole("list", { name: "PIR no longer in OpenCTI" });
     expect(within(list).getByText("No longer in OpenCTI: Initial access brokers selling our domains")).toBeTruthy();
     expect(within(list).queryByText("Ransomware on energy")).toBeNull();
@@ -759,7 +785,7 @@ describe("OrganizationSection", () => {
 
   it("keeps the last known names and offers Retry when OpenCTI cannot be read (#9615)", async () => {
     withPirs({ pirs: [], unavailable: "unreadable", opencti_url: "https://cti.example" }, { pir_ids: ["pir-1", "pir-2"], pir_names: { "pir-1": "Ransomware on energy" } });
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    renderPolicy();
     expect(await screen.findByRole("link", { name: "Ransomware on energy" })).toBeTruthy();
     expect(screen.getByText("PIR name not available")).toBeTruthy();
     expect(screen.queryByText("pir-2")).toBeNull();
@@ -775,21 +801,21 @@ describe("OrganizationSection", () => {
       if (path === "/organization-context/pirs") return new Promise(() => {});
       throw new Error(`unexpected GET ${path}`);
     });
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    renderPolicy();
     expect(await screen.findByText("Loading the PIR names")).toBeTruthy();
     expect(screen.queryByText("PIR name not available")).toBeNull();
     // The outlined chip skeleton (UX #11595 R1 B1) is guarded on the source: tests_unit/organization-pirs-badge.test.ts.
     expect(screen.getAllByTestId("settings.organization.pir-chip-skeleton").length).toBe(2);
-    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
+    await editPolicy();
     expect(await screen.findByTestId("settings.organization.pirs-loading")).toBeTruthy();
     expect(screen.queryByText("PIR name not available")).toBeNull();
   });
 
   it("offers Retry in edit mode too when OpenCTI cannot be read (#11589)", async () => {
     withPirs({ pirs: [], unavailable: "unreadable", opencti_url: "" }, { pir_ids: ["pir-1"], pir_names: { "pir-1": "Ransomware on energy" } });
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    renderPolicy();
     await screen.findByText("Ransomware on energy");
-    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
+    await editPolicy();
     const line = await screen.findByTestId("settings.organization.pirs-unreadable");
     expect(within(line).getByText("OpenCTI could not be read, names may be out of date")).toBeTruthy();
     const before = get.mock.calls.filter(([path]) => path === "/organization-context/pirs").length;
@@ -809,7 +835,7 @@ describe("OrganizationSection", () => {
       },
       { pir_ids: ["aaaa1111-x", "bbbb2222-y", "aaaa1111-x"] },
     );
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    renderPolicy();
     expect(await screen.findByText("Retail threats (aaaa1111)")).toBeTruthy();
     expect(screen.getAllByText("Retail threats (aaaa1111)")).toHaveLength(1);
     expect(screen.getByText("Retail threats (bbbb2222)")).toBeTruthy();
@@ -818,26 +844,30 @@ describe("OrganizationSection", () => {
   it("shows eight PIRs, then +N more in place (#9615)", async () => {
     const ids = Array.from({ length: 11 }, (_, i) => `pir-${i}`);
     withPirs({ pirs: ids.map((id) => ({ id, name: `Name ${id}` })), unavailable: null, opencti_url: "" }, { pir_ids: ids });
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    renderPolicy();
     expect(await screen.findByText("Name pir-7")).toBeTruthy();
     expect(screen.queryByText("Name pir-8")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "+3 more" }));
     expect(await screen.findByText("Name pir-10")).toBeTruthy();
   });
 
-  it("saves the names OpenCTI gives with the PIRs (#9615)", async () => {
+  it("saves the names OpenCTI gives with the PIRs, from the whole form and from the policy card (#9615, #1889)", async () => {
     withPirs({ pirs: [{ id: "pir-1", name: "Ransomware on energy" }], unavailable: null }, { pir_ids: ["pir-1"] });
     put.mockResolvedValue({ ...CONTEXT, version: 4 });
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
-    // No OpenCTI address answered: the name is shown, unlinked.
-    expect(await screen.findByText("Ransomware on energy")).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "Ransomware on energy" })).toBeNull();
+    patch.mockResolvedValue({ ...CONTEXT, version: 4 });
+    const view = renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    await screen.findByTestId("settings.organization.identity");
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     fireEvent.change(screen.getByLabelText("Loaded hourly rate"), { target: { value: "120" } });
     fireEvent.click(await screen.findByRole("button", { name: /Save/ }));
     await waitFor(() => expect(put).toHaveBeenCalled());
     const [, body] = put.mock.calls[0] as [string, { profile: { pir_names: Record<string, string> } }];
     expect(body.profile.pir_names).toEqual({ "pir-1": "Ransomware on energy" });
+    view.unmount();
+    // No OpenCTI address answered: the name is shown, unlinked.
+    renderPolicy();
+    expect(await screen.findByText("Ransomware on energy")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Ransomware on energy" })).toBeNull();
   });
 
   it("says the PIRs could not be listed, never that OpenCTI has none, when OpenCTI did not answer (UX round 2 B4)", async () => {
@@ -847,9 +877,8 @@ describe("OrganizationSection", () => {
       if (path === "/organization-context/pirs") return { pirs: [], unavailable: "unreadable" };
       throw new Error(`unexpected GET ${path}`);
     });
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
-    await screen.findByTestId("settings.organization.identity");
-    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
+    renderPolicy();
+    await editPolicy();
     // Since #11589 an unreadable OpenCTI shows the Retry line in edit mode too, the helper stays the field's own.
     expect(await screen.findByTestId("settings.organization.pirs-unreadable")).toBeTruthy();
     fireEvent.click(screen.getByRole("combobox", { name: "Priority intelligence requirements (PIRs)" }));
@@ -867,7 +896,7 @@ describe("OrganizationSection", () => {
   });
 
   it("names no source on the primary assets card, even with an OpenCRQ primary-asset sync saved (#1883)", async () => {
-    const opencrqSync = { id: "s-crq", section: "primary_assets", source: "opencrq", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: new Date().toISOString(), last_result: { added: 1, updated: 0, removed: 0, version: 4, error: null } };
+    const opencrqSync = { id: "s-crq", section: "crown_jewels", source: "opencrq", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: new Date().toISOString(), last_result: { added: 1, updated: 0, removed: 0, version: 4, error: null } };
     const base = get.getMockImplementation();
     get.mockImplementation(async (path: string) => (path.startsWith("/organization-context/syncs") ? [opencrqSync] : base?.(path)));
     renderPage("business");
@@ -882,8 +911,8 @@ describe("OrganizationSection", () => {
     get.mockImplementation(async (path: string) =>
       path.startsWith("/organization-context/sources")
         ? [
-            { key: "opencrq", kind: "platform", display_name: "OpenCRQ", rows: { primary_assets: 1 }, total: 1, written_by_agent: "", sync_ids: [] },
-            { key: "manual", kind: "manual", display_name: "manual", rows: { primary_assets: 2 }, total: 2, written_by_agent: "", sync_ids: [] },
+            { key: "opencrq", kind: "platform", display_name: "OpenCRQ", rows: { crown_jewels: 1 }, total: 1, written_by_agent: "", sync_ids: [] },
+            { key: "manual", kind: "manual", display_name: "manual", rows: { crown_jewels: 2 }, total: 2, written_by_agent: "", sync_ids: [] },
           ]
         : base?.(path),
     );
@@ -924,7 +953,7 @@ describe("OrganizationSection", () => {
         ? []
         : {
             ...CONTEXT,
-            profile: { ...CONTEXT.profile, primary_assets: [{ ...CONTEXT.profile.primary_assets[0], opencrq_asset_id: "a-1" }] },
+            profile: { ...CONTEXT.profile, crown_jewels: [{ ...CONTEXT.profile.crown_jewels[0], opencrq_asset_id: "a-1" }] },
           },
     );
     renderPage("business");
@@ -934,11 +963,11 @@ describe("OrganizationSection", () => {
   it("restores the primary assets of a past version alone, from the version it starts from (#1558)", async () => {
     const base = get.getMockImplementation()!;
     get.mockImplementation(async (path: string) => {
-      if (path === "/organization-context") return { ...CONTEXT, version: 46, profile: { ...CONTEXT.profile, primary_assets: [] } };
+      if (path === "/organization-context") return { ...CONTEXT, version: 46, profile: { ...CONTEXT.profile, crown_jewels: [] } };
       if (path.startsWith("/organization-context/versions?"))
         return [
-          { version: 46, source: "form", created_at: "2026-11-23T10:00:00Z", author_user_id: null, missing_fields: [], primary_assets: 0 },
-          { version: 28, source: "form", created_at: "2026-11-20T10:00:00Z", author_user_id: null, missing_fields: [], primary_assets: 2 },
+          { version: 46, source: "form", created_at: "2026-11-23T10:00:00Z", author_user_id: null, missing_fields: [], crown_jewels: 0 },
+          { version: 28, source: "form", created_at: "2026-11-20T10:00:00Z", author_user_id: null, missing_fields: [], crown_jewels: 2 },
         ];
       if (path === "/organization-context/versions/28")
         return {
@@ -946,7 +975,7 @@ describe("OrganizationSection", () => {
           version: 28,
           profile: {
             ...CONTEXT.profile,
-            primary_assets: [
+            crown_jewels: [
               { name: "Payments", business_service: "", owner: "", criticality: "critical", opencrq_asset_id: "" },
               { name: "Ledger", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" },
             ],
@@ -954,7 +983,7 @@ describe("OrganizationSection", () => {
         };
       return base(path);
     });
-    post.mockResolvedValue({ ...CONTEXT, version: 47, profile: { ...CONTEXT.profile, primary_assets: [{ name: "Payments" }, { name: "Ledger" }] } });
+    post.mockResolvedValue({ ...CONTEXT, version: 47, profile: { ...CONTEXT.profile, crown_jewels: [{ name: "Payments" }, { name: "Ledger" }] } });
     renderPage("business");
     fireEvent.click(await screen.findByRole("button", { name: /Restore from a past version/ }));
     const dialog = await screen.findByTestId("settings.organization.restore-dialog");
@@ -966,18 +995,18 @@ describe("OrganizationSection", () => {
     expect(within(dialog).getByText("Critical (criticality)")).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Restore version 28" }));
     await waitFor(() =>
-      expect(post).toHaveBeenCalledWith("/organization-context/versions/28/restore", { fields: ["primary_assets"], based_on_version: 46 }),
+      expect(post).toHaveBeenCalledWith("/organization-context/versions/28/restore", { fields: ["crown_jewels"], based_on_version: 46 }),
     );
   });
 
   it("shows a refused restore inline in the dialog and offers a reload of the versions on a 409 (#1567 UX B2)", async () => {
     const base = get.getMockImplementation()!;
     get.mockImplementation(async (path: string) => {
-      if (path === "/organization-context") return { ...CONTEXT, version: 46, profile: { ...CONTEXT.profile, primary_assets: [] } };
+      if (path === "/organization-context") return { ...CONTEXT, version: 46, profile: { ...CONTEXT.profile, crown_jewels: [] } };
       if (path.startsWith("/organization-context/versions?"))
-        return [{ version: 28, source: "form", created_at: "2026-11-20T10:00:00Z", author_user_id: null, missing_fields: [], primary_assets: 1 }];
+        return [{ version: 28, source: "form", created_at: "2026-11-20T10:00:00Z", author_user_id: null, missing_fields: [], crown_jewels: 1 }];
       if (path === "/organization-context/versions/28")
-        return { ...CONTEXT, version: 28, profile: { ...CONTEXT.profile, primary_assets: [{ name: "Ledger", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" }] } };
+        return { ...CONTEXT, version: 28, profile: { ...CONTEXT.profile, crown_jewels: [{ name: "Ledger", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" }] } };
       return base(path);
     });
     post.mockRejectedValue(Object.assign(new Error("The profile changed since version 46 (now version 47)."), { status: 409 }));
@@ -996,10 +1025,10 @@ describe("OrganizationSection", () => {
       if (path !== "/organization-context/draft") throw new Error(`unexpected POST ${path}`);
       return {
         based_on_version: 3,
-        profile: { ...CONTEXT.profile, pir_ids: ["pir-1"], tech_stack: [{ product: "CrowdStrike Falcon", vendor: "", cpe: "" }] },
+        profile: { ...CONTEXT.profile, pir_ids: ["pir-1"], software: [{ product: "CrowdStrike Falcon", vendor: "", cpe: "" }] },
         filled: [
           { field: "pir_ids", source: "opencti", detail: "1 PIR(s)" },
-          { field: "tech_stack", source: "openaev", detail: "1 product(s)" },
+          { field: "software", source: "openaev", detail: "1 product(s)" },
         ],
         unavailable: ["OpenCRQ: no OpenCRQ integration is connected (tenant id 42)"],
         missing_fields: ["size", "loaded_hourly_rate"],
@@ -1015,8 +1044,6 @@ describe("OrganizationSection", () => {
     expect(panel.textContent).toContain("OpenCRQ could not be read");
     // The backend's error text is never shown as is.
     expect(panel.textContent).not.toContain("tenant id");
-    // The drafted PIR shows by its OpenCTI name in the picker (UX B1).
-    expect(await screen.findByText("Ransomware on energy")).toBeTruthy();
     // The drafted software inventory is named in the panel and saved with the profile, its card living on CTEM > Inventory (#1178).
     expect(put).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: /Save/ }));
@@ -1076,11 +1103,11 @@ describe("OrganizationSection", () => {
 
   it("a link to one card (?card=) focuses the card on CTEM > Inventory > Business (CTEM calls to action, #1690)", async () => {
     renderWithProviders(
-      <MemoryRouter initialEntries={["/ctem/inventory/business?card=primary_assets"]}>
+      <MemoryRouter initialEntries={["/ctem/inventory/business?card=crown_jewels"]}>
         <OrganizationSection embed={{ cards: INVENTORY_CARDS.business }} />
       </MemoryRouter>,
     );
-    await waitFor(() => expect((document.activeElement as HTMLElement | null)?.id ?? "").toMatch(/-primary_assets$/));
+    await waitFor(() => expect((document.activeElement as HTMLElement | null)?.id ?? "").toMatch(/-crown_jewels$/));
   });
 
   it("lands ?card=tracked_organizations on the card root, never on a wrapper (UX r1 B2 on #108)", async () => {

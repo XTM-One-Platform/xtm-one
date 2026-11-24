@@ -19,7 +19,7 @@ TODAY = date(2026, 11, 21)
 def _profile(**policy) -> oc.OrganizationProfile:
     return oc.parse_profile(
         {
-            "primary_assets": [
+            "crown_jewels": [
                 {
                     "name": "Customer SaaS",
                     "criticality": "critical",
@@ -28,7 +28,7 @@ def _profile(**policy) -> oc.OrganizationProfile:
                 },
                 {"name": "Wiki", "criticality": "medium", "asset_names": ["wiki.example.com"]},
             ],
-            "tech_stack": [{"product": "nginx", "vendor": "f5"}, {"product": "Confluence"}],
+            "software": [{"product": "nginx", "vendor": "f5"}, {"product": "Confluence"}],
             "assets_exposure": [
                 {"name": "shop.example.com", "group": "DMZ", "internet_facing": "yes", "tech_stack": ["nginx"]},
                 {"name": "wiki.example.com", "internet_facing": "no", "tech_stack": ["Confluence"], "tags": ["lab"]},
@@ -63,7 +63,7 @@ def test_in_scope_at_or_above_the_threshold_opens_a_case_with_its_severity_and_s
     # critical (4) + one lens, low confidence (0) = 4 points: P2, 72 h.
     assert decision.severity == "P2" and decision.record["sla_hours"] == 72
     assert decision.record["reconcile"]["assets"] == ["shop.example.com"]
-    assert ("primary_asset", "Customer SaaS") in {(s["from"], s["name"]) for s in decision.record["scope"]["sources"]}
+    assert ("crown_jewel", "Customer SaaS") in {(s["from"], s["name"]) for s in decision.record["scope"]["sources"]}
 
 
 def test_two_lenses_raise_the_confidence_and_a_proof_makes_it_high():
@@ -86,7 +86,7 @@ def test_below_the_threshold_goes_to_the_watchlist_with_the_threshold_named():
 def _aikido_profile() -> oc.OrganizationProfile:
     return oc.parse_profile(
         {
-            "primary_assets": [
+            "crown_jewels": [
                 {"name": "Product source code", "criticality": "critical", "asset_names": ["filigran/portal"]}
             ],
             "assets_exposure": [{"name": "filigran/portal", "source": "aikido", "external_id": "991"}],
@@ -94,8 +94,8 @@ def _aikido_profile() -> oc.OrganizationProfile:
     )
 
 
-def test_an_aikido_issue_on_a_repository_mapped_to_a_primary_asset_opens_a_case():
-    """CTEM-25: a repository is an asset row (source aikido, external_id), linked to its primary asset by name."""
+def test_an_aikido_issue_on_a_repository_mapped_to_a_crown_jewel_opens_a_case():
+    """CTEM-25: a repository is an asset row (source aikido, external_id), linked to its crown jewel by name."""
     facts = gate.SignalFacts(
         trigger_path="code_flaw",
         lens="inside",
@@ -107,7 +107,7 @@ def test_an_aikido_issue_on_a_repository_mapped_to_a_primary_asset_opens_a_case(
     )
     decision = gate.decide(_aikido_profile(), facts, today=TODAY)
     assert decision.outcome == "case"
-    assert ("primary_asset", "Product source code") in {
+    assert ("crown_jewel", "Product source code") in {
         (s["from"], s["name"]) for s in decision.record["scope"]["sources"]
     }
     unmapped = gate.SignalFacts(
@@ -246,15 +246,15 @@ def test_cve_thresholds_route_to_the_watchlist_and_kev_passes_them():
     assert kev.outcome == "case" and kev.record["policy_checks"][0]["rule"] == "kev_always_in"
 
 
-def test_internet_exposure_and_primary_asset_minimum_are_honoured():
+def test_internet_exposure_and_crown_jewel_minimum_are_honoured():
     inside = gate.decide(_profile(internet_exposure_required=True), _facts(lens="inside", ref="db-1"), today=TODAY)
     assert inside.outcome == "watchlist" and "internet" in inside.reason
     jewel = gate.decide(
-        _profile(min_primary_asset_criticality="critical", scope_min_criticality="medium"),
+        _profile(min_crown_jewel_criticality="critical", scope_min_criticality="medium"),
         _facts(ref="wiki.example.com"),
         today=TODAY,
     )
-    assert jewel.outcome == "watchlist" and "primary asset at or above critical" in jewel.reason
+    assert jewel.outcome == "watchlist" and "crown jewel at or above critical" in jewel.reason
 
 
 def test_risk_scenarios_add_criticality_and_can_be_required():
@@ -345,7 +345,7 @@ def test_the_decision_record_lists_every_input():
         "keys",
         "assets",
         "asset_groups",
-        "primary_assets_named",
+        "crown_jewels_named",
         "tech_stack",
         "lenses",
         "confidence",

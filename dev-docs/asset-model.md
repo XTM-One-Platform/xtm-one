@@ -114,9 +114,9 @@ with no hostname takes its name as hostname, so an OpenAEV endpoint named `lapt-
 | --- | --- | --- | --- |
 | UNKNOWN, LOW, MEDIUM, HIGH, VERY_HIGH | `unknown`, `low`, `medium`, `high`, `very_high` (declared, or derived by a rule: `reported_criticality_rule`) | none | `unknown`, `low`, `medium`, `high`, `very_high` |
 
-The primary assets of the profile keep their own four-level scale (`low` .. `critical`), the business view;
+The crown jewels of the profile keep their own four-level scale (`low` .. `critical`), the business view;
 an asset's criticality is the technical one and maps to OpenAEV as is. When an asset is pushed to a
-primary-asset-driven tool, `critical` reads as `very_high`.
+crown-jewel-driven tool, `critical` reads as `very_high`.
 
 ## 4. Owner
 
@@ -243,7 +243,7 @@ records several sources hold on one thing into one canonical thing; the store of
   from an administrator's override (kept across syncs), else a source that reported it, else a dictionary
   lookup with its confidence, else `unresolved`: never guessed.
 - Sections: asset groups (external reference, then name) and the name-keyed sections (tech stack on CPE then
-  vendor and product, primary assets, PIRs, tracked organizations) use the same matching.
+  vendor and product, crown jewels, PIRs, tracked organizations) use the same matching.
 - Settings: the profile part `asset_identity` (`AssetIdentity`, an `EXPOSURE_FIELDS` part, never dumped into the
   always-on block) holds the organization's `key_order` (strong keys, most reliable first; a key left out never
   merges; empty: `DEFAULT_KEY_ORDER`) and `precedence` (field to sources or source classes in order, `*` any
@@ -322,7 +322,7 @@ Read API (any signed-in user, primary organization, every list paginated, `limit
 
 `organization_asset_records` (one row per record per source, unique `(organization, source, external_id)`),
 `organization_asset_identifiers`, `organization_asset_groups`, `organization_asset_group_members`,
-`organization_primary_asset_assets` and `organization_asset_changes` (migration `r1543assetrecords01`) hold
+`organization_crown_jewel_assets` and `organization_asset_changes` (migration `r1543assetrecords01`) hold
 the assets and groups; `services/organization_asset_records.py` is their only writer. A write re-matches the
 identity cluster of the rows it touches (`identity_closure`, `refresh_clusters`), never the whole store, and
 appends one row per changed record to the change log. `save_version` turns an old client's `assets_exposure`
@@ -349,15 +349,19 @@ and `asset_groups` into row writes (`apply_profile_lists`). Row API, administrat
   records is a member of one of the groups (a value that is not an id keeps none); `GET .../assets/facets`
   answers `group` as `{value: id, label: name, count}`; `GET .../assets/{id}` lists the asset's `groups`. The
   group page `/ctem/inventory/asset-groups/:id` reads its members through that filter, paged on the server.
-- `PUT /api/v1/organization-context/primary-assets/{name}/links` `{names}`: the records and groups a primary asset
-  covers; 404 for an unknown primary asset, 422 naming what matches nothing.
+- `PUT /api/v1/organization-context/crown-jewels/{name}/links` `{names}`: the records and groups a crown jewel
+  covers; 404 for an unknown crown jewel, 422 naming what matches nothing.
 - The profile API never writes a row once the records are imported (#1752): `PUT /api/v1/organization-context`
   and `POST .../versions/{v}/restore` ignore `assets_exposure`, `asset_groups` and `ai_systems` (the stored
   version's lists are kept, so `save_version` applies no row write and the synced-row lock never judges a
   profile save), and name what they ignored in `ignored_row_fields`; a restore naming only row fields is a 422
-  (the rows keep their own history, restored from `/changes/restore`). Links of primary assets and asset groups
-  are judged against the records. `GET` also answers `row_counts` (`{assets_exposure, asset_groups}`, `null`
-  before the import). Ignore, not 422: an older client or agent keeps saving its profile fields during a rollout.
+  (the rows keep their own history, restored from `/changes/restore`). Links of crown jewels and asset groups
+  are judged against the records. `GET`, `PATCH`, `PUT` and the restore answer profile fields only, never the
+  `assets_exposure` or `asset_groups` list: `row_counts` (`{assets_exposure, asset_groups}`) names how many
+  there are, and a `PUT` that leaves a row list out keeps the stored one (before the import too). The payload
+  size does not grow with the inventory. Ignore, not 422: an older client or agent keeps saving its profile
+  fields during a rollout. A sync holding the organization's row lock never blocks or refuses a profile save
+  (`test_organization_context_save_during_sync_postgres.py`).
 - `GET /api/v1/organization-context/changes?entity_id=&since=&before_id=&limit=`: the change log, newest first;
   `POST /api/v1/organization-context/changes/restore` `{change_ids}`: a delete comes back, an update gets its
   `before` fields, a create goes.
@@ -526,27 +530,27 @@ to a tenant member (section 4). The OpenCRQ tools of XTM One (`create_opencrq_su
 ### Primary assets and supporting assets
 
 OpenCRQ holds two layers. A **primary asset** is a business asset (a service, a process, a dataset) rated on four
-security needs (availability, integrity, confidentiality, traceability); the profile lists them as `primary_assets`
+security needs (availability, integrity, confidentiality, traceability); the profile lists them as `crown_jewels`
 (the name before primary assets). A **supporting asset** is the IT underneath (a server, an application, a
 repository): an inventory asset, never a primary asset.
 
-- Import (`organization_context_import._read_opencrq`): the primary-asset section reads OpenCRQ primary assets
+- Import (`organization_context_import._read_opencrq`): the crown-jewel section reads OpenCRQ primary assets
   (`primaryAssets.getPrimaryAssets` per organization), criticality = the highest rated need, `min_criticality`
   empty by default (every primary asset). Rows an older build imported from supporting assets are superseded at
   the next sync (`ReadResult.superseded`); a row a person typed is kept.
-- Outbound: XTM One no longer pushes primary assets to OpenCRQ supporting assets; OpenCRQ is the source.
+- Outbound: XTM One no longer pushes crown jewels to OpenCRQ supporting assets; OpenCRQ is the source.
 - Links (`organization_context_opencrq_links`): the OpenCRQ primary-asset sync, option `link_supporting_assets`
   in its filters (on unless `"false"`), imports the OpenCRQ `support_to_primary` links onto
-  `organization_primary_asset_links`: `source` (`manual`, `opencrq`, `rule`), `external_id` (the OpenCRQ link id),
+  `organization_crown_jewel_links`: `source` (`manual`, `opencrq`, `rule`), `external_id` (the OpenCRQ link id),
   `roles` (OpenCRQ `link-roles.ts`: stores, processes, reads, transmits, administers, monitors,
   supports_availability, performs, unknown), `inherited_needs` (need to `full` / `lower` / `none`, the strongest of
   the roles; `unknown` inherits everything), `via` (the supporting asset a `depends_on` chain goes through, written
   by the signals slice), `removed`. The supporting asset is the inventory record of source `opencrq` with the same
   id, else the single record of the same name; none or several are reported (`not_in_inventory`, `ambiguous`),
   never created. A manual link is never touched; a synced link a person removes through
-  `PUT /primary-assets/{name}/links` becomes a tombstone the sync never adds back; a link OpenCRQ dropped is deleted
+  `PUT /crown-jewels/{name}/links` becomes a tombstone the sync never adds back; a link OpenCRQ dropped is deleted
   at the next sync. The sync's run result carries the link summary under `links`. Migration `v1591pallinks01`.
-- Inventory source (Sam, 24 Nov 2026): the `primary_assets` section is in the `inventory` scope of
+- Inventory source (Sam, 24 Nov 2026): the `crown_jewels` section is in the `inventory` scope of
   `organization_context_sync.SECTION_SCOPES` (and `organization_context_sources.FIELD_SCOPES`), so
   `GET /organization-context/syncs?scope=inventory` and `/sources?scope=inventory` list the OpenCRQ primary-asset
   sync next to the asset sources, on the same scheduler (no second one). Nothing is pre-provisioned (Sam,

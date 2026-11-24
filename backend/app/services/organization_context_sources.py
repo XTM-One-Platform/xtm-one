@@ -36,15 +36,15 @@ from app.services.organization_context import AGENT_SOURCE_PREFIX, PLATFORM_SOUR
 
 #: The profile lists that carry a row source, with the section key the syncs and the UI use.
 SOURCED_FIELDS: dict[str, str] = {
-    "primary_assets": "primary_assets",
-    "tech_stack": "software",
+    "crown_jewels": "crown_jewels",
+    "software": "software",
     "assets_exposure": "assets",
     "asset_groups": "asset_groups",
 }
 #: Where each field is configured (the scopes of ``organization_context_sync.SECTION_SCOPES``).
 FIELD_SCOPES: dict[str, str] = {
-    "primary_assets": "inventory",
-    "tech_stack": "inventory",
+    "crown_jewels": "inventory",
+    "software": "inventory",
     "assets_exposure": "inventory",
     "asset_groups": "inventory",
 }

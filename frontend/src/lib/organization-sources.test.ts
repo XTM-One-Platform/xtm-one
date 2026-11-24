@@ -6,8 +6,8 @@ import { sourceSectionHref } from "./organization-sources";
 
 describe("organization sources (#1134 S2 part 2, #1276, #1178)", () => {
   it("links a primary assets chip to the Settings tab filtered on the source's label", () => {
-    expect(sourceSectionHref("primary_assets", { key: "opencrq", label: "OpenCRQ" })).toBe(
-      "/ctem/inventory/business?card=primary_assets&ocj_f_source=OpenCRQ",
+    expect(sourceSectionHref("crown_jewels", { key: "opencrq", label: "OpenCRQ" })).toBe(
+      "/ctem/inventory/business?card=crown_jewels&ocj_f_source=OpenCRQ",
     );
   });
 
@@ -17,7 +17,7 @@ describe("organization sources (#1134 S2 part 2, #1276, #1178)", () => {
   });
 
   it("gives no link to a section whose Inventory list has no Source filter, so the chip never promises one (B11)", () => {
-    for (const section of ["tech_stack", "asset_groups"] as const) {
+    for (const section of ["software", "asset_groups"] as const) {
       expect(sourceSectionHref(section, { key: "openaev", label: "OpenAEV" })).toBeNull();
     }
   });

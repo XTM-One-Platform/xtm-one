@@ -5,6 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { syncFlowNodeCatalog } from "@/lib/flow-node-catalog";
+import type { FxRate, PirDetail } from "@/lib/organization-reference";
 import type {
   AssetIdentitySettings,
   AttackSurfacePass,
@@ -14,7 +15,7 @@ import type {
   TicketingSync,
 } from "@/lib/organization-profile";
 
-interface PrimaryAsset {
+interface CrownJewel {
   name: string;
   business_service: string;
   owner: string;
@@ -28,7 +29,7 @@ interface PrimaryAsset {
   sync_id?: string;
 }
 
-interface TechStackEntry {
+interface SoftwareEntry {
   product: string;
   vendor: string;
   cpe: string;
@@ -45,13 +46,17 @@ export interface OrganizationProfile {
   sub_sector: string;
   regions: string[];
   size: "" | "1-50" | "51-250" | "251-1000" | "1001-5000" | "5001-20000" | "20000+";
-  primary_assets: PrimaryAsset[];
-  tech_stack: TechStackEntry[];
+  crown_jewels: CrownJewel[];
+  software: SoftwareEntry[];
   /** What the organization ships, with its source repositories (#1432); absent when none is declared. */
   shipped_products?: { product: string; vendor: string; cpe: string; repositories: string[] }[];
   pir_ids: string[];
   /** The last known OpenCTI name of each saved PIR (#9615). */
   pir_names?: Record<string, string>;
+  /** What the organization says about each PIR it follows, by PIR id (#1773); absent on an older backend. */
+  pir_details?: Record<string, PirDetail>;
+  /** The reference exchange rates an agent converts an amount with (#1383, settable in the form since #1773). */
+  fx_rates?: FxRate[];
   risk_appetite: { annual_loss_threshold: number | null; approval_threshold: number | null };
   loaded_hourly_rate: number | null;
   currency: string;
@@ -84,6 +89,8 @@ export interface OrganizationContextResponse {
   /** No asset or group row since #1752 slice 3b: they are read through `/assets` and `/asset-groups`. */
   profile: OrganizationProfile;
   missing_fields: string[];
+  /** The provenance the version keeps, field -> {source, basis, confirmed_at?} (#1473, #1773). */
+  sources?: Record<string, unknown> | null;
   /** How many asset and group rows the organization holds (#1752); the rows have their own paged APIs. */
   row_counts?: { assets_exposure?: number; asset_groups?: number } | null;
 }
@@ -293,7 +300,7 @@ export function usePatchOrganizationContext() {
 
 /** One per-field proposal of "Draft with AI" (#9484): nothing is saved until it is accepted. */
 export interface AiDraftProposal {
-  /** A contract path, such as "tech_stack" or "risk_appetite.approval_threshold". */
+  /** A contract path, such as "software" or "risk_appetite.approval_threshold". */
   field: string;
   value: unknown;
   /** "description", "document:<name>", "website:<url>", "opencti", "openaev" or "opencrq". */
@@ -407,7 +414,7 @@ export function useDraftOrganizationContext() {
 }
 
 /** A profile section the platform import fills (#11780); one run imports one section. */
-export type ImportSectionKey = "assets" | "asset_groups" | "software" | "primary_assets" | "pirs";
+export type ImportSectionKey = "assets" | "asset_groups" | "software" | "crown_jewels" | "pirs";
 /** The Filigran platforms, then the endpoint sources read through a Microsoft integration (#1251). */
 export type ImportSourceKey =
   | "openaev"
@@ -794,7 +801,7 @@ export interface AssetsImportResponse {
   assets: { name: string; type: string; environment: string; internet_facing: string; owner: string; group: string }[];
   links: Record<string, string[]>;
   errors: { line: number; name: string; message: string }[];
-  unknown_primary_assets: string[];
+  unknown_crown_jewels: string[];
   replaced: string[];
   version: number | null;
 }
@@ -850,7 +857,7 @@ export interface OrganizationContextVersionSummary {
   author_user_id: string | null;
   missing_fields: string[];
   /** The primary assets the version holds; absent from an older backend. */
-  primary_assets?: number;
+  crown_jewels?: number;
 }
 
 /** The saved versions, newest first (administrators); read only while the restore dialog is open. */

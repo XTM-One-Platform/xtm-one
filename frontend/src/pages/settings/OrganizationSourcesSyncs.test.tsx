@@ -100,8 +100,8 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
       [sync()],
       [
         source(),
-        source({ key: "ciso-office", kind: "agent", display_name: "ciso-office", rows: { primary_assets: 4 }, total: 4, written_by_agent: "CISO Office", sync_ids: [] }),
-        source({ key: "manual", kind: "manual", display_name: "manual", rows: { primary_assets: 2 }, total: 2, sync_ids: [] }),
+        source({ key: "ciso-office", kind: "agent", display_name: "ciso-office", rows: { crown_jewels: 4 }, total: 4, written_by_agent: "CISO Office", sync_ids: [] }),
+        source({ key: "manual", kind: "manual", display_name: "manual", rows: { crown_jewels: 2 }, total: 2, sync_ids: [] }),
       ],
     );
     render();
@@ -149,8 +149,8 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     serve(
       [],
       [
-        source({ key: "ciso-office", kind: "agent", display_name: "ciso-office", rows: { primary_assets: 4 }, total: 4, written_by_agent: "CISO Office", sync_ids: [] }),
-        source({ key: "manual", kind: "manual", display_name: "manual", rows: { primary_assets: 2 }, total: 2, sync_ids: [] }),
+        source({ key: "ciso-office", kind: "agent", display_name: "ciso-office", rows: { crown_jewels: 4 }, total: 4, written_by_agent: "CISO Office", sync_ids: [] }),
+        source({ key: "manual", kind: "manual", display_name: "manual", rows: { crown_jewels: 2 }, total: 2, sync_ids: [] }),
       ],
     );
     post.mockResolvedValue({ ...plan, source: "ciso-office", count: 4 });
@@ -207,7 +207,7 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
         source({ key: "openaev", display_name: "OpenAEV", sync_ids: ["s-1", "s-2"] }),
         source({ key: "csv", kind: "csv", display_name: "csv", rows: { assets_exposure: 3 }, total: 3, sync_ids: [] }),
         source({ key: "api", kind: "api", display_name: "api", rows: { assets_exposure: 2 }, total: 2, sync_ids: [] }),
-        source({ key: "manual", kind: "manual", display_name: "manual", rows: { primary_assets: 1 }, total: 1, sync_ids: [] }),
+        source({ key: "manual", kind: "manual", display_name: "manual", rows: { crown_jewels: 1 }, total: 1, sync_ids: [] }),
       ],
     );
     render();
@@ -223,7 +223,7 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     serve(
       [sync({ id: "s-1", source: "openaev", section: "software" })],
       [
-        source({ key: "openaev", display_name: "OpenAEV", rows: { tech_stack: 4 }, total: 4, sync_ids: ["s-1"] }),
+        source({ key: "openaev", display_name: "OpenAEV", rows: { software: 4 }, total: 4, sync_ids: ["s-1"] }),
         source({ key: "csv", kind: "csv", display_name: "csv", rows: { assets_exposure: 12 }, total: 12, sync_ids: [] }),
       ],
     );
@@ -287,7 +287,7 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
       [],
       [
         source({ key: "intune", kind: "agent", display_name: "Microsoft Intune", rows: { assets_exposure: 12 }, total: 12, written_by_agent: "CISO Office", sync_ids: [] }),
-        source({ key: "ciso-notes", kind: "agent", display_name: "ciso-notes", rows: { primary_assets: 1 }, total: 1, written_by_agent: "CISO Office", sync_ids: [] }),
+        source({ key: "ciso-notes", kind: "agent", display_name: "ciso-notes", rows: { crown_jewels: 1 }, total: 1, written_by_agent: "CISO Office", sync_ids: [] }),
       ],
     );
     render();

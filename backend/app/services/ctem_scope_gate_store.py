@@ -248,7 +248,7 @@ async def default_scenario_reader(db: AsyncSession) -> uuid.UUID | None:
         await db.execute(
             select(sync.owner_user_id)
             .where(
-                sync.section == "primary_assets",
+                sync.section == "crown_jewels",
                 sync.source == "opencrq",
                 sync.enabled.is_(True),
                 sync.owner_user_id.is_not(None),
@@ -464,7 +464,7 @@ async def recheck_parked(
 ) -> dict[str, int]:
     """#1505: the unmatched signals decided before the organization's newest profile version, decided again.
 
-    A change to assets, groups, primary assets, owned domains, software or
+    A change to assets, groups, crown jewels, owned domains, software or
     shipped products writes a new profile version; every ``to_validate``
     signal last decided before it is decided again, *batch* per call, oldest
     first. Each is read with its recorder's OpenCRQ read. A signal the gate
@@ -523,7 +523,7 @@ async def _decide_again(db: AsyncSession, rows: list[CtemSignal], *, now: dateti
 
 
 #: The watchlist reasons an inventory link or a software change can lift (#1591 S3).
-HELD_BY_SCOPE: tuple[str, ...] = ("primary_asset_below_policy", "criticality_unknown", "below_scope_threshold")
+HELD_BY_SCOPE: tuple[str, ...] = ("crown_jewel_below_policy", "criticality_unknown", "below_scope_threshold")
 
 
 async def recheck_held(
@@ -537,7 +537,7 @@ async def recheck_held(
     """#1591 S3: the watchlist signals held for scope, decided before *since*, decided again.
 
     Run after a primary-asset link sync or an endpoint software change completes:
-    a signal held by ``primary_asset_below_policy``, ``criticality_unknown`` or
+    a signal held by ``crown_jewel_below_policy``, ``criticality_unknown`` or
     ``below_scope_threshold`` whose decision predates the change is decided
     again, *batch* per call, oldest first. Idempotent: a decided signal's
     ``updated_at`` moves past *since*, so the next call skips it. A signal the
@@ -577,7 +577,7 @@ def inventory_additions(profile: Any, rows: list[Any]) -> dict[str, list[Any]]:
     signals count.
     """
     have_assets = {gate.stable_key(a.name) for a in profile.assets_exposure}
-    have_products = {e.product.strip().lower() for e in profile.tech_stack}
+    have_products = {e.product.strip().lower() for e in profile.software}
     have_domains = {d.lower() for d in profile.owned_domains}
     assets: list[str] = []
     products: list[str] = []
@@ -630,7 +630,7 @@ async def add_to_inventory(
             }
             for name in added["assets"]
         ]
-        data["tech_stack"] = list(data.get("tech_stack") or []) + [
+        data["software"] = list(data.get("software") or []) + [
             {"product": name, "source": INVENTORY_SOURCE} for name in added["products"]
         ]
         data["owned_domains"] = list(data.get("owned_domains") or []) + added["domains"]
@@ -638,7 +638,7 @@ async def add_to_inventory(
         basis = f"added from the CTEM Signals page by {actor}"[:500]
         touched = [
             f
-            for f, key in (("assets_exposure", "assets"), ("tech_stack", "products"), ("owned_domains", "domains"))
+            for f, key in (("assets_exposure", "assets"), ("software", "products"), ("owned_domains", "domains"))
             if added[key]
         ]
         saved = await org_context.save_version(

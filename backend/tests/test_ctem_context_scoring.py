@@ -36,7 +36,7 @@ def test_every_stage_reads_context_fields_of_the_contract():
 
 def test_coverage_is_the_share_of_the_stage_fields_filled():
     assert stage_coverage("scoping", set()) == 1.0
-    assert stage_coverage("scoping", {"primary_assets", "tech_stack"}) == 0.5
+    assert stage_coverage("scoping", {"crown_jewels", "software"}) == 0.5
     assert stage_coverage("scoping", set(STAGE_CONTEXT_FIELDS["scoping"])) == 0.0
 
 
@@ -48,7 +48,7 @@ def test_full_context_keeps_the_evidence_and_none_gives_no_score():
 
 def test_half_the_context_keeps_seventy_percent():
     # 0.4 + 0.6 * 0.5 = 0.7
-    assert qualitative_stage_score("scoping", 100, {"primary_assets", "tech_stack"}) == 70
+    assert qualitative_stage_score("scoping", 100, {"crown_jewels", "software"}) == 70
 
 
 def test_known_exploited_in_the_stack_pulls_prioritization_down():
@@ -66,8 +66,8 @@ def test_known_exploited_in_the_stack_pulls_prioritization_down():
 def test_context_state_names_the_empty_fields():
     assert context_state(False, set())["state"] == "missing"
     assert context_state(True, set()) == {"state": "complete", "missing_fields": []}
-    partial = context_state(True, {"tech_stack", "currency"})
-    assert partial == {"state": "partial", "missing_fields": ["tech_stack"]}
+    partial = context_state(True, {"software", "currency"})
+    assert partial == {"state": "partial", "missing_fields": ["software"]}
 
 
 def test_payload_gets_both_scores_and_keeps_the_quantitative_ones():
@@ -95,6 +95,6 @@ def test_no_profile_gives_no_qualitative_score_anywhere():
 
 def test_the_input_payload_is_not_changed():
     payload = _payload()
-    with_context_scores(payload, has_profile=True, missing_fields=["tech_stack"])
+    with_context_scores(payload, has_profile=True, missing_fields=["software"])
     assert "qualitative_score" not in payload
     assert "qualitative_score" not in payload["stages"][0]

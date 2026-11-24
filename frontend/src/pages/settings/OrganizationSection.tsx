@@ -18,7 +18,7 @@
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { landOnCard } from "@/lib/land-on-card";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Bot, Building2, Coins, Import, Link2, Lock, MessageSquare, Package, Pencil, Plus, RefreshCw, Server, Shield, Sparkles, Ticket } from "lucide-react";
+import { Bot, Building2, Coins, Import, Link2, Lock, MessageSquare, Package, Pencil, Plus, RefreshCw, Server, Shield, Sparkles } from "lucide-react";
 import { TagInput } from "@/components/ui/tag-input";
 
 import { Badge } from "@/components/ui/badge";
@@ -39,7 +39,6 @@ import {
   type SettingsCardFold,
   SettingsField,
   SettingsFieldGrid,
-  SettingsGroupTitle,
   SettingsSaveBar,
   settingsFieldHintId,
   settingsFieldLabelId,
@@ -102,10 +101,12 @@ import { useSyncedRemoval } from "./OrganizationSyncedRemoval";
 import { ProviderLogo } from "@/components/ui/provider-logo";
 import { columnEditable, LOCAL_FIELDS, SOURCE_KIND_LABELS, sourceKind, sourcePlatform, type Provenance } from "@/lib/organization-provenance";
 import { OrganizationContextInjectionCard } from "./OrganizationContextInjectionCard";
-import { OrganizationPrimaryAssetsRestoreDialog } from "./OrganizationPrimaryAssetsRestoreDialog";
+import { OrganizationCrownJewelsRestoreDialog } from "./OrganizationCrownJewelsRestoreDialog";
 import { OrganizationProposalsCard } from "./OrganizationProposalsCard";
 import { OrganizationEvidenceHealthCard } from "./OrganizationEvidenceHealthCard";
 import { OrganizationOutsideLensCard } from "./OrganizationOutsideLensCard";
+import { OrganizationFxRatesCard } from "./OrganizationFxRatesCard";
+import { OrganizationPirDetailsCard } from "./OrganizationPirDetailsCard";
 import {
   PROFILE_CARD_PARAM,
   PROFILE_CARD_TAB,
@@ -133,12 +134,12 @@ const NO_VALUE = "none";
 const COUNTRY_CODES = Object.keys(ISO_3166_NUMERIC);
 
 /** The lists edited in their own card (#12256). */
-const LIST_KEYS = ["primary_assets", "shipped_products", "tech_stack"] as const;
+const LIST_KEYS = ["crown_jewels", "shipped_products", "software"] as const;
 /** @i18n-keys */
 const LIST_TITLES = {
-  primary_assets: "Primary assets and business services",
+  crown_jewels: "Primary assets and business services",
   shipped_products: "Shipped products",
-  tech_stack: "Software",
+  software: "Software",
 } as const;
 type ListKey = (typeof LIST_KEYS)[number];
 /** The exposure tables edited in their own card (#12256 slice 2). @i18n-keys */
@@ -441,7 +442,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       ? edit.form.prioritization_policy
         ? { ...base, prioritization_policy: { ...(base.prioritization_policy ?? edit.form.prioritization_policy), accepted_risks: edit.form.prioritization_policy.accepted_risks } }
         : base
-      : { ...base, [edit.card]: edit.form[edit.card] };
+      : edit.card === "prioritization_policy"
+        ? // The PIR list is edited on the Prioritization policy card (#1889).
+          { ...base, prioritization_policy: edit.form.prioritization_policy, pir_ids: edit.form.pir_ids, pir_names: edit.form.pir_names }
+        : { ...base, [edit.card]: edit.form[edit.card] };
   const exposureDirty = (edit: { card: ExposureCard; form: ProfileForm }) =>
     saved !== null && JSON.stringify(exposureSaved(edit, saved)) !== JSON.stringify(saved);
   const saveExposure = () => {
@@ -452,7 +456,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       setCheckExposure(true);
       return;
     }
-    const parsed = fromForm(next);
+    // The names OpenCTI gives now are saved with the PIRs, as the whole form's Save does (#9615).
+    const live = Object.fromEntries((pirs.data?.pirs ?? []).map((pir) => [pir.id, pir.name]));
+    const parsed = fromForm({ ...next, pir_names: { ...(next.pir_names ?? {}), ...live } });
     if ("invalid" in parsed) return;
     const field = exposureEdit.card === "accepted_risks" ? "prioritization_policy" : exposureEdit.card;
     const options = {
@@ -468,7 +474,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     };
     // The asset and group rows are written through their own row APIs on CTEM > Inventory (#1752 slice 3b): never here.
     if (field === "assets_exposure" || field === "asset_groups") return;
-    patch.mutate({ fields: { [field]: parsed.profile[field] }, based_on_version: data.version ?? null }, options);
+    // The Prioritization policy carries the PIR list with it (#1889); every other card patches its field alone.
+    const withPirs = field === "prioritization_policy" ? { pir_ids: parsed.profile.pir_ids, pir_names: parsed.profile.pir_names } : {};
+    patch.mutate({ fields: { [field]: parsed.profile[field], ...withPirs }, based_on_version: data.version ?? null }, options);
   };
   // One list card in edit (#12256): the other cards stay as they read; the form is not opened.
   const startListEdit = (key: ListKey) => {
@@ -510,11 +518,19 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     setRefusedIssue(null);
     setExposureEdit((prev) => (prev ? { ...prev, form: { ...prev.form, ...patch } } : prev));
   };
-  // A PIR OpenCTI no longer has, taken out from the read view: the form opens without it, Save writes it.
+  // A PIR OpenCTI no longer has, taken out from the read view: the Prioritization policy card opens in
+  // edit without it (#1889), Save writes it.
   const removePir = (id: string) => {
     if (!data) return;
-    const base = form ?? toForm(data.profile);
-    setForm({ ...base, pir_ids: base.pir_ids.filter((pir) => pir !== id) });
+    if (form) {
+      setForm({ ...form, pir_ids: form.pir_ids.filter((pir) => pir !== id) });
+      return;
+    }
+    if (cardOpen) return;
+    const base = toForm(data.profile);
+    setCheckExposure(false);
+    setRefusedIssue(null);
+    setExposureEdit({ card: "prioritization_policy", form: { ...base, pir_ids: base.pir_ids.filter((pir) => pir !== id) } });
   };
   const stopEditing = () => {
     setFocusAfter({ targets: [byTestId("settings.organization.edit")] });
@@ -855,8 +871,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     options: Object.entries(labels).map(([value, name]) => ({ value, label: t_i18n(name) })),
     ordered,
   });
-  type JewelRow = { index: number; value: ProfileForm["primary_assets"][number] };
-  type TechRow = { index: number; value: ProfileForm["tech_stack"][number] };
+  type JewelRow = { index: number; value: ProfileForm["crown_jewels"][number] };
+  type TechRow = { index: number; value: ProfileForm["software"][number] };
   const jewelColumns: DataTableColumn<JewelRow>[] = [
     {
       key: "name",
@@ -996,8 +1012,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     sourceFilter<TechRow>(),
   ];
   // The list editors (#12256): the same columns, a closed row read as text, the open one as fields.
-  type Jewel = ProfileForm["primary_assets"][number];
-  type Tech = ProfileForm["tech_stack"][number];
+  type Jewel = ProfileForm["crown_jewels"][number];
+  type Tech = ProfileForm["software"][number];
   type Shipped = ProfileForm["shipped_products"][number];
   const pick = (labels: Record<string, string>, value: string, label: string, onChange: (value: string) => void) => (
     <Select value={value} onValueChange={onChange}>
@@ -1021,7 +1037,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const jewelEdit: ListEditColumn<Jewel>[] = [
     { key: "name", header: "Primary asset", width: readWidth(JEWEL_WIDTHS.name), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("Primary asset", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
     { key: "business_service", header: "Business service", hideable: true, read: (v) => readCell(v.business_service), edit: (v, set) => editText("Business service", v.business_service, (business_service) => set({ business_service })), sortValue: (v) => v.business_service.toLowerCase(), firstSort: "asc" },
-    { key: "owner", header: "Owner", hideable: true, read: (v) => readCell(v.owner), edit: (v, set) => editText("Owner", v.owner, (owner) => set({ owner }), false, "Owner", suggestId("primary_assets", "owner")), sortValue: (v) => v.owner.toLowerCase(), firstSort: "asc" },
+    { key: "owner", header: "Owner", hideable: true, read: (v) => readCell(v.owner), edit: (v, set) => editText("Owner", v.owner, (owner) => set({ owner }), false, "Owner", suggestId("crown_jewels", "owner")), sortValue: (v) => v.owner.toLowerCase(), firstSort: "asc" },
     { key: "criticality", header: "Criticality", hideable: true, headerClassName: "w-44", width: readWidth(120), read: (v) => readCell(v.criticality ? optionLabel(CRITICALITY_LABELS, v.criticality) : ""), edit: (v, set) => pick(CRITICALITY_LABELS, v.criticality, "Criticality", (criticality) => set({ criticality })), sortValue: (v) => Object.keys(CRITICALITY_LABELS).indexOf(v.criticality), firstSort: "desc" },
     {
       key: "assets",
@@ -1060,7 +1076,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // Vendor scale (UX round 3 B2 on #931: 240/200/180 left CPE 62 px, header and input clipped).
   const techEdit: ListEditColumn<Tech>[] = [
     { key: "product", header: "Product", width: readWidth(200), read: (v) => readCell(v.product), edit: (v, set, bad) => editText("Product", v.product, (product) => set({ product }), bad), sortValue: (v) => v.product.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
-    { key: "vendor", header: "Vendor", hideable: true, width: readWidth(160), read: (v) => readCell(v.vendor), edit: (v, set, bad) => editText("Vendor", v.vendor, (vendor) => set({ vendor }), bad, "Vendor", suggestId("tech_stack", "vendor")), sortValue: (v) => v.vendor.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.vendor] },
+    { key: "vendor", header: "Vendor", hideable: true, width: readWidth(160), read: (v) => readCell(v.vendor), edit: (v, set, bad) => editText("Vendor", v.vendor, (vendor) => set({ vendor }), bad, "Vendor", suggestId("software", "vendor")), sortValue: (v) => v.vendor.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.vendor] },
     { key: "cpe", header: "CPE (optional)", hideable: true, read: (v) => readCell(v.cpe), edit: (v, set, bad) => editText("CPE (optional)", v.cpe, (cpe) => set({ cpe }), bad, "cpe:2.3:a:vendor:product:*"), sortValue: (v) => v.cpe.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.cpe] },
     { key: "version", header: "Version (optional)", hideable: true, width: readWidth(160), read: (v) => readCell(v.version ?? ""), edit: (v, set) => editText("Version (optional)", v.version ?? "", (version) => set({ version }), false, "1.25.3"), sortValue: (v) => (v.version ?? "").toLowerCase(), firstSort: "asc" },
     sourceEdit<Tech>(),
@@ -1098,19 +1114,19 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   ];
   /** Per list (slice 2): the fields the selection toolbar sets, the free-text fields suggested from the list, and "Paste a list". */
   const LIST_BULK = {
-    primary_assets: [
-      { key: "owner", label: "Owner", suggestions: suggestId("primary_assets", "owner") },
+    crown_jewels: [
+      { key: "owner", label: "Owner", suggestions: suggestId("crown_jewels", "owner") },
       { key: "criticality", label: "Criticality", options: CRITICALITY_LABELS },
       { key: "business_service", label: "Business service" },
     ],
-    tech_stack: [{ key: "vendor", label: "Vendor", suggestions: suggestId("tech_stack", "vendor") }],
+    software: [{ key: "vendor", label: "Vendor", suggestions: suggestId("software", "vendor") }],
     shipped_products: [{ key: "vendor", label: "Vendor", suggestions: suggestId("shipped_products", "vendor") }],
   } as const;
-  const LIST_SUGGESTED: { [K in ListKey]: readonly (keyof ProfileForm[K][number] & string)[] } = { primary_assets: ["owner"], shipped_products: ["vendor"], tech_stack: ["vendor"] };
+  const LIST_SUGGESTED: { [K in ListKey]: readonly (keyof ProfileForm[K][number] & string)[] } = { crown_jewels: ["owner"], shipped_products: ["vendor"], software: ["vendor"] };
   const choiceWords = (labels: Record<string, string>) => Object.fromEntries(Object.entries(labels).map(([key, label]) => [key, [label, t_i18n(label)]]));
   const header = (label: string) => [label, t_i18n(label)];
   const PASTE = {
-    primary_assets: {
+    crown_jewels: {
       title: "Paste primary assets",
       example: "Customer portal, Online sales, Jane Doe, critical",
       fieldLabels: { name: "Primary asset", business_service: "Business service", owner: "Owner", criticality: "Criticality" },
@@ -1120,10 +1136,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         name: "name",
         headers: { name: header("Primary asset"), business_service: header("Business service"), owner: header("Owner"), criticality: header("Criticality"), opencrq_asset_id: header("OpenCRQ") },
         choices: { criticality: choiceWords(CRITICALITY_LABELS) },
-        identity: LIST_RULES.primary_assets.identity,
+        identity: LIST_RULES.crown_jewels.identity,
       } as PasteSpec<Jewel>,
     },
-    tech_stack: {
+    software: {
       title: "Paste products",
       example: "Jira, Atlassian",
       fieldLabels: { product: "Product", vendor: "Vendor", cpe: "CPE (optional)", version: "Version (optional)" },
@@ -1132,7 +1148,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         empty: { product: "", vendor: "", cpe: "", version: "" },
         name: "product",
         headers: { product: header("Product"), vendor: header("Vendor"), cpe: header("CPE (optional)"), version: [...header("Version (optional)"), "Version"] },
-        identity: LIST_RULES.tech_stack.identity,
+        identity: LIST_RULES.software.identity,
       } as PasteSpec<Tech>,
     },
     // The repositories are added on the row once pasted: a line holds one value per field.
@@ -1164,7 +1180,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   ) => {
     if (!listOpen(key)) return null;
     const rows = listRows(key);
-    const rules = LIST_RULES[key] as unknown as { check: (value: ProfileForm[K][number]) => ReturnType<typeof LIST_RULES.tech_stack.check>; identity: (value: ProfileForm[K][number]) => string };
+    const rules = LIST_RULES[key] as unknown as { check: (value: ProfileForm[K][number]) => ReturnType<typeof LIST_RULES.software.check>; identity: (value: ProfileForm[K][number]) => string };
     return (
       <>
         {LIST_SUGGESTED[key].map((field) => (
@@ -1265,7 +1281,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   /** "4 need attention", on the card's header in read mode. */
   const attention = (key: ListKey) => {
     if (!saved || listOpen(key)) return null;
-    const rules = LIST_RULES[key] as unknown as { check: (value: unknown) => ReturnType<typeof LIST_RULES.tech_stack.check>; identity: (value: unknown) => string };
+    const rules = LIST_RULES[key] as unknown as { check: (value: unknown) => ReturnType<typeof LIST_RULES.software.check>; identity: (value: unknown) => string };
     const count = attentionCount(saved[key] as unknown[], rules.check, rules.identity);
     return count ? (
       <Badge variant="warning" data-testid={`settings.organization.attention-${key}`}>
@@ -1322,12 +1338,88 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // The fields not filled that Settings still draws (#1690): the Business, Technology and Exposure fields are
   // reported on CTEM > Inventory, and Copilot mode reports none (Sam: "we don't care").
   const missing = xtmOne ? (data?.missing_fields ?? []).filter((path) => { const owner = tabOfField(path); return owner !== null && !isInventoryTab(owner); }) : [];
+  /**
+   * The PIR list on the Prioritization policy card (#1889): it filters the PIR playbooks beside the two PIR
+   * score thresholds. Read mode: the names as wrapped chips linked to OpenCTI (#9615); edit: the picker.
+   */
+  const pirList = (pirEditing: boolean, pirForm: ProfileForm, pirUpdate: (patch: Partial<ProfileForm>) => void) =>
+    !pirEditing ? (
+      <SettingsReadField
+        label={t_i18n("Priority intelligence requirements (PIRs)")}
+        info={help("pir_ids").info}
+        wide
+        value={
+          <OrganizationPirsView
+            pirs={savedPirs}
+            list={pirs.data}
+            unreadable={pirsUnreadable}
+            retrying={pirs.isFetching}
+            onRetry={() => void pirs.refetch()}
+            onRemove={removePir}
+          />
+        }
+      />
+    ) : (
+      <SettingsField
+        id={`${fieldId}-pir_ids`}
+        label={t_i18n("Priority intelligence requirements (PIRs)")}
+        wide
+        {...help("pir_ids")}
+        helper={
+          pirs.data?.unavailable === "not_connected"
+            ? t_i18n("The PIRs of OpenCTI could not be listed: the saved ones are kept.")
+            : t_i18n(FIELD_HELP.pir_ids.helper)
+        }
+      >
+        <div className="flex flex-col gap-1.5">
+          {pirsLoading ? (
+            // The picker waits for the names: its chips would otherwise read a placeholder (#11589).
+            <div
+              className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-sm border border-elevation-subtle-soft px-2 py-1.5"
+              role="status"
+              aria-busy="true"
+              aria-label={t_i18n("Loading the PIR names")}
+              data-testid="settings.organization.pirs-loading"
+            >
+              {savedPirs.slice(0, 8).map((pir) => (
+                <Skeleton key={pir.id} className="h-6 w-32 rounded-sm" />
+              ))}
+            </div>
+          ) : (
+            <MultiSelect
+              id={`${fieldId}-pir_ids`}
+              aria-label={t_i18n("Priority intelligence requirements (PIRs)")}
+              aria-describedby={settingsFieldHintId(`${fieldId}-pir_ids`)}
+              options={pirOptions}
+              selected={pirForm.pir_ids}
+              onToggle={(id) => pirUpdate({ pir_ids: pirForm.pir_ids.includes(id) ? pirForm.pir_ids.filter((p) => p !== id) : [...pirForm.pir_ids, id] })}
+              placeholder={t_i18n("Pick the PIRs")}
+              searchPlaceholder={t_i18n("Search a PIR")}
+              emptyOptionsLabel={pirsEmptyLabel}
+              noMatchLabel={t_i18n("No matching PIR")}
+            />
+          )}
+          {/* Edit mode says it too, with Retry, as read mode does (#11589). */}
+          {pirsUnreadable && <PirsUnreadable retrying={pirs.isFetching} onRetry={() => void pirs.refetch()} />}
+          {/* The picker's chips cut a long label at 250 px and take no title (library Chip):
+              a PIR OpenCTI no longer has is also written out whole here (UX round 1 B2). */}
+          {missingPirs.length > 0 && (
+            <ul className="flex flex-col gap-0.5 content-compact text-default-secondary" data-testid="settings.organization.pirs-missing" aria-label={t_i18n("PIR no longer in OpenCTI")}>
+              {missingPirs.map((pir) => (
+                <li key={pir.id} className="break-words">{pirText(pir)}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </SettingsField>
+    );
   /** The exposure cards a tab draws (#12329): the exposure tab three, the knowledge tab one. */
   const exposureCards = (cards: readonly (typeof EXPOSURE_SECTIONS)[number][]) =>
     current && (
       <OrganizationExposureCards
         cards={cards}
         readOnly={reader}
+        pirList={pirList}
         current={!editing && exposureEdit ? exposureEdit.form : current}
         editing={editing}
         fieldId={fieldId}
@@ -1676,15 +1768,23 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             )}
           </SettingsCard>
 
+          {/* One section for the ticketing system and how CTEM cases sync with it (#1889, #917): the PIR list
+              moved to the Prioritization policy of CTEM > Inventory. Part of the profile form, read by the next sync. */}
           <SettingsCard
             id={`${fieldId}-ticketing`}
             className={SECTION_BAR_ANCHOR_CLASS}
             data-anchor="card"
             tabIndex={-1}
-            icon={Ticket}
-            title={t_i18n("Ticketing and intelligence")}
-            description={t_i18n("Where agents open tickets and which OpenCTI PIRs they follow.")}
+            icon={RefreshCw}
+            title={t_i18n("CTEM case sync")}
+            description={
+              current.ticketing.integration
+                ? t_i18n("How CTEM cases open, update and close their tickets. A change applies to the next sync.")
+                : t_i18n("No ticketing connected: cases stay in XTM One. Set the ticketing integration and project to sync them.")
+            }
+            data-testid="settings.organization.ticketing-sync-group"
           >
+            <div className="space-y-4">
             {!editing ? (
               <SettingsReadGrid data-testid="settings.organization.ticketing">
                 <SettingsReadField
@@ -1696,22 +1796,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                   label={t_i18n("Ticketing project")}
                   info={help("ticketing_project").info}
                   value={current.ticketing.project ? (projectOptions.find((p) => p.id === current.ticketing.project)?.name ?? current.ticketing.project) : ""}
-                />
-                <SettingsReadField
-                  label={t_i18n("Priority intelligence requirements (PIRs)")}
-                  info={help("pir_ids").info}
-                  wide
-                  value={
-                    // Read mode (#9615): the names as wrapped chips linked to OpenCTI, no search, no remove cross, no chevron.
-                    <OrganizationPirsView
-                      pirs={savedPirs}
-                      list={pirs.data}
-                      unreadable={pirsUnreadable}
-                      retrying={pirs.isFetching}
-                      onRetry={() => void pirs.refetch()}
-                      onRemove={removePir}
-                    />
-                  }
                 />
               </SettingsReadGrid>
             ) : (
@@ -1762,68 +1846,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                   />
                 )}
               </SettingsField>
-              <SettingsField
-                id={`${fieldId}-pir_ids`}
-                label={t_i18n("Priority intelligence requirements (PIRs)")}
-                wide
-                {...help("pir_ids")}
-                helper={
-                  pirs.data?.unavailable === "not_connected"
-                    ? t_i18n("The PIRs of OpenCTI could not be listed: the saved ones are kept.")
-                    : t_i18n(FIELD_HELP.pir_ids.helper)
-                }
-              >
-                <div className="flex flex-col gap-1.5">
-                  {pirsLoading ? (
-                    // The picker waits for the names: its chips would otherwise read a placeholder (#11589).
-                    <div
-                      className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-sm border border-elevation-subtle-soft px-2 py-1.5"
-                      role="status"
-                      aria-busy="true"
-                      aria-label={t_i18n("Loading the PIR names")}
-                      data-testid="settings.organization.pirs-loading"
-                    >
-                      {savedPirs.slice(0, 8).map((pir) => (
-                        <Skeleton key={pir.id} className="h-6 w-32 rounded-sm" />
-                      ))}
-                    </div>
-                  ) : (
-                    <MultiSelect
-                      id={`${fieldId}-pir_ids`}
-                      aria-label={t_i18n("Priority intelligence requirements (PIRs)")}
-                      aria-describedby={settingsFieldHintId(`${fieldId}-pir_ids`)}
-                      options={pirOptions}
-                      selected={current.pir_ids}
-                      onToggle={(id) => update({ pir_ids: current.pir_ids.includes(id) ? current.pir_ids.filter((p) => p !== id) : [...current.pir_ids, id] })}
-                      placeholder={t_i18n("Pick the PIRs")}
-                      searchPlaceholder={t_i18n("Search a PIR")}
-                      emptyOptionsLabel={pirsEmptyLabel}
-                      noMatchLabel={t_i18n("No matching PIR")}
-                    />
-                  )}
-                  {/* Edit mode says it too, with Retry, as read mode does (#11589). */}
-                  {pirsUnreadable && <PirsUnreadable retrying={pirs.isFetching} onRetry={() => void pirs.refetch()} />}
-                  {/* The picker's chips cut a long label at 250 px and take no title (library Chip):
-                      a PIR OpenCTI no longer has is also written out whole here (UX round 1 B2). */}
-                  {missingPirs.length > 0 && (
-                    <ul className="flex flex-col gap-0.5 content-compact text-default-secondary" data-testid="settings.organization.pirs-missing" aria-label={t_i18n("PIR no longer in OpenCTI")}>
-                      {missingPirs.map((pir) => (
-                        <li key={pir.id} className="break-words">{pirText(pir)}</li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </SettingsField>
             </SettingsFieldGrid>
             )}
-            {/* How CTEM cases sync with the target (#917): part of the profile form, read by the next sync. */}
-            <div className="space-y-3 border-t border-elevation-subtle-soft pt-4" data-testid="settings.organization.ticketing-sync-group">
-              <SettingsGroupTitle icon={RefreshCw}>{t_i18n("CTEM case sync")}</SettingsGroupTitle>
-              <p className="content-compact text-default-secondary">
-                {current.ticketing.integration
-                  ? t_i18n("How CTEM cases open, update and close their tickets. A change applies to the next sync.")
-                  : t_i18n("No ticketing connected: cases stay in XTM One. Set the ticketing integration above to sync them.")}
-              </p>
               <OrganizationTicketingSync
                 idPrefix={`${fieldId}-ticketing-sync`}
                 sync={current.ticketing.sync}
@@ -1833,6 +1857,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               />
             </div>
           </SettingsCard>
+          {/* The reference rates and the PIR details (#1773): their own cards, saved through PATCH alone. */}
+          {!editing && <OrganizationFxRatesCard id={`${fieldId}-fx_rates`} />}
+          {!editing && <OrganizationPirDetailsCard id={`${fieldId}-pir_details`} />}
           </>
           )}
           </div>
@@ -1842,10 +1869,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.business)} className="space-y-4" data-testid="settings.organization.panel-business">
           {missingIn("business")}
           <SettingsCard
-            id={`${fieldId}-primary_assets`}
+            id={`${fieldId}-crown_jewels`}
             className={SECTION_BAR_ANCHOR_CLASS}
             data-anchor="card"
-            {...cardFold("primary_assets", current.primary_assets.length)}
+            {...cardFold("crown_jewels", current.crown_jewels.length)}
             tabIndex={-1}
             data-testid="settings.organization.primary-assets"
             icon={Shield}
@@ -1853,8 +1880,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             description={t_i18n("What the business cannot lose, ranked by criticality.")}
             action={
               <>
-                {attention("primary_assets")}
-                {!reader && !listOpen("primary_assets") && (
+                {attention("crown_jewels")}
+                {!reader && !listOpen("crown_jewels") && (
                   // An icon button: a third labelled action wraps the card title at 1080 (UX round 1 B1, #1567).
                   <Tip content={editing || cardOpen ? t_i18n("Save or cancel the edit first.") : t_i18n("Restore from a past version")} wrap="auto">
                     <Button
@@ -1869,13 +1896,13 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                     </Button>
                   </Tip>
                 )}
-                {listEditAction("primary_assets")}
-                {pasteAction("primary_assets")}
-                {listOpen("primary_assets") && (
+                {listEditAction("crown_jewels")}
+                {pasteAction("crown_jewels")}
+                {listOpen("crown_jewels") && (
                   <Button
                     variant="secondary"
                     className="gap-1.5"
-                    onClick={() => addListRow("primary_assets", { name: "", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" })}
+                    onClick={() => addListRow("crown_jewels", { name: "", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" })}
                   >
                     <Plus className="h-3.5 w-3.5" /> {t_i18n("Add a primary asset")}
                   </Button>
@@ -1883,20 +1910,20 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               </>
             }
           >
-            {listEditor("primary_assets", {
+            {listEditor("crown_jewels", {
               columns: jewelEdit,
               filters: [valueFilter("criticality", "Criticality", CRITICALITY_LABELS, (v: Jewel) => v.criticality, true)], // ordinal scale (#12289)
               searchFields: (v) => [v.name, v.business_service, v.owner],
               rowLabel: (v) => v.name,
-              storageKey: "settings-organization-primary-assets",
+              storageKey: "settings-organization-crown-jewels",
               rowTestId: "settings.organization.primary-asset-row",
               emptyLabel: t_i18n("No primary asset yet: agents cannot rank by business impact."),
             }) ??
-              (current.primary_assets.length === 0 ? (
+              (current.crown_jewels.length === 0 ? (
                 <p className="text-default-secondary">{t_i18n("No primary asset yet: agents cannot rank by business impact.")}</p>
               ) : (
                 <DataTable
-                  rows={current.primary_assets.map((value, index) => ({ index, value }))}
+                  rows={current.crown_jewels.map((value, index) => ({ index, value }))}
                   columns={jewelColumns}
                   layout={tableLayout}
                   rowKey={(row) => String(row.index)}
@@ -1910,7 +1937,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                   rowTestId="settings.organization.primary-asset-row"
                 />
               ))}
-            <OrganizationPrimaryAssetsRestoreDialog open={restoreOpen} onOpenChange={setRestoreOpen} currentVersion={data?.version ?? null} />
+            <OrganizationCrownJewelsRestoreDialog open={restoreOpen} onOpenChange={setRestoreOpen} currentVersion={data?.version ?? null} />
           </SettingsCard>
 
           {/* What the organization ships (#1432), apart from the software inventory it runs: CTEM resolves a vulnerability on one to its repositories. */}
@@ -1975,12 +2002,12 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           {tab === "technology" && (
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.technology)} className="space-y-4" data-testid="settings.organization.panel-technology">
           {missingIn("technology")}
-          {show("tech_stack") && (
+          {show("software") && (
           <SettingsCard
-            id={`${fieldId}-tech_stack`}
+            id={`${fieldId}-software`}
             className={SECTION_BAR_ANCHOR_CLASS}
             data-anchor="card"
-            {...cardFold("tech_stack", current.tech_stack.length)}
+            {...cardFold("software", current.software.length)}
             tabIndex={-1}
             data-testid="settings.organization.tech-stack"
             icon={Server}
@@ -1992,18 +2019,18 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             }
             action={
               <>
-                {attention("tech_stack")}
-                {listEditAction("tech_stack")}
-                {pasteAction("tech_stack")}
-                {listOpen("tech_stack") && (
-                  <Button variant="secondary" className="gap-1.5" onClick={() => addListRow("tech_stack", { product: "", vendor: "", cpe: "", version: "" })}>
+                {attention("software")}
+                {listEditAction("software")}
+                {pasteAction("software")}
+                {listOpen("software") && (
+                  <Button variant="secondary" className="gap-1.5" onClick={() => addListRow("software", { product: "", vendor: "", cpe: "", version: "" })}>
                     <Plus className="h-3.5 w-3.5" /> {t_i18n("Add a product")}
                   </Button>
                 )}
               </>
             }
           >
-            {listEditor("tech_stack", {
+            {listEditor("software", {
               columns: techEdit,
               filters: [{ key: "vendor", label: "Vendor", values: (v: Tech) => [v.vendor.trim()] }],
               searchFields: (v) => [v.product, v.vendor, v.cpe, v.version],
@@ -2012,11 +2039,11 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               rowTestId: "settings.organization.tech-row",
               emptyLabel: techEmptyLabel,
             }) ??
-              (current.tech_stack.length === 0 ? (
+              (current.software.length === 0 ? (
                 <p className="text-default-secondary">{techEmptyLabel}</p>
               ) : (
                 <DataTable
-                  rows={current.tech_stack.map((value, index) => ({ index, value }))}
+                  rows={current.software.map((value, index) => ({ index, value }))}
                   columns={techColumns}
                   layout={tableLayout}
                   rowKey={(row) => String(row.index)}
