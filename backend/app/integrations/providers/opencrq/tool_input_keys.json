@@ -89,14 +89,33 @@
         "primaryAssets.createPrimaryAsset"
       ],
       "fields": [
+        "availability",
+        "businessFunction",
         "businessValueCategoryIds",
+        "confidentiality",
         "description",
         "id",
+        "integrity",
+        "mtpdMinutes",
         "name",
         "organizationId",
-        "ownerId"
+        "ownerId",
+        "reference",
+        "rpoMinutes",
+        "rtoMinutes",
+        "traceability"
       ],
-      "conditional": [],
+      "conditional": [
+        "availability",
+        "businessFunction",
+        "confidentiality",
+        "integrity",
+        "mtpdMinutes",
+        "reference",
+        "rpoMinutes",
+        "rtoMinutes",
+        "traceability"
+      ],
       "closed": true
     }
   ],
@@ -690,6 +709,18 @@
         "offset",
         "startedTo",
         "statuses"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_primary_asset": [
+    {
+      "procedures": [
+        "primaryAssets.getPrimaryAsset"
+      ],
+      "fields": [
+        "id"
       ],
       "conditional": [],
       "closed": true
@@ -1748,17 +1779,35 @@
         "primaryAssets.updatePrimaryAsset"
       ],
       "fields": [
+        "availability",
+        "businessFunction",
         "businessValueCategoryIds",
+        "confidentiality",
         "description",
         "id",
+        "integrity",
+        "mtpdMinutes",
         "name",
-        "ownerId"
+        "ownerId",
+        "reference",
+        "rpoMinutes",
+        "rtoMinutes",
+        "traceability"
       ],
       "conditional": [
+        "availability",
+        "businessFunction",
         "businessValueCategoryIds",
+        "confidentiality",
         "description",
+        "integrity",
+        "mtpdMinutes",
         "name",
-        "ownerId"
+        "ownerId",
+        "reference",
+        "rpoMinutes",
+        "rtoMinutes",
+        "traceability"
       ],
       "closed": true
     }
