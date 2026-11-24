@@ -696,24 +696,6 @@ async def list_assets_of_software(
     return CanonicalAssetsPage(**vars(page))
 
 
-@router.get("/inventory/tech-stack", response_model=CanonicalAssetsPage)
-async def list_tech_stack_inventory(
-    q: str = Query("", max_length=200),
-    offset: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=200),
-    db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
-) -> CanonicalAssetsPage:
-    """The tech stack built from the assets' software: per product its kind, versions with asset counts, CPE."""
-    from app.services.organization_asset_store import tech_stack_inventory
-
-    org = await _built_store(db)
-    if org is None:
-        return CanonicalAssetsPage(items=[], total=0, offset=offset, limit=limit)
-    page = await tech_stack_inventory(db, org, q=q, offset=offset, limit=limit)
-    return CanonicalAssetsPage(**vars(page))
-
-
 @router.get("/software", response_model=CanonicalAssetsPage)
 async def list_organization_software(
     q: str = Query("", max_length=200),

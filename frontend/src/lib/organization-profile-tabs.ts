@@ -60,7 +60,7 @@ export type ProfileCard = keyof typeof PROFILE_CARD_TAB;
  * mounts the card with its edit (OrganizationSection embed).
  */
 export const INVENTORY_CARD_PATH: Partial<Record<ProfileCard, string>> = {
-  tech_stack: "/ctem/inventory/tech-stack",
+  tech_stack: "/ctem/inventory/software",
   assets_exposure: "/ctem/inventory",
   // The settings cards have their own Inventory tab (#1511), never an edit view opened by URL only.
   prioritization_policy: "/ctem/inventory/exposure",

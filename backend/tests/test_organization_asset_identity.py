@@ -317,73 +317,22 @@ def test_software_without_a_product_is_dropped() -> None:
     assert ident.merge_software([_rec("intune", "d-1", software=[{"vendor": "x"}])]) == []
 
 
-# ── Inventory ─────────────────────────────────────────────────────────
+# ── CPE resolution ─────────────────────────────────────────────────────────
 
 
-def _two_laptops() -> list[ident.Canonical]:
-    return ident.match_records(
-        [
-            _rec("intune", "d-1", serial="S1", software=[{"vendor": "Google", "product": "Chrome", "version": "130"}]),
-            _rec(
-                "defender", "m-1", serial="S1", software=[{"vendor": "google", "product": "chrome", "version": "130"}]
-            ),
-            _rec(
-                "defender", "m-2", serial="S2", software=[{"vendor": "Google", "product": "Chrome", "version": "131"}]
-            ),
-        ]
-    )
-
-
-def test_same_product_from_two_sources_is_one_item_with_versions_and_asset_counts() -> None:
-    assets = _two_laptops()
-    assert len(assets) == 2
-    [chrome] = ident.derive_tech_stack(assets)
-    assert chrome["kind"] == "installed"
-    assert chrome["sources"] == ["defender", "intune"]
-    assert chrome["asset_count"] == 2
-    assert [(v["version"], v["asset_count"]) for v in chrome["versions"]] == [("130", 1), ("131", 1)]
-    assert chrome["confidence"] == "unresolved" and chrome["cpe"] == ""
-
-
-def test_manual_cpe_override_survives_a_sync() -> None:
-    override = {("google", "chrome"): "cpe:2.3:a:google:chrome:*:*:*:*:*:*:*:*"}
-    reported = ident.match_records(
-        [
-            _rec(
-                "defender",
-                "m-1",
-                software=[
-                    {"vendor": "Google", "product": "Chrome", "version": "130", "cpe": "cpe:2.3:a:google:chrome:130"}
-                ],
-            )
-        ]
-    )
-    for assets in (_two_laptops(), reported):  # before and after a sync that reports its own CPE
-        [chrome] = ident.derive_tech_stack(assets, overrides=override)
-        assert chrome["cpe"] == override[("google", "chrome")] and chrome["confidence"] == "override"
+def test_a_cpe_override_wins_over_a_reported_cpe() -> None:
+    override = "cpe:2.3:a:google:chrome:*:*:*:*:*:*:*:*"
+    resolved = ident.resolve_cpe("Google", "Chrome", "130", reported=["cpe:2.3:a:google:chrome:130"], override=override)
+    assert resolved == {"cpe": override, "confidence": "override"}
 
 
 def test_cpe_from_a_resolver_carries_its_confidence_and_version() -> None:
     def lookup(vendor: str, product: str, version: str) -> tuple[str, str] | None:
         return ("cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*", "high") if product.lower() == "nginx" else None
 
-    assets = ident.match_records(
-        [_rec("openaev", "a-1", software=[{"vendor": "F5", "product": "nginx", "version": "1.27.1"}])]
-    )
-    [nginx] = ident.derive_tech_stack(assets, resolver=lookup)
-    assert nginx["cpe"] == "cpe:2.3:a:f5:nginx:1.27.1:*:*:*:*:*:*:*" and nginx["confidence"] == "high"
+    nginx = ident.resolve_cpe("F5", "nginx", "1.27.1", resolver=lookup)
+    assert nginx == {"cpe": "cpe:2.3:a:f5:nginx:1.27.1:*:*:*:*:*:*:*", "confidence": "high"}
     assert ident.resolve_cpe("x", "y", "1", resolver=lookup) == {"cpe": "", "confidence": "unresolved"}
-
-
-def test_manual_saas_rows_stay_without_versions_and_typed_rows_join_installed_items() -> None:
-    manual = [
-        {"product": "HubSpot", "kind": "saas"},
-        {"product": "Chrome", "source": "manual"},
-    ]
-    items = {i["product"]: i for i in ident.derive_tech_stack(_two_laptops(), manual=manual)}
-    assert set(items) == {"Chrome", "HubSpot"}
-    assert items["HubSpot"]["kind"] == "saas" and items["HubSpot"]["versions"] == []
-    assert items["Chrome"]["manual"] is True and items["Chrome"]["asset_count"] == 2
 
 
 # ── Sections ──────────────────────────────────────────────────────────

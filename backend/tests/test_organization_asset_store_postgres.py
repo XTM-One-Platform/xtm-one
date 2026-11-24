@@ -134,37 +134,6 @@ async def test_assets_of_a_software_answer_each_asset_with_the_version_it_runs()
     assert [i["asset_name"] for i in one.items] == ["web-02"]
 
 
-async def test_the_tech_stack_inventory_counts_assets_per_product_and_keeps_typed_rows() -> None:
-    async with _database() as sessions, sessions() as session:
-        org = await _org(session, "A", primary=True)
-        session.add(
-            OrganizationContextVersion(
-                organization_id=org,
-                version=1,
-                profile={
-                    "assets_exposure": [LAPTOP_INTUNE, LAPTOP_OPENAEV, SERVER],
-                    "tech_stack": [{"product": "HubSpot", "kind": "saas"}],
-                },
-                source="api",
-            )
-        )
-        await session.flush()
-        await store.ensure_built(session)
-        await session.commit()
-        page = await store.tech_stack_inventory(session, org)
-        nginx_only = await store.tech_stack_inventory(session, org, q="NGINX")
-        assert await store.has_software(session, org)
-    by_product = {i["product"].casefold(): i for i in page.items}
-    assert set(by_product) == {"curl", "hubspot", "nginx"}
-    nginx = by_product["nginx"]
-    assert nginx["asset_count"] == 2
-    assert [(v["version"], v["asset_count"]) for v in nginx["versions"]] == [("1.25.3", 1), ("1.27.1", 1)]
-    assert nginx["sources"] == ["intune", "openaev"]
-    assert by_product["curl"]["versions"] == [{"version": "unknown", "asset_count": 1}]
-    assert by_product["hubspot"]["kind"] == "saas" and by_product["hubspot"]["asset_count"] == 0
-    assert nginx_only.total == 1
-
-
 async def test_a_newer_profile_rebuilds_the_store_and_an_unchanged_one_does_not() -> None:
     async with _database() as sessions, sessions() as session:
         org = await _org(session, "A", primary=True)

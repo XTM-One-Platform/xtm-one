@@ -233,7 +233,7 @@ records several sources hold on one thing into one canonical thing; the store of
   that fails while devices sync is said in the sync's run status (`software_unread`, `software_error`), never a
   silent zero. A Defender
   read without the software permission still syncs the machines.
-- Tech stack: derived from asset software (`derive_tech_stack`), one item per vendor and product with the
+- Software: built from asset software (Software entities, section 9.3), one item per vendor and product with the
   versions seen and the assets running each; typed SaaS and cloud rows stay, without versions. The CPE comes
   from an administrator's override (kept across syncs), else a source that reported it, else a dictionary
   lookup with its confidence, else `unresolved`: never guessed.
@@ -377,20 +377,15 @@ only the changed rows logged and re-matched. The sync result says `rows_written`
 one-off import (`POST /organization-context/import/apply`) and the agent's import tool answer `applied`
 without a version. The other sections keep the profile plan.
 
-### 9.3 Tech stack from asset software (S4)
+### 9.3 Software of the organization
 
-`organization_asset_store.tech_stack_inventory` builds the tech stack from `organization_asset_software`: one
-item per vendor and product (keys case-folded), each version seen with the number of assets running it, the
-number of distinct assets running the product (an asset on two versions counts once), the sources that report
-it, and the CPE with its confidence (`resolve_cpe`: a CPE typed in a hand row of `tech_stack` is the
-administrator's override, kept across syncs; then a CPE a source reported; else `unresolved`). The profile's
-`tech_stack` rows stay: a row an asset runs joins its item (`manual: true`), a row no asset runs (a SaaS or a
-cloud service) is an item without versions. Three grouped reads on the `(organization_id, product_key, version)`
-index answer it, so its cost follows the number of products, not of assets.
-
-- `GET /api/v1/organization-context/inventory/tech-stack?q=&offset=&limit=` (any signed-in user): the items,
-  filtered on a vendor or product substring, paginated (`limit` at most 200); "on N assets" is `asset_count`, and
-  `GET /assets/by-software` lists them.
+The software the assets run is read as Software entities (`organization_software_store`, #1495): one
+Software per vendor and product (keys case-folded), its versions with the number of assets running each, its
+installations, dependencies and sources, and the CPE with its confidence (`resolve_cpe`: an administrator's
+override, kept across syncs; then a CPE a source reported; else `unresolved`). The derived tech stack read
+(`derive_tech_stack`, `tech_stack_inventory`, `GET /organization-context/inventory/tech-stack`) is retired:
+the Software tab and `GET /organization-context/software` replace it, and `GET /assets/by-software` lists the
+assets running a product.
 - `get_organization_context(category="software")` answers the organization's Software entities (synced and
   hand-typed, with versions, CPE and asset count) once the store holds one, and the profile rows before.
   `category="tech_stack"` and `upsert_organization_rows(section="tech_stack")` are deprecated aliases of
