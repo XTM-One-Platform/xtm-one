@@ -12,7 +12,7 @@ import { MemoryRouter } from "react-router-dom";
 
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemCaseEvent, CtemCaseGateRecord } from "@/hooks/api/useCtemCasesApi";
-import { gateChipOf, gateRecordOf, gateRecordReason, waitParts } from "./GateDecisionRecord";
+import { gateAnswererName, gateChipOf, gateOptionLabel, gateRecordOf, gateRecordReason, waitParts } from "./GateDecisionRecord";
 
 const state = vi.hoisted(() => ({ items: [] as unknown[] }));
 
@@ -100,6 +100,24 @@ describe("gate record helpers", () => {
     expect(gateChipOf({ status: "answered", option: { key: "A", label: "Launch the atomic test" } })).toBe("answered");
     expect(gateChipOf({ status: "answered", option: null })).toBe("answered");
     expect(gateChipOf({ status: "expired", option: { key: "approve", label: null } })).toBe("expired");
+    expect(gateChipOf({ status: "answered", option: { key: "not_approved", label: null } })).toBe("rejected");
+    expect(gateChipOf({ status: "answered", option: { key: "hold", label: null } })).toBe("deferred");
+  });
+
+  it("reads a CTEM option key without a label by its label, never the raw key (#1679)", () => {
+    expect(gateOptionLabel({ key: "retry_in_draft", label: null })).toBe("Rework the package as a draft");
+    expect(gateOptionLabel({ key: "safe_only", label: null })).toBe("Run the read-only checks only");
+    expect(gateOptionLabel({ key: "A", label: "Launch the atomic test" })).toBe("Launch the atomic test");
+    expect(gateOptionLabel({ key: "C", label: null })).toBeNull();
+    expect(gateOptionLabel(null)).toBeNull();
+  });
+
+  it("names an unnamed answerer from the directory, then the History actor (#1679)", () => {
+    const unnamed = { key: "ctem.analyst_review", answered_by: { id: USER, name: null } };
+    expect(gateAnswererName(unnamed, [], (id) => (id === USER ? "Samuel Hassine" : null))).toBe("Samuel Hassine");
+    const history = [ev({ from: "ctem.analyst_review", to: "answered", reason: "free text", actor_name: "Samuel Hassine" })];
+    expect(gateAnswererName({ key: "ctem.analyst_review", answered_by: null }, history, () => null)).toBe("Samuel Hassine");
+    expect(gateAnswererName({ key: "ctem.analyst_review", answered_by: null }, [], () => null)).toBeNull();
   });
 });
 
@@ -124,6 +142,24 @@ describe("GateDecisionRecord", () => {
     expect(screen.getByTestId("ctem-gate-record-status").textContent).toBe("Rejected");
     expect(screen.getByTestId("ctem-gate-record").getAttribute("data-chip")).toBe("rejected");
     expect(screen.getByTestId("ctem-gate-record-option").querySelector("dd")?.textContent).toBe("Reject the package");
+  });
+
+  it("draws the record as Asked, Decided and Then steps with chips and a meaning (#1679)", () => {
+    render(<GateDecisionRecord record={rec({})} />);
+    expect(screen.getByTestId("ctem-gate-record-step-asked")).toBeTruthy();
+    expect(screen.getByTestId("ctem-gate-record-step-decided")).toBeTruthy();
+    expect(screen.getByTestId("ctem-gate-record-step-then")).toBeTruthy();
+    // The asking agent is an info chip, never the green design-system link.
+    expect(screen.getByTestId("ctem-gate-record-asked-by").querySelector("[data-tone]")?.getAttribute("data-tone")).toBe("blue");
+    expect(screen.getByTestId("ctem-gate-record-by").querySelector("[data-tone]")).toBeTruthy();
+    expect(screen.getByTestId("ctem-gate-record-meaning").textContent).toContain("A person answered");
+    expect(screen.getByTestId("ctem-gate-record-comment").querySelector("blockquote")).toBeTruthy();
+  });
+
+  it("draws a CTEM option key by its label when the ask did not list it", () => {
+    render(<GateDecisionRecord record={rec({ option: { key: "retry_in_draft", label: null } })} />);
+    expect(screen.getByTestId("ctem-gate-record-option").querySelector("dd")?.textContent).toBe("Rework the package as a draft");
+    expect(screen.queryByText(/retry_in_draft/)).toBeNull();
   });
 
   it("falls back to the option key only when there is no label", () => {

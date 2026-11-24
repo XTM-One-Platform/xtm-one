@@ -82,8 +82,14 @@ describe("CaseValidation", () => {
     const history = [ev({ from: "ctem.validation.non_readonly", to: "passed_automatically", reason: "pin run" })];
     renderWithProviders(<CaseValidation caseId="c1" validations={[SAFE]} history={history} />);
     expect(screen.getByTestId("ctem-case-validation-gate").textContent).toContain("Passed automatically: safe mode");
-    expect(screen.getByTestId("ctem-case-validation-mode").textContent).toBe("Safe mode: read-only checks only");
+    // Mode, result and run order are chips (#1679): the short word on the chip, the sentence as its tooltip.
+    expect(screen.getByTestId("ctem-case-validation-mode").textContent).toBe("Read-only");
+    expect(screen.getByTestId("ctem-case-validation-mode").getAttribute("title")).toBe("Safe mode: read-only checks only");
+    expect(screen.getByTestId("ctem-case-validation-mode").getAttribute("data-tone")).toBe("green");
+    expect(screen.getByTestId("ctem-case-validation-result").getAttribute("data-tone")).toBeTruthy();
+    expect(screen.getByTestId("ctem-case-validation-provider").textContent).toBe("OpenAEV");
     expect(screen.getByTestId("ctem-case-validation-order").textContent).toBe("1. DMZ web2. Core services");
+    expect(screen.getByTestId("ctem-case-validation-order").querySelectorAll("[data-tone]")).toHaveLength(2);
     expect(screen.queryByText(/pin run/)).toBeNull();
     expect(screen.queryByTestId("unified-decision-card")).toBeNull();
     expect(state.calls.every((c) => (c as { enabled: boolean }).enabled === false)).toBe(true);
@@ -95,7 +101,10 @@ describe("CaseValidation", () => {
     renderWithProviders(<CaseValidation caseId="c1" validations={[{ ...SAFE, safe_mode: false, result: "pending" }]} history={history} />);
     expect(screen.getByText("Waiting for a person")).toBeTruthy();
     expect(state.calls.some((c) => (c as { filters: { correlation_key: string } }).filters.correlation_key === "ctem:validation:c1")).toBe(true);
-    expect(screen.getByTestId("ctem-case-validation-mode").textContent).toBe("Not read-only: a test that changes the target ran");
+    expect(screen.getByTestId("ctem-case-validation-mode").textContent).toBe("Changes the target");
+    expect(screen.getByTestId("ctem-case-validation-mode").getAttribute("title")).toBe("Not read-only: a test that changes the target ran");
+    expect(screen.getByTestId("ctem-case-validation-mode").getAttribute("data-tone")).toBe("orange");
+    expect(screen.getByTestId("ctem-case-validation-result").textContent).toBe("Pending");
   });
 
   it("names the chosen option's label once a person answered, from the closed decision item", () => {

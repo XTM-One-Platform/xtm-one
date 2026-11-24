@@ -23,7 +23,7 @@ import { waitsForAnswer } from "@/lib/work-item-context";
 import { GATE_CARD_STATUS_LABEL, latestGate } from "./case-gates";
 import { REVIEW_GATE, REVIEW_STAGE_LABEL, reviewAnswerer, reviewDecisionKey, reviewStage } from "./case-review";
 import { CaseSectionReason } from "./CaseSectionReason";
-import { GateDecisionRecord, gateRecordOf } from "./GateDecisionRecord";
+import { GateDecisionRecord, gateAnswererName, gateRecordOf } from "./GateDecisionRecord";
 
 export function CaseAnalystReview({
   caseId,
@@ -74,7 +74,7 @@ export function CaseAnalystReview({
         {record && (
           <GateDecisionRecord
             record={record}
-            byLabel={record.answered_by?.name ? null : who}
+            byLabel={record.answered_by?.name ? null : (gateAnswererName(record, history, personName) ?? who)}
             testId="ctem-case-analyst-review-record"
           />
         )}

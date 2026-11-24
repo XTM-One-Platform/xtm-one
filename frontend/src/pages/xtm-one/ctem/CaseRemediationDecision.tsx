@@ -30,7 +30,7 @@ import {
   remediationOptionLines,
 } from "./case-gates";
 import { CaseSectionReason } from "./CaseSectionReason";
-import { GateDecisionRecord, gateRecordOf } from "./GateDecisionRecord";
+import { GateDecisionRecord, gateAnswererName, gateRecordOf } from "./GateDecisionRecord";
 
 export function CaseRemediationDecision({
   caseId,
@@ -68,7 +68,7 @@ export function CaseRemediationDecision({
         {record ? (
           <GateDecisionRecord
             record={record}
-            byLabel={record.answered_by ? personName?.(record.answered_by.id) : null}
+            byLabel={gateAnswererName(record, history, personName)}
             testId="ctem-case-remediation-record"
           />
         ) : !gate ? (
