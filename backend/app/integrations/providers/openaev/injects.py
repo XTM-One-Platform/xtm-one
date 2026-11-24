@@ -15,8 +15,10 @@ module reports, and they have their own analyst-facing read surface.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+from typing import Any
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
@@ -37,6 +39,94 @@ from ._common import (
 logger = logging.getLogger(__name__)
 
 _SOURCE = "integration:openaev"
+
+
+#: Target types OpenAEV resolves execution traces for (TargetType.hasExecutionTraces).
+_TRACE_TARGET_TYPES = ("ASSETS", "AGENT", "TEAMS", "PLAYERS", "AI_TARGETS", "MANUAL")
+#: Targets listed per type, and trace reads in flight at once.
+_TRACE_TARGETS_PER_TYPE = 50
+_TRACE_READS_IN_FLIGHT = 8
+
+
+def _terminal_trace(traces: list[Any]) -> dict[str, Any] | None:
+    """The trace that ends a target's run: its last COMPLETE trace, else its latest."""
+    rows = [t for t in traces if isinstance(t, dict)]
+    if not rows:
+        return None
+    rows.sort(key=lambda t: str(t.get("execution_time") or ""))
+    complete = [t for t in rows if t.get("execution_action") == "COMPLETE"]
+    return (complete or rows)[-1]
+
+
+def _target_label(target: dict[str, Any]) -> str:
+    name = target.get("target_name") or target.get("target_id") or "?"
+    return f"{target.get('target_type', '?')} {name} (id: {target.get('target_id', '?')})"
+
+
+async def _target_traces(base_url: str, headers: dict[str, str], inject_id: str) -> str:
+    """Every target of an inject with its terminal execution trace.
+
+    The global status trace names only the targets an executor reached; a
+    target OpenAEV closed before the distribution (agentless asset, inactive or
+    overloaded agent, no executor, clearance) has its own COMPLETE trace, read
+    here per target from /api/injects/execution-traces.
+    """
+    targets: list[dict[str, Any]] = []
+    notes: list[str] = []
+    for target_type in _TRACE_TARGET_TYPES:
+        resp, err = await _api(
+            base_url,
+            headers,
+            "post",
+            f"/api/injects/{inject_id}/targets/{target_type}/search",
+            "list inject targets",
+            json=_search_body(size=_TRACE_TARGETS_PER_TYPE),
+        )
+        if err or resp is None:
+            notes.append(f"{target_type}: targets not read ({err})")
+            continue
+        data = resp.json()
+        rows = data.get("content", []) if isinstance(data, dict) else data
+        rows = [r for r in rows or [] if isinstance(r, dict) and r.get("target_id")]
+        for row in rows:
+            row.setdefault("target_type", target_type)
+        targets += rows
+        total = data.get("totalElements") if isinstance(data, dict) else None
+        if isinstance(total, int) and total > len(rows):
+            notes.append(f"{target_type}: {len(rows)} of {total} targets listed")
+    if not targets:
+        return "\n".join([f"Inject {inject_id} has no target with execution traces.", *notes])
+
+    gate = asyncio.Semaphore(_TRACE_READS_IN_FLIGHT)
+
+    async def _one(target: dict[str, Any]) -> str:
+        async with gate:
+            resp, err = await _api(
+                base_url,
+                headers,
+                "get",
+                "/api/injects/execution-traces",
+                "target execution traces",
+                params={
+                    "injectId": inject_id,
+                    "targetId": target["target_id"],
+                    "targetType": target["target_type"],
+                },
+            )
+        if err or resp is None:
+            return f"- {_target_label(target)}: traces not read ({err})"
+        traces = resp.json()
+        last = _terminal_trace(traces if isinstance(traces, list) else [])
+        if last is None:
+            return f"- {_target_label(target)}: no trace yet"
+        return (
+            f"- {_target_label(target)}: {last.get('execution_status', '?')} "
+            f"{last.get('execution_action', '?')} at {last.get('execution_time', '?')}: "
+            f"{last.get('execution_message', '')}"
+        )
+
+    lines = await asyncio.gather(*(_one(t) for t in targets))
+    return "\n".join([f"Inject {inject_id}: {len(targets)} target(s), terminal trace of each:", *lines, *notes])
 
 
 def _base(scope: str, parent_id: str) -> str | None:
@@ -79,9 +169,9 @@ def register(
         action = (action or "").strip().lower()
         scope = (scope or "scenario").strip().lower()
 
-        if action == "status" and scope != "global":
+        if action in ("status", "target_traces") and scope != "global":
             return (
-                "action 'status' is only available with scope='global' "
+                f"action '{action}' is only available with scope='global' "
                 "(provide inject_id)."
             )
 
@@ -105,7 +195,11 @@ def register(
                 if err:
                     return err
                 return json_window(resp.json(), offset)
-            return "For scope 'global', valid actions are: get, status."
+            if action == "target_traces":
+                if not inject_id:
+                    return "inject_id is required."
+                return await _target_traces(base_url, headers, inject_id)
+            return "For scope 'global', valid actions are: get, status, target_traces."
 
         base = _base(scope, parent_id)
         if base is None:
@@ -374,7 +468,8 @@ def register(
                 "graph is what renders as the live attack-path map. Use depends_on "
                 "(raw JSON array of inject_depends_on entries) for branching / "
                 "multi-parent chains. Global-only: "
-                "'status' (inject_id - read the execution status). Simulation-only: "
+                "'status' (inject_id - read the execution status), 'target_traces' "
+                "(inject_id - every target with its terminal trace). Simulation-only: "
                 "'trigger' (manually fire an inject against live assets), 'set_status' "
                 "(inject_id + status + optional message), 'results'. Use "
                 "search_openaev_injector_contracts to find injector_contract_id."
@@ -387,6 +482,7 @@ def register(
                         "enum": [
                             "list", "get", "create", "update", "delete", "duplicate",
                             "activation", "trigger", "set_status", "results", "status",
+                            "target_traces",
                         ],
                     },
                     "scope": {"type": "string", "enum": ["scenario", "simulation", "global"], "default": "scenario"},
