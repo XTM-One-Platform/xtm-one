@@ -2492,11 +2492,16 @@ def _describe_builtin_change(before: list[str], after: list[str]) -> str:
 
 
 def _advertised_builtin_tool_ids() -> tuple[str, ...]:
-    """``_VALID_BUILTIN_TOOL_IDS`` minus the former ids and the ids whose feature flag is off."""
+    """``_VALID_BUILTIN_TOOL_IDS`` minus the former ids, Platform Health's internal group (#1943)
+    and the ids whose feature flag is off."""
+    from app.services.builtin_tool_groups import BUILTIN_TOOL_GROUPS
+
+    internal = {group.id for group in BUILTIN_TOOL_GROUPS if group.internal}
     return tuple(
         tool_id
         for tool_id in _VALID_BUILTIN_TOOL_IDS
         if not is_former_builtin_id(tool_id)
+        and tool_id not in internal
         and (
             tool_id not in _FEATURE_GATED_BUILTIN_TOOL_IDS
             or is_feature_enabled(_FEATURE_GATED_BUILTIN_TOOL_IDS[tool_id])
