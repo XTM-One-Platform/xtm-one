@@ -43,6 +43,8 @@ describe("PrioritizationMix", () => {
     expect(split.textContent).toContain("findings");
     expect(split.textContent).toContain("69% carry a CVE");
     expect(screen.getByTestId("ctem-prioritization-data-row").getAttribute("data-wide-columns")).toBe("2");
+    // Equal heights per row (#1612): the row stretches and every card fills its cell.
+    expect(screen.getByTestId("ctem-prioritization-data-row").getAttribute("data-align")).toBe("stretch");
   });
 
   it("reads one finding in the singular", () => {
