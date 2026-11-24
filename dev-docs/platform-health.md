@@ -476,6 +476,14 @@ registration token. The `health_refresh_requested` answer comes with the Health 
   severities), at most once a day per module, plus on demand by an admin.
 - Platform routing (light) model, no conversation content in the prompt, prompt caching
   on the static part.
+- What one finding sends (`analysis.build_prompt`, #1638): a deterministic finding its check
+  id, severity, category, subject, `evidence.values` and `evidence.threshold`; an agentic
+  finding of a module checker (`evidence.source` `module_checker`, section 13.6) its check
+  name without the `agentic` segment, `checked_by: module_checker`, the tool, object ids and
+  values of its first 5 evidence reads (values over 1,200 characters cut) and the checker's
+  recommendation (400 characters). The static instruction says a check id is never a
+  component name and that a component is named only when the values name it, so an id such
+  as `opencti.agentic.managers_running` is never read as an "agentic manager".
 - Hard ceiling, tokens and dollars per day and per month, enforced by reservation before
   the call (the `budget.py` ledger, renamed). Over the ceiling the call is refused and the
   page says so. Test (e) forces an over-spend.
