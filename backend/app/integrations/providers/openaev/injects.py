@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
@@ -58,6 +59,101 @@ def _terminal_trace(traces: list[Any]) -> dict[str, Any] | None:
     return (complete or rows)[-1]
 
 
+#: The runtime setting that bounds an inject's execution (InjectExecutionThresholdService).
+_THRESHOLD_KEY = "inject_execution_threshold_minutes"
+
+
+def _utc(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def _stamp(moment: datetime) -> str:
+    return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _threshold_minutes(settings: Any) -> int | None:
+    items = settings.get("runtime_settings") if isinstance(settings, dict) else None
+    for item in items if isinstance(items, list) else []:
+        if isinstance(item, dict) and item.get("key") == _THRESHOLD_KEY:
+            try:
+                return int(str(item.get("value")))
+            except ValueError:
+                return None
+    return None
+
+
+def _execution_timeout_line(sent: datetime | None, minutes: int | None) -> str:
+    """When OpenAEV ends the targets that gave no terminal trace (the finalization job)."""
+    if minutes is None:
+        bound = "threshold not exposed by this OpenAEV (its default is 10 minutes)"
+    else:
+        bound = f"{minutes} min after distribution"
+    if sent is None:
+        return f"execution_timeout: {bound}; not distributed yet (no tracking_sent_date)."
+    deadline = f", deadline {_stamp(sent + timedelta(minutes=minutes))}" if minutes is not None else ""
+    return (
+        f"execution_timeout: {bound} (sent {_stamp(sent)}{deadline}); a target with no terminal "
+        "trace by then is ended with a timeout trace and the inject ends."
+    )
+
+
+def _expectation_window_line(inject: Any, sent: datetime | None) -> str:
+    """How long the expectations wait for a result: a scoring window, not the run."""
+    content = inject.get("inject_content") if isinstance(inject, dict) else None
+    if isinstance(content, str):
+        try:
+            content = json.loads(content)
+        except ValueError:
+            content = None
+    rows = content.get("expectations") if isinstance(content, dict) else None
+    parts: list[str] = []
+    for row in rows if isinstance(rows, list) else []:
+        seconds = row.get("expectation_expiration_time") if isinstance(row, dict) else None
+        if not isinstance(seconds, int | float) or seconds <= 0:
+            continue
+        part = f"{row.get('expectation_type', '?')} {seconds / 3600:g} h"
+        if sent is not None:
+            part += f" (expires {_stamp(sent + timedelta(seconds=seconds))})"
+        parts.append(part)
+    if not parts:
+        return "expectation_window: no expiration time on the inject's expectations (OpenAEV's default applies)."
+    return (
+        f"expectation_window: {', '.join(parts)}; the time the expectations wait for a "
+        "result after distribution, not the end of the execution."
+    )
+
+
+async def _timing_lines(base_url: str, headers: dict[str, str], inject_id: str) -> list[str]:
+    """The execution timeout and the expectation window, two named facts."""
+    status, inject, settings = await asyncio.gather(
+        _api(base_url, headers, "get", "/api/injects/status", "inject status", params={"injectId": inject_id}),
+        _api(base_url, headers, "get", f"/api/injects/{inject_id}", "get inject"),
+        _api(base_url, headers, "get", "/api/settings", "get settings"),
+    )
+    status_body = status[0].json() if not status[1] and status[0] is not None else None
+    sent = _utc(status_body.get("tracking_sent_date")) if isinstance(status_body, dict) else None
+    lines: list[str] = []
+    if status[1]:
+        lines.append(f"status not read ({status[1]})")
+    minutes = None
+    if settings[1] or settings[0] is None:
+        lines.append(f"settings not read ({settings[1]})")
+    else:
+        minutes = _threshold_minutes(settings[0].json())
+    lines.append(_execution_timeout_line(sent, minutes))
+    if inject[1] or inject[0] is None:
+        lines.append(f"expectation_window: inject not read ({inject[1]})")
+    else:
+        lines.append(_expectation_window_line(inject[0].json(), sent))
+    return lines
+
+
 def _target_label(target: dict[str, Any]) -> str:
     name = target.get("target_name") or target.get("target_id") or "?"
     return f"{target.get('target_type', '?')} {name} (id: {target.get('target_id', '?')})"
@@ -69,8 +165,11 @@ async def _target_traces(base_url: str, headers: dict[str, str], inject_id: str)
     The global status trace names only the targets an executor reached; a
     target OpenAEV closed before the distribution (agentless asset, inactive or
     overloaded agent, no executor, clearance) has its own COMPLETE trace, read
-    here per target from /api/injects/execution-traces.
+    here per target from /api/injects/execution-traces. The execution timeout
+    and the expectation window head the answer as two named lines, so a
+    running inject is told apart from an expired expectation.
     """
+    timing = await _timing_lines(base_url, headers, inject_id)
     targets: list[dict[str, Any]] = []
     notes: list[str] = []
     for target_type in _TRACE_TARGET_TYPES:
@@ -95,7 +194,7 @@ async def _target_traces(base_url: str, headers: dict[str, str], inject_id: str)
         if isinstance(total, int) and total > len(rows):
             notes.append(f"{target_type}: {len(rows)} of {total} targets listed")
     if not targets:
-        return "\n".join([f"Inject {inject_id} has no target with execution traces.", *notes])
+        return "\n".join([f"Inject {inject_id} has no target with execution traces.", *timing, *notes])
 
     gate = asyncio.Semaphore(_TRACE_READS_IN_FLIGHT)
 
@@ -126,7 +225,8 @@ async def _target_traces(base_url: str, headers: dict[str, str], inject_id: str)
         )
 
     lines = await asyncio.gather(*(_one(t) for t in targets))
-    return "\n".join([f"Inject {inject_id}: {len(targets)} target(s), terminal trace of each:", *lines, *notes])
+    head = f"Inject {inject_id}: {len(targets)} target(s), terminal trace of each:"
+    return "\n".join([*timing, head, *lines, *notes])
 
 
 def _base(scope: str, parent_id: str) -> str | None:
@@ -469,7 +569,8 @@ def register(
                 "(raw JSON array of inject_depends_on entries) for branching / "
                 "multi-parent chains. Global-only: "
                 "'status' (inject_id - read the execution status), 'target_traces' "
-                "(inject_id - every target with its terminal trace). Simulation-only: "
+                "(inject_id - every target's terminal trace, execution_timeout, "
+                "expectation_window). Simulation-only: "
                 "'trigger' (manually fire an inject against live assets), 'set_status' "
                 "(inject_id + status + optional message), 'results'. Use "
                 "search_openaev_injector_contracts to find injector_contract_id."
