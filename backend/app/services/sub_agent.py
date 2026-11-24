@@ -2054,6 +2054,55 @@ async def cancel_sub_agent_tasks_for_scope(
     return len(tasks), executions_cancelled
 
 
+#: Why a background task that never started stopped with the run that spawned it.
+PARENT_ENDED_TASK_REASON = "Cancelled: the run that spawned it ended before it started."
+
+
+async def cancel_unstarted_tasks_of_ended_run(db: AsyncSession, run_id: str | uuid.UUID) -> list[str]:
+    """Cancel the background tasks *run_id* spawned that no worker ever started.
+
+    A run that ends (its final answer, its deadline) leaves nobody to collect a
+    task still waiting in the queue: started later, its result would have no
+    consumer. Each such task ends ``cancelled`` with
+    :data:`PARENT_ENDED_TASK_REASON`, its delivery suppressed, its execution
+    cancelled and its delegation row concluded. A task already running keeps
+    running and delivers as it always did. Commits; returns the cancelled ids.
+    """
+    from app.models.orchestration import TERMINAL_EXECUTION_STATES
+    from app.services.orchestration_engine import cancel_execution, get_execution_by_dedup_key
+
+    tasks = (
+        (
+            await db.execute(
+                select(SubAgentTask)
+                .where(
+                    SubAgentTask.status == "pending",
+                    SubAgentTask.started_at.is_(None),
+                    SubAgentTask.metadata_json["parent_run_id"].astext == str(run_id),
+                )
+                .order_by(SubAgentTask.id)
+                .with_for_update(skip_locked=True)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not tasks:
+        return []
+    now = datetime.now(UTC)
+    for task in tasks:
+        execution = await get_execution_by_dedup_key(db, f"sub_agent_task:{task.id}")
+        if execution is not None and execution.state not in TERMINAL_EXECUTION_STATES:
+            await cancel_execution(db, execution_id=execution.id)
+        _mark_task_cancelled(task, now=now, error=PARENT_ENDED_TASK_REASON)
+        _record_no_turn_ledger(task)
+        await _update_task_delegation(db, str(task.id), "cancelled", error=PARENT_ENDED_TASK_REASON)
+    await db.commit()
+    ids = [str(task.id) for task in tasks]
+    logger.info("Run %s ended: cancelled %d background task(s) it spawned that never started: %s", run_id, len(ids), ids)
+    return ids
+
+
 async def lock_sub_agent_tasks_for_runs(
     db: AsyncSession, run_ids: Iterable[str | uuid.UUID]
 ) -> None:

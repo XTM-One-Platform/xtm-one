@@ -9477,6 +9477,21 @@ async def execute_assignment_run(
             run.result_summary,
             is_company=run.is_company_managed,
         )
+        # The background tasks the run spawned that never started have no one
+        # left to collect them: cancelled with their cause, so none runs for
+        # nobody. A running child keeps running and delivers as before.
+        if run.status in ("failed", "completed"):
+            try:
+                from app.services.sub_agent import cancel_unstarted_tasks_of_ended_run
+
+                async with async_session() as _children_db:
+                    await cancel_unstarted_tasks_of_ended_run(_children_db, run.id)
+            except Exception as exc:
+                logger.warning(
+                    "Run %s ended; its never-started background tasks were not cancelled: %s",
+                    run.id,
+                    format_exception_message(exc),
+                )
         # After the commit: a subscriber that reads the run sees how it ended.
         if run.status in ("failed", "completed"):
             # The frictions the run left with no disposition: counted on the

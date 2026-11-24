@@ -786,16 +786,26 @@ class AssignmentAdapter(OrchestrationAdapter):
         await _publish_run_failed(run, run.error)  # never raises
 
 
+#: The ``stop_reason`` of a run whose queue-wait bound passed before any worker
+#: started it: it ends ``skipped``, never ``failed``.
+EXPIRED_NOT_STARTED_STOP_REASON = "expired_not_started"
+
+
 async def _fail_expired_before_start(
     ctx: AdapterContext, run: AssignmentRun, execution: OrchestrationExecution
 ) -> None:
-    """Fail *run*, never started before its queue-wait bound, with ``deadline_exceeded_before_start``.
+    """End *run*, never started before its queue-wait bound: expired, not started.
 
-    The run record carries ``queue_wait_seconds`` and ``started: false`` under
-    ``trigger_context['queue']``. No ``run.failed`` is published.
+    Nothing ran and nothing broke, so the run is not failed: it ends
+    ``skipped`` with ``stop_reason`` :data:`EXPIRED_NOT_STARTED_STOP_REASON`,
+    the cause ``deadline_exceeded_before_start`` kept for the capacity
+    accounting. The run record carries ``queue_wait_seconds`` and
+    ``started: false`` under ``trigger_context['queue']``. No ``run.failed`` is
+    published.
     """
     waited = engine.queue_wait_seconds(execution)
-    run.status = "failed"
+    run.status = "skipped"
+    run.stop_reason = EXPIRED_NOT_STARTED_STOP_REASON
     run.error = engine.expired_before_start_message("The assignment run", execution)
     run.failure_cause = FailureCause.DEADLINE_EXCEEDED_BEFORE_START.value
     run.failure_determination = FailureDetermination.STRUCTURAL.value
@@ -806,7 +816,8 @@ async def _fail_expired_before_start(
     run.completed_at = datetime.now(UTC)
     await ctx.db.commit()
     logger.warning(
-        "Assignment run %s never started: its queue-wait bound passed after %s s; failed with %s, no run.failed",
+        "Assignment run %s never started: its queue-wait bound passed after %s s; expired, not started (%s), "
+        "no run.failed",
         run.id,
         waited,
         FailureCause.DEADLINE_EXCEEDED_BEFORE_START.value,
