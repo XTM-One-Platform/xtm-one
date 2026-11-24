@@ -2284,6 +2284,8 @@ def _node(collector: _Collector, paths: frozenset[str], files: Mapping[str, byte
                 argv = [manager, script] if manager == "yarn" else [manager, "run", script]
                 collector.add(directory, "node", kind, argv, f"{path} scripts.{script}")
                 used.add(script)
+                if kind == "format":
+                    _node_format_apply(collector, directory, path, manager, script, str(_mapping(scripts)[script]))
                 if kind == "unit":
                     _node_test_files(collector, directory, path, script, scripts[script], paths)
         _node_vitest_files(collector, directory, path, manager, manifest, paths)
@@ -2295,6 +2297,41 @@ def _node(collector: _Collector, paths: frozenset[str], files: Mapping[str, byte
         _runtime_first(collector, directory, manager, manifest, files)
     for directory, path, manager, scripts, used in named:
         _node_named_scripts(collector, directory, path, manager, scripts, used)
+
+
+def _node_format_apply(collector: _Collector, directory: str, path: str, manager: str, script: str, body: str) -> None:
+    """``node-format-apply``: the write mode of a ``format:check`` script that runs ``prettier --check``.
+
+    The format kind runs the script (``pnpm run format:check``), whose argv names no formatter, so
+    :func:`_apply_formatters` offered no write sibling and a red format check was fixed through a
+    hand-written node script (gap no-format-write-check). The script's own prettier call is run in write
+    mode through the manager's binary runner (:data:`_NODE_EXEC`: ``yarn prettier``, ``pnpm exec prettier``,
+    ``npx --no-install prettier``), on the changed files by default like every prettier write.
+    """
+    if _SHELL_CHARS & set(body):
+        return  # a chained or piped script: its formatter call is not the whole command
+    try:
+        tokens = tuple(shlex.split(body))
+    except ValueError:
+        return
+    written, tool = _write_argv(tokens)
+    runner = _NODE_EXEC.get(manager)
+    if tool != "prettier" or not runner or posixpath.basename(tokens[0]) != "prettier":
+        return
+    key = (directory, "node", "format-apply")
+    if not collector.add(
+        directory, "node", "format-apply", [*runner, *written], f"{path} scripts.{script} (write mode)"
+    ):
+        return
+    spec = collector.found[key]
+    collector.found[key] = replace(
+        spec,
+        report="lines",
+        report_path="",
+        description=f"write mode of scripts.{script} (prettier --write): rewrites the files it would refuse"[:200],
+        affected="files",
+        affected_by_default=True,
+    )
 
 
 #: A ``test:`` script that runs the unit suite under another name (``test:ci-unit``), not a watch or coverage run.

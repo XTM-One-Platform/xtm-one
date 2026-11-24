@@ -549,7 +549,14 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 )
                 item_id = ""
                 if decision.waits:
-                    item_id = await _park(case, parsed, recommendation, decision, await _currency(db, org_id))
+                    item_id = await _park(
+                        case,
+                        parsed,
+                        recommendation,
+                        decision,
+                        await _currency(db, org_id),
+                        await _gate_recipient(db),
+                    )
                 case_loop.record_gate(
                     db,
                     case,
@@ -632,12 +639,37 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             logger.info("Organization currency unavailable for the remediation ask", exc_info=True)
             return ""
 
-    async def _park(case: Any, parsed: list[Any], recommendation: str, decision: Any, currency: str = "") -> str:
-        """One work item for a person with the unified decision ask; the existing one when it is still open."""
+    async def _gate_recipient(db: AsyncSession) -> str | None:
+        """The CTEM decide groups a company agent's gate waits for (#1748); ``None``: today's routing."""
+        from sqlalchemy import select
+
+        from app.models.agent import Agent
+        from app.services import ctem_access
+
+        try:
+            company = (
+                await db.execute(select(Agent.is_company_managed).where(Agent.id == agent_id))
+            ).scalar_one_or_none()
+        except Exception:  # unreadable: today's routing, never a widening
+            logger.info("CTEM gate recipient: agent unreadable", exc_info=True)
+            return None
+        return await ctem_access.gate_recipient(db) if company is True else None
+
+    async def _park(
+        case: Any,
+        parsed: list[Any],
+        recommendation: str,
+        decision: Any,
+        currency: str = "",
+        recipient: str | None = None,
+    ) -> str:
+        """One work item for a person with the unified decision ask; the existing one when it is still open.
+
+        *recipient* addresses it to the CTEM decide groups (#1748); ``None`` keeps today's routing.
+        """
         from app.services import ctem_remediation_decision as decision_rules
         from app.services.company_managed_writes import agent_writer
         from app.services.work_item import create_work_item
-
         ask = decision_rules.decision_ask(
             case.title,
             parsed,
@@ -657,6 +689,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             payload={"ctem_case_id": str(case.id), "gate": decision_rules.GATE_KEY},
             needs_human=True,
             ask=ask,
+            recipient=recipient,
             dedupe=True,
             dedupe_by="key",
             writer=agent_writer(is_company_managed=False, agent_id=agent_id),
