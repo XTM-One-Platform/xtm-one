@@ -11618,6 +11618,7 @@
   "Under the map": "マップの下",
   "Beside the map": "マップの横",
   "{agent} claimed it and is working on it. If nothing moves, put it back in the queue.": "{agent} が引き受けて作業中です。進まない場合は、キューに戻してください。",
+  "{agent} claimed it and is working on it. If nothing moves, someone who can change it must put it back in the queue.": "{agent} が引き受けて作業中です。進まない場合は、変更できる人がキューに戻す必要があります。",
   "{agent} has an inbox, but its filters leave this item out, so nothing picks it up automatically.": "{agent} には受信箱がありますが、そのフィルターがこのアイテムを除外しているため、自動的には引き受けられません。",
   "A chat": "チャット",
   "A company-managed agent created it, so every member of the platform sees it. Only administrators and company-managed agents can change it.": "会社管理のエージェントが作成したため、プラットフォームの全メンバーに表示されます。変更できるのは管理者と会社管理のエージェントだけです。",
@@ -11686,10 +11687,12 @@
   "No automatic pickup": "自動引き受けなし",
   "No description.": "説明はありません。",
   "No owner agent is set, so nothing routes it to anyone. Complete it yourself, or ask an agent to take it over.": "担当エージェントが設定されていないため、誰にも割り当てられません。自分で完了するか、エージェントに引き継ぎを依頼してください。",
+  "No owner agent is set, so nothing routes it to anyone. Someone who can change it must complete it or assign an agent.": "担当エージェントが設定されていないため、誰にも割り当てられません。変更できる人が完了するか、エージェントを割り当てる必要があります。",
   "Nobody": "なし",
   "Not picked up: filtered out": "引き受けなし：フィルターで除外",
   "Not recorded: it was created before work items kept their origin.": "記録なし：ワークアイテムが作成元を記録する前に作成されました。",
   "Nothing acts on a finished item. Put it back in the queue to have it done again.": "完了したアイテムには何も対応しません。もう一度実施するにはキューに戻してください。",
+  "Nothing acts on a finished item. Someone who can change it must put it back in the queue to have it done again.": "完了したアイテムには何も対応しません。もう一度実施するには、変更できる人がキューに戻す必要があります。",
   "Nothing picks up a blocked item until someone puts it back in the queue.": "ブロックされたアイテムは、誰かがキューに戻すまで引き受けられません。",
   "On behalf of": "依頼者",
   "Owner agent": "担当エージェント",
@@ -21599,5 +21602,6 @@
   "{product} rejected your sign-in token, so open exposures there may be missing.": "{product} がサインイントークンを拒否しました。未対応のエクスポージャーが表示されていない可能性があります。",
   "{product} could not answer because the query was too large, so open exposures there may be missing.": "クエリが大きすぎるため {product} が応答できませんでした。未対応のエクスポージャーが表示されていない可能性があります。",
   "{product} did not answer in time, so open exposures there may be missing.": "{product} が時間内に応答しませんでした。未対応のエクスポージャーが表示されていない可能性があります。",
-  "No {product} connection could be used for this read, so open exposures there may be missing.": "この読み込みに使える {product} の接続がありませんでした。未対応のエクスポージャーが表示されていない可能性があります。"
+  "No {product} connection could be used for this read, so open exposures there may be missing.": "この読み込みに使える {product} の接続がありませんでした。未対応のエクスポージャーが表示されていない可能性があります。",
+  "Read-only for you.": "あなたには読み取り専用です。"
 }
