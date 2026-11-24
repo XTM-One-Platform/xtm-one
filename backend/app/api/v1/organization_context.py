@@ -2142,7 +2142,7 @@ class ImportSourcesResponse(BaseModel):
 
 
 class ImportRequest(BaseModel):
-    section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"]
+    section: Literal["assets", "asset_groups", "ai_systems", "software", "crown_jewels", "pirs"]
     source: Literal[
         "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
     ]
@@ -2209,7 +2209,7 @@ class ImportFilterOptionsResponse(BaseModel):
 
 @router.get("/import/options", response_model=ImportFilterOptionsResponse)
 async def list_organization_import_options(
-    section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"],
+    section: Literal["assets", "asset_groups", "ai_systems", "software", "crown_jewels", "pirs"],
     source: Literal[
         "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
     ],
@@ -2329,7 +2329,7 @@ async def apply_organization_import(
 
 class OrganizationSyncRequest(BaseModel):
     #: A section of the import, or ``all`` for the global schedule that runs every section sync.
-    section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs", "all"]
+    section: Literal["assets", "asset_groups", "ai_systems", "software", "crown_jewels", "pirs", "all"]
     source: Literal[
         "openaev",
         "opencti",

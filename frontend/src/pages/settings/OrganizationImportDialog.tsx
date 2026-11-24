@@ -91,7 +91,7 @@ const SECTION_LABELS = {
   assets: "Assets",
   asset_groups: "Asset groups",
   ai_systems: "AI systems",
-  tech_stack: "Software",
+  software: "Software",
   crown_jewels: "Primary assets",
   pirs: "PIRs",
 } as const satisfies Record<ImportSectionKey, string>;
@@ -101,7 +101,7 @@ const SECTION_HINTS = {
   assets: "Hosts, applications and services to protect.",
   asset_groups: "The groups your assets are organized into.",
   ai_systems: "The AI models and agents your teams test.",
-  tech_stack: "The security products already in place.",
+  software: "The security products already in place.",
   crown_jewels: "The assets your business cannot afford to lose.",
   pirs: "The intelligence needs your agents follow.",
 } as const satisfies Record<ImportSectionKey, string>;
@@ -110,7 +110,7 @@ const SECTION_GLYPHS: Record<ImportSectionKey, ElementType> = {
   assets: glyph("server"),
   asset_groups: glyph("network"),
   ai_systems: glyph("bot"),
-  tech_stack: glyph("shield-check"),
+  software: glyph("shield-check"),
   crown_jewels: glyph("key-round"),
   pirs: glyph("file-text"),
 };
@@ -447,7 +447,7 @@ const MAPPINGS: Record<string, { fields: ProfileField[]; rows: MappingRow[] }> =
       { to: "exposure", from: ["asset_internet_facing"], note: "aiExposure" },
     ],
   },
-  "tech_stack:openaev": { fields: ["product"], rows: [{ to: "product", from: ["security_platform_name"] }] },
+  "software:openaev": { fields: ["product"], rows: [{ to: "product", from: ["security_platform_name"] }] },
   "crown_jewels:opencrq": {
     fields: ["name", "criticality", "owner"],
     rows: [
@@ -478,7 +478,7 @@ interface Props {
  * The sections each surface imports into (#1367): the same split as the backend's SECTION_SCOPES. Primary assets are an
  * Inventory source since #1754 (their OpenCRQ sync runs with the asset sources), so Sources > Add source offers them.
  */
-export const INVENTORY_IMPORT_SECTIONS = ["assets", "asset_groups", "tech_stack", "ai_systems", "crown_jewels"] as const satisfies readonly ImportSectionKey[];
+export const INVENTORY_IMPORT_SECTIONS = ["assets", "asset_groups", "software", "ai_systems", "crown_jewels"] as const satisfies readonly ImportSectionKey[];
 export const PROFILE_IMPORT_SECTIONS = ["pirs"] as const satisfies readonly ImportSectionKey[];
 
 export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, quickSetupPending, sections: offered }: Props) {
