@@ -132,7 +132,7 @@ def test_the_screens_cases_source_read_answers_the_fixture_only_when_asked(monke
 
 def test_the_lab_recomputes_the_screens_cases_and_reads_them_back():
     functions = _functions()
-    helper = ast.unparse(functions["seed_ctem_screens"])
+    helper = ast.unparse(functions["seed_ctem_screens"]) + ast.unparse(functions["_ctem_screens_recompute"])
     for part in (
         "'POST', '/ctem-cases/recompute?vertical=cyber'",
         "/ctem-cases?vertical=cyber",
@@ -144,8 +144,9 @@ def test_the_lab_recomputes_the_screens_cases_and_reads_them_back():
     ):
         assert part in helper, part
     # #1529: the scope is declared before the recompute, else every issue is a watchlisted signal.
-    assert helper.index("seed_ctem_screens_scope(token)") < helper.index(
-        "'POST', '/ctem-cases/recompute?vertical=cyber'"
+    seeded_screens = ast.unparse(functions["seed_ctem_screens"])
+    assert seeded_screens.index("seed_ctem_screens_scope(token)") < seeded_screens.index(
+        "_ctem_screens_recompute(token)"
     )
     scope = ast.unparse(functions["seed_ctem_screens_scope"])
     for part in ("'PUT', '/organization-context'", "/organization-context/assets/records/batch", "SCREENS_ASSETS"):
@@ -154,6 +155,59 @@ def test_the_lab_recomputes_the_screens_cases_and_reads_them_back():
     assert "lab_switch('LAB_CTEM_SCREENS', LAB_CTEM_SCREENS_STATES) == 'on'" in seed
     assert "seeded.update(seed_ctem_screens(token, base))" in seed
     assert "skipped['CTEM cases and scored stages']" in seed
+
+
+def _recompute_helper(answers: list) -> tuple:
+    """``_ctem_screens_recompute`` alone, its ``api`` answering *answers* in order (an exception is raised)."""
+    calls: list[tuple[str, str]] = []
+    waits: list[float] = []
+
+    def api(method, path, token=None, body=None):
+        calls.append((method, path))
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    namespace = {"api": api, "log": lambda message: None, "time": types.SimpleNamespace(sleep=waits.append)}
+    tree = ast.parse(LAB.read_text(encoding="utf-8"))
+    wanted = {"CTEM_SCREENS_RECOMPUTE_WAIT", "CTEM_SCREENS_RECOMPUTE_ATTEMPTS", "_ctem_screens_recompute"}
+    nodes = [
+        node
+        for node in tree.body
+        if (isinstance(node, ast.FunctionDef) and node.name in wanted)
+        or (isinstance(node, ast.Assign) and {getattr(t, "id", "") for t in node.targets} & wanted)
+    ]
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), str(LAB), "exec"), namespace)  # noqa: S102 - lab.py's own code
+    return namespace["_ctem_screens_recompute"], calls, waits
+
+
+def test_the_screens_recompute_waits_out_a_taken_slot_and_recomputes_again():
+    """Gap lab-ctem-screens-cases-seed-flaky: a 429 before the scope existed left a twin lab with 0 cases."""
+    three = {"cases": [{"id": "a"}, {"id": "b"}, {"id": "c"}]}
+    recompute, calls, waits = _recompute_helper(
+        [RuntimeError("POST /ctem-cases/recompute: 429 One recompute per minute"), {"applied": True}, three]
+    )
+    assert recompute("t") == three
+    assert [m for m, _ in calls] == ["POST", "POST", "GET"]
+    assert waits == [62]
+
+    recompute, calls, waits = _recompute_helper([{"applied": True}, {"cases": []}, {"applied": True}, three])
+    assert recompute("t") == three
+    assert waits == [62]
+
+    recompute, calls, waits = _recompute_helper([{"applied": True}, three])
+    assert recompute("t") == three
+    assert waits == []
+
+    recompute, _, _ = _recompute_helper([{"applied": False, "missing": ["opencti"]}])
+    with pytest.raises(RuntimeError, match="recompute answered"):
+        recompute("t")
+
+    recompute, calls, waits = _recompute_helper([RuntimeError("x: 429 ")] * 3 + [{"cases": []}])
+    assert recompute("t") == {"cases": []}
+    assert waits == [62, 62]
+    assert calls[-1] == ("GET", "/ctem-cases?vertical=cyber&limit=50")
 
 
 def test_the_screens_scope_puts_every_fixable_issue_on_a_critical_asset(monkeypatch):
