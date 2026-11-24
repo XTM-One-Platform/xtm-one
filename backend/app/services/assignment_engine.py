@@ -3891,7 +3891,10 @@ async def _apply_approval_decisions(
         if outcomes is not None:
             # The human's verdict IS this call's gate outcome (FR-020); a
             # refusal no person gave is named for what refused it.
-            outcomes[call_id] = refusal[0] if refusal and refusal[0] else f"human_{verdict}"
+            if refusal and refusal[0]:
+                outcomes[call_id] = refusal[0]
+            else:
+                outcomes[call_id] = f"human_{verdict}"
 
         # An allow-list, so anything unrecognised refuses. This is the last
         # point before execution: a verdict the transports let through — a typo,
