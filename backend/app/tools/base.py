@@ -1387,6 +1387,10 @@ class ToolDefinition:
     #: are sent as links (:mod:`app.services.outbound_markers`). Empty: the
     #: body arguments of ``send_guard``.
     outbound_text: tuple[str, ...] = ()
+    #: The send tool delivers the ``[[FILE:id]]`` markers of its outbound
+    #: text itself (as file attachments): the outbound rewrite links every
+    #: other marker and leaves the file markers to the tool.
+    outbound_keeps_file_markers: bool = False
     #: A write tool's read-back: after it succeeds, the loop appends to its
     #: result the object as the system now shows it and the run's
     #: consistency anomalies (:mod:`app.tools.read_back`).

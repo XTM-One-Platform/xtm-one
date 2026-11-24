@@ -6,6 +6,7 @@ Synthetic tenant and IDs; Microsoft Graph is a fake recording every request.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
@@ -298,3 +299,60 @@ async def test_a_file_that_fails_makes_the_send_an_error():
 
     assert result.is_error
     assert "1 file marker(s) NOT sent" in result.content
+
+
+@pytest.mark.asyncio
+async def test_file_markers_survive_the_outbound_rewrite_of_an_agent_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The platform wraps every send tool with ``send_markers_as_links`` after
+    ``build_tools`` (``integration_tools``): the chat send keeps its file markers
+    through it and sends them as files; any other marker is still linked."""
+    from contextlib import asynccontextmanager
+
+    from app.integrations.providers.microsoft._chat_file_markers import wrap_chat_send_file_markers
+    from app.services.outbound_markers import send_markers_as_links
+
+    deck = "2d3e4f50-6172-4839-a4b5-c6d7e8f9a0b1"
+
+    async def link_files(_db: Any, text: str, _base: str, **_scope: Any) -> str:
+        return text.replace(f"[[FILE:{FILE_A}]]", "[a.pdf](https://api.example.com/f)")
+
+    async def link_decks(_db: Any, text: str, **_scope: Any) -> str:
+        return text.replace(f"[[PRESENTATION:{deck}]]", "[Deck](https://app.example.com/d)")
+
+    @asynccontextmanager
+    async def session() -> AsyncIterator[None]:
+        yield None
+
+    monkeypatch.setattr("app.channels.base.resolve_channel_file_markers", link_files)
+    monkeypatch.setattr("app.services.platform_chat_artifacts.markers_as_links", link_decks)
+    monkeypatch.setattr("app.core.database.async_session", session)
+
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def fake_send(**kwargs: Any) -> str:
+        calls.append(("message", kwargs))
+        return "Chat message sent. Message ID: m1."
+
+    async def fake_file(**kwargs: Any) -> str:
+        calls.append(("file", kwargs))
+        return f"File sent: {kwargs['file_id']}"
+
+    defs = build_tools(token="dummy", executor=CallableToolExecutor())
+    executor = CallableToolExecutor()
+    executor.register("send_microsoft_chat_message", fake_send)
+    executor.register("send_microsoft_chat_file", fake_file)
+    wrap_chat_send_file_markers(executor)
+    send_markers_as_links(defs, executor, {"conversation_id": TEAM, "user_id": TEAM})
+
+    result = await executor.execute_tool(
+        ToolCall(
+            id="c1",
+            name="send_microsoft_chat_message",
+            arguments={"chat_id": CHAT, "message": f"See [[PRESENTATION:{deck}]]\n[[FILE:{FILE_A}]]"},
+        )
+    )
+
+    assert not result.is_error, result.content
+    assert [kind for kind, _ in calls] == ["message", "file"]
+    assert calls[0][1]["message"] == "See [Deck](https://app.example.com/d)"
+    assert calls[1][1]["file_id"] == FILE_A
