@@ -2493,6 +2493,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#planhat-each-persons-own-account-and-permissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Planhat: each person's own account and permissions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#zendesk-remediation-and-incident-tickets" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4841,6 +4852,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#planhat-each-persons-own-account-and-permissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Planhat: each person's own account and permissions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#zendesk-remediation-and-incident-tickets" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5682,6 +5704,15 @@
 <li><strong>Namespaces and nodes.</strong> <code>list_kubernetes_namespaces</code> lists the namespaces; <code>list_kubernetes_nodes</code> lists the nodes, whether they are ready or cordoned, and their internal and external addresses.</li>
 <li>Every tool is a read: nothing is written to the cluster.</li>
 </ul>
+<h3 id="planhat-each-persons-own-account-and-permissions">Planhat: each person's own account and permissions</h3>
+<p>A Planhat integration connects in one of two ways, chosen with <code>Authentication mode</code> when you create it.</p>
+<ul>
+<li><strong>OAuth: each person's own account.</strong> A Planhat admin opens <code>App Center &gt; New App &gt; OAuth Client</code> in Planhat, sets its Redirect URL to the callback shown in the setup guide (<code>&lt;your XTM One address&gt;/api/oauth/callback</code>), and grants the data models the agents use. Paste the Client ID (<code>pk_...</code>) and the Client Secret (<code>sk_...</code>) in the integration, save, and click <code>Authorize</code>. The sign-in is Planhat's own, so it goes through your company's SSO when Planhat is set up with one.</li>
+<li><strong>What the agent can do.</strong> With OAuth, the agent reads and writes with the permissions both the OAuth Client and the person's Planhat role allow: a record the person cannot see in Planhat, the agent cannot see either.</li>
+<li><strong>Everyone with their own account.</strong> Share the integration (or make it company-managed) with <code>Don't share my connected account</code> on: each person then clicks <code>Connect your account</code> on the integration's page and the agent acts as them (see <a href="#shared-without-the-connected-account-each-person-authorizes-their-own">Shared without the connected account</a>).</li>
+<li><strong>How long a connection lasts.</strong> The access token is renewed every hour, automatically. The renewal itself expires after a year: the person then authorizes again.</li>
+<li><strong>API key instead.</strong> A Planhat Private App's API Access Token: one technical account for everyone, with the Private App's permissions whatever the person, and every action recorded in Planhat as the Private App's.</li>
+</ul>
 <h3 id="zendesk-remediation-and-incident-tickets">Zendesk: remediation and incident tickets</h3>
 <p>A Zendesk integration lets an agent open and follow tickets in the help desk the remediation teams already work from.</p>
 <ul>
@@ -5977,7 +6008,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 24, 2026 12:01:51 UTC"><span class="timeago" datetime="2026-11-24T12:01:51+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 24, 2026 12:01:51 UTC">2026-11-24</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 24, 2026 12:51:45 UTC"><span class="timeago" datetime="2026-11-24T12:51:45+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 24, 2026 12:51:45 UTC">2026-11-24</span>
   </span>
 
     
@@ -6005,14 +6036,14 @@
     
     <nav>
       
-        <a href="https://github.com/SamuelHassine" class="md-author" title="@SamuelHassine">
-          
-          <img src="https://avatars.githubusercontent.com/u/1334279?v=4&amp;size=72" alt="SamuelHassine">
-        </a>
-      
         <a href="https://github.com/AreDee-Bangs" class="md-author" title="@AreDee-Bangs">
           
           <img src="https://avatars.githubusercontent.com/u/11183028?v=4&amp;size=72" alt="AreDee-Bangs">
+        </a>
+      
+        <a href="https://github.com/SamuelHassine" class="md-author" title="@SamuelHassine">
+          
+          <img src="https://avatars.githubusercontent.com/u/1334279?v=4&amp;size=72" alt="SamuelHassine">
         </a>
       
         <a href="https://github.com/Letullier-Thibert" class="md-author" title="@Letullier-Thibert">
