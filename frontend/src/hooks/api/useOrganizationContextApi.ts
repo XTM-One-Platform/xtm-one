@@ -47,7 +47,6 @@ export interface OrganizationProfile {
   size: "" | "1-50" | "51-250" | "251-1000" | "1001-5000" | "5001-20000" | "20000+";
   crown_jewels: CrownJewel[];
   tech_stack: TechStackEntry[];
-  // No `ai_systems` list since #1501: the AI systems are the assets of category `ai_target`.
   /** What the organization ships, with its source repositories (#1432); absent when none is declared. */
   shipped_products?: { product: string; vendor: string; cpe: string; repositories: string[] }[];
   pir_ids: string[];
@@ -405,7 +404,7 @@ export function useDraftOrganizationContext() {
 }
 
 /** A profile section the platform import fills (#11780); one run imports one section. */
-export type ImportSectionKey = "assets" | "asset_groups" | "ai_systems" | "software" | "crown_jewels" | "pirs";
+export type ImportSectionKey = "assets" | "asset_groups" | "software" | "crown_jewels" | "pirs";
 /** The Filigran platforms, then the endpoint sources read through a Microsoft integration (#1251). */
 export type ImportSourceKey =
   | "openaev"
