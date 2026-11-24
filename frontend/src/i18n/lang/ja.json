@@ -20533,7 +20533,7 @@
   "The loop ranks every signal against your primary assets and software, and opens tickets in your ticketing project.": "ループは各シグナルを主要資産とソフトウェアに照らして順位付けし、チケットプロジェクトにチケットを作成します。",
   "The loop works with the modules connected to this platform. It runs with any of them and says what it cannot do without the others.": "ループはこのプラットフォームに接続されたモジュールで動作します。どのモジュールでも動作し、他がない場合にできないことを示します。",
   "Bind the tools the loop's agents act through. A slot left empty only limits what they can do, nothing breaks.": "ループのエージェントが使うツールをバインドします。空のスロットはできることを制限するだけで、何も壊れません。",
-  "Choose how much the fleet does without asking a person. The table under the levels shows, action by action, what waits at the level picked; you can change it later on the fleet page.": "フリートが人に確認せずに実行する範囲を選びます。レベルの下の表に、選んだレベルで承認待ちになる操作が操作ごとに表示されます。後でフリートのページから変更できます。",
+  "Choose which CTEM gates wait for a person. A gate that waits is one decision between two steps of a case, never a pause inside a run; you can change it later on the fleet page.": "人を待つ CTEM ゲートを選択します。待つゲートはケースの 2 つのステップ間の 1 つの判断であり、実行中の一時停止ではありません。後でフリートページで変更できます。",
   "Before anything runs: what the CTEM loop fleet switches on and how many runs a month to expect.": "実行前に、CTEM ループフリートが有効にするものと月あたりの想定実行回数を確認します。",
   "One switch turns on the CTEM loop fleet's automations. They run as you. Nothing ran before this step.": "1 つのスイッチで CTEM ループフリートの自動化を有効にします。あなたとして実行されます。この手順の前には何も実行されていません。",
   "Without OpenCTI: no threat or vulnerability signals from intelligence; cases start only from other sources.": "OpenCTI がない場合: インテリジェンスからの脅威・脆弱性シグナルはなく、ケースは他のソースからのみ開始されます。",
@@ -21570,8 +21570,14 @@
   "This asset was entered by hand: it leaves the inventory and its asset groups.": "このアセットは手動で入力されました。インベントリとそのアセットグループから削除されます。",
   "This asset group was entered by hand: it is deleted and its assets stay in the inventory without it.": "このアセットグループは手動で入力されました。削除され、そのアセットはグループなしでインベントリに残ります。",
   "This software was typed by hand: it is deleted and leaves the assets it was attached to.": "このソフトウェアは手動で入力されました。削除され、関連付けられていたアセットから外れます。",
-  "{product} rejected your sign-in token, so open exposures there may be missing.": "{product} がサインイントークンを拒否しました。未対応のエクスポージャーが表示されていない可能性があります。",
-  "{product} could not answer because the query was too large, so open exposures there may be missing.": "クエリが大きすぎるため {product} が応答できませんでした。未対応のエクスポージャーが表示されていない可能性があります。",
-  "{product} did not answer in time, so open exposures there may be missing.": "{product} が時間内に応答しませんでした。未対応のエクスポージャーが表示されていない可能性があります。",
-  "No {product} connection could be used for this read, so open exposures there may be missing.": "この読み込みに使える {product} の接続がありませんでした。未対応のエクスポージャーが表示されていない可能性があります。"
+  "Recommended gates": "推奨ゲート",
+  "Every other gate runs and the case records it.": "その他のゲートは実行され、ケースに記録されます。",
+  "{count, plural, =0 {No gate waits for a decision.} one {This gate waits for a decision:} other {These # gates wait for a decision:}}": "{count, plural, =0 {判断を待つゲートはありません。} other {次の#件のゲートが判断を待ちます:}}",
+  "Add gates": "ゲートを追加",
+  "Nothing waits for a person. Every action is still logged and reported in Operations.": "人を待つ操作はありません。すべての操作は引き続き記録され、運用に報告されます。",
+  "The level the CTEM loop is seeded with. Every gate that runs is recorded on the case.": "CTEM ループの初期設定レベルです。実行されたゲートはすべてケースに記録されます。",
+  "Pick the level yourself: the table shows what waits at each one. Per-action settings stay on the fleet page.": "レベルを自分で選択します。表に各レベルで待つ操作が表示されます。操作ごとの設定はフリートページにあります。",
+  "Gates set to {choice}": "ゲートを {choice} に設定しました",
+  "Set the gates to {choice}?": "ゲートを {choice} に設定しますか?",
+  "Set to {choice}": "{choice} に設定"
 }
