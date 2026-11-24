@@ -116,10 +116,11 @@ Above the form, a box lists the fields not filled yet: the same list agents repo
 
 - `Organization name`, `Organization size` (a band of employees), `Sector` and `Sub-sector`.
 - `Regions of operation`: two-letter country codes, separated by commas (`FR, DE, US`).
-- `OpenCTI PIR ids`: the ids of your priority intelligence requirements in OpenCTI, separated by commas.
 - `Annual loss threshold` and `Approval threshold`: your risk appetite, as amounts.
 - `Currency`: a three-letter currency code (`EUR`), and `Loaded hourly rate`: the cost of an hour of your team's work.
-- `Ticketing integration` and `Ticketing project`: where findings should become tickets (for example `jira` and `SEC`). The target counts as filled only when both are set.
+- `Ticketing integration` and `Ticketing project`: where CTEM cases become tickets (for example `jira` and `SEC`). The target counts as filled only when both are set. Both sit at the top of the **CTEM case sync** card, before the rules that say how a case opens, updates and closes its ticket.
+
+The **Priority intelligence requirements (PIRs)** are not on this page: pick them on **CTEM > Inventory > Exposure policy > Prioritization policy**, next to the two PIR score thresholds (`PIR score minimum: vulnerabilities` and `PIR score minimum: threat activity`). The list is picked from the PIRs of your connected OpenCTI: it filters the two PIR playbooks and raises the context score of a threat or a vulnerability flagged in one. Select `Edit` on the card, change the list, then `Save`.
 
 A value that is not valid (a region that is not a country code, an amount that is not a number) is refused, and the message names the field.
 

@@ -15555,8 +15555,6 @@
   "Who you are, where you operate and how large you are.": "Who you are, where you operate and how large you are.",
   "Risk appetite and costs": "Risk appetite and costs",
   "The amounts agents weigh a risk and a cost against.": "The amounts agents weigh a risk and a cost against.",
-  "Ticketing and intelligence": "Ticketing and intelligence",
-  "Where agents open tickets and which OpenCTI PIRs they follow.": "Where agents open tickets and which OpenCTI PIRs they follow.",
   "What the business cannot lose, ranked by criticality.": "What the business cannot lose, ranked by criticality.",
   "The products you run, matched against vulnerabilities.": "The products you run, matched against vulnerabilities.",
   "The AI systems the AI security fleet tests.": "The AI systems the AI security fleet tests.",

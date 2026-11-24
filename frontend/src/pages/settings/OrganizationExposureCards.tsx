@@ -289,6 +289,11 @@ interface Props {
   cards?: readonly ExposureSection[];
   /** A reader's view (#1540 UX r1 B2): no sentence points at an Edit the reader does not have. */
   readOnly?: boolean;
+  /**
+   * The PIR list of the Prioritization policy (#1889), drawn by the page that reads the OpenCTI PIRs:
+   * the field in edit or its read tile, on the form the card shows.
+   */
+  pirList?: (editing: boolean, form: ProfileForm, update: (patch: Partial<ProfileForm>) => void) => ReactNode;
 }
 
 /** The cards of this component, by their profile field. */
@@ -392,6 +397,7 @@ export function OrganizationExposureCards({
   saveBar = () => null,
   cards = EXPOSURE_SECTIONS,
   readOnly = false,
+  pirList,
 }: Props) {
   const { t_i18n } = useFormatter();
   // The policy thresholds are in edit with the whole form, or alone from the card's own Edit (#1540 UX r1 B2).
@@ -1010,6 +1016,7 @@ export function OrganizationExposureCards({
                 t_i18n("0 to 100. An intrusion set, campaign or malware flagged in a PIR starts a fleet run at or above this score. Default: 75."),
                 t_i18n("The live OpenCTI PIR score of an intrusion set, campaign or malware, a whole number from 0 to 100. Example: 80: a campaign flagged at 85 starts a run, one at 75 does not. Read by the PIR playbook fleet runs (CTEM-08 trigger rule). Empty: the default, 75."),
               )}
+              {pirList?.(true, current, update)}
               <SettingsField
                 id={`${fieldId}-min_crown_jewel_criticality`}
                 label={t_i18n("Minimum primary asset criticality")}
@@ -1054,6 +1061,8 @@ export function OrganizationExposureCards({
             />
             <SettingsReadField label={t_i18n("Known exploited vulnerabilities always in")} value={policy.kev_always_in ? t_i18n("Yes") : t_i18n("No")} />
             <SettingsReadField label={t_i18n("Internet exposure required")} value={policy.internet_exposure_required ? t_i18n("Yes") : t_i18n("No")} />
+            {/* The PIR list takes the whole row (wide tile), so the three-column grid keeps its rows. */}
+            {pirList?.(false, current, update)}
           </SettingsReadGrid>
         )}
         {!policyEditing && !policySet && (

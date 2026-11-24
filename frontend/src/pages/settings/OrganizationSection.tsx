@@ -18,7 +18,7 @@
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { landOnCard } from "@/lib/land-on-card";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Bot, Building2, Coins, Import, Link2, Lock, MessageSquare, Package, Pencil, Plus, RefreshCw, Server, Shield, Sparkles, Ticket } from "lucide-react";
+import { Bot, Building2, Coins, Import, Link2, Lock, MessageSquare, Package, Pencil, Plus, RefreshCw, Server, Shield, Sparkles } from "lucide-react";
 import { TagInput } from "@/components/ui/tag-input";
 
 import { Badge } from "@/components/ui/badge";
@@ -39,7 +39,6 @@ import {
   type SettingsCardFold,
   SettingsField,
   SettingsFieldGrid,
-  SettingsGroupTitle,
   SettingsSaveBar,
   settingsFieldHintId,
   settingsFieldLabelId,
@@ -448,7 +447,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       ? edit.form.prioritization_policy
         ? { ...base, prioritization_policy: { ...(base.prioritization_policy ?? edit.form.prioritization_policy), accepted_risks: edit.form.prioritization_policy.accepted_risks } }
         : base
-      : { ...base, [edit.card]: edit.form[edit.card] };
+      : edit.card === "prioritization_policy"
+        ? // The PIR list is edited on the Prioritization policy card (#1889).
+          { ...base, prioritization_policy: edit.form.prioritization_policy, pir_ids: edit.form.pir_ids, pir_names: edit.form.pir_names }
+        : { ...base, [edit.card]: edit.form[edit.card] };
   const exposureDirty = (edit: { card: ExposureCard; form: ProfileForm }) =>
     saved !== null && JSON.stringify(exposureSaved(edit, saved)) !== JSON.stringify(saved);
   const saveExposure = () => {
@@ -459,7 +461,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       setCheckExposure(true);
       return;
     }
-    const parsed = fromForm(next);
+    // The names OpenCTI gives now are saved with the PIRs, as the whole form's Save does (#9615).
+    const live = Object.fromEntries((pirs.data?.pirs ?? []).map((pir) => [pir.id, pir.name]));
+    const parsed = fromForm({ ...next, pir_names: { ...(next.pir_names ?? {}), ...live } });
     if ("invalid" in parsed) return;
     const field = exposureEdit.card === "accepted_risks" ? "prioritization_policy" : exposureEdit.card;
     const options = {
@@ -475,7 +479,11 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     };
     // The asset and group tables are rows: they keep their own write; every other card patches its field alone.
     if (field === "assets_exposure" || field === "asset_groups") save.mutate({ profile: parsed.profile as OrganizationProfile, source: "form" }, options);
-    else patch.mutate({ fields: { [field]: parsed.profile[field] }, based_on_version: data.version ?? null }, options);
+    else {
+      // The Prioritization policy carries the PIR list with it (#1889).
+      const withPirs = field === "prioritization_policy" ? { pir_ids: parsed.profile.pir_ids, pir_names: parsed.profile.pir_names } : {};
+      patch.mutate({ fields: { [field]: parsed.profile[field], ...withPirs }, based_on_version: data.version ?? null }, options);
+    }
   };
   // One list card in edit (#12256): the other cards stay as they read; the form is not opened.
   const startListEdit = (key: ListKey) => {
@@ -517,11 +525,19 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     setRefusedIssue(null);
     setExposureEdit((prev) => (prev ? { ...prev, form: { ...prev.form, ...patch } } : prev));
   };
-  // A PIR OpenCTI no longer has, taken out from the read view: the form opens without it, Save writes it.
+  // A PIR OpenCTI no longer has, taken out from the read view: the Prioritization policy card opens in
+  // edit without it (#1889), Save writes it.
   const removePir = (id: string) => {
     if (!data) return;
-    const base = form ?? toForm(data.profile);
-    setForm({ ...base, pir_ids: base.pir_ids.filter((pir) => pir !== id) });
+    if (form) {
+      setForm({ ...form, pir_ids: form.pir_ids.filter((pir) => pir !== id) });
+      return;
+    }
+    if (cardOpen) return;
+    const base = toForm(data.profile);
+    setCheckExposure(false);
+    setRefusedIssue(null);
+    setExposureEdit({ card: "prioritization_policy", form: { ...base, pir_ids: base.pir_ids.filter((pir) => pir !== id) } });
   };
   const stopEditing = () => {
     setFocusAfter({ targets: [byTestId("settings.organization.edit")] });
@@ -1344,12 +1360,88 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // The fields not filled that Settings still draws (#1690): the Business, Technology and Exposure fields are
   // reported on CTEM > Inventory, and Copilot mode reports none (Sam: "we don't care").
   const missing = xtmOne ? (data?.missing_fields ?? []).filter((path) => { const owner = tabOfField(path); return owner !== null && !isInventoryTab(owner); }) : [];
+  /**
+   * The PIR list on the Prioritization policy card (#1889): it filters the PIR playbooks beside the two PIR
+   * score thresholds. Read mode: the names as wrapped chips linked to OpenCTI (#9615); edit: the picker.
+   */
+  const pirList = (pirEditing: boolean, pirForm: ProfileForm, pirUpdate: (patch: Partial<ProfileForm>) => void) =>
+    !pirEditing ? (
+      <SettingsReadField
+        label={t_i18n("Priority intelligence requirements (PIRs)")}
+        info={help("pir_ids").info}
+        wide
+        value={
+          <OrganizationPirsView
+            pirs={savedPirs}
+            list={pirs.data}
+            unreadable={pirsUnreadable}
+            retrying={pirs.isFetching}
+            onRetry={() => void pirs.refetch()}
+            onRemove={removePir}
+          />
+        }
+      />
+    ) : (
+      <SettingsField
+        id={`${fieldId}-pir_ids`}
+        label={t_i18n("Priority intelligence requirements (PIRs)")}
+        wide
+        {...help("pir_ids")}
+        helper={
+          pirs.data?.unavailable === "not_connected"
+            ? t_i18n("The PIRs of OpenCTI could not be listed: the saved ones are kept.")
+            : t_i18n(FIELD_HELP.pir_ids.helper)
+        }
+      >
+        <div className="flex flex-col gap-1.5">
+          {pirsLoading ? (
+            // The picker waits for the names: its chips would otherwise read a placeholder (#11589).
+            <div
+              className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-sm border border-elevation-subtle-soft px-2 py-1.5"
+              role="status"
+              aria-busy="true"
+              aria-label={t_i18n("Loading the PIR names")}
+              data-testid="settings.organization.pirs-loading"
+            >
+              {savedPirs.slice(0, 8).map((pir) => (
+                <Skeleton key={pir.id} className="h-6 w-32 rounded-sm" />
+              ))}
+            </div>
+          ) : (
+            <MultiSelect
+              id={`${fieldId}-pir_ids`}
+              aria-label={t_i18n("Priority intelligence requirements (PIRs)")}
+              aria-describedby={settingsFieldHintId(`${fieldId}-pir_ids`)}
+              options={pirOptions}
+              selected={pirForm.pir_ids}
+              onToggle={(id) => pirUpdate({ pir_ids: pirForm.pir_ids.includes(id) ? pirForm.pir_ids.filter((p) => p !== id) : [...pirForm.pir_ids, id] })}
+              placeholder={t_i18n("Pick the PIRs")}
+              searchPlaceholder={t_i18n("Search a PIR")}
+              emptyOptionsLabel={pirsEmptyLabel}
+              noMatchLabel={t_i18n("No matching PIR")}
+            />
+          )}
+          {/* Edit mode says it too, with Retry, as read mode does (#11589). */}
+          {pirsUnreadable && <PirsUnreadable retrying={pirs.isFetching} onRetry={() => void pirs.refetch()} />}
+          {/* The picker's chips cut a long label at 250 px and take no title (library Chip):
+              a PIR OpenCTI no longer has is also written out whole here (UX round 1 B2). */}
+          {missingPirs.length > 0 && (
+            <ul className="flex flex-col gap-0.5 content-compact text-default-secondary" data-testid="settings.organization.pirs-missing" aria-label={t_i18n("PIR no longer in OpenCTI")}>
+              {missingPirs.map((pir) => (
+                <li key={pir.id} className="break-words">{pirText(pir)}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </SettingsField>
+    );
   /** The exposure cards a tab draws (#12329): the exposure tab three, the knowledge tab one. */
   const exposureCards = (cards: readonly (typeof EXPOSURE_SECTIONS)[number][]) =>
     current && (
       <OrganizationExposureCards
         cards={cards}
         readOnly={reader}
+        pirList={pirList}
         current={!editing && exposureEdit ? exposureEdit.form : current}
         editing={editing}
         fieldId={fieldId}
@@ -1699,16 +1791,23 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             )}
           </SettingsCard>
 
+          {/* One section for the ticketing system and how CTEM cases sync with it (#1889, #917): the PIR list
+              moved to the Prioritization policy of CTEM > Inventory. Part of the profile form, read by the next sync. */}
           <SettingsCard
             id={`${fieldId}-ticketing`}
             className={SECTION_BAR_ANCHOR_CLASS}
             data-anchor="card"
             tabIndex={-1}
-            icon={Ticket}
-            title={t_i18n("Ticketing and intelligence")}
-            description={t_i18n("Where agents open tickets and which OpenCTI PIRs they follow.")}
+            icon={RefreshCw}
+            title={t_i18n("CTEM case sync")}
+            description={
+              current.ticketing.integration
+                ? t_i18n("How CTEM cases open, update and close their tickets. A change applies to the next sync.")
+                : t_i18n("No ticketing connected: cases stay in XTM One. Set the ticketing integration above to sync them.")
+            }
+            data-testid="settings.organization.ticketing-sync-group"
           >
-            <OrganizationUsedBy fields={["ticketing", "pir_ids"]} readers={usedBy} agents={usedByAgents} />
+            <div className="space-y-4">
             {!editing ? (
               <SettingsReadGrid data-testid="settings.organization.ticketing">
                 <SettingsReadField
@@ -1720,22 +1819,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                   label={t_i18n("Ticketing project")}
                   info={help("ticketing_project").info}
                   value={current.ticketing.project ? (projectOptions.find((p) => p.id === current.ticketing.project)?.name ?? current.ticketing.project) : ""}
-                />
-                <SettingsReadField
-                  label={t_i18n("Priority intelligence requirements (PIRs)")}
-                  info={help("pir_ids").info}
-                  wide
-                  value={
-                    // Read mode (#9615): the names as wrapped chips linked to OpenCTI, no search, no remove cross, no chevron.
-                    <OrganizationPirsView
-                      pirs={savedPirs}
-                      list={pirs.data}
-                      unreadable={pirsUnreadable}
-                      retrying={pirs.isFetching}
-                      onRetry={() => void pirs.refetch()}
-                      onRemove={removePir}
-                    />
-                  }
                 />
               </SettingsReadGrid>
             ) : (
@@ -1786,68 +1869,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                   />
                 )}
               </SettingsField>
-              <SettingsField
-                id={`${fieldId}-pir_ids`}
-                label={t_i18n("Priority intelligence requirements (PIRs)")}
-                wide
-                {...help("pir_ids")}
-                helper={
-                  pirs.data?.unavailable === "not_connected"
-                    ? t_i18n("The PIRs of OpenCTI could not be listed: the saved ones are kept.")
-                    : t_i18n(FIELD_HELP.pir_ids.helper)
-                }
-              >
-                <div className="flex flex-col gap-1.5">
-                  {pirsLoading ? (
-                    // The picker waits for the names: its chips would otherwise read a placeholder (#11589).
-                    <div
-                      className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-sm border border-elevation-subtle-soft px-2 py-1.5"
-                      role="status"
-                      aria-busy="true"
-                      aria-label={t_i18n("Loading the PIR names")}
-                      data-testid="settings.organization.pirs-loading"
-                    >
-                      {savedPirs.slice(0, 8).map((pir) => (
-                        <Skeleton key={pir.id} className="h-6 w-32 rounded-sm" />
-                      ))}
-                    </div>
-                  ) : (
-                    <MultiSelect
-                      id={`${fieldId}-pir_ids`}
-                      aria-label={t_i18n("Priority intelligence requirements (PIRs)")}
-                      aria-describedby={settingsFieldHintId(`${fieldId}-pir_ids`)}
-                      options={pirOptions}
-                      selected={current.pir_ids}
-                      onToggle={(id) => update({ pir_ids: current.pir_ids.includes(id) ? current.pir_ids.filter((p) => p !== id) : [...current.pir_ids, id] })}
-                      placeholder={t_i18n("Pick the PIRs")}
-                      searchPlaceholder={t_i18n("Search a PIR")}
-                      emptyOptionsLabel={pirsEmptyLabel}
-                      noMatchLabel={t_i18n("No matching PIR")}
-                    />
-                  )}
-                  {/* Edit mode says it too, with Retry, as read mode does (#11589). */}
-                  {pirsUnreadable && <PirsUnreadable retrying={pirs.isFetching} onRetry={() => void pirs.refetch()} />}
-                  {/* The picker's chips cut a long label at 250 px and take no title (library Chip):
-                      a PIR OpenCTI no longer has is also written out whole here (UX round 1 B2). */}
-                  {missingPirs.length > 0 && (
-                    <ul className="flex flex-col gap-0.5 content-compact text-default-secondary" data-testid="settings.organization.pirs-missing" aria-label={t_i18n("PIR no longer in OpenCTI")}>
-                      {missingPirs.map((pir) => (
-                        <li key={pir.id} className="break-words">{pirText(pir)}</li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </SettingsField>
             </SettingsFieldGrid>
             )}
-            {/* How CTEM cases sync with the target (#917): part of the profile form, read by the next sync. */}
-            <div className="space-y-3 border-t border-elevation-subtle-soft pt-4" data-testid="settings.organization.ticketing-sync-group">
-              <SettingsGroupTitle icon={RefreshCw}>{t_i18n("CTEM case sync")}</SettingsGroupTitle>
-              <p className="content-compact text-default-secondary">
-                {current.ticketing.integration
-                  ? t_i18n("How CTEM cases open, update and close their tickets. A change applies to the next sync.")
-                  : t_i18n("No ticketing connected: cases stay in XTM One. Set the ticketing integration above to sync them.")}
-              </p>
               <OrganizationTicketingSync
                 idPrefix={`${fieldId}-ticketing-sync`}
                 sync={current.ticketing.sync}

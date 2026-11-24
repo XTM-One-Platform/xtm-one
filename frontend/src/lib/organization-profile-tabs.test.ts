@@ -48,6 +48,9 @@ describe("organization profile tabs", () => {
     expect(tabOfField("risk_appetite.approval_threshold")).toBe("identity");
     expect(tabOfField("approval_threshold")).toBe("identity");
     expect(tabOfField("ticketing.project")).toBe("identity");
+    // The PIR list moved to the Prioritization policy of CTEM > Inventory (#1889).
+    expect(tabOfField("pir_ids")).toBe("exposure");
+    expect(profileFieldHref("pir_ids")).toBe("/ctem/inventory/exposure?card=prioritization_policy");
     expect(tabOfField("accepted_risks")).toBe("exposure");
     expect(tabOfField("enterprise_knowledge")).toBe("knowledge");
     expect(tabOfField("unknown_field")).toBeNull();
@@ -99,7 +102,7 @@ describe("organization profile tabs", () => {
 
   it("names the tabs a change touches and groups items by tab in tab order", () => {
     expect([...changedTabs({ name: "a", tech_stack: [] }, { name: "a", tech_stack: [{ product: "x" }] })]).toEqual(["technology"]);
-    expect(tabsOfFields(["tech_stack", "pir_ids", "nope"])).toEqual(["identity", "technology"]);
+    expect(tabsOfFields(["tech_stack", "pir_ids", "size", "nope"])).toEqual(["identity", "technology", "exposure"]);
     const groups = groupByTab([{ f: "tech_stack" }, { f: "size" }, { f: "nope" }], (item) => item.f);
     expect(groups.map((group) => group.tab)).toEqual(["identity", "technology", null]);
   });
