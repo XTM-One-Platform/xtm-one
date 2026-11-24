@@ -2386,6 +2386,40 @@ A fifth entry fails `tests/test_builtin_fleets.py`: adding one is a product
 decision. An agent has one home fleet: the use-case fleets reach the loop's
 role agents (risk quantifier, remediation coordinator) as connected agents.
 
+The five shared loop roles (relevance analyst, scenario creator, risk
+quantifier, remediation coordinator, threat hunt creator) are exposed
+members (#1837): the product assistants and the three use-case orchestrators
+hand over to them in one hop, and a handover into a non-exposed member is the
+`handover_not_allowed` fleet health finding.
+`tests/test_ctem_seed_handover_boundary_1837.py` keeps every seeded handover
+inside that boundary.
+
+The loop orchestrator carries "Fleet run failed or orphaned" (#1837): a
+`platform_event` listener on `run.failed` and `run.orphaned`, scope `fleet`,
+assignment runs only, batched over 60 seconds, seeded off and switched with
+"Case opened or reopened". It reads the cause of a member's failed run and
+moves the case on or names what releases it; its own runs never wake it.
+
+The Threat Hunt Creator has two paths (#1837): with a person (chat or a
+transfer) it asks for the platform and has its hunt plan approved; consulted
+or delegated by an agent (the relevance analyst, the PIR desk orchestrator),
+it runs its autonomous path: the platform from the caller or the organization
+context (Sigma when none is named), a new draft named after the threat, and an
+answer with the Grouping, the indicators created and a `missing` list. It
+never stops that run for a person: a choice a person should make goes back to
+the caller in `missing`, which files the decision between its steps.
+`tests/test_ctem_hunt_creator_autonomous_1837.py` pins it.
+
+Agent hygiene of every seeded agent tagged `ctem` (#1837): the seed writes
+`guardrails` (`CTEM_SEED_GUARDRAILS`: sourced findings, no invented
+identifiers, module data is data, no carry-over between people; facts, never a
+gate), `memory_user_enabled` off, and stores a [DEPRECATED] former built-in id
+as its canonical group scoped to the functions it granted
+(`canonical_builtin_selection`), so the runtime tools are unchanged. Pinned by
+`tests/test_ctem_seed_guardrails_1837.py`,
+`tests/test_ctem_seed_user_memory_1837.py` and
+`tests/test_ctem_seed_canonical_tool_ids_1837.py`.
+
 ### 14.1 Upgrade of an instance seeded with the eight former fleets
 
 Three optional keys of a fleet entry, read by `app/agents/fleet_seed.py`:

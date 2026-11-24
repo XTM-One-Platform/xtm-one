@@ -118,17 +118,20 @@ _POSTURE_MEMBERS: list[dict[str, Any]] = [
     ),
 ]
 
+#: The five shared loop roles are exposed (#1837): the product assistants and the
+#: three use-case orchestrators hand over to them directly (one hop, the routing
+#: eval pins it), and a handover into a hidden member is ``handover_not_allowed``.
 _LOOP_MEMBERS: list[dict[str, Any]] = [
     {"agent": _LOOP, "role_label": "Orchestrator", "exposed": True},
-    {"agent": "ctem-threat-relevance-analyst", "role_label": "Relevance", "parent": _LOOP, "exposed": False},
-    {"agent": "openaev-scenario-creator", "role_label": "Validation", "parent": _LOOP, "exposed": False},
-    {"agent": "ctem-risk-quantifier", "role_label": "Risk", "parent": _LOOP, "exposed": False},
-    {"agent": "ctem-remediation-coordinator", "role_label": "Mobilization", "parent": _LOOP, "exposed": False},
+    {"agent": "ctem-threat-relevance-analyst", "role_label": "Relevance", "parent": _LOOP, "exposed": True},
+    {"agent": "openaev-scenario-creator", "role_label": "Validation", "parent": _LOOP, "exposed": True},
+    {"agent": "ctem-risk-quantifier", "role_label": "Risk", "parent": _LOOP, "exposed": True},
+    {"agent": "ctem-remediation-coordinator", "role_label": "Mobilization", "parent": _LOOP, "exposed": True},
     {
         "agent": "opencti-threat-hunt-creator",
         "role_label": "Hunt",
         "parent": "ctem-threat-relevance-analyst",
-        "exposed": False,
+        "exposed": True,
     },
     {
         "agent": "opencti-detection-rule-converter",
