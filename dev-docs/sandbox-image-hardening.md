@@ -29,8 +29,10 @@ request changes citing the specific rule number.
    `sandbox-images.json`) name theirs in `apt.sandbox.dev.runtime.txt` (`git`)
    and in the `nodejs-dev` stage (a bare CPython reachable as `python`, without
    pip: the platform's workspace helper, `sandbox_workspace/remote.py`, runs
-   in every command container). `python-dev` names a third: the data stores
-   of the backend's integration tests under `/opt/stores` (a PostgreSQL 16
+   in every command container). `python-dev` and every toolchain image
+   (`toolchain-base`, #1858) name a third: the data stores of the backend's
+   integration tests and of any repository's `stores = true` check (a check
+   whose CI job runs a postgres service) under `/opt/stores` (a PostgreSQL 16
    server with pgvector from the `pixeltable-pgserver` wheel, Dragonfly for
    the Redis API, Silo for the S3 API). They are fetched at build time
    by `.xtm-one/stores.py` in a stage of their own, each artefact pinned by
