@@ -2689,6 +2689,16 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.debug("Telemetry shutdown error", exc_info=True)
 
+    # Close the traces of the turns the drain above did not see end, as
+    # interrupted, before the flush and the dispatcher drain below: a turn
+    # cut by the stop otherwise leaves no trace (written only at its end).
+    try:
+        from app.services.langfuse_tracing import close_open_traces_on_shutdown
+
+        await close_open_traces_on_shutdown("web_process_stopped")
+    except Exception:
+        logger.debug("Open traces not closed on shutdown", exc_info=True)
+
     # Flush buffered Langfuse traces so OTEL-batched spans queued in the SDK's
     # background exporter are not lost on SIGTERM / deploys (no-op when
     # Langfuse is disabled; never raises).
