@@ -21608,5 +21608,10 @@
   "{count, plural, one {# signal} other {# signals}}": "{count, plural, one {# signal} other {# signals}}",
   "First seen {first}, last seen {last}": "First seen {first}, last seen {last}",
   "Filter the signals": "Filter the signals",
-  "No signal matches the filter.": "No signal matches the filter."
+  "No signal matches the filter.": "No signal matches the filter.",
+  "Auto join": "Auto join",
+  "Auto join updated": "Auto join updated",
+  "Auto join could not be updated": "Auto join could not be updated",
+  "Single sign-on users join this group": "Single sign-on users join this group",
+  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are."
 }

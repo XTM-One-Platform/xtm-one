@@ -21608,5 +21608,10 @@
   "{count, plural, one {# signal} other {# signals}}": "{count, plural, one {# señal} other {# señales}}",
   "First seen {first}, last seen {last}": "Visto por primera vez el {first}, por última vez el {last}",
   "Filter the signals": "Filtrar las señales",
-  "No signal matches the filter.": "Ninguna señal coincide con el filtro."
+  "No signal matches the filter.": "Ninguna señal coincide con el filtro.",
+  "Auto join": "Unión automática",
+  "Auto join updated": "Unión automática actualizada",
+  "Auto join could not be updated": "No se pudo actualizar la unión automática",
+  "Single sign-on users join this group": "Los usuarios de SSO se unen a este grupo",
+  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "Las personas que inician sesión mediante inicio de sesión único (SSO) se unen a este grupo automáticamente, en cada inicio de sesión. Los miembros añadidos a mano, por la asignación de grupos SAML o por SCIM se mantienen tal cual."
 }
