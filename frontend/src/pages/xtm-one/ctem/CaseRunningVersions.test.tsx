@@ -29,11 +29,12 @@ const WITH_FIX: CtemCaseRunningVersions = {
   assets_not_comparable: 1,
 };
 
-function draw(props: Parameters<typeof CaseRunningVersions>[0]) {
+function draw(props: Parameters<typeof CaseRunningVersions>[0], locale = "en") {
   return renderWithProviders(
     <MemoryRouter>
       <CaseRunningVersions {...props} />
     </MemoryRouter>,
+    { locale },
   );
 }
 
@@ -119,6 +120,106 @@ describe("CaseRunningVersions (#1252)", () => {
   it("names the asset column with its own key", () => {
     draw({ productLabel: "Microsoft Windows", fixedVersion: "10.0.22631.4317", versions: WITH_FIX });
     expect(screen.getByRole("columnheader", { name: /Asset count/ })).toBeInTheDocument();
+  });
+
+  // #1572 acceptance case: Windows fixed in 36.0, macOS in 37.0; one Windows asset runs 35.0 and 36.0.
+  const PER_PLATFORM: CtemCaseRunningVersions = {
+    product_label: "Google Chrome",
+    fixed_version: "36.0",
+    fixed_versions: { Windows: "36.0", macOS: "37.0" },
+    versions: [
+      { version: "36.0", platform: "Windows", asset_count: 4, asset_ids: ["w1", "w2", "w3", "w4"], more_asset_ids: 0, sources: ["intune"], status: "fixed", fixed_version: "36.0" },
+      { version: "36.0", platform: "macOS", asset_count: 2, asset_ids: ["m1", "m2"], more_asset_ids: 0, sources: ["intune"], status: "below_fixed", fixed_version: "37.0" },
+      { version: "35.0", platform: "Windows", asset_count: 1, asset_ids: ["w4"], more_asset_ids: 0, sources: ["defender"], status: "below_fixed", fixed_version: "36.0" },
+      { version: "37.0", platform: "macOS", asset_count: 1, asset_ids: ["m3"], more_asset_ids: 0, sources: ["intune"], status: "fixed", fixed_version: "37.0" },
+    ],
+    more_versions: 0,
+    version_count: 3,
+    asset_count: 7,
+    sources: ["defender", "intune"],
+    platforms: ["Windows", "macOS"],
+    assets_multi_version: 1,
+    platform_unverified: false,
+    assets_below_fixed: 3,
+    assets_on_fixed: 4,
+    assets_not_comparable: 0,
+    assets_fix_not_known_for_platform: 0,
+  };
+
+  it("shows the platform and its fixed version per row, and the fix per platform (#1572)", () => {
+    draw({ productLabel: "Google Chrome", fixedVersion: "36.0", versions: PER_PLATFORM });
+    expect(screen.getByRole("columnheader", { name: /Platform/ })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Fixed version/ })).toBeInTheDocument();
+    const rows = screen.getAllByTestId("ctem-case-running-version-row");
+    expect(rows).toHaveLength(4);
+    const macBelow = rows.find((r) => within(r).queryByText("macOS") && within(r).queryByText("36.0"))!;
+    expect(within(macBelow).getByText("37.0")).toBeInTheDocument();
+    expect(within(macBelow).getByText("Below the fixed version")).toBeInTheDocument();
+    const against = screen.getByTestId("ctem-case-running-versions-against-fixed");
+    expect(within(against).getByText("3 assets still below the fixed version of their platform")).toBeInTheDocument();
+    expect(within(against).getByText("4 assets run the fixed version of their platform or later")).toBeInTheDocument();
+    expect(screen.getByTestId("ctem-case-fixed-versions-by-platform").textContent).toBe("Fixed version per platform: Windows: 36.0 and macOS: 37.0");
+    expect(screen.getByTestId("ctem-case-running-versions-multi").textContent).toBe("1 asset runs several versions and is counted in each of its rows");
+  });
+
+  it("never reads a generic fix over several platforms as fixed (#1572)", () => {
+    draw({
+      productLabel: "Google Chrome",
+      fixedVersion: "36.0",
+      versions: {
+        ...PER_PLATFORM,
+        fixed_versions: undefined,
+        platform_unverified: true,
+        versions: [
+          { version: "36.0", platform: "macOS", asset_count: 2, sources: ["intune"], status: "not_comparable", status_reason: "fix not known for this platform" },
+          { version: "35.0", platform: "Windows", asset_count: 1, sources: ["intune"], status: "below_fixed" },
+        ],
+        assets_below_fixed: 1,
+        assets_on_fixed: 0,
+        assets_not_comparable: 2,
+        assets_fix_not_known_for_platform: 2,
+        assets_multi_version: 0,
+      },
+    });
+    expect(screen.queryByRole("columnheader", { name: /Fixed version/ })).toBeNull();
+    const mac = screen.getAllByTestId("ctem-case-running-version-row").find((r) => within(r).queryByText("macOS"))!;
+    expect(within(mac).getByText("Fix not known for this platform")).toBeInTheDocument();
+    expect(screen.getByTestId("ctem-case-fix-platform-unverified").textContent).toBe(
+      "36.0 names no platform while the assets run several: an asset not below it is not read as fixed.",
+    );
+    expect(screen.getByTestId("ctem-case-fix-not-known-for-platform").textContent).toBe("2 assets are on a platform with no known fix");
+    expect(screen.queryByTestId("ctem-case-running-versions-multi")).toBeNull();
+  });
+
+  it("names a missing platform and fixed version in the feminine in French (UX r1 B1 on #1588)", () => {
+    draw(
+      {
+        productLabel: "Google Chrome",
+        fixedVersion: "36.0",
+        versions: {
+          ...PER_PLATFORM,
+          versions: [
+            ...PER_PLATFORM.versions,
+            { version: "34.0", asset_count: 1, sources: ["intune"], status: "not_comparable", status_reason: "fix not known for this platform" },
+          ],
+        },
+      },
+      "fr",
+    );
+    const row = screen.getAllByTestId("ctem-case-running-version-row").find((r) => within(r).queryByText("34.0"))!;
+    expect(within(row).getAllByText("Inconnue")).toHaveLength(2);
+    expect(within(row).queryByText("Inconnu")).toBeNull();
+  });
+
+  it("draws no platform column when the inventory names no platform", () => {
+    draw({ productLabel: "Microsoft Windows", fixedVersion: "10.0.22631.4317", versions: WITH_FIX });
+    expect(screen.queryByRole("columnheader", { name: /Platform/ })).toBeNull();
+    expect(screen.queryByTestId("ctem-case-fixed-versions-by-platform")).toBeNull();
+  });
+
+  it("says one asset on several versions at a count of 1 (#1572)", () => {
+    draw({ productLabel: "Google Chrome", fixedVersion: "36.0", versions: { ...PER_PLATFORM, assets_multi_version: 1 } });
+    expect(screen.getByText("1 asset runs several versions and is counted in each of its rows")).toBeInTheDocument();
   });
 
   it("names every source a reader recognises", () => {
