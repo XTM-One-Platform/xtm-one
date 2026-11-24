@@ -8,7 +8,11 @@ alias:
 - the link table ``organization_crown_jewel_links`` is
   ``organization_primary_asset_links``, its ``crown_jewel_key`` column
   ``primary_asset_key`` and its three indexes renamed with it (metadata only,
-  no rewrite);
+  no rewrite). On an upgrade the runner's ``create_all`` has already created
+  the new table, empty, from the renamed model: an empty new table is dropped
+  and the old one renamed; a new table that holds rows gets the old rows
+  copied in (``ON CONFLICT (id) DO NOTHING``) and the old table is dropped,
+  so no link is orphaned;
 - every saved profile version, its ``sources`` and every pending proposal: the
   key ``crown_jewels`` is ``primary_assets`` (rows of both merged, the
   ``primary_assets`` row kept on a name clash), ``min_crown_jewel_criticality``
@@ -21,6 +25,10 @@ alias:
 - the scope gate decisions of the CTEM signals: the reason code
   ``crown_jewel_below_policy``, the source kind ``crown_jewel``, the rule
   ``min_crown_jewel_criticality`` and ``crown_jewels_named``.
+
+The JSON rewrites page through each table by ``id`` in batches of ``_BATCH``
+rows (keyset), so no statement scans or updates an unbounded set inside the
+migration transaction (backend rule 4).
 
 Data and renames only; the downgrade names everything back (a profile that
 held both lists keeps the merged one under ``crown_jewels``).
@@ -51,6 +59,7 @@ _NEW_TABLE = "organization_primary_asset_links"
 _OLD_COLUMN = "crown_jewel_key"
 _NEW_COLUMN = "primary_asset_key"
 _INDEXES = ("jewel", "record", "group")
+_BATCH = 500
 
 #: Stored names, old -> new: dict keys and the exact strings of a list or a value.
 NAMES: dict[str, str] = {
@@ -113,9 +122,15 @@ def _needles(names: dict[str, str]) -> dict[str, str]:
 
 
 def _rewrite_json(
-    conn: sa.engine.Connection, table: str, columns: tuple[str, ...], names: dict[str, str], cast: str
+    conn: sa.engine.Connection,
+    table: str,
+    columns: tuple[str, ...],
+    names: dict[str, str],
+    cast: str,
+    batch_size: int = _BATCH,
 ) -> None:
-    """Every row of *table* whose *columns* name an old name, rewritten with :func:`rename`."""
+    """Every row of *table* whose *columns* name an old name, rewritten with :func:`rename`,
+    *batch_size* rows at a time in ``id`` order."""
     inspector = sa.inspect(conn)
     if not inspector.has_table(table):
         return
@@ -124,15 +139,27 @@ def _rewrite_json(
     if not cols:
         return
     where = " OR ".join(f"({_needle_clause(c, names)})" for c in cols)
-    select = f"SELECT id, {', '.join(cols)} FROM {table} WHERE {where}"  # noqa: S608 - constant names
-    for row in conn.execute(sa.text(select), _needles(names)).all():
-        values = {c: _json(v) for c, v in zip(cols, row[1:], strict=True)}
-        new = {c: rename(v, names) for c, v in values.items()}
-        if new == values:
-            continue
-        sets = ", ".join(f"{c} = CAST(:{c} AS {cast})" for c in cols)
-        params = {c: None if v is None else json.dumps(v) for c, v in new.items()}
-        conn.execute(sa.text(f"UPDATE {table} SET {sets} WHERE id = :id"), {**params, "id": row[0]})  # noqa: S608
+    head = f"SELECT id, {', '.join(cols)} FROM {table} WHERE ({where})"  # noqa: S608 - constant names
+    sets = ", ".join(f"{c} = CAST(:{c} AS {cast})" for c in cols)
+    update = sa.text(f"UPDATE {table} SET {sets} WHERE id = :id")  # noqa: S608 - constant names
+    after: Any = None
+    while True:
+        # keyset on id: each statement reads at most _BATCH matching rows
+        page = head + (" AND id > :after" if after is not None else "") + " ORDER BY id LIMIT :limit"
+        params: dict[str, Any] = {**_needles(names), "limit": batch_size}
+        if after is not None:
+            params["after"] = after
+        rows = conn.execute(sa.text(page), params).all()
+        if not rows:
+            return
+        for row in rows:
+            values = {c: _json(v) for c, v in zip(cols, row[1:], strict=True)}
+            new = {c: rename(v, names) for c, v in values.items()}
+            if new == values:
+                continue
+            sets_params = {c: None if v is None else json.dumps(v) for c, v in new.items()}
+            conn.execute(update, {**sets_params, "id": row[0]})
+        after = rows[-1][0]
 
 
 def _rename_sync_sections(conn: sa.engine.Connection, old: str, new: str) -> None:
@@ -171,10 +198,42 @@ def _rename_selections(conn: sa.engine.Connection, old: str, new: str) -> None:
             )
 
 
+def _merge_into(conn: sa.engine.Connection, old: str, new: str, old_column: str, new_column: str) -> None:
+    """Both tables exist (``create_all`` made *new* from the model before this revision ran).
+
+    An empty *new* is dropped so *old* is renamed with its rows; otherwise the
+    rows of *old* are copied into *new* (a row already there by id is kept) and
+    *old* is dropped.
+    """
+    terminate_lock_holders(conn, new)
+    set_lock_timeout(conn)
+    if conn.execute(sa.text(f'SELECT 1 FROM "{new}" LIMIT 1')).first() is None:  # noqa: S608 - constant
+        op.drop_table(new)
+        return
+    inspector = sa.inspect(conn)
+    new_columns = {c["name"] for c in inspector.get_columns(new)}
+    pairs = [(c["name"], new_column if c["name"] == old_column else c["name"]) for c in inspector.get_columns(old)]
+    pairs = [(src, dst) for src, dst in pairs if dst in new_columns]
+    targets = ", ".join(f'"{dst}"' for _, dst in pairs)
+    sources = ", ".join(f'"{src}"' for src, _ in pairs)
+    terminate_lock_holders(conn, old)
+    conn.execute(
+        sa.text(
+            f'INSERT INTO "{new}" ({targets}) SELECT {sources} FROM "{old}" '  # noqa: S608 - constant names
+            "ON CONFLICT (id) DO NOTHING"
+        )
+    )
+    op.drop_table(old)
+
+
 def _rename_table(conn: sa.engine.Connection, old: str, new: str, old_column: str, new_column: str) -> None:
     inspector = sa.inspect(conn)
-    if not inspector.has_table(old) or inspector.has_table(new):
+    if not inspector.has_table(old):
         return
+    if inspector.has_table(new):
+        _merge_into(conn, old, new, old_column, new_column)
+        if sa.inspect(conn).has_table(new):
+            return  # rows copied, old table dropped: the indexes are the model's
     terminate_lock_holders(conn, old)
     set_lock_timeout(conn)
     op.rename_table(old, new)
