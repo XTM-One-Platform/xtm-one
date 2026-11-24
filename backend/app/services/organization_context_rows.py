@@ -51,6 +51,8 @@ from app.services.organization_context import (
 ROW_SECTIONS: dict[str, tuple[str, type[BaseModel], int]] = {
     "assets": ("assets_exposure", AssetEntry, 5000),
     "asset_groups": ("asset_groups", AssetGroupEntry, 500),
+    # #1495: the organization's software; ``tech_stack`` is its deprecated name, accepted for one release.
+    "software": ("tech_stack", TechStackEntry, 500),
     "tech_stack": ("tech_stack", TechStackEntry, 500),
     # Deprecated alias since #1501 (one release): an AI system is an asset of category ai_target.
     "ai_systems": ("assets_exposure", AssetEntry, 5000),
@@ -184,7 +186,7 @@ def plan_upsert(profile: OrganizationProfile, section: str, source: str, rows: l
     draft = profile.model_copy(deep=True)
     current: list[Any] = list(getattr(draft, attr))
     sourced = section in SOURCED_SECTIONS
-    name_key = "product" if section in ("tech_stack", "shipped_products") else "name"
+    name_key = "product" if section in ("software", "tech_stack", "shipped_products") else "name"
     by_key = {(r.source, r.external_id): i for i, r in enumerate(current) if sourced and r.external_id}
     by_name = {getattr(r, name_key).casefold(): r for r in current}
     seen: set[Any] = set()
