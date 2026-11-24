@@ -368,6 +368,10 @@ class _Result:
     def scalar_one_or_none(self):
         return self._value
 
+    def all(self):
+        # No group has auto join on in this fake (#1901).
+        return []
+
 
 class _AcsDb:
     """The account lookup of ``_get_or_create_sso_user``, commits recorded."""
