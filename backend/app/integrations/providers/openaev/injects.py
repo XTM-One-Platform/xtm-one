@@ -26,6 +26,7 @@ from ._common import (
     _api,
     _fmt_expectation_results_by_type,
     _inject_row_executed,
+    _relation_ids,
     _search_body,
     findings_fate,
     inject_read_answer,
@@ -35,6 +36,7 @@ from ._common import (
     keep_findings_schema,
     mirror_content_targets,
 )
+from .testing import _contract_id, _stored_documents
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +137,98 @@ def _base(scope: str, parent_id: str) -> str | None:
     if scope == "simulation":
         return f"/api/exercises/{parent_id}"
     return None
+
+
+#: The relations of a stored inject an update sends back, as (InjectInput
+#: key, id key of an element when it is an object). OpenAEV's PUT replaces
+#: each one: a relation left out is stored empty.
+_INJECT_RELATIONS: tuple[tuple[str, str], ...] = (
+    ("inject_teams", "team_id"),
+    ("inject_assets", "asset_id"),
+    ("inject_asset_groups", "asset_group_id"),
+    ("inject_tags", "tag_id"),
+)
+
+#: Scalars of InjectInput carried over as the stored inject answers them.
+_INJECT_SCALARS = (
+    "inject_title",
+    "inject_description",
+    "inject_content",
+    "inject_depends_duration",
+    "inject_all_teams",
+    "inject_enabled",
+    "inject_country",
+    "inject_city",
+)
+
+
+def _stored_dependencies(raw: Any) -> list[dict[str, Any]]:
+    """The stored ``inject_depends_on`` as InjectDependencyInput entries."""
+    out: list[dict[str, Any]] = []
+    for dep in raw if isinstance(raw, list) else []:
+        if not isinstance(dep, dict):
+            continue
+        rel = dep.get("dependency_relationship")
+        parent = rel.get("inject_parent_id") if isinstance(rel, dict) else None
+        if isinstance(parent, dict):
+            parent = parent.get("inject_id")
+        if not parent:
+            continue
+        entry: dict[str, Any] = {"dependency_relationship": {"inject_parent_id": str(parent)}}
+        if dep.get("dependency_condition") is not None:
+            entry["dependency_condition"] = dep["dependency_condition"]
+        out.append(entry)
+    return out
+
+
+def stored_inject_input(stored: Any, changes: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    """The full InjectInput of an update: the stored inject, *changes* laid over it.
+
+    OpenAEV's PUT /api/{scenarios|exercises}/{id}/injects/{inject_id} replaces
+    every field: a title left out is refused, a relation left out is stored
+    empty, ``inject_enabled`` falls back to true, ``inject_all_teams`` to false
+    and an empty ``inject_depends_on`` removes the chain. Returns
+    ``(body, refusal)``; a refusal names what the stored answer lacks so the
+    update never wipes it. Nothing is written when it is not empty.
+    """
+    if not isinstance(stored, dict) or not stored:
+        return (
+            {},
+            "Refused: the stored inject could not be read, so an update would wipe its fields. Nothing was written.",
+        )
+    body: dict[str, Any] = {k: stored[k] for k in _INJECT_SCALARS if k in stored}
+    body["inject_injector_contract"] = _contract_id(stored.get("inject_injector_contract"))
+    injector = stored.get("inject_injector")
+    if isinstance(injector, dict):
+        injector = injector.get("injector_id")
+    if isinstance(injector, str) and injector and "inject_injector_contract" not in changes:
+        body["inject_injector"] = injector
+    missing: list[str] = []
+    for key, id_key in _INJECT_RELATIONS:
+        if key in changes:
+            continue
+        if key not in stored:
+            missing.append(key)
+            continue
+        body[key] = _relation_ids(stored.get(key), id_key)
+    if "inject_secret_references" in stored:
+        body["inject_secret_references"] = _relation_ids(stored.get("inject_secret_references"), "secret_reference_id")
+    if "inject_depends_on" in stored:
+        body["inject_depends_on"] = _stored_dependencies(stored.get("inject_depends_on"))
+    if "inject_documents" in stored:
+        body["inject_documents"] = _stored_documents(stored.get("inject_documents"))
+    body.update(changes)
+    if not body.get("inject_title"):
+        missing.append("inject_title (pass title)")
+    if not body.get("inject_injector_contract"):
+        missing.append("inject_injector_contract (pass injector_contract_id)")
+    if missing:
+        return {}, (
+            "Refused: OpenAEV replaces every field of an inject on update, and the "
+            "stored inject as read lacks " + ", ".join(missing) + ", so the update "
+            "would wipe it. Nothing was written."
+        )
+    return body, ""
 
 
 def register(
@@ -336,6 +430,12 @@ def register(
                     json=body,
                 )
             else:
+                resp, err = await _api(base_url, headers, "get", f"{base}/injects/{inject_id}", "read inject")
+                if err:
+                    return err
+                body, refusal = stored_inject_input(resp.json() if resp is not None else None, body)
+                if refusal:
+                    return refusal
                 resp, err = await _api(
                     base_url, headers, "put", f"{base}/injects/{inject_id}",
                     "update inject", json=body,
@@ -459,7 +559,7 @@ def register(
                 "or 'global' (by inject_id). Actions: 'list' (search), 'get', 'create' "
                 "(title + injector_contract_id, optional content JSON, depends_duration "
                 "seconds, team_ids, asset_ids, asset_group_ids, all_teams, tag_ids), "
-                "'update' (inject_id + fields), 'delete' (inject_id, "
+                "'update' (inject_id + fields; the others are kept), 'delete' (inject_id, "
                 "keep_findings), 'duplicate' (inject_id), 'activation' (inject_id + "
                 "enabled). Build an ATTACK "
                 "PATH (not flat atomic tests) by CHAINING injects: pass "
