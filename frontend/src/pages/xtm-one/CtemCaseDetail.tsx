@@ -681,7 +681,7 @@ export default function CtemCaseDetail() {
           value={formatCount(intl.locale, kase.max_cvss)}
           subtitle={t_i18n("On the issues you can see")}
         />
-        <StatCard icon={AssetsGlyph} label={t_i18n("Assets")} value={kase.asset_count} subtitle={t_i18n("{count, plural, one {# crown jewel} other {# crown jewels}}", { count: kase.crown_jewel_count })} />
+        <StatCard icon={AssetsGlyph} label={t_i18n("Assets")} value={kase.asset_count} subtitle={t_i18n("{count, plural, one {# primary asset} other {# primary assets}}", { count: kase.crown_jewel_count })} />
       </div>
 
       {/* The running versions come from the asset inventory, never typed by hand in the software inventory (#1252). */}
