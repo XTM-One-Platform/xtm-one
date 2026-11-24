@@ -144,7 +144,7 @@ Once crown jewels are kept in sync from OpenCRQ (see [Keep a section in sync](#k
 
 The tech stack lists the products you run, so that agents can match vulnerabilities to them. `Add a product` adds a row with the `Product`, its `Vendor` and, optionally, its `CPE`: the standard product identifier that vulnerability records use, which makes the match exact.
 
-When your assets carry their installed software (from a sync or an import), the tech stack agents read is built from it: one entry per product, with each version seen and the number of assets running it, and the sources that report it. The rows you typed stay: a product no asset reports (a SaaS application, a cloud service) keeps its own entry, and a CPE you typed wins over the one a source reports. `GET /api/v1/organization-context/inventory/tech-stack` answers the same list, and `GET /api/v1/organization-context/assets/by-software?product=` lists the assets running a product.
+When your assets carry their installed software (from a sync or an import), the tech stack agents read is built from it: one entry per product, with each version seen and the number of assets running it, and the sources that report it. The rows you typed stay: a product no asset reports (a SaaS application, a cloud service) keeps its own entry, and a CPE you typed wins over the one a source reports. `GET /api/v1/organization-context/software` answers the same list (the CTEM > Inventory > Software tab), and `GET /api/v1/organization-context/assets/by-software?product=` lists the assets running a product.
 
 ### Software from an SBOM
 

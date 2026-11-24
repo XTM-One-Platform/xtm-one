@@ -665,10 +665,8 @@ def merge_software(records: Sequence[SourceRecord]) -> list[dict[str, Any]]:
     return sorted(merged.values(), key=lambda e: (e["vendor"].casefold(), e["product"].casefold(), e["version"]))
 
 
-# ── Inventory: tech stack derived from asset software ────────────────
+# ── CPE resolution of a software ─────────────────────────────────────
 
-#: What a tech stack item is: software installed on assets, a SaaS product, a cloud service.
-TECH_KINDS: tuple[str, ...] = ("installed", "saas", "cloud_service")
 #: How sure a CPE is: reported by a source, found by a dictionary lookup, set by an administrator.
 CPE_CONFIDENCES: tuple[str, ...] = ("override", "reported", "high", "medium", "low", "unresolved")
 
@@ -709,104 +707,6 @@ def resolve_cpe(
         if found and found[0] and found[1] in CPE_CONFIDENCES:
             return {"cpe": _cpe_with_version(found[0], version), "confidence": found[1]}
     return {"cpe": "", "confidence": "unresolved"}
-
-
-def derive_tech_stack(
-    assets: Sequence[Canonical],
-    *,
-    manual: Sequence[Mapping[str, Any]] = (),
-    overrides: Mapping[tuple[str, str], str] | None = None,
-    resolver: CpeResolver | None = None,
-) -> list[dict[str, Any]]:
-    """The tech stack built from the software of *assets*, plus the *manual* rows no source sees.
-
-    One item per vendor and product across every asset and source, kind
-    ``installed``, with each version seen and the assets that run it; a
-    manual row of kind ``saas`` or ``cloud_service`` carries no version.
-    *overrides* maps (vendor, product), case-folded, to an administrator's CPE.
-    """
-    overrides = {(v.casefold(), p.casefold()): c for (v, p), c in (overrides or {}).items()}
-    items: dict[tuple[str, str], dict[str, Any]] = {}
-    for asset in assets:
-        for soft in merge_software(asset.records):
-            key = (soft["vendor"].casefold(), soft["product"].casefold())
-            item = items.setdefault(
-                key,
-                {
-                    "vendor": soft["vendor"],
-                    "product": soft["product"],
-                    "kind": "installed",
-                    "versions": {},
-                    "sources": set(),
-                    "reported_cpes": set(),
-                    "manual": False,
-                },
-            )
-            item["vendor"] = _spelling(item["vendor"], soft["vendor"])
-            item["product"] = _spelling(item["product"], soft["product"])
-            item["versions"].setdefault(soft["version"], set()).add(asset.id)
-            item["sources"].update(soft["sources"])
-            if soft["cpe"]:
-                item["reported_cpes"].add(soft["cpe"])
-    for row in manual:
-        product = str(row.get("product") or "").strip()
-        if not product:
-            continue
-        vendor = str(row.get("vendor") or "").strip()
-        kind = str(row.get("kind") or "installed")
-        kind = kind if kind in TECH_KINDS else "installed"
-        key = (vendor.casefold(), product.casefold())
-        if key not in items and not vendor:
-            # A typed product with no vendor joins the one installed item of that product, if only one.
-            same = [k for k in items if k[1] == product.casefold()]
-            key = same[0] if len(same) == 1 else key
-        item = items.setdefault(
-            key,
-            {
-                "vendor": vendor,
-                "product": product,
-                "kind": kind,
-                "versions": {},
-                "sources": set(),
-                "reported_cpes": set(),
-                "manual": False,
-            },
-        )
-        item["manual"] = True
-        item["sources"].add(str(row.get("source") or "manual"))
-        if row.get("cpe"):
-            item["reported_cpes"].add(str(row["cpe"]))
-    out: list[dict[str, Any]] = []
-    for key, item in sorted(items.items()):
-        installed = item["kind"] == "installed"
-        versions = [
-            {"version": version, "asset_count": len(ids), "asset_ids": sorted(ids)}
-            for version, ids in sorted(item["versions"].items())
-        ]
-        asset_ids = sorted({a for ids in item["versions"].values() for a in ids})
-        version_for_cpe = versions[0]["version"] if installed and len(versions) == 1 else ""
-        cpe = resolve_cpe(
-            item["vendor"],
-            item["product"],
-            version_for_cpe,
-            reported=item["reported_cpes"],
-            override=overrides.get(key, ""),
-            resolver=resolver,
-        )
-        out.append(
-            {
-                "vendor": item["vendor"],
-                "product": item["product"],
-                "kind": item["kind"],
-                "versions": versions if installed else [],
-                "asset_count": len(asset_ids),
-                "asset_ids": asset_ids,
-                "sources": sorted(item["sources"]),
-                "manual": item["manual"],
-                **cpe,
-            }
-        )
-    return out
 
 
 # ── Sections ──────────────────────────────────────────────────────────

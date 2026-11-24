@@ -21,7 +21,6 @@ vi.mock("@/hooks/api/useOrganizationAssetsApi", async (importOriginal) => ({
   useCanonicalAssets: () => ({ data: { items: [], total: 0 }, isLoading: false, isError: false, refetch: () => undefined }),
   useAssetFacets: () => ({ data: undefined }),
   useRecordAssetDecision: () => ({ isPending: false, mutate: () => undefined, mutateAsync: async () => undefined }),
-  useTechStackInventory: () => ({ data: { items: [], total: 0 }, isLoading: false, isError: false, refetch: () => undefined }),
 }));
 
 vi.mock("@/hooks/api/useOrganizationContextApi", async (importOriginal) => ({
