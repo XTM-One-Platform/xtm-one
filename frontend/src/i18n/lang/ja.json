@@ -19040,7 +19040,6 @@
   "Technology": "テクノロジー",
   "About the organization profile": "組織プロファイルについて",
   "{count, plural, one {# proposal} other {# proposals}}": "{count, plural, other {# 件の提案}}",
-  "{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}": "{count, plural, other {未入力の項目 # 件（必要とするすべてのエージェントが報告）}}",
   "Copy both": "両方をコピー",
   "The partner pastes the client ID and the secret together, as one pair.": "パートナーはクライアント ID とシークレットを 1 組として一緒に貼り付けます。",
   "Last refused token request": "最後に拒否されたトークン要求",
@@ -21676,5 +21675,10 @@
   "The OpenCTI imports and syncs that keep the PIR list up to date.": "PIR リストを最新に保つ OpenCTI のインポートと同期。",
   "Wait for the prioritization policy to be saved.": "優先順位付けポリシーの保存が完了するまでお待ちください。",
   "Risk and response": "リスクと対応",
-  "Organization profile tabs": "組織プロファイルのタブ"
+  "Organization profile tabs": "組織プロファイルのタブ",
+  "Unsaved": "未保存",
+  "{count, plural, one {# field not filled} other {# fields not filled}}": "{count, plural, other {未入力の項目 # 件}}",
+  "{count, plural, one {# field not filled on this tab, reported by every agent that needs it} other {# fields not filled on this tab, reported by every agent that needs them}}": "{count, plural, other {このタブの未入力の項目 # 件（必要とするすべてのエージェントが報告）}}",
+  "Every field of this tab is filled.": "このタブの項目はすべて入力済みです。",
+  "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}": "{count, plural, other {{tab} にさらに # 件。}}"
 }

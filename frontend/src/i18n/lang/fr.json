@@ -19040,7 +19040,6 @@
   "Technology": "Technologie",
   "About the organization profile": "À propos du profil de l'organisation",
   "{count, plural, one {# proposal} other {# proposals}}": "{count, plural, one {# proposition} other {# propositions}}",
-  "{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}": "{count, plural, one {# champ non renseigné, signalé par chaque agent qui en a besoin} other {# champs non renseignés, signalés par chaque agent qui en a besoin}}",
   "Copy both": "Copier les deux",
   "The partner pastes the client ID and the secret together, as one pair.": "Le partenaire colle l'ID client et le secret ensemble, comme une seule paire.",
   "Last refused token request": "Dernière demande de jeton refusée",
@@ -21676,5 +21675,10 @@
   "The OpenCTI imports and syncs that keep the PIR list up to date.": "Les imports et synchronisations OpenCTI qui tiennent la liste des PIR à jour.",
   "Wait for the prioritization policy to be saved.": "Attendez la fin de l'enregistrement de la politique de priorisation.",
   "Risk and response": "Risque et réponse",
-  "Organization profile tabs": "Onglets du profil de l'organisation"
+  "Organization profile tabs": "Onglets du profil de l'organisation",
+  "Unsaved": "Non enregistré",
+  "{count, plural, one {# field not filled} other {# fields not filled}}": "{count, plural, one {# champ non rempli} other {# champs non remplis}}",
+  "{count, plural, one {# field not filled on this tab, reported by every agent that needs it} other {# fields not filled on this tab, reported by every agent that needs them}}": "{count, plural, one {# champ non rempli dans cet onglet, signalé par chaque agent qui en a besoin} other {# champs non remplis dans cet onglet, signalés par chaque agent qui en a besoin}}",
+  "Every field of this tab is filled.": "Tous les champs de cet onglet sont remplis.",
+  "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}": "{count, plural, one {# de plus dans {tab}.} other {# de plus dans {tab}.}}"
 }
