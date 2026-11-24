@@ -28,6 +28,10 @@ was read from, so one read tells a fleet orchestrator everything the seeded
   The one SAFE fix: :func:`apply_safe_fixes` releases it with the platform's own
   sweep (``work_item.release_ended_run_claims``), scoped to those runs.
 * ``past_due``, ``blocked_without_blocker``: open items nothing will move.
+* ``not_picked_up``: an open, due item no inbox will take: no owner, an owner
+  with no work-item inbox, or an owner whose inboxes all filter it out (its
+  correlation prefix or priority), read with the dispatch's own rule
+  (:func:`app.services.work_item_context.pickup_state`).
 * ``decision_card_not_readable``: an open item waiting for a person whose ask
   is missing, incomplete or holds ids and timestamps
   (:func:`app.services.work_item_ask_backfill.card_unreadable`, #776).
@@ -90,6 +94,7 @@ FINDING_FIX: dict[str, str] = {
     "assignment_silent": FIX_OWNER,
     "orphaned_claim": FIX_AUTO,
     "past_due": FIX_OWNER,
+    "not_picked_up": FIX_OWNER,
     "blocked_without_blocker": FIX_OWNER,
     "decision_card_not_readable": FIX_OWNER,
     "wait_cycle": FIX_OWNER,
@@ -108,6 +113,10 @@ FINDING_ADVICE: dict[str, str] = {
     "assignment_silent": "Check the schedule and its gate; delete the assignment if its work is over.",
     "orphaned_claim": "Released by the platform's claim sweep: the item goes back to its owner's inbox.",
     "past_due": "Move the due date or hand the item to someone who can finish it.",
+    "not_picked_up": (
+        "Give it an owner whose work-item inbox takes its correlation key and priority, or widen that "
+        "inbox; cancel it when nobody needs it."
+    ),
     "blocked_without_blocker": (
         "Give it an owner and a blocker the platform releases (blocked_on, blocked_on_refs), or park it for a "
         "person with needs_human and an ask card; else reopen it (a deferral is open with not_before)."
@@ -419,6 +428,16 @@ async def _work_item_findings(
     )
     if past_due:
         out.append(_finding("past_due", f"{len(past_due)} open item(s) past their due date", past_due))
+    stranded = await _not_picked_up(db, scope, now)
+    if stranded:
+        out.append(
+            _finding(
+                "not_picked_up",
+                f"{len(stranded)} open item(s) no inbox will take: no owner, an owner with no work-item "
+                "inbox, or inboxes that filter them out",
+                stranded,
+            )
+        )
     blocked = (
         await db.execute(
             select(
@@ -486,6 +505,51 @@ async def _work_item_findings(
         )
     out += await _wait_graph_findings(db, scope, now)
     return out
+
+
+#: Open items read per fleet for ``not_picked_up``, newest first.
+NOT_PICKED_UP_SCAN = 500
+#: The pickup states that mean nothing will ever take the item by itself.
+STRANDED_PICKUP_STATES = frozenset({"unassigned", "manual", "filtered_out"})
+
+
+async def _not_picked_up(db: AsyncSession, scope: Any, now: datetime) -> list[uuid.UUID]:
+    """The open, unscheduled items of *scope* in a :data:`STRANDED_PICKUP_STATES` state.
+
+    The pickup is the dispatch's own rule (``work_item_context.pickup_inboxes``
+    then ``pickup_state``), so an item whose pull request CI runs, or that is
+    deferred by ``not_before`` to an inbox that takes it, is never reported.
+    """
+    from app.models.work_item import WorkItem
+    from app.services.work_item_context import pickup_inboxes, pickup_state
+
+    rows = (
+        await db.execute(
+            select(WorkItem.id, WorkItem.owner_agent_id, WorkItem.not_before, WorkItem.payload)
+            .where(scope, WorkItem.status == "open", WorkItem.action_mode.is_(None))
+            .order_by(WorkItem.created_at.desc())
+            .limit(NOT_PICKED_UP_SCAN)
+        )
+    ).all()
+    items = [
+        {
+            "id": str(wid),
+            "status": "open",
+            "owner_agent_id": str(owner) if owner else None,
+            "not_before": not_before.isoformat() if not_before else None,
+            "payload": payload or {},
+            "scheduled": None,
+        }
+        for wid, owner, not_before, payload in rows
+    ]
+    if not items:
+        return []
+    inboxes = await pickup_inboxes(db, items)
+    return [
+        row[0]
+        for row, item in zip(rows, items, strict=True)
+        if pickup_state(item, inboxes.get(row[0], []), now) in STRANDED_PICKUP_STATES
+    ]
 
 
 async def _wait_graph_findings(db: AsyncSession, scope: Any, now: datetime) -> list[FleetFinding]:

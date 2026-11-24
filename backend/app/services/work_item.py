@@ -2193,6 +2193,14 @@ async def create_work_item(
         named_workspace = workspace_id
         if workspace_id is None:
             workspace_id = await _default_workspace(db, user_id, creator_uuid)
+        if require_person_ask:
+            # A CTEM case's decisions wait in order, each card self-contained (#1606).
+            from app.services import ctem_gate_order
+
+            ctem_gate_order.refuse_run_pointer(key, structured_ask)
+            await ctem_gate_order.refuse_mobilize_before_review(
+                db, key, needs_human, user_id=user_uuid, workspace_id=workspace_id
+            )
         if red_key:
             await _lock_main_red(db, red_key)
             carriers = await _main_red_carriers(db, user_id, red_key)
@@ -2630,6 +2638,27 @@ async def update_work_item(
         if needs_human or (ask is not None and human):
             # A person's decision carries its card (#762): written now, or kept.
             refuse_needs_human_without_ask(human, landing_ask)
+        if require_person_ask:
+            # A CTEM case's decisions wait in order, each card self-contained,
+            # a changed question refiled, never edited in place (#1606).
+            from app.services import ctem_gate_order
+
+            if ask is not None:
+                ctem_gate_order.refuse_question_change(
+                    item.correlation_key,
+                    getattr(item, "ask", None),
+                    new_ask,
+                    waiting=bool(stored_human) and item.status not in WORK_ITEM_TERMINAL_STATUSES,
+                )
+                ctem_gate_order.refuse_run_pointer(item.correlation_key, new_ask)
+            if needs_human and not stored_human:
+                await ctem_gate_order.refuse_mobilize_before_review(
+                    db,
+                    item.correlation_key,
+                    True,
+                    user_id=item.user_id,
+                    workspace_id=getattr(item, "workspace_id", None),
+                )
         why_written = (
             any(v is not None for v in (status, blockers, refs, needs_human, ask)) or owner_agent_id == ""
         )  # re-routing a blocked item or refreshing its reason (context, never the blocker) stays free;
@@ -3340,6 +3369,7 @@ async def publish_transition(
     claimed_by_agent_id: object = None,
     actor_run_id: object = None,
     actor_agent_id: object = None,
+    answered: bool = False,
 ) -> None:
     """Raise the ``work_item.*`` events of a write committed outside the service's own writers.
 
@@ -3353,7 +3383,11 @@ async def publish_transition(
     and a *note* ``work_item.note_added``. *actor_agent_id* / *actor_run_id*
     name the agent and run that made the write (a scheduled item's own run), so
     an assignment ignoring its own events is not woken by them; a write the
-    platform made alone leaves both ``None``. Never raises.
+    platform made alone leaves both ``None``. *answered* marks the write of a
+    person's answer (:func:`answer_work_item`): its ``work_item.status_changed``
+    carries ``answered: true``, so a listener hears the answer itself, whatever
+    key the decision item was filed under, and not any other release of a
+    blocked item. Never raises.
     """
     from types import SimpleNamespace
 
@@ -3374,6 +3408,10 @@ async def publish_transition(
         else:
             actor = SimpleNamespace(agent_id=actor_agent_id, run_id=actor_run_id)
             events = update_events(item, previous_status=previous_status, note=note, writer=actor)
+            if answered:
+                for name, data in events:
+                    if name == "work_item.status_changed":
+                        data["answered"] = True
     except Exception as exc:
         logger.warning("Work item %s platform events not built: %s", wid, format_exception_message(exc))
         return
@@ -4850,7 +4888,7 @@ async def answer_work_item(
             await db.commit()
         finally:
             answer_actor.reset(token)
-    await publish_transition(wid, previous_status=previous_status, note=note)
+    await publish_transition(wid, previous_status=previous_status, note=note, answered=True)
     return await _read_back(work_item_id, user_id=user_id, writer=writer)
 
 
