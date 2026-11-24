@@ -48,6 +48,31 @@ async def test_a_family_read_answers_every_key_holding_the_path(monkeypatch):
     assert calls[0]["key_prefix"] == "ev-" and calls[0]["status"] == "active"
 
 
+async def test_a_family_past_one_page_is_searched_whole(monkeypatch):
+    """A family of more keys than one page (53 dev:harness-gaps* keys) finds a path in the last key
+    (gap-lookup-across-split-keys: the read stopped at the newest 50)."""
+    from app.services import shared_state
+    from app.services.builtin_tools import shared_state as tool_module
+
+    states = [{"key": f"ev-{n}", "status": "active", "value": {"by_id": {}}} for n in range(130)]
+    states[-1]["value"] = {"by_id": {"g1": {"evidence": "old key"}}}
+    calls: list[dict] = []
+
+    async def _list_states(**kwargs):
+        calls.append(kwargs)
+        start = kwargs.get("offset", 0)
+        return states[start : start + kwargs["limit"]]
+
+    monkeypatch.setattr(shared_state, "list_states", _list_states)
+    result = await _executor().execute_tool(
+        ToolCall(id="p", name="get_shared_state", arguments={"key": "ev-*", "path": "by_id.g1"})
+    )
+    text = result.content if hasattr(result, "content") else str(result)
+    assert "found in 1 of 130 active key(s)" in text and "old key" in text
+    assert "keys only" not in text
+    assert [c["offset"] for c in calls] == [0, tool_module._FAMILY_PAGE_KEYS]
+
+
 async def test_a_family_read_needs_a_path(monkeypatch):
     result = await _executor().execute_tool(ToolCall(id="b", name="get_shared_state", arguments={"key": "ev-*"}))
     text = result.content if hasattr(result, "content") else str(result)

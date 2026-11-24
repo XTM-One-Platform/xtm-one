@@ -72,9 +72,9 @@ _CASE_SCHEMA: dict = {
             "type": "object",
             "properties": {
                 "services": {"type": "array", "items": {"type": "string"}},
-                "crown_jewels": {"type": "array", "items": {"type": "string"}},
+                "primary_assets": {"type": "array", "items": {"type": "string"}},
             },
-            "required": ["services", "crown_jewels"],
+            "required": ["services", "primary_assets"],
         },
         "expected_loss": {
             "type": "object",

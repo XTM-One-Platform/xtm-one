@@ -60,7 +60,7 @@ export const SOURCE_KIND_LABELS = {
  * across runs as local enrichment. Same lists as the backend's SOURCED_FIELDS.
  */
 export const LOCAL_FIELDS = {
-  crown_jewels: ["owner", "business_service", "assets"],
+  primary_assets: ["owner", "business_service", "assets"],
   software: ["vendor", "cpe", "version"],
   // The CTEM Inventory's rows (#1367, point 3): what the sync never sends.
   assets_exposure: ["environment", "owner", "tech_stack", "group"],

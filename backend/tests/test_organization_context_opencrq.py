@@ -10,7 +10,7 @@ from app.services.organization_context_opencrq import plan_sync
 
 
 def _profile(*jewels: dict) -> oc.OrganizationProfile:
-    return oc.parse_profile({"crown_jewels": list(jewels)})
+    return oc.parse_profile({"primary_assets": list(jewels)})
 
 
 def _primary(asset_id: str, name: str, *needs: str) -> dict[str, str]:
@@ -24,7 +24,7 @@ def test_a_row_named_like_one_primary_asset_is_linked_and_nothing_is_pushed() ->
         _profile({"name": "SCADA", "criticality": "critical"}),
         [_primary("a1", "scada", "medium")],
     )
-    assert plan.profile.crown_jewels[0].opencrq_asset_id == "a1"
+    assert plan.profile.primary_assets[0].opencrq_asset_id == "a1"
     assert plan.linked == [("SCADA", "a1")]
     assert plan.pushed == [] and plan.released == []
     assert plan.profile_changed
@@ -36,7 +36,7 @@ def test_a_linked_row_is_left_as_it_is() -> None:
         [_primary("a2", "ERP", "low")],
     )
     assert plan.pushed == [] and plan.linked == [] and not plan.profile_changed
-    assert plan.profile.crown_jewels[0].criticality == "high"
+    assert plan.profile.primary_assets[0].criticality == "high"
 
 
 def test_a_name_matching_two_primary_assets_is_reported_never_guessed() -> None:
@@ -45,7 +45,7 @@ def test_a_name_matching_two_primary_assets_is_reported_never_guessed() -> None:
         [_primary("b1", "Billing"), _primary("b2", "billing")],
     )
     assert plan.ambiguous == ["Billing"]
-    assert plan.profile.crown_jewels[0].opencrq_asset_id == ""
+    assert plan.profile.primary_assets[0].opencrq_asset_id == ""
 
 
 def test_a_primary_asset_no_row_names_joins_the_profile_rated_by_its_highest_need() -> None:
@@ -58,21 +58,21 @@ def test_a_primary_asset_no_row_names_joins_the_profile_rated_by_its_highest_nee
         ],
     )
     assert plan.pulled == [("a3", "Payment"), ("a4", "Wiki")]
-    rows = {j.name: (j.criticality, j.source, j.external_id) for j in plan.profile.crown_jewels}
+    rows = {j.name: (j.criticality, j.source, j.external_id) for j in plan.profile.primary_assets}
     assert rows["Payment"] == ("critical", "opencrq", "a3")
     assert rows["Wiki"] == ("low", "opencrq", "a4")
 
 
 def test_a_primary_asset_with_no_need_rated_is_pulled_as_high() -> None:
     plan = plan_sync(_profile(), [_primary("a1", "Order to cash")])
-    assert [(j.name, j.criticality) for j in plan.profile.crown_jewels] == [("Order to cash", "high")]
+    assert [(j.name, j.criticality) for j in plan.profile.primary_assets] == [("Order to cash", "high")]
 
 
 def test_a_typed_row_whose_primary_asset_is_gone_is_reported_and_kept() -> None:
     # A synced row whose id OpenCRQ no longer holds is the import's (gone or superseded); a typed link is reported.
     plan = plan_sync(_profile({"name": "Old CRM", "source": "manual", "opencrq_asset_id": "gone"}), [])
     assert plan.stale == [("Old CRM", "gone")]
-    assert [j.name for j in plan.profile.crown_jewels] == ["Old CRM"]
+    assert [j.name for j in plan.profile.primary_assets] == ["Old CRM"]
 
 
 def test_a_row_an_older_build_keyed_on_a_supporting_asset_is_left_to_the_import() -> None:
@@ -82,15 +82,15 @@ def test_a_row_an_older_build_keyed_on_a_supporting_asset_is_left_to_the_import(
         [_primary("p1", "Mail")],
     )
     assert plan.stale == []
-    assert [j.name for j in plan.profile.crown_jewels] == ["Mail server", "Mail"]
+    assert [j.name for j in plan.profile.primary_assets] == ["Mail server", "Mail"]
 
 
 def test_the_plan_leaves_the_input_profile_untouched_and_summarizes() -> None:
     profile = _profile({"name": "SCADA"})
     plan = plan_sync(profile, [_primary("a1", "SCADA", "high")])
-    assert profile.crown_jewels[0].opencrq_asset_id == ""
+    assert profile.primary_assets[0].opencrq_asset_id == ""
     summary = plan.summary()
-    assert summary["linked"] == [{"crown_jewel": "SCADA", "opencrq_asset_id": "a1"}]
+    assert summary["linked"] == [{"primary_asset": "SCADA", "opencrq_asset_id": "a1"}]
     # Kept in the summary for API compatibility; always empty since #1591.
     assert summary["pushed_to_opencrq"] == [] and summary["kept_below_sync_threshold"] == []
     assert set(summary) == {

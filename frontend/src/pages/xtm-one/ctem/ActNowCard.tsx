@@ -270,8 +270,8 @@ export function ActNowCard({ rows, briefingActions = [], aiLockReason, onContent
       const scope = scopes.get(c.id);
       const parts = [
         decisionCases.has(c.id) ? t_i18n("Remediation decision waits") : "",
-        scope?.crownJewels.length
-          ? t_i18n("Primary asset: {name}", { name: scope.crownJewels.join(", ") })
+        scope?.primaryAssets.length
+          ? t_i18n("Primary asset: {name}", { name: scope.primaryAssets.join(", ") })
           : scope?.criticality
             ? t_i18n("Scope criticality: {level}", { level: t_i18n((CRITICALITY_LABELS as Record<string, string>)[scope.criticality] ?? scope.criticality) })
             : "",

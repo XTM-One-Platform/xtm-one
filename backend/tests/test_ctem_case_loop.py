@@ -109,7 +109,7 @@ def _signal(**kw) -> SimpleNamespace:
             "scope": {
                 "criticality": "critical",
                 "risk_scenarios": [{"id": "rs-1", "name": "Data theft"}],
-                "sources": [{"from": "crown_jewel", "name": "Customer SaaS hosting", "criticality": "critical"}],
+                "sources": [{"from": "primary_asset", "name": "Customer SaaS hosting", "criticality": "critical"}],
             },
         },
     )

@@ -85,5 +85,5 @@ async def test_recheck_held_filters_the_reason_in_sql_before_the_limit() -> None
     assert counts == {}
     sql = str(seen[0].compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
     assert "reason_code" in sql
-    assert "crown_jewel_below_policy" in sql
+    assert "primary_asset_below_policy" in sql
     assert "LIMIT 7" in sql

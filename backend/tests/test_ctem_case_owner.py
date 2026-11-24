@@ -31,7 +31,7 @@ def _signal(**kw: Any) -> SimpleNamespace:
                 "sources": [
                     {"from": "asset", "name": "db-02 ", "criticality": "high"},
                     {"from": "asset_group", "name": "web-01", "criticality": "high"},
-                    {"from": "crown_jewel", "name": "Customer portal", "criticality": "critical"},
+                    {"from": "primary_asset", "name": "Customer portal", "criticality": "critical"},
                 ]
             }
         },

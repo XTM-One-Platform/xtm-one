@@ -10,7 +10,7 @@ A sync has one direction and one master, never a free two-way merge:
   master; the platform rows this sync CREATED follow it (created, updated,
   deleted to match). ``OrganizationContextSync.outbound_ids`` holds them,
   keyed on the XTM One row; a platform row the sync did not create is never
-  touched, except the criticality of a crown jewel already linked to it by
+  touched, except the criticality of a primary asset already linked to it by
   ``opencrq_asset_id`` (the existing jewel -> OpenCRQ criticality push).
 
 :data:`DIRECTIONS` is the support matrix read from the platform APIs the
@@ -43,7 +43,7 @@ DIRECTIONS: dict[tuple[str, str], tuple[tuple[str, ...], str]] = {
     # #1591: the rows are OpenCRQ PRIMARY assets, whose security needs OpenCRQ owns; the old push wrote
     # them as supporting assets (the wrong layer), so the pairing reads only until a primary-asset write
     # is wired. A saved outbound sync of it answers this reason and writes nothing.
-    ("crown_jewels", "opencrq"): (
+    ("primary_assets", "opencrq"): (
         (INBOUND,),
         "OpenCRQ owns its primary assets and their security needs: the sync reads them (#1591).",
     ),
@@ -55,7 +55,7 @@ DIRECTIONS: dict[tuple[str, str], tuple[tuple[str, ...], str]] = {
     ("software", "openaev"): ((INBOUND,), "OpenAEV software inventory is read from its agents."),
 }
 
-#: Supporting assets an outbound run creates with: a crown jewel carries no OpenCRQ category.
+#: Supporting assets an outbound run creates with: a primary asset carries no OpenCRQ category.
 OUTBOUND_CATEGORY = "generic_asset"
 #: The sections whose outbound run writes OpenAEV AI targets (#1501).
 AI_TARGET_SECTIONS: frozenset[str] = frozenset({"assets"})
@@ -100,7 +100,7 @@ class OutboundPlan:
     delete: list[tuple[str, str]] = field(default_factory=list)  # (key, asset id)
     skipped: list[str] = field(default_factory=list)  # rows a platform owns (never pushed back)
     error: str = ""
-    #: The platform written: ``opencrq`` (crown jewels) or ``openaev`` (AI targets, #1501).
+    #: The platform written: ``opencrq`` (primary assets) or ``openaev`` (AI targets, #1501).
     platform: str = "opencrq"
     #: AI targets: the OpenAEV body of each created or updated row, keyed on the row's name.
     bodies: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -123,7 +123,7 @@ def _key(name: str) -> str:
 def plan_outbound(
     profile: OrganizationProfile, assets: list[dict[str, Any]], outbound_ids: dict[str, str]
 ) -> OutboundPlan:
-    """Crown jewels -> OpenCRQ supporting assets, the profile the master (no I/O).
+    """Primary assets -> OpenCRQ supporting assets, the profile the master (no I/O).
 
     A jewel whose source is a platform (``opencrq`` included) is the platform's
     row: never pushed back, listed in ``skipped``. A jewel linked by
@@ -136,7 +136,7 @@ def plan_outbound(
     by_id = {str(a.get("id")): a for a in assets if a.get("id")}
     plan = OutboundPlan()
     wanted: set[str] = set()
-    for jewel in profile.crown_jewels:
+    for jewel in profile.primary_assets:
         key = _key(jewel.name)
         criticality = TO_OPENCRQ[jewel.criticality]
         linked = (jewel.opencrq_asset_id or "").strip()
@@ -281,7 +281,7 @@ async def run_outbound(
 ) -> tuple[OutboundPlan, dict[str, str]]:
     """Plan and, with *apply*, write an outbound sync; ``(plan, outbound_ids after the run)``.
 
-    ``crown_jewels`` to ``opencrq`` and the AI target assets to ``openaev`` are wired
+    ``primary_assets`` to ``opencrq`` and the AI target assets to ``openaev`` are wired
     (:data:`DIRECTIONS`). Reads and writes with *user_id*'s token; a failed read writes nothing.
     """
     from app.integrations.providers.opencrq._common import _resolve_tenant, _trpc

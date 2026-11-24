@@ -36,7 +36,7 @@ def test_every_stage_reads_context_fields_of_the_contract():
 
 def test_coverage_is_the_share_of_the_stage_fields_filled():
     assert stage_coverage("scoping", set()) == 1.0
-    assert stage_coverage("scoping", {"crown_jewels", "software"}) == 0.5
+    assert stage_coverage("scoping", {"primary_assets", "software"}) == 0.5
     assert stage_coverage("scoping", set(STAGE_CONTEXT_FIELDS["scoping"])) == 0.0
 
 
@@ -48,7 +48,7 @@ def test_full_context_keeps_the_evidence_and_none_gives_no_score():
 
 def test_half_the_context_keeps_seventy_percent():
     # 0.4 + 0.6 * 0.5 = 0.7
-    assert qualitative_stage_score("scoping", 100, {"crown_jewels", "software"}) == 70
+    assert qualitative_stage_score("scoping", 100, {"primary_assets", "software"}) == 70
 
 
 def test_known_exploited_in_the_stack_pulls_prioritization_down():

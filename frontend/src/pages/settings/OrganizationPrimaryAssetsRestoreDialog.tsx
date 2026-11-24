@@ -29,7 +29,7 @@ function VersionRows({ version }: { version: number }) {
   const { t_i18n } = useFormatter();
   const past = useOrganizationContextVersion(version);
   if (!past.data) return <Skeleton className="h-32 w-full" />;
-  const jewels = past.data.profile.crown_jewels ?? [];
+  const jewels = past.data.profile.primary_assets ?? [];
   if (jewels.length === 0) return <p className="text-default-secondary">{t_i18n("This version holds no primary asset.")}</p>;
   return (
     <ul className="space-y-1" aria-label={t_i18n("Primary assets of this version")} data-testid="settings.organization.restore-preview">
@@ -43,7 +43,7 @@ function VersionRows({ version }: { version: number }) {
   );
 }
 
-export function OrganizationCrownJewelsRestoreDialog({
+export function OrganizationPrimaryAssetsRestoreDialog({
   open,
   onOpenChange,
   currentVersion,
@@ -60,7 +60,7 @@ export function OrganizationCrownJewelsRestoreDialog({
   // The current version restores nothing: it is listed, never pickable.
   const rows = (versions.data ?? []).filter((row) => row.version !== currentVersion);
   const [picked, setPicked] = useState<number | null>(null);
-  const selected = picked ?? rows.find((row) => (row.crown_jewels ?? 0) > 0)?.version ?? null;
+  const selected = picked ?? rows.find((row) => (row.primary_assets ?? 0) > 0)?.version ?? null;
 
   // A refused restore shows inline above the footer; a 409 (a version saved since) offers a reload of the list.
   const refusedConflict = (restore.error as { status?: number } | null)?.status === 409;
@@ -79,12 +79,12 @@ export function OrganizationCrownJewelsRestoreDialog({
   };
   const restoreSelected = (version: number) =>
     restore.mutate(
-      { version, fields: ["crown_jewels"], based_on_version: currentVersion },
+      { version, fields: ["primary_assets"], based_on_version: currentVersion },
       {
         onSuccess: (saved) => {
           toast({
             title: t_i18n("{count, plural, =0 {No primary asset restored from version {version}} one {# primary asset restored from version {version}} other {# primary assets restored from version {version}}}", {
-              count: saved.profile.crown_jewels?.length ?? 0,
+              count: saved.profile.primary_assets?.length ?? 0,
               version,
             }),
             variant: "success",
@@ -126,7 +126,7 @@ export function OrganizationCrownJewelsRestoreDialog({
                 >
                   <span className="content-compact font-medium text-default-primary">{t_i18n("Version {version}", { version: row.version })}</span>
                   <span className="content-compact text-default-secondary">
-                    {t_i18n("{count, plural, =0 {No primary asset} one {# primary asset} other {# primary assets}}", { count: row.crown_jewels ?? 0 })}
+                    {t_i18n("{count, plural, =0 {No primary asset} one {# primary asset} other {# primary assets}}", { count: row.primary_assets ?? 0 })}
                     {row.created_at ? ` · ${intl.formatDate(new Date(row.created_at), { dateStyle: "medium", timeStyle: "short" })}` : ""}
                   </span>
                 </button>
