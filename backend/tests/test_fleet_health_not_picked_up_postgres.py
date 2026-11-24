@@ -138,6 +138,70 @@ async def test_an_open_item_no_inbox_takes_is_reported_and_a_taken_one_is_not() 
         assert finding.fix == "owner" and finding.advice
 
 
+async def test_an_item_its_owner_hears_through_a_work_item_listener_is_not_stranded() -> None:
+    """A seeded CTEM loop keeps one open ``ctem:f1:case:`` item per case, moved by its
+    "Gate answered" ``platform_event`` assignment: not stranded. A key that listener
+    does not hear, a disabled listener and an item with no owner stay stranded."""
+    from app.services.fleet_health_signals import _work_item_findings
+
+    async with _database() as sessions:
+        user, fleet, agents = await _world(sessions)
+        now = datetime.now(UTC)
+        listener = {
+            "event": "work_item.status_changed",
+            "filter": {"previous_status": "blocked", "status": "open", "correlation_key": {"starts_with": ["ctem:"]}},
+            "scope": "own",
+        }
+        async with sessions() as db:
+            for name, enabled in (("Gate answered", True), ("Old listener", False)):
+                db.add(
+                    Assignment(
+                        id=uuid.uuid4(),
+                        agent_id=agents["silent"].id,
+                        user_id=user.id,
+                        name=name,
+                        trigger_type="platform_event",
+                        trigger_config=listener
+                        if enabled
+                        else {**listener, "filter": {"correlation_key": {"starts_with": "retest:"}}},
+                        prompt="Apply the answer.",
+                        enabled=enabled,
+                    )
+                )
+
+            def _row(owner: Agent | None, key: str) -> WorkItem:
+                return WorkItem(
+                    id=uuid.uuid4(),
+                    user_id=user.id,
+                    workspace_id=fleet.workspace_id,
+                    owner_agent_id=owner.id if owner else None,
+                    correlation_key=key,
+                    title="case loop",
+                    status="open",
+                    priority="medium",
+                    source="agent",
+                    last_activity_at=now,
+                    created_at=now,
+                    updated_at=now,
+                )
+
+            rows = {
+                "case": _row(agents["silent"], "ctem:f1:case:1"),
+                "unheard": _row(agents["silent"], "silent:retest:1"),
+                "disabled": _row(agents["silent"], "retest:9"),
+                "unowned": _row(None, "ctem:f1:case:2"),
+            }
+            db.add_all(rows.values())
+            await db.commit()
+        async with sessions() as db:
+            findings = await _work_item_findings(
+                db, fleet, [a.id for a in agents.values()], user_id=str(user.id), now=now
+            )
+        (finding,) = [f for f in findings if f.kind == "not_picked_up"]
+        reported = {str(e) for e in finding.all_evidence}
+        assert reported == {str(rows[k].id) for k in ("unheard", "disabled", "unowned")}
+
+
 async def test_a_fleet_whose_items_all_reach_an_inbox_has_no_such_finding() -> None:
     from app.services.fleet_health_signals import _work_item_findings
 
