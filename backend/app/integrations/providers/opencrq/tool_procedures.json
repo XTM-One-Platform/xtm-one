@@ -3,6 +3,13 @@
     "tenants.getTenants",
     "treatmentPlans.addTreatmentPlanMoves"
   ],
+  "configure_opencrq_connector": [
+    "connectors.setSchedule",
+    "integrations.configure",
+    "opencti.configure",
+    "opencti.setEnabled",
+    "tenants.getTenants"
+  ],
   "create_opencrq_asset_dependency": [
     "assetDependencies.createSupportToPrimaryLinks",
     "assetDependencies.createSupportToSupportLinks",
@@ -504,6 +511,12 @@
   "reset_opencrq_supporting_asset_to_connectors": [
     "supportingAssets.getSupportingAsset",
     "supportingAssets.resyncSupportingAssetWithConnectors",
+    "tenants.getTenants"
+  ],
+  "run_opencrq_connector": [
+    "connectors.reconnectStream",
+    "connectors.resetState",
+    "connectors.syncNow",
     "tenants.getTenants"
   ],
   "run_opencrq_crq_simulation": [

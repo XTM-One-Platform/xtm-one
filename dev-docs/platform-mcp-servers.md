@@ -282,7 +282,8 @@ invitations, tenant/organization lifecycle), service accounts, engine
 settings tools - both reads and writes (CRQ / threat
 relevance settings), job
 cancel/retry, integration/connector configuration and status
-(`list_opencrq_connectors`, `list_opencrq_connector_syncs`), platform
+(`list_opencrq_connectors`, `list_opencrq_connector_syncs`,
+`configure_opencrq_connector`, `run_opencrq_connector`), platform
 settings.
 These tools remain available to agents through the regular OpenCRQ
 integration.

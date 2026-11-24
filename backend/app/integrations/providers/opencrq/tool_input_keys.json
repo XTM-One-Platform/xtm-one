@@ -12,6 +12,38 @@
       "closed": true
     }
   ],
+  "configure_opencrq_connector": [
+    {
+      "procedures": [
+        "integrations.configure"
+      ],
+      "fields": [
+        "source"
+      ],
+      "conditional": [],
+      "closed": false
+    },
+    {
+      "procedures": [
+        "opencti.configure"
+      ],
+      "fields": [
+        "streamId"
+      ],
+      "conditional": [],
+      "closed": false
+    },
+    {
+      "procedures": [
+        "opencti.setEnabled"
+      ],
+      "fields": [
+        "enabled"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
   "create_opencrq_asset_evidence": [
     {
       "procedures": [
@@ -1434,6 +1466,38 @@
       ],
       "fields": [
         "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "run_opencrq_connector": [
+    {
+      "procedures": [
+        "connectors.reconnectStream"
+      ],
+      "fields": [
+        "source"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "connectors.resetState"
+      ],
+      "fields": [
+        "source"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "connectors.syncNow"
+      ],
+      "fields": [
+        "source"
       ],
       "conditional": [],
       "closed": true
