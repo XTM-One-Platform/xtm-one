@@ -8,7 +8,7 @@
   "toolchain": {
     "version": "0.9",
     "inputs": {
-      "sandbox-toolchain": "bd33e3d0fa685362ec4609b35c62e20d57f4143dc5fdc6154883d4200c8a0e0e"
+      "sandbox-toolchain": "4d30bee7a531526570a7f70823b5aa25c1a87aa993a843e95914435281a8db99"
     }
   },
   "dev": {
