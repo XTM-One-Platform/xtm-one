@@ -20,7 +20,7 @@ open statuses -> ``in_progress``). Lock-light: one UPDATE over the cases table,
 small by design (one row per remediation).
 
 Revision ID: c1503ctemcasestatus1
-Revises: u1595nopastel01
+Revises: g1556grpmembers1
 Create Date: 2026-11-23 12:00:00.000000
 """
 
@@ -34,7 +34,7 @@ from app.core.migration_ddl import set_lock_timeout, terminate_lock_holders
 revision: str = "c1503ctemcasestatus1"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "u1595nopastel01"
+down_revision: str | Sequence[str] | None = "g1556grpmembers1"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
