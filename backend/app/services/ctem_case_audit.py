@@ -403,6 +403,18 @@ def open_wait(events: list[dict[str, Any]]) -> dict[str, Any] | None:
     return {"gate": None, "by": None if actor in (None, "", SYSTEM_ACTOR) else actor, "since": moved.get("at")}
 
 
+def stalled_since(events: list[dict[str, Any]]) -> str | None:
+    """When the case sweep found the case waiting on nobody, while that ``stalled`` event is its newest event (#1736).
+
+    Any later event (a gate, an answer, a state move, a note) means something moved the case: ``None``.
+    """
+    dated = [e for e in events if _parse(e.get("at")) is not None]
+    if not dated:
+        return None
+    newest = max(dated, key=lambda e: _parse(e.get("at")) or datetime.min.replace(tzinfo=UTC))
+    return newest.get("at") if newest.get("kind") == "stalled" else None
+
+
 def run_phase(created_at: Any, annotated: list[dict[str, Any]]) -> str:
     """The phase the case was in when a fleet run started: the phase of the latest event at or before it."""
     at = _parse(created_at)

@@ -9,6 +9,8 @@ import {
   CASE_QUICK_FILTER_LABEL,
   applyCaseQuickFilters,
   caseQuickFilterCount,
+  caseWaitFacet,
+  isStalledCase,
   readCaseScope,
   readCaseToggles,
   writeCaseToggles,
@@ -67,6 +69,16 @@ describe("cases quick filters (#1503)", () => {
     expect(ids(applyCaseQuickFilters(CASES, "open", ["mine"], NOW, "me"))).toEqual(["a"]);
     expect(ids(applyCaseQuickFilters(CASES, "open", ["overdue"], NOW, "me"))).toEqual(["b"]);
     expect(ids(applyCaseQuickFilters(CASES, "open", ["mine"], NOW, null))).toEqual([]);
+  });
+
+  it("reads an open case the sweep found waiting on nobody as stalled, never a closed one (#1736)", () => {
+    const at = new Date(NOW - DAY).toISOString();
+    expect(isStalledCase({ state: "analyzing", stalled_since: at })).toBe(true);
+    expect(isStalledCase({ state: "resolved", stalled_since: at })).toBe(false);
+    expect(isStalledCase({ state: "analyzing", stalled_since: null })).toBe(false);
+    expect(caseWaitFacet({ state: "analyzing", stalled_since: at, waiting_on: null })).toEqual(["nobody"]);
+    expect(caseWaitFacet({ state: "waiting_decision", stalled_since: null, waiting_on: { gate: "g", by: null, since: at } })).toEqual(["person"]);
+    expect(caseWaitFacet({ state: "remediating", stalled_since: null, waiting_on: null })).toEqual([]);
   });
 
   it("counts on each chip what one click on it shows", () => {

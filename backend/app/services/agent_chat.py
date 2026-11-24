@@ -4606,6 +4606,12 @@ async def run_agent_chat(
             ctem_read = ctem_read_tools_for(agent, agent_builtin_tool_ids, user_id=user_id)
             if ctem_read is not None:
                 composite.add_tools(*ctem_read)
+            # The CTEM group (#1748): the signal and case tools on any agent, the owner's rights.
+            from app.services.builtin_tools import ctem_tools_for
+
+            ctem_group = ctem_tools_for(agent, agent_builtin_tool_ids, user_id=user_id)
+            if ctem_group is not None:
+                composite.add_tools(*ctem_group)
             # The CTEM administrator repairs (#1778): the CTEM case agents, or the group bound.
             from app.services.builtin_tools import ctem_repair_tools_for
 

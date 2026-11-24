@@ -24,6 +24,13 @@ switch, the per-user spec-load rate limit and every validation apply to the
 tools as to the routes. The builder reads the catalog entry's `spec_import`
 marker, never the provider name.
 
+A run builds its tool list, the names the model calls and the gate once, at
+the start of a turn, so a spec, credential or sharing change written by
+`update_integration` (or a binding or tool-scope change written by
+`update_agent`) reaches an agent from its next chat turn or assignment run.
+The answer says so (`services/tool_surface_timing.py`, `NEXT_TURN_LINE`);
+a label-only change (name, description, tags, scopes) carries no such line.
+
 | Piece | Where | Role |
 |-------|-------|------|
 | Loader | `services/openapi_import/document.py` | JSON first, safe YAML second (keys and timestamps kept as literal text, alias bombs and non-JSON tags refused), 10 MB ceiling, URL fetch via `web_fetch.fetch_url_bytes(allow_private=True)` |

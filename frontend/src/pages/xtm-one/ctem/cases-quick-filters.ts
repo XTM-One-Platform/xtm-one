@@ -69,6 +69,17 @@ function inCaseScope(scope: CaseScope, c: Pick<CtemCaseSummary, "state">): boole
 
 type ToggleCase = Pick<CtemCaseSummary, "state" | "owner_user_id" | "due_at" | "accepted_until" | "priority" | "sla_breached_at">;
 
+/** True when an open case waits on nobody: the sweep found no gate and no reminder, and nothing moved it since (#1736). */
+export function isStalledCase(c: Pick<CtemCaseSummary, "state" | "stalled_since">): boolean {
+  return Boolean(c.stalled_since) && isOpenCaseState(c.state);
+}
+
+/** Whom an open case waits on, the "Waits on" facet of the list (#1736): a person (a gate), nobody (stalled), else none. */
+export function caseWaitFacet(c: Pick<CtemCaseSummary, "state" | "stalled_since" | "waiting_on">): ("person" | "nobody")[] {
+  if (c.state === "waiting_decision" && c.waiting_on) return ["person"];
+  return isStalledCase(c) ? ["nobody"] : [];
+}
+
 /** True when the case passes the toggle; `me` is the caller's user id. */
 function passesCaseToggle(toggle: CaseToggle, c: ToggleCase, now: number, me: string | null): boolean {
   if (toggle === "mine") return me !== null && c.owner_user_id === me;
