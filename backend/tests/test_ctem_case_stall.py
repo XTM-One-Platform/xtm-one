@@ -102,13 +102,9 @@ def test_the_stall_window_reads_the_environment(monkeypatch: pytest.MonkeyPatch)
 
 
 @pytest.mark.asyncio
-async def test_a_case_waiting_on_nobody_is_raised_once_and_the_others_are_left_alone() -> None:
-    nobody, gated, reminded = _case(), _case(), _case()
-    db, session = _session(
-        [nobody, gated, reminded],
-        [f"ctem:remediation:{gated.id}"],
-        [f"ctem-loop-reminder:{reminded.id}"],
-    )
+async def test_a_case_waiting_on_nobody_is_raised_once() -> None:
+    nobody = _case()
+    db, session = _session([nobody])
     events = loop.PendingEvents()
     raised = await stall.sweep_stalled(session, events=events, now=NOW)
     assert raised == 1
@@ -117,6 +113,22 @@ async def test_a_case_waiting_on_nobody_is_raised_once_and_the_others_are_left_a
     assert "no open gate, no armed reminder" in (written[0].reason or "")
     assert [(name, data["case_id"]) for name, data, _ in events.items] == [(stall.CASE_STALLED, str(nobody.id))]
     assert [f["case_id"] for f in events.frames] == [str(nobody.id)]
+    # One read: the gate and reminder exclusion is part of the candidate query.
+    assert len(db.statements) == 1
+
+
+@pytest.mark.asyncio
+async def test_gated_and_reminded_cases_are_excluded_before_the_batch_limit() -> None:
+    from sqlalchemy.dialects import postgresql
+
+    db, session = _session([])
+    await stall.sweep_stalled(session, events=loop.PendingEvents(), now=NOW)
+    sql = str(cast("Any", db.statements[0]).compile(dialect=postgresql.dialect()))
+    where, _, tail = sql.partition(" ORDER BY ")
+    # Both exclusions sit in the WHERE clause, so 100 idle gated cases never fill the batch.
+    assert "NOT (EXISTS (SELECT" in where and "work_items" in where and "platform_timers" in where
+    assert "needs_human IS true" in where
+    assert "LIMIT" in tail and "LIMIT" not in where
 
 
 @pytest.mark.asyncio

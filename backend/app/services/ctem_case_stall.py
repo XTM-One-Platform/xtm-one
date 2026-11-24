@@ -28,7 +28,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from sqlalchemy import exists, or_, select
+from sqlalchemy import ColumnElement, String, cast, exists, literal, or_, select
 
 from app.models.ctem_case import OPEN_STATES, CtemCase, CtemCaseEvent
 
@@ -79,46 +79,32 @@ def waiting_on(case_id: str, gate_keys: Iterable[str], timer_keys: Iterable[str]
     return NOBODY
 
 
-async def _waiting_keys(db: AsyncSession, case_ids: list[str]) -> tuple[list[str], list[str]]:
-    """The open needs_human ``ctem:`` item keys and the armed reminder keys naming *case_ids*."""
+def _waits_on_someone(case_id_text: ColumnElement[str]) -> ColumnElement[bool]:
+    """SQL: an open needs_human ``ctem:`` item of the case, or an armed reminder of the case (``waiting_on`` in SQL)."""
     from app.models.platform_timer import TIMER_ARMED, PlatformTimer
     from app.models.work_item import WORK_ITEM_TERMINAL_STATUSES, WorkItem
 
-    if not case_ids:
-        return [], []
-    gates = (
-        (
-            await db.execute(
-                select(WorkItem.correlation_key).where(
-                    WorkItem.needs_human.is_(True),
-                    WorkItem.status.not_in(WORK_ITEM_TERMINAL_STATUSES),
-                    WorkItem.correlation_key.like(f"{GATE_KEY_PREFIX}%"),
-                    or_(*(WorkItem.correlation_key.like(f"%{cid}") for cid in case_ids)),
-                )
-            )
-        )
-        .scalars()
-        .all()
+    gated = exists().where(
+        WorkItem.needs_human.is_(True),
+        WorkItem.status.not_in(WORK_ITEM_TERMINAL_STATUSES),
+        WorkItem.correlation_key.like(f"{GATE_KEY_PREFIX}%"),
+        WorkItem.correlation_key.like(literal("%", String) + case_id_text),
     )
-    timers = (
-        (
-            await db.execute(
-                select(PlatformTimer.correlation_key).where(
-                    PlatformTimer.state == TIMER_ARMED,
-                    PlatformTimer.correlation_key.in_([k for cid in case_ids for k in reminder_keys(cid)]),
-                )
-            )
-        )
-        .scalars()
-        .all()
+    reminded = exists().where(
+        PlatformTimer.state == TIMER_ARMED,
+        or_(*(PlatformTimer.correlation_key == literal(prefix, String) + case_id_text for prefix in REMINDER_PREFIXES)),
     )
-    return [k for k in gates if k], [k for k in timers if k]
+    return or_(gated, reminded)
 
 
 async def sweep_stalled(
     db: AsyncSession, *, events: PendingEvents | None, now: datetime | None = None, actor: str = "system"
 ) -> int:
-    """Raise ``ctem_case.stalled`` on each open case idle past the window that waits on nobody; how many. The caller commits."""
+    """Raise ``ctem_case.stalled`` on each open case idle past the window that waits on nobody; how many. The caller commits.
+
+    The gate and reminder exclusion runs in the candidate query, before the batch limit, so open cases idle
+    behind a gate or a reminder never fill the batch and hide a case that waits on nobody.
+    """
     from app.services.ctem_case_loop import _event, _event_id, case_data
 
     now = now or datetime.now(UTC)
@@ -128,7 +114,12 @@ async def sweep_stalled(
         (
             await db.execute(
                 select(CtemCase)
-                .where(CtemCase.state.in_(OPEN_STATES), CtemCase.updated_at <= cutoff, ~recent)
+                .where(
+                    CtemCase.state.in_(OPEN_STATES),
+                    CtemCase.updated_at <= cutoff,
+                    ~recent,
+                    ~_waits_on_someone(cast(CtemCase.id, String)),
+                )
                 .order_by(CtemCase.updated_at.asc())
                 .limit(STALL_BATCH)
             )
@@ -136,13 +127,8 @@ async def sweep_stalled(
         .scalars()
         .all()
     )
-    if not candidates:
-        return 0
-    gate_keys, timer_keys = await _waiting_keys(db, [str(c.id) for c in candidates])
     raised = 0
     for case in candidates:
-        if waiting_on(str(case.id), gate_keys, timer_keys) != NOBODY:
-            continue
         idle_since = case.updated_at or case.state_since
         db.add(
             _event(
