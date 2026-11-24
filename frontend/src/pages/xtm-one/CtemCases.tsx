@@ -405,6 +405,7 @@ export default function CtemCases() {
             label: "CTEM phase",
             values: (c) => (c.phase ? [c.phase] : []),
             options: CTEM_STAGE_KEYS.map((k) => ({ value: k, label: t_i18n(CTEM_STAGE_CONFIG[k].label) })),
+            // Ordinal scale: the CTEM lifecycle order, scoping to remediation, never alphabetical.
             ordered: true,
           },
           {

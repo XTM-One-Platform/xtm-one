@@ -58,6 +58,29 @@ describe("CasesCountsCard", () => {
     expect(screen.queryByTestId("ctem-cases-expiring")).toBeNull();
   });
 
+  it("links the decisions waiting to the case that waits longest, absent at 0 (#1621)", async () => {
+    get.mockImplementation(async (path: string) =>
+      path === "/ctem-cases/overview"
+        ? { waiting: { count: 2, oldest: { case_id: "c-old", title: "Old", phase: "remediation", gate: "approve_fix", since: null }, oldest_hours: 5.2, cases: [] } }
+        : { vertical: "cyber", counts: { waiting_decision: 2 }, cases: [], details_unavailable: [] },
+    );
+    draw();
+    const waiting = await screen.findByTestId("ctem-cases-waiting");
+    expect(waiting.textContent).toBe("Waiting for a decision: 2, oldest 5 h");
+    expect(waiting.getAttribute("href")).toBe("/ctem/cases/c-old");
+  });
+
+  it("draws no waiting line when no case waits for a decision (#1621)", async () => {
+    get.mockImplementation(async (path: string) =>
+      path === "/ctem-cases/overview"
+        ? { waiting: { count: 0, oldest: null, oldest_hours: null, cases: [] } }
+        : { vertical: "cyber", counts: { new: 1 }, cases: [], details_unavailable: [] },
+    );
+    draw();
+    await screen.findByRole("link", { name: "New: 1 case" });
+    expect(screen.queryByTestId("ctem-cases-waiting")).toBeNull();
+  });
+
   it("draws one count link per state, mitigated, watching included", async () => {
     get.mockResolvedValue({ vertical: "cyber", counts: { new: 1, mitigated_watching: 1 }, cases: [], details_unavailable: [] });
     draw();
@@ -144,7 +167,8 @@ describe("the case list read (#11999)", () => {
     get.mockRejectedValue(Object.assign(new Error("Not Found"), { status: 404 }));
     draw();
     expect(await screen.findByRole("button", { name: "Retry" })).toBeTruthy();
-    expect(get).toHaveBeenCalledTimes(1);
+    // One request to the list; the overview (#1621) is its own read.
+    expect(get.mock.calls.filter(([path]) => path !== "/ctem-cases/overview")).toHaveLength(1);
   });
 
   it("stops polling after a read the server refused", () => {

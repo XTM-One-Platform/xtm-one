@@ -27,6 +27,8 @@ vi.mock("@/hooks/api/useCtemCasesApi", () => ({
     casesRead.options.push(options);
     return casesRead.value;
   },
+  // The funnel's "In a case" step (#1621): no overview read in these tests, so no step.
+  useCtemCasesOverview: () => ({ data: undefined }),
 }));
 
 const signalsRead = vi.hoisted(() => ({ value: { data: undefined } as { data: unknown; isError?: boolean } }));
