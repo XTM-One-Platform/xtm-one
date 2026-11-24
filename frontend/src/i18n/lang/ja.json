@@ -15883,6 +15883,7 @@
   "Try again, or reload the item if it changed.": "もう一度お試しください。項目が変更された場合は再読み込みしてください。",
   "Or answer in your own words": "または自由に回答する",
   "Only an administrator can answer a company-managed work item.": "会社管理の作業項目に回答できるのは管理者のみです。",
+  "Only an administrator or a member of a group with View and decide can answer this decision.": "この決定に回答できるのは、管理者または「表示と決定」権限を持つグループのメンバーのみです。",
   "An agent waits for your decision on this work item.": "エージェントがこの作業項目についてあなたの判断を待っています。",
   "Decision needed: {title}": "判断が必要です: {title}",
   "This card is incomplete: its agent is asked to rewrite it.": "このカードは不完全です。担当エージェントに書き直しを依頼しています。",
@@ -21600,5 +21601,17 @@
   "{count, plural, one {# signal} other {# signals}}": "{count, plural, other {# 件のシグナル}}",
   "First seen {first}, last seen {last}": "初回検出 {first}、最終検出 {last}",
   "Filter the signals": "シグナルを絞り込む",
-  "No signal matches the filter.": "条件に一致するシグナルはありません。"
+  "No signal matches the filter.": "条件に一致するシグナルはありません。",
+  "CTEM access": "CTEM アクセス",
+  "CTEM access updated": "CTEM アクセスを更新しました",
+  "CTEM access could not be updated": "CTEM アクセスを更新できませんでした",
+  "What the members may do on the signals and cases the platform records. Administrators keep full access.": "プラットフォームが記録したシグナルとケースに対してメンバーが行えること。管理者は常にフルアクセスです。",
+  "No CTEM access": "CTEM アクセスなし",
+  "View signals and cases": "シグナルとケースを表示",
+  "View and decide": "表示と決定",
+  "Members see only the signals they record themselves.": "メンバーは自分で記録したシグナルのみ表示できます。",
+  "Members read every signal and case of the organization, read only.": "メンバーは組織のすべてのシグナルとケースを読み取り専用で表示できます。",
+  "Members also triage signals, change cases (owner, due date, state, accepted risk) and answer the case decisions. Their agents get the same reach.": "メンバーはシグナルのトリアージ、ケースの変更（担当者、期限、状態、受容リスク）、ケースの決定への回答も行えます。メンバーのエージェントも同じ範囲を持ちます。",
+  "Notify the members of case decisions": "ケースの決定をメンバーに通知",
+  "Off: the members can still answer from the case page, without a notification.": "オフ：メンバーは通知なしでケースページから回答できます。"
 }
