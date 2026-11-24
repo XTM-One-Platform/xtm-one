@@ -169,6 +169,15 @@ class CheckSpec:
     #: The command reads git (``git ls-files``, ``git rev-parse --show-toplevel``): it runs inside a throwaway
     #: repository of the checkout (:data:`GIT_REPO_SHELL`), as CI runs it in a clone.
     git_repo: bool = False
+    #: The command needs PostgreSQL (its CI job runs a postgres service): it runs inside :data:`STORES_RUNNER`,
+    #: which starts the image's offline postgres on 127.0.0.1:5432, exports ``PGHOST`` / ``PGPORT`` / ``PGUSER``
+    #: / ``PGPASSWORD`` / ``PGDATABASE`` and ``DATABASE_URL``, runs the command and stops it (#1858).
+    stores: bool = False
+
+
+#: The stores runner every sandbox image with ``/opt/stores`` carries (``.xtm-one/stores.py`` copied there
+#: at install): a ``stores = true`` check of any repository runs through it, its checkout holding no copy.
+STORES_RUNNER = ("python", "/opt/stores/stores.py", "exec", "--")
 
 
 #: How a ``git_repo = true`` check runs (``$1`` the checkout root relative to the check's ``cwd``, then the
@@ -416,6 +425,9 @@ def load_checks(text: str) -> dict[str, CheckSpec]:
         git_repo = raw.get("git_repo", False)
         if not isinstance(git_repo, bool):
             raise ChecksError(f"[check.{name}] git_repo must be true or false.")
+        stores = raw.get("stores", False)
+        if not isinstance(stores, bool):
+            raise ChecksError(f"[check.{name}] stores must be true or false.")
         pre_push = raw.get("pre_push", [])
         if (
             not isinstance(pre_push, list)
@@ -469,6 +481,7 @@ def load_checks(text: str) -> dict[str, CheckSpec]:
             pre_push_on=tuple(k for k in PRE_PUSH_KINDS if k in pre_push_on),
             stands_for=tuple(stands_for),
             git_repo=git_repo,
+            stores=stores,
         )
     return specs
 
@@ -724,6 +737,8 @@ def command_argv(spec: CheckSpec, args: object = None) -> tuple[str, ...]:
     """
     given = extra_args(args)
     argv = (*spec.argv, *(given or spec.default_args))
+    if spec.stores:
+        argv = (*STORES_RUNNER, *argv)
     if not spec.git_repo:
         return argv
     depth = len([part for part in spec.cwd.strip("/").split("/") if part])
@@ -772,6 +787,8 @@ def describe_checks(specs: dict[str, CheckSpec], *, compact: bool = False) -> st
             affected += " [the changed files of the whole repository, relative to its directory]"
         if spec.git_repo:
             affected += " [in a throwaway git repository of the checkout]"
+        if spec.stores:
+            affected += " [with an offline postgres on 127.0.0.1:5432, PG* variables set]"
         lines.append(f"- {spec.name}{what}: {shown_argv(spec.argv)}{where}{image}{report}{defaults}{affected}")
     return "\n".join(lines)
 
