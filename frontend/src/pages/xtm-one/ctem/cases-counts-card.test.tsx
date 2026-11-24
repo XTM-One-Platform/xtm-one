@@ -95,7 +95,7 @@ describe("CasesCountsCard", () => {
   it("says so when there is no case", async () => {
     get.mockResolvedValue({ vertical: "cyber", counts: {}, cases: [], details_unavailable: [] });
     draw();
-    expect(await screen.findByText("No case yet: cases appear when open issues on your stack share a fix.")).toBeTruthy();
+    expect(await screen.findByText("No case yet: cases appear when open issues on your software share a fix.")).toBeTruthy();
   });
 
   it("offers the setup row when nothing can build cases, and closes it", async () => {
@@ -169,7 +169,7 @@ describe("the case list read (#11999)", () => {
   it("an empty list shows the empty state, never the failed read", async () => {
     get.mockResolvedValue({ vertical: "cyber", counts: { needs_attention: 0, in_progress: 0, resolved: 0, accepted_risk: 0 }, cases: [], details_unavailable: [] });
     draw();
-    expect(await screen.findByText("No case yet: cases appear when open issues on your stack share a fix.")).toBeTruthy();
+    expect(await screen.findByText("No case yet: cases appear when open issues on your software share a fix.")).toBeTruthy();
     expect(screen.queryByText("Cases could not be read.", { exact: false })).toBeNull();
   });
 });

@@ -111,7 +111,7 @@ export function CasesCountsCard({ configured, onConnectOpenAev }: CasesCountsCar
   } else if (total === 0) {
     body = (
       <p className="content-compact text-default-secondary">
-        {t_i18n("No case yet: cases appear when open issues on your stack share a fix.")}
+        {t_i18n("No case yet: cases appear when open issues on your software share a fix.")}
       </p>
     );
   } else {
