@@ -51,8 +51,8 @@ export function SignalCounter({
         const count = counts[state] ?? 0;
         const label = t_i18n(SIGNAL_STATE_LABEL[state]);
         // "Case opened" counts the signals that opened a case, all time (#1621): a case the vulnerability
-        // readers built from your stack is not a signal, so it is counted in Cases, never here.
-        const why = state === "case_opened" ? t_i18n("Signals that opened a case, all time. Cases built from your stack's vulnerabilities are counted in Cases.") : null;
+        // readers built from your software is not a signal, so it is counted in Cases, never here.
+        const why = state === "case_opened" ? t_i18n("Signals that opened a case, all time. Cases built from vulnerabilities on your software are counted in Cases.") : null;
         const button = (
           <button
             key={state}

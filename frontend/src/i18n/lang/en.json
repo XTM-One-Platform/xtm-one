@@ -21485,7 +21485,7 @@
   "{count, plural, one {# case resolved in the last {days} days} other {# cases resolved in the last {days} days}}": "{count, plural, one {# case resolved in the last {days} days} other {# cases resolved in the last {days} days}}",
   "In a case, {count}, {resolved} resolved in {days} d": "In a case, {count}, {resolved} resolved in {days} d",
   "{resolved} resolved in {days} d": "{resolved} resolved in {days} d",
-  "Signals that opened a case, all time. Cases built from your stack's vulnerabilities are counted in Cases.": "Signals that opened a case, all time. Cases built from your stack's vulnerabilities are counted in Cases.",
+  "Signals that opened a case, all time. Cases built from vulnerabilities on your software are counted in Cases.": "Signals that opened a case, all time. Cases built from vulnerabilities on your software are counted in Cases.",
   "Cases in this phase": "Cases in this phase",
   "Decisions and accepted risks": "Decisions and accepted risks",
   "Opened {timeAgo}": "Opened {timeAgo}",
