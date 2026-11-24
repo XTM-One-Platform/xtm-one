@@ -36,6 +36,11 @@ OpenAEV refuses `SOURCE_CODE`, the exact category staying on the XTM One row. No
 The fallback runs only when the update itself sets `SOURCE_CODE` on an endpoint not already on it and OpenAEV
 answers a 400 or 422 naming the category; any other error (a 5xx, a timeout, another field refused) is
 answered as it is, so an endpoint is never downgraded by an unrelated failure.
+The OpenAEV write tools read before they write (xtm-one #1702): `manage_openaev_asset`, `manage_openaev_asset_group`
+and `manage_openaev_inject` `update` read the stored object and send it back with only the asked fields changed,
+since OpenAEV's PUT replaces the whole object. An explicit `clear` list on the asset `update` unsets a field (`url`
+alone on `bulk_update`), and `get_openaev_asset` prints every field the write sets (category, subcategory,
+criticality, internet-facing, URL, external reference), so a write can be read back.
 OpenCTI to XTM One: a `System` is `generic_asset` until a person classifies it.
 
 `ASSET_TAXONOMY` in `organization_context.py` is the one copy in XTM One; the backend validates every row against it.
