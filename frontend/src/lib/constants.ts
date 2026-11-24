@@ -1787,7 +1787,6 @@ export function organizationContextEffective(
 export const ORGANIZATION_CONTEXT_CATEGORY_LABELS = {
   primary_assets: "Primary assets",
   software: "Software",
-  ai_systems: "AI systems inventory",
   pirs: "Priority intelligence requirements (PIRs)",
   tracked_organizations: "Tracked organizations",
 } as const;

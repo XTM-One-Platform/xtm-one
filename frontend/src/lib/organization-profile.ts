@@ -26,7 +26,6 @@ export interface ProfileLike {
   } & Provenance)[];
   /** `version`: the version the organization runs, optional (CTEM-11, #894): cases then name the version to reach. */
   tech_stack: ({ product: string; vendor: string; cpe: string; version?: string } & Provenance)[];
-  // No `ai_systems` list since #1501: an AI system is an asset of category `ai_target` (assets_exposure).
   /**
    * What the organization ships, apart from what it runs (#1432): a vulnerability on one of these products (by CPE,
    * then product and vendor) resolves to its source repositories (`owner/name`). Absent on a profile that declares none.
@@ -473,7 +472,6 @@ export const FIELD_LABELS = {
   size: "Organization size",
   crown_jewels: "Primary assets and business services",
   tech_stack: "Software",
-  ai_systems: "AI systems inventory",
   pir_ids: "Priority intelligence requirements (PIRs)",
   "risk_appetite.annual_loss_threshold": "Risk tolerance per scenario",
   "risk_appetite.approval_threshold": "Escalation threshold",

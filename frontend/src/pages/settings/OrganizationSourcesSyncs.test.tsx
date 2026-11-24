@@ -316,7 +316,7 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
       [
         sync({ id: "s-1" }),
         sync({ id: "s-2", source: "openaev", section: "tech_stack" }),
-        sync({ id: "s-3", source: "openaev", section: "ai_systems", enabled: false }),
+        sync({ id: "s-3", source: "openaev", section: "asset_groups", enabled: false }),
         sync({ id: "s-all", section: "all", source: "", filters: {} }),
       ],
       [source(), source({ key: "openaev", display_name: "OpenAEV", sync_ids: ["s-2", "s-3"] })],

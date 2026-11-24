@@ -32,7 +32,6 @@ export const SYNC_SECTION_LABELS = {
   all: "Sync all",
   assets: "Assets",
   asset_groups: "Asset groups",
-  ai_systems: "AI systems",
   tech_stack: "Software",
   crown_jewels: "Primary assets",
   pirs: "PIRs",
