@@ -154,7 +154,7 @@ def test_the_basic_block_cap_holds_whatever_the_list_lengths() -> None:
         "name": "N" * 200,
         "regions": ["FR", "DE", "US", "GB", "JP", "AU", "SG", "SA", "ES", "IT"] * 3,
         "crown_jewels": [{"name": f"Jewel {i} " + "x" * 150, "criticality": "high"} for i in range(200)],
-        "tech_stack": [{"product": f"Product {i}", "vendor": "Vendor", "cpe": "cpe:2.3:a:v:p:1"} for i in range(500)],
+        "software": [{"product": f"Product {i}", "vendor": "Vendor", "cpe": "cpe:2.3:a:v:p:1"} for i in range(500)],
         "pir_ids": [f"pir-{i}" for i in range(100)],
         "pir_names": {f"pir-{i}": "P" * 250 for i in range(100)},
     }
@@ -184,7 +184,7 @@ def test_the_basic_block_cap_holds_whatever_the_list_lengths() -> None:
         # #1591: a stored selection naming the deprecated crown_jewels reads as primary_assets.
         (["pirs"], [], ["crown_jewels"], ["primary_assets"]),
         (["crown_jewels", "primary_assets"], None, None, ["primary_assets"]),
-        ([], ["tech_stack", "gone_from_the_model", "software"], None, ["software"]),
+        ([], ["software", "gone_from_the_model", "software"], None, ["software"]),
     ],
 )
 def test_categories_most_specific_explicit_list_wins(
@@ -254,7 +254,7 @@ async def _with(
 
 BIG_STACK = {
     **PROFILE,
-    "tech_stack": [{"product": f"Product {i}", "vendor": f"Vendor {i % 7}"} for i in range(500)],
+    "software": [{"product": f"Product {i}", "vendor": f"Vendor {i % 7}"} for i in range(500)],
 }
 
 
@@ -416,7 +416,7 @@ def test_the_tool_is_built_only_when_the_cascade_keeps_it(source: str, needle: s
 
 COMPLETE = {
     **PROFILE,
-    "tech_stack": [{"product": "Windows", "vendor": "Microsoft"}],
+    "software": [{"product": "Windows", "vendor": "Microsoft"}],
     "risk_appetite": {"annual_loss_threshold": 2_000_000, "approval_threshold": 50_000},
     "loaded_hourly_rate": 120,
     "ticketing": {"integration": "jira", "project": "SEC"},

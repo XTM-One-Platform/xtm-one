@@ -792,7 +792,7 @@ SECTION_IDENTITY: dict[
 ] = {
     "assets": (DEFAULT_KEY_ORDER, _asset_ids, WEAK_KINDS),
     "asset_groups": (("external_reference", "name"), _group_ids, frozenset()),
-    "tech_stack": (("cpe", "product", "name"), _tech_ids, frozenset()),
+    "software": (("cpe", "product", "name"), _tech_ids, frozenset()),
     "crown_jewels": (("platform_id", "name"), _platform_ids("opencrq_asset_id"), frozenset()),
     "pirs": (("platform_id", "name"), _platform_ids("id"), frozenset()),
     "tracked_organizations": (("name",), _name_ids, frozenset()),

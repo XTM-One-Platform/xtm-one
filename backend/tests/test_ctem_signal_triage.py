@@ -243,7 +243,7 @@ def test_add_to_inventory_writes_one_row_per_subject_and_nothing_already_there()
     profile = oc.parse_profile(
         {
             "assets_exposure": [{"name": "vpn.corp.example"}],
-            "tech_stack": [{"product": "Jira"}],
+            "software": [{"product": "Jira"}],
             "owned_domains": ["corp.example"],
         }
     )

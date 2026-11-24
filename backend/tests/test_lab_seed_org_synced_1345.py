@@ -51,7 +51,7 @@ def test_saves_one_disabled_sync_per_section_and_synced_rows_with_their_sync_id(
     (profile,) = [c[2]["profile"] for c in calls if c[0] == "PUT"]
     assert profile["name"] == "Lab sample organization"
     parsed = org_context.parse_profile(profile)
-    for section, sync in (("crown_jewels", "sync-1"), ("tech_stack", "sync-2")):
+    for section, sync in (("crown_jewels", "sync-1"), ("software", "sync-2")):
         rows = getattr(parsed, section)
         synced = [r for r in rows if r.external_id]
         typed = [r for r in rows if not r.external_id]

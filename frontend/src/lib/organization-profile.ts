@@ -26,7 +26,7 @@ export interface ProfileLike {
     asset_names?: string[];
   } & Provenance)[];
   /** `version`: the version the organization runs, optional (CTEM-11, #894): cases then name the version to reach. */
-  tech_stack: ({ product: string; vendor: string; cpe: string; version?: string } & Provenance)[];
+  software: ({ product: string; vendor: string; cpe: string; version?: string } & Provenance)[];
   /**
    * What the organization ships, apart from what it runs (#1432): a vulnerability on one of these products (by CPE,
    * then product and vendor) resolves to its source repositories (`owner/name`). Absent on a profile that declares none.
@@ -490,7 +490,7 @@ export const FIELD_LABELS = {
   regions: "Regions of operation",
   size: "Organization size",
   crown_jewels: "Primary assets and business services",
-  tech_stack: "Software",
+  software: "Software",
   pir_ids: "Priority intelligence requirements (PIRs)",
   "risk_appetite.annual_loss_threshold": "Risk tolerance per scenario",
   "risk_appetite.approval_threshold": "Escalation threshold",
@@ -655,7 +655,7 @@ export function toForm(profile: ProfileLike): ProfileForm {
     ...(profile.pir_details ? { pir_details: profile.pir_details } : {}),
     ...(profile.fx_rates ? { fx_rates: profile.fx_rates } : {}),
     crown_jewels: profile.crown_jewels.map((jewel) => ({ ...jewel })),
-    tech_stack: profile.tech_stack.map((entry) => ({ ...entry })),
+    software: profile.software.map((entry) => ({ ...entry })),
     shipped_products: (profile.shipped_products ?? []).map((entry) => ({ ...entry, repositories: [...entry.repositories] })),
     annual_loss_threshold: numberText(profile.risk_appetite.annual_loss_threshold),
     approval_threshold: numberText(profile.risk_appetite.approval_threshold),
@@ -742,7 +742,7 @@ export function fromForm(form: ProfileForm): { profile: ProfileLike } | { invali
         ...(form.fx_rates ? { fx_rates: form.fx_rates } : {}),
         crown_jewels: form.crown_jewels.filter((jewel) => jewel.name.trim()),
         // An empty version is left out: the saved shape of a profile that never declares one stays the same.
-        tech_stack: form.tech_stack
+        software: form.software
           .filter((entry) => entry.product.trim())
           .map(({ version, ...entry }) => (version?.trim() ? { ...entry, version: version.trim() } : entry)),
         // Always sent, an empty list included, so removing the last row clears it: the server keeps the stored list

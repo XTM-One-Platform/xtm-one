@@ -42,7 +42,7 @@ import hashlib
 import logging
 import re
 import uuid
-from collections.abc import Coroutine, Iterator
+from collections.abc import Coroutine, Iterator, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -889,19 +889,24 @@ async def list_frictions(
     limit: int = 50,
     offset: int = 0,
     kinds: list[str] | None = None,
+    supervised_agent_ids: Sequence[uuid.UUID] | None = (),
 ) -> tuple[list[dict], int]:
     """The frictions the caller sees, newest first, and their total.
 
     Visibility is the person's: a friction recorded for them, or by one of
     the agents they read (``agent_id`` narrows to one agent). *kinds* keeps
     only those kinds (a run of 26k characters read for its two resumed turns).
+    *supervised_agent_ids* widens it to the frictions of the agents the caller
+    may supervise (:func:`supervision_clause`), ``None`` for every agent.
     """
     from app.core.database import async_session
 
     clauses = []
     uid = safe_uuid(str(user_id)) if user_id else None
-    if uid is not None:
-        clauses.append(AgentFriction.user_id == uid)
+    own = AgentFriction.user_id == uid if uid is not None else None
+    widened = supervision_clause(own, supervised_agent_ids)
+    if widened is not None:
+        clauses.append(widened)
     visible = list(clauses)
     limit = max(1, min(int(limit or 50), LIST_MAX_LIMIT))
     offset = max(0, int(offset or 0))
@@ -941,6 +946,41 @@ class FrictionNotFoundError(LookupError):
     """No friction with that id that the caller may change."""
 
 
+def supervision_clause(own: Any, supervised_agent_ids: Sequence[uuid.UUID] | None) -> Any:
+    """The visibility clause of a caller whose own frictions are *own* (a
+    clause, or ``None`` for no person) and who may supervise
+    *supervised_agent_ids*: ``()`` keeps *own* alone; a list adds those agents'
+    frictions; ``None`` (an admin with the supervision surface) sees every
+    friction. The grant is the trace supervision one (``traces._supervision_scope``),
+    so supervising frictions opens no new boundary (#1928)."""
+    from sqlalchemy import or_, true
+
+    if supervised_agent_ids is None:
+        return true()
+    agents = [a for a in supervised_agent_ids if a is not None]
+    if not agents:
+        return own
+    member = AgentFriction.agent_id.in_(agents)
+    return member if own is None else or_(own, member)
+
+
+async def count_run_frictions(run_id: str | uuid.UUID) -> int:
+    """How many frictions *run_id* holds, whoever may read them: the answer
+    that tells a caller "not visible to you" from "none recorded" (#1928)."""
+    from app.core.database import async_session
+
+    rid = safe_uuid(str(run_id))
+    if rid is None:
+        return 0
+    async with async_session() as db:
+        return int(
+            (
+                await db.execute(select(func.count()).select_from(AgentFriction).where(AgentFriction.run_id == rid))
+            ).scalar()
+            or 0
+        )
+
+
 async def _filter_id(db: Any, column: Any, value: object, noun: str, visible: list[Any]) -> uuid.UUID:
     """The full id a ``list_frictions`` filter *value* names: a full id as
     it is; an id prefix (8+ hexadecimal characters) for the one *column*
@@ -977,7 +1017,13 @@ async def _filter_id(db: Any, column: Any, value: object, noun: str, visible: li
     raise ValueError(f"no {noun} of your frictions has an id starting with `{text}`")
 
 
-async def _full_friction_id(friction_id: str, *, agent_id: uuid.UUID | None, user_id: uuid.UUID | None) -> uuid.UUID:
+async def _full_friction_id(
+    friction_id: str,
+    *,
+    agent_id: uuid.UUID | None,
+    user_id: uuid.UUID | None,
+    supervised_agent_ids: Sequence[uuid.UUID] | None = (),
+) -> uuid.UUID:
     """The friction *friction_id* names, a full id or an id prefix (8+
     hexadecimal characters) of one friction of the calling agent or of the
     person it acts for. An ambiguous prefix raises ``ValueError`` naming the
@@ -1000,10 +1046,11 @@ async def _full_friction_id(friction_id: str, *, agent_id: uuid.UUID | None, use
         )
         if c is not None
     ]
-    if prefix is None or not owners:
+    reach = supervision_clause(or_(*owners) if owners else None, supervised_agent_ids)
+    if prefix is None or reach is None:
         raise FrictionNotFoundError(friction_id)
     async with async_session() as db:
-        candidates = await ids_by_prefix(db, AgentFriction, prefix, [or_(*owners)], label=AgentFriction.kind)
+        candidates = await ids_by_prefix(db, AgentFriction, prefix, [reach], label=AgentFriction.kind)
     if len(candidates) == 1:
         return uuid.UUID(str(candidates[0][0]))
     if candidates:
@@ -1043,13 +1090,16 @@ async def dispose_friction(
     friction_class: str,
     disposition: str,
     ref: str = "",
+    supervised_agent_ids: Sequence[uuid.UUID] | None = (),
 ) -> dict:
     """Classify a friction and name what carries its fix.
 
     A ``work_item`` disposition must name a work item the caller sees;
     ``accepted`` needs no ref; every other disposition needs one. A ``harness``
     friction never takes a skill or prompt edit (:data:`HARNESS_REFUSED_DISPOSITIONS`).
-    The friction must belong to the calling agent or to the person it acts for.
+    The friction must belong to the calling agent or to the person it acts for,
+    or to an agent the caller may supervise (*supervised_agent_ids*, ``None``
+    for every agent: :func:`supervision_clause`).
     """
     from app.core.database import async_session
 
@@ -1078,13 +1128,17 @@ async def dispose_friction(
         ref = str(item.get("id") or ref)
     aid = safe_uuid(str(agent_id)) if agent_id else None
     uid = safe_uuid(str(user_id)) if user_id else None
-    fid = await _full_friction_id(friction_id, agent_id=aid, user_id=uid)
+    fid = await _full_friction_id(friction_id, agent_id=aid, user_id=uid, supervised_agent_ids=supervised_agent_ids)
+    supervised = None if supervised_agent_ids is None else set(supervised_agent_ids)
     async with async_session() as db:
         row = (
             await db.execute(select(AgentFriction).where(AgentFriction.id == fid).with_for_update())
         ).scalar_one_or_none()
         if row is None or not (
-            (aid is not None and row.agent_id == aid) or (uid is not None and row.user_id == uid)
+            (aid is not None and row.agent_id == aid)
+            or (uid is not None and row.user_id == uid)
+            or supervised is None
+            or row.agent_id in supervised
         ):
             raise FrictionNotFoundError(friction_id)
         row.friction_class = friction_class

@@ -65,7 +65,7 @@ class ProfileFacts:
 
     saved: bool = False
     crown_jewels: int = 0
-    tech_stack: int = 0
+    software: int = 0
     ticketing_target: bool = False
     scope_min_criticality: str = ""
 
@@ -143,11 +143,11 @@ def setup_status(
     connected = [m for m in LOOP_MODULES if m in set(modules)]
     live: dict[str, tuple[bool, dict[str, Any]]] = {
         "organization": (
-            profile.saved and profile.crown_jewels > 0 and profile.tech_stack > 0,
+            profile.saved and profile.crown_jewels > 0 and profile.software > 0,
             {
                 "saved": profile.saved,
                 "crown_jewels": profile.crown_jewels,
-                "tech_stack": profile.tech_stack,
+                "software": profile.software,
                 "ticketing_target": profile.ticketing_target,
                 "scope_min_criticality": profile.scope_min_criticality,
             },

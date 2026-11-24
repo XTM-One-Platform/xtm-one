@@ -6561,7 +6561,14 @@ async def execute_assignment_run(
                 from app.services.builtin_tools import build_friction_tools
 
                 composite.add_tools(
-                    *build_friction_tools(str(run.user_id or _run_file_owner_id or ""), str(agent.id), run_id=run.id)
+                    *build_friction_tools(
+                        str(run.user_id or _run_file_owner_id or ""),
+                        str(agent.id),
+                        run_id=run.id,
+                        # The trace supervision grant reaches the supervised agents' frictions too (#1928).
+                        supervision_target_agent_ids=agent.trace_supervision_target_agent_ids,
+                        allow_cross_agent="inspect_agent_traces" in agent_builtin_tool_ids,
+                    )
                 )
                 # Per-object timers ride with shared state: a run arms a date and
                 # the platform raises timer.due then (services/platform_timers.py).

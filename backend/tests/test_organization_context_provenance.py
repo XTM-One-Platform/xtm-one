@@ -37,10 +37,10 @@ def test_a_crown_jewel_saved_with_its_opencrq_id_reads_as_an_opencrq_row() -> No
 
 
 def test_a_typed_row_stays_manual_and_its_provenance_stays_out_of_the_legacy_dump() -> None:
-    profile = oc.parse_profile({"crown_jewels": [{"name": "Payments"}], "tech_stack": [{"product": "Splunk"}]})
-    assert (profile.crown_jewels[0].source, profile.tech_stack[0].source) == ("manual", "manual")
+    profile = oc.parse_profile({"crown_jewels": [{"name": "Payments"}], "software": [{"product": "Splunk"}]})
+    assert (profile.crown_jewels[0].source, profile.software[0].source) == ("manual", "manual")
     dumped = oc.legacy_dump(profile)
-    assert "source" not in dumped["crown_jewels"][0] and "sync_id" not in dumped["tech_stack"][0]
+    assert "source" not in dumped["crown_jewels"][0] and "sync_id" not in dumped["software"][0]
 
 
 def test_platform_sources_are_neither_hand_nor_agent_sources() -> None:
