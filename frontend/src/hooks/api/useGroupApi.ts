@@ -111,13 +111,13 @@ export function useCreateGroup() {
 
 export function useUpdateGroup() {
   const qc = useQueryClient();
-  return useMutation<Group, Error, { groupId: string; data: { name?: string; description?: string | null; quota_config?: Record<string, unknown> | null; ai_enabled?: boolean; kind?: Group["kind"] } }>({
+  return useMutation<Group, Error, { groupId: string; data: { name?: string; description?: string | null; quota_config?: Record<string, unknown> | null; ai_enabled?: boolean; kind?: Group["kind"]; ctem_access?: Group["ctem_access"] | "none"; ctem_notify?: boolean } }>({
     mutationFn: ({ groupId, data }) => api.put(`/groups/${groupId}`, data),
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["groups"] });
       qc.invalidateQueries({ queryKey: ["group", vars.groupId] });
       // The administrator may be a member of the group they just switched.
-      if ("ai_enabled" in vars.data) qc.invalidateQueries({ queryKey: ["me"] });
+      if ("ai_enabled" in vars.data || "ctem_access" in vars.data) qc.invalidateQueries({ queryKey: ["me"] });
     },
   });
 }
