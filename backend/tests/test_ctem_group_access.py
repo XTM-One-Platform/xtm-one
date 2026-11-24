@@ -181,7 +181,12 @@ async def test_an_unreadable_membership_is_no_right(monkeypatch: pytest.MonkeyPa
 # --- the signal API -------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(("user", "seen"), [(ADMIN, 3), (VIEWER, 3), (DECIDER, 3), (NOBODY, 1)])
+# Stable ids: the users are random per process, and pytest-xdist workers must collect the same names.
+@pytest.mark.parametrize(
+    ("user", "seen"),
+    [(ADMIN, 3), (VIEWER, 3), (DECIDER, 3), (NOBODY, 1)],
+    ids=["admin", "view", "decide", "none"],
+)
 async def test_view_and_decide_read_the_system_signals(client: httpx.AsyncClient, user: str, seen: int) -> None:
     response = await client.get("/api/v1/ctem-signals", headers={"X-User": user})
     assert response.status_code == 200

@@ -54,7 +54,7 @@ class UpdateGroupRequest(BaseModel):
     # With `decide`: notify the members of the case gates (`null` leaves it).
     ctem_notify: bool | None = None
 
-    _fit_columns = column_length_validator(Group, "name", "kind", stripped=True)
+    _fit_columns = column_length_validator(Group, "name", "kind", "ctem_access", stripped=True)
 
 
 class GroupListItem(BaseModel):
