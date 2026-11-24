@@ -130,7 +130,7 @@ const SECTION_FIELD: Partial<Record<OrganizationSync["section"], SourcedSection>
   assets: "assets_exposure",
   asset_groups: "asset_groups",
   ai_systems: "ai_systems",
-  software: "tech_stack",
+  tech_stack: "tech_stack",
   crown_jewels: "crown_jewels",
 };
 
@@ -586,9 +586,9 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
         open={editing !== null}
         saving={update.isPending}
         onClose={() => setEditing(null)}
-        onSave={(schedule, enabled, direction) => {
+        onSave={(schedule, enabled, direction, filters) => {
           const done = { onSuccess: () => setEditing(null), onError: reportFailure(t_i18n("The sync could not be saved")) };
-          if (editing) update.mutate({ id: editing.id, body: bodyOf(editing, { ...schedule, enabled, direction }) }, done);
+          if (editing) update.mutate({ id: editing.id, body: bodyOf(editing, { ...schedule, enabled, direction, ...(filters ? { filters } : {}) }) }, done);
         }}
       />
       <DeleteRowsDialog row={deleting} name={deleting ? nameOf(deleting) : ""} onClose={() => setDeleting(null)} />

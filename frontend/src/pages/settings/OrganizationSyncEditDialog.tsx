@@ -22,6 +22,7 @@ import {
   type SyncDirection,
 } from "@/hooks/api/useOrganizationContextApi";
 import { useFormatter } from "@/i18n";
+import { linkOptionOn } from "@/lib/organization-import-filters";
 import { IMPORT_SOURCE_NAMES } from "@/lib/organization-profile";
 import { defaultSchedule, type SyncSchedule } from "@/lib/organization-sync-schedule";
 import { OrganizationSharedContextNotice } from "./OrganizationSharedContextNotice";
@@ -33,7 +34,7 @@ export const SYNC_SECTION_LABELS = {
   assets: "Assets",
   asset_groups: "Asset groups",
   ai_systems: "AI systems",
-  software: "Software",
+  tech_stack: "Software",
   crown_jewels: "Primary assets",
   pirs: "PIRs",
 } as const satisfies Record<ImportSectionKey | "all", string>;
@@ -55,7 +56,7 @@ const OUTBOUND_REASONS = {
   openaev_asset_groups: "Planned: OpenAEV asset group writes are not wired for syncs yet.",
   opencti_pirs: "Planned: OpenCTI PIR writes are not wired for syncs yet.",
   opencti_assets: "OpenCTI Systems are owned by its connectors.",
-  openaev_software: "OpenAEV software inventory is read from its agents.",
+  openaev_tech_stack: "OpenAEV software inventory is read from its agents.",
   other: "This pairing reads only.",
 } as const;
 
@@ -88,9 +89,12 @@ interface EditProps {
   open: boolean;
   saving: boolean;
   onClose: () => void;
-  /** The direction is sent only for a section sync; Sync all has none. */
-  onSave: (schedule: SyncSchedule, enabled: boolean, direction: SyncDirection | undefined) => void;
+  /** The direction is sent only for a section sync; Sync all has none. The filters only when this dialog changed them. */
+  onSave: (schedule: SyncSchedule, enabled: boolean, direction: SyncDirection | undefined, filters?: OrganizationSync["filters"]) => void;
 }
+
+/** Whether a sync carries the OpenCRQ link option of #1591 (the primary-asset source of CTEM > Inventory > Sources, #1754). */
+const hasLinkOption = (sync: OrganizationSync | null): sync is OrganizationSync => sync !== null && sync.section === "crown_jewels" && sync.source === "opencrq";
 
 /** The schedule and the switch of one sync; saving it again resumes a paused one with the current administrator's token. */
 export function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProps) {
@@ -100,6 +104,7 @@ export function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProp
   const [schedule, setSchedule] = useState<SyncSchedule>(defaultSchedule);
   const [enabled, setEnabled] = useState(true);
   const [direction, setDirection] = useState<SyncDirection>("inbound");
+  const [linkOn, setLinkOn] = useState(true);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const sectionSync = sync !== null && sync.section !== "all";
   const { data: matrix } = useOrganizationSyncDirections(open && sectionSync);
@@ -115,6 +120,7 @@ export function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProp
       setSchedule(sync ? { frequency: sync.frequency, hour: sync.hour, minute: sync.minute, weekday: sync.weekday, timezone: sync.timezone } : defaultSchedule());
       setEnabled(sync ? sync.enabled : true);
       setDirection(sync ? directionOf(sync) : "inbound");
+      setLinkOn(linkOptionOn(sync?.filters));
     }
   }
   const title = t_i18n("Edit the sync");
@@ -183,6 +189,18 @@ export function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProp
             />
           )}
           <SyncScheduleFields idPrefix="org-sync-edit" value={schedule} onChange={setSchedule} />
+          {hasLinkOption(sync) && (
+            <SettingsSwitchField
+              id="org-sync-edit-link-supporting-assets"
+              label={t_i18n("Link supporting assets to primary assets")}
+              helper={t_i18n("On by default. Off: primary assets are imported without their supporting assets.")}
+              info={t_i18n(
+                "Links each primary asset to the supporting assets OpenCRQ attaches to it, matched by OpenCRQ id or name. A link you add or remove by hand always wins.",
+              )}
+              checked={linkOn}
+              onCheckedChange={setLinkOn}
+            />
+          )}
           <SettingsSwitchField
             id="org-sync-edit-enabled"
             label={t_i18n("Enabled")}
@@ -195,7 +213,21 @@ export function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProp
           <Button variant="secondary" onClick={onClose}>
             {t_i18n("Cancel")}
           </Button>
-          <Button onClick={() => onSave(schedule, enabled, sectionSync ? direction : undefined)} disabled={saving} aria-busy={saving || undefined}>
+          <Button
+            onClick={() => {
+              // The link option is stored only when off ("false"), as the add dialog stores it.
+              const filters =
+                hasLinkOption(sync) && linkOn !== linkOptionOn(sync.filters)
+                  ? (() => {
+                      const { link_supporting_assets: _dropped, ...rest } = sync.filters ?? {};
+                      return linkOn ? rest : { ...rest, link_supporting_assets: "false" };
+                    })()
+                  : undefined;
+              onSave(schedule, enabled, sectionSync ? direction : undefined, filters);
+            }}
+            disabled={saving}
+            aria-busy={saving || undefined}
+          >
             {saving && <Spinner size="sm" tone="inherit" label={t_i18n("Saving...")} />}
             {t_i18n("Save")}
           </Button>

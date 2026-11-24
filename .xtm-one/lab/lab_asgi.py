@@ -105,7 +105,7 @@ offers no other surface a review can open.
 
 Every lab answers ``GET /api/v1/lab/locale/<en|fr|es|ja|default>?next=<path>`` (``lab_locale``, #1653): the
 language is stored on every user of the lab and the answer redirects to ``next``, so one browser ``navigate`` reloads
-the app in that language.
+the app in that language. ``GET /api/v1/lab/theme/<light|dark>?next=<path>`` does the same for the theme (#1848).
 
 dev-docs/reference/agentic-labs.md, "The xtm-one lab".
 """
@@ -715,7 +715,7 @@ def lab_org_import_read(section: str, source: str, batch_type: str = ""):
         rows = [imp.openaev_asset(asset, batch_type) for asset in LAB_ORG_IMPORT_OPENAEV_ASSETS]
     elif (section, source) == ("asset_groups", "openaev"):
         rows = [imp.openaev_asset_group(group) for group in LAB_ORG_IMPORT_OPENAEV_GROUPS]
-    elif (section, source) == ("software", "openaev"):
+    elif (section, source) == ("tech_stack", "openaev"):
         names = [str(p.get("asset_name") or p.get("security_platform_name")) for p in LAB_ORG_IMPORT_OPENAEV_PLATFORMS]
         rows = [imp.TechStackEntry(product=name) for name in names]
     else:
@@ -1594,6 +1594,10 @@ async def application(scope, receive, send):
     locale = lab_locale.asks_locale(scope)
     if locale is not None:
         await lab_locale.answer(scope, send, locale)
+        return
+    theme = lab_locale.asks_theme(scope)
+    if theme is not None:
+        await lab_locale.answer_theme(scope, send, theme)
         return
     whatsapp_page = whatsapp_decision_preview.answer(scope)
     if whatsapp_page is not None:
