@@ -21596,6 +21596,8 @@
   "No {product} connection could be used for this read, so open exposures there may be missing.": "この読み込みに使える {product} の接続がありませんでした。未対応のエクスポージャーが表示されていない可能性があります。",
   "Read-only for you.": "あなたには読み取り専用です。",
   "See the loop trace of {subject}": "{subject} のループのトレースを見る",
+  "Open in Signals": "シグナルで開く",
+  "Open case": "ケースを開く",
   "{count, plural, one {# signal} other {# signals}}": "{count, plural, other {# 件のシグナル}}",
   "First seen {first}, last seen {last}": "初回検出 {first}、最終検出 {last}",
   "Filter the signals": "シグナルを絞り込む",

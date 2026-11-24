@@ -21596,6 +21596,8 @@
   "No {product} connection could be used for this read, so open exposures there may be missing.": "No se pudo usar ninguna conexión de {product} para esta lectura: pueden faltar exposiciones abiertas.",
   "Read-only for you.": "Solo lectura para usted.",
   "See the loop trace of {subject}": "Ver la traza del bucle de {subject}",
+  "Open in Signals": "Abrir en Señales",
+  "Open case": "Abrir el caso",
   "{count, plural, one {# signal} other {# signals}}": "{count, plural, one {# señal} other {# señales}}",
   "First seen {first}, last seen {last}": "Visto por primera vez el {first}, por última vez el {last}",
   "Filter the signals": "Filtrar las señales",

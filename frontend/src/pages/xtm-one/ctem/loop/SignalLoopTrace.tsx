@@ -13,6 +13,7 @@
  * stream refreshes the signal query, so a stage lights without a reload.
  */
 import { type ReactNode } from "react";
+import { Link as RouterLink } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
 import { useCtemSignal, useProposeSignalScope, type CtemDecisionRecord, type CtemSignal } from "@/hooks/api/useCtemSignalsApi";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ import { cn, safeExternalUrl } from "@/lib/utils";
 import { DecisionReason, decisionSentence, levelLabel } from "./DecisionReason";
 import { EVIDENCE_HEALTH_ROW_KEYS, EVIDENCE_STATE_LABEL, evidenceHealthFacts, type EvidenceHealthFact } from "./evidence-health";
 import { signalLoop, type LoopStageView } from "./loop-stages";
+import { caseDetailPath } from "../cases-kanban";
 
 const LENS_LABEL: Record<string, string> = { inside: "Inside", outside: "Outside", world: "World" };
 
@@ -625,9 +627,20 @@ function ProposeScope({ signal }: { signal: CtemSignal }) {
   );
 }
 
-function SignalTrace({ signal }: { signal: CtemSignal }) {
+/**
+ * The case a signal opened or joined, when the trace is read off that case (Sam,
+ * 24 Nov 2026: pivot from the trace to the case). None without a case, and none
+ * on that case's own page: no link to the page already open.
+ */
+export function signalCaseLink(caseId: string | null | undefined, currentCaseId?: string | null): string | null {
+  if (!caseId || caseId === currentCaseId) return null;
+  return caseDetailPath(caseId);
+}
+
+function SignalTrace({ signal, currentCaseId }: { signal: CtemSignal; currentCaseId?: string | null }) {
   const { t_i18n, intl } = useFormatter();
   const stages = signalLoop(signal);
+  const caseLink = signalCaseLink(signal.case_id, currentCaseId);
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 content-compact text-default-secondary">
@@ -670,6 +683,14 @@ function SignalTrace({ signal }: { signal: CtemSignal }) {
                   : ""}
               </span>
             </span>
+            {stage.key === "case" && caseLink && (
+              <Button asChild variant="link" size="sm" className="h-auto shrink-0 gap-1 p-0">
+                <RouterLink to={caseLink} data-testid="ctem-loop-trace-open-case">
+                  {t_i18n("Open case")}
+                  <Icon name="arrow-right" size={16} aria-hidden />
+                </RouterLink>
+              </Button>
+            )}
           </li>
         ))}
       </ol>
@@ -677,13 +698,16 @@ function SignalTrace({ signal }: { signal: CtemSignal }) {
   );
 }
 
-/** The loop trace of one signal, read by id: a section of the Signals page (#1263). */
-export function SignalTraceBody({ id }: { id: string }) {
+/**
+ * The loop trace of one signal, read by id, in the trace sheet of the Signals page (#1263)
+ * or of a case page; `currentCaseId` names that case so the trace draws no link to it.
+ */
+export function SignalTraceBody({ id, currentCaseId }: { id: string; currentCaseId?: string | null }) {
   const { t_i18n } = useFormatter();
   const { data, error, isLoading } = useCtemSignal(id);
   if (isLoading) return <p className="content-compact text-default-secondary">{t_i18n("Loading...")}</p>;
   if (error && isNotFoundError(error)) return <p className="content-compact text-default-secondary">{t_i18n("This item is not available to you")}</p>;
   if (!data) return <p className="content-compact text-default-secondary">{t_i18n("This item is not available to you")}</p>;
-  return <SignalTrace signal={data} />;
+  return <SignalTrace signal={data} currentCaseId={currentCaseId} />;
 }
 
