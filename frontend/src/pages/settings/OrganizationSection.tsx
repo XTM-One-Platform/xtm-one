@@ -1794,7 +1794,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             description={
               current.ticketing.integration
                 ? t_i18n("How CTEM cases open, update and close their tickets. A change applies to the next sync.")
-                : t_i18n("No ticketing connected: cases stay in XTM One. Set the ticketing integration above to sync them.")
+                : t_i18n("No ticketing connected: cases stay in XTM One. Set the ticketing integration and project to sync them.")
             }
             data-testid="settings.organization.ticketing-sync-group"
           >
