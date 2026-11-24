@@ -16,7 +16,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 /**
  * Settings > Organization: Assets & exposure, Prioritization policy and
  * Enterprise knowledge (#11543 S3). The same SettingsCard and DataTable
- * pattern as the primary assets, tech stack and AI systems cards: read mode
+ * pattern as the crown jewels, software inventory and AI systems cards: read mode
  * draws text, edit mode draws the controls, the page's Save writes them.
  */
 
@@ -461,7 +461,7 @@ export function OrganizationExposureCards({
       </Select>
     </div>
   );
-  // Read mode sorts; edit mode keeps every row in place under the cursor (as the primary assets table).
+  // Read mode sorts; edit mode keeps every row in place under the cursor (as the crown jewels table).
   const sortable = <R,>(on: boolean, value: (row: R) => SortValue) => (on ? undefined : value);
   const remove = (on: boolean, onClick: () => void) => (on ? <RowRemoveButton label={t_i18n("Remove")} onClick={onClick} /> : null);
 
@@ -820,7 +820,7 @@ export function OrganizationExposureCards({
         data-testid="settings.organization.assets-exposure"
         icon={AssetsIcon}
         title={t_i18n("Assets and exposure")}
-        description={t_i18n("What runs where, and what the internet can reach. Link assets to primary assets from the primary asset rows.")}
+        description={t_i18n("What runs where, and what the internet can reach. Link assets to crown jewels from the crown jewel rows.")}
         action={
           <>
             {!assetsEditing && (
@@ -1012,11 +1012,11 @@ export function OrganizationExposureCards({
               )}
               <SettingsField
                 id={`${fieldId}-min_crown_jewel_criticality`}
-                label={t_i18n("Minimum primary asset criticality")}
-                helper={t_i18n("Keep only findings on assets linked to a primary asset at this level or above.")}
-                info={t_i18n("The criticality of the primary asset a finding's asset is linked to: low, medium, high or critical. Example: High keeps a finding on a critical primary asset and drops one on a medium one. Read by the CTEM scope gate. Any: no criticality threshold.")}
+                label={t_i18n("Minimum crown jewel criticality")}
+                helper={t_i18n("Keep only findings on assets linked to a crown jewel at this level or above.")}
+                info={t_i18n("The criticality of the crown jewel a finding's asset is linked to: low, medium, high or critical. Example: High keeps a finding on a critical crown jewel and drops one on a medium one. Read by the CTEM scope gate. Any: no criticality threshold.")}
               >
-                {select(POLICY_CRITICALITY_LABELS, policy.min_crown_jewel_criticality || ANY_CRITICALITY, "Minimum primary asset criticality", (v) =>
+                {select(POLICY_CRITICALITY_LABELS, policy.min_crown_jewel_criticality || ANY_CRITICALITY, "Minimum crown jewel criticality", (v) =>
                   patchPolicy({ min_crown_jewel_criticality: v === ANY_CRITICALITY ? "" : v }),
                 )}
               </SettingsField>
@@ -1049,7 +1049,7 @@ export function OrganizationExposureCards({
             />
             <SettingsReadField label={t_i18n("PIR score minimum: threat activity")} value={String(policy.pir_min_score_threat ?? PIR_SCORE_DEFAULTS.pir_min_score_threat)} mono />
             <SettingsReadField
-              label={t_i18n("Minimum primary asset criticality")}
+              label={t_i18n("Minimum crown jewel criticality")}
               value={policy.min_crown_jewel_criticality ? label(CRITICALITY_LABELS, policy.min_crown_jewel_criticality) : ""}
             />
             <SettingsReadField label={t_i18n("Known exploited vulnerabilities always in")} value={policy.kev_always_in ? t_i18n("Yes") : t_i18n("No")} />

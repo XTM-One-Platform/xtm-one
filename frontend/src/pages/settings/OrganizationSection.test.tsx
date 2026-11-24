@@ -2,7 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 
 import { api } from "@/lib/api";
 import { renderWithProviders, testQueryClient } from "@/testing/providers";
@@ -17,6 +17,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 vi.mock("@/hooks/usePlatformConfig", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/usePlatformConfig")>()),
   useAgenticAIEnabled: () => agenticEnabled,
+  useIsXtmOne: () => xtmOneMode,
 }));
 
 // The tab bar registers palette commands (DetailTabs); the palette is not under test here.
@@ -26,6 +27,16 @@ vi.mock("@/lib/commands/CommandsProvider", async (importOriginal) => ({
 }));
 
 let agenticEnabled = true;
+/** Writes the router's current path, so a test reads where a link went. */
+function LocationProbe() {
+  const location = useLocation();
+  return <span data-testid="location-probe">{location.pathname + location.search}</span>;
+}
+// XTM One mode by default: Copilot mode keeps the Identity card alone (#1690), its own tests set it false.
+let xtmOneMode = true;
+beforeEach(() => {
+  xtmOneMode = true;
+});
 
 /** Opens the header "Draft" menu and picks one of its rows (section 6.1). */
 async function pickDraft(row: "From the platforms" | "With AI") {
@@ -37,8 +48,9 @@ async function draftFromPlatforms() {
   await pickDraft("From the platforms");
   fireEvent.click(await screen.findByRole("button", { name: "Quick setup" }));
 }
-/** The cards CTEM > Inventory mounts in place of the two tabs that left Settings (#1178). */
+/** The cards CTEM > Inventory mounts in place of the three tabs that left Settings (#1178, #1690). */
 const INVENTORY_CARDS = {
+  business: ["crown_jewels", "shipped_products", "tracked_organizations"],
   technology: ["tech_stack"],
   exposure: ["assets_exposure", "asset_groups", "prioritization_policy", "outside_lens", "evidence_health"],
 } as const;
@@ -47,16 +59,13 @@ const INVENTORY_CARDS = {
  * as CTEM > Inventory mounts them (#1178), since Settings no longer draws them.
  */
 function renderPage(tab?: string) {
-  const embedded = tab === "technology" || tab === "exposure" ? INVENTORY_CARDS[tab] : null;
+  const embedded = tab === "business" || tab === "technology" || tab === "exposure" ? INVENTORY_CARDS[tab] : null;
   return renderWithProviders(
     <MemoryRouter initialEntries={[embedded ? "/ctem/inventory" : tab ? `/settings/organization/profile/${tab}` : "/settings/organization"]}>
       <OrganizationSection embed={embedded ? { cards: embedded } : undefined} />
+      <LocationProbe />
     </MemoryRouter>,
   );
-}
-/** Opens a tab as a pointer does: each tab is a link to its path (UX r1 B1 on #12332). */
-function openTab(name: RegExp) {
-  fireEvent.click(screen.getByRole("tab", { name }), { button: 0 });
 }
 
 const get = vi.mocked(api.get);
@@ -119,8 +128,8 @@ const READERS = {
   },
 };
 
-describe("OrganizationSection primary asset widths at 1080 (#1174 UX r2 B1 and B2)", () => {
-  // The primary assets table measures 810 px in its 72rem card at 1080; Assets and Source step aside there.
+describe("OrganizationSection crown jewel widths at 1080 (#1174 UX r2 B1 and B2)", () => {
+  // The crown jewels table measures 810 px in its 72rem card at 1080; Assets and Source step aside there.
   const TABLE_AT_1080 = 810;
   it("leaves Business service and Owner at least 120 px each in edit mode", () => {
     const fixed = JEWEL_WIDTHS.select + JEWEL_WIDTHS.name + JEWEL_WIDTHS.criticality + JEWEL_WIDTHS.actions;
@@ -148,12 +157,6 @@ describe("OrganizationSection used by (#9173 S2)", () => {
     expect(within(intelligence).getAllByRole("link").map((a) => a.textContent)).toEqual(["Threat Relevance Analyst"]);
     expect(identity.dataset.fields).toBe("sector regions");
     expect(within(identity).getAllByRole("link").map((a) => a.textContent)).toEqual(["Threat response"]);
-    openTab(/^Business/);
-    await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(1));
-    const [jewels] = screen.getAllByTestId("settings.organization.used-by");
-    expect(within(jewels).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["/fleets/f-1", "/fleets/f-2"]);
-    openTab(/^Identity and risk/);
-    await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(3));
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     await waitFor(() => expect(screen.queryByTestId("settings.organization.used-by")).toBeNull());
   });
@@ -246,18 +249,16 @@ describe("OrganizationSection identity header and threshold previews (#9173 S2)"
   });
 });
 
-describe("OrganizationSection tabs (#12329)", () => {
-  it("renders the two Settings tabs, only the active panel, and opens the tab the URL names (#1178, #1367 point 7)", async () => {
-    renderPage("business");
-    const tabs = await screen.findAllByRole("tab");
-    expect(tabs.map((tab) => tab.textContent?.replace(/\d+\/\d+.*$/, ""))).toEqual(["Identity and risk", "Business"]);
-    expect(screen.getByRole("tab", { name: /^Business/ }).getAttribute("aria-selected")).toBe("true");
-    expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
-    expect(screen.getByTestId("settings.organization.primary-assets")).toBeTruthy();
-    expect(screen.queryByTestId("settings.organization.identity")).toBeNull();
-    expect(screen.queryByTestId("settings.organization.assets-exposure")).toBeNull();
-    // No move notice: CTEM is unreleased, nothing points from Settings to CTEM > Inventory.
-    expect(screen.queryByText(/now live in/)).toBeNull();
+describe("OrganizationSection panels (#12329, #1690)", () => {
+  it("draws no tab bar in Settings: Identity alone, the Business cards live on CTEM > Inventory (#1690)", async () => {
+    renderPage();
+    expect(await screen.findByTestId("settings.organization.identity")).toBeTruthy();
+    expect(screen.queryAllByRole("tab")).toHaveLength(0);
+    expect(screen.queryByTestId("settings.organization.tabs")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.crown-jewels")).toBeNull();
+    expect(screen.queryByTestId("settings.organizations")).toBeNull();
+    // Knowledge and sources is a button of the header opening its own page (#1367, point 7), never a tab.
+    expect(screen.getByTestId("settings.organization.knowledge").textContent).toContain("Knowledge and sources");
   });
 
   it("mounts only the cards an embedding page names, with no header, tab bar or Sources panel (#1178)", async () => {
@@ -265,71 +266,66 @@ describe("OrganizationSection tabs (#12329)", () => {
     expect(await screen.findByTestId("settings.organization.assets-exposure")).toBeTruthy();
     expect(screen.queryAllByRole("tab")).toHaveLength(0);
     expect(screen.queryByTestId("settings.organization.tech-stack")).toBeNull();
-    expect(screen.queryByTestId("settings.organization.primary-assets")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.crown-jewels")).toBeNull();
   });
 
-  it("draws each tab as a link to its path, the active one the current page (UX r1 B1 on #12332)", async () => {
+  it("mounts the three Business cards on CTEM > Inventory, never folding (#1690)", async () => {
     renderPage("business");
-    const identity = await screen.findByRole("tab", { name: /^Identity and risk/ });
-    expect(identity.tagName).toBe("A");
-    expect(identity.getAttribute("href")).toBe("/settings/organization");
-    // Knowledge and sources is a button of the header opening its own page (#1367, point 7), never a tab.
-    expect(screen.queryByRole("tab", { name: /^Knowledge and sources/ })).toBeNull();
-    expect(screen.getByTestId("settings.organization.knowledge").textContent).toContain("Knowledge and sources");
-    const business = screen.getByRole("tab", { name: /^Business/ });
-    expect(business.getAttribute("aria-current")).toBe("page");
-    expect(identity.getAttribute("aria-current")).toBeNull();
+    expect(await screen.findByTestId("settings.organization.crown-jewels")).toBeTruthy();
+    expect(screen.getByTestId("settings.organization.shipped-products")).toBeTruthy();
+    expect(screen.getByTestId("settings.organizations")).toBeTruthy();
+    expect(screen.queryByTestId("settings.organization.identity")).toBeNull();
+    expect(screen.queryAllByRole("button", { name: /^(Collapse|Expand)/ })).toHaveLength(0);
   });
 
-  it("falls back to the first tab on an unknown tab in the URL", async () => {
-    renderPage("nope");
-    expect(await screen.findByTestId("settings.organization.identity")).toBeTruthy();
-    expect(screen.getByRole("tab", { name: /^Identity and risk/ }).getAttribute("aria-selected")).toBe("true");
+  it("reads the Business cards with no write action for a reader (#1690)", async () => {
+    renderWithProviders(
+      <MemoryRouter initialEntries={["/ctem/inventory/business"]}>
+        <OrganizationSection embed={{ cards: INVENTORY_CARDS.business, readOnly: true }} />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByTestId("settings.organization.crown-jewels")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Edit/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Check against OpenCRQ/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Restore from a past version/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Add an organization/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Draft with AI/ })).toBeNull();
   });
 
-  it("reads a Technology or Exposure tab path as an unknown tab, with no redirect to CTEM > Inventory", async () => {
-    for (const path of ["/settings/organization/profile/technology", "/settings/organization/profile/exposure?card=tech_stack"]) {
+  it("reads a former Business, Technology or Exposure tab path as an unknown tab, with no redirect (#797)", async () => {
+    for (const path of ["/settings/organization/profile/business", "/settings/organization/profile/technology", "/settings/organization/profile/exposure?card=tech_stack"]) {
       const view = renderWithProviders(
         <MemoryRouter initialEntries={[path]}>
           <OrganizationSection />
         </MemoryRouter>,
       );
       expect(await screen.findByTestId("settings.organization.identity")).toBeTruthy();
-      expect(screen.getByRole("tab", { name: /^Identity and risk/ }).getAttribute("aria-selected")).toBe("true");
+      expect(screen.queryByTestId("settings.organization.crown-jewels")).toBeNull();
       expect(screen.queryByTestId("settings.organization.tech-stack")).toBeNull();
       view.unmount();
     }
   });
 
-  it("keeps the whole-profile edit across tabs and marks the tab holding an unsaved change", async () => {
-    put.mockResolvedValue({ ...CONTEXT, version: 4 });
+  it("keeps Identity alone and no fields banner in Copilot mode (#1690)", async () => {
+    xtmOneMode = false;
     renderPage();
-    await screen.findByTestId("settings.organization.identity");
-    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
-    fireEvent.change(await screen.findByRole("textbox", { name: "Loaded hourly rate" }), { target: { value: "120" } });
-    expect(screen.getByTestId("settings.organization.tab-identity.unsaved")).toBeTruthy();
-    openTab(/^Business/);
-    expect(await screen.findByTestId("settings.save-bar")).toBeTruthy();
-    openTab(/^Identity and risk/);
-    expect(((await screen.findByRole("textbox", { name: "Loaded hourly rate" })) as HTMLInputElement).value).toBe("120");
-    fireEvent.click(within(screen.getByTestId("settings.save-bar")).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
+    expect(await screen.findByTestId("settings.organization.identity")).toBeTruthy();
+    expect(screen.queryByText("Risk appetite and costs")).toBeNull();
+    expect(screen.queryByText("Ticketing and intelligence")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.missing")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.overview")).toBeNull();
   });
 
-  it("lists the missing fields on their own tab only, and a refused Save opens the tab of the bad field", async () => {
-    renderPage("business");
-    await screen.findByTestId("settings.organization.primary-assets");
-    expect(screen.queryByTestId("settings.organization.missing")).toBeNull();
-    openTab(/^Identity and risk/);
-    expect((await screen.findByTestId("settings.organization.missing")).textContent).toContain("Loaded hourly rate");
+  it("lists only the missing fields Settings draws, and a refused Save focuses the bad field", async () => {
+    renderPage();
+    const missing = await screen.findByTestId("settings.organization.missing");
+    expect(missing.textContent).toContain("Loaded hourly rate");
+    expect(missing.textContent).not.toContain("Crown jewels");
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     fireEvent.change(await screen.findByRole("textbox", { name: "Loaded hourly rate" }), { target: { value: "abc" } });
-    openTab(/^Business/);
     fireEvent.click(within(await screen.findByTestId("settings.save-bar")).getByRole("button", { name: "Save" }));
     const rate = await screen.findByRole("textbox", { name: "Loaded hourly rate" });
     await waitFor(() => expect(document.activeElement).toBe(rate));
-    expect(screen.getByRole("tab", { name: /^Identity and risk/ }).getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByTestId("settings.organization.tab-identity.error")).toBeTruthy();
     expect(put).not.toHaveBeenCalled();
   });
 });
@@ -341,20 +337,21 @@ describe("OrganizationSection", () => {
     const missing = await screen.findByTestId("settings.organization.missing");
     expect(missing.textContent).toContain("Priority intelligence requirements (PIRs)");
     expect(missing.textContent).toContain("Loaded hourly rate");
-    openTab(/^Business/);
+  });
+
+  it("names the fleets reading the crown jewels on CTEM > Inventory, linked to the fleet page (#1690)", async () => {
+    renderPage("business");
+    await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(1));
+    const [jewels] = screen.getAllByTestId("settings.organization.used-by");
+    expect(within(jewels).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["/fleets/f-1", "/fleets/f-2"]);
     expect(await screen.findByText("Payments")).toBeTruthy();
   });
 
-  it("shows the completeness per tab and opens the form on a missing field (#9173 S1c, #12329)", async () => {
-    renderPage("business");
+  it("counts the fields not filled Settings draws and opens the form on a missing field (#9173 S1c, #1690)", async () => {
+    renderPage();
     const overview = await screen.findByTestId("settings.organization.overview");
     expect(overview.textContent).toContain("3 fields not filled");
-    // Identity and risk: 10 contract fields, 3 of them missing; the Technology tab left for CTEM > Inventory (#1178).
-    expect(screen.getByTestId("settings.organization.tab-identity.completeness").textContent).toBe("7/10");
-    expect(screen.queryByTestId("settings.organization.tab-technology.completeness")).toBeNull();
     expect(screen.queryByTestId("settings.save-bar")).toBeNull();
-    // The missing fields sit on their own tab: the jump starts there.
-    openTab(/^Identity and risk/);
     fireEvent.click(screen.getByRole("button", { name: "Loaded hourly rate" }));
     const rate = await screen.findByRole("textbox", { name: "Loaded hourly rate" });
     await waitFor(() => expect(document.activeElement).toBe(rate));
@@ -401,30 +398,24 @@ describe("OrganizationSection", () => {
     expect(screen.queryByText("The organization profile was not saved")).toBeNull();
   });
 
-  it("lists the primary assets in a table with column headers", async () => {
+  it("lists the crown jewels in a table with column headers", async () => {
     renderPage("business");
     await screen.findByText("Payments");
     expect(screen.getByRole("columnheader", { name: "Business service" })).toBeTruthy();
-    expect(screen.getAllByTestId("settings.organization.primary-asset-row")).toHaveLength(1);
+    expect(screen.getAllByTestId("settings.organization.crown-jewel-row")).toHaveLength(1);
   });
 
-  it("folds a list card to its header and count, and unfolds it (#12256 slice 2)", async () => {
+  it("keeps a list card on CTEM > Inventory always expanded, its count in the header (#1690, Sam 24 Nov 2026)", async () => {
+    for (const tab of ["business", "exposure"]) {
+      const view = renderPage(tab);
+      await waitFor(() => expect(screen.getAllByTestId("settings.card-count").length).toBeGreaterThan(0));
+      expect(screen.queryAllByTestId("settings.card-collapse")).toHaveLength(0);
+      view.unmount();
+    }
     renderPage("business");
-    await screen.findByText("Payments");
-    const card = screen.getByTestId("settings.organization.primary-assets");
-    expect(card.dataset.collapsed).toBe("false");
-    // The count reads in the header, next to the title.
+    const card = await screen.findByTestId("settings.organization.crown-jewels");
     expect(within(card).getByTestId("settings.card-count").textContent).toBe("1");
-    const toggle = within(card).getByTestId("settings.card-collapse");
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    fireEvent.click(toggle);
-    expect(card.dataset.collapsed).toBe("true");
-    expect(within(card).queryAllByTestId("settings.organization.primary-asset-row")).toHaveLength(0);
-    // The anchor nav is gone with the tabs (#12329).
-    expect(screen.queryByRole("navigation", { name: "On this page" })).toBeNull();
-    fireEvent.click(within(card).getByRole("button", { name: "Expand" }));
-    await waitFor(() => expect(card.dataset.collapsed).toBe("false"));
-    expect(within(card).getAllByTestId("settings.organization.primary-asset-row")).toHaveLength(1);
+    expect(within(card).getAllByTestId("settings.organization.crown-jewel-row")).toHaveLength(1);
   });
 
   it("reads the row tables as text and edits them as fields; an empty value reads Not set, never a placeholder (UX r1 B1, B2 on #10804)", async () => {
@@ -433,16 +424,16 @@ describe("OrganizationSection", () => {
       path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: [{ product: "CrowdStrike Falcon", vendor: "CrowdStrike", cpe: "" }] } } : base(path),
     );
     renderPage("business");
-    const row = await screen.findByTestId("settings.organization.primary-asset-row");
+    const row = await screen.findByTestId("settings.organization.crown-jewel-row");
     expect(within(row).getByText("Payments")).toBeTruthy();
     expect(within(row).getByText(/^Critical/)).toBeTruthy();
     expect(within(row).queryByRole("textbox")).toBeNull();
     expect(within(row).queryByRole("combobox")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Edit Crown jewels/ }));
     // In edit a row still reads as text until opened (#12256): one row of fields at a time.
-    const jewel = await screen.findByTestId("settings.organization.primary-asset-row");
+    const jewel = await screen.findByTestId("settings.organization.crown-jewel-row");
     await waitFor(() => expect(within(jewel).queryByRole("textbox")).toBeNull());
-    fireEvent.click(within(screen.getByTestId("settings.organization.primary-asset-row")).getByText("Payments"));
+    fireEvent.click(within(screen.getByTestId("settings.organization.crown-jewel-row")).getByText("Payments"));
     expect(await screen.findByDisplayValue("Payments")).toBeTruthy();
     expect(screen.getAllByRole("combobox", { name: "Criticality" })).toHaveLength(1);
   });
@@ -471,20 +462,20 @@ describe("OrganizationSection", () => {
         : base(path),
     );
     renderPage("business");
-    const row = await screen.findByTestId("settings.organization.primary-asset-row");
+    const row = await screen.findByTestId("settings.organization.crown-jewel-row");
     const table = row.closest("table")!;
     expect(table.dataset.layout).toBe("fixed");
-    expect(within(table).getByRole("columnheader", { name: /Primary asset/ }).style.width).toBe("240px");
+    expect(within(table).getByRole("columnheader", { name: /Crown jewel/ }).style.width).toBe("240px");
     expect(within(table).getByRole("columnheader", { name: /Criticality/ }).style.width).toBe("120px");
     expect(within(table).getByRole("columnheader", { name: /OpenCRQ/ }).style.width).toBe("112px");
     expect(within(row).getByText(long)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Edit Crown jewels/ }));
     // The editor keeps the read widths, so the Actions column never leaves the card (#12261 UX r1 B2; was: auto).
     await screen.findAllByTestId("settings.organization.list-editor");
-    const editTable = screen.getByTestId("settings.organization.primary-asset-row").closest("table")!;
+    const editTable = screen.getByTestId("settings.organization.crown-jewel-row").closest("table")!;
     expect(editTable.dataset.layout).toBe("fixed");
-    expect(within(editTable).getByRole("columnheader", { name: /Primary asset/ }).style.width).toBe("240px");
-    fireEvent.click(within(screen.getByTestId("settings.organization.primary-asset-row")).getByText(long));
+    expect(within(editTable).getByRole("columnheader", { name: /Crown jewel/ }).style.width).toBe("240px");
+    fireEvent.click(within(screen.getByTestId("settings.organization.crown-jewel-row")).getByText(long));
     await screen.findByDisplayValue(long);
   });
 
@@ -563,10 +554,10 @@ describe("OrganizationSection", () => {
 
   it("returns the focus to a list card's Edit on Cancel (#12271 UX r1 B3)", async () => {
     renderPage("business");
-    fireEvent.click(await screen.findByRole("button", { name: /Edit Primary assets/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Edit Crown jewels/ }));
     const bar = await screen.findByTestId("settings.organization.list-save-bar");
     fireEvent.click(within(bar).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: /Edit Primary assets/ })));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: /Edit Crown jewels/ })));
   });
 
   it("pages an exposure card in edit at 25 rows with its search, and pins an added row first (#12271 UX r1 B2)", async () => {
@@ -709,20 +700,20 @@ describe("OrganizationSection", () => {
     expect(screen.getByTestId("settings.organization.list-save-bar").textContent).toContain("No change yet");
   });
 
-  it("keeps search, sort and the pager on the primary assets while editing (#12256; was: none while editing)", async () => {
+  it("keeps search, sort and the pager on the crown jewels while editing (#12256; was: none while editing)", async () => {
     renderPage("business");
     await screen.findByText("Payments");
-    // The primary assets card: its own search box in read mode, none while editing. The form's pickers
+    // The crown jewels card: its own search box in read mode, none while editing. The form's pickers
     // (ticketing, regions) render only while editing since #10855, so the count is read inside the card.
-    const jewelsTable = () => screen.getByTestId("settings.organization.primary-asset-row").closest("table")!;
+    const jewelsTable = () => screen.getByTestId("settings.organization.crown-jewel-row").closest("table")!;
     const searchNear = () => jewelsTable().parentElement?.parentElement?.querySelectorAll("input[placeholder='Search...']").length ?? 0;
     expect(searchNear()).toBeGreaterThan(0);
     expect(jewelsTable().querySelector("th[aria-sort]")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Edit Primary assets/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Edit Crown jewels/ }));
     await screen.findByTestId("settings.organization.list-save-bar");
     expect(searchNear()).toBeGreaterThan(0);
     expect(jewelsTable().querySelector("th[aria-sort]")).toBeTruthy();
-    expect(screen.getAllByTestId("settings.organization.primary-asset-row")).toHaveLength(1);
+    expect(screen.getAllByTestId("settings.organization.crown-jewel-row")).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: "Remove" }).length).toBeGreaterThan(0);
   });
 
@@ -992,7 +983,7 @@ describe("OrganizationSection", () => {
     expect(screen.queryByText(/very_high/)).toBeNull();
   });
 
-  it("runs the OpenCRQ primary assets sync from the card once one exists, instead of a second check (#1134 S2)", async () => {
+  it("runs the OpenCRQ crown jewels sync from the card once one exists, instead of a second check (#1134 S2)", async () => {
     const opencrqSync = { id: "s-crq", section: "crown_jewels", source: "opencrq", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: null, last_result: null };
     const base = get.getMockImplementation();
     get.mockImplementation(async (path: string) => (path.startsWith("/organization-context/syncs") ? [opencrqSync] : base?.(path)));
@@ -1038,12 +1029,13 @@ describe("OrganizationSection", () => {
     // A design-system Chip (UX r1 B1 on #1232): a button that navigates to the tab filtered on the source.
     const chip = within(opencrq).getByTestId("organization-sources.chip");
     expect(chip.tagName).toBe("BUTTON");
-    expect(chip.getAttribute("aria-label")).toBe("Primary assets from OpenCRQ: 1 row");
+    expect(chip.getAttribute("aria-label")).toBe("Crown jewels from OpenCRQ: 1 row");
     fireEvent.click(chip);
-    await waitFor(() => expect(screen.getByRole("tab", { name: /^Business/ }).getAttribute("aria-current")).toBe("page"));
+    // The crown jewels live on CTEM > Inventory > Business since #1690.
+    await waitFor(() => expect(screen.getByTestId("location-probe").textContent).toMatch(/^\/ctem\/inventory\/business\?/));
   });
 
-  it("marks a primary asset linked to OpenCRQ with a named icon", async () => {
+  it("marks a crown jewel linked to OpenCRQ with a named icon", async () => {
     get.mockImplementation(async (path: string) =>
       path === "/organizations" || path === "/integrations"
         ? []
@@ -1072,7 +1064,7 @@ describe("OrganizationSection", () => {
     renderPage("business");
     fireEvent.click(await screen.findByRole("button", { name: /Check against OpenCRQ/ }));
     expect(await screen.findByText("Link Payments to its OpenCRQ asset")).toBeTruthy();
-    expect(screen.getByText("Add Ledger from OpenCRQ as a primary asset")).toBeTruthy();
+    expect(screen.getByText("Add Ledger from OpenCRQ as a crown jewel")).toBeTruthy();
     expect(post).toHaveBeenCalledWith("/organization-context/opencrq-sync", { apply: false });
     fireEvent.click(screen.getByRole("button", { name: /Apply/ }));
     await waitFor(() => expect(post).toHaveBeenCalledWith("/organization-context/opencrq-sync", { apply: true }));
@@ -1094,8 +1086,8 @@ describe("OrganizationSection", () => {
     });
     renderPage("business");
     fireEvent.click(await screen.findByRole("button", { name: /Check against OpenCRQ/ }));
-    expect(await screen.findByText("Add Billing from OpenCRQ as a primary asset")).toBeTruthy();
-    expect(screen.queryByText("The primary assets and OpenCRQ already agree.")).toBeNull();
+    expect(await screen.findByText("Add Billing from OpenCRQ as a crown jewel")).toBeTruthy();
+    expect(screen.queryByText("The crown jewels and OpenCRQ already agree.")).toBeNull();
     expect(screen.getByRole("button", { name: /Apply/ })).toBeTruthy();
   });
 
@@ -1128,16 +1120,16 @@ describe("OrganizationSection", () => {
     const none = await screen.findByTestId("settings.organization.opencrq-none-rated");
     expect(none.textContent).toContain("No OpenCRQ supporting asset is rated High or above: 1,751 assets read.");
     expect(none.textContent).toContain("1,750 unrated, 1 medium");
-    expect(screen.queryByText("The primary assets and OpenCRQ already agree.")).toBeNull();
+    expect(screen.queryByText("The crown jewels and OpenCRQ already agree.")).toBeNull();
     expect(post).toHaveBeenCalledWith("/organization-context/opencrq-sync", { apply: false });
     // Picking medium re-runs the check at that threshold, and the plan proposes the medium asset.
     fireEvent.click(screen.getByTestId("settings.organization.opencrq-threshold"));
     fireEvent.click(await screen.findByRole("option", { name: "Medium or above" }));
     await waitFor(() => expect(post).toHaveBeenLastCalledWith("/organization-context/opencrq-sync", { apply: false, min_criticality: "medium" }));
-    expect(await screen.findByText("Add CRM from OpenCRQ as a primary asset")).toBeTruthy();
+    expect(await screen.findByText("Add CRM from OpenCRQ as a crown jewel")).toBeTruthy();
   });
 
-  it("restores the primary assets of a past version alone, from the version it starts from (#1558)", async () => {
+  it("restores the crown jewels of a past version alone, from the version it starts from (#1558)", async () => {
     const base = get.getMockImplementation()!;
     get.mockImplementation(async (path: string) => {
       if (path === "/organization-context") return { ...CONTEXT, version: 46, profile: { ...CONTEXT.profile, crown_jewels: [] } };
@@ -1164,7 +1156,7 @@ describe("OrganizationSection", () => {
     renderPage("business");
     fireEvent.click(await screen.findByRole("button", { name: /Restore from a past version/ }));
     const dialog = await screen.findByTestId("settings.organization.restore-dialog");
-    // The current version is never offered; the newest one holding primary assets is picked and previewed.
+    // The current version is never offered; the newest one holding crown jewels is picked and previewed.
     expect(within(dialog).queryByText("Version 46")).toBeNull();
     expect(await within(dialog).findByText("Ledger")).toBeTruthy();
     // The preview badges carry the criticality words of the card, never the bare "High" key (#1567 UX r2 B2).
@@ -1223,9 +1215,7 @@ describe("OrganizationSection", () => {
     expect(panel.textContent).not.toContain("tenant id");
     // The drafted PIR shows by its OpenCTI name in the picker (UX B1).
     expect(await screen.findByText("Ransomware on energy")).toBeTruthy();
-    // The draft opened the first tab it filled, marked (#12329); the drafted tech stack is named in the panel and
-    // saved with the profile, its card living on CTEM > Inventory (#1178).
-    expect(screen.getByTestId("settings.organization.tab-identity.drafted")).toBeTruthy();
+    // The drafted software inventory is named in the panel and saved with the profile, its card living on CTEM > Inventory (#1178).
     expect(put).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: /Save/ }));
     await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
@@ -1282,21 +1272,19 @@ describe("OrganizationSection", () => {
     expect(screen.getByRole("button", { name: /^Edit$/ })).toBeTruthy();
   });
 
-  it("a link to one card (?card=) opens the card's tab, focuses the card and drops the parameter (CTEM calls to action)", async () => {
+  it("a link to one card (?card=) focuses the card on CTEM > Inventory > Business (CTEM calls to action, #1690)", async () => {
     renderWithProviders(
-      <MemoryRouter initialEntries={["/settings/organization?card=crown_jewels"]}>
-        <OrganizationSection />
+      <MemoryRouter initialEntries={["/ctem/inventory/business?card=crown_jewels"]}>
+        <OrganizationSection embed={{ cards: INVENTORY_CARDS.business }} />
       </MemoryRouter>,
     );
-    // The bare path names the first tab, but the card lives on Business: the page moves there.
-    expect(await screen.findByTestId("settings.organization.panel-business")).toBeTruthy();
     await waitFor(() => expect((document.activeElement as HTMLElement | null)?.id ?? "").toMatch(/-crown_jewels$/));
   });
 
   it("lands ?card=tracked_organizations on the card root, never on a wrapper (UX r1 B2 on #108)", async () => {
     renderWithProviders(
-      <MemoryRouter initialEntries={["/settings/organization/profile/business?card=tracked_organizations"]}>
-        <OrganizationSection />
+      <MemoryRouter initialEntries={["/ctem/inventory/business?card=tracked_organizations"]}>
+        <OrganizationSection embed={{ cards: INVENTORY_CARDS.business }} />
       </MemoryRouter>,
     );
     await waitFor(() => expect((document.activeElement as HTMLElement | null)?.id ?? "").toMatch(/-tracked_organizations$/));
@@ -1316,9 +1304,9 @@ describe("OrganizationSection", () => {
     await waitFor(() => expect((document.activeElement as HTMLElement | null)?.id ?? "").toMatch(/-outside_lens$/));
     expect(document.activeElement?.getAttribute("data-testid")).toBe("settings.organization.outside-lens");
     expect(document.activeElement?.getAttribute("data-anchor")).toBe("card");
-    // It folds like its siblings (UX r1 B2 on #1159).
+    // Like its siblings it never folds on CTEM > Inventory (#1690).
     const card = screen.getByTestId("settings.organization.outside-lens");
-    expect(within(card).getAllByRole("button").some((button) => button.hasAttribute("aria-expanded"))).toBe(true);
+    expect(within(card).queryAllByRole("button").some((button) => button.hasAttribute("aria-expanded"))).toBe(false);
   });
 
   it("marks the Draft button aria-busy while the draft is pending (#9102 A2)", async () => {
@@ -1371,7 +1359,7 @@ describe("OrganizationSection", () => {
     renderPage("business");
     fireEvent.click(await screen.findByRole("button", { name: /Check against OpenCRQ/ }));
     expect(await screen.findByTestId("settings.organization.opencrq-plan")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Edit Crown jewels/ }));
     await waitFor(() => expect(screen.queryByTestId("settings.organization.opencrq-plan")).toBeNull());
     expect(screen.queryByRole("button", { name: /Apply/ })).toBeNull();
   });
