@@ -97,7 +97,7 @@ export const FUNNEL_CASES_PATH = "/ctem/cases";
 
 /** What the Cases API answered for the caller (`GET /ctem-cases`, #11613). */
 export interface FunnelCases {
-  /** Cases needing attention or in progress, among those the caller sees. */
+  /** Open cases (new to validating, #1503), among those the caller sees. */
   open: number;
   /** Every case the caller sees, whatever its state. */
   total: number;
@@ -105,8 +105,10 @@ export interface FunnelCases {
 
 /** The case states of the Cases board (S5c), their counts as the Cases API sent them. */
 export interface FunnelCaseStates {
-  needs_attention: number;
-  in_progress: number;
+  /** Open cases a person must decide on (#1503). */
+  waiting_decision: number;
+  /** Open cases the agents work: new, analyzing, remediating, validating (#1503). */
+  in_work: number;
   /** Mitigated, watching (#857): the re-test stays on until the permanent fix. */
   mitigated_watching?: number;
   resolved: number;
@@ -429,7 +431,7 @@ export function flowDashedPath(layout: FlowLayout, step: FlowStep): string {
   return `M${f(x)},${f(FLOW_TOP + step.height)} L${f(x)},${f(row - 10)} C${f(x)},${f(row)} ${f(x + 4)},${f(row)} ${f(x + dx)},${f(row)}`;
 }
 
-/** A fan link from the open cases node to its state tile (`index` 0: Needs attention, 1: In progress). */
+/** A fan link from the open cases node to its tile (`index` 0: Waiting for decision, 1: In work). */
 export function flowFanPath(layout: FlowLayout, s0: number, s1: number, index: number): string {
   const { node, tiles } = layout;
   const centre = tiles.ys[index] + tiles.height / 2;

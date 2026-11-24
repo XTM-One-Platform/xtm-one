@@ -14,14 +14,15 @@ export const DAY = 86_400_000;
 export const BOARD_COLUMN_SURFACE = "bg-[var(--bg-elevation-default-layer-2)] light:bg-[var(--bg-elevation-default-layer-1)]";
 
 /**
- * The board grid: one column per case state on a single row from xl, one
- * stacked column below, never a row with an orphan column (UX round 1 of #857).
- * A grid that draws one column per enum value has as many columns as values:
- * BOARD_GRID_COLUMNS is held equal to CTEM_CASE_STATES.length by
+ * The board grid: one card per case status, never a row with an orphan card
+ * (UX round 1 of #857). Eight statuses (#1503) do not fit one row at 1280:
+ * four per row from xl (open statuses then the closed ones read in order), two
+ * from md, one stacked below. BOARD_GRID_COLUMNS is held equal to
+ * CTEM_CASE_STATES.length and every grid-cols-N divides it, by
  * tests_unit/ctem-cases-board-grid.test.ts.
  */
-export const BOARD_GRID_COLUMNS = 5;
-export const BOARD_GRID = "grid-cols-1 xl:grid-cols-5";
+export const BOARD_GRID_COLUMNS = 8;
+export const BOARD_GRID = "grid-cols-1 md:grid-cols-2 xl:grid-cols-4";
 
 /**
  * The overdue line's text (UX r1 B2 on #11666): the error primary falls to
