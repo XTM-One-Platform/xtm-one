@@ -4657,6 +4657,8 @@
 <li>The default ceilings are <strong>100,000 tokens and 1 USD a day, 3,100,000 tokens and 31 USD a month</strong>. They come from a measured run: one analysis of a module with 33 open findings cost 4,763 tokens; the most an analysis reads (60 findings) stays under 8,000 tokens, so the daily default covers two analyses of six modules.</li>
 <li>A ceiling cleared to no value refuses every analysis (<em>Ceiling not set</em>).</li>
 <li>Analysis calls are traced under their own source, <strong>Platform Health</strong>, visible in LLM analytics. They are not counted in any agentic quota or agentic execution count.</li>
+<li><strong>Analyse now does not re-run a check</strong>: it rewrites the explanation from the findings already stored. <strong>Run checks now</strong> on a module card runs that module's checks again and stores new evidence. A finding from a module check made by an older version of XTM One, or whose evidence is more than a day old, is marked as possibly outdated: the analysis never recommends a rollback, a restart or any other disruptive action from it and points to <strong>Run checks now</strong> instead.</li>
+<li>After an upgrade, every registration with a finding from the previous check logic gets one new round of its module checks on its own, within the usual spend limits; until it lands, the API serves that finding with <code>stale: true</code> and the build that produced it (<code>check_build</code>).</li>
 </ul>
 <p>Administrators switch the analysis on and set its four ceilings under <strong>Settings &gt; Automations &gt; Platform Health &gt; Analysis</strong>. The <strong>Platform Health</strong> page shows an <strong>Analysis</strong> panel under the score history: today's and this month's spend against each ceiling, then each module's latest analysis (its explanation, or why it did not run: <em>Ceiling reached</em>, <em>Ceiling not set</em>, AI off, no routing model) and an <strong>Analyse now</strong> action, unavailable while AI is off or a ceiling is cleared.</p>
 <p>The API is <code>GET /api/v1/health/analysis</code> (the latest analysis per module, the ceilings and the spend, and the Module Analyst's ceilings and spend under <code>module_analyst</code>) and <code>POST /api/v1/health/analysis/{module}/run</code> (an analysis now), both for administrators.</p>
@@ -4708,7 +4710,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 23, 2026 06:31:53 UTC"><span class="timeago" datetime="2026-11-23T06:31:53+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 23, 2026 06:31:53 UTC">2026-11-23</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 24, 2026 07:33:08 UTC"><span class="timeago" datetime="2026-11-24T07:33:08+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 24, 2026 07:33:08 UTC">2026-11-24</span>
   </span>
 
     
