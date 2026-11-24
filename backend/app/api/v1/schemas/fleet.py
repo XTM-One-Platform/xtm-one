@@ -688,6 +688,24 @@ class FleetEnableItemResponse(BaseModel):
     missing: list[str]
     #: Part of this call (every automation when the request named none).
     selected: bool = True
+    #: Runs a day its schedule starts (0 for a trigger that is not a schedule, #1538).
+    runs_per_day: float = 0.0
+    #: It runs once per event: its daily count is not known ahead.
+    event_driven: bool = False
+
+
+class FleetEnableEstimateResponse(BaseModel):
+    """The expected load of the automations picked (#1538): an order of magnitude, not a quote."""
+
+    #: Runs a day the picked schedules start (their cron over 30 days, divided by 30).
+    scheduled_runs_per_day: float
+    #: Picked automations that run once per event: their rate depends on the events.
+    event_automations: int
+    #: Mean cost of one run of the picked automations over ``cost_days``; None when none ran.
+    avg_cost_per_run: float | None = None
+    #: ``avg_cost_per_run`` times ``scheduled_runs_per_day``; None without a cost history.
+    cost_per_day: float | None = None
+    cost_days: int
 
 
 class FleetEnableResponse(BaseModel):
@@ -705,43 +723,8 @@ class FleetEnableResponse(BaseModel):
     items: list[FleetEnableItemResponse]
     #: The fleet's automations after the call.
     automations: FleetAutomationsResponse
-
-
-class FleetResetRequest(BaseModel):
-    """Reset a built-in fleet to its factory state (#1508). ``dry_run`` answers the counts
-    for the confirmation dialog; a real reset needs ``confirm_name``, the fleet's name typed."""
-
-    dry_run: bool = False
-    confirm_name: str | None = Field(default=None, max_length=200)
-
-
-class FleetResetResponse(BaseModel):
-    """What a reset changed (or, on a dry run, would change)."""
-
-    fleet_id: str
-    dry_run: bool
-    #: Automations switched off or re-stamped as never set up.
-    automations: int
-    #: Automations whose run-as user is cleared.
-    run_as_cleared: int
-    #: Integrations, knowledge bases, skills, MCP servers and custom tools unbound from the members.
-    bindings: int
-    #: Approval pins removed.
-    pins: int
-    #: Gates a person added, removed.
-    gates: int
-    #: The level the fleet moves back to, ``null`` when it is already there.
-    autonomy_level: str | None = None
-    #: Member agents whose configuration is rewritten from the seed.
-    agents: int
-    #: Fleet settings put back to their default, by name.
-    settings: list[str]
-    #: Whether a local documentation version is replaced by the shipped one.
-    documentation: bool
-    #: Automations an emergency stop holds, left as they are.
-    held_by_stop: list[str]
-    #: The fleet's automations after the call.
-    automations_state: FleetAutomationsResponse
+    #: On a dry run, the expected runs a day and cost of the picked automations (#1538); None otherwise.
+    estimate: FleetEnableEstimateResponse | None = None
 
 
 FleetBulkActionName = Literal["pause", "resume", "set_autonomy"]

@@ -1450,53 +1450,6 @@ export function useFleetControl(fleetId: string, action: "pause" | "resume") {
   });
 }
 
-/** What a reset to the factory state changes (`FleetResetResponse`, #1508); the dry run's counts feed the dialog. */
-export interface FleetResetResult {
-  fleet_id: string;
-  dry_run: boolean;
-  automations: number;
-  run_as_cleared: number;
-  /** Integrations, knowledge bases, skills, MCP servers and custom tools unbound from the members. */
-  bindings: number;
-  pins: number;
-  gates: number;
-  /** The level the fleet moves back to; null when it is already there. */
-  autonomy_level: string | null;
-  agents: number;
-  settings: string[];
-  documentation: boolean;
-  held_by_stop: string[];
-  automations_state: FleetAutomations;
-}
-
-/** The dry run of a reset, read while its dialog is open (administrators, built-in fleets). */
-export function useFleetResetPlan(fleetId: string, enabled: boolean) {
-  return useQuery<FleetResetResult>({
-    queryKey: [...KEY, "reset-plan", fleetId],
-    queryFn: () => api.post<FleetResetResult>(`/fleets/${fleetId}/reset`, { dry_run: true }),
-    enabled,
-    staleTime: 0,
-    gcTime: 0,
-    meta: OWN_ERROR_TOAST,
-  });
-}
-
-/** Reset a built-in fleet to its factory state (`POST /fleets/{id}/reset`, #1508), the fleet's name typed. */
-export function useFleetReset(fleetId: string) {
-  const invalidate = useInvalidateFleet();
-  const qc = useQueryClient();
-  return useMutation<FleetResetResult, Error, string>({
-    mutationFn: (confirmName) => api.post<FleetResetResult>(`/fleets/${fleetId}/reset`, { confirm_name: confirmName }),
-    onSettled: () => {
-      invalidate();
-      qc.invalidateQueries({ queryKey: ["assignments"] });
-      qc.invalidateQueries({ queryKey: ["agents"] });
-      syncFlowNodeCatalog(qc);
-    },
-    meta: OWN_ERROR_TOAST,
-  });
-}
-
 /** One automation of the fleet that is off (`FleetEnableItemResponse`): switched on when selected. */
 export interface FleetEnableItem {
   id: string;
@@ -1507,6 +1460,20 @@ export interface FleetEnableItem {
   missing: string[];
   /** Part of the call (every automation when the request picked none). */
   selected: boolean;
+  /** Runs a day its schedule starts (0 for a trigger that is not a schedule, #1538). */
+  runs_per_day?: number;
+  /** It runs once per event: its daily count is not known ahead. */
+  event_driven?: boolean;
+}
+
+/** The expected load of the automations the plan picks (`FleetEnableEstimateResponse`, #1538): an order of magnitude. */
+export interface FleetEnableEstimate {
+  scheduled_runs_per_day: number;
+  event_automations: number;
+  /** Mean cost of one run of the picked automations over `cost_days`; null when none ran. */
+  avg_cost_per_run: number | null;
+  cost_per_day: number | null;
+  cost_days: number;
 }
 
 /** The plan (`dry_run`) or the outcome of Enable fleet (`FleetEnableResponse`, #9769 S4b). */
@@ -1521,6 +1488,8 @@ export interface FleetEnableResult {
   missing: string[];
   items: FleetEnableItem[];
   automations: FleetAutomations;
+  /** On a dry run: the expected runs a day and cost of the picked automations (#1538). */
+  estimate?: FleetEnableEstimate | null;
 }
 
 /**
