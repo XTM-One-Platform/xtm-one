@@ -21081,6 +21081,7 @@
   "Off: pick the OpenCRQ integration to read": "Off: pick the OpenCRQ integration to read",
   "OpenCRQ integration": "OpenCRQ integration",
   "The single connected one": "The single connected one",
+  "None picked: several are connected": "None picked: several are connected",
   "Re-test delay": "Re-test delay",
   "Re-test delay (days)": "Re-test delay (days)",
   "The OpenCRQ pass that finds decayed evidence and blind spots.": "The OpenCRQ pass that finds decayed evidence and blind spots.",

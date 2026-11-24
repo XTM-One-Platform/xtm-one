@@ -168,6 +168,19 @@ export function evidenceHealthRuns(pass: EvidenceHealthPass, connected: readonly
 }
 
 /**
+ * Which integration the pass reads, as the card names it: the declared one, else the single connected one;
+ * with none declared, `several` when more than one is connected (the pass waits for a pick) and `none` when none is.
+ */
+export function evidenceHealthIntegrationChoice(
+  pass: EvidenceHealthPass,
+  connected: readonly string[],
+): "declared" | "single" | "several" | "none" {
+  if ((pass.integration ?? "").trim()) return "declared";
+  const count = new Set(connected.filter(Boolean)).size;
+  return count === 1 ? "single" : count > 1 ? "several" : "none";
+}
+
+/**
  * The integration a save of the pass writes: the one picked, else empty (the single connected one). Turned off on
  * that default with exactly one connected, it names that one: `enabled: false` with none declared is the legacy
  * stored default, which `resolve_pass` reads as on, so the off would not hold (UX round 1 on #1356, B4).
