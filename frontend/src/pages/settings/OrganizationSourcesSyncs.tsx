@@ -88,7 +88,7 @@ const SOURCE_SCHEDULE_LABELS = {
 
 /** The rows a plan touches, per section, as ICU plurals (UX r1 B6). @i18n-keys */
 const SECTION_COUNT_LABELS = {
-  crown_jewels: "{count, plural, one {# crown jewel} other {# crown jewels}}",
+  crown_jewels: "{count, plural, one {# primary asset} other {# primary assets}}",
   tech_stack: "{count, plural, one {# software entry} other {# software entries}}",
   ai_systems: "{count, plural, one {# AI system} other {# AI systems}}",
   assets_exposure: "{count, plural, one {# asset} other {# assets}}",
@@ -150,7 +150,7 @@ const canPurgeSource = (source: OrganizationSource) => source.kind === "agent" |
 
 interface Props {
   /**
-   * The sections listed: "profile" (crown jewels) in Settings, "inventory" (assets, asset groups,
+   * The sections listed: "profile" (primary assets) in Settings, "inventory" (assets, asset groups,
    * tech stack, AI systems) on the CTEM Inventory, "" every section. A Sync all schedule saved before #1548 shows in each.
    */
   scope?: OrganizationSyncScope;

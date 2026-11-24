@@ -71,7 +71,7 @@ describe("case attention (#1176)", () => {
       expect(kinds({ kev_count: 2 }, { ...W, kev: 0 })).not.toContain("kev");
       expect(caseAttention(kase({ kev_count: 2 }), NOW, { ...W, kev: 0 }).score).toBe(0);
     });
-    it("crown jewel", () => {
+    it("primary asset", () => {
       expect(kinds({ crown_jewel_count: 1 }, { ...W, crownJewel: 0 })).not.toContain("crown_jewel");
     });
     it("overdue, without falling back to due soon", () => {

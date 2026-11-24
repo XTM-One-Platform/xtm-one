@@ -82,8 +82,8 @@ describe("credential-leak and third-party signals", () => {
   it("says the two CTEM-29 reason codes and what would make each a case", () => {
     const watched = { outcome: "watchlist", reason_code: "no_dependency", reason_params: {} };
     const disabled = { outcome: "discarded", reason_code: "account_disabled", reason_params: {} };
-    expect(decisionSentence(watched, t)).toBe("No crown jewel depends on this organization");
-    expect(nextStepSentence(watched, t)).toBe("Becomes a case once a crown jewel depends on this organization");
+    expect(decisionSentence(watched, t)).toBe("No primary asset depends on this organization");
+    expect(nextStepSentence(watched, t)).toBe("Becomes a case once a primary asset depends on this organization");
     expect(decisionSentence(disabled, t)).toBe("Not exposed: the account is disabled");
     expect(nextStepSentence(disabled, t)).toBe("Becomes a case if the account is enabled again");
   });
@@ -122,10 +122,10 @@ describe("credential-leak and third-party signals", () => {
     expect(within(facts).getByText("Provider")).toBeTruthy();
     expect(within(facts).getByText("Critical")).toBeTruthy();
     expect(within(facts).queryByTestId("ctem-signal-evidence")?.textContent ?? "").not.toContain("relationship");
-    expect(screen.getByTestId("ctem-decision-next-step")).toHaveTextContent("Becomes a case once a crown jewel depends on this organization");
+    expect(screen.getByTestId("ctem-decision-next-step")).toHaveTextContent("Becomes a case once a primary asset depends on this organization");
   });
 
-  it("the trace of a third party that opened a case says its crown jewels once, in Decision inputs", async () => {
+  it("the trace of a third party that opened a case says its primary assets once, in Decision inputs", async () => {
     const dependent: CtemSignal = {
       ...supplier,
       evidence: { ...supplier.evidence, crown_jewels: ["Customer portal"], opencrq_asset_ids: ["asset-42"] },

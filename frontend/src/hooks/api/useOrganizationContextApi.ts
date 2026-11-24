@@ -101,7 +101,7 @@ interface OpenCrqSyncPlan {
   by_criticality?: Partial<Record<"unknown" | OpenCrqLevel, number>>;
 }
 
-/** OpenCRQ's criticality levels, lowest first: the thresholds the crown-jewel check accepts (#1558). */
+/** OpenCRQ's criticality levels, lowest first: the thresholds the primary-asset check accepts (#1558). */
 export type OpenCrqLevel = "low" | "medium" | "high" | "very_high";
 
 export interface OpenCrqSyncResponse {
@@ -864,7 +864,7 @@ export function useCreateOrganizationFillAgent() {
 
 export function useOpenCrqSync() {
   const qc = useQueryClient();
-  // min_criticality left out: the saved crown-jewel sync's filter, else high (#1558).
+  // min_criticality left out: the saved primary-asset sync's filter, else high (#1558).
   return useMutation<OpenCrqSyncResponse, Error, { apply: boolean; min_criticality?: OpenCrqLevel }>({
     mutationFn: (body) => api.post("/organization-context/opencrq-sync", body),
     onSuccess: (result) => {
@@ -880,7 +880,7 @@ export interface OrganizationContextVersionSummary {
   created_at: string;
   author_user_id: string | null;
   missing_fields: string[];
-  /** The crown jewels the version holds; absent from an older backend. */
+  /** The primary assets the version holds; absent from an older backend. */
   crown_jewels?: number;
 }
 

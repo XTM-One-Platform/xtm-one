@@ -119,8 +119,8 @@ const READERS = {
   },
 };
 
-describe("OrganizationSection crown jewel widths at 1080 (#1174 UX r2 B1 and B2)", () => {
-  // The crown jewels table measures 810 px in its 72rem card at 1080; Assets and Source step aside there.
+describe("OrganizationSection primary asset widths at 1080 (#1174 UX r2 B1 and B2)", () => {
+  // The primary assets table measures 810 px in its 72rem card at 1080; Assets and Source step aside there.
   const TABLE_AT_1080 = 810;
   it("leaves Business service and Owner at least 120 px each in edit mode", () => {
     const fixed = JEWEL_WIDTHS.select + JEWEL_WIDTHS.name + JEWEL_WIDTHS.criticality + JEWEL_WIDTHS.actions;
@@ -253,7 +253,7 @@ describe("OrganizationSection tabs (#12329)", () => {
     expect(tabs.map((tab) => tab.textContent?.replace(/\d+\/\d+.*$/, ""))).toEqual(["Identity and risk", "Business"]);
     expect(screen.getByRole("tab", { name: /^Business/ }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
-    expect(screen.getByTestId("settings.organization.crown-jewels")).toBeTruthy();
+    expect(screen.getByTestId("settings.organization.primary-assets")).toBeTruthy();
     expect(screen.queryByTestId("settings.organization.identity")).toBeNull();
     expect(screen.queryByTestId("settings.organization.assets-exposure")).toBeNull();
     // No move notice: CTEM is unreleased, nothing points from Settings to CTEM > Inventory.
@@ -265,7 +265,7 @@ describe("OrganizationSection tabs (#12329)", () => {
     expect(await screen.findByTestId("settings.organization.assets-exposure")).toBeTruthy();
     expect(screen.queryAllByRole("tab")).toHaveLength(0);
     expect(screen.queryByTestId("settings.organization.tech-stack")).toBeNull();
-    expect(screen.queryByTestId("settings.organization.crown-jewels")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.primary-assets")).toBeNull();
   });
 
   it("draws each tab as a link to its path, the active one the current page (UX r1 B1 on #12332)", async () => {
@@ -318,7 +318,7 @@ describe("OrganizationSection tabs (#12329)", () => {
 
   it("lists the missing fields on their own tab only, and a refused Save opens the tab of the bad field", async () => {
     renderPage("business");
-    await screen.findByTestId("settings.organization.crown-jewels");
+    await screen.findByTestId("settings.organization.primary-assets");
     expect(screen.queryByTestId("settings.organization.missing")).toBeNull();
     openTab(/^Identity and risk/);
     expect((await screen.findByTestId("settings.organization.missing")).textContent).toContain("Loaded hourly rate");
@@ -401,17 +401,17 @@ describe("OrganizationSection", () => {
     expect(screen.queryByText("The organization profile was not saved")).toBeNull();
   });
 
-  it("lists the crown jewels in a table with column headers", async () => {
+  it("lists the primary assets in a table with column headers", async () => {
     renderPage("business");
     await screen.findByText("Payments");
     expect(screen.getByRole("columnheader", { name: "Business service" })).toBeTruthy();
-    expect(screen.getAllByTestId("settings.organization.crown-jewel-row")).toHaveLength(1);
+    expect(screen.getAllByTestId("settings.organization.primary-asset-row")).toHaveLength(1);
   });
 
   it("folds a list card to its header and count, and unfolds it (#12256 slice 2)", async () => {
     renderPage("business");
     await screen.findByText("Payments");
-    const card = screen.getByTestId("settings.organization.crown-jewels");
+    const card = screen.getByTestId("settings.organization.primary-assets");
     expect(card.dataset.collapsed).toBe("false");
     // The count reads in the header, next to the title.
     expect(within(card).getByTestId("settings.card-count").textContent).toBe("1");
@@ -419,12 +419,12 @@ describe("OrganizationSection", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     fireEvent.click(toggle);
     expect(card.dataset.collapsed).toBe("true");
-    expect(within(card).queryAllByTestId("settings.organization.crown-jewel-row")).toHaveLength(0);
+    expect(within(card).queryAllByTestId("settings.organization.primary-asset-row")).toHaveLength(0);
     // The anchor nav is gone with the tabs (#12329).
     expect(screen.queryByRole("navigation", { name: "On this page" })).toBeNull();
     fireEvent.click(within(card).getByRole("button", { name: "Expand" }));
     await waitFor(() => expect(card.dataset.collapsed).toBe("false"));
-    expect(within(card).getAllByTestId("settings.organization.crown-jewel-row")).toHaveLength(1);
+    expect(within(card).getAllByTestId("settings.organization.primary-asset-row")).toHaveLength(1);
   });
 
   it("reads the row tables as text and edits them as fields; an empty value reads Not set, never a placeholder (UX r1 B1, B2 on #10804)", async () => {
@@ -433,16 +433,16 @@ describe("OrganizationSection", () => {
       path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: [{ product: "CrowdStrike Falcon", vendor: "CrowdStrike", cpe: "" }] } } : base(path),
     );
     renderPage("business");
-    const row = await screen.findByTestId("settings.organization.crown-jewel-row");
+    const row = await screen.findByTestId("settings.organization.primary-asset-row");
     expect(within(row).getByText("Payments")).toBeTruthy();
     expect(within(row).getByText(/^Critical/)).toBeTruthy();
     expect(within(row).queryByRole("textbox")).toBeNull();
     expect(within(row).queryByRole("combobox")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     // In edit a row still reads as text until opened (#12256): one row of fields at a time.
-    const jewel = await screen.findByTestId("settings.organization.crown-jewel-row");
+    const jewel = await screen.findByTestId("settings.organization.primary-asset-row");
     await waitFor(() => expect(within(jewel).queryByRole("textbox")).toBeNull());
-    fireEvent.click(within(screen.getByTestId("settings.organization.crown-jewel-row")).getByText("Payments"));
+    fireEvent.click(within(screen.getByTestId("settings.organization.primary-asset-row")).getByText("Payments"));
     expect(await screen.findByDisplayValue("Payments")).toBeTruthy();
     expect(screen.getAllByRole("combobox", { name: "Criticality" })).toHaveLength(1);
   });
@@ -471,20 +471,20 @@ describe("OrganizationSection", () => {
         : base(path),
     );
     renderPage("business");
-    const row = await screen.findByTestId("settings.organization.crown-jewel-row");
+    const row = await screen.findByTestId("settings.organization.primary-asset-row");
     const table = row.closest("table")!;
     expect(table.dataset.layout).toBe("fixed");
-    expect(within(table).getByRole("columnheader", { name: /Crown jewel/ }).style.width).toBe("240px");
+    expect(within(table).getByRole("columnheader", { name: /Primary asset/ }).style.width).toBe("240px");
     expect(within(table).getByRole("columnheader", { name: /Criticality/ }).style.width).toBe("120px");
     expect(within(table).getByRole("columnheader", { name: /OpenCRQ/ }).style.width).toBe("112px");
     expect(within(row).getByText(long)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     // The editor keeps the read widths, so the Actions column never leaves the card (#12261 UX r1 B2; was: auto).
     await screen.findAllByTestId("settings.organization.list-editor");
-    const editTable = screen.getByTestId("settings.organization.crown-jewel-row").closest("table")!;
+    const editTable = screen.getByTestId("settings.organization.primary-asset-row").closest("table")!;
     expect(editTable.dataset.layout).toBe("fixed");
-    expect(within(editTable).getByRole("columnheader", { name: /Crown jewel/ }).style.width).toBe("240px");
-    fireEvent.click(within(screen.getByTestId("settings.organization.crown-jewel-row")).getByText(long));
+    expect(within(editTable).getByRole("columnheader", { name: /Primary asset/ }).style.width).toBe("240px");
+    fireEvent.click(within(screen.getByTestId("settings.organization.primary-asset-row")).getByText(long));
     await screen.findByDisplayValue(long);
   });
 
@@ -563,10 +563,10 @@ describe("OrganizationSection", () => {
 
   it("returns the focus to a list card's Edit on Cancel (#12271 UX r1 B3)", async () => {
     renderPage("business");
-    fireEvent.click(await screen.findByRole("button", { name: /Edit Crown jewels/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Edit Primary assets/ }));
     const bar = await screen.findByTestId("settings.organization.list-save-bar");
     fireEvent.click(within(bar).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: /Edit Crown jewels/ })));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: /Edit Primary assets/ })));
   });
 
   it("pages an exposure card in edit at 25 rows with its search, and pins an added row first (#12271 UX r1 B2)", async () => {
@@ -709,20 +709,20 @@ describe("OrganizationSection", () => {
     expect(screen.getByTestId("settings.organization.list-save-bar").textContent).toContain("No change yet");
   });
 
-  it("keeps search, sort and the pager on the crown jewels while editing (#12256; was: none while editing)", async () => {
+  it("keeps search, sort and the pager on the primary assets while editing (#12256; was: none while editing)", async () => {
     renderPage("business");
     await screen.findByText("Payments");
-    // The crown jewels card: its own search box in read mode, none while editing. The form's pickers
+    // The primary assets card: its own search box in read mode, none while editing. The form's pickers
     // (ticketing, regions) render only while editing since #10855, so the count is read inside the card.
-    const jewelsTable = () => screen.getByTestId("settings.organization.crown-jewel-row").closest("table")!;
+    const jewelsTable = () => screen.getByTestId("settings.organization.primary-asset-row").closest("table")!;
     const searchNear = () => jewelsTable().parentElement?.parentElement?.querySelectorAll("input[placeholder='Search...']").length ?? 0;
     expect(searchNear()).toBeGreaterThan(0);
     expect(jewelsTable().querySelector("th[aria-sort]")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Edit Crown jewels/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Edit Primary assets/ }));
     await screen.findByTestId("settings.organization.list-save-bar");
     expect(searchNear()).toBeGreaterThan(0);
     expect(jewelsTable().querySelector("th[aria-sort]")).toBeTruthy();
-    expect(screen.getAllByTestId("settings.organization.crown-jewel-row")).toHaveLength(1);
+    expect(screen.getAllByTestId("settings.organization.primary-asset-row")).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: "Remove" }).length).toBeGreaterThan(0);
   });
 
@@ -992,7 +992,7 @@ describe("OrganizationSection", () => {
     expect(screen.queryByText(/very_high/)).toBeNull();
   });
 
-  it("runs the OpenCRQ crown jewels sync from the card once one exists, instead of a second check (#1134 S2)", async () => {
+  it("runs the OpenCRQ primary assets sync from the card once one exists, instead of a second check (#1134 S2)", async () => {
     const opencrqSync = { id: "s-crq", section: "crown_jewels", source: "opencrq", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: null, last_result: null };
     const base = get.getMockImplementation();
     get.mockImplementation(async (path: string) => (path.startsWith("/organization-context/syncs") ? [opencrqSync] : base?.(path)));
@@ -1038,12 +1038,12 @@ describe("OrganizationSection", () => {
     // A design-system Chip (UX r1 B1 on #1232): a button that navigates to the tab filtered on the source.
     const chip = within(opencrq).getByTestId("organization-sources.chip");
     expect(chip.tagName).toBe("BUTTON");
-    expect(chip.getAttribute("aria-label")).toBe("Crown jewels from OpenCRQ: 1 row");
+    expect(chip.getAttribute("aria-label")).toBe("Primary assets from OpenCRQ: 1 row");
     fireEvent.click(chip);
     await waitFor(() => expect(screen.getByRole("tab", { name: /^Business/ }).getAttribute("aria-current")).toBe("page"));
   });
 
-  it("marks a crown jewel linked to OpenCRQ with a named icon", async () => {
+  it("marks a primary asset linked to OpenCRQ with a named icon", async () => {
     get.mockImplementation(async (path: string) =>
       path === "/organizations" || path === "/integrations"
         ? []
@@ -1072,7 +1072,7 @@ describe("OrganizationSection", () => {
     renderPage("business");
     fireEvent.click(await screen.findByRole("button", { name: /Check against OpenCRQ/ }));
     expect(await screen.findByText("Link Payments to its OpenCRQ asset")).toBeTruthy();
-    expect(screen.getByText("Add Ledger from OpenCRQ as a crown jewel")).toBeTruthy();
+    expect(screen.getByText("Add Ledger from OpenCRQ as a primary asset")).toBeTruthy();
     expect(post).toHaveBeenCalledWith("/organization-context/opencrq-sync", { apply: false });
     fireEvent.click(screen.getByRole("button", { name: /Apply/ }));
     await waitFor(() => expect(post).toHaveBeenCalledWith("/organization-context/opencrq-sync", { apply: true }));
@@ -1094,8 +1094,8 @@ describe("OrganizationSection", () => {
     });
     renderPage("business");
     fireEvent.click(await screen.findByRole("button", { name: /Check against OpenCRQ/ }));
-    expect(await screen.findByText("Add Billing from OpenCRQ as a crown jewel")).toBeTruthy();
-    expect(screen.queryByText("The crown jewels and OpenCRQ already agree.")).toBeNull();
+    expect(await screen.findByText("Add Billing from OpenCRQ as a primary asset")).toBeTruthy();
+    expect(screen.queryByText("The primary assets and OpenCRQ already agree.")).toBeNull();
     expect(screen.getByRole("button", { name: /Apply/ })).toBeTruthy();
   });
 
@@ -1128,16 +1128,16 @@ describe("OrganizationSection", () => {
     const none = await screen.findByTestId("settings.organization.opencrq-none-rated");
     expect(none.textContent).toContain("No OpenCRQ supporting asset is rated High or above: 1,751 assets read.");
     expect(none.textContent).toContain("1,750 unrated, 1 medium");
-    expect(screen.queryByText("The crown jewels and OpenCRQ already agree.")).toBeNull();
+    expect(screen.queryByText("The primary assets and OpenCRQ already agree.")).toBeNull();
     expect(post).toHaveBeenCalledWith("/organization-context/opencrq-sync", { apply: false });
     // Picking medium re-runs the check at that threshold, and the plan proposes the medium asset.
     fireEvent.click(screen.getByTestId("settings.organization.opencrq-threshold"));
     fireEvent.click(await screen.findByRole("option", { name: "Medium or above" }));
     await waitFor(() => expect(post).toHaveBeenLastCalledWith("/organization-context/opencrq-sync", { apply: false, min_criticality: "medium" }));
-    expect(await screen.findByText("Add CRM from OpenCRQ as a crown jewel")).toBeTruthy();
+    expect(await screen.findByText("Add CRM from OpenCRQ as a primary asset")).toBeTruthy();
   });
 
-  it("restores the crown jewels of a past version alone, from the version it starts from (#1558)", async () => {
+  it("restores the primary assets of a past version alone, from the version it starts from (#1558)", async () => {
     const base = get.getMockImplementation()!;
     get.mockImplementation(async (path: string) => {
       if (path === "/organization-context") return { ...CONTEXT, version: 46, profile: { ...CONTEXT.profile, crown_jewels: [] } };
@@ -1164,7 +1164,7 @@ describe("OrganizationSection", () => {
     renderPage("business");
     fireEvent.click(await screen.findByRole("button", { name: /Restore from a past version/ }));
     const dialog = await screen.findByTestId("settings.organization.restore-dialog");
-    // The current version is never offered; the newest one holding crown jewels is picked and previewed.
+    // The current version is never offered; the newest one holding primary assets is picked and previewed.
     expect(within(dialog).queryByText("Version 46")).toBeNull();
     expect(await within(dialog).findByText("Ledger")).toBeTruthy();
     // The preview badges carry the criticality words of the card, never the bare "High" key (#1567 UX r2 B2).
