@@ -11619,6 +11619,7 @@
   "Under the map": "Under the map",
   "Beside the map": "Beside the map",
   "{agent} claimed it and is working on it. If nothing moves, put it back in the queue.": "{agent} claimed it and is working on it. If nothing moves, put it back in the queue.",
+  "{agent} claimed it and is working on it. If nothing moves, someone who can change it must put it back in the queue.": "{agent} claimed it and is working on it. If nothing moves, someone who can change it must put it back in the queue.",
   "{agent} has an inbox, but its filters leave this item out, so nothing picks it up automatically.": "{agent} has an inbox, but its filters leave this item out, so nothing picks it up automatically.",
   "A chat": "A chat",
   "A company-managed agent created it, so every member of the platform sees it. Only administrators and company-managed agents can change it.": "A company-managed agent created it, so every member of the platform sees it. Only administrators and company-managed agents can change it.",
@@ -11687,10 +11688,12 @@
   "No automatic pickup": "No automatic pickup",
   "No description.": "No description.",
   "No owner agent is set, so nothing routes it to anyone. Complete it yourself, or ask an agent to take it over.": "No owner agent is set, so nothing routes it to anyone. Complete it yourself, or ask an agent to take it over.",
+  "No owner agent is set, so nothing routes it to anyone. Someone who can change it must complete it or assign an agent.": "No owner agent is set, so nothing routes it to anyone. Someone who can change it must complete it or assign an agent.",
   "Nobody": "Nobody",
   "Not picked up: filtered out": "Not picked up: filtered out",
   "Not recorded: it was created before work items kept their origin.": "Not recorded: it was created before work items kept their origin.",
   "Nothing acts on a finished item. Put it back in the queue to have it done again.": "Nothing acts on a finished item. Put it back in the queue to have it done again.",
+  "Nothing acts on a finished item. Someone who can change it must put it back in the queue to have it done again.": "Nothing acts on a finished item. Someone who can change it must put it back in the queue to have it done again.",
   "Nothing picks up a blocked item until someone puts it back in the queue.": "Nothing picks up a blocked item until someone puts it back in the queue.",
   "On behalf of": "On behalf of",
   "Owner agent": "Owner agent",
@@ -21569,5 +21572,6 @@
   "Delete the software \"{name}\"?": "Delete the software \"{name}\"?",
   "This asset was entered by hand: it leaves the inventory and its asset groups.": "This asset was entered by hand: it leaves the inventory and its asset groups.",
   "This asset group was entered by hand: it is deleted and its assets stay in the inventory without it.": "This asset group was entered by hand: it is deleted and its assets stay in the inventory without it.",
-  "This software was typed by hand: it is deleted and leaves the assets it was attached to.": "This software was typed by hand: it is deleted and leaves the assets it was attached to."
+  "This software was typed by hand: it is deleted and leaves the assets it was attached to.": "This software was typed by hand: it is deleted and leaves the assets it was attached to.",
+  "Read-only for you.": "Read-only for you."
 }
