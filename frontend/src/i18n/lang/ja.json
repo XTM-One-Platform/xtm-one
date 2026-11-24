@@ -21569,5 +21569,9 @@
   "Delete the software \"{name}\"?": "ソフトウェア「{name}」を削除しますか?",
   "This asset was entered by hand: it leaves the inventory and its asset groups.": "このアセットは手動で入力されました。インベントリとそのアセットグループから削除されます。",
   "This asset group was entered by hand: it is deleted and its assets stay in the inventory without it.": "このアセットグループは手動で入力されました。削除され、そのアセットはグループなしでインベントリに残ります。",
-  "This software was typed by hand: it is deleted and leaves the assets it was attached to.": "このソフトウェアは手動で入力されました。削除され、関連付けられていたアセットから外れます。"
+  "This software was typed by hand: it is deleted and leaves the assets it was attached to.": "このソフトウェアは手動で入力されました。削除され、関連付けられていたアセットから外れます。",
+  "{product} rejected your sign-in token, so open exposures there may be missing.": "{product} がサインイントークンを拒否しました。未対応のエクスポージャーが表示されていない可能性があります。",
+  "{product} could not answer because the query was too large, so open exposures there may be missing.": "クエリが大きすぎるため {product} が応答できませんでした。未対応のエクスポージャーが表示されていない可能性があります。",
+  "{product} did not answer in time, so open exposures there may be missing.": "{product} が時間内に応答しませんでした。未対応のエクスポージャーが表示されていない可能性があります。",
+  "No {product} connection could be used for this read, so open exposures there may be missing.": "この読み込みに使える {product} の接続がありませんでした。未対応のエクスポージャーが表示されていない可能性があります。"
 }
