@@ -15885,6 +15885,7 @@
   "Try again, or reload the item if it changed.": "Inténtalo de nuevo, o recarga el elemento si ha cambiado.",
   "Or answer in your own words": "O responde con tus propias palabras",
   "Only an administrator can answer a company-managed work item.": "Solo un administrador puede responder a un elemento de trabajo gestionado por la empresa.",
+  "Only an administrator or a member of a group with View and decide can answer this decision.": "Solo un administrador o un miembro de un grupo con «Ver y decidir» puede responder a esta decisión.",
   "An agent waits for your decision on this work item.": "Un agente espera tu decisión sobre este elemento de trabajo.",
   "Decision needed: {title}": "Decisión pendiente: {title}",
   "This card is incomplete: its agent is asked to rewrite it.": "Esta tarjeta está incompleta: se pide a su agente que la reescriba.",
@@ -21603,5 +21604,17 @@
   "{product} could not answer because the query was too large, so open exposures there may be missing.": "{product} no pudo responder porque la consulta era demasiado grande: pueden faltar exposiciones abiertas.",
   "{product} did not answer in time, so open exposures there may be missing.": "{product} no respondió a tiempo: pueden faltar exposiciones abiertas.",
   "No {product} connection could be used for this read, so open exposures there may be missing.": "No se pudo usar ninguna conexión de {product} para esta lectura: pueden faltar exposiciones abiertas.",
-  "Read-only for you.": "Solo lectura para usted."
+  "Read-only for you.": "Solo lectura para usted.",
+  "CTEM access": "Acceso CTEM",
+  "CTEM access updated": "Acceso CTEM actualizado",
+  "CTEM access could not be updated": "No se pudo actualizar el acceso CTEM",
+  "What the members may do on the signals and cases the platform records. Administrators keep full access.": "Lo que los miembros pueden hacer con las señales y los casos que registra la plataforma. Los administradores conservan el acceso completo.",
+  "No CTEM access": "Sin acceso CTEM",
+  "View signals and cases": "Ver señales y casos",
+  "View and decide": "Ver y decidir",
+  "Members see only the signals they record themselves.": "Los miembros solo ven las señales que registran ellos mismos.",
+  "Members read every signal and case of the organization, read only.": "Los miembros leen todas las señales y casos de la organización, solo lectura.",
+  "Members also triage signals, change cases (owner, due date, state, accepted risk) and answer the case decisions. Their agents get the same reach.": "Los miembros también clasifican señales, modifican casos (responsable, fecha límite, estado, riesgo aceptado) y responden a las decisiones de los casos. Sus agentes tienen el mismo alcance.",
+  "Notify the members of case decisions": "Notificar a los miembros las decisiones de casos",
+  "Off: the members can still answer from the case page, without a notification.": "Desactivado: los miembros pueden seguir respondiendo desde la página del caso, sin notificación."
 }
