@@ -21424,5 +21424,18 @@
   "Mitigated, watching needs a passing validation of the mitigation: set it from the case page.": "Mitigado, en vigilancia requiere una validación superada de la mitigación: indíquelo desde la página del caso.",
   "Resolving a case needs evidence: set it from the case page.": "Resolver un caso requiere una prueba: indíquelo desde la página del caso.",
   "Accepting risk needs a reason and an expiry date: set it from the case page.": "Aceptar el riesgo requiere un motivo y una fecha de vencimiento: indíquelo desde la página del caso.",
-  "Remediating needs an owner: assign the case first.": "En remediación requiere un responsable: asigne primero el caso."
+  "Remediating needs an owner: assign the case first.": "En remediación requiere un responsable: asigne primero el caso.",
+  "{state}: {count, plural, one {# case} other {# cases}}, {share}%": "{state}: {count, plural, one {# caso} other {# casos}}, {share} %",
+  "Waiting for a decision: {count}, oldest {age}": "Esperando una decisión: {count}, la más antigua {age}",
+  "Waiting for a decision: {count}": "Esperando una decisión: {count}",
+  "No open case": "Ningún caso abierto",
+  "{count, plural, one {# open case} other {# open cases}}, {waiting} waiting": "{count, plural, one {# caso abierto} other {# casos abiertos}}, {waiting} en espera",
+  "No accepted risk": "Ningún riesgo aceptado",
+  "{count, plural, one {# accepted risk} other {# accepted risks}}": "{count, plural, one {# riesgo aceptado} other {# riesgos aceptados}}",
+  "In a case": "En un caso",
+  "Vulnerabilities an open case carries, among the ones you can see.": "Vulnerabilidades que lleva un caso abierto, entre las que usted ve.",
+  "{count, plural, one {# case resolved in the last {days} days} other {# cases resolved in the last {days} days}}": "{count, plural, one {# caso resuelto en los últimos {days} días} other {# casos resueltos en los últimos {days} días}}",
+  "In a case, {count}, {resolved} resolved in {days} d": "En un caso, {count}, {resolved} resueltos en {days} d",
+  "{resolved} resolved in {days} d": "{resolved} resueltos en {days} d",
+  "Signals that opened a case, all time. Cases built from your stack's vulnerabilities are counted in Cases.": "Señales que abrieron un caso, desde siempre. Los casos creados a partir de las vulnerabilidades de su stack se cuentan en Casos."
 }

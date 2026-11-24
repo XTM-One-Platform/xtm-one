@@ -40,7 +40,7 @@ export const CTEM_WIDGETS: Record<CtemWidgetId, WidgetSpec> = {
   kpi_agents: kpi(8),
   kpi_executions: kpi(10),
   // The Exposure briefing, under the lifecycle band, drawn at its content height.
-  briefing: { x: 0, y: 24, w: 12, h: 14, minW: 4, minH: 3 },
+  briefing: { x: 0, y: 28, w: 12, h: 14, minW: 4, minH: 3 },
   // The title line of the stage cards, with its Export CSV button (#9477). Two
   // rows (56 px), never one: a 32 px button does not fit a 20 px row and was
   // clipped (UX round 1 on #9478, B1). minH 2 raises a layout saved at one row.
@@ -67,7 +67,7 @@ export const CTEM_WIDGETS: Record<CtemWidgetId, WidgetSpec> = {
   // layout since #10721 (no ROI on the CTEM page); a saved layout keeps it.
   value_band: { x: 0, y: 0, w: 12, h: 10, minW: 6, minH: 8, hidden: true },
   // The Act now queue (C2 V2): five rows and Show all, drawn at its rows' height.
-  act_now: { x: 0, y: 38, w: 12, h: 8, minW: 4, minH: 5 },
+  act_now: { x: 0, y: 42, w: 12, h: 8, minW: 4, minH: 5 },
   // The lifecycle band (C2 V4): six stage chips under the Export CSV title
   // line, each opening its stage page; right under the hero (#11464).
   lifecycle_band: { x: 0, y: 11, w: 12, h: 8, minW: 6, minH: 6 },
@@ -83,11 +83,12 @@ export const CTEM_WIDGETS: Record<CtemWidgetId, WidgetSpec> = {
   // full funnel. One compact full-width row under the lifecycle band, above the
   // briefing and Act now (UX r1 decision on #11557); a layout saved before it
   // keeps drawing exactly as saved, the funnel in its catalog.
-  prioritization_funnel: { x: 0, y: 19, w: 12, h: 5, minW: 6, minH: 4, catalogWhenSkipped: true },
-  // The CTEM Cases row (#11545 slice S5a, dev-docs/ctem-cases.md 7.4, UX Q1):
-  // right after Act now in the default layout, a compact full-width row; a
-  // layout saved before it keeps drawing exactly as saved, the row in its catalog.
-  cases: { x: 0, y: 46, w: 12, h: 4, minW: 6, minH: 3, catalogWhenSkipped: true },
+  prioritization_funnel: { x: 0, y: 23, w: 12, h: 5, minW: 6, minH: 4, catalogWhenSkipped: true },
+  // The CTEM Cases row (#11545 slice S5a, dev-docs/ctem-cases.md 7.4, UX Q1): a
+  // compact full-width row, right under the lifecycle band and above the funnel
+  // since #1621, so the page reads lifecycle, cases in motion, funnel; a layout
+  // saved before it keeps drawing exactly as saved, the row in its catalog.
+  cases: { x: 0, y: 19, w: 12, h: 4, minW: 6, minH: 3, catalogWhenSkipped: true },
 };
 
 /** Rows of the Fleet activity card once every CTEM fleet is off and the

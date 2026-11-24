@@ -21424,5 +21424,18 @@
   "Mitigated, watching needs a passing validation of the mitigation: set it from the case page.": "Mitigated, watching needs a passing validation of the mitigation: set it from the case page.",
   "Resolving a case needs evidence: set it from the case page.": "Resolving a case needs evidence: set it from the case page.",
   "Accepting risk needs a reason and an expiry date: set it from the case page.": "Accepting risk needs a reason and an expiry date: set it from the case page.",
-  "Remediating needs an owner: assign the case first.": "Remediating needs an owner: assign the case first."
+  "Remediating needs an owner: assign the case first.": "Remediating needs an owner: assign the case first.",
+  "{state}: {count, plural, one {# case} other {# cases}}, {share}%": "{state}: {count, plural, one {# case} other {# cases}}, {share}%",
+  "Waiting for a decision: {count}, oldest {age}": "Waiting for a decision: {count}, oldest {age}",
+  "Waiting for a decision: {count}": "Waiting for a decision: {count}",
+  "No open case": "No open case",
+  "{count, plural, one {# open case} other {# open cases}}, {waiting} waiting": "{count, plural, one {# open case} other {# open cases}}, {waiting} waiting",
+  "No accepted risk": "No accepted risk",
+  "{count, plural, one {# accepted risk} other {# accepted risks}}": "{count, plural, one {# accepted risk} other {# accepted risks}}",
+  "In a case": "In a case",
+  "Vulnerabilities an open case carries, among the ones you can see.": "Vulnerabilities an open case carries, among the ones you can see.",
+  "{count, plural, one {# case resolved in the last {days} days} other {# cases resolved in the last {days} days}}": "{count, plural, one {# case resolved in the last {days} days} other {# cases resolved in the last {days} days}}",
+  "In a case, {count}, {resolved} resolved in {days} d": "In a case, {count}, {resolved} resolved in {days} d",
+  "{resolved} resolved in {days} d": "{resolved} resolved in {days} d",
+  "Signals that opened a case, all time. Cases built from your stack's vulnerabilities are counted in Cases.": "Signals that opened a case, all time. Cases built from your stack's vulnerabilities are counted in Cases."
 }

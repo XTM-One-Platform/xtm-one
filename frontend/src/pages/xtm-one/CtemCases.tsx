@@ -57,6 +57,7 @@ import {
   CaseStateChip,
   useCasesEmptyLabel,
 } from "./ctem/cases-shared";
+import { CTEM_STAGE_CONFIG, CTEM_STAGE_KEYS } from "@/lib/constants";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -396,6 +397,14 @@ export default function CtemCases() {
             values: (c) => [c.state],
             options: CTEM_CASE_STATES.map((s) => ({ value: s, label: t_i18n(CASE_STATE_LABEL[s]) })),
             // Ordinal scale: the lifecycle order, new to accepted risk, never alphabetical.
+            ordered: true,
+          },
+          {
+            // The command center and the stage pages link here (`c_f_phase`, #1621): the open cases of one phase.
+            key: "phase",
+            label: "CTEM phase",
+            values: (c) => (c.phase ? [c.phase] : []),
+            options: CTEM_STAGE_KEYS.map((k) => ({ value: k, label: t_i18n(CTEM_STAGE_CONFIG[k].label) })),
             ordered: true,
           },
           {

@@ -28,7 +28,15 @@ export function caseDueFlags(c: Pick<CtemCaseSummary, "state" | "due_at" | "acce
   return flags;
 }
 
-/** The Cases list on one state, or on all states with one due flag. */
-export function casesListHref(target: { state: string } | { due: CaseDueFlag }): string {
+/**
+ * The Cases list on one state, on all states with one due flag, or on the open
+ * cases of one CTEM phase (`c_f_phase`, #1621; with `waiting`, those waiting for a decision).
+ */
+export function casesListHref(
+  target: { state: string } | { due: CaseDueFlag } | { phase: string; waiting?: boolean },
+): string {
+  if ("phase" in target) {
+    return target.waiting ? `/ctem/cases?state=waiting_decision&c_f_phase=${target.phase}` : `/ctem/cases?c_f_phase=${target.phase}`;
+  }
   return "state" in target ? `/ctem/cases?state=${target.state}` : `/ctem/cases?state=all&c_f_due=${target.due}`;
 }
