@@ -113,7 +113,13 @@ def test_the_spec_assignments_live_on_the_orchestrator() -> None:
         "Case opened or reopened",
         "Gate answered",
         "Loop reminder due",
+        "Fleet run failed or orphaned",
     }
+    # #1837: the loop orchestrator listens to its members' failed and orphaned runs, in batches.
+    health = assignments["Fleet run failed or orphaned"]["trigger_config"]
+    assert health["event"] == ["run.failed", "run.orphaned"]
+    assert health["scope"] == "fleet"
+    assert health["batch_window_seconds"] == 60
     # Staggered off the Monday 07:00 of the desks (#1832).
     assert assignments["Weekly threat sweep"]["trigger_config"] == {"cron": "30 6 * * 1"}
     assert assignments["Re-test due"]["trigger_type"] == "work_item"

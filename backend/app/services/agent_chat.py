@@ -734,6 +734,49 @@ async def _load_pipeline_tool_unbound(
                     integ_id_str,
                 )
 
+        # The pinned integration acts for someone other than the agent's owner
+        # only when they may use it, as a direct binding: visible to them, or
+        # lent by the agent. Otherwise the fallback below picks one of theirs.
+        from app.services.integration_credentials import normalize_acting_user_id
+
+        _acting = normalize_acting_user_id(user_id)
+        _owner = normalize_acting_user_id(getattr(agent, "user_id", None))
+        if integ is not None and _acting is not None and _acting != _owner:
+            from app.api.v1.helpers import get_user_group_ids
+            from app.services.integration_credentials import lent_integration_ids
+            from app.services.integration_tools import shadow_invisible_bindings
+
+            _pinned = {provider: str(integ.id)}
+            await shadow_invisible_bindings(
+                db,
+                _pinned,
+                {},
+                acting_user_id=str(_acting),
+                user_group_ids=await get_user_group_ids(db, _acting),
+                lent_ids=lent_integration_ids(agent),
+                lent_owner_id=_owner,
+            )
+            if not _pinned:
+                from app.services.openapi_import.service import provider_resolves_per_user
+
+                if not provider_resolves_per_user(provider):
+                    # Each integration of the provider is a different API: none
+                    # of the person's own stands in for the pinned one.
+                    logger.info(
+                        "Pipeline LOAD: pinned integration %s withheld for user %s, no per-user equivalent",
+                        integ.id,
+                        _acting,
+                    )
+                    return None
+                logger.info(
+                    "Pipeline LOAD: pinned integration %s withheld for user %s, picking theirs",
+                    integ.id,
+                    _acting,
+                )
+                integ = None
+        # A run with no person is the owner's own: it keeps the pinned integration.
+        _owner_run_pin = integ is not None and _acting is None
+
         # Fallback: scope-based resolution (legacy refs without integration_id).
         # ``scope_headers`` come from the platform request a turn answers; an
         # evaluation answers none, so it passes none and takes the resolver's
@@ -804,10 +847,19 @@ async def _load_pipeline_tool_unbound(
             READ_ONLY_CONTEXT_KEY,
             read_only_integration_ids,
         )
+        from app.services.integration_tools import BindingBasis, ToolBindings
 
         defs, executor = await build_integration_tools(
             db,
-            {provider: [str(integ.id)]},
+            ToolBindings(
+                {provider: [str(integ.id)]},
+                basis=BindingBasis.OWNER_RUN if _owner_run_pin else BindingBasis.CALLER_CHECKED,
+                reason=(
+                    "the pipeline tool ref's pinned integration, for the owner's own run"
+                    if _owner_run_pin
+                    else "the pinned integration the person may use, else one picked through template_candidate_filter"
+                ),
+            ),
             context={
                 "source": "pipeline",
                 "agent": agent.name,
@@ -5247,164 +5299,27 @@ async def run_agent_chat(
             composite.add_tools(ch_defs, ch_exec)
 
         # --- Integration tools (built-in tools powered by bound integrations) ---
-        from app.services.integration_tools import DIRECT_BINDING_ORIGIN, flatten_bindings
+        # Who may use which bound credential is decided once, for every run
+        # that builds an agent's integration tools for a person.
+        from app.services.integration_tools import resolve_agent_integration_bindings
 
-        effective_bindings: dict[str, str] = flatten_bindings(
-            agent.integration_bindings or {}
+        _resolved_bindings = await resolve_agent_integration_bindings(
+            db,
+            agent,
+            None if is_anonymous_user else user_id,
+            company_automation=company_automation,
+            scope_headers=scope_headers,
+            inherited_template_picks=inherited_template_picks,
         )
-        binding_origin_map: dict[str, str] = {
-            key: DIRECT_BINDING_ORIGIN for key in effective_bindings
-        }
-
-        logger.debug(
-            "Scope resolve: agent=%s direct_bindings=%s template_bindings=%s scope_headers=%s",
-            agent.name,
-            effective_bindings,
-            agent.integration_template_bindings,
-            scope_headers,
-        )
-
-        # Least-privilege guard: a shared agent must never run a fixed integration
-        # binding using another user's personal credentials. Drop bindings the
-        # acting user cannot see and fall back to per-user (template) resolution
-        # below, so each user transparently uses their OWN integration of that
-        # provider. Skipped for the owner's own runs (nothing to shadow) and for
-        # anonymous users (no identity to enforce against).
-        _shadowed_providers: list[str] = []
-        # What the guard dropped, said on the reply and to the model unless the
-        # user's own integration of that provider replaces it below.
-        _shadow_withheld: list[dict] = []
-        # An orphaned binding (the agent's owner lost access to the
-        # integration) is used by nobody, the owner's own turns included.
-        from app.services.integration_credentials import drop_orphaned_bindings
-
-        await drop_orphaned_bindings(
-            db, agent, effective_bindings, binding_origin_map, withheld=_shadow_withheld
-        )
-        if (
-            effective_bindings
-            and not is_anonymous_user
-            and user_id
-            and str(agent.user_id) != user_id
-        ):
-            from app.api.v1.helpers import get_user_group_ids
-            from app.services.integration_credentials import lent_integration_ids
-            from app.services.integration_tools import shadow_invisible_bindings
-
-            _acting_group_ids = await get_user_group_ids(db, uuid.UUID(user_id))
-            # The owner's personal integrations this agent lends stay bound:
-            # used through this agent only (Agent.integration_lending).
-            _shadowed_providers = await shadow_invisible_bindings(
-                db,
-                effective_bindings,
-                binding_origin_map,
-                acting_user_id=user_id,
-                user_group_ids=_acting_group_ids,
-                withheld=_shadow_withheld,
-                lent_ids=lent_integration_ids(agent),
-                lent_owner_id=agent.user_id,
-            )
-
-        # Resolve template bindings: the current user's own connected
-        # integrations plus genuine company-wide ones (``is_company_managed`` /
-        # legacy ``platform_managed``). Company-managed integrations keep a real
-        # (admin) owner, so ``user_id == <current user>`` no longer matches them
-        # for other users — hence the explicit company-wide clause, which keeps a
-        # shared API-key / OAuth integration reachable by template-bound tools
-        # for every user it is not restricted from. A *colleague's personal*
-        # integration is never eligible, nor a company-managed one
-        # restricted to others; ``template_candidate_filter`` builds that
-        # rule for every path, assignments and evaluations included. The shadowed
-        # providers go through the same rule, so the gate's drop holds for every
-        # user the rule refuses.
-        # When multiple integrations exist for the same provider, use the
-        # integration's scope_config to disambiguate (match_key filtering).
-        # Single batched query instead of one per provider.
-        _template_providers = list(agent.integration_template_bindings or [])
-        for _sp in _shadowed_providers:
-            if _sp not in _template_providers:
-                _template_providers.append(_sp)
-        if _template_providers and not is_anonymous_user:
-            _needed_providers = [
-                p
-                for p in _template_providers
-                if p not in effective_bindings
-            ]
-            if _needed_providers:
-                from app.services.integration_tools import (
-                    resolve_template_integration,
-                    template_candidate_filter,
-                )
-
-                _acting_uuid = uuid.UUID(user_id)
-                _tmpl_result = await db.execute(
-                    select(Integration)
-                    .where(
-                        Integration.provider.in_(_needed_providers),
-                        await template_candidate_filter(
-                            db, _acting_uuid, company_automation=company_automation
-                        ),
-                        connected_for_clause(_acting_uuid),
-                    )
-                    .order_by(
-                        Integration.provider, Integration.created_at, Integration.id
-                    )
-                )
-                _by_provider: dict[str, list] = {}
-                for _tmpl_integ in _tmpl_result.scalars().all():
-                    _by_provider.setdefault(_tmpl_integ.provider, []).append(_tmpl_integ)
-
-                logger.debug(
-                    "Scope resolve: needed_providers=%s found_by_provider=%s",
-                    _needed_providers,
-                    {k: [str(i.id) for i in v] for k, v in _by_provider.items()},
-                )
-
-                for _tmpl_provider, _tmpl_integs in _by_provider.items():
-                    if _tmpl_provider in effective_bindings:
-                        continue
-                    _inherited_id = (inherited_template_picks or {}).get(_tmpl_provider)
-                    _integ, _origin = await resolve_template_integration(
-                        db,
-                        _tmpl_provider,
-                        _tmpl_integs,
-                        scope_headers,
-                        acting_user_id=_acting_uuid,
-                        context=f"agent={agent.name}",
-                        inherited_id=_inherited_id,
-                    )
-                    if _inherited_id and (_integ is None or str(_integ.id) != _inherited_id):
-                        # The child cannot use its parent's account: said in
-                        # the logs, never a silent other view.
-                        logger.warning(
-                            "Template binding %s of agent %s: the spawning run used integration %s, "
-                            "this turn resolved %s (origin %s) for user %s",
-                            _tmpl_provider,
-                            agent.name,
-                            _inherited_id,
-                            str(_integ.id) if _integ else None,
-                            _origin,
-                            _acting_uuid,
-                        )
-                    if _integ:
-                        effective_bindings[_tmpl_provider] = str(_integ.id)
-                        binding_origin_map[_tmpl_provider] = _origin
+        effective_bindings: dict[str, str] = _resolved_bindings.bindings
+        binding_origin_map: dict[str, str] = _resolved_bindings.origins
 
         # Bindings withheld because they hold a colleague's unshared personal
         # OAuth token: told to the model below, never a silent absence.
         _unshared_oauth_bindings: list[dict] = []
         # Everything this turn does not use for its user because of who may
-        # use it: told to the model and shown on the reply. A dropped
-        # binding the user's own integration of the provider replaced is not
-        # missing and is not reported.
-        _withheld_integration_bindings: list[dict] = [
-            entry
-            for entry in _shadow_withheld
-            if not (
-                entry.get("provider") in _shadowed_providers
-                and entry.get("provider") in effective_bindings
-            )
-        ]
+        # use it: told to the model and shown on the reply.
+        _withheld_integration_bindings: list[dict] = _resolved_bindings.withheld
 
         # Session-level integration overrides *replace* the agent's bindings for
         # this message (the chat UI sends the full set of enabled integrations),
@@ -5488,6 +5403,22 @@ async def run_agent_chat(
         _turn_stages.mark("scope_and_bindings")
         _invalid_integration_note = ""
         if prebuilt_integration_tools is not None:
+            from app.services.integration_tools import prebuilt_tools_refusal
+
+            _prebuilt_refusal = prebuilt_tools_refusal(
+                prebuilt_integration_tools,
+                agent=agent,
+                acting_user_id=None if is_anonymous_user else user_id,
+                effective_bindings=effective_bindings,
+            )
+            if _prebuilt_refusal is not None:
+                # Never a credential this turn's person may not use: the turn
+                # builds its own tools from its own resolution instead.
+                logger.error(
+                    "Prebuilt integration tools refused for agent %s: %s", agent.id, _prebuilt_refusal
+                )
+                prebuilt_integration_tools = None
+        if prebuilt_integration_tools is not None:
             integ_defs, integ_exec = prebuilt_integration_tools[0], prebuilt_integration_tools[1]
             if integ_defs:
                 composite.add_tools(integ_defs, integ_exec)
@@ -5534,9 +5465,18 @@ async def run_agent_chat(
                     PLATFORM_NAMES_CONTEXT_KEY: _platform_names,
                     ATTACK_SOURCES_CONTEXT_KEY: _attack_sources,
             }
+            from app.services.integration_tools import BindingBasis, ToolBindings
+
             integ_defs, integ_exec = await build_integration_tools(
                 db,
-                effective_bindings,
+                # resolve_agent_integration_bindings, or the session selection
+                # resolve_session_integration_bindings checked, then pinned
+                # (pin_bindings) or narrowed: never a credential the person may not use.
+                ToolBindings(
+                    effective_bindings,
+                    basis=BindingBasis.RESOLVED,
+                    reason="the chat turn's own resolution for its person",
+                ),
                 context=_integration_build_context,
             )
             # A bound integration its stored configuration leaves without a

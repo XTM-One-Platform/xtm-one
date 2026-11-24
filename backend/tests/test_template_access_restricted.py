@@ -30,9 +30,10 @@ _APP = Path(__file__).resolve().parents[1] / "app"
 
 #: module -> number of resolution queries it builds through the filter
 _RESOLUTION_PATHS = {
-    "services/agent_chat.py": 2,  # agent chat + the pipeline fallback
+    "services/agent_chat.py": 1,  # the pipeline fallback
     "services/assignment_engine.py": 1,
-    "services/evaluation_engine.py": 1,
+    # resolve_agent_integration_bindings: agent chat and evaluations
+    "services/integration_tools.py": 1,
     "services/slack_events.py": 1,  # which runs a Slack event reaches through a template
 }
 

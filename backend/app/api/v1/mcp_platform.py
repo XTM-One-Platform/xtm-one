@@ -547,11 +547,15 @@ async def _build_platform_tools(
     definitions so a non-listed tool can never execute — even if a client
     guesses its registered name. A read-only API key keeps the read list.
     """
-    from app.services.integration_tools import build_integration_tools
+    from app.services.integration_tools import BindingBasis, ToolBindings, build_integration_tools
 
     definitions, executor = await build_integration_tools(
         db,
-        {provider: [str(registration.integration_id)]},
+        ToolBindings(
+            {provider: [str(registration.integration_id)]},
+            basis=BindingBasis.CALLER_CHECKED,
+            reason="the platform integration acts with a JWT minted for the caller",
+        ),
         context={
             "source": "mcp_platform",
             "user_id": str(user.id),
