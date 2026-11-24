@@ -12,7 +12,7 @@ sync honours). Every existing row is a person's link: the defaults
 (``manual``, empty) are its truth, so nothing is backfilled.
 
 Revision ID: v1591pallinks01
-Revises: c1503ctemcasestatus1
+Revises: s1495swprofile01
 Create Date: 2026-11-23 22:30:00.000000
 """
 
@@ -26,7 +26,7 @@ from app.core.migration_ddl import set_lock_timeout, terminate_lock_holders
 revision: str = "v1591pallinks01"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "c1503ctemcasestatus1"
+down_revision: str | Sequence[str] | None = "s1495swprofile01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
