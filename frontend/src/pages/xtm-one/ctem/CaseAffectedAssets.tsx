@@ -12,6 +12,7 @@
  * an asset outside the inventory opens nothing.
  */
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CASE_SECTION_ICON, CaseCardTitleText } from "./case-icons";
 import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
 import { InfoTip } from "@/components/ui/info-tip";
 import { TruncatedText } from "@/components/ui/truncated-text";
@@ -161,7 +162,9 @@ export function CaseAffectedAssets({ data }: { data: CtemCaseAffectedAssets | un
   return (
     <Card data-testid="ctem-case-affected-assets">
       <CardHeader>
-        <CardTitle>{t_i18n("Affected assets")}</CardTitle>
+        <CardTitle>
+          <CaseCardTitleText icon={CASE_SECTION_ICON.affected_assets}>{t_i18n("Affected assets")}</CaseCardTitleText>
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 content-base">
         {!fromInventory && (

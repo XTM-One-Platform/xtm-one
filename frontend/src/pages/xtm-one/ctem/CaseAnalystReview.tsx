@@ -13,6 +13,7 @@
  */
 import { Icon } from "@filigran/design-system";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CASE_SECTION_ICON, CaseCardTitleText } from "./case-icons";
 import { WorkItemDecisionCard } from "@/components/work-items/WorkItemDecisionCard";
 import type { CtemCaseEvent, CtemCaseGateRecord, CtemCaseThreatPackage } from "@/hooks/api/useCtemCasesApi";
 import { useWorkItems } from "@/hooks/api/useWorkItemApi";
@@ -68,7 +69,9 @@ export function CaseAnalystReview({
   return (
     <Card data-testid="ctem-case-analyst-review">
       <CardHeader>
-        <CardTitle>{t_i18n("Analyst review")}</CardTitle>
+        <CardTitle>
+          <CaseCardTitleText icon={CASE_SECTION_ICON.analyst_review}>{t_i18n("Analyst review")}</CaseCardTitleText>
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 content-base">
         {record && (

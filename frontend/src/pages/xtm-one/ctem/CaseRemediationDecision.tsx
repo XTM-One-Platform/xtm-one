@@ -12,6 +12,7 @@
  * and no figure. Never blank: a case not decided yet says so.
  */
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CASE_SECTION_ICON, CaseCardTitleText } from "./case-icons";
 import { WorkItemDecisionCard } from "@/components/work-items/WorkItemDecisionCard";
 import type { CtemCaseEvent, CtemCaseGateRecord } from "@/hooks/api/useCtemCasesApi";
 import { useWorkItems } from "@/hooks/api/useWorkItemApi";
@@ -62,7 +63,9 @@ export function CaseRemediationDecision({
   return (
     <Card data-testid="ctem-case-remediation">
       <CardHeader>
-        <CardTitle>{t_i18n("Remediation decision")}</CardTitle>
+        <CardTitle>
+          <CaseCardTitleText icon={CASE_SECTION_ICON.remediation_decision}>{t_i18n("Remediation decision")}</CaseCardTitleText>
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 content-base">
         {record ? (
