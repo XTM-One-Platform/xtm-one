@@ -166,10 +166,14 @@ def test_f4_event_refresh_debounces_per_stage_per_hour_in_its_state():
 def test_f4_monthly_board_report_reads_f1_f3_outcomes_and_roi():
     a = _posture_assignment("Monthly board report")
     assert a["trigger_type"] == "schedule"
-    assert a["trigger_config"] == {"cron": "0 9 1 * *"}
+    # After the briefing (08:00) and the OpenCRQ Board pack (10:00), #1832.
+    assert a["trigger_config"] == {"cron": "0 11 1 * *"}
     for key in ("ctem:f1:state", "ctem:f2:state", "ctem:f3:state"):
         assert key in a["prompt"]
     assert "ROI" in a["prompt"]
+    # The cases are the record (#1832): counted with the case reads, the states hold counters only.
+    assert "list_ctem_cases" in a["prompt"]
+    assert "open cases, closed cases" not in a["prompt"]
     assert "loss avoided" in a["prompt"]
 
 

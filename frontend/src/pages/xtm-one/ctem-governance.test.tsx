@@ -40,7 +40,7 @@ vi.mock("@/hooks/api/useOrganizationContextApi", async (importOriginal) => ({
   useOrganizationContext: () => ({
     data: { profile: { posture_target: state.target, prioritization_policy: { accepted_risks: state.risks } } },
   }),
-  useSaveOrganizationContext: () => ({ isPending: false, mutate: () => undefined }),
+  usePatchOrganizationContext: () => ({ isPending: false, mutate: () => undefined }),
 }));
 
 function page() {

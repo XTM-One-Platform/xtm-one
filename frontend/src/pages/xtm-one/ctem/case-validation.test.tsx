@@ -80,7 +80,11 @@ describe("CaseValidation", () => {
     expect(screen.getByTestId("ctem-case-validation-gate").textContent).toContain("The fleet runs this gate without a person");
     expect(screen.queryByTestId("ctem-case-validation-mode")).toBeNull();
     expect(screen.queryByText(/safe mode/i)).toBeNull();
+    // Result and run order are chips (#1679), the provider with its logo.
+    expect(screen.getByTestId("ctem-case-validation-result").getAttribute("data-tone")).toBe("green");
+    expect(screen.getByTestId("ctem-case-validation-provider").textContent).toBe("OpenAEV");
     expect(screen.getByTestId("ctem-case-validation-order").textContent).toBe("1. DMZ web2. Core services");
+    expect(screen.getByTestId("ctem-case-validation-order").querySelectorAll("[data-tone]")).toHaveLength(2);
     expect(screen.queryByText(/pin run/)).toBeNull();
     expect(screen.queryByTestId("unified-decision-card")).toBeNull();
     expect(state.calls.every((c) => (c as { enabled: boolean }).enabled === false)).toBe(true);
@@ -92,6 +96,8 @@ describe("CaseValidation", () => {
     renderWithProviders(<CaseValidation caseId="c1" validations={[{ ...SAFE, result: "pending" }]} history={history} />);
     expect(screen.getByText("Waiting for a person")).toBeTruthy();
     expect(state.calls.some((c) => (c as { filters: { correlation_key: string } }).filters.correlation_key === "ctem:validation:c1")).toBe(true);
+    expect(screen.queryByTestId("ctem-case-validation-mode")).toBeNull();
+    expect(screen.getByTestId("ctem-case-validation-result").textContent).toBe("Pending");
   });
 
   it("names the chosen option's label once a person answered, from the closed decision item", () => {

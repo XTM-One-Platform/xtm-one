@@ -14,6 +14,7 @@ import { Icon, Textarea } from "@filigran/design-system";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CASE_SECTION_ICON, CaseCardTitleText } from "./ctem/case-icons";
 import { DataTable, TOOLBAR_CONTROL_HEIGHT, type DataTableColumn } from "@/components/ui/data-table";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { DateFilterInput } from "@/components/ui/date-filter-input";
@@ -760,7 +761,9 @@ export default function CtemCaseDetail() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{t_i18n("Issues")}</CardTitle>
+          <CardTitle>
+            <CaseCardTitleText icon={CASE_SECTION_ICON.issues}>{t_i18n("Issues")}</CaseCardTitleText>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <DataTable
@@ -810,7 +813,9 @@ export default function CtemCaseDetail() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{t_i18n("History")}</CardTitle>
+          <CardTitle>
+            <CaseCardTitleText icon={CASE_SECTION_ICON.history}>{t_i18n("History")}</CaseCardTitleText>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <CaseAuditTrail
@@ -823,6 +828,9 @@ export default function CtemCaseDetail() {
             changeText={changeTextOf}
             renderRun={renderRun}
             renderEvent={renderEvent}
+            gates={kase.gates}
+            history={kase.history}
+            backTo={`/ctem/cases/${kase.id}`}
           />
         </CardContent>
       </Card>

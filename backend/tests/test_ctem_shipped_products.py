@@ -94,8 +94,8 @@ def test_the_index_names_shipped_products_only_once_filled() -> None:
     category = categories.get("shipped_products")
     assert category is not None
     assert not categories.indexed(category, 0) and categories.indexed(category, 2)
-    tech_stack = categories.get("tech_stack")
-    assert tech_stack is not None and categories.indexed(tech_stack, 0)
+    software = categories.get("software")
+    assert software is not None and categories.indexed(software, 0)
 
 
 def test_rows_upsert_adds_a_new_product_and_keeps_an_existing_one() -> None:

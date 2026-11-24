@@ -487,6 +487,16 @@ A Kubernetes integration lets an agent answer "what does this cluster expose" wi
 - **Namespaces and nodes.** `list_kubernetes_namespaces` lists the namespaces; `list_kubernetes_nodes` lists the nodes, whether they are ready or cordoned, and their internal and external addresses.
 - Every tool is a read: nothing is written to the cluster.
 
+### Planhat: each person's own account and permissions
+
+A Planhat integration connects in one of two ways, chosen with `Authentication mode` when you create it.
+
+- **OAuth: each person's own account.** A Planhat admin opens `App Center > New App > OAuth Client` in Planhat, sets its Redirect URL to the callback shown in the setup guide (`<your XTM One address>/api/oauth/callback`), and grants the data models the agents use. Paste the Client ID (`pk_...`) and the Client Secret (`sk_...`) in the integration, save, and click `Authorize`. The sign-in is Planhat's own, so it goes through your company's SSO when Planhat is set up with one.
+- **What the agent can do.** With OAuth, the agent reads and writes with the permissions both the OAuth Client and the person's Planhat role allow: a record the person cannot see in Planhat, the agent cannot see either.
+- **Everyone with their own account.** Share the integration (or make it company-managed) with `Don't share my connected account` on: each person then clicks `Connect your account` on the integration's page and the agent acts as them (see [Shared without the connected account](#shared-without-the-connected-account-each-person-authorizes-their-own)).
+- **How long a connection lasts.** The access token is renewed every hour, automatically. The renewal itself expires after a year: the person then authorizes again.
+- **API key instead.** A Planhat Private App's API Access Token: one technical account for everyone, with the Private App's permissions whatever the person, and every action recorded in Planhat as the Private App's.
+
 ### Zendesk: remediation and incident tickets
 
 A Zendesk integration lets an agent open and follow tickets in the help desk the remediation teams already work from.

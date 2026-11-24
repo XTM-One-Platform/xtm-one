@@ -45,10 +45,29 @@
 # (and SANDBOX_CPU / SANDBOX_RAM per key: a build needs more than 128Mi).
 
 # ---------------------------------------------------------------------------
+# stores-fetch: the offline PostgreSQL (with pgvector and the contrib
+# extensions), Redis-API and S3 servers of .xtm-one/stores.py, fetched by
+# their sha256 pins (a mismatch fails the build) and unpacked under
+# /opt/stores with the runner beside them (/opt/stores/stores.py). Never
+# shipped as such: only /opt/stores is copied out (#1858).
+# ---------------------------------------------------------------------------
+FROM docker.io/library/python:3.14-slim@sha256:fbecd461fc72d21b2143c6eaba25143738079154a6d0ea3da3aec724f50eed4a AS stores-fetch
+
+COPY .xtm-one/stores.py /tmp/stores.py
+RUN python /tmp/stores.py install /opt/stores
+
+# ---------------------------------------------------------------------------
 # toolchain-base: Python 3.14 (pip), uv, the runtime toolchain packages, the
-# non-root user. Every target starts here.
+# non-root user, the offline stores. Every target starts here.
 # ---------------------------------------------------------------------------
 FROM docker.io/library/python:3.14-slim@sha256:fbecd461fc72d21b2143c6eaba25143738079154a6d0ea3da3aec724f50eed4a AS toolchain-base
+
+# The stores (hardening rule 2, the runtime exception python-dev already
+# names): owned by root, executable by sandboxuser. A `stores = true` check
+# of any repository (a CI job with a postgres service, detected or declared)
+# runs through `python /opt/stores/stores.py exec -- <command>`, which starts
+# PostgreSQL on loopback inside the check's own container, with no network.
+COPY --from=stores-fetch /opt/stores /opt/stores
 
 ARG TOOLCHAIN_APT_FILE=backend/sandbox/apt.sandbox.toolchain.runtime.txt
 
