@@ -8665,7 +8665,7 @@
   "They read and post through this bot.": "Ils lisent et publient via ce bot.",
   "Its secret value is used in what they run; it is never shown to them.": "Sa valeur secrète est utilisée dans ce qu'ils exécutent ; elle ne leur est jamais montrée.",
   "Its value is used in what they run.": "Sa valeur est utilisée dans ce qu'ils exécutent.",
-  "In a chat, people who cannot see this integration use their own; the agent's runs, public link and channels use this one.": "Dans une discussion, les personnes qui ne voient pas cette intégration utilisent la leur ; les exécutions, le lien public et les canaux de l'agent utilisent celle-ci.",
+  "People who cannot see this integration use their own, in a chat and in the agent's runs; its public link and channels use this one.": "Les personnes qui ne voient pas cette intégration utilisent la leur, dans une discussion comme dans les exécutions de l'agent ; son lien public et ses canaux utilisent celle-ci.",
   "It resolves for people who can see it, and in runs acting as someone who can.": "Elle se résout pour les personnes qui peuvent la voir, et dans les exécutions agissant au nom de quelqu'un qui le peut.",
   "Shared without the connected account: they connect their own.": "Partagée sans le compte connecté : ils connectent le leur.",
   "Only the account holder or an admin can share this connected account.": "Seul le titulaire du compte ou un administrateur peut partager ce compte connecté.",

@@ -144,7 +144,9 @@ async def test_skip_llm_eval_mode_populates_pipeline_traces():
         )
     )
 
-    async def _fake_load(db, ref, user_id, agent, headers, element_scope=None, company_automation=None):
+    async def _fake_load(
+        db, ref, user_id, agent, headers, element_scope=None, company_automation=None, owner_run=False
+    ):
         if ref.get("tool_name") == "prep_tool":
             return prep_defs, prep_exec
         return fin_defs, fin_exec
@@ -638,7 +640,9 @@ async def test_a_pipeline_agent_hands_back_its_pipeline_tool_calls():
         "fin_tool": [ToolDefinition(name="fin_tool", description="", input_schema={"type": "object", "properties": {"response": {"type": "string"}}})],
     }
 
-    async def _fake_load(db, ref, user_id, agent, headers, element_scope=None, company_automation=None):
+    async def _fake_load(
+        db, ref, user_id, agent, headers, element_scope=None, company_automation=None, owner_run=False
+    ):
         name = ref.get("tool_name")
         return defs[name], prep_exec if name == "prep_tool" else fin_exec
 

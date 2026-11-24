@@ -8666,7 +8666,7 @@
   "They read and post through this bot.": "They read and post through this bot.",
   "Its secret value is used in what they run; it is never shown to them.": "Its secret value is used in what they run; it is never shown to them.",
   "Its value is used in what they run.": "Its value is used in what they run.",
-  "In a chat, people who cannot see this integration use their own; the agent's runs, public link and channels use this one.": "In a chat, people who cannot see this integration use their own; the agent's runs, public link and channels use this one.",
+  "People who cannot see this integration use their own, in a chat and in the agent's runs; its public link and channels use this one.": "People who cannot see this integration use their own, in a chat and in the agent's runs; its public link and channels use this one.",
   "It resolves for people who can see it, and in runs acting as someone who can.": "It resolves for people who can see it, and in runs acting as someone who can.",
   "Shared without the connected account: they connect their own.": "Shared without the connected account: they connect their own.",
   "Only the account holder or an admin can share this connected account.": "Only the account holder or an admin can share this connected account.",

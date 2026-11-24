@@ -2441,6 +2441,9 @@ async def _execute_agent_full_loop(
                 delegation_depth=delegation_depth,
                 model_id_override=model_id,
                 evaluation_mode=True,
+                # An evaluation with no owning user evaluates the agent as
+                # its owner's own run, as its integration tools are built.
+                owner_run=eval_user_id == "anonymous",
                 # The run's own value, stamped at its start.
                 evaluation_prompt_guards=apply_prompt_guards,
                 # Whether tool calls that need approval are held; the
@@ -2545,9 +2548,12 @@ async def _build_evaluation_integration_tools(
         acting_user_id = str(agent.user_id)
 
     evaluation_id = str(evaluation.id) if evaluation and getattr(evaluation, "id", None) else None
+    # No evaluation owner and no agent owner: the agent's own run. An
+    # unparseable id below is not one, and keeps no binding.
+    owner_run = acting_user_id is None
 
-    # An unparseable acting user id degrades to no acting user (as in
-    # ``shadow_invisible_bindings``) instead of crashing tool setup.
+    # An unparseable acting user id degrades to no acting user instead of
+    # crashing tool setup.
     if acting_user_id and normalize_acting_user_id(acting_user_id) is None:
         logger.warning(
             "Evaluation integration tools: unparseable acting user id %r "
@@ -2565,6 +2571,7 @@ async def _build_evaluation_integration_tools(
         db,
         agent,
         acting_user_id,
+        owner_run=owner_run,
         company_automation=bool(getattr(agent, "is_company_managed", False)),
     )
     effective_bindings = resolved.bindings

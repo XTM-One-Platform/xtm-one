@@ -2659,6 +2659,116 @@ async def _run_activation_gate(
     return (content or "").strip().upper()
 
 
+async def _resolve_run_integration_bindings(
+    db: AsyncSession,
+    *,
+    agent,
+    assignment: Assignment,
+    effective_user_id,
+):
+    """The integration bindings an assignment run uses, for the person it acts for.
+
+    The assignment's own (``integration_bindings`` set; ``{}`` binds nothing),
+    else the agent's, resolved by
+    ``integration_tools.resolve_agent_integration_bindings``: chat's rule, so
+    someone other than the agent's owner keeps only what they may use or the
+    agent lends, and the run says what it withheld. A run with no person (no
+    owner anywhere, Platform Health) is the agent's own.
+
+    Then the agent's template bindings, and the providers withheld from the
+    person, resolve to that person's own integration or a company-wide one
+    (with no person, company-wide only). A provider whose candidates define a
+    ``scope_config`` is never auto-picked among several.
+    """
+    from app.models.integration import Integration as _IntegModel
+    from app.services.integration_tools import (
+        drop_foreign_personal_integrations,
+        pick_template_integration,
+        resolve_agent_integration_bindings,
+        template_candidate_filter,
+    )
+
+    inherits = assignment.integration_bindings is None
+    resolved = await resolve_agent_integration_bindings(
+        db,
+        agent,
+        effective_user_id,
+        owner_run=True,
+        source=None if inherits else assignment.integration_bindings,
+        origin="agent_binding_inherited" if inherits else "assignment_binding_override",
+        templates=False,
+    )
+    logger.info(
+        "Assignment %s: %d integration binding(s) from %s, %d withheld",
+        assignment.name,
+        len(resolved.bindings),
+        "the agent" if inherits else "its own override",
+        len(resolved.withheld),
+    )
+
+    # The resolution context is ``effective_user_id`` (the run's user, else
+    # the agent's owner). A company-managed run always carries an owner, so it
+    # resolves that person's connected integrations; only a run with no owner
+    # anywhere is restricted to company-wide ones, as no one's private
+    # credentials may be used. Not gated on ``run.user_id``: a company-managed
+    # run keeps its per-user integration tools.
+    needed = [
+        p
+        for p in dict.fromkeys([*(agent.integration_template_bindings or []), *resolved.shadowed])
+        if p not in resolved.bindings
+    ]
+    if not needed:
+        return resolved
+    rows = await db.execute(
+        select(_IntegModel)
+        .where(
+            _IntegModel.provider.in_(needed),
+            await template_candidate_filter(
+                db,
+                effective_user_id,
+                company_automation=bool(agent.is_company_managed),
+            ),
+            connected_for_clause(effective_user_id),
+        )
+        .order_by(_IntegModel.provider, _IntegModel.created_at, _IntegModel.id)
+    )
+    by_provider: dict[str, list] = {}
+    for row in rows.scalars().all():
+        by_provider.setdefault(row.provider, []).append(row)
+    for provider, candidates in list(by_provider.items()):
+        # Defence in depth against a colleague's personal integration reaching
+        # the pick: the query already excludes them.
+        candidates = drop_foreign_personal_integrations(candidates, effective_user_id, provider=provider)
+        if not candidates:
+            del by_provider[provider]
+            continue
+        if len(candidates) > 1 and any(i.scope_config for i in candidates):
+            # A scope is defined: intent headers or the trigger context pick.
+            continue
+        picked, origin = pick_template_integration(
+            candidates,
+            effective_user_id,
+            provider=provider,
+            context=f"assignment={assignment.name} agent={agent.name}",
+        )
+        if picked is not None:
+            resolved.bind_template(provider, str(picked.id), origin or "")
+
+    # A provider with no eligible integration at all leaves the run without
+    # its tools: said in the logs, the otherwise silent cause.
+    unresolved = [p for p in needed if p not in by_provider]
+    if unresolved:
+        logger.warning(
+            "Assignment '%s' (agent '%s'): no connected integration found for template "
+            "binding(s) %s for %s: these integration tools are UNAVAILABLE for this run.",
+            assignment.name,
+            agent.name,
+            unresolved,
+            f"user {effective_user_id}" if effective_user_id else "a run with no owner (company-wide only)",
+        )
+    return resolved
+
+
 async def _activation_check_executor(
     db: AsyncSession,
     *,
@@ -2673,8 +2783,9 @@ async def _activation_check_executor(
     The built-in coordination tools the agent holds (the ``coordination``
     group or its former ids ``work_items`` / ``shared_state``), then - only when the
     check's tool is not among them - the integration tools of the bindings the
-    run reads (the assignment's, else the agent's), read-only bindings and the
-    enforced Scope(s) applied.     MCP servers and custom tools are not connected
+    run uses, resolved for its person as the run resolves them
+    (:func:`_resolve_run_integration_bindings`), read-only bindings and the
+    enforced Scope(s) applied. MCP servers and custom tools are not connected
     for a check.
     """
     from app.services.builtin_tool_aliases import runtime_builtin_tool_ids
@@ -2684,7 +2795,7 @@ async def _activation_check_executor(
         READ_ONLY_CONTEXT_KEY,
         read_only_integration_ids,
     )
-    from app.services.integration_tools import BindingBasis, ToolBindings, build_integration_tools, flatten_bindings
+    from app.services.integration_tools import build_integration_tools
     from app.tools.base import CompositeToolExecutor
 
     composite = CompositeToolExecutor()
@@ -2731,11 +2842,10 @@ async def _activation_check_executor(
         )
         if composite.resolve_canonical_name(tool) is not None:
             return composite
-    bindings = flatten_bindings(
-        agent.integration_bindings or {}
-        if assignment.integration_bindings is None
-        else assignment.integration_bindings
+    resolved = await _resolve_run_integration_bindings(
+        db, agent=agent, assignment=assignment, effective_user_id=effective_user_id
     )
+    bindings = resolved.bindings
     if bindings:
         scope = assignment_run_scope(
             agent.integration_element_bindings,
@@ -2758,15 +2868,7 @@ async def _activation_check_executor(
             LIVE_WRITES_CONTEXT_KEY: live_writes_overrides(agent, bindings),
         }
         composite.add_tools(
-            *await build_integration_tools(
-                db,
-                ToolBindings(
-                    bindings,
-                    basis=BindingBasis.UNCHECKED,
-                    reason="an assignment's activation check: the agent's bindings as bound",
-                ),
-                context=context,
-            )
+            *await build_integration_tools(db, resolved.tool_bindings, context=context)
         )
     return composite
 
@@ -5630,185 +5732,13 @@ async def execute_assignment_run(
                     assignment_run_id=str(run.id),
                 )
 
-            # Integration tools — resolve effective bindings.
-            #   assignment.integration_bindings is NULL → inherit ALL from agent
-            #   assignment.integration_bindings is {}   → explicitly no integrations
-            #   assignment.integration_bindings is set  → custom subset
-            from app.services.integration_tools import flatten_bindings
-
-            if assignment.integration_bindings is None:
-                effective_bindings = flatten_bindings(agent.integration_bindings or {})
-                binding_origin_map = {
-                    key: "agent_binding_inherited" for key in effective_bindings
-                }
-                logger.info(
-                    "Assignment %s inheriting integration bindings from agent (%d entries)",
-                    assignment.name,
-                    len(effective_bindings),
-                )
-            else:
-                effective_bindings = flatten_bindings(assignment.integration_bindings)
-                binding_origin_map = {
-                    key: "assignment_binding_override" for key in effective_bindings
-                }
-                if effective_bindings:
-                    logger.info(
-                        "Assignment %s using custom integration bindings (%d entries)",
-                        assignment.name,
-                        len(effective_bindings),
-                    )
-                else:
-                    logger.info(
-                        "Assignment %s has explicitly empty integration bindings — no integration tools",
-                        assignment.name,
-                    )
-
-            # Resolve per-user "template" integration bindings.
-            #
-            # ``integration_template_bindings`` (e.g. ["opencti"]) means
-            # "resolve the right integration for this provider at run time"
-            # instead of pinning a fixed integration id.  Resolution needs a
-            # *user context* to look up "this user's connected integration".
-            #
-            # That context is ``effective_user_id`` = ``run.user_id`` falling
-            # back to ``agent.user_id`` (computed above, same pattern used for
-            # model/memory/quota resolution).  This matters for
-            # company-managed agents:
-            #
-            #   • A company-managed run now ALWAYS carries an owner in
-            #     ``run.user_id`` (stamped at creation: triggering user →
-            #     assignment ``run_as_user_id`` → assignment owner), and a
-            #     company-managed agent KEEPS ``agent.user_id`` as the original
-            #     creator — visibility is driven by ``is_company_managed``, not
-            #     by nulling the owner.  So we resolve that user's connected
-            #     integrations, exactly like the agent did while it was private
-            #     — which is why a company-managed agent with a per-user
-            #     OpenCTI integration keeps its tools instead of silently
-            #     degrading to memory-only.
-            #
-            #   • Only when there is genuinely no owner anywhere
-            #     (``effective_user_id`` is ``None`` — e.g. a company-managed
-            #     agent created from scratch, with no run-as and no triggering
-            #     user) do we restrict to SHARED integrations
-            #     (company-managed / platform-managed), since there is no owner
-            #     whose private credentials could be borrowed.
-            #
-            # NOTE: the gate is ``if agent.integration_template_bindings`` and
-            # is intentionally NOT additionally gated on ``run.user_id``.
-            # Re-introducing a ``run.user_id`` gate here would resurrect the
-            # bug where company-managed runs lost their per-user
-            # integration tools at execution time.
-            if agent.integration_template_bindings:
-                from app.models.integration import Integration as _IntegModel
-
-                _needed_provs = [
-                    p
-                    for p in agent.integration_template_bindings
-                    if p not in effective_bindings
-                ]
-                if _needed_provs:
-                    from app.services.integration_tools import (
-                        drop_foreign_personal_integrations,
-                        pick_template_integration,
-                        template_candidate_filter,
-                    )
-
-                    # Resolution context: run owner, else agent creator. With no
-                    # owner anywhere (a company-managed agent created from
-                    # scratch) only company-wide integrations are eligible —
-                    # there is no user whose private credentials could be used.
-                    _ctx_user_id = effective_user_id
-
-                    _tmpl_r = await db.execute(
-                        select(_IntegModel)
-                        .where(
-                            _IntegModel.provider.in_(_needed_provs),
-                            await template_candidate_filter(
-                                db,
-                                _ctx_user_id,
-                                company_automation=bool(agent.is_company_managed),
-                            ),
-                            connected_for_clause(_ctx_user_id),
-                        )
-                        .order_by(
-                            _IntegModel.provider,
-                            _IntegModel.created_at,
-                            _IntegModel.id,
-                        )
-                    )
-                    _by_prov: dict[str, list] = {}
-                    for _tmpl_i in _tmpl_r.scalars().all():
-                        _by_prov.setdefault(_tmpl_i.provider, []).append(_tmpl_i)
-
-                    for _tmpl_prov, _tmpl_integs in list(_by_prov.items()):
-                        if _tmpl_prov in effective_bindings:
-                            continue
-                        # Defence in depth against a colleague's personal
-                        # integration reaching the pick — the query
-                        # already excludes them.
-                        _tmpl_integs = drop_foreign_personal_integrations(
-                            _tmpl_integs, _ctx_user_id, provider=_tmpl_prov
-                        )
-                        _by_prov[_tmpl_prov] = _tmpl_integs
-                        if not _tmpl_integs:
-                            del _by_prov[_tmpl_prov]
-                            continue
-                        if len(_tmpl_integs) > 1 and any(
-                            i.scope_config for i in _tmpl_integs
-                        ):
-                            # Scope is defined — do NOT auto-pick. Let intent
-                            # headers or trigger context drive selection
-                            # downstream.
-                            continue
-                        # Prefer the context user's OWN integration (continuity
-                        # with how the agent behaved while private), else a
-                        # company-wide one. ``pick_template_integration`` also
-                        # labels which of the two happened so the run's origin
-                        # map records whether shared credentials were used.
-                        _picked, _origin = pick_template_integration(
-                            _tmpl_integs,
-                            _ctx_user_id,
-                            provider=_tmpl_prov,
-                            context=(
-                                f"assignment={assignment.name} agent={agent.name}"
-                            ),
-                        )
-                        if _picked is not None:
-                            effective_bindings[_tmpl_prov] = str(_picked.id)
-                            binding_origin_map[_tmpl_prov] = _origin
-
-                    # Visibility: surface providers for which NO eligible
-                    # integration was found at all (vs. deliberately-skipped
-                    # scoped providers, which are resolved downstream).  This
-                    # gives the otherwise-silent "agent only used its memory
-                    # tools" failure a traceable cause in the logs.
-                    _unresolved = [p for p in _needed_provs if p not in _by_prov]
-                    if _unresolved and _ctx_user_id:
-                        logger.warning(
-                            "Assignment '%s' (agent '%s'): no connected "
-                            "integration found for template binding(s) %s in "
-                            "the resolution context (user %s) — these "
-                            "integration tools will be UNAVAILABLE for this "
-                            "run.",
-                            assignment.name,
-                            agent.name,
-                            _unresolved,
-                            _ctx_user_id,
-                        )
-                    elif _unresolved:
-                        logger.warning(
-                            "Assignment '%s' (company-managed agent '%s'): no "
-                            "owner (run.user_id and agent.user_id are both "
-                            "NULL) and no SHARED (company-managed / "
-                            "platform-managed) integration found for template "
-                            "binding(s) %s — these integration tools will be "
-                            "UNAVAILABLE for this run. Either set a creator on "
-                            "the agent or mark the integration company-managed "
-                            "so it can be resolved without a per-user context.",
-                            assignment.name,
-                            agent.name,
-                            _unresolved,
-                        )
+            # Integration tools: the run's bindings, resolved for the person
+            # it acts for (chat's rule).
+            _run_bindings = await _resolve_run_integration_bindings(
+                db, agent=agent, assignment=assignment, effective_user_id=effective_user_id
+            )
+            effective_bindings = _run_bindings.bindings
+            binding_origin_map = _run_bindings.origins
 
             # The per-user (template) rows this run resolved: the tasks it spawns
             # resolve to the same rows when eligible for them (#1792).
@@ -5822,14 +5752,13 @@ async def execute_assignment_run(
             _platform_names: list = []
             # The run's bound MITRE ATT&CK sources, for the same extraction.
             _attack_sources: list = []
-            if effective_bindings:
+            # Entered when something was withheld too: the run says so.
+            if effective_bindings or _run_bindings.withheld:
                 try:
                     from app.services.assignment_helpers import resolve_hitl
                     from app.services.integration_tools import (
                         ATTACK_SOURCES_CONTEXT_KEY,
                         PLATFORM_NAMES_CONTEXT_KEY,
-                        BindingBasis,
-                        ToolBindings,
                         build_integration_tools,
                     )
 
@@ -5870,20 +5799,9 @@ async def execute_assignment_run(
                     _dispatched_item = _inbox_dispatched_work_item(run)
                     if _dispatched_item is not None:
                         integration_context["work_item_id"] = _dispatched_item[0]
-                    # An orphaned binding (the agent's owner lost access to the
-                    # integration) is refused before any credential is read.
-                    # Only the agent's own bindings are judged: an assignment
-                    # override and a template pick are not the owner's.
-                    from app.services.integration_credentials import drop_orphaned_bindings
-
-                    await drop_orphaned_bindings(
-                        db,
-                        agent,
-                        effective_bindings,
-                        binding_origin_map,
-                        withheld=integration_context.setdefault("missing_integration_bindings", []),
-                        origins=("agent_binding_inherited",),
-                    )
+                    # What the resolution withheld from the run's person, said
+                    # beside what the build itself cannot use.
+                    integration_context["missing_integration_bindings"] = list(_run_bindings.withheld)
                     from app.services.email_signature_settings import SIGNATURE_CONTEXT_KEY
                     from app.services.integration_live_writes import LIVE_WRITES_CONTEXT_KEY, live_writes_overrides
                     from app.services.integration_read_only import (
@@ -5907,11 +5825,7 @@ async def execute_assignment_run(
                     integration_context[ATTACK_SOURCES_CONTEXT_KEY] = _attack_sources
                     integ_defs, integ_exec = await build_integration_tools(
                         db,
-                        ToolBindings(
-                            effective_bindings,
-                            basis=BindingBasis.UNCHECKED,
-                            reason="an assignment run: the agent's bindings as bound",
-                        ),
+                        _run_bindings.tool_bindings,
                         context=integration_context,
                     )
                     missing_bindings = integration_context.get(

@@ -8665,7 +8665,7 @@
   "They read and post through this bot.": "このボットを通じて読み取りと投稿を行います。",
   "Its secret value is used in what they run; it is never shown to them.": "秘密の値は実行する処理で使われますが、表示されることはありません。",
   "Its value is used in what they run.": "その値は実行する処理で使われます。",
-  "In a chat, people who cannot see this integration use their own; the agent's runs, public link and channels use this one.": "チャットでは、この連携を表示できないユーザーは自分の連携を使います。エージェントの実行、公開リンク、チャネルではこの連携が使われます。",
+  "People who cannot see this integration use their own, in a chat and in the agent's runs; its public link and channels use this one.": "この連携を表示できないユーザーは、チャットでもエージェントの実行でも自分の連携を使います。公開リンクとチャネルではこの連携が使われます。",
   "It resolves for people who can see it, and in runs acting as someone who can.": "表示できるユーザー、および表示できるユーザーとして動作する実行でのみ解決されます。",
   "Shared without the connected account: they connect their own.": "接続済みアカウントなしで共有されます。各自が自分のアカウントを接続します。",
   "Only the account holder or an admin can share this connected account.": "この接続済みアカウントを共有できるのは、アカウント所有者または管理者のみです。",

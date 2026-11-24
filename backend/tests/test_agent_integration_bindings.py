@@ -119,18 +119,74 @@ async def test_the_owner_s_own_run_keeps_every_binding(guard, acting):
     assert resolved.bindings == {"github": _OWN_ID, "jira": _LENT_ID}
 
 
-@pytest.mark.parametrize("acting", [None, "anonymous", "not-a-uuid"])
-async def test_a_run_with_no_person_is_the_owner_s_and_resolves_no_template(guard, acting):
+@pytest.mark.parametrize("acting", [None, "", "anonymous", "mcp-global", "not-a-uuid"])
+async def test_a_run_with_no_person_declared_the_owner_s_keeps_its_bindings_and_resolves_no_template(guard, acting):
     db = _Db()
 
     resolved = await integration_tools.resolve_agent_integration_bindings(
-        db, _agent(integration_template_bindings=["slack"]), acting
+        db, _agent(integration_template_bindings=["slack"]), acting, owner_run=True
     )
 
     assert "shadow" not in guard
     assert "orphans" in guard
     assert db.statements == []
     assert resolved.bindings == {"github": _OWN_ID, "jira": _LENT_ID}
+
+
+@pytest.mark.parametrize("acting", [None, "", "anonymous", "mcp-global", "not-a-uuid"])
+async def test_any_other_run_with_no_person_keeps_no_binding(guard, acting):
+    db = _Db()
+
+    resolved = await integration_tools.resolve_agent_integration_bindings(
+        db, _agent(integration_template_bindings=["slack"]), acting
+    )
+
+    assert resolved.bindings == {}
+    assert db.statements == []
+    # Said, by provider only.
+    assert sorted(entry["provider"] for entry in resolved.withheld) == ["github", "jira"]
+
+
+@pytest.mark.parametrize("acting", [None, "", "anonymous", "mcp-global"])
+async def test_the_guard_itself_keeps_nothing_for_no_person(acting):
+    bindings = {"github": _OWN_ID}
+    origins = {"github": "direct_agent_binding"}
+    withheld: list[dict] = []
+
+    fallback = await integration_tools.shadow_invisible_bindings(
+        _Db(), bindings, origins, acting_user_id=acting, withheld=withheld
+    )
+
+    assert (bindings, origins, fallback) == ({}, {}, [])
+    assert [entry["provider"] for entry in withheld] == ["github"]
+
+
+async def test_an_assignment_override_is_checked_for_the_agent_s_owner_too(guard):
+    resolved = await integration_tools.resolve_agent_integration_bindings(
+        _Db(),
+        _agent(),
+        str(_OWNER),
+        source={"github": [_OWN_ID]},
+        origin="assignment_binding_override",
+        templates=False,
+    )
+
+    # Not the owner's own bindings: no orphan drop, and the guard runs.
+    assert "orphans" not in guard
+    assert guard["shadow"]["bindings"] == {"github": _OWN_ID}
+    assert resolved.bindings == {}
+    assert resolved.shadowed == ["github"]
+
+
+def test_a_template_replacing_a_withheld_provider_clears_its_note():
+    resolved = integration_tools.AgentIntegrationBindings(
+        {}, {}, [{"provider": "github"}, {"provider": "jira"}], ["github"]
+    )
+
+    resolved.bind_template("github", _OWN_ID, "template_own")
+
+    assert resolved.bindings == {"github": _OWN_ID}
+    assert resolved.withheld == [{"provider": "jira"}]
 
 
 async def test_templates_resolve_in_one_query_through_the_candidate_filter(guard, monkeypatch):
@@ -163,31 +219,34 @@ def _prebuilt(bindings, acting_user_id):
 
 
 @pytest.mark.parametrize(
-    ("prebuilt", "acting", "effective", "refused"),
+    ("prebuilt", "acting", "effective", "refused", "owner_run"),
     [
         # Built for the person from what the turn resolved: used.
-        (_prebuilt({"jira": _LENT_ID}, str(_COLLEAGUE)), str(_COLLEAGUE), {"jira": _LENT_ID}, False),
+        (_prebuilt({"jira": _LENT_ID}, str(_COLLEAGUE)), str(_COLLEAGUE), {"jira": _LENT_ID}, False, False),
         # Holds the owner's integration the turn withheld: refused.
         (
             _prebuilt({"github": _OWN_ID, "jira": _LENT_ID}, str(_COLLEAGUE)),
             str(_COLLEAGUE),
             {"jira": _LENT_ID},
             True,
+            False,
         ),
         # Built for someone else: refused.
-        (_prebuilt({"jira": _LENT_ID}, str(_OWNER)), str(_COLLEAGUE), {"jira": _LENT_ID}, True),
+        (_prebuilt({"jira": _LENT_ID}, str(_OWNER)), str(_COLLEAGUE), {"jira": _LENT_ID}, True, False),
         # Says nothing of what it was built from: refused.
-        (([], None), str(_COLLEAGUE), {}, True),
-        # A run with no person is the owner's: tools built for the owner or no one.
-        (_prebuilt({"github": _OWN_ID}, str(_OWNER)), None, {}, False),
-        (_prebuilt({"github": _OWN_ID}, None), None, {}, False),
-        (_prebuilt({"github": _OWN_ID}, str(_COLLEAGUE)), None, {}, True),
+        (([], None), str(_COLLEAGUE), {}, True, False),
+        # A run with no person declared the owner's: tools built for the owner or no one.
+        (_prebuilt({"github": _OWN_ID}, str(_OWNER)), None, {}, False, True),
+        (_prebuilt({"github": _OWN_ID}, None), None, {}, False, True),
+        (_prebuilt({"github": _OWN_ID}, str(_COLLEAGUE)), None, {}, True, True),
+        # Any other run with no person: no integration.
+        (_prebuilt({"github": _OWN_ID}, str(_OWNER)), None, {}, True, False),
     ],
-    ids=["resolved", "withheld", "other-person", "undeclared", "owner-run", "no-one", "owner-run-other"],
+    ids=["resolved", "withheld", "other-person", "undeclared", "owner-run", "no-one", "owner-run-other", "no-person"],
 )
-def test_prebuilt_tools_are_used_only_as_the_turn_resolved(prebuilt, acting, effective, refused):
+def test_prebuilt_tools_are_used_only_as_the_turn_resolved(prebuilt, acting, effective, refused, owner_run):
     refusal = integration_tools.prebuilt_tools_refusal(
-        prebuilt, agent=_agent(), acting_user_id=acting, effective_bindings=effective
+        prebuilt, agent=_agent(), acting_user_id=acting, effective_bindings=effective, owner_run=owner_run
     )
 
     assert (refusal is not None) is refused
@@ -203,7 +262,7 @@ async def test_the_builder_refuses_bindings_that_do_not_say_why():
 
 def test_tool_bindings_need_a_basis_and_a_reason():
     with pytest.raises(ValueError):
-        integration_tools.ToolBindings({}, basis=integration_tools.BindingBasis.UNCHECKED, reason=" ")
+        integration_tools.ToolBindings({}, basis=integration_tools.BindingBasis.CALLER_CHECKED, reason=" ")
     bound = integration_tools.ToolBindings(
         {"github": [_OWN_ID]}, basis=integration_tools.BindingBasis.CALLER_CHECKED, reason="test"
     )
@@ -225,16 +284,14 @@ def test_resolved_bindings_say_they_were_resolved():
 #: Every module that builds integration tools, and on which ground
 #: (``BindingBasis``) the bindings it hands over may act for the person a run
 #: serves. ``RESOLVED`` comes from ``resolve_agent_integration_bindings`` (the
-#: chat turn also takes the session selection its resolver checked);
-#: ``UNCHECKED`` marks the known gaps still to close. A new module, or a new
-#: basis in one, is reviewed here before it ships.
+#: chat turn also takes the session selection its resolver checked). A new
+#: module, or a new basis in one, is reviewed here before it ships.
 _BASES = {
     # The turn's resolution; the pipeline ref's checked pin or fallback pick;
     # its pin in the owner's own run.
     "services/agent_chat.py": {"RESOLVED", "CALLER_CHECKED", "OWNER_RUN"},
-    "services/assignment_engine.py": {"UNCHECKED"},
-    # The Integration node, unchecked; the call-tool node, the caller's own.
-    "services/flow_runner.py": {"UNCHECKED", "CALLER_CHECKED"},
+    # The Integration node, for the run's user; the call-tool node, the caller's own.
+    "services/flow_runner.py": {"CALLER_CHECKED"},
     "services/general_chat.py": {"CALLER_CHECKED", "ADMIN_CONFIGURED"},
     "api/v1/public_chat.py": {"OWNER_RUN"},
     "api/v1/integrations.py": {"CALLER_CHECKED"},
@@ -249,7 +306,11 @@ _BASES = {
 }
 
 #: The modules building from ``AgentIntegrationBindings.tool_bindings``.
-_FROM_RESOLVER = {"services/evaluation_engine.py", "services/scheduled_work_item_runner.py"}
+_FROM_RESOLVER = {
+    "services/assignment_engine.py",
+    "services/evaluation_engine.py",
+    "services/scheduled_work_item_runner.py",
+}
 
 
 def _call_name(node: ast.Call) -> str | None:
@@ -318,3 +379,41 @@ def test_only_an_evaluation_hands_a_turn_prebuilt_tools_and_the_turn_checks_them
     chat = dict(app_sources.modules())["services/agent_chat.py"]
     assert _calls(chat, "prebuilt_tools_refusal")
     assert _calls(chat, "resolve_agent_integration_bindings")
+
+
+#: The paths whose turn with no person acts as the agent's owner, declared
+#: where they reach ``run_agent_chat`` (``owner_run``): an anonymous channel
+#: user, the platform MCP key, an evaluation with no owner, and a turn handing
+#: its own on to the agents it consults or transfers to. Every other turn with
+#: no person keeps no binding.
+_OWNER_RUN_DECLARERS = {
+    "channels/router.py",
+    "api/v1/mcp_endpoint.py",
+    "services/evaluation_engine.py",
+    "services/agent_chat.py",
+}
+
+
+def test_only_the_paths_built_as_owner_runs_declare_one():
+    declaring = {
+        path
+        for path, module in app_sources.modules()
+        for name in ("run_agent_chat", "_run_helper_turn")
+        for call in _calls(module, name)
+        if any(keyword.arg == "owner_run" for keyword in call.keywords)
+    }
+    assert declaring == _OWNER_RUN_DECLARERS
+    resolver_owner_runs = {
+        path
+        for path, module in app_sources.modules()
+        for call in _calls(module, "resolve_agent_integration_bindings")
+        if any(keyword.arg == "owner_run" for keyword in call.keywords)
+    }
+    # The chat turn passes on what its caller declared; an assignment run
+    # with no person (no owner anywhere, Platform Health) is the agent's own;
+    # an evaluation with no owner too.
+    assert resolver_owner_runs == {
+        "services/agent_chat.py",
+        "services/assignment_engine.py",
+        "services/evaluation_engine.py",
+    }

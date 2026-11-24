@@ -232,3 +232,170 @@ async def test_a_member_s_scheduled_work_item_keeps_what_the_agent_lends(session
     await scheduled_work_item_runner.resolve_exact_toolset(session, agent, str(_COLLEAGUE))
 
     assert built["bindings"] == {"jira": str(_LENT)}
+
+
+# --- Assignment runs ------------------------------------------------------------
+
+
+def _assignment(**overrides) -> SimpleNamespace:
+    values = {
+        "id": uuid.uuid4(),
+        "name": "Nightly",
+        "integration_bindings": None,
+        "integration_element_bindings": None,
+        "integration_element_enforcement": None,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+async def _run_bindings(session, acting, assignment=None):
+    from app.services import assignment_engine
+
+    return await assignment_engine._resolve_run_integration_bindings(
+        session, agent=_shared_agent(), assignment=assignment or _assignment(), effective_user_id=acting
+    )
+
+
+async def test_a_colleague_s_assignment_run_never_gets_the_owner_s_personal_integration(session):
+    resolved = await _run_bindings(session, _COLLEAGUE)
+
+    # The lent integration stays bound, as in chat; the personal one is withheld, and said.
+    assert resolved.bindings == {"jira": str(_LENT)}
+    assert [entry.get("provider") for entry in resolved.withheld] == ["github"]
+    assert resolved.tool_bindings.basis is integration_tools.BindingBasis.RESOLVED
+
+
+@pytest.mark.parametrize("acting", [_OWNER, None], ids=["the-owner-s-run", "a-run-with-no-person"])
+async def test_the_owner_s_assignment_run_keeps_every_binding(session, acting):
+    resolved = await _run_bindings(session, acting)
+
+    assert resolved.bindings == {"github": str(_PERSONAL), "jira": str(_LENT)}
+    assert resolved.withheld == []
+
+
+async def test_a_colleague_s_assignment_run_uses_their_own_integration_of_the_provider(session):
+    own = Integration(
+        id=uuid.uuid4(),
+        provider="github",
+        name="colleague github",
+        status="connected",
+        auth_type="api_key",
+        access_token_enc="enc",
+        user_id=_COLLEAGUE,
+    )
+    session.add(own)
+    await session.flush()
+
+    resolved = await _run_bindings(session, _COLLEAGUE)
+
+    assert resolved.bindings == {"jira": str(_LENT), "github": str(own.id)}
+    assert resolved.withheld == []
+
+
+@pytest.mark.parametrize(
+    ("acting", "kept"),
+    [(_COLLEAGUE, False), (_OWNER, True)],
+    ids=["a-colleague-s-run", "the-owner-s-run"],
+)
+async def test_an_assignment_s_own_binding_follows_the_same_rule(session, acting, kept):
+    assignment = _assignment(integration_bindings={"github": [str(_PERSONAL)]})
+
+    resolved = await _run_bindings(session, acting, assignment)
+
+    assert resolved.bindings == ({"github": str(_PERSONAL)} if kept else {})
+    assert resolved.origins == ({"github": "assignment_binding_override"} if kept else {})
+
+
+@pytest.mark.parametrize(
+    ("acting", "bound"),
+    [(_COLLEAGUE, {"jira": str(_LENT)}), (_OWNER, {"github": str(_PERSONAL), "jira": str(_LENT)})],
+    ids=["a-colleague-s-run", "the-owner-s-run"],
+)
+async def test_the_activation_check_builds_what_the_run_would(session, built, acting, bound):
+    from app.services import assignment_engine
+
+    agent = _shared_agent()
+    for field in (
+        "builtin_tool_ids",
+        "builtin_allowed_tools",
+        "integration_element_bindings",
+        "integration_element_enforcement",
+        "integration_signatures",
+        "integration_read_only",
+        "integration_live_writes",
+    ):
+        setattr(agent, field, None)
+    agent.is_company_managed = False
+    run = SimpleNamespace(id=uuid.uuid4(), user_id=acting, is_company_managed=False)
+
+    await assignment_engine._activation_check_executor(
+        session, tool="github_search", run=run, agent=agent, assignment=_assignment(), effective_user_id=acting
+    )
+
+    assert built["bindings"] == bound
+
+
+# --- The flow Integration node ----------------------------------------------------
+
+
+@pytest.mark.parametrize(("runner", "used"), [(_COLLEAGUE, False), (_OWNER, True)], ids=["colleague", "owner"])
+async def test_a_flow_integration_node_runs_only_what_the_run_s_user_may_use(session, built, runner, used):
+    from app.services.flow_runner import FlowWalker
+
+    walker = SimpleNamespace(db=session, user=SimpleNamespace(id=runner), _renderer=None)
+
+    outcome = await FlowWalker._exec_integration(
+        walker, {"integration_id": str(_PERSONAL), "operation": "github_search", "parameters": {}}
+    )
+
+    if used:
+        assert built["bindings"] == {"github": str(_PERSONAL)}
+    else:
+        assert "bindings" not in built
+        assert "may not use the configured integration" in (outcome.error or "")
+
+
+# --- The turn's prompt and a run with no person -----------------------------------------
+
+
+async def test_a_withheld_integration_is_never_listed_in_the_colleague_s_prompt(session):
+    agent = _shared_agent()
+    resolved = await integration_tools.resolve_agent_integration_bindings(session, agent, str(_COLLEAGUE))
+
+    assert agent_chat.listed_integration_bindings(agent, resolved.bindings) == {"jira": str(_LENT)}
+
+
+@pytest.mark.parametrize("acting", ["", "anonymous", "mcp-global", None])
+async def test_a_run_with_no_person_keeps_no_binding_unless_declared_the_owner_s(session, acting):
+    agent = _shared_agent()
+
+    closed = await integration_tools.resolve_agent_integration_bindings(session, agent, acting)
+    declared = await integration_tools.resolve_agent_integration_bindings(session, agent, acting, owner_run=True)
+
+    assert closed.bindings == {}
+    assert sorted(entry["provider"] for entry in closed.withheld) == ["github", "jira"]
+    assert declared.bindings == {"github": str(_PERSONAL), "jira": str(_LENT)}
+
+
+# --- A pipeline pin copied from another agent -----------------------------------
+
+
+@pytest.mark.parametrize("owner_run", [False, True], ids=["the-copy-s-owner", "its-public-callers"])
+async def test_a_copied_pipeline_pin_never_runs_the_original_owner_s_integration(session, built, owner_run):
+    # The colleague's copy of the shared agent: theirs, its pin still names
+    # the original owner's personal GitHub.
+    copy = _shared_agent()
+    copy.user_id = _COLLEAGUE
+    copy.integration_lending = {}
+
+    loaded = await agent_chat._load_pipeline_tool_standalone(
+        session,
+        _ref("github", _PERSONAL),
+        "anonymous" if owner_run else str(_COLLEAGUE),
+        copy,
+        owner_run=owner_run,
+    )
+
+    assert loaded is None
+    assert "bindings" not in built

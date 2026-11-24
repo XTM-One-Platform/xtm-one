@@ -96,7 +96,7 @@ function whatTheyDo(t: Translate, item: ResourcePreviewItem): string {
 
 const NOTE_TEXT: Record<string, string> = {
   chat_uses_own_integration:
-    "In a chat, people who cannot see this integration use their own; the agent's runs, public link and channels use this one.",
+    "People who cannot see this integration use their own, in a chat and in the agent's runs; its public link and channels use this one.",
   variable_resolves_for_viewers_and_runs:
     "It resolves for people who can see it, and in runs acting as someone who can.",
   account_not_shared: "Shared without the connected account: they connect their own.",

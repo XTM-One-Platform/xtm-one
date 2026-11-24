@@ -5646,6 +5646,24 @@ def _labelled_surface_description(
     return lambda surface: f"[{label}] {describe(surface)}"
 
 
+def _withhold_every_binding(
+    effective_bindings: dict[str, str],
+    binding_origin_map: dict[str, str],
+    withheld: list[dict] | None,
+) -> None:
+    """Drop every binding (both maps mutated in place): a run with no person
+    to check them against uses none. Each is said as one its user cannot see,
+    by provider only."""
+    from app.services.integration_credentials import invisible_binding
+
+    for key, integration_id in list(effective_bindings.items()):
+        effective_bindings.pop(key, None)
+        binding_origin_map.pop(key, None)
+        if withheld is not None and integration_id:
+            withheld.append(invisible_binding(key.split("#", 1)[0], integration_id, binding_key=key))
+    logger.warning("Integration bindings withheld from a run with no person that is not its owner's own")
+
+
 async def shadow_invisible_bindings(
     db: AsyncSession,
     effective_bindings: dict[str, str],
@@ -5684,10 +5702,12 @@ async def shadow_invisible_bindings(
     spec) has no per-user equivalent: its hidden bindings are dropped without
     fallback, and it is left out of the returned list.
 
-    Returns the sorted list of dropped providers to resolve per user. No-op
-    (``[]``) when there are no bindings or no concrete acting user (anonymous / missing) —
-    those paths carry no identity to enforce visibility against and are gated
-    elsewhere. A binding whose id is not a parseable UUID is unverifiable and is
+    Returns the sorted list of dropped providers to resolve per user. With no
+    concrete acting user (missing, ``"anonymous"``, any id that is not a UUID)
+    no one can be checked, so every binding is dropped and nothing falls back:
+    a run with no person that acts as the agent's owner says so to
+    :func:`resolve_agent_integration_bindings` (``owner_run``) and never comes
+    here. A binding whose id is not a parseable UUID is unverifiable and is
     therefore dropped fail-closed (treated as not visible), never left behind.
 
     *withheld*, when given, receives a ``missing_integration_bindings`` entry for
@@ -5697,15 +5717,11 @@ async def shadow_invisible_bindings(
     never the name - for one they cannot, so the turn can say what it did not
     use instead of silently lacking the tools.
     """
-    if (
-        not effective_bindings
-        or not acting_user_id
-        or acting_user_id == "anonymous"
-    ):
+    if not effective_bindings:
         return []
-    try:
-        acting_uuid = uuid.UUID(acting_user_id)
-    except (ValueError, TypeError):
+    acting_uuid = normalize_acting_user_id(acting_user_id)
+    if acting_uuid is None:
+        _withhold_every_binding(effective_bindings, binding_origin_map, withheld)
         return []
 
     # Map each candidate integration id → the binding keys that reference it.
@@ -5865,8 +5881,6 @@ class BindingBasis(enum.StrEnum):
     CALLER_CHECKED = "caller_checked"
     #: An administrator bound them for everyone (the General Assistant).
     ADMIN_CONFIGURED = "admin_configured"
-    #: Used as bound for whoever acts, with no check: a known gap, to close.
-    UNCHECKED = "unchecked"
 
 
 class ToolBindings(Mapping[str, Any]):
@@ -5907,12 +5921,14 @@ class AgentIntegrationBindings:
     *bindings* / *origins*: flattened slot -> integration id, and how each slot
     was bound. *withheld*: what the run does not use for that person and
     nothing replaced, ``missing_integration_bindings`` entries told to the
-    model and shown on the reply.
+    model and shown on the reply. *shadowed*: the providers dropped for that
+    person, to resolve to their own integration (:meth:`bind_template`).
     """
 
     bindings: dict[str, str]
     origins: dict[str, str]
     withheld: list[dict]
+    shadowed: list[str] = dataclasses.field(default_factory=list)
 
     @property
     def tool_bindings(self) -> ToolBindings:
@@ -5921,12 +5937,24 @@ class AgentIntegrationBindings:
             self.bindings, basis=BindingBasis.RESOLVED, reason="resolved for the person the run acts for"
         )
 
+    def bind_template(self, provider: str, integration_id: str, origin: str) -> None:
+        """Bind *provider* to the person's own (template) integration: a
+        dropped binding it replaces is no longer withheld."""
+        self.bindings[provider] = integration_id
+        self.origins[provider] = origin
+        if provider in self.shadowed:
+            self.withheld = [entry for entry in self.withheld if entry.get("provider") != provider]
+
 
 async def resolve_agent_integration_bindings(
     db: AsyncSession,
     agent: Any,
-    acting_user_id: str | None,
+    acting_user_id: str | uuid.UUID | None,
     *,
+    owner_run: bool = False,
+    source: Mapping[str, Any] | None = None,
+    origin: str | None = None,
+    templates: bool = True,
     company_automation: bool = False,
     scope_headers: dict[str, str] | None = None,
     inherited_template_picks: Mapping[str, str] | None = None,
@@ -5946,24 +5974,37 @@ async def resolve_agent_integration_bindings(
        the account a spawning run picked first when still eligible
        (*inherited_template_picks*, ``{provider: integration id}``).
 
-    *acting_user_id* ``None`` or not a UUID: no one to check against, so the
-    run is the owner's own (steps 2 and 3 skipped), as an anonymous chat turn.
+    *source* replaces the agent's bindings with another set the run uses
+    instead (an assignment's own), every slot recorded as *origin*
+    (:data:`DIRECT_BINDING_ORIGIN` when omitted): not the
+    owner's, so step 1 leaves it alone and step 2 applies to everyone, the
+    agent's owner included. *templates* ``False`` skips step 3 for a caller
+    that resolves templates its own way (:meth:`AgentIntegrationBindings.bind_template`).
+
+    *acting_user_id* ``None`` or not a UUID: no one to check against. The run
+    is the owner's own only when its path says so (*owner_run*: the public
+    widget, an anonymous channel user, the platform MCP key, a run with no
+    owner anywhere), steps 2 and 3 skipped; otherwise it keeps no binding.
     """
     from app.api.v1.helpers import get_user_group_ids
     from app.services.integration_credentials import drop_orphaned_bindings, lent_integration_ids
     from app.services.integration_user_credentials import connected_for_clause
 
-    bindings = flatten_bindings(getattr(agent, "integration_bindings", None) or {})
-    origins = dict.fromkeys(bindings, DIRECT_BINDING_ORIGIN)
+    agent_own = source is None
+    bindings = flatten_bindings((getattr(agent, "integration_bindings", None) if agent_own else source) or {})
+    origins = dict.fromkeys(bindings, origin or DIRECT_BINDING_ORIGIN)
     dropped: list[dict] = []
-    await drop_orphaned_bindings(db, agent, bindings, origins, withheld=dropped)
+    if agent_own:
+        await drop_orphaned_bindings(db, agent, bindings, origins, withheld=dropped)
 
     acting_uuid = normalize_acting_user_id(acting_user_id)
     if acting_uuid is None:
+        if not owner_run:
+            _withhold_every_binding(bindings, origins, dropped)
         return AgentIntegrationBindings(bindings, origins, dropped)
 
     shadowed: list[str] = []
-    if bindings and acting_uuid != normalize_acting_user_id(getattr(agent, "user_id", None)):
+    if bindings and not (agent_own and acting_uuid == normalize_acting_user_id(getattr(agent, "user_id", None))):
         shadowed = await shadow_invisible_bindings(
             db,
             bindings,
@@ -5974,9 +6015,15 @@ async def resolve_agent_integration_bindings(
             lent_ids=lent_integration_ids(agent),
             lent_owner_id=getattr(agent, "user_id", None),
         )
+    resolved = AgentIntegrationBindings(bindings, origins, dropped, shadowed)
+    if not templates:
+        return resolved
 
-    templates = list(getattr(agent, "integration_template_bindings", None) or [])
-    needed = [p for p in dict.fromkeys([*templates, *shadowed]) if p not in bindings]
+    needed = [
+        p
+        for p in dict.fromkeys([*(getattr(agent, "integration_template_bindings", None) or []), *shadowed])
+        if p not in bindings
+    ]
     if needed:
         result = await db.execute(
             select(Integration)
@@ -5992,7 +6039,7 @@ async def resolve_agent_integration_bindings(
             by_provider.setdefault(row.provider, []).append(row)
         for provider, candidates in by_provider.items():
             inherited_id = (inherited_template_picks or {}).get(provider)
-            picked, origin = await resolve_template_integration(
+            picked, picked_origin = await resolve_template_integration(
                 db,
                 provider,
                 candidates,
@@ -6011,19 +6058,12 @@ async def resolve_agent_integration_bindings(
                     getattr(agent, "name", ""),
                     inherited_id,
                     str(picked.id) if picked else None,
-                    origin,
+                    picked_origin,
                     acting_uuid,
                 )
             if picked is not None:
-                bindings[provider] = str(picked.id)
-                origins[provider] = origin or ""
-
-    # A dropped binding the person's own integration of the provider replaced
-    # is not missing.
-    withheld = [
-        entry for entry in dropped if not (entry.get("provider") in shadowed and entry.get("provider") in bindings)
-    ]
-    return AgentIntegrationBindings(bindings, origins, withheld)
+                resolved.bind_template(provider, str(picked.id), picked_origin or "")
+    return resolved
 
 
 def prebuilt_tools_refusal(
@@ -6032,6 +6072,7 @@ def prebuilt_tools_refusal(
     agent: Any,
     acting_user_id: str | None,
     effective_bindings: Mapping[str, str],
+    owner_run: bool = False,
 ) -> str | None:
     """Why a run may not use integration tools built before it, or ``None``.
 
@@ -6039,9 +6080,9 @@ def prebuilt_tools_refusal(
     whom (``acting_user_id``) and from which bindings (``bindings``) they were
     built. A run acting for a person takes them only when built for that
     person from bindings it resolved itself
-    (:func:`resolve_agent_integration_bindings`); a run with no person (the
-    owner's own) only when built for the owner or no one. Anything else is
-    refused, and the run builds its own tools.
+    (:func:`resolve_agent_integration_bindings`); a run with no person only
+    as the owner's own (*owner_run*) and when built for the owner or no one.
+    Anything else is refused, and the run builds its own tools.
     """
     from app.services.integration_credentials import canonical_integration_ids
 
@@ -6051,6 +6092,8 @@ def prebuilt_tools_refusal(
     built_for = normalize_acting_user_id(getattr(prebuilt, "acting_user_id", None))
     acting = normalize_acting_user_id(acting_user_id)
     if acting is None:
+        if not owner_run and built_from:
+            return "a run with no person that is not its owner's own uses no integration"
         if built_for not in (None, normalize_acting_user_id(getattr(agent, "user_id", None))):
             return "they were built for someone other than the agent's owner"
         return None

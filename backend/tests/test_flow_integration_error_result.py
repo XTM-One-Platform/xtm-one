@@ -37,7 +37,23 @@ class _Db:
         return _Result(self._integration)
 
 
+def _the_run_s_user_may_use_it(monkeypatch):
+    """The node's visibility guard reads the database: these cases only need
+    the run's user to be allowed (``test_agent_integration_bindings_postgres``
+    covers the guard itself)."""
+
+    async def _keep(*_args, **_kwargs):
+        return []
+
+    async def _no_groups(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr("app.services.integration_tools.shadow_invisible_bindings", _keep)
+    monkeypatch.setattr("app.api.v1.helpers.get_user_group_ids", _no_groups)
+
+
 def _walker(monkeypatch, handler):
+    _the_run_s_user_may_use_it(monkeypatch)
     integration = SimpleNamespace(id=uuid.uuid4(), provider="github")
 
     async def _fake_build(db, bindings, context=None):

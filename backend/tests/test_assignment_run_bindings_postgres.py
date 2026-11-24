@@ -1,12 +1,14 @@
-"""A run uses the bindings its agent and its assignment store, whoever it acts for.
+"""A run uses the MCP servers and channel bots its agent and its assignment
+store, whoever it acts for; its integrations follow chat's rule.
 
-This PR checks a binding where it is written: a write that adds an MCP server,
-an integration or a channel bot its writer cannot see is refused
+A binding is checked where it is written: a write that adds an MCP server, an
+integration or a channel bot its writer cannot see is refused
 (``binding_access``), and an import or a copy drops such an id with a warning.
-A run re-checks nothing. Whoever triggered it and whoever it runs as, it builds
-its MCP servers, integrations and channel bots from what the agent and the
-assignment store, as on ``main``: an owner who shares an agent lends what the
-agent carries.
+A run re-checks no MCP server or channel bot: whoever triggered it and whoever
+it runs as, it builds them from what the agent and the assignment store, so an
+owner who shares an agent lends what the agent carries. An integration is used
+only when the person the run acts for may use it, or the agent lends it
+(``resolve_agent_integration_bindings``), as in a chat turn.
 
 Each entry point that starts a run acting for someone other than the agent's
 owner is driven here for real - the manual trigger route, a work-item
@@ -341,7 +343,8 @@ async def _run_as_trigger(sessions, assignment_id, _user_id) -> None:
 async def test_a_group_members_run_uses_the_owners_private_bindings(monkeypatch, trigger):
     """A member of the group an agent is shared with runs one of its
     assignments: the run acts for the member and still uses the owner's
-    private MCP server, integration and channel bot, as the agent names them."""
+    private MCP server and channel bot, as the agent names them, but not the
+    owner's private integration, which the agent does not lend."""
     _stub_scheduling(monkeypatch)
     async with scratch_database("runbind", tables=ALL_TABLES, extensions=("vector",)) as db:
         w = await _seed(db.sessions)
@@ -363,7 +366,7 @@ async def test_a_group_members_run_uses_the_owners_private_bindings(monkeypatch,
         )
 
         assert seen.servers == [servers["owner"]]
-        assert seen.integrations == {"notion": integrations["owner"]}
+        assert seen.integrations == {}
         assert seen.channels == {"telegram": _channel(bots["owner"])}
         assert seen.prompted == {"telegram": _channel(bots["owner"])}
 
@@ -382,7 +385,8 @@ async def test_a_company_managed_automation_runs_as_configured_for_every_user(
 ):
     """A company-managed agent bound to company-managed rows restricted to a
     group the member is not in: a run acting for the member - their fan-out
-    run, or the run of an assignment that runs as them - uses them all."""
+    run, or the run of an assignment that runs as them - uses the MCP server
+    and the channel bot, not the integration the member may not use."""
     _stub_scheduling(monkeypatch)
     async with scratch_database("runbind", tables=ALL_TABLES, extensions=("vector",)) as db:
         w = await _seed(db.sessions)
@@ -409,7 +413,7 @@ async def test_a_company_managed_automation_runs_as_configured_for_every_user(
         )
 
         assert seen.servers == [servers["restricted"]]
-        assert seen.integrations == {"confluence": integrations["restricted"]}
+        assert seen.integrations == {}
         assert seen.channels == {"teams": _channel(bots["restricted"])}
         assert seen.prompted == {"teams": _channel(bots["restricted"])}
 
@@ -419,7 +423,9 @@ async def test_a_company_managed_automation_runs_as_configured_for_every_user(
 async def test_an_assignment_override_uses_every_row_it_names(monkeypatch, runner):
     """An override an admin wrote with their own private MCP server,
     integration and channel bot (an admin may bind any row): the owner's run
-    and a group member's run both use it as stored, never the agent's lists."""
+    and a group member's run both use its MCP server and channel bot as stored,
+    never the agent's lists. The admin's integration is not the agent owner's
+    binding: neither run may use it, so neither gets it."""
     _stub_scheduling(monkeypatch)
     async with scratch_database("runbind", tables=ALL_TABLES, extensions=("vector",)) as db:
         w = await _seed(db.sessions)
@@ -445,6 +451,6 @@ async def test_an_assignment_override_uses_every_row_it_names(monkeypatch, runne
         )
 
         assert seen.servers == [servers["admin"]]
-        assert seen.integrations == {"github": integrations["admin"]}
+        assert seen.integrations == {}
         assert seen.channels == override_channels
         assert seen.prompted == override_channels

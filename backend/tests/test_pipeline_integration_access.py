@@ -43,26 +43,38 @@ def _build(monkeypatch):
     return build
 
 
-@pytest.mark.parametrize(
-    "user_id",
-    [
-        pytest.param(str(COLLEAGUE_ID), id="identified_user"),
-        pytest.param("anonymous", id="anonymous_turn"),
-    ],
-)
 @pytest.mark.parametrize("auth_type", ["api_key", "oauth"])
-async def test_worked_on_main_a_pinned_integration_is_loaded_by_id(_build, user_id, auth_type):
-    """A pin the turn's user cannot see, a personal OAuth token included, still loads."""
+async def test_a_pin_the_turn_s_user_cannot_use_falls_back_to_their_own(_build, auth_type):
+    """A pin the turn's user cannot see, a personal OAuth token included, is
+    replaced by their own integration of the provider."""
     pinned = make_integration(auth_type=auth_type)
     mine = make_integration(user_id=COLLEAGUE_ID, auth_type="api_key")
 
     loaded = await agent_chat._load_pipeline_tool_standalone(
-        FakeSession({Integration: [pinned, mine]}), _ref(str(pinned.id)), user_id, _AGENT
+        FakeSession({Integration: [pinned, mine]}), _ref(str(pinned.id)), str(COLLEAGUE_ID), _AGENT
     )
 
     assert loaded is not None
-    assert _build.await_args.args[1] == {"slack": [str(pinned.id)]}
-    assert "credential_user_id" not in _build.await_args.kwargs["context"]
+    assert dict(_build.await_args.args[1]) == {"slack": [str(mine.id)]}
+
+
+@pytest.mark.parametrize(("owner_run", "loads"), [(True, True), (False, False)], ids=["owner_run", "no_person"])
+@pytest.mark.parametrize("auth_type", ["api_key", "oauth"])
+async def test_a_turn_with_no_person_keeps_the_pin_only_as_the_owner_s_own(_build, auth_type, owner_run, loads):
+    pinned = make_integration(auth_type=auth_type)
+    mine = make_integration(user_id=COLLEAGUE_ID, auth_type="api_key")
+
+    loaded = await agent_chat._load_pipeline_tool_standalone(
+        FakeSession({Integration: [pinned, mine]}), _ref(str(pinned.id)), "anonymous", _AGENT, owner_run=owner_run
+    )
+
+    if loads:
+        assert loaded is not None
+        assert dict(_build.await_args.args[1]) == {"slack": [str(pinned.id)]}
+        assert "credential_user_id" not in _build.await_args.kwargs["context"]
+    else:
+        # Nothing company-wide replaces it: the colleague's own is not eligible.
+        assert loaded is None
 
 
 async def test_a_pin_naming_no_connected_integration_falls_back_to_the_user_s_own(_build):
@@ -76,7 +88,7 @@ async def test_a_pin_naming_no_connected_integration_falls_back_to_the_user_s_ow
         _AGENT,
     )
 
-    assert _build.await_args.args[1] == {"slack": [str(mine.id)]}
+    assert dict(_build.await_args.args[1]) == {"slack": [str(mine.id)]}
 
 
 async def test_a_pin_naming_nothing_with_nothing_of_the_user_s_own_builds_nothing(_build):

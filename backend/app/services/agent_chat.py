@@ -638,6 +638,20 @@ async def load_conversation_files(
 _MESSAGE_PREVIEW_LENGTH = 500
 
 
+def listed_integration_bindings(agent: Any, resolved_bindings: Mapping[str, str]) -> dict[str, str]:
+    """The bindings a turn's "Connected integrations" prompt block lists:
+    what the turn resolved (``integration_tools.resolve_agent_integration_bindings``)
+    for the providers *agent* binds directly. A binding withheld from the
+    turn's person is not among them, so its name, URL and description never
+    reach the turn."""
+    direct_providers = set(getattr(agent, "integration_bindings", None) or {})
+    return {
+        key: integration_id
+        for key, integration_id in resolved_bindings.items()
+        if key.split("#", 1)[0] in direct_providers and is_valid_uuid(integration_id)
+    }
+
+
 async def _load_pipeline_tool_standalone(
     db: AsyncSession,
     tool_ref: dict,
@@ -647,12 +661,20 @@ async def _load_pipeline_tool_standalone(
     element_scope: dict | None = None,
     *,
     company_automation: bool = False,
+    owner_run: bool = False,
 ) -> tuple[list[ToolDefinition], object] | None:
     """:func:`_load_pipeline_tool_unbound`, its executor kept behind the turn's
     interceptor: a stage's tool runs outside the composite, and a sandbox run or
     a dry-run must still answer its write (#8255)."""
     loaded = await _load_pipeline_tool_unbound(
-        db, tool_ref, user_id, agent, scope_headers, element_scope, company_automation=company_automation
+        db,
+        tool_ref,
+        user_id,
+        agent,
+        scope_headers,
+        element_scope,
+        company_automation=company_automation,
+        owner_run=owner_run,
     )
     if loaded is None:
         return None
@@ -669,6 +691,7 @@ async def _load_pipeline_tool_unbound(
     element_scope: dict | None = None,
     *,
     company_automation: bool = False,
+    owner_run: bool = False,
 ) -> tuple[list[ToolDefinition], object] | None:
     """Load a single pipeline tool from its ref, bypassing agent bindings.
 
@@ -676,7 +699,9 @@ async def _load_pipeline_tool_unbound(
     Returns ``(definitions, executor)`` or ``None`` on failure. An integration
     tool is built under the run's ``element_scope``: the pipeline
     stage feeds it the user's message, so it is bounded like the agent.
-    *company_automation* is :func:`run_agent_chat`'s, for the per-user fallback.
+    *company_automation* is :func:`run_agent_chat`'s, for the per-user fallback;
+    *owner_run* too: a turn with no person keeps the pinned integration only
+    as the agent's owner's own run.
     """
     source = tool_ref.get("source", "")
     tool_name = tool_ref.get("tool_name", "")
@@ -734,13 +759,19 @@ async def _load_pipeline_tool_unbound(
                     integ_id_str,
                 )
 
-        # The pinned integration acts for someone other than the agent's owner
-        # only when they may use it, as a direct binding: visible to them, or
-        # lent by the agent. Otherwise the fallback below picks one of theirs.
+        # The pinned integration acts only for someone who may use it, as a
+        # direct binding: visible to them, or lent by the agent. The agent's
+        # owner too: a pin copied from another agent names its owner's
+        # integration. A run with no person is checked as the agent's owner
+        # when it is the owner's own (*owner_run*), and keeps no pin
+        # otherwise. A pin withheld is replaced by the fallback below.
         from app.services.integration_credentials import normalize_acting_user_id
 
         _acting = normalize_acting_user_id(user_id)
-        if integ is not None and _acting is not None and _acting != normalize_acting_user_id(agent.user_id):
+        _check_as = _acting if _acting is not None else (
+            normalize_acting_user_id(agent.user_id) if owner_run else None
+        )
+        if integ is not None and _check_as is not None:
             from app.api.v1.helpers import get_user_group_ids
             from app.services.integration_credentials import lent_integration_ids
             from app.services.integration_tools import shadow_invisible_bindings
@@ -750,8 +781,8 @@ async def _load_pipeline_tool_unbound(
                 db,
                 _pinned,
                 {},
-                acting_user_id=str(_acting),
-                user_group_ids=await get_user_group_ids(db, _acting),
+                acting_user_id=str(_check_as),
+                user_group_ids=await get_user_group_ids(db, _check_as),
                 lent_ids=lent_integration_ids(agent),
                 lent_owner_id=agent.user_id,
             )
@@ -759,10 +790,12 @@ async def _load_pipeline_tool_unbound(
                 logger.info(
                     "Pipeline LOAD: pinned integration %s withheld for user %s, picking theirs",
                     integ.id,
-                    _acting,
+                    _check_as,
                 )
                 integ = None
-        # A run with no person is the owner's own: it keeps the pinned integration.
+        elif integ is not None and not owner_run:
+            logger.info("Pipeline LOAD: pinned integration %s withheld from a run with no person", integ.id)
+            integ = None
         _owner_run_pin = integ is not None and _acting is None
 
         # Fallback: scope-based resolution (legacy refs without integration_id).
@@ -1901,6 +1934,13 @@ async def run_agent_chat(
     # (``integration_tools.template_candidate_filter``). Every other turn,
     # an agent a run hands work to included, is checked like any user's.
     company_automation: bool = False,
+    # A turn with no person (``user_id`` not a user's id) acts as the agent's
+    # owner: declared by the paths built for it (an anonymous channel user,
+    # the platform MCP key, an evaluation with no owner) and handed on to the
+    # turns it consults or transfers to. Any other turn with no person uses
+    # none of the agent's integration bindings
+    # (``integration_tools.resolve_agent_integration_bindings``).
+    owner_run: bool = False,
     # ``{provider: integration id}`` this turn uses for a provider whatever the
     # agent binds (``integration_tools.pin_bindings``): an agent account's turn
     # acts as the account it operates, so its tools of that provider
@@ -2280,7 +2320,7 @@ async def run_agent_chat(
                 _prep_tool_name = _prep_ref.get("tool_name", "")
                 _prep_loaded = await _load_pipeline_tool_standalone(
                     db, _prep_ref, user_id, agent, scope_headers, element_scope=_element_scope,
-                    company_automation=company_automation,
+                    company_automation=company_automation, owner_run=owner_run,
                 )
                 if _prep_loaded:
                     _prep_defs, _prep_exec = _prep_loaded
@@ -2352,7 +2392,7 @@ async def run_agent_chat(
                 _fin_tool_name = _fin_ref.get("tool_name", "")
                 _fin_loaded = await _load_pipeline_tool_standalone(
                     db, _fin_ref, user_id, agent, scope_headers, element_scope=_element_scope,
-                    company_automation=company_automation,
+                    company_automation=company_automation, owner_run=owner_run,
                 )
                 if _fin_loaded:
                     _fin_defs, _fin_exec = _fin_loaded
@@ -3864,17 +3904,23 @@ async def run_agent_chat(
         # to shave 100-200 ms off the setup phase.
         from app.models.integration import Integration
 
-        # Prepare UUID lists upfront
-        integ_uuids = (
-            [
-                uuid.UUID(iid)
-                for ids in agent.integration_bindings.values()
-                for iid in ids
-                if iid
-            ]
-            if agent.integration_bindings
-            else []
+        # Who may use which bound credential is decided once, for every run
+        # that builds an agent's integration tools for a person: before the
+        # prompt lists them, so a binding withheld from the turn's person never
+        # reaches it.
+        from app.services.integration_tools import resolve_agent_integration_bindings
+
+        _resolved_bindings = await resolve_agent_integration_bindings(
+            db,
+            agent,
+            None if is_anonymous_user else user_id,
+            owner_run=owner_run,
+            company_automation=company_automation,
+            scope_headers=scope_headers,
+            inherited_template_picks=inherited_template_picks,
         )
+        _listed_bindings = listed_integration_bindings(agent, _resolved_bindings.bindings)
+        integ_uuids = [uuid.UUID(iid) for iid in _listed_bindings.values()]
         kb_ids = all_kb_ids
         kb_uuids = [uuid.UUID(k) for k in kb_ids] if kb_ids else []
         h_ids: list[uuid.UUID] = []
@@ -3997,7 +4043,7 @@ async def run_agent_chat(
         from app.services.integration_tools import get_integration_public_url
 
         integration_names = []
-        if agent.integration_bindings:
+        if _listed_bindings:
             # The agent builds its links from the URL listed here: a platform
             # reached on an internal URL is listed on its registered one.
             _internally_reached = await platforms_reached_internally(
@@ -4008,33 +4054,31 @@ async def run_agent_chat(
                     if integ.auth_type == "platform_managed"
                 ],
             )
-            for provider, integ_ids in agent.integration_bindings.items():
-                if not integ_ids:
+            for binding_key, iid in _listed_bindings.items():
+                provider = binding_key.split("#", 1)[0]
+                integ = integ_map.get(str(uuid.UUID(iid)))
+                if integ is None:
                     continue
-                ids = integ_ids if isinstance(integ_ids, list) else [integ_ids]
-                for iid in ids:
-                    integ = integ_map.get(iid)
-                    if integ:
-                        desc_part = f": {integ.description}" if integ.description else ""
-                        public_url = get_integration_public_url(
-                            integ, _internally_reached.get(str(integ.id))
-                        )
-                        # Wrap the URL in angle brackets so:
-                        #   1. Markdown renders it as an autolink (clickable).
-                        #   2. Any URL content that *did* slip past the validator
-                        #      in ``get_integration_public_url`` (newlines,
-                        #      brackets, control chars) cannot break out of the
-                        #      surrounding prompt-block syntax.
-                        # ``get_integration_public_url`` already rejects URLs
-                        # containing characters that would themselves break out
-                        # of ``<>``; the wrap is belt-and-braces.
-                        url_part = f" [URL: <{public_url}>]" if public_url else ""
-                        route = PROVIDER_CATALOG.get(provider, {}).get("entity_link_route")
-                        if public_url and route:
-                            url_part += f" [entity link: <{public_url}{route}>]"
-                        integration_names.append(
-                            f"- {integ.name} ({provider}){url_part}{desc_part}"
-                        )
+                desc_part = f": {integ.description}" if integ.description else ""
+                public_url = get_integration_public_url(
+                    integ, _internally_reached.get(str(integ.id))
+                )
+                # Wrap the URL in angle brackets so:
+                #   1. Markdown renders it as an autolink (clickable).
+                #   2. Any URL content that *did* slip past the validator
+                #      in ``get_integration_public_url`` (newlines,
+                #      brackets, control chars) cannot break out of the
+                #      surrounding prompt-block syntax.
+                # ``get_integration_public_url`` already rejects URLs
+                # containing characters that would themselves break out
+                # of ``<>``; the wrap is belt-and-braces.
+                url_part = f" [URL: <{public_url}>]" if public_url else ""
+                route = PROVIDER_CATALOG.get(provider, {}).get("entity_link_route")
+                if public_url and route:
+                    url_part += f" [entity link: <{public_url}{route}>]"
+                integration_names.append(
+                    f"- {integ.name} ({provider}){url_part}{desc_part}"
+                )
             if integration_names:
                 system_parts.append(
                     "\nConnected integrations:\n" + "\n".join(integration_names)
@@ -5281,18 +5325,7 @@ async def run_agent_chat(
             composite.add_tools(ch_defs, ch_exec)
 
         # --- Integration tools (built-in tools powered by bound integrations) ---
-        # Who may use which bound credential is decided once, for every run
-        # that builds an agent's integration tools for a person.
-        from app.services.integration_tools import resolve_agent_integration_bindings
-
-        _resolved_bindings = await resolve_agent_integration_bindings(
-            db,
-            agent,
-            None if is_anonymous_user else user_id,
-            company_automation=company_automation,
-            scope_headers=scope_headers,
-            inherited_template_picks=inherited_template_picks,
-        )
+        # Resolved above (``_resolved_bindings``), before the prompt lists them.
         effective_bindings: dict[str, str] = _resolved_bindings.bindings
         binding_origin_map: dict[str, str] = _resolved_bindings.origins
 
@@ -5392,6 +5425,7 @@ async def run_agent_chat(
                 agent=agent,
                 acting_user_id=None if is_anonymous_user else user_id,
                 effective_bindings=effective_bindings,
+                owner_run=owner_run,
             )
             if _prebuilt_refusal is not None:
                 # Never a credential this turn's person may not use: the turn
@@ -5951,6 +5985,9 @@ async def run_agent_chat(
                                     PARENT_CONSULT_MAX_ITERATIONS if _asks_parent else None
                                 ),
                                 delegation_depth=delegation_depth + 1,
+                                # A turn with no person hands on whether it
+                                # acts as its agent's owner.
+                                owner_run=owner_run,
                                 handover_context={
                                     "type": "consult",
                                     "source_agent": f'"{agent.name}" (id: {agent.id})',
@@ -7338,7 +7375,7 @@ async def run_agent_chat(
         ) -> tuple[list[ToolDefinition], object] | None:
             return await _load_pipeline_tool_standalone(
                 db, tool_ref, user_id, agent, scope_headers, element_scope=_element_scope,
-                company_automation=company_automation,
+                company_automation=company_automation, owner_run=owner_run,
             )
 
         # ── Pipeline: PREPARE stage ──────────────────────────────────
@@ -8670,6 +8707,9 @@ async def run_agent_chat(
                         user_message,
                         allow_handover=_next_depth < _TRANSFER_MAX_DEPTH,
                         conversation_id=conversation_id,
+                        # A turn with no person hands on whether it acts as
+                        # its agent's owner.
+                        owner_run=owner_run,
                         handover_context={
                             "type": "transfer",
                             "source_agent": f'"{agent.name}" (id: {agent.id})',

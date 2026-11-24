@@ -870,8 +870,11 @@ def _mock_integration_tool_build(monkeypatch, tool_defs, *, resolved=None):
     """
     captured: dict[str, object] = {}
 
-    async def _resolve(_db, agent, acting_user_id, *, company_automation=False, scope_headers=None):
+    async def _resolve(
+        _db, agent, acting_user_id, *, owner_run=False, company_automation=False, scope_headers=None
+    ):
         captured["acting_user_id"] = acting_user_id
+        captured["owner_run"] = owner_run
         captured["company_automation"] = company_automation
         bindings = (
             dict(resolved)
@@ -994,6 +997,7 @@ def test_build_evaluation_integration_tools_handles_ownerless_agent_and_evaluati
 
     assert bundle == (tool_defs, "executor")
     assert captured["acting_user_id"] is None
+    assert captured["owner_run"] is True
     assert captured["user_id"] is None
 
 
@@ -1003,7 +1007,8 @@ def test_build_evaluation_integration_tools_degrades_on_malformed_acting_user_id
     """A malformed acting user id must not crash tool setup.
 
     It degrades to no acting user context (``user_id=None``, template
-    resolution skipped) - same contract as ``shadow_invisible_bindings``.
+    resolution skipped) - same contract as ``shadow_invisible_bindings``. It is
+    not the agent's own run, so the resolver keeps none of its bindings.
     """
     agent = _make_eval_agent(
         user_id=None,
@@ -1024,6 +1029,7 @@ def test_build_evaluation_integration_tools_degrades_on_malformed_acting_user_id
 
     assert bundle == (tool_defs, "executor")
     assert captured["acting_user_id"] is None
+    assert captured["owner_run"] is False
     assert captured["user_id"] is None
 
 

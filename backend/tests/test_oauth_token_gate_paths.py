@@ -5,9 +5,9 @@ Each path is driven through the same five cases, seen from the acting user
 acknowledged and a non-OAuth one keep working; a colleague's company-managed
 or group-shared OAuth integration whose owner never shared the token is
 refused where a person chooses it (REST, bind time, per-user resolution).
-A credential an entity is already bound to - a flow node, a skill source, a KB
-sync source - is used by its runs as bound, as on main: nothing is withheld at
-run time (maintainer decision of 2026-09-27).
+A flow Integration node runs as the run's user, so it uses its integration
+only when that person may. A credential a skill source or a KB sync source is
+bound to is used by its runs as bound: nothing is withheld at run time.
 
 Three paths (event poller, Graph webhook, chat session override) were gated
 but never tested; the others had no check at all.
@@ -451,17 +451,18 @@ async def _run_integration_node(monkeypatch, integration, *, present=True):
 _NODE_CASES = [
     *CASES,
     pytest.param(
-        "strangers_api_key", True, id="an_integration_nobody_on_the_flow_can_see"
+        "strangers_api_key", False, id="an_integration_nobody_on_the_flow_can_see"
     ),
-    pytest.param("restricted_company", True, id="a_restricted_company_integration"),
+    pytest.param("restricted_company", False, id="a_restricted_company_integration"),
 ]
 
 
-@pytest.mark.parametrize(("case", "_usable"), _NODE_CASES)
-async def test_worked_on_main_a_flow_integration_node_runs_with_the_integration_it_names(
-    monkeypatch, case, _usable
+@pytest.mark.parametrize(("case", "usable"), _NODE_CASES)
+async def test_a_flow_integration_node_runs_only_with_an_integration_its_user_may_use(
+    monkeypatch, case, usable
 ):
-    """The node loads the integration it names by id and runs it; the
+    """The node runs as the run's user: it uses the integration it names
+    only when that person may, the rule of an agent's binding in chat. The
     graph write checks the writer (``check_integration_references``)."""
     integration = {
         "strangers_api_key": lambda: make_integration(auth_type="api_key", user_id=uuid.uuid4()),
@@ -472,9 +473,13 @@ async def test_worked_on_main_a_flow_integration_node_runs_with_the_integration_
 
     result, build = await _run_integration_node(monkeypatch, integration)
 
-    build.assert_awaited_once()
-    assert build.await_args.args[1] == {integration.provider: str(integration.id)}
-    assert "no longer exists" not in (result.error or "")
+    if usable:
+        build.assert_awaited_once()
+        assert build.await_args.args[1] == {integration.provider: str(integration.id)}
+        assert "no longer exists" not in (result.error or "")
+    else:
+        build.assert_not_awaited()
+        assert result.error and result.error.startswith("The run's user may not use")
 
 
 async def test_a_flow_integration_node_whose_integration_is_gone_says_so(monkeypatch):

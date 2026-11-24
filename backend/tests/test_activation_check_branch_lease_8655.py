@@ -157,7 +157,9 @@ async def _gate_tools(builtin_tool_ids: list[str], allowed: dict | None = None) 
         builtin_tool_ids=builtin_tool_ids,
         builtin_allowed_tools=allowed,
         is_company_managed=False,
+        user_id=uuid.uuid4(),
         integration_bindings={},
+        integration_template_bindings=[],
     )
     run = SimpleNamespace(id=uuid.uuid4(), user_id=uuid.uuid4(), is_company_managed=False)
     assignment = SimpleNamespace(id=uuid.uuid4(), name="Review comment", integration_bindings={})

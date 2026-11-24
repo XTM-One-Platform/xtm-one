@@ -280,15 +280,15 @@ async def test_an_oauth_account_on_any_entity_is_usable_by_its_audience(db):
         db, _integration(auth_type="oauth", api_key_enc=None, access_token_enc="t", shared_user_ids=[str(BOB)])
     )
     # Bob's agent carries Alice's account (shared with Bob, so the binding is
-    # not orphaned): its runs use it as bound, and Carol may start one by
-    # triggering its assignment.
+    # not orphaned): his own runs use it as bound; Carol, who may trigger its
+    # assignment, runs it with her own.
     agent = await _add(db, _agent(user_id=BOB, integration_bindings={"github": [str(integ.id)]}, **_team()))
     await _add(db, _assignment(agent, trigger_type="manual"))
     result = await ex.resource_exposure(db, "integration", integ, viewer_id=ALICE, viewer_is_admin=False)
     [path] = [p for p in result["paths"] if p["kind"] == "agent"]
     assert path["usable"] is True and "account_not_shared" not in path["notes"]
     assert path["orphaned"] is False
-    assert result["reached"]["people_count"] == 3  # Alice, and Bob and Carol through the agent's runs
+    assert result["reached"]["people_count"] == 2  # Alice, and Bob, who sees it
 
 
 async def test_mcp_servers_custom_tools_bots_and_variables_have_their_paths(db):
@@ -386,17 +386,21 @@ async def test_sharing_an_agent_names_whose_resources_the_new_people_get(db):
     server = await _add(db, MCPServer(user_id=ALICE, name="Tickets", transport="sse", headers_enc="h"))
     integ = await _add(db, _integration())
     agent = await _add(db, _agent(mcp_server_ids=[str(server.id)], integration_bindings={"github": [str(integ.id)]}))
-    # The team may configure it, so add an assignment whose runs use the binding.
+    # The team may configure it: an assignment they add runs with their own
+    # GitHub, never Alice's.
     change = {"shared_group_ids": [str(TEAM)], "shared_group_permissions": {str(TEAM): "config"}}
     result = await _preview(db, "agent", agent, change)
     assert result["requires_confirmation"]
     items = {i["resource"]["kind"]: i for i in result["items"]}
-    assert set(items) == {"mcp_server", "integration"}
+    assert set(items) == {"mcp_server"}
     assert _people(items["mcp_server"]["gained"]) == set() and items["mcp_server"]["gained"]["people_count"] == 2
     assert items["mcp_server"]["via"] == {"type": "agent", "id": str(agent.id), "name": "Helper"}
-    assert items["integration"]["gained"]["people_count"] == 2
-    assert items["integration"]["secret"]["is_yours"] is True
-    assert "company_resource" in items["integration"]["opt_outs"]
+    # Its public link acts as Alice: it lends her GitHub to the link holders.
+    linked = (await _preview(db, "agent", agent, {**change, "web_enabled": True}))["items"]
+    [item] = [i for i in linked if i["resource"]["kind"] == "integration"]
+    assert item["gained"]["public_link"] is True
+    assert item["secret"]["is_yours"] is True
+    assert "company_resource" in item["opt_outs"]
 
 
 async def test_sharing_an_agent_to_chat_with_does_not_lend_its_bound_integration(db):
@@ -419,6 +423,7 @@ async def test_sharing_an_agent_to_chat_with_does_not_lend_its_bound_integration
             lambda: MCPServer(user_id=BOB, name="Bob secret server", transport="sse", headers_enc="h"),
         ),
         ("custom_tool", "custom_tool_ids", lambda: CustomTool(user_id=BOB, name="Bob secret tool")),
+        # Through its public link, as the agent's owner.
         ("integration", "integration_bindings", lambda: _integration(user_id=BOB, name="Bob secret key")),
     ],
 )
@@ -426,7 +431,10 @@ async def test_the_preview_never_describes_a_resource_its_caller_cannot_see(db, 
     """An id the change ADDS is described only when its writer could set it:
     a crafted id never reads back a colleague's private resource."""
     hidden = await _add(db, make())
-    agent = await _add(db, _agent(**_team()))
+    # An agent's binding reaches someone who cannot see it through the
+    # callers no account names, acting as its owner, who must see it.
+    owner = BOB if field == "integration_bindings" else ALICE
+    agent = await _add(db, _agent(user_id=owner, web_enabled=True, **_team()))
     value = {"x": [str(hidden.id)]} if field == "integration_bindings" else [str(hidden.id)]
     result = await _preview(db, "agent", agent, {field: value})
     assert result["items"] == []
@@ -733,29 +741,31 @@ async def test_an_assignment_resolving_a_per_user_binding_lends_its_owner_s_inte
     assert (await ex.resource_exposure(db, "integration", integ, viewer_id=ALICE, viewer_is_admin=False))["paths"] == []
 
 
-async def test_switching_to_per_user_takes_nothing_back_from_the_runs_audience(db):
-    """The agent's assignments keep acting with the owner's integration, now
-    resolved per user: the people who see their work keep it."""
-    integ = await _add(db, _integration())
+async def test_switching_to_per_user_takes_nothing_back_from_the_agent_s_audience(db):
+    """Neither the agent's chats nor the runs of an assignment its audience
+    adds used the owner's integration for anyone else: switching it to per
+    user takes nothing back."""
+    per_user = {"integration_bindings": {}, "integration_template_bindings": ["github"]}
+    for name, extra, assignment in (
+        ("Configured", {"shared_group_permissions": {str(TEAM): "config"}}, False),
+        ("Chat only", {}, False),
+    ):
+        integ = await _add(db, _integration(name=name))
+        agent = await _add(db, _agent(integration_bindings={"github": [str(integ.id)]}, **_team(**extra)))
+        if assignment:
+            await _add(db, _assignment(agent))
+        assert (await _preview(db, "agent", agent, per_user))["items"] == [], name
+
+
+async def test_switching_to_per_user_announces_what_the_owner_s_assignment_resolves(db):
+    """Alice's own assignment now resolves her GitHub per user, as the person
+    it runs as: the team that sees its work is told."""
+    per_user = {"integration_bindings": {}, "integration_template_bindings": ["github"]}
+    integ = await _add(db, _integration(name="With runs"))
     agent = await _add(db, _agent(integration_bindings={"github": [str(integ.id)]}, **_team()))
     await _add(db, _assignment(agent))
-    per_user = {"integration_bindings": {}, "integration_template_bindings": ["github"]}
-    assert (await _preview(db, "agent", agent, per_user))["items"] == []
-    unused = await _add(db, _integration(name="Unused"))
-    # Without an assignment, the team configuring it loses the runs it could add...
-    idle = await _add(
-        db,
-        _agent(
-            integration_bindings={"github": [str(unused.id)]},
-            **_team(shared_group_permissions={str(TEAM): "config"}),
-        ),
-    )
-    [item] = (await _preview(db, "agent", idle, per_user))["items"]
-    assert item["resource"]["name"] == "Unused" and item["lost"]["people_count"] == 2
-    # ...while a team that only chats with it already used their own.
-    chat_only = await _add(db, _integration(name="Chat only"))
-    chatting = await _add(db, _agent(integration_bindings={"github": [str(chat_only.id)]}, **_team()))
-    assert (await _preview(db, "agent", chatting, per_user))["items"] == []
+    [item] = (await _preview(db, "agent", agent, per_user))["items"]
+    assert item["resource"]["name"] == "With runs" and item["gained"]["people_count"] == 2
 
 
 async def test_choosing_whom_a_company_assignment_runs_as_lends_their_integration(db):
@@ -985,13 +995,13 @@ async def test_unsharing_a_group_names_the_agents_its_members_would_orphan(db):
 @pytest.mark.parametrize(
     ("tier", "announced"),
     [
-        # Chat only: Dave's chats would use his own GitHub.
+        # Dave's chats would use his own GitHub...
         pytest.param("read_only", {"Tickets"}, id="chat_only"),
-        # Configuring the agent, he may add an assignment that runs with it.
-        pytest.param("config", {"Tickets", "Alice GitHub"}, id="configures"),
+        # ...and so would the runs of an assignment he adds.
+        pytest.param("config", {"Tickets"}, id="configures"),
     ],
 )
-async def test_a_new_member_is_told_of_an_agent_s_bound_integration_only_if_he_can_start_its_runs(
+async def test_a_new_member_is_told_of_an_agent_s_tools_never_of_its_bound_integration(
     db, tier, announced
 ):
     integ = await _add(db, _integration())
@@ -1011,26 +1021,22 @@ async def test_a_new_member_is_told_of_an_agent_s_bound_integration_only_if_he_c
 
 
 @pytest.mark.parametrize(
-    ("assignment", "starters"),
+    "assignment",
     [
-        # Nothing to start: its chats use their own, its owner's runs use it.
-        pytest.param(None, {"Alice"}, id="chat_only"),
-        # Anyone who sees the agent may trigger an assignment inheriting its bindings...
-        pytest.param({}, {"Alice", "Dave"}, id="triggerable"),
-        # (an explicit None is stored as a JSON null: it inherits them too)...
-        pytest.param({"integration_bindings": None}, {"Alice", "Dave"}, id="explicitly_inherits"),
-        # ...whatever its trigger...
-        pytest.param({"trigger_type": "schedule"}, {"Alice", "Dave"}, id="scheduled"),
-        # ...but not a disabled one, nor one with its own integrations.
-        pytest.param({"enabled": False}, {"Alice"}, id="disabled"),
-        pytest.param({"integration_bindings": {}}, {"Alice"}, id="own_bindings"),
+        pytest.param(None, id="chat_only"),
+        pytest.param({}, id="triggerable"),
+        # (an explicit None is stored as a JSON null: it inherits them too)
+        pytest.param({"integration_bindings": None}, id="explicitly_inherits"),
+        pytest.param({"trigger_type": "schedule"}, id="scheduled"),
+        pytest.param({"enabled": False}, id="disabled"),
+        pytest.param({"integration_bindings": {}}, id="own_bindings"),
     ],
 )
-async def test_the_headline_counts_who_acts_with_the_account_not_the_agent_s_chat_audience(db, assignment, starters):
+async def test_the_headline_counts_who_acts_with_the_account_not_the_agent_s_chat_audience(db, assignment):
     """Alice's GitHub, shared with Bob, is bound to her agent, shared
-    with the team (Bob, Carol) and Dave, who cannot see it. Their chats use
-    their own; the agent's runs use Alice's, so they count only when they can
-    start one."""
+    with the team (Bob, Carol) and Dave, who cannot see it. Their chats and
+    the runs of its assignments they start use their own, whatever the
+    assignment."""
     integ = await _add(db, _integration(shared_user_ids=[str(BOB)]))
     agent = await _add(
         db, _agent(integration_bindings={"github": [str(integ.id)]}, shared_user_ids=[str(DAVE)], **_team())
@@ -1040,58 +1046,60 @@ async def test_the_headline_counts_who_acts_with_the_account_not_the_agent_s_cha
 
     result = await ex.resource_exposure(db, "integration", integ, viewer_id=ALICE, viewer_is_admin=False)
 
-    everyone_starts = "Dave" in starters
-    # Alice and Bob (shared directly), and Carol and Dave when they can start a run.
-    assert result["reached"]["people_count"] == (4 if everyone_starts else 2)
+    # Alice and Bob, shared directly.
+    assert result["reached"]["people_count"] == 2
     [agent_path] = [p for p in result["paths"] if p["kind"] == "agent"]
-    # Its line names whom it lends the account to, not everyone it chats with.
-    assert _people(agent_path["lent"]) == starters
-    assert agent_path["lent"]["people_count"] == (4 if everyone_starts else 1)
-    assert agent_path["lent"]["groups"] == (agent_path["audience"]["groups"] if everyone_starts else [])
+    # Its line lends the account to its owner's own runs, nobody it chats with.
+    assert _people(agent_path["lent"]) == {"Alice"}
+    assert agent_path["lent"]["people_count"] == 1 and agent_path["lent"]["groups"] == []
     assert agent_path["audience"]["people_count"] == 4
     assert agent_path["notes"] == ["chat_uses_own_integration"]
 
 
-async def test_a_company_agent_lends_its_binding_to_everyone_only_through_a_run_they_may_start(db):
+async def test_a_company_agent_never_lends_its_binding_to_everyone(db):
     integ = await _add(db, _integration())
     agent = await _add(
         db, _agent(is_company_managed=True, integration_bindings={"github": [str(integ.id)]}, **_team())
     )
-    reached = (await ex.resource_exposure(db, "integration", integ, viewer_id=ALICE, viewer_is_admin=False))["reached"]
-    assert reached["everyone"] is False and _people(reached) == {"Alice"}
-    # Only an admin may trigger a company-managed assignment...
+
+    async def reached() -> dict:
+        return (await ex.resource_exposure(db, "integration", integ, viewer_id=ALICE, viewer_is_admin=False))["reached"]
+
+    assert (await reached())["everyone"] is False and _people(await reached()) == {"Alice"}
+    # Not through an assignment, even one that runs per user as its caller's own report.
     assignment = await _add(db, _assignment(agent, trigger_type="manual"))
-    reached = (await ex.resource_exposure(db, "integration", integ, viewer_id=ALICE, viewer_is_admin=False))["reached"]
-    assert reached["everyone"] is False
-    # ...unless it runs per user, as its caller's own report.
+    assert (await reached())["everyone"] is False
     assignment.hide_runs = True
     await db.flush()
-    reached = (await ex.resource_exposure(db, "integration", integ, viewer_id=ALICE, viewer_is_admin=False))["reached"]
-    assert reached["everyone"] is True
+    assert (await reached())["everyone"] is False and _people(await reached()) == {"Alice"}
 
 
 @pytest.mark.parametrize(
-    ("change", "gained"),
+    "change",
     [
-        pytest.param({"name": "Digest"}, {"Bob", "Carol"}, id="inherits_the_bindings"),
-        pytest.param({"name": "Digest", "integration_bindings": {}}, None, id="own_bindings"),
-        pytest.param({"name": "Digest", "enabled": False}, None, id="disabled"),
+        pytest.param({"name": "Digest"}, id="inherits_the_bindings"),
+        pytest.param({"name": "Digest", "integration_bindings": {}}, id="own_bindings"),
+        pytest.param({"name": "Digest", "enabled": False}, id="disabled"),
+        pytest.param({"name": "Digest", "integration_bindings": "own"}, id="binds_it_itself"),
     ],
 )
-async def test_adding_an_assignment_the_chat_audience_may_trigger_lends_them_the_binding(db, change, gained):
+async def test_adding_or_deleting_an_assignment_lends_nothing_its_runs_drop(db, change):
     integ = await _add(db, _integration())
     agent = await _add(db, _agent(integration_bindings={"github": [str(integ.id)]}, **_team()))
-    items = (await _preview(db, "assignment", None, change, parent=agent))["items"]
-    if gained is None:
-        assert items == []
-        return
-    [item] = items
-    assert item["resource"]["name"] == "Alice GitHub" and item["gained"]["people_count"] == len(gained)
-    assert item["via"]["type"] == "assignment"
-    # Deleting it takes the binding back from them.
+    if change.get("integration_bindings") == "own":
+        change = {**change, "integration_bindings": {"github": [str(integ.id)]}}
+    assert (await _preview(db, "assignment", None, change, parent=agent))["items"] == []
     stored = await _add(db, _assignment(agent, trigger_type="manual"))
-    [item] = (await _preview(db, "assignment", stored, {"delete": True}, parent=agent))["items"]
-    assert item["lost"]["people_count"] == len(gained)
+    assert (await _preview(db, "assignment", stored, {"delete": True}, parent=agent))["items"] == []
+
+
+async def test_an_assignment_binding_it_itself_lends_it_to_its_webhook_callers(db):
+    integ = await _add(db, _integration())
+    agent = await _add(db, _agent(**_team()))
+    change = {"name": "Hook", "trigger_type": "webhook", "integration_bindings": {"github": [str(integ.id)]}}
+    [item] = (await _preview(db, "assignment", None, change, parent=agent))["items"]
+    assert item["resource"]["name"] == "Alice GitHub"
+    assert item["gained"]["webhook_callers"] is True and item["gained"]["people_count"] == 0
 
 
 async def test_exposing_an_agent_on_the_platform_mcp_key_lends_its_bindings_to_the_key_holders(db):
@@ -1180,11 +1188,12 @@ async def test_the_integration_route_s_preview_is_the_engine_s(db):
         change={
             "integration_ids": [str(integ.id)],
             "shared_group_ids": [str(TEAM)],
-            "shared_group_permissions": {str(TEAM): "config"},
+            "web_enabled": True,
         },
     )
+    # The team's chats use their own; its public link acts as Alice.
     [item] = preview["credentials"]
-    assert item["integration"]["id"] == str(integ.id) and item["reached"]["people_count"] == 2
+    assert item["integration"]["id"] == str(integ.id) and item["reached"]["public_link"] is True
     assert item["via"]["type"] == "agent" and "company_integration" in item["opt_outs"]
     # A flow's integration_ids are the integrations its nodes will hold.
     flow = await _add(db, Flow(user_id=ALICE, name="Flow", graph={"nodes": []}, **_team()))

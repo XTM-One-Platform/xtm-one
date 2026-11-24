@@ -268,6 +268,9 @@ async def _execute_agent_tool(
         history=[],
         user_message=full_message,
         allow_handover=False,
+        # The platform key names no one: its calls act as the agent's owner,
+        # behind the agent's exposure on the key.
+        owner_run=user_id == GLOBAL_KEY_CALLER,
     )
     return redact_known_secrets_for_display(response_text)
 

@@ -222,14 +222,16 @@ person it runs as - the behaviour the per-user binding already promises
 scheduled run of an agent whose owner never connected their account has no
 credential, which the run says (below).
 
-**This is an exception to the run-time rule** (maintainer decision of
-2026-09-27): today a bound credential is "used by its runs as bound" - an
-assignment, a flow node, the widget never shadow anything
-(`shadow_invisible_bindings` runs only in `agent_chat` and
-`scheduled_work_item_runner`). In `per_user` mode the funnel substitutes the
-acting person's credential on every path, because lending the holder's
-account to a run acting as someone else is exactly what the mode refuses.
-`shared` mode keeps that rule unchanged. Needs the maintainers' agreement.
+**This goes further than the run-time rule.** An agent's or an assignment's
+binding is used, for anyone but the agent's owner, only when that person may
+use it or the agent lends it (`resolve_agent_integration_bindings`, on chat,
+assignment runs and their activation check, evaluations, scheduled work
+items); a flow Integration node only when the run's user may
+(`shadow_invisible_bindings`); the public widget, an anonymous channel user
+and the platform MCP key act as the agent's owner. In `per_user` mode the
+funnel substitutes the acting person's credential on every path, because
+lending the holder's account to a run acting as someone else is exactly what
+the mode refuses.
 
 ## Flows
 

@@ -394,25 +394,17 @@ class _FixedCarrier(ex.AudienceResolver):
     async def carrier_audience(self, kind, entity, parent=None):
         return self._audience
 
-    async def run_starters(self, agent):
-        return ex.Audience().merge(_STARTERS)
-
-
-#: Who :meth:`AudienceResolver.run_starters` answers in these tests: the
-#: agent's owner alone (``test_resource_exposure_postgres.py`` pins the rule).
-_STARTERS = ex.Audience(user_ids={ALICE}, named_user_ids={ALICE})
-
 
 @pytest.mark.parametrize(
     ("mode", "path", "carrier_owner", "public_link", "expected"),
     [
         # Shared with its account: a carrier lends it to its whole audience...
         pytest.param("shared", ex.PATH_FLOW, BOB, False, "all", id="shared_flow"),
-        # ...but an agent's chats use their own for whoever cannot see it:
-        # it lends it to the people who start its runs...
-        pytest.param("shared", ex.PATH_AGENT, BOB, False, "starters", id="shared_agent_chats"),
+        # ...but an agent's chats and runs use their own for whoever cannot
+        # see it: it lends it to its owner's own runs...
+        pytest.param("shared", ex.PATH_AGENT, BOB, False, "owner", id="shared_agent_chats"),
         # ...and to the callers no account names, who act as its owner.
-        pytest.param("shared", ex.PATH_AGENT, BOB, True, "starters_and_public_link", id="shared_agent_public_link"),
+        pytest.param("shared", ex.PATH_AGENT, BOB, True, "owner_and_public_link", id="shared_agent_public_link"),
         # Shared without it: an agent's chats act with each person's own...
         pytest.param("per_user", ex.PATH_AGENT, ALICE, False, "nobody", id="per_user_agent_chats"),
         # ...its public link acts as its owner, the holder...
@@ -442,10 +434,8 @@ async def test_an_integration_shared_without_its_account_lends_it_only_as_its_ho
 
     if expected == "all":
         assert lent == carrier
-    elif expected.startswith("starters"):
-        assert lent == ex.Audience(
-            user_ids={ALICE}, named_user_ids={ALICE}, public_link=expected == "starters_and_public_link"
-        )
+    elif expected.startswith("owner"):
+        assert lent == ex.Audience(user_ids={BOB}, public_link=expected == "owner_and_public_link")
     elif expected == "public_link":
         assert lent.public_link and not lent.user_ids and not lent.group_ids
     else:
@@ -472,7 +462,7 @@ async def test_an_integration_shared_without_its_account_lends_it_only_as_its_ho
         pytest.param(ex.RESOURCE_MCP_SERVER, {ex.REASON_BINDING}, "shared", False, id="mcp_server"),
     ],
 )
-async def test_an_agent_lends_what_its_chats_drop_only_to_the_people_who_start_its_runs(
+async def test_an_agent_lends_what_its_chats_and_runs_drop_only_to_the_callers_no_account_names(
     kind, reasons, credential_mode, chat_uses_own
 ):
     resource = _row(
@@ -485,7 +475,7 @@ async def test_an_agent_lends_what_its_chats_drop_only_to_the_people_who_start_i
     lent = await ex.lent_audience(_FixedCarrier(carrier), kind, resource, ref, secret)
 
     if chat_uses_own:
-        assert lent == ex.Audience(user_ids={ALICE}, named_user_ids={ALICE}, webhook_callers=True)
+        assert lent == ex.Audience(user_ids={ALICE}, webhook_callers=True)
         assert ex.path_notes(kind, resource, ref, True) == [ex.NOTE_CHAT_USES_OWN]
     elif credential_mode == "per_user":
         assert lent == ex.Audience(webhook_callers=True)
@@ -493,6 +483,28 @@ async def test_an_agent_lends_what_its_chats_drop_only_to_the_people_who_start_i
     else:
         assert lent == carrier
         assert ex.NOTE_CHAT_USES_OWN not in ex.path_notes(kind, resource, ref, True)
+
+
+@pytest.mark.parametrize(
+    ("reasons", "credential_mode", "lent_to"),
+    [
+        # Its own binding: its runs use their own for whoever cannot see it,
+        # its webhook callers act as the person it runs as.
+        pytest.param({ex.REASON_OVERRIDE}, "shared", "webhook_callers", id="override"),
+        # A trigger reads its integration for every run.
+        pytest.param({ex.REASON_TRIGGER}, "shared", "carrier", id="trigger"),
+        pytest.param({ex.REASON_OVERRIDE, ex.REASON_TRIGGER}, "shared", "carrier", id="override_and_trigger"),
+    ],
+)
+async def test_an_assignment_lends_what_its_runs_drop_only_to_its_webhook_callers(reasons, credential_mode, lent_to):
+    resource = _row(auth_type="api_key", api_key_enc="k", credential_mode=credential_mode)
+    secret = ex.describe_secret(ex.RESOURCE_INTEGRATION, resource)
+    carrier = ex.Audience(user_ids={ALICE, BOB, CAROL}, group_ids={GROUP}, webhook_callers=True)
+    ref = ex.Reference(ex.PATH_ASSIGNMENT, _row(user_id=ALICE), set(reasons), _row(user_id=ALICE))
+
+    lent = await ex.lent_audience(_FixedCarrier(carrier), ex.RESOURCE_INTEGRATION, resource, ref, secret)
+
+    assert lent == (ex.Audience(webhook_callers=True) if lent_to == "webhook_callers" else carrier)
 
 
 # ---------------------------------------------------------------------------

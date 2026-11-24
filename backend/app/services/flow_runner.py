@@ -4698,7 +4698,13 @@ class FlowWalker:
         return outcome
 
     async def _exec_integration(self, config: dict) -> _NodeResult:
-        from app.services.integration_tools import BindingBasis, ToolBindings, build_integration_tools
+        from app.api.v1.helpers import get_user_group_ids
+        from app.services.integration_tools import (
+            BindingBasis,
+            ToolBindings,
+            build_integration_tools,
+            shadow_invisible_bindings,
+        )
         from app.tools.base import ToolCall
 
         integration_id = config.get("integration_id")
@@ -4718,12 +4724,31 @@ class FlowWalker:
         if integration is None:
             return _NodeResult(error="The configured integration no longer exists.")
 
+        # The run acts as its user: the node uses the integration only when
+        # that person may, the rule of an agent's binding in chat (a flow
+        # lends nothing).
+        bindings = {integration.provider: str(integration.id)}
+        await shadow_invisible_bindings(
+            self.db,
+            bindings,
+            {},
+            acting_user_id=str(self.user.id),
+            user_group_ids=await get_user_group_ids(self.db, self.user.id),
+        )
+        if not bindings:
+            return _NodeResult(
+                error=(
+                    "The run's user may not use the configured integration: it is not "
+                    "shared with them, or its connected account is not theirs to use."
+                )
+            )
+
         definitions, executor = await build_integration_tools(
             self.db,
             ToolBindings(
-                {integration.provider: str(integration.id)},
-                basis=BindingBasis.UNCHECKED,
-                reason="a flow Integration node: checked on save only",
+                bindings,
+                basis=BindingBasis.CALLER_CHECKED,
+                reason="a flow Integration node, for the run's user (shadow_invisible_bindings)",
             ),
             context=flow_integration_context(self.user.id),
         )

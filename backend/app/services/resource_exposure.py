@@ -35,8 +35,12 @@ list card, and for the confirmation shown before a change that widens or
 narrows it (sharing, binding, creating, unsharing, unbinding, deleting). It
 decides nothing and refuses nothing:
 
-* a resource an entity carries is used by that entity's runs as it stands
-  (nothing is withheld at run time); whether a personal OAuth token travels
+* an integration an agent or an assignment binds acts, for anyone but the
+  agent's owner, only when that person may use it or the agent lends it
+  (``integration_tools.resolve_agent_integration_bindings``): it reaches the
+  callers no account names, who act as the owner, and nobody else it does
+  not already reach. Every other resource an entity carries is used by that
+  entity's runs as it stands; whether a personal OAuth token travels
   on a direct share is its owner's consent (``app.services.integration_credentials``),
   and a proposed consent is settled by its one write rule,
   ``apply_oauth_share_consent``, run on a copy;
@@ -429,36 +433,6 @@ def _as_list(value: Any) -> list[Any]:
     return [value]
 
 
-def _assignment_view(assignment: Any, *, assignment_id: str | None = None) -> SimpleNamespace:
-    """What :meth:`AudienceResolver.run_starters` reads of an assignment (a
-    stored row or a proposed copy): an omitted ``enabled`` is the column's
-    default, and ``integration_bindings`` ``None`` inherits the agent's."""
-    return SimpleNamespace(
-        id=assignment_id or str(getattr(assignment, "id", "") or ""),
-        enabled=getattr(assignment, "enabled", None) is not False,
-        run_as_all_users=bool(getattr(assignment, "run_as_all_users", False)),
-        hide_runs=getattr(assignment, "hide_runs", None),
-        inherits_agent_bindings=getattr(assignment, "integration_bindings", None) is None,
-    )
-
-
-def _triggered_with_agent_bindings(view: SimpleNamespace, agent: Any) -> bool:
-    """Whether someone who sees *agent* may trigger the assignment *view*
-    manually, in a run that acts with the agent's own bindings."""
-    from app.api.v1.helpers import manual_trigger_refusal
-
-    if not view.inherits_agent_bindings:
-        return False
-    # ``Assignment.is_company_managed`` mirrors its agent's, a proposed one's too.
-    probe = SimpleNamespace(
-        enabled=view.enabled,
-        is_company_managed=bool(getattr(agent, "is_company_managed", False)),
-        run_as_all_users=view.run_as_all_users,
-        hide_runs=view.hide_runs,
-    )
-    return manual_trigger_refusal(probe, agent, is_admin=False) is None  # type: ignore[arg-type]
-
-
 # ---------------------------------------------------------------------------
 # Audiences
 # ---------------------------------------------------------------------------
@@ -570,9 +544,7 @@ class AudienceResolver:
 
     *members*, *bots* and *mcp_agent_ids* answer instead of the database: the
     state a proposed change gives a group, a channel bot or the platform MCP
-    endpoint. *assignment* is ``(agent id, assignment id, proposed state or
-    None when deleted)``: the state a proposed change gives one assignment
-    when :meth:`run_starters` reads its agent's assignments.
+    endpoint.
     """
 
     def __init__(
@@ -582,7 +554,6 @@ class AudienceResolver:
         members: dict[uuid.UUID, set[uuid.UUID]] | None = None,
         bots: dict[uuid.UUID, Any] | None = None,
         mcp_agent_ids: set[str] | None = None,
-        assignment: tuple[str, str, Any] | None = None,
     ) -> None:
         self.db = db
         self._members: dict[uuid.UUID, set[uuid.UUID]] = dict(members or {})
@@ -590,8 +561,6 @@ class AudienceResolver:
         self._mcp_agent_ids: set[str] | None = mcp_agent_ids
         self._a2a_agent_ids: dict[str, bool] = {}
         self._webhook_agent_ids: dict[str, bool] = {}
-        self._assignments: dict[str, list[SimpleNamespace]] = {}
-        self._proposed_assignment = assignment
         self._bots: dict[uuid.UUID, ChannelBot | None] = dict(bots or {})
         self._cache: dict[tuple[str, int, int], Audience] = {}
 
@@ -758,82 +727,6 @@ class AudienceResolver:
             }
             for bot_id in chunk:
                 self._bots[bot_id] = found.get(bot_id)
-        await self._load_assignments(agent_ids)
-
-    async def _load_assignments(self, agent_ids: Iterable[uuid.UUID]) -> None:
-        """Read what :meth:`run_starters` needs of the assignments of
-        *agent_ids* (:func:`_assignment_view`), one query per chunk of agents:
-        the enabled ones inheriting their agent's bindings (SQL ``NULL`` or a
-        JSON ``null``), the only ones whose runs use them."""
-        missing = sorted({i for i in agent_ids if str(i) not in self._assignments}, key=str)
-        inherits = func.coalesce(cast(Assignment.integration_bindings, Text), "null") == "null"
-        for chunk in _chunks(missing, _PRIME_CHUNK):
-            for agent_id in chunk:
-                self._assignments[str(agent_id)] = []
-            rows = await self.db.execute(
-                select(
-                    Assignment.id,
-                    Assignment.agent_id,
-                    Assignment.enabled,
-                    Assignment.run_as_all_users,
-                    Assignment.hide_runs,
-                    Assignment.integration_bindings,
-                ).where(Assignment.agent_id.in_(chunk), Assignment.enabled.isnot(False), inherits)
-            )
-            for row in rows.all():
-                self._assignments.setdefault(str(row.agent_id), []).append(_assignment_view(row))
-
-    async def run_starters(self, agent: Any) -> Audience:
-        """The people who can start a run acting with *agent*'s own bindings.
-
-        A chat turn of someone who cannot see a bound integration drops it
-        (``integration_tools.shadow_invisible_bindings``), but an assignment
-        run uses the agent's bindings as bound whoever starts it. So:
-        everyone who sees the agent when one of its enabled assignments
-        inheriting those bindings may be triggered manually by a non-admin
-        (``helpers.manual_trigger_refusal``); otherwise the agent's owner, whose
-        identity its own runs act with, and the people who may add or edit its
-        assignments (``helpers.can_manage_as``, admins aside).
-        """
-        from app.api.v1.helpers import SHARE_PERMISSIONS_CONFIG, can_manage_as, get_group_permission
-
-        seen = await self.entity_audience(agent)
-        if seen.is_empty:
-            return seen
-        agent_id = normalize_acting_user_id(getattr(agent, "id", None))
-        views: list[SimpleNamespace] = []
-        if agent_id is not None:
-            await self._load_assignments([agent_id])
-            views = list(self._assignments.get(str(agent_id), []))
-        proposed = self._proposed_assignment
-        if proposed is not None and agent_id is not None and proposed[0] == str(agent_id):
-            views = [v for v in views if v.id != proposed[1]]
-            if proposed[2] is not None:
-                views.append(_assignment_view(proposed[2], assignment_id=proposed[1]))
-        if any(_triggered_with_agent_bindings(view, agent) for view in views):
-            return seen
-        owner = normalize_acting_user_id(getattr(agent, "user_id", None))
-        people: set[uuid.UUID] = {owner} & seen.user_ids if owner else set()
-        # Each shared group as stored (the share tiers are keyed by it) and parsed.
-        groups = [(str(raw), safe_uuid(str(raw))) for raw in _as_list(getattr(agent, "shared_group_ids", None)) if raw]
-        for user_id in seen.user_ids - people:
-            member_of = [raw for raw, gid in groups if gid is not None and user_id in self._members.get(gid, set())]
-            if can_manage_as(user_id, False, agent, member_of):
-                people.add(user_id)
-        managing_groups = (
-            set()
-            if getattr(agent, "is_company_managed", False)
-            else {
-                gid
-                for raw, gid in groups
-                if gid is not None and get_group_permission(agent, [raw]) in SHARE_PERMISSIONS_CONFIG
-            }
-        )
-        return Audience(
-            user_ids=people,
-            named_user_ids=seen.named_user_ids & people,
-            group_ids=managing_groups & seen.group_ids,
-        )
 
     async def _prime_agent_flags(
         self, cache: dict[str, bool], agent_ids: set[uuid.UUID], statement: Callable[[list[uuid.UUID]], Any]
@@ -1761,10 +1654,12 @@ async def lent_audience(
       names (its public link, anonymous channels, A2A partners, MCP key
       holders, webhook callers), who act as its owner, use the holder's;
     * an integration the agent only binds (:func:`_chat_uses_own`): a
-      chat turn of someone who cannot see it drops it, and whoever can see it
-      is already in its own audience, so the agent lends it to those callers
-      and to the people who can start one of its runs
-      (:meth:`AudienceResolver.run_starters`), not to its chat audience.
+      chat turn or an assignment run of someone who cannot see it drops it,
+      and whoever can see it is already in its own audience, so the agent
+      lends it to those callers and to its owner, whose own runs use it;
+    * an integration an assignment's own bindings name
+      (:func:`_override_uses_own`): its runs drop it for whoever cannot see
+      it, its webhook callers aside, who act as the person it runs as.
     """
     if not await path_usable(resolver.db, kind, resource, ref, secret):
         return Audience()
@@ -1772,7 +1667,13 @@ async def lent_audience(
     if _per_user(kind, resource) and ref.kind == PATH_AGENT:
         return _callers(audience)
     if _chat_uses_own(kind, resource, ref):
-        return _callers(audience).merge(await resolver.run_starters(ref.entity))
+        owner = normalize_acting_user_id(getattr(ref.entity, "user_id", None))
+        owners = {owner} & audience.user_ids if owner else set()
+        return _callers(audience).merge(
+            Audience(user_ids=owners, named_user_ids=owners & audience.named_user_ids)
+        )
+    if _override_uses_own(kind, resource, ref):
+        return Audience(webhook_callers=audience.webhook_callers)
     return audience
 
 
@@ -1792,6 +1693,19 @@ def _callers(audience: Audience) -> Audience:
 #: ``integration_bindings``): a pipeline step loads its integration whoever
 #: chats, and what the agent attaches is read on the attachment's own terms.
 _CHAT_SHADOWED_REASONS = frozenset({REASON_BINDING})
+
+
+def _override_uses_own(kind: str, resource: Any, ref: Reference) -> bool:
+    """Whether *ref* is an assignment that holds the integration only through
+    its own bindings, which its runs use for the people who can see it and
+    replace with their own for everyone else."""
+    return (
+        kind == RESOURCE_INTEGRATION
+        and ref.kind == PATH_ASSIGNMENT
+        and not _per_user(kind, resource)
+        and bool(ref.reasons)
+        and ref.reasons <= {REASON_OVERRIDE}
+    )
 
 
 def _chat_uses_own(kind: str, resource: Any, ref: Reference) -> bool:
@@ -2768,17 +2682,6 @@ async def preview_change(
         )
         cut |= await _affect_carriers(db, affect, [(PATH_AGENT, agent, None) for agent in agents])
         via = {"type": entity_type, "id": None, "name": None}
-
-    if entity_type == ENTITY_ASSIGNMENT and parent is not None and getattr(parent, "id", None) is not None:
-        # Whether anyone who sees the agent may start a run with its bindings
-        # follows its assignments (:meth:`AudienceResolver.run_starters`).
-        def starts(assignment: Any) -> bool:
-            return assignment is not None and _triggered_with_agent_bindings(_assignment_view(assignment), parent)
-
-        if starts(entity) != starts(after):
-            assignment_id = str(getattr(entity, "id", "") or "") or _NEW
-            after_resolver = AudienceResolver(db, assignment=(str(parent.id), assignment_id, after))
-            affect(RESOURCE_INTEGRATION, flatten_binding_ids(getattr(parent, "integration_bindings", None)))
 
     carrier_path = _ENTITY_PATH.get(entity_type)
     if carrier_path is not None:

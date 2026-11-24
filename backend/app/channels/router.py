@@ -4476,6 +4476,9 @@ async def handle_message(
                     route.agent,
                     history,
                     inbound.text,
+                    # A sender with no account acts as the agent's owner: the
+                    # bot and the agent both let them in.
+                    owner_run=user is None,
                     context=message_context,
                     files=channel_files or None,
                     conversation_id=str(conv.id) if conv else None,

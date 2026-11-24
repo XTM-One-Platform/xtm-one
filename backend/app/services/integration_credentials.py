@@ -29,12 +29,14 @@ integrations are usable.
 Every module under ``backend/app`` that reads a stored integration token is
 pinned, with the reason it is safe, by ``tests/test_integration_credential_gate.py``.
 
-A credential an entity was bound to (an agent's bindings, a flow node, a KB
-sync source, a skill source, a user's General Assistant list) is used by that
-entity's runs as it stands: nothing is withheld at run time (maintainer
-decision of 2026-09-27), with one exception: an agent binding whose
-integration the agent's owner can no longer see is orphaned and used by no
-run of the agent (:func:`drop_orphaned_bindings`, #11229). The rule applies where
+A credential a KB sync source, a skill source or a user's General Assistant
+list was bound to is used by that entity's runs as it stands: nothing is
+withheld at run time. An agent's bindings and a flow Integration node are
+used only by a run whose person may use them, or that the agent lends
+(:func:`resolve_agent_integration_bindings`, :func:`shadow_invisible_bindings`);
+an agent binding whose integration the agent's owner can no longer see is
+orphaned and used by no run of the agent (:func:`drop_orphaned_bindings`). The
+rule applies where
 a person chooses: the write that binds a credential, the REST tooling, and a
 chat turn's session selection. A refusal is never silent: REST routes answer
 403 with ``OAUTH_CREDENTIALS_NOT_SHARED_DETAIL``, which says how the token gets
