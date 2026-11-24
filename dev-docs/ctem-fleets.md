@@ -2259,9 +2259,11 @@ team can act on. Module `app/agents/opencti_pir_desk.py`.
 | `opencti-assistant`, `opencti-entity-insights`, `opencti-dashboard-creator` (connected) | Chat, context, dashboards | exempt |
 
 Automations (all opt-in, off): `PIR match created` (provisioned OpenCTI
-trigger: create of Report, Intrusion-Set, Campaign or Vulnerability with
+trigger: create of Report or Vulnerability with
 `organization_context: ["pir_ids"]`, so only entities flagged in one of the
-organization's PIRs reach it), `Weekly PIR answer` (Mondays 07:00),
+organization's PIRs reach it; threat activity, Intrusion-Set and Campaign, is
+the CTEM loop's `Threat activity flagged in a PIR`, one owner per entity type,
+and each STIX id is triaged once, #1832), `Weekly PIR answer` (Mondays 07:00),
 `Half-year threat landscape` (1 January and 1 July), `Stale indicator
 clean-up` (monthly). One gate: `indicator.revoke`, impact destructive, so it
 waits at Low: the orchestrator files one approval work item per indicator
