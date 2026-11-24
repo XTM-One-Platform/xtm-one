@@ -118,7 +118,7 @@ export function AssetGroupsTab({ add }: { add: AddRequest }) {
     },
     {
       key: "tech",
-      header: "Tech stack",
+      header: "Software",
       align: "right",
       cell: (g) => formatCount(intl.locale, g.tech_stack.length),
       csv: (g) => g.tech_stack.join(" "),

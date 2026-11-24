@@ -2,7 +2,7 @@
 // case's product the assets run, read from the asset inventory, each with its
 // asset count, its status against the fixed version and its sources as logos
 // (an SBOM gets a glyph and its name); no fixed version says so; no asset
-// running the product says so; never a "type the version in the tech stack".
+// running the product says so; never a "type the version in the software".
 
 import { describe, expect, it } from "vitest";
 import { screen, within } from "@testing-library/react";
@@ -73,7 +73,7 @@ describe("CaseRunningVersions (#1252)", () => {
     expect(screen.queryByText(/cannot be compared/)).toBeNull();
   });
 
-  it("says the fixed version is unknown, with no status column, and never sends to the tech stack", () => {
+  it("says the fixed version is unknown, with no status column, and never sends to the software", () => {
     const noFix: CtemCaseRunningVersions = {
       ...WITH_FIX,
       fixed_version: null,

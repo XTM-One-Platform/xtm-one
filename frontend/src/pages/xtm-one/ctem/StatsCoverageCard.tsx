@@ -147,8 +147,8 @@ export function StatsCoverageCard({
         {generic && (
           <GenericContextNotice
             title={t_i18n("These figures are module-wide")}
-            adminText={t_i18n("Known-exploited counts every such vulnerability in OpenCTI, not only those of your tech stack. Set up your organization context to count what affects you.")}
-            readerText={t_i18n("Known-exploited counts every such vulnerability in OpenCTI, not only those of your tech stack. An administrator can set up the organization context to count what affects you.")}
+            adminText={t_i18n("Known-exploited counts every such vulnerability in OpenCTI, not only those of your software. Set up your organization context to count what affects you.")}
+            readerText={t_i18n("Known-exploited counts every such vulnerability in OpenCTI, not only those of your software. An administrator can set up the organization context to count what affects you.")}
             testId="ctem-stats-generic"
           />
         )}

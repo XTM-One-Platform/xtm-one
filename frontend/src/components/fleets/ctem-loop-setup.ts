@@ -39,7 +39,7 @@ export const SETUP_STEP_TITLES = {
 
 /** @i18n-keys */
 export const SETUP_STEP_INTROS = {
-  organization: "The loop ranks every signal against your crown jewels and tech stack, and opens tickets in your ticketing project.",
+  organization: "The loop ranks every signal against your crown jewels and software, and opens tickets in your ticketing project.",
   modules: "The loop works with the modules connected to this platform. It runs with any of them and says what it cannot do without the others.",
   ecosystem: "Bind the tools the loop's agents act through. A slot left empty only limits what they can do, nothing breaks.",
   gates: "Choose how much the fleet does without asking a person. The table under the levels shows, action by action, what waits at the level picked; you can change it later on the fleet page.",

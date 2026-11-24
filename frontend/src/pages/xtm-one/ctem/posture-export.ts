@@ -49,8 +49,8 @@ type ExportablePosture = Pick<
  *  and `LOCKED_KPIS`), so the file and the strip use one word for one metric. */
 export const HEADLINE_LABELS: Record<keyof CtemHeadline, string> = {
   kev_count: "Known-exploited",
-  kev_tailored_count: "Known-exploited in your tech stack",
-  kev_tailored_products: "Tech stack products affected",
+  kev_tailored_count: "Known-exploited in your software",
+  kev_tailored_products: "Software affected",
   critical_count: "Critical CVEs",
   vulnerabilities_total: "Vulnerabilities",
   detection_coverage_pct: "Detection coverage",

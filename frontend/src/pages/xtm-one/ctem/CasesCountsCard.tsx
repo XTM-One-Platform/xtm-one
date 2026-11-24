@@ -95,9 +95,9 @@ export function CasesCountsCard({ configured, onConnectOpenAev }: CasesCountsCar
     return (
       <Card className="flex h-full flex-col overflow-hidden" data-testid="ctem-cases-card">
         <CardContent className="flex flex-1 flex-wrap items-center gap-3 p-4">
-          <p className="min-w-0 flex-1 content-compact">{t_i18n("Build cases from your tech stack")}</p>
+          <p className="min-w-0 flex-1 content-compact">{t_i18n("Build cases from your software")}</p>
           <Button asChild variant="outline">
-            <Link to={profileFieldHref("tech_stack")}>{t_i18n("Add tech stack")}</Link>
+            <Link to={profileFieldHref("tech_stack")}>{t_i18n("Add software")}</Link>
           </Button>
           <Button variant="outline" onClick={onConnectOpenAev}>
             {t_i18n("Connect OpenAEV")}

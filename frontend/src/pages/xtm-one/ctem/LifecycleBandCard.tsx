@@ -373,7 +373,7 @@ export function LifecycleBandCard({
   const deltaText = (n: number | null) => (n == null ? null : t_i18n("{delta} / 30 d", { delta: signed(n) }));
   const changeHelp = t_i18n("Change over the last 30 days");
   const measuredHelp = t_i18n("From the connected modules' metrics alone, whatever the organization.");
-  const contextHelp = t_i18n("The same metrics read against your organization context: crown jewels, tech stack, sector, PIRs and risk appetite. The more of it is filled, the more of the score holds.");
+  const contextHelp = t_i18n("The same metrics read against your organization context: crown jewels, software, sector, PIRs and risk appetite. The more of it is filled, the more of the score holds.");
   const contextLink = <RowAction href={ORGANIZATION_CONTEXT_SETUP}>{t_i18n("Add organization context")}</RowAction>;
 
   const postureTrend = window30.map((h) => h.posture_score ?? null);

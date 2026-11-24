@@ -1154,7 +1154,7 @@ CONTRACT_FIELDS: tuple[tuple[str, str], ...] = (
     ("regions", "regions of operation"),
     ("size", "organization size"),
     ("crown_jewels", "crown jewels and business services"),
-    ("tech_stack", "tech stack"),
+    ("tech_stack", "software"),
     ("ai_systems", "AI systems inventory"),
     ("pir_ids", "priority intelligence requirements (PIRs)"),
     ("risk_appetite.annual_loss_threshold", "risk appetite: annual loss threshold"),

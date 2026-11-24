@@ -52,7 +52,7 @@ function renderTrace(signal: CtemSignal) {
 afterEach(() => get.mockReset());
 
 describe("signal rule facts", () => {
-  it("matches the software rule only when the scope gate resolved the tech stack", () => {
+  it("matches the software rule only when the scope gate resolved the software", () => {
     expect(signalRuleFacts({ software: ["nginx"] }, { reconcile: { tech_stack: ["nginx"] } })).toEqual([
       { key: "software", software: "nginx", matched: true, checked: true },
     ]);
@@ -74,7 +74,7 @@ describe("signal rule facts", () => {
     expect(signalRuleFacts(null)).toEqual([]);
   });
 
-  it("the trace names the software rule in its own row when the source is in the tech stack", async () => {
+  it("the trace names the software rule in its own row when the source is in the software", async () => {
     const facts = await renderTrace(onSoftware);
     expect(within(facts).getByText("Trigger rule")).toBeTruthy();
     expect(within(facts).getByText("Vulnerability on software we run: nginx 1.27.1")).toBeTruthy();
@@ -83,11 +83,11 @@ describe("signal rule facts", () => {
     expect(evidence).not.toHaveTextContent("software:");
   });
 
-  it("a software signal not resolved to the tech stack claims no trigger rule", async () => {
+  it("a software signal not resolved to the software claims no trigger rule", async () => {
     const facts = await renderTrace({ ...onSoftware, state: "discarded", decision: { version: 1, reconcile: { tech_stack: [] } } });
     expect(within(facts).queryByText("Trigger rule")).toBeNull();
     expect(within(facts).getByText("Source software")).toBeTruthy();
-    expect(within(facts).getByText("nginx 1.27.1, not in the tech stack")).toBeTruthy();
+    expect(within(facts).getByText("nginx 1.27.1, not in your software inventory")).toBeTruthy();
   });
 
   it("a PIR flag is stated as a fact, and both facts show when the evidence carries both", async () => {

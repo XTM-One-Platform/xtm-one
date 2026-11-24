@@ -65,7 +65,7 @@ PROFILE_FIELD_WORDS: dict[str, str] = {
     "sector": "sector",
     "regions": "region",
     "crown_jewels": "crown jewel",
-    "tech_stack": "tech stack",
+    "tech_stack": "software",
     "ai_systems": "ai system",
     "pir_ids": "pir",
     "risk_appetite": "risk appetite",

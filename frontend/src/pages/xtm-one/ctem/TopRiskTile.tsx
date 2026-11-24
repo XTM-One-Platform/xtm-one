@@ -68,7 +68,7 @@ export function TopRiskTile({ count, history, tailored, onOpen, onConnect, class
 
   const trend = seriesChange(history);
   const drawn = history.filter((v) => v != null).length >= 2;
-  const label = tailored ? t_i18n("Known-exploited in your tech stack") : t_i18n("Known-exploited exposures");
+  const label = tailored ? t_i18n("Known-exploited in your software") : t_i18n("Known-exploited exposures");
   return (
     <section
       className={cn(

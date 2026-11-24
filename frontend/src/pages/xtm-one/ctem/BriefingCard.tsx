@@ -226,8 +226,8 @@ export function BriefingCard({
         {ready && noProfile && (
           <GenericContextNotice
             title={t_i18n("This briefing is generic")}
-            adminText={t_i18n("No organization context is set, so the analyst cannot rank findings by your sector, regions, crown jewels or tech stack. Set it up, then generate the briefing again.")}
-            readerText={t_i18n("No organization context is set, so the analyst cannot rank findings by your sector, regions, crown jewels or tech stack. An administrator can set it up.")}
+            adminText={t_i18n("No organization context is set, so the analyst cannot rank findings by your sector, regions, crown jewels or software. Set it up, then generate the briefing again.")}
+            readerText={t_i18n("No organization context is set, so the analyst cannot rank findings by your sector, regions, crown jewels or software. An administrator can set it up.")}
             testId="ctem-briefing-generic"
           />
         )}

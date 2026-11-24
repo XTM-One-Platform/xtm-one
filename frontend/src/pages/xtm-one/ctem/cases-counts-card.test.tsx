@@ -102,12 +102,12 @@ describe("CasesCountsCard", () => {
     get.mockResolvedValue({ vertical: "cyber", counts: {}, cases: [], details_unavailable: [] });
     const connect = vi.fn();
     draw(false, connect);
-    expect(await screen.findByText("Build cases from your tech stack")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Add tech stack" }).getAttribute("href")).toBe("/ctem/inventory/software?card=tech_stack");
+    expect(await screen.findByText("Build cases from your software")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Add software" }).getAttribute("href")).toBe("/ctem/inventory/software?card=tech_stack");
     fireEvent.click(screen.getByRole("button", { name: "Connect OpenAEV" }));
     expect(connect).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    expect(screen.queryByText("Build cases from your tech stack")).toBeNull();
+    expect(screen.queryByText("Build cases from your software")).toBeNull();
   });
 
   it("offers a retry when the read failed", async () => {
