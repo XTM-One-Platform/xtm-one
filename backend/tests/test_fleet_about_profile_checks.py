@@ -11,7 +11,7 @@ from __future__ import annotations
 from app.api.v1 import organization_context as organization_context_api
 from app.services.fleet_about import PROFILE_CHECK_FIELDS
 from app.services.fleet_docs import PREREQUISITE_CHECKS
-from app.services.organization_context import DERIVED_FIELDS, OrganizationProfile
+from app.services.organization_context import OrganizationProfile
 
 
 def test_every_profile_field_check_of_the_documentation_is_mapped_to_a_real_profile_field():
@@ -19,7 +19,8 @@ def test_every_profile_field_check_of_the_documentation_is_mapped_to_a_real_prof
         c for c in PREREQUISITE_CHECKS if c.startswith("profile:") and c != "profile:tracked_organizations"
     }
     assert profile_checks == set(PROFILE_CHECK_FIELDS)
-    fields = set(OrganizationProfile.model_fields) | set(DERIVED_FIELDS)
+    # #1844: no derived ai_systems field; profile:ai_targets reads the assets of category ai_target.
+    fields = set(OrganizationProfile.model_fields)
     assert set(PROFILE_CHECK_FIELDS.values()) <= fields
 
 
