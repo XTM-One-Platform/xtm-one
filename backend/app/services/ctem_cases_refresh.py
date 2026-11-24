@@ -95,17 +95,20 @@ async def interval_minutes(db: AsyncSession) -> int:
 
 
 async def loop_fleet_run_as(db: AsyncSession) -> list[str]:
-    """The run-as users of the enabled automations of the CTEM loop fleet's members."""
-    from app.agents.builtin_fleets import CTEM_LOOP_SLUG
+    """The run-as users of the enabled automations of the members of every fleet running CTEM cases (#1966)."""
     from app.models.assignment import Assignment
     from app.models.fleet import Fleet, FleetMember
+    from app.services.ctem_case_routing import case_fleets
 
+    fleet_ids = [uuid.UUID(f.fleet_id) for f in await case_fleets(db) if f.active]
+    if not fleet_ids:
+        return []
     rows = await db.execute(
         select(Assignment.run_as_user_id)
         .join(FleetMember, FleetMember.agent_id == Assignment.agent_id)
         .join(Fleet, Fleet.id == FleetMember.fleet_id)
         .where(
-            Fleet.slug == CTEM_LOOP_SLUG,
+            Fleet.id.in_(fleet_ids),
             Assignment.enabled.is_(True),
             Assignment.run_as_user_id.is_not(None),
         )

@@ -53,11 +53,30 @@ def test_the_case_assignment_is_a_valid_platform_event_trigger() -> None:
 
 
 def test_every_trigger_path_starts_exactly_one_fleet_run() -> None:
-    from app.services.ctem_case_routing import owner_of
+    from datetime import UTC, datetime
+
+    from app.services.ctem_case_routing import CaseFleet, owner_of
+
+    def declared(on: set[str]) -> list[CaseFleet]:
+        t0 = datetime(2026, 1, 1, tzinfo=UTC)
+        return [
+            CaseFleet("ctem-loop", "1", "ctem-loop", "loop", None, "ctem:f1", True, t0, "ctem-loop" in on),
+            CaseFleet(
+                "ctem-vuln-prioritization",
+                "2",
+                "ctem-vuln-prioritization",
+                "vuln",
+                ("new_vulnerability",),
+                "ctem:f2",
+                True,
+                t0,
+                "ctem-vuln-prioritization" in on,
+            ),
+        ]
 
     for active in (set(), {"ctem-loop"}, {"ctem-vuln-prioritization"}, {"ctem-loop", "ctem-vuln-prioritization"}):
         for path in TRIGGER_PATHS:
-            payload = {"case_id": "c", "trigger_path": path, "owner_fleet": owner_of(path, active)}
+            payload = {"case_id": "c", "trigger_path": path, "owner_fleet": owner_of(path, declared(active))}
             heard = [
                 a["agent_slug"]
                 for a in (CTEM_F1_CASE_ASSIGNMENT, CTEM_F2_CASE_ASSIGNMENT)
