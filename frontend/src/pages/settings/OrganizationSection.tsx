@@ -182,7 +182,7 @@ const AMOUNT_INPUT_CLASS = "[&_input]:pr-36";
 
 /**
  * The cards of the profile one page mounts alone (#1178, Sam 22 Nov 2026): CTEM > Inventory edits the software inventory,
- * the AI systems, the assets and exposure, the asset groups, the policy and the outside lens with the same cards,
+ * the assets and exposure, the asset groups, the policy and the outside lens with the same cards,
  * the same per-card edit and the same Save as Settings, nothing stored twice. Without it the whole profile page.
  */
 export type OrganizationEmbed = {
@@ -790,7 +790,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     );
   };
   /**
-   * The three lists (primary assets, software inventory, AI systems) read on the shared DataTable (data
+   * The two lists (primary assets, software inventory) read on the shared DataTable (data
    * tables slice 9): search, filters, sort, CSV and the pager. In edit they keep all of it on the
    * list editor (#12256, OrganizationListEditor): one row open at a time, the order frozen.
    */
@@ -1438,7 +1438,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                 <div className="max-w-xs space-y-1 content-compact">
                   <p>
                     {t_i18n(
-                      "What every agent and fleet reads before it ranks, scopes or estimates: your sector, regions, primary assets, software, AI systems, intelligence requirements, risk appetite and costs. Agents cite the fields they used and name the ones not filled, never guess them. Each save is a new version.",
+                      "What every agent and fleet reads before it ranks, scopes or estimates: your sector, regions, primary assets, software, intelligence requirements, risk appetite and costs. Agents cite the fields they used and name the ones not filled, never guess them. Each save is a new version.",
                     )}
                   </p>
                   <p data-testid="settings.organization.shared">{t_i18n("Shared context: the whole profile is visible to every user and every agent of this XTM One platform.")}</p>
