@@ -222,6 +222,35 @@ def test_the_tools_record_list_and_dispose(store, monkeypatch):
     assert after.startswith("No undisposed friction")
 
 
+def test_a_harness_friction_refuses_a_skill_or_prompt_edit(store):
+    _, executor = build_friction_tools(str(USER), str(AGENT), run_id=RUN)
+
+    async def call(name, **arguments):
+        return (await executor.execute_tool(ToolCall(id=name, name=name, arguments=arguments))).content
+
+    async def go():
+        await call("record_friction", what="a tool answered wrong", where="some_tool")
+        fid = str(store.rows[0].id)
+        skill = await call(
+            "dispose_friction", id=fid, friction_class="harness", disposition="skill_edit", ref="skill X s.3"
+        )
+        prompt = await call(
+            "dispose_friction", id=fid, friction_class="harness", disposition="prompt_edit", ref="prompt Y"
+        )
+        undisposed = store.rows[0].disposed_at
+        kept = await call(
+            "dispose_friction", id=fid, friction_class="harness", disposition="shared_state", ref="dev:harness-gaps"
+        )
+        return skill, prompt, undisposed, kept
+
+    skill, prompt, undisposed, kept = asyncio.run(go())
+    assert skill.startswith("Error:") and "harness friction" in skill and "work_item" in skill
+    assert prompt.startswith("Error:") and "prompt_edit" in prompt
+    assert undisposed is None
+    assert kept.startswith("Disposed")
+    assert store.rows[0].disposition_kind == "shared_state"
+
+
 def test_a_work_item_ref_resolves_an_id_prefix(store, monkeypatch):
     item_id = "8588abc0-ebb3-4282-b267-ef4169dccbaa"
     twin_a = "5a5a5a5a-0000-4000-8000-000000000001"
