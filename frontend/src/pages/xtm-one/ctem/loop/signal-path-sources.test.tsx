@@ -13,7 +13,12 @@ const state = vi.hoisted(() => ({ admin: true, saved: [] as unknown[] }));
 
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ isAdmin: state.admin }) }));
 vi.mock("@/hooks/api/useIntegrationApi", () => ({
-  useIntegrations: () => ({ data: [{ id: "i-shodan", name: "Shodan prod", provider: "shodan", status: "connected" }] }),
+  useIntegrations: () => ({
+    data: [
+      { id: "i-shodan", name: "Shodan prod", provider: "shodan", status: "connected" },
+      { id: "i-opencrq", name: "OpenCRQ risk", provider: "opencrq", status: "connected" },
+    ],
+  }),
 }));
 vi.mock("@/hooks/api/useOrganizationContextApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useOrganizationContextApi")>()),
@@ -119,6 +124,26 @@ describe("the sources side panel (#1445)", () => {
     expect(body.fields.signal_sources.excluded.new_exposure).toEqual(["gti:pass", "shodan:pass"]);
     // The pass stays on: its field is not sent at all.
     expect(body.fields.attack_surface).toBeUndefined();
+  });
+
+  it("turns the evidence health pass off on the single connected OpenCRQ, naming it so the off holds (#1937)", () => {
+    const decay: CtemSignalPath = {
+      ...EXPOSURE,
+      id: "coverage_gap",
+      label: "Blind spot or coverage gap",
+      sources: [{ provider: "opencrq", kind: "pass", event: "A scenario with no evidence", bound: true, available: true, also_feeds: ["stale_asset"] }],
+    };
+    open(decay);
+    const row = screen.getByTestId("ctem-path-source");
+    // None declared: the pass runs on the single connected OpenCRQ, and says so.
+    expect(within(row).getByTestId("ctem-path-source-runs-on").textContent).toContain("OpenCRQ risk");
+    const pass = within(row).getByTestId("ctem-path-source-pass");
+    expect(pass.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(pass);
+    const body = state.saved[0] as { fields: Record<string, { enabled: boolean; integration: string }> };
+    // `enabled: false` with none declared is the legacy default read as on: the off names the integration.
+    expect(body.fields.evidence_health).toMatchObject({ enabled: false, integration: "i-opencrq" });
+    expect(Object.keys(body.fields)).toEqual(["evidence_health"]);
   });
 
   it("shows a reader the same states without controls that write", () => {

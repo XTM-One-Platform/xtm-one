@@ -32,7 +32,14 @@ import { type OrganizationProfile, useOrganizationContext, usePatchOrganizationC
 import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
-import { DEFAULT_ATTACK_SURFACE, passIntegrationIds } from "@/lib/organization-profile";
+import {
+  DEFAULT_ATTACK_SURFACE,
+  DEFAULT_EVIDENCE_HEALTH,
+  type EvidenceHealthPass,
+  evidenceHealthRuns,
+  evidenceHealthSavedIntegration,
+  passIntegrationIds,
+} from "@/lib/organization-profile";
 import { cn } from "@/lib/utils";
 import {
   PATH_ICON,
@@ -90,21 +97,31 @@ function SourceRow({
   const shared = (source.also_feeds ?? []).map((id) => labels[id] ?? id);
 
   const attackSurface = { ...DEFAULT_ATTACK_SURFACE, ...(profile?.attack_surface ?? {}) };
-  const evidenceHealth = (profile?.evidence_health ?? {}) as { enabled?: boolean | null; integration?: string };
+  const evidenceHealth: EvidenceHealthPass = { ...DEFAULT_EVIDENCE_HEALTH, ...((profile?.evidence_health ?? {}) as Partial<EvidenceHealthPass>) };
+  const opencrqIds = integrations.filter((i) => i.provider === source.provider && i.status === "connected").map((i) => i.id);
+  // The integration the evidence health pass reads, as `resolve_pass` picks it: the declared one, else the single connected one (#1937).
+  const evidenceRuns = evidenceHealthRuns(evidenceHealth, opencrqIds).integration || evidenceHealth.integration.trim();
+  const evidenceIds = evidenceRuns ? [evidenceRuns] : [];
   // The attack surface switch is the stored flag; the evidence health pass may run unset (#1344): the API's truth.
   const passOn = passField === "attack_surface" ? attackSurface.enabled : Boolean(source.available);
-  const passIds = passField === "attack_surface" ? passIntegrationIds(attackSurface) : passField === "evidence_health" && evidenceHealth.integration ? [evidenceHealth.integration] : [];
+  const passIds = passField === "attack_surface" ? passIntegrationIds(attackSurface) : passField === "evidence_health" ? evidenceIds : [];
   const runsOn = passIds
     .map((id) => integrations.find((i) => i.id === id))
     .filter((i): i is NonNullable<typeof i> => Boolean(i) && i?.provider === source.provider)
     .map((i) => i.name);
   const noScope = passField === "attack_surface" && !(profile?.owned_domains?.length || profile?.address_ranges?.length);
-  // The attack surface switch needs an integration chosen on its card: without one it points there.
-  const switchable = passField === "evidence_health" || (passField === "attack_surface" && passIds.length > 0);
+  // A pass switch needs the integration it runs on: chosen on its card, or the single connected one; without one it points there.
+  const switchable = (passField === "evidence_health" || passField === "attack_surface") && passIds.length > 0;
 
   const togglePass = (enabled: boolean) => {
     if (passField === "attack_surface") onSave({ attack_surface: { ...attackSurface, enabled } }, t_i18n("Scheduled pass saved"));
-    else if (passField === "evidence_health") onSave({ evidence_health: { ...evidenceHealth, enabled } }, t_i18n("Scheduled pass saved"));
+    // An off names the integration it ran on, as the Settings card does: `enabled: false` with none declared is the
+    // legacy stored default, which `resolve_pass` reads as on, so the off would not hold (#1937).
+    else if (passField === "evidence_health")
+      onSave(
+        { evidence_health: { ...evidenceHealth, enabled, integration: evidenceHealthSavedIntegration(evidenceHealth.integration.trim(), enabled, opencrqIds) } },
+        t_i18n("Scheduled pass saved"),
+      );
   };
   const toggleUse = (use: boolean) =>
     onSave({ signal_sources: withExclusion(profile?.signal_sources, path.id, key, !use) }, use ? t_i18n("Source used on this path") : t_i18n("Source taken off this path"));
