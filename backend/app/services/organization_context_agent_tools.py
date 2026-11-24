@@ -87,8 +87,8 @@ def declared_organization_tools(
     definition = ToolDefinition(
         name=OPENCRQ_RECONCILE_TOOL,
         description=(
-            "Reconcile the crown jewels with OpenCRQ's supporting assets both ways: apply false answers the "
-            "plan, true saves a version and writes the criticalities to OpenCRQ." + shared_context_clause
+            "Reconcile the crown jewels with OpenCRQ's primary assets: apply false answers the "
+            "plan, true saves a version of the profile (nothing is written to OpenCRQ)." + shared_context_clause
         ),
         input_schema={
             "type": "object",
