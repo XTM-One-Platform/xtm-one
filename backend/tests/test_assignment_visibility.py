@@ -539,6 +539,10 @@ _FLAG_TIER_ALLOWED: dict[tuple[str, str], str] = {
         "finds a built-in agent's own learned skill, a company-managed skill by construction, by its "
         "learned-for-agent tag for the record_learned_lesson tool; lists nothing to a caller (#914)"
     ),
+    ("services/fleet_reset.py", "_seeded_bindings"): (
+        "finds the platform-seeded skills a built-in agent's seed binds, by their slug tag, to rewrite "
+        "that agent at an administrator's fleet reset; lists nothing to a caller, never a caller tier (#1508)"
+    ),
 }
 
 

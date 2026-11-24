@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Icon } from "@filigran/design-system";
 import {
   Dialog,
@@ -35,6 +35,20 @@ interface ConfirmDeleteDialogProps {
   confirmLabel?: string;
   /** Label for the cancel button. */
   cancelLabel?: string;
+  /** Extra content between the description and the name field (what the action changes). */
+  children?: ReactNode;
+  /** Label above the name field; default "To confirm, type <name> below:". */
+  inputLabel?: ReactNode;
+  /** Accessible name of the name field; default "Type <name> to confirm deletion". */
+  inputAriaLabel?: string;
+  /** Keeps the confirm button disabled even once the name matches (a plan loading, nothing to do). */
+  confirmDisabled?: boolean;
+  /** The confirmed action is running: both buttons are disabled and the dialog stays open. */
+  pending?: boolean;
+  /** Why the action failed, shown inline under the field (role="alert"), never in a toast alone. */
+  error?: ReactNode;
+  /** false: an async action, the caller closes the dialog once it succeeded. Default true. */
+  closeOnConfirm?: boolean;
 }
 
 export function ConfirmDeleteDialog({
@@ -46,8 +60,22 @@ export function ConfirmDeleteDialog({
   description,
   confirmLabel = "Delete",
   cancelLabel = "Cancel",
+  children,
+  inputLabel,
+  inputAriaLabel,
+  confirmDisabled = false,
+  pending = false,
+  error,
+  closeOnConfirm = true,
 }: ConfirmDeleteDialogProps) {
   const [value, setValue] = useState("");
+  // The typed name never survives a close, whoever closes the dialog: a caller that sets
+  // open to false itself (an async action that succeeded) bypasses handleOpenChange (review P3 on #1523).
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (!open) setValue("");
+  }
 
   const isMatch = name.length > 0 && value === name;
 
@@ -79,31 +107,43 @@ export function ConfirmDeleteDialog({
           </div>
         </DialogHeader>
 
+        {children}
+
         <div className="space-y-2 pt-1">
           <label htmlFor="confirm-delete-name" className="content-compact text-default-secondary">
-            To confirm, type <strong className="text-default-primary">{name}</strong> below:
+            {inputLabel ?? (
+              <>
+                To confirm, type <strong className="text-default-primary">{name}</strong> below:
+              </>
+            )}
           </label>
           <Input
             id="confirm-delete-name"
-            aria-label={`Type ${name} to confirm deletion`}
+            aria-label={inputAriaLabel ?? `Type ${name} to confirm deletion`}
+            autoComplete="off"
             autoFocus
             placeholder={name}
             value={value}
             onChange={(e) => setValue(e.target.value)}
           />
+          {error ? (
+            <p role="alert" className="content-compact text-feedback-error-tertiary" data-testid="confirm-delete-error">
+              {error}
+            </p>
+          ) : null}
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
-          <Button variant="ghost" size="sm" onClick={() => handleOpenChange(false)}>
+          <Button variant="ghost" size="sm" disabled={pending} onClick={() => handleOpenChange(false)}>
             {cancelLabel}
           </Button>
           <Button
             size="sm"
             className="bg-feedback-error-primary hover:bg-feedback-error-primary/90 text-negative-primary border-0"
-            disabled={!isMatch}
+            disabled={!isMatch || confirmDisabled || pending}
             onClick={() => {
               onConfirm();
-              handleOpenChange(false);
+              if (closeOnConfirm) handleOpenChange(false);
             }}
           >
             {confirmLabel}

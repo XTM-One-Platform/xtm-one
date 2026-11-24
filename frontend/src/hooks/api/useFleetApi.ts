@@ -1450,6 +1450,53 @@ export function useFleetControl(fleetId: string, action: "pause" | "resume") {
   });
 }
 
+/** What a reset to the factory state changes (`FleetResetResponse`, #1508); the dry run's counts feed the dialog. */
+export interface FleetResetResult {
+  fleet_id: string;
+  dry_run: boolean;
+  automations: number;
+  run_as_cleared: number;
+  /** Integrations, knowledge bases, skills, MCP servers and custom tools unbound from the members. */
+  bindings: number;
+  pins: number;
+  gates: number;
+  /** The level the fleet moves back to; null when it is already there. */
+  autonomy_level: string | null;
+  agents: number;
+  settings: string[];
+  documentation: boolean;
+  held_by_stop: string[];
+  automations_state: FleetAutomations;
+}
+
+/** The dry run of a reset, read while its dialog is open (administrators, built-in fleets). */
+export function useFleetResetPlan(fleetId: string, enabled: boolean) {
+  return useQuery<FleetResetResult>({
+    queryKey: [...KEY, "reset-plan", fleetId],
+    queryFn: () => api.post<FleetResetResult>(`/fleets/${fleetId}/reset`, { dry_run: true }),
+    enabled,
+    staleTime: 0,
+    gcTime: 0,
+    meta: OWN_ERROR_TOAST,
+  });
+}
+
+/** Reset a built-in fleet to its factory state (`POST /fleets/{id}/reset`, #1508), the fleet's name typed. */
+export function useFleetReset(fleetId: string) {
+  const invalidate = useInvalidateFleet();
+  const qc = useQueryClient();
+  return useMutation<FleetResetResult, Error, string>({
+    mutationFn: (confirmName) => api.post<FleetResetResult>(`/fleets/${fleetId}/reset`, { confirm_name: confirmName }),
+    onSettled: () => {
+      invalidate();
+      qc.invalidateQueries({ queryKey: ["assignments"] });
+      qc.invalidateQueries({ queryKey: ["agents"] });
+      syncFlowNodeCatalog(qc);
+    },
+    meta: OWN_ERROR_TOAST,
+  });
+}
+
 /** One automation of the fleet that is off (`FleetEnableItemResponse`): switched on when selected. */
 export interface FleetEnableItem {
   id: string;

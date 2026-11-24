@@ -126,8 +126,8 @@ def build_organization_context_tool(
                         else cats.rows_of(profile, found_category)
                     )
                     org_id = getattr(row, "organization_id", None)
-                    if found_category.field == "tech_stack" and isinstance(org_id, uuid.UUID):
-                        rows = await _inventory_rows(db, org_id) or rows
+                    if found_category.name == cats.SOFTWARE and isinstance(org_id, uuid.UUID):
+                        rows = await _software_rows(db, org_id) or rows
                     return cats.render_page(
                         found_category,
                         rows,
@@ -170,26 +170,36 @@ def build_organization_context_tool(
             asset_counts=await asset_list_counts(db, primary.organization_id if primary else None),
         )
 
-    async def _inventory_rows(db: AsyncSession, organization_id: uuid.UUID) -> list[dict[str, object]]:
-        """The tech stack built from the assets' software (#1178, S4); ``[]`` when no asset carries software."""
+    async def _software_rows(db: AsyncSession, organization_id: uuid.UUID) -> list[dict[str, object]]:
+        """The organization's Software entities (#1495), synced and hand-typed; ``[]`` when it has none."""
         from app.services import organization_asset_store as store
+        from app.services import organization_software_store as software_store
 
         try:
             async with db.begin_nested():
                 await store.ensure_built(db, organization_id)
-            if not await store.has_software(db, organization_id):
-                return []
-            page = await store.tech_stack_inventory(db, organization_id, limit=store.MAX_PAGE)
+            page = await software_store.list_software(db, organization_id, limit=software_store.MAX_PAGE)
             items = list(page.items)
             while len(items) < page.total:
-                more = await store.tech_stack_inventory(db, organization_id, offset=len(items), limit=store.MAX_PAGE)
+                more = await software_store.list_software(
+                    db, organization_id, offset=len(items), limit=software_store.MAX_PAGE
+                )
                 if not more.items:
                     break
                 items += more.items
-            return items
+            return [_software_row(item) for item in items]
         except Exception:  # the profile's typed rows still answer
-            logger.warning("Tech stack inventory read failed", exc_info=True)
+            logger.warning("Software read failed", exc_info=True)
             return []
+
+    def _software_row(item: dict[str, object]) -> dict[str, object]:
+        """One Software as an agent reads it: what identifies it and where it runs, no internal field."""
+        keep = ("name", "vendor", "product", "type", "cpe", "cpe_state", "purl", "origin", "sources")
+        return {
+            **{key: item.get(key) for key in keep},
+            "version_count": item.get("version_count", 0),
+            "asset_count": item.get("asset_count", 0),
+        }
 
     async def _enterprise_knowledge(db: AsyncSession, profile: OrganizationProfile, query: str, limit: int) -> str:
         from app.services import organization_enterprise_knowledge as ek
@@ -212,11 +222,12 @@ def build_organization_context_tool(
         name=ORGANIZATION_CONTEXT_TOOL,
         description=(
             "Read the organization profile: sector, regions, size, crown jewels and business "
-            "services, tech stack, AI systems, PIRs, risk appetite, loaded hourly rate and "
+            "services, software, AI systems, PIRs, risk appetite, loaded hourly rate and "
             "currency, ticketing target, and the fields not filled. Read it before ranking, "
             "scoping or estimating; cite the fields you used and name the missing ones, never guess them. "
-            'Long lists are categories: category="*" lists them with their sizes; category="tech_stack" (any listed name) '
-            "reads one by page (query filters the rows, offset/limit page it, so a list of any length is read whole)."
+            'Long lists are categories: category="*" lists them with their sizes; category="software" (any listed name) '
+            "reads one by page (query filters the rows, offset/limit page it, so a list of any length is read whole). "
+            'category="tech_stack" is a deprecated alias of "software", answered for one release.'
         ),
         input_schema={
             "type": "object",
@@ -228,7 +239,7 @@ def build_organization_context_tool(
                 "category": {
                     "type": "string",
                     "description": (
-                        "One category of your organization (e.g. tech_stack, crown_jewels, assets_exposure, "
+                        "One category of your organization (e.g. software, crown_jewels, assets_exposure, "
                         "prioritization_policy, enterprise_knowledge); '*' lists them."
                     ),
                 },
