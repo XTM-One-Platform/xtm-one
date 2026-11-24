@@ -308,13 +308,38 @@ def test_rows_that_left_the_source_are_reported_and_kept_unless_removed():
 
 
 def test_opencrq_threshold_keeps_that_level_and_above():
+    # #1591: OpenCRQ primary assets, rated by their highest security need.
     assets = [
-        {"id": "1", "name": "A", "criticality": "low"},
-        {"id": "2", "name": "B", "criticality": "medium"},
-        {"id": "3", "name": "C", "criticality": "very_high"},
+        {"id": "1", "name": "A", "availability": "low"},
+        {"id": "2", "name": "B", "availability": "low", "confidentiality": "medium"},
+        {"id": "3", "name": "C", "traceability": "very_high"},
+        {"id": "4", "name": "D"},
     ]
-    assert [j.name for j in (imp.opencrq_jewel(a, "medium") for a in assets) if j] == ["B", "C"]
-    assert [j.criticality for j in (imp.opencrq_jewel(a, "high") for a in assets) if j] == ["critical"]
+    # A primary asset with no need rated is always kept, as high.
+    assert [j.name for j in (imp.opencrq_primary_asset(a, "medium") for a in assets) if j] == ["B", "C", "D"]
+    assert [j.criticality for j in (imp.opencrq_primary_asset(a, "high") for a in assets) if j] == ["critical", "high"]
+    assert [j.name for j in (imp.opencrq_primary_asset(a) for a in assets) if j] == ["A", "B", "C", "D"]
+    # The alias kept for one release reads primary assets too.
+    assert imp.opencrq_jewel(assets[2], "low") == imp.opencrq_primary_asset(assets[2], "low")
+
+
+def test_a_row_of_the_superseded_supporting_asset_layer_is_removed_and_a_typed_row_kept() -> None:
+    # #1591: rows an older build imported from OpenCRQ SUPPORTING assets go at the next import.
+    profile = oc.OrganizationProfile(
+        crown_jewels=[
+            oc.CrownJewel(name="Mail server", source="opencrq", external_id="s1"),
+            oc.CrownJewel(name="Mail", source="manual", opencrq_asset_id="s1"),
+        ]
+    )
+    rows = [imp.opencrq_primary_asset({"id": "p1", "name": "Messaging", "availability": "high"})]
+    read = imp.ReadResult(rows=[r for r in rows if r], total=1, superseded={"s1"})
+    plan = imp.plan_import(profile, "crown_jewels", "opencrq", read)
+    assert plan.superseded == ["Mail server"]
+    assert plan.profile is not None
+    assert [j.name for j in plan.profile.crown_jewels] == ["Mail", "Messaging"]
+    # A failed read supersedes nothing.
+    failed = imp.plan_import(profile, "crown_jewels", "opencrq", imp.ReadResult(error="x", superseded={"s1"}))
+    assert failed.superseded == []
 
 
 def test_openaev_filter_group_ands_every_filter():

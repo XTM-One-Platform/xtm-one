@@ -670,7 +670,13 @@ async def _link_crown_jewels(db: AsyncSession, organization_id: uuid.UUID, jewel
 async def set_crown_jewel_links(
     db: AsyncSession, organization_id: uuid.UUID, crown_jewel: str, names: Iterable[Any]
 ) -> list[str]:
-    """Replace the links of *crown_jewel* with the records and groups *names* name; answer the names found none."""
+    """Replace the links of *crown_jewel* with the records and groups *names* name; answer the names found none.
+
+    A person's write (#1591): the manual links are replaced; a link a sync wrote
+    (``source`` opencrq or rule) whose record *names* leaves out is marked
+    ``removed``, so the sync never adds it back, and one *names* keeps is kept
+    (restored if it was removed). Manual wins over the sync either way.
+    """
     jewel_key = _key(crown_jewel)[:200]
     if not jewel_key:
         return []
@@ -678,10 +684,25 @@ async def set_crown_jewel_links(
         delete(OrganizationCrownJewelLink).where(
             OrganizationCrownJewelLink.organization_id == organization_id,
             OrganizationCrownJewelLink.crown_jewel_key == jewel_key,
+            OrganizationCrownJewelLink.source == "manual",
         )
     )
     keys = {_key(n)[:200]: str(n) for n in names if _key(n)}
+    synced = list(
+        (
+            await db.execute(
+                select(OrganizationCrownJewelLink).where(
+                    OrganizationCrownJewelLink.organization_id == organization_id,
+                    OrganizationCrownJewelLink.crown_jewel_key == jewel_key,
+                    OrganizationCrownJewelLink.source != "manual",
+                )
+            )
+        ).scalars()
+    )
     if not keys:
+        for link in synced:
+            link.removed = True
+        await db.flush()
         return []
     groups = (
         await db.execute(
@@ -698,6 +719,10 @@ async def set_crown_jewel_links(
         )
     ).all()
     found: set[str] = set()
+    kept_records = {record_id for _name_key, record_id in records}
+    synced_records = {link.record_id for link in synced if link.record_id is not None}
+    for link in synced:
+        link.removed = link.record_id not in kept_records
     for name_key, group_id in groups:
         found.add(name_key)
         db.add(
@@ -705,6 +730,8 @@ async def set_crown_jewel_links(
         )
     for name_key, record_id in records:
         found.add(name_key)
+        if record_id in synced_records:
+            continue  # the synced link stands for it, kept above
         db.add(
             OrganizationCrownJewelLink(organization_id=organization_id, crown_jewel_key=jewel_key, record_id=record_id)
         )
