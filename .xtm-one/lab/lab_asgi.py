@@ -103,6 +103,10 @@ Every lab answers ``GET /api/v1/lab/whatsapp-decision`` (and ``/index``) with th
 message in every state, drawn from the real payload builder (``whatsapp_decision_preview``, #842 S12): WhatsApp
 offers no other surface a review can open.
 
+Every lab answers ``GET /api/v1/lab/locale/<en|fr|es|ja|default>?next=<path>`` (``lab_locale``, #1653): the
+language is stored on every user of the lab and the answer redirects to ``next``, so one browser ``navigate`` reloads
+the app in that language.
+
 dev-docs/reference/agentic-labs.md, "The xtm-one lab".
 """
 
@@ -116,6 +120,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import ctem_sample  # beside this file
+import lab_locale  # beside this file
 import whatsapp_decision_preview  # beside this file
 
 from app.api.v1 import ctem_metrics
@@ -1586,6 +1591,10 @@ async def _send_html(send, page: str) -> None:
 
 
 async def application(scope, receive, send):
+    locale = lab_locale.asks_locale(scope)
+    if locale is not None:
+        await lab_locale.answer(scope, send, locale)
+        return
     whatsapp_page = whatsapp_decision_preview.answer(scope)
     if whatsapp_page is not None:
         await _send_html(send, whatsapp_page)

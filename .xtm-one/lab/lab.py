@@ -2059,6 +2059,32 @@ def seed_theme(token: str, who: str = "administrator") -> str:
     return theme
 
 
+def seed_language(token: str, who: str = "administrator") -> str:
+    """Store ``LAB_LOCALE`` (en, fr, es, ja) as the language of one seeded user; answer the language stored (#1653).
+
+    Called beside :func:`seed_theme` for the administrator and the peer, before their signed-in links print, so
+    both identities open in that language. Unset: nothing is stored (``auto``). At run time any lab switches with
+    ``/api/v1/lab/locale/<lang>?next=<path>`` (``lab_locale``, answered by ``lab_asgi``).
+    """
+    import lab_locale  # beside this file
+
+    raw = os.environ.get(lab_locale.LAB_LOCALE_ENV, "").strip()
+    if not raw:
+        return "auto"
+    language = lab_locale.resolve(raw)
+    if language is None:
+        if who == "administrator":
+            log(f"LAB_LOCALE={raw!r} ignored: one of {', '.join(lab_locale.LOCALES)}")
+        return "auto"
+    try:
+        api("PUT", "/settings/preferences", token, {"language": language})
+    except Exception as exc:  # noqa: BLE001 - the seed never stops the lab
+        log(f"language not set for the {who}: {exc}")
+        return "auto"
+    log(f"language: {language} (the {who}'s preference)")
+    return language
+
+
 #: The lab's second account: a non-admin peer, so a list shows what another owner shared with
 #: you ("Shared by") and what you may only read (Read-only) on real rows, with no fetch override.
 #: Lab-only, like the administrator's ``ADMIN_PASSWORD``: valid nowhere but inside the lab.
@@ -2119,6 +2145,7 @@ def seed_peer(token: str, base: str) -> tuple[dict[str, dict[str, str]], dict[st
         if not peer_token:
             raise RuntimeError("the peer's sign-in answered no access token")
         seed_theme(peer_token, "peer")
+        seed_language(peer_token, "peer")
         admin = _created(api("GET", "/auth/me", token))
     except Exception as exc:  # noqa: BLE001 - the seed never stops the lab
         return seeded, {"peer user": str(exc)[:200]}
@@ -7272,6 +7299,7 @@ def seed_entities() -> None:
         except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
             skipped["database licence"] = str(exc)[:600]
     theme = seed_theme(token)
+    seed_language(token)
     ids: dict[str, str] = {}
     for entity, route, create in SEEDS:
         try:
