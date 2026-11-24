@@ -243,7 +243,7 @@ export function ActNowCard({ rows, briefingActions = [], aiLockReason, onContent
   const now = useNow(60_000);
   // The scope the gate read for each case, from the reader's own signals only
   // (CTEM-30, #937): a case whose signals they cannot read ranks after the others
-  // of its severity and names no crown jewel.
+  // of its severity and names no primary asset.
   const caseSignals = useCtemSignalList("case_opened", 200);
   const scopes = useMemo(() => caseScopes(caseSignals.data?.pages.flatMap((p) => p.signals) ?? []), [caseSignals.data]);
   const loopCases = useMemo(() => actNowCases(cases.data?.cases ?? [], scopes), [cases.data, scopes]);
@@ -271,7 +271,7 @@ export function ActNowCard({ rows, briefingActions = [], aiLockReason, onContent
       const parts = [
         decisionCases.has(c.id) ? t_i18n("Remediation decision waits") : "",
         scope?.crownJewels.length
-          ? t_i18n("Crown jewel: {name}", { name: scope.crownJewels.join(", ") })
+          ? t_i18n("Primary asset: {name}", { name: scope.crownJewels.join(", ") })
           : scope?.criticality
             ? t_i18n("Scope criticality: {level}", { level: t_i18n((CRITICALITY_LABELS as Record<string, string>)[scope.criticality] ?? scope.criticality) })
             : "",

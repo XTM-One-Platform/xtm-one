@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Restore the crown jewels of a past profile version (#1558, frontend of #1473).
+ * Restore the primary assets of a past profile version (#1558, frontend of #1473).
  *
  * Every save of the organization profile is a version. This dialog lists them
- * with their crown-jewel count, previews the rows of the one picked, and
- * restores its crown jewels alone as a new version: the other fields stay as
+ * with their primary-asset count, previews the rows of the one picked, and
+ * restores its primary assets alone as a new version: the other fields stay as
  * they are, and a version saved meanwhile refuses the restore (409).
  */
 import { useState } from "react";
@@ -30,9 +30,9 @@ function VersionRows({ version }: { version: number }) {
   const past = useOrganizationContextVersion(version);
   if (!past.data) return <Skeleton className="h-32 w-full" />;
   const jewels = past.data.profile.crown_jewels ?? [];
-  if (jewels.length === 0) return <p className="text-default-secondary">{t_i18n("This version holds no crown jewel.")}</p>;
+  if (jewels.length === 0) return <p className="text-default-secondary">{t_i18n("This version holds no primary asset.")}</p>;
   return (
-    <ul className="space-y-1" aria-label={t_i18n("Crown jewels of this version")} data-testid="settings.organization.restore-preview">
+    <ul className="space-y-1" aria-label={t_i18n("Primary assets of this version")} data-testid="settings.organization.restore-preview">
       {jewels.map((jewel, index) => (
         <li key={`${jewel.name}-${index}`} className="flex items-center justify-between gap-2 content-compact">
           <span className="min-w-0 truncate text-default-primary">{jewel.name}</span>
@@ -83,7 +83,7 @@ export function OrganizationCrownJewelsRestoreDialog({
       {
         onSuccess: (saved) => {
           toast({
-            title: t_i18n("{count, plural, =0 {No crown jewel restored from version {version}} one {# crown jewel restored from version {version}} other {# crown jewels restored from version {version}}}", {
+            title: t_i18n("{count, plural, =0 {No primary asset restored from version {version}} one {# primary asset restored from version {version}} other {# primary assets restored from version {version}}}", {
               count: saved.profile.crown_jewels?.length ?? 0,
               version,
             }),
@@ -98,9 +98,9 @@ export function OrganizationCrownJewelsRestoreDialog({
     <Dialog open={open} onOpenChange={close}>
       <DialogContent className="max-w-3xl" data-testid="settings.organization.restore-dialog">
         <DialogHeader>
-          <DialogTitle>{t_i18n("Restore crown jewels from a past version")}</DialogTitle>
+          <DialogTitle>{t_i18n("Restore primary assets from a past version")}</DialogTitle>
           <DialogDescription>
-            {t_i18n("The crown jewels of the version you pick replace the current ones, saved as a new version. The other fields stay as they are.")}
+            {t_i18n("The primary assets of the version you pick replace the current ones, saved as a new version. The other fields stay as they are.")}
           </DialogDescription>
         </DialogHeader>
         <div className="grid min-h-0 gap-4 md:grid-cols-[15rem_1fr]">
@@ -126,7 +126,7 @@ export function OrganizationCrownJewelsRestoreDialog({
                 >
                   <span className="content-compact font-medium text-default-primary">{t_i18n("Version {version}", { version: row.version })}</span>
                   <span className="content-compact text-default-secondary">
-                    {t_i18n("{count, plural, =0 {No crown jewel} one {# crown jewel} other {# crown jewels}}", { count: row.crown_jewels ?? 0 })}
+                    {t_i18n("{count, plural, =0 {No primary asset} one {# primary asset} other {# primary assets}}", { count: row.crown_jewels ?? 0 })}
                     {row.created_at ? ` · ${intl.formatDate(new Date(row.created_at), { dateStyle: "medium", timeStyle: "short" })}` : ""}
                   </span>
                 </button>
@@ -134,12 +134,12 @@ export function OrganizationCrownJewelsRestoreDialog({
             ))}
           </ol>
           <div className="min-w-0 max-h-[55vh] overflow-y-auto rounded-sm border border-elevation-subtle p-3">
-            {selected !== null ? <VersionRows version={selected} /> : <p className="text-default-secondary">{t_i18n("Pick a version to see its crown jewels.")}</p>}
+            {selected !== null ? <VersionRows version={selected} /> : <p className="text-default-secondary">{t_i18n("Pick a version to see its primary assets.")}</p>}
           </div>
         </div>
         {restore.isError && (
           <div role="alert" className="flex flex-wrap items-center gap-2 content-compact text-feedback-error-tertiary" data-testid="settings.organization.restore-error">
-            <span>{t_i18n("The crown jewels could not be restored: {reason}", { reason: restore.error.message })}</span>
+            <span>{t_i18n("The primary assets could not be restored: {reason}", { reason: restore.error.message })}</span>
             {refusedConflict && (
               <Button variant="secondary" size="sm" onClick={reloadVersions}>
                 {t_i18n("Reload the versions")}

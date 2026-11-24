@@ -44,6 +44,7 @@ def test_the_case_assignment_is_a_valid_platform_event_trigger() -> None:
             "ctem_case.sla_breached",
             "ctem_case.validation_finished",
             "ctem_case.retest_requested",
+            "ctem_case.stalled",
         }
         # Seeded switched off, left to an administrator, like every fleet automation.
         assert assignment["enabled"] is False and assignment["admin_opt_in"] is True
@@ -86,6 +87,8 @@ def test_the_prompts_make_the_case_the_record() -> None:
         assert "get_ctem_case" in prompt and "record_ctem_case_validation" in prompt
         assert "sync_ctem_case_ticket" in prompt and "never a second loop" in prompt
         assert "ctem_case.retest_requested" in prompt
+        # #1736: a run never ends on a next step written as prose only.
+        assert "ctem_case.stalled" in prompt and "`ctem-loop-reminder:`" in prompt
     assert "`ctem:f1:case:`" in CTEM_F1_CASE_ASSIGNMENT["prompt"]
     assert "`ctem:f2:case:`" in CTEM_F2_CASE_ASSIGNMENT["prompt"]
     retests = [a for a in BUILTIN_ASSIGNMENTS if a["name"] == "Re-test due" and a["agent_slug"] in _ORCHESTRATORS]

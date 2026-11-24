@@ -125,6 +125,7 @@ def _issue_from_json(data: dict[str, Any]) -> rules.SourceIssue:
     data["crown_jewels"] = tuple(data.get("crown_jewels") or ())
     seen = data.get("first_seen_at")
     data["first_seen_at"] = datetime.fromisoformat(seen) if seen else None
+    data["version_outcomes"] = tuple(tuple(pair) for pair in data.get("version_outcomes") or ())
     return rules.SourceIssue(**data)
 
 
@@ -311,6 +312,8 @@ def _visible_issue(row: CtemCaseIssue, issue: rules.SourceIssue | None) -> dict[
         "course_of_action_name": issue.course_of_action_name if issue.fixed_version and not issue.fixed_by else None,
         "not_affected": bool(issue.not_affected),
         "declared_version_known": issue.declared_version_known,
+        # Each installed version and what OpenCTI says of it (#1783): affected, not_affected or unknown.
+        "version_outcomes": [{"version": v, "outcome": o} for v, o in issue.version_outcomes],
         # The OpenAEV finding lifecycle (CTEM-14-UI): absent when the source carries none.
         **(
             {

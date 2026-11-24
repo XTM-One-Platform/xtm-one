@@ -114,7 +114,7 @@ describe("actNowCases", () => {
       { id: "e", state: "new", severity: "P1", sla_due_at: "2026-11-23T10:00:00Z" },
     ];
     expect(actNowCases(cases).map((c) => c.id)).toEqual(["b", "a", "e", "c"]);
-    // A critical crown jewel puts its case first among the P1s, whatever its SLA.
+    // A critical primary asset puts its case first among the P1s, whatever its SLA.
     const scopes = caseScopes([
       { case_id: "e", decision: { scope: { criticality: "critical" }, reconcile: { crown_jewels_named: ["Customer data"] } } },
       { case_id: "a", decision: { scope: { criticality: "low" } } },

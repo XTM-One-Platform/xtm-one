@@ -37,7 +37,7 @@ export interface CtemDecisionRecord {
   scope?: {
     criticality?: string | null;
     threshold?: string;
-    /** What gave the criticality: an asset, a crown jewel, an owned domain (CTEM-29), a risk scenario. */
+    /** What gave the criticality: an asset, a primary asset, an owned domain (CTEM-29), a risk scenario. */
     sources?: { from: string; name: string; criticality?: string }[];
     risk_scenarios?: { id: string; name: string }[];
   } | null;
