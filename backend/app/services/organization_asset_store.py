@@ -49,6 +49,11 @@ from app.models.organization_asset import (
     OrganizationAssetSource,
     OrganizationSoftwareVersion,
 )
+from app.models.organization_asset_record import (
+    OrganizationAssetGroup,
+    OrganizationAssetGroupMember,
+    OrganizationAssetRecord,
+)
 from app.models.organization_context import OrganizationContextVersion
 from app.services import organization_asset_identity as identity
 
@@ -773,6 +778,30 @@ def _field_value(name: str) -> Any:
     return OrganizationAsset.fields[name]["value"].astext
 
 
+def _group_ids(values: Sequence[str]) -> list[uuid.UUID]:
+    """The asset group ids among *values*; a value that is not a UUID names no group."""
+    out: list[uuid.UUID] = []
+    for value in values:
+        try:
+            out.append(uuid.UUID(str(value)))
+        except ValueError:
+            continue
+    return out
+
+
+def _assets_in_groups(organization_id: uuid.UUID, group_ids: Sequence[uuid.UUID]) -> Any:
+    """The canonical assets one of whose records is a member of one of *group_ids* (#1556)."""
+    return (
+        select(OrganizationAssetRecord.asset_id)
+        .join(OrganizationAssetGroupMember, OrganizationAssetGroupMember.record_id == OrganizationAssetRecord.id)
+        .where(
+            OrganizationAssetRecord.organization_id == organization_id,
+            OrganizationAssetRecord.asset_id.is_not(None),
+            OrganizationAssetGroupMember.group_id.in_(list(group_ids)),
+        )
+    )
+
+
 def _asset_where(
     organization_id: uuid.UUID,
     *,
@@ -788,7 +817,10 @@ def _asset_where(
         wanted = [str(v) for v in values if str(v).strip()]
         if not wanted or name == skip:
             continue
-        if name == "source":
+        if name == "group":
+            # A group filter of ids none of which parses keeps no asset, never every asset.
+            where.append(OrganizationAsset.id.in_(_assets_in_groups(organization_id, _group_ids(wanted))))
+        elif name == "source":
             where.append(
                 OrganizationAsset.id.in_(
                     select(OrganizationAssetSource.asset_id).where(
@@ -860,6 +892,21 @@ async def asset_facets(
         )
     ).all()
     facets["source"] = [{"value": str(value), "count": int(count)} for value, count in sources]
+    # The asset groups (#1556): each group's id as the value, its name as the label, its kept assets counted once.
+    kept = select(OrganizationAsset.id).where(*_asset_where(organization_id, q=q, filters=filters, skip="group"))
+    rec, member, grp = OrganizationAssetRecord, OrganizationAssetGroupMember, OrganizationAssetGroup
+    groups = (
+        await db.execute(
+            select(grp.id, grp.name, func.count(func.distinct(rec.asset_id)))
+            .join(member, member.group_id == grp.id)
+            .join(rec, rec.id == member.record_id)
+            .where(grp.organization_id == organization_id, rec.asset_id.in_(kept))
+            .group_by(grp.id, grp.name, grp.name_key)
+            .order_by(grp.name_key, grp.id)
+            .limit(MAX_PAGE)
+        )
+    ).all()
+    facets["group"] = [{"value": str(gid), "count": int(count), "label": str(name)} for gid, name, count in groups]
     return facets
 
 
@@ -1020,6 +1067,7 @@ async def get_asset(
     await _attach_record_ids(db, organization_id, [asset.id], detail_refs)
     return {
         **_summary(asset, names, int(soft_total)),
+        "groups": await _asset_groups(db, organization_id, asset.id),
         "fields": asset.fields or {},
         "explanation": identity.Canonical(
             id=asset.canonical_key, records=[], merged_on=list(asset.merged_on or [])
@@ -1049,6 +1097,23 @@ async def get_asset(
             "limit": limit,
         },
     }
+
+
+async def _asset_groups(db: AsyncSession, organization_id: uuid.UUID, asset_id: uuid.UUID) -> list[dict[str, str]]:
+    """The asset groups any record of *asset_id* is a member of, each once, by name (#1556)."""
+    rec, member, grp = OrganizationAssetRecord, OrganizationAssetGroupMember, OrganizationAssetGroup
+    rows = (
+        await db.execute(
+            select(grp.id, grp.name, grp.source)
+            .join(member, member.group_id == grp.id)
+            .join(rec, rec.id == member.record_id)
+            .where(grp.organization_id == organization_id, rec.asset_id == asset_id)
+            .group_by(grp.id, grp.name, grp.source, grp.name_key)
+            .order_by(grp.name_key, grp.id)
+            .limit(MAX_PAGE)
+        )
+    ).all()
+    return [{"id": str(gid), "name": str(name), "source": str(source)} for gid, name, source in rows]
 
 
 #: The most identifiers one lookup reads (a page of a platform's list, its hero).
