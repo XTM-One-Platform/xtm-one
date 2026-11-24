@@ -525,7 +525,8 @@ async def test_a_bulk_delete_as_administrator_answers_the_dry_run(api, monkeypat
     assert refused.status_code == 422
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body == {"dry_run": True, "count": 1, "cases": [{"id": str(api.case.id)}], "unknown": []}
+    # Every answer carries ``released`` (the count hand_off_released sets, 0 on a dry run; #1950).
+    assert body == {"dry_run": True, "count": 1, "cases": [{"id": str(api.case.id)}], "unknown": [], "released": 0}
     assert calls["select"]["opened_by"] == "legacy" and calls["delete"]["actor"] is api.user
 
 
