@@ -54,6 +54,8 @@ for (const [path, fields] of Object.entries(CARDS)) {
 test("the settings list and policy cards patch their field; only the asset tables keep the profile write", () => {
   const section = read("../../pages/settings/OrganizationSection.tsx");
   assert.match(section, /patch\.mutate\(\{ fields: \{ \[key\]: parsed\.profile\[key\] \}/);
-  assert.match(section, /patch\.mutate\(\{ fields: \{ \[field\]: parsed\.profile\[field\] \}/);
+  // The Prioritization policy card carries the PIR list with its field (#1889); every other card patches its field alone.
+  assert.match(section, /patch\.mutate\(\{ fields: \{ \[field\]: parsed\.profile\[field\], \.\.\.withPirs \}/);
+  assert.match(section, /const withPirs = field === "prioritization_policy" \? \{ pir_ids: parsed\.profile\.pir_ids, pir_names: parsed\.profile\.pir_names \} : \{\};/);
   assert.match(section, /if \(field === "assets_exposure" \|\| field === "asset_groups"\) save\.mutate/);
 });
