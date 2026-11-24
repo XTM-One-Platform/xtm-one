@@ -1058,6 +1058,9 @@ jira:list_jira_sprints
 jira:list_jira_worklogs
 jira:search_jira_issues
 jira:search_jira_users
+kubernetes:list_kubernetes_namespaces
+kubernetes:list_kubernetes_nodes
+kubernetes:list_kubernetes_services
 letsignit:get_letsignit_signature
 letsignit:get_letsignit_user
 linkedin:get_linkedin_comments
