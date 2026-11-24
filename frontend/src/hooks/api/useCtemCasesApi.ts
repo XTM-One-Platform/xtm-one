@@ -55,9 +55,13 @@ export interface CtemCaseSummary {
   issue_count: number;
   open_issue_count: number;
   restricted_count: number;
-  asset_count: number;
-  crown_jewel_count: number;
-  kev_count: number;
+  /** Open members read without their details: then the detail aggregates are null, unknown for this reader, never 0. */
+  members_without_details?: number;
+  aggregates_restricted?: boolean;
+  aggregates_reason?: string | null;
+  asset_count: number | null;
+  crown_jewel_count: number | null;
+  kev_count: number | null;
   max_cvss: number | null;
   max_epss: number | null;
   first_seen_at: string | null;

@@ -127,7 +127,13 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         rendered = view_of.hydrate(
             case, rows, events[:_HISTORY_PAGE], await view_of.viewer_view(db, str(scope), vertical)
         )
-        return None if rendered is None else (case, rows, rendered)
+        if rendered is None:
+            return None
+        from app.services import ctem_case_version_history as version_history
+
+        # The list's asset-count rule on the single read (#1704), on every event of the case.
+        version_history.with_asset_count(rendered, events)
+        return case, rows, rendered
 
     async def _view_only(db: AsyncSession, rows: list[Any], vertical: str) -> str | None:
         """The refusal of a write on a case the acting person sees only through a CTEM view right (#1748)."""
@@ -172,13 +178,16 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     version_history.with_asset_count(row, history.get(uuid.UUID(row["id"]), []))
                 from .ctem_signals import case_signal_scope
 
+                # Which signal rule applied, so an empty list is never read as no case (#1359), and the
+                # open cases this person sees none of (a count only), so a page is never the org total.
+                scope_block = await case_signal_scope(db, scope, view.signals)
+                scope_block["hidden_cases"] = view_of.hidden_case_count(cases, view)
                 return _dump(
                     {
                         "vertical": vertical,
                         "counts": {s: counts.get(s, 0) for s in _STATES},
                         "cases": rows,
-                        # Which signal rule applied, so an empty list is never read as no case (#1359).
-                        "scope": await case_signal_scope(db, scope, view.signals),
+                        "scope": scope_block,
                     }
                 )
         except Exception:
@@ -811,8 +820,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         ToolDefinition(
             name="list_ctem_cases",
             description=(
-                "List the organization's CTEM cases (open exposures grouped by the fix that closes them), "
-                "highest priority first, with the counts by state."
+                "List the CTEM cases you can see (open exposures grouped by the fix that closes them), "
+                "highest priority first, with the counts by state. A null count is unknown for you, never "
+                "none (aggregates_reason says why); scope.hidden_cases counts cases you cannot see."
             ),
             input_schema={
                 "type": "object",
@@ -831,7 +841,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             name="get_ctem_case",
             description=(
                 "Read one CTEM case: its fix, its member issues with their source product and id, "
-                "assets, crown jewels and its latest history."
+                "assets, crown jewels and its latest history. A null count is unknown for you, never none."
             ),
             input_schema={
                 "type": "object",

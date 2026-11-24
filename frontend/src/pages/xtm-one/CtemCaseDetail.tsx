@@ -711,14 +711,23 @@ export default function CtemCaseDetail() {
           value={kase.open_issue_count}
           subtitle={restricted > 0 ? t_i18n("{count, plural, one {# restricted} other {# restricted}}", { count: restricted }) : t_i18n("All visible to you")}
         />
-        <StatCard icon={KevGlyph} label={t_i18n("KEV")} value={kase.kev_count} subtitle={t_i18n("On the issues you can see")} />
+        <StatCard icon={KevGlyph} label={t_i18n("KEV")} value={formatCount(intl.locale, kase.kev_count)} subtitle={t_i18n("On the issues you can see")} />
         <StatCard
           icon={ScoreGlyph}
           label={t_i18n("Max CVSS")}
           value={formatCount(intl.locale, kase.max_cvss)}
           subtitle={t_i18n("On the issues you can see")}
         />
-        <StatCard icon={AssetsGlyph} label={t_i18n("Assets")} value={kase.asset_count} subtitle={t_i18n("{count, plural, one {# primary asset} other {# primary assets}}", { count: kase.crown_jewel_count })} />
+        <StatCard
+          icon={AssetsGlyph}
+          label={t_i18n("Assets")}
+          value={formatCount(intl.locale, kase.asset_count)}
+          subtitle={
+            kase.crown_jewel_count == null
+              ? t_i18n("On the issues you can see")
+              : t_i18n("{count, plural, one {# primary asset} other {# primary assets}}", { count: kase.crown_jewel_count })
+          }
+        />
       </div>
 
       {/* The running versions come from the asset inventory, never typed by hand in the software inventory (#1252). */}
