@@ -19,7 +19,7 @@ import {
   settingsFieldLabelId,
 } from "@/components/ui/settings-form";
 import { useToast } from "@/components/ui/toast";
-import { useOrganizationContext, useSaveOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
+import { useOrganizationContext, usePatchOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
 import { useFormatter } from "@/i18n";
 import { DEFAULT_CASE_ATTENTION_WEIGHTS, weightsFromProfile, weightsToProfile } from "./case-attention";
 import type { CaseAttentionProfile } from "@/lib/organization-profile";
@@ -152,7 +152,7 @@ export function CaseAttentionWeightsDialog({ open, onClose }: { open: boolean; o
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const { data } = useOrganizationContext();
-  const save = useSaveOrganizationContext();
+  const save = usePatchOrganizationContext();
   const current = weightsToProfile(weightsFromProfile(data?.profile?.case_attention));
   const [text, setText] = useState<Record<Key, string> | null>(null);
   const values = text ?? asText(current);
@@ -166,7 +166,8 @@ export function CaseAttentionWeightsDialog({ open, onClose }: { open: boolean; o
   const submit = () => {
     if (!valid || !data?.profile) return;
     save.mutate(
-      { profile: { ...data.profile, case_attention: parsed as CaseAttentionProfile }, source: "form" },
+      // #1752: the ranking points alone travel, never the asset rows.
+      { fields: { case_attention: parsed as CaseAttentionProfile }, based_on_version: data.version ?? null },
       {
         onSuccess: () => {
           toast({ title: t_i18n("Ranking points saved"), variant: "success" });
