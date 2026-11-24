@@ -220,6 +220,10 @@
   "get_opencrq_platform_version": [
     "health"
   ],
+  "get_opencrq_primary_asset": [
+    "primaryAssets.getPrimaryAsset",
+    "tenants.getTenants"
+  ],
   "get_opencrq_risk_dashboard": [
     "dashboard.getMostActiveThreats",
     "dashboard.getScenarioSummaries",

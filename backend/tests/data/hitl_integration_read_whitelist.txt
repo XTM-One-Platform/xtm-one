@@ -1344,6 +1344,7 @@ opencrq:get_opencrq_organization
 opencrq:get_opencrq_platform_health
 opencrq:get_opencrq_platform_rbac
 opencrq:get_opencrq_platform_version
+opencrq:get_opencrq_primary_asset
 opencrq:get_opencrq_risk_dashboard
 opencrq:get_opencrq_risk_scenario
 opencrq:get_opencrq_role
