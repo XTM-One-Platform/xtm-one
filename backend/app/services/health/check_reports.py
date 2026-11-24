@@ -52,6 +52,8 @@ SEVERITY_BY_VERDICT: Final[dict[str, str]] = {"warn": "warning", "fail": "critic
 DEFAULT_CATEGORY: Final = "configuration"
 #: ``evidence.source`` of an agentic finding written from a check report.
 SOURCE: Final = "module_checker"
+#: The segment between the module and the check in an agentic check id (never a component name).
+AGENTIC_SEGMENT: Final = "agentic"
 
 
 class CheckReportError(ValueError):
@@ -83,7 +85,7 @@ class CheckVerdict:
 
 def agentic_check_id(module: str, check: str) -> str:
     """The check id of the agentic finding a verdict on *check* drives."""
-    return f"{module}.agentic.{check}"
+    return f"{module}.{AGENTIC_SEGMENT}.{check}"
 
 
 def _clean_evidence(evidence: Any) -> list[dict[str, Any]]:
