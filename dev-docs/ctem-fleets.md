@@ -284,7 +284,7 @@ Assignments (on the orchestrator):
 | New relevant threat | `integration_event` OpenCTI create on Intrusion-Set, Campaign, Report (S2), listen-only (#1580) | Provisions the OpenCTI trigger; the webhook route records the `relevant_threat` signal, no run |
 | Threat activity flagged in a PIR | `integration_event` OpenCTI PIR playbook, listen-only (#1580) | Provisions the PIR playbook; the delivery records the `relevant_threat` signal, no run |
 | Threat signal recorded | `platform_event` `ctem_signal.recorded` and `ctem_signal.triaged`, filter `trigger_path` `relevant_threat`, `source_provider` `opencti`, `pir_floor_met` true (#1678: the listener stamps it when a PIR score at delivery reaches the policy's `pir_min_score_threat`; below it the signal waits for the weekly sweep), verdict `to_validate` or none; `max_concurrent_runs` 5, ordered by `signal_id`; takes the switch of New relevant threat on upgrade | Triage of a signal the case loop does not own yet; a confirmed signal opens its case through the case loop |
-| Weekly threat sweep | `schedule` `0 7 * * 1` | Catches what events missed |
+| Weekly threat sweep | `schedule` `30 6 * * 1` (#1832) | Catches what events missed: records a signal per relevant entity created or updated in 7 days |
 | Re-test due | `work_item` prefix `ctem:f1:retest:` | Re-runs the validated scenario after a fix |
 
 Loop: relevance (score against sector, regions, tech stack, PIRs; one rule,
@@ -390,7 +390,7 @@ Orchestrator `ctem-posture-orchestrator`; members the five stage analysts
 |---|---|---|
 | Weekly assessments | existing weekly stage assignments, kept | Unchanged |
 | Event refresh | `platform_event` `work_item.completed` on keys `ctem:f1:`, `ctem:f2:`, `ctem:f3:` | Refreshes the stages the closed case touched, debounced to one refresh per stage per hour |
-| Monthly board report | `schedule` `0 9 1 * *` on the orchestrator, an hour after the monthly briefing | Board-ready report: stage scores and trend, F1-F3 outcomes, loss avoided, ROI |
+| Monthly board report | `schedule` `0 11 1 * *` on the orchestrator, after the monthly briefing and the OpenCRQ Board pack (#1832) | Board-ready report: stage scores and trend, the CTEM cases of the month (`ctem_read`), loss avoided, ROI |
 
 The existing assignments keep their names (a renamed seed is swept and born
 again). F4 adds one orchestrator and two assignments; it changes no stage
@@ -2334,8 +2334,8 @@ the source; OpenCTI is never required.
 Automations (all opt-in, off): `Scenario re-priced`, `Finding re-scored`
 and `Control validation ingested` (the OpenCRQ job-run events of
 `services/opencrq_job_events.py`, polled every 60 s, no provisioning),
-`Weekly investment review` (Mondays 07:00), `Monthly Board pack` (the 1st
-at 08:00). One gate: `opencrq.register.write` (create or update a scenario,
+`Weekly investment review` (Mondays 07:30), `Monthly Board pack` (the 1st
+at 10:00; staggered off the PIR answer and after the briefing, #1832). One gate: `opencrq.register.write` (create or update a scenario,
 its loss estimates, the risk tolerance), impact high, so it runs logged at
 Low and waits at the higher levels; the personas propose such a change as a
 `needs_human` work item and never make it.
