@@ -115,3 +115,95 @@ def test_summary_counts() -> None:
     plan = links.plan_links(JEWELS, [_link("l1", "pa-1", "sa-1", "x")], {}, {}, [])
     assert plan.summary()["added"] == 0
     assert plan.summary()["not_in_inventory"] == [{"primary_asset": "Payments", "supporting_asset": "x"}]
+    assert plan.summary()["not_in_inventory_count"] == 1
+    assert plan.summary()["ambiguous_count"] == 0
+
+
+def test_summary_carries_the_totals_past_the_50_listed() -> None:
+    plan = links.plan_links(JEWELS, [_link(f"l{i}", "pa-1", f"sa-{i}", f"host-{i}") for i in range(120)], {}, {}, [])
+    summary = plan.summary()
+    assert len(summary["not_in_inventory"]) == 50
+    assert summary["not_in_inventory_count"] == 120
+
+
+def test_one_asset_seen_by_two_sources_links_once_not_ambiguous() -> None:
+    asset, intune, openaev = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    plan = links.plan_links(
+        JEWELS,
+        [_link("l1", "pa-1", "sa-1", "lapt-fili-0002", ["processes"])],
+        {},
+        {"lapt-fili-0002": [intune, openaev]},
+        [],
+        asset_of={intune: asset, openaev: asset},
+    )
+    assert not plan.ambiguous and not plan.unmatched
+    assert [w.record_id for w in plan.add] == [min(intune, openaev, key=str)]
+
+
+def test_two_assets_of_one_name_stay_ambiguous() -> None:
+    one, two = uuid.uuid4(), uuid.uuid4()
+    plan = links.plan_links(
+        JEWELS,
+        [_link("l1", "pa-1", "sa-1", "twin")],
+        {},
+        {"twin": [one, two]},
+        [],
+        asset_of={one: uuid.uuid4(), two: uuid.uuid4()},
+    )
+    assert plan.ambiguous == [("Payments", "twin")] and not plan.add
+
+
+def test_a_hyphenated_hostname_matches_a_display_name_on_the_loose_key() -> None:
+    jamie, nicolas = uuid.uuid4(), uuid.uuid4()
+    loose = {
+        links.loose_key("Jamie\u2019s MacBook Air"): [jamie],
+        links.loose_key("MacBook Pro de Nicolas"): [nicolas],
+    }
+    plan = links.plan_links(
+        JEWELS,
+        [_link("l1", "pa-1", "sa-1", "Jamies-MacBook-Air"), _link("l2", "pa-1", "sa-2", "MacBook-Pro-de-Nicolas")],
+        {},
+        {},
+        [],
+        records_by_loose_name=loose,
+    )
+    assert {w.external_id: w.record_id for w in plan.add} == {"l1": jamie, "l2": nicolas}
+
+
+def test_the_exact_key_wins_over_the_loose_one() -> None:
+    exact, other = uuid.uuid4(), uuid.uuid4()
+    plan = links.plan_links(
+        JEWELS,
+        [_link("l1", "pa-1", "sa-1", "db-01")],
+        {},
+        {"db-01": [exact]},
+        [],
+        records_by_loose_name={"db 01": [exact, other]},
+    )
+    assert [w.record_id for w in plan.add] == [exact]
+
+
+def test_a_url_named_supporting_asset_matches_its_fqdn() -> None:
+    saas = uuid.uuid4()
+    plan = links.plan_links(
+        JEWELS,
+        [_link("l1", "pa-2", "sa-1", "https://acme5957.octi.filigran.io/")],
+        {},
+        {"acme5957.octi.filigran.io": [saas]},
+        [],
+    )
+    assert [w.record_id for w in plan.add] == [saas]
+
+
+def test_a_link_already_on_another_record_of_the_same_asset_is_not_churned() -> None:
+    asset, intune, openaev = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    keep = max(intune, openaev, key=str)
+    plan = links.plan_links(
+        JEWELS,
+        [_link("l1", "pa-1", "sa-1", "axel", ["stores"])],
+        {},
+        {"axel": [intune, openaev]},
+        [_stored("l1", keep, "payments", ["stores"])],
+        asset_of={intune: asset, openaev: asset},
+    )
+    assert not plan.add and not plan.update and not plan.delete

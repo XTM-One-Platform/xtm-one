@@ -546,8 +546,12 @@ repository): an inventory asset, never a primary asset.
   supports_availability, performs, unknown), `inherited_needs` (need to `full` / `lower` / `none`, the strongest of
   the roles; `unknown` inherits everything), `via` (the supporting asset a `depends_on` chain goes through, written
   by the signals slice), `removed`. The supporting asset is the inventory record of source `opencrq` with the same
-  id, else the single record of the same name; none or several are reported (`not_in_inventory`, `ambiguous`),
-  never created. A manual link is never touched; a synced link a person removes through
+  id, else the single ASSET whose record name, hostname, FQDN or URL host is the name (candidates count per merged
+  asset, so a device Intune and OpenAEV both report is one match, linked through its smallest record id), else the
+  single asset of the same loose name (apostrophes dropped, hyphen, underscore, dot and space one separator,
+  #1978); none or several assets are reported (`not_in_inventory`, `ambiguous`, the first 50 listed and the totals
+  in `not_in_inventory_count` and `ambiguous_count`), never created. A link already held by another record of the
+  same asset is kept as it is. A manual link is never touched; a synced link a person removes through
   `PUT /crown-jewels/{name}/links` becomes a tombstone the sync never adds back; a link OpenCRQ dropped is deleted
   at the next sync. The sync's run result carries the link summary under `links`. Migration `v1591pallinks01`.
 - Inventory source (Sam, 24 Nov 2026): the `crown_jewels` section is in the `inventory` scope of
