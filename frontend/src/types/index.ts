@@ -7649,6 +7649,9 @@ export interface Group {
   ai_enabled?: boolean;
   /** What the group is for the LLM analytics; `auto` = not classified. */
   kind?: GroupKind;
+  /** People who sign in through single sign-on join the group at every
+   *  sign-in (`services/group_auto_join.py`); admin routes only. */
+  auto_join?: boolean;
   created_at: string;
   updated_at: string;
 }

@@ -755,6 +755,7 @@ ce:
   - frontend/src/components/arcade
   - frontend/src/components/audit-logs
   - frontend/src/components/dashboard-grid
+  - frontend/src/components/groups
   - frontend/src/components/integrations
   - frontend/src/components/ui/charts
   - frontend/src/components/users

@@ -5,6 +5,7 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
   UsersRound, Trash2, X, Users, Pencil, FileText, Gauge, Save, Zap, Key, UserCog, Sparkles,
 } from "lucide-react";
+import { GroupAutoJoinCard } from "@/components/groups/GroupAutoJoinCard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { userSelectOption } from "@/components/ui/entity-select-options";
@@ -138,6 +139,7 @@ function OverviewTab({ group, groupId }: { group: NonNullable<ReturnType<typeof 
     <div className="space-y-6">
       <ProfileCard group={group} groupId={groupId} />
       <GroupAiAccessCard group={group} groupId={groupId} />
+      <GroupAutoJoinCard group={group} groupId={groupId} />
     </div>
   );
 }

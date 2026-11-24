@@ -3,6 +3,7 @@
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { UsersRound, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { NavFamilyHeader } from "@/components/layout/NavFamilyHeader";
@@ -62,6 +63,11 @@ export default function Groups() {
             <UsersRound className="h-3.5 w-3.5 text-accent" aria-hidden />
           </span>
           <TruncatedText text={g.name} className="min-w-[240px] font-medium" />
+          {g.auto_join && (
+            <Badge variant="outline" className="shrink-0 whitespace-nowrap" title={t_i18n("Single sign-on users join this group")}>
+              {t_i18n("Auto join")}
+            </Badge>
+          )}
         </span>
       ),
       sortValue: (g) => g.name.toLowerCase(),

@@ -111,7 +111,7 @@ export function useCreateGroup() {
 
 export function useUpdateGroup() {
   const qc = useQueryClient();
-  return useMutation<Group, Error, { groupId: string; data: { name?: string; description?: string | null; quota_config?: Record<string, unknown> | null; ai_enabled?: boolean; kind?: Group["kind"] } }>({
+  return useMutation<Group, Error, { groupId: string; data: { name?: string; description?: string | null; quota_config?: Record<string, unknown> | null; ai_enabled?: boolean; kind?: Group["kind"]; auto_join?: boolean } }>({
     mutationFn: ({ groupId, data }) => api.put(`/groups/${groupId}`, data),
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["groups"] });
