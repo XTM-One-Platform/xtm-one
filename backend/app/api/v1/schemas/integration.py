@@ -228,6 +228,11 @@ class ProviderCatalogItem(BaseModel):
         False  # True for providers that support auto-creating webhooks on repos/resources
     )
     setup_guide: SetupGuide | None = None
+    # One guide per authentication mode, for a provider whose modes are set up
+    # apart (``{"oauth": guide, "api_key": guide}``): the guide button shows the
+    # mode chosen in the form or stored on the integration, and ``setup_guide``
+    # where no mode is chosen yet (the catalog) or a mode has none.
+    auth_setup_guides: dict[str, SetupGuide] | None = None
     has_oauth_defaults: bool = False  # True when admin pre-configured OAuth creds
     has_oauth_extra_config: bool = (
         False  # True when admin also pre-configured extra config (e.g. tenant_id)
