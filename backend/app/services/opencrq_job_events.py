@@ -42,10 +42,19 @@ that reports its progress and processed nothing (``expectedTotal`` set,
 ``processedTotal`` 0, a no-op recompute) is no event; a kind that never
 reports progress ends at 0 whatever it did, so its runs are kept. The risk
 scenario ids a job payload names travel on the entity and in ``covers``.
+
+A ``crq-price-recompute`` run ends with a JSON summary as its progress
+message (``currentStep`` on ``jobs.listAllRuns``): ``moved`` names the
+scenarios it re-priced, ``movedCount`` counts them past the id cap, and
+``movedAle`` (when OpenCRQ reports it) gives each one's ALE before and after.
+They travel on the payload top level and on the entity as ``moved_scenario_ids``,
+``moved_count`` and ``moved_ale``, merged across a coalesced page, so a trigger
+filter reacts to "scenario X moved" (``FILTER_KEYS``, declared in the catalog).
 """
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 PROVIDER = "opencrq"
@@ -63,6 +72,16 @@ POLL_INTERVAL_SECONDS = 60
 
 #: OpenCRQ's terminal success status (``JOB_STATUSES`` of the jobs module).
 SUCCEEDED = "succeeded"
+
+#: The ``trigger_config.filter`` keys of the OpenCRQ events: payload fields
+#: matched by the generic payload filter (``tenant_id`` also picks the tenant read).
+FILTER_KEYS: dict[str, str] = {
+    "tenant_id": "The OpenCRQ tenant to read (needed when the account has several); only its runs",
+    "kind": "Only runs of this job kind (or one of a list), e.g. crq-price-recompute",
+    "risk_scenario_ids": "Only events whose job payload names this risk scenario id (or one of a list)",
+    "moved_scenario_ids": "Only events whose re-pricing moved this risk scenario id (or one of a list)",
+    "moved_count": 'How many scenarios the re-pricing moved, e.g. {"ne": 0} for a pass that moved one',
+}
 
 
 def runs_query(event_type: str, since: str, limit: int) -> dict[str, Any]:
@@ -92,6 +111,72 @@ def risk_scenario_ids(run: dict[str, Any]) -> list[str]:
     return ids
 
 
+def progress_message(run: dict[str, Any]) -> str | None:
+    """The run's progress message: ``currentStep`` on ``jobs.listAllRuns`` (``progressMessage`` before)."""
+    for key in ("currentStep", "progressMessage"):
+        value = run.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def _summary(run: dict[str, Any]) -> dict[str, Any]:
+    """The JSON summary a run left as its progress message, ``{}`` when it is not one."""
+    text = progress_message(run)
+    if not text or not text.lstrip().startswith("{"):
+        return {}
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _ale(value: Any) -> float | None:
+    return float(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
+
+
+def moved_scenarios(run: dict[str, Any]) -> tuple[list[str], int, list[dict[str, Any]]]:
+    """``(ids, count, ale)``: the scenarios the run re-priced, from its summary.
+
+    *ids* is ``moved`` (OpenCRQ caps it), *count* ``movedCount`` (the whole
+    count, else the ids'), *ale* ``movedAle`` as ``{risk_scenario_id,
+    ale_before, ale_after, ale_delta}`` (empty before OpenCRQ reports it).
+    """
+    summary = _summary(run)
+    moved = summary.get("moved")
+    ids: list[str] = []
+    for item in moved if isinstance(moved, list) else []:
+        if isinstance(item, str) and item and item not in ids:
+            ids.append(item)
+    count = _count(summary.get("movedCount"))
+    ale: list[dict[str, Any]] = []
+    moved_ale = summary.get("movedAle")
+    for item in moved_ale if isinstance(moved_ale, list) else []:
+        if not isinstance(item, dict) or not isinstance(item.get("riskScenarioId"), str):
+            continue
+        ale.append(
+            {
+                "risk_scenario_id": item["riskScenarioId"],
+                "ale_before": _ale(item.get("aleBefore")),
+                "ale_after": _ale(item.get("aleAfter")),
+                "ale_delta": _ale(item.get("aleDelta")),
+            }
+        )
+    return ids, count if count is not None else len(ids), ale
+
+
+def _set_moved(payload: dict[str, Any], ids: list[str], count: int, ale: list[dict[str, Any]]) -> None:
+    """The moved fields on the payload top level (the filter reads them) and on the entity."""
+    for target in (payload, payload["entity"]):
+        target["moved_scenario_ids"] = ids
+        target["moved_count"] = count
+        if ale:
+            target["moved_ale"] = ale
+        else:
+            target.pop("moved_ale", None)
+
+
 def run_event(run: dict, event_type: str, *, base_url: str, tenant_id: str) -> dict[str, Any]:
     """The payload one run hands to the assignment: an id the seen set keys on and the run itself."""
     run_id = str(run.get("id") or "")
@@ -105,7 +190,7 @@ def run_event(run: dict, event_type: str, *, base_url: str, tenant_id: str) -> d
         "finished_at": run.get("finishedAt"),
         "processed_total": run.get("processedTotal"),
         "expected_total": run.get("expectedTotal"),
-        "progress_message": run.get("progressMessage"),
+        "progress_message": progress_message(run),
         "triggered_by": run.get("triggeredBy"),
         "attempt": run.get("attempt"),
         "tenant_id": tenant_id,
@@ -114,13 +199,18 @@ def run_event(run: dict, event_type: str, *, base_url: str, tenant_id: str) -> d
     scenario_ids = risk_scenario_ids(run)
     if scenario_ids:
         entity["risk_scenario_ids"] = scenario_ids
-    return {
+    payload: dict[str, Any] = {
         "message_id": f"opencrq:{tenant_id}:{run_id}" if run_id else "",
         "provider": PROVIDER,
         "event": event_type,
+        "tenant_id": tenant_id,
+        "kind": run.get("kind"),
+        "risk_scenario_ids": scenario_ids,
         "entity": entity,
         "summary": f"OpenCRQ job {run.get('kind')} {run.get('status')} at {run.get('finishedAt')}",
     }
+    _set_moved(payload, *moved_scenarios(run))
+    return payload
 
 
 #: Most runs one coalesced event lists in ``covers``; the count is kept whole.
@@ -158,6 +248,7 @@ def covered_run(run: dict[str, Any], tenant_id: str) -> dict[str, Any]:
         "finished_at": run.get("finishedAt"),
         "processed_total": run.get("processedTotal"),
         "risk_scenario_ids": risk_scenario_ids(run),
+        "moved_scenario_ids": moved_scenarios(run)[0],
     }
 
 
@@ -185,6 +276,18 @@ def coalesce_events(
         page_scenarios.extend(sid for sid in risk_scenario_ids(run) if sid not in page_scenarios)
     if page_scenarios:
         event["entity"]["risk_scenario_ids"] = page_scenarios
+    event["risk_scenario_ids"] = page_scenarios
+    event["kind"] = sorted({str(run.get("kind")) for run in kept if run.get("kind")})
+    page_moved: list[str] = []
+    page_count = 0
+    page_ale: dict[str, dict[str, Any]] = {}
+    for run in kept:
+        ids, count, ale = moved_scenarios(run)
+        page_moved.extend(sid for sid in ids if sid not in page_moved)
+        page_count += count
+        # A later run's figures for a scenario replace an earlier run's.
+        page_ale.update({move["risk_scenario_id"]: move for move in ale})
+    _set_moved(event, page_moved, page_count, list(page_ale.values()))
     if len(covers) > 1:
         event["summary"] = (
             f"{len(covers)} OpenCRQ {event_type} jobs succeeded, the last "
