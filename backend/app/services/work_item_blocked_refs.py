@@ -139,7 +139,9 @@ MAX_TITLE_CONTAINS_CHARS = 200
 _WORKFLOW_RUN_KEPT = ("run_id", "run_url", "run_at", "run_commit")
 #: A commit named in a release run's display title (``Release refs/heads/main at <sha>``).
 _TITLE_SHA_RE = re.compile(r"\b([0-9a-f]{40})\b")
-#: Older runs of a ``carries_sha`` reference skipped in one read, at most (#1634).
+#: Older runs of a ``carries_sha`` reference skipped in one read, at most (#1634); the
+#: position reached is kept as ``carry_after`` (outside the reference key), so the next
+#: read resumes past the runs already skipped.
 MAX_CARRY_SKIPS = 5
 #: A commit a deployment reference may name.
 _SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
@@ -332,7 +334,7 @@ def _normalize_workflow_run_ref(entry: dict, repo: str) -> dict:
             )
         out["title_contains"] = title
     out.update(_carries(entry, repo))
-    for key in ("state", "at", *_WORKFLOW_RUN_KEPT):
+    for key in ("state", "at", "carry_after", *_WORKFLOW_RUN_KEPT):
         if isinstance(entry.get(key), str | int) and not isinstance(entry.get(key), bool):
             out[key] = entry[key]
     return out
@@ -2020,14 +2022,17 @@ async def _poll_workflow_run(
 
     False when the read budget (*max_reads* per pass or delivery) left the reference
     unread, so the item is not stamped polled. A ``carries_sha`` reference reads the
-    next run while the one found does not carry the merge (:func:`_carrying_run`).
+    next run while the one found does not carry the merge (:func:`_carrying_run`),
+    from ``carry_after`` when an earlier read skipped older runs, and records the
+    position it reached when it ends without a carrying run (:func:`_record_carry_after`).
     """
     key = _ref_key(ref)
     for provider, reader in readers.items():
         token = tokens.get((provider, str(user_id)))
         if not token:
             continue
-        after = str(ref["after"])
+        after = str(ref.get("carry_after") or ref["after"])
+        start = after
         run: dict[str, Any] | None = None
         for _ in range(MAX_CARRY_SKIPS + 1):
             read_key = (provider, str(user_id), *key, after)
@@ -2065,6 +2070,8 @@ async def _poll_workflow_run(
                 break
             after, run = later, None
         if run is None:
+            if ref.get("carries_sha") and after != start:
+                await _record_carry_after(item_id, key, after)
             continue
         try:
             outcome = await _apply_workflow_run(item_id, key, run, datetime.now(UTC))
@@ -2080,6 +2087,43 @@ async def _poll_workflow_run(
             counts[outcome] = counts.get(outcome, 0) + 1
         return True
     return True
+
+
+async def _record_carry_after(item_id: uuid.UUID, key: tuple, after: str) -> None:
+    """Keep *after* as ``carry_after`` on the ``workflow_run`` reference *key* of one item (#1634).
+
+    The runs before it are older commits' releases already skipped: without it a
+    reference with more of them than one read skips would re-read the same ones on
+    every pass and never reach the carrying release. Best-effort.
+    """
+    from app.core.database import async_session
+
+    try:
+        async with async_session() as db:
+            item = (
+                await db.execute(select(WorkItem).where(WorkItem.id == item_id).with_for_update())
+            ).scalar_one_or_none()
+            if item is None or item.status != "blocked" or not item.blocked_on_refs:
+                return
+            refs: list[dict] = []
+            moved = False
+            for ref in item.blocked_on_refs:
+                ref = dict(ref)
+                if (
+                    ref.get("kind") == "workflow_run"
+                    and _ref_key(ref) == key
+                    and not _satisfied(ref)
+                    and str(ref.get("carry_after") or ref.get("after") or "") < after
+                ):
+                    ref["carry_after"] = after
+                    moved = True
+                refs.append(ref)
+            if not moved:
+                return
+            item.blocked_on_refs = refs
+            await db.commit()
+    except Exception as exc:
+        logger.info("Carry position of work item %s not kept: %s", item_id, format_exception_message(exc))
 
 
 async def _poll_branch_successors(

@@ -202,7 +202,31 @@ async def test_only_older_releases_keep_it_blocked(poll: dict[str, Any]) -> None
     poll["runs"] = [_run(79, "2026-11-24T00:39:41Z", OLDER)]
     poll["contains"] = {OLDER: False}
     counts = await refs_mod.poll_blocked_on_refs(NOW)
-    assert counts["released"] == 0 and poll["item"].status == "blocked" and poll["commits"] == 0
+    assert counts["released"] == 0 and poll["item"].status == "blocked"
+    # Only the position past the skipped release is written, never a release.
+    assert poll["commits"] == 1 and poll["item"].blocked_on_refs[0]["carry_after"] == "2026-11-24T00:39:42Z"
+
+
+async def test_the_position_past_skipped_releases_is_kept_for_the_next_pass(poll: dict[str, Any]) -> None:
+    older = [_run(10 + i, f"2026-11-24T00:{10 + i:02d}:00Z", f"{i:x}" * 40) for i in range(1, 8)]
+    poll["runs"] = [*older, _run(81, "2026-11-24T01:10:13Z", LATER)]
+    poll["contains"] = {**{run_commit(r): False for r in older}, LATER: True}
+    counts = await refs_mod.poll_blocked_on_refs(NOW)
+    assert counts["released"] == 0 and poll["item"].status == "blocked"
+    (ref,) = poll["item"].blocked_on_refs
+    assert ref["carry_after"] == "2026-11-24T00:16:01Z" and ref["after"] == AFTER
+    refs_mod._last_polled.clear()
+    counts = await refs_mod.poll_blocked_on_refs(NOW)
+    assert counts["released"] == 1 and poll["item"].status == "open"
+    assert poll["reads"][6] == "2026-11-24T00:16:01Z"
+    assert "run 81" in poll["published"][0]
+
+
+def test_the_carry_position_is_kept_but_is_not_part_of_the_key() -> None:
+    (a,) = normalize_blocked_on_refs([_wf(carries=MERGE)])
+    (b,) = normalize_blocked_on_refs([{**_wf(carries=MERGE), "carry_after": "2026-11-24T00:16:01Z"}])
+    assert b["carry_after"] == "2026-11-24T00:16:01Z"
+    assert refs_mod._ref_key(a) == refs_mod._ref_key(b)
 
 
 async def test_an_unreadable_containment_releases_nothing(poll: dict[str, Any]) -> None:
