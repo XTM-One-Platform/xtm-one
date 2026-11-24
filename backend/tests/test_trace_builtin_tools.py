@@ -73,6 +73,17 @@ def marker_redis(monkeypatch):
     return store
 
 
+@pytest.fixture(autouse=True)
+def readable_targets(monkeypatch):
+    """Every allow-listed target is one whose chats the caller may read: the
+    narrowing to readable targets is pinned by ``test_shared_agent_trace_reach.py``."""
+
+    async def _readable(_db, _user, agent_ids, _group_ids=None):
+        return {str(uuid.UUID(str(i))) for i in agent_ids}
+
+    monkeypatch.setattr(traces_module, "agents_whose_traces_user_may_read", _readable)
+
+
 @pytest.mark.asyncio
 async def test_trace_tools_expose_self_and_supervision_definitions():
     defs, _exec = traces_module.build_trace_tools(

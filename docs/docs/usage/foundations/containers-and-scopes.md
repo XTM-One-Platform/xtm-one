@@ -18,7 +18,7 @@ Being inside a container does not always mean ownership: a prompt attached to an
 A scope is the boundary that decides where an object is visible and who can edit it:
 
 - **Personal** — belongs to one user; the safest place to experiment, since edits stay local.
-- **Shared** — visible to the groups or people it is shared with. Each share has a permission: `Can configure` lets them edit it too, `Full access (incl. chats)` (agents only) also lets them read the agent's conversations and its traces (its `Observability` tab, and trace inspection in a conversation), which hold those conversations, and `Read only` lets them look but not change it; a read-only share shows a `Read-only` badge and says so instead of offering an `Edit` button.
+- **Shared** — visible to the groups or people it is shared with. Each share has a permission: `Can configure` lets them edit it too, `Full access (incl. chats)` (agents only) also lets them read the agent's conversations and its traces (its `Observability` tab, and trace inspection in a conversation, even when the agent carries it itself), which hold those conversations, and `Read only` lets them look but not change it; a read-only share shows a `Read-only` badge and says so instead of offering an `Edit` button.
 - **Company-managed** — visible to everyone but usually edited only by admins; the broadest scope in day-to-day use.
 
 ## Before you change something

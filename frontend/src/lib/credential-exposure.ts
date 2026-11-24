@@ -115,7 +115,15 @@ export function confirmsAnUnshare(
   return items.length ? items.every((i) => audienceIsEmpty(i.gained)) : mode === "unshare";
 }
 
-export type LentKindName = "integration" | "mcp_server" | "custom_tool" | "channel_bot" | "variable";
+export type LentKindName =
+  | "integration"
+  | "mcp_server"
+  | "custom_tool"
+  | "channel_bot"
+  | "variable"
+  | "knowledge_base"
+  | "skill"
+  | "prompt";
 
 const MCP_SECRET_WORDING: Record<string, string> = {
   mcp_oauth_token: "MCP server {name} and its connected account",
@@ -155,6 +163,9 @@ export function lentResourceLabel(
   let thing: string;
   if (input.kind === "mcp_server") thing = t(MCP_SECRET_WORDING[input.secretKind] ?? "MCP server {name}", { name });
   else if (input.kind === "custom_tool") thing = t("custom tool {name} and its code", { name });
+  else if (input.kind === "knowledge_base") thing = t("knowledge base {name} and its documents", { name });
+  else if (input.kind === "skill") thing = t("skill {name} and its instructions", { name });
+  else if (input.kind === "prompt") thing = t("prompt {name}", { name });
   else thing = input.secretKind === "secret_value" ? t("secret variable {name}", { name }) : t("variable {name}", { name });
   if (input.isCompany) return t("The company's {thing}", { thing });
   if (input.isYours) return t("Your {thing}", { thing });

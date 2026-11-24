@@ -3894,6 +3894,12 @@ def build_agent_builder_tool(
                     keep[field] = await ids_matching(
                         _db, model, ids, user_visible_filter(model, uid, group_ids, is_admin=False)
                     )
+                # A supervision target is kept only when the caller may read its traces.
+                from app.services.builtin_tools.traces import agents_whose_traces_user_may_read
+
+                keep["trace_supervision_target_agent_ids"] = await agents_whose_traces_user_may_read(
+                    _db, caller, clone.trace_supervision_target_agent_ids or [], group_ids
+                )
                 dropped = retain_agent_bindings(clone, keep)
                 original_channels = clone.channel_config or {}
                 kept_channels, dropped["channel_config"] = await retain_copier_channels(

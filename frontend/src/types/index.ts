@@ -1203,6 +1203,9 @@ interface ExposureAudience {
 
 // Every resource a person lends through something shared (/exposure/*)
 export type LentResourceKind = "integration" | "mcp_server" | "custom_tool" | "channel_bot" | "variable";
+/** What a share confirmation can list: the lent resources, and the knowledge
+ *  bases, skills and prompts an agent, a flow or the General Assistant attaches. */
+type PreviewLentKind = LentResourceKind | "knowledge_base" | "skill" | "prompt";
 
 /** What a lent resource holds that its audience acts with (never the value). */
 type LentSecretKind =
@@ -1212,7 +1215,9 @@ type LentSecretKind =
   | "mcp_env"
   | "code"
   | "secret_value"
-  | "plain_value";
+  | "plain_value"
+  | "documents"
+  | "instructions";
 
 export type ResourceExposurePathKind = ExposurePathKind | "prompt" | "custom_tool";
 
@@ -1331,7 +1336,7 @@ export interface ResourcePreviewRequest {
 /** One resource the change lends to new people (`gained`) or takes from people
  *  who could use it (`lost`). */
 export interface ResourcePreviewItem {
-  resource: LentResourceRef;
+  resource: Omit<LentResourceRef, "kind"> & { kind: PreviewLentKind };
   secret: LentSecret;
   via: { type: ResourcePreviewEntityType; id: string | null; name: string | null } | null;
   gained: ResourceAudience;

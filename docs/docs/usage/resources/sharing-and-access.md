@@ -11,6 +11,11 @@ When you share something, you may also be lending what it carries. An agent boun
 | Custom tool | its code, run on their behalf |
 | Channel bot | its bot token (bots are platform-wide and managed by administrators) |
 | Variable | its value, secret or not |
+| Knowledge base | its documents, searched and read in full, and written to where the agent may write |
+| Skill | its instructions and files |
+| Prompt | its text |
+
+A knowledge base, a skill or a prompt is lent by what attaches it: an agent reads the ones it attaches as their owner may, for everyone it serves, whoever is chatting - and so do a flow's knowledge base and skill nodes and the General Assistant's knowledge bases. The confirmation names each one a change lends to new people. A change to the knowledge base, skill or prompt itself (sharing, unsharing or deleting it) does not list it, only what it carries.
 
 ## Through what
 
@@ -65,4 +70,4 @@ Every route is read-only and additive:
 - `GET /api/v1/exposure/{resources}/summary`: the number of ways each resource you can see and manage is shared, for the list cards.
 - `POST /api/v1/exposure/preview`: before a change, which resources it lends to new people (`gained`) and takes from people who could use them (`lost`). Body: `entity_type` (a resource type, or `agent`, `assignment`, `flow`, `knowledge_base`, `skill`, `prompt`, `general_assistant`, and for administrators `group` and `platform_mcp`), `entity_id` (omitted when creating), `parent_id` (the agent, when creating an assignment) and `change` (only the fields the change sets, plus `new_owner_id` for an owner transfer and `delete: true` for a deletion; `remove_channel` for an agent unrouted from a channel; `add_user_ids` / `remove_user_ids` for a group; `mcp_exposed_agent_ids` / `has_mcp_key` for the platform MCP endpoint; `status: "active"` for a flow's activation).
 
-`{resources}` is `integrations`, `mcp-servers`, `custom-tools`, `channel-bots` or `variables`. `GET /api/v1/integrations/{id}/exposure`, `GET /api/v1/integrations/exposure/summary` and `POST /api/v1/integrations/exposure/preview` give the same answer for integrations, computed by the same engine, with integration-specific names (`credential`, `credential_usable`, `credentials`, `reached`). The routes never return a secret value, and a carrier you cannot open is listed without its name.
+`{resources}` is `integrations`, `mcp-servers`, `custom-tools`, `channel-bots` or `variables`; a preview item may also be a `knowledge_base`, a `skill` or a `prompt` an agent, a flow or the General Assistant attaches. `GET /api/v1/integrations/{id}/exposure`, `GET /api/v1/integrations/exposure/summary` and `POST /api/v1/integrations/exposure/preview` give the same answer for integrations, computed by the same engine, with integration-specific names (`credential`, `credential_usable`, `credentials`, `reached`). The routes never return a secret value, and a carrier you cannot open is listed without its name.

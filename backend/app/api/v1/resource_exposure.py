@@ -24,6 +24,8 @@ change would lend or take back. Read-only, additive routes.
   whom, and who loses them", for the confirmation shown before a share, a
   binding, a creation, an unshare or a deletion, and, for administrators, a
   change of a group's members or of the agents the platform MCP key reaches.
+  It also lists the knowledge bases, skills and prompts a change lends through
+  what attaches them (``resource_exposure.ATTACHED_ONLY_KINDS``).
 
 ``{resources}`` is ``integrations``, ``mcp-servers``, ``custom-tools``,
 ``channel-bots`` or ``variables``. The routes live under ``/exposure`` so they
@@ -214,7 +216,7 @@ async def _load_for_preview(db: AsyncSession, user: User, body: ExposurePreviewR
 
     if not body.entity_id:
         return None, None
-    if entity_type in exposure.RESOURCE_KINDS:
+    if entity_type in exposure.RESOURCE_KINDS and entity_type not in _CARRIER_MODELS:
         resource = await _load_resource(db, user, entity_type, body.entity_id)
         if not can_manage(user, resource, groups):
             raise HTTPException(status_code=403, detail="You cannot configure this item.")
