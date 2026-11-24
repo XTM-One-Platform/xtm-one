@@ -664,7 +664,8 @@ async def process_resume_episode(db: AsyncSession, *, episode_id: str) -> None:
             )
         )
     ).scalar_one_or_none()
-    if evaluation is not None and (refused := await owner_refusal(db, evaluation)) is not None:
+    refused = await owner_refusal(db, evaluation) if evaluation is not None else None
+    if refused is not None:
         callback_error = refused
 
     if isinstance(callback_error, str) and callback_error.strip():
@@ -674,7 +675,11 @@ async def process_resume_episode(db: AsyncSession, *, episode_id: str) -> None:
             episode=episode,
             step={
                 "type": "callback",
-                "description": "External callback reported an error",
+                "description": (
+                    "The evaluation's owner may no longer run it"
+                    if refused is not None
+                    else "External callback reported an error"
+                ),
                 "duration_ms": 0,
             },
         )

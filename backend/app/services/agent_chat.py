@@ -757,6 +757,17 @@ async def _load_pipeline_tool_unbound(
                 lent_owner_id=_owner,
             )
             if not _pinned:
+                from app.services.openapi_import.service import provider_resolves_per_user
+
+                if not provider_resolves_per_user(provider):
+                    # Each integration of the provider is a different API: none
+                    # of the person's own stands in for the pinned one.
+                    logger.info(
+                        "Pipeline LOAD: pinned integration %s withheld for user %s, no per-user equivalent",
+                        integ.id,
+                        _acting,
+                    )
+                    return None
                 logger.info(
                     "Pipeline LOAD: pinned integration %s withheld for user %s, picking theirs",
                     integ.id,

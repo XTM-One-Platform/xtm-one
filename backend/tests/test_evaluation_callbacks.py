@@ -1951,6 +1951,7 @@ async def test_a_resume_whose_owner_may_no_longer_run_it_judges_nothing(monkeypa
             episode = await s.get(EvaluationEpisode, episode_id)
         assert judged == []
         assert (episode.status, episode.error) == ("failed", OWNER_CANNOT_RUN)
+        assert "The evaluation's owner may no longer run it" in [step["description"] for step in episode.steps]
     finally:
         await cleanup()
 

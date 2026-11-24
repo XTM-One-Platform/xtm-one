@@ -101,3 +101,19 @@ async def test_a_pin_naming_nothing_with_nothing_of_the_user_s_own_builds_nothin
 
     assert loaded is None
     _build.assert_not_awaited()
+
+
+async def test_a_withheld_openapi_pin_never_falls_back_to_another_api(_build):
+    """Each OpenAPI integration is a different API: the person's own is no stand-in."""
+    from app.services.openapi_import.service import OPENAPI_PROVIDER
+
+    pinned = make_integration(auth_type="api_key", provider=OPENAPI_PROVIDER)
+    mine = make_integration(user_id=COLLEAGUE_ID, auth_type="api_key", provider=OPENAPI_PROVIDER)
+    ref = {**_ref(str(pinned.id)), "provider": OPENAPI_PROVIDER}
+
+    loaded = await agent_chat._load_pipeline_tool_standalone(
+        FakeSession({Integration: [pinned, mine]}), ref, str(COLLEAGUE_ID), _AGENT
+    )
+
+    assert loaded is None
+    _build.assert_not_awaited()
