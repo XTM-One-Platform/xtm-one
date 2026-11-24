@@ -374,9 +374,11 @@ index answer it, so its cost follows the number of products, not of assets.
 - `GET /api/v1/organization-context/inventory/tech-stack?q=&offset=&limit=` (any signed-in user): the items,
   filtered on a vendor or product substring, paginated (`limit` at most 200); "on N assets" is `asset_count`, and
   `GET /assets/by-software` lists them.
-- `get_organization_context(category="tech_stack")` answers the same items once an asset carries software, and
-  the profile rows before (no change for an organization with no asset software). Agents still write the
-  profile rows through `upsert_organization_rows`, which never overwrites a platform-sourced row.
+- `get_organization_context(category="software")` answers the organization's Software entities (synced and
+  hand-typed, with versions, CPE and asset count) once the store holds one, and the profile rows before.
+  `category="tech_stack"` and `upsert_organization_rows(section="tech_stack")` are deprecated aliases of
+  `software`, accepted for one release; stored category selections were renamed by `s1495swprofile01`,
+  which also turned each profile tech stack row into a hand-typed Software (a hand CPE kept as the override).
 
 ### 9.4 SBOM import
 

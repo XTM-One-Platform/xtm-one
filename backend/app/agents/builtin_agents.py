@@ -2084,7 +2084,7 @@ BUILTIN_AGENTS: list[dict] = [
         "slug": "ctem-vuln-prioritization-orchestrator",
         # Vulnerability and exposure work reads the whole tech stack (#11533),
         # the assets with their exposure and the prioritization policy (#11543).
-        "organization_context_categories": ["tech_stack", "crown_jewels", "assets_exposure", "prioritization_policy"],
+        "organization_context_categories": ["software", "crown_jewels", "assets_exposure", "prioritization_policy"],
         "persona": "ctem-vuln-prioritization-orchestrator",
         "name": "Vuln Orchestrator",
         "description": (
@@ -2120,7 +2120,7 @@ BUILTIN_AGENTS: list[dict] = [
         "slug": "ctem-vuln-triage-analyst",
         # Vulnerability and exposure work reads the whole tech stack (#11533),
         # the assets with their exposure and the prioritization policy (#11543).
-        "organization_context_categories": ["tech_stack", "crown_jewels", "assets_exposure", "prioritization_policy"],
+        "organization_context_categories": ["software", "crown_jewels", "assets_exposure", "prioritization_policy"],
         "persona": "ctem-vuln-triage-analyst",
         "name": "Vuln Triage Analyst",
         "description": (
@@ -2253,7 +2253,7 @@ CTEM_FLEET_AGENTS: list[dict] = [
         "slug": "ctem-remediation-coordinator",
         # Vulnerability and exposure work reads the whole tech stack (#11533),
         # the assets with their exposure and the prioritization policy (#11543).
-        "organization_context_categories": ["tech_stack", "crown_jewels", "assets_exposure", "prioritization_policy"],
+        "organization_context_categories": ["software", "crown_jewels", "assets_exposure", "prioritization_policy"],
         "persona": "ctem-remediation-coordinator",
         "name": "Remediation Coordinator",
         "description": (

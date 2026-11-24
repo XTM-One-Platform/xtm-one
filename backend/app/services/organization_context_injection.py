@@ -239,7 +239,7 @@ def render_summary(
     head = (
         f"{SUMMARY_HEADER}\nThe organization you work for (profile version {row.version}). "
         "The rest is in the categories below: read only the one your work needs with "
-        'get_organization_context(category="tech_stack", query="cisco") (it pages); category="*" lists them.'
+        'get_organization_context(category="software", query="cisco") (it pages); category="*" lists them.'
     )
     index = "Categories:\n" + "\n".join(
         cats.index_line(category, counts[category.name])
