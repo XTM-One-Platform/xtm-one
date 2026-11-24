@@ -1636,6 +1636,9 @@ async def search_runs(
                 is_baseline=is_baseline,
                 anomaly_count=run.anomaly_count or 0,
                 platform_error_count=platform_errors.get(run.id, 0),
+                arm=run.arm or "real",
+                placebo_target=run.placebo_target,
+                placebo_comparison_id=str(run.placebo_comparison_id) if run.placebo_comparison_id else None,
             ).model_dump()
         )
     return {"runs": items, "count": len(items)}

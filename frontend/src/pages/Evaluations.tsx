@@ -39,6 +39,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { HEADLINE_LABELS, headlines } from "@/lib/evaluation-headlines";
 import { headlineTip } from "@/components/evaluation/headline-tip";
 import { EVALUATION_TERMS } from "@/lib/evaluation-glossary";
+import { PlaceboArmTag } from "@/components/evaluation/PlaceboArmTag";
 import { PlatformErrorBadge } from "@/components/evaluation/platform-error-badge";
 import { RunMenuModelRow } from "@/components/evaluation/unavailable-model";
 import { useTriggerFailedToast } from "@/components/evaluation/use-trigger-failed-toast";
@@ -664,6 +665,7 @@ function RunSearchPanel() {
                   {statusCfg && (
                     <Badge variant="outline" className={cn("content-caption shrink-0", statusCfg.color)}>{t_i18n(statusCfg.label)}</Badge>
                   )}
+                  <PlaceboArmTag run={run} />
                   <PlatformErrorBadge run={run} />
                   <span className="ml-auto flex items-center gap-3 content-compact shrink-0">
                     {/* The shared resolver keeps headlines consistent with the

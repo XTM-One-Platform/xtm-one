@@ -9270,6 +9270,10 @@ interface RunSearchResultItem {
   anomaly_count?: number;
   // Entries the platform could not run, left out of every headline.
   platform_error_count?: number;
+  // A placebo comparison's run: its arm and comparison; `real` and null elsewhere.
+  arm?: EvaluationArm;
+  placebo_target?: PlaceboTarget | null;
+  placebo_comparison_id?: string | null;
 }
 
 export interface RunSearchResponse {
