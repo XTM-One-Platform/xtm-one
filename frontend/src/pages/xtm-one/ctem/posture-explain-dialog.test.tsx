@@ -29,7 +29,7 @@ function posture(over: Partial<CtemPosture> = {}): CtemPosture {
       stage("remediation", { score: 9, band: "critical", qualitative_score: 5, qualitative_band: "critical" }),
     ],
     products: {}, trend: [], blind_spots: [], headline: {} as CtemPosture["headline"], last_sync: {},
-    qualitative_score: 33, qualitative_band: "critical", context: { state: "partial", missing_fields: ["ai_systems"] },
+    qualitative_score: 33, qualitative_band: "critical", context: { state: "partial", missing_fields: ["tech_stack"] },
     ...over,
   };
 }

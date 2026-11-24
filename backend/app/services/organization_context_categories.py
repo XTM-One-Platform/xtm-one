@@ -14,7 +14,7 @@
 """The categories of the organization context, and how an agent resolves them (#11533).
 
 The profile has a short identity (name, sector, regions, size, risk
-appetite) and long lists: the crown jewels, the software, the AI systems,
+appetite) and long lists: the crown jewels, the software,
 the PIRs, the tracked organizations. The identity is always in the prompt
 (``organization_context_injection``); a list is a CATEGORY: announced in the
 prompt with its size, preloaded only when the cascade selects it, and read
@@ -137,12 +137,6 @@ def available_names() -> tuple[str, ...]:
     return tuple(category.name for category in available())
 
 
-#: Deprecated since #1501 (kept one release): ``ai_systems`` reads the assets of category ``ai_target``.
-AI_SYSTEMS_ALIAS = Category(
-    "ai_systems", "assets_exposure", "AI systems (deprecated: the assets of category ai_target)"
-)
-
-
 def canonical_name(name: object) -> str:
     """*name* lower-cased, a deprecated alias read as the category it answers (``crown_jewels`` -> ``primary_assets``)."""
     wanted = str(name or "").strip().lower()
@@ -150,10 +144,7 @@ def canonical_name(name: object) -> str:
 
 
 def get(name: str) -> Category | None:
-    wanted = canonical_name(name)
-    if wanted == AI_SYSTEMS_ALIAS.name:
-        return AI_SYSTEMS_ALIAS
-    return _BY_NAME.get(wanted)
+    return _BY_NAME.get(canonical_name(name))
 
 
 def normalize_categories(value: object) -> list[str]:
@@ -222,8 +213,6 @@ def rows_of(profile: OrganizationProfile, category: Category) -> list[Any]:
     if category.field == "attack_surface":
         return attack_surface_rows(profile)
     values = getattr(profile, category.field, None) or []
-    if category is AI_SYSTEMS_ALIAS:
-        values = [v for v in values if getattr(v, "category", "") == "ai_target"]
     if category.field == "pir_ids":
         # #1773: each PIR with what the organization says about it, when it says something.
         rows: list[Any] = []

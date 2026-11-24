@@ -32,7 +32,6 @@ LEGACY = {
         {"name": "SCADA", "business_service": "Grid", "owner": "OT", "criticality": "critical", "opencrq_asset_id": ""}
     ],
     "tech_stack": [{"product": "Windows Server 2019", "vendor": "Microsoft", "cpe": ""}],
-    "ai_systems": [],
     "pir_ids": ["pir-1"],
     "pir_names": {"pir-1": "Ransomware"},
     "risk_appetite": {"annual_loss_threshold": 2000000.0, "approval_threshold": None},

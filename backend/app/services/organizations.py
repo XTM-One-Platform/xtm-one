@@ -9,7 +9,7 @@ organization (a provider, a customer, a partner, a subsidiary) holds a
 smaller one, :class:`TrackedOrganizationProfile`: its sector, its regions,
 the services it supplies to or consumes from the primary, and the internal
 owner of the relationship (a person of the platform, never the third
-party's contact). Crown jewels, AI systems, risk appetite, rate and
+party's contact). Crown jewels, risk appetite, rate and
 ticketing stay primary-only: the loss is always the primary's.
 
 Every tracked organization starts with ``monitoring`` ``off``; nothing in

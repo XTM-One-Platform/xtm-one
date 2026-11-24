@@ -1155,7 +1155,6 @@ LAB_ORG_COMPLETE_PROFILE = {
     "regions": ["FR", "US"],
     "crown_jewels": [{"name": "Payments platform", "business_service": "Card payments", "criticality": "critical"}],
     "tech_stack": [dict(entry) for entry in LAB_ORG_TECH_STACK],
-    "ai_systems": [{"name": "Customer support assistant", "kind": "assistant", "exposure": "public"}],
     "pir_ids": ["5b1e0c3a-7d2f-4e61-9a10-000000000001"],
     "risk_appetite": {"approval_threshold": 50000},
     "ticketing": {"integration": "jira", "project": "SEC"},
@@ -1722,11 +1721,6 @@ LAB_ORG_SYNCED_ROWS = {
         {"vendor": "Microsoft", "product": "Exchange Server", "external_id": "lab-openaev-software-1"},
         {"vendor": "Fortinet", "product": "FortiOS", "external_id": "lab-openaev-software-2"},
         {"vendor": "Atlassian", "product": "Confluence Data Center"},
-    )),
-    "ai_systems": ("openaev", (
-        {"name": "Customer support assistant", "kind": "assistant", "exposure": "public",
-         "external_id": "lab-openaev-ai-1"},
-        {"name": "Code review agent", "kind": "agent", "exposure": "internal"},
     )),
 }
 #: ``LAB_PERF_THREAD`` values: ``on`` seeds a 200-message conversation and a short one for the administrator
