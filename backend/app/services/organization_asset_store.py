@@ -1067,6 +1067,8 @@ async def get_asset(
     return {
         **_summary(asset, names, int(soft_total)),
         "groups": await _asset_groups(db, organization_id, asset.id),
+        # #1591 S3: the primary assets the asset supports (directly or through a group), with role and source.
+        "primary_assets": await _asset_primary_assets(db, organization_id, asset.id),
         "fields": asset.fields or {},
         "explanation": identity.Canonical(
             id=asset.canonical_key, records=[], merged_on=list(asset.merged_on or [])
@@ -1096,6 +1098,14 @@ async def get_asset(
             "limit": limit,
         },
     }
+
+
+async def _asset_primary_assets(
+    db: AsyncSession, organization_id: uuid.UUID, asset_id: uuid.UUID
+) -> list[dict[str, Any]]:
+    from app.services.ctem_primary_assets import asset_primary_assets
+
+    return await asset_primary_assets(db, organization_id, asset_id)
 
 
 async def _asset_groups(db: AsyncSession, organization_id: uuid.UUID, asset_id: uuid.UUID) -> list[dict[str, str]]:
