@@ -32,7 +32,7 @@ FULL = {
     "sub_sector": "electricity distribution",
     "regions": ["fr", "DE", "FR"],
     "size": "1001-5000",
-    "crown_jewels": [
+    "primary_assets": [
         {"name": "SCADA", "business_service": "Grid operations", "owner": "OT", "criticality": "critical"}
     ],
     "software": [{"product": "Windows Server 2019", "vendor": "Microsoft", "cpe": "cpe:2.3:o:microsoft:windows_server_2019:-:*:*:*:*:*:*:*"}],
@@ -91,7 +91,7 @@ def test_a_zero_threshold_is_a_value_not_a_missing_field():
         ({"currency": "EURO"}, "currency"),
         ({"size": "huge"}, "size"),
         ({"loaded_hourly_rate": -1}, "loaded_hourly_rate"),
-        ({"crown_jewels": [{"name": "x", "criticality": "extreme"}]}, "crown_jewels"),
+        ({"primary_assets": [{"name": "x", "criticality": "extreme"}]}, "primary_assets"),
         # #1844: no alias; a stored ai_systems key is refused, the migration moved it to the assets.
         ({"ai_systems": [{"name": "x"}]}, "ai_systems"),
         ({"unknown_field": 1}, "unknown_field"),

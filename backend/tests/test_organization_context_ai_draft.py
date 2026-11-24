@@ -121,7 +121,7 @@ def test_an_inferred_amount_is_flagged_check_this():
     }
 
 
-def test_only_existing_pirs_are_proposed_and_crown_jewels_link_to_a_single_matching_asset():
+def test_only_existing_pirs_are_proposed_and_primary_assets_link_to_a_single_matching_asset():
     evidence = _evidence(opencti="{}")
     evidence.known_pir_ids = ["pir-1"]
     evidence.opencrq_assets = {"core banking": ["a1"]}
@@ -129,7 +129,7 @@ def test_only_existing_pirs_are_proposed_and_crown_jewels_link_to_a_single_match
         "proposals": [
             {"field": "pir_ids", "value": ["pir-1", "pir-9"], "source": "opencti", "confidence": "high"},
             {
-                "field": "crown_jewels",
+                "field": "primary_assets",
                 "value": [{"name": "Core banking", "criticality": "critical"}],
                 "source": "opencti",
                 "confidence": "high",
@@ -140,7 +140,7 @@ def test_only_existing_pirs_are_proposed_and_crown_jewels_link_to_a_single_match
     proposals, _ns, suggested, notes = ai.parse_proposals(json.dumps(answer), oc.OrganizationProfile(), evidence)
     by = {p.field: p.value for p in proposals}
     assert by["pir_ids"] == ["pir-1"]
-    assert by["crown_jewels"][0]["opencrq_asset_id"] == "a1"
+    assert by["primary_assets"][0]["opencrq_asset_id"] == "a1"
     assert suggested == ["Ransomware on retail banks"]
     assert any("PIR id(s) left out" in n for n in notes)
 

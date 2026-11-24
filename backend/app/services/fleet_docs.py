@@ -157,7 +157,7 @@ PREREQUISITE_CHECKS: tuple[str, ...] = (
     "integration:opencrq",
     "profile:sector",
     "profile:regions",
-    "profile:crown_jewels",
+    "profile:primary_assets",
     "profile:software",
     "profile:ai_targets",
     "profile:tracked_organizations",

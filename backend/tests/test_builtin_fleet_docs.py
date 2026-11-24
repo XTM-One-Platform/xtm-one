@@ -153,7 +153,7 @@ def test_a_step_without_a_known_gate_key_keeps_its_stored_flag():
 _PROFILE_ROUTES = {
     "profile:sector": "/settings/organization?card=identity",
     "profile:regions": "/settings/organization?card=identity",
-    "profile:crown_jewels": "/settings/organization/profile/business?card=crown_jewels",
+    "profile:primary_assets": "/settings/organization/profile/business?card=primary_assets",
     "profile:tracked_organizations": "/settings/organization/profile/business?card=tracked_organizations",
     "profile:software": "/settings/organization/profile/technology?card=software",
 }
@@ -177,7 +177,7 @@ def test_a_profile_prerequisite_opens_the_tab_and_card_of_its_field_never_the_ba
             assert item["fix_route"] not in ("/settings/organization", "/settings/organization/profile"), slug
         # The routes pass the save rules (fix_route pattern).
         assert clean_structured(parts)["prerequisites"], slug
-    assert "profile:crown_jewels" in seen and "profile:ai_targets" in seen
+    assert "profile:primary_assets" in seen and "profile:ai_targets" in seen
     for check, route in _PROFILE_ROUTES.items():
         assert profile_fix_route(check.split(":", 1)[1]) == route
 

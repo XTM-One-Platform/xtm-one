@@ -3649,7 +3649,7 @@ async def get_ctem_loop_setup_status(
     software = (await software_profile(db))[1].software if saved is not None else []
     profile_facts = status_mod.ProfileFacts(
         saved=saved is not None,
-        crown_jewels=len(profile.crown_jewels) if profile else 0,
+        primary_assets=len(profile.primary_assets) if profile else 0,
         software=len(software),
         ticketing_target=bool(profile and profile.ticketing.integration),
         scope_min_criticality=profile.prioritization_policy.scope_min_criticality if profile else "",

@@ -41,7 +41,7 @@ export const PROFILE_CARD_TAB = {
   identity: "identity",
   risk_appetite: "identity",
   ticketing: "identity",
-  crown_jewels: "business",
+  primary_assets: "business",
   shipped_products: "business",
   tracked_organizations: "business",
   software: "technology",
@@ -63,7 +63,7 @@ export type ProfileCard = keyof typeof PROFILE_CARD_TAB;
 export const INVENTORY_CARD_PATH: Partial<Record<ProfileCard, string>> = {
   software: "/ctem/inventory/software",
   // The business inputs have their own Inventory tab (#1690).
-  crown_jewels: "/ctem/inventory/business",
+  primary_assets: "/ctem/inventory/business",
   shipped_products: "/ctem/inventory/business",
   tracked_organizations: "/ctem/inventory/business",
   assets_exposure: "/ctem/inventory",
@@ -102,7 +102,7 @@ export const PROFILE_FIELD_CARD = {
   ticketing: "ticketing",
   pir_ids: "prioritization_policy",
   pir_names: "prioritization_policy",
-  crown_jewels: "crown_jewels",
+  primary_assets: "primary_assets",
   shipped_products: "shipped_products",
   software: "software",
   assets_exposure: "assets_exposure",
