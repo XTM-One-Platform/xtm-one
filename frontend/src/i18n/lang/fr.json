@@ -20043,7 +20043,7 @@
   "The ticket's due date is the case's SLA due date.": "L'échéance du ticket est l'échéance SLA du cas.",
   "CTEM case sync": "Synchronisation des cas CTEM",
   "How CTEM cases open, update and close their tickets. A change applies to the next sync.": "Comment les cas CTEM ouvrent, mettent à jour et ferment leurs tickets. Un changement s'applique à la prochaine synchronisation.",
-  "No ticketing connected: cases stay in XTM One. Set the ticketing integration above to sync them.": "Aucun ticketing connecté : les cas restent dans XTM One. Choisissez l'intégration de ticketing ci-dessus pour les synchroniser.",
+  "No ticketing connected: cases stay in XTM One. Set the ticketing integration and project to sync them.": "Aucun ticketing connecté : les cas restent dans XTM One. Choisissez l'intégration et le projet de ticketing pour les synchroniser.",
   "Version (optional)": "Version (facultatif)",
   "Changed the target version": "A changé la version cible",
   "Not affected": "Non concerné",
