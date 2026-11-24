@@ -221,13 +221,13 @@ def build_organization_context_tool(
     definition = ToolDefinition(
         name=ORGANIZATION_CONTEXT_TOOL,
         description=(
-            "Read the organization profile: sector, regions, size, crown jewels and business "
+            "Read the organization profile: sector, regions, size, primary assets and business "
             "services, software, AI systems, PIRs, risk appetite, loaded hourly rate and "
             "currency, ticketing target, and the fields not filled. Read it before ranking, "
             "scoping or estimating; cite the fields you used and name the missing ones, never guess them. "
             'Long lists are categories: category="*" lists them with their sizes; category="software" (any listed name) '
             "reads one by page (query filters the rows, offset/limit page it, so a list of any length is read whole). "
-            'category="tech_stack" is a deprecated alias of "software", answered for one release.'
+            'category="tech_stack" and "crown_jewels" are deprecated aliases of "software" and "primary_assets".'
         ),
         input_schema={
             "type": "object",
@@ -239,7 +239,7 @@ def build_organization_context_tool(
                 "category": {
                     "type": "string",
                     "description": (
-                        "One category of your organization (e.g. software, crown_jewels, assets_exposure, "
+                        "One category of your organization (e.g. software, primary_assets, assets_exposure, "
                         "prioritization_policy, enterprise_knowledge); '*' lists them."
                     ),
                 },

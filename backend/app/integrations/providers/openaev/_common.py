@@ -1990,12 +1990,29 @@ def _fmt_asset(a: dict, base_url: str = "") -> str:
         lines.append(f"  Platform: {platform}")
     if a.get("endpoint_arch"):
         lines.append(f"  Arch: {a['endpoint_arch']}")
+    for key, label in _ASSET_CLASSIFICATION_LINES:
+        value = a.get(key)
+        if value is not None and value != "":
+            lines.append(f"  {label}: {value}")
     if a.get("asset_description"):
         lines.append(f"  Description: {a['asset_description'][:300]}")
-    tags = a.get("asset_tags") or []
+    tags = [t.get("tag_id") if isinstance(t, dict) else t for t in a.get("asset_tags") or []]
+    tags = [str(t) for t in tags if t]
     if tags:
         lines.append(f"  Tags: {', '.join(tags)}")
     return "\n".join(lines)
+
+
+#: The fields manage_openaev_asset writes, printed so a write can be read back
+#: (an internet-facing false is printed too: it is a value, not an absence).
+_ASSET_CLASSIFICATION_LINES = (
+    ("asset_category", "Category"),
+    ("asset_subcategory", "Subcategory"),
+    ("asset_criticality", "Criticality"),
+    ("asset_internet_facing", "Internet-facing"),
+    ("asset_url", "URL"),
+    ("asset_external_reference", "External reference"),
+)
 
 
 def _fmt_asset_group(g: dict) -> str:

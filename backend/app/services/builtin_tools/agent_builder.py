@@ -7792,7 +7792,8 @@ def build_agent_builder_tool(
                         f"  • Delivery: poll every {delivery.get('interval_seconds', 300) // 60} min{reason}"
                     )
                 if delivery.get("mode") != "webhook":
-                    parts.append(f"  • Last poll: {delivery.get('last_poll_at') or 'never'}")
+                    _catching_up = " (still reading a backlog)" if delivery.get("catching_up") else ""
+                    parts.append(f"  • Last poll: {delivery.get('last_poll_at') or 'never'}{_catching_up}")
                     if delivery.get("poll_skipped"):
                         parts.append(f"  • Poll skipped: {delivery['poll_skipped']}")
                 parts.append(f"  • Last notification: {delivery.get('last_notification_at') or 'never'}")
