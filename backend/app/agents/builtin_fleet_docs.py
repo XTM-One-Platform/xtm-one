@@ -53,7 +53,7 @@ CTEM_LOOP_DOC: dict[str, str] = {
         "a new threat, a vulnerability on software you run, a credential leak, a supplier incident "
         "or a regression is recorded as a signal, reconciled and gated on your scope. In scope, it "
         "opens a case on the command center: the Relevance role reads OpenCTI, the Validation role "
-        "runs a read-only check in OpenAEV, the Risk role prices it in OpenCRQ, and the case waits "
+        "runs a validation in OpenAEV, the Risk role prices it in OpenCRQ, and the case waits "
         "for one decision of yours before tickets go out (Mobilize). The re-test closes it. Around "
         "the cases, the Posture role keeps the five stage assessments and the board report current, "
         "the Intelligence desk answers your PIRs in OpenCTI, the Validation desk measures detection "

@@ -36,7 +36,7 @@ Agents cite the fields they used. For a field you have not filled, they name it 
 The profile also feeds other features:
 
 - An OpenCTI trigger can take its filters from the profile's intelligence requirements, regions and sector. See [React to OpenCTI events](../usage/xtm-suite/opencti.md#react-to-opencti-events).
-- The crown jewels stay in line with OpenCRQ's assets (see [Crown jewels and OpenCRQ](#crown-jewels-and-opencrq) below).
+- The primary assets stay in line with OpenCRQ through a scheduled Inventory source (see [Primary assets and OpenCRQ](#primary-assets-and-opencrq) below).
 
 ## Shared context and permissions
 
@@ -134,18 +134,14 @@ The crown jewels are the assets that matter most to the business. Without them, 
 
 A link icon marks a crown jewel linked to an OpenCRQ asset.
 
-## Crown jewels and OpenCRQ
+## Primary assets and OpenCRQ
 
-OpenCRQ lists the same assets as supporting assets, each with its own criticality. With OpenCRQ connected as a company-managed integration, `Check against OpenCRQ` compares the two and shows what would change, without writing anything:
+OpenCRQ rates the same business assets as primary assets. With OpenCRQ connected as a company-managed integration, the primary assets are an Inventory source: `CTEM` > `Inventory` > `Sources` lists the OpenCRQ primary-asset sync next to the asset sources, with the same controls (enabled, schedule, last run with its counts, next run, `Run now`, errors). It is on and daily by default, and it links the supporting assets to their primary assets unless turned off.
 
-- a crown jewel whose name matches exactly one OpenCRQ asset is linked to it;
-- a linked crown jewel sets the criticality of its OpenCRQ asset, since the profile is where the business says what matters (`Critical` becomes very high in OpenCRQ);
-- an OpenCRQ asset at or above the minimum criticality of your OpenCRQ crown-jewel sync (`High` when you have none, the same threshold as the import) that no crown jewel names is added as a crown jewel of the matching criticality, marked as coming from OpenCRQ. An empty list of crown jewels against an OpenCRQ that holds such assets is always proposed the import, never reported as already in agreement;
-- a name that matches several assets, and a crown jewel linked to an asset OpenCRQ no longer holds, are reported and left unchanged.
+- A primary asset you add or edit by hand, and a link you add or remove by hand, always win over the sync.
+- Turning the source off stops the schedule; the rows it already wrote stay.
 
-`Apply` makes the changes on both sides and saves a new version of the profile when the crown jewels change. The check is not available while you are editing the profile: save or cancel first.
-
-Once crown jewels are kept in sync from OpenCRQ (see [Keep a section in sync](#keep-a-section-in-sync)), the card shows `Sync with OpenCRQ now` instead: it runs that sync at once, with its own filters and rules, so there is one mechanism for OpenCRQ, not two. OpenCRQ is read with your own OpenCRQ access. See [XTM One in OpenCRQ](../usage/xtm-suite/opencrq.md).
+The primary assets card names the source with the OpenCRQ icon and the time of its last sync. It has no OpenCRQ button: run or configure the sync from `Sources`. OpenCRQ is read with the access of the administrator who last saved the sync. See [XTM One in OpenCRQ](../usage/xtm-suite/opencrq.md).
 
 ## Software
 

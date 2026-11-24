@@ -48,6 +48,11 @@ _ANY_MARKER_RE = re.compile(
     r"\[\[(?:FILE|PRESENTATION|REPORT|VIDEO|DASHBOARD|INVESTIGATION|WORK_ITEM):",
     re.IGNORECASE,
 )
+#: An artifact marker other than a file's.
+_NON_FILE_MARKER_RE = re.compile(
+    r"\[\[(?:PRESENTATION|REPORT|VIDEO|DASHBOARD|INVESTIGATION|WORK_ITEM):",
+    re.IGNORECASE,
+)
 
 
 def outbound_text_arguments(definition: ToolDefinition) -> tuple[str, ...]:
@@ -60,9 +65,13 @@ def outbound_text_arguments(definition: ToolDefinition) -> tuple[str, ...]:
     return ()
 
 
-def has_artifact_marker(text: object) -> bool:
-    """Whether *text* is a string carrying at least one artifact marker."""
-    return isinstance(text, str) and _ANY_MARKER_RE.search(text) is not None
+def has_artifact_marker(text: object, *, keep_file_markers: bool = False) -> bool:
+    """Whether *text* is a string carrying at least one artifact marker to resolve.
+
+    With *keep_file_markers*, a ``[[FILE:id]]`` marker does not count.
+    """
+    pattern = _NON_FILE_MARKER_RE if keep_file_markers else _ANY_MARKER_RE
+    return isinstance(text, str) and pattern.search(text) is not None
 
 
 async def markers_as_outbound_links(
@@ -72,14 +81,18 @@ async def markers_as_outbound_links(
     conversation_id: object = None,
     user_id: object = None,
     language: str | None = None,
+    keep_file_markers: bool = False,
 ) -> str:
     """*text* with every artifact marker as a link, or dropped when it cannot be one.
 
     Files get their signed public download link on the API URL; decks,
     reports, videos and dashboards their page on the web app; an investigation
     and a scheduled work item, which have no page of their own, are dropped.
+    With *keep_file_markers* the ``[[FILE:id]]`` markers are left as they are,
+    for a send tool that delivers them as files
+    (:attr:`ToolDefinition.outbound_keeps_file_markers`).
     """
-    if not has_artifact_marker(text):
+    if not has_artifact_marker(text, keep_file_markers=keep_file_markers):
         return text
     from app.channels.base import (
         resolve_channel_file_markers,
@@ -90,7 +103,10 @@ async def markers_as_outbound_links(
     from app.services.platform_chat_artifacts import markers_as_links
 
     scope = {"conversation_id": conversation_id, "user_id": user_id, "language": language}
-    text = await resolve_channel_file_markers(db, text, settings.base_url, **scope)
+    if not keep_file_markers:
+        text = await resolve_channel_file_markers(
+            db, text, settings.base_url, conversation_id=conversation_id, user_id=user_id, language=language
+        )
     text = await markers_as_links(db, text, **scope)
     text = strip_channel_investigation_markers(text)
     return strip_channel_work_item_markers(text)
@@ -100,6 +116,7 @@ async def _outbound_arguments(
     kwargs: Mapping[str, Any],
     names: tuple[str, ...],
     context: Mapping[str, Any],
+    keep_file_markers: bool = False,
 ) -> dict[str, Any]:
     """*kwargs* with the string arguments in *names* made clickable.
 
@@ -113,17 +130,19 @@ async def _outbound_arguments(
     for name in names:
         if isinstance(resolved.get(name), str):
             resolved[name] = bare_platform_links_as_urls(resolved[name])
-    targets = [name for name in names if has_artifact_marker(resolved.get(name))]
+    targets = [name for name in names if has_artifact_marker(resolved.get(name), keep_file_markers=keep_file_markers)]
     if not targets:
         return resolved
     from app.core.database import async_session
     from app.core.utils import safe_uuid
 
     linked = dict(resolved)
-    scope = {
+    scope: dict[str, Any] = {
         "conversation_id": safe_uuid(context.get("conversation_id")),
         "user_id": safe_uuid(context.get("user_id")),
     }
+    if keep_file_markers:
+        scope["keep_file_markers"] = True
     try:
         # Its own session: integration tools run concurrently in a turn, and
         # an AsyncSession is single-connection (see _make_persist_file_fn).
@@ -147,16 +166,22 @@ def send_markers_as_links(
     artifact marker resolved in the run's scope (*context*: ``user_id``,
     ``conversation_id``); every other argument and the handler itself are
     unchanged. ``functools.wraps`` keeps the signature the executor filters on.
+    A tool with :attr:`ToolDefinition.outbound_keeps_file_markers` keeps its
+    ``[[FILE:id]]`` markers: it delivers them as files itself.
     """
 
-    def _linked(handler: Any, names: tuple[str, ...]) -> Any:
+    def _linked(handler: Any, names: tuple[str, ...], keep_file_markers: bool) -> Any:
         @functools.wraps(handler)
         async def _linked_handler(*args: Any, **kwargs: Any) -> Any:
-            return await handler(*args, **(await _outbound_arguments(kwargs, names, context)))
+            arguments = await _outbound_arguments(kwargs, names, context, keep_file_markers)
+            return await handler(*args, **arguments)
 
         return _linked_handler
 
     for d in defs:
         names = outbound_text_arguments(d)
         if names:
-            executor.wrap_handler(d.name, functools.partial(_linked, names=names))
+            executor.wrap_handler(
+                d.name,
+                functools.partial(_linked, names=names, keep_file_markers=d.outbound_keeps_file_markers),
+            )

@@ -61,6 +61,7 @@ from urllib.parse import urlparse, urlsplit
 import httpx
 
 from app.core.egress import egress_client
+from app.core.pinned_transport import is_policy_refusal
 from app.core.redaction import redact_secrets
 from app.core.utils import format_exception_message
 
@@ -102,6 +103,47 @@ _RATE_LIMIT_MAX_DELAY = 30.0
 # default because non-idempotent calls (mutations) could be applied twice
 # when the first attempt succeeded behind a failing proxy.
 TRANSIENT_RETRY_STATUSES = frozenset({502, 503, 504})
+
+# A connection that was never established (DNS, refused, TLS handshake) is
+# retried for every verb: no byte of the request reached the provider, so a
+# mutation cannot be applied twice. Short and bounded, for a blip.
+_CONNECT_MAX_RETRIES = 2
+_CONNECT_BASE_DELAY = 1.0
+
+# provider -> (wall time of the first connection failure of the current outage,
+# wall time of its latest one), cleared by the first response the provider
+# answers. Process-local: it names how long this worker has been unable to
+# reach the provider.
+_UNREACHABLE_SINCE: dict[str, tuple[float, float]] = {}
+
+# A connection failure more than this many seconds after the previous one
+# starts a new outage: the old one may have ended while no call reached the
+# provider (a rarely used provider), so its start is not carried over.
+_OUTAGE_STALE_SECONDS = 300.0
+
+
+def _record_connect_failure(provider: str, now: float | None = None) -> None:
+    """Record a connection failure: extend the current outage, or start a new one."""
+    now = time.time() if now is None else now
+    entry = _UNREACHABLE_SINCE.get(provider)
+    if entry is None or now - entry[1] > _OUTAGE_STALE_SECONDS:
+        _UNREACHABLE_SINCE[provider] = (now, now)
+    else:
+        _UNREACHABLE_SINCE[provider] = (entry[0], now)
+
+
+def _outage_line(provider: str, retries: int) -> str:
+    """The outage status a connection failure ends with: since when, retries made."""
+    entry = _UNREACHABLE_SINCE.get(provider)
+    if entry is None:
+        return ""
+    since = entry[0]
+    stamp = time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime(since))
+    minutes = max(0.0, (time.time() - since) / 60.0)
+    return (
+        f" Outage: {provider} unreachable from this worker since {stamp} "
+        f"({minutes:.0f} min), {retries} retr{'y' if retries == 1 else 'ies'} made."
+    )
 
 # Default timeout (seconds) for integration HTTP requests.
 DEFAULT_TIMEOUT = 30
@@ -1169,10 +1211,36 @@ async def safe_request(
             # behaviour-preserving change for every call that already worked.
             resp: httpx.Response = await client.request(method.upper(), url, **kwargs)
         except httpx.HTTPError as exc:
+            # A destination-policy refusal is no outage: no connection was
+            # attempted and a retry would be refused again.
+            is_connect = (
+                isinstance(exc, httpx.ConnectError)
+                and not getattr(exc, "is_relay_error", False)
+                and not is_policy_refusal(exc)
+            )
+            if is_connect:
+                _record_connect_failure(provider)
+                if attempt < _CONNECT_MAX_RETRIES:
+                    wait = random.uniform(0, _CONNECT_BASE_DELAY * (2**attempt))  # noqa: S311
+                    # Retry jitter for backoff; not used for secrets or security decisions.
+                    if max_total_seconds is None or (time.monotonic() - started + wait <= max_total_seconds):
+                        _log_request_warning(
+                            provider,
+                            method,
+                            log_path,
+                            f"retry {attempt + 1}/{_CONNECT_MAX_RETRIES} in {wait:.1f}s",
+                            label="connection error",
+                        )
+                        await asyncio.sleep(wait)
+                        continue
             err = format_network_error(exc, provider, action)
+            if is_connect:
+                err += _outage_line(provider, attempt)
             _log_request_warning(provider, method, log_path, err, label="network error")
             _note(None, attempt, network_error=True)
             return None, err
+
+        _UNREACHABLE_SINCE.pop(provider, None)
 
         if resp.status_code >= 500:
             seen["5xx"] += 1
