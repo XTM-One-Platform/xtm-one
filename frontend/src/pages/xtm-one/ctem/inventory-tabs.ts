@@ -19,7 +19,7 @@ export const RETIRED_TABS: Record<string, InventoryTab> = { "tech-stack": "softw
 export const EXPOSURE_TAB_CARDS = ["outside_lens", "prioritization_policy", "evidence_health"] as const satisfies readonly ProfileCard[];
 
 /**
- * The business inputs of the CTEM loop (#1690, Sam 24 Nov 2026): crown jewels and business services, shipped
+ * The business inputs of the CTEM loop (#1690, Sam 24 Nov 2026): primary assets and business services, shipped
  * products and tracked organizations moved from Settings > Organization to a tab of their own, read by everyone,
  * each card's own Edit for administrators, as the Exposure policy tab.
  */
