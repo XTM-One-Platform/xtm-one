@@ -351,7 +351,8 @@ describe("OrganizationSection", () => {
   it("counts the fields not filled Settings draws and opens the form on a missing field (#9173 S1c, #1690)", async () => {
     renderPage();
     const overview = await screen.findByTestId("settings.organization.overview");
-    expect(overview.textContent).toContain("3 fields not filled");
+    // size and loaded_hourly_rate; pir_ids is reported on CTEM > Inventory with the Prioritization policy (#1889).
+    expect(overview.textContent).toContain("2 fields not filled");
     expect(screen.queryByTestId("settings.save-bar")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Loaded hourly rate" }));
     const rate = await screen.findByRole("textbox", { name: "Loaded hourly rate" });
