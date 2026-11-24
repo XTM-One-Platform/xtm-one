@@ -137,27 +137,6 @@ export function useSaveOrganizationContextInjection() {
   });
 }
 
-/** A fleet that reads a part of the profile, from its documented prerequisites (#9173, S2). */
-export interface OrganizationFieldReader {
-  fleet_id: string;
-  name: string;
-}
-
-/** A seeded agent whose persona reads a part of the profile (#10063 r1 A3). */
-export interface OrganizationAgentReader {
-  agent_id: string;
-  name: string;
-}
-
-/** Profile field ("sector", "crown_jewels", ...) -> the fleets, and the seeded agents, the reader can see that need it. */
-export function useOrganizationReaders(enabled = true) {
-  return useQuery<{ readers: Record<string, OrganizationFieldReader[]>; agents?: Record<string, OrganizationAgentReader[]> }>({
-    queryKey: [...KEY, "readers"],
-    queryFn: () => api.get("/organization-context/readers"),
-    enabled,
-  });
-}
-
 /** The steps of the guided CTEM loop setup, in order (`organization_setup_prompt.STEPS`, #1087). */
 export type SetupStepKey = "organization" | "modules" | "ecosystem" | "gates" | "preview" | "enable";
 
