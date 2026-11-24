@@ -715,7 +715,7 @@ def lab_org_import_read(section: str, source: str, batch_type: str = ""):
         rows = [imp.openaev_asset(asset, batch_type) for asset in LAB_ORG_IMPORT_OPENAEV_ASSETS]
     elif (section, source) == ("asset_groups", "openaev"):
         rows = [imp.openaev_asset_group(group) for group in LAB_ORG_IMPORT_OPENAEV_GROUPS]
-    elif (section, source) == ("tech_stack", "openaev"):
+    elif (section, source) == ("software", "openaev"):
         names = [str(p.get("asset_name") or p.get("security_platform_name")) for p in LAB_ORG_IMPORT_OPENAEV_PLATFORMS]
         rows = [imp.TechStackEntry(product=name) for name in names]
     else:
