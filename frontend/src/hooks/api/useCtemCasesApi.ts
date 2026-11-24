@@ -744,12 +744,15 @@ export interface CtemCaseDeleteResult {
 
 /**
  * Delete cases, administrators only (POST /ctem-cases/bulk-delete, #1723): `dry_run` answers
- * what would go and writes nothing; the real delete refreshes every case read.
+ * what would go and writes nothing; the real delete refreshes every case read. A refusal
+ * (a 409 while a recompute holds the lock, a 500) is shown once, by the caller: the dialog
+ * line for the dry run, the "Delete failed" toast for the delete, never the global toast too.
  */
 export function useDeleteCtemCases() {
   const qc = useQueryClient();
   return useMutation<CtemCaseDeleteResult, Error, { case_ids: string[]; dry_run: boolean; reason?: string }>({
     mutationFn: (body) => api.post("/ctem-cases/bulk-delete", body),
+    meta: { suppressGlobalErrorToast: true },
     onSuccess: (result) => {
       if (!result.dry_run) void qc.invalidateQueries({ queryKey: ["ctem-cases"] });
     },
