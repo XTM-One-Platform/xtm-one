@@ -98,7 +98,7 @@ def waited_refusal(gate: str, case_id: str, open_keys: set[str]) -> str | None:
         return None
     if not keys and any(key.startswith("ctem:") and key.endswith(case_id) for key in open_keys):
         return None
-    named = ", ".join(keys) if keys else f"ctem:<gate>:{case_id}"
+    named = ", ".join(keys) if keys else f"a ctem: key of the gate ending in {case_id}"
     return (
         f"the gate {gate} waits only on its decision, and no open decision item keyed {named} exists for this "
         "case: file it first with create_work_item (that correlation_key, needs_human true, an ask with its "
