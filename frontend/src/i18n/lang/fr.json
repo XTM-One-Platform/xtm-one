@@ -17681,7 +17681,7 @@
   "The import failed.": "L'import a échoué.",
   "The rules the CTEM funnel and its agents apply. Money thresholds stay in Risk appetite.": "Les règles appliquées par l'entonnoir CTEM et ses agents. Les seuils financiers restent dans l'appétence au risque.",
   "Unknown primary assets (ignored): {names}": "Actifs primaires inconnus (ignorés) : {names}",
-  "Upload a CSV with columns: name, type, environment, internet_facing, owner, group, primary_assets. Rows are upserted by name.": "Envoyez un CSV avec les colonnes : name, type, environment, internet_facing, owner, group, crown_jewels. Les lignes sont créées ou mises à jour par nom.",
+  "Upload a CSV with columns: name, type, environment, internet_facing, owner, group, primary_assets. Rows are upserted by name.": "Envoyez un CSV avec les colonnes : name, type, environment, internet_facing, owner, group, primary_assets. Les lignes sont créées ou mises à jour par nom.",
   "Use the recommended policy": "Utiliser la politique recommandée",
   "What runs where, and what the internet can reach. Link assets to primary assets from the primary asset rows.": "Ce qui tourne où, et ce qu'internet peut atteindre. Liez les actifs aux actifs primaires depuis leurs lignes.",
   "Your procedures and reference documents. Agents search them on demand, each within the knowledge bases its user can read.": "Vos procédures et documents de référence. Les agents les consultent à la demande, chacun dans les bases de connaissances que son utilisateur peut lire.",

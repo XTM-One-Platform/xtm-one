@@ -116,7 +116,6 @@ def test_basic_block_names_the_identity_and_indexes_every_category() -> None:
             continue
         assert f"- {category.name} (" in text, f"{category.name} missing from the index"
     assert "- primary_assets (" in text and "): 2 rows;" in text
-    assert "- primary_assets (" not in text, "#1591: the deprecated alias is never announced"
     assert ": 1 row;" in text
     assert "- tracked_organizations (tracked organizations): 3 rows" in text
     assert "- software (" in text and "): not filled" in text
@@ -139,7 +138,6 @@ def test_the_index_is_generated_from_the_model() -> None:
     # The object fields read as a category (#11543, #1691): their rules or settings are their rows.
     assert {c.field for c in cats.CATEGORIES if c.field} == list_fields | {"prioritization_policy", "attack_surface"}
     assert {"primary_assets", "software", "pirs", "tracked_organizations"} <= set(cats.CATEGORY_NAMES)
-    assert "primary_assets" not in cats.CATEGORY_NAMES, "#1591: a deprecated alias, never a category of its own"
     assert "tech_stack" not in cats.CATEGORY_NAMES, "#1495: retired, no alias"
     assert {"assets_exposure", "prioritization_policy", "enterprise_knowledge"} <= set(cats.CATEGORY_NAMES)
 
@@ -205,7 +203,7 @@ def test_check_categories_reads_lists_strings_and_refuses_unknown_names() -> Non
     assert check_categories("inherit") is None
     assert check_categories("none") == []
     assert check_categories("Software, primary_assets") == ["software", "primary_assets"]
-    assert check_categories("primary_assets") == ["primary_assets"], "#1591: the deprecated alias answers primary_assets"
+    assert check_categories("primary_assets") == ["primary_assets"], "#1844: primary_assets is the category's only name"
     with pytest.raises(ValueError, match="tech_stack unknown"):
         check_categories("Tech_Stack, software")
     with pytest.raises(ValueError, match="software"):
