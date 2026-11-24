@@ -113,6 +113,7 @@ from app.services.run_ledger import (
     record_helper_ledger,
     tool_ledger_call,
 )
+from app.services.tool_surface_refresh import IntegrationSurfaceRefresher
 from app.tools.agent_loop import (
     CONTINUATION_COMPOSING_REASONS,
     SLOW_TURN_WARN_SECONDS,
@@ -142,8 +143,10 @@ if TYPE_CHECKING:
     from app.services.desktop_session import DesktopContext
     from app.services.fleet_studio import FleetStudioContext
     from app.services.presentation_studio import StudioContext
+    from app.services.tool_surface_refresh import RebuildIntegrations
     from app.services.video_studio.studio import VideoStudioContext
     from app.tools.agent_loop import SteeringMessage
+    from app.tools.base import ToolExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -5409,6 +5412,9 @@ async def run_agent_chat(
 
         _turn_stages.mark("scope_and_bindings")
         _invalid_integration_note = ""
+        # The integration build of this turn, replayed when a tool of the turn
+        # changes an integration it is bound to (#1874); None: no refresh.
+        _rebuild_integration_tools: RebuildIntegrations | None = None
         if prebuilt_integration_tools is not None:
             from app.services.integration_tools import prebuilt_tools_refusal
 
@@ -5500,14 +5506,53 @@ async def run_agent_chat(
             composite.withhold_integrations(
                 unavailable_integration_reasons(_integration_build_context.get("missing_integration_bindings"))
             )
+            # Tool-level scoping per provider (agent-configured only).
+            integ_allowed = agent.integration_allowed_tools or {}
             if integ_defs:
-                # Apply tool-level scoping per provider (agent-configured only)
-                integ_allowed = agent.integration_allowed_tools or {}
                 if integ_allowed:
                     from app.services.builtin_tools import filter_integration_tools
 
                     integ_defs = filter_integration_tools(integ_defs, integ_allowed)
                 composite.add_tools(integ_defs, integ_exec)
+
+            _refresh_bindings = dict(effective_bindings)
+            _refresh_context = dict(_integration_build_context)
+
+            async def _rebuild_integration_tools_now() -> "tuple[list[ToolDefinition], ToolExecutor]":
+                """This turn's integration build and allow list, in a session of its own."""
+                from app.core.database import async_session as _refresh_session
+
+                # Fresh sinks: what the first build collected for the extraction
+                # is not collected twice.
+                context = {
+                    **_refresh_context,
+                    # The agent's read-only bindings, read as the first build reads them.
+                    READ_ONLY_CONTEXT_KEY: read_only_integration_ids(agent, _refresh_bindings),
+                    # The agent's signature overrides, as the first build hands them.
+                    SIGNATURE_CONTEXT_KEY: getattr(agent, "integration_signatures", None),
+                    "missing_integration_bindings": [],
+                    PLATFORM_NAMES_CONTEXT_KEY: [],
+                    ATTACK_SOURCES_CONTEXT_KEY: [],
+                }
+                async with _refresh_session() as refresh_db:
+                    defs, executor = await build_integration_tools(
+                        refresh_db,
+                        # The same resolution as the turn's first build: never a
+                        # credential the person may not use.
+                        ToolBindings(
+                            _refresh_bindings,
+                            basis=BindingBasis.RESOLVED,
+                            reason="the chat turn's own resolution, rebuilt in the turn",
+                        ),
+                        context=context,
+                    )
+                if defs and integ_allowed:
+                    from app.services.builtin_tools import filter_integration_tools
+
+                    defs = filter_integration_tools(defs, integ_allowed)
+                return defs, executor
+
+            _rebuild_integration_tools = _rebuild_integration_tools_now
 
         # --- Missing integration warning (inject into system prompt) ---
         if agent.integration_template_bindings:
@@ -6706,8 +6751,6 @@ async def run_agent_chat(
         effective_tools = composite.all_tools
         _builtin_allowed = getattr(agent, "builtin_allowed_tools", None)
         if _builtin_allowed:
-            # Per-function built-in scoping, before the deny list.
-            from app.services.builtin_tools import filter_builtin_tools
             from app.services.builtin_tools.filtering import (
                 builtin_tools_outside_scope,
                 describe_outside_builtin_scope,
@@ -6717,13 +6760,6 @@ async def run_agent_chat(
             # exists outside the allowlist (#12192).
             for _name, _group in builtin_tools_outside_scope(effective_tools, _builtin_allowed).items():
                 composite.withhold([_name], describe_outside_builtin_scope(_group), registered=True)
-            effective_tools = filter_builtin_tools(effective_tools, _builtin_allowed)
-        if agent.tool_deny_list:
-            from app.services.builtin_tools import apply_tool_deny_list
-
-            effective_tools = apply_tool_deny_list(
-                effective_tools, agent.tool_deny_list
-            )
 
         # WS10 / D3 - consult vs delegate. A CONSULT (caller-driven restrict, set
         # by ``_consult_agent``) is advise-only: the Payload Creator returns a
@@ -6749,38 +6785,55 @@ async def run_agent_chat(
             ):
                 restrict_openaev_writes = True
 
-        # Advisory specialist: withhold every OpenAEV mutation tool so a
-        # consulted agent can never write to OpenAEV directly during a run
-        # (the orchestrator is the single author). Read-only OpenAEV tools
-        # stay. Enforced in code so the contract holds even for a user-created
-        # specialist whose own OpenAEV integration is bound with write scope.
-        # A caller-driven consult additionally drops arsenal create/update
-        # (``allow_arsenal=False``); the identity-forced delegate path keeps them.
-        if restrict_openaev_writes:
-            from app.services.builtin_tools import strip_openaev_write_tools
-
-            _before = len(effective_tools)
-            effective_tools = strip_openaev_write_tools(
-                effective_tools, allow_arsenal=not _arsenal_consult_readonly
-            )
-            if len(effective_tools) != _before:
-                logger.info(
-                    "Advisory consult: withheld %d OpenAEV write tool(s) from '%s'",
-                    _before - len(effective_tools),
-                    agent.name,
-                )
-
-        # Attack Path Orchestrator: keep manage_openaev_threat_arsenal for
-        # list/get, but drop create/update/duplicate/delete from the schema
-        # so it cannot author junk payloads itself and must consult_agent
-        # the Payload Creator. Nested consults of that specialist do NOT
-        # hit this branch (target slug is openaev-payload-creator).
         from app.services.builtin_tools import is_openaev_orchestrator_agent
 
-        if is_openaev_orchestrator_agent(agent.slug, is_builtin=agent.is_builtin):
-            from app.services.builtin_tools import narrow_orchestrator_arsenal_tools
+        _narrow_orchestrator = is_openaev_orchestrator_agent(agent.slug, is_builtin=agent.is_builtin)
+        _strip_openaev_writes = restrict_openaev_writes
 
-            effective_tools = narrow_orchestrator_arsenal_tools(effective_tools)
+        def _narrow_tool_surface(tools: list[ToolDefinition]) -> list[ToolDefinition]:
+            """The offered surface from the composite's tools: the one narrowing a
+            refresh inside the turn replays (#1874), so it never widens past it."""
+            narrowed = tools
+            if _builtin_allowed:
+                # Per-function built-in scoping, before the deny list.
+                from app.services.builtin_tools import filter_builtin_tools
+
+                narrowed = filter_builtin_tools(narrowed, _builtin_allowed)
+            # Deny list takes precedence over all allow lists.
+            if agent.tool_deny_list:
+                from app.services.builtin_tools import apply_tool_deny_list
+
+                narrowed = apply_tool_deny_list(narrowed, agent.tool_deny_list)
+            # Advisory specialist: withhold every OpenAEV mutation tool so a
+            # consulted agent can never write to OpenAEV directly during a run
+            # (the orchestrator is the single author). Read-only OpenAEV tools
+            # stay. Enforced in code so the contract holds even for a user-created
+            # specialist whose own OpenAEV integration is bound with write scope.
+            # A caller-driven consult additionally drops arsenal create/update
+            # (``allow_arsenal=False``); the identity-forced delegate path keeps them.
+            if _strip_openaev_writes:
+                from app.services.builtin_tools import strip_openaev_write_tools
+
+                _before = len(narrowed)
+                narrowed = strip_openaev_write_tools(narrowed, allow_arsenal=not _arsenal_consult_readonly)
+                if len(narrowed) != _before:
+                    logger.info(
+                        "Advisory consult: withheld %d OpenAEV write tool(s) from '%s'",
+                        _before - len(narrowed),
+                        agent.name,
+                    )
+            # Attack Path Orchestrator: keep manage_openaev_threat_arsenal for
+            # list/get, but drop create/update/duplicate/delete from the schema
+            # so it cannot author junk payloads itself and must consult_agent
+            # the Payload Creator. Nested consults of that specialist do NOT
+            # hit this branch (target slug is openaev-payload-creator).
+            if _narrow_orchestrator:
+                from app.services.builtin_tools import narrow_orchestrator_arsenal_tools
+
+                narrowed = narrow_orchestrator_arsenal_tools(narrowed)
+            return narrowed
+
+        effective_tools = _narrow_tool_surface(effective_tools)
 
         _eval_tool_names: list[str] = [t.name for t in effective_tools]
         _eval_traces: list[dict[str, Any]] = []
@@ -7896,6 +7949,12 @@ async def run_agent_chat(
             # other runs do not ask for it.
             if evaluation_mode:
                 loop_kwargs["report_tool_durations"] = True
+            # The turn's own build and narrowing, replayed by the loop when a tool
+            # of the turn changes an integration it is bound to (#1874).
+            if loop_kwargs["executor"] is not None and _rebuild_integration_tools is not None:
+                loop_kwargs["tool_surface_refresher"] = IntegrationSurfaceRefresher(
+                    composite, loop_kwargs["executor"], _rebuild_integration_tools, _narrow_tool_surface
+                )
             # Fast-path: when the agent config declares a finalize_on_builtin_tool,
             # pass it to the loop so it can short-circuit after a successful tool
             # result without making an extra LLM call (e.g. stix_bundle_validator).

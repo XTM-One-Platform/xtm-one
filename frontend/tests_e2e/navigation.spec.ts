@@ -140,7 +140,7 @@ test.describe('Smoke — Navigation', () => {
     await nav.getByRole('button', { name: 'Switch product' }).click();
     await expect(page.getByRole('menuitem', { name: /XTM Hub/ })).toBeVisible();
     // OpenCTI, OpenAEV and the XTM Hub at least, one row per connected instance.
-    expect(await page.getByRole('menuitem').count()).toBeGreaterThanOrEqual(3);
+    await expect.poll(() => page.getByRole('menuitem').count()).toBeGreaterThanOrEqual(3);
   });
 
   test('should open About from the profile menu, not from the left navigation', async ({ page }) => {
@@ -158,9 +158,14 @@ test.describe('Smoke — Navigation', () => {
   test('should navigate to a page from the inline top bar search', async ({ page }) => {
     await page.goto('/');
     // Ctrl K focuses the inline field: no dialog opens (#11201).
-    await page.keyboard.press('Control+k');
     const field = page.getByRole('combobox', { name: 'Search the platform' });
-    await expect(field).toBeFocused();
+    // The field must be rendered and the GlobalSearchProvider keydown listener
+    // mounted before the press lands, so wait for it, then retry the press.
+    await expect(field).toBeVisible();
+    await expect(async () => {
+      await page.keyboard.press('Control+k');
+      await expect(field).toBeFocused({ timeout: 1_000 });
+    }).toPass({ timeout: 15_000 });
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await field.fill('Skills');
     await page.getByRole('option', { name: /^Skills/ }).first().click();

@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+// @vitest-environment node
+import { describe, expect, it as test } from 'vitest';
 import {
   AGENDA_GRID_COLUMNS,
   AGENDA_GRID_MAX_ITEMS,
@@ -17,7 +18,7 @@ import type { AgendaSlide, DeckAgendaFlow, DeckAgendaItem } from '../src/types';
 // Agenda layout resolver - columns, look, rows, table-driven.
 //
 // `agenda-layout.ts` is pure TypeScript (no DOM), so it is exercised here
-// directly, without a page, like `logo-position.spec.ts`. The backend owns the
+// directly, without a page, like `logo-position.test.ts`. The backend owns the
 // rule (`auto_agenda_columns` / `auto_agenda_style` in `presentation_spec.py`)
 // and `tests/test_presentation_spec_v2.py` pins the two SOURCES together; this
 // spec runs the frontend half, so a threshold moved on one side only fails a
@@ -51,7 +52,7 @@ const agenda = (count: number, extra: Partial<AgendaSlide> = {}): AgendaSlide =>
 /** `groups` as the eye reads them: 1-based numbers, one line per row. */
 const picture = (groups: number[][]): string => groups.map((row) => row.map((index) => index + 1).join(' ')).join(' / ');
 
-test.describe('Presentations - agenda layout resolver', () => {
+describe('Presentations - agenda layout resolver', () => {
   test('the grid constants are the backend rule', () => {
     expect([AGENDA_GRID_COLUMNS, AGENDA_GRID_MIN_ITEMS, AGENDA_GRID_MAX_ITEMS]).toEqual([3, 6, 9]);
   });

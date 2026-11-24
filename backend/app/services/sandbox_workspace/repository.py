@@ -187,7 +187,12 @@ def _declared_checks(data: bytes, root: str) -> dict[str, CheckSpec]:
 
 
 def extract_tree(
-    data: bytes, *, sub_paths: list[str] | None = None, max_bytes: int, extra_files: list[str] | None = None
+    data: bytes,
+    *,
+    sub_paths: list[str] | None = None,
+    max_bytes: int,
+    extra_files: list[str] | None = None,
+    exact_files: bool = False,
 ) -> ExtractedTree:
     """The regular files of an archive, its top directory dropped, filtered to *sub_paths*.
 
@@ -209,6 +214,9 @@ def extract_tree(
     sub_paths and listed in ``lifecycle``.
     *extra_files* are repository files kept as they are, outside *sub_paths*, never widened nor listed as
     companions: the files a branch changes outside a checkout, read by ``sandbox_checkout_rebase``.
+    With *exact_files*, a sub_path naming a regular file of the archive is kept as that file, never widened to
+    the directory a check runs from nor to its package root: ``materialize_repository(add_paths=[a file])``
+    grows a checkout whose checks were already set up by its first tree, so one file asked is one file written.
     Raises :class:`ArchiveTooLargeError` past *max_bytes* of selected content.
     """
     members = [
@@ -227,11 +235,14 @@ def extract_tree(
             rel = _relative(name, root)
             if rel and member.is_file:
                 sizes[rel] = member.size
+        exact = [sub for sub in wanted if sub in sizes] if exact_files else []
+        wanted = [sub for sub in wanted if sub not in exact]
         wanted, tree.widened = widen_to_check_dirs(wanted, declared)
         # A sub_path inside a JavaScript package no declared check covers takes the package root: its unit
         # and type checks load the package's own config and assets (front/config.ts beside front/src).
         wanted, by_package = widen_to_package_roots(wanted, sizes)
         tree.widened = [*tree.widened, *by_package]
+        wanted = [*wanted, *(sub for sub in exact if not any(is_under(sub, other) for other in wanted))]
         tree.needed = check_needs(wanted, declared)
         wanted = [*wanted, *tree.needed]
         tree.sub_paths = list(wanted)
