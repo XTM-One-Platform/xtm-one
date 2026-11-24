@@ -214,6 +214,30 @@ def _list_ref(library: str) -> str:
     return _url_encode(library.strip(), safe="")
 
 
+#: The facets of a Graph ``columnDefinition`` that name its type.
+_COLUMN_FACETS = (
+    "text",
+    "choice",
+    "number",
+    "currency",
+    "dateTime",
+    "boolean",
+    "lookup",
+    "personOrGroup",
+    "hyperlinkOrPicture",
+    "calculated",
+    "term",
+    "geolocation",
+    "thumbnail",
+    "contentApprovalStatus",
+)
+
+
+def column_type(column: dict) -> str:
+    """The type of a Graph column definition: the facet it carries, else ``unknown``."""
+    return next((facet for facet in _COLUMN_FACETS if isinstance(column.get(facet), dict)), "unknown")
+
+
 def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[ToolDefinition]:
     """Register the sharepoint tools on *executor* and return their definitions."""
     _client = ctx.client
@@ -753,7 +777,41 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
             body = "\n---\n".join(blocks) if blocks else "No matching item."
             return f"{header}:\n\n{body}{footer}"
 
+    async def list_microsoft_list_columns(site_id: str, library: str, include_hidden: bool = False) -> str:
+        """The column definitions of a SharePoint list or document library
+        (Graph ``/sites/{id}/lists/{list}/columns``): internal and display name,
+        type, choices, required, read-only. Read-only."""
+        lib = (library or "").strip()
+        if not lib:
+            return "Error: provide the library (or list): its display name or its list id."
+        async with _client() as client:
+            site_base, err = await _site_base(ctx, client, site_id)
+            if err:
+                return err
+            columns, err = await ctx.collect_all(client, f"{site_base}/lists/{_list_ref(lib)}/columns", "list columns")
+        if err:
+            status = 403 if "access denied" in err.lower() else (404 if "not found" in err.lower() else None)
+            return _fields_refused(status, err, f"the columns of '{lib}'")
+        shown = [c for c in columns if isinstance(c, dict) and (include_hidden or not c.get("hidden"))]
+        lines = [f"{len(shown)} column(s) of '{lib}'" + ("" if include_hidden else " (hidden ones left out)") + ":"]
+        for column in shown:
+            kind = column_type(column)
+            flags = [flag for flag in ("required", "readOnly", "indexed", "hidden") if column.get(flag)]
+            line = (
+                f"- {column.get('name', '')} (display: {column.get('displayName', '')}, type: {kind}"
+                + (f", {', '.join(flags)}" if flags else "")
+                + ")"
+            )
+            choices = (column.get("choice") or {}).get("choices")
+            if choices:
+                line += f" choices: {', '.join(str(c) for c in choices)}"
+            if column.get("description"):
+                line += f" - {column['description']}"
+            lines.append(line)
+        return "\n".join(lines)
+
     executor.register("list_microsoft_sharepoint_sites", list_microsoft_sharepoint_sites)
+    executor.register("list_microsoft_list_columns", list_microsoft_list_columns)
     executor.register("get_microsoft_list_item_fields", get_microsoft_list_item_fields)
     executor.register("list_microsoft_list_items", list_microsoft_list_items)
     executor.register("list_microsoft_site_files", list_microsoft_site_files)
@@ -943,6 +1001,35 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
                     "page_token": {
                         "type": "string",
                         "description": "The page_token a previous call returned, to read the next page",
+                    },
+                },
+                "required": ["site_id", "library"],
+            },
+            source="integration:microsoft",
+            priority=2,
+        ),
+        ToolDefinition(
+            name="list_microsoft_list_columns",
+            description=(
+                "List the column definitions of a SharePoint list or document library: internal "
+                "name (the key list_microsoft_list_items shows), display name, type, choices, "
+                "required and read-only flags. Read-only. Needs Sites.Read.All."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "site_id": {
+                        "type": "string",
+                        "description": "The site: its ID from list_microsoft_sharepoint_sites, the path form 'hostname:/sites/name', or its URL",
+                    },
+                    "library": {
+                        "type": "string",
+                        "description": "The list or document library: its display name or its list id",
+                    },
+                    "include_hidden": {
+                        "type": "boolean",
+                        "description": "Also list the hidden system columns (default false)",
+                        "default": False,
                     },
                 },
                 "required": ["site_id", "library"],

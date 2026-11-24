@@ -198,8 +198,8 @@ class _WorksetExecutor(CallableToolExecutor):
         super().__init__()
         self._ingest = ingest
 
-    async def ingest(self, *, call: Any, result: Any, spec: object) -> Any:
-        return await self._ingest(call=call, result=result, spec=spec)
+    async def ingest(self, *, call: Any, result: Any, spec: object, personal_records: bool = False) -> Any:
+        return await self._ingest(call=call, result=result, spec=spec, personal_records=personal_records)
 
     def on_composite(self, composite: Any) -> None:
         if self._ingest is not None:
@@ -214,7 +214,23 @@ def _fenced(text: str) -> str:
     return f"{fence}text\n{text}\n{fence}"
 
 
-def _receipt(tool_name: str, split: Any, outcomes: list[Any], coverage: str) -> str:
+def as_personal_reference(draft: Any, tool_name: str) -> Any:
+    """*draft* with its person's record replaced by a reference: title, ref and link are kept.
+
+    For a tool that declares ``ToolDefinition.personal_records``: the corpus
+    keeps where to read the record again, never the record itself.
+    """
+    from dataclasses import replace
+
+    content = (
+        f"Personal record from {tool_name}, reference {_one_line(draft.external_ref, 120)}: "
+        "not stored in the workset. Read it from "
+        f"{tool_name} by this reference when it is needed."
+    )
+    return replace(draft, content=content)
+
+
+def _receipt(tool_name: str, split: Any, outcomes: list[Any], coverage: str, personal_records: bool = False) -> str:
     """What the model reads instead of a ``to_workset`` result: counts it can check, never the content."""
     counts: dict[str, int] = {}
     refused: list[str] = []
@@ -232,6 +248,11 @@ def _receipt(tool_name: str, split: Any, outcomes: list[Any], coverage: str) -> 
     ]
     if split.fallback:
         lines.append(f"Not split as asked: {split.fallback}")
+    if personal_records:
+        lines.append(
+            "These are people's records: each item holds its title, reference and link, "
+            f"not the record; read a record from {tool_name} by its reference."
+        )
     if refused:
         lines.append(
             f"{len(refused)} item(s) were NOT stored ({_one_line(refused[0], 300)}): "
@@ -775,7 +796,7 @@ def build_workset_tools(
 
     # ── Ingesting another tool's result (``to_workset``) ─────────────────
 
-    async def _ingest(*, call: Any, result: Any, spec: Any) -> Any:
+    async def _ingest(*, call: Any, result: Any, spec: Any, personal_records: bool = False) -> Any:
         """Split *result* into items of the bound workset; the receipt replaces its content.
 
         The dispatcher (``CompositeToolExecutor._dispatch``) hands over the
@@ -813,6 +834,9 @@ def build_workset_tools(
             return _refused("the result could not be split.")
         if not split.items:
             return _refused("the result held no item.")
+        if personal_records:
+            # A person's record: the corpus keeps where to read it again.
+            split.items = [as_personal_reference(draft, call.name) for draft in split.items]
 
         async def _run(session, workset, user):
             outcomes = []
@@ -856,7 +880,7 @@ def build_workset_tools(
         ):
             if isinstance(failure, Exception):
                 logger.warning("to_workset item could not be queued: %s", format_exception_message(failure))
-        return replace(result, content=_receipt(call.name, split, outcomes, coverage))
+        return replace(result, content=_receipt(call.name, split, outcomes, coverage, personal_records))
 
     executor = _WorksetExecutor(_ingest if acting_user_id is not None else None)
     executor.register("workset_add_item", _add)
