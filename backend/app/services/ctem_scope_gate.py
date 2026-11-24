@@ -218,6 +218,8 @@ class Resolution:
     shipped: list[dict[str, Any]] = field(default_factory=list)
     #: #1432: their source repositories (``owner/name``), the subject's assets.
     repositories: list[str] = field(default_factory=list)
+    #: #1720: the software references the tech stack and shipped products were matched against.
+    software_refs: list[str] = field(default_factory=list)
 
     @property
     def resolved(self) -> bool:
@@ -314,6 +316,39 @@ def shipped_match(entry: ShippedProduct, ref: str) -> str:
     return "product" if entry.vendor and _product_matches(entry.vendor, text) else ""
 
 
+#: #1720: the relationships of a threat that name the software it reaches (OpenCTI ``targets``,
+#: ``uses``, and ``has`` read from the software side).
+THREAT_SOFTWARE_RELATIONSHIPS: frozenset[str] = frozenset({"targets", "uses", "has"})
+#: #1720: the evidence keys a threat's targeted or used software is listed under.
+THREAT_SOFTWARE_KEYS: tuple[str, ...] = ("targets", "uses", "targeted_software", "targeted_products")
+#: #1720: the scorer's matched field naming the products a threat matched, ``tech_stack (A, B)``.
+_MATCHED_PRODUCTS = re.compile(r"\b(?:tech[ _]stack|software|products?)\s*\(([^()]*)\)", re.IGNORECASE)
+
+
+def threat_software(evidence: dict[str, Any]) -> list[str]:
+    """#1720: the software a threat subject (a campaign, an intrusion set, a malware) names.
+
+    Read from the lists of :data:`THREAT_SOFTWARE_KEYS`, from ``relationships``
+    (``{relationship_type, target}`` or ``{type, name}`` objects, kept when the
+    type is one of :data:`THREAT_SOFTWARE_RELATIONSHIPS`), and from the
+    scorer's ``matched_fields`` (``tech_stack (Microsoft 365, GitHub)``). Each
+    name is then matched to the tech stack like any software reference.
+    """
+    found = _evidence_list(evidence, *THREAT_SOFTWARE_KEYS)
+    relationships = evidence.get("relationships")
+    for rel in relationships if isinstance(relationships, list) else []:
+        if not isinstance(rel, dict):
+            continue
+        kind = str(rel.get("relationship_type") or rel.get("type") or "").strip().lower()
+        name = str(rel.get("target") or rel.get("name") or "").strip()
+        if kind in THREAT_SOFTWARE_RELATIONSHIPS and name:
+            found.append(name)
+    for text in _evidence_list(evidence, "matched_fields"):
+        for group in _MATCHED_PRODUCTS.findall(text):
+            found += [part.strip() for part in group.split(",") if part.strip()]
+    return list(dict.fromkeys(found))
+
+
 def runs_in_profile(profile: OrganizationProfile, name: str) -> list[str]:
     """The tech stack products and assets of *profile* a software or asset *name* names (CTEM-08).
 
@@ -364,6 +399,10 @@ def resolve(profile: OrganizationProfile, facts: SignalFacts) -> Resolution:
     software = _evidence_list(facts.evidence, "software", "products", "cpe")
     if facts.subject_kind == "software":
         software.insert(0, facts.subject_ref)
+    if facts.subject_kind == "threat":
+        software += threat_software(facts.evidence)
+    software = list(dict.fromkeys(software))
+    out.software_refs = software
     for entry in profile.tech_stack:
         if any(
             _product_matches(entry.product, ref) or (entry.cpe and entry.cpe.lower() == ref.lower()) for ref in software
@@ -517,6 +556,7 @@ def decide(
             "tech_stack": resolution.products,
             "shipped_products": resolution.shipped,
             "repositories": resolution.repositories,
+            "software_refs": resolution.software_refs,
             "hosted_under": resolution.hosted_domains,
             "lenses": lenses,
             "confidence": confidence,
@@ -572,6 +612,7 @@ def decide(
             "to_validate",
             "subject not resolved to an asset, a crown jewel, the tech stack or a shipped product",
             code="subject_unresolved",
+            params={"keys": len(resolution.keys), "software": len(resolution.software_refs)},
         )
 
     # Scope criticality: assets, their crown jewels, the risk scenarios holding them.
