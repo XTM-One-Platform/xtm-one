@@ -308,6 +308,10 @@ class _Result:
     def scalar_one_or_none(self):
         return self._value
 
+    def all(self):
+        # No group has auto join on in these fakes (#1901).
+        return []
+
 
 class _FakeDb:
     """Enough session to drive ``oidc_callback`` without Postgres.

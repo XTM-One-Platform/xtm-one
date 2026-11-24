@@ -7667,6 +7667,9 @@ export interface Group {
   ctem_access?: GroupCtemAccess | null;
   /** With `decide`: the members get a notification for each case gate. */
   ctem_notify?: boolean;
+  /** People who sign in through single sign-on join the group at every
+   *  sign-in (`services/group_auto_join.py`); admin routes only. */
+  auto_join?: boolean;
   created_at: string;
   updated_at: string;
 }

@@ -21664,5 +21664,10 @@
   "Members read every signal and case of the organization, read only.": "Les membres lisent tous les signaux et cas de l’organisation, en lecture seule.",
   "Members also triage signals, change cases (owner, due date, state, accepted risk) and answer the case decisions. Their agents get the same reach.": "Les membres trient aussi les signaux, modifient les cas (responsable, échéance, état, risque accepté) et répondent aux décisions des cas. Leurs agents ont la même portée.",
   "Notify the members of case decisions": "Notifier les membres des décisions de cas",
-  "Off: the members can still answer from the case page, without a notification.": "Désactivé : les membres peuvent toujours répondre depuis la page du cas, sans notification."
+  "Off: the members can still answer from the case page, without a notification.": "Désactivé : les membres peuvent toujours répondre depuis la page du cas, sans notification.",
+  "Auto join": "Adhésion automatique",
+  "Auto join updated": "Adhésion automatique mise à jour",
+  "Auto join could not be updated": "L'adhésion automatique n'a pas pu être mise à jour",
+  "Single sign-on users join this group": "Les utilisateurs SSO rejoignent ce groupe",
+  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "Les personnes qui se connectent par authentification unique (SSO) rejoignent ce groupe automatiquement, à chaque connexion. Les membres ajoutés à la main, par le mappage des groupes SAML ou par SCIM restent tels quels."
 }

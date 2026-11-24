@@ -21664,5 +21664,10 @@
   "Members read every signal and case of the organization, read only.": "Members read every signal and case of the organization, read only.",
   "Members also triage signals, change cases (owner, due date, state, accepted risk) and answer the case decisions. Their agents get the same reach.": "Members also triage signals, change cases (owner, due date, state, accepted risk) and answer the case decisions. Their agents get the same reach.",
   "Notify the members of case decisions": "Notify the members of case decisions",
-  "Off: the members can still answer from the case page, without a notification.": "Off: the members can still answer from the case page, without a notification."
+  "Off: the members can still answer from the case page, without a notification.": "Off: the members can still answer from the case page, without a notification.",
+  "Auto join": "Auto join",
+  "Auto join updated": "Auto join updated",
+  "Auto join could not be updated": "Auto join could not be updated",
+  "Single sign-on users join this group": "Single sign-on users join this group",
+  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are."
 }
