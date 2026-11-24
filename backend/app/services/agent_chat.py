@@ -1516,17 +1516,17 @@ def _add_platform_builder_tools(
 
         # ROI and outcomes (#10006 S2), with the REST routes' access rules.
         composite.add_tools(*build_roi_tools(actor_id))
-    if "health_specialists" in agent_builtin_tool_ids and health_actor is not None:
+    if "health_sandbox" in agent_builtin_tool_ids and health_actor is not None:
         from app.services.health.sandbox.tools import build_sandbox_tools
 
         # Its own access rule (Platform Health or an administrator) on every call.
         composite.add_tools(*build_sandbox_tools(db, health_actor or None))
-    if "health_specialists" in agent_builtin_tool_ids and health_actor is not None:
+    if "health_evaluation" in agent_builtin_tool_ids and health_actor is not None:
         from app.services.health.evaluation_tools import build_health_evaluation_tools
 
         # Its own access rule (Platform Health, or an administrator where evaluation is on).
         composite.add_tools(*build_health_evaluation_tools(db, health_actor or None, run_id=run_id))
-    if "health_specialists" in agent_builtin_tool_ids and health_actor is not None:
+    if "improvement_proposals" in agent_builtin_tool_ids and health_actor is not None:
         from app.services.builtin_tools.improvements import build_improvement_tools
 
         # Its own access rule (scope in a Platform Health run, the target's managers
@@ -3915,7 +3915,7 @@ async def run_agent_chat(
                 )
 
         # Fetch user group IDs for three-tier visibility on handover agents
-        from app.api.v1.helpers import get_user_group_ids, user_visible_filter
+        from app.api.v1.helpers import get_user_group_ids
 
         user_group_ids: list[str] = []
         if h_ids and not is_anonymous_user:
@@ -3961,12 +3961,21 @@ async def run_agent_chat(
                         .order_by(Agent.name)
                     )
                 else:
+                    # The configured handover is the grant: a peer the
+                    # person may not open is still loaded (never listed or
+                    # opened by them), the exposure rule kept.
+                    from app.services.fleets import (
+                        configured_handover_reach,
+                        handover_peer_clause,
+                    )
+
+                    granted = await configured_handover_reach(_db, agent.id, h_ids)
                     r = await _db.execute(
                         select(Agent)
                         .where(
                             Agent.id.in_(h_ids),
                             Agent.enabled.is_(True),
-                            user_visible_filter(Agent, uuid.UUID(user_id), user_group_ids),
+                            handover_peer_clause(uuid.UUID(user_id), user_group_ids, granted),
                             active_handover_target_clause(),
                         )
                         .order_by(Agent.name)
