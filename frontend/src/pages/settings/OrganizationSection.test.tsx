@@ -17,6 +17,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 vi.mock("@/hooks/usePlatformConfig", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/usePlatformConfig")>()),
   useAgenticAIEnabled: () => agenticEnabled,
+  useIsXtmOne: () => xtmOneMode,
 }));
 
 // The tab bar registers palette commands (DetailTabs); the palette is not under test here.
@@ -26,6 +27,11 @@ vi.mock("@/lib/commands/CommandsProvider", async (importOriginal) => ({
 }));
 
 let agenticEnabled = true;
+// XTM One mode by default: Copilot mode keeps the Identity card alone (#1690), its own tests set it false.
+let xtmOneMode = true;
+beforeEach(() => {
+  xtmOneMode = true;
+});
 
 /** Opens the header "Draft" menu and picks one of its rows (section 6.1). */
 async function pickDraft(row: "From the platforms" | "With AI") {
@@ -37,8 +43,9 @@ async function draftFromPlatforms() {
   await pickDraft("From the platforms");
   fireEvent.click(await screen.findByRole("button", { name: "Quick setup" }));
 }
-/** The cards CTEM > Inventory mounts in place of the two tabs that left Settings (#1178). */
+/** The cards CTEM > Inventory mounts in place of the three tabs that left Settings (#1178, #1690). */
 const INVENTORY_CARDS = {
+  business: ["crown_jewels", "shipped_products", "tracked_organizations"],
   technology: ["tech_stack"],
   exposure: ["assets_exposure", "asset_groups", "prioritization_policy", "outside_lens", "evidence_health"],
 } as const;
@@ -47,7 +54,7 @@ const INVENTORY_CARDS = {
  * as CTEM > Inventory mounts them (#1178), since Settings no longer draws them.
  */
 function renderPage(tab?: string) {
-  const embedded = tab === "technology" || tab === "exposure" ? INVENTORY_CARDS[tab] : null;
+  const embedded = tab === "business" || tab === "technology" || tab === "exposure" ? INVENTORY_CARDS[tab] : null;
   return renderWithProviders(
     <MemoryRouter initialEntries={[embedded ? "/ctem/inventory" : tab ? `/settings/organization/profile/${tab}` : "/settings/organization"]}>
       <OrganizationSection embed={embedded ? { cards: embedded } : undefined} />
