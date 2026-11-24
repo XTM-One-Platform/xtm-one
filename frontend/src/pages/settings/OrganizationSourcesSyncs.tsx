@@ -586,9 +586,9 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
         open={editing !== null}
         saving={update.isPending}
         onClose={() => setEditing(null)}
-        onSave={(schedule, enabled, direction) => {
+        onSave={(schedule, enabled, direction, filters) => {
           const done = { onSuccess: () => setEditing(null), onError: reportFailure(t_i18n("The sync could not be saved")) };
-          if (editing) update.mutate({ id: editing.id, body: bodyOf(editing, { ...schedule, enabled, direction }) }, done);
+          if (editing) update.mutate({ id: editing.id, body: bodyOf(editing, { ...schedule, enabled, direction, ...(filters ? { filters } : {}) }) }, done);
         }}
       />
       <DeleteRowsDialog row={deleting} name={deleting ? nameOf(deleting) : ""} onClose={() => setDeleting(null)} />

@@ -2386,18 +2386,26 @@ async def _report_invalid_config(
     absence: the turn's ``missing_integration_bindings`` gets an
     ``integration_invalid`` entry naming the keys (the turn tells the model), and
     the owners are notified once per invalid state. Any other reason for a
-    missing credential (an expired token, a revoked secret) is left as it was.
-    Never raises.
+    missing credential (never signed in, an expired token, a revoked secret)
+    gets an ``integration_not_connected`` entry, so the turn tells the model
+    the integration is bound and unconnected instead of leaving it out
+    silently. Never raises.
     """
-    if integ is None or not getattr(integ, "extra_config_enc", None):
+    if integ is None:
         return
     try:
         from app.api.v1.integration_catalog import missing_required_extra_fields
-        from app.services.integration_credentials import invalid_config_binding
+        from app.services.integration_credentials import (
+            invalid_config_binding,
+            not_connected_binding,
+        )
         from app.services.integration_invalid_notice import notify_integration_invalid_once
 
-        missing = missing_required_extra_fields(integ.provider, await _reveal_extra(integ))
+        extra = await _reveal_extra(integ) if getattr(integ, "extra_config_enc", None) else {}
+        missing = missing_required_extra_fields(integ.provider, extra)
         if not missing:
+            if isinstance(missing_bindings, list):
+                missing_bindings.append(not_connected_binding(integ, binding_key=binding_key))
             return
         logger.warning(
             "Integration '%s' (%s) is invalid: %s missing in extra_config - its tools are unavailable",

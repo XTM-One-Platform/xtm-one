@@ -26,6 +26,7 @@ vi.mock("@/hooks/api/useSettingsApi", () => ({
     isFetching: state.fetching,
     refetch: state.refetchMusic,
   }),
+  useMediaModelsInUse: () => ({ data: undefined }),
   useSpeechVoices: () => ({ data: { voices: [] }, isLoading: false }),
   useUpdateGeneralAssistantConfig: () => ({ mutate: vi.fn(), isPending: false }),
 }));

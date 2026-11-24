@@ -127,8 +127,6 @@ interface CtemCaseValidation {
   at: string;
   mitigation_only?: boolean;
   note?: string | null;
-  /** CTEM-12: only read-only injects ran (true), a non-read-only one ran (false); absent when unknown. */
-  safe_mode?: boolean;
   /** CTEM-12: the target asset groups in the order they were tested. */
   run_order?: string[];
 }
@@ -399,7 +397,6 @@ type CtemCaseGateReasonKind =
   | "within_threshold"
   | "above_threshold"
   | "loss_unknown"
-  | "safe_mode"
   | "fleet_level"
   | "person";
 

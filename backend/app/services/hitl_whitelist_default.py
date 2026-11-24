@@ -36,7 +36,7 @@ unattended everywhere until somebody notices.
 
 # Bumped whenever the set below changes. Display/diagnostics only — never
 # branch on this value.
-SHIPPED_WHITELIST_VERSION = 11
+SHIPPED_WHITELIST_VERSION = 12
 
 # --------------------------------------------------------------------------
 # Read-only inspection of platform objects.
@@ -115,6 +115,9 @@ _READ_ONLY_SEARCH = frozenset(
         # same visibility check as ``get_presentation``; writes nothing.
         "search_presentation_text",
         "search_templates",
+        # Reads the text of the skills, prompts, agents and assignments the
+        # caller can already list, through the same visibility filters.
+        "search_config_text",
         # Reads a skill definition or one of its resource files into context.
         "load_skill",
         "read_skill_resource",

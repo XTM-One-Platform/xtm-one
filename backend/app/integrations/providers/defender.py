@@ -336,6 +336,11 @@ def _fmt_detection_rule(rule: dict[str, Any]) -> str:
     )
 
 
+def _outcome_unknown(err: str) -> bool:
+    """Whether a write's error leaves open that Graph applied it (a timeout, a 5xx, a broken transfer)."""
+    return bool(re.search(r"request timed out|server error \(5\d\d\)|request failed while trying to", err or ""))
+
+
 def _odata_quote(value: str) -> str:
     """Escape a string for use inside a single-quoted OData string literal.
 
@@ -390,6 +395,38 @@ def build_tools(
 
         async def _mde_token() -> str | None:
             return await _get_token(tenant_id, client_id, client_secret, _MDE_SCOPE)
+
+    async def _read_after_write(client: Any, access_token: str, url: str) -> dict[str, Any] | None:
+        """The resource as stored now, read once after a write whose outcome is unknown; None when unreadable."""
+        resp, err = await safe_request(
+            client, "get", url, _PROVIDER, "read back after the write", headers=_headers(access_token)
+        )
+        if err or resp is None:
+            return None
+        data = resp.json()
+        return data if isinstance(data, dict) else None
+
+    async def _update_read_back(
+        client: Any, access_token: str, url: str, what: str, payload: dict[str, Any], err: str
+    ) -> str:
+        """After a PATCH answered by a timeout or a 5xx: say from a read-back whether it applied."""
+        stored = await _read_after_write(client, access_token, url)
+        if stored is None:
+            return f"{err} Outcome unknown: the read-back failed; read {what} before writing again."
+        differing = sorted(k for k, v in payload.items() if stored.get(k) != v)
+        if not differing:
+            changed = ", ".join(f"{k}={v}" for k, v in payload.items())
+            return f"{what} updated — {changed} (the write timed out; the read-back shows it applied, do not retry)"
+        return f"{err} Read-back: {what} does not show {', '.join(differing)} yet; it is safe to retry."
+
+    async def _comment_read_back(client: Any, access_token: str, url: str, what: str, comment: str, err: str) -> str:
+        """After a comment POST answered by a timeout or a 5xx: say from a read-back whether it was added."""
+        stored = await _read_after_write(client, access_token, url)
+        if stored is None:
+            return f"{err} Outcome unknown: the read-back failed; read the comments of {what} before posting again."
+        if any(isinstance(c, dict) and c.get("comment") == comment for c in stored.get("comments") or []):
+            return f"Comment added to {what} (the write timed out; the read-back shows it, do not post it again)."
+        return f"{err} Read-back: {what} has no such comment; it is safe to post it again."
 
     # ══════════════════════════════════════════════════════════════════════
     # 0. INCIDENTS (Microsoft Graph security)
@@ -551,19 +588,22 @@ def build_tools(
         if not payload:
             return "Error: No fields provided to update."
 
+        url = f"{_GRAPH_BASE}/security/incidents/{incident_id}"
         async with egress_client(timeout=30) as client:
             _, err = await safe_request(
                 client,
                 "patch",
-                f"{_GRAPH_BASE}/security/incidents/{incident_id}",
+                url,
                 _PROVIDER,
                 f"update incident {incident_id}",
                 headers=_headers(access_token),
                 json=payload,
             )
+            changed = ", ".join(f"{k}={v}" for k, v in payload.items())
+            if err and _outcome_unknown(err):
+                return await _update_read_back(client, access_token, url, f"Incident {incident_id}", payload, err)
             if err:
                 return err
-            changed = ", ".join(f"{k}={v}" for k, v in payload.items())
             return f"Incident {incident_id} updated — {changed}"
 
     async def add_defender_incident_comment(incident_id: str, comment: str) -> str:
@@ -585,6 +625,15 @@ def build_tools(
                     "comment": comment,
                 },
             )
+            if err and _outcome_unknown(err):
+                return await _comment_read_back(
+                    client,
+                    access_token,
+                    f"{_GRAPH_BASE}/security/incidents/{incident_id}",
+                    f"incident {incident_id}",
+                    comment,
+                    err,
+                )
             if err:
                 return err
             return f"Comment added to incident {incident_id}."
@@ -734,16 +783,19 @@ def build_tools(
         if not payload:
             return "Error: No fields provided to update."
 
+        url = f"{_GRAPH_BASE}/security/alerts_v2/{alert_id}"
         async with egress_client(timeout=30) as client:
             _, err = await safe_request(
                 client,
                 "patch",
-                f"{_GRAPH_BASE}/security/alerts_v2/{alert_id}",
+                url,
                 _PROVIDER,
                 f"update alert {alert_id}",
                 headers=_headers(access_token),
                 json=payload,
             )
+            if err and _outcome_unknown(err):
+                return await _update_read_back(client, access_token, url, f"Alert {alert_id}", payload, err)
             if err:
                 return err
             changed = ", ".join(f"{k}={v}" for k, v in payload.items())
@@ -768,6 +820,15 @@ def build_tools(
                     "comment": comment,
                 },
             )
+            if err and _outcome_unknown(err):
+                return await _comment_read_back(
+                    client,
+                    access_token,
+                    f"{_GRAPH_BASE}/security/alerts_v2/{alert_id}",
+                    f"alert {alert_id}",
+                    comment,
+                    err,
+                )
             if err:
                 return err
             return f"Comment added to alert {alert_id}."
@@ -1361,6 +1422,25 @@ def build_tools(
         resp, err = await _detection_request(
             "post", _DETECTION_RULES_URL, "create custom detection rule", write=True, json=payload
         )
+        if err and _outcome_unknown(err):
+            # The POST may have created the rule: look it up by name before the
+            # caller retries, so a timeout never leaves two rules.
+            found, find_err = await _detection_request(
+                "get",
+                _DETECTION_RULES_URL,
+                "find the custom detection rule after the write",
+                write=False,
+                params={"$filter": f"displayName eq '{_odata_quote(display_name)}'"},
+            )
+            if find_err or found is None:
+                return f"{err} Outcome unknown: list the rules named {display_name!r} before creating it again."
+            existing = found.json().get("value") or []
+            if existing:
+                return (
+                    f"Custom detection rule created (id: {existing[0].get('id', '?')}): {display_name} "
+                    "(the write timed out; the read-back shows it, do not create it again)."
+                )
+            return f"{err} Read-back: no rule named {display_name!r}; it is safe to create it again."
         if err or resp is None:
             return err or "Error: no response."
         created = resp.json()
@@ -3134,7 +3214,11 @@ def build_tools(
                     "description": {"type": "string"},
                     "severity": {"type": "string", "enum": list(_DETECTION_SEVERITIES)},
                     "category": {"type": "string"},
-                    "mitre_techniques": {"type": "array", "items": {"type": "string"}},
+                    "mitre_techniques": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Replaces the stored list whole; [] clears it",
+                    },
                     "impacted_assets": {
                         "type": "array",
                         "items": {

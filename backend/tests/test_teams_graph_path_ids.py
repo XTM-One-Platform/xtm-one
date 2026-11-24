@@ -111,6 +111,10 @@ TOOLS: dict[str, dict[str, str]] = {
     "list_microsoft_chat_members": {"chat_id": CHAT},
     "add_microsoft_chat_members": {"chat_id": CHAT, "members": "alice@example.com"},
     "remove_microsoft_chat_member": {"chat_id": CHAT, "member": "alice@example.com"},
+    "add_microsoft_team_member": {"team_id": TEAM, "members": "alice@example.com"},
+    "remove_microsoft_team_member": {"team_id": TEAM, "member": "alice@example.com"},
+    "add_microsoft_channel_member": {"team_id": TEAM, "channel_id": CHANNEL, "members": "alice@example.com"},
+    "remove_microsoft_channel_member": {"team_id": TEAM, "channel_id": CHANNEL, "member": "alice@example.com"},
 }
 
 #: The ID arguments, and the argument the refusal names.
