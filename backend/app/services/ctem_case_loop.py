@@ -468,9 +468,7 @@ def _transition(
 RUN_ORDER_MAX = 20
 
 
-def _upsert_validation(
-    validations: list[dict[str, Any]], entry: dict[str, Any]
-) -> tuple[list[dict[str, Any]], bool]:
+def _upsert_validation(validations: list[dict[str, Any]], entry: dict[str, Any]) -> tuple[list[dict[str, Any]], bool]:
     """*validations* with *entry* written once per ``(provider, ref)`` (#1692), and whether it repeats.
 
     The newest entry of the same reference is replaced when it is pending or
