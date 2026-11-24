@@ -18,13 +18,15 @@
 ``dispose_friction`` classifies one and names what carries its fix. The
 store and the automatic records live in ``services/frictions.py``.
 
-No approval of any kind: these tools write only the caller's own ledger rows.
+No approval of any kind: these tools write only the caller's own ledger rows,
+and those of the agents its trace supervision grant names (#1928).
 """
 
 from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 from app.core.utils import format_exception_message
@@ -57,18 +59,58 @@ def _line(f: dict, *, with_run: bool = False) -> str:
     return f"{head}\n  {evidence}" if evidence else head
 
 
+async def _supervised_agents(
+    user_id: str, own_agent_id: str, allowlist: Sequence[object], allow_cross_agent: bool
+) -> list[uuid.UUID] | None:
+    """The other agents whose frictions this caller may list and dispose of: the
+    trace supervision grant (``traces._supervision_scope``), nothing new.
+    ``None`` is every agent (an admin carrying ``inspect_agent_traces``);
+    ``[]`` none (Platform Health and sandbox copies included) (#1928)."""
+    from app.core.utils import safe_uuid
+    from app.services.builtin_tools.traces import _health_refuses_other_agents
+
+    if _health_refuses_other_agents():
+        return []
+    if allow_cross_agent and safe_uuid(user_id or "") is not None:
+        from sqlalchemy import select
+
+        from app.api.v1.helpers import agent_tool_admin_bypass
+        from app.core.database import async_session
+        from app.models.user import User
+
+        async with async_session() as db:
+            user = (await db.execute(select(User).where(User.id == safe_uuid(user_id)))).scalar_one_or_none()
+        if agent_tool_admin_bypass(user):
+            return None
+    own = safe_uuid(own_agent_id or "")
+    agents = {u for u in (safe_uuid(str(a)) for a in allowlist or []) if u is not None and u != own}
+    return sorted(agents, key=str)
+
+
 def build_friction_tools(
     user_id: str,
     agent_id: str,
     *,
     run_id: str | uuid.UUID | None = None,
+    supervision_target_agent_ids: Sequence[object] | None = None,
+    allow_cross_agent: bool = False,
 ) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """The three ledger tools for *agent_id* acting for *user_id*.
 
     A friction recorded with ``record_friction`` goes under the run's bound
     scope when there is one (the run, its assignment and work item), else
     under *run_id* (a chat turn of a run), else under the agent alone.
+    ``list_frictions`` and ``dispose_friction`` also reach the frictions of the
+    agents the trace supervision grant names (*supervision_target_agent_ids*,
+    every agent for an admin when *allow_cross_agent*, the agent carrying
+    ``inspect_agent_traces``), so a supervisor closes what it is notified of.
     """
+    allowlist = list(supervision_target_agent_ids or [])
+
+    async def _reach() -> list[uuid.UUID] | None:
+        if not allowlist and not allow_cross_agent:
+            return []
+        return await _supervised_agents(user_id, agent_id, allowlist, allow_cross_agent)
 
     def _scope():
         from app.services.frictions import current_friction_scope, make_scope
@@ -123,6 +165,7 @@ def build_friction_tools(
                 target_agent = str(scope.agent_id)
         since = datetime.now(UTC) - timedelta(hours=int(since_hours)) if since_hours and since_hours > 0 else None
         try:
+            supervised = await _reach()
             rows, total = await list_frictions(
                 user_id=user_id or None,
                 agent_id=target_agent,
@@ -132,6 +175,7 @@ def build_friction_tools(
                 limit=limit,
                 offset=offset,
                 kinds=kinds or None,
+                supervised_agent_ids=supervised,
             )
         except ValueError as exc:
             # An id prefix starting several or none, or a value that is no id.
@@ -143,6 +187,14 @@ def build_friction_tools(
         if kinds:
             what += f" of kind {', '.join(kinds)}"
         if not rows:
+            unfiltered = not undisposed and not kinds and since is None and not offset
+            if target_run is not None and unfiltered and await _hidden_run(target_run):
+                # Frictions exist but outside this caller's reach: never answer "none" (#1928).
+                return (
+                    f"The frictions of {what} are not visible to you: it is another agent's run, outside "
+                    "your supervision grant (the agents inspect_agent_traces may read). That agent's own "
+                    "run or a supervisor of it lists and disposes of them."
+                )
             return f"No {'undisposed ' if undisposed else ''}friction recorded for {what}."
         shown_to = int(offset or 0) + len(rows)
         lines = [f"{total} friction(s) for {what}{' (undisposed)' if undisposed else ''}, showing {len(rows)}:"]
@@ -162,6 +214,7 @@ def build_friction_tools(
                 friction_class=(friction_class or "").strip(),
                 disposition=(disposition or "").strip(),
                 ref=ref,
+                supervised_agent_ids=await _reach(),
             )
         except FrictionNotFoundError:
             return f"Error: no friction `{id}` of yours: list them with list_frictions."
@@ -171,6 +224,14 @@ def build_friction_tools(
             logger.error("dispose_friction failed: %s", format_exception_message(exc), exc_info=True)
             return "Error: the friction was not disposed of. Please try again."
         return f"Disposed of friction `{friction['id']}`:\n{_line(friction)}"
+
+    async def _hidden_run(target_run: str) -> bool:
+        from app.services.frictions import count_run_frictions
+
+        try:
+            return await count_run_frictions(target_run) > 0
+        except Exception:
+            return False
 
     executor = CallableToolExecutor()
     executor.register("record_friction", _record_friction)

@@ -212,6 +212,9 @@ _BYPASS_MODULE_SUITES = {
     # The fleet tools see fleets and agents as the REST routes do.
     "services/builtin_tools/fleets.py": "fleets",
     "services/builtin_tools/traces.py": "inspect_agent_traces",
+    # The friction tools reach other agents' frictions through the trace
+    # supervision grant only: an admin carrying inspect_agent_traces (#1928).
+    "services/builtin_tools/frictions.py": "inspect_agent_traces",
     "services/builtin_tools/work_items.py": "work_items",
     # The workspace tools are registered by the agent builder.
     "services/builtin_tools/workspaces.py": "agent_builder",
