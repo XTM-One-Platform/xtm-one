@@ -429,6 +429,9 @@ _ROLE_GATES = {
     # integration, the REST update's rule (#12380).
     ("services/builtin_tools/agent_builder.py", "_update_integration"): 2,
     ("services/builtin_tools/agent_builder.py", "_update_knowledge_base"): 1,
+    # delete_ctem_cases is for an administrator only, as DELETE /ctem-cases/{id}
+    # and POST /ctem-cases/bulk-delete (#1723): a permission gate on the role.
+    ("services/builtin_tools/ctem_cases.py", "_delete"): 1,
     # The CTEM read tools report the acting person's role in their scope block
     # (#1359): is_admin is echoed, and the case view's rule (admin flag alone,
     # ctem_cases_view.signal_members) is named; the visibility of signals still
