@@ -5,7 +5,7 @@ group automatically at every sign-in. A boolean defaulting to false:
 catalogue-only, no backfill.
 
 Revision ID: a1901autojoin01
-Revises: w1748wigroups01
+Revises: r1844noaisys01
 Create Date: 2026-11-24 14:30:00.000000
 """
 
@@ -19,7 +19,7 @@ from app.core.migration_ddl import set_lock_timeout, terminate_lock_holders
 revision: str = "a1901autojoin01"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "w1748wigroups01"
+down_revision: str | Sequence[str] | None = "r1844noaisys01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
