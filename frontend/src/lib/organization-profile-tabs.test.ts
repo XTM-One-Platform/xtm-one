@@ -31,10 +31,11 @@ describe("organization profile tabs", () => {
     for (const path of Object.keys(FIELD_LABELS)) expect(tabOfField(path), path).not.toBeNull();
   });
 
-  it("maps every exposure card, the tracked organizations, the imports and the agent context to a tab", () => {
+  it("maps every exposure card, the tracked organizations and the agent context to a tab", () => {
     for (const card of EXPOSURE_SECTIONS) expect(tabOfField(card), card).not.toBeNull();
     expect(PROFILE_CARD_TAB.tracked_organizations).toBe("business");
-    expect(PROFILE_CARD_TAB.scheduled_imports).toBe("knowledge");
+    // The PIR sources live on the Prioritization policy card since #1938: no imports card on the knowledge tab.
+    expect("scheduled_imports" in PROFILE_CARD_TAB).toBe(false);
     expect(PROFILE_CARD_TAB.context_injection).toBe("knowledge");
   });
 
@@ -72,7 +73,7 @@ describe("organization profile tabs", () => {
   });
 
   it("links a field to its tab and card, never to the bare first tab when the field lives elsewhere", () => {
-    expect(profileFieldHref("primary_assets")).toBe("/ctem/inventory/business?card=primary_assets");
+    expect(profileFieldHref("crown_jewels")).toBe("/ctem/inventory/business?card=crown_jewels");
     // The technology and exposure cards live on CTEM > Inventory (#1178).
     expect(profileFieldHref("prioritization_policy")).toBe("/ctem/inventory/exposure?card=prioritization_policy");
     expect(profileFieldHref("accepted_risks")).toBe("/ctem/inventory/exposure?card=prioritization_policy");
@@ -92,7 +93,7 @@ describe("organization profile tabs", () => {
   });
 
   it("parses the card of the URL, null for none or an unknown key", () => {
-    expect(parseProfileCard("primary_assets")).toBe("primary_assets");
+    expect(parseProfileCard("crown_jewels")).toBe("crown_jewels");
     expect(parseProfileCard("toString")).toBeNull();
     expect(parseProfileCard("nope")).toBeNull();
     expect(parseProfileCard(null)).toBeNull();

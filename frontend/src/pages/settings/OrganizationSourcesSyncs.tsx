@@ -91,7 +91,7 @@ const SOURCE_SCHEDULE_LABELS = {
 
 /** The rows a plan touches, per section, as ICU plurals (UX r1 B6). @i18n-keys */
 const SECTION_COUNT_LABELS = {
-  primary_assets: "{count, plural, one {# primary asset} other {# primary assets}}",
+  crown_jewels: "{count, plural, one {# primary asset} other {# primary assets}}",
   software: "{count, plural, one {# software entry} other {# software entries}}",
   assets_exposure: "{count, plural, one {# asset} other {# assets}}",
   asset_groups: "{count, plural, one {# asset group} other {# asset groups}}",
@@ -132,7 +132,7 @@ const SECTION_FIELD: Partial<Record<OrganizationSync["section"], SourcedSection>
   assets: "assets_exposure",
   asset_groups: "asset_groups",
   software: "software",
-  primary_assets: "primary_assets",
+  crown_jewels: "crown_jewels",
 };
 
 const isSourcedField = (field: string): field is SourcedSection => field in SOURCED_SECTION_LABELS;
@@ -151,7 +151,7 @@ const FIELD_IMPORT_SECTION: Record<SourcedSection, ImportSectionKey> = {
   assets_exposure: "assets",
   asset_groups: "asset_groups",
   software: "software",
-  primary_assets: "primary_assets",
+  crown_jewels: "crown_jewels",
 };
 
 /**
@@ -181,11 +181,32 @@ interface Props {
   onSetUpSync?: (preset: SyncPreset) => void;
   /** The link of a section chip, the source's key and display label given; `null` renders the chip as plain text. */
   sectionHref?: (field: SourcedSection, source: ChipSource) => string | null;
-  /** Actions are off while the page is in edit. */
+  /** Actions are off while the host saves (the Prioritization policy card being saved). */
   disabled?: boolean;
+  /** Why the actions are off, said in a tooltip on Add a source. */
+  disabledReason?: string;
+  /**
+   * "card": its own Settings card with the shared-context notice (CTEM > Inventory > Sources). "section": a block inside
+   * a host card, titled by the host (the OpenCTI PIR sources on the Prioritization policy card); the import and
+   * sync dialogs carry the shared-context notice.
+   */
+  variant?: "card" | "section";
+  /** The section variant's heading and its one line. */
+  title?: string;
+  description?: string;
 }
 
-export function OrganizationSourcesSyncs({ scope = "", onAddSource, onSetUpSync, sectionHref = sourceSectionHref, disabled = false }: Props) {
+export function OrganizationSourcesSyncs({
+  scope = "",
+  onAddSource,
+  onSetUpSync,
+  sectionHref = sourceSectionHref,
+  disabled = false,
+  disabledReason,
+  variant = "card",
+  title,
+  description,
+}: Props) {
   const { t_i18n, locale, intl } = useFormatter();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -550,84 +571,75 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, onSetUpSync,
   ].join(", ");
 
   const addSource = onAddSource && (
-    <Button className="gap-1.5" onClick={onAddSource} disabled={disabled} data-testid="organization-sources.add">
-      <Icon name="plus" size={16} aria-hidden /> {t_i18n("Add a source")}
-    </Button>
+    <Tip content={disabled && disabledReason ? disabledReason : ""} wrap="auto">
+      <Button
+        variant={variant === "section" ? "secondary" : undefined}
+        className="gap-1.5"
+        onClick={onAddSource}
+        disabled={disabled}
+        data-testid="organization-sources.add"
+      >
+        <Icon name="plus" size={16} aria-hidden /> {t_i18n("Add a source")}
+      </Button>
+    </Tip>
   );
 
-  return (
-    <>
-      <SettingsCard
-        data-testid="organization-sources"
-        title={t_i18n("Sources and syncs")}
-        description={t_i18n(
-          "Who feeds these sections: the platforms each sync reads or writes on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand.",
-        )}
-        action={
-          <span className="flex flex-wrap items-center gap-2">
-            {isAdmin && runnable.length > 0 && (
-              <Button
-                variant="secondary"
-                className="gap-1.5"
-                onClick={runAllNow}
-                disabled={disabled || runAll.isPending || run.isPending}
-                aria-busy={runAll.isPending || undefined}
-                data-testid="organization-sources.run-all"
-              >
-                {runAll.isPending ? <Spinner size="sm" tone="inherit" label={t_i18n("Running...")} /> : <Icon name="refresh-cw" size={16} aria-hidden />} {t_i18n("Run all syncs")}
-              </Button>
-            )}
-            {rows.length > 0 && addSource}
-          </span>
-        }
-      >
-        <OrganizationSharedContextNotice className="mb-4" />
-        {rows.length > 0 && (
-          <p className="mb-3 flex flex-wrap items-center gap-x-2 text-default-secondary" data-testid="organization-sources.summary">
-            <span>{summary}</span>
-            {failed.length > 0 && (
-              <Button variant="link" className="h-auto p-0 text-feedback-error-primary" onClick={() => failed[0].sync && setHistory(failed[0].sync)}>
-                {t_i18n("{count, plural, one {# failed} other {# failed}}", { count: failed.length })}
-              </Button>
-            )}
-          </p>
-        )}
-        {!syncsQuery.isLoading && !sourcesQuery.isLoading && !syncsQuery.isError && !sourcesQuery.isError && rows.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-elevation-subtle px-6 py-10 text-center" data-testid="organization-sources.empty">
-            <Icon name="refresh-cw" size={24} aria-hidden className="text-default-secondary" />
-            <p className="title-sm">{t_i18n("No source feeds these sections yet")}</p>
-            <p className="max-w-prose text-default-secondary">
-              {t_i18n("Add a source: pick a platform, the section it fills and its filters, preview the rows, then keep them in sync on a schedule.")}
-            </p>
-            {addSource}
-          </div>
-        ) : (
-          <DataTable
-            rows={rows}
-            columns={columns}
-            layout="auto"
-            rowKey={(row) => row.id}
-            pinFirst={(row) => row.sync?.section === "all"}
-            searchFields={(row) => [nameOf(row), t_i18n(SOURCE_KIND_NAMES[kindOf(row)]), row.sync ? filtersLine(row.sync) : ""]}
-            searchPlaceholder={t_i18n("Search...")}
-            filters={filters}
-            exportName="organization-sources"
-            urlKey={scope ? `osy_${scope}_` : "osy_"}
-            storageKey={scope ? `organization-sources-${scope}` : "organization-sources"}
-            isLoading={syncsQuery.isLoading || sourcesQuery.isLoading}
-            isError={syncsQuery.isError || sourcesQuery.isError}
-            onRetry={() => {
-              void syncsQuery.refetch();
-              void sourcesQuery.refetch();
-            }}
-            emptyLabel={t_i18n("No source feeds these sections yet")}
-            rowTestId="organization-sources.row"
-            rowActions={rowActions}
-            rowActionsWidth={88}
-          />
-        )}
-      </SettingsCard>
+  const actions = (
+    <span className="flex flex-wrap items-center gap-2">
+      {isAdmin && runnable.length > 0 && (
+        <Button
+          variant="secondary"
+          className="gap-1.5"
+          onClick={runAllNow}
+          disabled={disabled || runAll.isPending || run.isPending}
+          aria-busy={runAll.isPending || undefined}
+          data-testid="organization-sources.run-all"
+        >
+          {runAll.isPending ? <Spinner size="sm" tone="inherit" label={t_i18n("Running...")} /> : <Icon name="refresh-cw" size={16} aria-hidden />} {t_i18n("Run all syncs")}
+        </Button>
+      )}
+      {(rows.length > 0 || variant === "section") && addSource}
+    </span>
+  );
 
+  const summaryLine = rows.length > 0 && (
+    <p className="mb-3 flex flex-wrap items-center gap-x-2 text-default-secondary" data-testid="organization-sources.summary">
+      <span>{summary}</span>
+      {failed.length > 0 && (
+        <Button variant="link" className="h-auto p-0 text-feedback-error-primary" onClick={() => failed[0].sync && setHistory(failed[0].sync)}>
+          {t_i18n("{count, plural, one {# failed} other {# failed}}", { count: failed.length })}
+        </Button>
+      )}
+    </p>
+  );
+  const loaded = !syncsQuery.isLoading && !sourcesQuery.isLoading && !syncsQuery.isError && !sourcesQuery.isError;
+  const table = (
+    <DataTable
+      rows={rows}
+      columns={columns}
+      layout="auto"
+      rowKey={(row) => row.id}
+      pinFirst={(row) => row.sync?.section === "all"}
+      searchFields={(row) => [nameOf(row), t_i18n(SOURCE_KIND_NAMES[kindOf(row)]), row.sync ? filtersLine(row.sync) : ""]}
+      searchPlaceholder={t_i18n("Search...")}
+      filters={filters}
+      exportName="organization-sources"
+      urlKey={scope ? `osy_${scope}_` : "osy_"}
+      storageKey={scope ? `organization-sources-${scope}` : "organization-sources"}
+      isLoading={syncsQuery.isLoading || sourcesQuery.isLoading}
+      isError={syncsQuery.isError || sourcesQuery.isError}
+      onRetry={() => {
+        void syncsQuery.refetch();
+        void sourcesQuery.refetch();
+      }}
+      emptyLabel={t_i18n("No source feeds these sections yet")}
+      rowTestId="organization-sources.row"
+      rowActions={rowActions}
+      rowActionsWidth={88}
+    />
+  );
+  const dialogs = (
+    <>
       <SyncEditDialog
         sync={editing}
         open={editing !== null}
@@ -640,6 +652,63 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, onSetUpSync,
       />
       <DeleteRowsDialog row={deleting} name={deleting ? nameOf(deleting) : ""} onClose={() => setDeleting(null)} />
       <SyncHistoryPanel sync={history} name={history ? nameOf({ id: "", sync: history, source: sourceOf(history.source) }) : ""} onClose={() => setHistory(null)} />
+    </>
+  );
+
+  // A block of its host card: a sub-heading with its actions, the summary and the table; a short line when empty.
+  if (variant === "section") {
+    return (
+      <>
+        <section className="space-y-2" data-testid="organization-sources" aria-label={title}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0 space-y-0.5">
+              {title && <h4 className="content-base font-semibold text-default-primary">{title}</h4>}
+              {description && <p className="content-compact text-default-secondary">{description}</p>}
+            </div>
+            {actions}
+          </div>
+          {loaded && rows.length === 0 ? (
+            <p className="text-default-secondary" data-testid="organization-sources.empty">
+              {t_i18n("No source feeds these sections yet")}
+            </p>
+          ) : (
+            <>
+              {summaryLine}
+              {table}
+            </>
+          )}
+        </section>
+        {dialogs}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <SettingsCard
+        data-testid="organization-sources"
+        title={t_i18n("Sources and syncs")}
+        description={t_i18n(
+          "Who feeds these sections: the platforms each sync reads or writes on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand.",
+        )}
+        action={actions}
+      >
+        <OrganizationSharedContextNotice className="mb-4" />
+        {summaryLine}
+        {loaded && rows.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-elevation-subtle px-6 py-10 text-center" data-testid="organization-sources.empty">
+            <Icon name="refresh-cw" size={24} aria-hidden className="text-default-secondary" />
+            <p className="title-sm">{t_i18n("No source feeds these sections yet")}</p>
+            <p className="max-w-prose text-default-secondary">
+              {t_i18n("Add a source: pick a platform, the section it fills and its filters, preview the rows, then keep them in sync on a schedule.")}
+            </p>
+            {addSource}
+          </div>
+        ) : (
+          table
+        )}
+      </SettingsCard>
+      {dialogs}
     </>
   );
 }
