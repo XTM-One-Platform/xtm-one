@@ -52,6 +52,14 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
    id), asset groups, crown jewels (by name or `opencrq_asset_id`), and the
    tech stack for software (a product name, or the product part of a CPE),
    which adds the assets that run that product.
+   **Threat subjects** (#1720, a campaign, an intrusion set, a malware): the
+   software they reach is read from the evidence lists `targets`, `uses`,
+   `targeted_software`, `targeted_products`, from `relationships`
+   (`{relationship_type, target}` of type `targets`, `uses` or `has`) and
+   from the scorer's `matched_fields` (`tech_stack (Microsoft 365, GitHub)`),
+   then matched to the tech stack like any software reference.
+   `reconcile.software_refs` lists every reference tried; an unresolved
+   subject carries `reason_params` `{keys, software}`, the counts tried.
    **Shipped products** (`shipped_products`, what the organization ships,
    apart from the tech stack it runs): a software reference or a CPE of the
    evidence (`software`, `cpe`; the OpenCTI vulnerability listener copies

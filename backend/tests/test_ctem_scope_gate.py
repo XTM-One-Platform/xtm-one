@@ -168,6 +168,52 @@ def test_software_resolves_through_the_tech_stack_and_a_cpe():
     assert decision.outcome == "case"
 
 
+def test_a_threat_resolves_to_the_tech_stack_through_its_targets_and_matched_fields():
+    """#1720: a campaign naming a tech stack product is no longer subject_unresolved."""
+    by_field = gate.decide(
+        _profile(),
+        _facts(
+            path="relevant_threat",
+            lens="world",
+            kind="threat",
+            ref="campaign--74c27bbf",
+            matched_fields=["sector (Technology)", "tech_stack (nginx, AWS)"],
+        ),
+        today=TODAY,
+    )
+    assert by_field.record["reconcile"]["tech_stack"] == ["nginx"]
+    assert by_field.record["reconcile"]["software_refs"] == ["nginx", "AWS"]
+    assert "shop.example.com" in by_field.record["reconcile"]["assets"]
+    assert by_field.record["reason_code"] != "subject_unresolved"
+    by_relationship = gate.decide(
+        _profile(),
+        _facts(
+            path="relevant_threat",
+            lens="world",
+            kind="threat",
+            ref="intrusion-set--1",
+            relationships=[
+                {"relationship_type": "targets", "target": "Confluence"},
+                {"type": "located-at", "name": "nginx"},
+            ],
+        ),
+        today=TODAY,
+    )
+    assert by_relationship.record["reconcile"]["tech_stack"] == ["Confluence"]
+    assert gate.threat_software({"uses": "nginx", "targets": ["Confluence"]}) == ["Confluence", "nginx"]
+
+
+def test_an_unresolved_threat_names_how_many_software_references_were_tried():
+    decision = gate.decide(
+        _profile(),
+        _facts(path="relevant_threat", lens="world", kind="threat", ref="campaign--x", targets=["Oracle"]),
+        today=TODAY,
+    )
+    assert decision.record["reason_code"] == "subject_unresolved"
+    assert decision.record["reason_params"] == {"keys": 1, "software": 1}
+    assert decision.record["reconcile"]["software_refs"] == ["Oracle"]
+
+
 def test_cve_thresholds_route_to_the_watchlist_and_kev_passes_them():
     low = gate.decide(
         _profile(cvss_min=7.0, epss_min=0.5),
