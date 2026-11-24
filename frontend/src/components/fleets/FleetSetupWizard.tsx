@@ -49,6 +49,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { SettingsField, settingsFieldHintId } from "@/components/ui/settings-form";
 import { StepBar } from "@/components/ui/step-bar";
 import { useToast } from "@/components/ui/toast";
+import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
 import { useUsers } from "@/hooks/api/useAuthApi";
 import {
   useFleet,
@@ -63,6 +64,8 @@ import { useAiActionDisabled } from "@/hooks/useAiDisabled";
 import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import { fleetViewPath } from "@/lib/fleet-operations";
+import { exactCost, formatCost } from "@/lib/trace-utils";
+import { cn } from "@/lib/utils";
 
 import { quotaRange } from "./fleet-about-showcase";
 import { fleetRefusalMessage } from "./fleet-refusals";
@@ -72,6 +75,7 @@ import {
   initiallyLeftOut,
   nextWizardStep,
   openingWizardStep,
+  pickedLoad,
   pickedPlan,
   previousWizardStep,
   providerName,
@@ -107,7 +111,7 @@ export function FleetSetupWizard({
   /** The parent flow's title, kept when the wizard finishes another setup (UX r1 B1). */
   title?: string;
 }) {
-  const { t_i18n } = useFormatter();
+  const { t_i18n, intl } = useFormatter();
   const { toast } = useToast();
   const { user, isAdmin } = useAuth();
   const fleet = useFleet(open ? fleetId : null);
@@ -151,6 +155,8 @@ export function FleetSetupWizard({
   const pick = useMemo(() => pickedPlan(items, leftOut), [items, leftOut]);
   const count = pick.picked.length;
   const ready = count > 0 && pick.missing.length === 0;
+  // The expected runs a day and cost of the pick (#1538): an order of magnitude, read from the plan.
+  const load = useMemo(() => pickedLoad(pick.picked, plan.data?.estimate), [pick.picked, plan.data]);
 
   // A step the fleet no longer walks (its slots read after opening) falls back to the next one.
   const step: WizardStepKey = current && steps.includes(current) ? current : (current === "integrations" ? "autonomy" : current) ?? steps[0];
@@ -195,6 +201,42 @@ export function FleetSetupWizard({
   };
 
   const close = () => onOpenChange(false);
+  // Under one run a day the load is said per month (UX round 1 B3 on #1550), under one a month per year (round 2 B3).
+  const runsLine = load.perYear
+    ? t_i18n("{count, plural, one {About # scheduled run a year.} other {About # scheduled runs a year.}}", { count: load.runs })
+    : load.perMonth
+    ? t_i18n("{count, plural, one {About # scheduled run a month.} other {About # scheduled runs a month.}}", { count: load.runs })
+    : t_i18n("{count, plural, =0 {No scheduled run a day.} one {About # scheduled run a day.} other {About # scheduled runs a day.}}", { count: load.runs });
+  const eventLine =
+    load.eventDriven > 0
+      ? t_i18n("{count, plural, one {# automation runs once per event, as often as its events arrive.} other {# automations run once per event, as often as their events arrive.}}", { count: load.eventDriven })
+      : null;
+  const costLine =
+    load.cost === null
+      ? t_i18n("No cost yet: these automations have not run in the last {days, plural, one {# day} other {# days}}.", { days: load.costDays })
+      : load.perYear
+        ? t_i18n("About {cost} a year for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.", { cost: formatCost(load.cost, intl.locale), days: load.costDays })
+      : load.perMonth
+        ? t_i18n("About {cost} a month for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.", { cost: formatCost(load.cost, intl.locale), days: load.costDays })
+        : t_i18n("About {cost} a day for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.", { cost: formatCost(load.cost, intl.locale), days: load.costDays });
+  // The exact cost on hover and focus, through the shared Tip, never a native title (UX round 1 B2 on #1550).
+  const costTip = load.cost === null ? undefined : exactCost(load.cost, intl.locale);
+  // One sentence each, never joined: their order and punctuation stay each locale's own.
+  const renderLoadLines = (Line: "p" | "span", className?: string) => (
+    <>
+      <Line className={className}>{runsLine}</Line>
+      {eventLine && <Line className={className}>{eventLine}</Line>}
+      {costTip ? (
+        <Tip content={costTip}>
+          <Line tabIndex={0} className={cn(className, "w-fit", TIP_WRAP_FOCUS_RING)} data-testid="fleet-enable-load-cost">
+            {costLine}
+          </Line>
+        </Tip>
+      ) : (
+        <Line className={className}>{costLine}</Line>
+      )}
+    </>
+  );
   const range = quotaRange(documentation.data?.structured);
   const estimate = documentation.isError
     ? t_i18n("The run estimate could not be read.")
@@ -383,6 +425,11 @@ export function FleetSetupWizard({
                     </DashboardNotice>
                   </div>
                 )}
+                {plan.data && count > 0 && (
+                  <div className="content-compact text-default-secondary tabular-nums" data-testid="fleet-enable-load">
+                    {renderLoadLines("p")}
+                  </div>
+                )}
                 {plan.error && (
                   <p role="alert" className="content-compact text-default-primary">
                     {fleetRefusalMessage(plan.error, t_i18n) ?? t_i18n("Try again in a moment.")}
@@ -416,6 +463,12 @@ export function FleetSetupWizard({
                 <span className="w-40 shrink-0 font-medium">{t_i18n("Run estimate")}</span>
                 <span className="tabular-nums">{estimate}</span>
               </li>
+              {plan.data && count > 0 && (
+                <li className="flex flex-wrap items-start gap-2" data-testid="fleet-setup-review-load">
+                  <span className="w-40 shrink-0 font-medium">{t_i18n("Expected load")}</span>
+                  <span className="min-w-0 flex-1 space-y-0.5 tabular-nums">{renderLoadLines("span", "block")}</span>
+                </li>
+              )}
             </ul>
           )}
         </DialogBody>

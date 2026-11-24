@@ -204,6 +204,11 @@ def describe_cron(cron: object, timezone: object = None) -> str:
 
 def runs_per_month(cron: object) -> int | None:
     """How many times *cron* fires in :data:`QUOTA_DAYS` days, capped at 100,000; None when unreadable."""
+    return cron_fires(cron, QUOTA_DAYS)
+
+
+def cron_fires(cron: object, days: int) -> int | None:
+    """How many times *cron* fires in *days* days from a fixed Monday, capped at 100,000; None when unreadable."""
     if not isinstance(cron, str) or not cron.strip():
         return None
     from datetime import UTC, datetime, timedelta
@@ -211,7 +216,7 @@ def runs_per_month(cron: object) -> int | None:
     from croniter import CroniterBadCronError, croniter
 
     start = datetime(2026, 1, 5, tzinfo=UTC)
-    end = start + timedelta(days=QUOTA_DAYS)
+    end = start + timedelta(days=days)
     try:
         itr = croniter(cron.strip(), start)
         count = 0

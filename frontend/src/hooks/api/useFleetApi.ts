@@ -1460,6 +1460,20 @@ export interface FleetEnableItem {
   missing: string[];
   /** Part of the call (every automation when the request picked none). */
   selected: boolean;
+  /** Runs a day its schedule starts (0 for a trigger that is not a schedule, #1538). */
+  runs_per_day?: number;
+  /** It runs once per event: its daily count is not known ahead. */
+  event_driven?: boolean;
+}
+
+/** The expected load of the automations the plan picks (`FleetEnableEstimateResponse`, #1538): an order of magnitude. */
+export interface FleetEnableEstimate {
+  scheduled_runs_per_day: number;
+  event_automations: number;
+  /** Mean cost of one run of the picked automations over `cost_days`; null when none ran. */
+  avg_cost_per_run: number | null;
+  cost_per_day: number | null;
+  cost_days: number;
 }
 
 /** The plan (`dry_run`) or the outcome of Enable fleet (`FleetEnableResponse`, #9769 S4b). */
@@ -1474,6 +1488,8 @@ export interface FleetEnableResult {
   missing: string[];
   items: FleetEnableItem[];
   automations: FleetAutomations;
+  /** On a dry run: the expected runs a day and cost of the picked automations (#1538). */
+  estimate?: FleetEnableEstimate | null;
 }
 
 /**

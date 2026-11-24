@@ -13,6 +13,7 @@ import { FleetSetupWizard } from "./FleetSetupWizard";
 import {
   initiallyLeftOut,
   openingWizardStep,
+  pickedLoad,
   pickedPlan,
   providerName,
   readWizardProgress,
@@ -148,6 +149,66 @@ describe("FleetSetupWizard", () => {
     expect(api.mutateAsync).toHaveBeenCalledWith({ runAs: null, assignmentIds: ["a1"] });
   });
 
+  it("shows the expected runs a day and cost of the pick, and follows the pick (#1538)", () => {
+    api.plan = plan({
+      items: [
+        { id: "a1", name: "Daily exposure review", providers: ["opencti"], missing: [], selected: true, runs_per_day: 24, event_driven: false },
+        { id: "a2", name: "Weekly simulation", providers: ["openaev"], missing: [], selected: true, runs_per_day: 1, event_driven: false },
+        { id: "a3", name: "Failure observer", providers: [], missing: [], selected: true, runs_per_day: 0, event_driven: true },
+      ],
+      estimate: { scheduled_runs_per_day: 25, event_automations: 1, avg_cost_per_run: 0.05, cost_per_day: 1.25, cost_days: 30 },
+    });
+    open("automations");
+    const load = screen.getByTestId("fleet-enable-load");
+    expect(load).toHaveTextContent("About 25 scheduled runs a day.");
+    expect(load).toHaveTextContent("1 automation runs once per event, as often as its events arrive.");
+    expect(load).toHaveTextContent("About $1.25 a day for the scheduled runs, from the mean cost of their runs over the last 30 days.");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Switch on Daily exposure review" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Switch on Failure observer" }));
+    expect(screen.getByTestId("fleet-enable-load")).toHaveTextContent("About 1 scheduled run a day.");
+    expect(screen.getByTestId("fleet-enable-load")).not.toHaveTextContent("once per event");
+    next();
+    expect(screen.getByTestId("fleet-setup-review-load")).toHaveTextContent("About $0.05 a day for the scheduled runs");
+  });
+
+  it("says there is no cost yet without a run history, and no scheduled run at 0", () => {
+    api.plan = plan({
+      items: [{ id: "a3", name: "Failure observer", providers: [], missing: [], selected: true, runs_per_day: 0, event_driven: true }],
+      estimate: { scheduled_runs_per_day: 0, event_automations: 1, avg_cost_per_run: null, cost_per_day: null, cost_days: 30 },
+    });
+    open("automations");
+    const load = screen.getByTestId("fleet-enable-load");
+    expect(load).toHaveTextContent("No scheduled run a day.");
+    expect(load).toHaveTextContent("No cost yet: these automations have not run in the last 30 days.");
+  });
+
+  it("says a monthly-only pick per month, never as no run, with the exact cost in a Tip, not a title (#1550 B2, B3)", () => {
+    api.plan = plan({
+      items: [{ id: "m1", name: "Monthly report", providers: [], missing: [], selected: true, runs_per_day: 0.0333, event_driven: false }],
+      estimate: { scheduled_runs_per_day: 0.0333, event_automations: 0, avg_cost_per_run: 1.5, cost_per_day: 0.05, cost_days: 30 },
+    });
+    open("automations");
+    const load = screen.getByTestId("fleet-enable-load");
+    expect(load).toHaveTextContent("About 1 scheduled run a month.");
+    expect(load).not.toHaveTextContent("No scheduled run");
+    expect(load).toHaveTextContent("About $1.50 a month for the scheduled runs");
+    // An exact figure needs no hover: no Tip, no tab stop.
+    expect(screen.queryByTestId("fleet-enable-load-cost")).toBeNull();
+  });
+
+  it("gives a compacted cost its exact amount through a focusable Tip, never a native title (#1550 B2)", () => {
+    api.plan = plan({
+      items: [{ id: "a1", name: "Daily exposure review", providers: [], missing: [], selected: true, runs_per_day: 24, event_driven: false }],
+      estimate: { scheduled_runs_per_day: 24, event_automations: 0, avg_cost_per_run: 50, cost_per_day: 1200, cost_days: 30 },
+    });
+    open("automations");
+    expect(screen.getByTestId("fleet-enable-load-cost")).toHaveAttribute("tabindex", "0");
+    next();
+    const review = screen.getByTestId("fleet-setup-review-load");
+    expect(review.querySelector("[title]")).toBeNull();
+    expect(review.querySelector('[data-testid="fleet-enable-load-cost"]')).toHaveAttribute("tabindex", "0");
+  });
+
   it("keeps Confirm disabled with nothing picked", () => {
     open("automations");
     fireEvent.click(screen.getByRole("checkbox", { name: "Select every automation that is off" }));
@@ -257,6 +318,37 @@ describe("fleet-setup-wizard rules", () => {
     expect(pickedPlan(items, new Set()).missing).toEqual(["openaev", "opencti", "opencrq"]);
     expect(pickedPlan(items, new Set(["a1"]))).toMatchObject({ assignmentIds: ["a2"], missing: ["opencrq"] });
     expect([...initiallyLeftOut(items)]).toEqual(["a1", "a2"]);
+  });
+
+  it("sums the load of a pick and prices it from the plan's mean run cost", () => {
+    const items = [
+      { id: "a1", name: "A", providers: [], missing: [], selected: true, runs_per_day: 0.3 },
+      { id: "a2", name: "B", providers: [], missing: [], selected: true, runs_per_day: 4, event_driven: true },
+    ];
+    const estimate = { scheduled_runs_per_day: 4.3, event_automations: 1, avg_cost_per_run: 0.1, cost_per_day: 0.43, cost_days: 30 };
+    expect(pickedLoad(items, estimate)).toEqual({ runs: 4.3, perMonth: false, perYear: false, eventDriven: 1, cost: 0.1 * 4.3, costDays: 30 });
+    expect(pickedLoad([], null)).toEqual({ runs: 0, perMonth: false, perYear: false, eventDriven: 0, cost: null, costDays: 30 });
+  });
+
+  it("says a pick under one run a day per month, from the unrounded rates (UX round 1 B3 on #1550)", () => {
+    const monthly = [
+      { id: "m1", name: "Monthly report", providers: [], missing: [], selected: true, runs_per_day: 0.0333 },
+      { id: "m2", name: "Half-year review", providers: [], missing: [], selected: true, runs_per_day: 0.0056 },
+    ];
+    const estimate = { scheduled_runs_per_day: 0.0389, event_automations: 0, avg_cost_per_run: 2, cost_per_day: 0.08, cost_days: 30 };
+    const load = pickedLoad(monthly, estimate);
+    expect(load).toMatchObject({ runs: 1, perMonth: true, eventDriven: 0 });
+    expect(load.cost).toBeCloseTo(2 * 0.0389 * 30);
+    expect(pickedLoad([{ ...monthly[0], runs_per_day: 0.1429 }], null)).toMatchObject({ runs: 4, perMonth: true });
+    expect(pickedLoad([monthly[0]], null)).toMatchObject({ runs: 1, perMonth: true, perYear: false });
+  });
+
+  it("says a half-yearly pick per year, never as no run (UX round 2 B3 on #1550)", () => {
+    const halfYearly = [{ id: "h1", name: "Half-year review", providers: [], missing: [], selected: true, runs_per_day: 0.0055 }];
+    const estimate = { scheduled_runs_per_day: 0.0055, event_automations: 0, avg_cost_per_run: 2, cost_per_day: 0.011, cost_days: 30 };
+    const load = pickedLoad(halfYearly, estimate);
+    expect(load).toMatchObject({ runs: 2, perMonth: false, perYear: true, eventDriven: 0 });
+    expect(load.cost).toBeCloseTo(2 * 0.0055 * 365);
   });
 
   it("counts the slots bound and still to bind", () => {
