@@ -21282,7 +21282,7 @@
   "The trigger paths that start the exposure management loop, by lens, with the sources that feed each one on this platform and whether they are connected.": "Les chemins de déclenchement qui lancent la boucle de gestion de l'exposition, par angle, avec les sources qui alimentent chacun sur cette plateforme et leur état de connexion.",
   "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "Les plateformes que chaque synchronisation lit selon un calendrier, les agents et partenaires qui écrivent via l'API, les imports CSV et les lignes saisies à la main. La correspondance des actifs fusionne les enregistrements de plusieurs sources en un seul actif.",
   "About the knowledge and sources": "À propos des connaissances et sources",
-  "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the primary assets and PIRs.": "Les procédures et documents de référence que les agents consultent, le contexte d'organisation qu'ils préchargent et les sources qui alimentent les actifs primaires et les PIR.",
+  "The procedures and reference documents agents search, and the organization context they preload.": "Les procédures et documents de référence que les agents consultent, et le contexte d'organisation qu'ils préchargent.",
   "Work item decision": "Décision sur un élément de travail",
   "What to decide": "Ce qu'il faut décider",
   "No waiting decision matches the search and filters.": "Aucune décision en attente ne correspond à la recherche et aux filtres.",
@@ -21677,5 +21677,8 @@
   "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "Les personnes qui se connectent par authentification unique (SSO) rejoignent ce groupe automatiquement, à chaque connexion. Les membres ajoutés à la main, par le mappage des groupes SAML ou par SCIM restent tels quels.",
   "No review decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case, or an analyst sets the review label on the Grouping in OpenCTI.": "Aucune décision de revue n'a été déposée, personne ne peut donc encore y répondre. La flotte la dépose la prochaine fois qu'elle traite ce cas, ou un analyste pose le libellé de revue sur le regroupement dans OpenCTI.",
   "No validation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.": "Aucune décision de validation n'a été déposée, personne ne peut donc encore y répondre. La flotte la dépose la prochaine fois qu'elle traite ce cas.",
-  "No remediation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.": "Aucune décision de remédiation n'a été déposée, personne ne peut donc encore y répondre. La flotte la dépose la prochaine fois qu'elle traite ce cas."
+  "No remediation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.": "Aucune décision de remédiation n'a été déposée, personne ne peut donc encore y répondre. La flotte la dépose la prochaine fois qu'elle traite ce cas.",
+  "PIR sources": "Sources des PIR",
+  "The OpenCTI imports and syncs that keep the PIR list up to date.": "Les imports et synchronisations OpenCTI qui tiennent la liste des PIR à jour.",
+  "Wait for the prioritization policy to be saved.": "Attendez la fin de l'enregistrement de la politique de priorisation."
 }
