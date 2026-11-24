@@ -21579,5 +21579,9 @@
   "Pick the level yourself: the table shows what waits at each one. Per-action settings stay on the fleet page.": "レベルを自分で選択します。表に各レベルで待つ操作が表示されます。操作ごとの設定はフリートページにあります。",
   "Gates set to {choice}": "ゲートを {choice} に設定しました",
   "Set the gates to {choice}?": "ゲートを {choice} に設定しますか?",
-  "Set to {choice}": "{choice} に設定"
+  "Set to {choice}": "{choice} に設定",
+  "{product} rejected your sign-in token, so open exposures there may be missing.": "{product} がサインイントークンを拒否しました。未対応のエクスポージャーが表示されていない可能性があります。",
+  "{product} could not answer because the query was too large, so open exposures there may be missing.": "クエリが大きすぎるため {product} が応答できませんでした。未対応のエクスポージャーが表示されていない可能性があります。",
+  "{product} did not answer in time, so open exposures there may be missing.": "{product} が時間内に応答しませんでした。未対応のエクスポージャーが表示されていない可能性があります。",
+  "No {product} connection could be used for this read, so open exposures there may be missing.": "この読み込みに使える {product} の接続がありませんでした。未対応のエクスポージャーが表示されていない可能性があります。"
 }
