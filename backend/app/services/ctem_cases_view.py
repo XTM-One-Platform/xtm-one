@@ -400,7 +400,7 @@ def visible_members(rows: list[CtemCaseIssue], view: ViewerView) -> list[CtemCas
 SEVERITY_PRIORITY: dict[str, str] = {"P1": "critical", "P2": "high", "P3": "medium"}
 
 #: The aggregates computed from member details: null for a viewer missing the details of an open member.
-DETAIL_AGGREGATES: tuple[str, ...] = ("asset_count", "crown_jewel_count", "kev_count", "max_cvss", "max_epss")
+DETAIL_AGGREGATES: tuple[str, ...] = ("asset_count", "primary_asset_count", "kev_count", "max_cvss", "max_epss")
 #: Why they are null: the reader repeats it instead of reading "none".
 AGGREGATES_RESTRICTED_REASON = (
     "unknown for this reader: some open issues of the case are not readable with their details "

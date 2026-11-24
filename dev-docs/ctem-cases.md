@@ -270,7 +270,7 @@ same way.
 - scope-limited aggregates: `summary()` counts the open product members the
   viewer reads WITHOUT their details (outside their scope, or seen before from
   a product that does not answer now) as `members_without_details`. When it is
-  above 0, `asset_count`, `crown_jewel_count`, `kev_count`, `max_cvss` and
+  above 0, `asset_count`, `primary_asset_count`, `kev_count`, `max_cvss` and
   `max_epss` are `null` with `aggregates_restricted: true` and
   `aggregates_reason` (`ctem_cases_view.AGGREGATES_RESTRICTED_REASON`), and
   `with_asset_count` never counts from the issues then (inventory count, else
