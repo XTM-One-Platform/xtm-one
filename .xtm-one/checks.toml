@@ -736,7 +736,7 @@ lifetime = 7200
 env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_ORG_SETUP_PROMPT = "on", LAB_THEME = "light" }
 
 # Organization profile rows a platform sync wrote (#1345). LAB_ORG_SYNCED = "on" saves one disabled
-# sync per section (crown jewels from OpenCRQ, tech stack from OpenAEV) and the next
+# sync per section (primary assets from OpenCRQ, tech stack from OpenAEV) and the next
 # profile version with synced rows (source, external_id, sync_id) next to typed rows, read back from
 # GET /organization-context: the Source column, locked rows, bulk Set and the synced-removal dialog of
 # Settings > Organization render with no fetch override. The log line "seeded org synced rows: <url>".

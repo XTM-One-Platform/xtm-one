@@ -443,7 +443,7 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     # Settings > Organization (#11533): the platform default of the organization
     # summary cascade; a stored switch reaching no model, editable with AI off.
     "save_organization_context_injection",
-    # The OpenCRQ crown-jewel sync of that profile (#8987): an administrator
+    # The OpenCRQ primary-asset sync of that profile (#8987): an administrator
     # reconciling stored assets with OpenCRQ, no model involved.
     "sync_organization_context_with_opencrq",
     # Assets and exposure from a CSV (#11543): an administrator previewing or
@@ -479,7 +479,7 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     "delete_organization_software",
     "attach_organization_software",
     "detach_organization_software",
-    # The asset records, groups, crown-jewel links and change log (#1543): an administrator
+    # The asset records, groups, primary-asset links and change log (#1543): an administrator
     # or an API client writing stored rows one at a time or in a batch; no model involved.
     "create_asset_record",
     "upsert_asset_records",
@@ -489,7 +489,7 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     "create_asset_group",
     "update_asset_group",
     "delete_asset_group",
-    "set_crown_jewel_asset_links",
+    "set_primary_asset_asset_links",
     "restore_asset_changes",
     # A change proposed from chat for that profile (#9484 S-a2): an
     # administrator accepting or rejecting a stored proposal. Accepted fields are

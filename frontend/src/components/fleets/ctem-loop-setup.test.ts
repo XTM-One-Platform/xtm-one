@@ -128,11 +128,11 @@ describe("ctem-loop-setup", () => {
       fleet_id: "f1",
       resume_on: "modules",
       steps: [
-        step("organization", { crown_jewels: 3, software: "x" }),
+        step("organization", { primary_assets: 3, software: "x" }),
         step("modules", { connected: ["opencrq", "opencti", "other"] }),
       ],
     };
-    expect(countFact(stepOf(status, "organization"), "crown_jewels")).toBe(3);
+    expect(countFact(stepOf(status, "organization"), "primary_assets")).toBe(3);
     expect(countFact(stepOf(status, "organization"), "software")).toBe(0);
     expect(connectedModules(stepOf(status, "modules"))).toEqual(["opencti", "opencrq"]);
     expect(connectedModules(undefined)).toEqual([]);

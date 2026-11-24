@@ -66,7 +66,7 @@ async def test_the_versions_are_listed_and_one_is_read_whole(monkeypatch):
                 created_at=datetime(2026, 11, 23, tzinfo=UTC),
                 author_user_id=None,
                 missing_fields=[],
-                crown_jewels=7,
+                primary_assets=7,
             )
         ]
 
@@ -80,7 +80,7 @@ async def test_the_versions_are_listed_and_one_is_read_whole(monkeypatch):
             source="form",
             created_at=None,
             author_user_id=None,
-            profile={"crown_jewels": [{"name": "Billing"}]},
+            profile={"primary_assets": [{"name": "Billing"}]},
             missing_fields=[],
         )
 
@@ -88,10 +88,10 @@ async def test_the_versions_are_listed_and_one_is_read_whole(monkeypatch):
     monkeypatch.setattr(routes, "get_organization_context_version", _one)
     executor = _tools(monkeypatch, _Session())
     listed = json.loads(await executor.handler(module.ORGANIZATION_VERSIONS_TOOL)(limit=500))
-    assert listed["versions"][0]["version"] == 4 and listed["versions"][0]["crown_jewels"] == 7
+    assert listed["versions"][0]["version"] == 4 and listed["versions"][0]["primary_assets"] == 7
     assert seen["limit"] == 100
     one = json.loads(await executor.handler(module.ORGANIZATION_VERSIONS_TOOL)(version=2))
-    assert one["profile"]["crown_jewels"] == [{"name": "Billing"}]
+    assert one["profile"]["primary_assets"] == [{"name": "Billing"}]
     missing = await executor.handler(module.ORGANIZATION_VERSIONS_TOOL)(version=9)
     assert missing.startswith("Not read: Version 9")
 
@@ -123,9 +123,9 @@ async def test_a_restore_goes_through_the_route_with_its_base_and_is_audited(mon
     monkeypatch.setattr(audit, "log_audit", _log_audit)
     executor = _tools(monkeypatch, session)
     answer = json.loads(
-        await executor.handler(module.ORGANIZATION_RESTORE_TOOL)(version=3, fields=["crown_jewels"], based_on_version=5)
+        await executor.handler(module.ORGANIZATION_RESTORE_TOOL)(version=3, fields=["primary_assets"], based_on_version=5)
     )
-    assert seen["call"] == (3, ["crown_jewels"], 5, True)
+    assert seen["call"] == (3, ["primary_assets"], 5, True)
     assert answer["version"] == 6 and answer["restored_from"] == 3
     assert answer["removed_rows"] == {"assets_exposure": ["old host"]}
     assert seen["audit"]["details"]["restored_from"] == 3 and seen["audit"]["details"]["agent"] == "Ops"
