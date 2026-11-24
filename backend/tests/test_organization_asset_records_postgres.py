@@ -187,7 +187,7 @@ async def test_remove_rows_past_max_batch_deletes_in_chunks(monkeypatch: pytest.
         org = await _primary(session, [SYNCED, {**HAND, "external_id": "h-1"}, {"name": "db-01", "category": "host"}])
         refs = [(r.source, r.external_id) for r in await records.asset_rows(session, org)]
         monkeypatch.setattr(records, "MAX_BATCH", 1)
-        removed = await records.remove_rows(session, org, "assets", refs, origin="sync", actor="sync:s")
+        removed = await records.remove_rows(session, org, "assets", refs, origin="sync:s", actor="sync:s")
         await session.commit()
         left = await _assets(session)
     assert len(removed) == 3
@@ -254,11 +254,13 @@ async def test_a_hand_delete_refuses_a_synced_group_and_removes_a_hand_one() -> 
         )
         hand = await records.upsert_group(session, org, {"name": "DMZ"}, origin="form", actor="form:u")
         await session.commit()
+        # The rollback below expires the loaded groups: keep their ids, never reload them lazily.
+        synced_id, hand_id = synced.id, hand.id
         with pytest.raises(records.RecordError, match="kept in sync"):
-            await records.delete_group(session, org, synced.id, origin="form", actor="form:u")
+            await records.delete_group(session, org, synced_id, origin="form", actor="form:u")
         await session.rollback()
-        await records.delete_group(session, org, hand.id, origin="form", actor="form:u")
-        await records.delete_group(session, org, synced.id, origin="sync:s", actor="sync:s")
+        await records.delete_group(session, org, hand_id, origin="form", actor="form:u")
+        await records.delete_group(session, org, synced_id, origin="sync:s", actor="sync:s")
         await session.commit()
         left = await records.groups_out(session, org)
     assert left == []
