@@ -294,6 +294,8 @@ interface Props {
    * the field in edit or its read tile, on the form the card shows.
    */
   pirList?: (editing: boolean, form: ProfileForm, update: (patch: Partial<ProfileForm>) => void) => ReactNode;
+  /** The OpenCTI PIR sources and syncs under the policy (#1938), drawn by the page that owns the import dialog. */
+  pirSources?: ReactNode;
 }
 
 /** The cards of this component, by their profile field. */
@@ -398,6 +400,7 @@ export function OrganizationExposureCards({
   cards = EXPOSURE_SECTIONS,
   readOnly = false,
   pirList,
+  pirSources,
 }: Props) {
   const { t_i18n } = useFormatter();
   // The policy thresholds are in edit with the whole form, or alone from the card's own Edit (#1540 UX r1 B2).
@@ -1073,6 +1076,7 @@ export function OrganizationExposureCards({
           </p>
         )}
         {saveBar("prioritization_policy")}
+        {pirSources && <div className="mt-4">{pirSources}</div>}
 
         <div className="mt-4 space-y-2">
           <div className="flex items-center justify-between gap-2">

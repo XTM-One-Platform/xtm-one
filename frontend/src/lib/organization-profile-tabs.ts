@@ -51,7 +51,6 @@ export const PROFILE_CARD_TAB = {
   outside_lens: "exposure",
   evidence_health: "exposure",
   enterprise_knowledge: "knowledge",
-  scheduled_imports: "knowledge",
   context_injection: "knowledge",
 } as const satisfies Record<string, ProfileTab>;
 export type ProfileCard = keyof typeof PROFILE_CARD_TAB;

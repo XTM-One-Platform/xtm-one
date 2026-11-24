@@ -21277,7 +21277,7 @@
   "The trigger paths that start the exposure management loop, by lens, with the sources that feed each one on this platform and whether they are connected.": "The trigger paths that start the exposure management loop, by lens, with the sources that feed each one on this platform and whether they are connected.",
   "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.",
   "About the knowledge and sources": "About the knowledge and sources",
-  "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the primary assets and PIRs.": "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the primary assets and PIRs.",
+  "The procedures and reference documents agents search, and the organization context they preload.": "The procedures and reference documents agents search, and the organization context they preload.",
   "Work item decision": "Work item decision",
   "What to decide": "What to decide",
   "No waiting decision matches the search and filters.": "No waiting decision matches the search and filters.",
@@ -21667,5 +21667,8 @@
   "Auto join updated": "Auto join updated",
   "Auto join could not be updated": "Auto join could not be updated",
   "Single sign-on users join this group": "Single sign-on users join this group",
-  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are."
+  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.",
+  "PIR sources": "PIR sources",
+  "The OpenCTI imports and syncs that keep the PIR list up to date.": "The OpenCTI imports and syncs that keep the PIR list up to date.",
+  "Wait for the prioritization policy to be saved.": "Wait for the prioritization policy to be saved."
 }

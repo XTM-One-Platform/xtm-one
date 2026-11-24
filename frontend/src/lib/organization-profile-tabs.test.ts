@@ -31,10 +31,11 @@ describe("organization profile tabs", () => {
     for (const path of Object.keys(FIELD_LABELS)) expect(tabOfField(path), path).not.toBeNull();
   });
 
-  it("maps every exposure card, the tracked organizations, the imports and the agent context to a tab", () => {
+  it("maps every exposure card, the tracked organizations and the agent context to a tab", () => {
     for (const card of EXPOSURE_SECTIONS) expect(tabOfField(card), card).not.toBeNull();
     expect(PROFILE_CARD_TAB.tracked_organizations).toBe("business");
-    expect(PROFILE_CARD_TAB.scheduled_imports).toBe("knowledge");
+    // The PIR sources live on the Prioritization policy card since #1938: no imports card on the knowledge tab.
+    expect("scheduled_imports" in PROFILE_CARD_TAB).toBe(false);
     expect(PROFILE_CARD_TAB.context_injection).toBe("knowledge");
   });
 

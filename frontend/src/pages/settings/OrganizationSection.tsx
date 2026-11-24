@@ -643,6 +643,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const [assetsImportOpen, setAssetsImportOpen] = useState(false);
   // "From the platforms" (#11780): the import stepper; its "Quick setup" runs today's one-click draft.
   const [platformImportOpen, setPlatformImportOpen] = useState(false);
+  // The OpenCTI PIR import of the Prioritization policy card (#1938): the PIRs section alone, no Quick setup.
+  const [pirImportOpen, setPirImportOpen] = useState(false);
   // "From a connected integration" (#11888): an agent reads it and previews the assets in a chat.
   const [fillAgentOpen, setFillAgentOpen] = useState(false);
   // The chat onboarding (#11224): a new chat with the default assistant interviews for the fields left.
@@ -1413,6 +1415,22 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         </div>
       </SettingsField>
     );
+  /**
+   * The OpenCTI PIR sources and syncs, under the PIR list of the Prioritization policy (#1938): the profile scope of
+   * the syncs (section pirs). Off only while the policy itself is being saved, never for another card's edit.
+   */
+  const policySaving = patch.isPending || save.isPending;
+  const pirSources = (
+    <OrganizationSourcesSyncs
+      variant="section"
+      scope="profile"
+      title={t_i18n("PIR sources")}
+      description={t_i18n("The OpenCTI imports and syncs that keep the PIR list up to date.")}
+      onAddSource={reader ? undefined : () => setPirImportOpen(true)}
+      disabled={policySaving}
+      disabledReason={t_i18n("Wait for the prioritization policy to be saved.")}
+    />
+  );
   /** The exposure cards a tab draws (#12329): the exposure tab three, the knowledge tab one. */
   const exposureCards = (cards: readonly (typeof EXPOSURE_SECTIONS)[number][]) =>
     current && (
@@ -1420,6 +1438,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         cards={cards}
         readOnly={reader}
         pirList={pirList}
+        pirSources={pirSources}
         current={!editing && exposureEdit ? exposureEdit.form : current}
         editing={editing}
         fieldId={fieldId}
@@ -1492,7 +1511,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             {t_i18n(PROFILE_TAB_LABELS.knowledge)}
             <InfoTip
               label={t_i18n("About the knowledge and sources")}
-              content={t_i18n("The procedures and reference documents agents search, the organization context they preload, and the sources that feed the primary assets and PIRs.")}
+              content={t_i18n("The procedures and reference documents agents search, and the organization context they preload.")}
             />
           </h3>
         </div>
@@ -1564,7 +1583,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       </div>
       )}
 
-      {setupGuide && editing && (
+      {setupGuide && editing && tab !== "knowledge" && (
         <p data-testid="settings.organization.setup-guide" className="rounded-sm border border-elevation-subtle p-3 content-base">
           {t_i18n("Start from a draft: Draft > From the platforms reads OpenCTI, OpenAEV and OpenCRQ, Draft > With AI proposes values to review. Nothing is saved until you click Save.")}
         </p>
@@ -2085,15 +2104,12 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             {exposureCards(["enterprise_knowledge"])}
             {/* The platform default of the organization summary cascade (#11533). */}
             <OrganizationContextInjectionCard />
-            {/* Sources and syncs (#1276), the tab's last block so the table fits the window under the
-                tab bar: one scroller, nothing below the list (UX r1 B1, B2 on #1294). The business profile's
-                sources here, the inventory's on CTEM > Inventory > Sources (#1178). */}
-            <OrganizationSourcesSyncs scope="profile" onAddSource={() => setPlatformImportOpen(true)} disabled={editing || cardOpen !== null || drafting.isPending} />
           </div>
           )}
 
-          {/* One save bar for the whole form, on every tab, sticky at the bottom (#12329). */}
-          {editing && <SettingsSaveBar dirty={dirty} saving={save.isPending} saveDisabled={scoreInvalid} onSave={submit} onCancel={stopEditing} />}
+          {/* One save bar for the whole form, sticky at the bottom (#12329); none on Knowledge and sources, whose
+              cards save on their own and which no draft fills (#1938). */}
+          {editing && tab !== "knowledge" && <SettingsSaveBar dirty={dirty} saving={save.isPending} saveDisabled={scoreInvalid} onSave={submit} onCancel={stopEditing} />}
         </div>
       )}
 
@@ -2138,6 +2154,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           }}
         />
       )}
+      {pirImportOpen && <OrganizationImportDialog open={pirImportOpen} onOpenChange={setPirImportOpen} sections={PROFILE_IMPORT_SECTIONS} />}
       <AgenticGateDialogControlled open={aiGateOpen} onOpenChange={setAiGateOpen} feature={t_i18n("Draft with AI")} />
     </div>
   );
