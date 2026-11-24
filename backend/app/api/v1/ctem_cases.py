@@ -74,6 +74,8 @@ class CaseValidation(BaseModel):
     result: Literal["passed", "not_exposed", "failed", "pending"]
     mitigation_only: bool = False
     note: str | None = Field(default=None, max_length=500)
+    #: CTEM-12: only read-only injects ran (true), a non-read-only one ran (false), unknown (None).
+    safe_mode: bool | None = None
     #: The target asset groups in the order they were tested.
     run_order: list[str] | None = Field(default=None, max_length=20)
     #: #1500: remediation (a version inventory) or validation (a test); a patch or upgrade case resolves
@@ -203,9 +205,13 @@ async def list_ctem_cases(
     )
     # The CTEM phase of each case on the page and what it waits on (#1503): the list groups by
     # phase, the Kanban lays its columns out by it, a case waiting for decision says on whom.
+    from app.services import ctem_case_delete as case_delete
+
     history = await store.events_of(db, [uuid.UUID(row["id"]) for row in rows])
     for row in rows:
         row.update(view_of.case_position(history.get(uuid.UUID(row["id"]), []), view))
+        # How the case came to be (#1723): the list's "Opened by" filter, the same reading as bulk-delete.
+        row["opened_by"] = case_delete.origin(history.get(uuid.UUID(row["id"]), []))
         # Issues that name no asset: the inventory count, else "unknown" with its reason (#1694).
         version_history.with_asset_count(row, history.get(uuid.UUID(row["id"]), []))
     return {
@@ -547,7 +553,7 @@ async def get_ctem_case(
         **rendered,
         **audit,
         "gates": gate_records,
-        # The versions the case's product runs on the assets (#1252), never a typed software version.
+        # The versions the case's product runs on the assets (#1252), never a typed tech stack version.
         "running_versions": _with_history(await case_versions.for_case(db, case), events),
         # The assets its visible issues name, with the version each runs from the inventory (#1176 slice 3b).
         "affected_assets": await case_versions.assets_for_case(db, case, rendered.get("issues") or []),
@@ -629,6 +635,7 @@ async def record_ctem_case_validation(
             result=body.result,
             mitigation_only=body.mitigation_only,
             note=body.note,
+            safe_mode=body.safe_mode,
             run_order=body.run_order,
             evidence_type=body.evidence_type,
             actor=str(user.id),
