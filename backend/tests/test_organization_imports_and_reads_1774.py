@@ -96,9 +96,9 @@ def test_an_endpoint_or_code_source_refused_for_software_points_to_its_assets_im
 
 
 def test_another_refusal_names_the_sections_the_source_feeds() -> None:
-    assert imp.refused_section_message("opencrq", "pirs") == "opencrq cannot feed pirs: it feeds crown_jewels"
-    assert imp.readable_error("opencrq", "opencrq cannot feed pirs: it feeds crown_jewels") == (
-        "OpenCRQ cannot feed this section: it feeds crown_jewels."
+    assert imp.refused_section_message("opencrq", "pirs") == "opencrq cannot feed pirs: it feeds primary_assets"
+    assert imp.readable_error("opencrq", "opencrq cannot feed pirs: it feeds primary_assets") == (
+        "OpenCRQ cannot feed this section: it feeds primary_assets."
     )
 
 

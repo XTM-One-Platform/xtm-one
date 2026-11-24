@@ -67,8 +67,8 @@ class OrganizationContextVersionSummary(BaseModel):
     created_at: datetime
     author_user_id: str | None
     missing_fields: list[str]
-    #: The crown jewels the version holds (#1558): the restore picker shows which version still has them.
-    crown_jewels: int = 0
+    #: The primary assets the version holds (#1558): the restore picker shows which version still has them.
+    primary_assets: int = 0
     #: An ``ai_draft`` version's accepted proposals: field -> ``{source, basis}``.
     sources: dict[str, Any] | None = None
 
@@ -92,7 +92,7 @@ class PatchOrganizationContextRequest(BaseModel):
 
 
 class RestoreOrganizationContextRequest(BaseModel):
-    #: The profile fields to take from the past version (e.g. ``crown_jewels``); empty: every field.
+    #: The profile fields to take from the past version (e.g. ``primary_assets``); empty: every field.
     fields: list[str] = []
     #: The current version the restore starts from: another version saved since answers 409.
     based_on_version: int | None = None
@@ -103,7 +103,7 @@ class OpenCrqSyncRequest(BaseModel):
     apply: bool = False
     tenant_id: str = ""
     #: The lowest OpenCRQ criticality the check pulls (low, medium, high, very_high, #1558);
-    #: empty: the saved crown-jewel sync's filter, else high.
+    #: empty: the saved primary-asset sync's filter, else high.
     min_criticality: Literal["", "low", "medium", "high", "very_high"] = ""
 
 
@@ -315,7 +315,7 @@ async def list_organization_context_versions(
             created_at=row.created_at,
             author_user_id=str(row.author_user_id) if row.author_user_id else None,
             missing_fields=org_context.missing_fields(org_context.parse_profile(row.profile)),
-            crown_jewels=len((row.profile or {}).get("crown_jewels") or []),
+            primary_assets=len((row.profile or {}).get("primary_assets") or []),
             sources=row.sources,
         )
         for row in rows
@@ -628,10 +628,10 @@ class AssetsImportResponse(BaseModel):
     assets: list[dict[str, Any]]
     #: The asset groups the file declares (rows typed ``asset_group``, #11781).
     groups: list[dict[str, Any]] = []
-    #: crown jewel name -> asset names the file links to it.
+    #: primary asset name -> asset names the file links to it.
     links: dict[str, list[str]]
     errors: list[AssetImportRowError]
-    unknown_crown_jewels: list[str]
+    unknown_primary_assets: list[str]
     #: Asset names already in the profile that the file replaces.
     replaced: list[str]
     version: int | None = None
@@ -649,7 +649,7 @@ async def import_organization_assets(
     The preview lists every row parsed or refused with its line and reason;
     ``apply=true`` with a row refused is 422 (fix the file, preview again).
     Rows are upserted by name, rows the file does not name are kept, and the
-    crown jewel links the file names are added. 422 names a bad file.
+    primary asset links the file names are added. 422 names a bad file.
     """
     from app.services import organization_assets_import as assets_import
 
@@ -666,7 +666,7 @@ async def import_organization_assets(
         groups=[group.model_dump(mode="json") for group in preview.groups],
         links=preview.links,
         errors=[AssetImportRowError(line=e.line, name=e.name, message=e.message) for e in preview.errors],
-        unknown_crown_jewels=preview.unknown_crown_jewels,
+        unknown_primary_assets=preview.unknown_primary_assets,
         replaced=preview.replaced,
     )
     if not apply:
@@ -1346,8 +1346,8 @@ class AssetGroupRequest(BaseModel):
     model_config = {"extra": "allow"}
 
 
-class CrownJewelLinksRequest(BaseModel):
-    #: The asset record and asset group names the crown jewel covers (replaces its links).
+class PrimaryAssetLinksRequest(BaseModel):
+    #: The asset record and asset group names the primary asset covers (replaces its links).
     names: list[str] = Field(default_factory=list, max_length=1000)
 
 
@@ -1680,33 +1680,39 @@ async def list_asset_group_members(
     }
 
 
-@router.put("/crown-jewels/{crown_jewel}/links")
-async def set_crown_jewel_asset_links(
-    crown_jewel: str,
-    body: CrownJewelLinksRequest,
+@router.put("/primary-assets/{primary_asset}/links")
+async def set_primary_asset_asset_links(
+    primary_asset: str,
+    body: PrimaryAssetLinksRequest,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> dict[str, Any]:
-    """Replace the assets and groups a crown jewel covers; 422 names the ones that match nothing."""
+    """Replace the assets and groups a primary asset covers; 422 names the ones that match nothing."""
     from app.services import organization_asset_records as records
 
     org = await _write_org(db)
     current = await org_context.current_version(db)
     jewels = {
         str(j.get("name") or "").strip().lower()
-        for j in ((current.profile or {}) if current else {}).get("crown_jewels") or []
+        for j in ((current.profile or {}) if current else {}).get("primary_assets") or []
     }
-    if crown_jewel.strip().lower() not in jewels:
-        raise HTTPException(status_code=404, detail=f"No crown jewel is named '{crown_jewel}'")
-    missing = await records.set_crown_jewel_links(db, org, crown_jewel, body.names)
+    if primary_asset.strip().lower() not in jewels:
+        raise HTTPException(status_code=404, detail=f"No primary asset is named '{primary_asset}'")
+    missing = await records.set_primary_asset_links(db, org, primary_asset, body.names)
     if missing:
         await db.rollback()
         raise HTTPException(status_code=422, detail="No asset or asset group is named: " + ", ".join(missing))
     await _audit_rows(
-        db, admin, "update", None, "crown_jewel_links", f"Crown jewel {crown_jewel} covers {len(body.names)} items", {}
+        db,
+        admin,
+        "update",
+        None,
+        "primary_asset_links",
+        f"Primary asset {primary_asset} covers {len(body.names)} items",
+        {},
     )
     await db.commit()
-    return {"crown_jewel": crown_jewel, "names": body.names}
+    return {"primary_asset": primary_asset, "names": body.names}
 
 
 @router.get("/changes")
@@ -1837,7 +1843,7 @@ async def sync_organization_context_with_opencrq(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> OpenCrqSyncResponse:
-    """Reconcile the crown jewels with OpenCRQ's supporting assets both ways (administrators).
+    """Reconcile the primary assets with OpenCRQ's supporting assets both ways (administrators).
 
     A dry run answers the plan; ``apply`` saves the next profile version and
     writes the criticalities to OpenCRQ. 409 when OpenCRQ cannot be read.
@@ -2119,7 +2125,7 @@ class ImportSourcesResponse(BaseModel):
 
 
 class ImportRequest(BaseModel):
-    section: Literal["assets", "asset_groups", "software", "crown_jewels", "pirs"]
+    section: Literal["assets", "asset_groups", "software", "primary_assets", "pirs"]
     source: Literal[
         "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
     ]
@@ -2186,7 +2192,7 @@ class ImportFilterOptionsResponse(BaseModel):
 
 @router.get("/import/options", response_model=ImportFilterOptionsResponse)
 async def list_organization_import_options(
-    section: Literal["assets", "asset_groups", "software", "crown_jewels", "pirs"],
+    section: Literal["assets", "asset_groups", "software", "primary_assets", "pirs"],
     source: Literal[
         "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
     ],
@@ -2306,7 +2312,7 @@ async def apply_organization_import(
 
 class OrganizationSyncRequest(BaseModel):
     #: A section of the import, or ``all`` for the global schedule that runs every section sync.
-    section: Literal["assets", "asset_groups", "software", "crown_jewels", "pirs", "all"]
+    section: Literal["assets", "asset_groups", "software", "primary_assets", "pirs", "all"]
     source: Literal[
         "openaev",
         "opencti",

@@ -40,18 +40,18 @@ describe("reference exchange rates (#1773)", () => {
 describe("PIR details (#1773)", () => {
   it("keeps the details of followed PIRs that say something, trimmed and each jewel once", () => {
     const details = {
-      a: { question: " Who targets us? ", owner: "CTI", review_cadence: "monthly" as const, crown_jewels: ["Pay", "Pay", " "] },
-      b: { question: "", owner: "", review_cadence: "" as const, crown_jewels: [] },
-      gone: { question: "Old", owner: "", review_cadence: "" as const, crown_jewels: [] },
+      a: { question: " Who targets us? ", owner: "CTI", review_cadence: "monthly" as const, primary_assets: ["Pay", "Pay", " "] },
+      b: { question: "", owner: "", review_cadence: "" as const, primary_assets: [] },
+      gone: { question: "Old", owner: "", review_cadence: "" as const, primary_assets: [] },
     };
     expect(pirDetailsOf(["a", "b"], details)).toEqual({
-      a: { question: "Who targets us?", owner: "CTI", review_cadence: "monthly", crown_jewels: ["Pay"] },
+      a: { question: "Who targets us?", owner: "CTI", review_cadence: "monthly", primary_assets: ["Pay"] },
     });
   });
 
   it("bounds the question as the server does", () => {
-    expect(pirDetailProblem({ question: "x".repeat(1001), owner: "", review_cadence: "", crown_jewels: [] })).not.toBeNull();
-    expect(pirDetailProblem({ question: "x", owner: "", review_cadence: "", crown_jewels: [] })).toBeNull();
+    expect(pirDetailProblem({ question: "x".repeat(1001), owner: "", review_cadence: "", primary_assets: [] })).not.toBeNull();
+    expect(pirDetailProblem({ question: "x", owner: "", review_cadence: "", primary_assets: [] })).toBeNull();
   });
 });
 

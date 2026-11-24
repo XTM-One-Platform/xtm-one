@@ -9,7 +9,7 @@ organization (a provider, a customer, a partner, a subsidiary) holds a
 smaller one, :class:`TrackedOrganizationProfile`: its sector, its regions,
 the services it supplies to or consumes from the primary, and the internal
 owner of the relationship (a person of the platform, never the third
-party's contact). Crown jewels, risk appetite, rate and
+party's contact). Primary assets, risk appetite, rate and
 ticketing stay primary-only: the loss is always the primary's.
 
 Every tracked organization starts with ``monitoring`` ``off``; nothing in
@@ -43,8 +43,8 @@ class TrackedService(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     #: ``supplies`` (to the primary) or ``consumes`` (from the primary).
     direction: Literal["supplies", "consumes"] = "supplies"
-    #: Names of the primary's crown jewels this service supports.
-    crown_jewels: list[str] = Field(default_factory=list, max_length=50)
+    #: Names of the primary's primary assets this service supports.
+    primary_assets: list[str] = Field(default_factory=list, max_length=50)
     opencrq_asset_id: str = Field(default="", max_length=100)
 
 

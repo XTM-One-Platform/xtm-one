@@ -266,7 +266,7 @@ LONG_ANSWER = "\n".join(
         "### What to check first",
         "",
         "1. The indicators created in the last 7 days with a score above 70",
-        "2. The sightings on your **crown jewel** assets",
+        "2. The sightings on your **primary asset** assets",
         "   - mail gateways",
         "   - VPN concentrators",
         "3. The detection rules that never fired",

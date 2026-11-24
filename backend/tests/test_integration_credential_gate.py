@@ -241,7 +241,7 @@ PRIVATE_RESOLVERS: dict[str, set[str]] = {
     # gated when it was set, and the token only creates or removes that
     # assignment's own notifier and trigger; the OpenAEV provisioner does the
     # same with the OpenAEV integration bound to the assignment or its agent.
-    # The OpenCRQ crown-jewel sync (#8987) reads the company-managed OpenCRQ
+    # The OpenCRQ primary-asset sync (#8987) reads the company-managed OpenCRQ
     # visible to the administrator who runs it (integration_visible_filter), with
     # a token minted for that administrator.
     "_get_token": {

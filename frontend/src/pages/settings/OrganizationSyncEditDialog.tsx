@@ -34,7 +34,7 @@ export const SYNC_SECTION_LABELS = {
   assets: "Assets",
   asset_groups: "Asset groups",
   software: "Software",
-  crown_jewels: "Primary assets",
+  primary_assets: "Primary assets",
   pirs: "PIRs",
 } as const satisfies Record<ImportSectionKey | "all", string>;
 
@@ -93,7 +93,7 @@ interface EditProps {
 }
 
 /** Whether a sync carries the OpenCRQ link option of #1591 (the primary-asset source of CTEM > Inventory > Sources, #1754). */
-const hasLinkOption = (sync: OrganizationSync | null): sync is OrganizationSync => sync !== null && sync.section === "crown_jewels" && sync.source === "opencrq";
+const hasLinkOption = (sync: OrganizationSync | null): sync is OrganizationSync => sync !== null && sync.section === "primary_assets" && sync.source === "opencrq";
 
 /** The schedule and the switch of one sync; saving it again resumes a paused one with the current administrator's token. */
 export function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProps) {
