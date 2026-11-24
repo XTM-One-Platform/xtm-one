@@ -217,13 +217,15 @@ export function PrioritizationMix({
   }
 
   if (dataCards.length === 0 && gapCards.length === 0) return null;
-  // Same layout rules as Discovery and Scoping (UX rounds of #12027 and #12076).
+  // Same layout rules as Discovery and Scoping (UX rounds of #12027 and #12076; equal
+  // heights per row, Sam, 24 Nov 2026, #1612).
   return (
     <div className="space-y-5" data-testid="ctem-prioritization-mix">
       {dataCards.length > 0 && (
         <div
-          className={cn("grid items-start gap-5", dataCards.length > 1 && "2xl:grid-cols-2")}
+          className={cn("grid gap-5 [&>section]:h-full", dataCards.length > 1 && "2xl:grid-cols-2")}
           data-testid="ctem-prioritization-data-row"
+          data-align="stretch"
           data-wide-columns={dataCards.length > 1 ? 2 : 1}
         >
           {dataCards}

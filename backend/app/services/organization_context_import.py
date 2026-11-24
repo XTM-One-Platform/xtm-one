@@ -201,6 +201,10 @@ class ReadResult:
     findings: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     #: Name and identity key per repository id (#1331, slice 4): the asset a dependency match lands on.
     repositories: dict[str, dict[str, str]] = field(default_factory=dict)
+    #: An asset group source (#1556): member asset ids per group ``external_id``, each group read whole.
+    members: dict[str, list[str]] = field(default_factory=dict)
+    #: The source whose asset records those member ids name.
+    members_source: str = ""
 
 
 @dataclass
@@ -250,6 +254,9 @@ class ImportPlan:
     organization_id: uuid.UUID | None = None
     writes: list[dict[str, Any]] = field(default_factory=list)
     remove_refs: list[tuple[str, str]] = field(default_factory=list)
+    #: Group memberships the source answered (#1556), written by :func:`apply_record_import`.
+    members: dict[str, list[str]] = field(default_factory=dict)
+    members_source: str = ""
 
     @property
     def on_records(self) -> bool:
@@ -257,8 +264,8 @@ class ImportPlan:
 
     @property
     def has_writes(self) -> bool:
-        """A record plan that writes or removes at least one row."""
-        return bool(self.writes or self.remove_refs)
+        """A record plan that writes or removes at least one row, or re-reads group memberships."""
+        return bool(self.writes or self.remove_refs or self.members)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -741,6 +748,8 @@ def plan_record_import(
         findings=read.findings,
         repositories=read.repositories,
         organization_id=organization_id,
+        members={} if read.error else read.members,
+        members_source=read.members_source,
     )
     excluded = {str(i) for i in excluded_ids or [] if str(i)}
     _attr, name_attr, _cap, local = SOURCED_FIELDS[section]
@@ -1013,23 +1022,35 @@ async def _openaev_inventory(
     return read
 
 
-async def _openaev_group_members(
+async def _openaev_members_by_group(
     base_url: str, headers: dict[str, Any], group_ids: list[str]
-) -> tuple[list[str], str | None]:
-    """Every asset id of the given groups, static members and dynamic matches alike."""
+) -> tuple[dict[str, list[str]], str | None]:
+    """The asset ids of each group, static members and dynamic matches alike (a dynamic group resolved)."""
     from app.integrations.providers.openaev._common import _api
 
-    members: list[str] = []
+    out: dict[str, list[str]] = {}
     for group_id in group_ids:
         resp, err = await _api(
             base_url, headers, "get", f"/api/asset_groups/{group_id}", "read asset group", retry_transient=True
         )
         if err or resp is None:
-            return [], f"OpenAEV asset group {group_id}: {err or 'no answer'}"
+            return {}, f"OpenAEV asset group {group_id}: {err or 'no answer'}"
         data = resp.json() if resp is not None else {}
-        for key in ("asset_group_assets", "asset_group_dynamic_assets"):
-            members.extend(str(a) for a in (data.get(key) or []) if a)
-    return list(dict.fromkeys(members)), None
+        ids = [
+            str(a) for key in ("asset_group_assets", "asset_group_dynamic_assets") for a in (data.get(key) or []) if a
+        ]
+        out[group_id] = list(dict.fromkeys(ids))
+    return out, None
+
+
+async def _openaev_group_members(
+    base_url: str, headers: dict[str, Any], group_ids: list[str]
+) -> tuple[list[str], str | None]:
+    """Every asset id of the given groups, static members and dynamic matches alike."""
+    by_group, err = await _openaev_members_by_group(base_url, headers, group_ids)
+    if err:
+        return [], err
+    return list(dict.fromkeys(m for ids in by_group.values() for m in ids)), None
 
 
 async def _read_openaev(
@@ -1083,6 +1104,14 @@ async def _read_openaev(
         )
         read = await _openaev_search(base_url, headers, "/api/asset_groups/search", group, text)
         read.rows = [r for r in (openaev_asset_group(g) for g in read.rows) if r]
+        if read.error or not read.rows:
+            return read
+        # #1556: each group's members, kept in sync as memberships of the OpenAEV asset records.
+        members, err = await _openaev_members_by_group(base_url, headers, [r.external_id for r in read.rows])
+        if err:
+            read.error = err
+            return read
+        read.members, read.members_source = members, "openaev"
         return read
     if section == AI_SYSTEMS_ALIAS:
         # #1501: OpenAEV's AI targets (``/api/ai_targets``), as assets of category ai_target.
@@ -1734,6 +1763,17 @@ async def apply_record_import(db: AsyncSession, plan: ImportPlan, *, actor: str)
                 db, plan.organization_id, plan.section, plan.remove_refs, origin=origin, actor=actor
             )
         )
+    if plan.section == "asset_groups" and plan.members and plan.members_source:
+        # #1556: the source's memberships, after its group rows exist; a hand membership is never touched.
+        synced = await records.sync_group_members(
+            db,
+            plan.organization_id,
+            plan.source,
+            plan.members,
+            member_source=plan.members_source,
+            sync_id=plan.sync_id,
+        )
+        count += synced.added + synced.removed
     return count
 
 

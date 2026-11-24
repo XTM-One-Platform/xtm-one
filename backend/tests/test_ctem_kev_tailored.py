@@ -100,7 +100,7 @@ def _wire(monkeypatch, stack):
     async def fake_octi(base_url, headers, user_id, client):
         return {"prioritization": {"kev_count": 1300}}
 
-    monkeypatch.setattr(collector, "_profile_tech_stack", fake_stack)
+    monkeypatch.setattr(collector, "_organization_software", fake_stack)
     monkeypatch.setattr(collector, "_user_creds", fake_creds)
     monkeypatch.setattr(collector, "_VERTICAL_COLLECTORS", {"cyber": [("opencti", fake_octi)]})
 
@@ -136,5 +136,5 @@ async def test_build_posture_without_a_tech_stack_runs_no_tailoring(monkeypatch)
     assert stage_facts["prioritization"] == {"kev_count": 1300}
 
 
-async def test_profile_tech_stack_is_empty_without_a_session():
-    assert await collector._profile_tech_stack(None) == []
+async def test_organization_software_is_empty_without_a_session() -> None:
+    assert await collector._organization_software(None) == []

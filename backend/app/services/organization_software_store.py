@@ -732,6 +732,103 @@ async def assets_of_version(
     )
 
 
+# ── The matcher's view: what the organization runs (#1495, slice 3) ──────
+
+
+def matcher_entries(
+    software: Iterable[Mapping[str, Any]], typed: Iterable[Mapping[str, Any]] = ()
+) -> list[dict[str, str]]:
+    """The products the CVE matcher looks for (pure, testable): one entry per software.
+
+    *software* holds one mapping per software entity (``vendor``, ``product``,
+    ``cpe``, ``versions``: the versions installed, ``unknown`` included). The
+    entry's ``version`` is the installed version when the organization runs
+    exactly one known version of it, else empty (several versions, or only
+    ``unknown``: the matcher then states no installed version, never a guess).
+    *typed* are rows typed in the organization profile before the profile moved
+    to Software entities (``vendor``, ``product``, ``cpe``, ``version``): a row
+    no software entity carries is still matched, so nothing typed is lost.
+    Each entry carries ``product``, ``vendor``, ``cpe``, ``version`` and
+    ``label`` (the name the case and the why line show).
+    """
+    out: list[dict[str, str]] = []
+    seen: dict[Key, dict[str, str]] = {}
+
+    def add(vendor: str, product: str, cpe: str, version: str) -> None:
+        vendor, product = vendor.strip(), product.strip()
+        if not product:
+            return
+        key = (_key(vendor), _key(product))
+        if key not in seen and not vendor:
+            # A typed product with no vendor is the one listed software of that product, if only one.
+            same = [k for k in seen if k[1] == key[1]]
+            key = same[0] if len(same) == 1 else key
+        held = seen.get(key)
+        if held is not None:
+            # A typed row of a listed software gives its CPE when the store has none; the versions
+            # stay the store's (what runs), never the typed one.
+            held["cpe"] = held["cpe"] or cpe.strip()
+            return
+        entry = {
+            "product": product,
+            "vendor": vendor,
+            "cpe": cpe.strip(),
+            "version": version.strip(),
+            "label": display_name(vendor, product),
+        }
+        seen[key] = entry
+        out.append(entry)
+
+    for soft in software:
+        known = sorted(
+            {
+                str(v).strip()
+                for v in soft.get("versions") or ()
+                if str(v or "").strip() and str(v).strip() != identity.UNKNOWN_VERSION
+            }
+        )
+        add(
+            str(soft.get("vendor") or ""),
+            str(soft.get("product") or ""),
+            str(soft.get("cpe") or ""),
+            known[0] if len(known) == 1 else "",
+        )
+    for row in typed:
+        add(
+            str(row.get("vendor") or ""),
+            str(row.get("product") or ""),
+            str(row.get("cpe") or ""),
+            str(row.get("version") or ""),
+        )
+    return out
+
+
+async def matcher_software(db: AsyncSession, organization_id: uuid.UUID) -> list[dict[str, Any]]:
+    """The software entities of *organization_id* with the versions installed, for :func:`matcher_entries`.
+
+    Two reads: the software, then its versions that an installation links
+    (a hand-typed software with no installation keeps its typed versions).
+    """
+    soft = OrganizationSoftware
+    rows = (
+        await db.execute(
+            select(soft.id, soft.vendor, soft.product, soft.cpe)
+            .where(soft.organization_id == organization_id)
+            .order_by(soft.name_key, soft.id)
+        )
+    ).all()
+    ver = OrganizationSoftwareVersion
+    versions: dict[uuid.UUID, list[str]] = {}
+    for software_id, version in (
+        await db.execute(select(ver.software_id, ver.version).where(ver.organization_id == organization_id))
+    ).all():
+        versions.setdefault(software_id, []).append(str(version))
+    return [
+        {"vendor": vendor, "product": product, "cpe": cpe, "versions": versions.get(sid, [])}
+        for sid, vendor, product, cpe in rows
+    ]
+
+
 # ── Writes: an administrator's software (#1495, slice 1b) ──────────────
 
 
