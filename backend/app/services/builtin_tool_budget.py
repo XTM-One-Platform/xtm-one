@@ -134,7 +134,10 @@ from app.services.builtin_tool_groups import schema_chars
 #: list_ctem_signals in the ctem_read group (#1782: +500, opt-in, on 24 Nov 2026).
 #: Raised to 478,800 for search_config_text of the platform group (#1759: +268, on top of #1782,
 #: 24 Nov 2026).
-TOTAL_SCHEMA_CHARS_CEILING = 478_800
+#: Raised to 493,400 for the ctem group (#1748: the CTEM signal and case tools on any agent,
+#: the owner's CTEM rights, plus triage_ctem_signals, +14,552, opt-in on the agent; the built-in
+#: CTEM agents already carried these functions by slug; on top of #1759, 24 Nov 2026).
+TOTAL_SCHEMA_CHARS_CEILING = 493_400
 
 #: Ceilings of the groups that carry one of their own (group id -> characters);
 #: generate_presentation, platform and coordination since the chat-reactivity
