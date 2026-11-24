@@ -135,6 +135,22 @@ async def test_an_unconnected_integration_is_said_not_silent(monkeypatch):
     assert reasons["Office mailbox"].startswith("it holds no usable credential")
 
 
+@pytest.mark.asyncio
+async def test_no_stored_config_still_names_the_keys_its_provider_requires(monkeypatch):
+    """A legacy row with no extra config for a provider that requires keys is
+    invalid (keys named, owners notified), never 'not connected'."""
+    notify = AsyncMock(return_value=True)
+    monkeypatch.setattr(notice, "notify_integration_invalid_once", notify)
+    missing: list[dict] = []
+    legacy = SimpleNamespace(
+        id=uuid.uuid4(), provider="fortisiem", name="SIEM", user_id=uuid.uuid4(), extra_config_enc=None
+    )
+    await it._report_invalid_config(legacy, binding_key="fortisiem", missing_bindings=missing, context={})
+    assert [m["reason"] for m in missing] == [INTEGRATION_INVALID_REASON]
+    assert "base_url" in missing[0]["missing_keys"]
+    notify.assert_awaited_once()
+
+
 def test_an_unconnected_and_an_invalid_integration_are_both_said():
     unconnected = not_connected_binding(
         SimpleNamespace(id=uuid.uuid4(), provider="notion", name="Wiki"), binding_key="notion"

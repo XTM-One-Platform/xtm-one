@@ -2401,11 +2401,8 @@ async def _report_invalid_config(
         )
         from app.services.integration_invalid_notice import notify_integration_invalid_once
 
-        missing = (
-            missing_required_extra_fields(integ.provider, await _reveal_extra(integ))
-            if getattr(integ, "extra_config_enc", None)
-            else []
-        )
+        extra = await _reveal_extra(integ) if getattr(integ, "extra_config_enc", None) else {}
+        missing = missing_required_extra_fields(integ.provider, extra)
         if not missing:
             if isinstance(missing_bindings, list):
                 missing_bindings.append(not_connected_binding(integ, binding_key=binding_key))
