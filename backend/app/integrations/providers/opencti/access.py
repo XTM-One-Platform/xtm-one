@@ -15,12 +15,15 @@ draft-gated. Most require SETTINGS_SETACCESSES on the API token.
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
+from collections.abc import Iterable
+from contextvars import ContextVar
 from typing import Any
 
 from app.core.module_versions import RegisteredVersionFn, version_answer
-from app.tools.base import CallableToolExecutor, ToolDefinition
+from app.tools.base import CallableToolExecutor, ToolDefinition, ToolHandler, ToolResult
 
 from ._common import _client, _edges, _graphql
 
@@ -32,24 +35,8 @@ _REL_HAS_ROLE = "has-role"
 _REL_HAS_CAPABILITY = "has-capability"
 
 
-def _unapplied(action: str, fields: dict[str, object]) -> str | None:
-    """An error naming every field passed that *action* does not apply, else None.
-
-    A field the tool accepts but the action ignores (or an argument the tool does not
-    declare at all) must never end in a silent "Updated": the caller believes it was
-    written. Values that are empty (``""``, ``None``, ``[]``, ``False``) count as not passed.
-    """
-    names = sorted(k for k, v in fields.items() if not (v is None or v is False or v in ("", [], {})))
-    if not names:
-        return None
-    return (
-        f"Error: action '{action}' does not apply {', '.join(names)}; nothing was "
-        "written. Remove the field(s) or use the action that applies them."
-    )
-
-
 # The fields each action of manage_opencti_user / manage_opencti_group reads. Any
-# other field passed is refused by name on EVERY action, reads and relation actions
+# other field passed is named as ignored on EVERY action, reads and relation actions
 # included: a list, get or delete must never answer as if an extra field applied.
 _USER_APPLIES: dict[str, frozenset[str]] = {
     "list": frozenset({"search", "limit"}),
@@ -127,22 +114,72 @@ _PROFILE_APPLIES: dict[str, frozenset[str]] = {
 _DEFAULT_LIMIT = 20
 
 
+# The notes of the call in flight: an argument the action does not apply is named
+# in the answer and the action runs with the arguments it applies
+# (install_ignored_arguments_note). No collector (a handler called bare): no note.
+_IGNORED: ContextVar[list[str] | None] = ContextVar("opencti_ignored_arguments", default=None)
+
+
+def _unapplied_names(fields: dict[str, object]) -> list[str]:
+    """The names of the fields passed with a value (empty values count as not passed)."""
+    return sorted(k for k, v in fields.items() if not (v is None or v is False or v in ("", [], {})))
+
+
 def _refuse_unapplied(
     action: str,
     applies: dict[str, frozenset[str]],
     fields: dict[str, object],
     extra: dict[str, object],
 ) -> str | None:
-    """The refusal of :func:`_unapplied` for every field *action* does not read.
+    """Name every field *action* does not read; the action still runs. Always None.
 
     *fields* are the declared arguments as passed (``limit`` only when it differs
-    from its default), *extra* the undeclared ones. An unknown action is left to the
-    tool's own answer.
+    from its default), *extra* the undeclared ones. A field the action ignores never
+    refuses the whole action: it is named in the answer as ignored, so the caller
+    never believes it was written and the rest of the call is not lost. An unknown
+    action is left to the tool's own answer. The ``str | None`` return is kept for
+    the call sites' ``if refused: return refused``.
     """
     allowed = applies.get(action)
     if allowed is None:
         return None
-    return _unapplied(action, {**{k: v for k, v in fields.items() if k not in allowed}, **extra})
+    names = _unapplied_names({**{k: v for k, v in fields.items() if k not in allowed}, **extra})
+    notes = _IGNORED.get()
+    if names and notes is not None:
+        notes.append(
+            f"Note: action '{action}' does not apply {', '.join(names)}; "
+            f"{'it was' if len(names) == 1 else 'they were'} ignored and the rest ran."
+        )
+    return None
+
+
+def with_ignored_arguments_note(handler: ToolHandler) -> ToolHandler:
+    """Wrap a tool handler so the arguments its action ignored are named in its answer."""
+
+    @functools.wraps(handler)
+    async def _wrapped(**kwargs: Any) -> Any:
+        notes: list[str] = []
+        token = _IGNORED.set(notes)
+        try:
+            result = await handler(**kwargs)
+        finally:
+            _IGNORED.reset(token)
+        if not notes:
+            return result
+        note = " ".join(dict.fromkeys(notes))
+        if isinstance(result, str):
+            return f"{result}\n{note}"
+        if isinstance(result, ToolResult):
+            result.content = f"{result.content}\n{note}"
+        return result
+
+    return _wrapped
+
+
+def install_ignored_arguments_note(executor: CallableToolExecutor, tool_names: Iterable[str]) -> None:
+    """Wrap the handler of every OpenCTI tool in *tool_names* with the note."""
+    for name in tool_names:
+        executor.wrap_handler(name, with_ignored_arguments_note)
 
 
 def _confidence_level(

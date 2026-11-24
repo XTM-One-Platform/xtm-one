@@ -150,6 +150,19 @@ def test_open_wait_falls_back_to_the_move_into_waiting_decision() -> None:
     assert audit.open_wait(system_move) == {"gate": None, "by": None, "since": "2026-11-23T10:00:00+00:00"}  # type: ignore[no-untyped-call]
 
 
+def test_stalled_since_holds_while_the_stalled_event_is_the_newest() -> None:
+    # #1736 slice 2: the Cases list shows "waits on nobody" and the Stalled filter from it.
+    stalled = _e("12:20", "stalled", actor="system", to="nobody", reason="waits on nobody since ...")
+    assert audit.stalled_since([*_history(), stalled]) == "2026-11-23T12:20:00+00:00"
+    # Newest first or oldest first, the newest event decides.
+    assert audit.stalled_since([stalled, *_history()]) == "2026-11-23T12:20:00+00:00"
+    # Anything after it (a gate, a note) means the loop moved the case.
+    after = _e("12:30", "gate", **{"from": "ctem.analyst_review", "to": "waited"})
+    assert audit.stalled_since([stalled, after, *_history()]) is None
+    assert audit.stalled_since(_history()) is None
+    assert audit.stalled_since([]) is None
+
+
 def test_run_phase():
     out = audit.annotate(_history(), people=[PERSON])
     assert audit.run_phase("2026-11-23T10:28:30+00:00", out) == "discovery"

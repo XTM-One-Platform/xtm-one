@@ -1155,7 +1155,9 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   object, holds the threshold and an edit in Settings needs no reprovision.
 - PIR flags (CTEM-05): `provision.mode: "pir_playbook"` (with
   `organization_context: ["pir_ids"]`, required) provisions an OpenCTI
-  playbook instead of a live trigger. OpenCTI flags an entity in a PIR
+  playbook instead of a live trigger; `provision.pir_ids` (OpenCTI ids of
+  profile PIRs) narrows it to a subset, an id outside the profile being an
+  error that names it. OpenCTI flags an entity in a PIR
   through its internal `in-pir` relationship and writes the entity's
   `pir_information` without a stream event, so a live trigger with a
   `pir_score` filter never sees the flag. The playbook entry built for it,
@@ -2034,7 +2036,7 @@ OpenAEV validation (on the three fleets with the OpenAEV validation step) and
 `ctem.mobilize`; every other gate runs and the case records it as passed
 automatically. Reads and drafts are never a decision. One decision per
 validation: its ask names the scenario or atomic test, its targets, schedule
-and safe mode, and the answer covers creating and launching exactly that; a
+and what it will do to them, and the answer covers creating and launching exactly that; a
 new target, schedule or object is a new decision, by the persona. The coverage
 request is under `ctem.analyst_review` alone (#1467). Full human gates: every
 gate waits. Full autonomous: nothing waits. A pin (`wait` or `run`) moves one gate
