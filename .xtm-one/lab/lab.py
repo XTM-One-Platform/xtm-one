@@ -1153,7 +1153,7 @@ LAB_ORG_TECH_STACK = (
 LAB_ORG_COMPLETE_PROFILE = {
     **LAB_ORG_PROFILE,
     "regions": ["FR", "US"],
-    "primary_assets": [{"name": "Payments platform", "business_service": "Card payments", "criticality": "critical"}],
+    "crown_jewels": [{"name": "Payments platform", "business_service": "Card payments", "criticality": "critical"}],
     "software": [dict(entry) for entry in LAB_ORG_TECH_STACK],
     "pir_ids": ["5b1e0c3a-7d2f-4e61-9a10-000000000001"],
     "risk_appetite": {"approval_threshold": 50000},
@@ -1707,11 +1707,41 @@ LAB_ORG_CONTEXT_STATES = ("default", "missing", "partial", "complete")
 #: ``LAB_ORG_SYNCED`` values (#1345): ``on`` saves the profile with rows a platform sync wrote next to typed rows
 #: (``seed_org_synced``), so the Source column, locked rows, bulk Set and the synced-removal dialog render natively.
 LAB_ORG_SYNCED_STATES = ("off", "on")
+#: The asset groups every XTM One lab writes through ``POST /organization-context/asset-groups`` (#1947), so CTEM >
+#: Inventory renders groups with members, an empty group and a long name on the real row APIs.
+LAB_INVENTORY_GROUPS = (
+    {"name": "Lab sample production servers", "description": "Hosts serving customer traffic", "criticality": "high",
+     "environment": "production"},
+    {"name": "Lab sample network edge", "description": "Firewalls and VPN gateways", "criticality": "very_high",
+     "internet_facing": "yes"},
+    {"name": "Lab sample decommissioned workloads awaiting the final data retention review of the archive team",
+     "description": "An empty group with a long name"},
+)
+#: The asset records every XTM One lab writes through ``POST /organization-context/assets/records/batch``
+#: (``source`` ``lab``, stable external ids, so a restart writes nothing): every criticality, several categories,
+#: members of two groups, one asset in no group and one with a long name.
+LAB_INVENTORY_ASSETS = (
+    {"name": "lab-web-01", "category": "host", "criticality": "high", "environment": "production",
+     "internet_facing": "yes", "group": "Lab sample production servers", "hostname": "lab-web-01",
+     "os_family": "Linux", "tags": ["web"], "source": "lab", "external_id": "lab-inventory-web-01"},
+    {"name": "lab-db-01", "category": "host", "criticality": "very_high", "environment": "production",
+     "internet_facing": "no", "group": "Lab sample production servers", "hostname": "lab-db-01",
+     "os_family": "Linux", "tags": ["database"], "source": "lab", "external_id": "lab-inventory-db-01"},
+    {"name": "lab-edge-fw-01", "category": "network_device", "criticality": "very_high", "internet_facing": "yes",
+     "group": "Lab sample network edge", "source": "lab", "external_id": "lab-inventory-edge-fw-01"},
+    {"name": "lab-edge-vpn-01", "category": "network_device", "criticality": "medium", "internet_facing": "yes",
+     "group": "Lab sample network edge", "source": "lab", "external_id": "lab-inventory-edge-vpn-01"},
+    {"name": "lab-hr-portal", "category": "saas_application", "criticality": "low", "environment": "production",
+     "owner": "People team", "source": "lab", "external_id": "lab-inventory-hr-portal"},
+    {"name": "lab-analytics-batch-worker-for-the-quarterly-regulatory-reporting-pipeline-eu-west-01",
+     "category": "container_workload", "criticality": "unknown", "environment": "staging",
+     "source": "lab", "external_id": "lab-inventory-analytics-worker"},
+)
 #: The rows ``LAB_ORG_SYNCED=on`` saves, per section: the platform whose disabled sync writes them (a source of
 #: ``organization_context_import.SECTION_SOURCES``) and the rows, synced ones carrying an ``external_id``; a row
 #: without one is typed. Each synced row gets the ``sync_id`` of its section's sync at seed time.
 LAB_ORG_SYNCED_ROWS = {
-    "primary_assets": ("opencrq", (
+    "crown_jewels": ("opencrq", (
         {"name": "Payments platform", "business_service": "Card payments", "criticality": "critical",
          "external_id": "lab-opencrq-asset-1"},
         {"name": "Customer data lake", "criticality": "high", "external_id": "lab-opencrq-asset-2"},
@@ -7968,6 +7998,17 @@ def seed_entities() -> None:
             seeded.update(seed_ctem_gates(token, base))
         except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
             skipped["CTEM case gates"] = str(exc)[:600]
+    if mode == "xtm_one":
+        # After seed_org_ai_draft_stub (the asset rows need a saved profile, #1947).
+        if "missing" == lab_switch("LAB_ORG_CONTEXT", LAB_ORG_CONTEXT_STATES) or "on" == lab_switch(
+            "LAB_ORG_SETUP_PROMPT", LAB_ORG_SETUP_PROMPT_STATES
+        ):
+            skipped["inventory"] = "no organization profile is saved in this lab"
+        else:
+            try:
+                seeded["inventory"] = seed_inventory(token, base)
+            except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+                skipped["inventory"] = str(exc)[:600]
     if mode == "xtm_one" and lab_switch("LAB_ORG_CONTEXT", LAB_ORG_CONTEXT_STATES) != "default":
         # After seed_org_ai_draft_stub (the lab profile, or none under missing).
         try:
@@ -8284,6 +8325,36 @@ def seed_stale_build_notice(token: str, base: str) -> dict[str, str]:
     if answered != server_build or answered == page_build:
         raise RuntimeError(f"GET /auth/config answers build_id {answered!r}, expected {server_build!r}")
     return {"id": f"page {page_build}, server {server_build}", "url": f"{base}/"}
+
+
+def seed_inventory(token: str, base: str) -> dict[str, str]:
+    """An XTM One lab's CTEM inventory on the real row APIs (#1947): groups first, then the asset records.
+
+    Writes each :data:`LAB_INVENTORY_GROUPS` entry missing from ``GET /organization-context/asset-groups``
+    (``POST /asset-groups``), then every :data:`LAB_INVENTORY_ASSETS` row in one
+    ``POST /organization-context/assets/records/batch`` (``source`` ``lab``, stable external ids: a restart
+    writes nothing). Read back: each group's ``member_count`` equals the assets naming it. Logged ``seeded
+    inventory: <n> assets, <m> groups: <base>/ctem/inventory``. May raise: the caller logs it as not seeded.
+    """
+    listed = api("GET", "/organization-context/asset-groups", token)
+    items = listed.get("items") if isinstance(listed, dict) else None
+    have = {str(g.get("name", "")).casefold() for g in (items or []) if isinstance(g, dict)}
+    for group in LAB_INVENTORY_GROUPS:
+        if group["name"].casefold() not in have:
+            api("POST", "/organization-context/asset-groups", token, {**group, "source": "lab"})
+    api("POST", "/organization-context/assets/records/batch", token, {
+        "rows": [dict(row) for row in LAB_INVENTORY_ASSETS],
+    })
+    listed = api("GET", "/organization-context/asset-groups", token)
+    items = listed.get("items") if isinstance(listed, dict) else None
+    counts = {str(g.get("name", "")): g.get("member_count") for g in (items or []) if isinstance(g, dict)}
+    for group in LAB_INVENTORY_GROUPS:
+        wanted = sum(1 for row in LAB_INVENTORY_ASSETS if row.get("group") == group["name"])
+        if counts.get(group["name"]) != wanted:
+            raise RuntimeError(f"asset group {group['name'][:40]!r} reads back {counts.get(group['name'])} members")
+    url = f"{base}/ctem/inventory"
+    log(f"seeded inventory: {len(LAB_INVENTORY_ASSETS)} assets, {len(LAB_INVENTORY_GROUPS)} groups: {url}")
+    return {"id": f"{len(LAB_INVENTORY_ASSETS)} assets, {len(LAB_INVENTORY_GROUPS)} groups", "url": url}
 
 
 def seed_org_synced(token: str, base: str) -> dict[str, str]:
