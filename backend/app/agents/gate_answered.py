@@ -29,6 +29,13 @@ GATE_ANSWERED = "Gate answered"
 #: new row takes when the seed creates it (``seed.seed_builtin_assignments``): a
 #: fleet already switched on gets the listener on upgrade.
 INHERIT_SWITCH_FROM_KEY = "inherit_switch_from"
+#: Answers of different decisions run side by side, up to this many at once: the
+#: seeded event default (``assignment_dispatch.SEEDED_EVENT_CONCURRENCY``, one run)
+#: made the answer of one case wait for the run applying another case's answer.
+GATE_ANSWERED_CONCURRENCY = 5
+#: The payload path the runs are ordered by: two answers on one decision key run
+#: one at a time, in arrival order; answers on other keys run beside them.
+GATE_ANSWERED_ORDERING_KEY = "correlation_key"
 
 _CLAIM_FIRST = (
     "Claim it first with claim_work_item; when the claim is refused another run already "
@@ -70,6 +77,10 @@ def gate_answered_assignment(
             "event": "work_item.status_changed",
             "filter": match,
             "scope": "own",
+            # Named here, so the seed keeps it over the one-run event default and
+            # rewrites it on the row of an existing install at the next boot.
+            "max_concurrent_runs": GATE_ANSWERED_CONCURRENCY,
+            "ordering_key": GATE_ANSWERED_ORDERING_KEY,
         },
         INHERIT_SWITCH_FROM_KEY: inherit_switch_from,
         "prompt": (
