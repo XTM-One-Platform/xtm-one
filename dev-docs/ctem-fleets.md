@@ -277,12 +277,15 @@ Assignments (on the orchestrator):
 |---|---|---|
 | New relevant threat | `integration_event` OpenCTI create on Intrusion-Set, Campaign, Report (S2), listen-only (#1580) | Provisions the OpenCTI trigger; the webhook route records the `relevant_threat` signal, no run |
 | Threat activity flagged in a PIR | `integration_event` OpenCTI PIR playbook, listen-only (#1580) | Provisions the PIR playbook; the delivery records the `relevant_threat` signal, no run |
-| Threat signal recorded | `platform_event` `ctem_signal.recorded` and `ctem_signal.triaged`, filter `trigger_path` `relevant_threat`, `source_provider` `opencti`, verdict `to_validate` or none; `max_concurrent_runs` 5, ordered by `signal_id`; takes the switch of New relevant threat on upgrade | Triage of a signal the case loop does not own yet; a confirmed signal opens its case through the case loop |
+| Threat signal recorded | `platform_event` `ctem_signal.recorded` and `ctem_signal.triaged`, filter `trigger_path` `relevant_threat`, `source_provider` `opencti`, `pir_floor_met` true (#1678: the listener stamps it when a PIR score at delivery reaches the policy's `pir_min_score_threat`; below it the signal waits for the weekly sweep), verdict `to_validate` or none; `max_concurrent_runs` 5, ordered by `signal_id`; takes the switch of New relevant threat on upgrade | Triage of a signal the case loop does not own yet; a confirmed signal opens its case through the case loop |
 | Weekly threat sweep | `schedule` `0 7 * * 1` | Catches what events missed |
 | Re-test due | `work_item` prefix `ctem:f1:retest:` | Re-runs the validated scenario after a fix |
 
-Loop: relevance (score against sector, regions, tech stack, PIRs; below the
-threshold the case closes as "not relevant", with the reason) -> OpenAEV
+Loop: relevance (score against sector, regions, tech stack, PIRs; one rule,
+`CTEM_RELEVANCE_RULE` in `builtin_agents.py`, read by the analyst, the
+orchestrator and the prompts (#1678): relevant at a score of 50 or more, or on
+a PIR flag at or above `pir_min_score_threat`; otherwise the case closes as
+"not relevant", with the reason) -> OpenAEV
 scenario proposed (approval) -> results read -> OpenCRQ expected loss updated
 -> top 3 actions, detections drafted, ticket (approval) -> re-test closes the
 case. Units: threat triaged, scenario built, loss updated, action closed.

@@ -439,6 +439,9 @@ def signal_event_data(
         "subject_kind": signal.subject_kind,
         "verdict": verdict or verdict_of(signal.state),
         "case_id": str(signal.case_id) if signal.case_id else None,
+        # #1678: the relevance floor a seeded run filters on (true only for a relevant threat
+        # whose PIR score at delivery reached the policy threshold); no evidence value travels.
+        "pir_floor_met": (getattr(signal, "evidence", None) or {}).get("pir_floor_met") is True,
         "object_type": "ctem_signal",
         "object_id": str(signal.id),
         "participant_agent_ids": [],

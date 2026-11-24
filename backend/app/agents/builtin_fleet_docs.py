@@ -70,8 +70,9 @@ CTEM_LOOP_DOC: dict[str, str] = {
         "on is reminded once.\n"
         "- **New relevant threat** and **Threat activity flagged in a PIR**: the OpenCTI intake; each "
         "delivery records a relevant threat signal, with no run of its own.\n"
-        "- **Threat signal recorded**: a threat signal recorded or moved to 'to validate' is scored "
-        "against the profile; a confirmed one goes to its case.\n"
+        "- **Threat signal recorded**: a threat signal an organization PIR flags at or above the policy "
+        "threshold, recorded or moved to 'to validate', is scored against the profile; a confirmed one "
+        "goes to its case. The other threat signals wait for the weekly sweep.\n"
         "- **Weekly threat sweep** and **Re-test due**: catches what the events missed, re-runs a "
         "validated scenario once a fix is deployed.\n"
         "- **Weekly assessments**: the five stage assessments and the exposure briefing, on by default.\n"
@@ -119,7 +120,7 @@ CTEM_THREAT_RESPONSE_DOC: dict[str, str] = {
     "triggers": (
         "- **New relevant threat**: an OpenCTI creation of an Intrusion Set or a Campaign records a relevant threat signal; no run of its own.\n"
         "- **Threat activity flagged in a PIR**: OpenCTI flags threat activity in an organization PIR and records a relevant threat signal; no run of its own.\n"
-        "- **Threat signal recorded**: a relevant threat signal from OpenCTI is recorded, or the scope gate moves it to 'to validate'; the run scores its relevance against the profile. A confirmed signal opens its case through the case loop.\n"
+        "- **Threat signal recorded**: a relevant threat signal from OpenCTI that an organization PIR flags at or above the policy's threat threshold is recorded, or the scope gate moves it to 'to validate'; the run scores its relevance against the profile. A confirmed signal opens its case through the case loop; a signal below the PIR floor waits for the weekly sweep.\n"
         "- **Weekly threat sweep**: Mondays 07:00, catches what the events missed.\n"
         "- **Re-test due**: a re-test request opened once a fix is deployed re-runs the validated scenario.\n"
         "- **Case opened or reopened**: a CTEM case on any trigger path is opened, reopened by a failed "
@@ -649,7 +650,7 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
         {
             "module": "platform",
             "name": "Threat signal recorded",
-            "filter": "A relevant threat signal is recorded or moved to 'to validate'",
+            "filter": "A relevant threat signal a PIR flags at or above the policy threshold is recorded or moved to 'to validate'",
             "detail": "One run per signal; a confirmed signal goes to its case",
         },
         {
