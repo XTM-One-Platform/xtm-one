@@ -111,10 +111,10 @@ def test_the_reconcile_never_releases_a_synced_row() -> None:
 def test_removed_rows_names_what_a_save_dropped() -> None:
     before = oc.OrganizationProfile(
         primary_assets=[oc.PrimaryAsset(name="A"), oc.PrimaryAsset(name="B", source="opencrq", external_id="x")],
-        tech_stack=[oc.TechStackEntry(product="Splunk")],
+        software=[oc.SoftwareEntry(product="Splunk")],
     ).model_dump(mode="json")
     after = oc.OrganizationProfile(
-        primary_assets=[oc.PrimaryAsset(name="A")], tech_stack=[oc.TechStackEntry(product="Splunk")]
+        primary_assets=[oc.PrimaryAsset(name="A")], software=[oc.SoftwareEntry(product="Splunk")]
     )
     assert oc.removed_rows(before, after.model_dump(mode="json")) == {"primary_assets": ["B"]}
     assert oc.removed_rows(None, after.model_dump(mode="json")) == {}
