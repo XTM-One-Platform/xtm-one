@@ -206,7 +206,7 @@ CTEM_AI_SECURITY_DOC: dict[str, str] = {
     "triggers": (
         "- **New AI-enabled report**: an OpenCTI creation of a Report labelled `ai`.\n"
         "- **Weekly AI threat watch**: Tuesdays 07:00, a summary of new AI campaigns.\n"
-        "- **AI system registered**: a newly registered AI system asks for a baseline test proposal."
+        "- **AI target added**: a new asset of category AI target in the inventory asks for a baseline test proposal."
     ),
     "flow": (
         "1. ATLAS mapping in an OpenCTI draft, for an analyst's review.\n"
@@ -747,9 +747,9 @@ CTEM_AI_SECURITY_STRUCTURED: dict[str, Any] = {
         },
         {
             "module": "work_item",
-            "name": "AI system registered",
-            "filter": "An AI system is added to the profile",
-            "detail": "Opened when an AI system is registered in the organization profile",
+            "name": "AI target added",
+            "filter": "An AI target asset is added to the inventory",
+            "detail": "Opened when an asset of category AI target is added to the inventory",
         },
     ],
     "steps": [
@@ -783,7 +783,7 @@ CTEM_AI_SECURITY_STRUCTURED: dict[str, Any] = {
     "quota": [
         {"trigger": "New AI-enabled report", "basis": "One run per AI-labelled report", "runs_min": 2, "runs_max": 10},
         {"trigger": "Weekly AI threat watch", "basis": "One run a week", "runs_min": 4, "runs_max": 5},
-        {"trigger": "AI system registered", "basis": "One run per AI system added", "runs_min": 0, "runs_max": 1},
+        {"trigger": "AI target added", "basis": "One run per AI target asset added", "runs_min": 0, "runs_max": 1},
     ],
 }
 

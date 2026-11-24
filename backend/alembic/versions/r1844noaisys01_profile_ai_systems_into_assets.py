@@ -19,6 +19,10 @@ product is not released: the alias goes, and the stored data moves once here.
   assets read includes the AI targets for that filter).
 * ``organization_context_proposals`` still pending: a proposal of the field
   ``ai_systems`` is dropped (an empty proposal is rejected).
+* ``assignments``: the AI security fleet's built-in "AI system registered"
+  becomes "AI target added" (work-item prefix ``ctem:f3:ai-target:``) in
+  place, so an administrator's switch and run-as survive; the seed would
+  otherwise delete it as stale and create the new one switched off.
 
 Data only, no DDL, a no-op on re-run. The downgrade is a no-op: the rows are
 assets, which every version reads.
@@ -47,6 +51,10 @@ depends_on: str | Sequence[str] | None = None
 _KEY = "ai_systems"
 _KIND_SUBCATEGORY = {"agent": "ai_agent", "model_api": "llm_model"}
 _EXPOSURE_FACING = {"public": "yes", "internal": "no", "partner": "unknown"}
+#: The AI security fleet's work-item trigger, frozen here (a migration never imports the seed).
+_F3_SLUG = "ctem-ai-security-orchestrator"
+_F3_OLD = ("AI system registered", "ctem:f3:ai-system:")
+_F3_NEW = ("AI target added", "ctem:f3:ai-target:")
 
 
 def _json(value: Any) -> Any:
@@ -204,6 +212,18 @@ def upgrade() -> None:
                 ),
                 {"proposals": json.dumps(kept), "empty": not kept, "id": row_id},
             )
+    if inspector.has_table("assignments") and inspector.has_table("agents"):
+        conn.execute(
+            sa.text(
+                "UPDATE assignments AS a SET name = :new_name, "
+                "trigger_config = CAST(jsonb_set(COALESCE(CAST(a.trigger_config AS jsonb), '{}'::jsonb), "
+                "'{correlation_prefix}', to_jsonb(CAST(:new_prefix AS text))) AS json) "
+                "FROM agents AS g WHERE a.agent_id = g.id AND g.is_builtin = true AND g.slug = :slug "
+                "AND a.name = :old_name AND NOT EXISTS (SELECT 1 FROM assignments AS b "
+                "WHERE b.agent_id = a.agent_id AND b.name = :new_name)"
+            ),
+            {"slug": _F3_SLUG, "old_name": _F3_OLD[0], "new_name": _F3_NEW[0], "new_prefix": _F3_NEW[1]},
+        )
 
 
 def downgrade() -> None:

@@ -47,10 +47,13 @@ def test_the_orchestrator_delegates_to_the_analyst_and_the_shared_agents():
 
 def test_the_three_assignments_of_the_design():
     mine = {a["name"]: a for a in BUILTIN_ASSIGNMENTS if a["agent_slug"] == f3.ORCHESTRATOR}
-    assert set(mine) == {"New AI-enabled report", "Weekly AI threat watch", "AI system registered"}
+    assert set(mine) == {"New AI-enabled report", "Weekly AI threat watch", "AI target added"}
     assert mine["Weekly AI threat watch"]["trigger_config"] == {"cron": "0 7 * * 2"}
-    registered = mine["AI system registered"]
-    assert registered["trigger_config"]["correlation_prefix"] == "ctem:f3:ai-system:"
+    registered = mine["AI target added"]
+    assert registered["trigger_config"]["correlation_prefix"] == "ctem:f3:ai-target:"
+    # #1844: no AI system concept left in the fleet's words; AI targets are inventory assets.
+    for assignment in mine.values():
+        assert "AI system" not in assignment["prompt"] + assignment["description"]
     assert work_item_trigger_error(registered["trigger_type"], registered["trigger_config"]) is None
     event = mine["New AI-enabled report"]
     assert event["trigger_type"] == "integration_event"

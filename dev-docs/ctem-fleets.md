@@ -340,9 +340,9 @@ poisoning), `ctem-risk-quantifier` (AI risk scenario in OpenCRQ),
 |---|---|---|
 | New AI-enabled report | `integration_event` OpenCTI create on Report labelled AI or with an ATLAS technique (S2) | Map, then relevance |
 | Weekly AI threat watch | `schedule` `0 7 * * 2` | Summary of new AI campaigns with ATLAS techniques |
-| AI system registered | `work_item` prefix `ctem:f3:ai-system:` (from the context contract, S3) | Baseline test proposal |
+| AI target added | `work_item` prefix `ctem:f3:ai-target:` (an asset of category `ai_target` added to the inventory) | Baseline test proposal |
 
-Every test of an AI system is behind approval; ATLAS entities are proposed in
+Every test of an AI target is behind approval; ATLAS entities are proposed in
 an OpenCTI draft for analyst review, never written to the knowledge directly.
 Units: AI threat mapped, AI test run, AI exposure fixed.
 
@@ -364,8 +364,9 @@ assignments and the `ctem-ai-security` entry of `BUILTIN_FLEETS`
   `cti-ttp-harvester-filigran-ai`.
 - Assignments on the orchestrator: "New AI-enabled report" (OpenCTI
   `integration_event`, provisioned trigger on Report labelled `ai`, S2a),
-  "Weekly AI threat watch" (`0 7 * * 2`), "AI system registered" (`work_item`,
-  `correlation_prefix` `ctem:f3:ai-system:`).
+  "Weekly AI threat watch" (`0 7 * * 2`), "AI target added" (`work_item`,
+  `correlation_prefix` `ctem:f3:ai-target:`; renamed from "AI system registered"
+  by migration `r1844noaisys01`, #1844).
 - ROI (section 5.4): the analyst counts `atlas_mapping` per technique in
   `atlas_techniques`, the orchestrator `ai_test_plan` per entry of
   `proposed_tests`.
@@ -376,11 +377,11 @@ assignments and the `ctem-ai-security` entry of `BUILTIN_FLEETS`
   `deep-investigation-agent`. A slug not seeded yet is skipped by the fleet
   and handover seeds, so F3 seeds alone and gains them when F1 lands.
 
-Gaps, degraded cleanly: OpenCTI has no AI-system object and OpenAEV no AI
-target asset type; the organization profile's `ai_systems` (with its
-`openaev_asset_id`) is the inventory, and an AI system with no asset id gets
-the test proposal only. The "AI system registered" work item is created by
-whoever registers the system until the profile emits it on save. The ATLAS
+Gaps, degraded cleanly: OpenCTI has no AI-system object. Since #1501 and
+#1844 the AI targets are the inventory assets of category `ai_target` (with
+their OpenAEV id); an AI target with no OpenAEV id gets the test proposal
+only. The "AI target added" work item is created by whoever adds the asset
+until the inventory emits it on save. The ATLAS
 technique filter of the event trigger waits for an OpenCTI label convention;
 the `ai` label is the filter today.
 

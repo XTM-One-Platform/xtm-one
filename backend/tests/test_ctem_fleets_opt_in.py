@@ -44,7 +44,8 @@ _FLEET_ASSIGNMENTS = {
     ("ctem-threat-response-orchestrator", "Threat signal recorded"),
     ("ctem-ai-security-orchestrator", "New AI-enabled report"),
     ("ctem-ai-security-orchestrator", "Weekly AI threat watch"),
-    ("ctem-ai-security-orchestrator", "AI system registered"),
+    # Renamed from "AI system registered" in place by r1844noaisys01 (#1844).
+    ("ctem-ai-security-orchestrator", "AI target added"),
     ("ctem-posture-orchestrator", "Event refresh"),
     ("ctem-posture-orchestrator", "Monthly board report"),
     # F5 third-party risk (#9157 M5): seeded off, after migration c9160fleetoptin1.
@@ -373,4 +374,9 @@ def test_migration_switches_off_exactly_the_fleet_assignments():
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    assert set(module._FLEET_ASSIGNMENTS) == _FLEET_ASSIGNMENTS - _SEEDED_AFTER_C9160
+    # c9160fleetoptin1 is frozen: it names the trigger r1844noaisys01 later renamed in place.
+    renamed = {
+        ("ctem-ai-security-orchestrator", "AI target added"): ("ctem-ai-security-orchestrator", "AI system registered")
+    }
+    expected = {renamed.get(k, k) for k in _FLEET_ASSIGNMENTS - _SEEDED_AFTER_C9160}
+    assert set(module._FLEET_ASSIGNMENTS) == expected

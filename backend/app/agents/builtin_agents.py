@@ -2394,7 +2394,7 @@ A case of a CTEM fleet was closed: work item {{{{trigger.correlation_key}}}} \
 Refresh the posture stages this case touched, at most once per stage per hour.
 1. Map the case to the stages it changed: a new or re-scored exposure is \
 discovery and prioritization; a simulation or test run is validation; a fix, \
-ticket or rule deployed is remediation; a new asset or AI system is scoping. \
+ticket or rule deployed is remediation; a new asset (an AI target included) is scoping. \
 A case that changed nothing (not relevant, cancelled) maps to no stage: stop \
 and say so.
 2. Read shared state {CTEM_POSTURE_STATE_KEY} (path refresh). Leave out every \

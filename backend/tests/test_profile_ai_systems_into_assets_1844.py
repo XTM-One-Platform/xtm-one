@@ -89,3 +89,14 @@ def test_the_profile_refuses_the_retired_key() -> None:
         assert "ai_systems" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("ai_systems is no field of the profile any more")
+
+
+def test_the_fleet_trigger_rename_matches_the_seed() -> None:
+    """UX round 2 B1: the AI security trigger is renamed in place to what the seed now names."""
+    from app.agents import ctem_ai_security as f3
+
+    m = _migration()
+    seeded = {a["name"]: a for a in f3.AI_SECURITY_ASSIGNMENTS}
+    assert m._F3_SLUG == f3.ORCHESTRATOR
+    assert m._F3_OLD[0] not in seeded
+    assert seeded[m._F3_NEW[0]]["trigger_config"]["correlation_prefix"] == m._F3_NEW[1] == f3.AI_TARGET_PREFIX
