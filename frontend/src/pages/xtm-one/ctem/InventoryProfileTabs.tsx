@@ -107,7 +107,7 @@ export function AssetGroupsTab({ add }: { add: AddRequest }) {
         <span className="whitespace-nowrap tabular-nums" data-unresolved={g.unresolved_members ?? 0}>
           {formatCount(intl.locale, g.member_count)}
           {(g.unresolved_members ?? 0) > 0 && (
-            <span className="ml-1.5 text-muted-foreground">
+            <span className="ml-1.5 text-default-secondary">
               {t_i18n("{count, plural, one {+# not in the inventory} other {+# not in the inventory}}", { count: g.unresolved_members ?? 0 })}
             </span>
           )}
