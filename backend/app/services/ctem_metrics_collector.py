@@ -1095,6 +1095,81 @@ async def _octi_kev_tailored(
     }
 
 
+async def _funnel_scope(db: AsyncSession | None, stack: list[dict[str, Any]]) -> dict[str, dict[str, Any]] | None:
+    """The ``business_impact`` and ``policy`` scope of the primary organization (:func:`ctem_funnel.funnel_scope`).
+
+    Read in the DB phase: the profile (primary assets, prioritization policy)
+    and the primary asset index the scope gate reads. ``None`` when the profile
+    cannot be read (both layers then stay not configured).
+    """
+    if db is None:
+        return None
+    from datetime import UTC, datetime
+
+    from app.services import ctem_primary_assets
+    from app.services import organization_context as org_context
+    from app.services.ctem_funnel import funnel_scope
+
+    try:
+        row, profile = await org_context.current_profile(db)
+        if row is None:
+            return None
+        index = await ctem_primary_assets.load_index(db, row.organization_id)
+    except Exception as exc:  # a bad stored profile never breaks the posture
+        logger.info("CTEM funnel scope unreadable: %s", format_exception_message(exc))
+        return None
+    return funnel_scope(profile=profile, index=index, stack=stack, today=datetime.now(UTC).date())
+
+
+async def _octi_scope_counts(
+    client: httpx.AsyncClient,
+    base_url: str,
+    headers: dict[str, str],
+    stack: list[dict[str, Any]],
+    scope: dict[str, dict[str, Any]],
+    user_id: str,
+) -> dict[str, int]:
+    """The ``business`` and ``policy`` counts of *scope*, read in one OpenCTI call; ``{}`` when it cannot answer.
+
+    Each counts the exploitable vulnerabilities (KEV or EPSS above the funnel
+    threshold) of the stack software its ``labels`` keep, the policy adding its
+    ``filter_groups``. A layer without labels is left out (not available).
+    """
+    wanted = {name: part for name, part in scope.items() if part.get("configured") and part.get("labels")}
+    if not wanted:
+        return {}
+    labels = {label for part in wanted.values() for label in part["labels"]}
+    sub = [e for e in stack if e.get("label") in labels]
+    software, _complete, err = await _read_stack_software(client, base_url, headers, _OCTI_STACK_SOFTWARE, sub)
+    if err:
+        logger.info("CTEM funnel scope software unavailable for user %s: %s", user_id, err)
+        return {}
+    by_label: dict[str, list[str]] = {}
+    for node in software:
+        label = _stack_matches(node, sub)
+        if label and node.get("id"):
+            by_label.setdefault(label, []).append(node["id"])
+    spec: list[tuple[str, list[str], dict[str, Any] | None]] = []
+    out: dict[str, int] = {}
+    for name, part in wanted.items():
+        ids = sorted({i for label in part["labels"] for i in by_label.get(label, [])})
+        if not ids:
+            out[name] = 0
+            continue
+        regarding = {
+            "key": ["regardingOf"],
+            "values": [{"key": "relationship_type", "values": ["has"]}, {"key": "id", "values": ids}],
+        }
+        groups = [_F_EXPLOITABLE, *(part.get("filter_groups") or [])]
+        spec.append((name, ["Vulnerability"], {"mode": "and", "filters": [regarding], "filterGroups": groups}))
+    if spec:
+        counts = await _octi_multi_counts(client, base_url, headers, spec, user_id)
+        if not counts:
+            return {}
+        out.update(counts)
+    return out
+
+
 async def _organization_software(db: AsyncSession | None) -> list[dict[str, Any]]:
     """What the primary organization runs, as the CVE matcher reads it (#1495), ``[]`` when nothing.
 
@@ -2417,6 +2492,8 @@ def _attach_funnel(
     present: set[str],
     reachability: dict[str, int] | None = None,
     exposed: int | None = None,
+    scope: dict[str, dict[str, Any]] | None = None,
+    scope_counts: dict[str, int] | None = None,
 ) -> None:
     """Turn the collected funnel inputs into the prioritization ``funnel`` (#11546).
 
@@ -2425,6 +2502,8 @@ def _attach_funnel(
     shows it, and is live with ``exposed`` (:func:`_exposed_join`), else stays
     not available while the vulnerabilities the funnel counts could not be
     joined to an asset (never "not configured" when the profile holds assets).
+    ``scope`` (:func:`_funnel_scope`) and ``scope_counts``
+    (:func:`_octi_scope_counts`) feed the business impact and policy layers.
     """
     prio = stage_facts.get("prioritization")
     if prio is None:
@@ -2442,6 +2521,10 @@ def _attach_funnel(
         filters=_funnel_link_filters(tailored),
         reachability=reachability,
         exposed=exposed,
+        business=(scope_counts or {}).get("business"),
+        business_scope=(scope or {}).get("business"),
+        policy=(scope_counts or {}).get("policy"),
+        policy_scope=(scope or {}).get("policy"),
     )
     if funnel is not None:
         prio["funnel"] = funnel
@@ -2475,6 +2558,7 @@ async def build_posture_for_user(
     stack = await _organization_software(db) if vertical == VERTICAL_CYBER else []
     asset_rows = await _profile_asset_rows(db) if vertical == VERTICAL_CYBER else None
     reachability = _profile_reachability(asset_rows)
+    scope = await _funnel_scope(db, stack) if vertical == VERTICAL_CYBER else None
 
     creds: dict[str, tuple[str, dict[str, str]] | None] = {}
     for provider in dict.fromkeys(p for p, _ in collectors):
@@ -2516,9 +2600,23 @@ async def build_posture_for_user(
             logger.warning("CTEM tailoring error (user %s): %s", user_id, format_exception_message(exc))
             return None
 
+    async def _scope_counts() -> dict[str, int]:
+        resolved = creds.get("opencti")
+        if not scope or not stack or not resolved:
+            return {}
+        base_url, headers = resolved
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                return await _octi_scope_counts(client, base_url, headers, stack, scope, user_id)
+        except Exception as exc:  # best-effort: the layers then read not available
+            logger.warning("CTEM funnel scope error (user %s): %s", user_id, format_exception_message(exc))
+            return {}
+
+    scope_task = asyncio.ensure_future(_scope_counts())
     *results, tailored = await asyncio.gather(
         *(_run(provider, collector) for provider, collector in collectors), _tailor()
     )
+    scope_counts = await scope_task
     for provider, result in results:
         if result is None:
             continue
@@ -2548,7 +2646,7 @@ async def build_posture_for_user(
         if tailored is not None and "opencti" in present:
             stage_facts.setdefault("prioritization", {}).update(tailored)
         exposed = await _exposed_join(creds, stage_facts, present, asset_rows, tailored, user_id)
-        _attach_funnel(stage_facts, present, reachability, exposed)
+        _attach_funnel(stage_facts, present, reachability, exposed, scope, scope_counts)
 
     logger.info(
         "CTEM: %s posture collected for user %s — present=%s, stages_with_data=%d",
