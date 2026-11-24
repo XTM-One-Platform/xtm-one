@@ -301,7 +301,7 @@ async def resolve_exact_toolset(db, agent, user_id: str, *, pinned: dict | None 
 
     The resolution of an assignment run, for the person the item acts for:
     the agent's fixed bindings (a colleague's binding the person cannot see is
-    dropped), its template bindings resolved to the person's own or a
+    dropped, unless the agent lends it), its template bindings resolved to the person's own or a
     company-wide integration, an agent account's pinned integration, the
     agent's tool scoping, read-only bindings and enforced element scope, its
     channel and custom tools, then its deny list. MCP tools are not offered:
@@ -309,7 +309,6 @@ async def resolve_exact_toolset(db, agent, user_id: str, *, pinned: dict | None 
     """
     from app.api.v1.helpers import get_user_group_ids
     from app.core.security_options import security_option
-    from app.models.integration import Integration
     from app.services.builtin_tools import (
         apply_tool_deny_list,
         filter_builtin_tools,
@@ -324,66 +323,18 @@ async def resolve_exact_toolset(db, agent, user_id: str, *, pinned: dict | None 
         read_only_integration_ids,
     )
     from app.services.integration_tools import (
-        BindingBasis,
-        ToolBindings,
         build_channel_tools,
         build_integration_tools,
-        flatten_bindings,
-        pick_template_integration,
         pin_bindings,
-        shadow_invisible_bindings,
-        template_candidate_filter,
+        resolve_agent_integration_bindings,
     )
-    from app.services.integration_user_credentials import connected_for_clause
     from app.tools.base import CompositeToolExecutor
 
     user_uuid = uuid.UUID(str(user_id))
     group_ids = await get_user_group_ids(db, user_uuid)
-    effective: dict[str, str] = flatten_bindings(agent.integration_bindings or {})
-    origin: dict[str, str] = {key: "direct_agent_binding" for key in effective}
-    shadowed: list[str] = []
-    # An orphaned binding (the agent's owner lost access) is used by nobody.
-    from app.services.integration_credentials import drop_orphaned_bindings
-
-    await drop_orphaned_bindings(db, agent, effective, origin)
-    if effective and str(agent.user_id) != str(user_id):
-        shadowed = await shadow_invisible_bindings(
-            db,
-            effective,
-            origin,
-            acting_user_id=str(user_id),
-            user_group_ids=group_ids,
-        )
-    needed = [
-        provider
-        for provider in dict.fromkeys([*(agent.integration_template_bindings or []), *shadowed])
-        if provider not in effective
-    ]
-    if needed:
-        rows = (
-            await db.execute(
-                select(Integration)
-                .where(
-                    Integration.provider.in_(needed),
-                    await template_candidate_filter(db, user_uuid, company_automation=False),
-                    connected_for_clause(user_uuid),
-                )
-                .order_by(Integration.provider, Integration.created_at, Integration.id)
-            )
-        ).scalars().all()
-        by_provider: dict[str, list] = {}
-        for row in rows:
-            by_provider.setdefault(row.provider, []).append(row)
-        for provider, candidates in by_provider.items():
-            picked, how = pick_template_integration(
-                candidates,
-                user_uuid,
-                provider=provider,
-                context=f"scheduled work item agent={agent.name}",
-            )
-            if picked is not None:
-                effective[provider] = str(picked.id)
-                origin[provider] = how or "template"
+    # The resolution every run that builds an agent's tools for a person uses.
+    resolved = await resolve_agent_integration_bindings(db, agent, str(user_id))
+    effective, origin = resolved.bindings, resolved.origins
     if pinned:
         await pin_bindings(
             db,
@@ -398,11 +349,7 @@ async def resolve_exact_toolset(db, agent, user_id: str, *, pinned: dict | None 
     if effective:
         definitions, executor = await build_integration_tools(
             db,
-            ToolBindings(
-                effective,
-                basis=BindingBasis.CALLER_CHECKED,
-                reason="shadow_invisible_bindings for the item's user, without the agent's lending",
-            ),
+            resolved.tool_bindings,
             context={
                 "source": swi.SCHEDULED_TRIGGER_TYPE,
                 "agent": agent.name,

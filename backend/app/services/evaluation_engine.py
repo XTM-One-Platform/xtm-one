@@ -3327,6 +3327,16 @@ async def execute_evaluation_run(
             run.completed_at = datetime.now(UTC)
             await db.commit()
             return
+        # Its entries act as the evaluation's owner: checked when the run
+        # starts or resumes, as at launch.
+        from app.services.evaluation.launch import owner_refusal
+
+        if (refused := await owner_refusal(db, evaluation)) is not None:
+            run.status = "failed"
+            run.error = refused
+            run.completed_at = datetime.now(UTC)
+            await db.commit()
+            return
 
         # A run on a saved model is answered by that model or not at all:
         # the resolver would fall back to another provider's model, and the run

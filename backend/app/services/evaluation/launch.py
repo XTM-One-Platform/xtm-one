@@ -129,20 +129,29 @@ OWNER_CANNOT_RUN = (
 )
 
 
-async def check_owner_may_run(db: AsyncSession, evaluation: Evaluation) -> None:
-    """Refuse an evaluation whose owner is no longer an active administrator.
+async def owner_refusal(db: AsyncSession, evaluation: Evaluation) -> str | None:
+    """Why *evaluation*'s owner may not run it now, or ``None``.
 
     Its runs act as its owner, whoever starts them (a schedule, an approval,
     another admin's trigger): evaluations are an administrators' tool, so an
-    owner demoted or deactivated since stops them. An ownerless evaluation
-    (Platform Health's, behind its own consent gate) has no owner to check.
+    owner demoted or deactivated since stops them - at launch, when a run
+    starts or resumes, and when a callback resumes an episode. An ownerless
+    evaluation (Platform Health's, behind its own consent gate) has no owner
+    to check.
     """
     owner_id = getattr(evaluation, "user_id", None)
     if owner_id is None:
-        return
+        return None
     owner = (await db.execute(select(User.role, User.is_active).where(User.id == owner_id))).one_or_none()
     if owner is None or owner.role != "admin" or not owner.is_active:
-        raise LaunchRefusedError(OWNER_CANNOT_RUN, status_code=409)
+        return OWNER_CANNOT_RUN
+    return None
+
+
+async def check_owner_may_run(db: AsyncSession, evaluation: Evaluation) -> None:
+    """Refuse a launch :func:`owner_refusal` refuses (409)."""
+    if (reason := await owner_refusal(db, evaluation)) is not None:
+        raise LaunchRefusedError(reason, status_code=409)
 
 
 async def check_launchable(db: AsyncSession, evaluation: Evaluation) -> None:

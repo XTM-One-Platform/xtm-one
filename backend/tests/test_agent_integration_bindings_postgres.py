@@ -21,7 +21,8 @@ from app.models.integration import Integration
 from app.models.integration_user_credential import IntegrationUserCredential
 from app.models.relay import RelayGroup
 from app.models.user import User
-from app.services import evaluation_engine, integration_tools
+from app.services import agent_chat, evaluation_engine, integration_tools, scheduled_work_item_runner
+from app.tools.base import CallableToolExecutor, ToolDefinition
 
 pytestmark = pytest.mark.integration
 
@@ -119,7 +120,8 @@ def built(monkeypatch) -> dict:
 
     async def build(_db, bindings, *, context=None, channel_bot_mode=False):
         captured["bindings"] = dict(bindings)
-        return [SimpleNamespace(name=f"{p}_search", source=f"integration:{p}") for p in bindings], "executor"
+        definitions = [ToolDefinition(name=f"{p}_search", description="", source=f"integration:{p}") for p in bindings]
+        return definitions, CallableToolExecutor()
 
     monkeypatch.setattr(integration_tools, "build_integration_tools", build)
     return captured
@@ -183,3 +185,50 @@ async def test_a_turn_refuses_a_bundle_holding_what_its_resolution_withheld(sess
     )
 
     assert refusal is not None
+
+
+# --- The pipeline tool ref's pinned integration ---------------------------------
+
+
+def _ref(provider: str, integration_id: uuid.UUID) -> dict:
+    return {
+        "source": "integration",
+        "provider": provider,
+        "integration_id": str(integration_id),
+        "tool_name": f"{provider}_search",
+    }
+
+
+async def test_a_colleague_s_pipeline_ref_never_runs_the_owner_s_pinned_integration(session, built):
+    loaded = await agent_chat._load_pipeline_tool_standalone(
+        session, _ref("github", _PERSONAL), str(_COLLEAGUE), _shared_agent()
+    )
+
+    # Withheld, and the colleague has no GitHub of their own to fall back on.
+    assert loaded is None
+    assert "bindings" not in built
+
+
+@pytest.mark.parametrize(
+    ("provider", "pinned", "acting"),
+    [("jira", _LENT, _COLLEAGUE), ("github", _PERSONAL, _OWNER)],
+    ids=["lent-to-the-colleague", "the-owner-s-own-run"],
+)
+async def test_a_pinned_integration_the_person_may_use_stays(session, built, provider, pinned, acting):
+    await agent_chat._load_pipeline_tool_standalone(session, _ref(provider, pinned), str(acting), _shared_agent())
+
+    assert built["bindings"] == {provider: [str(pinned)]}
+
+
+# --- Scheduled work items ----------------------------------------------------------
+
+
+async def test_a_member_s_scheduled_work_item_keeps_what_the_agent_lends(session, built):
+    agent = _shared_agent()
+    agent.channel_config = None
+    agent.custom_tool_ids = []
+    agent.tool_deny_list = []
+
+    await scheduled_work_item_runner.resolve_exact_toolset(session, agent, str(_COLLEAGUE))
+
+    assert built["bindings"] == {"jira": str(_LENT)}

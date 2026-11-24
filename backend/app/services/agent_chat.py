@@ -734,9 +734,36 @@ async def _load_pipeline_tool_unbound(
                     integ_id_str,
                 )
 
-        # The fast path loads the pinned integration with no check for the
-        # person the turn acts for; the fallback below picks one they may use.
-        _pinned_unchecked = integ is not None
+        # The pinned integration acts for someone other than the agent's owner
+        # only when they may use it, as a direct binding: visible to them, or
+        # lent by the agent. Otherwise the fallback below picks one of theirs.
+        from app.services.integration_credentials import normalize_acting_user_id
+
+        _acting = normalize_acting_user_id(user_id)
+        if integ is not None and _acting is not None and _acting != normalize_acting_user_id(agent.user_id):
+            from app.api.v1.helpers import get_user_group_ids
+            from app.services.integration_credentials import lent_integration_ids
+            from app.services.integration_tools import shadow_invisible_bindings
+
+            _pinned = {provider: str(integ.id)}
+            await shadow_invisible_bindings(
+                db,
+                _pinned,
+                {},
+                acting_user_id=str(_acting),
+                user_group_ids=await get_user_group_ids(db, _acting),
+                lent_ids=lent_integration_ids(agent),
+                lent_owner_id=agent.user_id,
+            )
+            if not _pinned:
+                logger.info(
+                    "Pipeline LOAD: pinned integration %s withheld for user %s, picking theirs",
+                    integ.id,
+                    _acting,
+                )
+                integ = None
+        # A run with no person is the owner's own: it keeps the pinned integration.
+        _owner_run_pin = integ is not None and _acting is None
 
         # Fallback: scope-based resolution (legacy refs without integration_id).
         # ``scope_headers`` come from the platform request a turn answers; an
@@ -814,11 +841,11 @@ async def _load_pipeline_tool_unbound(
             db,
             ToolBindings(
                 {provider: [str(integ.id)]},
-                basis=BindingBasis.UNCHECKED if _pinned_unchecked else BindingBasis.CALLER_CHECKED,
+                basis=BindingBasis.OWNER_RUN if _owner_run_pin else BindingBasis.CALLER_CHECKED,
                 reason=(
-                    "the pipeline tool ref's pinned integration, used as bound"
-                    if _pinned_unchecked
-                    else "picked for the person through template_candidate_filter"
+                    "the pipeline tool ref's pinned integration, for the owner's own run"
+                    if _owner_run_pin
+                    else "the pinned integration the person may use, else one picked through template_candidate_filter"
                 ),
             ),
             context={

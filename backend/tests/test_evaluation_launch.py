@@ -246,6 +246,32 @@ async def test_an_ownerless_evaluation_has_no_owner_to_check():
         await cleanup()
 
 
+@pytest.mark.parametrize("change", _OWNER_LOST_ADMIN)
+async def test_a_queued_run_stops_once_its_owner_may_no_longer_run_it(change):
+    """Checked again when a worker starts the run: one launched before the
+    owner lost the right fails with the launch's reason, its entries unrun."""
+    from app.services import evaluation_engine as ee
+    from app.services.evaluation.launch import OWNER_CANNOT_RUN
+
+    sm, cleanup = await _make_db_full()
+    try:
+        async with sm() as s:
+            owner, agent, evaluation = await _scheduled(s)
+            run = EvaluationRun(
+                evaluation_id=evaluation.id, agent_id=agent.id, model_id="model-a", status="pending", trigger_reason="manual"
+            )
+            s.add(run)
+            for column, value in change.items():
+                setattr(owner, column, value)
+            await s.commit()
+            await ee.execute_evaluation_run(s, str(run.id))
+
+        [stopped] = await _runs(sm, evaluation.id)
+        assert (stopped.status, stopped.error, stopped.completed_entries) == ("failed", OWNER_CANNOT_RUN, 0)
+    finally:
+        await cleanup()
+
+
 async def test_a_refused_window_starts_once_its_cause_is_fixed():
     """The window stays due: the tick after the family is set starts it."""
     sm, cleanup = await _make_db_full()

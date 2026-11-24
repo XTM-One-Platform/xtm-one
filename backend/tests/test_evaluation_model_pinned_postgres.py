@@ -152,7 +152,7 @@ async def _run_on_a_denied_model(monkeypatch) -> tuple[EvaluationRun, list[Evalu
 
     async with scratch_database("evalpin", tables=ALL_TABLES, extensions=("vector",)) as db:
         async with db.sessions() as s:
-            owner = User(id=uuid.uuid4(), email="owner@example.com", full_name="Owner", hashed_password="x")
+            owner = User(id=uuid.uuid4(), email="owner@example.com", full_name="Owner", hashed_password="x", role="admin")
             s.add(owner)
             await s.flush()
             await seed_provider(s, [_EVALUATED], provider="filigran_gateway")
@@ -235,7 +235,7 @@ async def test_the_same_turn_outside_evaluation_still_fails_over(monkeypatch):
         scratch_database("evalpin", tables=ALL_TABLES, extensions=("vector",)) as db,
         db.sessions() as s,
     ):
-        owner = User(id=uuid.uuid4(), email="owner@example.com", full_name="Owner", hashed_password="x")
+        owner = User(id=uuid.uuid4(), email="owner@example.com", full_name="Owner", hashed_password="x", role="admin")
         s.add(owner)
         await s.flush()
         await seed_provider(s, [_EVALUATED], provider="filigran_gateway")

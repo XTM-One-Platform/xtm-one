@@ -35,6 +35,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from app.core.config import settings
 from app.core.utils import format_exception_message
 from app.models.evaluation import (
+    Evaluation,
     EvaluationEpisode,
     EvaluationResult,
     EvaluationResultTrace,
@@ -652,6 +653,19 @@ async def process_resume_episode(db: AsyncSession, *, episode_id: str) -> None:
     if not (isinstance(final_output, str) and final_output.strip()):
         final_output = callback.get("agent_output")
     callback_error = callback.get("error")
+    # The answer is judged as the evaluation's owner: an owner who may no
+    # longer run it closes the episode, as a callback error does.
+    from app.services.evaluation.launch import owner_refusal
+
+    evaluation = (
+        await db.execute(
+            select(Evaluation).join(EvaluationRun, EvaluationRun.evaluation_id == Evaluation.id).where(
+                EvaluationRun.id == run_id
+            )
+        )
+    ).scalar_one_or_none()
+    if evaluation is not None and (refused := await owner_refusal(db, evaluation)) is not None:
+        callback_error = refused
 
     if isinstance(callback_error, str) and callback_error.strip():
         episode.status = "running"

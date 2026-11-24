@@ -229,12 +229,12 @@ def test_resolved_bindings_say_they_were_resolved():
 #: ``UNCHECKED`` marks the known gaps still to close. A new module, or a new
 #: basis in one, is reviewed here before it ships.
 _BASES = {
-    # The turn's resolution; the pipeline fallback's pick; its pinned ref, unchecked.
-    "services/agent_chat.py": {"RESOLVED", "CALLER_CHECKED", "UNCHECKED"},
+    # The turn's resolution; the pipeline ref's checked pin or fallback pick;
+    # its pin in the owner's own run.
+    "services/agent_chat.py": {"RESOLVED", "CALLER_CHECKED", "OWNER_RUN"},
     "services/assignment_engine.py": {"UNCHECKED"},
     # The Integration node, unchecked; the call-tool node, the caller's own.
     "services/flow_runner.py": {"UNCHECKED", "CALLER_CHECKED"},
-    "services/scheduled_work_item_runner.py": {"CALLER_CHECKED"},
     "services/general_chat.py": {"CALLER_CHECKED", "ADMIN_CONFIGURED"},
     "api/v1/public_chat.py": {"OWNER_RUN"},
     "api/v1/integrations.py": {"CALLER_CHECKED"},
@@ -249,7 +249,7 @@ _BASES = {
 }
 
 #: The modules building from ``AgentIntegrationBindings.tool_bindings``.
-_FROM_RESOLVER = {"services/evaluation_engine.py"}
+_FROM_RESOLVER = {"services/evaluation_engine.py", "services/scheduled_work_item_runner.py"}
 
 
 def _call_name(node: ast.Call) -> str | None:
