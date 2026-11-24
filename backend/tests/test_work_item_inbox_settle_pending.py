@@ -626,7 +626,9 @@ async def test_an_open_draft_pull_request_blocks_with_a_reason_never_on_its_merg
     assert item.status == "blocked" and item.result is None
     assert item.blocked_on_refs is None
     assert "owner/name#12 (draft)" in item.blocked_reason
-    assert "is a draft: blocked with a reason, not on its merge" in item.claim_notes[-1]["text"]
+    assert (
+        "is a draft: blocked until its CI completion or closing releases it by itself" in item.claim_notes[-1]["text"]
+    )
     assert item.claimed_by_agent_id is None and item.claimed_by_run_id is None
     assert session.committed
 

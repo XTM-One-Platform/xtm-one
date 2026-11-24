@@ -132,10 +132,10 @@ describe("GateDecisionRecord", () => {
   });
 
   it("names the next step in words, never its raw kind", () => {
-    const states = rec({ next: { at: "2026-11-23T12:42:00Z", kind: "state", from: "needs_attention", to: "in_progress", headline: null, actor_type: "agent", actor_name: null } });
+    const states = rec({ next: { at: "2026-11-23T12:42:00Z", kind: "state", from: "waiting_decision", to: "remediating", headline: null, actor_type: "agent", actor_name: null } });
     const { unmount } = render(<GateDecisionRecord record={states} />);
     expect(screen.getByTestId("ctem-gate-record-next").textContent).toContain("Changed the state to");
-    expect(screen.getByTestId("ctem-gate-record-next").textContent).toContain("In progress");
+    expect(screen.getByTestId("ctem-gate-record-next").textContent).toContain("Remediating");
     const parts = Array.from(screen.getByTestId("ctem-gate-record-next").querySelectorAll("dd span span")).map((s) => s.textContent);
     expect(parts).not.toContain("state");
     unmount();

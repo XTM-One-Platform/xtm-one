@@ -33,10 +33,10 @@ describe("caseLoopMarks", () => {
   const failed = [{ provider: "openaev", kind: "retest", ref: "r1", result: "failed" as const, at: "x" }];
   const passed = [{ provider: "openaev", kind: "retest", ref: "r1", result: "passed" as const, at: "x" }];
   it("marks an open case whose last validation failed as reopened", () => {
-    expect(caseLoopMarks({ state: "needs_attention", validations: failed, sla_breached_at: null })).toMatchObject({ reopened: true, escalated: false, closedOnRetest: false });
+    expect(caseLoopMarks({ state: "new", validations: failed, sla_breached_at: null })).toMatchObject({ reopened: true, escalated: false, closedOnRetest: false });
   });
   it("marks an open case past its SLA as escalated", () => {
-    expect(caseLoopMarks({ state: "in_progress", validations: passed, sla_breached_at: "x" })).toMatchObject({ reopened: false, escalated: true, closedOnRetest: false });
+    expect(caseLoopMarks({ state: "remediating", validations: passed, sla_breached_at: "x" })).toMatchObject({ reopened: false, escalated: true, closedOnRetest: false });
   });
   it("marks nothing on a resolved case whose last validation is not a passing re-test", () => {
     expect(caseLoopMarks({ state: "resolved", validations: failed, sla_breached_at: "x" })).toEqual({
@@ -60,7 +60,7 @@ describe("caseLoopMarks", () => {
     const rescan = [{ provider: "aikido", kind: "rescan", ref: "42", result: "passed" as const, at: "y" }];
     const marks = caseLoopMarks({ state: "resolved", validations: rescan, sla_breached_at: null });
     expect(marks).toMatchObject({ closedOnRetest: false, closedAtSource: true, closedAt: "y", closedProvider: "Aikido Security" });
-    expect(caseLoopMarks({ state: "in_progress", validations: rescan, sla_breached_at: null }).closedAtSource).toBe(false);
+    expect(caseLoopMarks({ state: "remediating", validations: rescan, sla_breached_at: null }).closedAtSource).toBe(false);
   });
 });
 
@@ -107,11 +107,11 @@ describe("CaseUrgencyChip", () => {
 describe("actNowCases", () => {
   it("ranks the open loop cases by severity, then scope criticality, then the nearest SLA", () => {
     const cases = [
-      { id: "a", state: "needs_attention", severity: "P1", sla_due_at: "2026-11-22T10:00:00Z" },
-      { id: "b", state: "in_progress", severity: "P1", sla_due_at: "2026-11-21T20:00:00Z" },
-      { id: "c", state: "needs_attention", severity: "P2", sla_due_at: "2026-11-21T13:00:00Z" },
+      { id: "a", state: "new", severity: "P1", sla_due_at: "2026-11-22T10:00:00Z" },
+      { id: "b", state: "remediating", severity: "P1", sla_due_at: "2026-11-21T20:00:00Z" },
+      { id: "c", state: "new", severity: "P2", sla_due_at: "2026-11-21T13:00:00Z" },
       { id: "d", state: "resolved", severity: "P1", sla_due_at: "2026-11-21T13:00:00Z" },
-      { id: "e", state: "needs_attention", severity: "P1", sla_due_at: "2026-11-23T10:00:00Z" },
+      { id: "e", state: "new", severity: "P1", sla_due_at: "2026-11-23T10:00:00Z" },
     ];
     expect(actNowCases(cases).map((c) => c.id)).toEqual(["b", "a", "e", "c"]);
     // A critical crown jewel puts its case first among the P1s, whatever its SLA.

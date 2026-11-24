@@ -15,13 +15,18 @@ import { CTEM_PRODUCT_INFO } from "@/lib/constants";
 import { formatList } from "@/lib/format-list";
 
 /**
- * One colour per state, everywhere (7.0, #1267): needs attention orange, in
- * progress blue, mitigated, watching yellow (still watched, with the DS eye
- * icon), resolved green, accepted risk neutral.
+ * One colour per status, everywhere (7.0, #1267, #1503), from the six hot tones:
+ * new orange, waiting for decision red (a person is the blocker), the three
+ * statuses agents work in (analyzing, remediating, validating) blue, mitigated,
+ * watching yellow (still watched, with the DS eye icon), resolved green,
+ * accepted risk neutral.
  */
 const CASE_STATE_TONE: Record<CtemCaseState, HotTone> = {
-  needs_attention: "orange",
-  in_progress: "blue",
+  new: "orange",
+  analyzing: "blue",
+  waiting_decision: "red",
+  remediating: "blue",
+  validating: "blue",
   mitigated_watching: "yellow",
   resolved: "green",
   accepted_risk: "neutral",
@@ -29,8 +34,11 @@ const CASE_STATE_TONE: Record<CtemCaseState, HotTone> = {
 
 /** English labels, translated where drawn. */
 export const CASE_STATE_LABEL: Record<CtemCaseState, string> = {
-  needs_attention: "Needs attention",
-  in_progress: "In progress",
+  new: "New",
+  analyzing: "Analyzing",
+  waiting_decision: "Waiting for decision",
+  remediating: "Remediating",
+  validating: "Validating",
   mitigated_watching: "Mitigated, watching",
   resolved: "Resolved",
   accepted_risk: "Accepted risk",

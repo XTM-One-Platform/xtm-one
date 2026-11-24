@@ -29,7 +29,7 @@ def _case(**extra) -> SimpleNamespace:
         "id": uuid.uuid4(),
         "organization_id": uuid.uuid4(),
         "vertical": "default",
-        "state": "needs_attention",
+        "state": "new",
         "remediation_kind": "patch",
         "trigger_path": "new_vulnerability",
         "severity": "P1",

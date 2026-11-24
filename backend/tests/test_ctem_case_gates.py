@@ -32,7 +32,7 @@ class FakeSession:
 
 
 def _case() -> CtemCase:
-    return CtemCase(id=uuid.uuid4(), title="Close the exposure of portal", state="in_progress")
+    return CtemCase(id=uuid.uuid4(), title="Close the exposure of portal", state="remediating")
 
 
 def test_an_automatic_pass_is_written_with_what_let_it_run() -> None:
@@ -45,7 +45,7 @@ def test_an_automatic_pass_is_written_with_what_let_it_run() -> None:
         "level low",
     )
     assert event.at == NOW and event.case_id == case.id
-    assert case.state == "in_progress"
+    assert case.state == "remediating"
 
 
 def test_a_waited_then_answered_mobilize_gate_is_two_events() -> None:
