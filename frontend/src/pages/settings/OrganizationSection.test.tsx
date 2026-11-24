@@ -50,7 +50,7 @@ async function draftFromPlatforms() {
 }
 /** The cards CTEM > Inventory mounts in place of the three tabs that left Settings (#1178, #1690). */
 const INVENTORY_CARDS = {
-  business: ["crown_jewels", "shipped_products", "tracked_organizations"],
+  business: ["primary_assets", "shipped_products", "tracked_organizations"],
   technology: ["software"],
   exposure: ["prioritization_policy", "outside_lens", "evidence_health"],
 } as const;
@@ -85,7 +85,7 @@ const CONTEXT: OrganizationContextResponse = {
     sub_sector: "",
     regions: ["FR"],
     size: "",
-    crown_jewels: [{ name: "Payments", business_service: "Cards", owner: "CISO", criticality: "critical", opencrq_asset_id: "" }],
+    primary_assets: [{ name: "Payments", business_service: "Cards", owner: "CISO", criticality: "critical", opencrq_asset_id: "" }],
     software: [],
     pir_ids: [],
     risk_appetite: { annual_loss_threshold: null, approval_threshold: null },
@@ -189,7 +189,7 @@ describe("OrganizationSection identity header and threshold previews (#9173 S2)"
 
   it("reads an amount with its unit and currency as text", async () => {
     withProfile({ currency: "", risk_appetite: { annual_loss_threshold: 250000, approval_threshold: null } });
-    renderPage("risk");
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     const tile = await screen.findByTestId("settings.organization.read.annual_loss_threshold");
     expect(tile.textContent).toContain("250,000 per year, currency not set");
     expect(screen.getByTestId("settings.organization.read.approval_threshold").textContent).toContain("Not set");
@@ -197,7 +197,7 @@ describe("OrganizationSection identity header and threshold previews (#9173 S2)"
 
   it("says what each saved threshold does, in the profile currency, in read mode only", async () => {
     withProfile({ risk_appetite: { annual_loss_threshold: 250000, approval_threshold: 1000000 } });
-    renderPage("risk");
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     expect(await screen.findByText(/Scenarios above .*250,000.* per year are ranked first/)).toBeTruthy();
     expect(screen.getByText(/Scenarios above .*1,000,000.* per year are flagged for approval/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
@@ -206,31 +206,15 @@ describe("OrganizationSection identity header and threshold previews (#9173 S2)"
 });
 
 describe("OrganizationSection panels (#12329, #1690)", () => {
-  it("draws two tabs in Settings, Organization then Risk and response; the Business cards live on CTEM > Inventory (#1975, #1690)", async () => {
+  it("draws no tab bar in Settings: Identity alone, the Business cards live on CTEM > Inventory (#1690)", async () => {
     renderPage();
-    const panel = await screen.findByTestId("settings.organization.panel-organization");
-    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Organization", "Risk and response"]);
-    expect(screen.getByTestId("settings.organization.tabs")).toBeTruthy();
-    // Organization: the identity, the enterprise knowledge and the agents' context (#1975: no Knowledge and sources page).
-    expect(within(panel).getByTestId("settings.organization.identity")).toBeTruthy();
-    expect(within(panel).getByTestId("settings.organization.enterprise-knowledge")).toBeTruthy();
-    expect(within(panel).getByTestId("settings.organization.injection")).toBeTruthy();
-    expect(within(panel).queryByTestId(`settings.organization.risk-appetite`)).toBeNull();
-    expect(screen.queryByTestId("settings.organization.knowledge")).toBeNull();
-    expect(screen.queryByRole("button", { name: /Back to Organization Profile/ })).toBeNull();
+    expect(await screen.findByTestId("settings.organization.identity")).toBeTruthy();
+    expect(screen.queryAllByRole("tab")).toHaveLength(0);
+    expect(screen.queryByTestId("settings.organization.tabs")).toBeNull();
     expect(screen.queryByTestId("settings.organization.primary-assets")).toBeNull();
     expect(screen.queryByTestId("settings.organizations")).toBeNull();
-  });
-
-  it("draws the risk appetite, the case sync, the rates and the PIR details on Risk and response (#1975)", async () => {
-    renderPage("risk");
-    const panel = await screen.findByTestId("settings.organization.panel-risk");
-    expect(screen.getByRole("tab", { name: "Risk and response" }).getAttribute("aria-selected")).toBe("true");
-    expect(within(panel).getByRole("heading", { name: /Risk appetite/ })).toBeTruthy();
-    expect(screen.queryByTestId("settings.organization.panel-organization")).toBeNull();
-    expect(screen.queryByTestId("settings.organization.enterprise-knowledge")).toBeNull();
-    // The profile's header, Draft and Edit stay on both tabs.
-    expect(screen.getByTestId("settings.organization.edit")).toBeTruthy();
+    // Knowledge and sources is a button of the header opening its own page (#1367, point 7), never a tab.
+    expect(screen.getByTestId("settings.organization.knowledge").textContent).toContain("Knowledge and sources");
   });
 
   it("mounts only the cards an embedding page names, with no header, tab bar or Sources panel (#1178)", async () => {
@@ -291,7 +275,7 @@ describe("OrganizationSection panels (#12329, #1690)", () => {
   });
 
   it("lists only the missing fields Settings draws, and a refused Save focuses the bad field", async () => {
-    renderPage("risk");
+    renderPage();
     const missing = await screen.findByTestId("settings.organization.missing");
     expect(missing.textContent).toContain("Loaded hourly rate");
     expect(missing.textContent).not.toContain("Primary assets");
@@ -305,13 +289,9 @@ describe("OrganizationSection panels (#12329, #1690)", () => {
 });
 
 describe("OrganizationSection", () => {
-  it("names the fields not filled, as the agents report them, each on its tab (#1975)", async () => {
+  it("names the fields not filled, as the agents report them", async () => {
     renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     expect((await screen.findByTestId("settings.organization.identity")).textContent).toContain("Acme");
-    // size is an Identity field: its chip is on the Organization tab, the loaded hourly rate's on Risk and response.
-    expect((await screen.findByTestId("settings.organization.missing")).textContent).not.toContain("Loaded hourly rate");
-    cleanup();
-    renderPage("risk");
     const missing = await screen.findByTestId("settings.organization.missing");
     // The PIR list is reported on CTEM > Inventory with the Prioritization policy (#1889), never on Settings.
     expect(missing.textContent).not.toContain("Priority intelligence requirements (PIRs)");
@@ -325,7 +305,7 @@ describe("OrganizationSection", () => {
   });
 
   it("counts the fields not filled Settings draws and opens the form on a missing field (#9173 S1c, #1690)", async () => {
-    renderPage("risk");
+    renderPage();
     const overview = await screen.findByTestId("settings.organization.overview");
     // size and loaded_hourly_rate; pir_ids is reported on CTEM > Inventory with the Prioritization policy (#1889).
     expect(overview.textContent).toContain("2 fields not filled");
@@ -436,7 +416,7 @@ describe("OrganizationSection", () => {
     const base = get.getMockImplementation()!;
     get.mockImplementation(async (path: string) =>
       path === "/organization-context"
-        ? { ...CONTEXT, profile: { ...CONTEXT.profile, crown_jewels: [{ name: long, business_service: "", owner: "", criticality: "critical", opencrq_asset_id: "" }] } }
+        ? { ...CONTEXT, profile: { ...CONTEXT.profile, primary_assets: [{ name: long, business_service: "", owner: "", criticality: "critical", opencrq_asset_id: "" }] } }
         : base(path),
     );
     renderPage("business");
@@ -505,12 +485,14 @@ describe("OrganizationSection", () => {
   });
 
   it("drops an exposure card's edit on Cancel, nothing sent (#12256 slice 2)", async () => {
-    renderPage();
+    renderPage("knowledge");
     fireEvent.click(await screen.findByRole("button", { name: /Edit Enterprise knowledge/ }));
     const card = screen.getByTestId("settings.organization.enterprise-knowledge");
     fireEvent.click(within(card).getByRole("button", { name: "Link a knowledge base" }));
     fireEvent.click(within(within(card).getByTestId("settings.save-bar")).getByRole("button", { name: "Cancel" }));
     expect(within(card).queryByTestId("settings.save-bar")).toBeNull();
+    // The Knowledge and sources page has no profile Edit of its own (UX round 1 on #1476, B1).
+    expect(screen.queryByTestId("settings.organization.edit")).toBeNull();
     expect(put).not.toHaveBeenCalled();
     // The focus goes back to the card's Edit, never to the page body (#12271 UX r1 B3).
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: /Edit Enterprise knowledge/ })));
@@ -651,8 +633,8 @@ describe("OrganizationSection", () => {
 
   it("saves the edited profile as a form version", async () => {
     put.mockResolvedValue({ ...CONTEXT, version: 4 });
-    renderPage("risk");
-    await screen.findByTestId("settings.organization.panel-risk");
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    await screen.findByTestId("settings.organization.identity");
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     fireEvent.change(screen.getByLabelText("Loaded hourly rate"), { target: { value: "120" } });
     fireEvent.click(screen.getByRole("button", { name: /Save/ }));
@@ -666,8 +648,8 @@ describe("OrganizationSection", () => {
   });
 
   it("refuses an amount that is not a number without calling the API", async () => {
-    renderPage("risk");
-    await screen.findByTestId("settings.organization.panel-risk");
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    await screen.findByTestId("settings.organization.identity");
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     fireEvent.change(screen.getByLabelText("Loaded hourly rate"), { target: { value: "abc" } });
     fireEvent.click(screen.getByRole("button", { name: /Save/ }));
@@ -679,8 +661,8 @@ describe("OrganizationSection", () => {
   });
 
   it("marks the refused amount invalid and focuses it, until it is edited", async () => {
-    renderPage("risk");
-    await screen.findByTestId("settings.organization.panel-risk");
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    await screen.findByTestId("settings.organization.identity");
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     const rate = screen.getByRole("textbox", { name: "Loaded hourly rate" });
     fireEvent.change(rate, { target: { value: "12O" } });
@@ -693,8 +675,8 @@ describe("OrganizationSection", () => {
   });
 
   it("draws the amount's unit inside the field's own box, hidden from assistive tech (UX round 2 B1)", async () => {
-    renderPage("risk");
-    await screen.findByTestId("settings.organization.panel-risk");
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    await screen.findByTestId("settings.organization.identity");
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     const rate = await screen.findByRole("textbox", { name: "Loaded hourly rate" });
     // The unit is a decoration beside the input, in the same positioned box: the
@@ -706,8 +688,8 @@ describe("OrganizationSection", () => {
   });
 
   it("labels the currency field with its own key, not the chart number format (UX round 2 B3)", async () => {
-    renderPage("risk");
-    await screen.findByTestId("settings.organization.panel-risk");
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    await screen.findByTestId("settings.organization.identity");
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     expect(await screen.findByText("Currency of the amounts", { selector: "label" })).toBeTruthy();
   });
@@ -875,8 +857,8 @@ describe("OrganizationSection", () => {
     withPirs({ pirs: [{ id: "pir-1", name: "Ransomware on energy" }], unavailable: null }, { pir_ids: ["pir-1"] });
     put.mockResolvedValue({ ...CONTEXT, version: 4 });
     patch.mockResolvedValue({ ...CONTEXT, version: 4 });
-    const view = renderPage("risk");
-    await screen.findByTestId("settings.organization.panel-risk");
+    const view = renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    await screen.findByTestId("settings.organization.identity");
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     fireEvent.change(screen.getByLabelText("Loaded hourly rate"), { target: { value: "120" } });
     fireEvent.click(await screen.findByRole("button", { name: /Save/ }));
@@ -916,7 +898,7 @@ describe("OrganizationSection", () => {
   });
 
   it("names no source on the primary assets card, even with an OpenCRQ primary-asset sync saved (#1883)", async () => {
-    const opencrqSync = { id: "s-crq", section: "crown_jewels", source: "opencrq", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: new Date().toISOString(), last_result: { added: 1, updated: 0, removed: 0, version: 4, error: null } };
+    const opencrqSync = { id: "s-crq", section: "primary_assets", source: "opencrq", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: new Date().toISOString(), last_result: { added: 1, updated: 0, removed: 0, version: 4, error: null } };
     const base = get.getMockImplementation();
     get.mockImplementation(async (path: string) => (path.startsWith("/organization-context/syncs") ? [opencrqSync] : base?.(path)));
     renderPage("business");
@@ -956,28 +938,34 @@ describe("OrganizationSection", () => {
     expect(get).not.toHaveBeenCalledWith(expect.stringMatching(/^\/organization-context\/(syncs|sources)/));
   });
 
-  it("reads a former Knowledge and sources link as the Organization tab, which holds its cards, with no Sources and syncs (#1975, #1938)", async () => {
-    renderPage("knowledge");
-    const panel = await screen.findByTestId("settings.organization.panel-organization");
-    expect(within(panel).getByTestId("settings.organization.enterprise-knowledge")).toBeTruthy();
-    expect(within(panel).queryByTestId("organization-sources")).toBeNull();
-    expect(screen.queryByTestId("settings.organization.knowledge-header")).toBeNull();
-    expect(screen.getByRole("tab", { name: "Organization" }).getAttribute("aria-selected")).toBe("true");
-  });
-
-  it("opens ?setup on the first tab with a field not filled, with the save bar (#1975)", async () => {
-    get.mockImplementation(async (path: string) =>
-      path === "/organizations" || path === "/integrations" ? [] : { ...CONTEXT, missing_fields: ["risk_appetite.approval_threshold"] },
-    );
+  it("keeps the Knowledge and sources page to its knowledge cards: no Sources and syncs, no setup guide, no save bar (#1938)", async () => {
     renderWithProviders(
-      <MemoryRouter initialEntries={["/settings/organization?setup=1"]}>
+      <MemoryRouter initialEntries={["/settings/organization/profile/knowledge?setup=1"]}>
         <OrganizationSection />
-        <LocationProbe />
       </MemoryRouter>,
     );
-    expect(await screen.findByTestId("settings.organization.panel-risk")).toBeTruthy();
-    expect(screen.getByTestId("settings.organization.setup-guide")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /^Save/ })).toBeTruthy();
+    const panel = await screen.findByTestId("settings.organization.panel-knowledge");
+    expect(within(panel).queryByTestId("organization-sources")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.setup-guide")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Save/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+  });
+
+  it("draws Knowledge and sources as a page of its own (#1367)", async () => {
+    renderPage("knowledge");
+    await screen.findByTestId("settings.organization.panel-knowledge");
+    // Its own page (#1367, point 7): a back link to the profile, no tab bar, no header button to itself.
+    expect(screen.getByRole("button", { name: /Back to Organization Profile/ })).toBeTruthy();
+    expect(screen.queryByTestId("settings.organization.tabs")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.knowledge")).toBeNull();
+    // Its own header (UX round 1 on #1476, B1): the back link first, then its title; the profile's header and
+    // fields banner stay on the profile.
+    const header = screen.getByTestId("settings.organization.knowledge-header");
+    expect(header.firstElementChild?.textContent).toContain("Back to Organization Profile");
+    expect(header.textContent).toContain("Knowledge and sources");
+    expect(screen.queryByText("Organization profile", { selector: "h3" })).toBeNull();
+    expect(screen.queryByTestId("settings.organization.edit")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.overview")).toBeNull();
   });
 
   it("marks a primary asset linked to OpenCRQ with a named icon", async () => {
@@ -986,7 +974,7 @@ describe("OrganizationSection", () => {
         ? []
         : {
             ...CONTEXT,
-            profile: { ...CONTEXT.profile, crown_jewels: [{ ...CONTEXT.profile.crown_jewels[0], opencrq_asset_id: "a-1" }] },
+            profile: { ...CONTEXT.profile, primary_assets: [{ ...CONTEXT.profile.primary_assets[0], opencrq_asset_id: "a-1" }] },
           },
     );
     renderPage("business");
@@ -996,11 +984,11 @@ describe("OrganizationSection", () => {
   it("restores the primary assets of a past version alone, from the version it starts from (#1558)", async () => {
     const base = get.getMockImplementation()!;
     get.mockImplementation(async (path: string) => {
-      if (path === "/organization-context") return { ...CONTEXT, version: 46, profile: { ...CONTEXT.profile, crown_jewels: [] } };
+      if (path === "/organization-context") return { ...CONTEXT, version: 46, profile: { ...CONTEXT.profile, primary_assets: [] } };
       if (path.startsWith("/organization-context/versions?"))
         return [
-          { version: 46, source: "form", created_at: "2026-11-23T10:00:00Z", author_user_id: null, missing_fields: [], crown_jewels: 0 },
-          { version: 28, source: "form", created_at: "2026-11-20T10:00:00Z", author_user_id: null, missing_fields: [], crown_jewels: 2 },
+          { version: 46, source: "form", created_at: "2026-11-23T10:00:00Z", author_user_id: null, missing_fields: [], primary_assets: 0 },
+          { version: 28, source: "form", created_at: "2026-11-20T10:00:00Z", author_user_id: null, missing_fields: [], primary_assets: 2 },
         ];
       if (path === "/organization-context/versions/28")
         return {
@@ -1008,7 +996,7 @@ describe("OrganizationSection", () => {
           version: 28,
           profile: {
             ...CONTEXT.profile,
-            crown_jewels: [
+            primary_assets: [
               { name: "Payments", business_service: "", owner: "", criticality: "critical", opencrq_asset_id: "" },
               { name: "Ledger", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" },
             ],
@@ -1016,7 +1004,7 @@ describe("OrganizationSection", () => {
         };
       return base(path);
     });
-    post.mockResolvedValue({ ...CONTEXT, version: 47, profile: { ...CONTEXT.profile, crown_jewels: [{ name: "Payments" }, { name: "Ledger" }] } });
+    post.mockResolvedValue({ ...CONTEXT, version: 47, profile: { ...CONTEXT.profile, primary_assets: [{ name: "Payments" }, { name: "Ledger" }] } });
     renderPage("business");
     fireEvent.click(await screen.findByRole("button", { name: /Restore from a past version/ }));
     const dialog = await screen.findByTestId("settings.organization.restore-dialog");
@@ -1028,18 +1016,18 @@ describe("OrganizationSection", () => {
     expect(within(dialog).getByText("Critical (criticality)")).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Restore version 28" }));
     await waitFor(() =>
-      expect(post).toHaveBeenCalledWith("/organization-context/versions/28/restore", { fields: ["crown_jewels"], based_on_version: 46 }),
+      expect(post).toHaveBeenCalledWith("/organization-context/versions/28/restore", { fields: ["primary_assets"], based_on_version: 46 }),
     );
   });
 
   it("shows a refused restore inline in the dialog and offers a reload of the versions on a 409 (#1567 UX B2)", async () => {
     const base = get.getMockImplementation()!;
     get.mockImplementation(async (path: string) => {
-      if (path === "/organization-context") return { ...CONTEXT, version: 46, profile: { ...CONTEXT.profile, crown_jewels: [] } };
+      if (path === "/organization-context") return { ...CONTEXT, version: 46, profile: { ...CONTEXT.profile, primary_assets: [] } };
       if (path.startsWith("/organization-context/versions?"))
-        return [{ version: 28, source: "form", created_at: "2026-11-20T10:00:00Z", author_user_id: null, missing_fields: [], crown_jewels: 1 }];
+        return [{ version: 28, source: "form", created_at: "2026-11-20T10:00:00Z", author_user_id: null, missing_fields: [], primary_assets: 1 }];
       if (path === "/organization-context/versions/28")
-        return { ...CONTEXT, version: 28, profile: { ...CONTEXT.profile, crown_jewels: [{ name: "Ledger", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" }] } };
+        return { ...CONTEXT, version: 28, profile: { ...CONTEXT.profile, primary_assets: [{ name: "Ledger", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" }] } };
       return base(path);
     });
     post.mockRejectedValue(Object.assign(new Error("The profile changed since version 46 (now version 47)."), { status: 409 }));
@@ -1136,11 +1124,11 @@ describe("OrganizationSection", () => {
 
   it("a link to one card (?card=) focuses the card on CTEM > Inventory > Business (CTEM calls to action, #1690)", async () => {
     renderWithProviders(
-      <MemoryRouter initialEntries={["/ctem/inventory/business?card=crown_jewels"]}>
+      <MemoryRouter initialEntries={["/ctem/inventory/business?card=primary_assets"]}>
         <OrganizationSection embed={{ cards: INVENTORY_CARDS.business }} />
       </MemoryRouter>,
     );
-    await waitFor(() => expect((document.activeElement as HTMLElement | null)?.id ?? "").toMatch(/-crown_jewels$/));
+    await waitFor(() => expect((document.activeElement as HTMLElement | null)?.id ?? "").toMatch(/-primary_assets$/));
   });
 
   it("lands ?card=tracked_organizations on the card root, never on a wrapper (UX r1 B2 on #108)", async () => {

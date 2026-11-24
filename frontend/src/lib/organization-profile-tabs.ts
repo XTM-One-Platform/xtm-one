@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * The tabs of the organization profile (#12329, #1975): every card of the profile, and every field of the profile
- * contract, sits in exactly one tab. Settings draws two of them (Organization, Risk and response); the other three
- * are the CTEM > Inventory pages the business, technology and exposure cards moved to (#1178, #1690).
+ * The five tabs of Settings > Organization > Profile (#12329): every card of the
+ * profile page, and every field of the profile contract, sits in exactly one tab.
  * The tab is a segment of the page path (`/settings/organization/profile/<tab>`, the
  * first tab the bare `/settings/organization`; path routes, not a query, #10203), so a
  * tab can be linked to and the browser's Back returns to the previous one. A missing field, a refused Save,
@@ -13,15 +12,15 @@
  */
 
 /** The tabs, in page order; the first is the default. */
-export const PROFILE_TABS = ["organization", "risk", "business", "technology", "exposure"] as const;
+export const PROFILE_TABS = ["identity", "business", "technology", "exposure", "knowledge"] as const;
 export type ProfileTab = (typeof PROFILE_TABS)[number];
 
 /**
- * The tabs Settings > Organization > Profile draws (#1975, Sam 24 Nov 2026): who you are and what agents read
- * (Organization), how CTEM decides and acts (Risk and response). The Business, Technology and Exposure cards live on
- * CTEM > Inventory (#1178, #1690); the five tabs stay the grouping of fields (drafts, unsaved markers, missing fields).
+ * The tabs Settings > Organization keeps (#1178, Sam 22 Nov 2026; #1690, Sam 24 Nov 2026): the Business, Technology
+ * and Exposure cards live on CTEM > Inventory now, so Settings draws no tab bar (identity, knowledge through its
+ * button); the five tabs stay the grouping of fields (drafts, unsaved markers, missing fields).
  */
-export const SETTINGS_PROFILE_TABS = ["organization", "risk"] as const satisfies readonly ProfileTab[];
+const SETTINGS_PROFILE_TABS = ["identity", "knowledge"] as const satisfies readonly ProfileTab[];
 
 /** Whether a tab's cards live on CTEM > Inventory instead of Settings. */
 export function isInventoryTab(tab: ProfileTab): boolean {
@@ -30,19 +29,19 @@ export function isInventoryTab(tab: ProfileTab): boolean {
 
 /** The tab names (at most three words). @i18n-keys */
 export const PROFILE_TAB_LABELS = {
-  organization: "Organization",
-  risk: "Risk and response",
+  identity: "Identity and risk",
   business: "Business",
   technology: "Technology",
   exposure: "Exposure",
+  knowledge: "Knowledge and sources",
 } as const satisfies Record<ProfileTab, string>;
 
 /** Every card of the profile page, by its key, and the tab that shows it. */
 export const PROFILE_CARD_TAB = {
-  identity: "organization",
-  risk_appetite: "risk",
-  ticketing: "risk",
-  crown_jewels: "business",
+  identity: "identity",
+  risk_appetite: "identity",
+  ticketing: "identity",
+  primary_assets: "business",
   shipped_products: "business",
   tracked_organizations: "business",
   software: "technology",
@@ -51,8 +50,8 @@ export const PROFILE_CARD_TAB = {
   prioritization_policy: "exposure",
   outside_lens: "exposure",
   evidence_health: "exposure",
-  enterprise_knowledge: "organization",
-  context_injection: "organization",
+  enterprise_knowledge: "knowledge",
+  context_injection: "knowledge",
 } as const satisfies Record<string, ProfileTab>;
 export type ProfileCard = keyof typeof PROFILE_CARD_TAB;
 
@@ -63,7 +62,7 @@ export type ProfileCard = keyof typeof PROFILE_CARD_TAB;
 export const INVENTORY_CARD_PATH: Partial<Record<ProfileCard, string>> = {
   software: "/ctem/inventory/software",
   // The business inputs have their own Inventory tab (#1690).
-  crown_jewels: "/ctem/inventory/business",
+  primary_assets: "/ctem/inventory/business",
   shipped_products: "/ctem/inventory/business",
   tracked_organizations: "/ctem/inventory/business",
   assets_exposure: "/ctem/inventory",
@@ -102,7 +101,7 @@ export const PROFILE_FIELD_CARD = {
   ticketing: "ticketing",
   pir_ids: "prioritization_policy",
   pir_names: "prioritization_policy",
-  crown_jewels: "crown_jewels",
+  primary_assets: "primary_assets",
   shipped_products: "shipped_products",
   software: "software",
   assets_exposure: "assets_exposure",
