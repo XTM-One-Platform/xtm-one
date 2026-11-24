@@ -278,7 +278,7 @@ export function GateDecisionRecord({
   byLabel?: string | null;
   testId?: string;
 }) {
-  const { t_i18n, intl } = useFormatter();
+  const { t_i18n, t_text, intl } = useFormatter();
   const when = (at: string | null) => (at ? intl.formatDate(at, { dateStyle: "medium", timeStyle: "short" }) : null);
   const status = record.status;
   const chip = gateChipOf(record);
@@ -375,7 +375,7 @@ export function GateDecisionRecord({
           {answered && record.option && (
             <Field label={t_i18n("Option chosen")} icon={GATE_CHIP_ICON[chip]} testId={`${testId}-option`}>
               <ToneBadge tone={GATE_CHIP_TONE[chip]} className="max-w-full">
-                <span className="min-w-0 truncate">{optionLabel ? t_i18n(optionLabel) : t_i18n("Option {option}", { option: record.option.key })}</span>
+                <span className="min-w-0 truncate">{optionLabel ? t_text(optionLabel) : t_i18n("Option {option}", { option: record.option.key })}</span>
               </ToneBadge>
             </Field>
           )}

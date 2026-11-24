@@ -162,6 +162,11 @@ describe("GateDecisionRecord", () => {
     expect(screen.queryByText(/retry_in_draft/)).toBeNull();
   });
 
+  it("shows an option label the ask wrote as written, never parsed as an ICU message", () => {
+    render(<GateDecisionRecord record={rec({ option: { key: "go", label: "Approve {prod} in '{test}' <now>" } })} />);
+    expect(screen.getByTestId("ctem-gate-record-option").querySelector("dd")?.textContent).toBe("Approve {prod} in '{test}' <now>");
+  });
+
   it("falls back to the option key only when there is no label", () => {
     render(<GateDecisionRecord record={rec({ option: { key: "C", label: null } })} />);
     expect(screen.getByTestId("ctem-gate-record-option").querySelector("dd")?.textContent).toBe("Option C");
