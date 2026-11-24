@@ -30,6 +30,7 @@ from app.core.database import get_db
 from app.core.redis import redis_client
 from app.models.ctem_case import CASE_STATES
 from app.models.user import User
+from app.services import ctem_access
 from app.services import ctem_case_audit_view as case_audit_view
 from app.services import ctem_case_gate_records_view as case_gates_view
 from app.services import ctem_case_loop as case_loop
@@ -147,6 +148,12 @@ async def visible_case(
     case, rows, events = found
     rendered = view_of.hydrate(case, rows, events, await view_of.viewer_view(db, user_id, vertical))
     return None if rendered is None else (found, rendered)
+
+
+async def require_acts_on(db: AsyncSession, user: User, rows: list[Any], vertical: str) -> None:
+    """403 when *user* sees the case only through a CTEM view right (#1748): read, never change."""
+    if not await view_of.acts_on_case(db, user, rows, vertical):
+        raise HTTPException(status_code=403, detail=ctem_access.VIEW_ONLY_MESSAGE)
 
 
 async def check_owner_sees(db: AsyncSession, rows: list[Any], owner_user_id: uuid.UUID | None, vertical: str) -> None:
@@ -269,6 +276,9 @@ async def bulk_update_ctem_cases(
             failed.append({"id": str(case_id), "reason": "Case not found"})
             continue
         (case, rows, _), _ = shown
+        if not await view_of.acts_on_case(db, user, rows, vertical):
+            failed.append({"id": str(case_id), "reason": ctem_access.VIEW_ONLY_MESSAGE})
+            continue
         try:
             await _apply_update(db, case, rows, change, user, vertical)
         except rules.CaseRuleError as exc:
@@ -292,6 +302,10 @@ async def split_ctem_case(
     vertical = normalize_vertical(getattr(user, "ctem_vertical", None))
     organization_id = await _organization_id(db)
     view = await view_of.viewer_view(db, str(user.id), vertical)
+    visible = set(view.open_ids)
+    if await ctem_access.level(db, user) == "view":
+        # A CTEM view right is strictly read only (#1748).
+        raise HTTPException(status_code=403, detail=ctem_access.VIEW_ONLY_MESSAGE)
     pending = case_loop.PendingEvents()
     try:
         case = await store.create_manual_case(
@@ -300,7 +314,7 @@ async def split_ctem_case(
             vertical=vertical,
             title=body.title,
             member_ids=body.issue_ids,
-            visible=set(view.open_ids),
+            visible=visible,
             actor=str(user.id),
             reason=(body.reason or "").strip() or None,
             events=pending,
@@ -329,8 +343,10 @@ async def merge_ctem_cases(
     _require_xtm_one()
     vertical = normalize_vertical(getattr(user, "ctem_vertical", None))
     for case_id in [body.target_id, *body.case_ids]:
-        if await visible_case(db, case_id, str(user.id), vertical) is None:
+        found = await visible_case(db, case_id, str(user.id), vertical)
+        if found is None:
             raise HTTPException(status_code=404, detail="Case not found")
+        await require_acts_on(db, user, found[0][1], vertical)
     try:
         await store.merge_cases(
             db,
@@ -443,7 +459,7 @@ async def ctem_loop_measures(
     seen = [case for case, rows in cases if view_of.summary(case, rows, view) is not None]
     ids = [case.id for case in seen]
     events = await store.events_of(db, ids)
-    reader = None if getattr(user, "is_admin", False) else str(user.id)
+    reader = await ctem_access.signal_reader(db, user)
     observed = await signal_store.observed_by_case(db, ids, organization_id=primary.id, recorded_by=reader)
     return {"vertical": vertical, "measures": measures.summarize(seen, events, observed)}
 
@@ -519,6 +535,7 @@ async def update_ctem_case(
     if shown is None:
         raise HTTPException(status_code=404, detail="Case not found")
     (case, rows, _), _ = shown
+    await require_acts_on(db, user, rows, vertical)
     try:
         await _apply_update(db, case, rows, body, user, vertical)
     except rules.CaseRuleError as exc:
@@ -547,7 +564,8 @@ async def record_ctem_case_validation(
     shown = await visible_case(db, case_id, str(user.id), vertical)
     if shown is None:
         raise HTTPException(status_code=404, detail="Case not found")
-    (case, _rows, _), _ = shown
+    (case, rows, _), _ = shown
+    await require_acts_on(db, user, rows, vertical)
     pending = case_loop.PendingEvents()
     try:
         await case_loop.record_validation(

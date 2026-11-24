@@ -253,13 +253,21 @@ write, not a mirror of a source product's object (cases render per viewer,
 `ctem-cases.md` principle 8; signals do not, so they never copy a source's
 restricted fields). An administrator reads every signal of the organization;
 anyone else reads the signals recorded for them (their API calls and their
-agents' tool calls). A listener's signal (`system`) is an administrator's
-read only. Two organizations never share a row (the unique key holds the
+agents' tool calls), unless one of their groups grants a CTEM right (#1748,
+`services/ctem_access.py`, the one reader of `groups.ctem_access`): `view`
+reads every signal and case of the organization as an administrator does and
+writes nothing (a triage or a case write answers 403, a tool answers
+"Refused"); `decide` also triages the signals and changes the cases.
+`groups.ctem_notify` (on by default) is the switch of the gate notifications
+of a `decide` group. A listener's signal (`system`) is read only with one of
+those. Two organizations never share a row (the unique key holds the
 organization).
 
 An agent tool takes the administrator's reach through
 `agent_tool_admin_bypass`: strict admin access for agent tools and the
-Platform Health reach keep an administrator to their own signals. Every
+Platform Health reach keep an administrator to their own signals. A CTEM
+right of the person the run acts for gives the organization's reach in the
+tools too (`scope.ctem_right` names it). Every
 `list_ctem_signals` answer says which rule applied (#1359), so an empty page
 is never read as an empty organization: `scope` holds `applied` (`own` or
 `organization`), `acting_user`, `is_admin` and `reason` (`administrator`,
@@ -307,9 +315,9 @@ permissions.
 **Visibility.** Both events are viewer-checked (`VIEWER_CHECKED_EVENTS`), the
 case events' delivery check: a subscription hears one only when the user its
 run executes as reads the signal (`ctem_signals.user_reads_signal`: an
-administrator, or the signal's recorder). A listener-recorded signal
-(`recorded_by = system`) reaches only an assignment that runs as an
-administrator.
+administrator, a member of a group with a CTEM right, or the signal's
+recorder). A listener-recorded signal (`recorded_by = system`) reaches only an
+assignment that runs as one of those.
 
 **The trigger.** The assignment form shows a "CTEM signal" tile next to
 "Platform event" (XTM One mode). It saves a `platform_event` trigger: `event`

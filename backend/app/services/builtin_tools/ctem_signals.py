@@ -76,12 +76,17 @@ async def reader_scope(db: Any, user_id: uuid.UUID, *, agent_reach: bool = True)
     """
     from app.api.v1.helpers import agent_tool_admin_bypass
     from app.models.user import User
+    from app.services import ctem_access
     from app.services.health.identity import in_health_reach
 
     user = await db.get(User, user_id)
     is_admin = bool(getattr(user, "is_admin", False))
-    whole = agent_tool_admin_bypass(user) if agent_reach else is_admin
-    if whole:
+    # A CTEM view or decide right of the person's groups (#1748) is theirs in an agent tool too.
+    right = None if is_admin else await ctem_access.group_right(db, user_id)
+    whole = (agent_tool_admin_bypass(user) if agent_reach else is_admin) or right is not None
+    if right is not None:
+        reason = f"CTEM {right} right"
+    elif whole:
         reason = "administrator"
     elif not is_admin:
         reason = "not an administrator"
@@ -95,6 +100,8 @@ async def reader_scope(db: Any, user_id: uuid.UUID, *, agent_reach: bool = True)
         "is_admin": is_admin,
         "reason": reason,
     }
+    if right is not None:
+        block["ctem_right"] = right
     return whole, block
 
 
@@ -119,7 +126,7 @@ async def case_signal_scope(
     if case_id is None:
         statement = statement.where(CtemSignal.case_id.is_not(None))
     else:
-        # The case view's rule for a non-administrator: the signals recorded for them.
+        # The case view's rule without a CTEM right: the signals recorded for them.
         statement = statement.where(CtemSignal.case_id == case_id, CtemSignal.recorded_by != str(user_id))
     try:
         counted = int((await db.execute(statement)).scalar_one() or 0)

@@ -166,17 +166,23 @@ SIGNAL_SOURCE = "signal"
 
 async def signal_members(db: Any, user_id: str) -> set[str]:
     """The ``signal:<id>`` members *user_id* may read: every case-bound signal for an
-    administrator, else the signals recorded for them (the rule of ``GET /ctem-signals``).
+    administrator or a CTEM view or decide right (``services/ctem_access.py``), else the
+    signals recorded for them (the rule of ``GET /ctem-signals``).
 
     A case opened from a signal with no product issue (a path without a CVE) is
     then visible to whoever sees the signal that opened it, never to nobody.
     """
+    from app.services import ctem_access
+
     try:
         user = await db.get(User, uuid.UUID(str(user_id)))
     except (ValueError, TypeError):
         user = None
     query = select(CtemSignal.id).where(CtemSignal.case_id.is_not(None))
-    if not getattr(user, "is_admin", False):
+    whole = bool(getattr(user, "is_admin", False)) or (
+        user is not None and await ctem_access.group_right(db, user_id) is not None
+    )
+    if not whole:
         query = query.where(CtemSignal.recorded_by == str(user_id))
     try:
         ids = (await db.execute(query)).scalars()
@@ -763,6 +769,19 @@ def names_asset(rows: list[CtemCaseIssue], view: ViewerView, asset: str) -> bool
         if issue is not None and any(" ".join(a.split()).casefold() == wanted for a in issue.assets):
             return True
     return False
+
+
+async def acts_on_case(db: Any, user: Any, rows: list[CtemCaseIssue], vertical: str) -> bool:
+    """Whether *user_id* may change a case they see (#1748).
+
+    An administrator or a CTEM decide right: every case they see, read and
+    write. A CTEM view right is strictly read only (Sam, 24 Nov 2026): every
+    case write is refused. Without a right, the cases their own read shows.
+    *rows* and *vertical* are kept for the callers' symmetry with the read.
+    """
+    from app.services import ctem_access
+
+    return await ctem_access.level(db, user) != "view"
 
 
 def owner_sees(rows: list[CtemCaseIssue], owner_view: ViewerView) -> bool:
