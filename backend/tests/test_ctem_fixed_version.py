@@ -129,9 +129,7 @@ def test_a_member_not_affected_opens_no_case_and_is_listed_with_the_reason():
 
 
 def test_a_member_turning_not_affected_is_resolved_in_its_case():
-    case = cc.CaseSnapshot(
-        id="c1", keys=["upgrade:f5/nginx@latest"], state="needs_attention", members={"opencti:9": True}
-    )
+    case = cc.CaseSnapshot(id="c1", keys=["upgrade:f5/nginx@latest"], state="new", members={"opencti:9": True})
     out = _cti("9", None, not_affected="not affected: version 1.30.7 has no 'has' relation to CVE-2026-9 in OpenCTI")
     (plan,) = cc.plan_recompute([case], [out], closed=["opencti:9"])
     assert plan.resolve == ["opencti:9"]
@@ -142,7 +140,7 @@ def test_a_moved_folded_target_stays_on_the_case_that_holds_the_members() -> Non
     case = cc.CaseSnapshot(
         id="c1",
         keys=["upgrade:f5/nginx@1.30.9"],
-        state="needs_attention",
+        state="new",
         members={"opencti:1": True, "opencti:2": True},
     )
     plans = cc.plan_recompute([case], [_cti("1", "1.30.7"), _cti("2", "1.30.9"), _cti("3", "1.31.2")])
@@ -155,9 +153,7 @@ def test_a_moved_folded_target_stays_on_the_case_that_holds_the_members() -> Non
 
 
 def test_a_latest_case_takes_the_key_the_first_time_a_version_is_declared() -> None:
-    case = cc.CaseSnapshot(
-        id="c1", keys=["upgrade:f5/nginx@latest"], state="needs_attention", members={"opencti:1": True}
-    )
+    case = cc.CaseSnapshot(id="c1", keys=["upgrade:f5/nginx@latest"], state="new", members={"opencti:1": True})
     (plan,) = cc.plan_recompute([case], [_cti("1", "1.30.7")])
     assert plan.case_id == "c1"
     assert plan.add_keys == ["upgrade:f5/nginx@1.30.7"]
@@ -168,7 +164,7 @@ def test_a_patched_top_member_moves_the_target_down_on_the_same_case() -> None:
     case = cc.CaseSnapshot(
         id="c1",
         keys=["upgrade:f5/nginx@1.31.2"],
-        state="needs_attention",
+        state="new",
         members={"opencti:1": True, "opencti:3": True},
     )
     (plan,) = cc.plan_recompute([case], [_cti("1", "1.30.7")], closed=["opencti:3"])
@@ -178,9 +174,7 @@ def test_a_patched_top_member_moves_the_target_down_on_the_same_case() -> None:
 
 
 def test_an_unowned_key_of_another_product_still_opens_a_case() -> None:
-    case = cc.CaseSnapshot(
-        id="c1", keys=["upgrade:apache/tomcat@9.0.98"], state="needs_attention", members={"opencti:1": True}
-    )
+    case = cc.CaseSnapshot(id="c1", keys=["upgrade:apache/tomcat@9.0.98"], state="new", members={"opencti:1": True})
     plans = cc.plan_recompute([case], [_cti("1", "1.30.7")])
     new = [p for p in plans if p.case_id is None]
     assert len(new) == 1 and new[0].add == ["opencti:1"]

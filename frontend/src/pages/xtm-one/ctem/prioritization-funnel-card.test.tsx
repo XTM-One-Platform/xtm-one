@@ -22,6 +22,7 @@ import { SAMPLE_FUNNEL, withCasesLayer } from "./prioritization-funnel";
 
 const casesRead = vi.hoisted(() => ({ value: { data: undefined as unknown } as { data: unknown; isError?: boolean }, options: [] as unknown[] }));
 vi.mock("@/hooks/api/useCtemCasesApi", () => ({
+  CTEM_OPEN_CASE_STATES: ["new", "analyzing", "waiting_decision", "remediating", "validating"],
   useCtemCases: (options?: unknown) => {
     casesRead.options.push(options);
     return casesRead.value;
@@ -183,14 +184,14 @@ describe("the cases layer", () => {
     expect(screen.getByRole("link", { name: "Cases, No open case" })).toBeTruthy();
   });
 
-  it("reads the counts of the Cases API: needs attention plus in progress", () => {
-    casesRead.value = { data: { vertical: "cyber", counts: { needs_attention: 2, in_progress: 3, resolved: 4, accepted_risk: 1 }, cases: [], details_unavailable: [] } };
+  it("reads the counts of the Cases API: every open status (#1503)", () => {
+    casesRead.value = { data: { vertical: "cyber", counts: { waiting_decision: 2, new: 1, remediating: 2, resolved: 4, accepted_risk: 1 }, cases: [], details_unavailable: [] } };
     draw(<PrioritizationFunnelWithCases funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);
     expect(screen.getByTestId("ctem-funnel-count-open_issues").textContent).toBe("5");
     expect(screen.getByRole("link", { name: "Cases, 5 open cases" })).toBeTruthy();
-    // The node fans out into the two open states of the Cases board, linked to the list.
-    expect(screen.getByRole("link", { name: "Needs attention: 2 cases" }).getAttribute("href")).toBe("/ctem/cases?state=needs_attention");
-    expect(screen.getByRole("link", { name: "In progress: 3 cases" }).getAttribute("href")).toBe("/ctem/cases?state=in_progress");
+    // The node fans out into what waits on a person and what the agents work, linked to the list.
+    expect(screen.getByRole("link", { name: "Waiting for decision: 2 cases" }).getAttribute("href")).toBe("/ctem/cases?state=waiting_decision");
+    expect(screen.getByRole("link", { name: "In work: 3 cases" }).getAttribute("href")).toBe("/ctem/cases?state=open");
     expect(screen.getByTestId("ctem-flow-cases-closed").textContent).toBe("4 resolved, 1 accepted risk");
     expect(screen.getByTestId("ctem-flow-outcome").textContent).toBe("21 issues grouped into 5 open cases");
   });
@@ -198,7 +199,7 @@ describe("the cases layer", () => {
   // #865 prod retest D1: a watched case is drawn, first of the closed line, linked to its list.
   it("shows the mitigated, watching cases first on the closed line", () => {
     casesRead.value = {
-      data: { vertical: "cyber", counts: { needs_attention: 1, in_progress: 0, mitigated_watching: 2, resolved: 4, accepted_risk: 1 }, cases: [], details_unavailable: [] },
+      data: { vertical: "cyber", counts: { new: 1, mitigated_watching: 2, resolved: 4, accepted_risk: 1 }, cases: [], details_unavailable: [] },
     };
     draw(<PrioritizationFunnelWithCases funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);
     // Every count shows, never clamped: mitigated on its own line above the
@@ -239,13 +240,13 @@ describe("the cases layer", () => {
   it("keeps the layer not available, with no fan, when the Cases API fails", () => {
     casesRead.options = [];
     casesRead.value = {
-      data: { vertical: "cyber", counts: { needs_attention: 2, in_progress: 3, resolved: 4, accepted_risk: 1 }, cases: [], details_unavailable: [] },
+      data: { vertical: "cyber", counts: { waiting_decision: 2, remediating: 3, resolved: 4, accepted_risk: 1 }, cases: [], details_unavailable: [] },
       isError: true,
     };
     draw(<PrioritizationFunnelWithCases funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);
     expect(casesRead.options.every((options) => (options as { throwOnError?: boolean })?.throwOnError === false)).toBe(true);
     expect(screen.getByTestId("ctem-funnel-count-open_issues").textContent).toBe("Not available yet");
-    expect(screen.queryByRole("link", { name: /^Needs attention:/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^Waiting for decision:/ })).toBeNull();
     expect(screen.queryByTestId("ctem-flow-cases-closed")).toBeNull();
     casesRead.value = { data: undefined };
   });

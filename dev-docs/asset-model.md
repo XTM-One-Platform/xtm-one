@@ -335,11 +335,22 @@ and `asset_groups` into row writes (`apply_profile_lists`). Row API, administrat
   `(source, external_id)`): `{created, updated, removed, unchanged}`; a row equal to its record is not written.
 - `POST`, `PATCH /{id}`, `DELETE /{id}` on `/api/v1/organization-context/asset-groups`: the same for groups; a
   deleted group's records stay and lose the group.
+- `GET /api/v1/organization-context/asset-groups/{id}/members?limit=&after_name=&after_id=` (any signed-in
+  user): one keyset page of the group's member records by name, each with `via` (who put it there: `record`,
+  `manual` or the group's source), the group itself (`member_count` comes from the list) and `next`.
 - `PUT /api/v1/organization-context/crown-jewels/{name}/links` `{names}`: the records and groups a crown jewel
   covers; 404 for an unknown crown jewel, 422 naming what matches nothing.
 - `GET /api/v1/organization-context/changes?entity_id=&since=&before_id=&limit=`: the change log, newest first;
   `POST /api/v1/organization-context/changes/restore` `{change_ids}`: a delete comes back, an update gets its
   `before` fields, a create goes.
+
+Group memberships kept in sync (#1556): a group source answers each group's members (OpenAEV: static and
+dynamic, a dynamic group stored as its resolved members), and `organization_asset_records.sync_group_members`
+sets the memberships that source owns to that answer at every import or sync run: added and removed, a hand
+(`manual`) membership and a record's own `group` (`record`) left as they are. A member binds to the record of
+the member source with that id, so it lands on the merged asset whatever source created it; one no record holds
+is counted on the group (`unresolved_members`, "not in the inventory"), never dropped silently.
+`members_synced_at` is the last whole read. A group absent from the answer keeps its memberships.
 
 The agent row tools write the records too: `upsert_organization_rows` and `remove_organization_rows` on
 `assets` or `asset_groups` plan against the records the call addresses (`organization_context_rows.

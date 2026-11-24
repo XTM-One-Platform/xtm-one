@@ -101,7 +101,7 @@ def test_a_new_key_becomes_a_new_case():
     assert plans[0].add == ["opencti:v1"]
 
 
-def _case(state="in_progress", members=None, **kw) -> cc.CaseSnapshot:
+def _case(state="remediating", members=None, **kw) -> cc.CaseSnapshot:
     return cc.CaseSnapshot(
         id="c1", keys=["upgrade:apache/tomcat@9.0.98"], state=state, members=dict(members or {}), **kw
     )
@@ -152,7 +152,7 @@ def test_an_accepted_risk_keeps_its_state_when_its_members_close():
 def test_a_resolved_case_reopens_when_its_issues_return():
     case = _case("resolved", {"opencti:v1": False})
     (plan,) = cc.plan_recompute([case], [_cti("v1", "CVE-1"), _cti("v2", "CVE-2")])
-    assert plan.new_state == "needs_attention"
+    assert plan.new_state == "new"
     assert plan.reopen == ["opencti:v1"] and plan.add == ["opencti:v2"]
 
 
@@ -179,18 +179,16 @@ def test_a_case_fixed_in_the_inventory_with_a_validation_plan_waits_for_its_proo
 
 
 def test_a_merge_maps_every_merged_key_to_the_surviving_case():
-    case = cc.CaseSnapshot(
-        id="c1", keys=["upgrade:apache/tomcat@9.0.98", "upgrade:apache/tomcat@10.1.35"], state="needs_attention"
-    )
+    case = cc.CaseSnapshot(id="c1", keys=["upgrade:apache/tomcat@9.0.98", "upgrade:apache/tomcat@10.1.35"], state="new")
     plans = cc.plan_recompute([case], [_cti("v1", "CVE-1"), _cti("v2", "CVE-2", fixed="10.1.35")])
     assert len(plans) == 1
     assert plans[0].add == ["opencti:v1", "opencti:v2"]
 
 
 def test_a_split_keeps_its_pinned_issues_out_of_the_automatic_case():
-    auto = cc.CaseSnapshot(id="c1", keys=["upgrade:apache/tomcat@9.0.98"], state="needs_attention")
+    auto = cc.CaseSnapshot(id="c1", keys=["upgrade:apache/tomcat@9.0.98"], state="new")
     split = cc.CaseSnapshot(
-        id="c2", keys=["split:c2"], state="in_progress", pinned_issues=["opencti:v2"], members={"opencti:v2": True}
+        id="c2", keys=["split:c2"], state="remediating", pinned_issues=["opencti:v2"], members={"opencti:v2": True}
     )
     plans = {p.case_id: p for p in cc.plan_recompute([auto, split], [_cti("v1", "CVE-1"), _cti("v2", "CVE-2")])}
     assert plans["c1"].add == ["opencti:v1"]
@@ -203,7 +201,7 @@ def test_a_split_keeps_its_pinned_issues_out_of_the_automatic_case():
 
 
 def _check(**kw):
-    base = {"current": "needs_attention", "actor_kind": "user", "owner_user_id": OWNER, "now": NOW}
+    base = {"current": "new", "actor_kind": "user", "owner_user_id": OWNER, "now": NOW}
     base.update(kw)
     cc.check_transition(**base)
 
@@ -233,31 +231,32 @@ def test_an_agent_cannot_accept_risk():
 
 def test_resolve_needs_evidence():
     with pytest.raises(cc.CaseRuleError, match="evidence"):
-        _check(target="resolved", current="in_progress")
-    _check(target="resolved", current="in_progress", evidence="CHG-1234")
-    _check(target="resolved", current="in_progress", actor_kind="agent", evidence="validation run 42")
+        _check(target="resolved", current="remediating")
+    _check(target="resolved", current="remediating", evidence="CHG-1234")
+    _check(target="resolved", current="remediating", actor_kind="agent", evidence="validation run 42")
 
 
-def test_in_progress_needs_an_owner():
+def test_a_person_moving_to_remediating_names_an_owner():
     with pytest.raises(cc.CaseRuleError, match="owner"):
-        _check(target="in_progress", owner_user_id=None)
-    _check(target="in_progress")
+        _check(target="remediating", owner_user_id=None)
+    _check(target="remediating")
+    _check(target="remediating", owner_user_id=None, actor_kind="agent")
 
 
 def test_unknown_or_same_state_is_refused():
     with pytest.raises(cc.CaseRuleError, match="unknown"):
         _check(target="closed")
     with pytest.raises(cc.CaseRuleError, match="already"):
-        _check(target="needs_attention")
+        _check(target="new")
 
 
 def test_an_agent_reopens_only_with_a_reason():
     with pytest.raises(cc.CaseRuleError, match="reason"):
-        _check(target="needs_attention", current="resolved", actor_kind="agent")
-    _check(target="needs_attention", current="resolved", actor_kind="agent", reason="finding seen again")
+        _check(target="new", current="resolved", actor_kind="agent")
+    _check(target="new", current="resolved", actor_kind="agent", reason="finding seen again")
 
 
-def test_expiry_returns_the_case_to_needs_attention():
+def test_expiry_returns_the_case_to_new():
     assert cc.expired_acceptance("accepted_risk", NOW - timedelta(seconds=1), NOW)
     assert cc.expired_acceptance("accepted_risk", NOW, NOW)
     assert not cc.expired_acceptance("accepted_risk", NOW + timedelta(days=1), NOW)
@@ -307,8 +306,17 @@ def test_aggregates_count_distinct_assets_and_crown_jewels():
 # ---------------------------------------------------------------------------
 
 
-def test_the_model_carries_the_five_states_and_the_accepted_risk_constraint():
-    assert CASE_STATES == ("needs_attention", "in_progress", "mitigated_watching", "resolved", "accepted_risk")
+def test_the_model_carries_the_lifecycle_and_the_accepted_risk_constraint():
+    assert CASE_STATES == (
+        "new",
+        "analyzing",
+        "waiting_decision",
+        "remediating",
+        "validating",
+        "mitigated_watching",
+        "resolved",
+        "accepted_risk",
+    )
     names = {c.name for c in CtemCase.__table__.constraints}
     assert {"ck_ctem_cases_state_valid", "ck_ctem_cases_accepted_risk_complete"} <= names
     assert CtemCaseIssue.__table__.c.case_id.foreign_keys

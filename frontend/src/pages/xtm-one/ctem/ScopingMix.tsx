@@ -129,14 +129,16 @@ export function ScopingMix({
   }
 
   if (dataCards.length === 0 && gapCards.length === 0) return null;
-  // Same layout rules as Discovery (UX rounds 1 to 3 of #12027): cards hug their
-  // content, the data row aligned to the start, two columns from 2xl only.
+  // Same layout rules as Discovery: two columns from 2xl only, and every card of a
+  // row ends on the tallest card's edge (Sam, 24 Nov 2026, #1612: equal heights as
+  // in the rest of the app; content top-aligned, the free space at the bottom).
   return (
     <div className="space-y-5" data-testid="ctem-scoping-mix">
       {dataCards.length > 0 && (
         <div
-          className={cn("grid items-start gap-5", dataCards.length > 1 && "2xl:grid-cols-2")}
+          className={cn("grid gap-5 [&>section]:h-full", dataCards.length > 1 && "2xl:grid-cols-2")}
           data-testid="ctem-scoping-data-row"
+          data-align="stretch"
           data-wide-columns={dataCards.length > 1 ? 2 : 1}
         >
           {dataCards}

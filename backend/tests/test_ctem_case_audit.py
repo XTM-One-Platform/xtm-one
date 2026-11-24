@@ -120,6 +120,36 @@ def test_events_without_a_date_still_get_a_phase():
     assert audit.phases(out)["current"] is None
 
 
+def test_current_phase_is_the_phase_of_the_newest_event() -> None:
+    # The Cases list groups and lays out its Kanban by it (#1503).
+    assert audit.current_phase(_history()) == "prioritization"  # type: ignore[no-untyped-call]
+    assert audit.current_phase([]) is None
+    assert audit.current_phase([_e("09:00", "ticket", to="open")]) == "remediation"
+
+
+def test_open_wait_is_the_newest_unanswered_waiting_gate() -> None:
+    # analyst_review waited 11:09 and was answered 12:10; validation.non_readonly waits since 11:56.
+    assert audit.open_wait(_history()) == {  # type: ignore[no-untyped-call]
+        "gate": "ctem.validation.non_readonly",
+        "by": None,
+        "since": "2026-11-23T11:56:00+00:00",
+    }
+    assert audit.open_wait([_e("09:00", "ticket", to="open")]) is None
+
+
+def test_open_wait_falls_back_to_the_move_into_waiting_decision() -> None:
+    # UX r1 B2 on #1515: a person set Waiting for decision by hand, no gate waits.
+    person = "6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f"
+    events = [
+        _e("09:00", "state", actor="system", **{"from": None, "to": "new"}),
+        _e("10:00", "state", actor=person, reason="needs the CISO", **{"from": "analyzing", "to": "waiting_decision"}),
+    ]
+    assert audit.open_wait(events) == {"gate": None, "by": person, "since": "2026-11-23T10:00:00+00:00"}  # type: ignore[no-untyped-call]
+    # Moved by the system: since when, nobody named.
+    system_move = [_e("10:00", "state", actor="system", **{"from": "new", "to": "waiting_decision"})]
+    assert audit.open_wait(system_move) == {"gate": None, "by": None, "since": "2026-11-23T10:00:00+00:00"}  # type: ignore[no-untyped-call]
+
+
 def test_run_phase():
     out = audit.annotate(_history(), people=[PERSON])
     assert audit.run_phase("2026-11-23T10:28:30+00:00", out) == "discovery"

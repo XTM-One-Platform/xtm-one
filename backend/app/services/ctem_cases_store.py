@@ -348,7 +348,7 @@ async def _case_of_signal(
 
 
 async def expire_acceptances(db: AsyncSession, *, now: datetime | None = None) -> int:
-    """Return every case whose accepted risk expired to needs attention; answers how many."""
+    """Return every case whose accepted risk expired to ``new``; answers how many."""
     now = now or datetime.now(UTC)
     rows = (
         await db.execute(select(CtemCase).where(CtemCase.state == "accepted_risk", CtemCase.accepted_until <= now))
@@ -363,12 +363,12 @@ async def expire_acceptances(db: AsyncSession, *, now: datetime | None = None) -
                 rules.SYSTEM_ACTOR,
                 "state",
                 from_value="accepted_risk",
-                to_value="needs_attention",
+                to_value="new",
                 reason="accepted risk expired",
                 at=now,
             )
         )
-        case.state = "needs_attention"
+        case.state = "new"
         case.state_since = now
         expired += 1
     return expired
@@ -513,7 +513,7 @@ async def create_manual_case(
         remediation_kind="manual",
         keys=[],
         pinned_issues=wanted,
-        state="needs_attention",
+        state="new",
         state_since=now,
     )
     db.add(case)

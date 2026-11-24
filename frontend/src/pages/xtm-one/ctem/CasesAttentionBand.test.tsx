@@ -42,7 +42,7 @@ function kase(over: Partial<CtemCaseSummary>): CtemCaseSummary {
     id: "c-1",
     title: "Upgrade nginx",
     priority: "critical",
-    state: "needs_attention",
+    state: "new",
     open_issue_count: 3,
     restricted_count: 0,
     crown_jewel_count: 0,

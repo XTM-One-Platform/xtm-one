@@ -189,7 +189,7 @@ def _case(kind: str = "upgrade") -> CtemCase:
         remediation_kind=kind,
         keys=[f"{kind}:component"],
         pinned_issues=[],
-        state="in_progress",
+        state="remediating",
         state_since=NOW,
         validations=[],
     )
@@ -213,14 +213,14 @@ async def _record(case: CtemCase, **kw: Any) -> CtemCase:
 async def test_a_test_result_never_resolves_a_patch_case(klass: str) -> None:
     case = await _record(_case("patch"), inject_class=klass, evidence_type=fx.VALIDATION_EVIDENCE)
     entry = case.validations[-1]
-    assert case.state == "in_progress" and entry["evidence_type"] == fx.VALIDATION_EVIDENCE
+    assert case.state == "remediating" and entry["evidence_type"] == fx.VALIDATION_EVIDENCE
     assert entry["conclusive"] is False and rules.passing(entry) is False
 
 
 @pytest.mark.asyncio
 async def test_an_unlabelled_detection_pass_on_an_upgrade_case_is_validation_evidence() -> None:
     case = await _record(_case("upgrade"), kind="detection")
-    assert case.state == "in_progress" and case.validations[-1]["evidence_type"] == fx.VALIDATION_EVIDENCE
+    assert case.state == "remediating" and case.validations[-1]["evidence_type"] == fx.VALIDATION_EVIDENCE
 
 
 @pytest.mark.asyncio
