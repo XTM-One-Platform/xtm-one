@@ -19964,7 +19964,7 @@
   "A risk scenario is required and OpenCRQ could not be read": "A risk scenario is required and OpenCRQ could not be read",
   "Criticality unknown, below the scope threshold {threshold}": "Criticality unknown, below the scope threshold {threshold}",
   "Criticality {criticality} below the scope threshold {threshold}": "Criticality {criticality} below the scope threshold {threshold}",
-  "In scope: criticality {criticality} at or above {threshold}, confidence {confidence}": "In scope: criticality {criticality} at or above {threshold}, confidence {confidence}",
+  "In scope: criticality {criticality} (threshold {threshold}), confidence {confidence}": "In scope: criticality {criticality} (threshold {threshold}), confidence {confidence}",
   "Lenses": "Lenses",
   "Matched assets": "Matched assets",
   "Scope threshold": "Scope threshold",
@@ -21604,9 +21604,9 @@
   "{product} did not answer in time, so open exposures there may be missing.": "{product} did not answer in time, so open exposures there may be missing.",
   "No {product} connection could be used for this read, so open exposures there may be missing.": "No {product} connection could be used for this read, so open exposures there may be missing.",
   "Read-only for you.": "Read-only for you.",
-  "Auto join": "Auto join",
-  "Auto join updated": "Auto join updated",
-  "Auto join could not be updated": "Auto join could not be updated",
-  "Single sign-on users join this group": "Single sign-on users join this group",
-  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are."
+  "See the loop trace of {subject}": "See the loop trace of {subject}",
+  "{count, plural, one {# signal} other {# signals}}": "{count, plural, one {# signal} other {# signals}}",
+  "First seen {first}, last seen {last}": "First seen {first}, last seen {last}",
+  "Filter the signals": "Filter the signals",
+  "No signal matches the filter.": "No signal matches the filter."
 }
