@@ -2490,6 +2490,13 @@ image = "toolchain-python"
 report = "lines"
 install_first = false
 
+# The agent review loop gates merges here: merge_github_pr and manage_github_pr
+# (ready, auto-merge) refuse while the newest "UX-LOOP ... verdict=" comment is
+# not APPROVE. A repository without this key (CI-checked PRs, review after the
+# merge) only gets the verdict reported (backend/.../github/review_loop.py).
+[merge]
+review_loop_gate = true
+
 # The pull request title rule: create_github_pr and update_github_pr refuse a
 # title that does not match before anything is written. Same pattern as
 # .github/workflows/pr-title-check.yml; tests/test_github_pr_title.py keeps the
