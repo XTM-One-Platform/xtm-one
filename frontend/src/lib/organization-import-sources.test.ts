@@ -36,6 +36,9 @@ describe("Intune and Defender as import sources (#1251)", () => {
     expect(filterValueLabel(t, "compliance", "noncompliant")).toBe("Not compliant");
     expect(filterValueLabel(t, "health_status", "ImpairedCommunication")).toBe("Impaired communication");
     expect(filterValueLabel(t, "operating_system", "Windows")).toBe("Windows");
+    expect(filterValueLabel(t, "os_platform", "Windows10")).toBe("Windows 10");
+    expect(filterValueLabel(t, "os_platform", "WindowsServer2022")).toBe("Windows Server 2022");
+    expect(filterValueLabel(t, "os_platform", "macOS")).toBe("macOS");
     expect(filterValueLabel(t, "last_seen_days", "30")).toBe("within 30 days");
     expect(filtersSummary(t, "en", { compliance: ["compliant"], exposure_level: ["High"] })).toBe("Compliance: Compliant; Exposure level: High");
   });

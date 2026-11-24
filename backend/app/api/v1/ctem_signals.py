@@ -24,6 +24,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.ctem_signal import LENSES, SIGNAL_STATES, SUBJECT_KINDS, TRIGGER_PATHS
 from app.models.user import User
+from app.services import ctem_access
 from app.services import ctem_case_loop as case_loop
 from app.services import ctem_scope_gate_store as scope_gate
 from app.services import ctem_signals as signals
@@ -66,9 +67,14 @@ def _require_xtm_one() -> None:
         raise HTTPException(status_code=404, detail="CTEM signals are only available in XTM One mode")
 
 
-def _reader(user: User) -> str | None:
-    """``None`` reads the organization (an administrator); else the caller's own signals."""
-    return None if getattr(user, "is_admin", False) else str(user.id)
+async def _reader(db: AsyncSession, user: User) -> str | None:
+    """``None`` reads the organization (an administrator, a CTEM view or decide right); else the caller's own signals."""
+    return await ctem_access.signal_reader(db, user)
+
+
+async def _writer(db: AsyncSession, user: User) -> str | None:
+    """``None`` acts on the organization's signals (an administrator, a CTEM decide right); else the caller's own."""
+    return await ctem_access.signal_writer(db, user)
 
 
 async def _organization_id(db: AsyncSession) -> uuid.UUID:
@@ -95,7 +101,7 @@ async def list_ctem_signal_paths(
     counts: dict[str, dict[str, int]] = {}
     activity: dict[str, dict[str, Any]] = {}
     if primary is not None:
-        reader = _reader(user)
+        reader = await _reader(db, user)
         counts = await signals.counts_by_path(db, organization_id=primary.id, recorded_by=reader)
         since = datetime.now(UTC) - timedelta(days=30)
         activity = await signals.activity_by_path(db, organization_id=primary.id, recorded_by=reader, since=since)
@@ -127,7 +133,7 @@ async def list_ctem_signals(
     rows, total, counts = await signals.list_signals(
         db,
         organization_id=primary.id,
-        recorded_by=_reader(user),
+        recorded_by=await _reader(db, user),
         state=state,
         trigger_path=trigger_path,
         lens=lens,
@@ -290,10 +296,13 @@ async def triage_ctem_signals(
     if bool(body.ids) == (body.filter is not None):
         raise HTTPException(status_code=422, detail="Give either ids or a filter")
     organization_id = await _organization_id(db)
+    if await ctem_access.level(db, user) == "view":
+        # A CTEM view right is strictly read only (#1748): no triage.
+        raise HTTPException(status_code=403, detail=ctem_access.VIEW_ONLY_MESSAGE)
     rows = await signals.select_signals(
         db,
         organization_id=organization_id,
-        recorded_by=_reader(user),
+        recorded_by=await _writer(db, user),
         ids=body.ids or None,
         state=body.filter.state if body.filter else None,
         trigger_path=body.filter.trigger_path if body.filter else None,
@@ -372,7 +381,9 @@ async def propose_ctem_signal_scope(
     _require_xtm_one()
     from app.services import organization_context_proposals as proposals
 
-    row = await signals.get_signal(db, signal_id, organization_id=await _organization_id(db), recorded_by=_reader(user))
+    row = await signals.get_signal(
+        db, signal_id, organization_id=await _organization_id(db), recorded_by=await _writer(db, user)
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="No such signal")
     decision = row.decision or {}
@@ -413,7 +424,9 @@ async def get_ctem_signal(
 ) -> dict[str, Any]:
     """One signal the caller may see; 404 otherwise."""
     _require_xtm_one()
-    row = await signals.get_signal(db, signal_id, organization_id=await _organization_id(db), recorded_by=_reader(user))
+    row = await signals.get_signal(
+        db, signal_id, organization_id=await _organization_id(db), recorded_by=await _reader(db, user)
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="No such signal")
     return signals.to_dict(row)
