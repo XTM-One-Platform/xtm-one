@@ -1155,7 +1155,9 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   object, holds the threshold and an edit in Settings needs no reprovision.
 - PIR flags (CTEM-05): `provision.mode: "pir_playbook"` (with
   `organization_context: ["pir_ids"]`, required) provisions an OpenCTI
-  playbook instead of a live trigger. OpenCTI flags an entity in a PIR
+  playbook instead of a live trigger; `provision.pir_ids` (OpenCTI ids of
+  profile PIRs) narrows it to a subset, an id outside the profile being an
+  error that names it. OpenCTI flags an entity in a PIR
   through its internal `in-pir` relationship and writes the entity's
   `pir_information` without a stream event, so a live trigger with a
   `pir_score` filter never sees the flag. The playbook entry built for it,

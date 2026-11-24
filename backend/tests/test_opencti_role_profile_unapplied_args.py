@@ -1,4 +1,4 @@
-"""manage_opencti_role and manage_opencti_profile refuse every field the action does not apply.
+"""manage_opencti_role and manage_opencti_profile name every field the action does not apply as ignored; the action runs.
 
 Same contract as the user, group and ingestion tools: a field the chosen action
 ignores (or an argument the tool does not declare) is named in the answer and
@@ -63,15 +63,14 @@ async def _run(executor: CallableToolExecutor, tool: str, arguments: dict[str, A
         ("manage_opencti_profile", {"action": "update", "theme": "dark", "account_status": "Active"}, "account_status"),
     ],
 )
-async def test_unapplied_field_is_refused_and_nothing_is_sent(
+async def test_unapplied_field_is_named_as_ignored_and_the_action_runs(
     monkeypatch: pytest.MonkeyPatch, tool: str, arguments: dict[str, Any], named: str
 ) -> None:
-    executor, stub = _build(monkeypatch)
+    executor, _stub = _build(monkeypatch)
     result = await _run(executor, tool, arguments)
     assert f"action '{arguments['action']}' does not apply" in result.content, result.content
     assert named in result.content
-    assert "nothing was written" in result.content
-    assert stub.calls == []
+    assert "ignored and the rest ran" in result.content
 
 
 async def test_role_list_with_its_own_fields_and_default_limit_runs(monkeypatch: pytest.MonkeyPatch) -> None:

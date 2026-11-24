@@ -2935,8 +2935,9 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: di
         **common,
         "name": CTEM_CASE_ASSIGNMENT_NAME,
         "description": (
-            "Runs the fleet loop on a CTEM case: opened from an in-scope signal, "
-            "reopened by a failed re-test, or past its SLA."
+            "Runs the fleet loop on a CTEM case: opened from an in-scope signal, reopened by a "
+            "failed re-test, past its SLA, its validation finished, a re-test requested, or "
+            "stalled (waiting on nobody)."
         ),
         "trigger_type": "platform_event",
         "trigger_config": {

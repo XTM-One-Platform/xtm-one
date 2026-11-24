@@ -423,6 +423,41 @@ def test_read_intune_marks_devices_whose_apps_read_failed_as_unread() -> None:
     assert read.software_unread == {"dev-2"}
 
 
+def test_read_intune_reads_a_throttled_device_again_at_the_end_of_the_run() -> None:
+    """A detectedApps read still throttled after every wait is read again in a slower last pass."""
+    base = f"{microsoft.GRAPH_BASE}/deviceManagement/managedDevices"
+    apps = f"{microsoft.GRAPH_BETA}/deviceManagement/managedDevices"
+    throttled = [_Resp(429, headers={"Retry-After": "1"}) for _ in range(microsoft._RETRIES + 1)]
+    client = _Client(
+        {
+            f"{apps}/8d3b-intune/detectedApps": [
+                *throttled,
+                _Resp(200, {"value": [{"displayName": "Slack", "version": "4"}]}),
+            ],
+            f"{base}?": [_Resp(200, {"value": [INTUNE_DEVICE]})],
+        }
+    )
+    read = asyncio.run(microsoft.read_intune("t", {}, limit=10, client=client))
+    assert read.software_unread == set()
+    assert read.software["8d3b-intune"][0]["product"] == "Slack"
+    assert sum("detectedApps" in url for url in client.calls) == microsoft._RETRIES + 2
+
+
+def test_read_intune_keeps_a_device_unread_when_the_last_pass_is_throttled_too() -> None:
+    base = f"{microsoft.GRAPH_BASE}/deviceManagement/managedDevices"
+    apps = f"{microsoft.GRAPH_BETA}/deviceManagement/managedDevices"
+    client = _Client(
+        {
+            f"{apps}/8d3b-intune/detectedApps": [_Resp(429)],
+            f"{base}?": [_Resp(200, {"value": [INTUNE_DEVICE]})],
+        }
+    )
+    read = asyncio.run(microsoft.read_intune("t", {}, limit=10, client=client))
+    assert read.software_unread == {"8d3b-intune"}
+    assert read.software_error == "intune: throttled, retry later"
+    assert sum("detectedApps" in url for url in client.calls) == 2 * (microsoft._RETRIES + 1)
+
+
 def test_read_defender_partial_inventory_keeps_stored_software() -> None:
     inventory = f"{microsoft.MDE_BASE}/machines/SoftwareInventoryByMachine"
     client = _Client(

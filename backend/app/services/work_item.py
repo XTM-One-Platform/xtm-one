@@ -5095,6 +5095,11 @@ async def ask_work_item(
             item.blocked_on = None
             item.blocked_on_refs = None
             item.needs_human = None
+            # The person's ask is the wake: a pickup deferral (a run's own, the
+            # unchanged-red or green hand-off defer) would keep the inbox from
+            # taking it until then, with a note saying it was sent (#1862).
+            item.not_before = None
+            payload.pop(RED_DEFERRED_UNTIL_KEY, None)
         item.payload = payload
         item.last_activity_at = now
         agent_ref = {"id": str(agent.id), "name": agent.name}

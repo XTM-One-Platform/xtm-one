@@ -323,6 +323,79 @@ async def test_a_403_names_the_permission_to_grant(monkeypatch):
     assert "admin consent" in write
 
 
+@pytest.mark.asyncio
+async def test_update_replaces_the_mitre_techniques_whole(monkeypatch):
+    graph = _Graph((200, _STORED_RULE), (200, {}), (200, _STORED_RULE), (200, {}))
+    executor = _executor(monkeypatch, graph)
+
+    await _call(executor, "update_defender_detection_rule", rule_id="72", mitre_techniques=["T1105", "T1027"])
+    await _call(executor, "update_defender_detection_rule", rule_id="72", mitre_techniques=[])
+
+    assert graph.calls[1]["json"]["detectionAction"]["alertTemplate"]["mitreTechniques"] == ["T1105", "T1027"]
+    assert graph.calls[3]["json"]["detectionAction"]["alertTemplate"]["mitreTechniques"] == []
+
+
+class _TimedOutGraph(_Graph):
+    """The write answers a timeout; the reads answer from the queue."""
+
+    async def __call__(self, _client, method, url, provider, action, **kwargs):
+        if method in ("post", "patch"):
+            self.calls.append({"method": method, "url": url, "action": action, **kwargs})
+            return (
+                None,
+                f"Error: {provider} request timed out while trying to {action}. The service may be slow or overloaded.",
+            )
+        return await super().__call__(_client, method, url, provider, action, **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_a_create_that_times_out_finds_the_rule_instead_of_a_duplicate(monkeypatch):
+    graph = _TimedOutGraph((200, {"value": [_STORED_RULE]}))
+    executor = _executor(monkeypatch, graph)
+
+    answer = await _call(
+        executor, "create_defender_detection_rule", display_name="Node spawns a shell", query=_QUERY, alert_title="x"
+    )
+
+    assert "id: 72" in answer and "do not create it again" in answer
+    assert graph.calls[1]["params"] == {"$filter": "displayName eq 'Node spawns a shell'"}
+
+
+@pytest.mark.asyncio
+async def test_a_create_that_times_out_and_left_nothing_says_a_retry_is_safe(monkeypatch):
+    graph = _TimedOutGraph((200, {"value": []}))
+    executor = _executor(monkeypatch, graph)
+    answer = await _call(executor, "create_defender_detection_rule", display_name="x", query=_QUERY, alert_title="x")
+    assert "timed out" in answer and "safe to create it again" in answer
+
+
+@pytest.mark.asyncio
+async def test_an_incident_update_that_times_out_is_read_back(monkeypatch):
+    graph = _TimedOutGraph((200, {"id": "9", "status": "resolved"}), (200, {"id": "9", "status": "active"}))
+    executor = _executor(monkeypatch, graph)
+
+    applied = await _call(executor, "update_defender_incident", incident_id="9", status="resolved")
+    not_applied = await _call(executor, "update_defender_incident", incident_id="9", status="resolved")
+
+    assert "updated" in applied and "do not retry" in applied
+    assert "does not show status" in not_applied and "safe to retry" in not_applied
+
+
+@pytest.mark.asyncio
+async def test_a_comment_that_times_out_is_not_posted_twice(monkeypatch):
+    stored = {"id": "9", "comments": [{"comment": "Closed as benign"}]}
+    graph = _TimedOutGraph((200, stored), (200, {"id": "9", "comments": []}), (500, {}))
+    executor = _executor(monkeypatch, graph)
+
+    there = await _call(executor, "add_defender_incident_comment", incident_id="9", comment="Closed as benign")
+    absent = await _call(executor, "add_defender_alert_comment", alert_id="a1", comment="Closed as benign")
+    unknown = await _call(executor, "add_defender_incident_comment", incident_id="9", comment="Closed as benign")
+
+    assert "do not post it again" in there
+    assert "safe to post it again" in absent
+    assert "Outcome unknown" in unknown
+
+
 def test_the_catalog_lists_the_permission():
     from app.api.v1.integration_catalog import PROVIDER_CATALOG
 
