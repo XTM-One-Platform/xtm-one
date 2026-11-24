@@ -9,7 +9,6 @@
  */
 
 import { useId, useState } from "react";
-import { Target } from "lucide-react";
 import { Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +34,8 @@ import {
 import { OrganizationProvenanceLine } from "./OrganizationProvenanceLine";
 
 const NO_CADENCE = "__none__";
+
+const PirGlyph = ({ className }: { className?: string }) => <Icon name="list-checks" size={16} className={className} aria-hidden />;
 
 export function OrganizationPirDetailsCard({ id: anchorId }: { id: string }) {
   const { t_i18n } = useFormatter();
@@ -85,7 +86,7 @@ export function OrganizationPirDetailsCard({ id: anchorId }: { id: string }) {
       data-anchor="card"
       tabIndex={-1}
       data-testid="settings.organization.pir-details"
-      icon={Target}
+      icon={PirGlyph}
       title={t_i18n("PIR details")}
       description={t_i18n("For each PIR followed: the question it answers, who owns it, how often it is reviewed and the crown jewels it serves. OpenCTI keeps the PIR itself.")}
       action={

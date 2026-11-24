@@ -355,8 +355,8 @@ export interface AssetGroupRow {
   membership_rule?: GroupMembershipRule;
 }
 
-export const ASSET_GROUP_CRITICALITIES = ["unknown", "low", "medium", "high", "very_high"] as const;
-export type AssetGroupCriticality = (typeof ASSET_GROUP_CRITICALITIES)[number];
+const ASSET_GROUP_CRITICALITIES = ["unknown", "low", "medium", "high", "very_high"] as const;
+type AssetGroupCriticality = (typeof ASSET_GROUP_CRITICALITIES)[number];
 
 /** An asset joins the group when it carries one of the tags, is of one of the categories, or its name holds the text. */
 export interface GroupMembershipRule {

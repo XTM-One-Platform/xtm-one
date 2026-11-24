@@ -381,7 +381,7 @@ export function useAssetRecord(id: string | undefined) {
 }
 
 /** The fields a person sets on a record or a group from the Inventory. */
-export type RowPatch = Record<string, string>;
+export type RowPatch = Record<string, string | { tags: string[]; categories: string[]; name_contains: string }>;
 
 /** What a write of several rows answers: the rows written and the rows the API refused, with its reason. */
 export interface RowsOutcome {

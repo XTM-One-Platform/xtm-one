@@ -116,7 +116,7 @@ export function emptyPirDetail(): PirDetail {
 }
 
 /** Whether *detail* says nothing (the save leaves it out). */
-export function pirDetailEmpty(detail: PirDetail): boolean {
+function pirDetailEmpty(detail: PirDetail): boolean {
   return !detail.question.trim() && !detail.owner.trim() && !detail.review_cadence && detail.crown_jewels.length === 0;
 }
 

@@ -9,9 +9,9 @@
  */
 
 import { useId, useState } from "react";
-import { Coins } from "lucide-react";
 import { Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
+import { DateFilterInput } from "@/components/ui/date-filter-input";
 import { Input } from "@/components/ui/input";
 import { RowRemoveButton } from "@/components/ui/row-remove-button";
 import { SECTION_BAR_ANCHOR_CLASS } from "@/components/ui/section-index";
@@ -31,6 +31,8 @@ import {
   REFERENCE_BOUNDS,
 } from "@/lib/organization-reference";
 import { OrganizationProvenanceLine } from "./OrganizationProvenanceLine";
+
+const RatesGlyph = ({ className }: { className?: string }) => <Icon name="chart-column" size={16} className={className} aria-hidden />;
 
 export function OrganizationFxRatesCard({ id: anchorId }: { id: string }) {
   const { t_i18n } = useFormatter();
@@ -73,7 +75,7 @@ export function OrganizationFxRatesCard({ id: anchorId }: { id: string }) {
       data-anchor="card"
       tabIndex={-1}
       data-testid="settings.organization.fx-rates"
-      icon={Coins}
+      icon={RatesGlyph}
       title={t_i18n("Reference exchange rates")}
       description={t_i18n("The rates agents use to convert an amount priced in another currency into the organization's currency. Without one, the comparison is reported as unknown, never guessed.")}
       action={
@@ -166,13 +168,12 @@ export function OrganizationFxRatesCard({ id: anchorId }: { id: string }) {
                     value={row.rate}
                     onChange={(e) => setRow(index, { rate: e.target.value })}
                   />
-                  <Input
-                    className="w-36"
-                    type="date"
+                  <DateFilterInput
+                    className="w-40"
                     aria-label={t_i18n("As of")}
-                    aria-invalid={problem === "date" ? true : undefined}
                     value={row.as_of}
-                    onChange={(e) => setRow(index, { as_of: e.target.value })}
+                    error={problem === "date" ? t_i18n(FX_RATE_PROBLEM_LABELS.date) : undefined}
+                    onChange={(day) => setRow(index, { as_of: day })}
                   />
                   <Input
                     className="min-w-40 flex-1"

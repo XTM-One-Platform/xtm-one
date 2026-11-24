@@ -8,7 +8,7 @@
  * deleted here: its sync owns it (exclude it from the sync instead). The backend refuses the same changes (422), so
  * this module only spares the person a refusal. Pure, so the page and its tests share it.
  */
-import type { AssetGroupRow, AssetRow } from "@/lib/organization-profile";
+import type { AssetGroupRow, AssetRow, GroupMembershipRule } from "@/lib/organization-profile";
 import { LOCAL_FIELDS, isPlatformSource } from "@/lib/organization-provenance";
 
 /** The lists the Inventory manages (the profile section names the backend's locks use). */
@@ -18,7 +18,13 @@ export type InventorySection = "assets_exposure" | "asset_groups";
 export type AssetPatch = Partial<Pick<AssetRow, "name" | "category" | "subcategory" | "criticality" | "internet_facing" | "owner" | "environment" | "group">>;
 
 /** The fields a person sets on an asset group from the Inventory. */
-export type AssetGroupPatch = Partial<Pick<AssetGroupRow, "name" | "description" | "environment" | "internet_facing" | "owner">>;
+export type AssetGroupPatch = Partial<Pick<AssetGroupRow, "name" | "description" | "environment" | "internet_facing" | "owner" | "criticality" | "membership_rule">>;
+
+/** The membership rule a form's three fields set (#1773): each list trimmed, each value once. */
+export function membershipRuleOf(tags: readonly string[], categories: readonly string[], nameContains: string): GroupMembershipRule {
+  const list = (values: readonly string[]) => [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+  return { tags: list(tags), categories: list(categories), name_contains: nameContains.trim() };
+}
 
 /** A row a write addresses: its id (an asset record or an asset group) and where it comes from. */
 export interface RowRef {
@@ -43,7 +49,7 @@ export function recordRefs(assets: readonly { records?: readonly { id?: string; 
 }
 
 /** The patch of each row: a synced row takes only its local fields; a row where nothing applies counts as locked. */
-export function rowPatches<P extends Record<string, string>>(
+export function rowPatches<P extends Record<string, unknown>>(
   section: InventorySection,
   rows: readonly RowRef[],
   patch: P,
@@ -93,6 +99,8 @@ export function newAssetGroupRow(patch: AssetGroupPatch): AssetGroupRow {
     environment: patch.environment ?? "",
     internet_facing: patch.internet_facing ?? "unknown",
     owner: (patch.owner ?? "").trim(),
+    criticality: patch.criticality ?? "unknown",
+    membership_rule: patch.membership_rule ?? { tags: [], categories: [], name_contains: "" },
     tech_stack: [],
     tags: [],
     source: "manual",
