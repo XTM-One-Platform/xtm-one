@@ -4,14 +4,16 @@ import { CTEM_CASE_STATES } from "../src/hooks/api/useCtemCasesApi";
 import { BOARD_GRID, BOARD_GRID_COLUMNS } from "../src/pages/xtm-one/ctem/cases-board";
 
 /**
- * The Cases board draws one column per case state (UX round 1 of #857, B2): at the
- * reference width the grid has as many columns as states, so no state sits alone
- * on a second row. Adding a state updates the grid.
+ * The Cases board draws one card per case status (UX round 1 of #857, B2): the
+ * eight statuses of #1503 sit on full rows (four per row at xl), so no status sits
+ * alone on a row. Adding a status updates the grid.
  */
 describe("Cases board grid", () => {
-  it("has one column per case state at the reference width", () => {
+  it("has one card per case status, in full rows at the reference width", () => {
     expect(BOARD_GRID_COLUMNS).toBe(CTEM_CASE_STATES.length);
-    expect(BOARD_GRID).toContain(`xl:grid-cols-${CTEM_CASE_STATES.length}`);
+    const xl = Number(/xl:grid-cols-(\d+)/.exec(BOARD_GRID)?.[1]);
+    expect(xl).toBeGreaterThanOrEqual(4);
+    expect(CTEM_CASE_STATES.length % xl).toBe(0);
   });
 
   it("never draws an intermediate breakpoint that orphans a column", () => {

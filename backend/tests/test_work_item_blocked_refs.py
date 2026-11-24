@@ -25,6 +25,7 @@ from app.services.work_item_blocked_refs import (
     all_satisfied,
     apply_reference_event,
     blocked_why,
+    bound_pull_request_wait,
     due_deferral,
     normalize_blocked_on_refs,
     record_closing_on_payload,
@@ -184,6 +185,29 @@ def test_the_views_show_what_a_blocked_item_waits_for():
     }
     assert blocked_why({"status": "blocked", "blocked_on": ["a", "b"]})["text"] == "Waits for: 2 work item(s)"
     assert blocked_why({"status": "blocked", "needs_human": True})["text"] == "Waits for: a person (needs_human)"
+
+
+def test_a_draft_parked_on_its_own_pull_request_shows_what_releases_it() -> None:
+    # The inbox finalizer's park of a draft: a reason, no ref, an open bound pull request (#1617).
+    item = {
+        "status": "blocked",
+        "blocked_reason": "WAITS FOR: o/r#12 (draft) to finish its review gate",
+        "payload": {"pull_requests": [{"repo": "o/r", "number": 12, "state": "open", "draft": True}]},
+    }
+    assert bound_pull_request_wait(item) == "the CI completion or closing of o/r#12 (draft), released by itself"
+    why = blocked_why(item)
+    assert why is not None
+    assert why["text"].startswith(
+        "Waits for: the CI completion or closing of o/r#12 (draft), released by itself; WAITS FOR"
+    )
+    # A closed binding, another blocker or an item not blocked: nothing to say.
+    closed = {**item, "payload": {"pull_requests": [{"repo": "o/r", "number": 12, "state": "closed"}]}}
+    assert bound_pull_request_wait(closed) is None
+    assert bound_pull_request_wait({**item, "blocked_on": ["x"]}) is None
+    assert bound_pull_request_wait({**item, "needs_human": True}) is None
+    ref = {"repo": REPO, "kind": "pull_request", "number": 9, "release_on": "merged"}
+    assert bound_pull_request_wait({**item, "blocked_on_refs": [ref]}) is None
+    assert bound_pull_request_wait({**item, "status": "open"}) is None
 
 
 def test_a_legacy_blocked_item_with_no_reason_is_flagged_missing():

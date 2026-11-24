@@ -11,7 +11,7 @@ import type { ReactNode } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { TruncatedText } from "@/components/ui/truncated-text";
-import type { CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
+import { isOpenCaseState, type CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { CasesBulkActions } from "./CasesBulkActions";
 import { NEXT_ACTION_DIALOG, useAttentionWhy } from "./CasesAttentionBand";
@@ -34,7 +34,7 @@ export function CaseAttentionNow({ c, now, onChanged }: { c: CtemCaseSummary; no
   const { t_i18n } = useFormatter();
   const whyOf = useAttentionWhy();
   const attention = caseAttention(c, now, useCaseAttentionWeights());
-  const open = c.state === "needs_attention" || c.state === "in_progress";
+  const open = isOpenCaseState(c.state);
   const opened = caseOpenedAt(c);
   const days = opened ? Math.max(0, Math.floor((now - Date.parse(opened)) / DAY_MS)) : null;
   const why = open ? whyOf(attention) : "";

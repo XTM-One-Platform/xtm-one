@@ -47,7 +47,7 @@ import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { useFormatter } from "@/i18n";
 import { formatTimeAgoLine } from "@/lib/relative-time";
-import { useCtemCases, type CtemCaseState } from "@/hooks/api/useCtemCasesApi";
+import { CTEM_OPEN_CASE_STATES, useCtemCases } from "@/hooks/api/useCtemCasesApi";
 import { useRecentCtemSignals, type CtemSignalList } from "@/hooks/api/useCtemSignalsApi";
 import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
 import { cn, safeExternalUrl } from "@/lib/utils";
@@ -105,13 +105,16 @@ const FunnelEmptyGlyph = ({ className }: { className?: string }) => <Icon name="
 const LIVE_FILL = ["bg-accent/25", "bg-accent/40", "bg-accent/60", "bg-accent/75", "bg-accent/85", "bg-accent", "bg-accent"];
 
 /** The fill of each case state, the tokens of the Cases board (`CasesCountsCard`). */
-const SEGMENT_FILL: Record<CtemCaseState, string> = {
-  needs_attention: "bg-feedback-alert-primary",
-  in_progress: "bg-feedback-info-primary",
-  mitigated_watching: "bg-feedback-success-tertiary",
-  resolved: "bg-feedback-success-primary",
-  accepted_risk: "bg-feedback-neutral-primary",
+const SEGMENT_FILL: Record<"waiting_decision" | "in_work", string> = {
+  waiting_decision: "bg-feedback-error-primary",
+  in_work: "bg-feedback-info-primary",
 };
+
+/** The two open tiles of the fan (#1503): what waits on a person, and what the agents work. */
+const FAN_TILES = [
+  { key: "waiting_decision", label: CASE_STATE_LABEL.waiting_decision, href: casesListHref({ state: "waiting_decision" }) },
+  { key: "in_work", label: "In work", href: casesListHref({ state: "open" }) },
+] as const;
 
 /** Width the flow is laid out at before its box is measured (and in tests, which have no layout). */
 const FLOW_FALLBACK_WIDTH = 1080;
@@ -421,7 +424,7 @@ export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = fal
   const layout = flowLayout(funnel, measured.width || FLOW_FALLBACK_WIDTH);
   const casesRow = rows.find((row) => isCasesLayer(row.layer));
   const casesLive = casesRow?.layer.state === "live" && casesRow.layer.count !== null && !!caseStates;
-  const fan = casesLive ? flowFan(layout.node, caseStates.needs_attention, caseStates.in_progress) : [];
+  const fan = casesLive ? flowFan(layout.node, caseStates.waiting_decision, caseStates.in_work) : [];
   const rowOf = (key: string) => rows.find((row) => row.layer.key === key) as FunnelRow;
   const reasonOf = (step: FlowStep) => (FLOW_REASON[step.layer.key] ? t_i18n(FLOW_REASON[step.layer.key] as string) : "");
   const tableRows = rows.map((row) => {
@@ -614,13 +617,13 @@ export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = fal
         )}
 
         {casesLive &&
-          (["needs_attention", "in_progress"] as const).map((state, i) => {
+          FAN_TILES.map(({ key: state, label: english, href }, i) => {
             const count = caseStates[state];
-            const label = t_i18n(CASE_STATE_LABEL[state]);
+            const label = t_i18n(english);
             return (
               <Link
                 key={state}
-                to={casesListHref({ state })}
+                to={href}
                 aria-label={t_i18n("{state}: {count, plural, one {# case} other {# cases}}", { count, state: label })}
                 className={cn(
                   "absolute flex flex-col justify-center overflow-hidden rounded-sm border border-elevation-subtle-soft bg-elevation-default pl-3 pr-2",
@@ -726,14 +729,14 @@ export function PrioritizationFunnelWithCases({
   const data = isError ? undefined : read;
   const cases = data
     ? {
-        open: (data.counts.needs_attention ?? 0) + (data.counts.in_progress ?? 0),
+        open: CTEM_OPEN_CASE_STATES.reduce((sum, s) => sum + (data.counts[s] ?? 0), 0),
         total: Object.values(data.counts).reduce((sum, value) => sum + (value ?? 0), 0),
       }
     : undefined;
   const caseStates: FunnelCaseStates | undefined = data
     ? {
-        needs_attention: data.counts.needs_attention ?? 0,
-        in_progress: data.counts.in_progress ?? 0,
+        waiting_decision: data.counts.waiting_decision ?? 0,
+        in_work: CTEM_OPEN_CASE_STATES.reduce((sum, s) => sum + (s === "waiting_decision" ? 0 : (data.counts[s] ?? 0)), 0),
         mitigated_watching: data.counts.mitigated_watching ?? 0,
         resolved: data.counts.resolved ?? 0,
         accepted_risk: data.counts.accepted_risk ?? 0,

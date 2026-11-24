@@ -34,7 +34,7 @@ function draw(configured = true, onConnectOpenAev = () => {}) {
 }
 
 function summary(over: Record<string, unknown>) {
-  return { id: "c", state: "needs_attention", due_at: null, accepted_until: null, ...over };
+  return { id: "c", state: "new", due_at: null, accepted_until: null, ...over };
 }
 
 afterEach(() => get.mockReset());
@@ -43,14 +43,14 @@ describe("CasesCountsCard", () => {
   it("shows one count per state, each linking to the list on that state", async () => {
     get.mockResolvedValue({
       vertical: "cyber",
-      counts: { needs_attention: 18, in_progress: 4, resolved: 22, accepted_risk: 3 },
+      counts: { new: 18, remediating: 4, resolved: 22, accepted_risk: 3 },
       cases: [],
       details_unavailable: [],
     });
     draw();
-    const needs = await screen.findByRole("link", { name: "Needs attention: 18 cases" });
-    expect(needs.getAttribute("href")).toBe("/ctem/cases?state=needs_attention");
-    expect(screen.getByRole("link", { name: "In progress: 4 cases" }).getAttribute("href")).toBe("/ctem/cases?state=in_progress");
+    const fresh = await screen.findByRole("link", { name: "New: 18 cases" });
+    expect(fresh.getAttribute("href")).toBe("/ctem/cases?state=new");
+    expect(screen.getByRole("link", { name: "Remediating: 4 cases" }).getAttribute("href")).toBe("/ctem/cases?state=remediating");
     expect(screen.getByRole("link", { name: "Resolved: 22 cases" }).getAttribute("href")).toBe("/ctem/cases?state=resolved");
     expect(screen.getByRole("link", { name: "Accepted risk: 3 cases" }).getAttribute("href")).toBe("/ctem/cases?state=accepted_risk");
     expect(screen.getByRole("link", { name: "Open Cases" }).getAttribute("href")).toBe("/ctem/cases");
@@ -59,14 +59,14 @@ describe("CasesCountsCard", () => {
   });
 
   it("draws one count link per state, mitigated, watching included", async () => {
-    get.mockResolvedValue({ vertical: "cyber", counts: { needs_attention: 1, mitigated_watching: 1 }, cases: [], details_unavailable: [] });
+    get.mockResolvedValue({ vertical: "cyber", counts: { new: 1, mitigated_watching: 1 }, cases: [], details_unavailable: [] });
     draw();
-    await screen.findByRole("link", { name: "Needs attention: 1 case" });
-    expect(screen.getAllByTestId(/^ctem-cases-count-/)).toHaveLength(5);
+    await screen.findByRole("link", { name: "New: 1 case" });
+    expect(screen.getAllByTestId(/^ctem-cases-count-/)).toHaveLength(8);
   });
 
   it("a state the API leaves out counts zero, never a dash", async () => {
-    get.mockResolvedValue({ vertical: "cyber", counts: { needs_attention: 1 }, cases: [], details_unavailable: [] });
+    get.mockResolvedValue({ vertical: "cyber", counts: { new: 1 }, cases: [], details_unavailable: [] });
     draw();
     expect(await screen.findByRole("link", { name: "Accepted risk: 0 cases" })).toBeTruthy();
   });
@@ -75,7 +75,7 @@ describe("CasesCountsCard", () => {
     const now = Date.now();
     get.mockResolvedValue({
       vertical: "cyber",
-      counts: { needs_attention: 2, accepted_risk: 1 },
+      counts: { new: 2, accepted_risk: 1 },
       cases: [
         summary({ id: "a", due_at: new Date(now - DAY).toISOString() }),
         summary({ id: "b", due_at: new Date(now + DAY).toISOString() }),
@@ -114,9 +114,9 @@ describe("CasesCountsCard", () => {
     get.mockRejectedValue(new Error("boom"));
     draw();
     const retry = await screen.findByRole("button", { name: "Retry" });
-    get.mockResolvedValue({ vertical: "cyber", counts: { needs_attention: 2 }, cases: [], details_unavailable: [] });
+    get.mockResolvedValue({ vertical: "cyber", counts: { new: 2 }, cases: [], details_unavailable: [] });
     fireEvent.click(retry);
-    expect(await screen.findByRole("link", { name: "Needs attention: 2 cases" })).toBeTruthy();
+    expect(await screen.findByRole("link", { name: "New: 2 cases" })).toBeTruthy();
   });
 
   it("keeps a failed read in its row on the app's client: the page and its other rows stay mounted", async () => {
@@ -177,7 +177,7 @@ describe("the case list read (#11999)", () => {
 describe("caseDueFlags", () => {
   const now = Date.parse("2026-11-13T12:00:00Z");
   it("an open case past its due date is overdue; a resolved one never", () => {
-    expect(caseDueFlags({ state: "in_progress", due_at: "2026-11-12T00:00:00Z", accepted_until: null }, now)).toEqual(["overdue"]);
+    expect(caseDueFlags({ state: "remediating", due_at: "2026-11-12T00:00:00Z", accepted_until: null }, now)).toEqual(["overdue"]);
     expect(caseDueFlags({ state: "resolved", due_at: "2026-11-12T00:00:00Z", accepted_until: null }, now)).toEqual([]);
   });
   it("an accepted risk ending within 14 days is expiring; past or later is not", () => {

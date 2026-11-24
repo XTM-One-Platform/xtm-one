@@ -139,7 +139,7 @@ async def test_case_publish_sends_each_frame_to_each_user(monkeypatch: pytest.Mo
     monkeypatch.setattr(stream, "redis_client", client)
     monkeypatch.setattr(stream, "_active_user_ids", users)
     monkeypatch.setattr(stream, "_down_until", 0.0)
-    frame = stream.case_frame("c1", "needs_attention", "created", "2026-11-21T08:00:00+00:00")
+    frame = stream.case_frame("c1", "new", "created", "2026-11-21T08:00:00+00:00")
     assert await stream.publish_case_updates([frame]) == 1
     assert sent == [(f"activity:{user}", frame)]
 

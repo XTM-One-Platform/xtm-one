@@ -46,7 +46,16 @@ from app.services.organizations import get_primary
 
 router = APIRouter()
 
-CaseState = Literal["needs_attention", "in_progress", "mitigated_watching", "resolved", "accepted_risk"]
+CaseState = Literal[
+    "new",
+    "analyzing",
+    "waiting_decision",
+    "remediating",
+    "validating",
+    "mitigated_watching",
+    "resolved",
+    "accepted_risk",
+]
 
 
 class CaseValidation(BaseModel):
@@ -185,6 +194,11 @@ async def list_ctem_cases(
         limit=limit,
         offset=offset,
     )
+    # The CTEM phase of each case on the page and what it waits on (#1503): the list groups by
+    # phase, the Kanban lays its columns out by it, a case waiting for decision says on whom.
+    history = await store.events_of(db, [uuid.UUID(row["id"]) for row in rows])
+    for row in rows:
+        row.update(view_of.case_position(history.get(uuid.UUID(row["id"]), []), view))
     return {
         "vertical": vertical,
         "counts": {s: counts.get(s, 0) for s in CASE_STATES},
