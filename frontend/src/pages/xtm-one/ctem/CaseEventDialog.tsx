@@ -74,10 +74,12 @@ export function CaseEventDialog({
   const issue = event?.issue && event.issue !== "Restricted" ? event.issue : null;
   const evidence = event && event.kind !== "gate" && event.kind !== "ticket" && event.kind !== "retest_requested" ? event.evidence : null;
 
+  // Mounted only while a row is open: the content always holds its title (an accessible name).
+  if (!row) return null;
   return (
-    <Dialog open={row !== null} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent size="md" data-testid="ctem-case-event-dialog">
-        {row && (
+        {
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -154,7 +156,7 @@ export function CaseEventDialog({
               )}
             </DialogBody>
           </>
-        )}
+        }
       </DialogContent>
     </Dialog>
   );
