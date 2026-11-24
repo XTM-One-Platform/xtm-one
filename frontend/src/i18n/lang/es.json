@@ -21556,5 +21556,14 @@
   "OpenCRQ sync failed {timeAgo}": "La sincronización de OpenCRQ falló {timeAgo}",
   "Link supporting assets to primary assets": "Vincular los activos de soporte a los activos principales",
   "On by default. Off: primary assets are imported without their supporting assets.": "Activado por defecto. Desactivado: los activos principales se importan sin sus activos de soporte.",
-  "Links each primary asset to the supporting assets OpenCRQ attaches to it, matched by OpenCRQ id or name. A link you add or remove by hand always wins.": "Vincula cada activo principal con los activos de soporte que OpenCRQ le asocia, reconocidos por su identificador de OpenCRQ o su nombre. Un vínculo añadido o eliminado a mano siempre prevalece."
+  "Links each primary asset to the supporting assets OpenCRQ attaches to it, matched by OpenCRQ id or name. A link you add or remove by hand always wins.": "Vincula cada activo principal con los activos de soporte que OpenCRQ le asocia, reconocidos por su identificador de OpenCRQ o su nombre. Un vínculo añadido o eliminado a mano siempre prevalece.",
+  "Asset deleted": "Activo eliminado",
+  "Asset group deleted": "Grupo de activos eliminado",
+  "Software deleted": "Software eliminado",
+  "Delete the asset \"{name}\"?": "¿Eliminar el activo «{name}»?",
+  "Delete the asset group \"{name}\"?": "¿Eliminar el grupo de activos «{name}»?",
+  "Delete the software \"{name}\"?": "¿Eliminar el software «{name}»?",
+  "This asset was entered by hand: it leaves the inventory and its asset groups.": "Este activo se introdujo a mano: sale del inventario y de sus grupos de activos.",
+  "This asset group was entered by hand: it is deleted and its assets stay in the inventory without it.": "Este grupo de activos se introdujo a mano: se elimina y sus activos permanecen en el inventario sin él.",
+  "This software was typed by hand: it is deleted and leaves the assets it was attached to.": "Este software se introdujo a mano: se elimina y deja los activos a los que estaba asociado."
 }
