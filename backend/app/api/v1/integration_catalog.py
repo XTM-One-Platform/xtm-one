@@ -659,6 +659,41 @@ _GITHUB_HEAD_FILTER_KEYS: dict[str, str] = {
 }
 
 
+# The Planhat data models the tools use: the OAuth Client's or the Private
+# App's permissions, in every Planhat guide.
+_PLANHAT_GUIDE_PERMISSIONS = [
+    {
+        "scope": "Companies",
+        "description": "Create, read, update companies with health scores, phases, and custom fields",
+    },
+    {
+        "scope": "Endusers",
+        "description": "Create, read, update contacts/end-user profiles",
+    },
+    {
+        "scope": "Conversations",
+        "description": "Read and create notes, email logs, call logs",
+    },
+    {
+        "scope": "Tasks",
+        "description": "Create, read, update tasks with statuses and due dates",
+    },
+    {
+        "scope": "Opportunities",
+        "description": "Create, read, update sales opportunities with stages and revenue",
+    },
+    {
+        "scope": "Licenses",
+        "description": "Read subscription/license data with MRR and renewal info",
+    },
+    {"scope": "Assets", "description": "Read product assets/instances"},
+    {
+        "scope": "Tickets",
+        "description": "Read support tickets with status and severity",
+    },
+]
+
+
 PROVIDER_CATALOG = {
     # --- Direct LLM-query integrations (query/evaluate external LLMs as tools) ---
     "anthropic": {
@@ -1130,7 +1165,7 @@ PROVIDER_CATALOG = {
             "Calendars.Read.Shared Calendars.ReadWrite.Shared "
             "Chat.Create Chat.Read Chat.ReadBasic Chat.ReadWrite Chat.ReadWrite.All Chat.ManageDeletion.All "
             "ChatMember.Read ChatMember.ReadWrite ChatMessage.Read ChatMessage.Send "
-            "Team.ReadBasic.All "
+            "Team.ReadBasic.All TeamMember.ReadWrite.All "
             "Channel.Create Channel.Delete.All Channel.ReadBasic.All "
             "ChannelMember.Read.All ChannelMember.ReadWrite.All "
             "ChannelMessage.Read.All ChannelMessage.ReadWrite ChannelMessage.Edit ChannelMessage.Send "
@@ -1145,6 +1180,9 @@ PROVIDER_CATALOG = {
             "OnlineMeetingArtifact.Read.All OnlineMeetingAiInsight.Read.All "
             "CallTranscripts.Read.All"
         ),
+        # Team member writes need admin consent in most tenants: a sign-in that
+        # does not obtain it keeps the integration usable (#1829).
+        "optional_scopes": "TeamMember.ReadWrite.All",
         "authorize_url": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
         "token_url": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
         "extra_fields": {
@@ -1219,6 +1257,14 @@ PROVIDER_CATALOG = {
                 {
                     "scope": "ChannelMember.Read.All",
                     "description": "List members of Teams channels",
+                },
+                {
+                    "scope": "ChannelMember.ReadWrite.All",
+                    "description": "Add and remove members of private and shared Teams channels",
+                },
+                {
+                    "scope": "TeamMember.ReadWrite.All",
+                    "description": "Add and remove members of Teams teams (admin consent)",
                 },
                 {
                     "scope": "ChannelMessage.Read.All",
@@ -5888,49 +5934,59 @@ PROVIDER_CATALOG = {
         "category": "integration",
         "integration_category": "business_operations",
         "integration_types": ["crm"],
-        "auth_type": "api_key",
-        "fields": ["api_key"],
+        # OAuth (a Planhat "OAuth Client" of the customer's tenant): each
+        # person signs in with their own Planhat account, through Planhat's
+        # login and so its SSO, and the agent acts with that user's role.
+        # The "inclusive" scope asks for the client's permissions intersected
+        # with the user's role, so a narrower role still authorizes. Planhat's
+        # refresh tokens are single-use: the per-integration refresh lock of
+        # services/token_refresh.py keeps two refreshes from spending one.
+        # A Private App API Access Token stays the user-agnostic alternative.
+        "auth_type": "oauth",
+        "supported_auth_types": ["oauth", "api_key"],
+        "fields": ["client_id", "client_secret", "api_key"],
+        "scopes": "inclusive",
+        "authorize_url": "https://ws.planhat.com/oauth/authorize",
+        "token_url": "https://api.planhat.com/oauth/token",
+        # The catalog's guide covers both modes; the guide button of an
+        # integration (or of the form, once a mode is chosen) shows its mode's.
         "setup_guide": {
-            "title": "Planhat API Setup",
-            "url": "https://www.planhat.com/developers/api/introduction",
+            "title": "Planhat Setup",
+            "url": "https://help.planhat.com/en/articles/14060025-planhat-oauth-clients-overview",
             "steps": [
-                "Log in to Planhat and go to Settings > Private Apps.",
-                "Create a new Private App and name it '{APP_NAME}'.",
-                "Copy the API Access Token.",
-                "Paste the token as the API Key when creating the integration.",
+                "Choose the authentication mode when you create the integration: OAuth, so the agent acts with each person's own Planhat account and role, or an API key, one technical account for everyone.",
+                "OAuth: in Planhat, open App Center > New App > OAuth Client named '{APP_NAME}', with the Redirect URL {base_url}/api/oauth/callback; paste its Client ID and Client Secret, save, then click Authorize.",
+                "API key: in Planhat, create a Private App named '{APP_NAME}' and paste its API Access Token as the API key.",
             ],
-            "permissions": [
-                {
-                    "scope": "Companies",
-                    "description": "Create, read, update companies with health scores, phases, and custom fields",
-                },
-                {
-                    "scope": "Endusers",
-                    "description": "Create, read, update contacts/end-user profiles",
-                },
-                {
-                    "scope": "Conversations",
-                    "description": "Read and create notes, email logs, call logs",
-                },
-                {
-                    "scope": "Tasks",
-                    "description": "Create, read, update tasks with statuses and due dates",
-                },
-                {
-                    "scope": "Opportunities",
-                    "description": "Create, read, update sales opportunities with stages and revenue",
-                },
-                {
-                    "scope": "Licenses",
-                    "description": "Read subscription/license data with MRR and renewal info",
-                },
-                {"scope": "Assets", "description": "Read product assets/instances"},
-                {
-                    "scope": "Tickets",
-                    "description": "Read support tickets with status and severity",
-                },
-            ],
-            "notes": "Planhat uses API Access Tokens for authentication. Tokens are generated from the Private Apps section in Settings. The token provides access based on the app's configured permissions.",
+            "permissions": _PLANHAT_GUIDE_PERMISSIONS,
+            "notes": "OAuth: each person authorizes with their own Planhat account (Planhat's login, and so its SSO), and the agent reads and writes with the intersection of the OAuth Client's permissions and that person's Planhat role. API key: a Private App's API Access Token, whose permissions are the Private App's whatever the person, and whose actions appear as the Private App's.",
+        },
+        "auth_setup_guides": {
+            "oauth": {
+                "title": "Planhat OAuth Setup",
+                "url": "https://help.planhat.com/en/articles/14060025-planhat-oauth-clients-overview",
+                "steps": [
+                    "In Planhat, open App Center > New App > OAuth Client (it needs access to the App Center, usually a system admin's) and name it '{APP_NAME}'.",
+                    "Set the Redirect URL to {base_url}/api/oauth/callback.",
+                    "Set the permission levels of the data models the agents use (the list below). They are a ceiling: each person never gets more than their own Planhat role allows.",
+                    "Save, then copy the Client ID (pk_...) and the Client Secret (sk_..., shown only once).",
+                    "Paste them in the integration's Client ID and Client Secret, save, then click Authorize and approve the permissions on Planhat's consent screen.",
+                    "So that every person acts with their own Planhat account, share the integration (or make it company-managed) with 'Don't share my connected account' on: each person then clicks 'Connect your account' on the integration's page.",
+                ],
+                "permissions": _PLANHAT_GUIDE_PERMISSIONS,
+                "notes": "The sign-in is Planhat's own, so it goes through your company's SSO when Planhat has one. The agent reads and writes with the intersection of the OAuth Client's permissions and the person's Planhat role: a record the person cannot see in Planhat, the agent cannot see either. The access token lasts about an hour and is renewed automatically; the renewal expires after a year, when the person authorizes again. A new Client Secret disconnects everyone: they authorize again.",
+            },
+            "api_key": {
+                "title": "Planhat API Key Setup",
+                "url": "https://www.planhat.com/developers/api/authentication-limits",
+                "steps": [
+                    "In Planhat, open Settings > Private Apps and create a Private App named '{APP_NAME}'.",
+                    "Set the Private App's permissions on the data models the agents use (the list below).",
+                    "Copy its API Access Token (shown once) and paste it as the API key of the integration.",
+                ],
+                "permissions": _PLANHAT_GUIDE_PERMISSIONS,
+                "notes": "The token belongs to the Private App, not to a person: every agent acts with the Private App's permissions whoever asked, and Planhat records the actions as the Private App's. For each person's own account and role, use OAuth instead.",
+            },
         },
     },
     "metabase": {
@@ -8460,6 +8516,49 @@ PROVIDER_CATALOG = {
             ),
         },
     },
+    "kubernetes": {
+        "name": "Kubernetes",
+        "description": (
+            "Kubernetes, read-only - a cluster's services with their type, cluster IP, "
+            "ports, node ports and external IPs, its namespaces and its nodes' addresses"
+        ),
+        "logo": "/logos/kubernetes.svg",
+        "category": "integration",
+        "integration_category": "exposure_management",
+        "integration_types": ["cloud_security"],
+        "available_events": [],
+        # A service account token, sent as a Bearer token.
+        "auth_type": "api_key",
+        "supported_auth_types": ["api_key"],
+        "fields": ["api_key"],
+        "extra_fields": {
+            "base_url": "API server URL (e.g. https://k8s.company.com:6443, the 'server' of your kubeconfig)",
+            "ca_cert": "Optional - the cluster CA certificate (PEM, the base64-decoded 'certificate-authority-data' of your kubeconfig) when the API server's certificate is not publicly signed",
+        },
+        "extra_field_required_when": {"base_url": {}},
+        "setup_guide": {
+            "title": "Kubernetes Read-only Service Account Setup",
+            "url": "https://kubernetes.io/docs/reference/access-authn-authz/service-accounts-admin/",
+            "steps": [
+                "Create a service account, e.g. 'kubectl create serviceaccount copilot-reader -n kube-system'.",
+                "Create a ClusterRole with get and list on services, namespaces and nodes only, and bind it to the service account with a ClusterRoleBinding.",
+                "Create a token for it, e.g. 'kubectl create token copilot-reader -n kube-system --duration=8760h' (or a long-lived Secret of type kubernetes.io/service-account-token).",
+                "Paste the token in the 'API Key' field, the API server URL in 'base_url' and, for a private CA, the cluster CA certificate (PEM) in 'ca_cert'.",
+                "Click 'Test Connection' (lists one namespace).",
+            ],
+            "permissions": [
+                {
+                    "scope": "get, list on services, namespaces, nodes (ClusterRole)",
+                    "description": "List services with their ports and node ports, namespaces, and the nodes' addresses. Nothing is written.",
+                },
+            ],
+            "notes": (
+                "Every tool is a read. The token is stored encrypted here and only sent to the "
+                "configured API server, whose certificate is verified against the pasted CA or "
+                "the public roots, never skipped."
+            ),
+        },
+    },
     "zendesk": {
         "name": "Zendesk",
         "description": (
@@ -10431,6 +10530,8 @@ _SHAPED_DUMMIES: dict[str, str] = {
     "rydoo": "__dummy__||__dummy__",
     # Spendesk's token is environment||client_id||client_secret.
     "spendesk": "production||__dummy__||__dummy__",
+    # Kubernetes' token is base_url||ca_segment||token (no CA: an empty segment).
+    "kubernetes": "https://dummy.example.com||||__dummy__",
 }
 
 # Sentinel needs a 6-part compound token (tenant||client_id||secret||sub||rg||ws)

@@ -4,7 +4,8 @@
 and every job used to run: a frontend lock bump rebuilt the sixteen images
 when only nodejs-dev bakes that lock. Its ``changes`` job now routes the pull
 request's diff: python-dev for the backend's lock, nodejs-dev for the
-frontend's, every image for backend/sandbox or the workflow itself. Here its
+frontend's, every image for backend/sandbox, .xtm-one/stores.py (baked in
+every toolchain image) or the workflow itself. Here its
 script runs on a real diff, and every path that starts the workflow builds
 something.
 """
@@ -75,7 +76,8 @@ def _outputs(sandbox: bool, targets: list[str]) -> dict[str, str]:
         (["frontend/yarn.lock"], False, ["nodejs-dev"]),
         (["frontend/package.json", "frontend/src/app.ts"], False, ["nodejs-dev"]),
         (["backend/uv.lock"], False, ["python-dev"]),
-        ([".xtm-one/stores.py"], False, ["python-dev"]),
+        # Every toolchain image bakes the stores runner (#1858).
+        ([".xtm-one/stores.py"], True, BOTH),
         (["backend/pyproject.toml", "frontend/.yarnrc.yml"], False, BOTH),
         (["backend/sandbox/requirements.sandbox.cti.txt"], True, BOTH),
         ([".github/workflows/sandbox-images.yml"], True, BOTH),

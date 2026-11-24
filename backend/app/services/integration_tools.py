@@ -112,6 +112,8 @@ from app.integrations.providers.infoblox import build_tools as infoblox_tools
 from app.integrations.providers.intel471 import build_tools as intel471_tools
 from app.integrations.providers.intune import build_tools as intune_tools
 from app.integrations.providers.jira import build_tools as jira_tools
+from app.integrations.providers.kubernetes import build_tools as kubernetes_tools
+from app.integrations.providers.kubernetes import encode_ca_segment as kubernetes_ca_segment
 from app.integrations.providers.letsignit import build_tools as letsignit_tools
 from app.integrations.providers.linkedin import build_tools as linkedin_tools
 from app.integrations.providers.logrhythm import build_tools as logrhythm_tools
@@ -1100,6 +1102,7 @@ PROVIDER_TOOLS = {
     "zendesk": zendesk_tools,
     "mattermost": mattermost_tools,
     "anyrun": anyrun_tools,
+    "kubernetes": kubernetes_tools,
 }
 
 #: Provider → the hosts it serves media from (its module's ``MEDIA_HOSTS``,
@@ -2387,18 +2390,26 @@ async def _report_invalid_config(
     absence: the turn's ``missing_integration_bindings`` gets an
     ``integration_invalid`` entry naming the keys (the turn tells the model), and
     the owners are notified once per invalid state. Any other reason for a
-    missing credential (an expired token, a revoked secret) is left as it was.
-    Never raises.
+    missing credential (never signed in, an expired token, a revoked secret)
+    gets an ``integration_not_connected`` entry, so the turn tells the model
+    the integration is bound and unconnected instead of leaving it out
+    silently. Never raises.
     """
-    if integ is None or not getattr(integ, "extra_config_enc", None):
+    if integ is None:
         return
     try:
         from app.api.v1.integration_catalog import missing_required_extra_fields
-        from app.services.integration_credentials import invalid_config_binding
+        from app.services.integration_credentials import (
+            invalid_config_binding,
+            not_connected_binding,
+        )
         from app.services.integration_invalid_notice import notify_integration_invalid_once
 
-        missing = missing_required_extra_fields(integ.provider, await _reveal_extra(integ))
+        extra = await _reveal_extra(integ) if getattr(integ, "extra_config_enc", None) else {}
+        missing = missing_required_extra_fields(integ.provider, extra)
         if not missing:
+            if isinstance(missing_bindings, list):
+                missing_bindings.append(not_connected_binding(integ, binding_key=binding_key))
             return
         logger.warning(
             "Integration '%s' (%s) is invalid: %s missing in extra_config - its tools are unavailable",
@@ -3622,6 +3633,31 @@ async def _get_token(
             f"{workspace_url}||{databricks_client_id}||{warehouse_id}"
             f"||{databricks_secret}"
         )
+
+    # --- Kubernetes (service account token, API server URL, optional CA) ---
+    # ``base_url||ca_segment||token``: the CA PEM rides base64url-encoded
+    # (``encode_ca_segment``) so it never holds ``||``; the token is the greedy
+    # last segment. A missing base URL keeps the delimiters, and the builder
+    # then answers no tools rather than reaching a wrong host.
+    if provider == "kubernetes":
+        k8s_extra: dict = {}
+        if integ.extra_config_enc:
+            try:
+                k8s_extra = await _reveal_extra(integ)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to decrypt extra_config for '%s' (kubernetes): %s",
+                    integ.name,
+                    format_exception_message(exc),
+                )
+        k8s_url = str(k8s_extra.get("base_url") or "").strip().rstrip("/")
+        if not k8s_url:
+            logger.warning(
+                "Integration '%s' (kubernetes) has no base_url. Edit the integration and set the API server URL.",
+                integ.name,
+            )
+        k8s_token = (await reveal_field(integ, "api_key_enc")) or ""
+        return f"{k8s_url}||{kubernetes_ca_segment(k8s_extra.get('ca_cert'))}||{k8s_token}"
 
     # --- Supabase (Management API personal access token, optional project) ---
     # The provider needs ``project_ref||database_segment||access_token``; the

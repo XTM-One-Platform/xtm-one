@@ -18,6 +18,8 @@ If you have permission, `New Integration` starts a new connection. Credentials a
 
 Opening an integration shows a header with the connection status and the actions that make sense for it — a setup guide for provider prerequisites, `Test connection` to validate the live connection, `Authorize` or `Re-authorize` to resolve OAuth state, and delete. The detail page itself is organized into `Overview`, `Configuration`, and `Activity` tabs.
 
+A provider whose authentication modes are set up apart (Planhat: OAuth or an API key) has one setup guide per mode: the creation page shows the guide of the mode you pick, and an integration's page the guide of the mode it uses. The catalog card shows a guide that covers every mode.
+
 When an integration is built on an open-source project, its setup guide credits that project under the title: its name links to the project's repository, followed by its author and its license. The Nova integration, for example, credits NOVA by Thomas Roccia, released under the MIT license; see [Prompt safety (Nova)](../../administration/prompt-safety.md).
 
 Some integrations add pages of their own after those three tabs — the `API Spec` of an integration imported from an OpenAPI or Swagger document, or the rules of the Nova integration, which only administrators see. These pages are tabs of the integration: open the integration from `Tools & Integrations > Integrations` to reach them. Integrations are never listed one by one in the left navigation. Anyone who opens such a page from a link without being allowed to see it is told it is not available to them, with a way back to the `Overview`.
@@ -477,6 +479,25 @@ A Mattermost integration lets an agent post in the channels a SOC team watches a
 - **Reading.** `list_mattermost_channel_posts` reads a channel's recent messages, newest first, with their post ids, so an agent can follow up in the right thread; reactions can be read, added and removed.
 - **Channels and people.** Channels can be created, archived and restored, members added; users listed, looked up by email, invited to a team by email or deactivated.
 - The token reads only the channels its account is a member of. A read-only binding keeps the reading tools; posting and every change ask for approval unless whitelisted.
+
+### Kubernetes: a read-only view of a cluster's services
+
+A Kubernetes integration lets an agent answer "what does this cluster expose" without a shell: the `kubectl get svc -A` read, and the node addresses a node port is reached on.
+
+- **Connecting.** Create a service account bound to a ClusterRole that grants only `get` and `list` on `services`, `namespaces` and `nodes`, create a token for it, paste the token in the API Key field and set *base_url* to the API server URL (the `server` of your kubeconfig). When the API server's certificate is signed by the cluster's own CA, paste that CA (PEM) in *ca_cert*: the certificate is verified against it, never skipped.
+- **Services.** `list_kubernetes_services` lists every service of the cluster, or of one namespace, with its type, cluster IP, ports with their node ports and target ports, external IPs and load balancer addresses; `service_type` keeps one type (for example `NodePort` or `LoadBalancer`).
+- **Namespaces and nodes.** `list_kubernetes_namespaces` lists the namespaces; `list_kubernetes_nodes` lists the nodes, whether they are ready or cordoned, and their internal and external addresses.
+- Every tool is a read: nothing is written to the cluster.
+
+### Planhat: each person's own account and permissions
+
+A Planhat integration connects in one of two ways, chosen with `Authentication mode` when you create it. Its `Setup guide` button shows the steps of the mode chosen: the OAuth Client in Planhat's App Center for OAuth, the Private App for an API key.
+
+- **OAuth: each person's own account.** A Planhat admin opens `App Center > New App > OAuth Client` in Planhat, sets its Redirect URL to the callback shown in the setup guide (`<your XTM One address>/api/oauth/callback`), and grants the data models the agents use. Paste the Client ID (`pk_...`) and the Client Secret (`sk_...`) in the integration, save, and click `Authorize`. The sign-in is Planhat's own, so it goes through your company's SSO when Planhat is set up with one.
+- **What the agent can do.** With OAuth, the agent reads and writes with the permissions both the OAuth Client and the person's Planhat role allow: a record the person cannot see in Planhat, the agent cannot see either.
+- **Everyone with their own account.** Share the integration (or make it company-managed) with `Don't share my connected account` on: each person then clicks `Connect your account` on the integration's page and the agent acts as them (see [Shared without the connected account](#shared-without-the-connected-account-each-person-authorizes-their-own)).
+- **How long a connection lasts.** The access token is renewed every hour, automatically. The renewal itself expires after a year: the person then authorizes again.
+- **API key instead.** A Planhat Private App's API Access Token: one technical account for everyone, with the Private App's permissions whatever the person, and every action recorded in Planhat as the Private App's.
 
 ### Zendesk: remediation and incident tickets
 

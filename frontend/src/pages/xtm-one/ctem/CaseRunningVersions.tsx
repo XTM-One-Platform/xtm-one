@@ -17,6 +17,7 @@
 import { Icon } from "@filigran/design-system";
 import type { ComponentProps } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CASE_SECTION_ICON, CaseCardTitleText } from "./case-icons";
 import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
 import { InfoTip } from "@/components/ui/info-tip";
 import { ProviderLogo } from "@/components/ui/provider-logo";
@@ -210,7 +211,9 @@ export function CaseRunningVersions({
   return (
     <Card data-testid="ctem-case-running-versions">
       <CardHeader>
-        <CardTitle>{t_i18n("Running versions")}</CardTitle>
+        <CardTitle>
+          <CaseCardTitleText icon={CASE_SECTION_ICON.running_versions}>{t_i18n("Running versions")}</CaseCardTitleText>
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 content-base">
         {versions ? (

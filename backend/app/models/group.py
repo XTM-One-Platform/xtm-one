@@ -53,6 +53,18 @@ class Group(Base):
         Boolean, nullable=False, default=False, server_default=expression.false()
     )
 
+    # The CTEM right the group grants its members (``services/ctem_access.py``,
+    # the one reader): ``view`` reads the organization's system signals and
+    # cases, ``decide`` also acts on them and answers the case gates. NULL = no
+    # CTEM right beyond what the member records and reads in the products.
+    ctem_access: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)
+
+    # With ``decide``: whether the members are notified of the case gates
+    # (on by default); off, they decide from the screens with no bell.
+    ctem_notify: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=expression.true()
+    )
+
     # What the group IS for the analytics: ``org_unit``, ``access``,
     # ``distribution``, or ``auto`` (not classified: every group starts there,
     # a SAML-created one included) - ``GROUP_KINDS``.

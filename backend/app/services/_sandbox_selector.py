@@ -32,10 +32,15 @@ import logging
 import math
 import random
 import time
+from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 from opensandbox.config import ConnectionConfig
 
 from app.core.metrics import get_or_create_counter, get_or_create_histogram
+
+if TYPE_CHECKING:
+    from opensandbox.models.sandboxes import NetworkPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +73,53 @@ POOL_BOUND_KEY_PREFIX = "toolchain-"
 def is_pool_bound(image_key: str) -> bool:
     """Whether *image_key*'s sandboxes reach their network only through their Pool."""
     return image_key.startswith(POOL_BOUND_KEY_PREFIX)
+
+
+# What a sandbox created with open egress (CODE_INTERPRETER_OPEN_EGRESS) never
+# reaches: the cloud metadata endpoints, the cluster's and the cloud's internal
+# names, and every non-public range (loopback, RFC 1918, CGNAT, link-local,
+# IPv6 unique-local and link-local), so the platform's own services, its
+# database and Redis stay out of reach. Deny rules come before the default
+# allow and a deny always wins over an allow in the egress sidecar.
+OPEN_EGRESS_DENY: tuple[str, ...] = (
+    "169.254.169.254",
+    "metadata.google.internal",
+    "metadata.azure.com",
+    "*.internal",
+    "*.local",
+    "*.localdomain",
+    "*.svc",
+    "*.cluster.local",
+    "localhost",
+    "0.0.0.0/8",
+    "10.0.0.0/8",
+    "100.64.0.0/10",
+    "127.0.0.0/8",
+    "169.254.0.0/16",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+    "::1/128",
+    "fc00::/7",
+    "fd00:ec2::254",
+    "fe80::/10",
+)
+
+
+def egress_policy(egress_allow_list: Iterable[str], *, open_egress: bool = False) -> NetworkPolicy:
+    """The OpenSandbox network policy of a sandbox.
+
+    Default deny with *egress_allow_list* allowed; with *open_egress*, default
+    allow with :data:`OPEN_EGRESS_DENY` denied first (the allow-list adds nothing
+    then, every public host being allowed).
+    """
+    from opensandbox.models.sandboxes import NetworkPolicy, NetworkRule
+
+    if open_egress:
+        return NetworkPolicy(
+            defaultAction="allow", egress=[NetworkRule(action="deny", target=t) for t in OPEN_EGRESS_DENY]
+        )
+    egress = [NetworkRule(action="allow", target=t) for t in egress_allow_list]
+    return NetworkPolicy(defaultAction="deny", egress=egress or None)
 
 
 # Characters of the server's own reason a create failure carries.
@@ -475,6 +527,7 @@ async def _create_opensandbox(
     resource: dict[str, str],
     env: dict[str, str] | None = None,
     retry_timeouts_for: float | None = None,
+    open_egress: bool = False,
 ):
     """Create an OpenSandbox container for *image_key* (``"python"``/``"nodejs"``).
 
@@ -501,6 +554,10 @@ async def _create_opensandbox(
     message says the platform (not the tool) failed, and for a timeout the
     stage, the attempts and the seconds spent.
 
+    *open_egress* creates it under :func:`egress_policy`'s default-allow policy
+    (the code interpreter with ``CODE_INTERPRETER_OPEN_EGRESS``) instead of the
+    default-deny one.
+
     *retry_timeouts_for* (seconds) is for a caller whose create does not hold
     a tool call open (the workspace command container, created past the
     call): a 504 is then retried, with a growing pause, until that window
@@ -517,7 +574,6 @@ async def _create_opensandbox(
 
     from opensandbox import Sandbox
     from opensandbox.exceptions.sandbox import SandboxException
-    from opensandbox.models.sandboxes import NetworkPolicy, NetworkRule
 
     from app.core.config import settings
     from app.core.utils import format_exception_message
@@ -538,7 +594,7 @@ async def _create_opensandbox(
     image = settings.opensandbox_images.get(image_key)
     # The caller's own variables win over the thread caps.
     env = {**native_thread_env(resource.get("cpu")), **(env or {})}
-    egress = [NetworkRule(action="allow", target=t) for t in egress_allow_list]
+    network_policy = egress_policy(egress_allow_list, open_egress=open_egress)
     pool_name = settings.opensandbox_k8s_pool_names.get(pool_key or image_key)
 
     if image is None:
@@ -585,7 +641,7 @@ async def _create_opensandbox(
                 connection_config=_build_opensandbox_config(),
                 timeout=timedelta(seconds=timeout_seconds),
                 env=env,
-                network_policy=NetworkPolicy(default_action="deny", egress=egress or None),
+                network_policy=network_policy,
                 resource=resource,
                 extensions={"poolRef": pool_name} if pooled and pool_name else None,
             )

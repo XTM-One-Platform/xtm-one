@@ -352,6 +352,13 @@ async def open_from_signal(
         db.add(case)
         await db.flush()
         db.add(_event(case.id, rules.SYSTEM_ACTOR, "created", now, to_value=fix.key, reason=f"signal {signal.id}"))
+        # #1736 slice 3: the owner comes from the asset or asset group owner, else the instance default.
+        from app.services.ctem_case_owner import owner_for_signal
+
+        owner, how = await owner_for_signal(db, signal)
+        if owner is not None:
+            case.owner_user_id = owner
+            db.add(_event(case.id, rules.SYSTEM_ACTOR, "owner", now, to_value=str(owner), reason=how))
     else:
         # A second signal on the same fix: the most urgent severity and the earliest SLA win.
         if severity and (case.severity is None or _SEVERITY_RANK[severity] < _SEVERITY_RANK.get(case.severity, 9)):
@@ -468,6 +475,12 @@ def _transition(
 
 #: The asset groups one validation reference names in its run order (CTEM-12-UI).
 RUN_ORDER_MAX = 20
+#: The remediation kinds a version inventory resolves (a patch or an upgrade): a test never does.
+VERSION_REMEDIATIONS: tuple[str, ...] = ("patch", "upgrade")
+#: What a validation reference proves, as the agent says it: the fix in place (a version inventory), or a test.
+REMEDIATION_EVIDENCE = "remediation"
+VALIDATION_EVIDENCE = "validation"
+EVIDENCE_TYPES: tuple[str, ...] = (REMEDIATION_EVIDENCE, VALIDATION_EVIDENCE)
 
 
 def _upsert_validation(validations: list[dict[str, Any]], entry: dict[str, Any]) -> tuple[list[dict[str, Any]], bool]:
@@ -506,10 +519,8 @@ async def record_validation(
     result: str,
     mitigation_only: bool = False,
     note: str | None = None,
-    safe_mode: bool | None = None,
     run_order: list[str] | None = None,
     conclusive: bool | None = None,
-    inject_class: str | None = None,
     evidence_type: str | None = None,
     actor: str = rules.SYSTEM_ACTOR,
     events: PendingEvents | None = None,
@@ -520,17 +531,13 @@ async def record_validation(
     ``result``: ``passed`` (the exposure is gone), ``not_exposed`` (it never
     was), ``failed`` (still exposed) or ``pending``. ``mitigation_only``: the
     pass proves a mitigation, not the permanent fix, so the case goes to
-    ``mitigated_watching`` and the re-test stays on. ``safe_mode`` (CTEM-12):
-    true when only read-only injects ran, false when a non-read-only one ran,
-    None when the module did not say. ``run_order``: the target asset groups in
-    the order they were tested (at most 20 names). ``conclusive`` (#1458):
-    false when a pass only says an exploit attempt did not land (it proves
-    nothing, so the case stays open with its remediation), true when the check
-    proves the exposure gone (the fixed version read), None when the writer did
-    not say (a scanner closing the finding at source). ``inject_class``: the
-    platform's reading of the inject that ran (``ctem_inject_effects``); an
-    intrusive or unknown inject is never recorded as safe mode, and its pass is
-    inconclusive unless ``conclusive`` is true. ``evidence_type`` (#1500):
+    ``mitigated_watching`` and the re-test stays on. ``run_order``: the target
+    asset groups in the order they were tested (at most 20 names). ``conclusive``
+    (#1458), set by the agent that read the check: false when a pass proves
+    nothing (the case stays open with its remediation), true when the check
+    proves the exposure gone, None when the writer did not say (a scanner
+    closing the finding at source). The platform never derives it from what the
+    inject is (#1810). ``evidence_type`` (#1500):
     ``remediation`` (the fix in place: a version inventory showing every
     in-scope endpoint at or above the fixed build) or ``validation`` (a
     detection or behaviour test). A pass that proves nothing is stored as
@@ -541,16 +548,6 @@ async def record_validation(
     a conclusive check (the fixed version read) count as remediation, anything
     else as validation, recorded and never resolving. The caller commits.
     """
-    from app.services.ctem_inject_effects import (
-        CLASSES,
-        EVIDENCE_TYPES,
-        READ_ONLY,
-        REMEDIATION_EVIDENCE,
-        VALIDATION_EVIDENCE,
-        VERSION_REMEDIATIONS,
-        checked_safe_mode,
-    )
-
     if result not in VALIDATION_RESULTS:
         raise rules.CaseRuleError(f"unknown validation result {result!r}")
     if not (provider or "").strip() or not (ref or "").strip():
@@ -566,13 +563,6 @@ async def record_validation(
         "mitigation_only": bool(mitigation_only),
         "note": (note or "").strip()[:500] or None,
     }
-    if inject_class is not None and inject_class not in CLASSES:
-        raise rules.CaseRuleError(f"unknown inject class {inject_class!r}")
-    if inject_class is not None:
-        entry["inject_class"] = inject_class
-        safe_mode, _warning = checked_safe_mode(safe_mode, inject_class)
-        if conclusive is None and inject_class != READ_ONLY:
-            conclusive = False
     if evidence_type is not None and evidence_type not in EVIDENCE_TYPES:
         raise rules.CaseRuleError(f"unknown evidence type {evidence_type!r}")
     if (case.remediation_kind or "") in VERSION_REMEDIATIONS:
@@ -585,8 +575,6 @@ async def record_validation(
             conclusive = False
     elif evidence_type is not None:
         entry["evidence_type"] = evidence_type
-    if safe_mode is not None:
-        entry["safe_mode"] = bool(safe_mode)
     if conclusive is not None:
         entry["conclusive"] = bool(conclusive)
     order = [str(name).strip()[:120] for name in (run_order or []) if str(name).strip()][:RUN_ORDER_MAX]

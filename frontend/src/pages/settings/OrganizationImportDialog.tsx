@@ -54,6 +54,7 @@ import {
   MIN_CRITICALITY_LABELS,
   filterValueLabel,
   keepsSourceOrder,
+  linkOptionOn,
   type FilterKey,
 } from "@/lib/organization-import-filters";
 import { IMPORT_SOURCE_NAMES, IMPORT_SOURCE_PROVIDER } from "@/lib/organization-profile";
@@ -90,7 +91,7 @@ const SECTION_LABELS = {
   assets: "Assets",
   asset_groups: "Asset groups",
   ai_systems: "AI systems",
-  tech_stack: "Software",
+  software: "Software",
   crown_jewels: "Primary assets",
   pirs: "PIRs",
 } as const satisfies Record<ImportSectionKey, string>;
@@ -100,7 +101,7 @@ const SECTION_HINTS = {
   assets: "Hosts, applications and services to protect.",
   asset_groups: "The groups your assets are organized into.",
   ai_systems: "The AI models and agents your teams test.",
-  tech_stack: "The security products already in place.",
+  software: "The security products already in place.",
   crown_jewels: "The assets your business cannot afford to lose.",
   pirs: "The intelligence needs your agents follow.",
 } as const satisfies Record<ImportSectionKey, string>;
@@ -109,7 +110,7 @@ const SECTION_GLYPHS: Record<ImportSectionKey, ElementType> = {
   assets: glyph("server"),
   asset_groups: glyph("network"),
   ai_systems: glyph("bot"),
-  tech_stack: glyph("shield-check"),
+  software: glyph("shield-check"),
   crown_jewels: glyph("key-round"),
   pirs: glyph("file-text"),
 };
@@ -154,6 +155,10 @@ const FILTER_HELP = {
   created_after: { helper: "Only Systems created on or after this day. Empty: any date.", info: "OpenCTI's creation date of the System." },
   min_criticality: { helper: "This level and every level above it.", info: "OpenCRQ's criticality of the supporting asset. Default: High, so High and Very high are imported." },
   tenant_id: { helper: "Empty: your default OpenCRQ tenant.", info: "The OpenCRQ tenant to read, when you have several." },
+  link_supporting_assets: {
+    helper: "On by default. Off: primary assets are imported without their supporting assets.",
+    info: "Links each primary asset to the supporting assets OpenCRQ attaches to it, matched by OpenCRQ id or name. A link you add or remove by hand always wins.",
+  },
   pir_ids: { helper: "Only these PIRs. Empty: every PIR of OpenCTI.", info: "Picked from the PIRs of your connected OpenCTI." },
   search: { helper: "Only names holding this text. Empty: every name.", info: "Matched by the source on the name, as its own search does." },
   operating_system: { helper: "Only devices on these systems. Empty: every system.", info: "The operating system the source reports for the device." },
@@ -442,7 +447,7 @@ const MAPPINGS: Record<string, { fields: ProfileField[]; rows: MappingRow[] }> =
       { to: "exposure", from: ["asset_internet_facing"], note: "aiExposure" },
     ],
   },
-  "tech_stack:openaev": { fields: ["product"], rows: [{ to: "product", from: ["security_platform_name"] }] },
+  "software:openaev": { fields: ["product"], rows: [{ to: "product", from: ["security_platform_name"] }] },
   "crown_jewels:opencrq": {
     fields: ["name", "criticality", "owner"],
     rows: [
@@ -464,14 +469,17 @@ interface Props {
   quickSetupPending?: boolean;
   /**
    * The sections offered (#1367, points 4 and 5): CTEM > Inventory > Sources imports the inventory sections, Settings >
-   * Organization the business profile ones (primary assets, PIRs). Every section when omitted.
+   * Organization the business profile ones (PIRs). Every section when omitted.
    */
   sections?: readonly ImportSectionKey[];
 }
 
-/** The sections each surface imports into (#1367): the same split as the backend's SECTION_SCOPES. */
-export const INVENTORY_IMPORT_SECTIONS = ["assets", "asset_groups", "tech_stack", "ai_systems"] as const satisfies readonly ImportSectionKey[];
-export const PROFILE_IMPORT_SECTIONS = ["crown_jewels", "pirs"] as const satisfies readonly ImportSectionKey[];
+/**
+ * The sections each surface imports into (#1367): the same split as the backend's SECTION_SCOPES. Primary assets are an
+ * Inventory source since #1754 (their OpenCRQ sync runs with the asset sources), so Sources > Add source offers them.
+ */
+export const INVENTORY_IMPORT_SECTIONS = ["assets", "asset_groups", "software", "ai_systems", "crown_jewels"] as const satisfies readonly ImportSectionKey[];
+export const PROFILE_IMPORT_SECTIONS = ["pirs"] as const satisfies readonly ImportSectionKey[];
 
 export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, quickSetupPending, sections: offered }: Props) {
   const { t_i18n } = useFormatter();
@@ -656,6 +664,19 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
           info={t_i18n(FILTER_HELP[key].info)}
           checked={filters[key] === "true"}
           onCheckedChange={(checked) => setFilter(key, checked ? "true" : "")}
+        />
+      );
+    // On unless "false" (#1591): the one default-on switch, stored only when turned off.
+    if (key === "link_supporting_assets")
+      return (
+        <SettingsSwitchField
+          key={key}
+          id={id}
+          label={t_i18n(FILTER_LABELS[key])}
+          helper={t_i18n(FILTER_HELP[key].helper)}
+          info={t_i18n(FILTER_HELP[key].info)}
+          checked={linkOptionOn(filters)}
+          onCheckedChange={(checked) => setFilter(key, checked ? "" : "false")}
         />
       );
     const control = () => {

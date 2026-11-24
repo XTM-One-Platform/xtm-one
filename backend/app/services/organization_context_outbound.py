@@ -53,7 +53,7 @@ DIRECTIONS: dict[tuple[str, str], tuple[tuple[str, ...], str]] = {
     ("pirs", "opencti"): ((INBOUND,), "Planned: OpenCTI PIR writes are not wired for syncs yet."),
     ("assets", "opencti"): ((INBOUND,), "OpenCTI Systems are owned by its connectors."),
     ("ai_systems", "openaev"): ((INBOUND, OUTBOUND), ""),
-    ("tech_stack", "openaev"): ((INBOUND,), "OpenAEV software inventory is read from its agents."),
+    ("software", "openaev"): ((INBOUND,), "OpenAEV software inventory is read from its agents."),
 }
 
 #: Supporting assets an outbound run creates with: a crown jewel carries no OpenCRQ category.

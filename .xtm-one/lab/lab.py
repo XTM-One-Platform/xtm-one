@@ -1718,7 +1718,7 @@ LAB_ORG_SYNCED_ROWS = {
         {"name": "Customer data lake", "criticality": "high", "external_id": "lab-opencrq-asset-2"},
         {"name": "Internal wiki", "criticality": "low"},
     )),
-    "tech_stack": ("openaev", (
+    "software": ("openaev", (
         {"vendor": "Microsoft", "product": "Exchange Server", "external_id": "lab-openaev-software-1"},
         {"vendor": "Fortinet", "product": "FortiOS", "external_id": "lab-openaev-software-2"},
         {"vendor": "Atlassian", "product": "Confluence Data Center"},
@@ -6084,21 +6084,18 @@ def seed_ctem_screens(token: str, base: str) -> dict[str, dict[str, str]]:
 
     ``lab_asgi`` answers the Cases source read with ``ctem_sample.SCREENS_ISSUES``; this runs the real recompute
     (``POST /ctem-cases/recompute``), which groups them and writes the cases, then reads the list back. A restart
-    recomputes into the same cases (stable keys); a 429 (one recompute per minute) keeps the cases already there.
+    recomputes into the same cases (stable keys).
 
     Since #1529 the recompute opens a case only through the scope gate, so the scope comes first
     (:func:`seed_ctem_screens_scope`): without it every issue is a watchlisted signal and the list is empty.
+
+    A 429 means the per-user slot (one recompute per minute) is taken, often by a background refresh a list
+    read started before the scope existed, which wrote no case: the seed waits the window out and recomputes
+    again (:func:`_ctem_screens_recompute`), so a twin lab never starts with 0 cases (gap
+    lab-ctem-screens-cases-seed-flaky).
     """
     seed_ctem_screens_scope(token)
-    try:
-        answer = api("POST", "/ctem-cases/recompute?vertical=cyber", token)
-    except RuntimeError as exc:
-        if ": 429 " not in str(exc):
-            raise
-        answer = {"applied": True}
-    if not isinstance(answer, dict) or not answer.get("applied"):
-        raise RuntimeError(f"the CTEM cases recompute answered {str(answer)[:300]}")
-    listed = api("GET", "/ctem-cases?vertical=cyber&limit=50", token)
+    listed = _ctem_screens_recompute(token)
     cases = listed.get("cases") if isinstance(listed, dict) else None
     if not cases or len(cases) < 3:
         raise RuntimeError(f"the CTEM cases list answered {str(listed)[:300]}")
@@ -6111,6 +6108,39 @@ def seed_ctem_screens(token: str, base: str) -> dict[str, dict[str, str]]:
         f"CTEM cases ({len(cases)})": {"id": ",".join(c["id"] for c in cases), "url": f"{base}/ctem/cases"},
         "CTEM stages scored and funnel": {"id": ",".join(scored), "url": f"{base}/ctem/prioritization"},
     }
+
+
+#: Seconds the seed waits for the recompute slot to free (the API's window is 60 s), and its attempts.
+CTEM_SCREENS_RECOMPUTE_WAIT = 62
+CTEM_SCREENS_RECOMPUTE_ATTEMPTS = 3
+
+
+def _ctem_screens_recompute(token: str, sleep=time.sleep) -> dict | list:
+    """Recompute the cases and read the list until it holds 3 cases or the attempts run out.
+
+    A 429 (slot taken) or a list under 3 cases waits :data:`CTEM_SCREENS_RECOMPUTE_WAIT` seconds and recomputes
+    again; a recompute answering ``applied`` false raises at once (a product did not answer). Answers the last list.
+    """
+    listed: dict | list = {}
+    for attempt in range(CTEM_SCREENS_RECOMPUTE_ATTEMPTS):
+        if attempt:
+            sleep(CTEM_SCREENS_RECOMPUTE_WAIT)
+        try:
+            answer = api("POST", "/ctem-cases/recompute?vertical=cyber", token)
+        except RuntimeError as exc:
+            if ": 429 " not in str(exc):
+                raise
+            log(f"CTEM cases recompute slot taken (attempt {attempt + 1}): waiting {CTEM_SCREENS_RECOMPUTE_WAIT}s")
+            continue
+        if not isinstance(answer, dict) or not answer.get("applied"):
+            raise RuntimeError(f"the CTEM cases recompute answered {str(answer)[:300]}")
+        listed = api("GET", "/ctem-cases?vertical=cyber&limit=50", token)
+        cases = listed.get("cases") if isinstance(listed, dict) else None
+        if cases and len(cases) >= 3:
+            return listed
+    if not listed:
+        listed = api("GET", "/ctem-cases?vertical=cyber&limit=50", token)
+    return listed
 
 
 def seed_ctem_gates(token: str, base: str) -> dict[str, dict[str, str]]:
@@ -8273,15 +8303,17 @@ def seed_org_synced(token: str, base: str) -> dict[str, str]:
     current = api("GET", "/organization-context", token)
     profile = dict((current.get("profile") if isinstance(current, dict) else None) or LAB_ORG_PROFILE)
     expected: dict[str, set[tuple[str, str]]] = {}
+    # The sync section ``software`` (#1495) still fills the profile list ``tech_stack``.
+    fields = {"software": "tech_stack"}
     for section, (source, rows) in LAB_ORG_SYNCED_ROWS.items():
         sync = syncs.get((section, source)) or _created(api("POST", "/organization-context/syncs", token, {
             "section": section, "source": source, "frequency": "daily", "hour": 6, "minute": 0,
             "timezone": "UTC", "enabled": False,
         }))
-        profile[section] = [
+        profile[fields.get(section, section)] = [
             {**row, "source": source, "sync_id": sync} if row.get("external_id") else dict(row) for row in rows
         ]
-        expected[section] = {(str(row["external_id"]), sync) for row in rows if row.get("external_id")}
+        expected[fields.get(section, section)] = {(str(row["external_id"]), sync) for row in rows if row.get("external_id")}
     saved = api("PUT", "/organization-context", token, {"profile": profile, "source": "form"})
     version = saved.get("version") if isinstance(saved, dict) else None
     read = api("GET", "/organization-context", token)

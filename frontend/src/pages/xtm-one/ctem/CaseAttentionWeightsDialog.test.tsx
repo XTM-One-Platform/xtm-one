@@ -10,7 +10,7 @@ const saved = vi.hoisted(() => ({ calls: [] as unknown[] }));
 vi.mock("@/hooks/api/useOrganizationContextApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useOrganizationContextApi")>()),
   useOrganizationContext: () => ({ data: { version: 3, profile: { name: "Acme", crown_jewels: [] } } }),
-  useSaveOrganizationContext: () => ({ isPending: false, mutate: (body: unknown) => saved.calls.push(body) }),
+  usePatchOrganizationContext: () => ({ isPending: false, mutate: (body: unknown) => saved.calls.push(body) }),
 }));
 
 describe("case attention points (#1176 slice 2b)", () => {
@@ -51,14 +51,15 @@ describe("case attention points (#1176 slice 2b)", () => {
     }
   });
 
-  it("saves the points in the profile, other fields kept", () => {
+  it("saves the points alone, no other field and no asset row (#1752)", () => {
     renderWithProviders(<CaseAttentionWeightsDialog open onClose={() => undefined} />);
     fireEvent.change(screen.getByTestId("ctem-attention-kev-input"), { target: { value: "30" } });
     fireEvent.click(screen.getByTestId("ctem-cases-attention-weights-save"));
-    const body = saved.calls[saved.calls.length - 1] as { profile: { name: string; case_attention: { kev: number; priority_critical: number } } };
-    expect(body.profile.name).toBe("Acme");
-    expect(body.profile.case_attention.kev).toBe(30);
-    expect(body.profile.case_attention.priority_critical).toBe(40);
+    const body = saved.calls[saved.calls.length - 1] as { fields: { case_attention: { kev: number; priority_critical: number } }; based_on_version: number };
+    expect(Object.keys(body.fields)).toEqual(["case_attention"]);
+    expect(body.based_on_version).toBe(3);
+    expect(body.fields.case_attention.kev).toBe(30);
+    expect(body.fields.case_attention.priority_critical).toBe(40);
   });
 
   it("refuses to save an out-of-range value", () => {

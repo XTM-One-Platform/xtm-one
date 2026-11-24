@@ -23,6 +23,8 @@ import {
   CASE_TOGGLES,
   applyCaseQuickFilters,
   caseQuickFilterCount,
+  caseWaitFacet,
+  isStalledCase,
   readCaseScope,
   readCaseToggles,
   writeCaseToggles,
@@ -125,7 +127,7 @@ export default function CtemCases() {
   const ownerName = (id: string | null) => (id ? (owners?.find((o) => o.id === id)?.full_name ?? null) : null);
 
   // A product that could not be read never yields the all-clear sentence (#12139).
-  const empty = useCasesEmptyLabel(data?.details_unavailable);
+  const empty = useCasesEmptyLabel(data?.details_unavailable, data?.details_unavailable_reasons);
   const rows = useMemo(() => applyCaseQuickFilters(cases, scope, toggles, now, meId), [cases, scope, toggles, now, meId]);
   const countOf = (chip: CaseScopeChip | CaseToggle) => (data ? caseQuickFilterCount(chip, cases, scope, toggles, now, meId) : undefined);
   const groupBy = useMemo<DataTableGroupBy<CtemCaseSummary> | undefined>(() => {
@@ -315,6 +317,14 @@ export default function CtemCases() {
       header: "Waits on",
       cell: (c) => {
         const wait = c.state === "waiting_decision" ? c.waiting_on : null;
+        // An open case the sweep found waiting on nobody says so (#1736): no gate, no reminder, nothing moved it since.
+        if (!wait && isStalledCase(c) && c.stalled_since) {
+          return (
+            <span className="block max-w-[14rem] text-feedback-warning-primary" data-testid="ctem-case-waits-on-nobody">
+              <TruncatedText text={t_i18n("Nobody, since {date}", { date: intl.formatDate(c.stalled_since, { day: "numeric", month: "short" }) })} />
+            </span>
+          );
+        }
         if (!wait) return <span className="text-default-secondary">-</span>;
         // Never the raw `by`: a person by name, a role or policy in words, else "a person" (UX r1 B3 on #1515).
         const who = caseWaitWhoLabel(caseWaitWho(wait.by, ownerName), t_i18n);
@@ -326,8 +336,13 @@ export default function CtemCases() {
           </span>
         );
       },
-      sortValue: (c) => (c.state === "waiting_decision" ? (c.waiting_on?.since ?? "") : ""),
-      csv: (c) => (c.state === "waiting_decision" && c.waiting_on ? caseWaitWhoLabel(caseWaitWho(c.waiting_on.by, ownerName), t_i18n) : ""),
+      sortValue: (c) => (c.state === "waiting_decision" ? (c.waiting_on?.since ?? "") : isStalledCase(c) ? (c.stalled_since ?? "") : ""),
+      csv: (c) =>
+        c.state === "waiting_decision" && c.waiting_on
+          ? caseWaitWhoLabel(caseWaitWho(c.waiting_on.by, ownerName), t_i18n)
+          : isStalledCase(c)
+            ? "nobody"
+            : "",
       hideBelow: "6xl",
       hideable: true,
     },
@@ -459,6 +474,16 @@ export default function CtemCases() {
             options: [
               { value: "overdue", label: t_i18n("Overdue") },
               { value: "expiring", label: t_i18n("Accepted risk expiring") },
+            ],
+          },
+          {
+            // Whom an open case waits on (#1736): a person (a gate of the loop) or nobody (the sweep found it stalled).
+            key: "waits_on",
+            label: "Waits on",
+            values: (c) => caseWaitFacet(c),
+            options: [
+              { value: "person", label: t_i18n("A person") },
+              { value: "nobody", label: t_i18n("Stalled (case filter)") },
             ],
           },
           {

@@ -301,6 +301,7 @@ OPENCRQ_MCP_TOOLS: frozenset[str] = frozenset(
         "update_opencrq_financial_profile",
         # Assets & vulnerabilities
         "list_opencrq_primary_assets",
+        "get_opencrq_primary_asset",
         "list_opencrq_business_value_categories",
         "create_opencrq_primary_asset",
         "update_opencrq_primary_asset",
@@ -448,6 +449,7 @@ OPENCRQ_MCP_READ_TOOLS: frozenset[str] = frozenset(
         "get_opencrq_loss_driver",
         "get_opencrq_financial_profile",
         "list_opencrq_primary_assets",
+        "get_opencrq_primary_asset",
         "list_opencrq_business_value_categories",
         "list_opencrq_supporting_assets",
         "get_opencrq_supporting_asset",

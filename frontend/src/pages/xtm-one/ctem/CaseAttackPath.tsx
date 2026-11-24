@@ -10,6 +10,7 @@
  */
 import { Chip, Icon } from "@filigran/design-system";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CASE_SECTION_ICON, CaseCardTitleText } from "./case-icons";
 import type { CtemCaseAttackPath } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { safeExternalUrl } from "@/lib/utils";
@@ -81,7 +82,9 @@ export function CaseAttackPath({ reading }: { reading: CtemCaseAttackPath | null
   return (
     <Card data-testid="ctem-case-attack-path">
       <CardHeader>
-        <CardTitle>{t_i18n("Attack path and blast radius")}</CardTitle>
+        <CardTitle>
+          <CaseCardTitleText icon={CASE_SECTION_ICON.attack_path}>{t_i18n("Attack path and blast radius")}</CaseCardTitleText>
+        </CardTitle>
       </CardHeader>
       <CardContent>
         {!reading ? (

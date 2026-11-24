@@ -61,6 +61,8 @@ DROPPED_WHEN_SCOPED = frozenset(
         "remove_microsoft_chat_member",
         "send_microsoft_chat_file",
         "download_microsoft_chat_message_image",
+        "add_microsoft_team_member",
+        "remove_microsoft_team_member",
     }
 )
 
@@ -76,6 +78,8 @@ CHANNEL_ID_TOOLS = frozenset(
         "remove_microsoft_channel_message_reaction",
         "reply_microsoft_channel_message",
         "list_microsoft_channel_members",
+        "add_microsoft_channel_member",
+        "remove_microsoft_channel_member",
         "send_microsoft_channel_file",
         "download_microsoft_channel_message_image",
     }

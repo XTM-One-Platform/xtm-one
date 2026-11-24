@@ -34,6 +34,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -235,8 +236,81 @@ def install(dest: Path) -> Path:
     _binary_from_tar(fetch(DRAGONFLY), lambda name: name.startswith("dragonfly"), dest / "bin" / "dragonfly")
     _binary_from_tar(fetch(SILO), lambda name: name in ("silo", "minio"), dest / "bin" / "silo")
     (dest / MANIFEST).write_text(json.dumps(pins(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    # The runner beside the stores (#1858): a check of ANY repository wraps its command in
+    # `python /opt/stores/stores.py exec -- ...` (checks.STORES_RUNNER), its checkout holding no copy.
+    shutil.copyfile(Path(__file__), dest / RUNNER)
     log(f"installed under {dest}")
     return dest
+
+
+#: The runner's file name under the stores directory (``checks.STORES_RUNNER`` names its path).
+RUNNER = "stores.py"
+#: The role and database ``exec`` serves when the check sets none (the ``PG*`` variables of libpq).
+EXEC_DEFAULTS = {"PGUSER": "copilot", "PGPASSWORD": "copilot", "PGDATABASE": "copilot"}
+_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,62}")
+
+
+def exec_environment(given: dict[str, str]) -> dict[str, str]:
+    """The variables ``exec`` gives its command: libpq's ``PG*`` and a ``DATABASE_URL`` (#1858).
+
+    A ``PGUSER`` / ``PGPASSWORD`` / ``PGDATABASE`` the check sets (a CI job's own credentials, ``app`` /
+    ``admin`` on OpenCRQ) is kept: ``exec`` creates that role and database before the command runs.
+    """
+    env = {name: given.get(name) or default for name, default in EXEC_DEFAULTS.items()}
+    for name in ("PGUSER", "PGDATABASE"):
+        if not _IDENTIFIER.fullmatch(env[name]):
+            raise SystemExit(f"stores: {name}={env[name]!r} is not a plain identifier")
+    env.update(PGHOST="127.0.0.1", PGPORT=str(PG_PORT))
+    env["DATABASE_URL"] = (
+        f"postgresql://{env['PGUSER']}:{env['PGPASSWORD']}@127.0.0.1:{PG_PORT}/{env['PGDATABASE']}"
+    )
+    return env
+
+
+def ensure_role(dest: Path, user: str, password: str) -> None:
+    """Create login role *user* (superuser, as a CI service's POSTGRES_USER is) unless it exists."""
+    exists = subprocess.run([*_psql(dest, "postgres"), "-v", f"name={user}"],
+                            input="SELECT 1 FROM pg_roles WHERE rolname = :'name'",
+                            capture_output=True, text=True)
+    if exists.returncode == 0 and exists.stdout.strip() == "1":
+        return
+    # Through stdin, never -c: psql interpolates :"name" and :'secret' (quoted) only in what it reads.
+    created = subprocess.run([*_psql(dest, "postgres"), "-v", f"name={user}", "-v", f"secret={password}"],
+                             input="CREATE ROLE :\"name\" SUPERUSER LOGIN PASSWORD :'secret'",
+                             capture_output=True, text=True)
+    if created.returncode != 0:
+        raise SystemExit(f"stores: CREATE ROLE {user} failed: {(created.stderr or created.stdout)[-2000:]}")
+
+
+def run_exec(command: list[str], dest: Path = STORES_DIR) -> int:
+    """Start postgres offline, give *command* its ``PG*`` variables, run it, stop (``stores.py exec -- ...``)."""
+    if not command:
+        raise SystemExit("usage: stores.py exec -- <command> [args...]")
+    if not installed(dest, ("postgres",)):
+        raise SystemExit(
+            f"stores: {dest} holds no postgres at the pin of stores.py: this sandbox image predates the "
+            "stores of the toolchain images (#1858); the check cannot start a database here."
+        )
+    env = exec_environment(dict(os.environ))
+    reset = reset_leftovers(dest)
+    if reset:
+        log(reset)
+    run_dir = Path(tempfile.mkdtemp(prefix=RUN_DIR_PREFIX))
+    processes: list[subprocess.Popen] = []
+    try:
+        try:
+            start_postgres(dest, run_dir, _file_spawn(run_dir, processes))
+        except SystemExit:
+            for store_log in sorted(run_dir.glob("*.log")):
+                log(f"{store_log.name}: {store_log.read_text(encoding='utf-8', errors='replace')[-1500:]}")
+            raise
+        ensure_role(dest, env["PGUSER"], env["PGPASSWORD"])
+        ensure_database(dest, env["PGDATABASE"])
+        log(f"postgres ready for {env['PGUSER']}@{env['PGDATABASE']} on 127.0.0.1:{PG_PORT}")
+        return subprocess.run(command, env={**os.environ, **env}).returncode
+    finally:
+        stop(processes)
+        shutil.rmtree(run_dir, ignore_errors=True)
 
 
 def environment() -> dict[str, str]:
@@ -502,6 +576,8 @@ def _smoke() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    if args[:1] == ["exec"]:
+        return run_exec(args[2:] if args[1:2] == ["--"] else args[1:])
     if args[:1] == ["install"]:
         if len(args) != 2:
             raise SystemExit("usage: stores.py install <dir>")

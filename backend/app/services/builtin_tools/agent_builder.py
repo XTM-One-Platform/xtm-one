@@ -7418,6 +7418,9 @@ def build_agent_builder_tool(
             _result = f"Agent **{agent.name}** updated: {', '.join(updated)}."
             if _builtin_change:
                 _result += f" {_builtin_change}"
+            from app.services.tool_surface_timing import agent_change_line
+
+            _result += agent_change_line(updated)
             if text_read_back:
                 _result += f"\n{text_read_back}"
             if _share_lines:
@@ -10145,6 +10148,11 @@ def build_agent_builder_tool(
                 rows, noun="skill", search=search, compact=compact, limit=limit, offset=offset
             )
 
+    async def _search_config_text(query: str = "", scope: object = "") -> str:
+        from app.services.config_text_search import search_config_text
+
+        return await search_config_text(user_id, query, scope)
+
     async def _get_skill(skill_id: str, outline: bool = False, section: str = "") -> str:
         from sqlalchemy import select
 
@@ -12752,6 +12760,10 @@ def build_agent_builder_tool(
                 await _db.rollback()
                 return "Failed to create integration. Please try again."
             note = spec_tools.tools_line(spec_row) if spec_row is not None else ""
+            if spec_row is not None:
+                from app.services.tool_surface_timing import NEXT_TURN_LINE
+
+                note += NEXT_TURN_LINE
             if effective_auth == "oauth":
                 note += (
                     "\n  • Ready to connect with the platform's OAuth app." if on_admin_app else ""
@@ -13262,6 +13274,9 @@ def build_agent_builder_tool(
                     f"\n  • A2A direction: {wanted_direction}; the credentials and "
                     "targets of the previous direction were cleared."
                 )
+            from app.services.tool_surface_timing import integration_change_line
+
+            note += integration_change_line(updated)
             # Never echo credentials — only report which fields changed.
             changed = ", ".join(updated) or "nothing (the connected-account choice was already so)"
             return f"Integration **{integ.name}** updated: {changed}.{note}"
@@ -13442,6 +13457,7 @@ def build_agent_builder_tool(
     executor.register("update_prompt", _update_prompt)
     executor.register("delete_prompt", _delete_prompt)
     executor.register("list_skills", _list_skills)
+    executor.register("search_config_text", _search_config_text)
     executor.register("get_skill", _get_skill)
     executor.register("create_skill", _create_skill)
     executor.register("update_skill", _update_skill)
@@ -16016,6 +16032,22 @@ def build_agent_builder_tool(
                 "List skills visible to the user (instruction sets for agents)."
             ),
             input_schema=_catalog_list_schema(),
+            source="builtin:platform",
+        ),
+        ToolDefinition(
+            name="search_config_text",
+            description=(
+                "Find a text in the skills, prompts, agent personas/guardrails "
+                "and assignment prompts you can see: id, field, matching lines."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "scope": {"type": "string", "description": "skill,prompt,agent,assignment (default all)"},
+                },
+                "required": ["query"],
+            },
             source="builtin:platform",
         ),
         ToolDefinition(

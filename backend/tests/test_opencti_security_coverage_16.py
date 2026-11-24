@@ -3,7 +3,7 @@
 Pinned here without a network:
 - every action sends the expected document and answers the coverage read back;
 - create checks the covered object's type before writing and follows the run's draft;
-- a field the action does not apply is refused by name, nothing sent;
+- a field the action does not apply is named as ignored and the action runs;
 - the capability pre-check knows the tool and its write actions;
 - ``ctem.analyst_review`` maps onto the coverage request: it runs out of the box
   (the seeded level), waits at Full human gates and when pinned ``wait``.
@@ -213,13 +213,13 @@ async def test_update_without_a_field_writes_nothing(monkeypatch: pytest.MonkeyP
         ({"action": "list", "public": True}, "public"),
     ],
 )
-async def test_an_unapplied_field_is_refused_and_nothing_is_sent(
+async def test_an_unapplied_field_is_named_as_ignored_and_the_action_runs(
     monkeypatch: pytest.MonkeyPatch, arguments: dict[str, Any], named: str
 ) -> None:
-    executor, rec = _build(monkeypatch)
+    executor, _rec = _build(monkeypatch)
     content = await _run(executor, **arguments)
     assert f"action '{arguments['action']}' does not apply" in content and named in content
-    assert rec.calls == []
+    assert "ignored and the rest ran" in content
 
 
 @pytest.mark.parametrize(

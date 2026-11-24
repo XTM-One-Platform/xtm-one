@@ -143,7 +143,7 @@ class OrganizationContextSync(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    #: A section of the import (assets, asset_groups, ai_systems, tech_stack, crown_jewels, pirs) or ``all``.
+    #: A section of the import (assets, asset_groups, ai_systems, software, crown_jewels, pirs) or ``all``.
     section: Mapped[str] = mapped_column(String(32), nullable=False)
     #: The platform it reads (empty for ``all``).
     source: Mapped[str] = mapped_column(String(16), nullable=False, default="", server_default=text("''"))

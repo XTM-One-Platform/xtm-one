@@ -100,14 +100,15 @@ async def test_reset_state_still_resets_when_the_precheck_fails(monkeypatch: pyt
     assert "action='get'" in result.content
 
 
-async def test_reset_state_needs_a_connector_id_and_refuses_other_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_reset_state_needs_a_connector_id_and_names_other_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeGraphQL(_connector())
     executor = _build(monkeypatch, fake)
     missing = await _run(executor, {"action": "reset_state"})
     assert "connector_id is required for action 'reset_state'" in missing.content
-    refused = await _run(executor, {"action": "reset_state", "connector_id": "c1", "config": "{}"})
-    assert "does not apply" in refused.content
     assert fake.calls == []
+    ignored = await _run(executor, {"action": "reset_state", "connector_id": "c1", "config": "{}"})
+    assert "does not apply config" in ignored.content
+    assert any("resetStateConnector" in query for query, _ in fake.calls)
 
 
 def test_reset_state_is_in_the_schema() -> None:

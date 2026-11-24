@@ -35,7 +35,7 @@ import uuid
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import ColumnElement, Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.organization_asset import OrganizationAsset, OrganizationAssetSoftware
@@ -64,6 +64,51 @@ _RANK = {"below_fixed": 0, "not_comparable": 1, "fixed": 2}
 
 def _key(value: str | None) -> str:
     return " ".join(str(value or "").split()).casefold()
+
+
+#: Company-form words a publisher name ends with in device inventories (``Google LLC``,
+#: ``Microsoft Corporation``), dropped before a vendor is compared with a case label (#1736).
+PUBLISHER_SUFFIXES: frozenset[str] = frozenset(
+    {
+        "inc",
+        "inc.",
+        "incorporated",
+        "llc",
+        "l.l.c.",
+        "ltd",
+        "ltd.",
+        "limited",
+        "corp",
+        "corp.",
+        "corporation",
+        "co",
+        "co.",
+        "company",
+        "gmbh",
+        "ag",
+        "sa",
+        "s.a.",
+        "sas",
+        "bv",
+        "b.v.",
+        "nv",
+        "plc",
+        "oy",
+        "ab",
+        "as",
+        "srl",
+        "pty",
+        "kk",
+    }
+)
+
+
+def publisher_key(value: str | None) -> str:
+    """A publisher folded without its company form and commas: ``Google, LLC`` reads ``google`` (#1736)."""
+    words = _key(str(value or "").replace(",", " ")).split()
+    while len(words) > 1 and words[-1] in PUBLISHER_SUFFIXES:
+        words.pop()
+    return " ".join(words)
 
 
 def product_keys(product_label: str | None) -> tuple[str, ...]:
@@ -186,14 +231,45 @@ def os_rows(
 
 
 def matches_case(product_label: str | None, vendor: str | None, product: str | None) -> bool:
-    """Whether a software row (vendor, product) is the case's product."""
+    """Whether a software row (vendor, product) is the case's product.
+
+    The publisher is compared without its company form (``Google LLC`` + ``Chrome``
+    is ``Google Chrome``), and a product string that starts with its publisher
+    (``Google LLC Google Chrome``) is read without it (#1736).
+    """
     label = _key(product_label)
     if not label:
         return False
-    vendor_key, product_key = _key(vendor), _key(product)
+    vendor_key, product_key = publisher_key(vendor), _key(product)
     if product_key == label:
         return True
-    return bool(vendor_key) and f"{vendor_key} {product_key}" == label
+    if vendor_key and f"{vendor_key} {product_key}" == label:
+        return True
+    return _publisher_prefixed(label, vendor_key, product_key)
+
+
+def _publisher_prefixed(label: str, vendor_key: str, product_key: str) -> bool:
+    """Whether *product_key* is *label* behind a publisher name (``google llc google chrome``)."""
+    if not product_key.endswith(" " + label):
+        return False
+    prefix = publisher_key(product_key[: -len(label) - 1])
+    if not prefix:
+        return False
+    label_vendor = label.split(" ", 1)[0] if " " in label else ""
+    return prefix in {vendor_key, label_vendor} - {""}
+
+
+def _like_escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def product_filter(column: Any, keys: tuple[str, ...]) -> ColumnElement[bool]:
+    """The product rows a case's *keys* stand for: an exact key, or the label behind a publisher.
+
+    One bound pattern beside the key list, so the read stays bounded; :func:`matches_case`
+    then keeps only the rows whose prefix is a publisher (#1736).
+    """
+    return or_(column.in_(keys), column.like("% " + _like_escape(keys[0]), escape="\\"))
 
 
 def running_versions(
@@ -433,6 +509,23 @@ async def read_running_versions(
     return answer
 
 
+async def inventory_sources(db: AsyncSession, organization_id: uuid.UUID) -> list[str] | None:
+    """The sources the organization's asset software was imported from, sorted (#1736).
+
+    Named when a case's product runs on no asset, so an ask never asks a person
+    what an imported source already answered. ``None`` when the store cannot be read.
+    """
+    soft = OrganizationAssetSoftware
+    source = func.jsonb_array_elements_text(soft.sources).label("source")
+    try:
+        async with db.begin_nested():
+            result = await db.execute(select(source).where(soft.organization_id == organization_id).distinct())
+    except Exception:  # the inventory never breaks a case read
+        logger.info("CTEM inventory sources unavailable", exc_info=True)
+        return None
+    return sorted({str(name) for (name,) in result.all() if name})
+
+
 def affected_assets(issues: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     """The assets the visible issues of a case name, one row per asset (pure).
 
@@ -591,9 +684,9 @@ async def _read_asset_rows(
         .join(asset, asset.id == soft.asset_id)
         .where(
             soft.organization_id == organization_id,
-            soft.product_key.in_(keys),
             asset.organization_id == organization_id,
             asset.name_key.in_([n[:300] for n in names]),
+            product_filter(soft.product_key, keys),
         )
     )
     return [
@@ -625,7 +718,7 @@ def _platforms_query(organization_id: uuid.UUID, keys: tuple[str, ...]) -> Selec
         .where(
             asset.organization_id == organization_id,
             soft.organization_id == organization_id,
-            soft.product_key.in_(keys),
+            product_filter(soft.product_key, keys),
         )
         .distinct()
     )
@@ -667,7 +760,7 @@ async def _read_rows(
 ) -> tuple[list[Any], dict[tuple[str, str, str], set[str]]]:
     """The (vendor, product, version) groups with their distinct asset ids, and the sources of each."""
     soft = OrganizationAssetSoftware
-    where = (soft.organization_id == organization_id, soft.product_key.in_(keys))
+    where = (soft.organization_id == organization_id, product_filter(soft.product_key, keys))
     counted = list(
         (
             await db.execute(

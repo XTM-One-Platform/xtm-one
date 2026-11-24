@@ -279,6 +279,9 @@ _NOT_WRITER_GATED = {
         # The finalizer's read of whether the run's own tools reach the
         # item (#11943): the claim's admission, read only, no write.
         "reachable_by_run_tools",
+        # The dialog's and the write routes' read of whether a person may
+        # write an item they can read (#1845): two clauses read, no write.
+        "person_write_access",
         # The scheduler reopening items whose blockers are done: a
         # sweep, like the reaper.
         "release_satisfied_dependencies",

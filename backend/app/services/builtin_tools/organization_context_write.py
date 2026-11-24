@@ -822,11 +822,10 @@ def build_organization_context_write_tools(
         ToolDefinition(
             name=ORGANIZATION_UPDATE_TOOL,
             description=(
-                "Change the organization profile now, as a new version authored by the administrator you act for: "
-                "field changes on your own organization or a tracked one. Read get_organization_context first and "
-                "send the whole new value of each field (a list replaces the list), with its basis. Each value is "
-                "validated like the Settings > Organization form; an admin can restore a past version. To leave the "
-                "decision to an administrator instead, use propose_organization_context_change."
+                "Change the profile of your own or a tracked organization now, as a new version by the admin you "
+                "act for. Read get_organization_context first; send each field's whole new value (a list replaces "
+                "the list) with its basis, validated as Settings > Organization does. To leave the decision to an "
+                "admin, use propose_organization_context_change."
                 + SHARED_CONTEXT_CLAUSE
             ),
             input_schema={
@@ -859,9 +858,9 @@ def build_organization_context_write_tools(
             description=(
                 "Add or update rows of one profile section without resending the list: assets and asset groups keyed "
                 "on source + external_id (rows a person wrote are never touched), new software as Software "
-                "entities, AI systems by name (tech_stack: alias). "
-                "Validated like the CSV import. Preview first (apply false): counts and refusals with "
-                "reasons. A rows_format other than profile maps a platform's raw objects on the server."
+                "entities, AI systems by name. "
+                "Validated like the CSV import; preview first (apply false). "
+                "A rows_format other than profile maps a platform's raw objects."
                 + SHARED_CONTEXT_CLAUSE
             ),
             input_schema={
@@ -873,7 +872,7 @@ def build_organization_context_write_tools(
                     "rows_format": {"type": "string", "enum": list(ROW_FORMATS)},
                     "include_owner": {
                         "type": "boolean",
-                        "description": "Device formats: the primary user's name as owner, only if the admin asked.",
+                        "description": "Device formats: the primary user as owner, only if the admin asked.",
                     },
                     "apply": _apply,
                 },
@@ -912,7 +911,7 @@ def build_organization_context_write_tools(
                 "properties": {
                     "section": {
                         "type": "string",
-                        "enum": ["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"],
+                        "enum": ["assets", "asset_groups", "ai_systems", "software", "crown_jewels", "pirs"],
                     },
                     "source": {"type": "string", "enum": _import_sources},
                     "filters": {"type": "object", "description": "The filters the dialog offers for that source."},
@@ -927,8 +926,8 @@ def build_organization_context_write_tools(
         ToolDefinition(
             name=ORGANIZATION_LIST_SYNCS_TOOL,
             description=(
-                "The scheduled syncs of Settings > Organization > Syncs: section, source, filters, schedule, "
-                "enabled, paused reason, next and last run with its counts."
+                "The syncs of Settings > Organization > Syncs: section, source, filters, schedule, "
+                "enabled, paused reason, next and last run, counts."
             ),
             input_schema={"type": "object", "properties": {}},
             source=_SOURCE,
