@@ -141,6 +141,21 @@ each such row moves to `asset_groups` with every field it had; a nested `group` 
 kept as the tag `group:<name>`. Dynamic groups are not modelled in XTM One: a sync from OpenAEV reads their members
 as resolved at sync time.
 
+**Outbound to OpenAEV (#1982 S1).** An outbound `asset_groups` sync to `openaev` makes OpenAEV follow the groups
+XTM One owns (typed, CSV, API, agent rows; a group an OpenAEV sync wrote is skipped):
+
+| XTM One `asset_groups` | OpenAEV `AssetGroupInput` |
+| --- | --- |
+| `name` | `asset_group_name` |
+| `description` | `asset_group_description` |
+| members (`group` field and `membership_rule`) | `asset_group_assets` (`PUT /api/asset_groups/{id}/assets`): the OpenAEV asset id of each member, the member's own `external_id` when an OpenAEV sync wrote it, else the OpenAEV record of the same name; a member with no OpenAEV counterpart is reported (`unlinked_members`), never created as an endpoint |
+| (not mastered) | `asset_group_tags`, `asset_group_dynamic_filter`: read before the write and sent back as OpenAEV holds them, since its PUT replaces the whole object (#1702) |
+
+Only the groups the sync created (`outbound_ids`, keyed on the group name) are updated or deleted; a group leaving
+the sync's filters (the import step's keys read on the XTM One row: `tags`, `search`, `source`, and on assets
+`category`, `subcategory`, `criticality`, `internet_facing`, `environment`, `platform`) is deleted from OpenAEV only
+when this sync created it. The same filters select the AI target assets an outbound `assets` sync pushes (section 7).
+
 ## 6. Tags, environment, external id, platform
 
 | Concept | OpenAEV | OpenCRQ | OpenCTI | XTM One |
