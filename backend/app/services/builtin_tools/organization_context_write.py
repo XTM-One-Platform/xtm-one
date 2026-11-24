@@ -261,6 +261,12 @@ def build_organization_context_write_tools(
                             include_owner,
                             apply,
                         )
+                if section in org_rows.SOFTWARE_SECTIONS:
+                    from app.services.organization_asset_store import ensure_built
+
+                    org = await ensure_built(db)
+                    if org is not None:  # no profile yet: the profile path below creates the organization
+                        return await _software_rows(db, person, org, mode, source, rows, rows_format, apply)
                 current = await org_context.current_version(db)
                 base = org_context.parse_profile(current.profile if current else {})
                 if mode == "upsert":
@@ -286,6 +292,67 @@ def build_organization_context_write_tools(
         except Exception:
             logger.warning("Organization profile row write failed", exc_info=True)
             return "Error: the profile could not be changed right now. Say so; nothing was changed."
+
+    async def _software_rows(
+        db: Any,
+        person: Any,
+        org: uuid.UUID,
+        mode: str,
+        source: str,
+        rows: list[Any] | None,
+        rows_format: str,
+        apply: bool,
+    ) -> str:
+        """The software since #1495: new rows become hand-typed Software entities, existing ones are kept."""
+        import json
+
+        from app.services import organization_context_rows as org_rows
+        from app.services import organization_software_store as software_store
+
+        if mode != "upsert":
+            raise org_rows.RowError(
+                "software cannot be removed by source; an administrator deletes a hand-typed software "
+                "in Inventory > Software, a synced one leaves with its source"
+            )
+        mapped = org_rows.map_rows(list(rows or []), rows_format)
+        existing = await software_store.software_keys(db, org)
+        plan = org_rows.plan_software_upsert(source, mapped, existing=existing)
+        answer = plan.as_dict()
+        if not apply or not plan.changed:
+            answer["applied"] = False
+            answer["notice"] = SHARED_CONTEXT_NOTICE
+            return json.dumps(answer)
+        try:
+            for write in plan.writes:
+                await software_store.create_software(
+                    db,
+                    org,
+                    vendor=write["vendor"],
+                    product=write["product"],
+                    cpe=write["cpe"],
+                    version=write["version"],
+                )
+        except software_store.SoftwareError as exc:
+            await db.rollback()
+            return f"Not saved: {exc}"
+        from app.services.audit import log_audit
+
+        await log_audit(
+            db,
+            user=person,
+            action="create",
+            entity_type="organization_context",
+            entity_id=str(org),
+            entity_name="software",
+            summary=f"Organization software written by agent {agent_name or 'unknown'}: "
+            f"{org_rows.basis(plan, agent_name)}"[:500],
+            details={"agent": agent_name, "section": "software", "source": plan.source, **answer["counts"]},
+        )
+        await db.commit()
+        answer["applied"] = True
+        answer["history"] = "each new software is a hand-typed Software in Inventory > Software"
+        answer["notice"] = SHARED_CONTEXT_NOTICE
+        return json.dumps(answer)
 
     async def _record_rows(
         db: Any,
@@ -755,10 +822,11 @@ def build_organization_context_write_tools(
         ToolDefinition(
             name=ORGANIZATION_UPDATE_TOOL,
             description=(
-                "Change the profile of your own or a tracked organization now, as a new version by the admin you "
-                "act for. Read get_organization_context first; send each field's whole new value (a list replaces "
-                "the list) with its basis, validated as Settings > Organization does. To leave the decision to an "
-                "admin, use propose_organization_context_change."
+                "Change the organization profile now, as a new version authored by the administrator you act for: "
+                "field changes on your own organization or a tracked one. Read get_organization_context first and "
+                "send the whole new value of each field (a list replaces the list), with its basis. Each value is "
+                "validated like the Settings > Organization form; an admin can restore a past version. To leave the "
+                "decision to an administrator instead, use propose_organization_context_change."
                 + SHARED_CONTEXT_CLAUSE
             ),
             input_schema={
@@ -770,7 +838,10 @@ def build_organization_context_write_tools(
                     },
                     "changes": {
                         "type": "array",
-                        "description": "Field changes: {field (contract path, e.g. tech_stack), value, basis}.",
+                        "description": (
+                            "Field changes: {field (path, dotted if nested, e.g. pir_details), value, basis, "
+                            "confirm (true: the current value is still right)}."
+                        ),
                         "items": {"type": "object"},
                     },
                     "based_on_version": {
@@ -787,10 +858,10 @@ def build_organization_context_write_tools(
             name=ORGANIZATION_UPSERT_ROWS_TOOL,
             description=(
                 "Add or update rows of one profile section without resending the list: assets and asset groups keyed "
-                "on source + external_id (rows a person wrote are never touched), software and AI systems by name "
-                "(tech_stack: old alias of software). "
-                "Validated like the CSV import; preview first (apply false). "
-                "A rows_format other than profile maps a platform's raw objects."
+                "on source + external_id (rows a person wrote are never touched), new software as Software "
+                "entities, AI systems by name (tech_stack: alias). "
+                "Validated like the CSV import. Preview first (apply false): counts and refusals with "
+                "reasons. A rows_format other than profile maps a platform's raw objects on the server."
                 + SHARED_CONTEXT_CLAUSE
             ),
             input_schema={
@@ -802,7 +873,7 @@ def build_organization_context_write_tools(
                     "rows_format": {"type": "string", "enum": list(ROW_FORMATS)},
                     "include_owner": {
                         "type": "boolean",
-                        "description": "Device formats: the primary user as owner, only if the admin asked.",
+                        "description": "Device formats: the primary user's name as owner, only if the admin asked.",
                     },
                     "apply": _apply,
                 },
@@ -856,8 +927,8 @@ def build_organization_context_write_tools(
         ToolDefinition(
             name=ORGANIZATION_LIST_SYNCS_TOOL,
             description=(
-                "The syncs of Settings > Organization > Syncs: section, source, filters, schedule, "
-                "enabled, paused reason, next and last run, counts."
+                "The scheduled syncs of Settings > Organization > Syncs: section, source, filters, schedule, "
+                "enabled, paused reason, next and last run with its counts."
             ),
             input_schema={"type": "object", "properties": {}},
             source=_SOURCE,
