@@ -471,6 +471,8 @@ export interface CtemCaseList {
   counts: Record<CtemCaseState, number>;
   cases: CtemCaseSummary[];
   details_unavailable: string[];
+  /** Why each product of `details_unavailable` did not answer (#1852): rejected, too_large, timeout, not_connected, unavailable. */
+  details_unavailable_reasons?: Record<string, string>;
   ticketing?: CtemTicketingTarget;
   freshness?: CtemCasesFreshness;
 }

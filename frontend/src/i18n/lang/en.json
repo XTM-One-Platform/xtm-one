@@ -21547,5 +21547,9 @@
   "{count, plural, one {# case and its history} other {# cases and their history}}": "{count, plural, one {# case and its history} other {# cases and their history}}",
   "{count, plural, one {# open work item cancelled} other {# open work items cancelled}}": "{count, plural, one {# open work item cancelled} other {# open work items cancelled}}",
   "{count, plural, one {# timer cancelled} other {# timers cancelled}}": "{count, plural, one {# timer cancelled} other {# timers cancelled}}",
-  "{count, plural, one {# signal sent back to the scope gate} other {# signals sent back to the scope gate}}": "{count, plural, one {# signal sent back to the scope gate} other {# signals sent back to the scope gate}}"
+  "{count, plural, one {# signal sent back to the scope gate} other {# signals sent back to the scope gate}}": "{count, plural, one {# signal sent back to the scope gate} other {# signals sent back to the scope gate}}",
+  "{product} rejected your sign-in token, so open exposures there may be missing.": "{product} rejected your sign-in token, so open exposures there may be missing.",
+  "{product} could not answer because the query was too large, so open exposures there may be missing.": "{product} could not answer because the query was too large, so open exposures there may be missing.",
+  "{product} did not answer in time, so open exposures there may be missing.": "{product} did not answer in time, so open exposures there may be missing.",
+  "No {product} connection could be used for this read, so open exposures there may be missing.": "No {product} connection could be used for this read, so open exposures there may be missing."
 }
