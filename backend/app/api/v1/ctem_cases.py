@@ -568,6 +568,61 @@ async def ctem_cases_overview(
     return {"vertical": vertical, **overview.build(cases, view, history)}
 
 
+class CaseOpening(BaseModel):
+    """Turn CTEM case opening on or off (#1951)."""
+
+    on: bool
+    vertical: str | None = None
+
+
+@router.get("/opening")
+async def get_ctem_case_opening(
+    vertical: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Whether case opening runs, and how many confirmed signals wait for their case (#1951).
+
+    Answers ``{vertical, on, waiting}`` to anyone who reads CTEM cases.
+    """
+    _require_xtm_one()
+    from app.services import ctem_case_opening as case_opening
+
+    return await case_opening.state(db, normalize_vertical(vertical))
+
+
+@router.put("/opening")
+async def put_ctem_case_opening(
+    body: CaseOpening,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Pause or resume case opening, administrators only (#1951).
+
+    Off: no path opens a case; confirmed signals wait. On: a background drain opens the
+    cases of every waiting signal at once. One audit row and one
+    ``ctem_case.opening_changed`` event per change; the same value again changes nothing.
+    Answers ``{vertical, on, waiting, changed, draining}``.
+    """
+    _require_xtm_one()
+    from app.services import ctem_case_opening as case_opening
+    from app.services.platform_events import publish
+
+    vertical = normalize_vertical(body.vertical)
+    changed = await case_opening.set_opening(db, vertical=vertical, on=body.on, actor=admin)
+    await db.commit()
+    current = await case_opening.state(db, vertical)
+    if changed:
+        await publish(
+            case_opening.OPENING_CHANGED,
+            case_opening.event_data(vertical, body.on, admin, current["waiting"]),
+        )
+    draining = bool(body.on and current["waiting"])
+    if draining:
+        case_opening.start_drain(vertical)
+    return {**current, "changed": changed, "draining": draining}
+
+
 @router.get("/{case_id}")
 async def get_ctem_case(
     case_id: uuid.UUID,
