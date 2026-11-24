@@ -5588,7 +5588,17 @@ async def run_agent_chat(
                     ATTACK_SOURCES_CONTEXT_KEY: [],
                 }
                 async with _refresh_session() as refresh_db:
-                    defs, executor = await build_integration_tools(refresh_db, _refresh_bindings, context=context)
+                    defs, executor = await build_integration_tools(
+                        refresh_db,
+                        # The same resolution as the turn's first build: never a
+                        # credential the person may not use.
+                        ToolBindings(
+                            _refresh_bindings,
+                            basis=BindingBasis.RESOLVED,
+                            reason="the chat turn's own resolution, rebuilt in the turn",
+                        ),
+                        context=context,
+                    )
                 if defs and integ_allowed:
                     from app.services.builtin_tools import filter_integration_tools
 

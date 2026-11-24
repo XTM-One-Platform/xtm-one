@@ -5997,7 +5997,13 @@ async def execute_assignment_run(
                         }
                         async with async_session() as refresh_db:
                             defs, executor = await build_integration_tools(
-                                refresh_db, _refresh_bindings, context=context
+                                refresh_db,
+                                ToolBindings(
+                                    _refresh_bindings,
+                                    basis=BindingBasis.UNCHECKED,
+                                    reason="an assignment run: the agent's bindings as bound, rebuilt in the run",
+                                ),
+                                context=context,
                             )
                         defs = filter_integration_tools(defs, _refresh_allowed)
                         return defs, AuthGuardedExecutor(executor, defs, _refresh_guard)
