@@ -1,0 +1,22 @@
+name: Stop the merge group at its first red job
+description: >-
+  Called as the last step of a job, only on
+  `if: failure() && github.event_name == 'merge_group'`: it cancels this run
+  (`gh run cancel`), so the workflow's required check — an aggregator that
+  runs on `always()` and reads every job — sees the failed and cancelled jobs
+  and reports red at once, instead of waiting for the slowest shard of the
+  group. Cancelling a run takes `actions: write`, which the calling job grants
+  on its own (`contents: read` plus `actions: write`), next to the
+  workflow's read-only default. A pull request, a manual run and the nightly
+  run never trigger the step, so their reports stay whole.
+runs:
+  using: composite
+  steps:
+    - name: Cancel this run
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        RUN_ID: ${{ github.run_id }}
+        REPO: ${{ github.repository }}
+      run: |
+        gh run cancel "$RUN_ID" --repo "$REPO" || echo "::warning::Could not cancel run $RUN_ID: it may have ended already."
