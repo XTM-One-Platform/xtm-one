@@ -747,6 +747,18 @@ def _is_hand(origin: str) -> bool:
     return not origin.startswith(("sync:", "agent:")) and origin not in ("import", "profile")
 
 
+def _is_synced_row(source: str | None, external_id: str | None) -> bool:
+    """Whether a record or group is owned by a platform sync (it comes back on the next sync if a person deletes it)."""
+    from app.services.organization_context import is_platform_source
+
+    return is_platform_source(source or "") and bool((external_id or "").strip())
+
+
+def _hand_delete(origin: str) -> bool:
+    """A person deleting rows (the form, the API); a restore replays the log and keeps its own rule."""
+    return _is_hand(origin) and origin != "restore"
+
+
 def _local_fields() -> frozenset[str]:
     from app.services.organization_context_import import SOURCED_FIELDS
 
@@ -886,7 +898,11 @@ async def delete_records(
     actor: str,
     if_match: int | None = None,
 ) -> list[uuid.UUID]:
-    """Delete records of this organization (an unknown id is skipped); log each; refresh their clusters."""
+    """Delete records of this organization (an unknown id is skipped); log each; refresh their clusters.
+
+    A person's delete (#1729) never removes a record a platform sync owns: one such record asked alone is refused
+    (422), and in a batch it is skipped (the answer names only the removed ids).
+    """
     if len(record_ids) > MAX_BATCH:
         raise RecordError(f"at most {MAX_BATCH} records per call")
     await ensure_records(db, organization_id)
@@ -905,6 +921,11 @@ async def delete_records(
     )
     if if_match is not None and len(records) == 1 and records[0].row_version != if_match:
         raise StaleRowError(f"the asset record changed since version {if_match} (now {records[0].row_version})")
+    if _hand_delete(origin):
+        kept = [r for r in records if not _is_synced_row(r.source, r.external_id)]
+        if len(record_ids) == 1 and records and not kept:
+            raise RecordError("this asset record is kept in sync by its source; it goes when its source no longer reports it")
+        records = kept
     return await _remove(db, organization_id, records, origin=origin, actor=actor)
 
 
@@ -1201,6 +1222,9 @@ async def delete_group(
     group = await get_group(db, organization_id, group_id)
     if if_match is not None and if_match != group.row_version:
         raise StaleRowError(f"the asset group changed since version {if_match} (now {group.row_version})")
+    if _hand_delete(origin) and _is_synced_row(group.source, group.external_id):
+        # A person's delete (#1729) never removes a group a platform sync owns: it would come back on the next sync.
+        raise RecordError("this asset group is kept in sync by its source; it goes when its source no longer reports it")
     members = list(
         (
             await db.execute(
