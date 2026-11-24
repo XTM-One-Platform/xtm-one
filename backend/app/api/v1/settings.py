@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, cast
 from urllib.parse import urlparse, urlsplit
 
 import httpx
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field, TypeAdapter, ValidationError
 
 if TYPE_CHECKING:
     from app.models.general_assistant_config import GeneralAssistantConfig
@@ -29,6 +29,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, R
 from sqlalchemy import Text as SAText
 from sqlalchemy import cast as sa_cast
 from sqlalchemy import delete, desc, func, or_, select, text, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth_sso import check_oidc_discovery, clear_oidc_discovery_cache
@@ -54,6 +55,8 @@ from app.api.v1.schemas.settings import (
     AvailableModelItem,
     DecisionListing,
     DecisionListingStatus,
+    EmailChangeConfirmRequest,
+    EmailChangeRequest,
     EmbeddingModelTestRequest,
     EmbeddingModelTestResponse,
     GeneralAssistantConfigRequest,
@@ -103,8 +106,9 @@ from app.api.v1.schemas.settings import (
 )
 from app.api.v1.schemas.vault_references import attach_vault_failures, vault_status
 from app.core.database import get_db
-from app.core.email_domains import parse_allowed_domains
-from app.core.security import decrypt_stored_value, decrypt_value, encrypt_value
+from app.core.email_domains import email_domain_allowed, parse_allowed_domains
+from app.core.rate_limit import enforce_rate_limit
+from app.core.security import decrypt_stored_value, decrypt_value, encrypt_value, verify_password_async
 from app.core.utils import format_exception_message, normalize_language, safe_uuid
 from app.llm.custom_openai_provider import CustomOpenAIProvider
 from app.llm.decisions import DECISION_LISTING_TIMEOUT_SECONDS
@@ -145,8 +149,8 @@ from app.models.llm_trace import LLMTrace
 from app.models.mcp_server import MCPServer
 from app.models.oauth_default import OAuthDefault
 from app.models.sso_config import SSOConfig
-from app.models.user import User
-from app.services import ai_state, general_assistant_skills
+from app.models.user import User, is_platform_admin
+from app.services import ai_state, general_assistant_skills, token_store
 from app.services.audit import log_audit
 from app.services.audit_retention import audit_log_retention_days
 from app.services.branding import (
@@ -4529,12 +4533,16 @@ async def update_preferences(
     db: AsyncSession = Depends(get_db),
 ):
     # The email is the identity other products match their account on (the
-    # cross-platform JWT and the product sign-in carry it): a person never
-    # chooses it. An administrator changes it; the unchanged address is accepted.
+    # cross-platform JWT and the product sign-in carry it): a new address is
+    # proven first (``request_email_change``) or set by an administrator. The
+    # unchanged address is accepted.
     if body.email is not None and body.email.strip().lower() != (user.email or "").strip().lower():
         raise HTTPException(
             status_code=422,
-            detail="The email is changed by an administrator (PUT /api/v1/users/{user_id}/email), not here",
+            detail=(
+                "The email changes with a code sent to the new address "
+                "(POST /api/v1/settings/email-change), or by an administrator, not here"
+            ),
         )
     if body.full_name is not None:
         user.full_name = body.full_name
@@ -4755,6 +4763,175 @@ async def update_preferences(
     # the profile the client refetches next would read the previous values.
     await db.commit()
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Self-service email change, proven by a code sent to the new address
+# ---------------------------------------------------------------------------
+
+#: Email change requests per hour, per user and per target address: the route
+#: cannot flood anyone's inbox.
+EMAIL_CHANGE_REQUESTS_PER_HOUR = 3
+_EMAIL_ADDRESS = TypeAdapter(EmailStr)
+
+
+def _refuse_self_service_email_change(user: User) -> None:
+    """What refuses both steps of a self-service email change, before anything is read."""
+    if user.sso_provider:
+        raise HTTPException(
+            status_code=400,
+            detail="The email of an SSO account is managed by your identity provider",
+        )
+    if getattr(user, "impersonated_by", None) is not None:
+        raise HTTPException(status_code=403, detail="Cannot change the email while impersonating")
+    # Platform administrator standing follows ADMIN_EMAIL, and the boot finds
+    # the account by it.
+    if is_platform_admin(user):
+        raise HTTPException(
+            status_code=400,
+            detail="The platform admin account's email is set by ADMIN_EMAIL and cannot be changed",
+        )
+
+
+@router.post("/email-change", status_code=status.HTTP_202_ACCEPTED)
+async def request_email_change(
+    body: EmailChangeRequest,
+    request: Request,
+    background: BackgroundTasks,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a code to the new address; :func:`confirm_email_change` writes it.
+
+    The same 202 whether or not another account holds the address: a free
+    address gets the code, a taken one gets no code and its holder a notice
+    naming nobody. Either way the user's pending change is replaced. The
+    emails go out after the answer, so its timing does not tell either.
+    """
+    from app.core.config import settings as app_settings
+    from app.core.sso_helpers import get_sso_config
+    from app.services import email as email_service
+
+    _refuse_self_service_email_change(user)
+    if not email_service.is_email_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="The platform sends no email: ask an administrator to change your email",
+        )
+    try:
+        email = str(_EMAIL_ADDRESS.validate_python(body.email.strip())).strip().lower()
+    except ValidationError:
+        raise HTTPException(status_code=400, detail="Enter a valid email address") from None
+    if email == (user.email or "").strip().lower():
+        raise HTTPException(status_code=400, detail="This is already your email")
+    domain_list = (await get_sso_config(db)).allowed_domain_list
+    if not email_domain_allowed(email, domain_list):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Email addresses are restricted to: {', '.join(domain_list)}",
+        )
+    # An address exempt from the Terms of Use gate is not self-service: taking
+    # it would skip the gate for this account.
+    if app_settings.terms_of_use_exempt(email):
+        raise HTTPException(status_code=400, detail="This email address cannot be used")
+
+    # Charged before the password check: it bounds password guesses here too.
+    await enforce_rate_limit(
+        request,
+        "email-change-user",
+        limit=EMAIL_CHANGE_REQUESTS_PER_HOUR,
+        window_seconds=3600,
+        bucket=str(user.id),
+    )
+    if not user.hashed_password or not await verify_password_async(body.current_password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+    await enforce_rate_limit(
+        request,
+        "email-change-address",
+        limit=EMAIL_CHANGE_REQUESTS_PER_HOUR,
+        window_seconds=3600,
+        bucket=token_store.email_change_address_bucket(email),
+    )
+
+    holder = (
+        await db.execute(select(User.email).where(func.lower(User.email) == email, User.id != user.id))
+    ).scalar_one_or_none()
+    if holder is not None:
+        await token_store.drop_email_change(user.id)
+        html, text = email_service.email_change_address_taken_email()
+        background.add_task(
+            email_service.send_email,
+            to=holder,
+            subject="Someone tried to use your email address",
+            html=html,
+            text=text,
+        )
+    else:
+        code = await token_store.create_email_change(user_id=user.id, email=email)
+        html, text = email_service.email_change_code_email(code, token_store.EMAIL_CHANGE_TTL_SECONDS // 60)
+        background.add_task(
+            email_service.send_email, to=email, subject="Your email change code", html=html, text=text
+        )
+    return {"status": "pending"}
+
+
+@router.post("/email-change/confirm")
+async def confirm_email_change(
+    body: EmailChangeConfirmRequest,
+    request: Request,
+    background: BackgroundTasks,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Write the address the code was sent to, audit it and tell the old address.
+
+    The password reset links sent to the old address stop working on their
+    own (``token_store.password_reset_addressed_to``). The session stays: the
+    ``sub`` does not change.
+    """
+    from app.services import email as email_service
+    from app.services.mfa import _normalize_totp_code
+
+    _refuse_self_service_email_change(user)
+    email = await token_store.consume_email_change(user_id=user.id, code=_normalize_totp_code(body.code))
+    if email is None:
+        raise HTTPException(
+            status_code=400,
+            detail="This code is wrong or has expired. After 5 wrong codes, ask for a new one",
+        )
+    taken = HTTPException(status_code=400, detail="This email address is no longer available")
+    holder = (
+        await db.execute(select(User.id).where(func.lower(User.email) == email, User.id != user.id))
+    ).scalar_one_or_none()
+    if holder is not None:
+        raise taken
+    old_email = user.email
+    user.email = email
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        # Taken in between: the unique index on lower(email) refuses it.
+        await db.rollback()
+        raise taken from exc
+    await log_audit(
+        db,
+        user=user,
+        action="update",
+        entity_type="email",
+        entity_id=user.id,
+        entity_name=user.full_name,
+        summary=f"Changed email of '{old_email}' to '{email}'",
+        details={"old_email": old_email, "new_email": email},
+        request=request,
+    )
+    # Before the answer: the next sign-in and the next platform token carry
+    # the new address.
+    await db.commit()
+    html, text = email_service.email_changed_email(old_email=old_email, new_email=email, by_administrator=False)
+    background.add_task(
+        email_service.send_email, to=old_email, subject="Your email address changed", html=html, text=text
+    )
+    return {"status": "ok", "email": email}
 
 
 # ---------------------------------------------------------------------------

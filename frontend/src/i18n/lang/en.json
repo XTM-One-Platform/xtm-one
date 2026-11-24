@@ -21601,6 +21601,13 @@
   "Failed to change the email": "Failed to change the email",
   "The platform admin account's email is set by ADMIN_EMAIL and cannot be changed.": "The platform admin account's email is set by ADMIN_EMAIL and cannot be changed.",
   "New email": "New email",
-  "The other platforms find this person's account by this address. Users cannot change it themselves. The old and the new address are notified, and reset links already sent stop working.": "The other platforms find this person's account by this address. Users cannot change it themselves. The old and the new address are notified, and reset links already sent stop working.",
-  "Your email identifies you on the other platforms: an administrator changes it.": "Your email identifies you on the other platforms: an administrator changes it."
+  "The other platforms find this person's account by this address. Here it changes without a code; people change their own with a code sent to the new address. The old and the new address are notified, and reset links already sent stop working.": "The other platforms find this person's account by this address. Here it changes without a code; people change their own with a code sent to the new address. The old and the new address are notified, and reset links already sent stop working.",
+  "Could not send the code": "Could not send the code",
+  "Your account now uses {email}.": "Your account now uses {email}.",
+  "This code is wrong or has expired": "This code is wrong or has expired",
+  "Your identity provider manages your email: change it there.": "Your identity provider manages your email: change it there.",
+  "The other platforms find your account by this address: a code sent to the new one proves it is yours.": "The other platforms find your account by this address: a code sent to the new one proves it is yours.",
+  "Send code": "Send code",
+  "If {email} can be used, a 6-digit code was sent to it. It works once, within 10 minutes.": "If {email} can be used, a 6-digit code was sent to it. It works once, within 10 minutes.",
+  "Ask for a new code": "Ask for a new code"
 }

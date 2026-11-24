@@ -21601,6 +21601,13 @@
   "Failed to change the email": "メールアドレスを変更できませんでした",
   "The platform admin account's email is set by ADMIN_EMAIL and cannot be changed.": "プラットフォーム管理者アカウントのメールアドレスは ADMIN_EMAIL で設定され、変更できません。",
   "New email": "新しいメールアドレス",
-  "The other platforms find this person's account by this address. Users cannot change it themselves. The old and the new address are notified, and reset links already sent stop working.": "他のプラットフォームはこのアドレスでこの人のアカウントを見つけます。ユーザーが自分で変更することはできません。旧アドレスと新アドレスの両方に通知され、送信済みのリセットリンクは無効になります。",
-  "Your email identifies you on the other platforms: an administrator changes it.": "メールアドレスは他のプラットフォームであなたを識別します。変更は管理者が行います。"
+  "The other platforms find this person's account by this address. Here it changes without a code; people change their own with a code sent to the new address. The old and the new address are notified, and reset links already sent stop working.": "他のプラットフォームはこのアドレスでこの人のアカウントを見つけます。ここではコードなしで変更されます。本人が変更する場合は、新しいアドレスに送信されるコードが必要です。旧アドレスと新アドレスの両方に通知され、送信済みのリセットリンクは無効になります。",
+  "Could not send the code": "コードを送信できませんでした",
+  "Your account now uses {email}.": "アカウントは {email} を使用するようになりました。",
+  "This code is wrong or has expired": "このコードは正しくないか、有効期限が切れています",
+  "Your identity provider manages your email: change it there.": "メールアドレスはIDプロバイダーが管理しています。そちらで変更してください。",
+  "The other platforms find your account by this address: a code sent to the new one proves it is yours.": "他のプラットフォームはこのアドレスであなたのアカウントを見つけます。新しいアドレスに送信されるコードで、そのアドレスがあなたのものであることを確認します。",
+  "Send code": "コードを送信",
+  "If {email} can be used, a 6-digit code was sent to it. It works once, within 10 minutes.": "{email} が使用可能な場合、6桁のコードが送信されました。コードは10分以内に1回だけ使用できます。",
+  "Ask for a new code": "新しいコードをリクエスト"
 }

@@ -1,8 +1,8 @@
-"""A user's email changes only by an administrator.
+"""An administrator changes a user's email without a code.
 
 The email is the identity XTM One asserts to other products (the cross-platform
 JWT and the product sign-in carry it, and they find their account by it), so a
-user never sets it themselves: ``PUT /settings/preferences`` refuses a new
+user never sets it without proof: ``PUT /settings/preferences`` refuses a new
 address and ``PUT /users/{id}/email`` (administrators) changes it, audited, with
 a notice to the old and the new address. A password reset link sent before a
 change no longer works after it.
@@ -120,14 +120,14 @@ async def _change(db, target, email):
 
 class TestTheProfileNeverChangesTheEmail:
     @pytest.mark.parametrize("email", ["boss@corp.com", "free.address@corp.com"])
-    async def test_a_new_address_is_refused_naming_the_administrator_path(self, audits, email):
+    async def test_a_new_address_is_refused_naming_the_code_route(self, audits, email):
         me = _user()
         with pytest.raises(HTTPException) as exc:
             await settings_api.update_preferences(
                 body=UserPreferencesRequest(email=email, full_name="Renamed"), request=_REQUEST, user=me, db=_NoReadDB()
             )
         assert exc.value.status_code == 422
-        assert "/api/v1/users/{user_id}/email" in exc.value.detail
+        assert "/api/v1/settings/email-change" in exc.value.detail
         assert (me.email, me.full_name) == ("jane@corp.com", "Jane")
 
 

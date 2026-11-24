@@ -21601,6 +21601,13 @@
   "Failed to change the email": "No se pudo cambiar el correo electrónico",
   "The platform admin account's email is set by ADMIN_EMAIL and cannot be changed.": "El correo electrónico de la cuenta de administrador de la plataforma lo define ADMIN_EMAIL y no se puede cambiar.",
   "New email": "Nuevo correo electrónico",
-  "The other platforms find this person's account by this address. Users cannot change it themselves. The old and the new address are notified, and reset links already sent stop working.": "Las demás plataformas encuentran la cuenta de esta persona por esta dirección. Los usuarios no pueden cambiarla por sí mismos. Se avisa a la dirección anterior y a la nueva, y los enlaces de restablecimiento ya enviados dejan de funcionar.",
-  "Your email identifies you on the other platforms: an administrator changes it.": "Su correo electrónico lo identifica en las demás plataformas: lo cambia un administrador."
+  "The other platforms find this person's account by this address. Here it changes without a code; people change their own with a code sent to the new address. The old and the new address are notified, and reset links already sent stop working.": "Las demás plataformas encuentran la cuenta de esta persona por esta dirección. Aquí cambia sin código; cada persona cambia la suya con un código enviado a la nueva dirección. Se avisa a la dirección anterior y a la nueva, y los enlaces de restablecimiento ya enviados dejan de funcionar.",
+  "Could not send the code": "No se pudo enviar el código",
+  "Your account now uses {email}.": "Su cuenta ahora usa {email}.",
+  "This code is wrong or has expired": "Este código es incorrecto o ha caducado",
+  "Your identity provider manages your email: change it there.": "Su proveedor de identidad gestiona su correo electrónico: cámbielo allí.",
+  "The other platforms find your account by this address: a code sent to the new one proves it is yours.": "Las demás plataformas encuentran su cuenta por esta dirección: un código enviado a la nueva demuestra que es suya.",
+  "Send code": "Enviar código",
+  "If {email} can be used, a 6-digit code was sent to it. It works once, within 10 minutes.": "Si {email} se puede usar, se le envió un código de 6 dígitos. Funciona una vez, durante 10 minutos.",
+  "Ask for a new code": "Solicitar un código nuevo"
 }

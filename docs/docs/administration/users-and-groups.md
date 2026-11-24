@@ -53,11 +53,15 @@ You cannot disable or delete your own account. Prefer `Disable` when you may nee
 
 ## Email address
 
-People cannot change their own email address: the other Filigran platforms (OpenCTI, OpenAEV, OpenCRQ) find a person's account by it. The `Email` card of the user's page changes it, for local and SSO accounts alike, to an address no other account has and, when `Allowed Domains` is set, in one of those domains. The change applies at once:
+The other Filigran platforms (OpenCTI, OpenAEV, OpenCRQ) find a person's account by their email address, so it never changes to an unproven address. A person with a local account changes their own from their profile, with their current password and a code sent to the new address (see [My profile](../usage/my-profile.md#email-address)); that needs a platform that sends email. SSO accounts cannot: their identity provider manages the address.
+
+The `Email` card of the user's page changes it without a code, for local and SSO accounts alike, to an address no other account has and, when `Allowed Domains` is set, in one of those domains. The change applies at once:
 
 - when the platform sends email, the old and the new address are both told of the change, without a link;
 - password reset links already sent to the old address stop working;
 - the audit log records the old and the new address.
+
+A change a person makes from their profile is recorded the same way, and only the old address is told.
 
 ## Passwords
 
