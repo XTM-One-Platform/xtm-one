@@ -21390,5 +21390,13 @@
   "Announced to the loop by the catch-up pass": "Anunciado al ciclo por la pasada de recuperación",
   "Announced to the loop by the backfill": "Anunciado al ciclo por la carga retroactiva",
   "The accepted risk expired": "El riesgo aceptado expiró",
-  "Date and time": "Fecha y hora"
+  "Date and time": "Fecha y hora",
+  "{count, plural, one {+# not in the inventory} other {+# not in the inventory}}": "{count, plural, one {+# fuera del inventario} other {+# fuera del inventario}}",
+  "This asset is in no asset group.": "Este activo no pertenece a ningún grupo de activos.",
+  "Asset group not found": "Grupo de activos no encontrado",
+  "This asset group does not exist any more: its source may have removed it, or it was deleted.": "Este grupo de activos ya no existe: puede que su origen lo haya retirado o que se haya eliminado.",
+  "Members last synced": "Miembros sincronizados por última vez",
+  "About this asset group": "Acerca de este grupo de activos",
+  "{count, plural, one {# more member its source names is not in the inventory yet} other {# more members its source names are not in the inventory yet}}": "{count, plural, one {# miembro más que nombra su origen aún no está en el inventario} other {# miembros más que nombra su origen aún no están en el inventario}}",
+  "No asset of the inventory is in this group yet.": "Ningún activo del inventario está todavía en este grupo."
 }
