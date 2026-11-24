@@ -14,7 +14,7 @@
 """The categories of the organization context, and how an agent resolves them (#11533).
 
 The profile has a short identity (name, sector, regions, size, risk
-appetite) and long lists: the crown jewels, the software, the AI systems,
+appetite) and long lists: the crown jewels, the tech stack, the AI systems,
 the PIRs, the tracked organizations. The identity is always in the prompt
 (``organization_context_injection``); a list is a CATEGORY: announced in the
 prompt with its size, preloaded only when the cascade selects it, and read
@@ -121,6 +121,22 @@ def _registry() -> tuple[Category, ...]:
 CATEGORIES: tuple[Category, ...] = _registry()
 CATEGORY_NAMES: tuple[str, ...] = tuple(category.name for category in CATEGORIES)
 _BY_NAME = {category.name: category for category in CATEGORIES}
+
+
+def available() -> tuple[Category, ...]:
+    """The categories this platform's mode exposes: every one, none in Copilot mode (#1690).
+
+    Copilot has no CTEM loop: its agents read the identity alone, so no category is
+    listed, readable, preloaded or offered in a picker. The stored data stays untouched.
+    """
+    from app.services.organization_context import identity_only
+
+    return () if identity_only() else CATEGORIES
+
+
+def available_names() -> tuple[str, ...]:
+    """The names of :func:`available`."""
+    return tuple(category.name for category in available())
 
 
 #: Deprecated since #1501 (kept one release): ``ai_systems`` reads the assets of category ``ai_target``.
@@ -317,7 +333,12 @@ def render_categories(counts: dict[str, int]) -> str:
         'get_organization_context(category="software"), narrow it with query=, page it with offset= and limit=, up to '
         f"{MAX_PAGE} rows a page):"
     ]
-    lines += [index_line(category, counts.get(category.name, 0)) for category in CATEGORIES]
+    if not available():
+        return (
+            "No organization context category on this platform: the profile is its identity alone "
+            "(get_organization_context() reads it)."
+        )
+    lines += [index_line(category, counts.get(category.name, 0)) for category in available()]
     return "\n".join(lines)
 
 
