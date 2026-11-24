@@ -460,6 +460,8 @@ function Body({ item, actions, onClose }: { item: WorkItem; actions: WorkItemAct
   // Read but not writable for the reader (#1845): the write actions stay
   // visible, disabled, with why, instead of answering "not found".
   const lockedReason = item.can_write === false ? item.read_only_reason || t_i18n("Read-only for you.") : null;
+  // The decision recipient may cancel an item they cannot otherwise change (#1910).
+  const cancelLocked = item.can_cancel === true ? null : lockedReason;
   // An item waiting for the reader leads with its decision; the run notes
   // below it are history, folded until asked for.
   const deciding = !scheduled && waitsForAnswer(item);
@@ -584,12 +586,12 @@ function Body({ item, actions, onClose }: { item: WorkItem; actions: WorkItemAct
         )}
         {closable && (
           <>
-            <Tip content={lockedReason ?? t_i18n(CLOSE_EFFECTS.cancelled)} wrap="auto">
+            <Tip content={cancelLocked ?? t_i18n(CLOSE_EFFECTS.cancelled)} wrap="auto">
               <Button
                 variant="ghost"
                 size="sm"
                 className="gap-1"
-                disabled={!!lockedReason}
+                disabled={!!cancelLocked}
                 onClick={() => actions.close?.(item, "cancelled")}
               >
                 <XCircle className="h-3.5 w-3.5" aria-hidden /> {t_i18n("Cancel work item")}
