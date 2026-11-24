@@ -3682,6 +3682,17 @@ async def receive_provider_webhook(provider: str, request: Request) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _hubspot_filter_reason(event_key: str, payload: dict, config: object) -> str | None:
+    """Why a HubSpot assignment's trigger ``filter`` drops one batch event, ``None`` when it runs.
+
+    ``scope.crm_object_type`` is applied by the caller; every other key is the
+    payload filter on the event (``propertyName``, ``propertyValue``,
+    ``_hubspot_event.property_name``, operators and combinators), as the other
+    webhook providers are matched. A dropped event is counted on the assignment.
+    """
+    return _trigger_filter_reason(event_key, payload, trigger_filter(config))
+
+
 async def _handle_hubspot_webhook(
     integration_id: str,
     integration: Integration,
@@ -3743,6 +3754,8 @@ async def _handle_hubspot_webhook(
 
         # ── 3. Process each event in the batch ───────────────────────────
         triggered: list[dict] = []
+        filtered: dict[str, int] = {}
+        reasons: dict[str, dict[str, int]] = {}
         now_iso = datetime.now(UTC).isoformat()
 
         for evt in events:
@@ -3794,6 +3807,12 @@ async def _handle_hubspot_webhook(
                     (config.get("filter") or {}).get("scope") or {}
                 ).get("crm_object_type") or []
                 if allowed_object_types and object_type not in allowed_object_types:
+                    continue
+                # The rest of the filter is matched on the event itself
+                # (``propertyName``, ``_hubspot_event.property_value``, operators).
+                reason = _hubspot_filter_reason(event_key, payload, config)
+                if reason is not None:
+                    _note_filtered(filtered, reasons, str(wf.id), reason)
                     continue
 
                 trigger_context = {
@@ -3857,6 +3876,7 @@ async def _handle_hubspot_webhook(
             )
 
         await db.commit()
+        await _count_filtered(filtered, reasons)
 
     return {"status": "ok", "triggered": triggered, "count": len(triggered)}
 
@@ -4470,6 +4490,8 @@ async def _handle_hubspot_assignment_webhook(
         allowed_object_types = (
             (config.get("filter") or {}).get("scope") or {}
         ).get("crm_object_type") or []
+        filtered: dict[str, int] = {}
+        reasons: dict[str, dict[str, int]] = {}
 
         for evt in events:
             subscription_type = evt.get("subscriptionType", "")
@@ -4512,6 +4534,10 @@ async def _handle_hubspot_assignment_webhook(
                 },
                 **evt,
             }
+            reason = _hubspot_filter_reason(event_key, payload, config)
+            if reason is not None:
+                _note_filtered(filtered, reasons, str(wf.id), reason)
+                continue
 
             trigger_context = {
                 "type": "webhook",
@@ -4582,6 +4608,7 @@ async def _handle_hubspot_assignment_webhook(
             )
 
         await db.commit()
+        await _count_filtered(filtered, reasons)
 
     return {"status": "ok", "triggered": triggered, "count": len(triggered)}
 
