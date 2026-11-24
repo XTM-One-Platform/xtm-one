@@ -21494,7 +21494,7 @@
   "waiting since {timeAgo}": "waiting since {timeAgo}",
   "Back to {stage}": "Back to {stage}",
   "The cases could not be read. Try again in a moment.": "The cases could not be read. Try again in a moment.",
-  "No case yet: cases appear when a signal matches your scope or open issues on your stack share a fix.": "No case yet: cases appear when a signal matches your scope or open issues on your stack share a fix.",
+  "No case yet: cases appear when a signal matches your scope or open issues on your software share a fix.": "No case yet: cases appear when a signal matches your scope or open issues on your software share a fix.",
   "No decision waiting and no accepted risk.": "No decision waiting and no accepted risk.",
   "No open case in {stage}: every case is in another phase or resolved.": "No open case in {stage}: every case is in another phase or resolved.",
   "Open the decisions waiting": "Open the decisions waiting",
