@@ -38,8 +38,11 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import cast
+from sqlalchemy.types import Text
 
 from app.models.decision import Decision, public_id
 
@@ -177,6 +180,14 @@ def present(row: Decision, names: SourceNames, *, can_answer: bool = True) -> di
     }
 
 
+def _reaches(row: Any, keys: list[str], groups: list[str]) -> bool:
+    """Whether a decision row is addressed to the caller: its recipient key, or one of its groups (#1748)."""
+    if row.recipient in keys:
+        return True
+    listed = (row.ask or {}).get("recipient_groups") if isinstance(row.ask, dict) else None
+    return bool(listed) and any(str(g) in groups for g in listed)
+
+
 async def waiting_for(
     db: AsyncSession,
     user: Any,
@@ -199,8 +210,17 @@ async def waiting_for(
     query = select(Decision).where(Decision.status == "open")
     if fleet_id is not None:
         query = query.where(fleet_decisions_clause(fleet_id))
+    groups = [k.partition(":")[2] for k in keys if k.startswith("group:")]
+    reach = Decision.recipient.in_(keys)
+    if groups:
+        # A decision addressed to several groups names them all in its ask (#1748).
+        reach = or_(
+            reach,
+            Decision.recipient.like("group:%")
+            & cast(Decision.ask, JSONB)["recipient_groups"].has_any(cast(groups, ARRAY(Text))),
+        )
     if fleet_id is None or not every_recipient:
-        query = query.where(Decision.recipient.in_(keys))
+        query = query.where(reach)
     rows = list(
         (
             await db.execute(
@@ -212,7 +232,7 @@ async def waiting_for(
     )
     names = await _source_names(db, rows)
     items = [
-        present(row, names.get((row.source_type, row.source_id), SourceNames()), can_answer=row.recipient in keys)
+        present(row, names.get((row.source_type, row.source_id), SourceNames()), can_answer=_reaches(row, keys, groups))
         for row in rows
     ]
     return {"enabled": True, "reason": None, "items": items}
