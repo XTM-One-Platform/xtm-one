@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { Check, Image } from "lucide-react";
+import { Icon } from "@filigran/design-system";
 
 import { Badge } from "@/components/ui/badge";
 import { useFormatter } from "@/i18n";
@@ -32,7 +32,7 @@ export function ImageModelSummary({
     <div className="flex items-center justify-between rounded-sm bg-elevation-default p-3.5">
       <div className="flex items-center gap-3">
         <div className="flex h-8 w-8 items-center justify-center rounded-sm bg-filigran-ia-primary/10">
-          <Image className="h-4 w-4 text-filigran-ia-primary" />
+          <Icon name="image" size={16} className="text-filigran-ia-primary" />
         </div>
         <div>
           <p className="content-base font-medium">
@@ -46,7 +46,7 @@ export function ImageModelSummary({
         </div>
       </div>
       {model ? (
-        <Badge variant="success" className="content-caption"><Check className="h-3 w-3 mr-1" />{t_i18n("Active")}</Badge>
+        <Badge variant="success" className="content-caption"><Icon name="check" size={12} className="mr-1" />{t_i18n("Active")}</Badge>
       ) : automatic ? (
         <Badge variant="secondary" className="content-caption">{t_i18n("Automatic")}</Badge>
       ) : null}
