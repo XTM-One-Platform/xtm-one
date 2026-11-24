@@ -61,6 +61,7 @@ from urllib.parse import urlparse, urlsplit
 import httpx
 
 from app.core.egress import egress_client
+from app.core.pinned_transport import is_policy_refusal
 from app.core.redaction import redact_secrets
 from app.core.utils import format_exception_message
 
@@ -1210,7 +1211,13 @@ async def safe_request(
             # behaviour-preserving change for every call that already worked.
             resp: httpx.Response = await client.request(method.upper(), url, **kwargs)
         except httpx.HTTPError as exc:
-            is_connect = isinstance(exc, httpx.ConnectError) and not getattr(exc, "is_relay_error", False)
+            # A destination-policy refusal is no outage: no connection was
+            # attempted and a retry would be refused again.
+            is_connect = (
+                isinstance(exc, httpx.ConnectError)
+                and not getattr(exc, "is_relay_error", False)
+                and not is_policy_refusal(exc)
+            )
             if is_connect:
                 _record_connect_failure(provider)
                 if attempt < _CONNECT_MAX_RETRIES:
