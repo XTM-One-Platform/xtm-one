@@ -20,7 +20,7 @@ export type ProfileTab = (typeof PROFILE_TABS)[number];
  * and Exposure cards live on CTEM > Inventory now, so Settings draws no tab bar (identity, knowledge through its
  * button); the five tabs stay the grouping of fields (drafts, unsaved markers, missing fields).
  */
-export const SETTINGS_PROFILE_TABS = ["identity", "knowledge"] as const satisfies readonly ProfileTab[];
+const SETTINGS_PROFILE_TABS = ["identity", "knowledge"] as const satisfies readonly ProfileTab[];
 
 /** Whether a tab's cards live on CTEM > Inventory instead of Settings. */
 export function isInventoryTab(tab: ProfileTab): boolean {
