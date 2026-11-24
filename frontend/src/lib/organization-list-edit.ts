@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * The editing model of a list of the organization profile (crown jewels, software inventory, AI
+ * The editing model of a list of the organization profile (primary assets, software inventory, AI
  * systems, assets, asset groups, accepted risks, enterprise knowledge; #12256): the rows of
  * an open edit with their state (new, edited, removed), the values Save writes, and the
  * checks a row "needs attention" for. Pure, so the page and its tests share it.
