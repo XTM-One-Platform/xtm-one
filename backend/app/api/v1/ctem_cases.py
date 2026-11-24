@@ -74,8 +74,6 @@ class CaseValidation(BaseModel):
     result: Literal["passed", "not_exposed", "failed", "pending"]
     mitigation_only: bool = False
     note: str | None = Field(default=None, max_length=500)
-    #: CTEM-12: only read-only injects ran (true), a non-read-only one ran (false), unknown (None).
-    safe_mode: bool | None = None
     #: The target asset groups in the order they were tested.
     run_order: list[str] | None = Field(default=None, max_length=20)
     #: #1500: remediation (a version inventory) or validation (a test); a patch or upgrade case resolves
@@ -635,7 +633,6 @@ async def record_ctem_case_validation(
             result=body.result,
             mitigation_only=body.mitigation_only,
             note=body.note,
-            safe_mode=body.safe_mode,
             run_order=body.run_order,
             evidence_type=body.evidence_type,
             actor=str(user.id),
