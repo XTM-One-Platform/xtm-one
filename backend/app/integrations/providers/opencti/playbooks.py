@@ -753,6 +753,46 @@ def _fmt_playbook(node: dict) -> str:
     return "\n".join(parts)
 
 
+# Step statuses OpenCTI writes for a step that did its work; any other status
+# (error, failed, ...) is a failed step whose message is shown.
+_STEP_OK_STATUSES = frozenset({"success", "succeeded", "complete", "completed", "done", "ok"})
+_EXECUTIONS_SHOWN = 5
+_STEP_MESSAGE_LIMIT = 400
+
+
+def _fmt_executions(execs: list[dict[str, Any]], node_names: dict[str, str]) -> list[str]:
+    """The recent executions with each failed step and its reason.
+
+    A step that failed (an AI agent call that errored, a connector that
+    refused) is otherwise only visible in the OpenCTI UI: the reason is the
+    step's ``message``, shown here with the node name it ran.
+    """
+    lines = [f"  recent executions: {len(execs)}"]
+    for execution in execs[:_EXECUTIONS_SHOWN]:
+        steps = execution.get("steps") or []
+        failed = [s for s in steps if str(s.get("status") or "").lower() not in _STEP_OK_STATUSES]
+        verdict = f"{len(failed)} failed" if failed else "no failed step"
+        lines.append(
+            f"  - execution {execution.get('id', '?')} at {execution.get('execution_start') or '?'}: "
+            f"{len(steps)} step(s), {verdict}"
+        )
+        for step in failed:
+            step_id = str(step.get("id") or "?")
+            name = node_names.get(step_id) or node_names.get(step_id.split("-", 1)[-1]) or ""
+            label = f"{name} ({step_id})" if name else step_id
+            message = str(step.get("message") or "no message")
+            if len(message) > _STEP_MESSAGE_LIMIT:
+                message = message[:_STEP_MESSAGE_LIMIT] + " ... (truncated)"
+            # A step message can quote the processed entity: data, never instructions.
+            lines.append(
+                wrap_untrusted(
+                    f"failed step {label}, status {step.get('status') or 'unknown'}: {message}",
+                    "OpenCTI playbook step",
+                )
+            )
+    return lines
+
+
 def register(
     base_url: str, headers: dict[str, str], executor: CallableToolExecutor
 ) -> list[ToolDefinition]:
@@ -878,10 +918,15 @@ def register(
                 f"  queue_messages: {pb.get('queue_messages', 0)}",
             ]
             execs = pb.get("last_executions") or []
-            if execs:
-                lines.append(f"  recent executions: {len(execs)}")
             definition = pb.get("playbook_definition")
             graph = _parse_graph(definition)
+            if execs:
+                node_names = {
+                    str(n.get("id")): str(n.get("name") or "")
+                    for n in (graph[0] if graph else [])
+                    if isinstance(n, dict) and n.get("id")
+                }
+                lines.extend(_fmt_executions(execs, node_names))
             if graph is None:
                 lines.append(f"  definition: {len(definition)} chars, not readable JSON")
             else:
@@ -963,7 +1008,9 @@ def register(
                 return err
             return (
                 f"Triggered playbook {playbook_id} on entity {entity_id} "
-                f"(accepted: {data.get('playbookExecute')})."
+                f"(accepted: {data.get('playbookExecute')}). The run is asynchronous: "
+                "read action='get' for its steps, a failed step (an AI agent call "
+                "included) is listed there with its reason."
             )
 
         if action == "duplicate":
@@ -1431,9 +1478,72 @@ def register(
                 return err
             return f"Updated the positions of {len(payload or [])} node(s) of playbook {playbook_id}."
 
+        if action == "relink":
+            if not (link_id and to_node):
+                return "link_id and to_node are required for 'relink' (from_node and from_port optional)."
+            if bool(from_node) != bool(from_port):
+                return "from_node and from_port go together for 'relink': give both or neither."
+            nodes = [to_node] + ([from_node] if from_node else [])
+            unknown = await _check_existing(playbook_id, nodes, [link_id])
+            if unknown:
+                return unknown
+            query = (
+                "mutation Relink($id: ID!, $linkId: ID!, $toNodeId: ID!, $fromNodeId: ID, $fromPortId: ID) {"
+                "  playbookRelink(id: $id, linkId: $linkId, toNodeId: $toNodeId,"
+                "    fromNodeId: $fromNodeId, fromPortId: $fromPortId) }"
+            )
+            data, err = await _gql(
+                query,
+                {
+                    "id": playbook_id,
+                    "linkId": link_id,
+                    "toNodeId": to_node,
+                    "fromNodeId": from_node or None,
+                    "fromPortId": from_port or None,
+                },
+            )
+            if err:
+                return err
+            relinked = str(data.get("playbookRelink") or "")
+            lost = await _lost_after_write(playbook_id, nodes, [relinked] if relinked else [])
+            if lost:
+                return lost
+            return f"Relinked link {link_id} to node {to_node} (link_id: {relinked or link_id})."
+
+        if action == "move_node":
+            if not (node_id and parent_node_id and parent_port_id):
+                return "node_id, parent_node_id and parent_port_id are required for 'move_node'."
+            unknown = await _check_existing(playbook_id, [node_id, parent_node_id], [])
+            if unknown:
+                return unknown
+            query = (
+                "mutation MoveNode($id: ID!, $nodeId: ID!, $parentNodeId: ID!, $parentPortId: ID!) {"
+                "  playbookMoveNode(id: $id, nodeId: $nodeId, parentNodeId: $parentNodeId,"
+                "    parentPortId: $parentPortId) }"
+            )
+            data, err = await _gql(
+                query,
+                {
+                    "id": playbook_id,
+                    "nodeId": node_id,
+                    "parentNodeId": parent_node_id,
+                    "parentPortId": parent_port_id,
+                },
+            )
+            if err:
+                return err
+            link = str(data.get("playbookMoveNode") or "")
+            lost = await _lost_after_write(playbook_id, [node_id, parent_node_id], [link] if link else [])
+            if lost:
+                return lost
+            return (
+                f"Moved node {node_id} and its branch under node {parent_node_id} "
+                f"(port {parent_port_id}, link_id: {link})."
+            )
+
         return (
             f"Unknown action '{action}'. Valid actions: add_node, replace_node, "
-            "insert_node, add_link, delete_node, delete_link, update_positions."
+            "insert_node, add_link, relink, move_node, delete_node, delete_link, update_positions."
         )
 
     executor.register("manage_opencti_playbook", manage_opencti_playbook)
@@ -1489,7 +1599,9 @@ def register(
                 "in the same edit), 'replace_node' (node_id + node fields), "
                 "'insert_node' (parent_node_id, parent_port_id, child_node_id + node "
                 "fields), 'add_link' (from_node, from_port, to_node), 'delete_node' "
-                "(node_id), 'delete_link' (link_id), 'update_positions' (positions: "
+                "(node_id), 'delete_link' (link_id), 'relink' (link_id, to_node, optional "
+                "from_node + from_port), 'move_node' (node_id with its branch under "
+                "parent_node_id + parent_port_id), 'update_positions' (positions: "
                 "{node_id: {x, y}} as a JSON string). A node left without a parent "
                 "link makes the playbook unviewable in the OpenCTI editor until it is "
                 "linked: give add_node a parent, or use insert_node. Call manage_opencti_playbook "
@@ -1513,8 +1625,15 @@ def register(
                     "action": {
                         "type": "string",
                         "enum": [
-                            "add_node", "replace_node", "insert_node", "add_link",
-                            "delete_node", "delete_link", "update_positions",
+                            "add_node",
+                            "replace_node",
+                            "insert_node",
+                            "add_link",
+                            "relink",
+                            "move_node",
+                            "delete_node",
+                            "delete_link",
+                            "update_positions",
                         ],
                         "description": "The graph operation to perform.",
                     },

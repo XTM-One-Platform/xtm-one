@@ -113,6 +113,12 @@ from .agent_builder import (
 from .computer_use import (
     build_computer_use_tools,
 )
+from .ctem import (
+    CTEM_GROUP,
+    build_ctem_tools,
+    ctem_tools_for,
+    offers_ctem_tools,
+)
 from .ctem_cases import (
     CTEM_CASE_TOOL_NAMES,
     build_ctem_case_tools,
@@ -445,6 +451,7 @@ __all__ = [
     "AGENT_KEYED_BUILTIN_TOOL_IDS",
     "CONVERSATION_WORKSET_TTL",
     "CTEM_CASE_TOOL_NAMES",
+    "CTEM_GROUP",
     "CTEM_READ_GROUP",
     "CTEM_READ_TOOL_NAMES",
     "CTEM_REPAIR_GROUP",
@@ -482,6 +489,7 @@ __all__ = [
     "build_ctem_read_tools",
     "build_ctem_repair_tools",
     "build_ctem_signal_tools",
+    "build_ctem_tools",
     "build_custom_dashboard_tools",
     "build_deep_investigation_tool",
     "build_document_vision_tools",
@@ -542,6 +550,7 @@ __all__ = [
     "consulted_peer_handover",
     "ctem_read_tools_for",
     "ctem_repair_tools_for",
+    "ctem_tools_for",
     "delegated_parent_id",
     "ensure_deck_tools",
     "extract_visited_agents",
@@ -586,6 +595,7 @@ __all__ = [
     "offers_ctem_read_tools",
     "offers_ctem_repair_tools",
     "offers_ctem_signal_tools",
+    "offers_ctem_tools",
     "offers_learned_lesson_tool",
     "offers_organization_context_write",
     "offers_organization_proposals",
