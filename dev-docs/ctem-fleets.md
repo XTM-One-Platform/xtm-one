@@ -1989,9 +1989,22 @@ risk) declare one gate per loop stage, from
 | `ctem.analyst_review` | Review of the threat package before its security coverage is requested | low | the coverage request (`manage_opencti_security_coverage` action `create`) |
 | `ctem.remediation.decision` | Decide the remediation option and record it as an OpenCRQ treatment plan | high | the four treatment plan writes (CTEM-18) |
 | `ctem.mobilize` | Tickets, owners notified, prepared change handed over: one decision per case | destructive | the Jira and ServiceNow ticket tools |
-| `ctem.production_change` | A change applied on production through an integration | high | none |
-| `ctem.accept_risk` | Residual risk accepted beyond the policy cap | high | none |
-| `ctem.close_without_retest` | A case closed with no passing re-test | high | none |
+| `ctem.production_change` | A change applied on production through an integration | high | none (held on the case, below) |
+| `ctem.accept_risk` | Residual risk accepted beyond the policy cap | high | none (held on the case, below) |
+| `ctem.close_without_retest` | A case closed with no passing re-test | high | none (held on the case, below) |
+
+**Tool-less gates held on the case (#1644).** The last three gates pause no
+tool, so the case tools (`builtin_tools/ctem_cases.py`, rules in
+`app.services.ctem_tool_less_gates`) hold them when the home fleet's level or
+pin makes them wait: `update_ctem_case gate` refuses `passed_automatically`
+for such a gate; an agent moves a case to `resolved` or `mitigated_watching`
+without a passing validation only once `ctem.close_without_retest` is recorded
+`answered` on the case (or in the same call); and while one of the three is
+recorded `waited` and not answered since, `update_ctem_case` state moves,
+`record_ctem_case_ticket`, `sync_ctem_case_ticket` and
+`decide_ctem_case_remediation` are refused until the answer is recorded. A
+fleet that does not declare a gate, or an agent with no home fleet, is not
+held.
 
 At the seeded level (Low) two gates wait per case (Sam, 23 Nov 2026): the
 OpenAEV validation (on the three fleets with the OpenAEV validation step) and

@@ -111,6 +111,12 @@ def env(monkeypatch):
     monkeypatch.setattr(store, "create_manual_case", _create)
     monkeypatch.setattr(view_of, "viewer_view", _viewer)
 
+    async def _no_home(_db: object, _agents: object) -> dict[uuid.UUID, Any]:
+        return {}
+
+    # No home fleet by default: no fleet gate is enforced (#1644 reads it on a closing move).
+    monkeypatch.setattr("app.services.fleet_runs.home_fleet_defaults_of", _no_home)
+
     def _tools(user_id: str):
         defs, executor = build_ctem_case_tools(user_id=user_id, agent_id=AGENT)
 

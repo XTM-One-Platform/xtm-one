@@ -115,7 +115,11 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         return primary.id, normalize_vertical(getattr(user, "ctem_vertical", None))
 
     async def _shown(db: AsyncSession, case_id: uuid.UUID, org_id: uuid.UUID, vertical: str) -> Any:
-        """(stored case, members, rendering) for the acting user, ``None`` when they see none of it."""
+        """(stored case, members, rendering, events) for the acting user, ``None`` when they see none of it.
+
+        *events* is the whole case history ``store.get_case`` read, newest first (the
+        tool-less gate checks read it, #1644).
+        """
         from app.services import ctem_cases_store as store
         from app.services import ctem_cases_view as view_of
 
@@ -126,7 +130,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         rendered = view_of.hydrate(
             case, rows, events[:_HISTORY_PAGE], await view_of.viewer_view(db, str(scope), vertical)
         )
-        return None if rendered is None else (case, rows, rendered)
+        return None if rendered is None else (case, rows, rendered, events)
 
     async def _list(
         state: str = "", priority: str = "", owner_user_id: str = "", limit: int = 20, offset: int = 0
@@ -271,7 +275,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 shown = await _shown(db, wanted, org_id, vertical) if org_id and scope else None
                 if shown is None:
                     return f"No case {case_id}."
-                case, rows, _ = shown
+                case, rows, _, history = shown
+                # Before any write: a refusal leaves the case untouched (#1644).
+                await _check_tool_less(db, case, history, state=state, gate=gate)
                 owner = _uuid(owner_user_id)
                 if owner and owner != case.owner_user_id:
                     owner_view = await view_of.viewer_view(db, str(owner), vertical)
@@ -335,6 +341,29 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         except Exception:
             logger.warning("CTEM case update failed", exc_info=True)
             return "Error: the case could not be changed right now. Say so; nothing was changed."
+
+    async def _check_tool_less(db: AsyncSession, case: Any, history: list[Any], *, state: str, gate: Any) -> None:
+        """The tool-less gate rules of one ``update_ctem_case`` call (#1644); raises ``CaseRuleError``."""
+        from app.services import ctem_cases as rules
+        from app.services import ctem_tool_less_gates as tool_less
+
+        gate_key = str(gate.get("key") or "").strip() if isinstance(gate, dict) else ""
+        gate_outcome = str(gate.get("outcome") or "") if isinstance(gate, dict) else ""
+        if gate_key in tool_less.TOOL_LESS_GATES and gate_outcome == "passed_automatically":
+            tool_less.check_record(gate_key, gate_outcome, (await _tool_less_waits(db)).get(gate_key))
+        if not state:
+            return
+        answering = gate_key if gate_outcome == "answered" else ""
+        tool_less.check_hold(tool_less.pending(history), "move the case", answering=answering)
+        proven = rules.passing(rules.latest_validation(getattr(case, "validations", None)))
+        if state in tool_less.CLOSING_STATES and not proven:
+            tool_less.check_close(
+                state,
+                proven=proven,
+                waits=(await _tool_less_waits(db)).get(tool_less.CLOSE_WITHOUT_RETEST),
+                history=history,
+                answering=answering,
+            )
 
     async def _validation(
         case_id: str,
@@ -508,6 +537,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 shown = await _shown(db, wanted, org_id, vertical)
                 if shown is None:
                     return f"No case {case_id}."
+                _hold(shown, "record its ticket")
                 case_loop.record_ticket(
                     db, shown[0], integration=integration, key=key, url=url or None, status=status, actor=agent_id
                 )
@@ -547,6 +577,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 if shown is None:
                     return f"No case {case_id}."
                 case = shown[0]
+                _hold(shown, "decide its remediation")
                 figures = await _opencrq_readable(db)
                 if answered_option:
                     chosen = decision_rules.recommended(parsed, answered_option)
@@ -650,6 +681,31 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         pin = gate.get("pin")
         return gate_waits(level, gate), f"pin {pin}" if pin else f"level {level}"
 
+    async def _tool_less_waits(db: AsyncSession) -> dict[str, bool]:
+        """Whether each tool-less CTEM gate waits for the agent's home fleet (#1644).
+
+        A gate the fleet does not declare is left out (nothing enforced for it), and so
+        is every gate of an agent with no home fleet: the level and the pins are a
+        fleet's own, and a case moved by a person is never held here.
+        """
+        from app.services import ctem_tool_less_gates as tool_less
+        from app.services.fleet_autonomy import fleet_autonomy_for_run, gate_waits
+        from app.services.fleet_runs import home_fleet_defaults_of
+
+        homes = await home_fleet_defaults_of(db, [agent_id])
+        home = next(iter(homes.values()), None)
+        found = await fleet_autonomy_for_run(db, home.fleet_id) if home else None
+        if not found:
+            return {}
+        level, gates = found
+        return {str(g.get("key")): gate_waits(level, g) for g in gates if g.get("key") in tool_less.TOOL_LESS_GATES}
+
+    def _hold(shown: Any, action: str) -> None:
+        """Refuse *action* while a tool-less gate waits on the case unanswered (#1644)."""
+        from app.services import ctem_tool_less_gates as tool_less
+
+        tool_less.check_hold(tool_less.pending(shown[3]), action)
+
     async def _approval_threshold(db: AsyncSession, org_id: uuid.UUID | None) -> float | None:
         from app.services import organization_context as org_context
 
@@ -703,6 +759,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         from app.core.config import settings as app_settings
         from app.core.database import async_session
         from app.services import ctem_case_loop as case_loop
+        from app.services import ctem_cases as rules
         from app.services import ctem_ticketing
 
         wanted = _uuid(case_id)
@@ -716,6 +773,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 shown = await _shown(db, wanted, org_id, vertical)
                 if shown is None:
                     return f"No case {case_id}."
+                try:
+                    _hold(shown, "sync its ticket")
+                except rules.CaseRuleError as exc:
+                    return f"Refused: {exc}. Nothing was changed."
                 pending = case_loop.PendingEvents()
                 answer = await ctem_ticketing.sync_one(
                     db,
