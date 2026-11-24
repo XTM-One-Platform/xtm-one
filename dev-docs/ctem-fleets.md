@@ -2395,6 +2395,16 @@ assignment runs only, batched over 60 seconds, seeded off and switched with
 "Case opened or reopened". It reads the cause of a member's failed run and
 moves the case on or names what releases it; its own runs never wake it.
 
+The Threat Hunt Creator has two paths (#1837): with a person (chat or a
+transfer) it asks for the platform and has its hunt plan approved; consulted
+or delegated by an agent (the relevance analyst, the PIR desk orchestrator),
+it runs its autonomous path: the platform from the caller or the organization
+context (Sigma when none is named), a new draft named after the threat, and an
+answer with the Grouping, the indicators created and a `missing` list. It
+never stops that run for a person: a choice a person should make goes back to
+the caller in `missing`, which files the decision between its steps.
+`tests/test_ctem_hunt_creator_autonomous_1837.py` pins it.
+
 ### 14.1 Upgrade of an instance seeded with the eight former fleets
 
 Three optional keys of a fleet entry, read by `app/agents/fleet_seed.py`:
