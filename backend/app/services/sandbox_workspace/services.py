@@ -49,7 +49,14 @@ from typing import Any
 
 from app.core.utils import format_exception_message
 from app.services.sandbox_workspace import audit, preview, remote
-from app.services.sandbox_workspace.checkout import RECORD_NAME, CheckoutRecord, CheckoutRecordError
+from app.services.sandbox_workspace.checkout import (
+    RECORD_NAMES,
+    CheckoutRecord,
+    CheckoutRecordError,
+    is_record_name,
+    read_record_bytes,
+    record_paths,
+)
 from app.services.sandbox_workspace.checks import (
     CHECKS_FILE,
     ChecksError,
@@ -167,7 +174,7 @@ async def _declared(session: WorkspaceSession, checkout: str) -> tuple[str, dict
 async def _checkout_record(session: WorkspaceSession, root: str) -> CheckoutRecord | None:
     """The ``materialize_repository`` record of the checkout at *root*, or ``None`` (absent or unreadable)."""
     try:
-        _entry, data = await session.get_bytes(_join(root, RECORD_NAME))
+        _entry, data = await read_record_bytes(session, root)
     except FileNotFoundError:
         return None
     try:
@@ -203,14 +210,19 @@ async def _missing_needs(session: WorkspaceSession, root: str, chain: list[Servi
     held = [path for path in await session.entries() if is_under(path, root)]
     if record is None:
         return [need for need in wanted if not any(is_under(path, _join(root, need)) for path in held)]
-    nested = {path for path in held if path.rsplit("/", 1)[-1] == RECORD_NAME and path != _join(root, RECORD_NAME)}
+    own = set(record_paths(root))
+    nested = {path for path in held if is_record_name(path) and path not in own}
     return [need for need in wanted if not _held_by_nested_checkout(root, need, held, nested)]
 
 
 def _held_by_nested_checkout(root: str, need: str, held: list[str], nested: set[str]) -> bool:
     """Whether *need* lies in a nested checkout under *root* whose tree holds a file at or under it."""
     parts = need.split("/")
-    if not any(_join(root, "/".join([*parts[:depth], RECORD_NAME])) in nested for depth in range(1, len(parts) + 1)):
+    if not any(
+        _join(root, "/".join([*parts[:depth], name])) in nested
+        for depth in range(1, len(parts) + 1)
+        for name in RECORD_NAMES
+    ):
         return False
     target = _join(root, need)
     return any(is_under(path, target) and path not in nested for path in held)
