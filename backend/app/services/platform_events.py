@@ -292,6 +292,15 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
         ),
         "filter_keys": _WORK_ITEM_KEYS,
     },
+    "work_item.past_due": {
+        "description": (
+            "An open work item crossed its due date (services/work_item_past_due.py): raised once per item "
+            "and due date by the scheduler tick (a new due_at crossed raises again); scheduled one-offs are "
+            "left out. The payload carries due_at and overdue_seconds. Filter on owner_agent_id, "
+            "correlation_key (starts_with) or priority."
+        ),
+        "filter_keys": (*_WORK_ITEM_KEYS, "due_at", "overdue_seconds"),
+    },
     "work_item.needs_human": {
         "description": (
             "A work item started waiting for a person: needs_human became true, or the blocked_reason "

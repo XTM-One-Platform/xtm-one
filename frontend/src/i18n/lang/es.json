@@ -16550,6 +16550,7 @@
   "Work item completed": "Elemento de trabajo completado",
   "Work item released": "Elemento de trabajo desbloqueado",
   "Work item no longer dispatched": "Elemento de trabajo ya no distribuido",
+  "Work item past due": "Elemento de trabajo vencido",
   "Work item waits for a person": "Elemento de trabajo a la espera de una persona",
   "Work items wait on each other": "Elementos de trabajo que se esperan mutuamente",
   "Run completed": "Ejecución completada",
