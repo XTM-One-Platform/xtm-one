@@ -3238,8 +3238,8 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
             "created in OpenCTI in the last 7 days. Skip those an open CTEM case "
             "(list_ctem_cases) or an open ctem:f1 work item already covers. "
             "Ask the Threat Relevance Analyst to score the rest in one batch (" + CTEM_RELEVANCE_RULE + "), "
-            "and record each relevant one with "
-            "record_ctem_signal (trigger_path relevant_threat). End with a short "
+            "and record the relevant ones in one record_ctem_signals call "
+            "(trigger_path relevant_threat, one row each). End with a short "
             "summary: threats reviewed, relevant, signals recorded."
         ),
     },
