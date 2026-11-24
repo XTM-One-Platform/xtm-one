@@ -10153,6 +10153,11 @@ def build_agent_builder_tool(
                 rows, noun="skill", search=search, compact=compact, limit=limit, offset=offset
             )
 
+    async def _search_config_text(query: str = "", scope: object = "") -> str:
+        from app.services.config_text_search import search_config_text
+
+        return await search_config_text(user_id, query, scope)
+
     async def _get_skill(skill_id: str, outline: bool = False, section: str = "") -> str:
         from sqlalchemy import select
 
@@ -13442,6 +13447,7 @@ def build_agent_builder_tool(
     executor.register("update_prompt", _update_prompt)
     executor.register("delete_prompt", _delete_prompt)
     executor.register("list_skills", _list_skills)
+    executor.register("search_config_text", _search_config_text)
     executor.register("get_skill", _get_skill)
     executor.register("create_skill", _create_skill)
     executor.register("update_skill", _update_skill)
@@ -16016,6 +16022,22 @@ def build_agent_builder_tool(
                 "List skills visible to the user (instruction sets for agents)."
             ),
             input_schema=_catalog_list_schema(),
+            source="builtin:platform",
+        ),
+        ToolDefinition(
+            name="search_config_text",
+            description=(
+                "Find a text in the skills, prompts, agent personas/guardrails "
+                "and assignment prompts you can see: id, field, matching lines."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "scope": {"type": "string", "description": "skill,prompt,agent,assignment (default all)"},
+                },
+                "required": ["query"],
+            },
             source="builtin:platform",
         ),
         ToolDefinition(
