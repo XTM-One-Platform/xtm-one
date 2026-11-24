@@ -146,7 +146,7 @@ function PirDetailsButton({ name, filled, onClick }: { name: string; filled: num
       onClick={onClick}
       data-testid="settings.organization.pir-details-open"
     >
-      <Icon name={filled === PIR_DETAIL_FIELDS ? "circle-check" : "list-checks"} size={14} aria-hidden />
+      <Icon name={filled === PIR_DETAIL_FIELDS ? "circle-check" : "list-checks"} size={16} aria-hidden />
       {count}
     </Button>
   );

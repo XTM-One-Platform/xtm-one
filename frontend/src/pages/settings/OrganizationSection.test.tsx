@@ -882,7 +882,8 @@ describe("OrganizationSection", () => {
   });
 
   it("opens the same details read-only for a reader, with no Save (#1974)", async () => {
-    withPirs({ pirs: [{ id: "pir-1", name: "Ransomware on energy" }], unavailable: null }, { pir_ids: ["pir-1"] });
+    // A reader never reads the administrators-only PIR list: the name saved with the PIR names it.
+    withPirs({ pirs: [], unavailable: null }, { pir_ids: ["pir-1"], pir_names: { "pir-1": "Ransomware on energy" } });
     renderWithProviders(
       <MemoryRouter initialEntries={["/ctem/inventory/exposure"]}>
         <OrganizationSection embed={{ cards: ["prioritization_policy"], readOnly: true }} />
