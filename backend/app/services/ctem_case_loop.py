@@ -352,6 +352,13 @@ async def open_from_signal(
         db.add(case)
         await db.flush()
         db.add(_event(case.id, rules.SYSTEM_ACTOR, "created", now, to_value=fix.key, reason=f"signal {signal.id}"))
+        # #1736 slice 3: the owner comes from the asset or asset group owner, else the instance default.
+        from app.services.ctem_case_owner import owner_for_signal
+
+        owner, how = await owner_for_signal(db, signal)
+        if owner is not None:
+            case.owner_user_id = owner
+            db.add(_event(case.id, rules.SYSTEM_ACTOR, "owner", now, to_value=str(owner), reason=how))
     else:
         # A second signal on the same fix: the most urgent severity and the earliest SLA win.
         if severity and (case.severity is None or _SEVERITY_RANK[severity] < _SEVERITY_RANK.get(case.severity, 9)):

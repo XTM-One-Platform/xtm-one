@@ -37,7 +37,7 @@ import { StepBar } from "@/components/ui/step-bar";
 import { useFormatter } from "@/i18n";
 
 import { CtemSetupRunAs } from "./CtemSetupRunAs";
-import { FleetAutonomyStrip } from "./FleetAutonomyStrip";
+import { CtemSetupGateChoice } from "./CtemSetupGateChoice";
 import { FleetCapabilitySlotsCard } from "./FleetCapabilitySlotsCard";
 import { FleetSetupWizard } from "./FleetSetupWizard";
 import {
@@ -243,8 +243,8 @@ export function CtemLoopSetupDialog({ open, onOpenChange }: { open: boolean; onO
               </div>
             )}
             {step === "gates" && fleet.data && (
-              // The level choice alone (UX r1 B3): what waits now and the per-action lists stay on the fleet page.
-              <FleetAutonomyStrip fleetId={fleet.data.id} level={fleet.data.autonomy_level} canManage isAdmin compact />
+              // One choice on the CTEM gate catalog (#1087 item 4, #1830); Add gates opens the level choice.
+              <CtemSetupGateChoice fleetId={fleet.data.id} level={fleet.data.autonomy_level} />
             )}
             {step === "preview" && (
               <p className="content-compact" data-testid="ctem-loop-setup-preview">
