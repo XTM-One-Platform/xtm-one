@@ -86,31 +86,6 @@ export interface OrganizationContextResponse {
   missing_fields: string[];
 }
 
-interface OpenCrqSyncPlan {
-  linked: { crown_jewel: string; opencrq_asset_id: string }[];
-  pushed_to_opencrq: { opencrq_asset_id: string; name: string; criticality: string }[];
-  pulled_from_opencrq: { opencrq_asset_id: string; name: string }[];
-  ambiguous: string[];
-  not_in_opencrq: { crown_jewel: string; opencrq_asset_id: string }[];
-  /** Whether the profile and OpenCRQ agree (#1134 S2): the only answer that may say so; absent from an older backend. */
-  in_sync?: boolean;
-  /** The lowest OpenCRQ criticality the plan pulled (#1558). */
-  min_criticality?: OpenCrqLevel;
-  /** The supporting assets read, and their count per OpenCRQ criticality ("unknown" first) (#1558). */
-  assets_read?: number;
-  by_criticality?: Partial<Record<"unknown" | OpenCrqLevel, number>>;
-}
-
-/** OpenCRQ's criticality levels, lowest first: the thresholds the primary-asset check accepts (#1558). */
-export type OpenCrqLevel = "low" | "medium" | "high" | "very_high";
-
-export interface OpenCrqSyncResponse {
-  applied: boolean;
-  plan: OpenCrqSyncPlan;
-  errors: string[];
-  version: number | null;
-}
-
 const KEY = ["organization-context"] as const;
 
 export function useOrganizationContext() {
@@ -329,8 +304,6 @@ export function usePatchOrganizationContext() {
     meta: { suppressGlobalErrorToast: true },
     onSuccess: (saved) => {
       qc.setQueryData(KEY, saved);
-      // A patched software list or matching rule changes what the Inventory tabs read (#1752).
-      void qc.invalidateQueries({ queryKey: ["organization-assets"] });
     },
   });
 }
@@ -883,17 +856,6 @@ export function useCreateOrganizationFillAgent() {
     },
     // The dialog says the failure inline.
     meta: { suppressGlobalErrorToast: true },
-  });
-}
-
-export function useOpenCrqSync() {
-  const qc = useQueryClient();
-  // min_criticality left out: the saved primary-asset sync's filter, else high (#1558).
-  return useMutation<OpenCrqSyncResponse, Error, { apply: boolean; min_criticality?: OpenCrqLevel }>({
-    mutationFn: (body) => api.post("/organization-context/opencrq-sync", body),
-    onSuccess: (result) => {
-      if (result.applied) qc.invalidateQueries({ queryKey: KEY });
-    },
   });
 }
 

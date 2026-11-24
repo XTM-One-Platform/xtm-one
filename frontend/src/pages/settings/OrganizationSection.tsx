@@ -6,8 +6,9 @@
  * of a fleet run). An administrator fills it once; each save is a new
  * version. The overview names how complete it is and the fields not filled,
  * the same list the agents report instead of guessing; a missing field opens
- * the form on it. The primary assets reconcile with OpenCRQ's supporting assets:
- * "Check against OpenCRQ" shows the plan, "Apply" writes it. Administrators
+ * the form on it. The primary assets sync from OpenCRQ as an Inventory source
+ * (CTEM > Inventory > Sources, #1754): the card names that source and its last
+ * sync, and has no OpenCRQ button. Administrators
  * only. Built on the settings form kit (#9173, S1c). Five real tabs (#12329):
  * every card sits in one tab (lib/organization-profile-tabs.ts), the tab is a
  * path segment (/settings/organization/profile/<tab>), only the active panel is rendered, and the whole-profile
@@ -16,7 +17,7 @@
  */
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { landOnCard } from "@/lib/land-on-card";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Bot, Building2, Coins, Import, Link2, Lock, MessageSquare, Package, Pencil, Plus, RefreshCw, Server, Shield, Sparkles, Ticket } from "lucide-react";
 import { TagInput } from "@/components/ui/tag-input";
 
@@ -60,19 +61,14 @@ import { primeOrganizationOnboarding } from "@/lib/organization-onboarding";
 import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import {
-  type OpenCrqLevel,
-  type OpenCrqSyncResponse,
   type OrganizationDraftResponse,
   type OrganizationProfile,
   type ProfileSource,
   useDraftOrganizationContext,
-  useOpenCrqSync,
   useOrganizationContext,
   useOrganizationSyncs,
-  useRunOrganizationSync,
   useOrganizationPirs,
   useOrganizationReaders,
-  usePatchOrganizationContext,
   useSaveOrganizationContext,
 } from "@/hooks/api/useOrganizationContextApi";
 import { useFormatter } from "@/i18n";
@@ -105,7 +101,7 @@ import { TrackedOrganizations } from "./TrackedOrganizations";
 import { OrganizationSourcesSyncs } from "./OrganizationSourcesSyncs";
 import { useSyncedRemoval } from "./OrganizationSyncedRemoval";
 import { ProviderLogo } from "@/components/ui/provider-logo";
-import { MIN_CRITICALITY_LABELS } from "@/lib/organization-import-filters";
+import { formatTimeAgo } from "@/lib/relative-time";
 import { columnEditable, LOCAL_FIELDS, SOURCE_KIND_LABELS, sourceKind, sourcePlatform, type Provenance } from "@/lib/organization-provenance";
 import { OrganizationContextInjectionCard } from "./OrganizationContextInjectionCard";
 import { OrganizationCrownJewelsRestoreDialog } from "./OrganizationCrownJewelsRestoreDialog";
@@ -176,14 +172,6 @@ const JEWEL_STEP_ASIDE = "6xl" as const;
 
 /** The values of the primary assets' OpenCRQ filter. @i18n-keys */
 const OPENCRQ_LINK_LABELS = { linked: "Linked to OpenCRQ", not_linked: "Not linked to OpenCRQ" } as const;
-/** The OpenCRQ assets read, counted by criticality, when none reaches the check's threshold (#1558). @i18n-keys */
-const OPENCRQ_COUNT_LABELS = {
-  unknown: "{count, plural, one {# unrated} other {# unrated}}",
-  low: "{count, plural, one {# low} other {# low}}",
-  medium: "{count, plural, one {# medium} other {# medium}}",
-  high: "{count, plural, one {# high} other {# high}}",
-  very_high: "{count, plural, one {# very high} other {# very high}}",
-} as const;
 /**
  * An amount field: the room for its unit goes on the inner input element (the
  * library's className lands on the wrapper), so the field keeps the column
@@ -223,20 +211,15 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // In the reader's locale, as every date next to a DataTable (data-table-locale-dates gate).
   const savedAt = data?.created_at ? intl.formatDate(new Date(data.created_at), { dateStyle: "medium", timeStyle: "short" }) : "";
   const save = useSaveOrganizationContext();
-  // #1752: a card saves its own fields alone (PATCH); the asset rows never travel with them.
-  const patch = usePatchOrganizationContext();
-  const sync = useOpenCrqSync();
-  // One mechanism for OpenCRQ (#1134 S2): once primary assets sync from OpenCRQ, the card's OpenCRQ
-  // button runs that sync (its filters, links and direction), never a second set of rules.
-  const { data: profileSyncs } = useOrganizationSyncs("profile", !reader);
-  const opencrqJewelSync = (Array.isArray(profileSyncs) ? profileSyncs : []).find((entry) => entry.section === "crown_jewels" && entry.source === "opencrq");
-  const runSyncNow = useRunOrganizationSync();
+  // Primary assets are an Inventory source (#1754, Sam 24 Nov 2026): the OpenCRQ sync is configured and run in
+  // CTEM > Inventory > Sources; the card only names it and its last sync, never a second OpenCRQ action.
+  const { data: inventorySyncs } = useOrganizationSyncs("inventory", !reader);
+  const opencrqJewelSync = (Array.isArray(inventorySyncs) ? inventorySyncs : []).find((entry) => entry.section === "crown_jewels" && entry.source === "opencrq");
   const drafting = useDraftOrganizationContext();
   const [form, setForm] = useState<ProfileForm | null>(null);
   // The draft the form was opened from: the save is then recorded with source "draft".
   const [draft, setDraft] = useState<OrganizationDraftResponse | null>(null);
   const [draftFailed, setDraftFailed] = useState(false);
-  const [plan, setPlan] = useState<OpenCrqSyncResponse | null>(null);
   // "Restore from a past version" on the primary-asset card (#1558).
   const [restoreOpen, setRestoreOpen] = useState(false);
   // The amount field the last Save refused: marked aria-invalid (the Input adapter draws the error border) until edited.
@@ -437,18 +420,14 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   /** A card's edit closed: the focus goes back to its Edit button. */
   const focusCardEdit = (card: string | null | undefined) => card && setFocusAfter({ targets: [byTestId(`settings.organization.edit-${card}`)] });
 
-  // Editing closes the OpenCRQ plan: Apply rewrites the profile, and a Save of the
-  // form opened before it would PUT the stale copy and drop what Apply wrote.
   const startEdit = () => {
     if (!data || cardOpen) return;
-    setPlan(null);
     setListEdits({});
     setForm(toForm(data.profile));
   };
   // One exposure card in edit (#12256 slice 2): the other cards stay as they read; the form is not opened.
   const startExposureEdit = (card: ExposureCard) => {
     if (!data || cardOpen) return;
-    setPlan(null);
     setCheckExposure(false);
     setRefusedIssue(null);
     setExposureEdit({ card, form: toForm(data.profile) });
@@ -479,26 +458,21 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     }
     const parsed = fromForm(next);
     if ("invalid" in parsed) return;
-    const field = exposureEdit.card === "accepted_risks" ? "prioritization_policy" : exposureEdit.card;
-    const options = {
+    save.mutate({ profile: parsed.profile as OrganizationProfile, source: "form" }, {
       onSuccess: () => {
         stopExposureEdit();
         toast({ title: t_i18n("Organization profile saved"), variant: "success" });
       },
-      onError: (err: Error) => {
+      onError: (err) => {
         const issue = exposureIssueFromRefusal(next, err.message);
         if (issue) setRefusedIssue(issue);
         else toast({ title: t_i18n("The organization profile was not saved"), description: err.message, variant: "error" });
       },
-    };
-    // The asset and group tables are rows: they keep their own write; every other card patches its field alone.
-    if (field === "assets_exposure" || field === "asset_groups") save.mutate({ profile: parsed.profile as OrganizationProfile, source: "form" }, options);
-    else patch.mutate({ fields: { [field]: parsed.profile[field] }, based_on_version: data.version ?? null }, options);
+    });
   };
   // One list card in edit (#12256): the other cards stay as they read; the form is not opened.
   const startListEdit = (key: ListKey) => {
     if (!data) return;
-    setPlan(null);
     setListEdits({ [key]: { rows: startRows(toForm(data.profile)[key] as unknown[]), open: null } } as ListEdits);
   };
   const stopListEdit = () => {
@@ -513,7 +487,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     const parsed = fromForm({ ...toForm(data.profile), [key]: committedValues(listEdits[key]!.rows as EditRow<unknown>[]) });
     if ("invalid" in parsed) return;
     const kept = committedValues(listEdits[key]!.rows as EditRow<Provenance>[]);
-    patch.mutate({ fields: { [key]: parsed.profile[key] }, based_on_version: data.version ?? null }, {
+    save.mutate({ profile: parsed.profile as OrganizationProfile, source: "form" }, {
       onSuccess: () => {
         // The synced rows removed with "Exclude from this sync" go on their sync's exclusions (#1134).
         synced.commit(kept);
@@ -540,7 +514,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const removePir = (id: string) => {
     if (!data) return;
     const base = form ?? toForm(data.profile);
-    setPlan(null);
     setForm({ ...base, pir_ids: base.pir_ids.filter((pir) => pir !== id) });
   };
   const stopEditing = () => {
@@ -567,7 +540,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   useEffect(() => {
     if (!setupRequested || !data) return;
     setSetupGuide(true);
-    setPlan(null);
     setForm((prev) => prev ?? toForm(data.profile));
     setSearchParams(
       (prev) => {
@@ -634,7 +606,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const startDraft = () =>
     drafting.mutate(undefined, {
       onSuccess: (result) => {
-        setPlan(null);
         setInvalidField(null);
         setDraft(result);
         setListEdits({});
@@ -730,25 +701,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     });
   };
 
-  // The threshold of the check (#1558): the one the last plan answered (the saved sync's filter by default), or the level picked.
-  const runSync = (apply: boolean, level?: OpenCrqLevel) =>
-    sync.mutate(
-      { apply, ...((level ?? plan?.plan.min_criticality) ? { min_criticality: level ?? plan?.plan.min_criticality } : {}) },
-      {
-        onSuccess: (result) => {
-          setPlan(result.applied ? null : result);
-          if (result.applied) toast({ title: t_i18n("Primary assets synchronized with OpenCRQ"), variant: "success" });
-        },
-        onError: (err) => toast({ title: t_i18n("OpenCRQ could not be read"), description: err.message, variant: "error" }),
-      },
-    );
-
-  /** The translated criticality, never the raw enum value inside a translated sentence: a profile level, else an OpenCRQ level (very_high), which the push rows carry (UX B1). */
-  const criticalityLabel = (value: string) => {
-    if (value in CRITICALITY_LABELS) return t_i18n(CRITICALITY_LABELS[value as keyof typeof CRITICALITY_LABELS]);
-    if (value in MIN_CRITICALITY_LABELS) return t_i18n(MIN_CRITICALITY_LABELS[value as keyof typeof MIN_CRITICALITY_LABELS]);
-    return value;
-  };
   /** The helper and the bubble of a field, from the field contract (UX B3). */
   const help = (key: keyof typeof FIELD_HELP) => ({ helper: t_i18n(FIELD_HELP[key].helper), info: t_i18n(FIELD_HELP[key].info) });
   const text = (key: "name" | "sector" | "sub_sector", title: string, placeholder?: string) => {
@@ -1365,24 +1317,22 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       : t_i18n("Scenarios above {amount} per year are flagged for approval", { amount: money(value) });
   };
 
-  // "Already agree" only on the backend's in_sync (#1134 S2): an empty profile against a non-empty
-  // OpenCRQ is an import to propose, never agreement. An older backend without it: nothing listed.
-  const planEmpty =
-    plan &&
-    (plan.plan.in_sync ?? true) &&
-    !plan.plan.linked.length &&
-    !plan.plan.pushed_to_opencrq.length &&
-    !plan.plan.pulled_from_opencrq.length &&
-    !plan.plan.ambiguous.length &&
-    !plan.plan.not_in_opencrq.length;
-  // Nothing to link and no asset at the threshold (#1558): the plan says so with the counts, never "already agree".
-  const noneRated = !!planEmpty && (current?.crown_jewels.length ?? 0) === 0 && plan?.plan.assets_read !== undefined;
-  const ratedCounts = plan?.plan.by_criticality
-    ? (Object.entries(plan.plan.by_criticality) as [keyof typeof OPENCRQ_COUNT_LABELS, number][])
-        .filter(([level]) => level in OPENCRQ_COUNT_LABELS)
-        .map(([level, count]) => t_i18n(OPENCRQ_COUNT_LABELS[level], { count }))
-        .join(", ")
-    : "";
+  // The OpenCRQ source of the primary assets, named on the card as the asset lists name theirs (#1754).
+  // The line is true to the sync's state (UX round 1 B1, #1818): off, paused or a failed last run is never called "Synced".
+  // The cause (the run's error or the pause reason) goes in a Tip, so a long reason never widens the card header.
+  const opencrqSourceError = opencrqJewelSync?.enabled && !opencrqJewelSync.paused_reason ? opencrqJewelSync.last_result?.error || "" : "";
+  const opencrqSourceCause = opencrqJewelSync?.enabled ? opencrqJewelSync.paused_reason || opencrqSourceError : "";
+  const opencrqSourceLine = !opencrqJewelSync
+    ? null
+    : !opencrqJewelSync.enabled
+      ? t_i18n("OpenCRQ sync off")
+      : opencrqJewelSync.paused_reason
+        ? t_i18n("OpenCRQ sync paused")
+        : !opencrqJewelSync.last_run_at
+          ? t_i18n("Synced from OpenCRQ: not run yet")
+          : opencrqSourceError
+            ? t_i18n("OpenCRQ sync failed {timeAgo}", { timeAgo: formatTimeAgo(intl, opencrqJewelSync.last_run_at) })
+            : t_i18n("Synced from OpenCRQ {timeAgo}", { timeAgo: formatTimeAgo(intl, opencrqJewelSync.last_run_at) });
 
   // The fields not filled that Settings still draws (#1690): the Business, Technology and Exposure fields are
   // reported on CTEM > Inventory, and Copilot mode reports none (Sam: "we don't care").
@@ -1921,36 +1871,31 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             action={
               <>
                 {attention("crown_jewels")}
-                {/* The OpenCRQ check and the restore write the profile: administrators only, a reader sees the list (#1690). */}
-                {!reader && (
-                <Tip content={editing || cardOpen ? t_i18n("Save or cancel the edit first.") : ""} wrap="auto">
-                  {opencrqJewelSync ? (
-                    <Button
-                      variant="secondary"
-                      className="gap-1.5"
-                      data-testid="settings.organization.opencrq-run-now"
-                      disabled={editing || cardOpen !== null || runSyncNow.isPending}
-                      aria-busy={runSyncNow.isPending || undefined}
-                      onClick={() =>
-                        runSyncNow.mutate(opencrqJewelSync.id, {
-                          onSuccess: (result) =>
-                            result.last_result?.error
-                              ? toast({ title: t_i18n("The OpenCRQ sync failed"), description: result.last_result.error, variant: "error" })
-                              : toast({ title: t_i18n("Primary assets synchronized with OpenCRQ"), variant: "success" }),
-                          onError: (err) => toast({ title: t_i18n("OpenCRQ could not be read"), description: err.message, variant: "error" }),
-                        })
-                      }
-                    >
-                      {runSyncNow.isPending && <Spinner size="sm" tone="inherit" />}{!runSyncNow.isPending && <RefreshCw className="h-3.5 w-3.5" />}
-                      {t_i18n("Sync with OpenCRQ now")}
-                    </Button>
-                  ) : (
-                    <Button variant="secondary" className="gap-1.5" disabled={editing || cardOpen !== null || sync.isPending} onClick={() => runSync(false)} aria-busy={sync.isPending || undefined}>
-                      {sync.isPending && <Spinner size="sm" tone="inherit" />}{!sync.isPending && <RefreshCw className="h-3.5 w-3.5" />}
-                      {t_i18n("Check against OpenCRQ")}
-                    </Button>
-                  )}
-                </Tip>
+                {/* The OpenCRQ source of the list (#1754): its icon and last sync, as the asset lists name theirs. It is run and configured
+                    in Sources, so every state of the line links there (UX round 2 B1, #1818): the line is the only place a failed or paused sync shows. */}
+                {opencrqSourceLine && (
+                  <span data-testid="settings.organization.primary-assets-source" className="inline-flex min-w-0 items-center gap-1.5 content-compact text-default-secondary">
+                    <ProviderLogo provider="opencrq" decorative className="h-4 w-4 shrink-0" />
+                    {opencrqSourceCause ? (
+                      <Tip content={opencrqSourceCause}>
+                        <Link
+                          to="/ctem/inventory/sources"
+                          className={`whitespace-nowrap rounded-sm underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus ${opencrqSourceError ? "text-feedback-error-primary" : "text-feedback-warning-primary"}`}
+                          data-testid="settings.organization.primary-assets-source-cause"
+                        >
+                          {opencrqSourceLine}
+                        </Link>
+                      </Tip>
+                    ) : (
+                      <Link
+                        to="/ctem/inventory/sources"
+                        className="whitespace-nowrap rounded-sm underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
+                        data-testid="settings.organization.primary-assets-source-link"
+                      >
+                        {opencrqSourceLine}
+                      </Link>
+                    )}
+                  </span>
                 )}
                 {!reader && !listOpen("crown_jewels") && (
                   // An icon button: a third labelled action wraps the card title at 1080 (UX round 1 B1, #1567).
@@ -2009,79 +1954,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                   rowTestId="settings.organization.primary-asset-row"
                 />
               ))}
-            {plan && (
-              <div data-testid="settings.organization.opencrq-plan" className="mt-3 space-y-1.5 rounded-sm border border-elevation-subtle p-3">
-                {noneRated ? (
-                  <div className="space-y-1" data-testid="settings.organization.opencrq-none-rated">
-                    <p>
-                      {t_i18n("{count, plural, =0 {No OpenCRQ supporting asset is rated {threshold} or above: no asset read.} one {No OpenCRQ supporting asset is rated {threshold} or above: # asset read.} other {No OpenCRQ supporting asset is rated {threshold} or above: # assets read.}}", {
-                        count: plan.plan.assets_read ?? 0,
-                        threshold: t_i18n(MIN_CRITICALITY_LABELS[plan.plan.min_criticality ?? "high"]),
-                      })}
-                    </p>
-                    {ratedCounts && <p className="text-default-secondary">{t_i18n("By criticality: {counts}", { counts: ratedCounts })}</p>}
-                  </div>
-                ) : planEmpty ? (
-                  <p>{t_i18n("The primary assets and OpenCRQ already agree.")}</p>
-                ) : (
-                  <ul className="list-disc space-y-1 pl-5">
-                    {plan.plan.linked.map((row) => (
-                      <li key={`l-${row.opencrq_asset_id}`}>{t_i18n("Link {name} to its OpenCRQ asset", { name: row.crown_jewel })}</li>
-                    ))}
-                    {plan.plan.pushed_to_opencrq.map((row) => (
-                      <li key={`p-${row.opencrq_asset_id}`}>{t_i18n("Set {name} to {criticality} in OpenCRQ", { name: row.name, criticality: criticalityLabel(row.criticality) })}</li>
-                    ))}
-                    {plan.plan.pulled_from_opencrq.map((row) => (
-                      <li key={`u-${row.opencrq_asset_id}`}>{t_i18n("Add {name} from OpenCRQ as a primary asset", { name: row.name })}</li>
-                    ))}
-                    {plan.plan.ambiguous.map((name) => (
-                      <li key={`a-${name}`}>{t_i18n("{name} matches several OpenCRQ assets: link it by hand", { name })}</li>
-                    ))}
-                    {plan.plan.not_in_opencrq.map((row) => (
-                      <li key={`s-${row.opencrq_asset_id}`}>{t_i18n("{name} is linked to an asset OpenCRQ no longer holds", { name: row.crown_jewel })}</li>
-                    ))}
-                  </ul>
-                )}
-                {plan.errors.map((error) => (
-                  <p key={error} className="text-default-secondary">{error}</p>
-                ))}
-                {plan.plan.min_criticality && (
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
-                    <span id={`${fieldId}-opencrq-threshold`} className="content-compact text-default-secondary">
-                      {t_i18n("Pull OpenCRQ assets rated")}
-                    </span>
-                    <div className="w-40">
-                      <Select
-                        value={plan.plan.min_criticality}
-                        disabled={editing || sync.isPending}
-                        onValueChange={(value) => runSync(false, value as OpenCrqLevel)}
-                      >
-                        <SelectTrigger aria-labelledby={`${fieldId}-opencrq-threshold`} data-testid="settings.organization.opencrq-threshold">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(Object.keys(MIN_CRITICALITY_LABELS) as OpenCrqLevel[]).map((level) => (
-                            <SelectItem key={level} value={level}>
-                              {t_i18n("{level} or above", { level: t_i18n(MIN_CRITICALITY_LABELS[level]) })}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                )}
-                <div className="flex gap-2 pt-1">
-                  {!planEmpty && (
-                    <Button className="gap-1.5" disabled={editing || sync.isPending} onClick={() => runSync(true)}>
-                      {t_i18n("Apply")}
-                    </Button>
-                  )}
-                  <Button variant="ghost" onClick={() => setPlan(null)}>
-                    {t_i18n("Close")}
-                  </Button>
-                </div>
-              </div>
-            )}
             <OrganizationCrownJewelsRestoreDialog open={restoreOpen} onOpenChange={setRestoreOpen} currentVersion={data?.version ?? null} />
           </SettingsCard>
 
