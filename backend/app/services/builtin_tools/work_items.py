@@ -670,6 +670,11 @@ def _blocked_why_lines(item: dict) -> list[str]:
             f"  - blocked on {len(refs)} reference(s): {names}. It goes back to open by itself "
             "once every one of them is met as release_on asks."
         )
+    from app.services.work_item_blocked_refs import bound_pull_request_wait
+
+    bound = bound_pull_request_wait(item)
+    if bound:
+        lines.append(f"  - blocked on {bound}: it goes back to open with no write from you.")
     if item.get("blocked_reason"):
         lines.append(f"  - blocked reason: {item['blocked_reason']}")
     if item.get("needs_human"):

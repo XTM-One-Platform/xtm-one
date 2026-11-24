@@ -12,7 +12,7 @@ function kase(over: Partial<CtemCaseSummary>): CtemCaseSummary {
     remediation_kind: "upgrade",
     product_label: null,
     fixed_version: null,
-    state: "needs_attention",
+    state: "new",
     state_since: null,
     owner_user_id: null,
     due_at: null,
@@ -57,7 +57,7 @@ describe("CTEM cases grouping (#1176)", () => {
   });
 
   it("orders states in their life order", () => {
-    const rows = [kase({ id: "a", state: "resolved" }), kase({ id: "b", state: "in_progress" }), kase({ id: "c", state: "needs_attention" })];
+    const rows = [kase({ id: "a", state: "resolved" }), kase({ id: "b", state: "remediating" }), kase({ id: "c", state: "new" })];
     expect(grouped("state", rows)).toEqual(["c", "b", "a"]);
   });
 

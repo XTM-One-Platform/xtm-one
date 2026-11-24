@@ -363,6 +363,46 @@ def phases(
     return {"current": current, "phases": [rows[p] for p in PHASES]}
 
 
+def current_phase(events: list[dict[str, Any]]) -> str | None:
+    """The CTEM phase a case is in now: the phase of its newest event (``phases``' current), ``None`` with no event.
+
+    The Cases list groups and lays out its Kanban by it (#1503); *events* are the
+    viewer's served events, so a restricted field never decides a phase.
+    """
+    if not events:
+        return None
+    current = phases(annotate(events))["current"]
+    return str(current) if current else None
+
+
+def open_wait(events: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """What a case waits on now: its newest gate that waited and was not answered, ``None`` when none.
+
+    ``{gate, by, since}``: the gate key, who it waits on (the gate's ``reason``:
+    a user id, a role or a policy name, as the loop wrote it) and since when. The
+    Cases list shows it on a case Waiting for decision (#1503).
+
+    With no open gate, the latest move into ``waiting_decision`` answers (a
+    person set the status by hand, with its required reason; UX r1 B2 on #1515):
+    ``gate`` ``None``, ``by`` the actor who moved it, ``since`` that move.
+    """
+    annotated = annotate(events)
+
+    def _at(e: dict[str, Any]) -> datetime:
+        return _parse(e.get("at")) or datetime.min.replace(tzinfo=UTC)
+
+    waiting = [e for e in annotated if e.get("kind") == "gate" and e.get("to") == "waited" and not e.get("answer")]
+    if waiting:
+        newest = max(waiting, key=_at)
+        return {"gate": newest.get("from"), "by": newest.get("reason"), "since": newest.get("at")}
+    moves = [e for e in annotated if e.get("kind") == "state" and e.get("to") == "waiting_decision"]
+    if not moves:
+        return None
+    moved = max(moves, key=_at)
+    actor = moved.get("actor")
+    return {"gate": None, "by": None if actor in (None, "", SYSTEM_ACTOR) else actor, "since": moved.get("at")}
+
+
 def run_phase(created_at: Any, annotated: list[dict[str, Any]]) -> str:
     """The phase the case was in when a fleet run started: the phase of the latest event at or before it."""
     at = _parse(created_at)

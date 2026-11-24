@@ -91,7 +91,7 @@ async def _mobilized_case(session, *, severity: str = "P1", primary: bool = True
     )
     case = (await session.execute(select(CtemCase).where(CtemCase.organization_id == org.id))).scalar_one()
     await store.update_case(
-        session, case, actor=str(user.id), actor_kind="user", state="in_progress", owner_user_id=user.id, now=NOW
+        session, case, actor=str(user.id), actor_kind="user", state="remediating", owner_user_id=user.id, now=NOW
     )
     case.severity = severity
     await session.commit()
@@ -187,7 +187,7 @@ async def test_ticket_done_asks_the_retest_once_and_the_case_stays_open(monkeypa
 
         async with sessions() as session:
             case = await session.get(CtemCase, case_id)
-            assert case.state == "in_progress"
+            assert case.state == "remediating"
             assert (case.tickets[0]["status"], case.tickets[0]["sync"]["external_status"]) == ("done", "Done")
             # The case resolves on its re-test: the next pass leaves the done ticket as it is.
             case.state = "resolved"

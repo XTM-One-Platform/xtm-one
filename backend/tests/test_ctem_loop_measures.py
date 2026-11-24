@@ -21,7 +21,7 @@ T0 = datetime(2026, 11, 20, 8, 0, tzinfo=UTC)
 ORG = uuid.uuid4()
 
 
-def _case(state: str = "needs_attention", validations: list | None = None) -> CtemCase:
+def _case(state: str = "new", validations: list | None = None) -> CtemCase:
     return CtemCase(
         id=uuid.uuid4(),
         organization_id=ORG,
@@ -70,7 +70,7 @@ def test_a_step_not_reached_is_none_never_zero() -> None:
 def test_closed_on_proof_counts_resolved_cases_whose_newest_validation_passes() -> None:
     proven = _case("resolved", [{"result": "failed"}, {"result": "passed"}])
     on_word = _case("resolved", [])
-    still_open = _case("in_progress", [{"result": "passed"}])
+    still_open = _case("remediating", [{"result": "passed"}])
     summary = measures.summarize([proven, on_word, still_open], {}, {})
     assert summary["closed_on_proof"] == {"share": 0.5, "proven": 1, "resolved": 2}
     assert summary["case_count"] == 3

@@ -106,7 +106,7 @@ async def test_recompute_keeps_state_owner_and_due_date_and_resolves_when_all_cl
             case,
             actor=str(owner_id),
             actor_kind="user",
-            state="in_progress",
+            state="remediating",
             owner_user_id=owner_id,
             due_at=due,
             now=NOW,
@@ -123,7 +123,7 @@ async def test_recompute_keeps_state_owner_and_due_date_and_resolves_when_all_cl
         await session.commit()
         assert counts["updated"] == 1 and counts["created"] == 0
         await session.refresh(case)
-        assert (case.state, case.owner_user_id, case.due_at) == ("in_progress", owner_id, due)
+        assert (case.state, case.owner_user_id, case.due_at) == ("remediating", owner_id, due)
         assert await _members(session, case) == {"opencti:v1": True, "opencti:v2": True}
 
         counts = await store.apply_recompute(
@@ -151,7 +151,7 @@ async def test_recompute_keeps_state_owner_and_due_date_and_resolves_when_all_cl
         assert await _members(session, case) == {"opencti:v1": False, "opencti:v2": False}
 
 
-async def test_an_expired_acceptance_returns_to_needs_attention():
+async def test_an_expired_acceptance_returns_to_new():
     async with _database() as sessions, sessions() as session:
         org_id, owner_id = await _seed(session)
         await store.apply_recompute(
@@ -175,7 +175,7 @@ async def test_an_expired_acceptance_returns_to_needs_attention():
         await session.commit()
         await session.refresh(case)
         assert (case.state, case.accepted_reason, case.owner_user_id) == (
-            "needs_attention",
+            "new",
             "compensating control",
             owner_id,
         )
@@ -208,7 +208,7 @@ async def test_a_manual_split_pins_its_issues_through_recompute():
         assert counts["created"] == 0
         await session.refresh(manual)
         assert await _members(session, source) == {"opencti:v1": True}
-        assert await _members(session, manual) == {"opencti:v2": True} and manual.state == "needs_attention"
+        assert await _members(session, manual) == {"opencti:v2": True} and manual.state == "new"
         with pytest.raises(rules.CaseRuleError):
             await store.create_manual_case(
                 session,
@@ -259,7 +259,7 @@ async def test_two_users_with_different_visibility_share_cases_and_see_only_thei
 
         (stored,) = await store.list_cases(session, organization_id=org_id, vertical="cyber")
         case, rows = stored
-        assert case.state == "needs_attention"
+        assert case.state == "new"
         issue_rows = {f"{r.source}:{r.external_id}": r.open for r in rows if r.source != "signal"}
         assert issue_rows == {"opencti:v1": True, "opencti:v2": True}
         # Nothing of the source in the database: no name, score, asset or count column.
@@ -322,7 +322,7 @@ async def test_a_manual_merge_keeps_the_survivor_and_maps_every_key_through_reco
             target,
             actor=str(owner_id),
             actor_kind="user",
-            state="in_progress",
+            state="remediating",
             owner_user_id=owner_id,
             now=NOW,
         )
@@ -339,7 +339,7 @@ async def test_a_manual_merge_keeps_the_survivor_and_maps_every_key_through_reco
         )
         await session.commit()
         await session.refresh(target)
-        assert (target.state, target.owner_user_id) == ("in_progress", owner_id)
+        assert (target.state, target.owner_user_id) == ("remediating", owner_id)
         assert set(target.keys) == {KEY, *merged_keys}
         assert await _members(session, target) == {"opencti:v1": True, "opencti:o1": True}
         assert (await session.get(CtemCase, merged_id)) is None
@@ -469,7 +469,7 @@ async def test_the_backfill_announces_every_open_case_once() -> None:
         org_id, _ = await _seed(session)
         # Written by a source read without events: what every case of a build before #1206 looks like.
         for title, label, state in (
-            ("Upgrade Tomcat", "Apache Tomcat", "needs_attention"),
+            ("Upgrade Tomcat", "Apache Tomcat", "new"),
             ("Upgrade nginx", "F5 nginx", "resolved"),
         ):
             session.add(

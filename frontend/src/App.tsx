@@ -683,6 +683,8 @@ export default function App() {
         <Route path="/dashboard" element={<Page><CommandCenterRoute /></Page>} />
         <Route path="/ctem/governance" element={<XtmOneRoute><Page><CtemGovernance /></Page></XtmOneRoute>} />
         <Route path="/ctem/cases" element={<XtmOneRoute><Page><CtemCases /></Page></XtmOneRoute>} />
+        {/* The Cases Kanban view is a path, never ?view= (#10203, #1503); a static segment ranks above :id. */}
+        <Route path="/ctem/cases/kanban" element={<XtmOneRoute><Page><CtemCases /></Page></XtmOneRoute>} />
         <Route path="/ctem/signals" element={<XtmOneRoute><Page><CtemSignals /></Page></XtmOneRoute>} />
         <Route path="/ctem/signals/:tab" element={<XtmOneRoute><Page><CtemSignals /></Page></XtmOneRoute>} />
         <Route path="/ctem/cases/:id" element={<XtmOneRoute><Page><CtemCaseDetail /></Page></XtmOneRoute>} />
