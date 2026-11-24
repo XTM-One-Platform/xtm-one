@@ -112,6 +112,11 @@ export function softwarePath(id: string): string {
   return `${INVENTORY_PATH}/software/${id}`;
 }
 
+/** An asset group's page (#1556). */
+export function assetGroupPath(id: string): string {
+  return `${INVENTORY_PATH}/asset-groups/${id}`;
+}
+
 /**
  * The version of the software a page shows that one dependency edge was reported for, or `unknown`. The API puts
  * that version in `from_version_id` in both directions (Depends on and Used by); `version_id` is always the other

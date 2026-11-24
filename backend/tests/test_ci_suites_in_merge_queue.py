@@ -1,7 +1,7 @@
 """The test suites run in the merge queue, and skip on a pull request.
 
 A pull request runs the static checks of ``ci.yml`` (the lint jobs, the secret
-scan, the ROI ledger's invariants, the frontend ratchet gates and catalog
+scan, the ROI ledger's invariants, the tool schema budget, the frontend ratchet gates and catalog
 tests) and the frontend build; the suites, the database checks and the shards
 of ``e2e.yml`` skip there and run on a merge group and by hand. In the queue each
 workflow's ``select`` job sizes them to what the merge group's own change
@@ -30,8 +30,16 @@ WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 SUITES = ["ci.yml", "e2e.yml"]
 REQUIRED = {"ci.yml": "verdict", "e2e.yml": "e2e"}
 # What a pull request runs: the static checks, the ROI ledger's invariant
-# suites (#12077 L7d) and the frontend ratchet gates.
-ON_PULL_REQUESTS = {"backend-lint", "roi-invariants", "frontend-lint", "frontend-gates", "office-addin-lint", "secrets"}
+# suites (#12077 L7d), the tool schema budget (#1625) and the frontend ratchet gates.
+ON_PULL_REQUESTS = {
+    "backend-lint",
+    "roi-invariants",
+    "tool-schema-budget",
+    "frontend-lint",
+    "frontend-gates",
+    "office-addin-lint",
+    "secrets",
+}
 IN_THE_QUEUE = "github.event_name != 'pull_request'"
 # Under a minute, so it runs on every pull request as well, and in the queue
 # as the selection says: the frontend build and its design-system guards.

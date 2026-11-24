@@ -50,8 +50,8 @@ describe("asset facets at the window's width (#1501 UX r4 B1)", () => {
   });
 
   test("counts every picked value for the Filters badge", () => {
-    expect(pickedFacetCount({ category: ["host", "ai_target"], subcategory: ["server"], criticality: [], internet_facing: ["yes"], source: [] })).toBe(4);
-    expect(pickedFacetCount({ category: [], subcategory: [], criticality: [], internet_facing: [], source: [] })).toBe(0);
+    expect(pickedFacetCount({ category: ["host", "ai_target"], subcategory: ["server"], criticality: [], internet_facing: ["yes"], source: [], group: ["g-1"] })).toBe(5);
+    expect(pickedFacetCount({ category: [], subcategory: [], criticality: [], internet_facing: [], source: [], group: [] })).toBe(0);
   });
 });
 
