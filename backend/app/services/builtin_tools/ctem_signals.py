@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from app.models.ctem_signal import LENSES, SIGNAL_STATES, SUBJECT_KINDS, TRIGGER_PATHS
@@ -58,6 +58,18 @@ def offers_ctem_signal_tools(agent_slug: str | None, *, is_builtin: bool) -> boo
     if settings.is_copilot_like:
         return False
     return bool(is_builtin and (agent_slug or "") in CTEM_SIGNAL_AGENT_SLUGS)
+
+
+def _since(value: str) -> datetime | None:
+    """An ISO-8601 date or time as an aware datetime (UTC when it names no zone), ``None`` when blank or bad."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 def _dump(payload: dict[str, Any]) -> str:
@@ -319,7 +331,14 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
             return "Error: the signal could not be recorded right now. Say so; nothing was recorded."
 
     async def _list(
-        state: str = "", trigger_path: str = "", lens: str = "", limit: int = 20, offset: int = 0, signal_id: str = ""
+        state: str = "",
+        trigger_path: str = "",
+        lens: str = "",
+        limit: int = 20,
+        offset: int = 0,
+        signal_id: str = "",
+        source_provider: str = "",
+        since: str = "",
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_signals as signals
@@ -327,6 +346,16 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
 
         if scope is None:
             return "No user: there are no signals to read."
+        since_at = _since(since)
+        if since and since_at is None:
+            return "since must be an ISO-8601 date or time, e.g. 2026-11-20 or 2026-11-20T08:00:00Z."
+        filters = {
+            "state": state or None,
+            "trigger_path": trigger_path or None,
+            "lens": lens or None,
+            "source_provider": source_provider or None,
+            "since": since_at,
+        }
         try:
             async with async_session() as db:
                 primary = await get_primary(db)
@@ -351,9 +380,7 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                     db,
                     organization_id=primary.id,
                     recorded_by=None if bypass else str(scope),
-                    state=state or None,
-                    trigger_path=trigger_path or None,
-                    lens=lens or None,
+                    **filters,
                     limit=max(1, min(int(limit or 20), 50)),
                     offset=max(0, int(offset or 0)),
                 )
@@ -363,9 +390,7 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                         db,
                         organization_id=primary.id,
                         recorded_by=None,
-                        state=state or None,
-                        trigger_path=trigger_path or None,
-                        lens=lens or None,
+                        **filters,
                         limit=1,
                         offset=0,
                     )
@@ -442,6 +467,8 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                     "limit": {"type": "integer"},
                     "offset": {"type": "integer"},
                     "signal_id": {"type": "string"},
+                    "source_provider": {"type": "string"},
+                    "since": {"type": "string", "description": "ISO-8601, on last seen."},
                 },
                 "required": [],
             },
