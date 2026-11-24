@@ -734,6 +734,8 @@ describe("OrganizationSection", () => {
     get.mockImplementation(async (path: string) => {
       if (path === "/organization-context") return { ...CONTEXT, profile: { ...CONTEXT.profile, ...profile } };
       if (path === "/organizations" || path === "/integrations") return [];
+      // The PIR sources of the card (#1938).
+      if (path.startsWith("/organization-context/syncs") || path.startsWith("/organization-context/sources")) return [];
       if (path === "/organization-context/pirs") {
         if (pirs instanceof Error) throw pirs;
         return pirs;
@@ -906,18 +908,52 @@ describe("OrganizationSection", () => {
     expect(get).not.toHaveBeenCalledWith(expect.stringMatching(/^\/organization-context\/syncs\?.*scope=inventory/));
   });
 
-  it("shows the one Sources and syncs table as the last block of the Knowledge and sources tab, each section chip linked to its tab filtered on that source (#1276)", async () => {
+  it("draws the OpenCTI PIR sources under the PIR list of the Prioritization policy, with Add a source opening the PIR import (#1938)", async () => {
     const base = get.getMockImplementation();
-    get.mockImplementation(async (path: string) =>
-      path.startsWith("/organization-context/sources")
-        ? [
-            { key: "opencrq", kind: "platform", display_name: "OpenCRQ", rows: { crown_jewels: 1 }, total: 1, written_by_agent: "", sync_ids: [] },
-            { key: "manual", kind: "manual", display_name: "manual", rows: { crown_jewels: 2 }, total: 2, written_by_agent: "", sync_ids: [] },
-          ]
-        : base?.(path),
+    const pirSync = { id: "s-pir", section: "pirs", source: "opencti", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: null, last_result: null };
+    get.mockImplementation(async (path: string) => (path.startsWith("/organization-context/syncs") ? [pirSync] : path.startsWith("/organization-context/sources") ? [] : base?.(path)));
+    renderPolicy();
+    const card = await screen.findByTestId("settings.organization.prioritization-policy");
+    const section = await within(card).findByTestId("organization-sources");
+    expect(section.textContent).toContain("PIR sources");
+    await waitFor(() => expect(within(section).getAllByTestId("organization-sources.row")).toHaveLength(1));
+    expect(get).toHaveBeenCalledWith(expect.stringMatching(/^\/organization-context\/syncs\?.*scope=profile/));
+    // Another card's edit never turns it off: only the policy's own save does.
+    const add = within(section).getByTestId("organization-sources.add");
+    expect(add).not.toBeDisabled();
+    await editPolicy();
+    expect(within(section).getByTestId("organization-sources.add")).not.toBeDisabled();
+    fireEvent.click(within(section).getByTestId("organization-sources.add"));
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+  });
+
+  it("never mounts the PIR sources for a reader of the Prioritization policy: no administrators-only syncs or sources read (#1938)", async () => {
+    renderWithProviders(
+      <MemoryRouter initialEntries={["/ctem/inventory/exposure"]}>
+        <OrganizationSection embed={{ cards: ["prioritization_policy"], readOnly: true }} />
+      </MemoryRouter>,
     );
+    const card = await screen.findByTestId("settings.organization.prioritization-policy");
+    expect(within(card).queryByTestId("organization-sources")).toBeNull();
+    expect(get).not.toHaveBeenCalledWith(expect.stringMatching(/^\/organization-context\/(syncs|sources)/));
+  });
+
+  it("keeps the Knowledge and sources page to its knowledge cards: no Sources and syncs, no setup guide, no save bar (#1938)", async () => {
+    renderWithProviders(
+      <MemoryRouter initialEntries={["/settings/organization/profile/knowledge?setup=1"]}>
+        <OrganizationSection />
+      </MemoryRouter>,
+    );
+    const panel = await screen.findByTestId("settings.organization.panel-knowledge");
+    expect(within(panel).queryByTestId("organization-sources")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.setup-guide")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Save/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+  });
+
+  it("draws Knowledge and sources as a page of its own (#1367)", async () => {
     renderPage("knowledge");
-    const panel = await screen.findByTestId("organization-sources");
+    await screen.findByTestId("settings.organization.panel-knowledge");
     // Its own page (#1367, point 7): a back link to the profile, no tab bar, no header button to itself.
     expect(screen.getByRole("button", { name: /Back to Organization Profile/ })).toBeTruthy();
     expect(screen.queryByTestId("settings.organization.tabs")).toBeNull();
@@ -930,21 +966,6 @@ describe("OrganizationSection", () => {
     expect(screen.queryByText("Organization profile", { selector: "h3" })).toBeNull();
     expect(screen.queryByTestId("settings.organization.edit")).toBeNull();
     expect(screen.queryByTestId("settings.organization.overview")).toBeNull();
-    // The table's last block of its tab (UX r1 B1, B2 on #1294): no tab bar, no card below it.
-    expect(within(screen.getByTestId("settings.organization.panel-knowledge")).getByTestId("organization-sources")).toBe(panel);
-    const rows = await within(panel).findAllByTestId("organization-sources.row");
-    expect(rows).toHaveLength(2);
-    expect(panel.textContent).toContain("Entered by hand");
-    expect(panel.textContent).not.toContain("Typed");
-    const opencrq = rows.find((row) => row.textContent?.includes("OpenCRQ"));
-    if (!opencrq) throw new Error("OpenCRQ row missing");
-    // A design-system Chip (UX r1 B1 on #1232): a button that navigates to the tab filtered on the source.
-    const chip = within(opencrq).getByTestId("organization-sources.chip");
-    expect(chip.tagName).toBe("BUTTON");
-    expect(chip.getAttribute("aria-label")).toBe("Primary assets from OpenCRQ: 1 row");
-    fireEvent.click(chip);
-    // The primary assets live on CTEM > Inventory > Business since #1690.
-    await waitFor(() => expect(screen.getByTestId("location-probe").textContent).toMatch(/^\/ctem\/inventory\/business\?/));
   });
 
   it("marks a primary asset linked to OpenCRQ with a named icon", async () => {
