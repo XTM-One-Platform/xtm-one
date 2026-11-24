@@ -927,6 +927,17 @@ describe("OrganizationSection", () => {
     expect(await screen.findByRole("dialog")).toBeTruthy();
   });
 
+  it("never mounts the PIR sources for a reader of the Prioritization policy: no administrators-only syncs or sources read (#1938)", async () => {
+    renderWithProviders(
+      <MemoryRouter initialEntries={["/ctem/inventory/exposure"]}>
+        <OrganizationSection embed={{ cards: ["prioritization_policy"], readOnly: true }} />
+      </MemoryRouter>,
+    );
+    const card = await screen.findByTestId("settings.organization.prioritization-policy");
+    expect(within(card).queryByTestId("organization-sources")).toBeNull();
+    expect(get).not.toHaveBeenCalledWith(expect.stringMatching(/^\/organization-context\/(syncs|sources)/));
+  });
+
   it("keeps the Knowledge and sources page to its knowledge cards: no Sources and syncs, no setup guide, no save bar (#1938)", async () => {
     renderWithProviders(
       <MemoryRouter initialEntries={["/settings/organization/profile/knowledge?setup=1"]}>

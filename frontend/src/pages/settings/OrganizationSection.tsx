@@ -1417,16 +1417,17 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     );
   /**
    * The OpenCTI PIR sources and syncs, under the PIR list of the Prioritization policy (#1938): the profile scope of
-   * the syncs (section pirs). Off only while the policy itself is being saved, never for another card's edit.
+   * the syncs (section pirs). Off only while the policy itself is being saved, never for another card's edit. Never
+   * mounted for a reader: the syncs and sources routes are administrators-only (a 403 would reach the card).
    */
   const policySaving = patch.isPending || save.isPending;
-  const pirSources = (
+  const pirSources = reader ? undefined : (
     <OrganizationSourcesSyncs
       variant="section"
       scope="profile"
       title={t_i18n("PIR sources")}
       description={t_i18n("The OpenCTI imports and syncs that keep the PIR list up to date.")}
-      onAddSource={reader ? undefined : () => setPirImportOpen(true)}
+      onAddSource={() => setPirImportOpen(true)}
       disabled={policySaving}
       disabledReason={t_i18n("Wait for the prioritization policy to be saved.")}
     />
