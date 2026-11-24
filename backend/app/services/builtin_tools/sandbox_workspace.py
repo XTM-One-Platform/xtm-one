@@ -1697,9 +1697,10 @@ def build_sandbox_workspace_tools(
         *,
         operation: str,
         extra_files: list[str] | None = None,
+        exact_files: bool = False,
     ) -> tuple[Any, str] | ToolResult:
         """The tree at *ref* through the provider's archive tool, filtered to *subs* (and *extra_files*, kept as they
-        are): ``(tree, tool name)``, or the error."""
+        are; with *exact_files* a sub naming a file stays that file): ``(tree, tool name)``, or the error."""
         composite = executor.composite
         if composite is None:
             return _error("no integration is connected to this run.")
@@ -1748,7 +1749,11 @@ def build_sandbox_workspace_tools(
             try:
                 data = await read_ref_bytes(archives[0], composite.file_context)
                 tree = extract_tree(
-                    data, sub_paths=subs, max_bytes=remaining or session.limits.quota_bytes, extra_files=extra_files
+                    data,
+                    sub_paths=subs,
+                    max_bytes=remaining or session.limits.quota_bytes,
+                    extra_files=extra_files,
+                    exact_files=exact_files,
                 )
                 left_out = (result.structured or {}).get("left_out") if isinstance(result.structured, dict) else None
                 if left_out:
@@ -2076,7 +2081,11 @@ def build_sandbox_workspace_tools(
                 f"(under {', '.join(record.sub_paths)}): nothing was fetched or written."
             )
         base = record.commit or record.ref
-        fetched = await _archive_tree(record.provider, record.repository, base, new, operation="materialize_repository")
+        # A file named in add_paths is that file alone (#1919): the first tree already set up the checks, so
+        # widening one file to its package or check directory wrote thousands of files nobody asked for.
+        fetched = await _archive_tree(
+            record.provider, record.repository, base, new, operation="materialize_repository", exact_files=True
+        )
         if isinstance(fetched, ToolResult):
             return fetched
         tree, tool_name = fetched

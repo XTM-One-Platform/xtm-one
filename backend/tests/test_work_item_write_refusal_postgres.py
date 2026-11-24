@@ -82,7 +82,8 @@ async def test_the_recipient_reads_a_reason_and_the_filer_may_write() -> None:
             stranger = await wi_service.person_write_access(ids["filed"], user_id=ids["stranger"])
 
     assert recipient_filed == (False, wi_service.READ_ONLY_RECIPIENT)
-    assert recipient_unfiled == (False, wi_service.READ_ONLY_OTHER_PERSON)
+    # The recipient reason wins over "another person's chat" (#1910): it says what they may do.
+    assert recipient_unfiled == (False, wi_service.READ_ONLY_RECIPIENT)
     assert filer == (True, None)
     assert stranger is None
 
@@ -107,8 +108,63 @@ async def test_a_refused_cancel_answers_403_with_the_reason_never_not_found() ->
                 writer=person_writer(is_admin=False),
             )
 
-    assert cancelled is None, "the recipient has no write tier (decision 3 of #1845 is Sam's)"
+    assert cancelled is None, "the recipient tier (#1910) cancels through complete, never a generic update"
     assert refused.status_code == 403
     assert refused.detail == wi_service.READ_ONLY_RECIPIENT
     assert hidden.status_code == 404
     assert by_filer is not None and by_filer["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_the_recipient_may_cancel_and_answer_and_nothing_else() -> None:
+    """#1910: the decision recipient's tier is cancel and answer only."""
+    from sqlalchemy import select
+
+    from app.models.audit_log import AuditLog
+
+    async with _temp_database() as sessions:
+        ids = await _items(sessions)
+        async with sessions() as session:
+            item = await session.get(WorkItem, uuid.UUID(ids["filed"]))
+            item.needs_human = True
+            item.status = "blocked"
+            item.ask = {"question": "Ship it?", "options": [{"key": "A", "label": "Yes"}, {"key": "B", "label": "No"}]}
+            await session.commit()
+        writer = person_writer(is_admin=False)
+        async with _pointed_at_db(sessions):
+            may_cancel = await wi_service.person_may_cancel(ids["filed"], user_id=ids["recipient"])
+            stranger_may_cancel = await wi_service.person_may_cancel(ids["filed"], user_id=ids["stranger"])
+            stranger_cancel = await wi_service.complete_work_item(
+                ids["filed"], user_id=ids["stranger"], status="cancelled", writer=writer
+            )
+            done = await wi_service.complete_work_item(
+                ids["filed"], user_id=ids["recipient"], status="done", writer=writer
+            )
+            edited = await wi_service.update_work_item(
+                ids["filed"], user_id=ids["recipient"], title="Renamed", writer=writer
+            )
+            answered = await wi_service.answer_work_item(
+                ids["filed"], user_id=ids["recipient"], option="A", writer=writer
+            )
+            cancelled = await wi_service.complete_work_item(
+                ids["unfiled"], user_id=ids["recipient"], status="cancelled", writer=writer
+            )
+        async with sessions() as session:
+            audited = (
+                await session.execute(
+                    select(AuditLog.action, AuditLog.entity_id).where(
+                        AuditLog.user_id == uuid.UUID(ids["recipient"]), AuditLog.entity_type == "work_item"
+                    )
+                )
+            ).all()
+
+    assert may_cancel is True
+    assert stranger_may_cancel is False
+    assert stranger_cancel is None, "a reader who is not the recipient gets no tier"
+    assert done is None, "mark done is not in the recipient tier"
+    assert edited is None, "an edit is not in the recipient tier"
+    assert answered is not None and answered["payload"]["answer"]["option"] == "A"
+    assert cancelled is not None and cancelled["status"] == "cancelled"
+    actions = {(a, str(e)) for a, e in audited}
+    assert ("answer", ids["filed"]) in actions
+    assert ("cancel", ids["unfiled"]) in actions

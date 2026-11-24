@@ -33,7 +33,7 @@ from app.core.security import (
 from app.core.sessions import WebSession, record_activity
 from app.core.utils import format_exception_message
 from app.models.user import User
-from app.services import token_store
+from app.services import ctem_access, token_store
 from app.services.audit import log_audit
 from app.services.group_ai_access import disabling_group_names
 from app.services.group_managers import managed_groups
@@ -219,6 +219,10 @@ class UserResponse(BaseModel):
     # it is `ai_enabled` on `/platform/config`.
     ai_disabled_by_group: bool = False
     ai_disabled_group: str | None = None
+    # The person's CTEM level (`services/ctem_access.py`): `admin`, `decide`
+    # (read and act on system signals and cases, answer their gates), `view`
+    # (read only), or null (the signals they record and the cases they see).
+    ctem_access: str | None = None
     # CTEM command center (XTM One home) per-user preferences.
     ctem_vertical: str = "cyber"
     ctem_splash_seen: bool = False
@@ -1113,6 +1117,7 @@ async def me(
         language=getattr(user, "language", None) or "auto",
         ai_disabled_by_group=bool(ai_groups),
         ai_disabled_group=ai_groups[0] if ai_groups else None,
+        ctem_access=await ctem_access.level(db, user),
         # Coalesce: pre-existing rows may carry NULL if the column was added
         # nullable by a model-reflection step before the backfill migration, and
         # use getattr so a User-like object without these newer attributes (older

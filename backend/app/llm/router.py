@@ -32,6 +32,7 @@ import hashlib
 import json
 import logging
 import random
+import re
 import threading
 import time
 import uuid
@@ -42,6 +43,7 @@ from functools import lru_cache, partial
 from pathlib import Path
 from typing import Any, ClassVar
 
+import openai
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -60,6 +62,7 @@ from app.llm.base import (
     ContextOverflowError,
     ModelDeclinedError,
     StreamUsageSink,
+    gateway_error_envelope,
     provider_max_tools,
     usage_sink_of,
 )
@@ -76,6 +79,7 @@ from app.llm.mistral_provider import MistralProvider
 from app.llm.model_capabilities import decline_fallback_models
 from app.llm.model_limits import resolve_provider_max_output_tokens
 from app.llm.ollama_provider import OllamaProvider
+from app.llm.openai_compat import gateway_upstream_refusal
 from app.llm.openai_provider import OpenAIProvider
 from app.llm.openrouter_provider import OpenRouterProvider
 from app.llm.provider_access import (
@@ -87,6 +91,7 @@ from app.llm.provider_access import (
     provider_routing,
     usable_model_ids,
 )
+from app.llm.provider_errors import error_body, error_status
 from app.llm.runway_provider import RunwayProvider
 from app.llm.seedance_provider import SeedanceProvider
 from app.llm.tei_embedding_provider import TEIEmbeddingProvider
@@ -556,6 +561,7 @@ class AllProvidersFailedError(Exception):
         *,
         skipped: list[tuple[str, str]] | None = None,
         tried: list[tuple[str | None, ...]] | None = None,
+        carried_files: bool = False,
     ):
         self.failures = failures
         # ``(provider, model)`` failover targets left out because the model
@@ -578,16 +584,24 @@ class AllProvidersFailedError(Exception):
         self.content_declined = any(leg.kind == "declined" for leg in self.legs) and all(
             leg.kind == "declined" for leg in self.legs[:-1]
         )
+        # The turn carried files and every leg refused the request itself: what the refusal said.
+        self.input_rejected = _chain_input_rejection(failures) if carried_files else None
         providers = ", ".join(name for name, _ in failures)
         clauses = "; ".join(f"{leg.label}: {leg.outcome()}" for leg in self.legs)
         message = f"All configured AI providers failed ({providers})"
         message += f": {clauses}. " if clauses else ". "
-        message += (
-            "The content was declined; retrying the same content will not help: "
-            "rephrase it, or ask your administrator for a fallback model that accepts it."
-            if self.content_declined
-            else "Please try again — if the issue persists, contact your administrator."
-        )
+        if self.content_declined:
+            message += (
+                "The content was declined; retrying the same content will not help: "
+                "rephrase it, or ask your administrator for a fallback model that accepts it."
+            )
+        elif self.input_rejected:
+            message += (
+                f"Every model refused the input ({self.input_rejected}); "
+                "retrying the same input will not help: change it and send it again."
+            )
+        else:
+            message += "Please try again — if the issue persists, contact your administrator."
         # Two legs on one provider share its outage and its account: say there
         # was no real fallback, or the chain reads as if it had one.
         self.single_provider = len(failures) > 1 and len({name for name, _ in failures}) == 1
@@ -629,6 +643,89 @@ def is_request_too_large_error(exc: Exception) -> bool:
     if isinstance(exc, AllProvidersFailedError):
         return bool(exc.failures) and _is_size_error(exc.failures[-1][1])
     return _is_size_error(exc)
+
+
+# 400/422: the request itself was refused, not the credentials, the model, the size or the rate.
+_REFUSED_REQUEST_STATUSES = frozenset({400, 422})
+# The field a 400 names, as a leading path (``messages.0.content.1.image.source.base64.data: ``,
+# ``temperature: ``) or as OpenAI's ``param``: the input only when it points into the conversation.
+_FIELD_PATH = re.compile(r"^[\w\[\]]+(?:\.[\w\[\]]+)*:\s+")
+_INPUT_PATHS = ("messages", "input", "contents")
+# Gemini's "Please retry or report in ...": retrying the same input cannot help.
+_RETRY_ADVICE = re.compile(r"[.\s]*\bplease retry\b.*$", re.IGNORECASE | re.DOTALL)
+
+
+def input_rejection(exc: BaseException) -> str | None:
+    """What the refusal said when every model refused a turn that carried files, else ``None``."""
+    return exc.input_rejected if isinstance(exc, AllProvidersFailedError) else None
+
+
+def carries_files(messages: Iterable[object]) -> bool:
+    """Whether any message of the request carries a file or an image."""
+    for message in messages or ():
+        get = message.get if isinstance(message, Mapping) else partial(getattr, message)
+        if get("files", None) or get("images", None):
+            return True
+    return False
+
+
+def _chain_input_rejection(failures: list[tuple[str, Exception]]) -> str | None:
+    refusals = [_refused_request(exc) for _, exc in failures]
+    # A leg may name no field (Gemini, a stream's error event), but one must name the conversation:
+    # a 400 nobody places (a low credit balance) is no proof the input was refused.
+    if not refusals or None in refusals or not any(named for _, named in refusals):
+        return None
+    reasons = [reason for reason, _ in refusals]
+    # The wording with a number names the limit ("8000 pixels"): it tells the user what to change.
+    return next((reason for reason in reasons if any(c.isdigit() for c in reason)), reasons[0])
+
+
+def _refused_request(exc: BaseException) -> tuple[str, bool] | None:
+    """The provider's message when *exc* refused the request itself (a 400 / 422 not about a parameter
+    or a tool), directly, as the gateway's ``502`` for an upstream 4xx, or as a stream's error event;
+    and whether the refusal named a field of the conversation."""
+    from app.core.redaction import redact_secrets
+
+    if isinstance(exc, ModelDeclinedError | ContextOverflowError) or _is_size_error(exc):
+        return None
+    upstream = gateway_upstream_refusal(exc)
+    if upstream is not None:
+        status, message = upstream
+    else:
+        status, message = error_status(exc) or exception_status_code(exc), _provider_message(exc)
+    if status is None:
+        # Only a stream's error event comes without a status (openai.APIError proper).
+        if not isinstance(exc, openai.APIError) or isinstance(
+            exc, openai.APIStatusError | openai.APIConnectionError | openai.APIResponseValidationError
+        ):
+            return None
+    elif status not in _REFUSED_REQUEST_STATUSES:
+        return None
+    message = (message or "").strip()
+    path = _FIELD_PATH.match(message)
+    param = getattr(exc, "param", None) or gateway_error_envelope(error_body(exc)).get("param")
+    field = param if isinstance(param, str) and param else (path.group(0) if path else None)
+    if field is not None and not field.startswith(_INPUT_PATHS):
+        return None
+    reason = _RETRY_ADVICE.sub("", message[path.end() :] if path else message).strip().rstrip(".")
+    return (_bounded(redact_secrets(reason), _LEG_TEXT_LIMIT), field is not None) if reason else None
+
+
+def _provider_message(exc: BaseException) -> str | None:
+    """The provider's own message, whole: unwrapped from the JSON Gemini nests it in, or botocore's ``Error``."""
+    message = gateway_error_envelope(error_body(exc)).get("message")
+    if not isinstance(message, str) or not message:
+        response = getattr(exc, "response", None)
+        error = response.get("Error") if isinstance(response, Mapping) else None
+        message = error.get("Message") if isinstance(error, Mapping) else getattr(exc, "message", None)
+    if not isinstance(message, str) or not message:
+        return format_exception_message(exc)
+    try:
+        nested = json.loads(message)
+    except (ValueError, RecursionError):
+        return message
+    text = gateway_error_envelope(nested).get("message")
+    return text if isinstance(text, str) and text else message
 
 
 def _code_of_413(exc: BaseException) -> str | None:
@@ -785,6 +882,9 @@ def is_provider_unavailable_error(exc: BaseException) -> bool:
     in ``services/failure_causes.py``, which decides no charge; this function
     stays the coarse billing floor.
     """
+    # A model refused the input: it answered, even as the gateway's 502.
+    if input_rejection(exc) is not None:
+        return False
     if isinstance(exc, AllProvidersFailedError):
         # The wrapper's own message names the providers, not the reason. Classify
         # on the LAST failure in the chain, the same shape
@@ -2524,6 +2624,8 @@ class FailoverLLMProvider(BaseLLMProvider):
         self,
         failures: list[tuple[str, Exception]],
         tried: list[tuple[str | None, ...]] | None = None,
+        *,
+        carried_files: bool = False,
     ) -> AllProvidersFailedError:
         """The error of a failover chain with no target left.
 
@@ -2538,7 +2640,7 @@ class FailoverLLMProvider(BaseLLMProvider):
                 for provider, model in self._fallback_candidates()
                 if not self._can_chat(provider, model)
             ]
-        return AllProvidersFailedError(failures, skipped=skipped, tried=tried)
+        return AllProvidersFailedError(failures, skipped=skipped, tried=tried, carried_files=carried_files)
 
     @staticmethod
     def _capped_out(provider: BaseLLMProvider, failures: list[tuple[str, Exception]]) -> bool:
@@ -2905,7 +3007,9 @@ class FailoverLLMProvider(BaseLLMProvider):
                         fallback.provider_name, method_name, target,
                         format_exception_message(fb_exc),
                     )
-                    raise AllProvidersFailedError(failures, tried=tried) from fb_exc
+                    raise AllProvidersFailedError(
+                        failures, tried=tried, carried_files=carries_files(messages)
+                    ) from fb_exc
                 if (
                     watched is not None
                     and watched.emitted
@@ -2916,14 +3020,16 @@ class FailoverLLMProvider(BaseLLMProvider):
                         exc=fb_exc,
                     )
                 ):
-                    raise AllProvidersFailedError(failures, tried=tried) from fb_exc
+                    raise AllProvidersFailedError(
+                        failures, tried=tried, carried_files=carries_files(messages)
+                    ) from fb_exc
                 logger.warning(
                     "Fallback LLM provider '%s' %s also failed (%s): %s",
                     fallback.provider_name, method_name, target,
                     format_exception_message(fb_exc),
                 )
 
-        raise self._chain_exhausted(failures, tried)
+        raise self._chain_exhausted(failures, tried, carried_files=carries_files(messages))
 
     async def chat(
         self,
@@ -3080,7 +3186,9 @@ class FailoverLLMProvider(BaseLLMProvider):
                         target,
                         format_exception_message(fb_exc),
                     )
-                    raise AllProvidersFailedError(failures, tried=tried) from fb_exc
+                    raise AllProvidersFailedError(
+                        failures, tried=tried, carried_files=carries_files(messages)
+                    ) from fb_exc
                 # Same guard as the primary's.
                 if fallback_yielded and not await self._restart_stream(
                     on_stream_reset,
@@ -3088,7 +3196,9 @@ class FailoverLLMProvider(BaseLLMProvider):
                     source=fallback.provider_name,
                     exc=fb_exc,
                 ):
-                    raise AllProvidersFailedError(failures, tried=tried) from fb_exc
+                    raise AllProvidersFailedError(
+                        failures, tried=tried, carried_files=carries_files(messages)
+                    ) from fb_exc
                 logger.warning(
                     "Fallback LLM provider '%s' stream also failed (%s): %s",
                     fallback.provider_name,
@@ -3096,7 +3206,7 @@ class FailoverLLMProvider(BaseLLMProvider):
                     format_exception_message(fb_exc),
                 )
 
-        raise self._chain_exhausted(failures, tried)
+        raise self._chain_exhausted(failures, tried, carried_files=carries_files(messages))
 
     async def chat_stream_with_tools(
         self, messages, tools=None, *, on_token=None, model=None,

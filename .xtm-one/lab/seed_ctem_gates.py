@@ -14,6 +14,10 @@ writes them through the platform's own models on the first case, one gate per re
 * ``ctem.mobilize`` cancelled;
 * ``ctem.accept_risk`` passed automatically by a pre-approved runbook (an event, no decision).
 
+Plus one drafted threat package (``ctem_case_loop.record_threat_package``, :data:`PACKAGE`), recorded
+after the review answer so the package card reads ``drafted`` with its coverage drafted (gap
+lab-ctem-screens-no-threat-package: a UX round no longer overrides ``window.fetch`` for it).
+
 The ``gate`` events go through ``ctem_case_loop.record_gate``, the loop's own writer. A restart
 finds the gate work items by their correlation keys and writes nothing. Arguments: the
 administrator's id, the case id and the JSON file the answer is written to (gate key -> status).
@@ -41,6 +45,14 @@ GATES: tuple[tuple[str, str, str], ...] = (
 )
 #: The gate passed automatically (no work item, no decision): the policy card.
 POLICY_GATE = ("ctem.accept_risk", "pre-approved runbook Accept low residual risk (lab)")
+#: The threat package the review step drafted (#1115): an OpenCTI Grouping inside a draft (#1453), its
+#: coverage requested in the draft. Lab ids only: the page links to the lab's OpenCTI address.
+PACKAGE = {
+    "grouping_id": "grouping--5f1c3a2e-8b4d-4c6e-9a7f-2d3b4c5e6f70",
+    "name": "Lab sample: FortiOS exposure package",
+    "url": "http://localhost:8080/dashboard/data/import/draft/7a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d",
+    "coverage_id": "security-coverage--0c9d8e7f-6a5b-4c3d-9e2f-1a0b9c8d7e6f",
+}
 OPTIONS = [
     {"key": "A", "label": "Confirm the case and continue", "effect": "the loop moves to validation"},
     {"key": "B", "label": "Send it back to triage", "effect": "the case returns to analysis"},
@@ -91,7 +103,7 @@ async def seed(admin_id: str, case_id: str) -> dict[str, str]:
     from app.models.ctem_case import CtemCase
     from app.models.decision import Decision, DecisionEvent
     from app.models.work_item import WorkItem
-    from app.services.ctem_case_loop import record_gate
+    from app.services.ctem_case_loop import record_gate, record_threat_package
 
     admin = uuid.UUID(admin_id)
     now = datetime.now(UTC)
@@ -148,6 +160,9 @@ async def seed(admin_id: str, case_id: str) -> dict[str, str]:
         record_gate(db, case, key=POLICY_GATE[0], outcome="passed_automatically", by=POLICY_GATE[1],
                     now=now - timedelta(minutes=30))
         written[POLICY_GATE[0]] = "passed_automatically"
+        # After the review answer, so the review stops nothing and the card reads the package drafted (#1677).
+        record_threat_package(db, case, dict(PACKAGE), now=now - timedelta(minutes=20))
+        written["threat_package"] = "drafted"
         await db.commit()
     await engine.dispose()
     return written

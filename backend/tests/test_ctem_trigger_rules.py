@@ -14,7 +14,7 @@ from app.services.organization_context import OrganizationProfile
 def _profile() -> OrganizationProfile:
     return OrganizationProfile.model_validate(
         {
-            "tech_stack": [
+            "software": [
                 {"product": "nginx", "vendor": "f5"},
                 {"product": "PostgreSQL", "cpe": "cpe:2.3:a:postgresql:postgresql:16.2:*:*:*:*:*:*:*"},
             ],

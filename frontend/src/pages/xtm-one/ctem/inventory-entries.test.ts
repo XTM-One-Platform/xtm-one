@@ -1,7 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
-import { deletableRows, fieldEditable, isSyncedRow, nameProblem, newAssetRow, recordRefs, rowPatches } from "./inventory-entries";
+import { deletableRows, fieldEditable, isSyncedRow, membershipRuleOf, nameProblem, newAssetGroupRow, newAssetRow, recordRefs, rowPatches } from "./inventory-entries";
+
+describe("asset group criticality and membership rule (#1773)", () => {
+  it("trims the rule's lists, each value once", () => {
+    expect(membershipRuleOf(["pci", " payments", "pci"], [" web_application ", ""], " pay ")).toEqual({ tags: ["pci", "payments"], categories: ["web_application"], name_contains: "pay" });
+  });
+
+  it("gives a new group an unknown criticality and an empty rule", () => {
+    const group = newAssetGroupRow({ name: "Payments" });
+    expect(group.criticality).toBe("unknown");
+    expect(group.membership_rule).toEqual({ tags: [], categories: [], name_contains: "" });
+  });
+});
 
 const hand = { id: "r1", source: "manual", external_id: "5f0c" };
 const synced = { id: "r2", source: "intune", external_id: "dev-1" };

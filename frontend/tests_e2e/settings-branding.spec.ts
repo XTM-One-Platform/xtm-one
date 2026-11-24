@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { SettingsBrandingPage } from './model/settings-branding.page';
 import type { FilePayload } from './model/settings-branding.page';
+import { ok, withAdmin } from './helpers';
 
 // Minimal 1×1 transparent PNG — used for all image upload fields.
 const PIXEL_PNG_B64 =
@@ -12,8 +13,36 @@ const pixelPng: FilePayload = {
   buffer: Buffer.from(PIXEL_PNG_B64, 'base64'),
 };
 
+// The save test overwrites deployment-global branding; restore it after.
+const BRANDING_FIELDS = [
+  'platform_name',
+  'platform_description',
+  'platform_logo',
+  'platform_accent_color',
+  'platform_background_color',
+  'platform_theme_color',
+  'platform_favicon',
+  'platform_og_image',
+] as const;
+type BrandingSnapshot = Record<(typeof BRANDING_FIELDS)[number], string | null>;
+
 test.describe('Settings – Platform Branding', () => {
   let branding: SettingsBrandingPage;
+  let brandingSnapshot: BrandingSnapshot | null = null;
+
+  test.beforeAll(async () => {
+    brandingSnapshot = await withAdmin(async (api, headers) => {
+      const json = await (await ok(await api.get('/api/v1/settings/platform', { headers }), 'get platform settings')).json();
+      return Object.fromEntries(BRANDING_FIELDS.map((f) => [f, json[f] ?? null] as const)) as BrandingSnapshot;
+    });
+  });
+
+  test.afterAll(async () => {
+    if (!brandingSnapshot) return;
+    const snapshot = brandingSnapshot;
+    await withAdmin(async (api, headers) =>
+      ok(await api.put('/api/v1/settings/platform', { headers, data: snapshot }), 'restore branding'));
+  });
 
   test.beforeEach(async ({ page }) => {
     branding = new SettingsBrandingPage(page);

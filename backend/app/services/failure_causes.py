@@ -642,6 +642,15 @@ def _classify_own_exception(exc: BaseException) -> FailureClassification | None:
                 ",".join(categories)[:_LEGS_DETAIL_LIMIT] or None,
                 leg_dicts,
             )
+        # Every model refused a turn that carried files (an image too large):
+        # heuristic, the refusal names no file, so the attachment is inferred.
+        if getattr(exc, "input_rejected", None):
+            return FailureClassification(
+                FailureCause.MODEL_REJECTED_REQUEST,
+                FailureDetermination.HEURISTIC,
+                _legs_detail(legs),
+                leg_dicts,
+            )
         return FailureClassification(
             FailureCause.ALL_PROVIDERS_FAILED,
             FailureDetermination.STRUCTURAL,

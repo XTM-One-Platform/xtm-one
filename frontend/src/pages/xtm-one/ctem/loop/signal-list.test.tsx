@@ -79,9 +79,18 @@ function Probe() {
   return <output data-testid="location">{`${location.pathname}${location.search}`}</output>;
 }
 
-function renderPage(entry: string, list: { total: number; counts: Record<string, number>; signals: CtemSignal[] }, paths = PATHS) {
+function renderPage(
+  entry: string,
+  list: { total: number; counts: Record<string, number>; signals: CtemSignal[] },
+  paths = PATHS,
+  cases?: { state: string }[],
+) {
   get.mockImplementation(async (url: string) => {
     if (url.startsWith("/ctem-signals/paths")) return { paths };
+    if (url.startsWith("/ctem-cases")) {
+      if (!cases) throw new Error("no cases read in this test");
+      return { vertical: "ctem", counts: {}, cases, details_unavailable: [] };
+    }
     if (url.startsWith(`/ctem-signals/${ID}`)) return signal(1);
     return list;
   });
@@ -293,7 +302,7 @@ describe("Signals summary strip", () => {
   ];
 
   it("sits under the header, above the list, with the key row's counts and the connected sources' logos", async () => {
-    renderPage("/ctem/signals", { total: 10, counts: { to_validate: 3, new: 2, case_opened: 1, watchlist: 4 }, signals: [] }, paths);
+    renderPage("/ctem/signals", { total: 10, counts: { to_validate: 3, new: 2, case_opened: 1, watchlist: 4 }, signals: [] }, paths, []);
     const strip = await screen.findByTestId("ctem-signals-summary");
     const sourcesButton = screen.getByTestId("ctem-signals-sources");
     expect(sourcesButton.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -301,10 +310,30 @@ describe("Signals summary strip", () => {
     expect(within(strip).getByText("10 signals in all")).toBeTruthy();
     expect(within(strip).getByText("3")).toBeTruthy();
     expect(within(strip).getByText("2 new")).toBeTruthy();
-    expect(within(strip).getByText("4 on the watchlist")).toBeTruthy();
     expect(within(strip).getByText("1/2")).toBeTruthy();
     const logos = within(screen.getByRole("list", { name: "1 source connected" })).getAllByRole("listitem");
     expect(logos.map((l) => l.getAttribute("data-provider"))).toEqual(["shodan"]);
+  });
+
+  it("counts the signals with a case and, under them, the open cases the Cases page counts, never the watchlist (#1935)", async () => {
+    // 7 signals feed 2 open cases; a resolved and an accepted-risk case are not open, as on the Cases page.
+    const cases = [{ state: "new" }, { state: "remediating" }, { state: "resolved" }, { state: "accepted_risk" }];
+    renderPage("/ctem/signals", { total: 12, counts: { case_opened: 7, watchlist: 5 }, signals: [] }, paths, cases);
+    const strip = await screen.findByTestId("ctem-signals-summary");
+    const card = await within(strip).findByRole("button", { name: /Signals with a case/ });
+    await waitFor(() => expect(within(card).getByText("2 open cases")).toBeTruthy());
+    expect(within(card).getByText("7")).toBeTruthy();
+    expect(within(strip).queryByText(/Cases opened/)).toBeNull();
+    expect(within(strip).queryByText(/on the watchlist/)).toBeNull();
+    fireEvent.click(card);
+    await waitFor(() => expect(location()).toBe("/ctem/signals?state=case_opened"));
+  });
+
+  it("keeps the case subtitle pending, never an invented 0, when the cases read fails", async () => {
+    renderPage("/ctem/signals", { total: 1, counts: { case_opened: 1 }, signals: [] }, paths);
+    const strip = await screen.findByTestId("ctem-signals-summary");
+    const card = await within(strip).findByRole("button", { name: /Signals with a case/ });
+    expect(within(card).queryByText(/open case/)).toBeNull();
   });
 
   it("keeps the four cards footerless, the logos and the Sources link on the fourth card's subtitle line (UX r4 B2 on #1272)", async () => {

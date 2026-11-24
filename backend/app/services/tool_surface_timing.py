@@ -13,10 +13,11 @@
 
 """When a change to an agent's tools reaches a run, stated as a fact.
 
-A run builds its tool list, the names the model calls and the gate once, at
-the start of a turn (``run_agent_loop``); a change written during the turn (an
-integration's spec, credentials or sharing, an agent's bindings or tool
-scoping) is read by the next turn of a chat and the next run of an
+A run builds its tool list, the names the model calls and the gate at the
+start of a turn (``run_agent_loop``). An integration change written during the
+turn (its spec, credentials or sharing) reloads the integration tools of the
+turn that made it at the end of that step (#1874); an agent's bindings or tool
+scoping are read by the next turn of a chat and the next run of an
 assignment. The write tools that make such a change say so in their answer,
 so the model never waits for a tool that cannot appear in the turn it is in.
 """
@@ -60,9 +61,15 @@ NEXT_TURN_LINE = (
 )
 
 
+INTEGRATION_RELOAD_LINE = (
+    "\n  \u2022 Tools: a turn bound to this integration reloads its tools after this step; "
+    "any other agent reads the change from its next chat turn or its next assignment run."
+)
+
+
 def integration_change_line(updated: Iterable[str]) -> str:
-    """The next-turn line for an integration update that can move its tools, else ``""``."""
-    return NEXT_TURN_LINE if any(f not in INTEGRATION_FIELDS_WITHOUT_TOOL_EFFECT for f in updated) else ""
+    """The reload line for an integration update that can move its tools, else ``""``."""
+    return INTEGRATION_RELOAD_LINE if any(f not in INTEGRATION_FIELDS_WITHOUT_TOOL_EFFECT for f in updated) else ""
 
 
 def agent_change_line(updated: Iterable[str]) -> str:

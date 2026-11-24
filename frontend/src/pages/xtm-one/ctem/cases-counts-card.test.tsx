@@ -126,7 +126,7 @@ describe("CasesCountsCard", () => {
     const connect = vi.fn();
     draw(false, connect);
     expect(await screen.findByText("Build cases from your software")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Add software" }).getAttribute("href")).toBe("/ctem/inventory/software?card=tech_stack");
+    expect(screen.getByRole("link", { name: "Add software" }).getAttribute("href")).toBe("/ctem/inventory/software?card=software");
     fireEvent.click(screen.getByRole("button", { name: "Connect OpenAEV" }));
     expect(connect).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: "Close" }));

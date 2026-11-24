@@ -35,8 +35,8 @@ describe("organizationContextCategoriesEffective", () => {
     expect(organizationContextCategoriesEffective(["pirs"], null, null)).toEqual(["pirs"]);
   });
   it("lets the most specific explicit list win, an empty one included", () => {
-    expect(organizationContextCategoriesEffective(["pirs"], ["tech_stack"])).toEqual(["tech_stack"]);
-    expect(organizationContextCategoriesEffective(["pirs"], ["tech_stack"], [])).toEqual([]);
+    expect(organizationContextCategoriesEffective(["pirs"], ["software"])).toEqual(["software"]);
+    expect(organizationContextCategoriesEffective(["pirs"], ["software"], [])).toEqual([]);
     expect(organizationContextCategoriesEffective(["pirs"], [], ["primary_assets"])).toEqual(["primary_assets"]);
   });
 });
