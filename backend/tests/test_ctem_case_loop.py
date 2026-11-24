@@ -398,7 +398,8 @@ async def test_the_sweep_skips_a_signal_it_cannot_open_and_goes_on(monkeypatch):
     bad, good = _signal(), _signal(subject_ref="vpn.example.com", subject_label="vpn.example.com")
     late = _case(sla_due_at=NOW - timedelta(hours=1))
     bad = _ExpiringSignal(**vars(bad))
-    db = SweepSession([bad, good], [], [late])  # signals, the good signal's case lookup, late cases
+    # signals, the good signal's case lookup, its owner lookup (#1736 slice 3), late cases
+    db = SweepSession([bad, good], [], [], [late])
     real = loop.open_from_signal
 
     async def open_or_fail(session, signal, **kw):

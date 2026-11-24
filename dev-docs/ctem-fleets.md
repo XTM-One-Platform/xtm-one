@@ -171,7 +171,12 @@ Common rules:
   item of the case, no armed `ctem-loop-reminder:` timer and no case event for
   `CTEM_CASE_STALL_HOURS` (default 6), once per stall window, and the owning
   fleet re-runs its loop; every loop run ends on an ask to a named person with a
-  deadline, an armed reminder, or a terminal state. A use-case
+  deadline, an armed reminder, or a terminal state. A deferred or not-validated
+  answer records when to ask again and arms `ctem-loop-reminder:<case id>`. A
+  case opened from a signal starts with an owner (`services/ctem_case_owner.py`):
+  the owner of an affected asset's records, else of one of their asset groups,
+  else `CTEM_CASE_DEFAULT_OWNER`, matched to an active account by email only;
+  an `owner` case event records how it was found. A use-case
   fleet takes the cases of its own paths only while its case automation is
   enabled (Vulnerability management: `new_vulnerability`). The owner is
   computed when the event is published (`services/ctem_case_routing.py`
