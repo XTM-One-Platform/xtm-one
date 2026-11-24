@@ -21503,5 +21503,17 @@
   "Open cases in {stage}": "Ouvrir les cas en {stage}",
   "Cases by status": "Cas par statut",
   "{count, plural, one {# decision waiting} other {# decisions waiting}}": "{count, plural, one {# décision en attente} other {# décisions en attente}}",
-  "Needs attention first": "À traiter en premier"
+  "Needs attention first": "À traiter en premier",
+  "Delete the case": "Supprimer le cas",
+  "A signal": "Un signal",
+  "A split": "Une séparation",
+  "Legacy": "Ancien modèle",
+  "Reading what the delete removes": "Lecture de ce que la suppression retire",
+  "{count, plural, one {# case deleted} other {# cases deleted}}": "{count, plural, one {# cas supprimé} other {# cas supprimés}}",
+  "{count, plural, one {Delete # case?} other {Delete # cases?}}": "{count, plural, one {Supprimer # cas ?} other {Supprimer # cas ?}}",
+  "Each case goes with its issues list and history. Its signals go back to the scope gate, and the next case for the same fix opens fresh. This cannot be undone.": "Chaque cas part avec sa liste de problèmes et son historique. Ses signaux retournent au filtre de périmètre, et le prochain cas pour le même correctif repart de zéro. Cette action est irréversible.",
+  "{count, plural, one {# case and its history} other {# cases and their history}}": "{count, plural, one {# cas et son historique} other {# cas et leur historique}}",
+  "{count, plural, one {# open work item cancelled} other {# open work items cancelled}}": "{count, plural, one {# tâche ouverte annulée} other {# tâches ouvertes annulées}}",
+  "{count, plural, one {# timer cancelled} other {# timers cancelled}}": "{count, plural, one {# minuteur annulé} other {# minuteurs annulés}}",
+  "{count, plural, one {# signal sent back to the scope gate} other {# signals sent back to the scope gate}}": "{count, plural, one {# signal renvoyé au filtre de périmètre} other {# signaux renvoyés au filtre de périmètre}}"
 }
