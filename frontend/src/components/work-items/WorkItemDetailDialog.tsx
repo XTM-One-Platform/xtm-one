@@ -81,7 +81,7 @@ import { formatShortDateTimeIntl, formatTimeAgo } from "@/lib/relative-time";
 import { cn } from "@/lib/utils";
 import {
   FLEET_IMPACT_KIND_LABELS,
-  PICKUP_EXPLANATIONS,
+  pickupExplanation,
   PRIORITY_LABELS,
   STATUS_LABELS,
   VISIBILITY_EXPLANATIONS,
@@ -254,7 +254,7 @@ function WhoActs({ item, context }: { item: WorkItem; context: WorkItemContext }
           pullRequests={pickup.pull_requests}
         />
         <p className="min-w-0 flex-1">
-          {t_i18n(PICKUP_EXPLANATIONS[pickup.state], {
+          {t_i18n(pickupExplanation(pickup.state, item.can_write), {
             agent: agentWord,
             date: pickup.available_at ? formatShortDateTime(pickup.available_at) : "",
             count: waitingPullRequestCount(pickup),
