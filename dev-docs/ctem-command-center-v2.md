@@ -174,7 +174,7 @@ most 500) and counts the KEV vulnerabilities related to them
 both are null without a tech stack or when OpenCTI cannot answer, and the row
 then keeps `kev_count`. A tailored row counts `kev_tailored_count`, its why
 names the products ("Known-exploited and affects {products} in your tech
-stack") and it is `tailored`, so the generic notice drops. Crown jewels and
+stack") and it is `tailored`, so the generic notice drops. Primary assets and
 PIRs do not rank rows yet.
 
 #11324: the notice is `ctem/GenericContextNotice.tsx`, shared by every widget
@@ -303,9 +303,9 @@ person may read); the runs, findings and hours saved of the page follow it.
   show the pair.
 - Qualitative formula (`services/ctem_context_scoring.py`, pinned by
   `tests/test_ctem_context_scoring.py`): each stage reads a set of context
-  fields (scoping: crown jewels, tech stack, sector, regions; discovery: PIRs,
-  sector, regions; prioritization: tech stack, crown jewels, PIRs; validation:
-  crown jewels, tech stack, AI targets; remediation: crown jewels, approval
+  fields (scoping: primary assets, tech stack, sector, regions; discovery: PIRs,
+  sector, regions; prioritization: tech stack, primary assets, PIRs; validation:
+  primary assets, tech stack, AI targets; remediation: primary assets, approval
   threshold, ticketing). `C` is the share filled. The evidence `E` is the
   quantitative score `Q`, except Prioritization with a tech stack:
   `E = (Q + T) / 2`, `T = max(0, 100 - 20 x known-exploited CVEs in the

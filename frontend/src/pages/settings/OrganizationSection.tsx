@@ -102,7 +102,7 @@ import { useSyncedRemoval } from "./OrganizationSyncedRemoval";
 import { ProviderLogo } from "@/components/ui/provider-logo";
 import { columnEditable, LOCAL_FIELDS, SOURCE_KIND_LABELS, sourceKind, sourcePlatform, type Provenance } from "@/lib/organization-provenance";
 import { OrganizationContextInjectionCard } from "./OrganizationContextInjectionCard";
-import { OrganizationCrownJewelsRestoreDialog } from "./OrganizationCrownJewelsRestoreDialog";
+import { OrganizationPrimaryAssetsRestoreDialog } from "./OrganizationPrimaryAssetsRestoreDialog";
 import { OrganizationProposalsCard } from "./OrganizationProposalsCard";
 import { OrganizationEvidenceHealthCard } from "./OrganizationEvidenceHealthCard";
 import { OrganizationOutsideLensCard } from "./OrganizationOutsideLensCard";
@@ -133,10 +133,10 @@ const NO_VALUE = "none";
 const COUNTRY_CODES = Object.keys(ISO_3166_NUMERIC);
 
 /** The lists edited in their own card (#12256). */
-const LIST_KEYS = ["crown_jewels", "shipped_products", "tech_stack"] as const;
+const LIST_KEYS = ["primary_assets", "shipped_products", "tech_stack"] as const;
 /** @i18n-keys */
 const LIST_TITLES = {
-  crown_jewels: "Primary assets and business services",
+  primary_assets: "Primary assets and business services",
   shipped_products: "Shipped products",
   tech_stack: "Software",
 } as const;
@@ -855,7 +855,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     options: Object.entries(labels).map(([value, name]) => ({ value, label: t_i18n(name) })),
     ordered,
   });
-  type JewelRow = { index: number; value: ProfileForm["crown_jewels"][number] };
+  type JewelRow = { index: number; value: ProfileForm["primary_assets"][number] };
   type TechRow = { index: number; value: ProfileForm["tech_stack"][number] };
   const jewelColumns: DataTableColumn<JewelRow>[] = [
     {
@@ -996,7 +996,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     sourceFilter<TechRow>(),
   ];
   // The list editors (#12256): the same columns, a closed row read as text, the open one as fields.
-  type Jewel = ProfileForm["crown_jewels"][number];
+  type Jewel = ProfileForm["primary_assets"][number];
   type Tech = ProfileForm["tech_stack"][number];
   type Shipped = ProfileForm["shipped_products"][number];
   const pick = (labels: Record<string, string>, value: string, label: string, onChange: (value: string) => void) => (
@@ -1021,7 +1021,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const jewelEdit: ListEditColumn<Jewel>[] = [
     { key: "name", header: "Primary asset", width: readWidth(JEWEL_WIDTHS.name), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("Primary asset", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
     { key: "business_service", header: "Business service", hideable: true, read: (v) => readCell(v.business_service), edit: (v, set) => editText("Business service", v.business_service, (business_service) => set({ business_service })), sortValue: (v) => v.business_service.toLowerCase(), firstSort: "asc" },
-    { key: "owner", header: "Owner", hideable: true, read: (v) => readCell(v.owner), edit: (v, set) => editText("Owner", v.owner, (owner) => set({ owner }), false, "Owner", suggestId("crown_jewels", "owner")), sortValue: (v) => v.owner.toLowerCase(), firstSort: "asc" },
+    { key: "owner", header: "Owner", hideable: true, read: (v) => readCell(v.owner), edit: (v, set) => editText("Owner", v.owner, (owner) => set({ owner }), false, "Owner", suggestId("primary_assets", "owner")), sortValue: (v) => v.owner.toLowerCase(), firstSort: "asc" },
     { key: "criticality", header: "Criticality", hideable: true, headerClassName: "w-44", width: readWidth(120), read: (v) => readCell(v.criticality ? optionLabel(CRITICALITY_LABELS, v.criticality) : ""), edit: (v, set) => pick(CRITICALITY_LABELS, v.criticality, "Criticality", (criticality) => set({ criticality })), sortValue: (v) => Object.keys(CRITICALITY_LABELS).indexOf(v.criticality), firstSort: "desc" },
     {
       key: "assets",
@@ -1098,19 +1098,19 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   ];
   /** Per list (slice 2): the fields the selection toolbar sets, the free-text fields suggested from the list, and "Paste a list". */
   const LIST_BULK = {
-    crown_jewels: [
-      { key: "owner", label: "Owner", suggestions: suggestId("crown_jewels", "owner") },
+    primary_assets: [
+      { key: "owner", label: "Owner", suggestions: suggestId("primary_assets", "owner") },
       { key: "criticality", label: "Criticality", options: CRITICALITY_LABELS },
       { key: "business_service", label: "Business service" },
     ],
     tech_stack: [{ key: "vendor", label: "Vendor", suggestions: suggestId("tech_stack", "vendor") }],
     shipped_products: [{ key: "vendor", label: "Vendor", suggestions: suggestId("shipped_products", "vendor") }],
   } as const;
-  const LIST_SUGGESTED: { [K in ListKey]: readonly (keyof ProfileForm[K][number] & string)[] } = { crown_jewels: ["owner"], shipped_products: ["vendor"], tech_stack: ["vendor"] };
+  const LIST_SUGGESTED: { [K in ListKey]: readonly (keyof ProfileForm[K][number] & string)[] } = { primary_assets: ["owner"], shipped_products: ["vendor"], tech_stack: ["vendor"] };
   const choiceWords = (labels: Record<string, string>) => Object.fromEntries(Object.entries(labels).map(([key, label]) => [key, [label, t_i18n(label)]]));
   const header = (label: string) => [label, t_i18n(label)];
   const PASTE = {
-    crown_jewels: {
+    primary_assets: {
       title: "Paste primary assets",
       example: "Customer portal, Online sales, Jane Doe, critical",
       fieldLabels: { name: "Primary asset", business_service: "Business service", owner: "Owner", criticality: "Criticality" },
@@ -1120,7 +1120,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         name: "name",
         headers: { name: header("Primary asset"), business_service: header("Business service"), owner: header("Owner"), criticality: header("Criticality"), opencrq_asset_id: header("OpenCRQ") },
         choices: { criticality: choiceWords(CRITICALITY_LABELS) },
-        identity: LIST_RULES.crown_jewels.identity,
+        identity: LIST_RULES.primary_assets.identity,
       } as PasteSpec<Jewel>,
     },
     tech_stack: {
@@ -1842,10 +1842,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.business)} className="space-y-4" data-testid="settings.organization.panel-business">
           {missingIn("business")}
           <SettingsCard
-            id={`${fieldId}-crown_jewels`}
+            id={`${fieldId}-primary_assets`}
             className={SECTION_BAR_ANCHOR_CLASS}
             data-anchor="card"
-            {...cardFold("crown_jewels", current.crown_jewels.length)}
+            {...cardFold("primary_assets", current.primary_assets.length)}
             tabIndex={-1}
             data-testid="settings.organization.primary-assets"
             icon={Shield}
@@ -1853,8 +1853,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             description={t_i18n("What the business cannot lose, ranked by criticality.")}
             action={
               <>
-                {attention("crown_jewels")}
-                {!reader && !listOpen("crown_jewels") && (
+                {attention("primary_assets")}
+                {!reader && !listOpen("primary_assets") && (
                   // An icon button: a third labelled action wraps the card title at 1080 (UX round 1 B1, #1567).
                   <Tip content={editing || cardOpen ? t_i18n("Save or cancel the edit first.") : t_i18n("Restore from a past version")} wrap="auto">
                     <Button
@@ -1869,13 +1869,13 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                     </Button>
                   </Tip>
                 )}
-                {listEditAction("crown_jewels")}
-                {pasteAction("crown_jewels")}
-                {listOpen("crown_jewels") && (
+                {listEditAction("primary_assets")}
+                {pasteAction("primary_assets")}
+                {listOpen("primary_assets") && (
                   <Button
                     variant="secondary"
                     className="gap-1.5"
-                    onClick={() => addListRow("crown_jewels", { name: "", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" })}
+                    onClick={() => addListRow("primary_assets", { name: "", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" })}
                   >
                     <Plus className="h-3.5 w-3.5" /> {t_i18n("Add a primary asset")}
                   </Button>
@@ -1883,20 +1883,20 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               </>
             }
           >
-            {listEditor("crown_jewels", {
+            {listEditor("primary_assets", {
               columns: jewelEdit,
               filters: [valueFilter("criticality", "Criticality", CRITICALITY_LABELS, (v: Jewel) => v.criticality, true)], // ordinal scale (#12289)
               searchFields: (v) => [v.name, v.business_service, v.owner],
               rowLabel: (v) => v.name,
-              storageKey: "settings-organization-crown-jewels",
+              storageKey: "settings-organization-primary-assets",
               rowTestId: "settings.organization.primary-asset-row",
               emptyLabel: t_i18n("No primary asset yet: agents cannot rank by business impact."),
             }) ??
-              (current.crown_jewels.length === 0 ? (
+              (current.primary_assets.length === 0 ? (
                 <p className="text-default-secondary">{t_i18n("No primary asset yet: agents cannot rank by business impact.")}</p>
               ) : (
                 <DataTable
-                  rows={current.crown_jewels.map((value, index) => ({ index, value }))}
+                  rows={current.primary_assets.map((value, index) => ({ index, value }))}
                   columns={jewelColumns}
                   layout={tableLayout}
                   rowKey={(row) => String(row.index)}
@@ -1910,7 +1910,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                   rowTestId="settings.organization.primary-asset-row"
                 />
               ))}
-            <OrganizationCrownJewelsRestoreDialog open={restoreOpen} onOpenChange={setRestoreOpen} currentVersion={data?.version ?? null} />
+            <OrganizationPrimaryAssetsRestoreDialog open={restoreOpen} onOpenChange={setRestoreOpen} currentVersion={data?.version ?? null} />
           </SettingsCard>
 
           {/* What the organization ships (#1432), apart from the software inventory it runs: CTEM resolves a vulnerability on one to its repositories. */}

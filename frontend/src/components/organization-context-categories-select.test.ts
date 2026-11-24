@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 /**
  * The picker renders "Primary assets" (#1591): no string it renders, in any locale,
- * may still name the old "Crown jewels" category.
+ * may still name the old "Primary assets" category.
  */
 const source = readFileSync(
   join(process.cwd(), "src", "components", "organization-context-categories-select.tsx"),
@@ -14,7 +14,7 @@ const source = readFileSync(
 const keys = [...source.matchAll(/t_i18n\(\s*"((?:[^"\\]|\\.)*)"/g)].map((m) => JSON.parse(`"${m[1]}"`) as string);
 
 const OLD_WORDS: Record<string, RegExp> = {
-  en: /crown jewel/i,
+  en: /primary asset/i,
   fr: /actifs critiques/i,
   es: /activos críticos/i,
   ja: /重要資産/,
@@ -25,8 +25,8 @@ describe("organization context categories picker wording", () => {
     expect(keys.length).toBeGreaterThan(0);
   });
 
-  it("the source never names Crown jewels", () => {
-    expect(source).not.toMatch(/crown jewel/i);
+  it("the source never names Primary assets", () => {
+    expect(source).not.toMatch(/primary asset/i);
   });
 
   for (const [locale, old] of Object.entries(OLD_WORDS)) {

@@ -88,7 +88,7 @@ const SOURCE_SCHEDULE_LABELS = {
 
 /** The rows a plan touches, per section, as ICU plurals (UX r1 B6). @i18n-keys */
 const SECTION_COUNT_LABELS = {
-  crown_jewels: "{count, plural, one {# primary asset} other {# primary assets}}",
+  primary_assets: "{count, plural, one {# primary asset} other {# primary assets}}",
   tech_stack: "{count, plural, one {# software entry} other {# software entries}}",
   assets_exposure: "{count, plural, one {# asset} other {# assets}}",
   asset_groups: "{count, plural, one {# asset group} other {# asset groups}}",
@@ -129,7 +129,7 @@ const SECTION_FIELD: Partial<Record<OrganizationSync["section"], SourcedSection>
   assets: "assets_exposure",
   asset_groups: "asset_groups",
   software: "tech_stack",
-  crown_jewels: "crown_jewels",
+  primary_assets: "primary_assets",
 };
 
 const isSourcedField = (field: string): field is SourcedSection => field in SOURCED_SECTION_LABELS;

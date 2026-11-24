@@ -47,7 +47,7 @@ vi.mock("@/hooks/api/useCtemCasesApi", async (importOriginal) => ({
             open_issue_count: 3,
             restricted_count: 1,
             asset_count: 2,
-            crown_jewel_count: 1,
+            primary_asset_count: 1,
             kev_count: 1,
             max_cvss: 9.8,
             max_epss: 0.94,

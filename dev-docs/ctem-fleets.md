@@ -578,7 +578,7 @@ from it, provenance `restored from v<n>` (administrators). The free-text
 |---|---|---|
 | sector, sub-sector | vocabulary | F1, F2, F3 relevance |
 | regions of operation | ISO country list | F1, F3 relevance |
-| crown jewels | assets with business service and owner | F1, F2 prioritization, OpenCRQ |
+| primary assets | assets with business service and owner | F1, F2 prioritization, OpenCRQ |
 | tech stack | CPE / product list | F2 asset match, stage prioritization |
 | AI targets (assets of category `ai_target`) | name, subcategory, provider, endpoint, model, owner, internet facing, OpenAEV id | F3 |
 | PIRs | OpenCTI PIR ids (`manage_opencti_pir` exists today) | F1, F3 relevance |
@@ -658,7 +658,7 @@ defaults are `GET|PUT /api/v1/organization-context/injection` (`enabled`,
 `categories`, `available_categories` read-only). Every seeded agent
 inherits (the seed never writes the mode, so a person's opt-out survives a
 refresh); the CTEM vulnerability orchestrator, triage analyst and
-remediation coordinator preload `tech_stack`, `crown_jewels`,
+remediation coordinator preload `tech_stack`, `primary_assets`,
 `assets_exposure` and `prioritization_policy` (#11543).
 
 The #11543 categories ride the same registry: `assets_exposure` and
@@ -673,10 +673,10 @@ from the linked knowledge bases the person the turn acts for can read
 `user_visible_filter`), a run acting for nobody gets none. The three
 prompt builders pass that person to `build_organization_context_tool`.
 
-OpenCRQ crown-jewel sync (slice 3d,
+OpenCRQ primary-asset sync (slice 3d,
 `services/organization_context_opencrq.py`): an administrator calls
 `POST /api/v1/organization-context/opencrq-sync` (`{"apply": false}` answers
-the plan, `true` writes it) and the crown jewels are reconciled with the
+the plan, `true` writes it) and the primary assets are reconciled with the
 company-managed OpenCRQ's supporting assets, read with a token minted for
 that administrator:
 
@@ -686,13 +686,13 @@ that administrator:
 - profile to OpenCRQ: a linked jewel's criticality is written to the asset
   (`low`, `medium`, `high`, `critical` -> `very_high`) when they differ;
 - OpenCRQ to profile: a `very_high` asset no jewel names joins the profile
-  as a `critical` crown jewel linked to it;
+  as a `critical` primary asset linked to it;
 - a jewel whose asset OpenCRQ no longer holds is reported
   (`not_in_opencrq`) and kept;
 - a link never makes a typed jewel an OpenCRQ row: it stays `manual` with
   `opencrq_asset_id` as a link (only a row with no `source` at all, saved
   before provenance, reads as an OpenCRQ row);
-- a synced jewel whose pushed criticality falls below the crown-jewel sync's
+- a synced jewel whose pushed criticality falls below the primary-asset sync's
   `min_criticality` becomes a typed row linked to its asset
   (`kept_below_sync_threshold`), so the sync never removes a jewel for a
   criticality the reconcile wrote. A sync with `remove_gone` removes only the
@@ -758,7 +758,7 @@ answers:
   `low`; `basis` quotes where the value was read.
 - Values come out typed and validated by `OrganizationProfile` before they
   are answered: ISO regions and currency, the size band, tech stack entries
-  with vendor, product and a CPE only when one is matched, crown jewels
+  with vendor, product and a CPE only when one is matched, primary assets
   linked to an OpenCRQ asset when the name matches exactly one (the rule of
   the OpenCRQ sync above), AI targets with kind and exposure, PIRs matched
   to existing OpenCTI PIR ids. A PIR the model suggests creating is answered
@@ -1046,7 +1046,7 @@ the #9173 CTA in Community Edition or without an LLM.
 |---|---|
 | S1 seed infrastructure | Shipped in #8988: `fleets.is_builtin`, `BUILTIN_FLEETS` (`backend/app/agents/builtin_fleets.py`, entry shape in its docstring) seeded by `app.agents.fleet_seed.seed_builtin_fleets` at boot in xtm_one and dev modes (company-managed, by slug, members by agent slug, gated member skipped with reports moved up, workspace per fleet, `entry_handovers` to the orchestrator, stale ones swept); REST, `fleets` tools and `apply_fleet_spec` refuse writes except `BUILTIN_FLEET_WRITABLE_FIELDS`. Left: max_iterations 100 on single-shot generators |
 | S2 reactive modules | No OpenAEV or OpenCRQ event; OpenCTI event filters by entity type and label to verify; debounce for F4 refresh |
-| S3 organization context | Store, API and `get_organization_context` shipped (#8987 slice 1); S2 trigger filters derived from the profile's PIRs (section 8.3); injection in fleet runs (section 6, slice 3b); filters from sector and regions (section 8.3, slice 3c); OpenCRQ crown-jewel sync (section 6, slice 3d); onboarding form in Settings > Organization (administrators: every contract field, the missing fields named, each save a version with source `form`, the OpenCRQ check as a dry-run plan then apply; slice 2a); draft from OpenCTI, OpenAEV and OpenCRQ (`POST /organization-context/draft`, section 6, slice 2b); "Draft from the platforms" in Settings > Organization opens the form on the draft, names the platform of each filled field and each platform not read, saves with source `draft` (slice 2c). S3 complete |
+| S3 organization context | Store, API and `get_organization_context` shipped (#8987 slice 1); S2 trigger filters derived from the profile's PIRs (section 8.3); injection in fleet runs (section 6, slice 3b); filters from sector and regions (section 8.3, slice 3c); OpenCRQ primary-asset sync (section 6, slice 3d); onboarding form in Settings > Organization (administrators: every contract field, the missing fields named, each save a version with source `form`, the OpenCRQ check as a dry-run plan then apply; slice 2a); draft from OpenCTI, OpenAEV and OpenCRQ (`POST /organization-context/draft`, section 6, slice 2b); "Draft from the platforms" in Settings > Organization opens the form on the draft, names the platform of each filled field and each platform not read, saves with source `draft` (slice 2c). S3 complete |
 | S4 ROI engine | Units in output schemas, baselines, rate, aggregation per agent and fleet, last-30-day usage |
 | F1 to F3 | F1 shipped in #9114: `ctem-threat-response` in `BUILTIN_FLEETS`, the orchestrator and the three shared role agents (`CTEM_FLEET_AGENTS`, F2 and F3 reuse them by slug, with their ROI units), the three orchestrator assignments (`CTEM_F1_ASSIGNMENTS`; the OpenCTI trigger provisioned from the profile's sector and regions). Approval work items are the orchestrator's persona (`needs_human`, keys `ctem:f1:`). Left: OpenCRQ write path for expected loss (UC7; the quantifier drafts, never writes); ticketing integration |
 | F4 | Orchestrator, event refresh assignment |
@@ -1371,10 +1371,10 @@ in an expected loss for the primary organization and proposed actions.
 - The profile contract (section 6) is kept for the primary. A tracked
   organization's profile is a subset plus two fields: `sector`, `regions`,
   `services` (what it supplies to or consumes from the primary: name,
-  direction `supplies` or `consumes`, the crown jewels it supports, the
+  direction `supplies` or `consumes`, the primary assets it supports, the
   OpenCRQ supporting asset id when linked), and `contacts_owner` (the
   internal owner of the relationship, a user, never the third party's
-  contact). Crown jewels, AI targets, risk appetite, rate and ticketing
+  contact). Primary assets, AI targets, risk appetite, rate and ticketing
   stay primary-only: the loss is always the primary's.
 - API: `GET /api/v1/organizations` (list), `POST` / `PATCH` / archive for
   tracked ones (administrators), and the per-organization profile at
@@ -1470,7 +1470,7 @@ fleet-run block, the ROI report, the draft and the OpenCRQ sync).
   default like every seeded fleet); it reuses the F1 role agents by slug
   and adds one orchestrator. A supplier-exposure case holds: the threat or breach
   (OpenCTI entity), the organization and its relationship, the dependency
-  (the services it supplies and the crown jewels behind them), the
+  (the services it supplies and the primary assets behind them), the
   expected loss from OpenCRQ (section 9.6) and the proposed actions
   (contact the supplier, compensating control, contract clause, monitoring
   raised). Every action is an approval work item for a person
@@ -2474,7 +2474,7 @@ modules, ecosystem, gates, preview, enable) each save on their own through
 `GET /api/v1/fleets/setup/ctem-loop` (administrators, read only) answers each
 step's state and the step to resume on (`app/services/fleet_setup_status.py`):
 `done` or `skipped` as recorded for the current version, else `ready` when the
-platform already holds it (a saved profile with crown jewels and a tech stack;
+platform already holds it (a saved profile with primary assets and a tech stack;
 one CTEM module registered; one filled ecosystem slot of the loop fleet; the
 loop fleet seeded, for gates and preview; every automation on, for enable),
 else `todo`. The Modules step names what the loop loses without each module.

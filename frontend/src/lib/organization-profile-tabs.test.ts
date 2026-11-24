@@ -69,7 +69,7 @@ describe("organization profile tabs", () => {
   });
 
   it("links a field to its tab and card, never to the bare first tab when the field lives elsewhere", () => {
-    expect(profileFieldHref("crown_jewels")).toBe("/ctem/inventory/business?card=crown_jewels");
+    expect(profileFieldHref("primary_assets")).toBe("/ctem/inventory/business?card=primary_assets");
     // The technology and exposure cards live on CTEM > Inventory (#1178).
     expect(profileFieldHref("prioritization_policy")).toBe("/ctem/inventory/exposure?card=prioritization_policy");
     expect(profileFieldHref("accepted_risks")).toBe("/ctem/inventory/exposure?card=prioritization_policy");
@@ -89,7 +89,7 @@ describe("organization profile tabs", () => {
   });
 
   it("parses the card of the URL, null for none or an unknown key", () => {
-    expect(parseProfileCard("crown_jewels")).toBe("crown_jewels");
+    expect(parseProfileCard("primary_assets")).toBe("primary_assets");
     expect(parseProfileCard("toString")).toBeNull();
     expect(parseProfileCard("nope")).toBeNull();
     expect(parseProfileCard(null)).toBeNull();

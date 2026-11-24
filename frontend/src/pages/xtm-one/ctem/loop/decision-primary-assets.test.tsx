@@ -31,7 +31,7 @@ const inScope: CtemDecisionRecord = {
   scope: Object.assign({ threshold_source: "policy" }, {
     criticality: "critical",
     threshold: "high",
-    sources: [Object.assign({ from: "crown_jewel", name: "Payroll", criticality: "critical" }, { chain: [hit] })],
+    sources: [Object.assign({ from: "primary_asset", name: "Payroll", criticality: "critical" }, { chain: [hit] })],
     risk_scenarios: [],
   }),
 };
@@ -92,7 +92,7 @@ describe("the one scope threshold", () => {
     const second = { ...hit, primary_asset_key: "billing", through: "", through_kind: "asset", roles: ["reads"] };
     const record: CtemDecisionRecord = {
       ...inScope,
-      reconcile: { ...inScope.reconcile, crown_jewels_named: ["Payroll"], primary_assets: [hit, second] },
+      reconcile: { ...inScope.reconcile, primary_assets_named: ["Payroll"], primary_assets: [hit, second] },
     };
     renderWithProviders(<DecisionReason state="case_opened" decision={record} showInputs />);
     const items = within(screen.getByTestId("ctem-decision-input-lines")).getAllByRole("listitem");
@@ -103,6 +103,6 @@ describe("the one scope threshold", () => {
     expect(items[0].closest("dd")).not.toHaveAttribute("title");
     const inputs = screen.getByTestId("ctem-decision-inputs");
     expect(inputs).toHaveTextContent("Primary assets named");
-    expect(inputs).not.toHaveTextContent("Crown jewels");
+    expect(inputs).not.toHaveTextContent("Primary assets");
   });
 });

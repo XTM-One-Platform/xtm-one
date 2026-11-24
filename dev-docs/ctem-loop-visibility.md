@@ -71,15 +71,15 @@ backend writes on the signal (`decision`) or the case event (`reason`):
 - **outcome chip**: the state in words, its colour from the state tokens of
   `ctem-cases.md` section 7.0 (never a raw state key);
 - **one sentence**, built from the record, never written by a model at read
-  time. Examples: "Ignored: host not in any crown jewel scope (threshold
+  time. Examples: "Ignored: host not in any primary asset scope (threshold
   high)", "Watchlist: criticality medium, below high", "Discarded: not
-  confirmed by inventory", "Case opened: crown jewel Customer SaaS hosting,
+  confirmed by inventory", "Case opened: primary asset Customer SaaS hosting,
   criticality critical";
 - **inputs**, in a tooltip or the loop trace: each input the rule read
   (threshold, criticality found, lenses that confirmed, policy rule) with its
   value and source;
 - **links** to the source objects (the OpenCTI, OpenAEV or Aikido object of
-  the signal's `evidence.link`, the crown jewel in Settings > Organization,
+  the signal's `evidence.link`, the primary asset in Settings > Organization,
   the case).
 
 Contract for the backend items: a decision record carries at least

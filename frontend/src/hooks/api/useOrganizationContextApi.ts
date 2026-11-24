@@ -14,7 +14,7 @@ import type {
   TicketingSync,
 } from "@/lib/organization-profile";
 
-interface CrownJewel {
+interface PrimaryAsset {
   name: string;
   business_service: string;
   owner: string;
@@ -45,7 +45,7 @@ export interface OrganizationProfile {
   sub_sector: string;
   regions: string[];
   size: "" | "1-50" | "51-250" | "251-1000" | "1001-5000" | "5001-20000" | "20000+";
-  crown_jewels: CrownJewel[];
+  primary_assets: PrimaryAsset[];
   tech_stack: TechStackEntry[];
   /** What the organization ships, with its source repositories (#1432); absent when none is declared. */
   shipped_products?: { product: string; vendor: string; cpe: string; repositories: string[] }[];
@@ -407,7 +407,7 @@ export function useDraftOrganizationContext() {
 }
 
 /** A profile section the platform import fills (#11780); one run imports one section. */
-export type ImportSectionKey = "assets" | "asset_groups" | "software" | "crown_jewels" | "pirs";
+export type ImportSectionKey = "assets" | "asset_groups" | "software" | "primary_assets" | "pirs";
 /** The Filigran platforms, then the endpoint sources read through a Microsoft integration (#1251). */
 export type ImportSourceKey =
   | "openaev"
@@ -794,7 +794,7 @@ export interface AssetsImportResponse {
   assets: { name: string; type: string; environment: string; internet_facing: string; owner: string; group: string }[];
   links: Record<string, string[]>;
   errors: { line: number; name: string; message: string }[];
-  unknown_crown_jewels: string[];
+  unknown_primary_assets: string[];
   replaced: string[];
   version: number | null;
 }
@@ -850,7 +850,7 @@ export interface OrganizationContextVersionSummary {
   author_user_id: string | null;
   missing_fields: string[];
   /** The primary assets the version holds; absent from an older backend. */
-  crown_jewels?: number;
+  primary_assets?: number;
 }
 
 /** The saved versions, newest first (administrators); read only while the restore dialog is open. */

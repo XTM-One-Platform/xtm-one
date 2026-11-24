@@ -66,7 +66,7 @@ describe("a profile save keeps the outside lens", () => {
       sub_sector: "",
       regions: [],
       size: "",
-      crown_jewels: [],
+      primary_assets: [],
       tech_stack: [],
       pir_ids: [],
       risk_appetite: { annual_loss_threshold: null, approval_threshold: null },

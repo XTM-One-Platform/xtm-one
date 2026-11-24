@@ -15,7 +15,7 @@ export interface ProfileLike {
   sub_sector: string;
   regions: string[];
   size: string;
-  crown_jewels: ({
+  primary_assets: ({
     name: string;
     business_service: string;
     owner: string;
@@ -84,7 +84,7 @@ export interface CaseAttentionProfile {
   priority_medium: number;
   priority_low: number;
   kev: number;
-  crown_jewel: number;
+  primary_asset: number;
   overdue: number;
   due_soon: number;
   due_soon_days: number;
@@ -350,7 +350,7 @@ export interface PrioritizationPolicy {
   epss_min: number | null;
   kev_always_in: boolean;
   internet_exposure_required: boolean;
-  min_crown_jewel_criticality: string;
+  min_primary_asset_criticality: string;
   exclusions: { kind: string; value: string; reason: string }[];
   accepted_risks: { subject: string; scope: string; owner: string; expires_on: string; reason: string }[];
   /** CTEM-08: the live PIR score (0 to 100) a flagged vulnerability must reach before a fleet run starts. Backend default 70. */
@@ -470,7 +470,7 @@ export const FIELD_LABELS = {
   sector: "Sector",
   regions: "Regions of operation",
   size: "Organization size",
-  crown_jewels: "Primary assets and business services",
+  primary_assets: "Primary assets and business services",
   tech_stack: "Software",
   pir_ids: "Priority intelligence requirements (PIRs)",
   "risk_appetite.annual_loss_threshold": "Risk tolerance per scenario",
@@ -632,7 +632,7 @@ export function toForm(profile: ProfileLike): ProfileForm {
     regions: [...profile.regions],
     pir_ids: [...profile.pir_ids],
     pir_names: { ...(profile.pir_names ?? {}) },
-    crown_jewels: profile.crown_jewels.map((jewel) => ({ ...jewel })),
+    primary_assets: profile.primary_assets.map((jewel) => ({ ...jewel })),
     tech_stack: profile.tech_stack.map((entry) => ({ ...entry })),
     shipped_products: (profile.shipped_products ?? []).map((entry) => ({ ...entry, repositories: [...entry.repositories] })),
     annual_loss_threshold: numberText(profile.risk_appetite.annual_loss_threshold),
@@ -716,7 +716,7 @@ export function fromForm(form: ProfileForm): { profile: ProfileLike } | { invali
         regions: [...new Set(form.regions.map((code) => code.trim().toUpperCase()).filter(Boolean))],
         pir_ids: [...new Set(form.pir_ids.map((id) => id.trim()).filter(Boolean))],
         pir_names: pirNamesOf(form.pir_ids, form.pir_names ?? {}),
-        crown_jewels: form.crown_jewels.filter((jewel) => jewel.name.trim()),
+        primary_assets: form.primary_assets.filter((jewel) => jewel.name.trim()),
         // An empty version is left out: the saved shape of a profile that never declares one stays the same.
         tech_stack: form.tech_stack
           .filter((entry) => entry.product.trim())

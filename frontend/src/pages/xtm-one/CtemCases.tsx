@@ -197,12 +197,12 @@ export default function CtemCases() {
       defaultHidden: true,
     },
     {
-      key: "crown_jewels",
+      key: "primary_assets",
       header: "Primary assets",
       align: "right",
-      cell: (c) => formatCount(intl.locale, c.crown_jewel_count),
-      sortValue: (c) => c.crown_jewel_count,
-      csv: (c) => c.crown_jewel_count,
+      cell: (c) => formatCount(intl.locale, c.primary_asset_count),
+      sortValue: (c) => c.primary_asset_count,
+      csv: (c) => c.primary_asset_count,
       firstSort: "desc",
       hideBelow: "6xl",
       hideable: true,
@@ -487,9 +487,9 @@ export default function CtemCases() {
             ],
           },
           {
-            key: "crown_jewels",
+            key: "primary_assets",
             label: "Primary assets",
-            values: (c) => [c.crown_jewel_count > 0 ? "yes" : "no"],
+            values: (c) => [c.primary_asset_count > 0 ? "yes" : "no"],
             options: [
               { value: "yes", label: t_i18n("Touches a primary asset") },
               { value: "no", label: t_i18n("No primary asset") },

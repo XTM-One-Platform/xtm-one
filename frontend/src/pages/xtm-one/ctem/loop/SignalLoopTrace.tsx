@@ -225,7 +225,7 @@ const SUBJECT_ROW_KEYS = ["stix_type", "account_disabled", "report", "relationsh
  * jewels that depend on the organization, their OpenCRQ asset ids): Decision
  * inputs already say them, so the raw evidence list leaves them out.
  */
-const THIRD_PARTY_SCOPE_KEYS = ["crown_jewels", "opencrq_asset_ids"] as const;
+const THIRD_PARTY_SCOPE_KEYS = ["primary_assets", "opencrq_asset_ids"] as const;
 
 /** One named fact of a leaked identity or a third-party event (CTEM-29-UI). */
 export type SubjectFact =

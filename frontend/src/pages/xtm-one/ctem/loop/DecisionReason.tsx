@@ -54,7 +54,7 @@ const REASON_SENTENCE = {
   accepted_risk: "Accepted risk owned by {owner} until {until}",
   score_below_policy: "{score} {value} below the policy minimum {minimum}",
   internet_exposure_required: "No internet-facing asset, and the policy requires internet exposure",
-  crown_jewel_below_policy: "No primary asset at or above {minimum}",
+  primary_asset_below_policy: "No primary asset at or above {minimum}",
   no_risk_scenario: "No risk scenario holds the subject",
   risk_scenario_unreadable: "A risk scenario is required and OpenCRQ could not be read",
   criticality_unknown: "Criticality unknown, below the scope threshold {threshold}",
@@ -79,7 +79,7 @@ const NEXT_STEP = {
   accepted_risk: "Becomes a case when the accepted risk ends on {until}",
   score_below_policy: "Becomes a case if {score} reaches {minimum}",
   internet_exposure_required: "Becomes a case if an internet-facing asset holds it",
-  crown_jewel_below_policy: "Becomes a case if a primary asset at or above {minimum} holds it",
+  primary_asset_below_policy: "Becomes a case if a primary asset at or above {minimum} holds it",
   no_risk_scenario: "Becomes a case once a risk scenario holds it",
   risk_scenario_unreadable: "Becomes a case once OpenCRQ can be read and a risk scenario holds it",
   criticality_unknown: "Becomes a case once an asset at or above {threshold} holds it",
@@ -109,7 +109,7 @@ const POLICY_RULE_LABEL = {
   cvss_min: "CVSS minimum",
   epss_min: "EPSS minimum",
   internet_exposure_required: "Internet exposure required",
-  min_crown_jewel_criticality: "Primary asset minimum criticality",
+  min_primary_asset_criticality: "Primary asset minimum criticality",
   require_risk_scenario: "Risk scenario required",
 } as const;
 const POLICY_RULE_LABELS: Readonly<Record<string, string>> = POLICY_RULE_LABEL;
@@ -210,7 +210,7 @@ function decisionInputs(decision: CtemDecisionRecord | null | undefined, t_i18n:
     { label: t_i18n("Confidence"), value: level(reconcile.confidence) },
     { label: t_i18n("Matched assets"), value: matched },
     // UX r1 B3 on #1796: the names the record matched, next to the primary assets reached below.
-    { label: t_i18n("Primary assets named"), value: list(reconcile.crown_jewels_named) },
+    { label: t_i18n("Primary assets named"), value: list(reconcile.primary_assets_named) },
     { label: t_i18n("Software"), value: list(reconcile.tech_stack) },
     { label: t_i18n("Owned domain"), value: domains },
     { label: t_i18n("Criticality"), value: criticalityAgainstThreshold(scope, t_i18n) },

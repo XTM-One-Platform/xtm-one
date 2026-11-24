@@ -32,7 +32,7 @@ export const FUNNEL_MIN_WIDTH_PCT = 14;
 export const FUNNEL_LAYER_FIELD: Partial<Record<CtemFunnelLayerKey, string>> = {
   relevant: "tech_stack",
   exposed: "assets_exposure",
-  business_impact: "crown_jewels",
+  business_impact: "primary_assets",
   policy: "prioritization_policy",
   open_issues: "tech_stack",
 };
@@ -484,7 +484,7 @@ export const SAMPLE_FUNNEL: CtemFunnel = {
     { key: "relevant", count: 512, drop: 3702, state: "live", source: "organization", category: null },
     { key: "exploitable", count: 21, drop: 491, state: "live", source: "opencti", category: null, basis: "relevant" },
     { key: "exposed", count: null, drop: null, state: "not_configured", source: "organization", category: "assets" },
-    { key: "business_impact", count: null, drop: null, state: "not_configured", source: "organization", category: "crown_jewels" },
+    { key: "business_impact", count: null, drop: null, state: "not_configured", source: "organization", category: "primary_assets" },
     { key: "policy", count: null, drop: null, state: "not_configured", source: "organization", category: "prioritization_policy" },
     { key: "open_issues", count: null, drop: null, state: "not_available", source: "ctem_cases", category: null },
   ],

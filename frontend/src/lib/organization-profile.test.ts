@@ -23,7 +23,7 @@ const PROFILE: ProfileLike = {
   sub_sector: "",
   regions: ["FR", "DE"],
   size: "251-1000",
-  crown_jewels: [{ name: "Payments", business_service: "Cards", owner: "CISO", criticality: "critical", opencrq_asset_id: "a-1" }],
+  primary_assets: [{ name: "Payments", business_service: "Cards", owner: "CISO", criticality: "critical", opencrq_asset_id: "a-1" }],
   tech_stack: [],
   pir_ids: ["pir-1"],
   pir_names: { "pir-1": "Ransomware on energy" },
@@ -62,7 +62,7 @@ describe("organization profile form", () => {
   it("keeps the assets, the policy, the knowledge links and the primary asset links through a save (#11543)", () => {
     const filled: ProfileLike = {
       ...PROFILE,
-      crown_jewels: [{ ...PROFILE.crown_jewels[0], asset_names: ["web-1"] }],
+      primary_assets: [{ ...PROFILE.primary_assets[0], asset_names: ["web-1"] }],
       assets_exposure: [
         { name: "web-1", category: "host", subcategory: "", criticality: "unknown", environment: "production", internet_facing: "yes", owner: "", group: "", tech_stack: ["nginx"], tags: [], source: "csv", external_id: "" },
       ],
@@ -71,7 +71,7 @@ describe("organization profile form", () => {
         epss_min: null,
         kev_always_in: true,
         internet_exposure_required: true,
-        min_crown_jewel_criticality: "",
+        min_primary_asset_criticality: "",
         exclusions: [],
         accepted_risks: [{ subject: "CVE-2024-1", scope: "", owner: "CISO", expires_on: "2027-01-31", reason: "" }],
       },
@@ -129,11 +129,11 @@ describe("organization profile form", () => {
 
   it("drops rows with no name and normalises the currency", () => {
     const form = toForm(PROFILE);
-    form.crown_jewels.push({ name: "  ", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" });
+    form.primary_assets.push({ name: "  ", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" });
     form.currency = " usd ";
     const result = fromForm(form);
     assert.ok("profile" in result);
-    assert.equal(result.profile.crown_jewels.length, 1);
+    assert.equal(result.profile.primary_assets.length, 1);
     assert.equal(result.profile.currency, "USD");
   });
 
