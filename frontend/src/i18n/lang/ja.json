@@ -21112,6 +21112,7 @@
   "CTEM Read": "CTEM 読み取り",
   "Read the CTEM signals and cases the person you act for can see, read-only": "代理で操作する相手が閲覧できる CTEM のシグナルとケースを読み取り専用で参照します",
   "Lets the agent list the CTEM signals with their evidence, list the CTEM cases with their counts by state, and read one case with its issues, history, who opened it and why each empty section is empty. It acts for the person the turn or run acts for, with the same rules as the CTEM pages: a case they cannot see does not exist for the agent, an issue they cannot see is a Restricted row. It writes nothing. XTM One mode only.": "エージェントが CTEM シグナルを証拠付きで一覧表示し、CTEM ケースを状態別の件数付きで一覧表示し、1 件のケースをその課題、履歴、作成者、空のセクションが空である理由とともに読み取れるようにします。ターンまたは実行の代理対象者として、CTEM ページと同じルールで動作します。その人が閲覧できないケースはエージェントにとって存在せず、閲覧できない課題は制限付きの行になります。何も書き込みません。XTM One モードのみ。",
+  "CTEM Repair": "CTEM 修復",
   "Run checks as": "チェックの実行ユーザー",
   "Set the run-as user": "実行ユーザーを設定",
   "Checks need a run-as user with {module} access.": "チェックには {module} へのアクセス権を持つ実行ユーザーが必要です。",
@@ -21503,5 +21504,7 @@
   "Open cases in {stage}": "{stage}のケースを開く",
   "Cases by status": "ステータス別のケース",
   "{count, plural, one {# decision waiting} other {# decisions waiting}}": "{count, plural, other {判断待ち #件}}",
-  "Needs attention first": "優先して対応"
+  "Needs attention first": "優先して対応",
+  "Read the attack surface passes and run the CTEM repairs, administrators": "アタックサーフェスのパスを読み取り、CTEM の修復を実行します (管理者)",
+  "Lets the agent read the latest attack surface passes (what each read covered, hosts observed, signals per path), discard the new-host signals raised without a complete previous read, and correct the threat packages stored with a Grouping page whose Grouping is not live. A repair defaults to a dry run that writes nothing and answers the counts and the ids. It acts for the person the turn or run acts for, who must be an administrator, as on the REST routes. XTM One mode only.": "エージェントが最新のアタックサーフェスのパス (各読み取りの対象範囲、観測されたホスト、パスごとのシグナル) を読み取り、完全な前回の読み取りなしに発生した新規ホストのシグナルを破棄し、Grouping が有効でない Grouping ページで保存された脅威パッケージを修正できるようにします。修復は既定でドライランとなり、何も書き込まず件数と ID を返します。ターンまたは実行が代理する人物として動作し、その人物は REST ルートと同様に管理者である必要があります。XTM One モードのみ。"
 }
