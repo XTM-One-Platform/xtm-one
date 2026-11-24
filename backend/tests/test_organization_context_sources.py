@@ -51,14 +51,16 @@ def test_summarize_lists_each_source_once_with_rows_writer_and_syncs_platforms_f
         _profile(), [sync], scope="inventory", writers={"ciso-office": "CISO Office"}, connected=("opencti",)
     )
     keys = [s.key for s in sources]
-    assert keys[:2] == ["openaev", "opencti"]
+    assert keys[:3] == ["openaev", "opencrq", "opencti"]
     assert keys[-1] == "manual"
     by_key = {s.key: s for s in sources}
     assert by_key["openaev"].rows == {"assets_exposure": 2} and by_key["openaev"].syncs == [str(sync.id)]
     assert by_key["opencti"].total == 0
     assert by_key["ciso-office"].written_by_agent == "CISO Office"
-    # The profile scope is not listed on the inventory: crown jewels belong to Settings.
-    assert "opencrq" not in by_key
+    # Primary assets are an Inventory source (Sam, 24 Nov 2026): OpenCRQ is listed with its rows there.
+    assert by_key["opencrq"].rows == {"crown_jewels": 1}
+    business = osources.summarize(_profile(), [sync], scope="profile")
+    assert "opencrq" not in {s.key for s in business}
 
 
 def test_purge_of_one_sync_removes_only_its_rows_and_names_the_same_name_elsewhere():
