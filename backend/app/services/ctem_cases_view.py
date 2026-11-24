@@ -125,6 +125,7 @@ def _issue_from_json(data: dict[str, Any]) -> rules.SourceIssue:
     data["crown_jewels"] = tuple(data.get("crown_jewels") or ())
     seen = data.get("first_seen_at")
     data["first_seen_at"] = datetime.fromisoformat(seen) if seen else None
+    data["version_outcomes"] = tuple(tuple(pair) for pair in data.get("version_outcomes") or ())
     return rules.SourceIssue(**data)
 
 
@@ -311,6 +312,8 @@ def _visible_issue(row: CtemCaseIssue, issue: rules.SourceIssue | None) -> dict[
         "course_of_action_name": issue.course_of_action_name if issue.fixed_version and not issue.fixed_by else None,
         "not_affected": bool(issue.not_affected),
         "declared_version_known": issue.declared_version_known,
+        # Each installed version and what OpenCTI says of it (#1783): affected, not_affected or unknown.
+        "version_outcomes": [{"version": v, "outcome": o} for v, o in issue.version_outcomes],
         # The OpenAEV finding lifecycle (CTEM-14-UI): absent when the source carries none.
         **(
             {
@@ -394,6 +397,10 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
     }
 
 
+#: The running-versions record of a case (``ctem_case_version_history.KIND``, #1694).
+VERSIONS_KIND = "versions"
+
+
 def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
     issue = row.issue
     if issue is not None and not view.sees(issue):
@@ -419,7 +426,7 @@ def case_position(events: list[CtemCaseEvent], view: ViewerView) -> dict[str, An
     ``phase``: its CTEM phase (the list's grouping and the Kanban by phase);
     ``waiting_on``: the gate it waits on, who and since when (``None`` when none).
     """
-    served = [_event(row, view) for row in events]
+    served = [_event(row, view) for row in events if row.kind != VERSIONS_KIND]
     return {"phase": audit.current_phase(served), "waiting_on": audit.open_wait(served)}
 
 
@@ -509,8 +516,7 @@ def review_outcome(events: list[CtemCaseEvent]) -> str | None:
     ``replan``: answered with free text or any other option; ``waiting``: the
     newest gate waits; ``unread``: answered with no option recorded.
     """
-    gates = [row for row in events if row.kind == "gate" and row.from_value == REVIEW_GATE and row.at is not None]
-    newest = max(gates, key=lambda row: row.at) if gates else None
+    newest = _newest_review_gate(events)
     if newest is None:
         return None
     if newest.to_value == "passed_automatically":
@@ -525,7 +531,38 @@ def review_outcome(events: list[CtemCaseEvent]) -> str | None:
     return REVIEW_REPLAN if option else REVIEW_UNREAD
 
 
+def _newest_review_gate(events: list[CtemCaseEvent]) -> CtemCaseEvent | None:
+    gates = [row for row in events if row.kind == "gate" and row.from_value == REVIEW_GATE and row.at is not None]
+    return max(gates, key=lambda row: row.at) if gates else None
+
+
+def package_review(events: list[CtemCaseEvent]) -> str | None:
+    """The review outcome that applies to the case's newest threat package (#1677).
+
+    :func:`review_outcome`, except that a refusal or a re-plan answer stops only
+    the package recorded before or at that answer: a package with no page or the
+    draft page recorded AFTER it is the new package the loop drafted under the
+    answer, which waits for its own review, so ``None`` is answered and the page
+    rule reads it ``drafted``. A Grouping page recorded after such an answer
+    keeps the stopped state: no approval ever covered it (``verify_package``
+    refuses it at record time).
+    """
+    review = review_outcome(events)
+    if review not in (REVIEW_REJECTED, REVIEW_REPLAN):
+        return review
+    gate = _newest_review_gate(events)
+    packages = [row for row in events if row.kind == "threat_package" and row.at is not None]
+    newest = max(packages, key=lambda row: row.at) if packages else None
+    if gate is None or gate.at is None or newest is None or newest.at is None:
+        return review
+    if _aware(newest.at) <= _aware(gate.at):
+        return review
+    url = str(newest.evidence or "").strip()
+    return None if not url or _DRAFT_PAGE.match(url) else review
+
+
 #: The package state of a review that stops it, whatever its page says (#1573).
+#: A refusal or a re-plan stops only the package recorded before its answer (#1677, :func:`package_review`).
 _STOPPED_BY_REVIEW = {REVIEW_WAITING: "awaiting_review", REVIEW_REJECTED: "rejected", REVIEW_REPLAN: "replan"}
 
 
@@ -538,7 +575,7 @@ def threat_package_state(package: dict[str, Any], review: str | None = None) -> 
     ``rejected``, an answer with free text or another option ``replan``: the
     draft was not applied, so the package is not published whatever page was
     recorded. Else a package with no page, or the draft page, reads ``drafted``.
-    *review* is :func:`review_outcome` of the case's events.
+    *review* is :func:`package_review` of the case's events.
     """
     stopped = _STOPPED_BY_REVIEW.get(review or "")
     if stopped:
@@ -559,12 +596,13 @@ def threat_package_for(
     validated (#1480): a coverage written in a draft never reached OpenAEV, and
     reads ``coverage_drafted``. ``draft_overdue``: still drafted (or waiting for
     its review) past the case SLA. A refused or re-planned review (#1573) reads
-    neither: the package and its coverage stop there.
+    neither: the package and its coverage stop there, unless a new drafted
+    package was recorded after the answer (#1677, :func:`package_review`).
     """
     package = threat_package_of(events)
     if package is None:
         return None
-    state = threat_package_state(package, review_outcome(events))
+    state = threat_package_state(package, package_review(events))
     has_coverage = bool(package["coverage_id"])
     pending = state in ("drafted", "awaiting_review")
     at = now or datetime.now(UTC)
@@ -608,7 +646,8 @@ def hydrate(
         "keys": list(case.keys or []),
         "issues": [_visible_issue(r, view.issues.get(_member_id(r))) for r in visible]
         + [{"restricted": True} for _ in range(restricted)],
-        "history": [_event(e, view) for e in events],
+        # The running-versions record (#1694) is served by the case read's ``running_versions.history``.
+        "history": [_event(e, view) for e in events if e.kind != VERSIONS_KIND],
         "exploitation": exploitation_for(case, view),
         "attack_path": attack_path_for(case, view),
         "treatment_plan": treatment_plan_for(events, view),

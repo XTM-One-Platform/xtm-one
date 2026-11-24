@@ -261,7 +261,7 @@ const DEMO_BRIEFING: CtemBriefing = {
   recommended_focus:
     "Deploy and validate a detection for T1059 on internet-facing assets, then re-run the emulation to confirm the gap is closed.",
   next_steps: [
-    { action: "Patch the 3 internet-facing assets exposed to Log4Shell", rationale: "Actively exploited (CISA KEV) on in-scope crown-jewel assets - highest live risk.", priority: "high" },
+    { action: "Patch the 3 internet-facing assets exposed to Log4Shell", rationale: "Actively exploited (CISA KEV) on in-scope primary-asset assets - highest live risk.", priority: "high" },
     { action: "Deploy a detection for T1059 Command & Scripting", rationale: "Exercised by 4 simulations and detected by none - a validated blind spot.", priority: "high" },
     { action: "Re-run the ransomware emulation after the T1059 detection ships", rationale: "Closes the loop - proves the gap is actually fixed, not assumed.", priority: "medium" },
     { action: "Close detection-vs-prevention gap on lateral movement", rationale: "Detection trails prevention by 6 points; lateral movement is the weak phase.", priority: "medium" },

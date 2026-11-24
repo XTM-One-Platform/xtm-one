@@ -435,6 +435,8 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     # versioned organization profile. Stored company data reaching no model
     # when saved; with AI off it stays editable for when agents run again.
     "save_organization_context",
+    # The field-scoped save of that profile (#1738): the same hand save, its fields alone.
+    "patch_organization_context",
     # Restoring fields of a past version of that profile (#1473): the same hand
     # save, with the same checks; stored data reaching no model.
     "restore_organization_context_version",

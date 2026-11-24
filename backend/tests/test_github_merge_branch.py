@@ -215,6 +215,57 @@ async def test_update_branch_on_an_up_to_date_branch_is_a_no_op_naming_the_head(
     assert f"already up to date with 'main' at {BASE[:8]}; head {head_sha}" in result.content
 
 
+_PULLS = "app.integrations.providers.github.pulls"
+
+
+def _manage_tool():
+    executor = MagicMock()
+    executor.register = MagicMock()
+    build_tools("fake-token", executor)
+    return next(call[0][1] for call in executor.register.call_args_list if call[0][0] == "manage_github_pr")
+
+
+async def _conflict_pr(client, method, url, provider, action, **kwargs):
+    if method == "put" and url == f"{API}/pulls/7/update-branch":
+        return httpx.Response(422, json={"message": "merge conflict between base and head"}), "Error: 422"
+    if method == "get" and url == f"{API}/pulls/7":
+        head = {"ref": "feat/x", "repo": {"full_name": "acme/app"}}
+        return httpx.Response(200, json={"head": head, "base": {"ref": "main"}}), None
+    if method == "get" and url.startswith(f"{API}/commits/"):
+        # The branch tips: the update first reads the branch for a stopped alignment, then the base.
+        tip = "d" * 40 if url.endswith("/main") else BASE
+        return httpx.Response(200, json={"sha": tip, "parents": [{"sha": "0" * 40}], "commit": {"message": "x"}}), None
+    raise AssertionError(f"unexpected {method.upper()} {url}")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("holds_base", [True, False])
+async def test_update_branch_whose_line_merge_landed_after_an_error_leads_with_merged(holds_base):
+    # A line merge answered an error while its commits landed (a lost answer, a replayed call): when the
+    # branch now holds the base, the answer leads with "Merged (landed)", never "Error" over written work.
+    manage = _manage_tool()
+    error = "Error: the merge commit could not be read back."
+    landed = f"Outcome: landed true: 'feat/x' head moved from {BASE[:12]} to {MERGE}."
+    main_tip = "d" * 40
+
+    with (
+        patch(_SAFE_REQUEST, new=_conflict_pr),
+        patch(f"{_PULLS}.conflict_answer", return_value=error),
+        patch(f"{_PULLS}.ref_moved_and_undone", return_value=False),
+        patch(f"{_PULLS}.outcome_line", return_value=landed),
+        patch(f"{_PULLS}._already_merged", return_value=MERGE if holds_base else "") as merged,
+    ):
+        result = await manage(repo="acme/app", number=7, action="update_branch")
+
+    assert merged.await_args.args[-1] == main_tip
+    if holds_base:
+        assert result.startswith("Merged (landed): the branch of PR #7 in acme/app now holds 'main'"), result
+        assert landed in result and error in result
+    else:
+        assert result.startswith("Error: the branch of PR #7 in acme/app cannot take 'main'"), result
+        assert result.endswith(landed)
+
+
 @pytest.mark.asyncio
 async def test_a_missing_ref_is_named():
     merge, _ = _merge_tool()

@@ -78,7 +78,7 @@ Each recommendation must counter a specific technique/vulnerability/finding cite
 ## 6. Detection Opportunities
 | Detection Method | Tool (from [stack summary]) | Query/Rule Logic | What It Detects |
 |------------------|------------------------------|------------------|-----------------|
-Detection Method = type (Log analysis, EDR alert, Network monitoring, SIEM correlation). Provide pseudocode or search syntax that could be implemented. Base detections on IOCs and TTPs in the articles and the capabilities of [stack summary]. If the stack cannot detect an aspect, note "Detection of [technique] not feasible with current tech stack; consider [capability type] enhancement."
+Detection Method = type (Log analysis, EDR alert, Network monitoring, SIEM correlation). Provide pseudocode or search syntax that could be implemented. Base detections on IOCs and TTPs in the articles and the capabilities of [stack summary]. If the stack cannot detect an aspect, note "Detection of [technique] not feasible with current tooling; consider [capability type] enhancement."
 
 ## 7. Gaps and Uncertainties
 - **Information Not Addressed**: aspects of the threat the articles do not cover.

@@ -26,6 +26,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ctem_case import OPEN_STATES, CtemCase, CtemCaseEvent, CtemCaseIssue
+from app.services import ctem_case_version_history as version_history
 from app.services import ctem_case_versions
 from app.services import ctem_cases as rules
 from app.services.ctem_fixed_version import fold_by_platform
@@ -168,13 +169,21 @@ async def apply_recompute(
     by_id = {str(c.id): c for c in cases}
     # An upgrade case the asset inventory shows fixed on every asset leaves the case scope (#1252): an open
     # one resolves, a resolved one is not reopened by issues still open at source on a version nobody runs.
-    fixed_in_inventory = {
-        c.id
-        for c in cases
-        if c.state in (*OPEN_STATES, "resolved") and await ctem_case_versions.fixed_in_inventory(db, c)
-    }
+    # One inventory read per upgrade case: it decides #1252 and records the per-device history (#1694).
+    history = await events_of(db, [c.id for c in cases])
+    fixed_in_inventory: set[uuid.UUID] = set()
+    for c in cases:
+        running = await ctem_case_versions.for_case(db, c, with_devices=True)
+        await version_history.record(db, c, running, history.get(c.id, []), at=now)
+        if (
+            c.state in (*OPEN_STATES, "resolved")
+            and c.fixed_version
+            and running is not None
+            and ctem_case_versions.all_on_fixed(running)
+        ):
+            fixed_in_inventory.add(c.id)
     # A resolved case closed by a decision holds while its issues stay as they were (#1646).
-    decided = _decided_closures(await events_of(db, [c.id for c in cases if c.state == "resolved"]))
+    decided = _decided_closures({c.id: history.get(c.id, []) for c in cases if c.state == "resolved"})
     snapshots = [
         rules.CaseSnapshot(
             id=str(c.id),
@@ -377,6 +386,26 @@ async def expire_acceptances(db: AsyncSession, *, now: datetime | None = None) -
     return expired
 
 
+async def close_without_retest_answered(db: AsyncSession, case_id: uuid.UUID) -> bool:
+    """Whether a person answered the ``ctem.close_without_retest`` decision of the case (#1675).
+
+    Read from the case's gate events (``ctem_case_loop.record_gate``: kind
+    ``gate``, the key in ``from_value``, the outcome in ``to_value``). The agent
+    read the answer and decided to close; the rule never refuses that decision.
+    """
+    found = await db.scalar(
+        select(CtemCaseEvent.id)
+        .where(
+            CtemCaseEvent.case_id == case_id,
+            CtemCaseEvent.kind == "gate",
+            CtemCaseEvent.from_value == "ctem.close_without_retest",
+            CtemCaseEvent.to_value == "answered",
+        )
+        .limit(1)
+    )
+    return found is not None
+
+
 async def update_case(
     db: AsyncSession,
     case: CtemCase,
@@ -407,6 +436,14 @@ async def update_case(
     if state is None:
         rules.check_owner(case.state, new_owner)
     else:
+        answered = False
+        if (
+            state in ("resolved", "mitigated_watching")
+            and actor_kind != "user"
+            and (state == "mitigated_watching" or getattr(case, "validation_plan", False))
+            and not rules.passing(rules.latest_validation(getattr(case, "validations", None)))
+        ):
+            answered = await close_without_retest_answered(db, case.id)
         rules.check_transition(
             current=case.state,
             target=state,
@@ -418,6 +455,7 @@ async def update_case(
             now=now,
             validation_plan=bool(getattr(case, "validation_plan", False)),
             validations=getattr(case, "validations", None),
+            close_without_retest_answered=answered,
         )
     if new_owner != case.owner_user_id:
         db.add(

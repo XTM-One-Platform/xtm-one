@@ -782,7 +782,7 @@ export default function CtemCommandCenter({
   const postureChange = periodChange(posture?.posture_score ?? null, compositeHistory);
   // The hero's top risk tile (S2b of #11547): the known-exploited count per
   // recorded day, read from the same key as the figure shown (tailored to the
-  // tech stack, or every KEV), so the line never mixes the two populations.
+  // software inventory, or every KEV), so the line never mixes the two populations.
   const kevHistoryKey = posture?.headline?.kev_tailored_count != null ? "kev_tailored_count" : "kev_count";
   const kevHistory = histPoints.map((p) => p.stage_metrics?.prioritization?.[kevHistoryKey] ?? null);
   const h = posture?.headline;
@@ -862,7 +862,7 @@ export default function CtemCommandCenter({
     });
   });
 
-  // Known-exploited restricted to the organization profile's tech stack (slice 2
+  // Known-exploited restricted to the organization profile's software inventory (slice 2
   // of #11213): when the backend could match the stack, the row counts only
   // those, says which products it found, and is tailored (no generic notice).
   const kevTailored = octiPresent ? h?.kev_tailored_count ?? null : null;
@@ -1801,7 +1801,7 @@ export default function CtemCommandCenter({
         stats={coverageStats}
         findings={VERTICAL_KPIS[vertical].map((kpi) => {
           const present = kpi.product === "openaev" ? aevPresent : octiPresent;
-          // Known-exploited counts the tech stack's when the profile names one
+          // Known-exploited counts the software inventory's when the profile names one
           // (#11251); the figure opens its in-app stage page, never the
           // unfiltered module list (#11324).
           const value = kpi.headlineKey === "kev_count" ? kevShown : h?.[kpi.headlineKey] ?? null;

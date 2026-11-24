@@ -117,6 +117,15 @@ Any other host joins the baseline silently; the pass counts it as
 its evidence. The first pass after this change has no previous summary, so it
 raises no path 7: it records the summary the next pass compares with.
 
+Only the organization's own hosts are part of the surface (`in_scope`): a name
+under an owned domain, or a host or IP inside an owned address range (a declared
+asset always counts). A provider also answers other names, such as the reverse
+DNS of a shared hosting IP: such a name raises nothing on any path (5, 6 or 7),
+is never stored in the baseline, is counted as `out_of_scope` in the pass
+summary, and is named in `shared_ip_names` in the evidence of the owned hosts on
+the same IP. The unseen check of path 6 reads the address a baseline host was
+last seen on, so a host in scope only through an owned range keeps it.
+
 Credit budget per pass (Shodan): up to `_SHODAN_DNS_PAGES` (5) pages of
 `/dns/domain` and `_SHODAN_SEARCH_PAGES` (3) pages of 100 matches of each host
 search, so at most 8 query credits per owned domain and 3 per range. GTI ASM
@@ -124,7 +133,7 @@ keeps its 5 projects and 10 pages of 100.
 
 Every committed pass is stored (`ctem_surface_passes`, `models/ctem_surface_pass.py`):
 time, provider label, hosts observed, the coverage list, the statuses, the counts
-per path (with `recorded` and `new_host_withheld`) and the time of the pass it
+per path (with `recorded`, `new_host_withheld` and `out_of_scope`) and the time of the pass it
 compared with. An administrator reads the latest ones with
 `GET /api/v1/ctem-signals/attack-surface/passes?limit=N` (`truncated` true when
 a read hit its bound), so a pass that found nothing is still visible.
@@ -135,6 +144,10 @@ hosts) discards the open path 7 `new_host` signals of the outside lens that carr
 no `previous_pass_at` (raised before this rule), with the verdict
 `false_positive` and reason code `partial_previous_read`. The hosts stay in the
 baseline; a signal that opened a case is left to the case step.
+
+Agents call both through the `ctem_repair` built-in group
+(`dev-docs/ctem-cases.md` section 8.2): `list_ctem_attack_surface_passes` and
+`repair_ctem_attack_surface_new_hosts` (`dry_run` true by default).
 
 ## 2ter. OpenAEV feeds (CTEM-27)
 

@@ -157,7 +157,14 @@ queue bound with no `started_at` is marked `expired_before_start`: the
 assignment adapter fails the run with `deadline_exceeded_before_start`,
 `trigger_context.queue = {queue_wait_seconds, started: false}` and no
 `run.failed`; the sub-agent adapter fails the task with the same words.
-`timeout_seconds` is execution time. A run a fleet's run budget holds
+`timeout_seconds` is execution time. The budget is the effective timeout,
+`max(timeout_seconds, 600 s, max_iterations x 20 s)`
+(`_apply_iteration_timeout_floor`), plus the grace: `get_assignment` shows it
+with the reason (`describe_effective_timeout`) and `get_run` shows the
+`start_budget_seconds` and `queue_wait_seconds` its execution recorded. A run
+the `wait_for` bound stops ends `failed` with `stop_reason` `timeout`
+(`AssignmentTimeoutError`), or `deadline` when its orchestration deadline cut
+the bound (`DeadlineCutTimeoutError`). A run a fleet's run budget holds
 (`fleet_run_budget.hold_over_budget`, #1526) is not waiting for a worker:
 each claim that holds it moves its queue bound to that claim plus its own
 queue window (`keep_queue_clock`, the window recorded once on the payload as

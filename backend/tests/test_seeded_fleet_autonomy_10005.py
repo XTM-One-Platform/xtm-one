@@ -56,26 +56,19 @@ def test_at_low_only_destructive_gates_wait(slug):
     assert all(e["impact"] != "destructive" for e in catalog if not e["gated"]), slug
 
 
-def test_at_low_the_validation_and_the_mobilize_tickets_pause_in_the_tool_path() -> None:
-    """#1339: the OpenAEV validation waits at Low; the remediation tickets wait for the one Mobilize decision.
+def test_at_low_the_validation_and_the_mobilize_wait_as_decisions_never_in_the_tool_path() -> None:
+    """#1339: the OpenAEV validation and the one Mobilize decision wait at Low.
 
-    #917 adds sync_ctem_case_ticket: its create=true call opens the case ticket under the same gate.
+    #1675 (Sam, 24 Nov 2026): as decision items between steps; no tool call pauses.
     """
     gates = BUILTIN_FLEET_STRUCTURED["ctem-loop"]["gates"]
-    rules = gated_tool_rules(SEEDED_FLEET_AUTONOMY_LEVEL, gates)
-    tickets = {r["name"] for r in rules if r["key"] == "ctem.mobilize"}
-    assert tickets == {
-        "create_jira_issue",
-        "create_servicenow_incident",
-        "create_servicenow_change",
-        "sync_ctem_case_ticket",
-    }
-    assert {r["key"] for r in rules} == {"ctem.validation.non_readonly", "ctem.mobilize"}
+    catalog = {e["key"]: e["gated"] for e in gate_catalog(SEEDED_FLEET_AUTONOMY_LEVEL, gates)}
+    assert catalog["ctem.validation.non_readonly"] is True and catalog["ctem.mobilize"] is True
+    assert gated_tool_rules(SEEDED_FLEET_AUTONOMY_LEVEL, gates) == []
 
 
 def test_the_openaev_validation_waits_at_low() -> None:
     gates = BUILTIN_FLEET_STRUCTURED["ctem-vuln-prioritization"]["gates"]
     catalog = {e["key"]: e for e in gate_catalog(SEEDED_FLEET_AUTONOMY_LEVEL, gates)}
     assert catalog["ctem.validation.non_readonly"]["gated"] is True
-    names = {r["name"] for r in gated_tool_rules(SEEDED_FLEET_AUTONOMY_LEVEL, gates)}
-    assert {"manage_openaev_atomic_testing", "create_openaev_scenario"} <= names
+    assert gated_tool_rules(SEEDED_FLEET_AUTONOMY_LEVEL, gates) == []

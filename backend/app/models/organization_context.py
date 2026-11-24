@@ -3,7 +3,7 @@
 """OrganizationContextVersion model - the organization profile every agent reads.
 
 One row per saved version of an organization's profile (sector,
-regions, crown jewels, tech stack, AI systems, PIRs, risk appetite, ROI
+regions, crown jewels, software, AI systems, PIRs, risk appetite, ROI
 rate, ticketing target: the contract of ``dev-docs/ctem-fleets.md`` section 6,
 validated by ``services/organization_context.py``). A save never edits a row:
 it inserts the next ``version`` of that organization (``organization_id``,

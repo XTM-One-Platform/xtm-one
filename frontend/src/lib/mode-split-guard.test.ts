@@ -77,6 +77,7 @@ const MODE_READERS: Record<string, [ModeClass, string]> = {
   "pages/settings/HealthModuleAnalystBlock.tsx": ["domain content", "Module Analyst spend limits of Platform Health (OpenCTI, OpenAEV, OpenCRQ modules); Copilot mode has no module"],
   "pages/settings/HealthModuleThresholdsBlock.tsx": ["domain content", "OpenCTI / OpenAEV module thresholds of Platform Health; Copilot mode has no module"],
   "pages/settings/HealthRunAsBlock.tsx": ["domain content", "'Run checks as' user of the Platform Health module checks (OpenCTI, OpenAEV, OpenCRQ modules); Copilot mode has no module (#1351)"],
+  "pages/settings/OrganizationSection.tsx": ["domain content", "Copilot mode keeps the Identity card alone: risk appetite, ticketing and CTEM case sync are CTEM inputs, and no fields-not-filled banner (#1690)"],
   "pages/settings/ParametersSection.tsx": ["domain content", "XTM Hub registration card; Reset onboarding card (guided setup, XTM One mode only); edition badge (licence)"],
   "pages/settings/QuotasSection.tsx": ["licence and edition", "agentic quota source and edition cards"],
   "pages/settings/RoiUnitsSection.tsx": ["domain content", "title and order of the mode's built-in ROI catalog"],

@@ -1029,15 +1029,20 @@ def build_shared_state_tools(
             line += ")"
         return {**shown, "value": value}, line
 
-    async def _read_family(family: str, path: str) -> str:
+    async def _read_family(
+        family: str, path: str, where: list[Any] | None = None, fields: list[str] | None = None
+    ) -> str:
         """The part `path` names in every active key starting with *family* (gap-evidence-overflow-scatter).
 
         A record split across sibling keys (``dev:harness-gaps:evidence-3`` ...
         ``-12``) is found in one call instead of one probe per key: each key
         where the path resolves is answered with its part, the others counted.
+        With *where* (#1760) the part must be a list: only its items matching
+        any match are answered, a key with none is counted, not shown; *fields*
+        keeps those fields of each object item.
         """
         from app.services.content_safety import wrap_untrusted
-        from app.services.shared_state import list_states
+        from app.services.shared_state import list_item_matches, list_states
 
         if not family.strip() or not path:
             return "Error: a key ending in * reads one `path` across the keys starting with it; give both."
@@ -1053,11 +1058,28 @@ def build_shared_state_tools(
             logger.error("get_shared_state family read failed: %s", format_exception_message(exc), exc_info=True)
             return "Error: failed to read the shared state. Please try again."
         hits: list[tuple[str, str]] = []
+        found = matched = 0
         for state in states:
             part, missing = _resolve_path(state.get("value") or {}, path)
-            if missing is None:
-                hits.append((_strip_ns(state)["key"], json.dumps(part, default=str)))
-        lines = [f"Family `{family}*`: `{path}` found in {len(hits)} of {len(states)} active key(s)"]
+            if missing is not None:
+                continue
+            found += 1
+            if where is not None or fields:
+                if not isinstance(part, list):
+                    continue
+                if where is not None:
+                    part = [item for item in part if any(list_item_matches(item, m) for m in where)]
+                    if not part:
+                        continue
+                    matched += len(part)
+                if fields:
+                    part = [
+                        {f: item[f] for f in fields if f in item} if isinstance(item, dict) else item for item in part
+                    ]
+            hits.append((_strip_ns(state)["key"], json.dumps(part, default=str)))
+        lines = [f"Family `{family}*`: `{path}` found in {found} of {len(states)} active key(s)"]
+        if where is not None:
+            lines[0] += f"; where_json matched {matched} item(s) in {len(hits)} key(s)"
         if len(states) >= _FAMILY_MAX_KEYS:
             lines[0] += f" (first {_FAMILY_MAX_KEYS} keys only)"
         budget = _READ_WINDOW_DEFAULT_CHARS
@@ -1090,8 +1112,6 @@ def build_shared_state_tools(
         if not (key or "").strip():
             return "Error: key is required."
         path = (path or "").strip() if isinstance(path, str) else ""
-        if key.strip().endswith("*"):
-            return await _read_family(key.strip()[:-1], path)
         try:
             start = int(offset) if offset is not None else 0
             size = int(max_chars) if max_chars is not None else 0
@@ -1120,6 +1140,12 @@ def build_shared_state_tools(
             for m in where:
                 if (error := list_match_error(m)) is not None:
                     return f"Error: where_json: {error}"
+        if key.strip().endswith("*"):
+            if fields is not None and (
+                not isinstance(fields, list) or not all(isinstance(f, str) and f for f in fields)
+            ):
+                return "Error: fields must be a list of field names."
+            return await _read_family(key.strip()[:-1], path, where, fields or None)
         shape: dict | None = None
         if fields or item_offset is not None or item_limit is not None:
             if fields is not None and (
@@ -1325,10 +1351,6 @@ def build_shared_state_tools(
                 "(append_json, remove_json, update_json, keep_last_json, fold_json) to apply to the "
                 "lists of the object under it. Nothing was written."
             )
-        if path_list_ops and (archive_key or "").strip():
-            return (
-                "Error: archive_key works on the top-level lists only, not with path list changes. Nothing was written."
-            )
         if confirm_trim is not None and not isinstance(confirm_trim, bool):
             return "Error: confirm_trim must be true or false. Nothing was written."
         if lease is not None and not isinstance(lease, bool):
@@ -1383,14 +1405,33 @@ def build_shared_state_tools(
         if archive_key is not None and not isinstance(archive_key, str):
             return "Error: archive_key must be a shared state key. Nothing was written."
         if (archive_key or "").strip():
-            if parsed["remove_json"] or parsed["keep_last_json"]:
-                archive_line, expect_dropped = await _archive_dropped(
-                    key, archive_key.strip(), parsed, guard_trim=not confirm_trim
+            target = archive_key.strip()
+            value_path = (path or "").strip() or None
+            drops = bool(parsed["remove_json"] or parsed["keep_last_json"])
+            unsets = _has_unset(parsed["update_json"])
+            if not (drops or unsets or unset_keys):
+                return (
+                    "Error: archive_key archives what this write drops: remove_json, keep_last_json, "
+                    "update_json patches with 'unset', or unset_keys; this write drops nothing. "
+                    "Nothing was written."
                 )
-            else:
-                archive_line = await _archive_unset(key, archive_key.strip(), parsed["update_json"])
-            if archive_line.startswith("Error:"):
-                return archive_line
+            if drops:
+                line, expect_dropped = await _archive_dropped(
+                    key, target, parsed, guard_trim=not confirm_trim, path=value_path
+                )
+                if line.startswith("Error:"):
+                    return line
+                archive_line += line
+            if unsets:
+                line = await _archive_unset(key, target, parsed["update_json"], path=value_path)
+                if line.startswith("Error:"):
+                    return line
+                archive_line += line
+            if unset_keys:
+                line = await _archive_unset_keys(key, target, unset_keys)
+                if line.startswith("Error:"):
+                    return line
+                archive_line += line
         try:
             state = await upsert_state(
                 user_id=acting_user_id,
@@ -1503,17 +1544,25 @@ def build_shared_state_tools(
         return merged
 
     async def _archive_dropped(
-        key: str, archive_key: str, parsed: dict, *, guard_trim: bool
-    ) -> tuple[str, dict[str, list] | None]:
+        key: str, archive_key: str, parsed: dict[str, Any], *, guard_trim: bool, path: str | None = None
+    ) -> tuple[str, dict[str, list[Any]] | None]:
         """Append what remove_json / keep_last_json drop to *archive_key*, before the write.
 
         The dropped items go whole to the list of the same name under the
-        archive key. Answers the line the write's answer opens with (or an
+        archive key; with *path* the lists are those of the object under it.
+        Answers the line the write's answer opens with (or an
         ``Error:`` line, nothing written) and the items dropped, which the
         source write checks under its row lock: a list changed in between is
         refused there, so an item never leaves without its copy.
         """
-        from app.services.shared_state import apply_list_ops, get_state, retention_protect, upsert_state
+        from app.services.shared_state import (
+            apply_list_ops,
+            get_state,
+            parse_value_path,
+            retention_protect,
+            upsert_state,
+            value_at_path,
+        )
         from app.services.work_item import current_claim_holder
 
         if normalize_correlation_key(archive_key) == normalize_correlation_key(key):
@@ -1529,6 +1578,11 @@ def build_shared_state_tools(
                 )
             dropped: dict[str, list] = {}
             source_value = dict((source or {}).get("value") or {})
+            if path:
+                held = value_at_path(source_value, parse_value_path(path))
+                if held is not None and not isinstance(held, dict):
+                    return f"Error: the value under {path!r} is not an object. Nothing was written.", None
+                source_value = dict(held or {})
             apply_list_ops(
                 source_value,
                 append=parsed["append_json"],
@@ -1538,7 +1592,8 @@ def build_shared_state_tools(
                 update=parsed["update_json"],
                 guard_trim=guard_trim,
                 dropped=dropped,
-                protect=retention_protect((source or {}).get("retention"), source_value),
+                # The retention protects the top-level lists only (path writes never roll).
+                protect=None if path else retention_protect((source or {}).get("retention"), source_value),
             )
         except ValueError as exc:
             return f"Error: {exc}", None
@@ -1567,7 +1622,64 @@ def build_shared_state_tools(
         lists = ", ".join(f"{k} {len(v)}" for k, v in dropped.items())
         return f"Archived {count} item(s) whole to `{archive_key}` (lists: {lists}) before the write.\n", dropped
 
-    async def _archive_unset(key: str, archive_key: str, update: dict | None) -> str:
+    def _has_unset(update: dict[str, Any] | None) -> bool:
+        """True when an update_json carries at least one patch with ``unset``."""
+        if not update:
+            return False
+        return any(
+            (p.get("unset") if isinstance(p, dict) else None)
+            for patches in update.values()
+            for p in (patches if isinstance(patches, list) else [patches])
+        )
+
+    async def _archive_unset_keys(key: str, archive_key: str, unset_keys: list[str]) -> str:
+        """Store the top-level fields *unset_keys* removes under *archive_key*, before the write.
+
+        One archive object ``{source_key, unset_keys, archived_at, fields}`` in the
+        archive's ``entries`` list; written first, so a failure leaves a copy, never a loss.
+        """
+        from app.services.shared_state import get_state, upsert_state
+        from app.services.work_item import current_claim_holder
+
+        if normalize_correlation_key(archive_key) == normalize_correlation_key(key):
+            return "Error: archive_key must name another key than key. Nothing was written."
+        source = await get_state(user_id=acting_user_id, key=_ns(key), reader=writer)
+        value = (source or {}).get("value") or {}
+        fields = {k: value[k] for k in dict.fromkeys(unset_keys) if isinstance(value, dict) and k in value}
+        if not fields:
+            return "Archived: nothing (no unset key is in the value).\n"
+        entry = {
+            "source_key": key,
+            "unset_keys": list(fields),
+            "archived_at": datetime.now(UTC).isoformat(),
+            "fields": fields,
+        }
+        try:
+            await upsert_state(
+                user_id=acting_user_id,
+                key=_ns(archive_key),
+                value=None,
+                status="active",
+                acting_agent_id=agent_id,
+                is_company_managed=is_company_managed,
+                workspace_id=workspace_id,
+                writer=writer,
+                append={"entries": [entry]},
+                note=f"archived {len(fields)} key(s) unset from {key}",
+                run_id=current_claim_holder(run_id),
+                archive=True,
+            )
+        except CompanyManagedWriteRefusedError as exc:
+            return f"Error: the archive key {archive_key!r} refused the write ({exc}). Nothing was written."
+        except ValueError as exc:
+            return f"Error: archive {archive_key!r}: {exc}. Nothing was written."
+        size = len(json.dumps(fields, default=str))
+        return (
+            f"Archived {len(fields)} key(s) ({', '.join(fields)}), {size} characters, to `{archive_key}` "
+            "(list entries) before the write.\n"
+        )
+
+    async def _archive_unset(key: str, archive_key: str, update: dict[str, Any] | None, path: str | None = None) -> str:
         """Store what an update's unset removes under *archive_key*, before the write.
 
         Answers the line the write's answer opens with, or an ``Error:`` line
@@ -1575,27 +1687,22 @@ def build_shared_state_tools(
         source written only after it, so a failure between the two leaves a
         copy, never a loss.
         """
-        from app.services.shared_state import get_state, unset_archive, upsert_state
+        from app.services.shared_state import get_state, parse_value_path, unset_archive, upsert_state, value_at_path
         from app.services.work_item import current_claim_holder
 
         if normalize_correlation_key(archive_key) == normalize_correlation_key(key):
             return "Error: archive_key must name another key than key. Nothing was written."
-        if not update or not any(
-            (p.get("unset") if isinstance(p, dict) else None)
-            for patches in update.values()
-            for p in (patches if isinstance(patches, list) else [patches])
-        ):
-            return (
-                "Error: archive_key needs update_json patches with 'unset': the fields it "
-                "removes are what is archived. Nothing was written."
-            )
         try:
             source = await get_state(user_id=acting_user_id, key=_ns(key), reader=writer)
             retention = (source or {}).get("retention") or {}
+            held = (source or {}).get("value") or {}
+            if path:
+                held = value_at_path(held, parse_value_path(path))
+                held = held if isinstance(held, dict) else {}
             archived = unset_archive(
-                (source or {}).get("value") or {},
+                held,
                 update,
-                source_key=key,
+                source_key=f"{key}#{path}" if path else key,
                 at=datetime.now(UTC).isoformat(),
                 item_key=retention.get("item_key") if isinstance(retention, dict) else None,
             )
@@ -1920,7 +2027,7 @@ def build_shared_state_tools(
                     "update_json": {"type": "string", "description": "Patch matched list items in place: {\"gaps\": {\"match\": {\"slug\": \"x\"}, \"set\": {}, \"increment\": {\"count\": 1}, \"append\": {\"runs\": []}, \"unset\": [\"f\"]}}; match may be a list (any matches; one matching nothing refuses all). Applied after the removals, before the appends"},
                     "fold_json": {"type": "string", "description": "List keys to identity field(s) or {by, sum}: duplicates merge in the first"},
                     "archive_key": {"type": "string", "description": "Key that first receives what remove_json / keep_last_json / an unset drop"},
-                    "retention_json": {"type": "string", "description": "List policy per write, object of keep_last, max_chars, archive_key, archive_when, max_item_chars, overflow_key, keep_fields; {} clears"},
+                    "retention_json": {"type": "string", "description": "List policy per write: keep_last, max_chars, archive_key, archive_when, max_item_chars, overflow_key, keep_fields, roll_open; {} clears"},
                     "unset_keys": {"type": "array", "items": {"type": "string"}, "description": "Top-level keys to remove from the value"},
                     "hold": {"type": "string", "enum": ["take", "release"], "description": "Hold the entry as a lease (a branch lock): 'take' records this run as its holder (a live other holder answers held, not an error), taking it over once that run ended; 'release' frees it. The platform frees the hold of an ended run. Omit to keep the holder"},
                     "lease": {"type": "boolean", "description": "Resolved at hold release (default: created by take)"},

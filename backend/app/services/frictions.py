@@ -1036,6 +1036,11 @@ async def _full_work_item_ref(ref: str, *, user_id: str | None) -> str:
     return str(full)
 
 
+#: The dispositions a ``harness`` friction cannot take: a skill or prompt edit does not fix the platform,
+#: and closing a harness friction with one dropped the defect out of tracking (#1686).
+HARNESS_REFUSED_DISPOSITIONS: tuple[str, ...] = ("skill_edit", "prompt_edit")
+
+
 async def dispose_friction(
     friction_id: str,
     *,
@@ -1048,8 +1053,9 @@ async def dispose_friction(
     """Classify a friction and name what carries its fix.
 
     A ``work_item`` disposition must name a work item the caller sees;
-    ``accepted`` needs no ref; every other disposition needs one. The
-    friction must belong to the calling agent or to the person it acts for.
+    ``accepted`` needs no ref; every other disposition needs one. A ``harness``
+    friction never takes a skill or prompt edit (:data:`HARNESS_REFUSED_DISPOSITIONS`).
+    The friction must belong to the calling agent or to the person it acts for.
     """
     from app.core.database import async_session
 
@@ -1061,6 +1067,11 @@ async def dispose_friction(
     ref = (ref or "").strip()[:500]
     if disposition != "accepted" and not ref:
         raise ValueError(f"a {disposition} disposition needs ref (the id, key or section that carries the fix)")
+    if friction_class == "harness" and disposition in HARNESS_REFUSED_DISPOSITIONS:
+        raise ValueError(
+            f"a harness friction is fixed in the platform, not by a {disposition}: dispose it work_item "
+            "(the item that carries the fix) or shared_state (the gaps register key), or classify it again"
+        )
     if disposition == "work_item":
         from app.services.work_item import get_work_item
 

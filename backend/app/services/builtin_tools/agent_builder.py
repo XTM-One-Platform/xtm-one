@@ -288,6 +288,26 @@ def _as_sentence(text: str) -> str:
     return text if text.endswith(".") else f"{text}."
 
 
+async def _granted_kb_locks(db: Any, kb_ids: list[str]) -> dict[str, str]:
+    """``{kb_id: lock}`` for the content-locked KBs among *kb_ids*.
+
+    The rule the run applies when it builds the write tools
+    (``helpers.content_locked_knowledge_base_ids``), so get_agent shows a write
+    grant the run would strip as such instead of ``[writable]``.
+    """
+    from sqlalchemy import select
+
+    from app.api.v1.helpers import content_locked_knowledge_base_ids
+    from app.core.utils import safe_uuid
+    from app.models.knowledge_base import KnowledgeBase
+
+    uuids = [u for k in kb_ids if (u := safe_uuid(k))]
+    if not uuids:
+        return {}
+    rows = (await db.execute(select(KnowledgeBase).where(KnowledgeBase.id.in_(uuids)))).scalars().all()
+    return await content_locked_knowledge_base_ids(db, list(rows))
+
+
 #: The ``tool_slug`` argument of create_integration / update_integration.
 _TOOL_SLUG_SCHEMA: dict = {
     "type": "string",
@@ -1112,7 +1132,9 @@ def _catalog_list_page(
 def _run_status_vocabulary() -> tuple[str, ...]:
     """Canonical run status vocabulary for the run tools.
 
-    Single source of truth: the engine's ``ACTIVE_RUN_STATUSES`` +
+    Single source of truth: the engine's ``ACTIVE_RUN_STATUSES``, its
+    ``QUEUED_RUN_STATUS`` (a delivery waiting for a busy assignment, neither
+    active nor terminal, so a filter without it answered a silent zero) and
     ``TERMINAL_RUN_STATUSES`` (includes the reserved "skipped" /
     "cancelled" states), imported lazily because ``assignment_engine``
     imports ``builtin_tools`` at module level. Shared by the ``list_runs``
@@ -1121,10 +1143,11 @@ def _run_status_vocabulary() -> tuple[str, ...]:
     """
     from app.services.assignment_engine import (
         ACTIVE_RUN_STATUSES,
+        QUEUED_RUN_STATUS,
         TERMINAL_RUN_STATUSES,
     )
 
-    return ACTIVE_RUN_STATUSES + TERMINAL_RUN_STATUSES
+    return (*ACTIVE_RUN_STATUSES, QUEUED_RUN_STATUS, *TERMINAL_RUN_STATUSES)
 
 
 #: In-run deep search (``get_run`` with ``search``) — excerpt shaping caps.
@@ -1191,6 +1214,10 @@ def _iter_run_search_sections(run, *, hide_parent: bool = False) -> list[tuple[s
         value = getattr(run, label, None)
         if value:
             sections.append((label, str(value)))
+    # The durable trail of who answered which pause, gate decisions included:
+    # the live question / response above are cleared at the resume.
+    for i, entry in enumerate(getattr(run, "human_input_history", None) or []):
+        sections.append((f"human_input_history[{i}]", _dump(entry)))
     for label in ("trigger_payload", "trigger_context", "actions_taken"):
         value = getattr(run, label, None)
         if not value:
@@ -1309,6 +1336,40 @@ def _event_latency_line(run) -> str | None:
     return line + ")"
 
 
+#: Entries of ``human_input_history`` get_run lists (the newest ones).
+_HUMAN_INPUT_HISTORY_SHOWN = 20
+
+
+def _human_input_history_lines(run: Any) -> list[str]:
+    """get_run's "Human input history" block: who answered each pause, when,
+    from where, and each gated call's outcome (``human_input_history``).
+
+    A pause the deadline ended reads ``by Deadline``: never a person.
+    """
+    history = [e for e in (getattr(run, "human_input_history", None) or []) if isinstance(e, dict)]
+    if not history:
+        return []
+    shown = history[-_HUMAN_INPUT_HISTORY_SHOWN:]
+    lines = ["", f"Human input history ({len(history)}):"]
+    if len(shown) < len(history):
+        lines.append(f"(the {len(shown)} newest; search=... reads every entry)")
+    for entry in shown:
+        who = entry.get("responded_by") or "unknown"
+        if entry.get("responded_by_id"):
+            who += f" (id: `{entry['responded_by_id']}`)"
+        head = f"- {entry.get('responded_at') or '?'}: {entry.get('resolution') or '?'} by {who}"
+        if entry.get("surface"):
+            head += f" via {entry['surface']}"
+        lines.append(head)
+        if entry.get("response"):
+            lines.append(f"  answer: {entry['response']}")
+        for gate in entry.get("gate_outcomes") or []:
+            if isinstance(gate, dict):
+                name = gate.get("tool_name") or "?"
+                lines.append(f"  {name} ({gate.get('tool_call_id') or '?'}): {gate.get('outcome')}")
+    return lines
+
+
 def _search_run_content(run, search: str, *, hide_parent: bool = False) -> str:
     """Grep a single run's full content and format a bounded excerpt report."""
     from app.services.assignment_helpers import _UNTRUSTED_TRIGGER_TYPES
@@ -1356,7 +1417,7 @@ def _search_run_content(run, search: str, *, hide_parent: bool = False) -> str:
     if not parts:
         return (
             f"No matches for `{search}` in this run (searched result "
-            "summary, error, human-input exchange, trigger payload, "
+            "summary, error, human-input exchange and history, trigger payload, "
             "trigger context, actions taken, and the full conversation "
             "log). The run likely never touched what you are looking for "
             "— try other candidate runs, or conclude that no run handled "
@@ -2856,6 +2917,29 @@ def build_agent_builder_tool(
                         )
                 else:
                     parts.append("**Connected Integrations:** None")
+                # The ones in trouble, with why and since when (#1665): a binding
+                # or a gate check on them fails until they are reconnected.
+                from app.services.integration_status import UNUSABLE_STATUSES, describe_unusable
+
+                broken = (
+                    (
+                        await _db.execute(
+                            select(Integration)
+                            .where(
+                                caller_visible_filter(Integration, uid, group_ids),
+                                Integration.status.in_(UNUSABLE_STATUSES),
+                            )
+                            .order_by(Integration.name)
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                if broken:
+                    parts.append("**Integrations not usable:**")
+                    for i in broken:
+                        state = describe_unusable(i.status, i.status_reason, i.status_reason_at)
+                        parts.append(f"  • {i.name} (id: `{i.id}`, provider: {i.provider}): {state}")
 
             if resource_type in ("all", "knowledge_bases"):
                 q = (
@@ -4585,8 +4669,13 @@ def build_agent_builder_tool(
                     if human_in_the_loop is None
                     else ("Yes" if human_in_the_loop else "No")
                 )
+                # A gate check on an integration in error is saved, and named (#1665).
+                from app.services.integration_status import gate_check_integration_warning
+
+                _gate_warning = await gate_check_integration_warning(_db, check_value) if check_value else None
                 return (
-                    f"Assignment **{name}** added to agent **{agent.name}** successfully!\n"
+                    (f"{_gate_warning}\n" if _gate_warning else "")
+                    + f"Assignment **{name}** added to agent **{agent.name}** successfully!\n"
                     f"  • ID: `{wf.id}`\n"
                     f"  • Trigger: {trigger_type}\n"
                     f"  • Human-in-the-loop: {hitl_display}"
@@ -4848,10 +4937,14 @@ def build_agent_builder_tool(
             # inline from the two fields (not via the model property) so the line
             # is correct for any agent shape the loader returns.
             _kb_perms = getattr(agent, "knowledge_base_permissions", None) or {}
+            # A write grant on a content-locked KB (built-in, read-only,
+            # package-installed, workspace) is stripped from the run's write
+            # scope: label it with its lock, never [writable] (#1763).
+            _kb_locks = await _granted_kb_locks(_db, [k for k in kb_id_list if _kb_perms.get(k) == "write"])
             _writable_kb_count = sum(
                 1
                 for k in (agent.knowledge_base_ids or [])
-                if _kb_perms.get(str(k)) == "write"
+                if _kb_perms.get(str(k)) == "write" and str(k) not in _kb_locks
             )
 
             def _fmt_kbs() -> str:
@@ -4861,7 +4954,11 @@ def build_agent_builder_tool(
                 for i in kb_id_list:
                     label = f"{kb_names[i]} (`{i}`)" if i in kb_names else f"`{i}`"
                     if _kb_perms.get(i) == "write":
-                        label += " [writable]"
+                        label += (
+                            f" [write grant unused: content locked ({_kb_locks[i]})]"
+                            if i in _kb_locks
+                            else " [writable]"
+                        )
                     items.append(label)
                 suffix = (
                     f" ({_writable_kb_count} writable)" if _writable_kb_count else ""
@@ -7627,6 +7724,24 @@ def build_agent_builder_tool(
 
             _org_context_on = await effective_for(_db, agent=agent, assignment=assignment)
 
+            # The run budget the engine applies, floor included, and why (#1695):
+            # the stored value alone hid a raised budget.
+            from app.core.config import settings as _settings
+            from app.services.assignment_engine import (
+                describe_effective_timeout,
+                resolve_run_max_iterations,
+            )
+
+            try:
+                _effective_timeout_display = describe_effective_timeout(
+                    getattr(assignment, "timeout_seconds", 300),
+                    await resolve_run_max_iterations(_db, assignment, agent),
+                    _settings.orchestration_grace_seconds,
+                )
+            except Exception as exc:
+                logger.debug("effective timeout of %s unreadable: %s", assignment.id, exc)
+                _effective_timeout_display = "not readable"
+
             parts = [
                 f"**{assignment.name}**",
                 f"  • ID: `{assignment.id}`",
@@ -7652,6 +7767,7 @@ def build_agent_builder_tool(
                 f"  • Max iterations: {_assignment_max_iterations_display}",
                 f"  • Timeout (seconds): "
                 f"{getattr(assignment, 'timeout_seconds', 300)}",
+                f"  • Effective timeout: {_effective_timeout_display}",
                 f"  • Organization context: "
                 f"{getattr(assignment, 'organization_context_mode', None) or 'inherit'}"
                 f" (effective: {'on' if _org_context_on else 'off'})",
@@ -7682,6 +7798,16 @@ def build_agent_builder_tool(
                     parts.append("  • Next run: none (cron not parseable)")
                 if _sched["timezone_warning"]:
                     parts.append(f"  • Timezone: {_sched['timezone_warning']}")
+                from app.core.utils import describe_schedule_history
+
+                _hist = describe_schedule_history(assignment)
+                parts.append(f"  • Last triggered: {_hist['last_triggered_at'] or 'never'}")
+                parts.append(f"  • Schedule resumed at: {_hist['schedule_resumed_at'] or 'never'}")
+                if _hist["skipped_slot"]:
+                    parts.append(
+                        f"  • Skipped slot: {_hist['skipped_slot']} UTC (off at that time; "
+                        "no catch-up after the resume)"
+                    )
 
             # Integration events: how they arrive, when last, and how many the
             # trigger's filter dropped before any run.
@@ -7707,7 +7833,8 @@ def build_agent_builder_tool(
                         f"  • Delivery: poll every {delivery.get('interval_seconds', 300) // 60} min{reason}"
                     )
                 if delivery.get("mode") != "webhook":
-                    parts.append(f"  • Last poll: {delivery.get('last_poll_at') or 'never'}")
+                    _catching_up = " (still reading a backlog)" if delivery.get("catching_up") else ""
+                    parts.append(f"  • Last poll: {delivery.get('last_poll_at') or 'never'}{_catching_up}")
                     if delivery.get("poll_skipped"):
                         parts.append(f"  • Poll skipped: {delivery['poll_skipped']}")
                 parts.append(f"  • Last notification: {delivery.get('last_notification_at') or 'never'}")
@@ -7939,7 +8066,11 @@ def build_agent_builder_tool(
                     if _gate_refusal is not None:
                         return f"{_gate_refusal} Nothing was saved."
                 assignment.activation_check = check_value
-                updated.append("activation_check (tool gate)")
+                # A gate check on an integration in error is saved, and named (#1665).
+                from app.services.integration_status import gate_check_integration_warning
+
+                _gate_warning = await gate_check_integration_warning(_db, check_value) if check_value else None
+                updated.append("activation_check (tool gate)" + (f". {_gate_warning}" if _gate_warning else ""))
             if (description or "").strip():
                 assignment.description = (
                     None
@@ -8971,6 +9102,38 @@ def build_agent_builder_tool(
 
     # ── get_run ───────────────────────────────────────────────────────
 
+    async def _run_budget_line(_db: AsyncSession, run_uuid: uuid.UUID) -> str | None:
+        """``Budget: ...`` of an assignment run, read off its execution payload."""
+        from sqlalchemy import select
+
+        from app.models.orchestration import OrchestrationExecution
+        from app.services.orchestration_engine import (
+            QUEUE_WAIT_PAYLOAD_KEY,
+            START_BUDGET_PAYLOAD_KEY,
+        )
+
+        try:
+            payload = (
+                await _db.execute(
+                    select(OrchestrationExecution.payload).where(
+                        OrchestrationExecution.dedup_key == f"assignment_run:{run_uuid}"
+                    )
+                )
+            ).scalar_one_or_none()
+        except Exception as exc:
+            logger.debug("run %s budget unreadable: %s", run_uuid, exc)
+            return None
+        if not isinstance(payload, dict):
+            return None
+        budget = payload.get(START_BUDGET_PAYLOAD_KEY)
+        if isinstance(budget, bool) or not isinstance(budget, (int, float)):
+            return None
+        line = f"Budget: {int(budget)}s from its start (effective timeout, floor applied, plus grace)"
+        waited = payload.get(QUEUE_WAIT_PAYLOAD_KEY)
+        if isinstance(waited, (int, float)) and not isinstance(waited, bool):
+            line += f"; waited {int(waited)}s for a worker (not charged)"
+        return line
+
     async def _get_run(run_id: str, search: str = "") -> str:
         from sqlalchemy import select
 
@@ -9073,8 +9236,13 @@ def build_agent_builder_tool(
                 f"Status: {run.status}",
                 *(
                     # A completed run that ended on a limit: its
-                    # result is partial, not the finished task.
-                    [f"Stopped before finishing: {run.stop_reason} (partial result)"]
+                    # result is partial, not the finished task. A failed run
+                    # its timeout or deadline stopped names it (#1695).
+                    [
+                        f"Stopped by: {run.stop_reason} (the run's wall-clock bound fired)"
+                        if run.status == "failed"
+                        else f"Stopped before finishing: {run.stop_reason} (partial result)"
+                    ]
                     if run.stop_reason and run.stop_reason != UNREADABLE_STOP_REASON
                     else []
                 ),
@@ -9098,6 +9266,12 @@ def build_agent_builder_tool(
                 if run.started_at:
                     secs = (run.completed_at - run.started_at).total_seconds()
                     parts.append(f"Duration: {secs:.0f}s")
+            if run.assignment_id:
+                # The budget the run had and its queue wait, as its
+                # orchestration execution recorded them (#1695).
+                budget_line = await _run_budget_line(_db, run.id)
+                if budget_line:
+                    parts.append(budget_line)
             from app.services.hitl_resume_clock import awaiting_human_seconds
 
             _paused = awaiting_human_seconds(run)
@@ -9120,6 +9294,7 @@ def build_agent_builder_tool(
                 if run.human_input_response:
                     parts.append("Human response:")
                     parts.append(run.human_input_response)
+            parts.extend(_human_input_history_lines(run))
             if run.error:
                 parts.append("")
                 parts.append("Error:")
@@ -11936,6 +12111,124 @@ def build_agent_builder_tool(
                 return f"Failed to delete document `{document_id}`. Please try again."
             return f"Document **{doc_name}** deleted from **{kb.name}**."
 
+    # ── update_kb_document ────────────────────────────────────────────
+
+    async def _update_kb_document(
+        knowledge_base_id: str,
+        document_id: str,
+        content: str = "",
+        append: bool = False,
+    ) -> str:
+        """Replace or extend a document of any KB the caller may write (#1763).
+
+        The add_kb_document / delete_kb_document gate (caller rights, then the
+        KB's own locks), so a document of another office's knowledge base the
+        caller manages is edited here without the agent holding a write grant
+        on it; ``update_knowledge_document`` stays the agent's own-grant tool.
+        """
+        import hashlib
+
+        from sqlalchemy import select
+
+        from app.core.database import async_session as _builder_session
+        from app.models.knowledge_base import KnowledgeBase, KnowledgeDocument
+        from app.services.kb_helpers import (
+            apply_document_write_timeout,
+            bump_kb_revision,
+            enqueue_document_processing,
+            log_kb_activity,
+            reset_changed_document,
+        )
+
+        try:
+            uid = uuid.UUID(user_id)
+        except (ValueError, AttributeError):
+            return "Updating documents is not available for anonymous users."
+        kb_uuid, id_err = _validate_id_arg(knowledge_base_id, "knowledge_base_id")
+        if id_err:
+            return id_err
+        doc_uuid, doc_err = _validate_id_arg(document_id, "document_id")
+        if doc_err:
+            return doc_err
+        normalized_mode = "append" if append else "replace"
+        if not content:
+            return "'content' is required: the new source, or the text appended. Nothing was changed."
+        if "\x00" in content:
+            return "The content contains NUL bytes and cannot be stored as text. Nothing was changed."
+
+        async with _builder_session() as _db:
+            kb, perm_err = await _load_manageable_entity_for_builder(
+                _db,
+                KnowledgeBase,
+                uid,
+                kb_uuid,
+                action="update documents in",
+                entity_label="knowledge base",
+            )
+            if perm_err is not None or kb is None:
+                return perm_err or f"Knowledge base `{knowledge_base_id}` not found."
+            if write_err := await writable_knowledge_base_error(_db, kb, content_action="update its documents"):
+                return _as_sentence(write_err)
+
+            doc = (
+                await _db.execute(
+                    select(KnowledgeDocument).where(
+                        KnowledgeDocument.id == doc_uuid,
+                        KnowledgeDocument.knowledge_base_id == kb.id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if not doc:
+                return f"Document `{document_id}` not found in this knowledge base."
+
+            previous = doc.content or ""
+            new_content = f"{previous}\n\n{content}" if append and previous else content
+            if new_content == previous and doc.status == "ready":
+                return (
+                    f"No change: **{doc.filename}** in **{kb.name}** already holds "
+                    "exactly this content and is fully indexed."
+                )
+
+            # Same write as update_knowledge_document: old vectors go, the
+            # document is re-embedded from the new source, under the KB write
+            # timeout (a large document passes the 30 s pool default).
+            await apply_document_write_timeout(_db)
+            await reset_changed_document(_db, doc, kb=kb)
+            doc.content = new_content
+            doc.content_hash = hashlib.sha256(new_content.encode()).hexdigest()
+            await bump_kb_revision(_db, kb.id)
+            await log_kb_activity(
+                _db,
+                kb.id,
+                "document_updated",
+                details=(f"Agent updated document '{doc.filename}' ({normalized_mode}, {len(new_content)} characters)"),
+                source_type=doc.source_type,
+                document_count=1,
+            )
+            doc_id_str, doc_name, kb_name = str(doc.id), doc.filename, kb.name
+            try:
+                await _db.commit()
+            except Exception as e:
+                logger.error(
+                    "Agent builder update_kb_document failed for doc %s: %s",
+                    document_id,
+                    format_exception_message(e),
+                    exc_info=True,
+                )
+                await _db.rollback()
+                return f"Failed to update document `{document_id}` ({type(e).__name__}). Nothing was changed."
+        enqueued = await enqueue_document_processing(doc_id_str)
+        state = (
+            "re-embedding queued: 'pending', not searchable until 'ready'"
+            if enqueued
+            else "re-embedding could not be queued: the recovery sweep re-embeds it"
+        )
+        return (
+            f"Document **{doc_name}** (`{doc_id_str}`, kept) updated in **{kb_name}** "
+            f"({normalized_mode}): {len(previous)} -> {len(new_content)} characters; "
+            f"{state}."
+        )
+
     # ── Integrations (catalog / get / create / update / delete) ───────
 
     async def _list_platform_events(search: str = "") -> str:
@@ -13169,6 +13462,7 @@ def build_agent_builder_tool(
     executor.register("list_kb_documents", _list_kb_documents)
     executor.register("get_kb_document", _get_kb_document)
     executor.register("delete_kb_document", _delete_kb_document)
+    executor.register("update_kb_document", _update_kb_document)
 
     from app.services.openapi_import import builder_tools as _spec_tools
 
@@ -16314,17 +16608,9 @@ def build_agent_builder_tool(
         ToolDefinition(
             name="get_kb_document",
             description=(
-                "Fetch a SINGLE knowledge-base document by its exact ID and "
-                "return its FULL, de-chunked content plus processing status. "
-                "This is a deterministic exact-match get (NOT semantic) — use "
-                "it to read back a specific document by id, e.g. when using a "
-                "knowledge base as a case-file / work-queue store (pairs with "
-                "list_kb_documents to enumerate and delete_kb_document to "
-                "consume). Unlike search_knowledge (which returns similar "
-                "fragments ranked by relevance), this returns the whole "
-                "document reassembled, and reports the embedding processing "
-                "status so you can detect a not-yet-indexed document "
-                "(write-then-read)."
+                "Fetch ONE knowledge-base document by exact id: its FULL "
+                "de-chunked content and embedding status (a not-yet-indexed "
+                "document is reported). Exact get, not semantic search."
             ),
             input_schema={
                 "type": "object",
@@ -16364,6 +16650,24 @@ def build_agent_builder_tool(
                     },
                 },
                 "required": ["knowledge_base_id", "document_id"],
+            },
+            source="builtin:platform",
+        ),
+        ToolDefinition(
+            name="update_kb_document",
+            description=(
+                "Replace (or append to) a document of a knowledge base you may add "
+                "documents to, then re-embed it; it keeps its id."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "knowledge_base_id": {"type": "string"},
+                    "document_id": {"type": "string"},
+                    "content": {"type": "string"},
+                    "append": {"type": "boolean", "default": False},
+                },
+                "required": ["knowledge_base_id", "document_id", "content"],
             },
             source="builtin:platform",
         ),

@@ -36,6 +36,11 @@ OpenAEV refuses `SOURCE_CODE`, the exact category staying on the XTM One row. No
 The fallback runs only when the update itself sets `SOURCE_CODE` on an endpoint not already on it and OpenAEV
 answers a 400 or 422 naming the category; any other error (a 5xx, a timeout, another field refused) is
 answered as it is, so an endpoint is never downgraded by an unrelated failure.
+The OpenAEV write tools read before they write (xtm-one #1702): `manage_openaev_asset`, `manage_openaev_asset_group`
+and `manage_openaev_inject` `update` read the stored object and send it back with only the asked fields changed,
+since OpenAEV's PUT replaces the whole object. An explicit `clear` list on the asset `update` unsets a field (`url`
+alone on `bulk_update`), and `get_openaev_asset` prints every field the write sets (category, subcategory,
+criticality, internet-facing, URL, external reference), so a write can be read back.
 OpenCTI to XTM One: a `System` is `generic_asset` until a person classifies it.
 
 `ASSET_TAXONOMY` in `organization_context.py` is the one copy in XTM One; the backend validates every row against it.
@@ -349,6 +354,12 @@ and `asset_groups` into row writes (`apply_profile_lists`). Row API, administrat
 - `GET /api/v1/organization-context/changes?entity_id=&since=&before_id=&limit=`: the change log, newest first;
   `POST /api/v1/organization-context/changes/restore` `{change_ids}`: a delete comes back, an update gets its
   `before` fields, a create goes.
+- `PATCH /api/v1/organization-context` `{fields, based_on_version}` (administrators, #1738): the next profile
+  version with those top-level fields set, every other field as stored; 422 for `assets_exposure`,
+  `asset_groups` or an unknown field, 409 on a stale base. The settings cards that edit non-row fields (owned
+  domains, address ranges, outside lens) use it, so no asset row travels with them. `PUT` and the version
+  restore judge the synced-row lock (#1367) against the profile `GET` answered (rows from the records), never
+  the stored version JSON: a sync that moved `last_seen` since no longer refuses a save that did not touch it.
 
 Group memberships kept in sync (#1556): a group source answers each group's members (OpenAEV: static and
 dynamic, a dynamic group stored as its resolved members), and `organization_asset_records.sync_group_members`
@@ -521,3 +532,11 @@ repository): an inventory asset, never a primary asset.
   never created. A manual link is never touched; a synced link a person removes through
   `PUT /crown-jewels/{name}/links` becomes a tombstone the sync never adds back; a link OpenCRQ dropped is deleted
   at the next sync. The sync's run result carries the link summary under `links`. Migration `v1591pallinks01`.
+- Inventory source (Sam, 24 Nov 2026): the `crown_jewels` section is in the `inventory` scope of
+  `organization_context_sync.SECTION_SCOPES` (and `organization_context_sources.FIELD_SCOPES`), so
+  `GET /organization-context/syncs?scope=inventory` and `/sources?scope=inventory` list the OpenCRQ primary-asset
+  sync next to the asset sources, on the same scheduler (no second one). The scheduler tick
+  (`run_due_syncs`) first calls `ensure_default_primary_asset_sync`: when a company-managed OpenCRQ integration
+  is registered, no `crown_jewels`/`opencrq` sync exists and none was ever deleted (audit trail), it saves one,
+  daily at 06:00 UTC, links on, owned by the first active administrator who can read OpenCRQ. A source turned
+  off keeps its row, so it is never recreated. Manual rows and manual links still win over every run.

@@ -101,7 +101,7 @@ interface OpenCrqSyncPlan {
   by_criticality?: Partial<Record<"unknown" | OpenCrqLevel, number>>;
 }
 
-/** OpenCRQ's criticality levels, lowest first: the thresholds the crown-jewel check accepts (#1558). */
+/** OpenCRQ's criticality levels, lowest first: the thresholds the primary-asset check accepts (#1558). */
 export type OpenCrqLevel = "low" | "medium" | "high" | "very_high";
 
 export interface OpenCrqSyncResponse {
@@ -307,6 +307,28 @@ export function useSaveOrganizationContext() {
       // a saved profile adds, updates or deletes rows there, and a stale list maps row positions
       // onto the fresh profile (#1375 review).
       void qc.invalidateQueries({ queryKey: ["organization-assets"] });
+    },
+  });
+}
+
+interface PatchOrganizationContextBody {
+  /** Top-level profile fields to set; every other field is kept as stored. Never the asset rows (#1738). */
+  fields: Partial<Omit<OrganizationProfile, "assets_exposure" | "asset_groups">>;
+  based_on_version?: number | null;
+}
+
+/**
+ * Save some top-level fields of the profile (#1738): a settings card sends its own fields alone,
+ * so a synced asset row a sync moved since the last version never blocks the save. The card's
+ * own error toast is the only one shown.
+ */
+export function usePatchOrganizationContext() {
+  const qc = useQueryClient();
+  return useMutation<OrganizationContextResponse, Error, PatchOrganizationContextBody>({
+    mutationFn: (body) => api.patch("/organization-context", body),
+    meta: { suppressGlobalErrorToast: true },
+    onSuccess: (saved) => {
+      qc.setQueryData(KEY, saved);
     },
   });
 }
@@ -864,7 +886,7 @@ export function useCreateOrganizationFillAgent() {
 
 export function useOpenCrqSync() {
   const qc = useQueryClient();
-  // min_criticality left out: the saved crown-jewel sync's filter, else high (#1558).
+  // min_criticality left out: the saved primary-asset sync's filter, else high (#1558).
   return useMutation<OpenCrqSyncResponse, Error, { apply: boolean; min_criticality?: OpenCrqLevel }>({
     mutationFn: (body) => api.post("/organization-context/opencrq-sync", body),
     onSuccess: (result) => {
@@ -880,7 +902,7 @@ export interface OrganizationContextVersionSummary {
   created_at: string;
   author_user_id: string | null;
   missing_fields: string[];
-  /** The crown jewels the version holds; absent from an older backend. */
+  /** The primary assets the version holds; absent from an older backend. */
   crown_jewels?: number;
 }
 

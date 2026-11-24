@@ -150,7 +150,7 @@ from app.services.assignment_pause import (
     switch_off_reason,
 )
 from app.services.audit import log_audit
-from app.services.chat_approval_resume import record_refused_decision
+from app.services.chat_approval_resume import record_approval_decision, record_refused_decision
 from app.services.element_scope import normalize_scope_enforcement
 from app.services.organization_context_categories import checked_for_api as _checked_org_categories
 from app.services.visibility import SegmentCounts, Visibility, segment_counts
@@ -2709,6 +2709,7 @@ async def release_covered_runs(
                 ],
                 user,
             )
+            await record_approval_decision(db, run=run, user=user, surface="assignment_release_covered")
             await resume_assignment_run(db, run)
         except HTTPException as exc:
             _refuse("rejected_by_applier", str(exc.detail), _calls=call_ids)
@@ -2882,6 +2883,7 @@ async def approve_by_tool(
         ]
         try:
             _apply_decisions_to_run(run, applied, user)
+            await record_approval_decision(db, run=run, user=user, surface="assignment_by_tool")
             await _grant_standing_approvals(db, run, applied, user)
             await resume_assignment_run(db, run)
         except HTTPException as exc:
@@ -3042,6 +3044,7 @@ async def batch_respond_to_approvals(
         # endpoint happened to anticipate.
         try:
             _apply_decisions_to_run(run, applied, user)
+            await record_approval_decision(db, run=run, user=user, surface="assignment_batch")
         # Composed, not reimplemented: a second grant path is exactly how the
         # two surfaces would drift (FR-029, FR-038b). ``approve_always`` reaches
         # a batch since FR-032's revision, and it grants here through the very
@@ -3145,6 +3148,7 @@ async def answer_paused_run(
     # the free-text answer below, handled first so the two never mix.
     if body.decisions is not None:
         _apply_decisions_to_run(run, body.decisions, user, surface=answered_from)
+        await record_approval_decision(db, run=run, user=user, surface=answered_from or surface)
         await _grant_standing_approvals(db, run, body.decisions, user)
         await resume_assignment_run(db, run)
         # Decided: the Approve / Reject buttons of its phone notifications

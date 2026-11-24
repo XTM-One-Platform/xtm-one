@@ -1102,6 +1102,7 @@ async def ensure_fleet_health_answered(db: AsyncSession, fleet: Fleet, agent: Ag
     found = next((row for row in existing if is_fleet_health_answered(row)), None)
     if found is not None:
         found.prompt = fleet_health_answered_prompt(fleet)
+        found.ai_label = False
         return False
     if check is None:
         check = next(iter(await _seeded_health_checks(db, agent.id)), None)
@@ -1118,6 +1119,8 @@ async def ensure_fleet_health_answered(db: AsyncSession, fleet: Fleet, agent: Ag
         trigger_config=fleet_health_answered_trigger(),
         prompt=fleet_health_answered_prompt(fleet),
         enabled=bool(getattr(check, "enabled", False)) and not is_emergency_stopped(check),
+        # Platform-seeded: no AI label prompt, so its work items and notes carry no "[AI-generated]" prefix.
+        ai_label=False,
         max_iterations=FLEET_HEALTH_CHECK_MAX_ITERATIONS,
         run_as_all_users=False,
     )
@@ -1315,6 +1318,7 @@ async def ensure_fleet_health_check(db: AsyncSession, fleet: Fleet, agent: Agent
         if existing.activation_check != gate:
             existing.activation_check = gate
             existing.prompt = fleet_health_check_prompt(fleet)
+        existing.ai_label = False
         return False
     if fleet_health_check_mode(fleet) != HEALTH_CHECK_DEFAULT:
         return False
@@ -1329,6 +1333,7 @@ async def ensure_fleet_health_check(db: AsyncSession, fleet: Fleet, agent: Agent
         prompt=fleet_health_check_prompt(fleet),
         activation_check=gate,
         enabled=False,
+        ai_label=False,
         max_iterations=FLEET_HEALTH_CHECK_MAX_ITERATIONS,
         run_as_all_users=False,
     )

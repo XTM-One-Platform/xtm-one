@@ -41,7 +41,7 @@ import { SettingsReadField, SettingsReadGrid } from "@/components/ui/settings-re
 import { TagInput } from "@/components/ui/tag-input";
 import { useToast } from "@/components/ui/toast";
 import { useIntegrations } from "@/hooks/api/useIntegrationApi";
-import { type OrganizationProfile, useAttackSurfaceProviders, useOrganizationContext, useSaveOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
+import { useAttackSurfaceProviders, useOrganizationContext, usePatchOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import {
@@ -88,7 +88,7 @@ export function OrganizationOutsideLensCard({ id: anchorId, fold }: Organization
   const id = useId();
   const { isAdmin } = useAuth();
   const { data } = useOrganizationContext();
-  const save = useSaveOrganizationContext();
+  const save = usePatchOrganizationContext();
   const { data: supported } = useAttackSurfaceProviders();
   const { data: integrations = [] } = useIntegrations();
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -154,8 +154,10 @@ export function OrganizationOutsideLensCard({ id: anchorId, fold }: Organization
     if (!profile || !next || blocked) return;
     const parsed = fromForm({ ...toForm(profile), ...next });
     if ("invalid" in parsed) return;
+    // #1738: these three fields alone travel, never the asset rows a sync keeps.
+    const { owned_domains, address_ranges, attack_surface } = parsed.profile;
     save.mutate(
-      { profile: parsed.profile as OrganizationProfile, source: "form" },
+      { fields: { owned_domains, address_ranges, attack_surface }, based_on_version: data?.version ?? null },
       {
         onSuccess: () => {
           setDraft(null);

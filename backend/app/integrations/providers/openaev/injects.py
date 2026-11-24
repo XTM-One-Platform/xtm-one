@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
@@ -26,6 +27,7 @@ from ._common import (
     _api,
     _fmt_expectation_results_by_type,
     _inject_row_executed,
+    _relation_ids,
     _search_body,
     findings_fate,
     inject_read_answer,
@@ -35,6 +37,7 @@ from ._common import (
     keep_findings_schema,
     mirror_content_targets,
 )
+from .testing import _contract_id, _stored_documents
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +61,142 @@ def _terminal_trace(traces: list[Any]) -> dict[str, Any] | None:
     return (complete or rows)[-1]
 
 
+#: Trace statuses that end a step without a failure.
+_OK_TRACE_STATUSES = frozenset({"SUCCESS", "INFO"})
+#: Characters of a failing step's message kept in the answer (stdout/stderr JSON).
+_CAUSE_MESSAGE_CHARS = 600
+
+
+def _failure_cause(traces: list[Any], terminal: dict[str, Any]) -> dict[str, Any] | None:
+    """The step that made a non-success terminal trace fail.
+
+    The implant's last COMPLETE trace always reads 'Payload completed'; OpenAEV
+    rewrites its status from the agent's earlier traces, so the reason of an
+    ERROR lives in the latest earlier non-COMPLETE trace whose status is not a
+    success (a COMMAND_EXECUTION or PREREQUISITE step with its stdout, stderr
+    and exit code).
+    """
+    if str(terminal.get("execution_status") or "").upper() in _OK_TRACE_STATUSES:
+        return None
+    rows = [
+        t
+        for t in traces
+        if isinstance(t, dict)
+        and t is not terminal
+        and t.get("execution_action") != "COMPLETE"
+        and str(t.get("execution_status") or "").upper() not in _OK_TRACE_STATUSES
+    ]
+    if not rows:
+        return None
+    rows.sort(key=lambda t: str(t.get("execution_time") or ""))
+    return rows[-1]
+
+
+def _cause_line(cause: dict[str, Any]) -> str:
+    message = str(cause.get("execution_message") or "")
+    if len(message) > _CAUSE_MESSAGE_CHARS:
+        message = message[:_CAUSE_MESSAGE_CHARS] + f"... [{len(message) - _CAUSE_MESSAGE_CHARS} more chars]"
+    return (
+        f"    cause: {cause.get('execution_action', '?')} {cause.get('execution_status', '?')} "
+        f"at {cause.get('execution_time', '?')}: {message}"
+    )
+
+
+#: The runtime setting that bounds an inject's execution (InjectExecutionThresholdService).
+_THRESHOLD_KEY = "inject_execution_threshold_minutes"
+
+
+def _utc(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def _stamp(moment: datetime) -> str:
+    return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _threshold_minutes(settings: Any) -> int | None:
+    items = settings.get("runtime_settings") if isinstance(settings, dict) else None
+    for item in items if isinstance(items, list) else []:
+        if isinstance(item, dict) and item.get("key") == _THRESHOLD_KEY:
+            try:
+                return int(str(item.get("value")))
+            except ValueError:
+                return None
+    return None
+
+
+def _execution_timeout_line(sent: datetime | None, minutes: int | None) -> str:
+    """When OpenAEV ends the targets that gave no terminal trace (the finalization job)."""
+    if minutes is None:
+        bound = "threshold not exposed by this OpenAEV (its default is 10 minutes)"
+    else:
+        bound = f"{minutes} min after distribution"
+    if sent is None:
+        return f"execution_timeout: {bound}; not distributed yet (no tracking_sent_date)."
+    deadline = f", deadline {_stamp(sent + timedelta(minutes=minutes))}" if minutes is not None else ""
+    return (
+        f"execution_timeout: {bound} (sent {_stamp(sent)}{deadline}); a target with no terminal "
+        "trace by then is ended with a timeout trace and the inject ends."
+    )
+
+
+def _expectation_window_line(inject: Any, sent: datetime | None) -> str:
+    """How long the expectations wait for a result: a scoring window, not the run."""
+    content = inject.get("inject_content") if isinstance(inject, dict) else None
+    if isinstance(content, str):
+        try:
+            content = json.loads(content)
+        except ValueError:
+            content = None
+    rows = content.get("expectations") if isinstance(content, dict) else None
+    parts: list[str] = []
+    for row in rows if isinstance(rows, list) else []:
+        seconds = row.get("expectation_expiration_time") if isinstance(row, dict) else None
+        if not isinstance(seconds, int | float) or seconds <= 0:
+            continue
+        part = f"{row.get('expectation_type', '?')} {seconds / 3600:g} h"
+        if sent is not None:
+            part += f" (expires {_stamp(sent + timedelta(seconds=seconds))})"
+        parts.append(part)
+    if not parts:
+        return "expectation_window: no expiration time on the inject's expectations (OpenAEV's default applies)."
+    return (
+        f"expectation_window: {', '.join(parts)}; the time the expectations wait for a "
+        "result after distribution, not the end of the execution."
+    )
+
+
+async def _timing_lines(base_url: str, headers: dict[str, str], inject_id: str) -> list[str]:
+    """The execution timeout and the expectation window, two named facts."""
+    status, inject, settings = await asyncio.gather(
+        _api(base_url, headers, "get", "/api/injects/status", "inject status", params={"injectId": inject_id}),
+        _api(base_url, headers, "get", f"/api/injects/{inject_id}", "get inject"),
+        _api(base_url, headers, "get", "/api/settings", "get settings"),
+    )
+    status_body = status[0].json() if not status[1] and status[0] is not None else None
+    sent = _utc(status_body.get("tracking_sent_date")) if isinstance(status_body, dict) else None
+    lines: list[str] = []
+    if status[1]:
+        lines.append(f"status not read ({status[1]})")
+    minutes = None
+    if settings[1] or settings[0] is None:
+        lines.append(f"settings not read ({settings[1]})")
+    else:
+        minutes = _threshold_minutes(settings[0].json())
+    lines.append(_execution_timeout_line(sent, minutes))
+    if inject[1] or inject[0] is None:
+        lines.append(f"expectation_window: inject not read ({inject[1]})")
+    else:
+        lines.append(_expectation_window_line(inject[0].json(), sent))
+    return lines
+
+
 def _target_label(target: dict[str, Any]) -> str:
     name = target.get("target_name") or target.get("target_id") or "?"
     return f"{target.get('target_type', '?')} {name} (id: {target.get('target_id', '?')})"
@@ -69,8 +208,11 @@ async def _target_traces(base_url: str, headers: dict[str, str], inject_id: str)
     The global status trace names only the targets an executor reached; a
     target OpenAEV closed before the distribution (agentless asset, inactive or
     overloaded agent, no executor, clearance) has its own COMPLETE trace, read
-    here per target from /api/injects/execution-traces.
+    here per target from /api/injects/execution-traces. The execution timeout
+    and the expectation window head the answer as two named lines, so a
+    running inject is told apart from an expired expectation.
     """
+    timing = await _timing_lines(base_url, headers, inject_id)
     targets: list[dict[str, Any]] = []
     notes: list[str] = []
     for target_type in _TRACE_TARGET_TYPES:
@@ -95,7 +237,7 @@ async def _target_traces(base_url: str, headers: dict[str, str], inject_id: str)
         if isinstance(total, int) and total > len(rows):
             notes.append(f"{target_type}: {len(rows)} of {total} targets listed")
     if not targets:
-        return "\n".join([f"Inject {inject_id} has no target with execution traces.", *notes])
+        return "\n".join([f"Inject {inject_id} has no target with execution traces.", *timing, *notes])
 
     gate = asyncio.Semaphore(_TRACE_READS_IN_FLIGHT)
 
@@ -119,14 +261,19 @@ async def _target_traces(base_url: str, headers: dict[str, str], inject_id: str)
         last = _terminal_trace(traces if isinstance(traces, list) else [])
         if last is None:
             return f"- {_target_label(target)}: no trace yet"
-        return (
+        line = (
             f"- {_target_label(target)}: {last.get('execution_status', '?')} "
             f"{last.get('execution_action', '?')} at {last.get('execution_time', '?')}: "
             f"{last.get('execution_message', '')}"
         )
+        cause = _failure_cause(traces if isinstance(traces, list) else [], last)
+        if cause is not None:
+            line += "\n" + _cause_line(cause)
+        return line
 
     lines = await asyncio.gather(*(_one(t) for t in targets))
-    return "\n".join([f"Inject {inject_id}: {len(targets)} target(s), terminal trace of each:", *lines, *notes])
+    head = f"Inject {inject_id}: {len(targets)} target(s), terminal trace of each:"
+    return "\n".join([*timing, head, *lines, *notes])
 
 
 def _base(scope: str, parent_id: str) -> str | None:
@@ -135,6 +282,98 @@ def _base(scope: str, parent_id: str) -> str | None:
     if scope == "simulation":
         return f"/api/exercises/{parent_id}"
     return None
+
+
+#: The relations of a stored inject an update sends back, as (InjectInput
+#: key, id key of an element when it is an object). OpenAEV's PUT replaces
+#: each one: a relation left out is stored empty.
+_INJECT_RELATIONS: tuple[tuple[str, str], ...] = (
+    ("inject_teams", "team_id"),
+    ("inject_assets", "asset_id"),
+    ("inject_asset_groups", "asset_group_id"),
+    ("inject_tags", "tag_id"),
+)
+
+#: Scalars of InjectInput carried over as the stored inject answers them.
+_INJECT_SCALARS = (
+    "inject_title",
+    "inject_description",
+    "inject_content",
+    "inject_depends_duration",
+    "inject_all_teams",
+    "inject_enabled",
+    "inject_country",
+    "inject_city",
+)
+
+
+def _stored_dependencies(raw: Any) -> list[dict[str, Any]]:
+    """The stored ``inject_depends_on`` as InjectDependencyInput entries."""
+    out: list[dict[str, Any]] = []
+    for dep in raw if isinstance(raw, list) else []:
+        if not isinstance(dep, dict):
+            continue
+        rel = dep.get("dependency_relationship")
+        parent = rel.get("inject_parent_id") if isinstance(rel, dict) else None
+        if isinstance(parent, dict):
+            parent = parent.get("inject_id")
+        if not parent:
+            continue
+        entry: dict[str, Any] = {"dependency_relationship": {"inject_parent_id": str(parent)}}
+        if dep.get("dependency_condition") is not None:
+            entry["dependency_condition"] = dep["dependency_condition"]
+        out.append(entry)
+    return out
+
+
+def stored_inject_input(stored: Any, changes: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    """The full InjectInput of an update: the stored inject, *changes* laid over it.
+
+    OpenAEV's PUT /api/{scenarios|exercises}/{id}/injects/{inject_id} replaces
+    every field: a title left out is refused, a relation left out is stored
+    empty, ``inject_enabled`` falls back to true, ``inject_all_teams`` to false
+    and an empty ``inject_depends_on`` removes the chain. Returns
+    ``(body, refusal)``; a refusal names what the stored answer lacks so the
+    update never wipes it. Nothing is written when it is not empty.
+    """
+    if not isinstance(stored, dict) or not stored:
+        return (
+            {},
+            "Refused: the stored inject could not be read, so an update would wipe its fields. Nothing was written.",
+        )
+    body: dict[str, Any] = {k: stored[k] for k in _INJECT_SCALARS if k in stored}
+    body["inject_injector_contract"] = _contract_id(stored.get("inject_injector_contract"))
+    injector = stored.get("inject_injector")
+    if isinstance(injector, dict):
+        injector = injector.get("injector_id")
+    if isinstance(injector, str) and injector and "inject_injector_contract" not in changes:
+        body["inject_injector"] = injector
+    missing: list[str] = []
+    for key, id_key in _INJECT_RELATIONS:
+        if key in changes:
+            continue
+        if key not in stored:
+            missing.append(key)
+            continue
+        body[key] = _relation_ids(stored.get(key), id_key)
+    if "inject_secret_references" in stored:
+        body["inject_secret_references"] = _relation_ids(stored.get("inject_secret_references"), "secret_reference_id")
+    if "inject_depends_on" in stored:
+        body["inject_depends_on"] = _stored_dependencies(stored.get("inject_depends_on"))
+    if "inject_documents" in stored:
+        body["inject_documents"] = _stored_documents(stored.get("inject_documents"))
+    body.update(changes)
+    if not body.get("inject_title"):
+        missing.append("inject_title (pass title)")
+    if not body.get("inject_injector_contract"):
+        missing.append("inject_injector_contract (pass injector_contract_id)")
+    if missing:
+        return {}, (
+            "Refused: OpenAEV replaces every field of an inject on update, and the "
+            "stored inject as read lacks " + ", ".join(missing) + ", so the update "
+            "would wipe it. Nothing was written."
+        )
+    return body, ""
 
 
 def register(
@@ -336,6 +575,12 @@ def register(
                     json=body,
                 )
             else:
+                resp, err = await _api(base_url, headers, "get", f"{base}/injects/{inject_id}", "read inject")
+                if err:
+                    return err
+                body, refusal = stored_inject_input(resp.json() if resp is not None else None, body)
+                if refusal:
+                    return refusal
                 resp, err = await _api(
                     base_url, headers, "put", f"{base}/injects/{inject_id}",
                     "update inject", json=body,
@@ -459,7 +704,7 @@ def register(
                 "or 'global' (by inject_id). Actions: 'list' (search), 'get', 'create' "
                 "(title + injector_contract_id, optional content JSON, depends_duration "
                 "seconds, team_ids, asset_ids, asset_group_ids, all_teams, tag_ids), "
-                "'update' (inject_id + fields), 'delete' (inject_id, "
+                "'update' (inject_id + fields; the others are kept), 'delete' (inject_id, "
                 "keep_findings), 'duplicate' (inject_id), 'activation' (inject_id + "
                 "enabled). Build an ATTACK "
                 "PATH (not flat atomic tests) by CHAINING injects: pass "
@@ -469,7 +714,8 @@ def register(
                 "(raw JSON array of inject_depends_on entries) for branching / "
                 "multi-parent chains. Global-only: "
                 "'status' (inject_id - read the execution status), 'target_traces' "
-                "(inject_id - every target with its terminal trace). Simulation-only: "
+                "(inject_id - every target's terminal trace, execution_timeout, "
+                "expectation_window). Simulation-only: "
                 "'trigger' (manually fire an inject against live assets), 'set_status' "
                 "(inject_id + status + optional message), 'results'. Use "
                 "search_openaev_injector_contracts to find injector_contract_id."

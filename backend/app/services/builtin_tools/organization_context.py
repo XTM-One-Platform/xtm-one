@@ -99,6 +99,9 @@ def build_organization_context_tool(
         wanted = str(category or "").strip().lower()
         try:
             async with async_session() as db:
+                if wanted and wanted != "*" and cats.get(wanted) is not None and not cats.available():
+                    # Copilot mode (#1690): the profile is its identity alone, no category is read.
+                    return cats.render_categories({})
                 if wanted:
                     row = await current_version(db)
                     # #1543: the asset and group rows come from the asset records, paged like every category.
@@ -115,7 +118,7 @@ def build_organization_context_tool(
                     found_category = cats.get(wanted)
                     if found_category is None:
                         return (
-                            f"No category {wanted!r}. One of: {', '.join(cats.CATEGORY_NAMES)} "
+                            f"No category {wanted!r}. One of: {', '.join(cats.available_names())} "
                             '(get_organization_context(category="*") lists them with their sizes).'
                         )
                     if found_category.name == cats.ENTERPRISE_KNOWLEDGE:
@@ -126,6 +129,10 @@ def build_organization_context_tool(
                         else cats.rows_of(profile, found_category)
                     )
                     org_id = getattr(row, "organization_id", None)
+                    if found_category.name == "assets_exposure" and isinstance(org_id, uuid.UUID):
+                        merged = await _inventory_assets(db, org_id, str(query or ""), _int(offset), _int(limit))
+                        if merged is not None:
+                            return merged
                     if found_category.name == cats.SOFTWARE and isinstance(org_id, uuid.UUID):
                         rows = await _software_rows(db, org_id) or rows
                     return cats.render_page(
@@ -169,6 +176,29 @@ def build_organization_context_tool(
             ctem_work=await ctem_work_for(db, run_agent),
             asset_counts=await asset_list_counts(db, primary.organization_id if primary else None),
         )
+
+    async def _inventory_assets(
+        db: AsyncSession, organization_id: uuid.UUID, query: str, offset: int, limit: int
+    ) -> str | None:
+        """The merged CTEM Inventory assets, paged by the store, ``field:value`` terms as filters (#1774).
+
+        ``None`` (the profile's rows answer) while the store is not built or cannot be read.
+        """
+        from app.services import organization_asset_store as store
+        from app.services import organization_context_categories as cats
+
+        try:
+            async with db.begin_nested():
+                built = await store.ensure_built(db, organization_id)
+            if built is None:
+                return None
+            filters, text = cats.split_asset_query(query)
+            size = max(1, min(limit or cats.DEFAULT_PAGE, cats.MAX_PAGE))
+            page = await store.list_assets(db, built, q=text, offset=offset, limit=size, filters=filters)
+        except Exception:
+            logger.warning("Inventory asset read failed", exc_info=True)
+            return None
+        return cats.render_asset_page(list(page.items), total=page.total, query=query, offset=offset, limit=size)
 
     async def _software_rows(db: AsyncSession, organization_id: uuid.UUID) -> list[dict[str, object]]:
         """The organization's Software entities (#1495), synced and hand-typed; ``[]`` when it has none."""
@@ -221,13 +251,13 @@ def build_organization_context_tool(
     definition = ToolDefinition(
         name=ORGANIZATION_CONTEXT_TOOL,
         description=(
-            "Read the organization profile: sector, regions, size, crown jewels and business "
+            "Read the organization profile: sector, regions, size, primary assets and business "
             "services, software, AI systems, PIRs, risk appetite, loaded hourly rate and "
             "currency, ticketing target, and the fields not filled. Read it before ranking, "
             "scoping or estimating; cite the fields you used and name the missing ones, never guess them. "
             'Long lists are categories: category="*" lists them with their sizes; category="software" (any listed name) '
             "reads one by page (query filters the rows, offset/limit page it, so a list of any length is read whole). "
-            'category="tech_stack" is a deprecated alias of "software", answered for one release.'
+            'category="tech_stack" and "crown_jewels" are deprecated aliases of "software" and "primary_assets".'
         ),
         input_schema={
             "type": "object",
@@ -239,15 +269,15 @@ def build_organization_context_tool(
                 "category": {
                     "type": "string",
                     "description": (
-                        "One category of your organization (e.g. software, crown_jewels, assets_exposure, "
+                        "One category of your organization (e.g. software, primary_assets, assets_exposure, "
                         "prioritization_policy, enterprise_knowledge); '*' lists them."
                     ),
                 },
                 "query": {
                     "type": "string",
                     "description": (
-                        "With category: keep the rows holding this text; with enterprise_knowledge, "
-                        "the procedure or policy to find passages for."
+                        "With category: keep the rows holding this text (assets_exposure also takes field:value, "
+                        "e.g. os_family:windows category:host); with enterprise_knowledge, the passages' topic."
                     ),
                 },
                 "offset": {"type": "integer", "description": "With category: first row (default 0)."},

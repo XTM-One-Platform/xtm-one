@@ -1057,6 +1057,7 @@ async def test_a_backlog_past_the_pages_of_one_tick_is_read_on_the_next_tick_not
 
     assert await poller.poll_integration_events(session) == page * pages
     assert f"event_poll:{wf.id}" not in world.redis.values, "more to read: polled again on the next tick"
+    assert f"{event_poller.POLL_READ_KEY_PREFIX}{wf.id}" in world.redis.values, "the pages read are shown (#1718)"
     assert await poller.poll_integration_events(session) == 3
     assert f"event_poll:{wf.id}" in world.redis.values
     assert world.poll_dispatched == [m["id"] for m in mailbox.mails]

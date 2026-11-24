@@ -4602,6 +4602,12 @@ async def run_agent_chat(
             ctem_read = ctem_read_tools_for(agent, agent_builtin_tool_ids, user_id=user_id)
             if ctem_read is not None:
                 composite.add_tools(*ctem_read)
+            # The CTEM administrator repairs (#1778): the CTEM case agents, or the group bound.
+            from app.services.builtin_tools import ctem_repair_tools_for
+
+            ctem_repair = ctem_repair_tools_for(agent, agent_builtin_tool_ids, user_id=user_id)
+            if ctem_repair is not None:
+                composite.add_tools(*ctem_repair)
             # The learned skill (#914): a built-in agent records durable lessons.
             from app.services.builtin_tools import build_learned_lesson_tool, offers_learned_lesson_tool
 
@@ -7795,6 +7801,7 @@ async def run_agent_chat(
                                 "conversation, so the approved call was not "
                                 "run. Ask again if you still want it."
                             ),
+                            "source": "not_offered",
                         }
                         for _cid, _d in resume_decisions.items()
                     }

@@ -195,7 +195,7 @@ def _opencti_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any]
         evidence["cpe"] = cpes
     if kind.startswith("relationship:"):
         # CTEM-08: the software or asset the relationship starts from, so the scope
-        # gate resolves the signal to the tech stack product it names.
+        # gate resolves the signal to the software product it names.
         from app.services.ctem_trigger_rules import source_name
 
         source = source_name(payload)
@@ -575,6 +575,10 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
             kind = "pir_playbook" if payload.get("xtm_source") == "pir_playbook" else "listener"
             if is_excluded(await excluded_sources(db, primary.id), row.trigger_path, provider, kind):
                 return False
+            if row.trigger_path == "relevant_threat":
+                from app.services.ctem_trigger_rules import PIR_FLOOR_KEY
+
+                fields["evidence"][PIR_FLOOR_KEY] = await _pir_floor(db, primary.id, fields["evidence"].get("pir"))
             signal, created = await ctem_signals.record_signal(
                 db,
                 organization_id=primary.id,
@@ -601,6 +605,27 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
     except Exception:
         logger.warning("CTEM signal from a %s %s delivery not recorded", provider, event_key, exc_info=True)
         return False
+
+
+async def _pir_floor(db: Any, organization_id: Any, pirs: object) -> bool:
+    """#1678: whether a relevant threat's PIR score at delivery reaches the policy's threat threshold.
+
+    The relevance floor of the seeded threat signal run: below it the signal
+    is kept for the weekly sweep and starts no run. A profile that cannot be
+    read holds the policy defaults.
+    """
+    from app.services import organization_context as org_context
+    from app.services.ctem_trigger_rules import pir_floor_met, threshold_for
+
+    if not pirs:
+        return False
+    try:
+        _row, profile = await org_context.current_profile(db, organization_id)
+    except Exception:
+        logger.warning("CTEM relevance floor: the organization profile was not read", exc_info=True)
+        profile = None
+    policy = getattr(profile, "prioritization_policy", None)
+    return pir_floor_met(pirs, threshold_for(policy, "threat"))
 
 
 async def note_tracked_organizations(payload: Mapping[str, Any], organization_ids: list[str], *, verified: bool) -> int:

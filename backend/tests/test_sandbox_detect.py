@@ -1054,6 +1054,54 @@ def test_a_checkout_of_a_check_directory_takes_the_paths_its_checks_need():
         checks.load_checks('[check.x]\nargv = ["x"]\nneeds = ["../out"]\n')
 
 
+def test_a_sub_path_inside_a_package_is_widened_to_the_package_root():
+    """opencrq front/src/x: front/config.ts and the assets a test imports sit at the package root."""
+    sizes = {
+        "package.json": 10,
+        "front/package.json": 10,
+        "front/config.ts": 10,
+        "front/src/x/a.ts": 10,
+        "front/node_modules/dep/package.json": 10,
+        "back/src/b.py": 10,
+        "big/package.json": 10,
+        "big/src/huge.bin": 100,
+    }
+    kept, widened = detect.widen_to_package_roots(
+        ["front/src/x", "front/src/y", "back/src", "big/src"], sizes, max_bytes=50
+    )
+    # The repository root's package.json never widens, nor a package past the bound, nor a node_modules one.
+    assert kept == ["front", "back/src", "big/src"]
+    assert [(w.sub_path, w.directory, w.words()) for w in widened] == [
+        ("front/src/x", "front", "the package it sits in"),
+        ("front/src/y", "front", "the package it sits in"),
+    ]
+    assert detect.widen_to_package_roots(["front"], sizes) == (["front"], [])
+
+
+def test_a_narrow_checkout_of_a_package_source_directory_keeps_the_package_root():
+    import io
+    import tarfile
+
+    from app.services.sandbox_workspace.repository import extract_tree
+
+    members = {
+        "r-sha/front/package.json": b"{}",
+        "r-sha/front/config.ts": b"export default {}\n",
+        "r-sha/front/src/a/x.ts": b"",
+        "r-sha/back/main.py": b"",
+    }
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        for name, content in members.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(content)
+            archive.addfile(info, io.BytesIO(content))
+    tree = extract_tree(buffer.getvalue(), sub_paths=["front/src/a"], max_bytes=1024 * 1024)
+    written = {path for path, _ in tree.files}
+    assert tree.sub_paths == ["front"] and "front/config.ts" in written and "back/main.py" not in written
+    assert [(w.sub_path, w.directory) for w in tree.widened] == [("front/src/a", "front")]
+
+
 def test_nothing_is_widened_without_a_declaration_or_a_check_directory():
     assert detect.widen_to_check_dirs(["backend/app"], {}) == (["backend/app"], [])
     root_only = checks.load_checks('[check.root]\nargv = ["make"]\n')

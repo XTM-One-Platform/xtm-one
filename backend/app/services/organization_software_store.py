@@ -737,24 +737,26 @@ async def assets_of_version(
 
 def matcher_entries(
     software: Iterable[Mapping[str, Any]], typed: Iterable[Mapping[str, Any]] = ()
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     """The products the CVE matcher looks for (pure, testable): one entry per software.
 
     *software* holds one mapping per software entity (``vendor``, ``product``,
     ``cpe``, ``versions``: the versions installed, ``unknown`` included). The
     entry's ``version`` is the installed version when the organization runs
     exactly one known version of it, else empty (several versions, or only
-    ``unknown``: the matcher then states no installed version, never a guess).
+    ``unknown``: the matcher then states no single installed version, never a
+    guess). ``versions`` lists every known installed version (#1783), so the
+    matcher checks each of them against OpenCTI's Software of that version.
     *typed* are rows typed in the organization profile before the profile moved
     to Software entities (``vendor``, ``product``, ``cpe``, ``version``): a row
     no software entity carries is still matched, so nothing typed is lost.
-    Each entry carries ``product``, ``vendor``, ``cpe``, ``version`` and
-    ``label`` (the name the case and the why line show).
+    Each entry carries ``product``, ``vendor``, ``cpe``, ``version``,
+    ``versions`` and ``label`` (the name the case and the why line show).
     """
-    out: list[dict[str, str]] = []
-    seen: dict[Key, dict[str, str]] = {}
+    out: list[dict[str, Any]] = []
+    seen: dict[Key, dict[str, Any]] = {}
 
-    def add(vendor: str, product: str, cpe: str, version: str) -> None:
+    def add(vendor: str, product: str, cpe: str, version: str, versions: list[str]) -> None:
         vendor, product = vendor.strip(), product.strip()
         if not product:
             return
@@ -774,6 +776,7 @@ def matcher_entries(
             "vendor": vendor,
             "cpe": cpe.strip(),
             "version": version.strip(),
+            "versions": versions,
             "label": display_name(vendor, product),
         }
         seen[key] = entry
@@ -792,13 +795,16 @@ def matcher_entries(
             str(soft.get("product") or ""),
             str(soft.get("cpe") or ""),
             known[0] if len(known) == 1 else "",
+            known,
         )
     for row in typed:
+        typed_version = str(row.get("version") or "").strip()
         add(
             str(row.get("vendor") or ""),
             str(row.get("product") or ""),
             str(row.get("cpe") or ""),
-            str(row.get("version") or ""),
+            typed_version,
+            [typed_version] if typed_version else [],
         )
     return out
 

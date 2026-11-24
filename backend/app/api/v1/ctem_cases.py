@@ -34,6 +34,7 @@ from app.services import ctem_case_audit_view as case_audit_view
 from app.services import ctem_case_gate_records_view as case_gates_view
 from app.services import ctem_case_loop as case_loop
 from app.services import ctem_case_routing as case_routing
+from app.services import ctem_case_version_history as version_history
 from app.services import ctem_case_versions as case_versions
 from app.services import ctem_cases as rules
 from app.services import ctem_cases_overview as overview
@@ -129,6 +130,13 @@ async def _organization_id(db: AsyncSession) -> uuid.UUID:
     return primary.id
 
 
+def _with_history(running: dict[str, Any] | None, events: list[Any]) -> dict[str, Any] | None:
+    """*running* with ``history``: the per-device changes the recomputes recorded, newest first (#1694)."""
+    if running is None:
+        return None
+    return {**running, "history": version_history.history_of(events)}
+
+
 async def visible_case(
     db: AsyncSession, case_id: uuid.UUID, user_id: str, vertical: str
 ) -> tuple[Any, dict[str, Any]] | None:
@@ -200,6 +208,8 @@ async def list_ctem_cases(
     history = await store.events_of(db, [uuid.UUID(row["id"]) for row in rows])
     for row in rows:
         row.update(view_of.case_position(history.get(uuid.UUID(row["id"]), []), view))
+        # Issues that name no asset: the inventory count, else "unknown" with its reason (#1694).
+        version_history.with_asset_count(row, history.get(uuid.UUID(row["id"]), []))
     return {
         "vertical": vertical,
         "counts": {s: counts.get(s, 0) for s in CASE_STATES},
@@ -340,6 +350,60 @@ async def merge_ctem_cases(
     return shown[1]
 
 
+class CaseBulkDelete(BaseModel):
+    """Cases to delete (#1723): named by id, selected by a filter, or both (a named case must match it)."""
+
+    case_ids: list[uuid.UUID] = Field(default_factory=list, max_length=200)
+    states: list[CaseState] = Field(default_factory=list)
+    #: ``legacy``: built by a source read before signals; ``signal``; ``split``.
+    opened_by: Literal["legacy", "signal", "split"] | None = None
+    vertical: str | None = Field(default=None, max_length=40)
+    reason: str | None = Field(default=None, max_length=500)
+    #: ``true`` (default) answers what would be deleted and writes nothing.
+    dry_run: bool = True
+
+
+async def _delete(db: AsyncSession, admin: User, cases: list[Any], reason: str | None, dry_run: bool) -> dict[str, Any]:
+    from app.services import ctem_case_delete as case_delete
+
+    result = await case_delete.delete_cases(db, cases, actor=admin, reason=reason, dry_run=dry_run)
+    # A dry run writes nothing, so the commit is a no-op there.
+    await db.commit()
+    return result
+
+
+@router.post("/bulk-delete")
+async def bulk_delete_ctem_cases(
+    body: CaseBulkDelete,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Delete 1 to 200 cases, administrators only (#1723); ``dry_run`` (default) writes nothing.
+
+    Each case goes with its members and history; its open work items and armed
+    timers are cancelled, its signals go back to the scope gate, its fix key is
+    free for a fresh case. One audit row per case. Answers ``{dry_run, count,
+    cases: [summary], unknown}``.
+    """
+    _require_xtm_one()
+    from app.services import ctem_case_delete as case_delete
+
+    if not body.case_ids and not (body.states or body.opened_by or body.vertical):
+        raise HTTPException(
+            status_code=422, detail="Name the cases (case_ids) or a filter (states, opened_by, vertical)"
+        )
+    cases, unknown = await case_delete.select_cases(
+        db,
+        organization_id=await _organization_id(db),
+        case_ids=body.case_ids,
+        states=body.states,
+        opened_by=body.opened_by,
+        vertical=body.vertical,
+    )
+    result = await _delete(db, admin, cases, body.reason, body.dry_run)
+    return {**result, "unknown": unknown}
+
+
 class ThreatPackageRepair(BaseModel):
     #: ``true`` (default) answers what the repair would correct and writes nothing.
     dry_run: bool = True
@@ -475,7 +539,7 @@ async def get_ctem_case(
     shown = await visible_case(db, case_id, str(user.id), vertical)
     if shown is None:
         raise HTTPException(status_code=404, detail="Case not found")
-    (case, _, _), rendered = shown
+    (case, _, events), rendered = shown
     # The audit trail (#1490): each event with its CTEM phase, autonomy class and actor, and the phases.
     audit = await case_audit_view.audit_trail(db, rendered.get("history") or [], viewer_id=user.id)
     # One resolved decision record per gate (#1518): the decision row joined with the gate events;
@@ -485,14 +549,32 @@ async def get_ctem_case(
         **rendered,
         **audit,
         "gates": gate_records,
-        # The versions the case's product runs on the assets (#1252), never a typed tech stack version.
-        "running_versions": await case_versions.for_case(db, case),
+        # The versions the case's product runs on the assets (#1252), never a typed software version.
+        "running_versions": _with_history(await case_versions.for_case(db, case), events),
         # The assets its visible issues name, with the version each runs from the inventory (#1176 slice 3b).
         "affected_assets": await case_versions.assets_for_case(db, case, rendered.get("issues") or []),
         "ticketing": await ticketing.ticketing_target(db),
         # The fleet that runs the case (#1390): {slug, name, active}; active false = no active fleet owns it.
         "owner_fleet": await case_routing.owner_view(db, case),
     }
+
+
+@router.delete("/{case_id}")
+async def delete_ctem_case(
+    case_id: uuid.UUID,
+    dry_run: bool = Query(default=False),
+    reason: str | None = Query(default=None, max_length=500),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Delete one case, administrators only (#1723), as ``bulk-delete`` does; 404 when unknown."""
+    _require_xtm_one()
+    from app.services import ctem_case_delete as case_delete
+
+    cases, _unknown = await case_delete.select_cases(db, organization_id=await _organization_id(db), case_ids=[case_id])
+    if not cases:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return await _delete(db, admin, cases, reason, dry_run)
 
 
 @router.patch("/{case_id}")

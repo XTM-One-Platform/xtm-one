@@ -5783,7 +5783,7 @@ export interface CtemFunnelLayer {
   source: "opencti" | "organization" | "ctem_cases";
   /** The organization context category that unlocks a not configured layer. */
   category: string | null;
-  /** The layer an exploitable count was taken on (`relevant`, or `known` without a tech stack). */
+  /** The layer an exploitable count was taken on (`relevant`, or `known` without a software inventory). */
   basis?: string | null;
   /** The OpenCTI FilterGroup of the list a live layer counts, when it fits a link. */
   filters?: Record<string, unknown> | null;
@@ -6028,8 +6028,8 @@ interface CtemBlindSpot {
 export interface CtemHeadline {
   // Cyber
   kev_count: number | null;
-  /** Known-exploited restricted to the organization profile's tech stack, and
-   *  the matched products (at most 3); absent or null without a tech stack. */
+  /** Known-exploited restricted to the organization profile's software inventory, and
+   *  the matched products (at most 3); absent or null without a software inventory. */
   kev_tailored_count?: number | null;
   kev_tailored_products?: string[] | null;
   critical_count: number | null;

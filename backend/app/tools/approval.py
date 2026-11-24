@@ -93,6 +93,20 @@ OUTCOME_NOT_OFFERED = "not_run_tool_not_offered"
 #: auto-run, not a human decision. Named so it cannot be read as either, and so
 #: the FR-020 blank stays reserved for a gate that failed to install.
 OUTCOME_DISMISSED = "not_run_dismissed"
+#: A gated call nobody answered before the decision's deadline: the platform
+#: refused it, no person did (``decision_waits``). Never ``human_reject``.
+OUTCOME_EXPIRED = "not_run_expired"
+#: A gated call the decision set carried no verdict for: refused by default,
+#: never credited to a reviewer.
+OUTCOME_UNDECIDED = "not_run_undecided"
+
+#: Key of an approval decision naming who refused a call when no person did:
+#: ``DECISION_SOURCE_DEADLINE`` (the deadline passed) or
+#: ``DECISION_SOURCE_NOT_OFFERED`` (the tool left the run's surface). Absent: a
+#: person's verdict.
+DECISION_SOURCE_KEY = "source"
+DECISION_SOURCE_DEADLINE = "deadline"
+DECISION_SOURCE_NOT_OFFERED = "not_offered"
 # ``OUTCOME_CLEARED_PRE_PAUSE``: the gate cleared this call *before* the pause,
 # so it runs on resume without being re-gated — but the outcome sink is fresh
 # after the pause unwinds, so the original reason (whitelist, integration

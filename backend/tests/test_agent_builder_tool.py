@@ -1764,7 +1764,7 @@ async def test_get_assignment_surfaces_all_settings(monkeypatch):
             agent_id=agent_id,
         )
     }
-    agents = {agent_id: SimpleNamespace(id=agent_id, name="Builder agent")}
+    agents = {agent_id: SimpleNamespace(id=agent_id, name="Builder agent", max_iterations=None)}
     created_sessions = []
 
     async def _fake_get_user_group_ids(_db, _uid):
@@ -1796,6 +1796,8 @@ async def test_get_assignment_surfaces_all_settings(monkeypatch):
     assert "Max retries: 5" in content
     assert "Max iterations: 20" in content
     assert "Timeout (seconds): 600" in content
+    # The budget the engine applies, and why (#1695).
+    assert "Effective timeout: 600s (" in content
     assert sum(s.commits for s in created_sessions) == 0
 
 

@@ -394,11 +394,32 @@ async def test_manage_player_allows_update_delete_outside_orchestrator_run(monke
     assert (fake.calls[-1]["json"] or {}).get("user_teams") == ["team-abc"]
 
 
-async def test_inject_update_omits_unprovided_flags(monkeypatch):
+async def test_inject_update_keeps_the_stored_fields(monkeypatch):
+    # OpenAEV's PUT replaces the whole inject (InjectInput): the tool reads it
+    # and sends every stored field back, only the asked ones changed.
     from app.integrations.providers.openaev import injects
 
     executor, _ = _build()
-    fake = _RecordingApi({"inject_id": "i1", "inject_title": "t"})
+    stored = {
+        "inject_id": "i1",
+        "inject_title": "t",
+        "inject_enabled": False,
+        "inject_all_teams": True,
+        "inject_depends_duration": 60,
+        "inject_injector_contract": {"injector_contract_id": "c1"},
+        "inject_injector": "inj1",
+        "inject_teams": ["t1"],
+        "inject_assets": [{"asset_id": "a1"}],
+        "inject_asset_groups": [],
+        "inject_tags": ["tag1"],
+        "inject_depends_on": [
+            {
+                "dependency_relationship": {"inject_parent_id": "p1", "inject_children_id": "i1"},
+                "dependency_condition": {"mode": "and", "conditions": []},
+            }
+        ],
+    }
+    fake = _RecordingApi(stored)
     monkeypatch.setattr(injects, "_api", fake)
     result = await _run(
         executor,
@@ -412,11 +433,39 @@ async def test_inject_update_omits_unprovided_flags(monkeypatch):
         },
     )
     assert not result.is_error, result.content
+    assert [c["method"] for c in fake.calls] == ["get", "put"]
     body = fake.last_json()
-    assert "inject_title" not in body
-    assert "inject_enabled" not in body
-    assert "inject_all_teams" not in body
-    assert body.get("inject_description") == "d"
+    assert body["inject_description"] == "d"
+    assert body["inject_title"] == "t"
+    assert body["inject_enabled"] is False
+    assert body["inject_all_teams"] is True
+    assert body["inject_depends_duration"] == 60
+    assert body["inject_injector_contract"] == "c1"
+    assert body["inject_injector"] == "inj1"
+    assert body["inject_teams"] == ["t1"]
+    assert body["inject_assets"] == ["a1"]
+    assert body["inject_tags"] == ["tag1"]
+    assert body["inject_depends_on"] == [
+        {
+            "dependency_relationship": {"inject_parent_id": "p1"},
+            "dependency_condition": {"mode": "and", "conditions": []},
+        }
+    ]
+
+
+async def test_inject_update_of_an_unreadable_inject_writes_nothing(monkeypatch):
+    from app.integrations.providers.openaev import injects
+
+    executor, _ = _build()
+    fake = _RecordingApi({"inject_id": "i1"})
+    monkeypatch.setattr(injects, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_inject",
+        {"action": "update", "scope": "scenario", "parent_id": "s1", "inject_id": "i1", "description": "d"},
+    )
+    assert "Nothing was written" in result.content
+    assert [c["method"] for c in fake.calls] == ["get"]
 
 
 async def test_inject_create_sends_defaults(monkeypatch):
@@ -852,6 +901,118 @@ async def test_asset_update_never_downgrades_on_another_error(monkeypatch, store
     assert len(puts) == 1
     assert "GENERIC_ASSET" not in result.content
     assert error in result.content
+
+
+async def test_asset_update_clears_the_named_fields(monkeypatch):
+    # An explicit clear unsets a field; an empty string alone is still no change.
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    current = {
+        "asset_id": "e1",
+        "asset_name": "shop",
+        "asset_url": "https://old.example",
+        "asset_subcategory": "WEBSITE",
+        "asset_internet_facing": True,
+        "asset_ips": ["10.0.0.5"],
+    }
+    fake = _RecordingApi(current)
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_asset",
+        {"action": "update", "asset_id": "e1", "clear": ["url", "subcategory", "internet_facing", "ips"]},
+    )
+    assert not result.is_error, result.content
+    sent = fake.last_json()
+    assert sent["asset_url"] is None
+    assert sent["asset_subcategory"] is None
+    assert sent["asset_internet_facing"] is None
+    assert sent["asset_ips"] == []
+    assert sent["asset_name"] == "shop"
+
+
+async def test_asset_update_refuses_an_unknown_clear_before_any_call(monkeypatch):
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    fake = _RecordingApi({})
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(executor, "manage_openaev_asset", {"action": "update", "asset_id": "e1", "clear": ["name"]})
+    assert "unknown field(s): name" in result.content
+    assert fake.calls == []
+
+
+async def test_asset_bulk_update_clears_the_url(monkeypatch):
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    fake = _RecordingApi(["a1"])
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(
+        executor, "manage_openaev_asset", {"action": "bulk_update", "asset_ids": ["a1"], "clear": ["url"]}
+    )
+    assert not result.is_error, result.content
+    assert fake.last_json() == {"asset_ids_to_process": ["a1"], "asset_url": ""}
+
+
+async def test_asset_group_update_keeps_the_stored_fields(monkeypatch):
+    # OpenAEV's PUT replaces the whole group (AssetGroupInput): a dynamic filter
+    # alone keeps the stored name, description and tags.
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    stored = {
+        "asset_group_id": "ag1",
+        "asset_group_name": "Web",
+        "asset_group_description": "front",
+        "asset_group_tags": ["t1", {"tag_id": "t2"}],
+        "asset_group_dynamic_filter": {"mode": "and", "filters": []},
+    }
+    fake = _RecordingApi(stored)
+    monkeypatch.setattr(assets, "_api", fake)
+    group = {"mode": "and", "filters": [{"key": "asset_tags", "operator": "contains", "values": ["t1"], "mode": "or"}]}
+    result = await _run(
+        executor,
+        "manage_openaev_asset_group",
+        {"action": "update", "asset_group_id": "ag1", "dynamic_filter": json.dumps(group)},
+    )
+    assert not result.is_error, result.content
+    assert [c["method"] for c in fake.calls] == ["get", "put"]
+    assert fake.last_json() == {
+        "asset_group_name": "Web",
+        "asset_group_description": "front",
+        "asset_group_tags": ["t1", "t2"],
+        "asset_group_dynamic_filter": group,
+    }
+
+
+def test_fmt_asset_prints_the_fields_the_write_tool_sets():
+    from app.integrations.providers.openaev._common import _fmt_asset
+
+    out = _fmt_asset(
+        {
+            "asset_id": "e1",
+            "asset_name": "shop",
+            "asset_category": "WEB_APPLICATION",
+            "asset_subcategory": "WEBSITE",
+            "asset_criticality": "HIGH",
+            "asset_internet_facing": False,
+            "asset_url": "https://shop.example",
+            "asset_external_reference": "dns:shop",
+            "asset_tags": [{"tag_id": "t1"}],
+        }
+    )
+    for line in (
+        "Category: WEB_APPLICATION",
+        "Subcategory: WEBSITE",
+        "Criticality: HIGH",
+        "Internet-facing: False",
+        "URL: https://shop.example",
+        "External reference: dns:shop",
+        "Tags: t1",
+    ):
+        assert line in out
 
 
 async def test_asset_update_of_a_missing_endpoint_writes_nothing(monkeypatch):
@@ -1395,7 +1556,8 @@ async def test_connector_instance_from_a_collector_or_executor_id(monkeypatch, k
         {"action": "stop", "connector_id": "c1"},
     )
     assert not result.is_error, result.content
-    assert result.content == "Connector instance ci1 is now stopping."
+    assert result.content.startswith("Connector instance ci1: requested status set to stopping.")
+    assert "is now" not in result.content
     assert fake.calls[-1]["path"] == "/api/connector-instances/ci1/requested-status"
 
 
@@ -1452,6 +1614,105 @@ async def test_instance_get_shows_image_and_container_runtime(monkeypatch):
     assert "  restart count: 2" in result.content
     assert "  in reboot loop: no" in result.content
     assert "not reported" not in result.content
+
+
+async def test_instance_get_tells_the_requested_intent_from_the_state(monkeypatch):
+    # A requested 'starting' next to a current 'started' is a running instance:
+    # the answer never reads the intent as the state (gap
+    # openaev-instance-status-intent-read-as-state).
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/connector-instances/ci1": {
+                "connector_instance_id": "ci1",
+                "connector_instance_current_status": "started",
+                "connector_instance_requested_status": "starting",
+                "connector_instance_heartbeat_at": "2026-11-23T19:55:24Z",
+                "connector_instance_configurations": [{"k": "v"}],
+            },
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_connector_instance",
+        {"action": "get", "connector_instance_id": "ci1"},
+    )
+    assert not result.is_error, result.content
+    assert "  state (actual): started" in result.content
+    assert "  requested (intent): starting" in result.content
+    assert "  reading: started, as requested" in result.content
+    assert "  raw fields:" in result.content
+    assert "    connector_instance_heartbeat_at: 2026-11-23T19:55:24Z" in result.content
+    assert "configurations" not in result.content
+
+
+async def test_instance_get_says_a_request_is_not_reached_yet(monkeypatch):
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/connector-instances/ci1": {
+                "connector_instance_id": "ci1",
+                "connector_instance_current_status": "stopped",
+                "connector_instance_requested_status": "starting",
+            },
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_connector_instance",
+        {"action": "get", "connector_instance_id": "ci1"},
+    )
+    assert "the request 'starting' has not been reached yet" in result.content
+    assert "raw fields" not in result.content
+
+
+@pytest.mark.parametrize(("tail", "size"), [(10, 10), (500, 100), (0, 50)])
+async def test_connector_instance_logs_takes_a_tail(monkeypatch, tail, size):
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _RecordingApi({"content": [{"i": n} for n in range(120)], "totalElements": 120})
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_connector_instance",
+        {"action": "logs", "connector_instance_id": "ci1", "tail": tail},
+    )
+    assert not result.is_error, result.content
+    assert fake.calls[0]["json"] == {"page": 0, "size": size}
+    assert len(json.loads(result.content)["logs"]) == size
+
+
+async def test_query_connectors_shows_type_external_and_last_execution(monkeypatch):
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/collectors": [
+                {
+                    "collector_id": "c1",
+                    "collector_name": "GitHub",
+                    "collector_type": "openaev_github",
+                    "collector_external": True,
+                    "collector_last_execution": "2026-11-23T19:40:00Z",
+                }
+            ],
+            "/api/settings": {},
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(executor, "query_openaev_connectors", {"kind": "collectors"})
+    assert not result.is_error, result.content
+    assert (
+        "- GitHub (id: c1) {type: openaev_github, external: yes, last execution: 2026-11-23T19:40:00Z}"
+    ) in result.content
 
 
 async def test_instance_get_says_when_start_time_is_not_reported(monkeypatch):
