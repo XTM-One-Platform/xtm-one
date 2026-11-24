@@ -376,19 +376,7 @@ explained. A single-platform answer draws the card as before.
   `updated_at`, and `missing` with `missing_at` while a product did not answer);
   the list header shows "Updated 4 min ago" (exact time on hover) and, after an
   outage, a muted line "OpenAEV did not answer at 13:40, cases unchanged." with
-  a link to the integrations. An outage is a product failure only (#1852): a
-  recompute identity whose token a product rejected (`rejected`) or that has no
-  credentials for it (`not_connected`) writes nothing on that shared line, so a
-  scheduled-pass identity never shows an outage to a viewer whose own read
-  answered.
-- Every failed source read (#1852) records why per product
-  (`SourceRead.reasons`): `rejected` (401, 403, AUTH_REQUIRED, Forbidden),
-  `too_large` (too_many_clauses, DATABASE_ERROR), `timeout`, `not_connected`
-  (no credentials for the reader), `unavailable` (anything else). The viewer
-  view caches it (an older cache reads `unavailable`); its log lines name the
-  user id, and the read binds `ctem_read_user_id` / `ctem_read_provider` and
-  drops the integration fields an earlier token resolution left on the log
-  context.
+  a link to the integrations.
 - A recompute never builds a case (#1529). The two ways into a case are a signal
   the scope gate kept (`ctem_case_loop.open_from_signal`) and a split by a
   person or an agent (`create_manual_case`, `create_ctem_case`);
@@ -644,12 +632,7 @@ then the existing AI assessment and facts grid unchanged.
   products instead ("OpenAEV could not be read, so open exposures there may
   be missing.") with a warning icon (#12139). The API sends product ids
   ("openaev"); the line shows their display names (CTEM_PRODUCT_INFO) and
-  agrees the verb through an ICU plural on the product count. With
-  `details_unavailable_reasons` (#1852) each product says why in plain words,
-  never as a missing right: "OpenCTI rejected your sign-in token", "could not
-  answer because the query was too large", "did not answer in time", "No
-  OpenCTI connection could be used for this read"; a product with no known
-  reason keeps the plural sentence.
+  agrees the verb through an ICU plural on the product count.
 
 ### 7.2 Cases list `/ctem/cases`
 
@@ -1039,7 +1022,9 @@ The third brick of the spine: signal (`dev-docs/ctem-signals.md`) -> reconcile a
 
 **Proof.** `POST /api/v1/ctem-cases/{id}/validations` (any caller who sees the case) records a validation reference and sets the validation plan. `passed` or `not_exposed` resolves (`fixed` or `not_exposed`); with `mitigation_only` it goes to `mitigated_watching` and the re-test stays on; `failed` reopens a resolved or watched case to `needs_attention`; `pending` only records. A case with a validation plan resolves only on a passing newest reference (the PATCH route refuses with 422) and never on absence at source in a recompute, unless a person decided otherwise (#1675): a person's own move, or an agent's move once a person answered the case's `ctem.close_without_retest` decision (a `gate` event, `from` that key, `to` `answered`; `ctem_cases_store.close_without_retest_answered`). **A person's answer never moves the case by code (#1675)**: `ctem_case_status.after_gate` keeps only the bookkeeping (waited parks the case in `waiting_decision`; a gate that passed without a person moves it to `GATE_NEXT`); approve, reject or a free-text answer, the Gate answered run reads `payload.answer` and sets the next state itself with `update_ctem_case`. A case with no plan keeps the accepted proof of its kind as evidence (ticket done, re-scan, directory check). Accepted risk keeps its 90-day ceiling.
 
-**Remediation evidence on a patch or upgrade case (#1500).** A reference carries `evidence_type`: `remediation` (a version inventory showing every in-scope endpoint at or above the fixed build) or `validation` (a detection or behaviour test). On a `patch` or `upgrade` case only remediation evidence resolves; a validation pass is recorded with `conclusive` false and the case stays open. When the writer does not say, a provider re-scan or a conclusive check (the fixed version read) counts as remediation, anything else as validation. `assess_ctem_validation_inject` builds the gate ask from the inject class: its `title` and `safe_mode_text` (a non-read-only gate is never called read-only or safe; `draft_text` is checked and `draft_refused` names the words to rewrite), the exact `command` of an authored payload (classified unknown, else a payload review before the launch decision), the target count and its delta against the cited inventory, the evidence each option produces, and a `mobilize` block (the ticket done criterion: an intrusive or unknown re-test is never a silent criterion, a negative exploit re-test never closes a ticket alone, a hold option that depends on no other gate).
+**Remediation evidence on a patch or upgrade case (#1500).** A reference carries `evidence_type`: `remediation` (a version inventory showing every in-scope endpoint at or above the fixed build) or `validation` (a detection or behaviour test). On a `patch` or `upgrade` case only remediation evidence resolves; a validation pass is recorded with `conclusive` false and the case stays open. When the writer does not say, a provider re-scan or a conclusive check (the fixed version read) counts as remediation, anything else as validation.
+
+**No inject classification (#1810).** The platform never classifies an inject, never writes a gate's title or recommendation, and never derives `conclusive` from what an inject is. The agent reads the inject like an analyst (template, payload, targets), says in the gate what it will do to which targets and what its result will and will not prove, recommends, and sets `conclusive` itself on `record_ctem_case_validation`; the only control is the fleet's gate `ctem.validation.non_readonly` at its autonomy level (the key is kept: stored decisions, decision-item keys `ctem:validation:` and `ctem:f2:validate:`, autonomy pins and the case page read it). The former tool `assess_ctem_validation_inject` and the fields `safe_mode` and `inject_class` are gone; old validation entries that carry them stay stored as written and are no longer rendered.
 
 **Schedule.** The autonomous tick runs `ctem_case_loop.sweep` once per `CTEM_CASE_SWEEP_SECONDS` (default 3600, minimum 60, a Redis slot): opens the cases of confirmed signals still waiting (a failed opening is retried here; each signal opens in its own savepoint, so one that fails is logged, counted `skipped` and left `confirmed` without stopping the pass) and escalates every open case past its SLA once. A case key or title longer than its 300-character column is bounded: the title is cut, the key keeps its head and a digest of the whole so two long subjects never share a case.
 

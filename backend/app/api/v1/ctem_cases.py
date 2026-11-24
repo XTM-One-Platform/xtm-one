@@ -75,8 +75,6 @@ class CaseValidation(BaseModel):
     result: Literal["passed", "not_exposed", "failed", "pending"]
     mitigation_only: bool = False
     note: str | None = Field(default=None, max_length=500)
-    #: CTEM-12: only read-only injects ran (true), a non-read-only one ran (false), unknown (None).
-    safe_mode: bool | None = None
     #: The target asset groups in the order they were tested.
     run_order: list[str] | None = Field(default=None, max_length=20)
     #: #1500: remediation (a version inventory) or validation (a test); a patch or upgrade case resolves
@@ -191,7 +189,6 @@ async def list_ctem_cases(
             "counts": {s: 0 for s in CASE_STATES},
             "cases": [],
             "details_unavailable": [],
-            "details_unavailable_reasons": {},
             "ticketing": {"connected": False, "reason": ticketing.NOT_CONNECTED, "settings": ticketing.SETTINGS_PATH},
         }
     # Cases stay current with no button (s.4.3): a viewer whose last recompute is
@@ -227,9 +224,6 @@ async def list_ctem_cases(
         "counts": {s: counts.get(s, 0) for s in CASE_STATES},
         "cases": rows,
         "details_unavailable": view.missing,
-        # Why each of those products did not answer this viewer's read (#1852): rejected, too_large,
-        # timeout, not_connected or unavailable, so the empty state says what failed.
-        "details_unavailable_reasons": {p: view.reasons.get(p, "unavailable") for p in view.missing},
         # Whether a ticketing target is declared (CTEM-19-UI, #1032): the case
         # screens say "No ticketing connected" with the settings link.
         "ticketing": await ticketing.ticketing_target(db),
@@ -657,7 +651,6 @@ async def record_ctem_case_validation(
             result=body.result,
             mitigation_only=body.mitigation_only,
             note=body.note,
-            safe_mode=body.safe_mode,
             run_order=body.run_order,
             evidence_type=body.evidence_type,
             actor=str(user.id),
