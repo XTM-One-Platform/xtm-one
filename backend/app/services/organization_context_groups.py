@@ -61,6 +61,8 @@ LABELS: dict[str, str] = {
 #: Members read per group at most; a group past it keeps its stored memberships.
 MAX_MEMBERS_PER_GROUP = 20000
 _GRAPH_PAGE = 999
+#: Entra groups read at most to apply a name filter (Graph cannot match a substring).
+_GRAPH_GROUPS_SCANNED = 50000
 _TANIUM_PAGE = 500
 _FALCON_PAGE = 500
 _SN_PAGE = 500
@@ -240,10 +242,10 @@ async def read_intune_groups(token: str, filters: dict[str, Any], *, limit: int,
 
     result = GroupRead()
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json", "ConsistencyLevel": "eventual"}
+    # Graph $filter has no contains() on displayName (startswith only): the name filter is
+    # applied to the groups read, a substring match like the other sources (matches_search).
     odata = "securityEnabled eq true"
-    search = str(filters.get("search") or "").strip().replace("'", "''")[:100]
-    if search:
-        odata += f" and startswith(displayName,'{search}')"
+    searching = bool(str(filters.get("search") or "").strip())
     async with _client(client) as http:
         managed_rows, _cut, err = await _graph_paged(
             http,
@@ -264,11 +266,15 @@ async def read_intune_groups(token: str, filters: dict[str, Any], *, limit: int,
             f"{GRAPH_BASE}/groups?$select=id,displayName,description,groupTypes&$top={_GRAPH_PAGE}"
             f"&$filter={quote(odata)}",
             headers,
-            limit,
+            _GRAPH_GROUPS_SCANNED if searching else limit,
         )
         if err:
             result.error = err
             return result
+        if searching:
+            groups = [g for g in groups if matches_search(str(g.get("displayName") or ""), filters)]
+            cut = cut or len(groups) > limit
+            groups = groups[:limit]
         result.truncated = cut
         for group in groups:
             row = intune_group_row(group)

@@ -133,6 +133,31 @@ def test_read_intune_groups_skips_user_groups_and_keeps_device_members() -> None
     assert read.members == {"g-dev": ["md-1"]}
 
 
+def test_read_intune_groups_name_filter_matches_a_substring() -> None:
+    """Review P3 on #1627: "name contains" like the other sources, not a Graph startswith prefix."""
+    client = _Client(
+        [
+            ("/deviceManagement/managedDevices", {"value": [{"id": "md-1", "azureADDeviceId": "AAAA"}]}),
+            ("/groups/g-eu/members", {"value": [{"deviceId": "aaaa"}]}),
+            ("/groups/g-hr/members", {"value": [{"deviceId": "aaaa"}]}),
+            (
+                "/groups?",
+                {
+                    "value": [
+                        {"id": "g-eu", "displayName": "EU-Finance-Laptops"},
+                        {"id": "g-hr", "displayName": "HR desktops"},
+                    ]
+                },
+            ),
+        ]
+    )
+    read = asyncio.run(groups.read_intune_groups("t", {"search": "finance"}, limit=100, client=client))
+    assert read.error is None
+    assert [r["external_id"] for r in read.rows] == ["g-eu"]
+    groups_url = next(url for _m, url, _k in client.calls if "/groups?" in url)
+    assert "startswith" not in groups_url
+
+
 def test_read_intune_groups_names_the_permission_on_403() -> None:
     client = _Client([("/deviceManagement/managedDevices", _Resp(403, {}))])
     read = asyncio.run(groups.read_intune_groups("t", {}, limit=100, client=client))
