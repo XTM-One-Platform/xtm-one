@@ -7502,9 +7502,7 @@ INHERITED_TEMPLATE_PICKS_KEY = "inherited_template_picks"
 _TEMPLATE_ORIGINS = (TEMPLATE_ORIGIN_OWN, TEMPLATE_ORIGIN_COMPANY_FALLBACK)
 
 
-def template_picks(
-    effective_bindings: dict[str, str], binding_origin_map: dict[str, str]
-) -> dict[str, str]:
+def template_picks(effective_bindings: dict[str, str], binding_origin_map: dict[str, str]) -> dict[str, str]:
     """The providers a run bound through a per-user (template) binding, with the row each resolved to."""
     return {
         provider: str(integration_id)
@@ -7520,9 +7518,7 @@ def inherited_template_picks(value: object) -> dict[str, str]:
     return {k: v for k, v in value.items() if isinstance(k, str) and isinstance(v, str) and k and v}
 
 
-def inherited_template_candidate(
-    candidates: list[Integration], inherited_id: str | None
-) -> Integration | None:
+def inherited_template_candidate(candidates: list[Integration], inherited_id: str | None) -> Integration | None:
     """The candidate the spawning run picked, when the child may use it too.
 
     Only a row already in *candidates* (the child's own eligible set, foreign
@@ -7568,9 +7564,7 @@ async def resolve_template_integration(
 
     inherited = inherited_template_candidate(candidates, inherited_id)
     if inherited is not None:
-        return classify_template_pick(
-            inherited, acting_user_id, provider=provider, context=context
-        )
+        return classify_template_pick(inherited, acting_user_id, provider=provider, context=context)
     integ = await resolve_integration_by_scope(
         db, provider, candidates, scope_headers, acting_user_id=acting_user_id
     )
