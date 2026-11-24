@@ -21282,7 +21282,7 @@
   "The trigger paths that start the exposure management loop, by lens, with the sources that feed each one on this platform and whether they are connected.": "The trigger paths that start the exposure management loop, by lens, with the sources that feed each one on this platform and whether they are connected.",
   "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.",
   "About the knowledge and sources": "About the knowledge and sources",
-  "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the primary assets and PIRs.": "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the primary assets and PIRs.",
+  "The procedures and reference documents agents search, and the organization context they preload.": "The procedures and reference documents agents search, and the organization context they preload.",
   "Work item decision": "Work item decision",
   "What to decide": "What to decide",
   "No waiting decision matches the search and filters.": "No waiting decision matches the search and filters.",
@@ -21678,7 +21678,7 @@
   "No review decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case, or an analyst sets the review label on the Grouping in OpenCTI.": "No review decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case, or an analyst sets the review label on the Grouping in OpenCTI.",
   "No validation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.": "No validation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.",
   "No remediation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.": "No remediation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.",
-  "Platform Health specialists": "Platform Health specialists",
-  "Platform Health's internal tools: diagnosis, experiments, sandbox, Flow Lab, memory and module checks": "Platform Health's internal tools: diagnosis, experiments, sandbox, Flow Lab, memory and module checks",
-  "The tools Platform Health's own specialists work with: quality diagnosis, experiments and evaluations on sandbox copies, the Flow Lab, memory consolidation, module checks and improvement proposals. Carried by the Platform Health fleet's agents alone, each scoped to the functions it uses; never offered on the Tools page, in an agent's configuration or in a chat. Every write refuses anyone but Platform Health.": "The tools Platform Health's own specialists work with: quality diagnosis, experiments and evaluations on sandbox copies, the Flow Lab, memory consolidation, module checks and improvement proposals. Carried by the Platform Health fleet's agents alone, each scoped to the functions it uses; never offered on the Tools page, in an agent's configuration or in a chat. Every write refuses anyone but Platform Health."
+  "PIR sources": "PIR sources",
+  "The OpenCTI imports and syncs that keep the PIR list up to date.": "The OpenCTI imports and syncs that keep the PIR list up to date.",
+  "Wait for the prioritization policy to be saved.": "Wait for the prioritization policy to be saved."
 }

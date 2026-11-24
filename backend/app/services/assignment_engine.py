@@ -6823,7 +6823,7 @@ async def execute_assignment_run(
                 composite.add_tools(pi_defs, pi_exec)
 
             # --- Memory Steward (#8258): refused to anyone but Platform Health ---
-            if "health_specialists" in agent_builtin_tool_ids:
+            if "memory_steward" in agent_builtin_tool_ids:
                 from app.services.builtin_tools import build_memory_steward_tools
 
                 # The run's Platform Health cycle pays for the pass's model calls.
@@ -6892,14 +6892,14 @@ async def execute_assignment_run(
 
             # --- Platform Health sandbox (#8255): a Platform Health run has no user of its
             # own; the tools apply their own rule (Platform Health or an admin).
-            if "health_specialists" in agent_builtin_tool_ids:
+            if "health_sandbox" in agent_builtin_tool_ids:
                 from app.services.health.sandbox.tools import build_sandbox_tools
 
                 composite.add_tools(
                     *build_sandbox_tools(db, str(effective_user_id) if effective_user_id else None)
                 )
             # --- Platform Health evaluation (#8257): the same rule, the tools' own.
-            if "health_specialists" in agent_builtin_tool_ids:
+            if "health_evaluation" in agent_builtin_tool_ids:
                 from app.services.health.evaluation_tools import build_health_evaluation_tools
 
                 composite.add_tools(
@@ -6907,7 +6907,7 @@ async def execute_assignment_run(
                         db, str(effective_user_id) if effective_user_id else None, run_id=str(run.id)
                     )
                 )
-            if "health_specialists" in agent_builtin_tool_ids:
+            if "improvement_proposals" in agent_builtin_tool_ids:
                 from app.services.builtin_tools.improvements import build_improvement_tools
 
                 composite.add_tools(
@@ -6943,9 +6943,10 @@ async def execute_assignment_run(
             )
             if agent.handover_agent_ids:
                 try:
-                    from app.api.v1.helpers import (
-                        get_user_group_ids,
-                        user_visible_filter,
+                    from app.api.v1.helpers import get_user_group_ids
+                    from app.services.fleets import (
+                        configured_handover_reach,
+                        handover_peer_clause,
                     )
 
                     h_uuids = [_uuid.UUID(h) for h in agent.handover_agent_ids if h]
@@ -6954,11 +6955,15 @@ async def execute_assignment_run(
                         if run.user_id:
                             _user_group_ids = await get_user_group_ids(db, run.user_id)
 
+                        # The configured handover is the grant, the exposure
+                        # rule kept: a peer the run's person may not open is
+                        # still reached through the tool of its type.
+                        _granted = await configured_handover_reach(db, agent.id, h_uuids) if run.user_id else set()
                         _ho_query = (
                             select(Agent)
                             .where(Agent.id.in_(h_uuids), Agent.enabled.is_(True))
                             .where(
-                                user_visible_filter(Agent, run.user_id, _user_group_ids)
+                                handover_peer_clause(run.user_id, _user_group_ids, _granted)
                             )
                         )
                         from app.services.fleet_runs import active_handover_target_clause
