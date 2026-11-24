@@ -54,6 +54,13 @@ class CaseRuleError(ValueError):
     """A transition or an edit the state rules refuse; the message says why."""
 
 
+#: The outcome OpenCTI gives one installed version of an issue (#1783).
+VERSION_AFFECTED = "affected"
+VERSION_NOT_AFFECTED = "not_affected"
+#: No Software of that version in OpenCTI: "version not known to OpenCTI".
+VERSION_UNKNOWN = "unknown"
+
+
 @dataclass(frozen=True)
 class SourceIssue:
     """One open issue read from OpenCTI or OpenAEV, normalized."""
@@ -83,8 +90,10 @@ class SourceIssue:
     fixed_by: str | None = None
     #: ``((platform, version), ...)`` when the remediating Software names its platform (#1572), else ``()``.
     fixed_versions: tuple[tuple[str, str], ...] = ()
-    #: With a declared version: whether OpenCTI holds a Software of it (#928); ``None`` when none is declared.
+    #: With installed versions: whether OpenCTI holds a Software of one of them (#928); ``None`` when none is known.
     declared_version_known: bool | None = None
+    #: ``((version, outcome), ...)``: each installed version and what OpenCTI says of it (#1783), else ``()``.
+    version_outcomes: tuple[tuple[str, str], ...] = ()
     #: OpenAEV finding lifecycle (CTEM-14-UI): ``open``, ``not_reproduced`` or ``resolved``;
     #: ``None`` when the source does not carry it (OpenCTI, an OpenAEV older than the lifecycle).
     retest_status: str | None = None
@@ -170,6 +179,11 @@ class Grouping:
     not_affected: list[SourceIssue] = field(default_factory=list)
 
 
+def _versions_known(issue: SourceIssue) -> bool:
+    """Whether the issue's installed version, or its installed versions (#1783), are known."""
+    return bool(issue.installed_version or issue.version_outcomes)
+
+
 def _fold_upgrades(issues: list[SourceIssue]) -> list[SourceIssue]:
     """One target per product when the profile declares its installed version (CTEM-11).
 
@@ -179,7 +193,7 @@ def _fold_upgrades(issues: list[SourceIssue]) -> list[SourceIssue]:
     """
     targets: dict[tuple[str, str], list[str]] = {}
     for issue in issues:
-        if issue.course_of_action_id or not (issue.product or "").strip() or not issue.installed_version:
+        if issue.course_of_action_id or not (issue.product or "").strip() or not _versions_known(issue):
             continue
         if issue.fixed_version:
             targets.setdefault((_norm(issue.vendor), _norm(issue.product)), []).append(issue.fixed_version.strip())
@@ -187,7 +201,7 @@ def _fold_upgrades(issues: list[SourceIssue]) -> list[SourceIssue]:
     # The per-platform fixes fold the same way (#1572); one member without them makes the fold generic.
     per_platform: dict[tuple[str, str], list[dict[str, str]]] = {}
     for issue in issues:
-        if issue.course_of_action_id or not (issue.product or "").strip() or not issue.installed_version:
+        if issue.course_of_action_id or not (issue.product or "").strip() or not _versions_known(issue):
             continue
         if issue.fixed_version:
             per_platform.setdefault((_norm(issue.vendor), _norm(issue.product)), []).append(dict(issue.fixed_versions))
@@ -196,7 +210,7 @@ def _fold_upgrades(issues: list[SourceIssue]) -> list[SourceIssue]:
     for issue in issues:
         key = (_norm(issue.vendor), _norm(issue.product))
         fixed = target.get(key)
-        if fixed and issue.installed_version and issue.fixed_version and not issue.course_of_action_id:
+        if fixed and _versions_known(issue) and issue.fixed_version and not issue.course_of_action_id:
             issue = replace(issue, fixed_version=fixed, fixed_versions=platform_target.get(key, ()))
         out.append(issue)
     return out

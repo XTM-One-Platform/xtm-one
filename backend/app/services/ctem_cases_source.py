@@ -43,6 +43,7 @@ from app.integrations.providers.opencti.capabilities import attach_probe
 from app.services import ctem_cases as rules
 from app.services import ctem_cases_store as store
 from app.services import ctem_fixed_version as fixed_versions
+from app.services.ctem_cases import VERSION_AFFECTED, VERSION_NOT_AFFECTED, VERSION_UNKNOWN
 from app.services.ctem_metrics_collector import (
     _AEV_VALIDATION_WINDOW_DAYS,
     _STACK_SOFTWARE_CAP,
@@ -165,9 +166,28 @@ def _when(value: Any) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
+def _installed_versions(entry: dict[str, Any]) -> list[str]:
+    """The known installed versions of a stack entry: ``versions`` (#1783), else its one ``version``."""
+    versions = [str(v).strip() for v in entry.get("versions") or () if str(v or "").strip()]
+    single = (entry.get("version") or "").strip()
+    if single and single not in versions:
+        versions.insert(0, single)
+    return list(dict.fromkeys(versions))
+
+
+def _highest(versions: list[str]) -> str | None:
+    """The highest of *versions* that compare, else the first one (pure)."""
+    if not versions:
+        return None
+    comparable = [v for v in versions if fixed_versions.parse_version(v) is not None]
+    if not comparable:
+        return versions[0]
+    return max(comparable, key=lambda v: fixed_versions.parse_version(v) or ())
+
+
 def opencti_issues(
     software: list[dict[str, Any]],
-    stack: list[dict[str, str]],
+    stack: list[dict[str, Any]],
     relations: list[dict[str, Any]],
     remediations: list[dict[str, Any]],
     fixes: list[dict[str, Any]] | None = None,
@@ -189,23 +209,32 @@ def opencti_issues(
       platform (``fixed_versions``, #1572);
     - with a declared version whose Software node exists, a vulnerability that
       node has no ``has`` to is not affected; when no Software of that version
-      exists the issue is kept and says ``version not known to OpenCTI``.
+      exists the issue is kept and says ``version not known to OpenCTI``;
+    - every installed version is checked the same way (#1783): the issue
+      carries one outcome per version (``version_outcomes``: ``affected``,
+      ``not_affected`` or ``unknown``); it is not affected only when every
+      installed version is, and the fix is searched above the highest version
+      still exposed. No range is computed here: the outcome is OpenCTI's.
     """
     entry_by_label = {e["label"]: e for e in stack}
-    product_of: dict[str, dict[str, str]] = {}
-    declared_ids: dict[str, set[str]] = {}
+    product_of: dict[str, dict[str, Any]] = {}
+    # The OpenCTI Software ids of each installed version, per stack entry.
+    version_ids: dict[tuple[str, str], set[str]] = {}
     for node in software:
         label = _stack_matches(node, stack)
         if not label or not node.get("id"):
             continue
         entry = entry_by_label[label]
         product_of[node["id"]] = entry
-        declared = (entry.get("version") or "").strip()
-        if declared and (
-            fixed_versions.same_version(node.get("version"), declared)
-            or (entry.get("cpe") and (node.get("cpe") or "").strip().lower() == entry["cpe"].lower())
-        ):
-            declared_ids.setdefault(label, set()).add(node["id"])
+        versions = _installed_versions(entry)
+        for version in versions:
+            # A CPE match names the version only when one version runs (the CPE carries no version of its own).
+            if fixed_versions.same_version(node.get("version"), version) or (
+                len(versions) == 1
+                and entry.get("cpe")
+                and (node.get("cpe") or "").strip().lower() == entry["cpe"].lower()
+            ):
+                version_ids.setdefault((label, version), set()).add(node["id"])
     coa_of: dict[str, tuple[str, str]] = {}
     for rel in remediations:
         coa = rel.get("from") or {}
@@ -254,19 +283,30 @@ def opencti_issues(
         vuln, entry = vuln_of[vuln_id], entry_by_label[label]
         name = (vuln.get("name") or "").strip() or vuln_id
         coa = coa_of.get(vuln_id)
-        installed = (entry.get("version") or "").strip() or None
+        versions = _installed_versions(entry)
+        installed = versions[0] if len(versions) == 1 else None
+        outcomes: list[tuple[str, str]] = []
+        for version in versions:
+            ids = version_ids.get((label, version), set())
+            if not ids:
+                outcomes.append((version, VERSION_UNKNOWN))
+            elif holders[(vuln_id, label)] & ids:
+                outcomes.append((version, VERSION_AFFECTED))
+            else:
+                outcomes.append((version, VERSION_NOT_AFFECTED))
         not_affected: str | None = None
         notes: list[str] = []
-        if installed:
-            on_declared = declared_ids.get(label, set())
-            if not on_declared:
-                notes.append(f"{fixed_versions.VERSION_NOT_KNOWN}: {installed}")
-            elif not holders[(vuln_id, label)] & on_declared:
-                not_affected = (
-                    f"{fixed_versions.NOT_AFFECTED_PREFIX} {installed} has no 'has' relation to {name} in OpenCTI"
-                )
-        fixed = fixed_versions.smallest_fix_above(fixed_of.get((vuln_id, label), ()), installed)
-        per_platform = fixed_versions.fixes_by_platform(platform_fixes.get((vuln_id, label), ()), installed)
+        unknown = [v for v, o in outcomes if o == VERSION_UNKNOWN]
+        if unknown:
+            notes.append(f"{fixed_versions.VERSION_NOT_KNOWN}: {', '.join(unknown)}")
+        elif outcomes and all(o == VERSION_NOT_AFFECTED for _v, o in outcomes):
+            not_affected = (
+                f"{fixed_versions.NOT_AFFECTED_PREFIX} {', '.join(versions)} has no 'has' relation to {name} in OpenCTI"
+            )
+        # The fix must cover the highest version still exposed (affected, or unknown to OpenCTI).
+        exposed = _highest([v for v, o in outcomes if o != VERSION_NOT_AFFECTED])
+        fixed = fixed_versions.smallest_fix_above(fixed_of.get((vuln_id, label), ()), exposed)
+        per_platform = fixed_versions.fixes_by_platform(platform_fixes.get((vuln_id, label), ()), exposed)
         fixed_by = fixed_name.get((vuln_id, label, fixed)) if fixed else None
         if fixed is None:
             fixed = fixed_versions.version_from_course_of_action(coa[1] if coa else None)
@@ -293,7 +333,8 @@ def opencti_issues(
                 version_note="; ".join(notes) or None,
                 fixed_by=fixed_by,
                 fixed_versions=tuple(sorted(per_platform.items())) if fixed and fixed_by else (),
-                declared_version_known=bool(declared_ids.get(label)) if installed else None,
+                declared_version_known=any(o != VERSION_UNKNOWN for _v, o in outcomes) if outcomes else None,
+                version_outcomes=tuple(outcomes),
             )
         )
     return out
@@ -349,7 +390,7 @@ async def _read_opencti(
     client: httpx.AsyncClient,
     base_url: str,
     headers: dict[str, str],
-    stack: list[dict[str, str]],
+    stack: list[dict[str, Any]],
 ) -> list[rules.SourceIssue] | None:
     """The open OpenCTI issues of *stack*, read with the caller's own *headers* (never a system token)."""
     cpes = sorted({e["cpe"] for e in stack if e["cpe"]})
