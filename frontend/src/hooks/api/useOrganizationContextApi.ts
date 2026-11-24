@@ -311,6 +311,28 @@ export function useSaveOrganizationContext() {
   });
 }
 
+interface PatchOrganizationContextBody {
+  /** Top-level profile fields to set; every other field is kept as stored. Never the asset rows (#1738). */
+  fields: Partial<Omit<OrganizationProfile, "assets_exposure" | "asset_groups">>;
+  based_on_version?: number | null;
+}
+
+/**
+ * Save some top-level fields of the profile (#1738): a settings card sends its own fields alone,
+ * so a synced asset row a sync moved since the last version never blocks the save. The card's
+ * own error toast is the only one shown.
+ */
+export function usePatchOrganizationContext() {
+  const qc = useQueryClient();
+  return useMutation<OrganizationContextResponse, Error, PatchOrganizationContextBody>({
+    mutationFn: (body) => api.patch("/organization-context", body),
+    meta: { suppressGlobalErrorToast: true },
+    onSuccess: (saved) => {
+      qc.setQueryData(KEY, saved);
+    },
+  });
+}
+
 /** One per-field proposal of "Draft with AI" (#9484): nothing is saved until it is accepted. */
 export interface AiDraftProposal {
   /** A contract path, such as "tech_stack" or "risk_appetite.approval_threshold". */

@@ -73,6 +73,14 @@ class SaveOrganizationContextRequest(BaseModel):
     based_on_version: int | None = None
 
 
+class PatchOrganizationContextRequest(BaseModel):
+    #: Top-level profile fields to set (#1738), every other field kept as stored. The asset rows
+    #: (``assets_exposure``, ``asset_groups``) are never sent: the row API owns them.
+    fields: dict[str, Any]
+    #: The version the fields were edited from: another version saved since answers 409, nothing saved.
+    based_on_version: int | None = None
+
+
 class RestoreOrganizationContextRequest(BaseModel):
     #: The profile fields to take from the past version (e.g. ``crown_jewels``); empty: every field.
     fields: list[str] = []
@@ -308,6 +316,73 @@ async def _checked_profile(
     return await name_saved_pirs(db, user_id=admin.id, profile=profile)
 
 
+async def _lock_base(db: AsyncSession, current: OrganizationContextVersion | None) -> dict[str, Any] | None:
+    """The profile a hand save is judged against: the one ``GET`` answered (#1738), ``None`` before the first save.
+
+    Once the asset records are imported (#1543) the asset and group rows come
+    from the records, where a sync writes its fresh values (``last_seen``):
+    judging the submitted rows against the stored version JSON refused a save
+    that never touched them.
+    """
+    if current is None:
+        return None
+    if getattr(current, "organization_id", None) is None:
+        return org_context.parse_profile(current.profile).model_dump(mode="json")
+    return (await org_context.hydrated_profile(db, current)).model_dump(mode="json")
+
+
+#: The fields a ``PATCH`` never sets: the asset and group rows have their own API since #1543.
+_ROW_FIELDS: frozenset[str] = frozenset({"assets_exposure", "asset_groups"})
+
+
+@router.patch("", response_model=OrganizationContextResponse)
+async def patch_organization_context(
+    body: PatchOrganizationContextRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> OrganizationContextResponse:
+    """Save the next version with *body.fields* set, every other field as stored (administrators, #1738).
+
+    A settings card that edits the owned domains, the outside lens or the
+    policy sends its fields alone: no asset row travels, so a synced row a
+    sync moved since the last version never blocks it. 422 names an unknown
+    field, a row field or a bad value; 409 a stale ``based_on_version``.
+    """
+    known = set(org_context.OrganizationProfile.model_fields)
+    rows = sorted(_ROW_FIELDS & set(body.fields))
+    if rows:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{', '.join(rows)}: change the asset rows from the Inventory, not with a profile patch",
+        )
+    unknown = sorted(set(body.fields) - known)
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"not a field of the organization profile: {', '.join(unknown)}")
+    current = await org_context.current_version(db)
+    _stale_base(body.based_on_version, current)
+    stored = org_context.parse_profile(current.profile if current else {}).model_dump(mode="json")
+    try:
+        profile = org_context.parse_profile({**stored, **body.fields})
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    # The asset lists are the stored ones, unchanged: the lock judges the patched sections only.
+    profile = await _checked_profile(db, admin, stored if current is not None else None, profile)
+    try:
+        row = await org_context.save_version(db, profile, source="form", author_user_id=admin.id)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409, detail="Another version was saved at the same time. Reload and save again."
+        ) from None
+    await db.refresh(row)
+    return _response(
+        row,
+        org_context.removed_rows(stored, profile.model_dump(mode="json")),
+        profile=await org_context.hydrated_profile(db, row) if getattr(row, "organization_id", None) else None,
+    )
+
+
 @router.put("", response_model=OrganizationContextResponse)
 async def save_organization_context(
     body: SaveOrganizationContextRequest,
@@ -332,7 +407,7 @@ async def save_organization_context(
         raise HTTPException(status_code=422, detail=str(exc)) from None
     current = await org_context.current_version(db)
     _stale_base(body.based_on_version, current)
-    stored = org_context.parse_profile(current.profile).model_dump(mode="json") if current is not None else None
+    stored = await _lock_base(db, current)
     profile = await _checked_profile(db, admin, stored, profile)
     try:
         row = await org_context.save_version(
@@ -384,7 +459,7 @@ async def restore_organization_context_version(
         raise HTTPException(status_code=404, detail=f"Version {version} of the organization profile does not exist.")
     current = await org_context.current_version(db)
     _stale_base(body.based_on_version, current)
-    stored = org_context.parse_profile(current.profile if current else {}).model_dump(mode="json")
+    stored = await _lock_base(db, current) or org_context.parse_profile({}).model_dump(mode="json")
     old = org_context.parse_profile(past.profile).model_dump(mode="json")
     try:
         merged, fields = org_context.restored_profile(stored, old, body.fields)
