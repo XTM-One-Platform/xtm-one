@@ -993,6 +993,41 @@ async def test_get_run_says_a_completed_run_stopped_on_a_limit(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_get_run_names_a_timeout_stop_and_the_run_budget(monkeypatch):
+    """A failed run its timeout stopped says so, with the budget it had and
+    its queue wait read off its execution (#1695)."""
+    wf_id = uuid.uuid4()
+    run = _fake_run(assignment_id=wf_id, status="failed", stop_reason="timeout")
+    monkeypatch.setattr(
+        database,
+        "async_session",
+        _session_factory(
+            [],
+            execute_results=[
+                run,
+                "Mail Desk",
+                "Daily digest",
+                {"start_budget_seconds": 3120.0, "queue_wait_seconds": 42.7},
+            ],
+        ),
+    )
+    _forbid_caller_load(monkeypatch)
+
+    _, executor = build_agent_builder_tool(SimpleNamespace(), str(uuid.uuid4()))
+    result = await _call(executor, "get_run", run_id=str(run.id))
+
+    assert not result.is_error
+    lines = result.content.splitlines()
+    assert "Status: failed" in lines
+    assert "Stopped by: timeout (the run's wall-clock bound fired)" in lines
+    assert (
+        "Budget: 3120s from its start (effective timeout, floor applied, plus grace); "
+        "waited 42s for a worker (not charged)"
+    ) in lines
+    assert "partial result" not in result.content
+
+
+@pytest.mark.asyncio
 async def test_get_run_admin_falls_back_on_visibility_miss(monkeypatch):
     """An admin may open ANY run (REST run-detail contract). The lookup is
     lazy: the visibility-scoped SELECT runs first, and only a miss triggers

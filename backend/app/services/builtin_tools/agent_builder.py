@@ -7655,6 +7655,24 @@ def build_agent_builder_tool(
 
             _org_context_on = await effective_for(_db, agent=agent, assignment=assignment)
 
+            # The run budget the engine applies, floor included, and why (#1695):
+            # the stored value alone hid a raised budget.
+            from app.core.config import settings as _settings
+            from app.services.assignment_engine import (
+                describe_effective_timeout,
+                resolve_run_max_iterations,
+            )
+
+            try:
+                _effective_timeout_display = describe_effective_timeout(
+                    getattr(assignment, "timeout_seconds", 300),
+                    await resolve_run_max_iterations(_db, assignment, agent),
+                    _settings.orchestration_grace_seconds,
+                )
+            except Exception as exc:
+                logger.debug("effective timeout of %s unreadable: %s", assignment.id, exc)
+                _effective_timeout_display = "not readable"
+
             parts = [
                 f"**{assignment.name}**",
                 f"  • ID: `{assignment.id}`",
@@ -7680,6 +7698,7 @@ def build_agent_builder_tool(
                 f"  • Max iterations: {_assignment_max_iterations_display}",
                 f"  • Timeout (seconds): "
                 f"{getattr(assignment, 'timeout_seconds', 300)}",
+                f"  • Effective timeout: {_effective_timeout_display}",
                 f"  • Organization context: "
                 f"{getattr(assignment, 'organization_context_mode', None) or 'inherit'}"
                 f" (effective: {'on' if _org_context_on else 'off'})",
@@ -9003,6 +9022,38 @@ def build_agent_builder_tool(
 
     # ── get_run ───────────────────────────────────────────────────────
 
+    async def _run_budget_line(_db: AsyncSession, run_uuid: uuid.UUID) -> str | None:
+        """``Budget: ...`` of an assignment run, read off its execution payload."""
+        from sqlalchemy import select
+
+        from app.models.orchestration import OrchestrationExecution
+        from app.services.orchestration_engine import (
+            QUEUE_WAIT_PAYLOAD_KEY,
+            START_BUDGET_PAYLOAD_KEY,
+        )
+
+        try:
+            payload = (
+                await _db.execute(
+                    select(OrchestrationExecution.payload).where(
+                        OrchestrationExecution.dedup_key == f"assignment_run:{run_uuid}"
+                    )
+                )
+            ).scalar_one_or_none()
+        except Exception as exc:
+            logger.debug("run %s budget unreadable: %s", run_uuid, exc)
+            return None
+        if not isinstance(payload, dict):
+            return None
+        budget = payload.get(START_BUDGET_PAYLOAD_KEY)
+        if isinstance(budget, bool) or not isinstance(budget, (int, float)):
+            return None
+        line = f"Budget: {int(budget)}s from its start (effective timeout, floor applied, plus grace)"
+        waited = payload.get(QUEUE_WAIT_PAYLOAD_KEY)
+        if isinstance(waited, (int, float)) and not isinstance(waited, bool):
+            line += f"; waited {int(waited)}s for a worker (not charged)"
+        return line
+
     async def _get_run(run_id: str, search: str = "") -> str:
         from sqlalchemy import select
 
@@ -9105,8 +9156,13 @@ def build_agent_builder_tool(
                 f"Status: {run.status}",
                 *(
                     # A completed run that ended on a limit: its
-                    # result is partial, not the finished task.
-                    [f"Stopped before finishing: {run.stop_reason} (partial result)"]
+                    # result is partial, not the finished task. A failed run
+                    # its timeout or deadline stopped names it (#1695).
+                    [
+                        f"Stopped by: {run.stop_reason} (the run's wall-clock bound fired)"
+                        if run.status == "failed"
+                        else f"Stopped before finishing: {run.stop_reason} (partial result)"
+                    ]
                     if run.stop_reason and run.stop_reason != UNREADABLE_STOP_REASON
                     else []
                 ),
@@ -9130,6 +9186,12 @@ def build_agent_builder_tool(
                 if run.started_at:
                     secs = (run.completed_at - run.started_at).total_seconds()
                     parts.append(f"Duration: {secs:.0f}s")
+            if run.assignment_id:
+                # The budget the run had and its queue wait, as its
+                # orchestration execution recorded them (#1695).
+                budget_line = await _run_budget_line(_db, run.id)
+                if budget_line:
+                    parts.append(budget_line)
             from app.services.hitl_resume_clock import awaiting_human_seconds
 
             _paused = awaiting_human_seconds(run)
