@@ -945,53 +945,25 @@ describe("OrganizationSection", () => {
     expect(screen.queryByText("No PIR in OpenCTI")).toBeNull();
   });
 
-  it("names the criticality in words in the OpenCRQ plan, never the raw value", async () => {
-    post.mockResolvedValue({
-      applied: false,
-      plan: {
-        linked: [],
-        pushed_to_opencrq: [{ opencrq_asset_id: "a-1", name: "Payments", criticality: "critical" }],
-        pulled_from_opencrq: [],
-        ambiguous: [],
-        not_in_opencrq: [],
-      },
-      errors: [],
-      version: 3,
-    });
+  it("has no OpenCRQ button on the primary assets card: the OpenCRQ source is run from Inventory > Sources (#1754)", async () => {
     renderPage("business");
-    fireEvent.click(await screen.findByRole("button", { name: /Check against OpenCRQ/ }));
-    // English renders the message ids: the criticality-specific key of the shared map.
-    expect(await screen.findByText("Set Payments to Critical (criticality) in OpenCRQ")).toBeTruthy();
+    await screen.findByTestId("settings.organization.primary-assets");
+    expect(screen.queryByRole("button", { name: /Check against OpenCRQ/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Sync with OpenCRQ now/ })).toBeNull();
+    expect(screen.queryByTestId("settings.organization.primary-assets-source")).toBeNull();
+    expect(post).not.toHaveBeenCalledWith("/organization-context/opencrq-sync", expect.anything());
   });
 
-  it("names an OpenCRQ-only level (very_high) in words on the pushed line", async () => {
-    post.mockResolvedValue({
-      applied: false,
-      plan: {
-        linked: [],
-        pushed_to_opencrq: [{ opencrq_asset_id: "a-3", name: "Ledger", criticality: "very_high" }],
-        pulled_from_opencrq: [],
-        ambiguous: [],
-        not_in_opencrq: [],
-      },
-      errors: [],
-      version: 3,
-    });
-    renderPage("business");
-    fireEvent.click(await screen.findByRole("button", { name: /Check against OpenCRQ/ }));
-    expect(await screen.findByText("Set Ledger to Very high in OpenCRQ")).toBeTruthy();
-    expect(screen.queryByText(/very_high/)).toBeNull();
-  });
-
-  it("runs the OpenCRQ primary assets sync from the card once one exists, instead of a second check (#1134 S2)", async () => {
-    const opencrqSync = { id: "s-crq", section: "crown_jewels", source: "opencrq", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: null, last_result: null };
+  it("names the OpenCRQ source and its last sync on the primary assets card, read from the inventory syncs (#1754)", async () => {
+    const lastRun = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    const opencrqSync = { id: "s-crq", section: "crown_jewels", source: "opencrq", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: lastRun, last_result: { added: 1, updated: 0, removed: 0, version: 4, error: null } };
     const base = get.getMockImplementation();
     get.mockImplementation(async (path: string) => (path.startsWith("/organization-context/syncs") ? [opencrqSync] : base?.(path)));
-    post.mockResolvedValue({ ...opencrqSync, last_result: { added: 0, updated: 1, removed: 0, version: 4, error: null } });
     renderPage("business");
-    fireEvent.click(await screen.findByRole("button", { name: /Sync with OpenCRQ now/ }));
-    await waitFor(() => expect(post).toHaveBeenCalledWith("/organization-context/syncs/s-crq/run", {}));
-    expect(screen.queryByRole("button", { name: /Check against OpenCRQ/ })).toBeNull();
+    const chip = await screen.findByTestId("settings.organization.primary-assets-source");
+    expect(chip.textContent).toMatch(/Synced from OpenCRQ/);
+    expect(get).toHaveBeenCalledWith(expect.stringMatching(/^\/organization-context\/syncs\?.*scope=inventory/));
+    expect(screen.queryByRole("button", { name: /Sync with OpenCRQ now|Check against OpenCRQ/ })).toBeNull();
   });
 
   it("shows the one Sources and syncs table as the last block of the Knowledge and sources tab, each section chip linked to its tab filtered on that source (#1276)", async () => {
@@ -1046,87 +1018,6 @@ describe("OrganizationSection", () => {
     );
     renderPage("business");
     expect(await screen.findByRole("img", { name: "Linked to OpenCRQ" })).toBeTruthy();
-  });
-
-  it("shows the OpenCRQ plan from a dry run, then applies it", async () => {
-    post.mockImplementation(async (_path: string, body: unknown) => ({
-      applied: (body as { apply: boolean }).apply,
-      plan: {
-        linked: [{ crown_jewel: "Payments", opencrq_asset_id: "a-1" }],
-        pushed_to_opencrq: [],
-        pulled_from_opencrq: [{ opencrq_asset_id: "a-2", name: "Ledger" }],
-        ambiguous: [],
-        not_in_opencrq: [],
-      },
-      errors: [],
-      version: 3,
-    }));
-    renderPage("business");
-    fireEvent.click(await screen.findByRole("button", { name: /Check against OpenCRQ/ }));
-    expect(await screen.findByText("Link Payments to its OpenCRQ asset")).toBeTruthy();
-    expect(screen.getByText("Add Ledger from OpenCRQ as a primary asset")).toBeTruthy();
-    expect(post).toHaveBeenCalledWith("/organization-context/opencrq-sync", { apply: false });
-    fireEvent.click(screen.getByRole("button", { name: /Apply/ }));
-    await waitFor(() => expect(post).toHaveBeenCalledWith("/organization-context/opencrq-sync", { apply: true }));
-  });
-
-  it("proposes the import for an empty profile and never says the two agree while in_sync is false (#1134 S2)", async () => {
-    post.mockResolvedValue({
-      applied: false,
-      plan: {
-        linked: [],
-        pushed_to_opencrq: [],
-        pulled_from_opencrq: [{ opencrq_asset_id: "a-9", name: "Billing" }],
-        ambiguous: [],
-        not_in_opencrq: [],
-        in_sync: false,
-      },
-      errors: [],
-      version: null,
-    });
-    renderPage("business");
-    fireEvent.click(await screen.findByRole("button", { name: /Check against OpenCRQ/ }));
-    expect(await screen.findByText("Add Billing from OpenCRQ as a primary asset")).toBeTruthy();
-    expect(screen.queryByText("The primary assets and OpenCRQ already agree.")).toBeNull();
-    expect(screen.getByRole("button", { name: /Apply/ })).toBeTruthy();
-  });
-
-  it("says no OpenCRQ asset reaches the threshold, with the counts, instead of already agree (#1558)", async () => {
-    const base = get.getMockImplementation()!;
-    get.mockImplementation(async (path: string) =>
-      path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, crown_jewels: [] } } : base(path),
-    );
-    post.mockImplementation(async (_path: string, body: unknown) => {
-      const level = (body as { min_criticality?: string }).min_criticality ?? "high";
-      return {
-        applied: false,
-        plan: {
-          linked: [],
-          pushed_to_opencrq: [],
-          pulled_from_opencrq: level === "medium" ? [{ opencrq_asset_id: "a-5", name: "CRM" }] : [],
-          ambiguous: [],
-          not_in_opencrq: [],
-          in_sync: level !== "medium",
-          min_criticality: level,
-          assets_read: 1751,
-          by_criticality: { unknown: 1750, medium: 1 },
-        },
-        errors: [],
-        version: null,
-      };
-    });
-    renderPage("business");
-    fireEvent.click(await screen.findByRole("button", { name: /Check against OpenCRQ/ }));
-    const none = await screen.findByTestId("settings.organization.opencrq-none-rated");
-    expect(none.textContent).toContain("No OpenCRQ supporting asset is rated High or above: 1,751 assets read.");
-    expect(none.textContent).toContain("1,750 unrated, 1 medium");
-    expect(screen.queryByText("The primary assets and OpenCRQ already agree.")).toBeNull();
-    expect(post).toHaveBeenCalledWith("/organization-context/opencrq-sync", { apply: false });
-    // Picking medium re-runs the check at that threshold, and the plan proposes the medium asset.
-    fireEvent.click(screen.getByTestId("settings.organization.opencrq-threshold"));
-    fireEvent.click(await screen.findByRole("option", { name: "Medium or above" }));
-    await waitFor(() => expect(post).toHaveBeenLastCalledWith("/organization-context/opencrq-sync", { apply: false, min_criticality: "medium" }));
-    expect(await screen.findByText("Add CRM from OpenCRQ as a primary asset")).toBeTruthy();
   });
 
   it("restores the primary assets of a past version alone, from the version it starts from (#1558)", async () => {
@@ -1341,27 +1232,6 @@ describe("OrganizationSection", () => {
     });
     renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     expect(await screen.findByText(/Version 3, saved .* from a draft of the platforms/)).toBeTruthy();
-  });
-
-  it("closes the OpenCRQ plan when Edit starts, so Apply never runs under a stale form", async () => {
-    post.mockResolvedValue({
-      applied: false,
-      plan: {
-        linked: [{ crown_jewel: "Payments", opencrq_asset_id: "a-1" }],
-        pushed_to_opencrq: [],
-        pulled_from_opencrq: [],
-        ambiguous: [],
-        not_in_opencrq: [],
-      },
-      errors: [],
-      version: 3,
-    });
-    renderPage("business");
-    fireEvent.click(await screen.findByRole("button", { name: /Check against OpenCRQ/ }));
-    expect(await screen.findByTestId("settings.organization.opencrq-plan")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /^Edit Primary assets/ }));
-    await waitFor(() => expect(screen.queryByTestId("settings.organization.opencrq-plan")).toBeNull());
-    expect(screen.queryByRole("button", { name: /Apply/ })).toBeNull();
   });
 
   describe("Draft with AI (#9484, S-b)", () => {
