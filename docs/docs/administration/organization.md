@@ -13,11 +13,9 @@ By default, every agent also starts each chat and each run with a short block: t
 | Category | In the prompt | Read with the tool |
 |---|---|---|
 | Identity (name, sector, regions, size, risk appetite, currency) | Always, in the short block | The whole profile |
-| `primary_assets`, `software`, `shipped_products`, `ai_systems`, `pirs`, `assets_exposure`, `tracked_organizations` | Their size, in the short block; their rows only when preloaded | `category`, filtered by `query`, paged by `offset` and `limit` (up to 200 rows a page), so a list of any length is read whole |
+| `crown_jewels`, `tech_stack`, `shipped_products`, `ai_systems`, `pirs`, `assets_exposure`, `tracked_organizations` | Their size, in the short block; their rows only when preloaded | `category`, filtered by `query`, paged by `offset` and `limit` (up to 200 rows a page), so a list of any length is read whole |
 | `prioritization_policy` | Its number of rules, in the short block; the rules only when preloaded | One row per threshold you set, per exclusion and per accepted risk |
 | `enterprise_knowledge` | Its number of linked knowledge bases, never the content | Without `query`, the linked knowledge bases; with `query`, the passages that answer it, only from the knowledge bases the person the agent acts for can read |
-
-`crown_jewels` and `tech_stack`, the former names of `primary_assets` and `software`, are still read for one release; a saved selection naming them was renamed on upgrade.
 
 The short block stays the same size whatever the length of the lists. An agent asked about a vulnerability reads the tech stack page by page, or narrows it to a vendor or a product with `query`.
 
@@ -55,6 +53,9 @@ Reading the profile needs nothing. Changing it is the **Organization Profile Edi
 - `update_organization_context` saves field changes at once, on your profile or a tracked organization's: the whole new value of each field with its basis. Each value is validated like this form. The change is a new saved version authored by the administrator the agent acts for, the agent's name and the basis kept per field, so **Saved versions** below can roll it back. Each save writes an audit log entry.
 - `propose_organization_context_change` records a proposal an administrator accepts or rejects here instead.
 - `list_organization_proposals` and `decide_organization_proposal` read the proposals and accept or reject a pending one, as the review on this page does: `accept` names the fields or organizations kept, an empty list rejects it (a proposal already applied with `update_organization_context`, for example). A decided proposal is refused, and each decision writes an audit log entry.
+- `list_organization_versions` lists the saved versions of the profile, newest first, with their source, author and crown jewel count; with `version` it reads that version's whole profile. `restore_organization_version` saves the next version with some fields (or every field) taken from a past one, with the same checks as the restore on this page, and answers the rows it drops; each restore writes an audit log entry.
+- `update_organization_context` and `restore_organization_version` take `based_on_version`, the version the agent read: when another version was saved since, nothing is saved and the agent is told to read the profile again.
+- `reconcile_organization_with_opencrq` runs the crown-jewel reconcile with OpenCRQ of this page: `apply` false (the default) answers the plan, `apply` true saves a version of the profile. Nothing is written to OpenCRQ: the assets read are its primary assets.
 - `upsert_organization_rows` adds or updates rows of one section without resending the list. Assets and asset groups are keyed on the source the rows come from and their `external_id` there; a row a person wrote (source `manual`, `csv` or `api`) is never updated or removed, and a field the source does not send (owner, environment, group) keeps the value a person set. Tech stack products and AI systems are added when their name is new and never overwritten. Rows are validated like the CSV import; a bad row is refused with its reason and the others go on. At most 500 rows per call.
 - `remove_organization_rows` removes the assets or asset groups a source synced, by `external_id` (a device retired from the source).
 - `run_organization_import` runs the import of [Draft the profile from your platforms](#draft-the-profile-from-your-platforms) for one section and one platform, with the same rules.

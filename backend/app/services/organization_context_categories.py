@@ -51,7 +51,8 @@ _NOT_CATEGORIES: frozenset[str] = frozenset({"regions", "onboarding_skipped", "f
 #: The category read from the tracked organizations, not from the profile.
 TRACKED_ORGANIZATIONS = "tracked_organizations"
 #: Object fields of the profile read as a category, one row per explicit rule (#11543).
-_OBJECT_CATEGORIES: tuple[str, ...] = ("prioritization_policy",)
+#: ``attack_surface`` (CTEM-26) is one row, its settings, once any differs from the default (#1691).
+_OBJECT_CATEGORIES: tuple[str, ...] = ("prioritization_policy", "attack_surface")
 #: The category answered with the linked knowledge bases and their passages (#11543).
 ENTERPRISE_KNOWLEDGE = "enterprise_knowledge"
 #: Labels of the fields that are not contract fields (``CONTRACT_FIELDS`` names the others).
@@ -60,6 +61,7 @@ _LABELS: dict[str, str] = {
     "asset_groups": "asset groups",
     "shipped_products": "shipped products",
     "prioritization_policy": "prioritization policy",
+    "attack_surface": "attack surface pass: enabled, provider integrations, cadence",
     "tech_stack": "software: vendor, product, type, versions, CPE, asset count",
     ENTERPRISE_KNOWLEDGE: "procedures and reference documents, read by query",
 }
@@ -85,21 +87,11 @@ SOFTWARE_FIELD = "tech_stack"
 SOFTWARE = "software"
 #: Deprecated since #1495 (kept one release): ``tech_stack`` answers the ``software`` category.
 TECH_STACK_ALIAS = "tech_stack"
-#: The profile field the primary assets are stored under (#1591: OpenCRQ's primary assets, the stored key kept).
-PRIMARY_ASSETS_FIELD = "crown_jewels"
-#: The category of the organization's primary assets (#1591), in OpenCRQ's words.
-PRIMARY_ASSETS = "primary_assets"
-#: Deprecated since #1591 (kept one release): ``crown_jewels`` answers the ``primary_assets`` category.
-CROWN_JEWELS_ALIAS = "crown_jewels"
-#: Each deprecated category name, to the category it answers.
-CATEGORY_ALIASES: dict[str, str] = {TECH_STACK_ALIAS: SOFTWARE, CROWN_JEWELS_ALIAS: PRIMARY_ASSETS}
 
 
 def _category_name(field: str) -> str:
     if field == SOFTWARE_FIELD:
         return SOFTWARE
-    if field == PRIMARY_ASSETS_FIELD:
-        return PRIMARY_ASSETS
     # ``pir_ids`` is read as ``pirs``: a category names what it lists.
     return field[: -len("_ids")] + "s" if field.endswith("_ids") else field
 
@@ -128,9 +120,9 @@ AI_SYSTEMS_ALIAS = Category(
 
 
 def canonical_name(name: object) -> str:
-    """*name* lower-cased, a deprecated alias read as the category it answers (``crown_jewels`` -> ``primary_assets``)."""
+    """*name* lower-cased, a deprecated alias read as the category it answers (``tech_stack`` -> ``software``)."""
     wanted = str(name or "").strip().lower()
-    return CATEGORY_ALIASES.get(wanted, wanted)
+    return SOFTWARE if wanted == TECH_STACK_ALIAS else wanted
 
 
 def get(name: str) -> Category | None:
@@ -203,6 +195,8 @@ def rows_of(profile: OrganizationProfile, category: Category) -> list[Any]:
     """The rows of a profile category, as JSON values."""
     if category.field == "prioritization_policy":
         return policy_rows(profile)
+    if category.field == "attack_surface":
+        return attack_surface_rows(profile)
     values = getattr(profile, category.field, None) or []
     if category is AI_SYSTEMS_ALIAS:
         values = [v for v in values if getattr(v, "category", "") == "ai_target"]
@@ -231,6 +225,14 @@ def policy_rows(profile: OrganizationProfile) -> list[dict[str, Any]]:
     return rows
 
 
+def attack_surface_rows(profile: OrganizationProfile) -> list[dict[str, Any]]:
+    """The attack surface pass as one row of its settings; none while every setting is the default (#1691)."""
+    from app.services.organization_context import AttackSurfacePass
+
+    surface = profile.attack_surface
+    return [] if surface == AttackSurfacePass() else [surface.model_dump(mode="json")]
+
+
 def tracked_rows(organizations: list[Any]) -> list[dict[str, Any]]:
     return [
         {
@@ -256,7 +258,7 @@ def matches(row: Any, query: str) -> bool:
 
 #: Categories the index names only once filled (#1432): most organizations ship nothing, and the
 #: basic block keeps its size for every profile that does not fill them.
-OPTIONAL_CATEGORIES: frozenset[str] = frozenset({"shipped_products"})
+OPTIONAL_CATEGORIES: frozenset[str] = frozenset({"shipped_products", "attack_surface"})
 
 
 def indexed(category: Category, count: int) -> bool:
