@@ -405,6 +405,35 @@ const MAPPINGS: Record<string, { fields: ProfileField[]; rows: MappingRow[] }> =
     ],
   },
   "asset_groups:openaev": { fields: ["name", "external_id"], rows: [{ to: "name", from: ["asset_group_name"] }, { to: "external_id", from: ["asset_group_id"] }] },
+  // #1556: the groups of the endpoint sources, their members kept in sync at each run.
+  "asset_groups:intune": {
+    fields: ["name", "external_id"],
+    rows: [
+      { to: "name", from: ["displayName"] },
+      { to: "external_id", from: ["id"] },
+    ],
+  },
+  "asset_groups:tanium": {
+    fields: ["name", "external_id"],
+    rows: [
+      { to: "name", from: ["name"] },
+      { to: "external_id", from: ["id"] },
+    ],
+  },
+  "asset_groups:crowdstrike": {
+    fields: ["name", "external_id"],
+    rows: [
+      { to: "name", from: ["name"] },
+      { to: "external_id", from: ["id"] },
+    ],
+  },
+  "asset_groups:servicenow": {
+    fields: ["name", "external_id"],
+    rows: [
+      { to: "name", from: ["cmdb_ci_service.name"] },
+      { to: "external_id", from: ["sys_id"] },
+    ],
+  },
   "ai_systems:openaev": {
     fields: ["name", "kind", "exposure", "owner"],
     rows: [

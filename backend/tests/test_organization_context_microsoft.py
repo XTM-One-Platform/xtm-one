@@ -44,11 +44,15 @@ DEFENDER_MACHINE = {
 }
 
 
-def test_sources_are_offered_for_assets_only() -> None:
+def test_sources_are_offered_for_assets_and_intune_for_asset_groups() -> None:
     assert {"intune", "defender"} <= set(SECTION_SOURCES["assets"])
+    # #1556: Intune also feeds asset groups (the Entra device groups); Defender feeds assets only.
+    assert "intune" in SECTION_SOURCES["asset_groups"]
     for section, sources in SECTION_SOURCES.items():
+        if section not in ("assets", "asset_groups"):
+            assert "intune" not in sources
         if section != "assets":
-            assert "intune" not in sources and "defender" not in sources
+            assert "defender" not in sources
     assert SOURCE_FILTERS[("assets", "intune")][:2] == ("operating_system", "compliance")
 
 

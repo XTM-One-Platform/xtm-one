@@ -191,9 +191,12 @@ The draft is a proposal, never a save. In **Settings > Organization**, open **Dr
 | Assets | OpenCTI | labels, markings, author, creator, category, subcategory, criticality, exposure, environment, platform, created on or after |
 | Assets | OpenAEV | asset groups, tags, category, subcategory, criticality, platform |
 | Asset groups, AI systems | OpenAEV | tags, name contains |
+| Asset groups | Microsoft Intune (Entra device groups), Tanium (computer groups), CrowdStrike Falcon (host groups), ServiceNow (business services) | name contains |
 | Tech stack | OpenAEV | security platform type |
 | Crown jewels | OpenCRQ | lowest criticality, tenant |
 | PIRs | OpenCTI | the PIRs to import |
+
+An asset group read from a platform brings its members, kept in sync at every run: an asset leaving the group in the platform leaves it here, a member added by hand stays. A member the inventory does not hold yet is counted as not in the inventory. Intune groups are the Entra ID security groups that hold Intune devices (user groups are left out); the Intune integration then needs the Graph permissions `GroupMember.Read.All` and `Device.Read.All` besides `DeviceManagementManagedDevices.Read.All`. CrowdStrike needs the Host groups: Read scope. ServiceNow groups are the business services, their members the hardware CIs related to them in the CMDB. Import the assets of the same platform first: a group binds its members to the assets that platform brought.
 
 OpenCTI Systems carry a category, a criticality, an exposure, an environment, an owner and a platform from the OpenCTI release that ships OpenCTI-Platform/opencti#19943; the import reads them. On an older OpenCTI those filters are hidden and every System takes the type you pick on the filters step, which is otherwise used only for Systems with no category. The owner falls back to the System's author; the platform and the markings are kept as `platform:` and `marking:` tags.
 

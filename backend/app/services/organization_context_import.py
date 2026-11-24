@@ -65,7 +65,8 @@ Source = Literal[
 #: section -> the platforms that can feed it, in the order the dialog lists them.
 SECTION_SOURCES: dict[str, tuple[str, ...]] = {
     "assets": ("openaev", "opencti", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"),
-    "asset_groups": ("openaev",),
+    # #1556: Intune (Entra device groups), Tanium computer groups, Falcon host groups, ServiceNow services.
+    "asset_groups": ("openaev", "intune", "tanium", "crowdstrike", "servicenow"),
     "ai_systems": ("openaev",),
     "tech_stack": ("openaev",),
     "crown_jewels": ("opencrq",),
@@ -111,6 +112,10 @@ SOURCE_FILTERS: dict[tuple[str, str], tuple[str, ...]] = {
     ("assets", "github"): ("organizations", "include_archived", "include_forks", "skip_dependencies"),
     ("assets", "gitlab"): ("groups", "include_archived", "include_forks", "skip_dependencies"),
     ("asset_groups", "openaev"): ("tags", "search"),
+    ("asset_groups", "intune"): ("search",),
+    ("asset_groups", "tanium"): ("search",),
+    ("asset_groups", "crowdstrike"): ("search",),
+    ("asset_groups", "servicenow"): ("search",),
     ("ai_systems", "openaev"): ("tags", "search"),
     ("tech_stack", "openaev"): ("type",),
     ("crown_jewels", "opencrq"): ("min_criticality", "tenant_id"),
@@ -1306,6 +1311,26 @@ async def _read_endpoint(db: AsyncSession, user_id: str, source: str, filters: d
     return result
 
 
+async def _read_groups(db: AsyncSession, user_id: str, source: str, filters: dict[str, Any]) -> ReadResult:
+    """Asset groups and their members from Intune, Tanium, CrowdStrike Falcon or ServiceNow (#1556)."""
+    from app.services import organization_context_groups as groups
+
+    read = await groups.read_groups(db, user_id, source, filters, limit=MAX_ROWS)
+    result = ReadResult(total=read.total, truncated=read.truncated, error=read.error)
+    if read.error:
+        return result
+    for row in read.rows:
+        try:
+            result.rows.append(AssetGroupEntry.model_validate(row))
+        except ValueError as exc:  # one bad group never stops the others
+            logger.info("Organization import: %s group %s refused: %s", source, row.get("external_id"), exc)
+    kept = {r.external_id for r in result.rows}
+    # A group whose members were not read whole is left out: its stored memberships stay.
+    result.members = {k: v for k, v in read.members.items() if k in kept}
+    result.members_source = source
+    return result
+
+
 async def _read_code(db: AsyncSession, user_id: str, source: str, filters: dict[str, Any]) -> ReadResult:
     """Repositories (and their dependencies) from GitHub or GitLab, read-only."""
     from app.services import organization_context_code as code_sources
@@ -1385,6 +1410,8 @@ async def read_source(
             return await _read_openaev(db, str(user_id), section, filters, batch_type)
         if source == "opencti":
             return await _read_opencti(db, str(user_id), section, filters, batch_type)
+        if section == "asset_groups":
+            return await _read_groups(db, str(user_id), source, filters)
         if source in ("intune", "defender"):
             return await _read_microsoft(db, str(user_id), source, filters)
         if source in ("tanium", "crowdstrike", "servicenow"):
@@ -1634,6 +1661,8 @@ async def filter_options(db: AsyncSession, *, user_id: uuid.UUID, section: str, 
             return await _opencti_options(db, str(user_id)) if section == "assets" else FilterOptions()
         if source == "openaev":
             return await _openaev_options(db, str(user_id), section)
+        if section == "asset_groups":
+            return FilterOptions()  # a free text filter (search) only
         if source in ("intune", "defender"):
             return _microsoft_options(source)
         if source in ("tanium", "crowdstrike", "servicenow"):

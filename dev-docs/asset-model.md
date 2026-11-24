@@ -358,6 +358,16 @@ the member source with that id, so it lands on the merged asset whatever source 
 is counted on the group (`unresolved_members`, "not in the inventory"), never dropped silently.
 `members_synced_at` is the last whole read. A group absent from the answer keeps its memberships.
 
+The other group sources (`organization_context_groups`, #1556) answer members in their own asset ids, so
+they bind to the asset records the same source wrote: Microsoft Intune (Entra security groups holding Intune
+devices, `deviceId` mapped to the managed device through `azureADDeviceId`; user groups left out; device
+categories not used, one hand-set category per device being coarser than the groups Intune targets; Graph
+`GroupMember.Read.All`, `Device.Read.All`, `DeviceManagementManagedDevices.Read.All`), Tanium (Gateway
+`computerGroups`, members by `endpoints(filter: {memberOf})`), CrowdStrike Falcon (host groups, members from
+`host-group-members`; Host groups: Read) and ServiceNow (business services `cmdb_ci_service`, members the
+hardware CIs a `cmdb_rel_ci` names as their children). A group whose member list failed or passed 20,000 is
+answered without members and keeps the stored ones.
+
 The agent row tools write the records too: `upsert_organization_rows` and `remove_organization_rows` on
 `assets` or `asset_groups` plan against the records the call addresses (`organization_context_rows.
 plan_record_upsert` / `plan_record_remove`, keyed on `(source, external_id)`, a field the source does not send
