@@ -75,6 +75,7 @@ from app.services.assignment_pause import (
     pause_assignment,
 )
 from app.services.builtin_customer_layer import seed_keeps_field, seed_keeps_model
+from app.services.builtin_tool_aliases import canonical_builtin_selection
 from app.services.kb_helpers import bump_kb_revision, reset_changed_document
 
 logger = logging.getLogger(__name__)
@@ -333,7 +334,13 @@ def _sync_agent_fields(
         # model: the deployment's own lightweight model, which no seed can name.
         agent.llm_model_source = data.get("llm_model_source")
     agent.tool_deny_list = data.get("tool_deny_list") or []
-    agent.builtin_tool_ids = data.get("builtin_tool_ids") or []
+    # Stored canonical (#1837): a [DEPRECATED] former id of a definition is written as its
+    # group, scoped to the functions the former id granted, so a seeded agent reads as
+    # the builder shows it and grants exactly what it granted before.
+    agent.builtin_tool_ids, agent.builtin_allowed_tools = canonical_builtin_selection(
+        data.get("builtin_tool_ids") or [], data.get("builtin_allowed_tools")
+    )
+    agent.builtin_tool_ids = agent.builtin_tool_ids or []
     # Template-bound providers and their read-only set are seeded defaults of
     # the customer layer (#914): once a person set one, the seed leaves it.
     if not seed_keeps_field(agent, "integration_template_bindings"):
@@ -369,7 +376,7 @@ def _sync_agent_fields(
     # Plain JSON columns may not trigger SQLAlchemy dirty detection on
     # reassignment — force them into the UPDATE statement.
     for attr in (
-        "output_schema", "tool_deny_list", "builtin_tool_ids",
+        "output_schema", "tool_deny_list", "builtin_tool_ids", "builtin_allowed_tools",
         "integration_template_bindings", "integration_template_read_only", "prepare_tool_ref",
         "finalize_tool_ref", "available_channel_types", "tags",
         "supported_intents", "config",
