@@ -177,6 +177,33 @@ def test_a_name_from_a_literal_alone_selects_only_the_tests_quoting_it():
     assert "tests/test_param.py" in affected.select_tests(tests, {"start_frame"})
 
 
+def test_a_renamed_file_name_literal_selects_the_tests_asserting_it_inside_a_message() -> None:
+    # #1812: ".xtm-checkout.json" became ".xtm-checkout"; the tests asserting the old name in an error
+    # message were not selected and failed in the merge queue (#1873).
+    before = b'RECORD = ".xtm-checkout.json"\nOTHER = "keep_me"\n'
+    after = b'RECORD = ".xtm-checkout"\nOTHER = "keep_me"\n'
+    literals: set[str] = set()
+    names = affected.changed_identifiers(
+        "backend/app/box/checkout.py", before, after, base="backend", literals=literals
+    )
+    assert {".xtm-checkout.json", ".xtm-checkout"} <= names & literals
+    assert "keep_me" not in names
+    tests = {
+        "tests/test_tools.py": 'assert "holds no .xtm-checkout.json" in result.content',
+        "tests/test_other.py": "assert run() == 1",
+    }
+    got = affected.select_tests(tests, names & literals)
+    assert set(got) == {"tests/test_tools.py"}
+
+
+def test_a_path_literal_needs_a_separator_and_a_distinctive_length() -> None:
+    assert affected.path_literal(".xtm-checkout.json")
+    assert affected.path_literal("dev-docs/ci.md")
+    assert not affected.path_literal("start_frame")  # identifier-like: _LITERAL's
+    assert not affected.path_literal("a.b")
+    assert not affected.path_literal("1.2.3-4")
+
+
 def test_quotes_reads_whole_quoted_names_only():
     assert affected.quotes("x = d['start_frame'] + o.end_frame + `stop_at` + f\"{a}\" + 'two words'") == {"start_frame", "stop_at"}
 
