@@ -1,5 +1,7 @@
 """A detected formatter check in check mode gets a ``-apply`` sibling that writes (gap sandbox-python-formatter-write-mode-missing)."""
 
+import json
+
 from app.services.sandbox_workspace import checks
 from app.services.sandbox_workspace.detect import PYTHON_FORMAT_GLOBS, Detection, _write_argv, detect
 
@@ -54,6 +56,33 @@ def test_write_argv_by_tool() -> None:
     # A formatter already in write mode, or a test, has no write sibling.
     assert _write_argv(("black", ".")) == ((), "")
     assert _write_argv(("python", "-m", "pytest", "-q")) == ((), "")
+
+
+def test_a_prettier_format_check_script_gets_a_write_sibling() -> None:
+    """Gap no-format-write-check: ``format:check`` runs ``prettier --check .``; its write mode is a check."""
+    manifest = '{"engines": {"pnpm": "10.10.0"}, "scripts": {"format:check": "prettier --check ."}}'
+    found = _detect({"package.json": manifest, "pnpm-lock.yaml": "lockfileVersion: '9.0'\n"})
+    apply = found.checks["node-format-apply"]
+    # The pinned pnpm runs the checkout's prettier binary: no corepack call to write by hand.
+    assert apply.argv == ("corepack", "pnpm@10.10.0", "exec", "prettier", "--write")
+    assert apply.default_args == (".",)
+    assert checks.command_argv(apply, ["src/a.ts"])[-2:] == ("--write", "src/a.ts")
+    assert apply.affected == "files" and apply.affected_by_default
+    # The gate is unchanged.
+    assert found.checks["node-format"].argv[-2:] == ("run", "format:check")
+
+
+def test_a_format_script_that_is_not_a_plain_prettier_check_gets_no_write_sibling() -> None:
+    for body in ("prettier --check . && eslint .", "biome format .", "prettier --write ."):
+        manifest = json.dumps({"scripts": {"format:check": body}})
+        found = _detect({"package.json": manifest, "package-lock.json": "{}"})
+        assert "node-format-apply" not in found.checks, body
+
+
+def test_a_yarn_prettier_format_check_runs_the_binary_through_yarn() -> None:
+    manifest = '{"scripts": {"check-format": "prettier -c src"}}'
+    found = _detect({"package.json": manifest, "yarn.lock": ""})
+    assert found.checks["node-format-apply"].argv == ("yarn", "prettier", "--write", "src")
 
 
 def test_a_jvm_spotless_check_gets_an_apply_sibling_on_the_whole_module() -> None:
