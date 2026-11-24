@@ -3,6 +3,7 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CtemCaseOpening } from "@/hooks/api/useCtemCasesApi";
+import { ToolbarCompactContext } from "@/components/ui/toolbar-compact-context";
 import { renderWithProviders } from "@/testing/providers";
 import { CaseOpeningOffEmptyState, CaseOpeningSwitch } from "./CaseOpeningSwitch";
 
@@ -39,6 +40,31 @@ describe("CaseOpeningSwitch (#1951)", () => {
     state.isAdmin = true;
     renderWithProviders(<CaseOpeningSwitch />);
     expect(screen.getByRole("switch", { name: "Case opening" })).toBeDisabled();
+  });
+
+  it("keeps its visible label in a full toolbar", () => {
+    state.isAdmin = true;
+    state.opening = { vertical: "cyber", on: true, waiting: 0 };
+    renderWithProviders(<CaseOpeningSwitch />);
+    const pill = screen.getByTestId("ctem-case-opening");
+    expect(pill).toHaveTextContent("Case opening");
+    expect(pill.getAttribute("data-compact")).toBeNull();
+  });
+
+  it("drops its visible label in a compact toolbar and stays named, so the row fits 1080 (UX r2 B1 on #1963)", () => {
+    state.isAdmin = true;
+    state.opening = { vertical: "cyber", on: false, waiting: 4 };
+    renderWithProviders(
+      <ToolbarCompactContext.Provider value={true}>
+        <CaseOpeningSwitch />
+      </ToolbarCompactContext.Provider>,
+    );
+    const pill = screen.getByTestId("ctem-case-opening");
+    expect(pill.getAttribute("data-compact")).toBe("true");
+    expect(pill).not.toHaveTextContent("Case opening");
+    const toggle = screen.getByRole("switch", { name: "Case opening" });
+    fireEvent.click(toggle);
+    expect(state.calls).toEqual([{ on: true }]);
   });
 
   it("draws nothing for anyone but an administrator, on or off", () => {

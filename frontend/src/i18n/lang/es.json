@@ -21670,6 +21670,7 @@
   "Single sign-on users join this group": "Los usuarios de SSO se unen a este grupo",
   "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "Las personas que inician sesión mediante inicio de sesión único (SSO) se unen a este grupo automáticamente, en cada inicio de sesión. Los miembros añadidos a mano, por la asignación de grupos SAML o por SCIM se mantienen tal cual.",
   "Case opening": "Apertura de casos",
+  "Case opening: {state}": "Apertura de casos: {state}",
   "Case opening on": "Apertura de casos activada",
   "Case opening off": "Apertura de casos desactivada",
   "Case opening is off": "La apertura de casos está desactivada",

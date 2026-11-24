@@ -40,6 +40,7 @@ import type { Visibility as VisibilityScope } from "@/lib/visibility";
 import { Pagination } from "@/components/ui/pagination";
 import { RowTargetContext } from "@/components/ui/row-target-context";
 import { TotalChip } from "@/components/ui/total-chip";
+import { ToolbarCompactContext } from "@/components/ui/toolbar-compact-context";
 import { SearchInput } from "@/components/ui/search-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -1415,7 +1416,8 @@ function DataTableView<T>({
           )}
           <div className={cn("ml-auto flex items-center gap-2", filtersInPill ? "shrink-0 flex-nowrap" : "flex-wrap")}>
             {totalChip}
-            {toolbar}
+            {/* A page's own toolbar controls follow the compact rule too (UX r2 B1 on #1963). */}
+            <ToolbarCompactContext.Provider value={compactToolbar}>{toolbar}</ToolbarCompactContext.Provider>
             {renderGrid && sortableColumns.length > 0 && (
               <GridSort
                 columns={sortableColumns.map((column) => ({ key: column.key, label: t_i18n(column.header) }))}
