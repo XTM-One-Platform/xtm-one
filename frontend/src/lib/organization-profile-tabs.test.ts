@@ -7,6 +7,7 @@ import {
   PROFILE_FIELD_CARD,
   PROFILE_TABS,
   PROFILE_TAB_LABELS,
+  SETTINGS_PROFILE_TABS,
   changedTabs,
   groupByTab,
   isInventoryTab,
@@ -22,8 +23,13 @@ import { EXPOSURE_SECTIONS } from "@/pages/settings/OrganizationExposureCards";
 
 /** Coverage of the five tabs (#12329): a new field or card cannot be added without a tab. */
 describe("organization profile tabs", () => {
-  it("has five tabs, each named in at most three words", () => {
+  it("has five tabs, each named in at most three words, two of them drawn by Settings (#1975)", () => {
     expect(PROFILE_TABS).toHaveLength(5);
+    expect(SETTINGS_PROFILE_TABS).toEqual(["organization", "risk"]);
+    expect(PROFILE_TAB_LABELS.organization).toBe("Organization");
+    expect(PROFILE_TAB_LABELS.risk).toBe("Risk and response");
+    // No Knowledge and sources tab or page any more (#1975): its cards are on the Organization tab.
+    expect((PROFILE_TABS as readonly string[]).includes("knowledge")).toBe(false);
     for (const tab of PROFILE_TABS) expect(PROFILE_TAB_LABELS[tab].split(" ").length).toBeLessThanOrEqual(3);
   });
 
@@ -36,7 +42,10 @@ describe("organization profile tabs", () => {
     expect(PROFILE_CARD_TAB.tracked_organizations).toBe("business");
     // The PIR sources live on the Prioritization policy card since #1938: no imports card on the knowledge tab.
     expect("scheduled_imports" in PROFILE_CARD_TAB).toBe(false);
-    expect(PROFILE_CARD_TAB.context_injection).toBe("knowledge");
+    expect(PROFILE_CARD_TAB.context_injection).toBe("organization");
+    expect(PROFILE_CARD_TAB.identity).toBe("organization");
+    expect(PROFILE_CARD_TAB.risk_appetite).toBe("risk");
+    expect(PROFILE_CARD_TAB.ticketing).toBe("risk");
   });
 
   it("puts every tab to use and every field on a known card", () => {
@@ -46,29 +55,35 @@ describe("organization profile tabs", () => {
   });
 
   it("reads a contract path or a form key", () => {
-    expect(tabOfField("risk_appetite.approval_threshold")).toBe("identity");
-    expect(tabOfField("approval_threshold")).toBe("identity");
-    expect(tabOfField("ticketing.project")).toBe("identity");
+    expect(tabOfField("risk_appetite.approval_threshold")).toBe("risk");
+    expect(tabOfField("approval_threshold")).toBe("risk");
+    expect(tabOfField("ticketing.project")).toBe("risk");
+    expect(tabOfField("sector")).toBe("organization");
     // The PIR list moved to the Prioritization policy of CTEM > Inventory (#1889).
     expect(tabOfField("pir_ids")).toBe("exposure");
     expect(profileFieldHref("pir_ids")).toBe("/ctem/inventory/exposure?card=prioritization_policy");
     expect(tabOfField("accepted_risks")).toBe("exposure");
-    expect(tabOfField("enterprise_knowledge")).toBe("knowledge");
+    expect(tabOfField("enterprise_knowledge")).toBe("organization");
     expect(tabOfField("unknown_field")).toBeNull();
   });
 
   it("parses the tab of the URL, the first tab otherwise", () => {
     expect(parseProfileTab("technology")).toBe("technology");
-    expect(parseProfileTab(null)).toBe("identity");
-    expect(parseProfileTab("nope")).toBe("identity");
+    expect(parseProfileTab(null)).toBe("organization");
+    expect(parseProfileTab("nope")).toBe("organization");
+    // The former tabs read as unknown (#797): the first tab.
+    expect(parseProfileTab("knowledge")).toBe("organization");
+    expect(parseProfileTab("identity")).toBe("organization");
   });
 
   it("puts the tab in the path, never in the query (#10203)", () => {
-    expect(profileTabPath("identity")).toBe("/settings/organization");
+    expect(profileTabPath("organization")).toBe("/settings/organization");
+    expect(profileTabPath("risk")).toBe("/settings/organization/profile/risk");
     expect(profileTabPath("exposure")).toBe("/settings/organization/profile/exposure");
+    expect(profileTabOfPath("/settings/organization/profile/knowledge")).toBe("organization");
     expect(profileTabOfPath("/settings/organization/profile/exposure")).toBe("exposure");
-    expect(profileTabOfPath("/settings/organization")).toBe("identity");
-    expect(profileTabOfPath("/settings/organization/profile/nope")).toBe("identity");
+    expect(profileTabOfPath("/settings/organization")).toBe("organization");
+    expect(profileTabOfPath("/settings/organization/profile/nope")).toBe("organization");
     for (const tab of PROFILE_TABS) expect(profileTabOfPath(profileTabPath(tab))).toBe(tab);
   });
 
@@ -81,7 +96,8 @@ describe("organization profile tabs", () => {
     expect(profileFieldHref("software")).toBe("/ctem/inventory/software?card=software");
     expect(profileFieldHref("tracked_organizations")).toBe("/ctem/inventory/business?card=tracked_organizations");
     expect(profileFieldHref("sector")).toBe("/settings/organization?card=identity");
-    expect(profileFieldHref("risk_appetite.approval_threshold")).toBe("/settings/organization?card=risk_appetite");
+    expect(profileFieldHref("risk_appetite.approval_threshold")).toBe("/settings/organization/profile/risk?card=risk_appetite");
+    expect(profileFieldHref("enterprise_knowledge")).toBe("/settings/organization?card=enterprise_knowledge");
     expect(profileFieldHref("nope")).toBe("/settings/organization");
     // Every field lands on its own Settings tab, or on CTEM > Inventory when its card moved there.
     for (const field of Object.keys(PROFILE_FIELD_CARD)) {
@@ -101,8 +117,8 @@ describe("organization profile tabs", () => {
 
   it("names the tabs a change touches and groups items by tab in tab order", () => {
     expect([...changedTabs({ name: "a", software: [] }, { name: "a", software: [{ product: "x" }] })]).toEqual(["technology"]);
-    expect(tabsOfFields(["software", "pir_ids", "size", "nope"])).toEqual(["identity", "technology", "exposure"]);
+    expect(tabsOfFields(["software", "pir_ids", "size", "currency", "nope"])).toEqual(["organization", "risk", "technology", "exposure"]);
     const groups = groupByTab([{ f: "software" }, { f: "size" }, { f: "nope" }], (item) => item.f);
-    expect(groups.map((group) => group.tab)).toEqual(["identity", "technology", null]);
+    expect(groups.map((group) => group.tab)).toEqual(["organization", "technology", null]);
   });
 });
