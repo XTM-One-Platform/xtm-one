@@ -20536,7 +20536,7 @@
   "The loop ranks every signal against your primary assets and software, and opens tickets in your ticketing project.": "La boucle classe chaque signal selon vos actifs primaires et vos logiciels, et ouvre les tickets dans votre projet de ticketing.",
   "The loop works with the modules connected to this platform. It runs with any of them and says what it cannot do without the others.": "La boucle travaille avec les modules connectés à cette plateforme. Elle fonctionne avec n'importe lequel et indique ce qu'elle ne peut pas faire sans les autres.",
   "Bind the tools the loop's agents act through. A slot left empty only limits what they can do, nothing breaks.": "Liez les outils par lesquels agissent les agents de la boucle. Un emplacement vide limite seulement ce qu'ils peuvent faire, rien ne casse.",
-  "Choose how much the fleet does without asking a person. The table under the levels shows, action by action, what waits at the level picked; you can change it later on the fleet page.": "Choisissez ce que la flotte fait sans demander à une personne. Le tableau sous les niveaux montre, action par action, ce qui attend au niveau choisi ; vous pourrez le changer plus tard sur la page de la flotte.",
+  "Choose which CTEM gates wait for a person. A gate that waits is one decision between two steps of a case, never a pause inside a run; you can change it later on the fleet page.": "Choisissez quels contrôles CTEM attendent une personne. Un contrôle qui attend est une décision entre deux étapes d'un cas, jamais une pause dans une exécution ; vous pourrez le modifier plus tard sur la page de la flotte.",
   "Before anything runs: what the CTEM loop fleet switches on and how many runs a month to expect.": "Avant toute exécution : ce que la flotte de la boucle CTEM active et combien d'exécutions par mois prévoir.",
   "One switch turns on the CTEM loop fleet's automations. They run as you. Nothing ran before this step.": "Un seul interrupteur active les automatisations de la flotte de la boucle CTEM. Elles s'exécutent en votre nom. Rien ne s'est exécuté avant cette étape.",
   "Without OpenCTI: no threat or vulnerability signals from intelligence; cases start only from other sources.": "Sans OpenCTI : aucun signal de menace ou de vulnérabilité issu du renseignement ; les cas ne partent que d'autres sources.",
@@ -21547,5 +21547,16 @@
   "{count, plural, one {# case and its history} other {# cases and their history}}": "{count, plural, one {# cas et son historique} other {# cas et leur historique}}",
   "{count, plural, one {# open work item cancelled} other {# open work items cancelled}}": "{count, plural, one {# tâche ouverte annulée} other {# tâches ouvertes annulées}}",
   "{count, plural, one {# timer cancelled} other {# timers cancelled}}": "{count, plural, one {# minuteur annulé} other {# minuteurs annulés}}",
-  "{count, plural, one {# signal sent back to the scope gate} other {# signals sent back to the scope gate}}": "{count, plural, one {# signal renvoyé au filtre de périmètre} other {# signaux renvoyés au filtre de périmètre}}"
+  "{count, plural, one {# signal sent back to the scope gate} other {# signals sent back to the scope gate}}": "{count, plural, one {# signal renvoyé au filtre de périmètre} other {# signaux renvoyés au filtre de périmètre}}",
+  "Fully autonomous": "Entièrement autonome",
+  "Recommended gates": "Contrôles recommandés",
+  "Add gates": "Ajouter des contrôles",
+  "{choice} (recommended)": "{choice} (recommandé)",
+  "Nothing waits for a person. Every action is still logged and reported in Operations.": "Rien n'attend une personne. Chaque action reste journalisée et rapportée dans Opérations.",
+  "{count, plural, one {Waits for a decision: {names}. Every other gate runs and the case records it.} other {Wait for a decision: {names}. Every other gate runs and the case records it.}}": "{count, plural, one {Attend une décision : {names}. Les autres contrôles s'exécutent et le cas les enregistre.} other {Attendent une décision : {names}. Les autres contrôles s'exécutent et le cas les enregistre.}}",
+  "The level the CTEM loop is seeded with. Every gate that runs is recorded on the case.": "Le niveau avec lequel la boucle CTEM est installée. Chaque contrôle exécuté est enregistré sur le cas.",
+  "Pick the level yourself: the table shows what waits at each one. Per-action settings stay on the fleet page.": "Choisissez le niveau vous-même : le tableau montre ce qui attend à chacun. Les réglages par action restent sur la page de la flotte.",
+  "Gates set to {choice}": "Contrôles réglés sur {choice}",
+  "Set the gates to {choice}?": "Régler les contrôles sur {choice} ?",
+  "Set to {choice}": "Régler sur {choice}"
 }
