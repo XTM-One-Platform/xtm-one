@@ -992,7 +992,11 @@ after `ctem_read`, XTM One mode only. The reach is the acting person's CTEM
 right (`services/ctem_access.py`, #1748): an administrator or a `decide` right
 reads and acts on the organization's signals and cases, a `view` right reads
 them and every write is refused with the view-only message, anyone else works
-on the signals they recorded and the cases their own read shows. Administrator
+on the signals they recorded and the cases their own read shows.
+`triage_ctem_signals` reaches exactly what `list_ctem_signals` reads
+(`reader_scope`, agent reach): an administrator kept to their own by strict
+admin access for agent tools or the Platform Health reach triages only their
+own signals. Administrator
 operations (`delete_ctem_cases`, the `ctem_repair` group) stay administrator
 only. A function the agent already carries (by its built-in slug or through
 `ctem_read`) stays its own; the group never offers it twice.

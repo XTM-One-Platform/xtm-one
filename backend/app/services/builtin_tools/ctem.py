@@ -143,10 +143,15 @@ def build_ctem_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefinitio
                 user = await db.get(User, scope)
                 if user is None:
                     return "No user: there are no signals to triage."
+                # The reach of list_ctem_signals (reader_scope, agent reach): an administrator under
+                # strict admin access for agent tools or the Platform Health reach triages their own.
+                from .ctem_signals import reader_scope
+
+                whole, _block = await reader_scope(db, scope, agent_reach=True)
                 rows = await signals.select_signals(
                     db,
                     organization_id=primary.id,
-                    recorded_by=await ctem_access.signal_writer(db, user),
+                    recorded_by=None if whole else str(user.id),
                     ids=wanted or None,
                     state=state or None,
                     trigger_path=trigger_path or None,

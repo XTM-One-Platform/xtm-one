@@ -22,6 +22,7 @@ from typing import Any
 
 import pytest
 
+from app.api.v1 import helpers
 from app.core import database
 from app.core.config import settings
 from app.services import ctem_access, organizations
@@ -117,13 +118,16 @@ class _Db:
 
 @pytest.fixture
 def world(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
-    state = SimpleNamespace(db=None, level=None, selected=[], triaged=[])
+    state = SimpleNamespace(db=None, level=None, strict=False, selected=[], triaged=[])
 
     async def _primary(_db: Any) -> Any:
         return SimpleNamespace(id=ORG)
 
     async def _level(_db: Any, _user: Any) -> Any:
         return state.level
+
+    async def _group_right(_db: Any, _person: Any) -> Any:
+        return state.level if state.level in ("view", "decide") else None
 
     async def _select(_db: Any, **kw: Any) -> list[Any]:
         state.selected.append(kw)
@@ -136,6 +140,11 @@ def world(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     monkeypatch.setattr(database, "async_session", lambda: state.db)
     monkeypatch.setattr(organizations, "get_primary", _primary)
     monkeypatch.setattr(ctem_access, "level", _level)
+    monkeypatch.setattr(ctem_access, "group_right", _group_right)
+    # Strict admin access for agent tools (or the Platform Health reach) keeps an administrator to their own.
+    monkeypatch.setattr(
+        helpers, "agent_tool_admin_bypass", lambda u: bool(getattr(u, "is_admin", False)) and not state.strict
+    )
     monkeypatch.setattr(signals, "select_signals", _select)
     monkeypatch.setattr(scope_gate, "triage", _triage)
     return state
@@ -170,6 +179,17 @@ async def test_triage_reaches_the_organization_with_decide_else_own_signals(
     _count, kw = world.triaged[0]
     assert kw["action"] == "dismiss" and kw["actor"] == "Decider" and kw["evaluator_id"] == person
     assert world.db.commits == 1
+
+
+async def test_triage_keeps_an_administrator_under_strict_agent_access_to_their_own(world: SimpleNamespace) -> None:
+    # Same reach as list_ctem_signals: no organization-wide triage the agent could not list.
+    person = uuid.uuid4()
+    world.db = _Db(SimpleNamespace(id=person, is_admin=True, name="Admin"))
+    world.level = "admin"
+    world.strict = True
+    answer = json.loads(await _call(str(person), action="dismiss", state="pending"))
+    assert answer["matched"] == 1
+    assert world.selected[0]["recorded_by"] == str(person)
 
 
 async def test_triage_checks_its_arguments_before_any_read(world: SimpleNamespace) -> None:
