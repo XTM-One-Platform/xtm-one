@@ -13364,6 +13364,7 @@
   "Add filter": "Ajouter un filtre",
   "Each filter names a field of the event and the value it must have. Without a filter, every event of this kind in scope starts a run.": "Chaque filtre nomme un champ de l'événement et la valeur qu'il doit avoir. Sans filtre, chaque événement de ce type dans le périmètre lance une exécution.",
   "This agent's objects": "Les objets de cet agent",
+  "Objects of this agent's fleet": "Les objets de la flotte de cet agent",
   "Every object": "Tous les objets",
   "One-off watch": "Surveillance unique",
   "The first matching event starts one run, then the trigger stops. Save the trigger again to watch for the next one.": "Le premier événement correspondant lance une exécution, puis le déclencheur s'arrête. Enregistrez à nouveau le déclencheur pour surveiller le suivant.",

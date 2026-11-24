@@ -13364,6 +13364,7 @@
   "Add filter": "フィルターを追加",
   "Each filter names a field of the event and the value it must have. Without a filter, every event of this kind in scope starts a run.": "各フィルターはイベントのフィールドと必要な値を指定します。フィルターがない場合、範囲内のこの種類のすべてのイベントが実行を開始します。",
   "This agent's objects": "このエージェントのオブジェクト",
+  "Objects of this agent's fleet": "このエージェントのフリートのオブジェクト",
   "Every object": "すべてのオブジェクト",
   "One-off watch": "一回限りの監視",
   "The first matching event starts one run, then the trigger stops. Save the trigger again to watch for the next one.": "最初に一致したイベントが1回の実行を開始し、その後トリガーは停止します。次のイベントを監視するにはトリガーを再度保存してください。",
