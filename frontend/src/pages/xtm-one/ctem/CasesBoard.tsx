@@ -128,7 +128,7 @@ export function CasesBoard() {
 
   const cases = useMemo(() => data?.cases ?? [], [data]);
   // A product that could not be read never yields the all-clear line (#12139).
-  const empty = useCasesEmptyLabel(data?.details_unavailable);
+  const empty = useCasesEmptyLabel(data?.details_unavailable, data?.details_unavailable_reasons);
   const byState = useMemo(() => {
     const out = Object.fromEntries(CTEM_CASE_STATES.map((s) => [s, [] as CtemCaseSummary[]])) as Record<CtemCaseState, CtemCaseSummary[]>;
     for (const c of cases) out[c.state]?.push(c);
