@@ -17,6 +17,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import { waitsForAnswer } from "@/lib/work-item-context";
 import { GATE_CARD_STATUS_LABEL, latestGate } from "./case-gates";
+import { PROVIDER_NAMES } from "./case-loop";
 import {
   SAFE_MODE_LABEL,
   VALIDATION_GATE,
@@ -27,10 +28,7 @@ import {
   validationDecisionKey,
 } from "./case-validation";
 import { CaseSectionReason } from "./CaseSectionReason";
-import { CASE_FACT_ICON, CASE_SECTION_ICON, CaseCardTitleText, CaseFactChip, CaseIcon } from "./case-icons";
-import { GateDecisionRecord, gateAnswererName, gateRecordOf } from "./GateDecisionRecord";
-import { ToneBadge, type HotTone } from "@/components/ui/tone-badge";
-import { TruncatedText } from "@/components/ui/truncated-text";
+import { GateDecisionRecord, gateRecordOf } from "./GateDecisionRecord";
 
 /** The result word of a validation reference, translated where drawn. @i18n-keys */
 const RESULT_LABEL = {
@@ -40,22 +38,6 @@ const RESULT_LABEL = {
   pending: "Pending",
   inconclusive: "Inconclusive",
 } as const;
-
-const RESULT_TONE: Record<keyof typeof RESULT_LABEL, HotTone> = {
-  passed: "green",
-  not_exposed: "green",
-  failed: "red",
-  pending: "yellow",
-  // A pass that proves nothing (#1692): no verdict colour.
-  inconclusive: "neutral",
-};
-
-/** Product names and DS logos of the validation providers a case can carry. */
-const PROVIDER_NAMES: Readonly<Record<string, string>> = { openaev: "OpenAEV", opencti: "OpenCTI" };
-const PROVIDER_ICON = { openaev: "custom/openaev", opencti: "custom/opencti" } as const;
-
-/** The short words of a safe-mode chip; the full sentence is its tooltip. @i18n-keys */
-const SAFE_MODE_CHIP = { safe: "Read-only", unsafe: "Changes the target" } as const;
 
 export function CaseValidation({
   caseId,
@@ -94,9 +76,7 @@ export function CaseValidation({
   return (
     <Card data-testid="ctem-case-validation">
       <CardHeader>
-        <CardTitle>
-          <CaseCardTitleText icon={CASE_SECTION_ICON.validation}>{t_i18n("Validation")}</CaseCardTitleText>
-        </CardTitle>
+        <CardTitle>{t_i18n("Validation")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 content-base">
         {rows.length === 0 && !gate && !record && (
@@ -109,7 +89,7 @@ export function CaseValidation({
         {record && (
           <GateDecisionRecord
             record={auto === "safe_mode" && record.status === "passed_automatically" ? { ...record, reason: { kind: "safe_mode" } } : record}
-            byLabel={gateAnswererName(record, history, personName)}
+            byLabel={record.answered_by ? personName?.(record.answered_by.id) : null}
             testId="ctem-case-validation-record"
           />
         )}
@@ -150,29 +130,13 @@ export function CaseValidation({
               const mode = safeModeOf(v);
               return (
                 <li key={`${v.ref}-${index}`} className="flex min-w-0 flex-col gap-1" data-testid="ctem-case-validation-run">
-                  <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className="inline-flex items-center gap-1.5 font-medium" data-testid="ctem-case-validation-provider">
-                      {v.provider in PROVIDER_ICON && <CaseIcon name={PROVIDER_ICON[v.provider as keyof typeof PROVIDER_ICON]} />}
-                      {PROVIDER_NAMES[v.provider] ?? v.provider}
-                    </span>
-                    {v.result in RESULT_LABEL ? (
-                      <ToneBadge tone={RESULT_TONE[v.result as keyof typeof RESULT_LABEL]} data-testid="ctem-case-validation-result">
-                        {t_i18n(RESULT_LABEL[v.result as keyof typeof RESULT_LABEL])}
-                      </ToneBadge>
-                    ) : (
-                      <ToneBadge tone="neutral" data-testid="ctem-case-validation-result">
-                        {v.result}
-                      </ToneBadge>
-                    )}
+                  <span className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="font-medium">{PROVIDER_NAMES[v.provider] ?? v.provider}</span>
+                    <span>{t_i18n(RESULT_LABEL[v.result] ?? v.result)}</span>
                     {mode && (
-                      <CaseFactChip
-                        icon={mode === "safe" ? CASE_FACT_ICON.safe : CASE_FACT_ICON.unsafe}
-                        tone={mode === "safe" ? "green" : "orange"}
-                        tip={t_i18n(SAFE_MODE_LABEL[mode])}
-                        testId="ctem-case-validation-mode"
-                      >
-                        {t_i18n(SAFE_MODE_CHIP[mode])}
-                      </CaseFactChip>
+                      <span className="text-default-secondary" data-testid="ctem-case-validation-mode">
+                        {t_i18n(SAFE_MODE_LABEL[mode])}
+                      </span>
                     )}
                     {v.at && (
                       <span className="ml-auto whitespace-nowrap text-default-secondary">
@@ -181,18 +145,12 @@ export function CaseValidation({
                     )}
                   </span>
                   {v.run_order && v.run_order.length > 0 && (
-                    <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className="inline-flex items-center gap-1.5 text-default-secondary">
-                        <CaseIcon name={CASE_FACT_ICON.order} />
-                        {t_i18n("Run order")}
-                      </span>
-                      <ol className="flex min-w-0 flex-wrap items-center gap-1.5" aria-label={t_i18n("Run order")} data-testid="ctem-case-validation-order">
+                    <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+                      <span className="text-default-secondary">{t_i18n("Run order")}</span>
+                      <ol className="flex min-w-0 flex-wrap items-baseline gap-x-2" aria-label={t_i18n("Run order")} data-testid="ctem-case-validation-order">
                         {v.run_order.map((group, step) => (
-                          <li key={`${group}-${step}`} className="min-w-0">
-                            {/* A cut group name is named whole by the shared tooltip, keyboard included (UX round 1 on #1708, B4). */}
-                            <ToneBadge tone="neutral" className="max-w-full">
-                              <TruncatedText text={t_i18n("{step}. {group}", { step: step + 1, group })} />
-                            </ToneBadge>
+                          <li key={`${group}-${step}`} className="min-w-0 truncate" title={group}>
+                            {t_i18n("{step}. {group}", { step: step + 1, group })}
                           </li>
                         ))}
                       </ol>
