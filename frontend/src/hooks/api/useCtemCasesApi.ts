@@ -555,6 +555,61 @@ interface CtemLoopMeasures {
   case_count: number;
 }
 
+/** One open case a phase card lists (`GET /ctem-cases/overview`, #1621). */
+export interface CtemCasesOverviewCase {
+  id: string;
+  title: string;
+  state: CtemCaseState;
+  priority: CtemCasePriority;
+  created_at: string | null;
+  updated_at: string | null;
+  state_since: string | null;
+  waiting_on: { gate: string | null; by: string | null; since: string | null } | null;
+  /** The crown jewel the case touches among the issues the caller sees; null when none. */
+  crown_jewel: string | null;
+}
+
+/** One CTEM phase of the overview: its open and waiting cases and the five that need attention first. */
+interface CtemCasesOverviewPhase {
+  open: number;
+  waiting: number;
+  counts: Record<CtemCaseState, number>;
+  top: CtemCasesOverviewCase[];
+}
+
+/** A case waiting for a decision, with the gate it waits on. */
+export interface CtemCasesOverviewWait {
+  case_id: string;
+  title: string;
+  phase: CtemStageKey | null;
+  gate: string | null;
+  since: string | null;
+}
+
+/**
+ * The cases in motion for the command center and the stage pages (#1621): the same
+ * visibility as the list, so every count equals the list it links to.
+ */
+export interface CtemCasesOverview {
+  vertical: string;
+  counts: Record<CtemCaseState, number>;
+  open: number;
+  phases: Record<CtemStageKey, CtemCasesOverviewPhase>;
+  no_phase_open: number;
+  waiting: { count: number; oldest: CtemCasesOverviewWait | null; oldest_hours: number | null; cases: CtemCasesOverviewWait[] };
+  funnel: { in_case: number; resolved_window_days: number; resolved_recent: number };
+}
+
+export function useCtemCasesOverview() {
+  return useQuery<CtemCasesOverview>({
+    queryKey: ["ctem-cases", "overview"],
+    queryFn: () => api.get("/ctem-cases/overview"),
+    retry: ctemCasesRetry,
+    refetchInterval: (query) => ctemCasesPollInterval(query.state.status, query.state.error),
+    throwOnError: false,
+  });
+}
+
 export function useCtemLoopMeasures() {
   return useQuery<{ vertical: string; measures: CtemLoopMeasures }>({
     queryKey: ["ctem-cases", "measures"],

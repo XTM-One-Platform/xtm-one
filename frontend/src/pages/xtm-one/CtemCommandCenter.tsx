@@ -108,7 +108,7 @@ import {
 } from "./ctem/dashboard-context";
 import { coverageMatrix, exposureStats } from "@/lib/ctem-coverage-stats";
 import { useCtemFleetActivity } from "@/hooks/api/useCtemFleetActivity";
-import { useCtemCases } from "@/hooks/api/useCtemCasesApi";
+import { useCtemCases, useCtemCasesOverview } from "@/hooks/api/useCtemCasesApi";
 import { inviteVisible } from "@/lib/fleet-activity";
 import { formatTimeAgo } from "@/lib/relative-time";
 
@@ -599,6 +599,12 @@ export default function CtemCommandCenter({
   const signalCounter = useMemo(
     () => (recentSignals ? { counts: recentSignals.counts, onOpen: openSignalList } : null),
     [recentSignals, openSignalList],
+  );
+  // The open cases of each stage (#1621): one footer line per lifecycle column, no read per column.
+  const { data: casesOverview } = useCtemCasesOverview();
+  const lifecycleCases = useMemo(
+    () => (casesOverview ? { phases: casesOverview.phases, acceptedRisk: casesOverview.counts.accepted_risk ?? 0 } : null),
+    [casesOverview],
   );
   // Done for you (C2 V3): every deterministic event, its axis keeps the period's.
   const timelineEvents = useMemo(() => deterministicActivity(posture, registrations, 50), [posture, registrations]);
@@ -1785,6 +1791,7 @@ export default function CtemCommandCenter({
         } : null}
         refreshing={postureRefreshing}
         signals={signalCounter}
+        cases={lifecycleCases}
       />
     ),
     // ── Stats and coverage (C2 V5, #11547 S2d): weekly heat map, delta bars, findings with their trend

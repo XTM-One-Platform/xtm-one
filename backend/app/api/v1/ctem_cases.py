@@ -36,6 +36,7 @@ from app.services import ctem_case_loop as case_loop
 from app.services import ctem_case_routing as case_routing
 from app.services import ctem_case_versions as case_versions
 from app.services import ctem_cases as rules
+from app.services import ctem_cases_overview as overview
 from app.services import ctem_cases_store as store
 from app.services import ctem_cases_view as view_of
 from app.services import ctem_loop_measures as measures
@@ -435,6 +436,31 @@ async def ctem_loop_measures(
     reader = None if getattr(user, "is_admin", False) else str(user.id)
     observed = await signal_store.observed_by_case(db, ids, organization_id=primary.id, recorded_by=reader)
     return {"vertical": vertical, "measures": measures.summarize(seen, events, observed)}
+
+
+@router.get("/overview")
+async def ctem_cases_overview(
+    vertical: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """The cases in motion for the command center and the stage pages (#1621): counts by status,
+    open and waiting per CTEM phase with the five that need attention first, the decisions waiting
+    (the oldest one), and the funnel step (OpenCTI vulnerabilities carried by an open case).
+
+    Same visibility as the list, so each count equals the list it links to. One read of the
+    cases, one of the viewer's view and one of the history of every visible case.
+    """
+    _require_xtm_one()
+    vertical = normalize_vertical(vertical or getattr(user, "ctem_vertical", None))
+    primary = await get_primary(db)
+    if primary is None:
+        return {"vertical": vertical, **overview.empty()}
+    cases = await store.list_cases(db, organization_id=primary.id, vertical=vertical)
+    view = await view_of.viewer_view(db, str(user.id), vertical)
+    seen = [case.id for case, rows in cases if view_of.visible_members(rows, view)]
+    history = await store.events_of(db, seen)
+    return {"vertical": vertical, **overview.build(cases, view, history)}
 
 
 @router.get("/{case_id}")

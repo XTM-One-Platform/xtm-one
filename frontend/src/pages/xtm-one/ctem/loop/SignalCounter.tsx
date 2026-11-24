@@ -11,6 +11,7 @@
  * is never hidden.
  */
 import { Icon } from "@filigran/design-system";
+import { Tip } from "@/components/ui/tooltip";
 import type { CtemSignalState } from "@/hooks/api/useCtemSignalsApi";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
@@ -49,7 +50,10 @@ export function SignalCounter({
       {COUNTED_SIGNAL_STATES.map((state) => {
         const count = counts[state] ?? 0;
         const label = t_i18n(SIGNAL_STATE_LABEL[state]);
-        return (
+        // "Case opened" counts the signals that opened a case, all time (#1621): a case the vulnerability
+        // readers built from your stack is not a signal, so it is counted in Cases, never here.
+        const why = state === "case_opened" ? t_i18n("Signals that opened a case, all time. Cases built from your stack's vulnerabilities are counted in Cases.") : null;
+        const button = (
           <button
             key={state}
             type="button"
@@ -68,6 +72,7 @@ export function SignalCounter({
             <span>{label}</span>
           </button>
         );
+        return why ? <Tip key={state} content={why}>{button}</Tip> : button;
       })}
     </div>
   );

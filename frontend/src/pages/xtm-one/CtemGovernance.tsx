@@ -30,6 +30,7 @@ import { CTEM_BAND_CONFIG, CTEM_PRODUCT_INFO } from "@/lib/constants";
 import { profileFieldHref } from "@/lib/organization-profile-tabs";
 import { safeExternalUrl } from "@/lib/utils";
 import type { CtemVertical } from "@/types";
+import { CasesInPhaseCard } from "./ctem/CasesInPhaseCard";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
 import { HeroCard, HiddenChartValues, NotConfiguredFrame, useRovingMarks } from "./ctem/stage-heroes";
 import { formatTrendDay, historyWindow } from "./ctem/trend-window";
@@ -438,6 +439,9 @@ export default function CtemGovernance() {
           rows={days.map((d) => [d.label, d.score == null ? "--" : Math.round(d.score), target ?? "--"])}
         />
       </HeroCard>
+
+      {/* The decisions waiting and the risks accepted on cases (#1621): one full-width row. */}
+      <CasesInPhaseCard stage="governance" backTo="/ctem/governance" />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <HeroCard title={t_i18n("Accepted risks")} testId="ctem-governance-risks">

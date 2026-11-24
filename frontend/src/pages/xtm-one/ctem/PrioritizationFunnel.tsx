@@ -47,7 +47,7 @@ import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { useFormatter } from "@/i18n";
 import { formatTimeAgoLine } from "@/lib/relative-time";
-import { CTEM_OPEN_CASE_STATES, useCtemCases } from "@/hooks/api/useCtemCasesApi";
+import { CTEM_OPEN_CASE_STATES, useCtemCases, useCtemCasesOverview } from "@/hooks/api/useCtemCasesApi";
 import { useRecentCtemSignals, type CtemSignalList } from "@/hooks/api/useCtemSignalsApi";
 import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
 import { cn, safeExternalUrl } from "@/lib/utils";
@@ -70,6 +70,7 @@ import {
   funnelLayerHref,
   funnelRows,
   funnelSettingsHref,
+  funnelWidthPct,
   isCasesLayer,
   isInventoryHref,
   isOrganizationSettingsHref,
@@ -195,6 +196,11 @@ export interface PrioritizationFunnelProps {
   sample?: boolean;
   /** The case counts by state (`GET /ctem-cases`): the cases node fans out into them. */
   caseStates?: FunnelCaseStates;
+  /**
+   * Compact only (#1621): the last step "In a case", the vulnerabilities (the funnel's unit) an open
+   * case carries and the cases resolved in the window (`GET /ctem-cases/overview`); absent, no step.
+   */
+  inCase?: { count: number; resolved: number; days: number } | null;
 }
 
 /** Whether the bars are drawn at their width yet (grown in after the first paint). */
@@ -269,7 +275,7 @@ const LayerLink = forwardRef<HTMLElement, LayerLinkProps>(function LayerLink(
   );
 });
 
-export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = false, caseStates, readAt }: PrioritizationFunnelProps) {
+export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = false, caseStates, readAt, inCase = null }: PrioritizationFunnelProps) {
   const { t_i18n, intl } = useFormatter();
   const grown = useGrown();
   const measured = useFlowWidth();
@@ -410,6 +416,43 @@ export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = fal
               </Tip>
             </li>
           ))}
+          {inCase && !sample && (
+            <li className="flex min-w-0 flex-1 flex-col justify-end gap-1" data-testid="ctem-funnel-step-in-case">
+              <Tip
+                content={
+                  <div className="max-w-64 space-y-1">
+                    <p className="font-semibold">{t_i18n("In a case")}: {exact(inCase.count)}</p>
+                    <p>{t_i18n("Vulnerabilities an open case carries, among the ones you can see.")}</p>
+                    <p>{t_i18n("{count, plural, one {# case resolved in the last {days} days} other {# cases resolved in the last {days} days}}", { count: inCase.resolved, days: inCase.days })}</p>
+                    <p className="font-medium">{t_i18n("Opens the Cases list")}</p>
+                  </div>
+                }
+              >
+                <LayerLink
+                  href="/ctem/cases"
+                  label={t_i18n("In a case, {count}, {resolved} resolved in {days} d", { count: exact(inCase.count), resolved: inCase.resolved, days: inCase.days })}
+                  className="flex min-w-0 flex-col gap-1"
+                >
+                  <span className="content-caption truncate text-default-secondary">
+                    {t_i18n("In a case")}
+                    <span className="tabular-nums"> · {t_i18n("{resolved} resolved in {days} d", { resolved: inCase.resolved, days: inCase.days })}</span>
+                  </span>
+                  <span className="content-base font-semibold tabular-nums" data-testid="ctem-funnel-count-in-case">
+                    {n(inCase.count)}
+                  </span>
+                  <span className="relative block h-2 overflow-hidden rounded-full bg-elevation-hover">
+                    <span
+                      className={cn(
+                        "absolute inset-y-0 left-0 rounded-full transition-[width] duration-700 ease-out motion-reduce:transition-none",
+                        LIVE_FILL[LIVE_FILL.length - 1],
+                      )}
+                      style={{ width: grown ? `${funnelWidthPct(inCase.count, funnel.layers[0]?.count ?? 0)}%` : "0%" }}
+                    />
+                  </span>
+                </LayerLink>
+              </Tip>
+            </li>
+          )}
         </ol>
         {unconfigured > 0 && (
           <p className="content-caption text-default-secondary" data-testid="ctem-funnel-compact-unconfigured">
@@ -891,6 +934,9 @@ export function PrioritizationFunnelCard({
   readAt?: string | null;
 }) {
   const { t_i18n } = useFormatter();
+  // The funnel ends in action (#1621): the vulnerabilities an open case carries, same unit as the steps.
+  const { data: overview } = useCtemCasesOverview();
+  const inCase = overview ? { count: overview.funnel.in_case, resolved: overview.funnel.resolved_recent, days: overview.funnel.resolved_window_days } : null;
   return (
     <Card className="flex h-full flex-col overflow-hidden" data-testid="ctem-funnel-card">
       <CardContent className="flex flex-1 flex-col gap-3 p-4">
@@ -910,7 +956,7 @@ export function PrioritizationFunnelCard({
           {placeholder ? (
             <PrioritizationFunnelPlaceholder display={placeholder} variant="compact" openctiUrl={openctiUrl} />
           ) : (
-            <PrioritizationFunnel funnel={funnel} variant="compact" openctiUrl={openctiUrl} sample={sample} readAt={readAt} />
+            <PrioritizationFunnel funnel={funnel} variant="compact" openctiUrl={openctiUrl} sample={sample} readAt={readAt} inCase={inCase} />
           )}
         </div>
       </CardContent>

@@ -29,7 +29,7 @@ import { Icon } from "@filigran/design-system";
  * stage shows a spinner beside its name (#12183).
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { Spinner } from "@filigran/design-system";
 import { Card, CardContent } from "@/components/ui/card";
@@ -49,6 +49,7 @@ import { CtemScoreTip } from "./CtemScoreTip";
 import { LifecycleHeader } from "./LifecycleHeader";
 import { SignalCounter } from "./loop/SignalCounter";
 import { assessmentBusy } from "./landing-refresh";
+import { casesListHref } from "./cases-due";
 import { historyWindow, seriesChange } from "./trend-window";
 
 /** Days of the column sparkline and of every delta of the strip. */
@@ -107,6 +108,32 @@ export interface LifecycleBandProps {
     counts: Partial<Record<CtemSignalState, number>>;
     onOpen: (state: CtemSignalState | null) => void;
   } | null;
+  /**
+   * The open cases of each stage and those waiting for a decision (`GET /ctem-cases/overview`, #1621),
+   * and the accepted risks for the Governance & Risk column: one footer line per column. Absent
+   * before the first read or outside XTM One mode: no footer line.
+   */
+  cases?: {
+    phases: Partial<Record<CtemStageKey, { open: number; waiting: number }>>;
+    acceptedRisk: number;
+  } | null;
+}
+
+/** The footer line of a column: its open cases, linking to the Cases list on them (#1621). */
+function CasesFooter({ href, text, muted, testId }: { href: string; text: string; muted: boolean; testId: string }) {
+  return (
+    <Link
+      to={href}
+      className={cn(
+        "pointer-events-auto relative z-10 w-fit truncate content-caption hover:underline",
+        muted ? "text-default-secondary" : "font-medium text-accent",
+        BUTTON_ROLE_FOCUS_RING,
+      )}
+      data-testid={testId}
+    >
+      {text}
+    </Link>
+  );
 }
 
 /** The score series of one stage over the last `days` days (`null` on a day with none). */
@@ -285,8 +312,8 @@ function BulletBar({ label, value, delta, unit = "%" }: { label: string; value: 
  */
 const DELTA_ROW = "pointer-events-none flex min-h-[2lh] min-w-0 flex-col content-caption";
 
-/** Five subgrid rows: name, ring, band and delta, metric, sparkline. */
-const COLUMN = "relative row-span-5 grid grid-rows-subgrid min-w-0 gap-y-2 rounded-sm border border-elevation-subtle-soft bg-elevation-default p-3";
+/** Six subgrid rows: name, ring, band and delta, metric, sparkline, open cases (#1621). */
+const COLUMN = "relative row-span-6 grid grid-rows-subgrid min-w-0 gap-y-2 rounded-sm border border-elevation-subtle-soft bg-elevation-default p-3";
 
 function Column({ children, stage, onOpen, openLabel, summary, tip }: {
   children: ReactNode; stage: string; onOpen?: () => void; openLabel?: string;
@@ -336,7 +363,7 @@ function RowAction({ children, onClick, href }: { children: ReactNode; onClick?:
 
 export function LifecycleBandCard({
   stages, live, covered, total, history, vertical, aiLockReason, opencrq,
-  onExport, onConnect, onContentHeight, posture = null, now, refreshing = false, signals = null,
+  onExport, onConnect, onContentHeight, posture = null, now, refreshing = false, signals = null, cases = null,
 }: LifecycleBandProps) {
   const { t_i18n } = useFormatter();
   const navigate = useNavigate();
@@ -419,7 +446,7 @@ export function LifecycleBandCard({
           <div className="pointer-events-none absolute inset-x-3 top-[4.25rem] hidden h-px bg-[var(--border-elevation-subtle-soft)] @5xl:block" aria-hidden data-testid="ctem-story-track" />
           <ul
             className="relative grid grid-cols-2 gap-x-3 gap-y-3 @2xl:grid-cols-3 @5xl:grid-cols-6"
-            style={{ gridTemplateRows: "repeat(5, auto)" }}
+            style={{ gridTemplateRows: "repeat(6, auto)" }}
             data-testid="ctem-lifecycle-chips"
           >
             {CTEM_STAGE_KEYS.map((key, index) => {
@@ -533,6 +560,18 @@ export function LifecycleBandCard({
                   <span className="pointer-events-none block h-6 w-full" data-testid="ctem-lifecycle-trend-line">
                     {isCovered && hasTrend ? <MiniTrend values={trend} color={band.ring} /> : null}
                   </span>
+                  <span className="flex min-h-[1lh] min-w-0">
+                    {cases && (() => {
+                      const open = cases.phases[stageKey]?.open ?? 0;
+                      const waiting = cases.phases[stageKey]?.waiting ?? 0;
+                      const text = open === 0
+                        ? t_i18n("No open case")
+                        : waiting > 0
+                          ? t_i18n("{count, plural, one {# open case} other {# open cases}}, {waiting} waiting", { count: open, waiting })
+                          : t_i18n("{count, plural, one {# open case} other {# open cases}}", { count: open });
+                      return <CasesFooter href={casesListHref({ phase: key })} text={text} muted={open === 0} testId={`ctem-lifecycle-cases-${key}`} />;
+                    })()}
+                  </span>
                 </Column>
               );
             })}
@@ -602,6 +641,19 @@ export function LifecycleBandCard({
               </span>
               <span className="pointer-events-none block h-6 w-full" data-testid="ctem-lifecycle-trend-line">
                 {postureTrend.filter((v) => v !== null).length >= 2 ? <MiniTrend values={postureTrend} color={bandOf(posture?.band).ring} /> : null}
+              </span>
+              <span className="flex min-h-[1lh] min-w-0">
+                {/* Cases carry no Governance phase: the column counts the risks accepted on them. */}
+                {cases && (
+                  <CasesFooter
+                    href={casesListHref({ state: "accepted_risk" })}
+                    text={cases.acceptedRisk === 0
+                      ? t_i18n("No accepted risk")
+                      : t_i18n("{count, plural, one {# accepted risk} other {# accepted risks}}", { count: cases.acceptedRisk })}
+                    muted={cases.acceptedRisk === 0}
+                    testId="ctem-lifecycle-cases-governance"
+                  />
+                )}
               </span>
             </Column>
           </ul>

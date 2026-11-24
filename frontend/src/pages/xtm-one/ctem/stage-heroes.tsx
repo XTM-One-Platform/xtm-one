@@ -12,6 +12,7 @@
 import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Chip } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CompactFigure } from "@/components/ui/compact-figure";
 import { InfoTip } from "@/components/ui/info-tip";
@@ -155,14 +156,16 @@ export function HeroCard({
   hint?: ReactNode;
 }) {
   return (
-    <section className={cn("rounded-sm border border-elevation-subtle-soft bg-elevation-default p-5 space-y-4", className)} data-testid={testId}>
+    // The shared Card (design system Paper, layer 1), the surface every other card of the
+    // CTEM pages uses, so a page never shows two card surfaces side by side (#1624, UX B1).
+    <Card className={cn("p-5 space-y-4", className)} data-testid={testId}>
       <header className="flex flex-wrap items-center gap-2">
         <h2 className="content-base font-semibold">{title}</h2>
         {hint && <InfoTip content={hint} label={title} />}
         <div className="ml-auto flex flex-wrap items-center gap-2">{chips}</div>
       </header>
       {children}
-    </section>
+    </Card>
   );
 }
 
