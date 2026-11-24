@@ -3883,6 +3883,43 @@ async def _run_unless_stopped(executor, call, cancel_event) -> str:
     return result.content
 
 
+def _refusal_without_run(decision: dict[str, Any], *, decided: bool) -> tuple[str | None, str]:
+    """(gate outcome, first sentence of the tool result) of a call not run.
+
+    Only a verdict a person gave reads "Rejected by human reviewer": a call
+    the deadline refused, one the decision set carried no verdict for and one
+    whose tool left the run's surface each say what refused it, so neither the
+    agent nor an auditor credits a person with a refusal nobody made. The
+    outcome is ``None`` for a person's refusal (the caller keeps
+    ``human_<verdict>``).
+    """
+    from app.tools.approval import (
+        DECISION_SOURCE_DEADLINE,
+        DECISION_SOURCE_KEY,
+        DECISION_SOURCE_NOT_OFFERED,
+        OUTCOME_EXPIRED,
+        OUTCOME_NOT_OFFERED,
+        OUTCOME_UNDECIDED,
+    )
+
+    source = decision.get(DECISION_SOURCE_KEY)
+    if source == DECISION_SOURCE_DEADLINE:
+        return OUTCOME_EXPIRED, (
+            "Not run: nobody answered the approval request before its deadline, "
+            "so the platform refused it. No person rejected it."
+        )
+    if source == DECISION_SOURCE_NOT_OFFERED:
+        reason = decision.get("rejection_reason") or "This tool is no longer available."
+        return OUTCOME_NOT_OFFERED, f"Not run: {reason}"
+    if not decided:
+        return OUTCOME_UNDECIDED, (
+            "Not run: the approval answer carried no verdict for this call, so it "
+            "was refused by default. No person rejected it."
+        )
+    reason = decision.get("rejection_reason") or "No reason given."
+    return None, f"Rejected by human reviewer: {reason}"
+
+
 async def _apply_approval_decisions(
     *,
     executor,
@@ -3914,18 +3951,23 @@ async def _apply_approval_decisions(
     for proposal in proposals:
         call_id = proposal.get("tool_call_id")
         tool_name = proposal.get("tool_name", "")
+        decided = isinstance(decisions.get(call_id), dict)
         decision = decisions.get(call_id) or {}
         verdict = decision.get("decision", "reject")
+        refusal = None if is_approval(verdict) else _refusal_without_run(decision, decided=decided)
 
         if outcomes is not None:
-            # The human's verdict IS this call's gate outcome (FR-020).
-            outcomes[call_id] = f"human_{verdict}"
+            # The human's verdict IS this call's gate outcome (FR-020); a
+            # refusal no person gave is named for what refused it.
+            if refusal and refusal[0]:
+                outcomes[call_id] = refusal[0]
+            else:
+                outcomes[call_id] = f"human_{verdict}"
 
         # An allow-list, so anything unrecognised refuses. This is the last
         # point before execution: a verdict the transports let through — a typo,
         # a stale client's value — must not become consent here.
-        if not is_approval(verdict):
-            reason = decision.get("rejection_reason") or "No reason given."
+        if refusal is not None:
             # A structured refusal, not an exception: the agent should be able
             # to read this, understand the action was declined, and adapt —
             # rather than treat it as a tool malfunction and retry blindly.
@@ -3933,7 +3975,7 @@ async def _apply_approval_decisions(
                 ChatMessage(
                     role="tool",
                     content=(
-                        f"Rejected by human reviewer: {reason} "
+                        f"{refusal[1]} "
                         f"The {tool_name} call was not executed. Do not retry it "
                         f"unchanged; propose an alternative or ask how to proceed."
                     ),
@@ -8139,6 +8181,7 @@ async def execute_assignment_run(
                                     "assignment, so the approved call was not "
                                     "run."
                                 ),
+                                "source": "not_offered",
                             }
                             for _cid, _d in _resume_decisions.items()
                         }

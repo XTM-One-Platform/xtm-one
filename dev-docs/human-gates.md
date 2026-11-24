@@ -58,6 +58,15 @@ What diverges, read on main:
   links exist on work items only; a run question is one concatenated string.
 - Three answer endpoints, three audit trails (`human_input_history` and the
   resolution entry, `waiting.responded_by`, the work item answer stamp).
+  A tool-approval decision on a run also writes one `AuditLog` row,
+  `entity_type` `assignment_run_approval`, action `decide`
+  (`chat_approval_resume.record_approval_decision`): the actor, each verdict,
+  its reason, the tool, the run and the surface. A deadline expiry is written
+  as `system:decision_deadline`, its calls read `not_run_expired` and the agent
+  is told nobody answered; a call the set carried no verdict for reads
+  `not_run_undecided`. Only a person's verdict reads "Rejected by human
+  reviewer" (`human_reject`). `get_run` lists `human_input_history` and its
+  `search` reads it.
 - Three bell kinds, three presenters in `notification_feed.py`
   (`present_run`, `present_activity`, `present_waiting_work_item`):
   `URGENT_KINDS` holds all three, `UNREAD_UNTIL_ANSWERED_KINDS` holds `hitl`
