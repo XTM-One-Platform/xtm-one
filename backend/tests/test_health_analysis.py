@@ -23,6 +23,7 @@ SOURCE = Path(analysis.__file__).read_text(encoding="utf-8")
 def _row(id_: str, severity: str = "warning", **kw):
     return SimpleNamespace(
         id=id_,
+        module=kw.get("module", "agents"),
         severity=severity,
         check_id=kw.get("check_id", "agents.tool_errors"),
         category="performance",
@@ -51,6 +52,7 @@ def _agentic_row(values: dict[str, Any] | None = None):
         "g",
         "critical",
         check_id="opencti.agentic.managers_running",
+        module="opencti",
         subject={"registration_id": "923854c5-4292-4eca-aa47-1ae2ea78842f"},
         evidence={
             "source": "module_checker",
@@ -83,11 +85,18 @@ def test_an_agentic_finding_carries_its_reads_and_recommendation():
     assert '"threshold"' not in prompt and '"read_at"' not in prompt
 
 
-def test_the_prompt_snapshot_of_both_finding_kinds():
-    payload = json.loads(analysis.build_prompt("opencti", [_row("a"), _agentic_row()]))
+NOW = datetime(2026, 11, 24, 6, 0, tzinfo=UTC)
+
+
+def test_the_prompt_snapshot_of_both_finding_kinds(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core import config
+
+    monkeypatch.setattr(config.settings, "app_version", "1.261124.0-dev.f972e8c")
+    payload = json.loads(analysis.build_prompt("opencti", [_row("a"), _agentic_row()], NOW))
     assert payload == {
         "module": "opencti",
         "open_findings": 2,
+        "running_build": "1.261124.0-dev.f972e8c",
         "findings": [
             {
                 "check": "agents.tool_errors",
@@ -111,9 +120,59 @@ def test_the_prompt_snapshot_of_both_finding_kinds():
                     }
                 ],
                 "recommendation": "Restart the platform node that should run PLAYBOOK_MANAGER.",
+                "evidence_at": "2026-11-24T03:50:00+00:00",
+                "check_build": None,
+                "stale": True,
             },
         ],
     }
+
+
+def _logic_row(build: str, *, read_at: str = "2026-11-24T05:00:00+00:00") -> Any:
+    from app.services.health.check_reports import check_logic_version
+
+    row = _agentic_row()
+    row.evidence = {
+        **row.evidence,
+        "read_at": read_at,
+        "check_logic": {**check_logic_version("opencti"), "build": build},
+    }
+    return row
+
+
+def test_a_finding_of_another_build_is_stale_and_says_so_in_the_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#1732: open finding from build A, instance on build B."""
+    from app.core import config
+
+    monkeypatch.setattr(config.settings, "app_version", "B")
+    row = _logic_row("A")
+    assert analysis.finding_is_stale(row, NOW) is True
+    entry = json.loads(analysis.build_prompt("opencti", [row], NOW))["findings"][0]
+    assert entry["stale"] is True and entry["check_build"] == "A"
+    assert entry["evidence_at"] == "2026-11-24T05:00:00+00:00"
+    assert "never recommend a rollback" in analysis.SYSTEM_PROMPT and "Run checks now" in analysis.SYSTEM_PROMPT
+
+
+def test_a_finding_of_the_running_logic_is_fresh_until_a_day_old(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core import config
+
+    monkeypatch.setattr(config.settings, "app_version", "B")
+    assert analysis.finding_is_stale(_logic_row("B"), NOW) is False
+    assert analysis.finding_is_stale(_logic_row("B", read_at="2026-11-23T05:00:00+00:00"), NOW) is True
+    assert analysis.finding_is_stale(_row("a"), NOW) is False  # deterministic: never stale
+
+
+def test_the_output_contract_drops_a_rollback_on_stale_evidence() -> None:
+    summary = (
+        "17 of 25 managers are not running.\n"
+        "1. If unresolved, roll back to build f95a7a9.\n"
+        "2. Check the platform queues."
+    )
+    guarded = analysis.guard_summary(summary, stale=True)
+    assert "roll back" not in guarded and "f95a7a9" not in guarded
+    assert "Check the platform queues." in guarded and guarded.endswith(analysis.STALE_ADVICE)
+    assert analysis.guard_summary(summary, stale=False) == summary
+    assert analysis.guard_summary("Nothing to act on.", stale=True) == "Nothing to act on."
 
 
 def test_agentic_values_are_bounded():

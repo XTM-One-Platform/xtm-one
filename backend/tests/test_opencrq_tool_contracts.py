@@ -831,13 +831,34 @@ READS = {
     ),
     "get_opencrq_job": Read(
         "get_opencrq_job", {"job_id": JOB}, opencrq_ops,
-        # jobs/jobs-router.ts: getJob input is {id}
-        [_sent("jobs.getJob", {"id": JOB})],
+        # jobs/jobs-router.ts: getJob and getRun inputs are {id}
+        [_sent("jobs.getJob", {"id": JOB}), _sent("jobs.getRun", {"id": JOB})],
+        ("jobs.getJob", "jobs.getRun"),
+        (
+            "[Job] id: " + JOB,
+            "Kind: crq-simulation",
+            "Status: succeeded",
+            "Enqueued: 2026-10-14T13:52:58.363Z",
+            "Started: 2026-10-14T13:52:58.377Z",
+            "Finished: 2026-10-14T13:53:41.902Z",
+            "Progress: 12/12",
+            "Attempt: 1/3",
+            "Current step: simulated 12 of 12 scenarios",
+            "Risk scenario ids: 5b0e7c3d-2f1a-4e9b-8c7d-6a5b4c3d2e1f, 9c8b7a6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d",
+        ),
+    ),
+    "get_opencrq_job_without_run_access": Read(
+        "get_opencrq_job",
+        {"job_id": JOB},
+        opencrq_ops,
+        # jobs.getRun answers nothing without MANAGE_SECURITY or platform access: status and times stay.
+        [_sent("jobs.getJob", {"id": JOB}), _sent("jobs.getRun", {"id": JOB})],
         ("jobs.getJob",),
         (
             "[Job] id: " + JOB, "Status: succeeded",
             "Enqueued: 2026-10-14T13:52:58.363Z", "Started: 2026-10-14T13:52:58.377Z",
         ),
+        absent=("Kind:", "Finished:", "Progress:", "Risk scenario ids:"),
     ),
     "list_opencrq_business_value_categories": Read(
         "list_opencrq_business_value_categories", {}, opencrq_assets,

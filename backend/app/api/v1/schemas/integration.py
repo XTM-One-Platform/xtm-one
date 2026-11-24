@@ -274,6 +274,10 @@ class IntegrationResponse(BaseModel):
     #: The result of the last connectivity test: ``untested`` (a typed
     #: credential nobody tested), ``ok`` or ``error``; None before any (#11837).
     connection_test_status: str | None = None
+    #: Why the status left ``connected`` (the refresh sweep's verdict) and when
+    #: the status last changed (#1665); None when nothing was recorded.
+    status_reason: str | None = None
+    status_reason_at: datetime | None = None
     name: str
     # The suffix its tools carry (``<tool>__<slug>``) when an agent binds
     # several integrations of this provider; a rename never changes it.

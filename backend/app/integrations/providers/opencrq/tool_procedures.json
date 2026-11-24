@@ -190,6 +190,7 @@
   ],
   "get_opencrq_job": [
     "jobs.getJob",
+    "jobs.getRun",
     "tenants.getTenants"
   ],
   "get_opencrq_loss_driver": [

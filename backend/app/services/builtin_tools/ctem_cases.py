@@ -154,6 +154,12 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     limit=max(1, min(int(limit or 20), 50)),
                     offset=max(0, int(offset or 0)),
                 )
+                from app.services import ctem_case_version_history as version_history
+
+                # Issues that name no asset: the inventory count, else "unknown" with its reason (#1694).
+                history = await store.events_of(db, [uuid.UUID(row["id"]) for row in rows])
+                for row in rows:
+                    version_history.with_asset_count(row, history.get(uuid.UUID(row["id"]), []))
                 from .ctem_signals import case_signal_scope
 
                 return _dump(
@@ -187,6 +193,13 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 # The versions the case's product runs on the assets (#1252), and
                 # what a proposal may claim from them (#1472): blind when unknown.
                 running = await case_versions.for_case(db, shown[0])
+                if running is not None:
+                    from app.services import ctem_case_version_history as version_history
+                    from app.services import ctem_cases_store as store
+
+                    # Why the versions moved, per device (#1694): before, after, when, source, reason.
+                    events = (await store.events_of(db, [shown[0].id])).get(shown[0].id, [])
+                    running = {**running, "history": version_history.history_of(events)}
                 match = (
                     matching.version_match(
                         running, product_label=shown[0].product_label, fixed_version=shown[0].fixed_version

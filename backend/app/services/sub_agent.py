@@ -2054,6 +2054,55 @@ async def cancel_sub_agent_tasks_for_scope(
     return len(tasks), executions_cancelled
 
 
+#: Why a background task that never started stopped with the run that spawned it.
+PARENT_ENDED_TASK_REASON = "Cancelled: the run that spawned it ended before it started."
+
+
+async def cancel_unstarted_tasks_of_ended_run(db: AsyncSession, run_id: str | uuid.UUID) -> list[str]:
+    """Cancel the background tasks *run_id* spawned that no worker ever started.
+
+    A run that ends (its final answer, its deadline) leaves nobody to collect a
+    task still waiting in the queue: started later, its result would have no
+    consumer. Each such task ends ``cancelled`` with
+    :data:`PARENT_ENDED_TASK_REASON`, its delivery suppressed, its execution
+    cancelled and its delegation row concluded. A task already running keeps
+    running and delivers as it always did. Commits; returns the cancelled ids.
+    """
+    from app.models.orchestration import TERMINAL_EXECUTION_STATES
+    from app.services.orchestration_engine import cancel_execution, get_execution_by_dedup_key
+
+    tasks = (
+        (
+            await db.execute(
+                select(SubAgentTask)
+                .where(
+                    SubAgentTask.status == "pending",
+                    SubAgentTask.started_at.is_(None),
+                    SubAgentTask.metadata_json["parent_run_id"].astext == str(run_id),
+                )
+                .order_by(SubAgentTask.id)
+                .with_for_update(skip_locked=True)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not tasks:
+        return []
+    now = datetime.now(UTC)
+    for task in tasks:
+        execution = await get_execution_by_dedup_key(db, f"sub_agent_task:{task.id}")
+        if execution is not None and execution.state not in TERMINAL_EXECUTION_STATES:
+            await cancel_execution(db, execution_id=execution.id)
+        _mark_task_cancelled(task, now=now, error=PARENT_ENDED_TASK_REASON)
+        _record_no_turn_ledger(task)
+        await _update_task_delegation(db, str(task.id), "cancelled", error=PARENT_ENDED_TASK_REASON)
+    await db.commit()
+    ids = [str(task.id) for task in tasks]
+    logger.info("Run %s ended: cancelled %d background task(s) it spawned that never started: %s", run_id, len(ids), ids)
+    return ids
+
+
 async def lock_sub_agent_tasks_for_runs(
     db: AsyncSession, run_ids: Iterable[str | uuid.UUID]
 ) -> None:
@@ -5150,6 +5199,7 @@ async def update_assignment_run(
         )
         wr = wr_result.scalar_one_or_none()
         if wr:
+            previous_status = wr.status
             wr.status = status
             wr.completed_at = datetime.now(UTC)
             if status in ("completed", "failed", "cancelled"):
@@ -5184,5 +5234,62 @@ async def update_assignment_run(
                         assignment_run_id,
                         format_exception_message(ser_err),
                     )
+            # A delegated child run (no assignment) ends here, never through the
+            # engine: it raises run.completed / run.failed itself. An assignment
+            # run is published by the engine at its own ending.
+            if wr.assignment_id is None and status in ("completed", "failed") and previous_status != status:
+                _publish_delegated_run_ended_after_commit(db, wr, status, error)
     except Exception as e:
         logger.warning("Failed to update AssignmentRun %s: %s", assignment_run_id, format_exception_message(e))
+
+
+def _publish_delegated_run_ended_after_commit(db: AsyncSession, run: Any, status: str, error: str | None) -> None:
+    """Raise ``run.completed`` / ``run.failed`` for a delegated child run once *db* commits.
+
+    The event carries ``parent_run_id`` (and the delegating run's agent in
+    scope), as an assignment run's does. A snapshot of the row is taken now:
+    the ORM object is expired by the commit. A rolled-back ending publishes
+    nothing. Never raises.
+    """
+    try:
+        from types import SimpleNamespace
+
+        from sqlalchemy import event as sa_event
+
+        snapshot = SimpleNamespace(
+            id=run.id,
+            agent_id=run.agent_id,
+            assignment_id=run.assignment_id,
+            parent_run_id=run.parent_run_id,
+            trigger_context=run.trigger_context,
+            user_id=run.user_id,
+            is_company_managed=run.is_company_managed,
+            stop_reason=getattr(run, "stop_reason", None),
+        )
+        name = f"run.{status}"
+        reason = status
+
+        def _after_commit(_session: Any) -> None:
+            try:
+                from app.services.assignment_engine import publish_run_event
+
+                task = asyncio.get_running_loop().create_task(
+                    publish_run_event(snapshot, name, reason=reason, error=error)
+                )
+                _DELEGATED_RUN_EVENT_TASKS.add(task)
+                task.add_done_callback(_DELEGATED_RUN_EVENT_TASKS.discard)
+            except RuntimeError:
+                logger.debug("%s of delegated run %s not published: no event loop", name, snapshot.id)
+
+        sa_event.listen(db.sync_session, "after_commit", _after_commit, once=True)
+    except Exception as exc:
+        logger.warning(
+            "run.%s of delegated run %s not scheduled: %s",
+            status,
+            getattr(run, "id", None),
+            format_exception_message(exc),
+        )
+
+
+# Strong references to the in-flight publishes, so a pending task is never collected.
+_DELEGATED_RUN_EVENT_TASKS: set[asyncio.Task[None]] = set()

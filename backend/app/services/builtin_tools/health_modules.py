@@ -291,7 +291,13 @@ async def _record_module_check_report(
     from app.models.health_cycle import HealthCycleRun
     from app.models.health_module_analyst import HealthModuleCheckReport
     from app.services.health.access import WRITE_REFUSED
-    from app.services.health.check_reports import CheckReportError, apply_verdicts, clean_checks, counts
+    from app.services.health.check_reports import (
+        CheckReportError,
+        apply_verdicts,
+        check_logic_version,
+        clean_checks,
+        counts,
+    )
 
     # The module checker's own write, inside its own cycle (section 13.6).
     principal_role = str(getattr(reader.principal, "role", "") or "")
@@ -319,7 +325,8 @@ async def _record_module_check_report(
     finding_ids, findings = await apply_verdicts(
         db, module=module, registration_id=cycle.target_id, verdicts=verdicts, now=now
     )
-    entries = [v.as_entry(fid) for v, fid in zip(verdicts, finding_ids, strict=True)]
+    logic = check_logic_version(module)
+    entries = [v.as_entry(fid, logic) for v, fid in zip(verdicts, finding_ids, strict=True)]
     tally = counts(verdicts)
     row = (
         await db.execute(select(HealthModuleCheckReport).where(HealthModuleCheckReport.cycle_id == reader.cycle_id))

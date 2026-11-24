@@ -330,15 +330,20 @@ FLEET_GATED_TOOLS_CONTEXT_KEY = "fleet_gated_tools"
 
 
 def gate_tool_names(gates: Iterable[Mapping[str, Any]] | None) -> frozenset[str]:
-    """Every tool a gate of the fleet names, whether it waits at the level or runs (#1480).
+    """Every tool a gate of the fleet names or offers, whether it waits at the level or runs (#1480).
 
     A tool offered only because a gate decides it (``apply_opencti_draft`` under
-    the CTEM analyst review) is offered whenever its gate exists: at a level
-    where the gate waits, :func:`gated_tool_rules` pauses the call; where it
-    runs, the fleet's policy lets it run.
+    the CTEM analyst review) is offered whenever its gate exists. A built-in
+    gate declares no ``tools`` (#1675): it names what it offers by its key
+    (``builtin_fleet_docs.GATE_OFFERED_TOOLS``), so the offer never depends on
+    a tool-level pause. On a custom fleet opted in to tool-level enforcement,
+    :func:`gated_tool_rules` pauses the call where the gate waits.
     """
+    from app.agents.builtin_fleet_docs import GATE_OFFERED_TOOLS
+
     names: set[str] = set()
     for gate in gates or ():
+        names.update(GATE_OFFERED_TOOLS.get(str(gate.get("key") or ""), ()))
         for tool in gate.get("tools") or ():
             if isinstance(tool, Mapping) and tool.get("name"):
                 names.add(str(tool["name"]))
@@ -595,10 +600,10 @@ def fleet_autonomy_block(
         )
     else:
         lines.append(
-            "An action that waits needs a person's approval before it runs, as your instructions say: ask "
-            "once, and once a person has answered that decision, do the action without asking again. An "
-            "action that runs without approval is still reported in the case. Only an administrator can raise "
-            "this level."
+            "An action that waits is one decision item for a person (a needs_human work item with its "
+            "ask), filed between steps: never a pause inside a run. Ask once; once a person has answered "
+            "that decision, you decide what it means and do it without asking again. An action that runs "
+            "without approval is still reported in the case. Only an administrator can raise this level."
         )
     if instructions:
         lines.append(instructions)
@@ -635,6 +640,9 @@ async def fleet_enforces_at_tool_level(db: Any, fleet_id: Any) -> bool:
 
     Off by default: XTM One enables no programmatic tool-level gate unless a
     person asks for one, the same rule as an agent's ``approve_tool_calls``.
+    Never on a built-in (seeded) fleet, whatever the stored flag (#1675): its
+    tools are always offered and authorized, and its gates are decision items
+    between steps, never a pause inside a run.
     """
     if fleet_id is None:
         return False
@@ -646,13 +654,17 @@ async def fleet_enforces_at_tool_level(db: Any, fleet_id: Any) -> bool:
 
     try:
         async with db.begin_nested():
-            value = (
-                await db.execute(select(Fleet.enforce_gates_at_tool_level).where(Fleet.id == fleet_id))
-            ).scalar_one_or_none()
+            row = (
+                await db.execute(
+                    select(Fleet.enforce_gates_at_tool_level, Fleet.is_builtin).where(Fleet.id == fleet_id)
+                )
+            ).first()
     except Exception:
         logging.getLogger(__name__).exception("Fleet tool-level enforcement unreadable for fleet %s", fleet_id)
         return False
-    return bool(value)
+    if row is None or row[1]:
+        return False
+    return bool(row[0])
 
 
 async def fleet_autonomy_for_run(db, fleet_id: Any) -> tuple[str, list[Mapping[str, Any]]] | None:

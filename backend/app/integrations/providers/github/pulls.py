@@ -47,7 +47,7 @@ from .checks import _CI_MAX_PAGES, _CI_PAGE_SIZE, ci_verdict, classify_ci, is_co
 from .contents import _json_object
 from .landed import pull_key, pull_probe
 from .merge import conflict_answer, outcome_line
-from .merge_resolution import _branch_tip, drop_stopped_alignment, ref_moved_and_undone
+from .merge_resolution import _already_merged, _branch_tip, drop_stopped_alignment, ref_moved_and_undone
 
 _SOURCE = "integration:github"
 _MERGE_METHODS = {"MERGE", "SQUASH", "REBASE"}
@@ -1753,6 +1753,14 @@ def register(
         outcome = await outcome_line(client, headers, repo, repo_url, branch, before, answer)
         if "landed true" in outcome:
             await mark_self_action(repo, number)
+            base_tip = await _branch_tip(client, headers, repo, repo_url, base_ref)
+            if base_tip and await _already_merged(client, headers, repo, repo_url, branch, base_tip):
+                # The merge landed although its answer was an error (a lost answer, a replayed call): the
+                # branch holds the base, so the outcome leads, never "Error" over work that was written.
+                return (
+                    f"Merged (landed): the branch of PR #{number} in {repo} now holds '{base_ref}' "
+                    f"({base_tip[:12]}) although the merge call answered an error.\n{outcome}\n{answer}"
+                )
         return f"{lead}\n{answer}\n{outcome}"
 
     async def _toggle_draft(

@@ -237,6 +237,9 @@ and case stay as the first sighting and the next steps left them.
    carry no exposure verdict yet: they get a row once their payload says
    what was proven.
 2. **Agent tools** (`builtin_tools/ctem_signals.py`): `record_ctem_signal`,
+   `record_ctem_signals` (#1726: up to 100 rows in one call, one savepoint per
+   row and one commit, one result per row with its index; a refused row is
+   rolled back alone; idempotent on the dedupe key like the single tool),
    `list_ctem_signals`, XTM One mode only.
 3. **API**: `POST /api/v1/ctem-signals` (answers `created` and the signal),
    `GET /api/v1/ctem-signals?state=&trigger_path=&lens=&limit=&offset=`

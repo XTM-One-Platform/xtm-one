@@ -181,6 +181,7 @@ from app.services.integration_state import (
     takes_admin_oauth_app,
     uses_admin_oauth_app,
 )
+from app.services.integration_status import current_reason
 from app.services.integration_user_credentials import (
     apply_share_choice,
     connected_user_counts,
@@ -4910,6 +4911,8 @@ def _to_response(
     # Someone acting with their own account sees its state, never the
     # holder's: its status and token, and no scopes (theirs are not recorded).
     status, has_access_token, scopes = r.status, bool(r.access_token_enc), r.scopes
+    # Why and since when (#1665): the holder's verdict, never shown for someone's own account.
+    status_reason, status_reason_at = current_reason(r)
     # What the stored token was granted, and what it asked for and did not get.
     granted = getattr(r, "granted_scopes", None) if has_access_token else None
     granted_scopes = None if granted is None else split_scopes(granted)
@@ -4919,6 +4922,7 @@ def _to_response(
         has_access_token = bool(my_credential and my_credential.has_access_token)
         scopes = required_scopes = None
         granted_scopes = missing = None
+        status_reason = status_reason_at = None
 
     return IntegrationResponse(
         id=str(r.id),
@@ -4928,6 +4932,8 @@ def _to_response(
         auth_type=r.auth_type,
         status=status,
         connection_test_status=getattr(r, "connection_test_status", None),
+        status_reason=status_reason,
+        status_reason_at=status_reason_at,
         name=r.name,
         tool_slug=r.tool_slug,
         description=r.description,

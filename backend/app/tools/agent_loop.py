@@ -5113,6 +5113,24 @@ def collect_pending_wait_task_ids(messages: list[ChatMessage]) -> list[str]:
     return found
 
 
+def never_started_task_ids(live_ids: list[str], statuses: dict[str, str], answer: str) -> list[str]:
+    """The open children a tool-free final answer may leave behind, or ``[]``.
+
+    Non-empty only when every id of *live_ids* reads ``pending`` in *statuses*
+    (queued, never started: a running, unknown or unread child keeps the park)
+    and *answer* is a deliverable, not a "waiting for" narration. The run then
+    ends on its answer instead of parking on implicit waits for a child that
+    may not start within its budget; the child keeps running on its own.
+    """
+    if not live_ids or not (answer or "").strip():
+        return []
+    if any(statuses.get(tid) != "pending" for tid in live_ids):
+        return []
+    if _WAITING_NARRATION_RE.search(answer[-600:]):
+        return []
+    return list(live_ids)
+
+
 def collect_spawned_task_ids(messages: list[ChatMessage]) -> list[str]:
     """Task ids spawned in the CURRENT turn via ``spawn_background_task``.
 
@@ -11860,6 +11878,10 @@ async def run_agent_loop(
     # Wait pauses are not "acting" time: Stage-1 / wall-clock "stop exploring"
     # nudges must not fire because the parent spent five minutes parked.
     _wait_paused_total = 0.0
+    # Children already ``pending`` (queued, never started) at an implicit park
+    # of this run: a final answer is only allowed to leave them behind once
+    # they stayed ``pending`` through one whole park (#1661).
+    _parked_pending_ids: set[str] = set()
     _last_round_was_wait = False
     # One-shot: set at a wait-budget hand-off when an interactive user opened
     # this turn and the model re-waited on background tasks it did NOT spawn
@@ -14589,6 +14611,7 @@ async def run_agent_loop(
                 # Implicit wait (or a wait-budget hand-off) keeps the parent
                 # in the loop. No extra system-prompt text.
                 _live_spawned: list[str] = []
+                _spawn_statuses: dict[str, str] = {}
                 _spawned_ids = collect_spawned_task_ids(messages)
                 if _spawned_ids and wait_condition is not None:
                     try:
@@ -14610,6 +14633,30 @@ async def run_agent_loop(
                         ]
                 elif _spawned_ids:
                     _live_spawned = list(_spawned_ids)
+                # A final answer while every open child is still ``pending``
+                # (queued, never started) parks once, as before: a child is
+                # ``pending`` for the moments before a worker picks it up, and
+                # a delegating run stays open until its child finishes. When
+                # the same children are still ``pending`` after that whole
+                # park, the run ends on its answer instead of parking again:
+                # a child that never started may never start within this run's
+                # budget. They are left to run on their own and named on the
+                # response (``pending_task_ids``) and the iteration outcome.
+                _never_started = never_started_task_ids(_live_spawned, _spawn_statuses, response.content or "")
+                _first_park_pending: list[str] = []
+                if _never_started and not set(_never_started) <= _parked_pending_ids:
+                    _first_park_pending = _never_started
+                    _never_started = []
+                if _never_started:
+                    logger.info(
+                        "Agent loop iter %d: final answer with %d never-started "
+                        "background task(s); ending the run instead of parking",
+                        iteration + 1,
+                        len(_never_started),
+                    )
+                    response.pending_task_ids = list(_never_started)
+                    _iter_outcome["detached_task_ids"] = list(_never_started)
+                    _live_spawned = []
                 if (
                     _live_spawned
                     and _wait_definition is not None
@@ -14767,6 +14814,9 @@ async def run_agent_loop(
                         _wait_paused_total += _implicit_result.elapsed
                         _waive_wait_round(WAIT_TOOL_NAME)
                         _forget_reads_after_pause()
+                        # Only a park that really paused counts as the one
+                        # chance a never-started child gets to start.
+                        _parked_pending_ids.update(_first_park_pending)
                     # Suppress next-round nudges only when the park REALLY
                     # paused — a refused park (steered, already-done) spent no
                     # time, so budget / wall-clock warnings must still fire.

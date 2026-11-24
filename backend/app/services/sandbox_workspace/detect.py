@@ -1205,6 +1205,55 @@ class Widening:
     directory: str
     checks: tuple[str, ...]
 
+    def words(self) -> str:
+        """Why it was widened, for the answer: the checks run from the directory, or the package it sits in."""
+        if self.checks:
+            return f"the directory {', '.join(self.checks)} run from"
+        return "the package it sits in"
+
+
+#: Bytes of a package (its files, ``node_modules`` and build output aside) a sub_path inside it is widened to at most.
+MAX_PACKAGE_WIDEN_BYTES = 64 * 1024 * 1024
+
+
+def widen_to_package_roots(
+    sub_paths: Iterable[str], sizes: Mapping[str, int], *, max_bytes: int = MAX_PACKAGE_WIDEN_BYTES
+) -> tuple[list[str], list[Widening]]:
+    """*sub_paths* with each one strictly inside a JavaScript package replaced by the package's directory.
+
+    A unit or type check of ``front/src/x`` runs from the package root ``front/`` and loads what lies
+    there (``front/config.ts``, a static asset a test imports, the modules an alias names): a checkout of
+    ``front/src/x`` alone fails at collection, and a repository without ``.xtm-one/checks.toml`` declares
+    no check directory for :func:`widen_to_check_dirs` to widen to. The nearest directory above the
+    sub_path holding a ``package.json`` wins, never the repository root (that is the whole tree), and only
+    while the package's files (directories a build or an install writes aside) stay within *max_bytes*.
+    *sizes* maps every regular file of the repository to its size. Order is kept, and a sub_path left
+    under a widened one is dropped. Returns the sub_paths and what was widened.
+    """
+    wanted = [s.strip("/") for s in sub_paths if s and s.strip("/")]
+    roots = {posixpath.dirname(p) for p in sizes if posixpath.basename(p) == "package.json" and not _skipped(p)}
+    roots.discard("")
+    weights: dict[str, int] = {}
+
+    def weight(root: str) -> int:
+        if root not in weights:
+            weights[root] = sum(
+                size for path, size in sizes.items() if path.startswith(root + "/") and not _skipped(path)
+            )
+        return weights[root]
+
+    widened: list[Widening] = []
+    result: list[str] = []
+    for sub in wanted:
+        holder = next((d for d in _ancestors(posixpath.dirname(sub)) if d in roots), None)
+        if holder is not None and weight(holder) <= max_bytes:
+            widened.append(Widening(sub, holder, ()))
+            sub = holder
+        if sub not in result:
+            result.append(sub)
+    kept = [s for s in result if not any(s != o and s.startswith(o + "/") for o in result)]
+    return kept, widened
+
 
 def widen_to_check_dirs(sub_paths: Iterable[str], specs: Mapping[str, CheckSpec]) -> tuple[list[str], list[Widening]]:
     """*sub_paths* with each one strictly inside a declared check's ``cwd`` replaced by that directory.
