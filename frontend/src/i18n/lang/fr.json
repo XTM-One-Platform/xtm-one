@@ -21550,7 +21550,7 @@
   "{count, plural, one {# signal sent back to the scope gate} other {# signals sent back to the scope gate}}": "{count, plural, one {# signal renvoyé au filtre de périmètre} other {# signaux renvoyés au filtre de périmètre}}",
   "Recommended gates": "Contrôles recommandés",
   "Every other gate runs and the case records it.": "Les autres contrôles s'exécutent et le cas les enregistre.",
-  "{count, plural, one {This gate waits for a decision:} other {These # gates wait for a decision:}}": "{count, plural, one {Ce contrôle attend une décision :} other {Ces # contrôles attendent une décision :}}",
+  "{count, plural, =0 {No gate waits for a decision.} one {This gate waits for a decision:} other {These # gates wait for a decision:}}": "{count, plural, =0 {Aucun contrôle n'attend de décision.} one {Ce contrôle attend une décision :} other {Ces # contrôles attendent une décision :}}",
   "Add gates": "Ajouter des contrôles",
   "Nothing waits for a person. Every action is still logged and reported in Operations.": "Rien n'attend une personne. Chaque action reste journalisée et rapportée dans Opérations.",
   "The level the CTEM loop is seeded with. Every gate that runs is recorded on the case.": "Le niveau avec lequel la boucle CTEM est installée. Chaque contrôle exécuté est enregistré sur le cas.",

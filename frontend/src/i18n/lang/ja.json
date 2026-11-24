@@ -21550,7 +21550,7 @@
   "{count, plural, one {# signal sent back to the scope gate} other {# signals sent back to the scope gate}}": "{count, plural, other {#件のシグナルをスコープゲートに戻す}}",
   "Recommended gates": "推奨ゲート",
   "Every other gate runs and the case records it.": "その他のゲートは実行され、ケースに記録されます。",
-  "{count, plural, one {This gate waits for a decision:} other {These # gates wait for a decision:}}": "{count, plural, other {次の#件のゲートが判断を待ちます:}}",
+  "{count, plural, =0 {No gate waits for a decision.} one {This gate waits for a decision:} other {These # gates wait for a decision:}}": "{count, plural, =0 {判断を待つゲートはありません。} other {次の#件のゲートが判断を待ちます:}}",
   "Add gates": "ゲートを追加",
   "Nothing waits for a person. Every action is still logged and reported in Operations.": "人を待つ操作はありません。すべての操作は引き続き記録され、運用に報告されます。",
   "The level the CTEM loop is seeded with. Every gate that runs is recorded on the case.": "CTEM ループの初期設定レベルです。実行されたゲートはすべてケースに記録されます。",
