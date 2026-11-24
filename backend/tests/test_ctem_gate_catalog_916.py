@@ -61,12 +61,13 @@ def test_full_gates_waits_on_every_gate_and_autonomous_on_none(slug):
     assert not any(e["gated"] for e in gate_catalog("autonomous", _gates(slug)))
 
 
-def test_one_mobilize_decision_covers_the_tickets_of_its_case():
+def test_the_mobilize_decision_never_pauses_a_ticket_tool():
+    """#1675: one Mobilize decision item covers the tickets of its case; no ticket call pauses."""
     for slug in ("ctem-loop", "ctem-vuln-prioritization"):
         mobilize = next(g for g in _gates(slug) if g["key"] == CTEM_MOBILIZE_GATE)
-        assert {t["name"] for t in mobilize["tools"]} == _TICKET_TOOLS
-        rules = gated_tool_rules(SEEDED_FLEET_AUTONOMY_LEVEL, _gates(slug))
-        assert {r["key"] for r in rules if r["name"] in _TICKET_TOOLS} == {CTEM_MOBILIZE_GATE}
+        assert "tools" not in mobilize
+        for level in AUTONOMY_LEVELS:
+            assert not [r for r in gated_tool_rules(level, _gates(slug)) if r["name"] in _TICKET_TOOLS]
 
 
 def test_no_former_tool_gate_key_is_left():
@@ -133,7 +134,8 @@ def test_an_added_gate_never_replaces_a_seeded_one() -> None:
     clash = dict(_ADDED, key=CTEM_MOBILIZE_GATE, tools=[])
     gates = effective_gates(_gates("ctem-vuln-prioritization"), None, customer=[clash, {"no": "key"}, "x"])
     mobilize = [g for g in gates if g["key"] == CTEM_MOBILIZE_GATE]
-    assert len(mobilize) == 1 and mobilize[0]["source"] == "stored" and mobilize[0]["tools"]
+    assert len(mobilize) == 1 and mobilize[0]["source"] == "stored"
+    assert mobilize[0]["action"] != _ADDED["action"]
     assert len(gates) == len(CTEM_GATE_KEYS)
 
 

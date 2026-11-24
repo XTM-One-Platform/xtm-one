@@ -74,22 +74,22 @@ def test_an_unknown_level_reads_as_full_human_gates():
     assert gated_tool_rules("bogus", gates) == gated_tool_rules("full_gates", gates)
 
 
-def test_a_simulation_launch_pauses_until_autonomous_and_a_read_never_does():
+def test_a_seeded_simulation_launch_and_a_read_never_pause():
+    """#1675: the validation is a decision item; the launch call itself runs at every level."""
     gates = [g for g in _gates("ctem-loop") if g.get("key") == "ctem.validation.non_readonly"]
     assert gates, "the threat response fleet declares the validation gate"
     for level in AUTONOMY_LEVELS:
         gate = make_fleet_autonomy_gate(None, gated_tool_rules(level, gates))
-        # A validation is destructive (#1339): it waits until Full autonomous.
-        assert _paused(gate, _LAUNCH) is (level != "autonomous")
+        assert _paused(gate, _LAUNCH) is False
         assert _paused(gate, _READ) is False
 
 
-def test_a_ticket_waits_for_the_mobilize_decision_until_full_autonomous():
+def test_a_seeded_ticket_never_pauses_on_the_mobilize_gate():
     gates = [g for g in _gates("ctem-vuln-prioritization") if g.get("key") == "ctem.mobilize"]
     assert gates
     for level in AUTONOMY_LEVELS:
         gate = make_fleet_autonomy_gate(None, gated_tool_rules(level, gates))
-        assert _paused(gate, _TICKET) is (level != "autonomous")
+        assert _paused(gate, _TICKET) is False
 
 
 def test_an_approved_call_runs_and_the_inner_gate_still_applies():

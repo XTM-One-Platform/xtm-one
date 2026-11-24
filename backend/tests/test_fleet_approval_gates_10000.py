@@ -137,10 +137,12 @@ def test_the_context_carries_the_catalog_only_when_stored():
     assert gen._gate_facts(SimpleNamespace(approval_gates=[{"action": "a"}])) == {"gates": [{"action": "a"}]}
 
 
-def test_the_tool_enforced_gates_of_the_threat_response_fleet_are_stored():
+def test_the_seeded_gates_of_the_threat_response_fleet_are_stored_without_tools():
+    """#1675: a seeded gate is a decision; none names a tool."""
     fleet = _seeded_fleet("ctem-loop")
-    keys = {g["key"] for g in fleet.approval_gates if g.get("tools")}
+    keys = {g["key"] for g in fleet.approval_gates}
     assert {"ctem.validation.non_readonly", "ctem.mobilize"} <= keys
+    assert not [g["key"] for g in fleet.approval_gates if g.get("tools")]
 
 
 def test_the_seed_is_idempotent():

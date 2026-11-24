@@ -120,17 +120,14 @@ def test_one_analysis_counts_one_simulation_and_each_closed_gap_one_retest():
     assert roi.count_units(BUILTIN_ROI_UNITS[m2.COVERAGE_REPORTER], report) == 2
 
 
-def test_in_the_loop_a_simulation_launch_is_the_validation_gate_and_waits_out_of_the_box():
+def test_in_the_loop_a_simulation_launch_is_the_validation_decision_never_a_tool_pause():
     # Sam, 23 Nov 2026 (#1339): out of the box two CTEM gates wait, ctem.mobilize and the
-    # OpenAEV validation; the desk's launches are ctem.validation.non_readonly, liftable by a pin.
+    # OpenAEV validation. Sam, 24 Nov 2026 (#1675): the wait is a decision item, no tool pauses.
     gates = BUILTIN_FLEET_STRUCTURED[CTEM_LOOP_SLUG]["gates"]
     validation = next(g for g in gates if g["key"] == "ctem.validation.non_readonly")
-    assert {"manage_openaev_simulation", "manage_openaev_atomic_testing"} <= {t["name"] for t in validation["tools"]}
-    assert {"manage_openaev_simulation", "manage_openaev_atomic_testing"} <= {
-        r["name"] for r in gated_tool_rules("low", gates)
-    }
-    names = {r["name"] for r in gated_tool_rules("full_gates", gates)}
-    assert {"manage_openaev_simulation", "manage_openaev_atomic_testing"} <= names
+    assert "tools" not in validation
+    assert gated_tool_rules("low", gates) == []
+    assert gated_tool_rules("full_gates", gates) == []
 
 
 def test_the_seeded_documentation_names_every_automation():

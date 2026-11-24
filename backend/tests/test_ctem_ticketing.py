@@ -443,16 +443,14 @@ async def test_the_mobilization_tool_path_without_ticketing_is_a_reason(monkeypa
     assert answer == {"connected": False, "reason": tk.NOT_CONNECTED, "settings": tk.SETTINGS_PATH}
 
 
-def test_mobilize_gates_the_ticket_creation_through_the_layer_only():
-    from app.agents.builtin_fleet_docs import BUILTIN_FLEET_STRUCTURED, CTEM_MOBILIZE_GATE
-    from app.agents.fleet_seed import SEEDED_FLEET_AUTONOMY_LEVEL
-    from app.services.fleet_autonomy import gated_tool_rules, rule_matches
+def test_the_ticket_creation_is_never_paused_by_the_mobilize_gate():
+    """#1675: the Mobilize decision is one work item; sync_ctem_case_ticket always runs."""
+    from app.agents.builtin_fleet_docs import BUILTIN_FLEET_STRUCTURED
+    from app.services.fleet_autonomy import AUTONOMY_LEVELS, gated_tool_rules
 
     gates = BUILTIN_FLEET_STRUCTURED["ctem-vuln-prioritization"]["gates"]
-    rules = [r for r in gated_tool_rules(SEEDED_FLEET_AUTONOMY_LEVEL, gates) if r["name"] == "sync_ctem_case_ticket"]
-    assert [r["key"] for r in rules] == [CTEM_MOBILIZE_GATE]
-    assert rule_matches(rules[0], "sync_ctem_case_ticket", {"case_id": "c", "create": True})
-    assert not rule_matches(rules[0], "sync_ctem_case_ticket", {"case_id": "c"})
+    for level in AUTONOMY_LEVELS:
+        assert not [r for r in gated_tool_rules(level, gates) if r["name"] == "sync_ctem_case_ticket"]
 
 
 @pytest.mark.asyncio
