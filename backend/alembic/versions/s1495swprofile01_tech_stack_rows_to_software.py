@@ -27,7 +27,7 @@ organization by organization. The plan is computed here, not by the
 services, so the revision keeps meaning what it meant on the day it ran.
 
 Revision ID: s1495swprofile01
-Revises: c1503ctemcasestatus1
+Revises: p1591primcat01
 Create Date: 2026-11-24 00:20:00.000000
 """
 
@@ -44,7 +44,7 @@ from app.core.migration_ddl import set_lock_timeout
 revision: str = "s1495swprofile01"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "c1503ctemcasestatus1"
+down_revision: str | Sequence[str] | None = "p1591primcat01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
