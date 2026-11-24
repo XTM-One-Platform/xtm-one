@@ -5167,6 +5167,56 @@ async def get_work_item(
     }
 
 
+#: Why a person reads an item they cannot change (#1845), by the read tier that admits it.
+READ_ONLY_IN_WORKSPACE = (
+    "Read-only for you: it is filed in the workspace {workspace}, where you can view items but not change them."
+)
+READ_ONLY_OTHER_PERSON = "Read-only for you: it was created in another person's chat."
+READ_ONLY_RECIPIENT = (
+    "Read-only for you: it belongs to another person's workspace; you can answer the decision it waits for, "
+    "not change it."
+)
+
+
+async def person_write_access(work_item_id: str, *, user_id: str | None) -> tuple[bool, str | None] | None:
+    """Whether a person may change an item they read (#1845).
+
+    ``None`` when the item is not visible to them (the caller answers not
+    found); ``(True, None)`` when :func:`_writable_clause` admits them;
+    ``(False, reason)`` when they read it through a tier that grants no write
+    (a ``read_only`` workspace, the stored decision recipient, another
+    person's unfiled item), so a refused write is answered 403 with why,
+    never "not found".
+    """
+    from app.core.database import async_session
+    from app.models.workspace import Workspace
+
+    wid = safe_uuid(work_item_id)
+    if wid is None:
+        return None
+    uid = safe_uuid(user_id) if user_id else None
+    async with async_session() as db:
+        readable, writable = await _workspace_tiers(db, user_id)
+        item = (
+            await db.execute(select(WorkItem).where(WorkItem.id == wid, _visible_clause(uid, readable)))
+        ).scalar_one_or_none()
+        if item is None:
+            return None
+        writable_row = (
+            await db.execute(select(WorkItem.id).where(WorkItem.id == wid, _writable_clause(uid, writable)))
+        ).scalar_one_or_none()
+        if writable_row is not None:
+            return True, None
+        if item.workspace_id is None:
+            return False, READ_ONLY_OTHER_PERSON
+        if item.workspace_id in set(readable):
+            name = (
+                await db.execute(select(Workspace.name).where(Workspace.id == item.workspace_id))
+            ).scalar_one_or_none()
+            return False, READ_ONLY_IN_WORKSPACE.format(workspace=name or "(unnamed)")
+        return False, READ_ONLY_RECIPIENT
+
+
 async def list_visible_work_items_by_ids(ids: Sequence[str], *, user_id: str | None) -> list[dict]:
     """The items of *ids* the caller may read, serialized, in one query.
 
