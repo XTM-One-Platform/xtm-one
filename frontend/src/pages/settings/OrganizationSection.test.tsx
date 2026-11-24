@@ -103,7 +103,6 @@ beforeEach(() => {
     if (path === "/organizations") return [];
     if (path === "/integrations") return [];
     if (path === "/organization-context/pirs") return { pirs: [{ id: "pir-1", name: "Ransomware on energy" }], unavailable: null };
-    if (path === "/organization-context/readers") return READERS;
     if (path === "/organization-context/import/sources") return { sections: [] };
     if (path === "/organization-context/attack-surface/providers") return { providers: ["shodan"] };
     // The Sources and syncs table of the Knowledge and sources tab (#1276).
@@ -111,22 +110,6 @@ beforeEach(() => {
     throw new Error(`unexpected GET ${path}`);
   });
 });
-
-const READERS = {
-  readers: {
-    sector: [{ fleet_id: "f-1", name: "Threat response" }],
-    regions: [{ fleet_id: "f-1", name: "Threat response" }],
-    crown_jewels: [
-      { fleet_id: "f-1", name: "Threat response" },
-      { fleet_id: "f-2", name: "Vulnerability prioritization" },
-    ],
-  },
-  agents: {
-    risk_appetite: [{ agent_id: "a-1", name: "Risk Quantifier" }],
-    currency: [{ agent_id: "a-1", name: "Risk Quantifier" }],
-    pir_ids: [{ agent_id: "a-2", name: "Threat Relevance Analyst" }],
-  },
-};
 
 describe("OrganizationSection primary asset widths at 1080 (#1174 UX r2 B1 and B2)", () => {
   // The primary assets table measures 810 px in its 72rem card at 1080; Assets and Source step aside there.
@@ -144,43 +127,16 @@ describe("OrganizationSection primary asset widths at 1080 (#1174 UX r2 B1 and B
   });
 });
 
-describe("OrganizationSection used by (#9173 S2)", () => {
-  it("names the fleets reading each part, once per card, linked to the fleet page, and only in read mode", async () => {
+describe("OrganizationSection without reader rows (#1878)", () => {
+  it("shows no Used by or Read by agents row on any card, in read mode or in edit, and never asks who reads the profile", async () => {
     renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
-    // The first tab holds three of the cards that name their readers (#12329).
-    await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(3));
-    const [identity, risk, intelligence] = screen.getAllByTestId("settings.organization.used-by");
-    // The seeded agents reading the risk appetite and the PIRs (#10063 r1 A3), once each, linked to the agent page.
-    expect(risk.dataset.fields).toBe("risk_appetite currency loaded_hourly_rate");
-    expect(within(risk).queryByTestId("settings.organization.used-by.fleets")).toBeNull();
-    expect(within(risk).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["/agents/a-1"]);
-    expect(within(intelligence).getAllByRole("link").map((a) => a.textContent)).toEqual(["Threat Relevance Analyst"]);
-    expect(identity.dataset.fields).toBe("sector regions");
-    expect(within(identity).getAllByRole("link").map((a) => a.textContent)).toEqual(["Threat response"]);
+    expect((await screen.findByTestId("settings.organization.identity")).textContent).toContain("Acme");
+    expect(screen.queryByText("Used by")).toBeNull();
+    expect(screen.queryByText("Read by agents")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
-    await waitFor(() => expect(screen.queryByTestId("settings.organization.used-by")).toBeNull());
-  });
-
-  it("lays every line on one shared label grid, so the chips start at the same column on every card (#10166 UX r1 B1)", async () => {
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
-    await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(3));
-    for (const block of screen.getAllByTestId("settings.organization.used-by")) {
-      expect(block.dataset.layout).toBe("label-grid");
-      expect(block.dataset.align).toBe("start");
-      for (const row of block.querySelectorAll<HTMLElement>("[data-row]")) {
-        // Each line is a display-contents row: its label and its chip list are direct cells of the block's grid.
-        expect(row.dataset.row).toBe("contents");
-        expect(Array.from(row.children).map((cell) => (cell as HTMLElement).dataset.cell)).toEqual(["label", "chips"]);
-        // Both labels sit in every label cell (same column width on every card); only the row's own one is exposed.
-        const label = row.querySelector<HTMLElement>("[data-cell='label']")!;
-        expect(Array.from(label.querySelectorAll<HTMLElement>("[data-label]")).map((el) => el.dataset.label)).toEqual(["fleets", "agents"]);
-        expect(label.querySelectorAll("[data-label]:not([aria-hidden='true'])")).toHaveLength(1);
-        // #10166 UX r2 B1: each label is laid out in the chip's box and the grid aligns cells at the start,
-        // so the label text centres on the first chip row.
-        for (const el of label.querySelectorAll<HTMLElement>("[data-label]")) expect(el.dataset.box).toBe("chip-row");
-        expect(row.querySelector<HTMLElement>("[data-cell='chips'] [data-slot='badge']")!.dataset.box).toBe("chip-row");
-      }
-    }
+    expect(await screen.findByTestId("settings.save-bar")).toBeTruthy();
+    expect(screen.queryByText("Used by")).toBeNull();
+    expect(get.mock.calls.map(([path]) => path)).not.toContain("/organization-context/readers");
   });
 });
 
@@ -190,7 +146,6 @@ describe("OrganizationSection identity header and threshold previews (#9173 S2)"
       if (path === "/organization-context") return { ...CONTEXT, profile: { ...CONTEXT.profile, ...profile } };
       if (path === "/organizations" || path === "/integrations") return [];
       if (path === "/organization-context/pirs") return { pirs: [], unavailable: null };
-      if (path === "/organization-context/readers") return READERS;
       throw new Error(`unexpected GET ${path}`);
     });
 
@@ -339,12 +294,10 @@ describe("OrganizationSection", () => {
     expect(missing.textContent).toContain("Loaded hourly rate");
   });
 
-  it("names the fleets reading the primary assets on CTEM > Inventory, linked to the fleet page (#1690)", async () => {
+  it("shows the primary assets on CTEM > Inventory with no Used by row above them (#1690, #1878)", async () => {
     renderPage("business");
-    await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(1));
-    const [jewels] = screen.getAllByTestId("settings.organization.used-by");
-    expect(within(jewels).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["/fleets/f-1", "/fleets/f-2"]);
     expect(await screen.findByText("Payments")).toBeTruthy();
+    expect(screen.queryByText("Used by")).toBeNull();
   });
 
   it("counts the fields not filled Settings draws and opens the form on a missing field (#9173 S1c, #1690)", async () => {

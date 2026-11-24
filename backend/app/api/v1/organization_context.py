@@ -10,8 +10,7 @@ saving it; ``POST /ai-draft`` proposes field values with a model from the
 inputs the administrator gives (#9484, nothing saved); ``GET /pirs`` lists
 the connected OpenCTI's PIRs for the PIR picker (administrators);
 ``GET /proposals`` and ``POST /proposals/{id}/decide`` review the changes
-proposed from chat (#9484, S-a2); ``GET /readers`` names the fleets that
-read each part of the profile (#9173, S2); ``GET /setup-prompt`` and
+proposed from chat (#9484, S-a2); ``GET /setup-prompt`` and
 ``POST /setup-prompt`` carry the first-login setup proposal, shown once per
 instance (#9173, S3); ``DELETE /setup-prompt`` forgets its answer so it is
 proposed again (Settings > Platform, Reset onboarding). The
@@ -1849,42 +1848,6 @@ async def sync_organization_context_with_opencrq(
         plan=plan.summary(),
         errors=errors,
         version=current.version if current else None,
-    )
-
-
-class OrganizationFieldReader(BaseModel):
-    fleet_id: str
-    name: str
-
-
-class OrganizationAgentReader(BaseModel):
-    agent_id: str
-    name: str
-
-
-class OrganizationReadersResponse(BaseModel):
-    #: Profile field -> the fleets the caller can see whose documentation needs it.
-    readers: dict[str, list[OrganizationFieldReader]]
-    #: Profile field -> the seeded agents the caller can see whose persona reads it (#10063 r1 A3).
-    agents: dict[str, list[OrganizationAgentReader]] = {}
-
-
-@router.get("/readers", response_model=OrganizationReadersResponse)
-async def list_organization_context_readers(
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
-) -> OrganizationReadersResponse:
-    """The fleets and seeded agents that read each part of the profile.
-
-    Fleets from their documented prerequisites, agents from what their persona
-    reads. Rows only (no run, no model call); only what the caller can see.
-    """
-    from app.services.organization_context_readers import profile_field_readers
-
-    readers, agents = await profile_field_readers(db, user)
-    return OrganizationReadersResponse(
-        readers={field: [OrganizationFieldReader(**row) for row in rows] for field, rows in readers.items()},
-        agents={field: [OrganizationAgentReader(**row) for row in rows] for field, rows in agents.items()},
     )
 
 
