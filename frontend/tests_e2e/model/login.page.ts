@@ -71,10 +71,8 @@ export class LoginPage {
   }
 
   async logout(): Promise<void> {
-    // The user avatar/name dropdown is the last button in the sidebar footer.
-    await this.page.locator('header button').last().click();
-    await this.page.getByText('Sign out').waitFor({ state: 'visible', timeout: 5_000 });
-    await this.page.getByText('Sign out').click();
+    await this.page.getByTestId('user-menu-trigger').click();
+    await this.page.getByTestId('user-menu-sign-out').click();
     await this.page.waitForURL('**/login**');
   }
 }

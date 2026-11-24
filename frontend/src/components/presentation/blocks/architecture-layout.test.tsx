@@ -8,7 +8,7 @@
  * starts on its source node's border, ends on its target's, and runs through
  * no third node. The general invariants of the router (no crossings on a
  * clear graph, labels on the canvas and off nodes and each other, lanes 44px
- * apart, determinism) are the fixture-driven `tests_e2e/architecture-layout.spec.ts`,
+ * apart, determinism) are the fixture-driven `tests_unit/architecture-layout.test.ts`,
  * which carries these two fixtures as well.
  */
 import { describe, expect, test, vi } from "vitest";
