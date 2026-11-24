@@ -21670,6 +21670,7 @@
   "Single sign-on users join this group": "SSO ユーザーはこのグループに参加します",
   "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "シングルサインオン (SSO) でサインインしたユーザーは、サインインのたびにこのグループへ自動的に参加します。手動、SAML グループマッピング、SCIM で追加されたメンバーはそのまま保持されます。",
   "Case opening": "ケースの起票",
+  "Case opening: {state}": "ケースの起票: {state}",
   "Case opening on": "ケースの起票をオンにしました",
   "Case opening off": "ケースの起票をオフにしました",
   "Case opening is off": "ケースの起票はオフです",
