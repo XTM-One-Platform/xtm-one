@@ -21848,5 +21848,12 @@
   "JSON lines": "JSON lines",
   "Markdown table": "Markdown table",
   "Read on the server in a moment.": "Read on the server in a moment.",
-  "Refresh now": "Refresh now"
+  "Refresh now": "Refresh now",
+  "Name the event it is read on.": "Name the event it is read on.",
+  "Trend over the last runs (optional)": "Trend over the last runs (optional)",
+  "Schedule (cron, UTC)": "Schedule (cron, UTC)",
+  "Event of": "Event of",
+  "An integration": "An integration",
+  "On the server, on a schedule": "On the server, on a schedule",
+  "On the server, on an event": "On the server, on an event"
 }

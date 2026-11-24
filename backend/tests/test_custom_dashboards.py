@@ -540,7 +540,7 @@ def test_live_platform_widgets_and_their_tools_come_with_the_dashboard_studio(da
         "insert_widgets_from_pack", "save_dashboard_as_pack", "import_widget_pack", "publish_dashboard",
         "export_dashboard", "send_dashboard_export",
         "dashboard_catalog", "describe_platform_widget", "lookup_platform_values", "preview_source", "add_widget",
-        "check_dashboard",
+        "check_dashboard", "create_feed",
     ]  # fmt: skip
     # What only reads is declared so: no approval asked of the agent's users for it.
     from app.services.tool_classification import definition_tool_type

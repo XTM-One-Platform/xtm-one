@@ -168,7 +168,8 @@ async def _assignment(db: AsyncSession, user_id: uuid.UUID, options: dict) -> di
     assignment = await find_user_assignment(db, user_id, str(options.get("assignment_id")), await _group_ids(db, user_id))
     if assignment is None:
         return _error("access_denied")
-    run = (
+    history = options.get("history")
+    runs = (
         await db.execute(
             select(AssignmentRun)
             .where(
@@ -178,9 +179,12 @@ async def _assignment(db: AsyncSession, user_id: uuid.UUID, options: dict) -> di
                 run_visible_filter(user_id),
             )
             .order_by(AssignmentRun.created_at.desc())
-            .limit(1)
+            .limit(int(history) if history else 1)
         )
-    ).scalar_one_or_none()
+    ).scalars().all()
+    if history:
+        return _trend(assignment, list(reversed(runs)), options)
+    run = runs[0] if runs else None
     if run is None or not (run.result_summary or "").strip():
         return _error("no_result")
     shape = options.get("shape") or "text"
@@ -211,6 +215,23 @@ def _variables_disabled() -> bool:
     from app.core.security_options import security_option
 
     return bool(security_option("disable_custom_variables"))
+
+
+def _trend(assignment, runs: list, options: dict) -> dict:
+    """The figure of each run's answer (at ``path``) as one series over the runs' completion times, oldest first;
+    a run whose answer holds no figure is left out."""
+    points = []
+    for run in runs:
+        try:
+            value = answer_data(run.result_summary, "number", options.get("path")).get("value")
+        except LiveError:
+            continue
+        if isinstance(value, int | float):
+            points.append({"x": (run.completed_at or run.created_at).isoformat(), "y": value})
+    if not points:
+        return _error("no_result")
+    name = options.get("path") or getattr(assignment, "name", "") or "value"
+    return _ok("series", closed_static_data("series", {"series": [{"name": str(name)[:80], "points": points}]}), runs[-1].completed_at)
 
 
 async def _variable(db: AsyncSession, user_id: uuid.UUID, options: dict) -> dict:

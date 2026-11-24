@@ -12,6 +12,7 @@ the source here: no platform is reached.
 
 from __future__ import annotations
 
+import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 
@@ -128,3 +129,48 @@ async def test_a_writer_may_only_point_a_source_at_a_document_they_read() -> Non
     async with _world() as (scratch, _owner, viewer, kb, doc), scratch.sessions() as db:
         with pytest.raises(DashboardSpecError, match="not a document of a knowledge base you read"):
             await save_dashboard(db, user_id=viewer.id, spec_payload=_definition(kb.id, doc.id))
+
+
+async def test_an_event_source_is_read_on_its_event_once_a_minute_at_most(monkeypatch) -> None:
+    import app.core.database as database
+    from app.models.custom_dashboard import CustomDashboard
+    from app.services import dashboard_refresh_events
+    from app.services.custom_dashboards import save_dashboard
+    from app.services.dashboard_refresh import NEVER, _reading_assignment, hear_platform_event, refresh_due
+
+    async def _publish(*_a) -> None:
+        return None
+
+    monkeypatch.setattr(dashboard_refresh_events, "publish_source_updated", _publish)
+    async with _world() as (scratch, owner, _viewer, kb, doc):
+        monkeypatch.setattr(database, "async_session", scratch.sessions)
+        definition = _definition(kb.id, doc.id, refreshMode="event", on={"platformEvent": "run.completed"})
+        definition["dataSources"]["sev"]["options"].pop("refresh")
+        async with scratch.sessions() as db:
+            await save_dashboard(db, user_id=owner.id, spec_payload=definition)
+            await db.commit()
+        assert await refresh_due(scratch.sessions) == 1  # read once when saved
+        async with scratch.sessions() as db:
+            row = (await db.execute(select(CustomDashboardSourceSnapshot))).scalar_one()
+            assert (row.trigger, row.due_at) == ("platform:run.completed", NEVER)
+            read_at = row.refreshed_at
+        await hear_platform_event("run.completed", {"event": "run.completed"})
+        await hear_platform_event("run.completed", {"event": "run.completed"})
+        async with scratch.sessions() as db:
+            row = (await db.execute(select(CustomDashboardSourceSnapshot))).scalar_one()
+            # Two events within the minute: one read, a minute after the last one.
+            assert row.due_at == read_at + timedelta(seconds=60)
+        assert await refresh_due(scratch.sessions, now=read_at + timedelta(seconds=30)) == 0
+        assert await refresh_due(scratch.sessions, now=read_at + timedelta(seconds=61)) == 1
+        # The pages drawing an assignment's answers are found by the assignment's id.
+        target = uuid.uuid4()
+        async with scratch.sessions() as db:
+            reader = CustomDashboard(user_id=owner.id, title="Feed", widget_count=0, revision=1, spec={
+                "version": 2, "title": "Feed", "dataSources": {"feed": {"type": "assignment", "options": {"assignment_id": str(target)}}},
+                "visualizations": {}, "layout": {"tabs": {"items": [{"layoutId": "m", "label": "M"}]}, "layoutDefinitions": {"m": {"structure": []}}},
+            })  # fmt: skip
+            db.add(reader)
+            await db.commit()
+            reader_id = reader.id
+        assert await _reading_assignment(scratch.sessions, str(target)) == [(reader_id, "feed")]
+        assert await _reading_assignment(scratch.sessions, str(uuid.uuid4())) == []

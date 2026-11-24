@@ -21848,5 +21848,12 @@
   "JSON lines": "JSON Lines",
   "Markdown table": "Markdown テーブル",
   "Read on the server in a moment.": "まもなくサーバーで読み取られます。",
-  "Refresh now": "今すぐ更新"
+  "Refresh now": "今すぐ更新",
+  "Name the event it is read on.": "読み取りのきっかけとなるイベントを指定してください。",
+  "Trend over the last runs (optional)": "直近の実行の推移(任意)",
+  "Schedule (cron, UTC)": "スケジュール(cron、UTC)",
+  "Event of": "イベントの発生元",
+  "An integration": "連携",
+  "On the server, on a schedule": "サーバー上で、スケジュールに従って",
+  "On the server, on an event": "サーバー上で、イベント発生時に"
 }

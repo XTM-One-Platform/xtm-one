@@ -188,8 +188,11 @@ class CustomDashboardSourceSnapshot(Base):
     #: ``{"status": "ok", "shape", "data", "fetched_at"}`` or ``{"status": "error", "code"}``; none before the first read.
     result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    #: When the scheduler reads it again; far in the future for a ``manual`` source.
+    #: When the scheduler reads it again; far in the future for a ``manual`` or ``event`` source until asked.
     due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    #: An ``event`` source's event (``dashboard_refresh.trigger_of``): ``platform:<name>`` or
+    #: ``integration:<event>:<integration id or *>``; none otherwise.
+    trigger: Mapped[str | None] = mapped_column(String(320), nullable=True, index=True)
 
 
 class CustomDashboardPublicLink(Base):

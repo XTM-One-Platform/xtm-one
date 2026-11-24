@@ -30,7 +30,14 @@ Built with the custom dashboards suite while ``DASHBOARD_STUDIO`` is on
   one revision, and what the new widget reads;
 * ``check_dashboard`` - every visualization's data (ok, empty, waiting on an
   input, or the error and its remedy), and with ``capture`` a picture of the
-  tab as rendered, attached as an image the agent looks at.
+  tab as rendered, attached as an image the agent looks at;
+* ``create_feed`` - a feed: an assignment on an agent, on a schedule or an
+  event, whose JSON answer a dashboard source reads (its last one, or the trend
+  of its last runs), run once now; the conversation is told when that run ends
+  (``owed_conversation_id``), and open pages show each new answer
+  (``dashboard_refresh.hear_platform_event``). It is created through the agent
+  builder's own ``create_assignment`` and ``trigger_assignment``, with their
+  permission gates - never a second way to write an assignment.
 
 Every call acts as the user (their own tier on the dashboard, their own access
 to each platform, no admin reach) on short sessions of its own. Data read from
@@ -51,6 +58,15 @@ logger = logging.getLogger(__name__)
 
 #: How much of a source's data a preview or a check shows the agent.
 _SAMPLE_CHARS = 4_000
+#: The id an agent builder answer names an assignment by.
+_CREATED_ID = re.compile(r"ID: `([0-9a-fA-F-]{36})`")
+#: What a feed's answer ends with, by shape: the run's JSON the source reads.
+_FEED_SHAPES = {
+    "number": '{"value": <number>}',
+    "series": '{"series": [{"name": "...", "points": [{"x": "<ISO date or label>", "y": <number>}]}]}',
+    "distribution": '{"items": [{"label": "...", "value": <number>}]}',
+    "rows": '[{"<column>": <value>, ...}, ...]',
+}
 #: The id a previewed source is read under.
 _PREVIEW_ID = "preview_source"
 _ID_CHARS = re.compile(r"[^a-z0-9_]+")
@@ -350,6 +366,76 @@ def build_dashboard_studio_tools(
             reads = "not read (check_dashboard reads it again)"
         return ToolResult(tool_call_id="", content=f"{saved.content}\nWidget `{vid}` added; its data: {reads}.", files=saved.files)
 
+    async def _feed(
+        dashboard_id: str,
+        agent_id: str,
+        name: str,
+        prompt: str,
+        trigger: object = None,
+        shape: str = "number",
+        history: object = None,
+        knowledge: object = None,
+        visualization: object = None,
+        **_kw: object,
+    ) -> ToolResult:
+        from app.core.database import async_session
+        from app.tools.base import ToolCall
+
+        from .agent_builder import build_agent_builder_tool
+
+        trigger, problem = _parse("trigger", trigger)
+        if problem:
+            return _error(problem)
+        knowledge, problem = _parse("knowledge", knowledge)
+        if problem:
+            return _error(problem)
+        if shape not in _FEED_SHAPES:
+            return _error(f"shape is one of: {', '.join(_FEED_SHAPES)}.")
+        if history is not None and (shape != "number" or not isinstance(history, int) or not 2 <= history <= 60):
+            return _error("history (2-60 runs) draws the trend of a number: shape 'number'.")
+        trigger = trigger if isinstance(trigger, dict) else {"type": "manual"}
+        trigger_type = str(trigger.get("type") or "manual")
+        if trigger_type not in ("schedule", "integration_event", "platform_event", "manual"):
+            return _error("trigger.type is schedule (config {cron}), integration_event, platform_event or manual.")
+        working = await _working(dashboard_id, need="edit")
+        if isinstance(working, ToolResult):
+            return working
+        lines = [prompt.strip(), "", f"End your answer with this JSON alone, in a ```json block: {_FEED_SHAPES[shape]}."]
+        if isinstance(knowledge, dict) and knowledge.get("document_id"):
+            lines.append(
+                f"Before it, keep the consolidated table in the knowledge base document `{knowledge['document_id']}` "
+                "(update_knowledge_document), so it can be searched and read later."
+            )
+        async with async_session() as db:
+            _defs, builder = build_agent_builder_tool(db, user_id, conversation_id=conversation_id)
+            created = await builder.execute_tool(ToolCall(id="feed", name="create_assignment", arguments={
+                "agent_id": agent_id, "name": name, "prompt": "\n".join(lines), "trigger_type": trigger_type,
+                "trigger_config": json.dumps(trigger.get("config") or {}),
+                "description": f"Feeds a widget of dashboard {dashboard_id}.",
+            }))  # fmt: skip
+            found = _CREATED_ID.search(created.content or "")
+            if created.is_error or found is None:
+                return _error(f"The feed's assignment was not created: {created.content}")
+            assignment_id = found.group(1)
+            started = await builder.execute_tool(ToolCall(id="feed-run", name="trigger_assignment", arguments={"assignment_id": assignment_id}))
+        source = {"type": "assignment", "name": name[:80], "options": {
+            "assignment_id": assignment_id, "shape": "series" if history else shape, **({"history": history} if history else {}),
+        }}  # fmt: skip
+        viz = visualization if isinstance(visualization, dict) else {
+            "type": "xtm.line" if history else {"number": "xtm.singlevalue", "series": "xtm.line", "distribution": "xtm.bar", "rows": "xtm.table"}[shape],
+            "title": name,
+        }  # fmt: skip
+        added = await _add(dashboard_id=dashboard_id, visualization=viz, source=source)
+        return ToolResult(
+            tool_call_id="",
+            content=(
+                f"Feed **{name}** created: assignment `{assignment_id}` ({trigger_type}).\n{added.content}\n"
+                f"First run: {started.content.splitlines()[0] if started.content else 'started'}. The widget reads "
+                "'No completed run' until it ends; the conversation is told when it does, and the page shows its answer."
+            ),
+            is_error=added.is_error,
+        )
+
     async def _check(dashboard_id: str, capture: object = False, tab: str | None = None, **_kw: object) -> ToolResult:
         from app.services.dashboard_definition import DATA_TYPES
 
@@ -527,6 +613,36 @@ def build_dashboard_studio_tools(
             read_only=True,
         ),
     ]
+    definitions.append(
+        ToolDefinition(
+            name="create_feed",
+            description=(
+                "Create a feed for a dashboard: an assignment on an agent (agent_id) that gathers and consolidates "
+                "data with its own tools - integrations, knowledge bases - on a trigger, and answers JSON a new "
+                "widget draws; run once now. trigger: {type: schedule, config: {cron}} | {type: integration_event, "
+                "config: {provider, event, integration_id?}} | {type: platform_event, config: {event}} | manual. shape: "
+                "number, series, distribution or rows; history (2-60) draws a number's trend over the last runs. "
+                "knowledge: {document_id} also keeps the consolidated table in that knowledge base document. For "
+                "data one read tool gives, an integration source refreshed on the server is enough: no agent runs."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "dashboard_id": {"type": "string"},
+                    "agent_id": {"type": "string", "description": "The agent that runs it (it needs the tools the data takes)."},
+                    "name": {"type": "string"},
+                    "prompt": {"type": "string", "description": "What to gather and how to consolidate it."},
+                    "trigger": {"type": "object"},
+                    "shape": {"type": "string", "enum": list(_FEED_SHAPES)},
+                    "history": {"type": "integer"},
+                    "knowledge": {"type": "object", "description": "{document_id}: a knowledge base document the agent may write."},
+                    "visualization": {"type": "object", "description": "{type, title?, options?} (default: by shape)."},
+                },
+                "required": ["dashboard_id", "agent_id", "name", "prompt"],
+            },
+            source=source,
+        )
+    )
     handlers = {
         "dashboard_catalog": _catalog,
         "describe_platform_widget": _describe,
@@ -534,6 +650,7 @@ def build_dashboard_studio_tools(
         "preview_source": _preview,
         "add_widget": _add,
         "check_dashboard": _check,
+        "create_feed": _feed,
     }
     return definitions, handlers
 

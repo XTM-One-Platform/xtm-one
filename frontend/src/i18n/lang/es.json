@@ -21848,5 +21848,12 @@
   "JSON lines": "Líneas JSON",
   "Markdown table": "Tabla Markdown",
   "Read on the server in a moment.": "Se leerá en el servidor en un momento.",
-  "Refresh now": "Actualizar ahora"
+  "Refresh now": "Actualizar ahora",
+  "Name the event it is read on.": "Indica el evento que provoca la lectura.",
+  "Trend over the last runs (optional)": "Tendencia de las últimas ejecuciones (opcional)",
+  "Schedule (cron, UTC)": "Programación (cron, UTC)",
+  "Event of": "Evento de",
+  "An integration": "Una integración",
+  "On the server, on a schedule": "En el servidor, según una programación",
+  "On the server, on an event": "En el servidor, ante un evento"
 }

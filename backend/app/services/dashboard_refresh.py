@@ -17,9 +17,13 @@ A source's ``refreshMode`` says where it is read (``dashboard_definition.REFRESH
 
 * unset (``live``): by each viewer's page, with their own access, every
   ``refresh`` while it is open - as before;
-* ``server``: by the platform, every ``refresh`` (5 minutes at least), whoever
-  has the page open; ``manual``: when someone presses Refresh now (or an agent
-  asks). Viewers are shown the snapshot (``CustomDashboardSourceSnapshot``).
+* on the server, whoever has the page open: ``server`` every ``refresh`` (5
+  minutes at least), ``schedule`` on a ``cron`` (UTC, 5 minutes apart at least),
+  ``event`` when an event of its ``on`` happens (:func:`mark_event`: a platform
+  event, or an event an integration raises; read once per minute at most however
+  many arrive), ``manual`` when someone presses Refresh now (or an agent asks).
+  Each is also read once when it is saved. Viewers are shown the snapshot
+  (``CustomDashboardSourceSnapshot``).
 
 **Whose access** (decision D1 of ``dev-docs/dashboard-studio-next.md``): a
 snapshot is read with the access of its publisher, the person who last set
@@ -60,12 +64,28 @@ LEASE = timedelta(minutes=5)
 NEVER = datetime(9999, 1, 1, tzinfo=UTC)
 #: Rows read per run of the scheduler.
 BATCH = 20
+#: An event source is read at most this often, however many events arrive (60 an hour at most).
+EVENT_COALESCE = timedelta(seconds=60)
+#: Rows an event marks due at once.
+MAX_MARKED = 200
 
 
 def _mode(source: object) -> str | None:
+    from app.services.dashboard_definition import SERVER_REFRESH_MODES
+
     options = source.get("options") if isinstance(source, dict) and isinstance(source.get("options"), dict) else {}
     mode = options.get("refreshMode")
-    return mode if mode in ("server", "manual") else None
+    return mode if mode in SERVER_REFRESH_MODES else None
+
+
+def trigger_of(source: dict) -> str | None:
+    """The event an ``event`` source is read on, as stored on its snapshot (``trigger``); ``None`` otherwise."""
+    if _mode(source) != "event":
+        return None
+    on = source["options"].get("on") or {}
+    if on.get("platformEvent"):
+        return f"platform:{on['platformEvent']}"
+    return f"integration:{on.get('integrationEvent')}:{on.get('integrationId') or '*'}"
 
 
 def _key(source: dict) -> str:
@@ -75,9 +95,14 @@ def _key(source: dict) -> str:
 def _next_due(source: dict, now: datetime) -> datetime:
     from app.services.dashboard_definition import refresh_seconds
 
-    if _mode(source) != "server":
-        return NEVER
-    return now + timedelta(seconds=refresh_seconds(source["options"].get("refresh")) or 900)
+    mode = _mode(source)
+    if mode == "server":
+        return now + timedelta(seconds=refresh_seconds(source["options"].get("refresh")) or 900)
+    if mode == "schedule":
+        from croniter import croniter
+
+        return croniter(source["options"]["cron"], now).get_next(datetime)
+    return NEVER
 
 
 async def sync_snapshots(db: AsyncSession, dashboard: CustomDashboard, definition: dict, writer_id: uuid.UUID | None) -> None:
@@ -104,9 +129,99 @@ async def sync_snapshots(db: AsyncSession, dashboard: CustomDashboard, definitio
             continue
         publisher = writer_id or (row.publisher_id if row is not None else None) or dashboard.user_id
         if row is None:
-            db.add(CustomDashboardSourceSnapshot(dashboard_id=dashboard.id, source_id=sid, publisher_id=publisher, source_key=key, due_at=now))
+            db.add(
+                CustomDashboardSourceSnapshot(
+                    dashboard_id=dashboard.id, source_id=sid, publisher_id=publisher, source_key=key, due_at=now, trigger=trigger_of(source)
+                )
+            )
         else:
-            row.publisher_id, row.source_key, row.due_at = publisher, key, now
+            row.publisher_id, row.source_key, row.due_at, row.trigger = publisher, key, now, trigger_of(source)
+
+
+async def mark_event(db_factory, triggers: list[str]) -> int:
+    """An event happened: the ``event`` sources read on it are due - now, or a minute after their last read.
+
+    *triggers* are the event's spellings (:func:`trigger_of`: a platform event,
+    or an integration event with its integration's id and with ``*``). How many
+    sources were marked; never raises.
+    """
+    if not triggers:
+        return 0
+    now = datetime.now(UTC)
+    try:
+        async with db_factory() as db:
+            rows = (
+                await db.execute(
+                    select(CustomDashboardSourceSnapshot)
+                    .where(CustomDashboardSourceSnapshot.trigger.in_(triggers), CustomDashboardSourceSnapshot.due_at > now)
+                    .limit(MAX_MARKED)
+                    .with_for_update(skip_locked=True)
+                )
+            ).scalars().all()
+            for row in rows:
+                soonest = row.refreshed_at + EVENT_COALESCE if row.refreshed_at else now
+                row.due_at = min(row.due_at, max(now, soonest))
+            await db.commit()
+            return len(rows)
+    except Exception as exc:
+        logger.warning("Marking dashboard sources due on %s failed: %r", triggers[:2], str(exc)[:200])
+        return 0
+
+
+async def hear_integration_event(trigger_context: dict) -> None:
+    """An integration event reached the platform (an assignment's poll or webhook): its ``event`` sources are due."""
+    from app.core.database import async_session
+    from app.core.feature_flags import is_feature_enabled
+
+    key = trigger_context.get("event") or trigger_context.get("event_key")
+    if not key or not is_feature_enabled("DASHBOARD_STUDIO"):
+        return
+    integration = trigger_context.get("integration_id")
+    triggers = [f"integration:{key}:*"] + ([f"integration:{key}:{integration}"] if integration else [])
+    await mark_event(async_session, triggers)
+
+
+async def hear_platform_event(name: str, payload: dict) -> None:
+    """A platform event happened: its ``event`` sources are due; a completed run's answer reaches the open pages of
+    the dashboards reading its assignment. Never raises."""
+    from app.core.database import async_session
+    from app.core.feature_flags import is_feature_enabled
+
+    if not is_feature_enabled("DASHBOARD_STUDIO"):
+        return
+    await mark_event(async_session, [f"platform:{name}"])
+    if name == "run.completed" and payload.get("assignment_id") and not payload.get("parent_run_id"):
+        try:
+            for dashboard_id, source_id in await _reading_assignment(async_session, str(payload["assignment_id"])):
+                await notify_updated(dashboard_id, source_id)
+        except Exception as exc:
+            logger.warning("Telling the dashboards of assignment %s failed: %r", payload.get("assignment_id"), str(exc)[:200])
+
+
+#: Dashboards a completed run's answer is pushed to, at most.
+MAX_PUSHED_DASHBOARDS = 50
+
+
+async def _reading_assignment(db_factory, assignment_id: str) -> list[tuple[uuid.UUID, str]]:
+    """The ``(dashboard, source)`` pairs reading *assignment_id*'s answers."""
+    from sqlalchemy import Text, cast
+
+    from app.services.dashboard_definition import upgrade
+
+    async with db_factory() as db:
+        rows = (
+            await db.execute(
+                select(CustomDashboard.id, CustomDashboard.spec)
+                .where(cast(CustomDashboard.spec, Text).like(f"%{assignment_id}%"))
+                .limit(MAX_PUSHED_DASHBOARDS)
+            )
+        ).all()
+    found = []
+    for dashboard_id, spec in rows:
+        for sid, source in (upgrade(spec).get("dataSources") or {}).items():
+            if source.get("type") == "assignment" and str((source.get("options") or {}).get("assignment_id")) == assignment_id:
+                found.append((dashboard_id, sid))
+    return found
 
 
 async def snapshot_of(db: AsyncSession, dashboard_id: object, source_id: str, source: dict) -> dict | None:
@@ -130,7 +245,7 @@ async def snapshot_of(db: AsyncSession, dashboard_id: object, source_id: str, so
     publisher = await db.get(User, row.publisher_id) if row is not None and row.publisher_id else None
     about = {
         "mode": mode,
-        "every": source["options"].get("refresh") if mode == "server" else None,
+        "every": source["options"].get("refresh") if mode == "server" else source["options"].get("cron") if mode == "schedule" else None,
         "refreshed_at": row.refreshed_at.isoformat() if row is not None and row.refreshed_at else None,
         "publisher": (publisher.full_name or publisher.email) if publisher is not None else None,
     }
@@ -224,9 +339,13 @@ async def notify_updated(dashboard_id: object, source_id: str) -> None:
 
 
 __all__ = [
+    "hear_integration_event",
+    "hear_platform_event",
+    "mark_event",
     "refresh_due",
     "refresh_row",
     "snapshot_of",
     "snapshot_row_id",
     "sync_snapshots",
+    "trigger_of",
 ]

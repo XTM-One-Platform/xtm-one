@@ -97,6 +97,8 @@ const SERVER_REFRESHED: readonly SourceType[] = ["platform", "integration", "kno
 const REFRESH_MODE_LABELS = {
   live: "On the page, with each viewer's access",
   server: "On the server, every…",
+  schedule: "On the server, on a schedule",
+  event: "On the server, on an event",
   manual: "On the server, when asked",
 } as const;
 type RefreshMode = keyof typeof REFRESH_MODE_LABELS;
@@ -231,6 +233,10 @@ function NewSourceDialog({
   const [tableFormat, setTableFormat] = useState<TableFormat>("auto");
   const [refreshMode, setRefreshMode] = useState<RefreshMode>("live");
   const [every, setEvery] = useState<RefreshEvery>("15m");
+  const [cron, setCron] = useState("0 7 * * 1-5");
+  const [eventKind, setEventKind] = useState<"platformEvent" | "integrationEvent">("integrationEvent");
+  const [eventName, setEventName] = useState("");
+  const [history, setHistory] = useState("");
   const integrations = useIntegrations();
   const tools = useIntegrationTools(integrationId, open && type === "integration");
   const knowledgeBases = useKnowledgeBases();
@@ -265,7 +271,7 @@ function NewSourceDialog({
     const answer = { shape, ...(path.trim() ? { path: path.trim() } : {}) };
     const options: Record<string, Record<string, unknown>> = {
       static: { shape, data: value },
-      assignment: { assignment_id: target, ...answer },
+      assignment: { assignment_id: target, ...answer, ...(history.trim() ? { history: Number(history), shape: "series" } : {}) },
       ask: { agent_id: target, question, ...answer },
       variable: { variable_id: target, shape: shape === "number" ? "number" : "text" },
       integration: { integration_id: integrationId, tool, arguments: value ?? {}, ...answer },
@@ -279,9 +285,15 @@ function NewSourceDialog({
       derived: { extends: target, steps: value },
       platform: { ...platform },
     };
+    if (refreshMode === "event" && !eventName.trim()) return { ok: false, error: t_i18n("Name the event it is read on.") };
     const refresh =
       SERVER_REFRESHED.includes(type) && refreshMode !== "live"
-        ? { refreshMode, ...(refreshMode === "server" ? { refresh: every } : {}) }
+        ? {
+            refreshMode,
+            ...(refreshMode === "server" ? { refresh: every } : {}),
+            ...(refreshMode === "schedule" ? { cron: cron.trim() } : {}),
+            ...(refreshMode === "event" ? { on: { [eventKind]: eventName.trim() } } : {}),
+          }
         : {};
     return { ok: true, value: { type, ...(name.trim() ? { name: name.trim() } : {}), options: { ...options[type], ...refresh } } };
   };
@@ -432,6 +444,20 @@ function NewSourceDialog({
               options={shapes.map((key) => ({ value: key, label: t_i18n(SHAPE_LABELS[key]) }))}
             />
           )}
+          {type === "assignment" && (
+            <Field label={t_i18n("Trend over the last runs (optional)")}>
+              <Input
+                type="number"
+                min={2}
+                max={60}
+                value={history}
+                onChange={(event) => setHistory(event.target.value)}
+                placeholder="30"
+                className="h-8"
+                aria-label={t_i18n("Trend over the last runs (optional)")}
+              />
+            </Field>
+          )}
           {(type === "assignment" || type === "ask" || type === "integration" || type === "knowledge") && (
             <Field label={t_i18n("Path in a JSON answer (optional)")}>
               <Input
@@ -465,6 +491,33 @@ function NewSourceDialog({
               onChange={(next) => setRefreshMode(next as RefreshMode)}
               options={(Object.keys(REFRESH_MODE_LABELS) as RefreshMode[]).map((key) => ({ value: key, label: t_i18n(REFRESH_MODE_LABELS[key]) }))}
             />
+            {refreshMode === "schedule" && (
+              <Field label={t_i18n("Schedule (cron, UTC)")}>
+                <Input value={cron} onChange={(event) => setCron(event.target.value)} className="h-8" aria-label={t_i18n("Schedule (cron, UTC)")} />
+              </Field>
+            )}
+            {refreshMode === "event" && (
+              <>
+                <Choice
+                  label={t_i18n("Event of")}
+                  value={eventKind}
+                  onChange={(next) => setEventKind(next as typeof eventKind)}
+                  options={[
+                    { value: "integrationEvent", label: t_i18n("An integration") },
+                    { value: "platformEvent", label: t_i18n("The platform") },
+                  ]}
+                />
+                <Field label={t_i18n("Event")}>
+                  <Input
+                    value={eventName}
+                    onChange={(event) => setEventName(event.target.value.slice(0, 200))}
+                    placeholder={eventKind === "platformEvent" ? "run.completed" : "issues.opened"}
+                    className="h-8"
+                    aria-label={t_i18n("Event")}
+                  />
+                </Field>
+              </>
+            )}
             {refreshMode === "server" && (
               <Choice
                 label={t_i18n("Every")}

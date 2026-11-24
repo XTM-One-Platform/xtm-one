@@ -2,7 +2,7 @@
 
 One new table, ``custom_dashboard_source_snapshots``
 (``models/custom_dashboard.py``): what a data source whose ``refreshMode`` is
-``server`` or ``manual`` read last, read with its publisher's access, and when
+``server``, ``schedule``, ``event`` or ``manual`` read last, read with its publisher's access, and when
 it is read again (``services/dashboard_refresh.py``). Nothing is backfilled: a
 snapshot is written when such a source is saved, and read on its due time.
 
@@ -67,6 +67,7 @@ def upgrade() -> None:
         sa.Column("result", postgresql.JSON(), nullable=True),
         sa.Column("refreshed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("due_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("trigger", sa.String(320), nullable=True),
         sa.UniqueConstraint("dashboard_id", "source_id", name="uq_custom_dashboard_source_snapshot"),
         if_not_exists=True,
     )
@@ -74,6 +75,7 @@ def upgrade() -> None:
         "ix_custom_dashboard_source_snapshots_dashboard_id", _TABLE, ["dashboard_id"], if_not_exists=True
     )
     op.create_index("ix_custom_dashboard_source_snapshots_due_at", _TABLE, ["due_at"], if_not_exists=True)
+    op.create_index("ix_custom_dashboard_source_snapshots_trigger", _TABLE, ["trigger"], if_not_exists=True)
 
 
 def downgrade() -> None:
@@ -81,6 +83,7 @@ def downgrade() -> None:
     if not _has_table(conn, _TABLE):
         return
     set_lock_timeout(conn)
+    op.drop_index("ix_custom_dashboard_source_snapshots_trigger", table_name=_TABLE, if_exists=True)
     op.drop_index("ix_custom_dashboard_source_snapshots_due_at", table_name=_TABLE, if_exists=True)
     op.drop_index("ix_custom_dashboard_source_snapshots_dashboard_id", table_name=_TABLE, if_exists=True)
     op.drop_table(_TABLE, if_exists=True)

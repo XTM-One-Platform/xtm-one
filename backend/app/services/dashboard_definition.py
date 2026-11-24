@@ -273,13 +273,50 @@ def refresh_seconds(value: str | None) -> int | None:
 
 
 #: Where a source is read: ``live`` (unset) by each viewer's page, with their access, every ``refresh`` while it is
-#: open; ``server`` by the platform every ``refresh`` whoever watches, ``manual`` when someone asks - both kept as a
-#: snapshot read with the publisher's access (``dashboard_refresh``).
-REFRESH_MODES = ("live", "server", "manual")
+#: open; on the server, whoever watches, kept as a snapshot read with the publisher's access (``dashboard_refresh``):
+#: ``server`` every ``refresh``, ``schedule`` on a ``cron`` (UTC), ``event`` when an event of ``on`` happens,
+#: ``manual`` when someone asks.
+REFRESH_MODES = ("live", "server", "schedule", "event", "manual")
+#: The modes a snapshot is kept for.
+SERVER_REFRESH_MODES = ("server", "schedule", "event", "manual")
 #: The shortest ``refresh`` of a source read on the server.
 MIN_SERVER_REFRESH_SECONDS = 300
 #: The sources a server refresh reads: those that read without a person pressing anything and without an agent.
 SERVER_REFRESH_TYPES = ("platform", "integration", "knowledge", "variable", "derived")
+
+
+class RefreshEvent(_Model):
+    """What an ``event`` source is read again on: a platform event, or an event an integration raises."""
+
+    platform_event: Annotated[str | None, Field(default=None, max_length=100, alias="platformEvent")]
+    integration_event: Annotated[str | None, Field(default=None, max_length=200, alias="integrationEvent")]
+    #: The integration raising it; any integration of the provider when unset.
+    integration_id: Annotated[uuid.UUID | None, Field(default=None, alias="integrationId")]
+
+    @model_validator(mode="after")
+    def _one(self) -> RefreshEvent:
+        if (self.platform_event is None) == (self.integration_event is None):
+            raise ValueError("on names one event: platformEvent or integrationEvent")
+        if self.integration_id is not None and self.integration_event is None:
+            raise ValueError("integrationId goes with integrationEvent")
+        return self
+
+
+def check_refresh_cron(cron: str) -> str:
+    """A refresh cron, valid and firing at most every 5 minutes (``MIN_SERVER_REFRESH_SECONDS``)."""
+    from datetime import UTC, datetime
+    from itertools import pairwise
+
+    from croniter import croniter
+
+    from app.core.utils import validate_cron_expression
+
+    checked = validate_cron_expression(cron)
+    beats = croniter(checked, datetime(2026, 1, 5, tzinfo=UTC))
+    times = [beats.get_next(datetime) for _ in range(12)]
+    if min((b - a).total_seconds() for a, b in pairwise(times)) < MIN_SERVER_REFRESH_SECONDS:
+        raise ValueError("a source refreshed on a schedule is read at most every 5 minutes")
+    return checked
 
 
 class _Refreshed(_Model):
@@ -288,6 +325,10 @@ class _Refreshed(_Model):
     refresh: Annotated[str | None, Field(default=None, max_length=8)]
     refresh_type: Annotated[Literal["delay", "interval"], Field(default="delay", alias="refreshType")]
     refresh_mode: Annotated[Literal[REFRESH_MODES] | None, Field(default=None, alias="refreshMode")]  # type: ignore[valid-type]
+    #: ``schedule``: when it is read (cron, UTC), at most every 5 minutes.
+    cron: Annotated[str | None, Field(default=None, max_length=100)]
+    #: ``event``: what it is read on.
+    on: RefreshEvent | None = None
 
     @model_validator(mode="after")
     def _server(self) -> _Refreshed:
@@ -295,6 +336,12 @@ class _Refreshed(_Model):
             seconds = refresh_seconds(self.refresh)
             if seconds is None or seconds < MIN_SERVER_REFRESH_SECONDS:
                 raise ValueError("a source refreshed on the server says how often, every 5 minutes at least: refresh '15m'")
+        if (self.refresh_mode == "schedule") != (self.cron is not None):
+            raise ValueError("cron goes with refreshMode 'schedule', and a schedule needs one: cron '0 7 * * 1-5'")
+        if self.cron is not None:
+            self.cron = check_refresh_cron(self.cron)
+        if (self.refresh_mode == "event") != (self.on is not None):
+            raise ValueError("on goes with refreshMode 'event', and an event refresh needs one: on {platformEvent} or {integrationEvent}")
         return self
 
     @field_validator("refresh")
@@ -365,10 +412,23 @@ class _AnswerOptions(_Refreshed):
         return value
 
 
+#: The most completed runs an assignment source reads as a trend.
+MAX_HISTORY = 60
+
+
 class AssignmentSourceOptions(_AnswerOptions):
-    """The answer of an assignment's last completed run the viewer may see."""
+    """The answer of an assignment's last completed run the viewer may see; with ``history``, the figure of each
+    of its last ``history`` runs as a series over their completion times (a feed's trend), read as ``shape``
+    ``number`` from each answer."""
 
     assignment_id: uuid.UUID
+    history: Annotated[int | None, Field(default=None, ge=2, le=MAX_HISTORY)]
+
+    @model_validator(mode="after")
+    def _trend(self) -> AssignmentSourceOptions:
+        if self.history is not None and self.shape != "series":
+            raise ValueError("history draws each run's figure as a point: shape 'series'")
+        return self
 
 
 class AskSourceOptions(_AnswerOptions):
@@ -1016,7 +1076,7 @@ class Definition(_Model):
                     current = self.data_sources[parent]
         for sid, source in self.data_sources.items():
             mode = getattr(source.options, "refresh_mode", None)
-            if mode in ("server", "manual") and source.type not in SERVER_REFRESH_TYPES:
+            if mode in SERVER_REFRESH_MODES and source.type not in SERVER_REFRESH_TYPES:
                 raise ValueError(
                     f"dataSources.{sid}: a source of type '{source.type}' is not refreshed on the server "
                     f"(refreshMode server or manual: {', '.join(SERVER_REFRESH_TYPES)})"
