@@ -21485,7 +21485,7 @@
   "{count, plural, one {# case resolved in the last {days} days} other {# cases resolved in the last {days} days}}": "{count, plural, other {過去{days}日間に解決されたケース #件}}",
   "In a case, {count}, {resolved} resolved in {days} d": "ケース内 {count}、{days}日間で{resolved}件解決",
   "{resolved} resolved in {days} d": "{days}日間で{resolved}件解決",
-  "Signals that opened a case, all time. Cases built from your stack's vulnerabilities are counted in Cases.": "ケースを開いたシグナル (全期間)。スタックの脆弱性から作成されたケースは「ケース」で数えられます。",
+  "Signals that opened a case, all time. Cases built from vulnerabilities on your software are counted in Cases.": "ケースを開いたシグナル (全期間)。ソフトウェアの脆弱性から作成されたケースは「ケース」で数えられます。",
   "Cases in this phase": "このフェーズのケース",
   "Decisions and accepted risks": "判断と受容済みリスク",
   "Opened {timeAgo}": "{timeAgo}にオープン",
