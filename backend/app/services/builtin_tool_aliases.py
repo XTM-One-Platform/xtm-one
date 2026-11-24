@@ -208,6 +208,7 @@ BUILTIN_GROUP_ALIASES: dict[str, tuple[str, tuple[str, ...]]] = {
             "list_kb_documents",
             "get_kb_document",
             "delete_kb_document",
+            "update_kb_document",
             "list_workspaces",
             "get_workspace",
             "create_workspace",

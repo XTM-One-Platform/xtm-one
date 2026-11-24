@@ -24,7 +24,9 @@ signal that opened a case (``case_opened``) is never moved back. Design:
 from __future__ import annotations
 
 import logging
+import time
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -50,6 +52,9 @@ MAX_SCENARIOS = 50
 SCENARIO_ASSETS_PAGE = 500
 #: OpenCRQ tolerance ratio (expected loss over tolerance) read as scope criticality, highest first.
 _RATIO_CRITICALITY: tuple[tuple[float, str], ...] = ((1.0, "critical"), (0.5, "high"), (0.1, "medium"))
+#: Where one session keeps the link index and OpenCRQ reads of the per-signal path (#1591 S3), and for how long.
+_READ_CACHE_KEY = "ctem_scope_gate_reads"
+READ_CACHE_SECONDS = 300.0
 
 
 def facts_of(row: CtemSignal) -> gate.SignalFacts:
@@ -213,8 +218,79 @@ async def read_scenarios(db: AsyncSession, *, user_id: uuid.UUID | None) -> gate
 async def _profile(db: AsyncSession, organization_id: uuid.UUID) -> Any:
     from app.services import organization_context as org_context
 
-    _row, profile = await org_context.current_profile(db, organization_id)  # assets from the records (#1543)
+    # Assets from the records (#1543), software from the Software entities (#1495).
+    _row, profile = await org_context.software_profile(db, organization_id)
     return profile
+
+
+async def _primary_assets(db: AsyncSession, organization_id: uuid.UUID) -> Any:
+    """#1591 S3: the inventory link index every path decides with; an unreadable index is empty, never a failure."""
+    from app.services import ctem_primary_assets
+
+    try:
+        async with db.begin_nested():
+            return await ctem_primary_assets.load_index(db, organization_id)
+    except Exception:
+        logger.warning("CTEM scope gate: inventory links not read for %s", organization_id, exc_info=True)
+        return ctem_primary_assets.PrimaryAssetIndex()
+
+
+async def default_scenario_reader(db: AsyncSession) -> uuid.UUID | None:
+    """#1591 S3: whose OpenCRQ read decides a ``system`` signal no administrator evaluates (the listener path).
+
+    The owner of the enabled OpenCRQ primary-asset sync: the administrator who
+    connected OpenCRQ for the organization. ``None`` when there is none.
+    """
+    from app.models.organization_context import OrganizationContextSync
+
+    sync = OrganizationContextSync
+    owner = (
+        await db.execute(
+            select(sync.owner_user_id)
+            .where(
+                sync.section == "crown_jewels",
+                sync.source == "opencrq",
+                sync.enabled.is_(True),
+                sync.owner_user_id.is_not(None),
+            )
+            .order_by(sync.created_at)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return owner
+
+
+async def _session_cached(db: AsyncSession, key: tuple[Any, ...], load: Callable[[], Awaitable[Any]]) -> Any:
+    """*load* answered once per session and *key* for :data:`READ_CACHE_SECONDS` (#1591 S3 review).
+
+    A listener records many signals in one session (``record_matches`` loops up
+    to 2000 matches): the link index and the OpenCRQ read are built once for the
+    pass, not once per signal. A session without ``info`` (a test double) loads
+    every time.
+    """
+    info = getattr(db, "info", None)
+    cache = info.setdefault(_READ_CACHE_KEY, {}) if isinstance(info, dict) else None
+    now = time.monotonic()
+    if cache is not None:
+        hit = cache.get(key)
+        if hit is not None and now - hit[0] < READ_CACHE_SECONDS:
+            return hit[1]
+    value = await load()
+    if cache is not None:
+        cache[key] = (now, value)
+    return value
+
+
+async def _scenarios_for(db: AsyncSession, row: Any) -> gate.ScenarioIndex:
+    """The OpenCRQ read of *row* when the caller passed none, once per session and reader; never raises."""
+    try:
+        async with db.begin_nested():
+            fallback = await _session_cached(db, ("fallback_reader",), lambda: default_scenario_reader(db))
+        reader = scenario_reader(row, fallback)
+        return await _session_cached(db, ("scenarios", reader), lambda: read_scenarios(db, user_id=reader))
+    except Exception:
+        logger.warning("CTEM scope gate: OpenCRQ reader not resolved", exc_info=True)
+        return gate.ScenarioIndex(note="OpenCRQ not read: no OpenCRQ connection to read with")
 
 
 def dismissed(row: CtemSignal) -> bool:
@@ -228,6 +304,7 @@ async def evaluate(
     *,
     profile: Any = None,
     scenarios: gate.ScenarioIndex | None = None,
+    primary_assets: Any = None,
     now: datetime | None = None,
     events: Any = None,
     restore: bool = False,
@@ -244,11 +321,19 @@ async def evaluate(
     before = signals.verdict_of(row.state)
     at = now or datetime.now(UTC)
     profile = profile if profile is not None else await _profile(db, row.organization_id)
+    if primary_assets is None:
+        # Per-signal callers (listeners) share one index per session and organization (#1591 S3 review).
+        org_id = row.organization_id
+        primary_assets = await _session_cached(db, ("links", org_id), lambda: _primary_assets(db, org_id))
+    if scenarios is None:
+        # #1591 S3: the same OpenCRQ read on every path; a system signal reads with the OpenCRQ sync owner's.
+        scenarios = await _scenarios_for(db, row)
     decision = gate.decide(
         profile,
         facts_of(row),
         related=await related_signals(db, row),
         scenarios=scenarios,
+        primary_assets=primary_assets,
         today=at.date(),
     )
     decision.record["decided_at"] = at.isoformat()
@@ -344,6 +429,7 @@ async def evaluate_open(
     read never lands in another user's signal.
     """
     profile = await _profile(db, organization_id)
+    links = await _primary_assets(db, organization_id)
     by_reader: dict[uuid.UUID | None, gate.ScenarioIndex] = {}
     rows = (
         (
@@ -362,7 +448,9 @@ async def evaluate_open(
         reader = scenario_reader(row, user_id)
         if reader not in by_reader:
             by_reader[reader] = await read_scenarios(db, user_id=reader)
-        await evaluate(db, row, profile=profile, scenarios=by_reader[reader], now=now, events=events)
+        await evaluate(
+            db, row, profile=profile, scenarios=by_reader[reader], primary_assets=links, now=now, events=events
+        )
         counts[row.state] = counts.get(row.state, 0) + 1
     return counts
 
@@ -404,19 +492,75 @@ async def recheck_parked(
             )
         ).scalars()
     )
+    return await _decide_again(db, rows, now=now)
+
+
+async def _decide_again(db: AsyncSession, rows: list[CtemSignal], *, now: datetime | None = None) -> dict[str, int]:
+    """*rows* decided again, the profile, link index and OpenCRQ read once per organization and reader."""
     counts: dict[str, int] = {}
     profiles: dict[uuid.UUID, Any] = {}
+    links: dict[uuid.UUID, Any] = {}
     by_reader: dict[uuid.UUID | None, gate.ScenarioIndex] = {}
+    fallback = await default_scenario_reader(db) if rows else None
     at = now or datetime.now(UTC)
     for row in rows:
         if row.organization_id not in profiles:
             profiles[row.organization_id] = await _profile(db, row.organization_id)
-        reader = scenario_reader(row, None)
+            links[row.organization_id] = await _primary_assets(db, row.organization_id)
+        reader = scenario_reader(row, fallback)
         if reader not in by_reader:
             by_reader[reader] = await read_scenarios(db, user_id=reader)
-        await evaluate(db, row, profile=profiles[row.organization_id], scenarios=by_reader[reader], now=at)
+        await evaluate(
+            db,
+            row,
+            profile=profiles[row.organization_id],
+            scenarios=by_reader[reader],
+            primary_assets=links[row.organization_id],
+            now=at,
+        )
         counts[row.state] = counts.get(row.state, 0) + 1
     return counts
+
+
+#: The watchlist reasons an inventory link or a software change can lift (#1591 S3).
+HELD_BY_SCOPE: tuple[str, ...] = ("crown_jewel_below_policy", "criticality_unknown", "below_scope_threshold")
+
+
+async def recheck_held(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    since: datetime,
+    now: datetime | None = None,
+    batch: int = RECHECK_BATCH,
+) -> dict[str, int]:
+    """#1591 S3: the watchlist signals held for scope, decided before *since*, decided again.
+
+    Run after a primary-asset link sync or an endpoint software change completes:
+    a signal held by ``crown_jewel_below_policy``, ``criticality_unknown`` or
+    ``below_scope_threshold`` whose decision predates the change is decided
+    again, *batch* per call, oldest first. Idempotent: a decided signal's
+    ``updated_at`` moves past *since*, so the next call skips it. A signal the
+    gate confirms waits for the case sweep (one case per fix key). The caller commits.
+    """
+    # The held reasons are filtered in SQL before the limit: watchlist rows held for
+    # another reason never take the batch from the scope-held ones (#1591 S3 review).
+    rows = list(
+        (
+            await db.execute(
+                select(CtemSignal)
+                .where(
+                    CtemSignal.organization_id == organization_id,
+                    CtemSignal.state == "watchlist",
+                    CtemSignal.updated_at < since,
+                    CtemSignal.decision["reason_code"].as_string().in_(HELD_BY_SCOPE),
+                )
+                .order_by(CtemSignal.updated_at)
+                .limit(max(1, int(batch)))
+            )
+        ).scalars()
+    )
+    return await _decide_again(db, rows, now=now)
 
 
 #: Where a profile row added from the Signals page says it came from (#1505).

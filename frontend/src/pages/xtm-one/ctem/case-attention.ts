@@ -11,7 +11,7 @@
  * Defaults (dev-docs/ctem-cases.md section 7.2bis):
  * - priority: critical 40, high 25, medium 10, low 0
  * - KEV issues: 15 when at least one
- * - crown jewels touched: 15 when at least one
+ * - primary assets touched: 15 when at least one
  * - SLA breached or overdue: 20; due within 3 days: 10
  * - no owner: 5
  * - age: 1 point a day open, at most 10

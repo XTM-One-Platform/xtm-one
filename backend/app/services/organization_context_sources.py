@@ -43,7 +43,7 @@ SOURCED_FIELDS: dict[str, str] = {
 }
 #: Where each field is configured (the scopes of ``organization_context_sync.SECTION_SCOPES``).
 FIELD_SCOPES: dict[str, str] = {
-    "crown_jewels": "profile",
+    "crown_jewels": "inventory",
     "tech_stack": "inventory",
     "assets_exposure": "inventory",
     "asset_groups": "inventory",

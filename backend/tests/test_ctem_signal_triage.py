@@ -62,7 +62,12 @@ def fake_io(monkeypatch):
 
     monkeypatch.setattr(store, "related_signals", _no_related)
     monkeypatch.setattr(store, "_profile", _profile_of)
+
+    async def _no_reader(_db):
+        return None
+
     monkeypatch.setattr(store, "read_scenarios", _scenarios)
+    monkeypatch.setattr(store, "default_scenario_reader", _no_reader)
     return inventory
 
 

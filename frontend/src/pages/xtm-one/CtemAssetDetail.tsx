@@ -4,7 +4,7 @@
  * One asset of CTEM > Inventory `/ctem/inventory/assets/:id` (#1178, dev-docs/asset-model.md section 9): the
  * recap of everything known on one real thing. Its fields with the source that set each one, the source records
  * merged into it and why, and its software (the version `unknown` when no source knows it, the bundling
- * component when an SBOM gave it), the open cases on it and the crown jewels it supports. Administrators import an
+ * component when an SBOM gave it), the open cases on it and the primary assets it supports. Administrators import an
  * SBOM (CycloneDX or SPDX JSON) and keep two of its records apart (split, audited).
  */
 import { useRef, useState } from "react";
@@ -305,10 +305,10 @@ export default function CtemAssetDetail() {
 
       <AssetSection
         id="asset-jewels"
-        title={t_i18n("Crown jewels it supports")}
+        title={t_i18n("Primary assets it supports")}
         count={jewels.length}
         empty={jewels.length === 0}
-        emptyLabel={t_i18n("No crown jewel names this asset.")}
+        emptyLabel={t_i18n("No primary asset names this asset.")}
       >
         <ul className="flex flex-wrap gap-2" data-testid="ctem-asset-jewels">
           {jewels.map((j) => (

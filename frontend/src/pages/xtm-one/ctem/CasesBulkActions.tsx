@@ -10,6 +10,11 @@
  * `only` draws one of the actions alone ("assign" or "due") for one case, with the
  * same label and the same dialog: the next action of the "Act on this first" band
  * (#1176, UX round 1 on #1182, B3).
+ *
+ * The dialogs and their writes live in `useCaseActionDialogs`, which the case
+ * page's More actions menu uses too (#1751): one dialog and one endpoint per
+ * action, whichever surface opens it. The action list itself is
+ * `case-actions.ts`.
  */
 import { useState } from "react";
 import { Textarea } from "@filigran/design-system";
@@ -18,6 +23,7 @@ import { TOOLBAR_CONTROL_HEIGHT } from "@/components/ui/data-table";
 import { DateFilterInput } from "@/components/ui/date-filter-input";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SettingsField, settingsFieldHintId, settingsFieldLabelId } from "@/components/ui/settings-form";
 import { useToast } from "@/components/ui/toast";
@@ -31,8 +37,10 @@ import {
 } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import type { UserDirectoryItem } from "@/types";
+import { BULK_CASE_ACTIONS, caseActionDef, type CaseActionId } from "./case-actions";
 
-type BulkDialog = "assign" | "due" | "accept" | "merge" | null;
+type CaseActionDialog = "assign" | "due" | "accept" | "merge";
+type BulkDialog = CaseActionDialog | null;
 
 const REASON_MAX = 500;
 
@@ -88,14 +96,23 @@ function OwnerPicker({ id, value, onChange }: { id: string; value: UserDirectory
   );
 }
 
-export function CasesBulkActions({
+/**
+ * The dialogs of the case actions and their writes, for the cases given: the
+ * bulk bar passes the selection, the case page its one case. `mergeTargets`
+ * set means one case merged INTO another (the case page): the dialog picks
+ * the case to merge into among them and `onMerged` gets its id, since the
+ * merged case is gone. Unset, Merge keeps one of the selected cases.
+ */
+export function useCaseActionDialogs({
   cases,
   onDone,
-  only,
+  mergeTargets,
+  onMerged,
 }: {
   cases: CtemCaseSummary[];
   onDone: () => void;
-  only?: "assign" | "due";
+  mergeTargets?: CtemCaseSummary[];
+  onMerged?: (targetId: string) => void;
 }) {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
@@ -116,7 +133,7 @@ export function CasesBulkActions({
     setDue(inDays(30));
     setReason("");
     setExpiry(inDays(90));
-    setTarget(cases[0]?.id ?? "");
+    setTarget(mergeTargets ? "" : (cases[0]?.id ?? ""));
     setFormError(null);
     setDialog(kind);
   };
@@ -170,9 +187,11 @@ export function CasesBulkActions({
         { target_id: target, case_ids: cases.filter((c) => c.id !== target).map((c) => c.id) },
         {
           onSuccess: () => {
-            toast({ title: t_i18n("{count, plural, one {# case merged} other {# cases merged}}", { count: count - 1 }), variant: "success" });
+            const merged = mergeTargets ? count : count - 1;
+            toast({ title: t_i18n("{count, plural, one {# case merged} other {# cases merged}}", { count: merged }), variant: "success" });
             setDialog(null);
-            onDone();
+            if (mergeTargets) onMerged?.(target);
+            else onDone();
           },
           onError: (err) => setFormError(err.message),
         },
@@ -183,7 +202,9 @@ export function CasesBulkActions({
     assign: t_i18n("Assign owner"),
     due: t_i18n("Set due date"),
     accept: t_i18n("Accept risk"),
-    merge: t_i18n("{count, plural, one {Merge # case} other {Merge # cases}}", { count }),
+    merge: mergeTargets
+      ? t_i18n("Merge into another case")
+      : t_i18n("{count, plural, one {Merge # case} other {Merge # cases}}", { count }),
   };
   const pending = bulk.isPending || merge.isPending;
   const canConfirm =
@@ -192,6 +213,137 @@ export function CasesBulkActions({
       (dialog === "due" && Boolean(due)) ||
       (dialog === "accept" && owner !== null && Boolean(reason.trim()) && Boolean(expiry)) ||
       (dialog === "merge" && Boolean(target)));
+
+  const dialogs = (
+    <Dialog open={dialog !== null} onOpenChange={(o) => !o && setDialog(null)}>
+      <DialogContent size="md">
+        <DialogHeader>
+          <DialogTitle>{dialog ? titles[dialog] : ""}</DialogTitle>
+          <DialogDescription>{t_i18n("{count, plural, one {Applies to # case} other {Applies to # cases}}", { count })}</DialogDescription>
+        </DialogHeader>
+        <DialogBody className="space-y-4">
+          {(dialog === "assign" || dialog === "accept") && (
+            <SettingsField
+              id="bulk-owner"
+              label={t_i18n("Owner")}
+              helper={t_i18n("The owner must see at least one issue of each case.")}
+              required
+            >
+              <OwnerPicker id="bulk-owner" value={owner} onChange={setOwner} />
+            </SettingsField>
+          )}
+          {dialog === "due" && (
+            <SettingsField id="bulk-due" label={t_i18n("Due date")} required>
+              <DateFilterInput id="bulk-due" aria-labelledby={settingsFieldLabelId("bulk-due")} min={inDays(0)} value={due} onChange={setDue} />
+            </SettingsField>
+          )}
+          {dialog === "accept" && (
+            <>
+              <SettingsField id="bulk-reason" label={t_i18n("Reason")} required>
+                <Textarea
+                  id="bulk-reason"
+                  aria-labelledby={settingsFieldLabelId("bulk-reason")}
+                  rows={3}
+                  maxLength={REASON_MAX}
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                />
+              </SettingsField>
+              <SettingsField id="bulk-expiry" label={t_i18n("Expires on")} helper={t_i18n("The cases return to New on that day.")} required>
+                <DateFilterInput
+                  id="bulk-expiry"
+                  aria-labelledby={settingsFieldLabelId("bulk-expiry")}
+                  aria-describedby={settingsFieldHintId("bulk-expiry")}
+                  min={inDays(1)}
+                  value={expiry}
+                  onChange={setExpiry}
+                />
+              </SettingsField>
+            </>
+          )}
+          {dialog === "merge" && mergeTargets && (
+            <SettingsField
+              id="bulk-target"
+              label={t_i18n("Case to merge into")}
+              helper={t_i18n("It keeps its state, owner and history, and takes the issues and history of this case.")}
+              required
+            >
+              {mergeTargets.length === 0 ? (
+                <p className="content-compact text-default-secondary">{t_i18n("No other open case to merge into")}</p>
+              ) : (
+                <SearchableSelect
+                  id="bulk-target"
+                  aria-labelledby={settingsFieldLabelId("bulk-target")}
+                  placeholder={t_i18n("Search a case")}
+                  options={mergeTargets.map((c) => ({ value: c.id, label: c.title, keywords: [c.product_label] }))}
+                  value={target}
+                  onValueChange={setTarget}
+                  className="w-full"
+                />
+              )}
+            </SettingsField>
+          )}
+          {dialog === "merge" && !mergeTargets && (
+            <SettingsField
+              id="bulk-target"
+              label={t_i18n("Case to keep")}
+              helper={t_i18n("It keeps its state, owner and history, and takes the issues and history of the others.")}
+              required
+            >
+              <Select value={target} onValueChange={setTarget}>
+                <SelectTrigger id="bulk-target" aria-labelledby={settingsFieldLabelId("bulk-target")}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {cases.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </SettingsField>
+          )}
+          {formError && (
+            <p className="whitespace-pre-line content-compact text-feedback-error-primary" role="alert">
+              {formError}
+            </p>
+          )}
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setDialog(null)}>
+            {t_i18n("Cancel")}
+          </Button>
+          <Button onClick={confirm} disabled={!canConfirm}>
+            {dialog ? titles[dialog] : ""}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
+  return { open, start, dialogs, pending };
+}
+
+/** The test handles of the bulk bar's buttons (the others have none). */
+const BULK_BUTTON_TESTID: Partial<Record<CaseActionId, string>> = {
+  assign: "ctem-cases-bulk-assign",
+  merge: "ctem-cases-bulk-merge",
+  start: "ctem-cases-bulk-start",
+};
+
+export function CasesBulkActions({
+  cases,
+  onDone,
+  only,
+}: {
+  cases: CtemCaseSummary[];
+  onDone: () => void;
+  only?: "assign" | "due";
+}) {
+  const { t_i18n } = useFormatter();
+  const { open, start, dialogs, pending } = useCaseActionDialogs({ cases, onDone });
+  const count = cases.length;
 
   return (
     <>
@@ -205,128 +357,28 @@ export function CasesBulkActions({
           {t_i18n("Set due date")}
         </Button>
       )}
-      {!only && (
-        <>
-          <Button size="sm" variant="ghost" className={TOOLBAR_CONTROL_HEIGHT} onClick={() => open("assign")} data-testid="ctem-cases-bulk-assign">
-            {t_i18n("Assign owner")}
-          </Button>
-          <Button size="sm" variant="ghost" className={TOOLBAR_CONTROL_HEIGHT} onClick={() => open("due")}>
-            {t_i18n("Set due date")}
-          </Button>
-          <Button size="sm" variant="ghost" className={TOOLBAR_CONTROL_HEIGHT} onClick={() => open("accept")}>
-            {t_i18n("Accept risk")}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className={TOOLBAR_CONTROL_HEIGHT}
-            onClick={() => open("merge")}
-            disabled={count < 2}
-            title={count < 2 ? t_i18n("Select 2 cases or more to merge them") : undefined}
-            data-testid="ctem-cases-bulk-merge"
-          >
-            {t_i18n("Merge")}
-          </Button>
-          <Button size="sm" className={TOOLBAR_CONTROL_HEIGHT} onClick={start} disabled={pending} data-testid="ctem-cases-bulk-start">
-            {t_i18n("Start")}
-          </Button>
-        </>
-      )}
-
-      <Dialog open={dialog !== null} onOpenChange={(o) => !o && setDialog(null)}>
-        <DialogContent size="md">
-          <DialogHeader>
-            <DialogTitle>{dialog ? titles[dialog] : ""}</DialogTitle>
-            <DialogDescription>{t_i18n("{count, plural, one {Applies to # case} other {Applies to # cases}}", { count })}</DialogDescription>
-          </DialogHeader>
-          <DialogBody className="space-y-4">
-            {(dialog === "assign" || dialog === "accept") && (
-              <SettingsField
-                id="bulk-owner"
-                label={t_i18n("Owner")}
-                helper={t_i18n("The owner must see at least one issue of each case.")}
-                required
-              >
-                <OwnerPicker id="bulk-owner" value={owner} onChange={setOwner} />
-              </SettingsField>
-            )}
-            {dialog === "due" && (
-              <SettingsField id="bulk-due" label={t_i18n("Due date")} required>
-                <DateFilterInput
-                  id="bulk-due"
-                  aria-labelledby={settingsFieldLabelId("bulk-due")}
-                  min={inDays(0)}
-                  value={due}
-                  onChange={setDue}
-                />
-              </SettingsField>
-            )}
-            {dialog === "accept" && (
-              <>
-                <SettingsField id="bulk-reason" label={t_i18n("Reason")} required>
-                  <Textarea
-                    id="bulk-reason"
-                    aria-labelledby={settingsFieldLabelId("bulk-reason")}
-                    rows={3}
-                    maxLength={REASON_MAX}
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                  />
-                </SettingsField>
-                <SettingsField
-                  id="bulk-expiry"
-                  label={t_i18n("Expires on")}
-                  helper={t_i18n("The cases return to New on that day.")}
-                  required
-                >
-                  <DateFilterInput
-                    id="bulk-expiry"
-                    aria-labelledby={settingsFieldLabelId("bulk-expiry")}
-                    aria-describedby={settingsFieldHintId("bulk-expiry")}
-                    min={inDays(1)}
-                    value={expiry}
-                    onChange={setExpiry}
-                  />
-                </SettingsField>
-              </>
-            )}
-            {dialog === "merge" && (
-              <SettingsField
-                id="bulk-target"
-                label={t_i18n("Case to keep")}
-                helper={t_i18n("It keeps its state, owner and history, and takes the issues and history of the others.")}
-                required
-              >
-                <Select value={target} onValueChange={setTarget}>
-                  <SelectTrigger id="bulk-target" aria-labelledby={settingsFieldLabelId("bulk-target")}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {cases.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </SettingsField>
-            )}
-            {formError && (
-              <p className="whitespace-pre-line content-compact text-feedback-error-primary" role="alert">
-                {formError}
-              </p>
-            )}
-          </DialogBody>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialog(null)}>
-              {t_i18n("Cancel")}
+      {!only &&
+        BULK_CASE_ACTIONS.map((id) =>
+          id === "start" ? (
+            <Button key={id} size="sm" className={TOOLBAR_CONTROL_HEIGHT} onClick={start} disabled={pending} data-testid={BULK_BUTTON_TESTID[id]}>
+              {t_i18n(caseActionDef(id).label)}
             </Button>
-            <Button onClick={confirm} disabled={!canConfirm}>
-              {dialog ? titles[dialog] : ""}
+          ) : (
+            <Button
+              key={id}
+              size="sm"
+              variant="ghost"
+              className={TOOLBAR_CONTROL_HEIGHT}
+              onClick={() => open(id as CaseActionDialog)}
+              disabled={id === "merge" && count < 2}
+              title={id === "merge" && count < 2 ? t_i18n("Select 2 cases or more to merge them") : undefined}
+              data-testid={BULK_BUTTON_TESTID[id]}
+            >
+              {t_i18n(caseActionDef(id).label)}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          ),
+        )}
+      {dialogs}
     </>
   );
 }

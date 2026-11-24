@@ -1556,7 +1556,8 @@ async def test_connector_instance_from_a_collector_or_executor_id(monkeypatch, k
         {"action": "stop", "connector_id": "c1"},
     )
     assert not result.is_error, result.content
-    assert result.content == "Connector instance ci1 is now stopping."
+    assert result.content.startswith("Connector instance ci1: requested status set to stopping.")
+    assert "is now" not in result.content
     assert fake.calls[-1]["path"] == "/api/connector-instances/ci1/requested-status"
 
 
@@ -1613,6 +1614,105 @@ async def test_instance_get_shows_image_and_container_runtime(monkeypatch):
     assert "  restart count: 2" in result.content
     assert "  in reboot loop: no" in result.content
     assert "not reported" not in result.content
+
+
+async def test_instance_get_tells_the_requested_intent_from_the_state(monkeypatch):
+    # A requested 'starting' next to a current 'started' is a running instance:
+    # the answer never reads the intent as the state (gap
+    # openaev-instance-status-intent-read-as-state).
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/connector-instances/ci1": {
+                "connector_instance_id": "ci1",
+                "connector_instance_current_status": "started",
+                "connector_instance_requested_status": "starting",
+                "connector_instance_heartbeat_at": "2026-11-23T19:55:24Z",
+                "connector_instance_configurations": [{"k": "v"}],
+            },
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_connector_instance",
+        {"action": "get", "connector_instance_id": "ci1"},
+    )
+    assert not result.is_error, result.content
+    assert "  state (actual): started" in result.content
+    assert "  requested (intent): starting" in result.content
+    assert "  reading: started, as requested" in result.content
+    assert "  raw fields:" in result.content
+    assert "    connector_instance_heartbeat_at: 2026-11-23T19:55:24Z" in result.content
+    assert "configurations" not in result.content
+
+
+async def test_instance_get_says_a_request_is_not_reached_yet(monkeypatch):
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/connector-instances/ci1": {
+                "connector_instance_id": "ci1",
+                "connector_instance_current_status": "stopped",
+                "connector_instance_requested_status": "starting",
+            },
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_connector_instance",
+        {"action": "get", "connector_instance_id": "ci1"},
+    )
+    assert "the request 'starting' has not been reached yet" in result.content
+    assert "raw fields" not in result.content
+
+
+@pytest.mark.parametrize(("tail", "size"), [(10, 10), (500, 100), (0, 50)])
+async def test_connector_instance_logs_takes_a_tail(monkeypatch, tail, size):
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _RecordingApi({"content": [{"i": n} for n in range(120)], "totalElements": 120})
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_connector_instance",
+        {"action": "logs", "connector_instance_id": "ci1", "tail": tail},
+    )
+    assert not result.is_error, result.content
+    assert fake.calls[0]["json"] == {"page": 0, "size": size}
+    assert len(json.loads(result.content)["logs"]) == size
+
+
+async def test_query_connectors_shows_type_external_and_last_execution(monkeypatch):
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/collectors": [
+                {
+                    "collector_id": "c1",
+                    "collector_name": "GitHub",
+                    "collector_type": "openaev_github",
+                    "collector_external": True,
+                    "collector_last_execution": "2026-11-23T19:40:00Z",
+                }
+            ],
+            "/api/settings": {},
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(executor, "query_openaev_connectors", {"kind": "collectors"})
+    assert not result.is_error, result.content
+    assert (
+        "- GitHub (id: c1) {type: openaev_github, external: yes, last execution: 2026-11-23T19:40:00Z}"
+    ) in result.content
 
 
 async def test_instance_get_says_when_start_time_is_not_reported(monkeypatch):

@@ -14,7 +14,7 @@ export type SourcedSection = (typeof SOURCED_SECTIONS)[number];
 
 /** The section names on a chip. @i18n-keys */
 export const SOURCED_SECTION_LABELS = {
-  crown_jewels: "Crown jewels",
+  crown_jewels: "Primary assets",
   tech_stack: "Software",
   ai_systems: "AI systems",
   assets_exposure: "Assets",

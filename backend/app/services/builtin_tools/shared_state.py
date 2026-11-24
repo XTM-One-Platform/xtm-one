@@ -1029,15 +1029,20 @@ def build_shared_state_tools(
             line += ")"
         return {**shown, "value": value}, line
 
-    async def _read_family(family: str, path: str) -> str:
+    async def _read_family(
+        family: str, path: str, where: list[Any] | None = None, fields: list[str] | None = None
+    ) -> str:
         """The part `path` names in every active key starting with *family* (gap-evidence-overflow-scatter).
 
         A record split across sibling keys (``dev:harness-gaps:evidence-3`` ...
         ``-12``) is found in one call instead of one probe per key: each key
         where the path resolves is answered with its part, the others counted.
+        With *where* (#1760) the part must be a list: only its items matching
+        any match are answered, a key with none is counted, not shown; *fields*
+        keeps those fields of each object item.
         """
         from app.services.content_safety import wrap_untrusted
-        from app.services.shared_state import list_states
+        from app.services.shared_state import list_item_matches, list_states
 
         if not family.strip() or not path:
             return "Error: a key ending in * reads one `path` across the keys starting with it; give both."
@@ -1053,11 +1058,28 @@ def build_shared_state_tools(
             logger.error("get_shared_state family read failed: %s", format_exception_message(exc), exc_info=True)
             return "Error: failed to read the shared state. Please try again."
         hits: list[tuple[str, str]] = []
+        found = matched = 0
         for state in states:
             part, missing = _resolve_path(state.get("value") or {}, path)
-            if missing is None:
-                hits.append((_strip_ns(state)["key"], json.dumps(part, default=str)))
-        lines = [f"Family `{family}*`: `{path}` found in {len(hits)} of {len(states)} active key(s)"]
+            if missing is not None:
+                continue
+            found += 1
+            if where is not None or fields:
+                if not isinstance(part, list):
+                    continue
+                if where is not None:
+                    part = [item for item in part if any(list_item_matches(item, m) for m in where)]
+                    if not part:
+                        continue
+                    matched += len(part)
+                if fields:
+                    part = [
+                        {f: item[f] for f in fields if f in item} if isinstance(item, dict) else item for item in part
+                    ]
+            hits.append((_strip_ns(state)["key"], json.dumps(part, default=str)))
+        lines = [f"Family `{family}*`: `{path}` found in {found} of {len(states)} active key(s)"]
+        if where is not None:
+            lines[0] += f"; where_json matched {matched} item(s) in {len(hits)} key(s)"
         if len(states) >= _FAMILY_MAX_KEYS:
             lines[0] += f" (first {_FAMILY_MAX_KEYS} keys only)"
         budget = _READ_WINDOW_DEFAULT_CHARS
@@ -1090,8 +1112,6 @@ def build_shared_state_tools(
         if not (key or "").strip():
             return "Error: key is required."
         path = (path or "").strip() if isinstance(path, str) else ""
-        if key.strip().endswith("*"):
-            return await _read_family(key.strip()[:-1], path)
         try:
             start = int(offset) if offset is not None else 0
             size = int(max_chars) if max_chars is not None else 0
@@ -1120,6 +1140,12 @@ def build_shared_state_tools(
             for m in where:
                 if (error := list_match_error(m)) is not None:
                     return f"Error: where_json: {error}"
+        if key.strip().endswith("*"):
+            if fields is not None and (
+                not isinstance(fields, list) or not all(isinstance(f, str) and f for f in fields)
+            ):
+                return "Error: fields must be a list of field names."
+            return await _read_family(key.strip()[:-1], path, where, fields or None)
         shape: dict | None = None
         if fields or item_offset is not None or item_limit is not None:
             if fields is not None and (
@@ -2001,7 +2027,7 @@ def build_shared_state_tools(
                     "update_json": {"type": "string", "description": "Patch matched list items in place: {\"gaps\": {\"match\": {\"slug\": \"x\"}, \"set\": {}, \"increment\": {\"count\": 1}, \"append\": {\"runs\": []}, \"unset\": [\"f\"]}}; match may be a list (any matches; one matching nothing refuses all). Applied after the removals, before the appends"},
                     "fold_json": {"type": "string", "description": "List keys to identity field(s) or {by, sum}: duplicates merge in the first"},
                     "archive_key": {"type": "string", "description": "Key that first receives what remove_json / keep_last_json / an unset drop"},
-                    "retention_json": {"type": "string", "description": "List policy per write, object of keep_last, max_chars, archive_key, archive_when, max_item_chars, overflow_key, keep_fields; {} clears"},
+                    "retention_json": {"type": "string", "description": "List policy per write: keep_last, max_chars, archive_key, archive_when, max_item_chars, overflow_key, keep_fields, roll_open; {} clears"},
                     "unset_keys": {"type": "array", "items": {"type": "string"}, "description": "Top-level keys to remove from the value"},
                     "hold": {"type": "string", "enum": ["take", "release"], "description": "Hold the entry as a lease (a branch lock): 'take' records this run as its holder (a live other holder answers held, not an error), taking it over once that run ended; 'release' frees it. The platform frees the hold of an ended run. Omit to keep the holder"},
                     "lease": {"type": "boolean", "description": "Resolved at hold release (default: created by take)"},

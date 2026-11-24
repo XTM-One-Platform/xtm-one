@@ -341,6 +341,10 @@ def readable_error(source: str, error: str | None) -> str | None:
             break
     if "refused the" in rest and rest.startswith((label, DISPLAY_NAMES.get(source, label))):
         return rest if rest.endswith(".") else f"{rest}."
+    if " cannot feed " in rest and ":" in rest:
+        # The pointer of refused_section_message (#1774), worded with the source's label.
+        why = rest.split(":", 1)[1].strip().replace(f" of {source} ", f" of {label} ")
+        return f"{label} cannot feed this section: {why}."
     if rest.startswith("no ") and "integration" in rest:
         return f"{rest[0].upper()}{rest[1:]}."
     if status := _HTTP_STATUS.fullmatch(rest):
@@ -350,6 +354,23 @@ def readable_error(source: str, error: str | None) -> str | None:
     if _EXCEPTION_NAME.fullmatch(rest) or rest == "no answer":
         return f"{label} could not be reached."
     return None
+
+
+def refused_section_message(source: str, section: str) -> str:
+    """Why *source* cannot feed *section*, and where its data comes in instead (harness gap x12-02, #1774).
+
+    An endpoint or code source's software arrives with its Assets import (each device's or
+    repository's software is stored on its asset and read in the CTEM Inventory Software tab).
+    """
+    from app.services.organization_asset_store import ENDPOINT_SOFTWARE_FORMATS
+
+    if section in ("tech_stack", "software") and source in ENDPOINT_SOFTWARE_FORMATS:
+        return (
+            f"{source} cannot feed {section}: its software comes with the Assets import of {source} "
+            "(each device or repository keeps its software, read in the CTEM Inventory Software tab)"
+        )
+    feeds = [name for name, sources in SECTION_SOURCES.items() if source in sources and name != AI_SYSTEMS_ALIAS]
+    return f"{source} cannot feed {section}" + (f": it feeds {', '.join(feeds)}" if feeds else "")
 
 
 def _yes_no(value: Any) -> str:
@@ -1509,7 +1530,7 @@ async def read_source(
 ) -> ReadResult:
     """Read *section* from *source*; a failure is answered in ``error``, never raised."""
     if source not in SECTION_SOURCES.get(section, ()):
-        return ReadResult(error=f"{source} cannot feed {section}")
+        return ReadResult(error=refused_section_message(source, section))
     try:
         if source == "openaev":
             return await _read_openaev(db, str(user_id), section, filters, batch_type)

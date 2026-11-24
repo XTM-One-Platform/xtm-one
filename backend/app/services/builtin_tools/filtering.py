@@ -412,6 +412,8 @@ AGENT_KEYED_BUILTIN_TOOL_IDS: frozenset[str] = frozenset(
         "user_admin",
         # Read-only CTEM signals and cases (#1337): wired by the agent paths only.
         "ctem_read",
+        # CTEM administrator repairs (#1778): wired by the agent paths only.
+        "ctem_repair",
     }
 )
 

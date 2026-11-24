@@ -183,7 +183,7 @@ describe("MultiSelect", () => {
       />,
     );
 
-    // A field in a fixed-width cell (the crown jewels Assets column) must not
+    // A field in a fixed-width cell (the primary assets Assets column) must not
     // wrap its chips past the cell: the rest goes in one translated +N chip.
     // jsdom measures 0 px, so every chip folds into it here ("+2").
     expect(screen.getByLabelText(/^\+\d more: .*Agent Beta$/)).toBeInTheDocument();

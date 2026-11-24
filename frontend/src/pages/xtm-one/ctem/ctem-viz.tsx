@@ -551,7 +551,7 @@ export function ScoreRingKey({
         "inner",
         "building-2",
         t_i18n("Qualitative"),
-        t_i18n("The same metrics read against your organization context: crown jewels, software, sector, PIRs and risk appetite. The more of it is filled, the more of the score holds."),
+        t_i18n("The same metrics read against your organization context: primary assets, software, sector, PIRs and risk appetite. The more of it is filled, the more of the score holds."),
         qualitative,
         contextLine,
       )}
