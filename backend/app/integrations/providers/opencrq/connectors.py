@@ -519,7 +519,7 @@ def register(
             name="run_opencrq_connector",
             description=(
                 "Act on an OpenCRQ connector now: sync_now, reconnect_stream (opencti) "
-                "or reset_state. Needs manage-security for all but sync_now."
+                "or reset_state. Confirm with the user; manage-security for all but sync_now."
             ),
             input_schema={
                 "type": "object",
