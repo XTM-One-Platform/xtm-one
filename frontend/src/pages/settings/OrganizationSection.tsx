@@ -72,6 +72,7 @@ import {
   useRunOrganizationSync,
   useOrganizationPirs,
   useOrganizationReaders,
+  usePatchOrganizationContext,
   useSaveOrganizationContext,
 } from "@/hooks/api/useOrganizationContextApi";
 import { useFormatter } from "@/i18n";
@@ -222,6 +223,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // In the reader's locale, as every date next to a DataTable (data-table-locale-dates gate).
   const savedAt = data?.created_at ? intl.formatDate(new Date(data.created_at), { dateStyle: "medium", timeStyle: "short" }) : "";
   const save = useSaveOrganizationContext();
+  // #1752: a card saves its own fields alone (PATCH); the asset rows never travel with them.
+  const patch = usePatchOrganizationContext();
   const sync = useOpenCrqSync();
   // One mechanism for OpenCRQ (#1134 S2): once primary assets sync from OpenCRQ, the card's OpenCRQ
   // button runs that sync (its filters, links and direction), never a second set of rules.
@@ -476,17 +479,21 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     }
     const parsed = fromForm(next);
     if ("invalid" in parsed) return;
-    save.mutate({ profile: parsed.profile as OrganizationProfile, source: "form" }, {
+    const field = exposureEdit.card === "accepted_risks" ? "prioritization_policy" : exposureEdit.card;
+    const options = {
       onSuccess: () => {
         stopExposureEdit();
         toast({ title: t_i18n("Organization profile saved"), variant: "success" });
       },
-      onError: (err) => {
+      onError: (err: Error) => {
         const issue = exposureIssueFromRefusal(next, err.message);
         if (issue) setRefusedIssue(issue);
         else toast({ title: t_i18n("The organization profile was not saved"), description: err.message, variant: "error" });
       },
-    });
+    };
+    // The asset and group tables are rows: they keep their own write; every other card patches its field alone.
+    if (field === "assets_exposure" || field === "asset_groups") save.mutate({ profile: parsed.profile as OrganizationProfile, source: "form" }, options);
+    else patch.mutate({ fields: { [field]: parsed.profile[field] }, based_on_version: data.version ?? null }, options);
   };
   // One list card in edit (#12256): the other cards stay as they read; the form is not opened.
   const startListEdit = (key: ListKey) => {
@@ -506,7 +513,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     const parsed = fromForm({ ...toForm(data.profile), [key]: committedValues(listEdits[key]!.rows as EditRow<unknown>[]) });
     if ("invalid" in parsed) return;
     const kept = committedValues(listEdits[key]!.rows as EditRow<Provenance>[]);
-    save.mutate({ profile: parsed.profile as OrganizationProfile, source: "form" }, {
+    patch.mutate({ fields: { [key]: parsed.profile[key] }, based_on_version: data.version ?? null }, {
       onSuccess: () => {
         // The synced rows removed with "Exclude from this sync" go on their sync's exclusions (#1134).
         synced.commit(kept);

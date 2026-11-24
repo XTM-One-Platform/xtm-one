@@ -70,6 +70,7 @@ function renderPage(tab?: string) {
 
 const get = vi.mocked(api.get);
 const put = vi.mocked(api.put);
+const patch = vi.mocked(api.patch);
 const post = vi.mocked(api.post);
 const postForm = vi.mocked(api.postForm);
 
@@ -479,11 +480,11 @@ describe("OrganizationSection", () => {
     await screen.findByDisplayValue(long);
   });
 
-  it("edits one list card alone, counts its changes, undoes a removal and saves the profile with that list changed (#12256)", async () => {
+  it("edits one list card alone, counts its changes, undoes a removal and patches that list alone (#12256, #1752)", async () => {
     const base = get.getMockImplementation()!;
     const tech = Array.from({ length: 150 }, (_, i) => ({ product: `Product ${String(i).padStart(3, "0")}`, vendor: i === 7 ? "" : "Vendor", cpe: "" }));
     get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: tech } } : base(path)));
-    put.mockResolvedValue({ ...CONTEXT, version: 4 });
+    patch.mockResolvedValue({ ...CONTEXT, version: 4 });
     renderPage("technology");
     // Read mode names the row that needs attention on the card header.
     expect((await screen.findByTestId("settings.organization.attention-tech_stack")).textContent).toBe("1 needs attention");
@@ -507,12 +508,15 @@ describe("OrganizationSection", () => {
     fireEvent.keyDown(product, { key: "Enter" });
     expect(bar.textContent).toContain("1 added");
     fireEvent.click(save);
-    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
-    const [, body] = put.mock.calls[0] as [string, { profile: { tech_stack: { product: string }[]; crown_jewels: unknown[] }; source: string }];
-    expect(body.source).toBe("form");
-    expect(body.profile.tech_stack).toHaveLength(151);
-    expect(body.profile.tech_stack[150].product).toBe("Jira");
-    expect(body.profile.crown_jewels).toEqual(CONTEXT.profile.crown_jewels);
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    expect(put).not.toHaveBeenCalled();
+    const [path, body] = patch.mock.calls[0] as [string, { fields: Record<string, unknown> & { tech_stack: { product: string }[] }; based_on_version: number }];
+    expect(path).toBe("/organization-context");
+    // The network check of #1752: the card's own list alone travels, never another field or an asset row.
+    expect(Object.keys(body.fields)).toEqual(["tech_stack"]);
+    expect(body.based_on_version).toBe(CONTEXT.version);
+    expect(body.fields.tech_stack).toHaveLength(151);
+    expect(body.fields.tech_stack[150].product).toBe("Jira");
   });
 
   it("edits one exposure card alone, keeps the others in read mode and saves the profile with that card changed (#12256 slice 2)", async () => {
@@ -597,7 +601,7 @@ describe("OrganizationSection", () => {
     const base = get.getMockImplementation()!;
     const tech = [{ product: "Jira", vendor: "Atlassian", cpe: "" }, { product: "Slack", vendor: "", cpe: "" }];
     get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: tech } } : base(path)));
-    put.mockResolvedValue({ ...CONTEXT, version: 4 });
+    patch.mockResolvedValue({ ...CONTEXT, version: 4 });
     renderPage("technology");
     // Paste a list waits for the card's Edit.
     expect(screen.queryByTestId("settings.organization.paste-tech_stack")).toBeNull();
@@ -626,9 +630,9 @@ describe("OrganizationSection", () => {
     fireEvent.click(within(bulk).getByTestId("settings.organization.bulk-apply"));
     expect(bar.textContent).toContain("1 added, 1 edited");
     fireEvent.click(within(bar).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
-    const [, body] = put.mock.calls[0] as [string, { profile: { tech_stack: { product: string; vendor: string }[] } }];
-    expect(body.profile.tech_stack).toEqual([
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    const [, body] = patch.mock.calls[0] as [string, { fields: { tech_stack: { product: string; vendor: string }[] } }];
+    expect(body.fields.tech_stack).toEqual([
       { product: "Jira", vendor: "Atlassian", cpe: "" },
       { product: "Slack", vendor: "Acme", cpe: "" },
       { product: "Notion", vendor: "Acme", cpe: "" },
@@ -639,7 +643,7 @@ describe("OrganizationSection", () => {
     const base = get.getMockImplementation()!;
     const tech = [{ product: "Jira", vendor: "Atlassian", cpe: "", version: "9.12.2" }];
     get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: tech } } : base(path)));
-    put.mockResolvedValue({ ...CONTEXT, version: 4 });
+    patch.mockResolvedValue({ ...CONTEXT, version: 4 });
     renderPage("technology");
     const row = (await screen.findByText("Jira")).closest("tr")!;
     expect(within(row).getByText("9.12.2")).toBeTruthy();
@@ -651,9 +655,9 @@ describe("OrganizationSection", () => {
     fireEvent.click(within(dialog).getByTestId("settings.organization.paste-add"));
     await waitFor(() => expect(screen.queryByTestId("settings.organization.paste-dialog")).toBeNull());
     fireEvent.click(within(bar).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
-    const [, body] = put.mock.calls[0] as [string, { profile: { tech_stack: Record<string, string>[] } }];
-    expect(body.profile.tech_stack).toEqual([
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    const [, body] = patch.mock.calls[0] as [string, { fields: { tech_stack: Record<string, string>[] } }];
+    expect(body.fields.tech_stack).toEqual([
       { product: "Jira", vendor: "Atlassian", cpe: "", version: "9.12.2" },
       { product: "nginx", vendor: "F5", cpe: "", version: "1.25.3" },
       // No version typed: none saved, so a profile that never declares one keeps its shape.

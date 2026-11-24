@@ -329,6 +329,8 @@ export function usePatchOrganizationContext() {
     meta: { suppressGlobalErrorToast: true },
     onSuccess: (saved) => {
       qc.setQueryData(KEY, saved);
+      // A patched software list or matching rule changes what the Inventory tabs read (#1752).
+      void qc.invalidateQueries({ queryKey: ["organization-assets"] });
     },
   });
 }

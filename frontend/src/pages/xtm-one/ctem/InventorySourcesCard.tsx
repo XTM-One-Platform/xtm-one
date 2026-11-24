@@ -19,7 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { Tip } from "@/components/ui/tooltip";
 import { useAssetIdentity } from "@/hooks/api/useOrganizationAssetsApi";
-import { type OrganizationProfile, useOrganizationContext, useSaveOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
+import { useOrganizationContext, usePatchOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import {
@@ -76,7 +76,7 @@ export function AssetMatchingCard() {
   const { isAdmin } = useAuth();
   const identity = useAssetIdentity();
   const { data: context } = useOrganizationContext();
-  const save = useSaveOrganizationContext();
+  const save = usePatchOrganizationContext();
   const [draft, setDraft] = useState<IdentityDraft | null>(null);
 
   const defaults = identity.data?.defaults;
@@ -95,8 +95,9 @@ export function AssetMatchingCard() {
     if (!context || !saved || blocked) return;
     const parsed = fromForm({ ...toForm(context.profile), asset_identity: saved });
     if ("invalid" in parsed) return;
+    // #1752: the matching rules alone travel, never the asset rows.
     save.mutate(
-      { profile: parsed.profile as OrganizationProfile, source: "form" },
+      { fields: { asset_identity: parsed.profile.asset_identity }, based_on_version: context.version ?? null },
       {
         onSuccess: () => {
           setDraft(null);
