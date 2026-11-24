@@ -112,11 +112,14 @@ export function CaseAuditTrail({
   };
   // One line on both views (#1679): the actor's type is its icon (a person, an agent, the
   // system), said in words to assistive technology only when it adds to the name.
-  const actorCell = (row: AuditRow) => {
+  // On a Timeline line the actor stays whole (up to 12rem, then truncated) and the action
+  // beside it takes the cut; in the table it fills its column (UX round 2 on #1708, B5).
+  const actorCell = (row: AuditRow, onLine = false) => {
     const type = actorType(row);
+    const width = onLine ? "shrink-0 max-w-48" : "min-w-0 max-w-full";
     return (
       // `flex`, as the Action cell: an inline-flex box sat on the text baseline, 2 px high (UX round 1 on #1708, B3).
-      <span className="flex min-w-0 max-w-full items-center gap-1.5" data-testid="ctem-audit-actor" data-actor-type={row.actorType}>
+      <span className={`flex ${width} items-center gap-1.5`} data-testid="ctem-audit-actor" data-actor-type={row.actorType}>
         <CaseIcon name={actorIcon(row.actorType)} className="text-default-secondary" />
         <TruncatedText text={actorName(row)} className="font-medium" />
         {type && <span className="sr-only">{type}</span>}
@@ -150,7 +153,7 @@ export function CaseAuditTrail({
     {
       key: "actor",
       header: "Actor",
-      cell: actorCell,
+      cell: (row) => actorCell(row),
       sortValue: (r) => actorName(r),
       csv: (r) => actorName(r),
     },
@@ -325,7 +328,7 @@ export function CaseAuditTrail({
                             <CaseIcon name={rowIcon(row)} className="text-default-secondary" />
                           </span>
                           <span className="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap">
-                            {actorCell(row)}
+                            {actorCell(row, true)}
                             <TruncatedText text={actionText(row)} className="text-default-secondary" />
                           </span>
                           <span className="flex shrink-0 items-center gap-2 whitespace-nowrap">
