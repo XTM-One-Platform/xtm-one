@@ -22,7 +22,10 @@ import { CategoryMark, SourceLogo } from "./inventory-icons";
 import { assetFieldLabel, criticalityShortLabel, orderFacetValues, sourceLabel } from "./inventory";
 
 /** The facets of the sidebar, in the order it shows them; a subcategory is drawn under its category. */
-export const SIDEBAR_FACETS: readonly AssetFilterKey[] = ["category", "subcategory", "criticality", "internet_facing", "source"];
+export const SIDEBAR_FACETS: readonly AssetFilterKey[] = ["category", "subcategory", "criticality", "internet_facing", "source", "group"];
+
+/** The facets drawn as one flat list of checkboxes. */
+type SimpleFacet = "criticality" | "internet_facing" | "source" | "group";
 
 /** The URL key of one facet of a table whose keys start with `prefix`. */
 export function facetParam(prefix: string, facet: AssetFilterKey): string {
@@ -60,6 +63,7 @@ const GROUP_LABELS: Record<Exclude<AssetFilterKey, "subcategory">, string> = {
   criticality: "Criticality",
   internet_facing: "Internet facing",
   source: "Source",
+  group: "Asset group",
 };
 
 /**
@@ -101,10 +105,18 @@ export function AssetFacetSidebar({
   const subcategories = withPicked(facets?.subcategory ?? [], picked.subcategory);
   const categoryLabel = (value: string) => assetFieldLabel(t_i18n, "category", value);
   const categories = orderFacetValues("category", withPicked(facets?.category ?? [], picked.category), categoryLabel);
-  const valueLabel = (facet: "criticality" | "internet_facing" | "source", value: string) =>
-    facet === "source" ? sourceLabel(t_i18n, value) : facet === "criticality" ? criticalityShortLabel(t_i18n, value) : assetFieldLabel(t_i18n, facet, value);
+  // A group is picked by id and read by its name (#1556); a picked group the counts no longer hold shows its id.
+  const groupNames = new Map((facets?.group ?? []).map((g) => [g.value, g.label ?? g.value]));
+  const valueLabel = (facet: SimpleFacet, value: string) =>
+    facet === "group"
+      ? (groupNames.get(value) ?? value)
+      : facet === "source"
+        ? sourceLabel(t_i18n, value)
+        : facet === "criticality"
+          ? criticalityShortLabel(t_i18n, value)
+          : assetFieldLabel(t_i18n, facet, value);
 
-  const simple = (facet: "criticality" | "internet_facing" | "source", divided: boolean) => {
+  const simple = (facet: SimpleFacet, divided: boolean) => {
     // Enum facets in their own order (severity), never by key (UX r1 B3).
     const values = orderFacetValues(facet, withPicked(facets?.[facet] ?? [], picked[facet]), (value) => valueLabel(facet, value));
     if (values.length === 0) return null;
@@ -190,6 +202,7 @@ export function AssetFacetSidebar({
       {simple("criticality", true)}
       {simple("internet_facing", true)}
       {simple("source", true)}
+      {simple("group", true)}
     </FacetSidebar>
   );
 }

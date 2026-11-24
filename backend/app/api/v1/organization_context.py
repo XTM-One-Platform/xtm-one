@@ -537,12 +537,14 @@ async def list_canonical_assets(
     criticality: list[str] = Query(default_factory=list, max_length=50),
     internet_facing: list[str] = Query(default_factory=list, max_length=50),
     source: list[str] = Query(default_factory=list, max_length=50),
+    group: list[str] = Query(default_factory=list, max_length=50),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ) -> CanonicalAssetsPage:
     """The canonical assets (one per real thing, its sources and software count), paginated by name.
 
-    Each filter (repeated for several values) keeps the assets holding one of its values.
+    Each filter (repeated for several values) keeps the assets holding one of its values; ``group``
+    takes asset group ids and keeps the assets one of whose records is a member (#1556).
     """
     from app.services.organization_asset_store import list_assets
 
@@ -555,6 +557,7 @@ async def list_canonical_assets(
         "criticality": criticality,
         "internet_facing": internet_facing,
         "source": source,
+        "group": group,
     }
     page = await list_assets(db, org, q=q, offset=offset, limit=limit, filters=filters)
     return CanonicalAssetsPage(**vars(page))
@@ -568,6 +571,7 @@ async def read_asset_facets(
     criticality: list[str] = Query(default_factory=list, max_length=50),
     internet_facing: list[str] = Query(default_factory=list, max_length=50),
     source: list[str] = Query(default_factory=list, max_length=50),
+    group: list[str] = Query(default_factory=list, max_length=50),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ) -> dict[str, list[dict[str, Any]]]:
@@ -576,13 +580,14 @@ async def read_asset_facets(
 
     org = await _built_store(db)
     if org is None:
-        return {name: [] for name in (*FILTER_FIELDS, "source")}
+        return {name: [] for name in (*FILTER_FIELDS, "source", "group")}
     filters = {
         "category": category,
         "subcategory": subcategory,
         "criticality": criticality,
         "internet_facing": internet_facing,
         "source": source,
+        "group": group,
     }
     return await asset_facets(db, org, q=q, filters=filters)
 
@@ -1456,6 +1461,25 @@ async def delete_asset_group(
     await _audit_rows(db, admin, "delete", group_id, "asset_group", f"Asset group {name} deleted", {})
     await db.commit()
     return Response(status_code=204)
+
+
+@router.get("/asset-groups/{group_id}")
+async def get_asset_group(
+    group_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """One asset group (#1556): its row, its distinct asset count and the members its source named but the inventory lacks."""
+    from app.services import organization_asset_records as records
+
+    org = await _built_store(db)
+    if org is None:
+        raise HTTPException(status_code=404, detail="No asset group with this id")
+    try:
+        group = await records.get_group(db, org, group_id)
+    except records.RecordError as exc:
+        raise _record_http_error(exc) from None
+    return await records.group_detail(db, org, group)
 
 
 @router.get("/asset-groups/{group_id}/members")

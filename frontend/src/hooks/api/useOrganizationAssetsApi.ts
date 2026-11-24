@@ -64,6 +64,8 @@ export interface CanonicalAssetDetail extends CanonicalAssetSummary {
   explanation: string;
   possible_matches: unknown[];
   records: AssetSourceRecord[];
+  /** The asset groups any of its records belongs to (#1556), by name. */
+  groups?: { id: string; name: string; source: string }[];
   software: { items: AssetSoftware[]; total: number; offset: number; limit: number };
 }
 
@@ -162,14 +164,15 @@ function pageQuery(params: Record<string, string | number | readonly string[] | 
   return search.toString();
 }
 
-/** The asset fields the list filters on, and the source of a record (`GET /assets/facets`). */
-export type AssetFilterKey = "category" | "subcategory" | "criticality" | "internet_facing" | "source";
+/** The asset fields the list filters on, the source of a record and the asset group by id (`GET /assets/facets`). */
+export type AssetFilterKey = "category" | "subcategory" | "criticality" | "internet_facing" | "source" | "group";
 
-/** One facet value with the assets it holds; a subcategory names its category. */
+/** One facet value with the assets it holds; a subcategory names its category, a group its name (`label`). */
 export interface AssetFacetValue {
   value: string;
   count: number;
   category?: string;
+  label?: string;
 }
 
 export type AssetFacets = Record<AssetFilterKey, AssetFacetValue[]>;
@@ -332,9 +335,24 @@ export interface AssetGroupRecord {
   source: string;
   external_id: string;
   member_count: number;
+  /** Members its source named that the inventory does not hold (#1556): counted, never dropped. */
+  unresolved_members?: number;
+  /** When its source last answered its member list (null: never read, or entered by hand). */
+  members_synced_at?: string | null;
 }
 
 const GROUPS_KEY = [...KEY, "groups"] as const;
+
+/** One asset group with its asset count (`GET /asset-groups/{id}`, #1556). */
+export function useAssetGroup(id: string | undefined) {
+  return useQuery<AssetGroupRecord>({
+    queryKey: [...GROUPS_KEY, "one", id],
+    queryFn: () => api.get(`/organization-context/asset-groups/${id}`),
+    enabled: Boolean(id),
+    retry: (failureCount, error) => !isAssetNotFound(error) && failureCount < 2,
+    throwOnError: false,
+  });
+}
 
 /**
  * Every asset group of the organization (`GET /asset-groups`). `throwOnError: false` keeps a failed read with the
