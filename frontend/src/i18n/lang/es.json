@@ -17671,7 +17671,7 @@
   "Link assets": "Vincular activos",
   "Minimum primary asset criticality": "Criticidad mínima del activo primario",
   "No accepted risk: every finding that passes the rules is ranked.": "Ningún riesgo aceptado: se clasifica cada hallazgo que cumple las reglas.",
-  "No asset yet: add them under Assets and exposure.": "Aún no hay activos: añádalos en Activos y exposición.",
+  "No asset yet: add them in Inventory > Assets.": "Aún no hay activos: añádalos en Inventario > Recursos.",
   "No asset yet: the prioritization funnel cannot tell internet-facing findings apart.": "Aún no hay activos: el embudo de priorización no puede distinguir los hallazgos expuestos a internet.",
   "No knowledge base linked: agents cannot follow your own procedures.": "Ninguna base de conocimiento vinculada: los agentes no pueden seguir sus procedimientos.",
   "No policy yet: findings rank as before.": "Aún no hay política: los hallazgos se clasifican como antes.",

@@ -17671,7 +17671,7 @@
   "Link assets": "Link assets",
   "Minimum primary asset criticality": "Minimum primary asset criticality",
   "No accepted risk: every finding that passes the rules is ranked.": "No accepted risk: every finding that passes the rules is ranked.",
-  "No asset yet: add them under Assets and exposure.": "No asset yet: add them under Assets and exposure.",
+  "No asset yet: add them in Inventory > Assets.": "No asset yet: add them in Inventory > Assets.",
   "No asset yet: the prioritization funnel cannot tell internet-facing findings apart.": "No asset yet: the prioritization funnel cannot tell internet-facing findings apart.",
   "No knowledge base linked: agents cannot follow your own procedures.": "No knowledge base linked: agents cannot follow your own procedures.",
   "No policy yet: findings rank as before.": "No policy yet: findings rank as before.",
