@@ -109,6 +109,12 @@ def env(monkeypatch):
     monkeypatch.setattr(store, "list_cases", _list)
     monkeypatch.setattr(store, "get_case", _get)
     monkeypatch.setattr(store, "create_manual_case", _create)
+
+    async def _events(_db: object, case_ids: list[object]) -> dict[object, list[object]]:
+        return {cid: [] for cid in case_ids}
+
+    # The list's asset count and the read's version history read the case events (#1694).
+    monkeypatch.setattr(store, "events_of", _events)
     monkeypatch.setattr(view_of, "viewer_view", _viewer)
 
     def _tools(user_id: str):

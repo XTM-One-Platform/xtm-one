@@ -394,6 +394,10 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
     }
 
 
+#: The running-versions record of a case (``ctem_case_version_history.KIND``, #1694).
+VERSIONS_KIND = "versions"
+
+
 def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
     issue = row.issue
     if issue is not None and not view.sees(issue):
@@ -419,7 +423,7 @@ def case_position(events: list[CtemCaseEvent], view: ViewerView) -> dict[str, An
     ``phase``: its CTEM phase (the list's grouping and the Kanban by phase);
     ``waiting_on``: the gate it waits on, who and since when (``None`` when none).
     """
-    served = [_event(row, view) for row in events]
+    served = [_event(row, view) for row in events if row.kind != VERSIONS_KIND]
     return {"phase": audit.current_phase(served), "waiting_on": audit.open_wait(served)}
 
 
@@ -639,7 +643,8 @@ def hydrate(
         "keys": list(case.keys or []),
         "issues": [_visible_issue(r, view.issues.get(_member_id(r))) for r in visible]
         + [{"restricted": True} for _ in range(restricted)],
-        "history": [_event(e, view) for e in events],
+        # The running-versions record (#1694) is served by the case read's ``running_versions.history``.
+        "history": [_event(e, view) for e in events if e.kind != VERSIONS_KIND],
         "exploitation": exploitation_for(case, view),
         "attack_path": attack_path_for(case, view),
         "treatment_plan": treatment_plan_for(events, view),

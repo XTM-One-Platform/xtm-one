@@ -244,6 +244,26 @@ same way.
   may sum above `asset_count` because an asset running two versions is in each
   row, while the three status totals still add up to `asset_count`. The
   version match line names the platform (`36.0 (macOS) on 2 asset(s)`).
+- `history` (#1694): why the versions moved, newest first (at most 10). Each
+  recompute (`ctem_cases_store.apply_recompute`) compares the per-device state
+  the inventory answers (`for_case(with_devices=True)`: versions, status
+  against the fix, sources per asset id) with the snapshot of the case's last
+  `versions` event and, on a change, writes one `versions` event
+  (`ctem_case_version_history.record`): `to_value` the summary (`3 device(s)
+  changed: 3 below the fix -> 0`, or `baseline: ...` the first time), `reason`
+  one line per device (before, after, why: upgraded, downgraded, version
+  became unknown with the reporting source, no longer reported by the
+  inventory, newly reported, status changed), `evidence` the snapshot and the
+  changes as JSON. An inventory that cannot be read records nothing, never
+  every device gone. Each entry: `{at, summary, changes: [{asset_id, before,
+  after, reason}], more_changes}`. The `versions` events stay out of the
+  served `history` of the case and out of its phase; this field serves them.
+  No version-range engine.
+- the Cases list `asset_count` (#1694): the assets the visible issues name;
+  when they name none (an OpenCTI-only case), the device count of the case's
+  latest `versions` snapshot, with `asset_count_source` `issues`, `inventory`
+  (and `asset_count_as_of`) or `unknown`: then `asset_count` is `null` with
+  `asset_count_reason`, never a silent 0.
 - where the per-platform fix comes from (slice 2 of #1572): the OpenCTI reader
   reads each Software that `remediates` the vulnerability with its `cpe`;
   `ctem_fixed_version.platform_of_software` takes the platform from the CPE
@@ -427,7 +447,7 @@ explained. A single-platform answer draws the card as before.
 |---|---|
 | `ctem_cases` | id, organization_id, vertical, title, remediation_kind (`upgrade` / `patch` / `config` / `course_of_action` / `manual`), remediation_label, product_label, fixed_version, keys (list), pinned_issues, state, owner_user_id, due_at, accepted_reason, accepted_until, state_since, created_at, updated_at |
 | `ctem_case_issues` | case_id, source (`opencti` / `openaev`), external_id, open |
-| `ctem_case_events` | case_id, at, actor (user id or agent id, or `system`), kind (`created`, `state`, `owner`, `due`, `issue_added`, `issue_closed`, `issue_reopened`, `merge`, `split`, `note`), issue (member id, else null), from, to, reason, evidence |
+| `ctem_case_events` | case_id, at, actor (user id or agent id, or `system`), kind (`created`, `state`, `owner`, `due`, `issue_added`, `issue_closed`, `issue_reopened`, `merge`, `split`, `note`, `versions` (#1694)), issue (member id, else null), from, to, reason, evidence |
 
 No source content is stored (#11613): priority, counts, scores, assets, crown
 jewels and names are computed per viewer at read time (principle 8).
