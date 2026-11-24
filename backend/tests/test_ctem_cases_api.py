@@ -259,6 +259,56 @@ async def test_starting_a_case_sets_owner_and_state_with_history(api):
     assert api.db.commits == 1
 
 
+@pytest.mark.parametrize("right", ["decide", "view"])
+async def test_decide_sets_owner_and_due_date_and_view_is_refused(
+    api: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, right: str
+) -> None:
+    """#1748: a CTEM decide right writes the case like an administrator; view is read only (403)."""
+    from app.services import ctem_access
+
+    async def _right(_db: object, user_id: object) -> str | None:
+        return right if str(user_id) == str(api.user.id) else None
+
+    monkeypatch.setattr(ctem_access, "group_right", _right)
+    api.user.is_admin = False
+    due = (NOW + timedelta(days=7)).isoformat()
+    async with api.client as client:
+        read = await client.get(f"/api/v1/ctem-cases/{api.case.id}")
+        response = await client.patch(
+            f"/api/v1/ctem-cases/{api.case.id}", json={"owner_user_id": str(api.user.id), "due_at": due}
+        )
+    assert read.status_code == 200
+    if right == "view":
+        assert response.status_code == 403
+        assert api.db.commits == 0 and api.db.added == []
+        return
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["owner_user_id"] == str(api.user.id) and body["due_at"]
+    owner_events = [e for e in body["history"] if e["kind"] == "owner"]
+    assert owner_events and owner_events[0]["actor"] == str(api.user.id)
+
+
+async def test_view_is_refused_on_bulk_split_and_merge(api: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import ctem_access
+
+    async def _right(_db: object, _user_id: object) -> str:
+        return "view"
+
+    monkeypatch.setattr(ctem_access, "group_right", _right)
+    api.user.is_admin = False
+    async with api.client as client:
+        bulk = await client.post("/api/v1/ctem-cases/bulk", json={"case_ids": [str(api.case.id)], "note": "x"})
+        split = await client.post("/api/v1/ctem-cases/split", json={"title": "t", "issue_ids": ["opencti:vuln--1"]})
+        merge = await client.post(
+            "/api/v1/ctem-cases/merge", json={"target_id": str(api.case.id), "case_ids": [str(api.case.id)]}
+        )
+    assert bulk.status_code == 200 and bulk.json()["updated"] == []
+    assert bulk.json()["failed"][0]["reason"] == ctem_access.VIEW_ONLY_MESSAGE
+    assert split.status_code == 403 and merge.status_code == 403
+    assert api.db.added == []
+
+
 async def test_an_owner_who_sees_none_of_the_issues_is_refused(api):
     """#11613: the assignee is checked with their own source read."""
     async with api.client as client:

@@ -891,8 +891,13 @@ async def create_software(
     description: str = "",
     cpe: str = "",
     purl: str = "",
+    version: str = "",
 ) -> dict[str, Any]:
-    """Type a software by hand (``origin`` ``manual``); 409 when the vendor and product already exist."""
+    """Type a software by hand (``origin`` ``manual``); 409 when the vendor and product already exist.
+
+    *version*, when given, is the version the organization runs: stored as a
+    version of the software (a hand-typed software keeps its typed versions).
+    """
     product = _cut(product, 200)
     if not product:
         raise SoftwareError("product is required")
@@ -928,7 +933,26 @@ async def create_software(
     _resolve(soft)
     db.add(soft)
     await db.flush()
+    typed_version = _cut(version, 100)
+    if typed_version and typed_version != identity.UNKNOWN_VERSION:
+        db.add(
+            OrganizationSoftwareVersion(
+                id=uuid.uuid4(),
+                organization_id=organization_id,
+                software_id=soft.id,
+                version=typed_version,
+                cpe=_cut(version_cpe(soft.cpe, typed_version), 300),
+            )
+        )
+        await db.flush()
     return _software_dict(soft)
+
+
+async def software_keys(db: AsyncSession, organization_id: uuid.UUID) -> set[Key]:
+    """The ``(vendor, product)`` keys of every software of *organization_id* (one read)."""
+    soft = OrganizationSoftware
+    rows = await db.execute(select(soft.vendor_key, soft.product_key).where(soft.organization_id == organization_id))
+    return {(str(vendor), str(product)) for vendor, product in rows.all()}
 
 
 #: The fields of a hand-typed software an administrator may change; a synced one takes ``cpe_override`` only.

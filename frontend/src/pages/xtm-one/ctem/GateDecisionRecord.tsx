@@ -91,7 +91,6 @@ const GATE_SURFACE_LABEL: Readonly<Record<string, string>> = GATE_SURFACES;
 
 /** Why a gate passed without a person, the kinds outside GATE_REASON_LABEL. @i18n-keys */
 const EXTRA_REASON_LABEL = {
-  safe_mode: "Safe mode: read-only checks only",
   fleet_level: "The fleet runs this gate without a person",
 } as const;
 

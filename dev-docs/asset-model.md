@@ -419,6 +419,11 @@ assets running a product.
   `category="tech_stack"` and `upsert_organization_rows(section="tech_stack")` are deprecated aliases of
   `software`, accepted for one release; stored category selections were renamed by `s1495swprofile01`,
   which also turned each profile tech stack row into a hand-typed Software (a hand CPE kept as the override).
+- `upsert_organization_rows(section="software")` (or its alias) writes Software entities, not profile rows:
+  a row whose vendor and product a software already carries is reported `unchanged` and never overwritten;
+  a new one becomes a hand-typed Software (`create_software`, its typed version stored as a version). Rows are
+  never removed by source (`remove_organization_rows` refuses the section). Before the organization has a
+  profile (no asset store yet), the rows land in the profile as before.
 
 ### 9.4 SBOM import
 

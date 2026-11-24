@@ -61,10 +61,12 @@ async def test_kev_tailored_counts_kev_related_to_matched_software(monkeypatch):
         "kev_tailored_products": ["Fortinet FortiOS", "Microsoft Exchange Server"],
         "funnel_tailored": None,
     }
-    software_vars = calls[0][1]
-    keys = [f["key"] for f in software_vars["filters"]["filters"]]
-    assert keys == [["name"], ["cpe"]] and software_vars["first"] == collector._STACK_SOFTWARE_CAP
-    params = calls[1][1]["params"][0]
+    # The stack lookup goes one key per OR filter (#1811): the names, then the CPEs.
+    software_calls = [v for q, v in calls if q is collector._OCTI_STACK_SOFTWARE]
+    keys = [[f["key"] for f in v["filters"]["filters"]] for v in software_calls]
+    assert keys == [[["name"]], [["cpe"]]]
+    assert all(v["first"] == collector._STACK_SOFTWARE_CAP for v in software_calls)
+    params = calls[len(software_calls)][1]["params"][0]
     regarding = params["filters"]["filters"][1]
     assert regarding["key"] == ["regardingOf"]
     assert {"key": "id", "values": ["sw-ex", "sw-fo"]} in regarding["values"]
@@ -86,7 +88,7 @@ async def test_kev_tailored_is_zero_when_no_software_matches(monkeypatch):
         "kev_tailored_products": [],
         "funnel_tailored": {"relevant": 0, "exploitable": 0},
     }
-    assert queries == [collector._OCTI_STACK_SOFTWARE]
+    assert set(queries) == {collector._OCTI_STACK_SOFTWARE}
 
 
 async def test_kev_tailored_is_none_when_opencti_cannot_answer(monkeypatch):

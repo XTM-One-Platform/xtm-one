@@ -3837,6 +3837,10 @@ async def _execute_sub_agent_task(
             )
             from app.services.builtin_tools import normalize_visited_agents
             from app.services.builtin_tools.handover import DELEGATING_AGENT_KEY
+            from app.services.integration_tools import (
+                INHERITED_TEMPLATE_PICKS_KEY,
+                inherited_template_picks,
+            )
 
             _scope_headers: dict[str, str] | None = None
             if scope_headers_json:
@@ -4027,6 +4031,11 @@ async def _execute_sub_agent_task(
                             session_workspace_id=task_workspace_id,
                             on_checkpoint=_task_checkpoint.offer,
                             steering_queue=_held_item_steering,
+                            # The spawning run's per-user picks: this task acts
+                            # as the same accounts when it may (#1792).
+                            inherited_template_picks=inherited_template_picks(
+                                (task.metadata_json or {}).get(INHERITED_TEMPLATE_PICKS_KEY)
+                            ),
                         ),
                         # ``None`` = parent timeout disabled — no per-task bound (the
                         # reconciler's worker_job_timeout fallback still applies).

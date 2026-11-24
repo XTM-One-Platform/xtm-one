@@ -10,13 +10,18 @@ import { MemoryRouter } from "react-router-dom";
 import { renderWithProviders } from "@/testing/providers";
 import { BuiltinToolDetail } from "./BuiltinToolDetail";
 
-const state = vi.hoisted(() => ({ registry: { isReady: false, isError: false } }));
+const state = vi.hoisted(() => ({
+  registry: { isReady: false, isError: false },
+  known: false,
+  gaConfig: undefined as object | undefined,
+  inUseImage: null as { model: string; provider: string } | null,
+}));
 
 vi.mock("@/hooks/useBuiltinTools", () => ({
   useBuiltinTools: () => ({
     describe: (id: string) => ({
       id, label: id, description: "", detail: "", tag: "", icon: () => null,
-      available: true, agentOnly: false, assistantAdminOnly: false, known: false, functions: [],
+      available: true, agentOnly: false, assistantAdminOnly: false, known: state.known, functions: [],
     }),
     isLoading: !state.registry.isReady && !state.registry.isError,
     isError: state.registry.isError,
@@ -26,19 +31,24 @@ vi.mock("@/hooks/useBuiltinTools", () => ({
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ isAdmin: true }) }));
 vi.mock("@/hooks/api/useAgentApi", () => ({ useAgents: () => ({ data: [] }) }));
 vi.mock("@/hooks/api/useSettingsApi", () => ({
-  useGeneralAssistantConfig: () => ({ data: undefined }),
+  useGeneralAssistantConfig: () => ({ data: state.gaConfig }),
+  useMediaModelsInUse: (enabled: boolean) => ({ data: enabled ? { image: state.inUseImage, speech: null } : undefined }),
   useUpdateGeneralAssistantConfig: () => ({ mutate: vi.fn(), isPending: false }),
   useAvailableImageModels: () => ({ data: [] }),
 }));
 vi.mock("@/hooks/api/useAssignmentApi", () => ({
   useBoundAgentRunStats: () => ({ totalRuns: 0, lastRun: null }),
 }));
+vi.mock("@/lib/commands/CommandsProvider", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/commands/CommandsProvider")>()),
+  useCommandSections: () => {},
+}));
 vi.mock("@/pages/tools/useToolGateSummary", () => ({ useToolGateSummary: () => ({ byGroup: new Map() }) }));
 
-function page() {
+function page(toolId = "builtin-web_fetch") {
   return (
     <MemoryRouter>
-      <BuiltinToolDetail toolId="builtin-web_fetch" />
+      <BuiltinToolDetail toolId={toolId} />
     </MemoryRouter>
   );
 }
@@ -66,5 +76,27 @@ describe("BuiltinToolDetail before the registry is known", () => {
     state.registry = { isReady: true, isError: false };
     renderWithProviders(page());
     expect(screen.getByText("Tool not found")).not.toBeNull();
+  });
+});
+
+describe("BuiltinToolDetail of the image tool", () => {
+  beforeEach(() => {
+    state.registry = { isReady: true, isError: false };
+    state.known = true;
+    state.inUseImage = { model: "gemini-3-pro-image-preview", provider: "filigran_gateway" };
+  });
+
+  it("names the image model in use while none is saved", () => {
+    state.gaConfig = {};
+    renderWithProviders(page("builtin-files"));
+    expect(screen.getByText("gemini-3-pro-image-preview")).not.toBeNull();
+    expect(screen.queryByText("Auto (provider default)")).toBeNull();
+  });
+
+  it("keeps the saved image model", () => {
+    state.gaConfig = { image_model: "gpt-image-2" };
+    renderWithProviders(page("builtin-files"));
+    expect(screen.getByText("gpt-image-2")).not.toBeNull();
+    expect(screen.queryByText("gemini-3-pro-image-preview")).toBeNull();
   });
 });

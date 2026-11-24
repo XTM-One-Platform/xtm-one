@@ -72,7 +72,7 @@ async def test_a_final_5xx_and_a_network_error_are_counted():
     ctx = _tool_ctx()
     _resp, err = await _call(ctx, [500])
     assert err
-    _resp, err = await _call(ctx, [httpx.ConnectError("down")])
+    _resp, err = await _call(ctx, [httpx.ConnectError("down")] * 3)
     assert err
     entry = ctx["local_metadata"]["http"]["GitHub"]
     assert entry["calls"] == 2

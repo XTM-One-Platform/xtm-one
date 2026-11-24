@@ -2,8 +2,10 @@
 
 The agent review loop posts ``UX-LOOP round=N verdict=...`` as the first line
 of a comment. A pull request whose newest marker reads CHANGES_REQUESTED is
-never readied, set to auto-merge or merged through the tools; a newer APPROVE
-releases it; no marker or an unreadable comment list never blocks.
+never readied, set to auto-merge or merged through the tools on a repository
+that declares ``[merge] review_loop_gate = true``; a newer APPROVE releases it;
+no marker or an unreadable comment list never blocks; a repository that does
+not declare the gate (OpenCRQ: CI-checked PRs) is merged and told the verdict.
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ import httpx
 import pytest
 
 from app.integrations.providers.github import build_tools
-from app.integrations.providers.github.review_loop import newest_verdict
+from app.integrations.providers.github.review_loop import gate_declared, newest_verdict
 
 _CHANGES = "UX-LOOP round=2 verdict=CHANGES_REQUESTED new=1 repeat=0\nUX Director, round 2: CHANGES REQUESTED"
 _APPROVE = "UX-LOOP round=3 verdict=APPROVE new=0 repeat=0\nUX Director, round 3: APPROVE"
@@ -41,9 +43,12 @@ def _comment(body: str, minute: int) -> dict:
 class _GitHub:
     """Scripted GitHub: the PR comments for the verdict read, every write recorded."""
 
-    def __init__(self, comments: list[dict] | None, read_error: str | None = None):
+    def __init__(
+        self, comments: list[dict[str, str]] | None, read_error: str | None = None, rules: str | None = None
+    ) -> None:
         self.comments = comments
         self.read_error = read_error
+        self.rules = "[merge]\nreview_loop_gate = true\n" if rules is None else rules
         self.mutations: list[str] = []
         self.puts: list[str] = []
 
@@ -59,6 +64,10 @@ class _GitHub:
         if method == "put" and url.endswith("/merge"):
             self.puts.append(url)
             return httpx.Response(200, json={"merged": True, "sha": "b" * 40}), None
+        if method == "get" and url.endswith("/contents/.xtm-one/checks.toml"):
+            if not self.rules:
+                return None, "Error: 404"
+            return httpx.Response(200, text=self.rules), None
         if method == "get" and url.endswith("/pulls/12"):
             return httpx.Response(
                 200, json={"node_id": "PR_x", "title": "fix(x): y (#1)", "body": "", "head": {"sha": "a" * 40}}
@@ -124,6 +133,33 @@ async def test_ready_and_automerge_are_refused_on_changes_requested(action):
 @pytest.mark.asyncio
 async def test_a_newer_approve_releases_the_guard():
     github = _GitHub([_comment(_CHANGES, 33), _comment(_APPROVE, 40)])
+    result = await _call(github, "manage_github_pr", action="ready_for_review")
+    assert len(github.mutations) == 1
+    assert "ready for review applied" in str(result)
+
+
+def test_gate_declared_reads_only_a_true_review_loop_gate() -> None:
+    assert gate_declared("[merge]\nreview_loop_gate = true\n")
+    assert not gate_declared('[merge]\nfull_ci_workflows = ["ci.yml"]\n')
+    assert not gate_declared('[merge]\nreview_loop_gate = "yes"\n')
+    assert not gate_declared("not toml [")
+    assert not gate_declared("")
+
+
+@pytest.mark.parametrize("rules", ["", "[pull_request]\ntitle_pattern = '.*'\n"])
+@pytest.mark.asyncio
+async def test_an_undeclared_repository_is_merged_and_told_the_verdict(rules: str) -> None:
+    # opencrq #57: CI-checked PRs, the UX review runs after the merge; an old round must not refuse it.
+    github = _GitHub([_comment(_CHANGES, 33)], rules=rules)
+    result = await _call(github, "merge_github_pr", merge_method="squash", commit_title="fix(x): y (#1)")
+    assert len(github.puts) == 1
+    assert "round 2 verdict=CHANGES_REQUESTED" in str(result)
+    assert "did not gate this" in str(result)
+
+
+@pytest.mark.asyncio
+async def test_an_undeclared_repository_is_readied_despite_changes_requested() -> None:
+    github = _GitHub([_comment(_CHANGES, 33)], rules="")
     result = await _call(github, "manage_github_pr", action="ready_for_review")
     assert len(github.mutations) == 1
     assert "ready for review applied" in str(result)

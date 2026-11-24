@@ -46,9 +46,9 @@ from app.services import ctem_fixed_version as fixed_versions
 from app.services.ctem_cases import VERSION_AFFECTED, VERSION_NOT_AFFECTED, VERSION_UNKNOWN
 from app.services.ctem_metrics_collector import (
     _AEV_VALIDATION_WINDOW_DAYS,
-    _STACK_SOFTWARE_CAP,
     _fg,
     _organization_software,
+    _read_stack_software,
     _stack_matches,
     _user_creds,
 )
@@ -61,12 +61,15 @@ OCTI_ISSUE_CAP = 2000
 #: Most CVE findings read from OpenAEV.
 AEV_FINDING_CAP = 2000
 _PAGE = 500
+#: Software ids per ``fromId`` list of the stack vulnerabilities read (#1811).
+_STACK_IDS_CHUNK = 200
 
 # The stack's Software observables with their version (CTEM-11, #946): the
 # declared version of a stack entry is the Software node of that version.
 _OCTI_STACK_SOFTWARE = """
-query CtemCaseStackSoftware($filters: FilterGroup, $first: Int) {
-  stixCyberObservables(types: ["Software"], filters: $filters, first: $first) {
+query CtemCaseStackSoftware($filters: FilterGroup, $first: Int, $after: ID) {
+  stixCyberObservables(types: ["Software"], filters: $filters, first: $first, after: $after) {
+    pageInfo { hasNextPage endCursor }
     edges { node { id ... on Software { name vendor version cpe } } }
   }
 }
@@ -134,6 +137,14 @@ _AEV_CVE_FINDINGS_FILTER = {
 #: (its ``@Queryable`` field is ``finding_created_at``; ``base_created_at`` is
 #: refused with a 400, #12134).
 _AEV_FINDING_CREATED_AT = "finding_created_at"
+
+
+@dataclass
+class OpenCtiRead:
+    """The OpenCTI issues of the stack, and whether a cap stopped the read."""
+
+    issues: list[rules.SourceIssue]
+    complete: bool = True
 
 
 @dataclass
@@ -391,43 +402,38 @@ async def _read_opencti(
     base_url: str,
     headers: dict[str, str],
     stack: list[dict[str, Any]],
-) -> list[rules.SourceIssue] | None:
-    """The open OpenCTI issues of *stack*, read with the caller's own *headers* (never a system token)."""
-    cpes = sorted({e["cpe"] for e in stack if e["cpe"]})
-    names = sorted({e["product"] for e in stack})
-    filters = [{"key": ["name"], "values": names}]
-    if cpes:
-        filters.append({"key": ["cpe"], "values": cpes})
-    data, err = await _graphql(
-        client,
-        base_url,
-        headers,
-        _OCTI_STACK_SOFTWARE,
-        {"filters": _fg(filters, mode="or"), "first": _STACK_SOFTWARE_CAP},
+) -> OpenCtiRead | None:
+    """The open OpenCTI issues of *stack*, read with the caller's own *headers* (never a system token).
+
+    The stack lookup and the ``fromId`` list go in batches under OpenCTI's
+    clause limit (#1811); a cap reached marks the read incomplete, never failed.
+    """
+    software, complete, err = await _read_stack_software(
+        client, base_url, headers, _OCTI_STACK_SOFTWARE, stack, graphql=_graphql
     )
     if err:
         logger.info("CTEM cases: OpenCTI stack software unavailable: %s", err)
         return None
-    software = [
-        (e or {}).get("node") or {} for e in ((data or {}).get("stixCyberObservables") or {}).get("edges") or []
-    ]
     ids = [n["id"] for n in software if n.get("id") and _stack_matches(n, stack)]
     if not ids:
-        return []
+        return OpenCtiRead([], complete)
     relations: list[dict[str, Any]] = []
-    after: str | None = None
-    while len(relations) < OCTI_ISSUE_CAP:
-        data, err = await _graphql(
-            client, base_url, headers, _OCTI_STACK_VULNS, {"from": ids, "first": _PAGE, "after": after}
-        )
-        if err:
-            logger.info("CTEM cases: OpenCTI stack vulnerabilities unavailable: %s", err)
-            return None
-        conn = (data or {}).get("stixCoreRelationships") or {}
-        relations.extend((e or {}).get("node") or {} for e in conn.get("edges") or [])
-        info = conn.get("pageInfo") or {}
-        after = info.get("endCursor")
-        if not info.get("hasNextPage") or not after:
+    for start in range(0, len(ids), _STACK_IDS_CHUNK):
+        after: str | None = None
+        while len(relations) < OCTI_ISSUE_CAP:
+            variables = {"from": ids[start : start + _STACK_IDS_CHUNK], "first": _PAGE, "after": after}
+            data, err = await _graphql(client, base_url, headers, _OCTI_STACK_VULNS, variables)
+            if err:
+                logger.info("CTEM cases: OpenCTI stack vulnerabilities unavailable: %s", err)
+                return None
+            conn = (data or {}).get("stixCoreRelationships") or {}
+            relations.extend((e or {}).get("node") or {} for e in conn.get("edges") or [])
+            info = conn.get("pageInfo") or {}
+            after = info.get("endCursor")
+            if not info.get("hasNextPage") or not after:
+                break
+        if len(relations) >= OCTI_ISSUE_CAP:
+            complete = False
             break
     relations = relations[:OCTI_ISSUE_CAP]
     vuln_ids = sorted({(r.get("to") or {}).get("id") for r in relations if (r.get("to") or {}).get("id")})
@@ -451,7 +457,8 @@ async def _read_opencti(
                 (e or {}).get("node") or {}
                 for e in ((data or {}).get("stixCoreRelationships") or {}).get("edges") or []
             )
-    return opencti_issues(software, stack, relations, remediations, fixes)
+    issues = opencti_issues(software, stack, relations, remediations, fixes)
+    return OpenCtiRead(issues, complete and len(issues) < OCTI_ISSUE_CAP)
 
 
 async def _read_openaev(
@@ -586,8 +593,8 @@ async def read_open_issues(
         if found is None:
             out.missing.append("opencti")
         else:
-            out.issues.extend(found)
-            out.complete = out.complete and len(found) < OCTI_ISSUE_CAP
+            out.issues.extend(found.issues)
+            out.complete = out.complete and found.complete
     elif not octi:
         out.missing.append("opencti")
     aev = creds.get("openaev")
@@ -691,8 +698,9 @@ async def _reads_opencti(db: AsyncSession, user_id: str) -> bool:
 async def _signal_members(db: AsyncSession, *, organization_id: uuid.UUID, user_id: str) -> list[rules.SourceIssue]:
     """The signals attached to cases that *user_id* may read (#857), as case members.
 
-    The signal API's own rule: an administrator reads every signal of the
-    organization, anyone else the signals recorded for them. A case opened from
+    The signal API's own rule: an administrator or a CTEM view or decide right
+    (``services/ctem_access.py``) reads every signal of the organization, anyone
+    else the signals recorded for them. A case opened from
     a signal the viewer may not read stays absent, as a source issue they cannot
     see does.
     """
@@ -714,7 +722,12 @@ async def _signal_members(db: AsyncSession, *, organization_id: uuid.UUID, user_
         )
         .where(CtemSignal.organization_id == organization_id)
     )
-    if not getattr(viewer, "is_admin", False):
+    from app.services import ctem_access
+
+    whole = bool(getattr(viewer, "is_admin", False)) or (
+        viewer is not None and await ctem_access.group_right(db, user_id) is not None
+    )
+    if not whole:
         statement = statement.where(CtemSignal.recorded_by == str(user_id))
     rows = (await db.execute(statement)).scalars().all()
     return [

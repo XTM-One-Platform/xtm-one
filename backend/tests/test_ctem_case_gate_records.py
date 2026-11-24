@@ -136,15 +136,15 @@ def test_policy_pass_names_its_reason_kind() -> None:
             "11:58", "ctem.mobilize", "passed_automatically", reason="pre-approved runbook patch-windows (level medium)"
         ),
         _gate("11:59", "ctem.remediation.decision", "passed_automatically", reason="within the approval threshold"),
-        _gate(
-            "12:00", "ctem.validation.non_readonly", "passed_automatically", reason="safe mode: read-only checks only"
-        ),
+        _gate("12:00", "ctem.validation.non_readonly", "passed_automatically", reason="fleet level"),
         _gate("12:01", "ctem.analyst_review", "passed_automatically", reason="fleet level"),
     )
     records = {r["key"]: r for r in gates.resolve(history, [], now=NOW)}
     assert records["ctem.mobilize"]["reason"] == {"kind": "runbook", "runbook": "patch-windows"}
     assert records["ctem.remediation.decision"]["reason"] == {"kind": "within_threshold"}
-    assert records["ctem.validation.non_readonly"]["reason"] == {"kind": "safe_mode"}
+    # #1810: a reason is never read as a class of the inject.
+    assert records["ctem.validation.non_readonly"]["reason"] == {"kind": "fleet_level"}
+    assert "safe_mode" not in gates.REASON_KINDS
     assert records["ctem.analyst_review"]["reason"] == {"kind": "fleet_level"}
     assert all(r["status"] == gates.PASSED_AUTOMATICALLY for r in records.values())
     assert records["ctem.mobilize"]["passed_at"] == _at("11:58")
