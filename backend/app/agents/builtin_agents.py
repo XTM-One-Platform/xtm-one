@@ -38,7 +38,6 @@ from app.agents.opencti_pir_desk import PIR_DESK_AGENTS, PIR_DESK_ASSIGNMENTS
 from app.agents.output_schema import NlqOutputSchema, cti_stix_transformer_schema
 from app.core.config import settings
 from app.core.feature_flags import FeatureFlag
-from app.models.agent_skill import INTERNAL_SKILL_TAG
 from app.models.general_assistant_config import DEFAULT_GA_BUILTIN_TOOL_IDS, DEFAULT_MAX_ITERATIONS
 
 logger = logging.getLogger(__name__)
@@ -2898,10 +2897,11 @@ BUILTIN_ASSIGNMENTS.extend(CTEM_F2_ASSIGNMENTS)
 # The case is the record: ``ctem_case.opened`` starts one run per case (the event
 # is raised once, at creation; a later signal joins the case without a new
 # event), ``ctem_case.reopened`` restarts the same case's loop, and
-# ``ctem_case.sla_breached`` escalates it. Ownership (#1390, CTEM-31): the CTEM
-# loop owns every case on every trigger path; a use-case fleet takes the cases of
-# its own paths only while its case automation is enabled. The owner is computed
-# when the event is published (``services/ctem_case_routing.py`` stamps
+# ``ctem_case.sla_breached`` escalates it. Ownership (#1390, CTEM-31, #1966): a
+# fleet declares the trigger paths whose cases it runs (``Fleet.case_ownership``,
+# seeded from ``case_ownership`` in ``builtin_fleets.py`` on the built-in fleets,
+# set by an administrator or carried by a fork on any other). The owner is
+# computed when the event is published (``services/ctem_case_routing.py`` stamps
 # ``owner_fleet`` on the payload) and each case automation filters on it, so
 # exactly one fleet hears a case event.
 CTEM_CASE_ASSIGNMENT_NAME = "Case opened or reopened"
@@ -2912,22 +2912,12 @@ CTEM_CASE_LISTENER_CONCURRENCY = 5
 #: The payload path the case events are ordered by: two events of one case run one at a
 #: time, in arrival order; events of other cases run beside them.
 CTEM_CASE_ORDERING_KEY = "case_id"
+#: The owner token of the two seeded case fleets (a built-in fleet's token is its slug).
 CTEM_LOOP_CASE_FLEET = "ctem-loop"
 CTEM_VULN_CASE_FLEET = "ctem-vuln-prioritization"
-#: The fleets that run cases: fleet slug -> the orchestrator holding the case
-#: automation, the work item key prefix of its case items, and the trigger paths
-#: it takes over while that automation is enabled (``None``: every path, the
-#: default owner).
-CTEM_CASE_FLEETS: dict[str, dict[str, Any]] = {
-    CTEM_LOOP_CASE_FLEET: {"agent": "ctem-threat-response-orchestrator", "key": "ctem:f1", "paths": None},
-    CTEM_VULN_CASE_FLEET: {
-        "agent": "ctem-vuln-prioritization-orchestrator",
-        "key": "ctem:f2",
-        "paths": ("new_vulnerability",),
-    },
-}
-#: The use-case fleets that take a case over from the loop while active.
-CTEM_USE_CASE_FLEETS: tuple[str, ...] = tuple(s for s, f in CTEM_CASE_FLEETS.items() if f["paths"] is not None)
+#: The work item key prefix of each seeded fleet's case items (``<key>:case:<case id>``).
+CTEM_F1_CASE_KEY = "ctem:f1"
+CTEM_F2_CASE_KEY = "ctem:f2"
 _CASE_EVENT_NAMES: tuple[str, ...] = (
     "ctem_case.opened",
     "ctem_case.reopened",
@@ -2972,6 +2962,7 @@ CTEM_KEY_PREFIX = "ctem:"
 
 
 def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: dict[str, Any]) -> dict[str, Any]:
+    """The "Case opened or reopened" listener; *owner_filter* is its whole payload filter on ``owner_fleet``."""
     return {
         **common,
         "name": CTEM_CASE_ASSIGNMENT_NAME,
@@ -2983,7 +2974,7 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: di
         "trigger_type": "platform_event",
         "trigger_config": {
             "event": list(_CASE_EVENT_NAMES),
-            "filter": {"owner_fleet": owner_filter},
+            "filter": owner_filter,
             "scope": "all",
             # Named here, so the seed keeps it over the one-run event default and
             # rewrites it on the row of an existing install at the next boot.
@@ -3080,12 +3071,12 @@ def _gate_answered_assignment(common: dict[str, Any], *, fleet_key: str) -> dict
 
 CTEM_F2_CASE_ASSIGNMENT: dict[str, Any] = _case_assignment(
     _CTEM_F2_COMMON,
-    fleet_key=CTEM_CASE_FLEETS[CTEM_VULN_CASE_FLEET]["key"],
-    owner_filter={"eq": CTEM_VULN_CASE_FLEET},
+    fleet_key=CTEM_F2_CASE_KEY,
+    owner_filter={"owner_fleet": {"eq": CTEM_VULN_CASE_FLEET}},
 )
 CTEM_F2_ASSIGNMENTS.append(CTEM_F2_CASE_ASSIGNMENT)
 BUILTIN_ASSIGNMENTS.append(CTEM_F2_CASE_ASSIGNMENT)
-CTEM_F2_GATE_ASSIGNMENT: dict[str, Any] = _gate_answered_assignment(_CTEM_F2_COMMON, fleet_key="ctem:f2")
+CTEM_F2_GATE_ASSIGNMENT: dict[str, Any] = _gate_answered_assignment(_CTEM_F2_COMMON, fleet_key=CTEM_F2_CASE_KEY)
 CTEM_F2_ASSIGNMENTS.append(CTEM_F2_GATE_ASSIGNMENT)
 BUILTIN_ASSIGNMENTS.append(CTEM_F2_GATE_ASSIGNMENT)
 
@@ -3357,12 +3348,13 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
 
 CTEM_F1_CASE_ASSIGNMENT: dict[str, Any] = _case_assignment(
     _F1_RUN,
-    fleet_key=CTEM_CASE_FLEETS[CTEM_LOOP_CASE_FLEET]["key"],
-    # Every case no use-case fleet holds, an event with no owner stamped included.
-    owner_filter={"not_in": list(CTEM_USE_CASE_FLEETS)},
+    fleet_key=CTEM_F1_CASE_KEY,
+    # The cases routed to the loop, and an event with no owner stamped (the routing
+    # was unreadable): never a case another fleet (a fork included) owns (#1966).
+    owner_filter={"any": [{"owner_fleet": {"eq": CTEM_LOOP_CASE_FLEET}}, {"owner_fleet": {"exists": False}}]},
 )
 CTEM_F1_ASSIGNMENTS.append(CTEM_F1_CASE_ASSIGNMENT)
-CTEM_F1_ASSIGNMENTS.append(_gate_answered_assignment(_F1_RUN, fleet_key="ctem:f1"))
+CTEM_F1_ASSIGNMENTS.append(_gate_answered_assignment(_F1_RUN, fleet_key=CTEM_F1_CASE_KEY))
 
 #: The one timer prefix the loop arms (#1574): its reminders reach its own listener, never another agent's.
 CTEM_LOOP_REMINDER_PREFIX = "ctem-loop-reminder:"
@@ -4080,9 +4072,9 @@ BUILTIN_SKILLS: list[dict] = [
             "in dry-run, unchanged, refused for consent or budget), and report "
             "counts only, never memory content."
         ),
-        "compatibility": "health_specialists",
+        "compatibility": "memory_steward",
         "content": "memory-steward",
-        "tags": ["builtin", "health", "memory", INTERNAL_SKILL_TAG],
+        "tags": ["builtin", "health", "memory"],
         "platform_targets": ["global"],
         "bind_to_agent_slugs": [],
     },
@@ -4287,9 +4279,9 @@ BUILTIN_SKILLS: list[dict] = [
             "tell a pattern from noise, record each finding once with checked evidence, and draft one "
             "targeted variant for the Experimenter to measure."
         ),
-        "compatibility": "health_specialists",
+        "compatibility": "health_diagnosis",
         "content": "health-quality-analyst",
-        "tags": ["builtin", "health", "quality", INTERNAL_SKILL_TAG],
+        "tags": ["builtin", "health", "quality"],
         "platform_targets": ["global"],
     },
     {
@@ -4302,9 +4294,9 @@ BUILTIN_SKILLS: list[dict] = [
             "experiment to it, read the comparison and the simulated writes, and file only what the "
             "measurement earned, or unmeasured with its reason."
         ),
-        "compatibility": "health_specialists",
+        "compatibility": "health_experiments",
         "content": "health-experimenter",
-        "tags": ["builtin", "health", "evaluation", INTERNAL_SKILL_TAG],
+        "tags": ["builtin", "health", "evaluation"],
         "platform_targets": ["global"],
     },
     {
@@ -4317,28 +4309,29 @@ BUILTIN_SKILLS: list[dict] = [
             "flow's or an assignment's evidence, designs one variant on a sandbox flow that keeps its source's "
             "reach, and hands it to the Experimenter to measure."
         ),
-        "compatibility": "health_specialists",
+        "compatibility": "flow_lab",
         "content": "health-flow-lab",
-        "tags": ["builtin", "health", "flows", INTERNAL_SKILL_TAG],
+        "tags": ["builtin", "health", "flows"],
         "platform_targets": ["global"],
     },
-    # Platform Health S15 (#101, dev-docs/platform-health.md section 13.4), one skill since
-    # #1943: the check playbook of every module health checker, one section per module.
-    # Seeded unbound; the fleet seed binds it to each checker. The checks grow by edits of
-    # this file within the 13.4 scope; each module's findings track its own section's hash.
-    {
-        "slug": "health-module-checks",
-        "name": "Platform Health: module checks",
-        "description": (
-            "The health checks Platform Health runs on a registered OpenCTI, OpenAEV or OpenCRQ platform, "
-            "read-only: one section per module with each check, what it reads, its warn and fail thresholds, "
-            "and the report it ends with."
-        ),
-        "compatibility": "health_specialists",
-        "content": "health-module-checks",
-        "tags": ["builtin", "health", "modules", "opencti", "openaev", "opencrq"],
-        "platform_targets": ["xtm_one", "dev"],
-    },
+    # Platform Health S15 (#101, dev-docs/platform-health.md section 13.4): the check
+    # playbook of each module health checker. Seeded unbound; the fleet seed binds each
+    # to its checker. The checks grow by edits of these files within the 13.4 scope.
+    *(
+        {
+            "slug": f"health-{module}-checks",
+            "name": f"Platform Health {label} health checks",
+            "description": (
+                f"The {label} health checks Platform Health runs on a registered {label} platform, read-only: "
+                "each check, what it reads, its warn and fail thresholds, and the report it ends with."
+            ),
+            "compatibility": "health_modules",
+            "content": f"health-{module}-checks",
+            "tags": ["builtin", "health", "modules", module],
+            "platform_targets": ["xtm_one", "dev"],
+        }
+        for module, label in (("opencti", "OpenCTI"), ("openaev", "OpenAEV"), ("opencrq", "OpenCRQ"))
+    ),
 ]
 
 #: Built-in skill slugs renamed in place: former slug -> current slug. The seed
@@ -4349,9 +4342,6 @@ RENAMED_BUILTIN_SKILL_SLUGS: dict[str, str] = {
     "concierge-quality-analyst": "health-quality-analyst",
     "concierge-experimenter": "health-experimenter",
     "concierge-flow-lab": "health-flow-lab",
-    # #1943: the OpenCTI playbook's row becomes the one module checks skill (its id and
-    # history kept); the OpenAEV and OpenCRQ rows are deleted as stale.
-    "health-opencti-checks": "health-module-checks",
 }
 
 # The CTI skills (cti-skills pack, Liberty91, MIT), shipped in XTM One mode.

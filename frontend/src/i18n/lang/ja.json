@@ -21282,7 +21282,7 @@
   "The trigger paths that start the exposure management loop, by lens, with the sources that feed each one on this platform and whether they are connected.": "エクスポージャー管理ループを開始するトリガーパスを視点別に示し、このプラットフォームで各パスに供給するソースとその接続状態を表示します。",
   "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "各同期がスケジュールに従って読み取るプラットフォーム、API 経由で書き込むエージェントとパートナー、CSV インポート、手動で入力された行。アセットの照合は、複数のソースのレコードを 1 つのアセットに統合します。",
   "About the knowledge and sources": "ナレッジとソースについて",
-  "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the primary assets and PIRs.": "エージェントが検索する手順書と参照ドキュメント、事前に読み込む組織コンテキスト、そして主要資産と PIR を供給するソース。",
+  "The procedures and reference documents agents search, and the organization context they preload.": "エージェントが検索する手順書と参照ドキュメント、および事前に読み込む組織コンテキスト。",
   "Work item decision": "作業項目の判断",
   "What to decide": "判断する内容",
   "No waiting decision matches the search and filters.": "検索とフィルターに一致する保留中の判断はありません。",
@@ -21678,7 +21678,7 @@
   "No review decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case, or an analyst sets the review label on the Grouping in OpenCTI.": "レビューの決定は登録されていないため、まだ誰も回答できません。フリートが次にこのケースを処理するときに登録します。または、アナリストが OpenCTI でグルーピングにレビューのラベルを付けます。",
   "No validation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.": "検証の決定は登録されていないため、まだ誰も回答できません。フリートが次にこのケースを処理するときに登録します。",
   "No remediation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.": "修復の決定は登録されていないため、まだ誰も回答できません。フリートが次にこのケースを処理するときに登録します。",
-  "Platform Health specialists": "Platform Health スペシャリスト",
-  "Platform Health's internal tools: diagnosis, experiments, sandbox, Flow Lab, memory and module checks": "Platform Health の内部ツール: 診断、実験、サンドボックス、Flow Lab、メモリ、モジュールチェック",
-  "The tools Platform Health's own specialists work with: quality diagnosis, experiments and evaluations on sandbox copies, the Flow Lab, memory consolidation, module checks and improvement proposals. Carried by the Platform Health fleet's agents alone, each scoped to the functions it uses; never offered on the Tools page, in an agent's configuration or in a chat. Every write refuses anyone but Platform Health.": "Platform Health のスペシャリストが使うツールです: 品質診断、サンドボックスコピーでの実験と評価、Flow Lab、メモリ統合、モジュールチェック、改善提案。Platform Health フリートのエージェントだけが持ち、それぞれ使う関数に限定されます。ツールページ、エージェント設定、チャットでは提供されません。書き込みは Platform Health 以外を拒否します。"
+  "PIR sources": "PIR のソース",
+  "The OpenCTI imports and syncs that keep the PIR list up to date.": "PIR リストを最新に保つ OpenCTI のインポートと同期。",
+  "Wait for the prioritization policy to be saved.": "優先順位付けポリシーの保存が完了するまでお待ちください。"
 }
