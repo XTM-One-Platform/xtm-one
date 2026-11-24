@@ -76,7 +76,7 @@ function PirDetailsBody({ pirId, canEdit, onClose }: { pirId: string; canEdit: b
   const profile = data?.profile;
   const stored = profile?.pir_details ?? {};
   const [detail, setDetail] = useState<PirDetail>(() => stored[pirId] ?? emptyPirDetail());
-  const jewels = (profile?.crown_jewels ?? []).map((jewel) => jewel.name).filter(Boolean);
+  const jewels = (profile?.primary_assets ?? []).map((jewel) => jewel.name).filter(Boolean);
   const problem = pirDetailProblem(detail);
   const pirIds = [...new Set(profile?.pir_ids ?? [])];
   const next = pirDetailsOf(pirIds, { ...stored, [pirId]: detail });
@@ -106,7 +106,7 @@ function PirDetailsBody({ pirId, canEdit, onClose }: { pirId: string; canEdit: b
             <SettingsReadField label={t_i18n("Question")} value={detail.question} wide />
             <SettingsReadField label={t_i18n("Owner")} value={detail.owner} />
             <SettingsReadField label={t_i18n("Review cadence")} value={cadenceText(detail.review_cadence)} />
-            <SettingsReadField label={t_i18n("Primary assets served")} value={detail.crown_jewels.join(", ")} wide />
+            <SettingsReadField label={t_i18n("Primary assets served")} value={detail.primary_assets.join(", ")} wide />
           </SettingsReadGrid>
           <OrganizationProvenanceLine sources={data?.sources} field="pir_details" />
         </DialogBody>
@@ -181,10 +181,10 @@ function PirDetailsBody({ pirId, canEdit, onClose }: { pirId: string; canEdit: b
             id={`${FIELD}-jewels`}
             aria-label={t_i18n("Primary assets served")}
             aria-describedby={settingsFieldHintId(`${FIELD}-jewels`)}
-            options={[...new Set([...jewels, ...detail.crown_jewels])].map((name) => ({ value: name, label: name }))}
-            selected={detail.crown_jewels}
+            options={[...new Set([...jewels, ...detail.primary_assets])].map((name) => ({ value: name, label: name }))}
+            selected={detail.primary_assets}
             onToggle={(name) =>
-              set({ crown_jewels: detail.crown_jewels.includes(name) ? detail.crown_jewels.filter((n) => n !== name) : [...detail.crown_jewels, name] })
+              set({ primary_assets: detail.primary_assets.includes(name) ? detail.primary_assets.filter((n) => n !== name) : [...detail.primary_assets, name] })
             }
             placeholder={t_i18n("None")}
             searchPlaceholder={t_i18n("Search a primary asset")}

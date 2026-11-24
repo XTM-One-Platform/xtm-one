@@ -52,8 +52,8 @@ describe("PIR details (#1773)", () => {
 
   it("counts the fields of a PIR detail that are set (#1974)", () => {
     expect(pirDetailFilled(undefined)).toBe(0);
-    expect(pirDetailFilled({ question: " ", owner: "CTI", review_cadence: "", crown_jewels: [] })).toBe(1);
-    expect(pirDetailFilled({ question: "Q", owner: "CTI", review_cadence: "monthly", crown_jewels: ["Pay"] })).toBe(4);
+    expect(pirDetailFilled({ question: " ", owner: "CTI", review_cadence: "", primary_assets: [] })).toBe(1);
+    expect(pirDetailFilled({ question: "Q", owner: "CTI", review_cadence: "monthly", primary_assets: ["Pay"] })).toBe(4);
   });
 
   it("bounds the question as the server does", () => {

@@ -147,7 +147,7 @@ export const PIR_DETAIL_FIELDS = 4;
 /** How many of the four fields of *detail* are set (question, owner, review cadence, primary assets served). */
 export function pirDetailFilled(detail: PirDetail | undefined): number {
   if (!detail) return 0;
-  return [detail.question.trim(), detail.owner.trim(), detail.review_cadence, detail.crown_jewels.length > 0 ? "x" : ""].filter(Boolean).length;
+  return [detail.question.trim(), detail.owner.trim(), detail.review_cadence, detail.primary_assets.length > 0 ? "x" : ""].filter(Boolean).length;
 }
 
 /** Why a PIR detail cannot be saved (an English message), or `null`. */

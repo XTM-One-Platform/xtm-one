@@ -857,8 +857,8 @@ describe("OrganizationSection", () => {
       {
         pir_ids: ["pir-1", "pir-2"],
         pir_details: {
-          "pir-1": { question: "Who targets us?", owner: "CTI", review_cadence: "", crown_jewels: [] },
-          "pir-2": { question: "Which retail groups?", owner: "", review_cadence: "monthly", crown_jewels: ["Payments"] },
+          "pir-1": { question: "Who targets us?", owner: "CTI", review_cadence: "", primary_assets: [] },
+          "pir-2": { question: "Which retail groups?", owner: "", review_cadence: "monthly", primary_assets: ["Payments"] },
         },
       },
     );
@@ -876,7 +876,7 @@ describe("OrganizationSection", () => {
     await waitFor(() => expect(patch).toHaveBeenCalled());
     const [, body] = patch.mock.calls[0] as [string, { fields: { pir_details: Record<string, { owner: string }> } }];
     expect(body.fields.pir_details["pir-1"].owner).toBe("SOC");
-    expect(body.fields.pir_details["pir-2"]).toEqual({ question: "Which retail groups?", owner: "", review_cadence: "monthly", crown_jewels: ["Payments"] });
+    expect(body.fields.pir_details["pir-2"]).toEqual({ question: "Which retail groups?", owner: "", review_cadence: "monthly", primary_assets: ["Payments"] });
     expect(Object.keys(body.fields)).toEqual(["pir_details"]);
     expect(put).not.toHaveBeenCalled();
   });
