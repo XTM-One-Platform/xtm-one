@@ -137,6 +137,11 @@ _MAX_DELEGATION_DEPTH = 5
 RUN_TRIGGER_TYPE_KEY = "run_trigger_type"
 #: The ``trigger_type`` of the run ``run_agent_once`` creates for its task.
 RUN_ONCE_TRIGGER_TYPE = "run_once"
+#: Task metadata flag of a ``run_agent_once(dry_run=true)`` task (#1911): its
+#: turn is bound to a ``dry_run`` sandbox session, reads run live and every
+#: write is logged and answered that it was not executed. On the task row, so
+#: a resumed attempt keeps it.
+RUN_DRY_RUN_KEY = "dry_run"
 # Platform-driven continuations when a sub-agent run dies waiting on
 # still-running children. A run whose ONLY remaining work is waiting on
 # a genuinely-running delegation must not "time out" and abandon it — it parks
@@ -3949,6 +3954,12 @@ async def _execute_sub_agent_task(
             _held_item_steering = await _held_item_stack.enter_async_context(
                 work_item_note_steering.session_for_runs((task_id, assignment_run_id))
             )
+            if (task.metadata_json or {}).get(RUN_DRY_RUN_KEY) is True:
+                # run_agent_once(dry_run=true) (#1911): no write of this turn,
+                # its nested consults included, is executed.
+                from app.services.health.sandbox.session import SandboxSession, sandbox_session
+
+                _held_item_stack.enter_context(sandbox_session(SandboxSession(mode="dry_run")))
             try:
                 with (
                     count_llm_retries()
