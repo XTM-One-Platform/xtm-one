@@ -153,6 +153,11 @@ class FindingResponse(BaseModel):
     agentic: bool = False
     #: The Module Analyst's newest recommendation on this finding, ``None`` when none (section 12.7).
     analyst_recommendation: AnalystRecommendation | None = None
+    #: An agentic finding from the previous check logic (another build or checker playbook,
+    #: or none recorded): a ``deploy`` round re-checks it (section 13.6, #1732).
+    stale: bool = False
+    #: The build whose check logic produced an agentic finding, ``None`` when not recorded.
+    check_build: str | None = None
 
 
 class FindingListResponse(BaseModel):
@@ -323,6 +328,8 @@ def _response(
     can_dismiss: bool,
     analyst: dict[str, AnalystRecommendation] | None = None,
 ) -> FindingResponse:
+    from app.services.health.check_reports import finding_check_logic, is_stale
+
     agent_id = (row.subject or {}).get("agent_id")
     return FindingResponse(
         id=row.id,
@@ -343,6 +350,8 @@ def _response(
         can_dismiss=can_dismiss and row.status == STATUS_OPEN,
         agentic=is_agentic(row.check_id),
         analyst_recommendation=(analyst or {}).get(row.id),
+        stale=row.status == STATUS_OPEN and is_stale(row.module, row.evidence),
+        check_build=(finding_check_logic(row.evidence) or {}).get("build"),
     )
 
 
