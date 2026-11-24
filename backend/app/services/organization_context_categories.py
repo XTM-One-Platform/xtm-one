@@ -14,7 +14,7 @@
 """The categories of the organization context, and how an agent resolves them (#11533).
 
 The profile has a short identity (name, sector, regions, size, risk
-appetite) and long lists: the crown jewels, the tech stack, the AI systems,
+appetite) and long lists: the crown jewels, the software, the AI systems,
 the PIRs, the tracked organizations. The identity is always in the prompt
 (``organization_context_injection``); a list is a CATEGORY: announced in the
 prompt with its size, preloaded only when the cascade selects it, and read
