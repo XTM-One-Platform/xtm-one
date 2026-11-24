@@ -21437,5 +21437,20 @@
   "{count, plural, one {# case resolved in the last {days} days} other {# cases resolved in the last {days} days}}": "{count, plural, one {# caso resuelto en los últimos {days} días} other {# casos resueltos en los últimos {days} días}}",
   "In a case, {count}, {resolved} resolved in {days} d": "En un caso, {count}, {resolved} resueltos en {days} d",
   "{resolved} resolved in {days} d": "{resolved} resueltos en {days} d",
-  "Signals that opened a case, all time. Cases built from your stack's vulnerabilities are counted in Cases.": "Señales que abrieron un caso, desde siempre. Los casos creados a partir de las vulnerabilidades de su stack se cuentan en Casos."
+  "Signals that opened a case, all time. Cases built from your stack's vulnerabilities are counted in Cases.": "Señales que abrieron un caso, desde siempre. Los casos creados a partir de las vulnerabilidades de su stack se cuentan en Casos.",
+  "Cases in this phase": "Casos de esta fase",
+  "Opened {timeAgo}": "Abierto {timeAgo}",
+  "changed {timeAgo}": "modificado {timeAgo}",
+  "touches {asset}": "afecta a {asset}",
+  "waiting since {timeAgo}": "en espera desde {timeAgo}",
+  "Back to {stage}": "Volver a {stage}",
+  "The cases could not be read. Try again in a moment.": "No se pudieron leer los casos. Inténtelo de nuevo en un momento.",
+  "No case yet: cases appear when a signal matches your scope or open issues on your stack share a fix.": "Aún no hay casos: aparecen cuando una señal coincide con su alcance o cuando problemas abiertos de su stack comparten una corrección.",
+  "No decision waiting and no accepted risk.": "Ninguna decisión en espera y ningún riesgo aceptado.",
+  "No open case in {stage}: every case is in another phase or resolved.": "Ningún caso abierto en {stage}: todos los casos están en otra fase o resueltos.",
+  "Open the decisions waiting": "Abrir las decisiones en espera",
+  "Open cases in {stage}": "Abrir los casos en {stage}",
+  "Cases by status": "Casos por estado",
+  "{count, plural, one {# decision waiting} other {# decisions waiting}}": "{count, plural, one {# decisión en espera} other {# decisiones en espera}}",
+  "Needs attention first": "Requiere atención primero"
 }

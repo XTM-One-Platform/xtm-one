@@ -539,7 +539,7 @@ interface CtemLoopMeasures {
 }
 
 /** One open case a phase card lists (`GET /ctem-cases/overview`, #1621). */
-interface CtemCasesOverviewCase {
+export interface CtemCasesOverviewCase {
   id: string;
   title: string;
   state: CtemCaseState;
@@ -561,7 +561,7 @@ interface CtemCasesOverviewPhase {
 }
 
 /** A case waiting for a decision, with the gate it waits on. */
-interface CtemCasesOverviewWait {
+export interface CtemCasesOverviewWait {
   case_id: string;
   title: string;
   phase: CtemStageKey | null;

@@ -168,6 +168,7 @@ import {
   PrioritizationFunnelWithCases,
 } from "./ctem/PrioritizationFunnel";
 import { CasesBoard } from "./ctem/CasesBoard";
+import { CasesInPhaseCard } from "./ctem/CasesInPhaseCard";
 import { SAMPLE_FUNNEL, funnelDisplay } from "./ctem/prioritization-funnel";
 
 function StageViz({ stage }: { stage: CtemStage }) {
@@ -617,6 +618,10 @@ export default function CtemStageDetail() {
           onConnect={() => navigate("/")}
         />
       )}
+
+      {/* The cases in this phase (#1621): its own full-width row, so the AI assessment and
+          Metrics row below keeps its equal heights. */}
+      {validStage && vertical === "cyber" && <CasesInPhaseCard stage={stage as (typeof CTEM_STAGE_KEYS)[number]} backTo={`/ctem/${stage}`} />}
 
       <div className="grid gap-5 lg:grid-cols-3">
         {/* AI assessment - the actionable centerpiece */}
