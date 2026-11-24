@@ -152,3 +152,39 @@ def test_terminal_trace_prefers_the_last_complete() -> None:
     ]
     assert _terminal_trace(traces)["execution_status"] == "A"
     assert _terminal_trace([]) is None
+
+
+def test_failure_cause_names_the_failing_step_of_an_error_complete() -> None:
+    """ERROR + 'Payload completed': the cause is the earlier failing execution step."""
+    from app.integrations.providers.openaev.injects import _cause_line, _failure_cause, _terminal_trace
+
+    failing = {
+        "execution_action": "COMMAND_EXECUTION",
+        "execution_status": "ERROR",
+        "execution_time": "2026-11-23T10:00:30Z",
+        "execution_message": '{"stdout":"","stderr":"access denied","exit_code":5}',
+    }
+    traces = [
+        {"execution_action": "START", "execution_status": "INFO", "execution_time": "2026-11-23T10:00:00Z"},
+        failing,
+        {
+            "execution_action": "COMPLETE",
+            "execution_status": "ERROR",
+            "execution_time": "2026-11-23T10:01:00Z",
+            "execution_message": "Payload completed",
+        },
+    ]
+    terminal = _terminal_trace(traces)
+    cause = _failure_cause(traces, terminal)
+    assert cause is failing
+    line = _cause_line(cause)
+    assert "COMMAND_EXECUTION ERROR" in line and "access denied" in line and "exit_code" in line
+
+
+def test_failure_cause_is_none_on_success_and_message_is_truncated() -> None:
+    from app.integrations.providers.openaev.injects import _CAUSE_MESSAGE_CHARS, _cause_line, _failure_cause
+
+    ok = {"execution_action": "COMPLETE", "execution_status": "SUCCESS"}
+    assert _failure_cause([{"execution_action": "EXECUTION", "execution_status": "ERROR"}, ok], ok) is None
+    line = _cause_line({"execution_action": "X", "execution_status": "ERROR", "execution_message": "a" * 2000})
+    assert f"[{2000 - _CAUSE_MESSAGE_CHARS} more chars]" in line

@@ -152,12 +152,27 @@ def test_the_matcher_reads_each_software_with_its_one_known_version() -> None:
             "vendor": "Fortinet",
             "cpe": "cpe:2.3:o:fortinet:fortios:*",
             "version": "7.2.4",
+            "versions": ["7.2.4"],
             "label": "Fortinet FortiOS",
         },
-        # Two known versions run: no installed version is stated, never a guess.
-        {"product": "Chrome", "vendor": "Google", "cpe": "", "version": "", "label": "Google Chrome"},
+        # Two known versions run: no single installed version is stated, never a guess; each is listed (#1783).
+        {
+            "product": "Chrome",
+            "vendor": "Google",
+            "cpe": "",
+            "version": "",
+            "versions": ["130.0", "131.0"],
+            "label": "Google Chrome",
+        },
         # Only unknown: empty, never the word unknown as a version to match.
-        {"product": "Microsoft Teams", "vendor": "Microsoft", "cpe": "", "version": "", "label": "Microsoft Teams"},
+        {
+            "product": "Microsoft Teams",
+            "vendor": "Microsoft",
+            "cpe": "",
+            "version": "",
+            "versions": [],
+            "label": "Microsoft Teams",
+        },
     ]
 
 

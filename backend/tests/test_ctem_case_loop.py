@@ -412,7 +412,7 @@ async def test_the_sweep_skips_a_signal_it_cannot_open_and_goes_on(monkeypatch):
     monkeypatch.setattr(loop, "open_from_signal", open_or_fail)
     events = loop.PendingEvents()
     counts = await loop.sweep(db, events=events, now=NOW)
-    assert counts == {"opened": 1, "joined": 0, "skipped": 1, "sla_breached": 1, "announced": 0}
+    assert counts == {"opened": 1, "joined": 0, "skipped": 1, "sla_breached": 1, "announced": 0, "stalled": 0}
     bad.expired = False
     assert bad.state == "confirmed" and good.state == "case_opened"
     assert [name for name, _, _ in events.items] == [loop.CASE_OPENED, loop.CASE_SLA_BREACHED]

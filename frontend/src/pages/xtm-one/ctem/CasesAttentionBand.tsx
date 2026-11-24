@@ -48,7 +48,7 @@ export function useAttentionWhy(): (attention: CaseAttention) => string {
           ? t_i18n("{count, plural, one {# KEV} other {# KEV}} on {assets, plural, one {# asset} other {# assets}}", { count: r.count, assets: r.assets })
           : t_i18n("{count, plural, one {# KEV} other {# KEV}}", { count: r.count });
       case "crown_jewel":
-        return t_i18n("{count, plural, one {# crown jewel touched} other {# crown jewels touched}}", { count: r.count });
+        return t_i18n("{count, plural, one {# primary asset touched} other {# primary assets touched}}", { count: r.count });
       case "overdue":
         return t_i18n("Overdue");
       case "due_soon":
@@ -78,7 +78,7 @@ export function CasesAttentionBand({ cases, now, weights }: { cases: CtemCaseSum
         <CtemWidgetHeader
           level={2}
           title={t_i18n("Act on this first")}
-          hint={t_i18n("Open cases ranked by priority, KEV, crown jewels touched, due date, owner and age. The line under each case says why it ranks there.")}
+          hint={t_i18n("Open cases ranked by priority, KEV, primary assets touched, due date, owner and age. The line under each case says why it ranks there.")}
           hintLabel={t_i18n("How cases are ranked")}
           actions={
             isAdmin ? (

@@ -344,10 +344,34 @@ def register(
             )
             if err:
                 return err
-            e = resp.json()
+            launched = resp.json() if resp is not None else None
+            launched = launched if isinstance(launched, dict) else {}
+            # OpenAEV answers {simulation_id} since its launch-with-targets
+            # change; older builds answered the whole exercise.
+            sim_id = launched.get("simulation_id") or launched.get("exercise_id")
+            if not sim_id:
+                return (
+                    f"Launched scenario {scenario_id}, but OpenAEV returned no "
+                    "simulation id; list the scenario's simulations to find it."
+                )
+            name = launched.get("exercise_name")
+            status = launched.get("exercise_status")
+            if "simulation_id" in launched and (not name or not status):
+                sim_resp, sim_err = await _api(
+                    base_url,
+                    headers,
+                    "get",
+                    f"/api/exercises/{sim_id}",
+                    "get simulation",
+                )
+                sim = sim_resp.json() if not sim_err and sim_resp is not None else None
+                if isinstance(sim, dict):
+                    name = name or sim.get("exercise_name")
+                    status = status or sim.get("exercise_status")
             return (
                 f"Launched scenario {scenario_id}. Running simulation created: "
-                f"{e.get('exercise_name', '?')} (id: {e.get('exercise_id')})."
+                f"{name or '(name not read)'} (id: {sim_id}, status: "
+                f"{status or 'not read'})."
             )
 
         if action == "schedule_recurrence":

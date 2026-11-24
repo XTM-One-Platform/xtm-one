@@ -82,9 +82,9 @@ describe("PrioritizationFunnel", () => {
     expect(screen.getByTestId("ctem-funnel-count-exposed").textContent).toBe("Not configured");
     // A not configured exclusion removes nothing: its branch has no thickness.
     expect(screen.getByTestId("ctem-flow-branch-exposed").getAttribute("data-branch")).toBe("0");
-    // Each call to action opens the tab and card of its field (Exposure for assets, Business for crown jewels...), never the first tab.
+    // Each call to action opens the tab and card of its field (Exposure for assets, Business for primary assets...), never the first tab.
     expect(screen.getByRole("link", { name: "Add your assets and exposure" }).getAttribute("href")).toBe("/ctem/inventory?card=assets_exposure");
-    expect(screen.getByRole("link", { name: "Map crown jewels to assets" }).getAttribute("href")).toBe("/ctem/inventory/business?card=crown_jewels");
+    expect(screen.getByRole("link", { name: "Map primary assets to assets" }).getAttribute("href")).toBe("/ctem/inventory/business?card=crown_jewels");
     expect(screen.getByRole("link", { name: "Set a prioritization policy" }).getAttribute("href")).toBe("/ctem/inventory/exposure?card=prioritization_policy");
     expect(screen.getByTestId("ctem-funnel-count-open_issues").textContent).toBe("Not available yet");
   });

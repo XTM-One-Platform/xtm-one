@@ -91,7 +91,7 @@ const SECTION_LABELS = {
   asset_groups: "Asset groups",
   ai_systems: "AI systems",
   tech_stack: "Software",
-  crown_jewels: "Crown jewels",
+  crown_jewels: "Primary assets",
   pirs: "PIRs",
 } as const satisfies Record<ImportSectionKey, string>;
 
@@ -464,7 +464,7 @@ interface Props {
   quickSetupPending?: boolean;
   /**
    * The sections offered (#1367, points 4 and 5): CTEM > Inventory > Sources imports the inventory sections, Settings >
-   * Organization the business profile ones (crown jewels, PIRs). Every section when omitted.
+   * Organization the business profile ones (primary assets, PIRs). Every section when omitted.
    */
   sections?: readonly ImportSectionKey[];
 }
