@@ -152,26 +152,26 @@ as resolved at sync time.
 | Network | `asset_hostname`, `asset_ips`, `asset_mac_addresses`, `asset_seen_ip`, `asset_url` | endpoint facts: `hostname`, `ip_addresses`, `mac_addresses`, `seen_ip`; `url` | none | none (the profile names assets, it is not an inventory) |
 | Cloud | `asset_cloud_provider`, `asset_cloud_native_type`, `asset_cloud_region` | `cloud_provider`, `cloud_native_type`, `cloud_region` | none | none |
 
-## 7. AI targets
+## 7. AI systems
 
-Since #1501 an AI target is an asset of category `ai_target`, as in OpenAEV: subcategory `llm_model`,
+Since #1501 an AI system is an asset of category `ai_target`, as in OpenAEV: subcategory `llm_model`,
 `ai_agent`, `mcp_server` or `rag_pipeline`, with the `ai_target_provider`, `ai_target_endpoint`,
 `ai_target_model` and `ai_target_modality` fields on `AssetEntry`. It lives in `assets_exposure`, merged and
-identified like any asset; the profile has no AI list, no field, category, import section or sync scope of its own
-(#1844, no alias).
+identified like any asset; there is no `AiSystem` list in the profile any more.
 
-- **Stored profiles**: the Alembic data migration `r1844noaisys01` turned every remaining profile `ai_systems`
-  row into an `ai_target` asset (kind `agent` -> `ai_agent`, `model_api` -> `llm_model`, `assistant` and
-  `embedded` keep no subcategory and carry the tag `ai_kind:<kind>`; exposure `public` -> internet facing, every
-  exposure kept as the tag `exposure:<value>`; `openaev_asset_id` becomes source `openaev` with that
-  `external_id`, so the OpenAEV record merges instead of duplicating), then dropped the key, with its syncs,
-  drafts and locks.
+- **Profiles saved before #1501**: their `ai_systems` rows become `ai_target` assets at parse
+  (`OrganizationProfile._ai_systems_into_assets`): kind `agent` -> `ai_agent`, `model_api` -> `llm_model`,
+  `assistant` and `embedded` keep no subcategory and carry the tag `ai_kind:<kind>`; exposure `public` ->
+  internet facing, every exposure kept as the tag `exposure:<value>`; `openaev_asset_id` becomes source
+  `openaev` with that `external_id`, so the OpenAEV record merges instead of duplicating.
 - **Sync with OpenAEV**: the assets import reads `/api/ai_targets/search` beside the endpoints; the outbound
   assets sync creates and updates XTM One-owned AI target assets through `/api/ai_targets`, deletes only what it
   created, and never writes a row an OpenAEV inbound sync owns.
-- **Agents** read them with `get_organization_context(category="assets_exposure", query="category:ai_target")`;
-  the fleet prerequisite is `profile:ai_targets`.
-- **CTEM > Inventory**: no AI tab; the Assets tab filtered on category `ai_target`.
+- **Deprecated alias** (one release): `ai_systems` in `get_organization_context`, `upsert_organization_rows`,
+  `run_organization_import` and the syncs reads and writes the assets of category `ai_target`;
+  `OrganizationProfile.ai_systems` is a derived property and `legacy_dump` still emits the list for old readers.
+- **CTEM > Inventory**: no AI systems tab; `/ctem/inventory/ai-systems` opens the Assets tab filtered on
+  category `ai_target`.
 
 ## 8. OpenCTI Systems
 
@@ -243,7 +243,7 @@ records several sources hold on one thing into one canonical thing; the store of
   from an administrator's override (kept across syncs), else a source that reported it, else a dictionary
   lookup with its confidence, else `unresolved`: never guessed.
 - Sections: asset groups (external reference, then name) and the name-keyed sections (tech stack on CPE then
-  vendor and product, crown jewels, PIRs, tracked organizations) use the same matching.
+  vendor and product, crown jewels, AI systems, PIRs, tracked organizations) use the same matching.
 - Settings: the profile part `asset_identity` (`AssetIdentity`, an `EXPOSURE_FIELDS` part, never dumped into the
   always-on block) holds the organization's `key_order` (strong keys, most reliable first; a key left out never
   merges; empty: `DEFAULT_KEY_ORDER`) and `precedence` (field to sources or source classes in order, `*` any
@@ -392,7 +392,7 @@ plan_record_upsert` / `plan_record_remove`, keyed on `(source, external_id)`, a 
 kept from the record) and write through `organization_asset_records.write_rows` / `remove_rows` with origin
 `agent:<source>`: no profile version, no 5,000 cap, each changed row in the change log with the agent as actor,
 one audit entry per call. A row of another source with the same name is added beside it (the store merges
-them); a row of the same source with the name of another record is refused. Tech stack rows
+them); a row of the same source with the name of another record is refused. Tech stack and AI systems rows
 stay on the profile path until they move to records (#1514, the Software entity).
 
 Imports and syncs of `assets` and `asset_groups` are planned on the records too
@@ -549,8 +549,9 @@ repository): an inventory asset, never a primary asset.
 - Inventory source (Sam, 24 Nov 2026): the `crown_jewels` section is in the `inventory` scope of
   `organization_context_sync.SECTION_SCOPES` (and `organization_context_sources.FIELD_SCOPES`), so
   `GET /organization-context/syncs?scope=inventory` and `/sources?scope=inventory` list the OpenCRQ primary-asset
-  sync next to the asset sources, on the same scheduler (no second one). The scheduler tick
-  (`run_due_syncs`) first calls `ensure_default_primary_asset_sync`: when a company-managed OpenCRQ integration
-  is registered, no `crown_jewels`/`opencrq` sync exists and none was ever deleted (audit trail), it saves one,
-  daily at 06:00 UTC, links on, owned by the first active administrator who can read OpenCRQ. A source turned
-  off keeps its row, so it is never recreated. Manual rows and manual links still win over every run.
+  sync next to the asset sources, on the same scheduler (no second one). Nothing is pre-provisioned (Sam,
+  24 Nov 2026): an administrator adds the OpenCRQ primary-asset source from Inventory > Sources like any other
+  source, and the Primary assets card names no source. Migration `n1883nodefsync01` deleted the daily source
+  older builds saved by themselves (create audit `details.default`) when no person had edited it since; the rows
+  it had imported stayed, as an administrator's delete in its default `leave` mode keeps them. Manual rows and
+  manual links still win over every run.

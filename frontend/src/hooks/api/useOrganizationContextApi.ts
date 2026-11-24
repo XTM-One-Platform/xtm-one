@@ -47,6 +47,7 @@ export interface OrganizationProfile {
   size: "" | "1-50" | "51-250" | "251-1000" | "1001-5000" | "5001-20000" | "20000+";
   crown_jewels: CrownJewel[];
   tech_stack: TechStackEntry[];
+  // No `ai_systems` list since #1501: the AI systems are the assets of category `ai_target`.
   /** What the organization ships, with its source repositories (#1432); absent when none is declared. */
   shipped_products?: { product: string; vendor: string; cpe: string; repositories: string[] }[];
   pir_ids: string[];
@@ -133,27 +134,6 @@ export function useSaveOrganizationContextInjection() {
   return useMutation<OrganizationContextInjection, Error, { enabled: boolean; categories?: string[] }>({
     mutationFn: (body) => api.put("/organization-context/injection", body),
     onSuccess: (saved) => qc.setQueryData([...KEY, "injection"], saved),
-  });
-}
-
-/** A fleet that reads a part of the profile, from its documented prerequisites (#9173, S2). */
-export interface OrganizationFieldReader {
-  fleet_id: string;
-  name: string;
-}
-
-/** A seeded agent whose persona reads a part of the profile (#10063 r1 A3). */
-export interface OrganizationAgentReader {
-  agent_id: string;
-  name: string;
-}
-
-/** Profile field ("sector", "crown_jewels", ...) -> the fleets, and the seeded agents, the reader can see that need it. */
-export function useOrganizationReaders(enabled = true) {
-  return useQuery<{ readers: Record<string, OrganizationFieldReader[]>; agents?: Record<string, OrganizationAgentReader[]> }>({
-    queryKey: [...KEY, "readers"],
-    queryFn: () => api.get("/organization-context/readers"),
-    enabled,
   });
 }
 
@@ -425,7 +405,7 @@ export function useDraftOrganizationContext() {
 }
 
 /** A profile section the platform import fills (#11780); one run imports one section. */
-export type ImportSectionKey = "assets" | "asset_groups" | "software" | "crown_jewels" | "pirs";
+export type ImportSectionKey = "assets" | "asset_groups" | "ai_systems" | "software" | "crown_jewels" | "pirs";
 /** The Filigran platforms, then the endpoint sources read through a Microsoft integration (#1251). */
 export type ImportSourceKey =
   | "openaev"
