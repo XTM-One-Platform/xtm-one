@@ -66,9 +66,6 @@ class ViewerView:
     open_ids: set[str] = field(default_factory=set)
     unavailable: set[str] = field(default_factory=set)
     missing: list[str] = field(default_factory=list)
-    #: Why each product of ``missing`` did not answer this viewer's read (#1852,
-    #: ``ctem_cases_source.REASON_*``); a view cached before the field reads ``unavailable``.
-    reasons: dict[str, str] = field(default_factory=dict)
     complete: bool = True
     no_access: bool = False
     #: The signal members (``signal:<id>``) this viewer may read, read fresh on
@@ -91,7 +88,6 @@ class ViewerView:
                 "open_ids": sorted(self.open_ids),
                 "unavailable": sorted(self.unavailable),
                 "missing": self.missing,
-                "reasons": self.reasons,
                 "complete": self.complete,
                 "no_access": self.no_access,
                 "opencrq": self.opencrq,
@@ -103,14 +99,11 @@ class ViewerView:
     def from_json(cls, raw: str | bytes) -> ViewerView:
         data = json.loads(raw)
         issues = [_issue_from_json(i) for i in data.get("issues") or []]
-        missing = list(data.get("missing") or [])
-        stored = data.get("reasons") if isinstance(data.get("reasons"), dict) else {}
         return cls(
             issues={i.member_id: i for i in issues},
             open_ids=set(data.get("open_ids") or []),
             unavailable=set(data.get("unavailable") or []),
-            missing=missing,
-            reasons={p: str(stored.get(p) or "unavailable") for p in missing},
+            missing=list(data.get("missing") or []),
             complete=bool(data.get("complete", True)),
             no_access=bool(data.get("no_access", False)),
             opencrq=bool(data.get("opencrq", False)),
@@ -437,10 +430,16 @@ def case_position(events: list[CtemCaseEvent], view: ViewerView) -> dict[str, An
     """Where one case stands, from the history this viewer is served (#1503).
 
     ``phase``: its CTEM phase (the list's grouping and the Kanban by phase);
-    ``waiting_on``: the gate it waits on, who and since when (``None`` when none).
+    ``waiting_on``: the gate it waits on, who and since when (``None`` when none);
+    ``stalled_since``: when the sweep found it waiting on nobody, while that is still its newest
+    event (``None`` once anything happened to the case after it, #1736).
     """
     served = [_event(row, view) for row in events if row.kind != VERSIONS_KIND]
-    return {"phase": audit.current_phase(served), "waiting_on": audit.open_wait(served)}
+    return {
+        "phase": audit.current_phase(served),
+        "waiting_on": audit.open_wait(served),
+        "stalled_since": audit.stalled_since(served),
+    }
 
 
 def treatment_plan_of(events: list[CtemCaseEvent]) -> dict[str, Any] | None:
