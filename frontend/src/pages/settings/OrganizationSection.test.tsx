@@ -52,7 +52,7 @@ async function draftFromPlatforms() {
 const INVENTORY_CARDS = {
   business: ["crown_jewels", "shipped_products", "tracked_organizations"],
   technology: ["tech_stack"],
-  exposure: ["assets_exposure", "asset_groups", "prioritization_policy", "outside_lens", "evidence_health"],
+  exposure: ["prioritization_policy", "outside_lens", "evidence_health"],
 } as const;
 /**
  * Renders the page on one of its tabs (#12329); none is the first tab. The Technology and Exposure cards render
@@ -264,8 +264,10 @@ describe("OrganizationSection panels (#12329, #1690)", () => {
 
   it("mounts only the cards an embedding page names, with no header, tab bar or Sources panel (#1178)", async () => {
     renderPage("exposure");
-    expect(await screen.findByTestId("settings.organization.assets-exposure")).toBeTruthy();
+    expect(await screen.findByTestId("settings.organization.panel-exposure")).toBeTruthy();
     expect(screen.queryAllByRole("tab")).toHaveLength(0);
+    // The asset and group tables live on the Inventory row APIs, never in the profile cards (#1752 slice 3b).
+    expect(screen.queryByTestId("settings.organization.assets-exposure")).toBeNull();
     expect(screen.queryByTestId("settings.organization.tech-stack")).toBeNull();
     expect(screen.queryByTestId("settings.organization.primary-assets")).toBeNull();
   });
@@ -407,7 +409,7 @@ describe("OrganizationSection", () => {
   });
 
   it("keeps a list card on CTEM > Inventory always expanded, its count in the header (#1690, Sam 24 Nov 2026)", async () => {
-    for (const tab of ["business", "exposure"]) {
+    for (const tab of ["business", "technology"]) {
       const view = renderPage(tab);
       await waitFor(() => expect(screen.getAllByTestId("settings.card-count").length).toBeGreaterThan(0));
       expect(screen.queryAllByTestId("settings.card-collapse")).toHaveLength(0);
@@ -519,27 +521,12 @@ describe("OrganizationSection", () => {
     expect(body.fields.tech_stack[150].product).toBe("Jira");
   });
 
-  it("edits one exposure card alone, keeps the others in read mode and saves the profile with that card changed (#12256 slice 2)", async () => {
-    const base = get.getMockImplementation()!;
-    const groups = [{ name: "DMZ", description: "Edge", internet_facing: "yes" }];
-    get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, asset_groups: groups } } : base(path)));
-    put.mockResolvedValue({ ...CONTEXT, version: 4 });
+  it("draws no asset or group table on the Exposure tab: the rows are on their row APIs, never on the profile (#1752 slice 3b)", async () => {
     renderPage("exposure");
-    fireEvent.click(await screen.findByRole("button", { name: /Edit Asset groups/ }));
-    const card = screen.getByTestId("settings.organization.asset-groups");
-    const bar = await within(card).findByTestId("settings.save-bar");
-    // The other cards wait for this one; the form is not opened.
-    expect((screen.getByRole("button", { name: /Edit Assets and exposure/ }) as HTMLButtonElement).disabled).toBe(true);
-    const save = within(bar).getByRole("button", { name: "Save" }) as HTMLButtonElement;
-    expect(save.disabled).toBe(true);
-    fireEvent.change(within(card).getByDisplayValue("Edge"), { target: { value: "Edge network" } });
-    expect(save.disabled).toBe(false);
-    fireEvent.click(save);
-    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
-    const [, body] = put.mock.calls[0] as [string, { profile: { asset_groups: { description: string }[]; tech_stack: unknown[] }; source: string }];
-    expect(body.source).toBe("form");
-    expect(body.profile.asset_groups[0].description).toBe("Edge network");
-    expect(body.profile.tech_stack).toEqual(CONTEXT.profile.tech_stack);
+    await screen.findByTestId("settings.organization.panel-exposure");
+    expect(screen.queryByTestId("settings.organization.asset-groups")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.assets-exposure")).toBeNull();
+    expect(put).not.toHaveBeenCalled();
   });
 
   it("drops an exposure card's edit on Cancel, nothing sent (#12256 slice 2)", async () => {
@@ -564,38 +551,6 @@ describe("OrganizationSection", () => {
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: /Edit Primary assets/ })));
   });
 
-  it("pages an exposure card in edit at 25 rows with its search, and pins an added row first (#12271 UX r1 B2)", async () => {
-    const base = get.getMockImplementation()!;
-    const asset = (i: number) => ({
-      name: `asset-${String(i).padStart(3, "0")}`,
-      category: "generic_asset",
-      subcategory: "",
-      criticality: "unknown",
-      environment: "",
-      internet_facing: "unknown",
-      owner: "",
-      group: "",
-      tech_stack: [],
-      tags: [],
-      source: "manual",
-      external_id: "",
-    });
-    const assets = Array.from({ length: 60 }, (_, i) => asset(i));
-    get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, assets_exposure: assets } } : base(path)));
-    renderPage("exposure");
-    fireEvent.click(await screen.findByRole("button", { name: /Edit Assets and exposure/ }));
-    const card = screen.getByTestId("settings.organization.assets-exposure");
-    await within(card).findByTestId("settings.save-bar");
-    // 25 rows a page, never the 60.
-    expect(within(card).getAllByTestId("settings.organization.asset-row")).toHaveLength(25);
-    // The search stays while editing.
-    fireEvent.change(within(card).getByRole("searchbox"), { target: { value: "asset-059" } });
-    await waitFor(() => expect(within(card).getAllByTestId("settings.organization.asset-row")).toHaveLength(1));
-    // An added row clears the search and is first on the first page.
-    fireEvent.click(within(card).getByRole("button", { name: "Add an asset" }));
-    await waitFor(() => expect(within(card).getAllByTestId("settings.organization.asset-row")).toHaveLength(25));
-    expect((within(within(card).getAllByTestId("settings.organization.asset-row")[0]).getByRole("textbox", { name: "Asset" }) as HTMLInputElement).value).toBe("");
-  });
 
   it("pastes a list into a card in edit, skips the rows already there, sets a vendor on the selected rows and saves (#12256 slice 2)", async () => {
     const base = get.getMockImplementation()!;

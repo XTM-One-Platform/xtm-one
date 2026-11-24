@@ -82,8 +82,11 @@ export interface OrganizationContextResponse {
   source: string | null;
   created_at: string | null;
   author_user_id: string | null;
+  /** No asset or group row since #1752 slice 3b: they are read through `/assets` and `/asset-groups`. */
   profile: OrganizationProfile;
   missing_fields: string[];
+  /** How many asset and group rows the organization holds (#1752); the rows have their own paged APIs. */
+  row_counts?: { assets_exposure?: number; asset_groups?: number } | null;
 }
 
 const KEY = ["organization-context"] as const;

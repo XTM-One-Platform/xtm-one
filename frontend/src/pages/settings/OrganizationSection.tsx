@@ -72,6 +72,7 @@ import {
   usePatchOrganizationContext,
   useSaveOrganizationContext,
 } from "@/hooks/api/useOrganizationContextApi";
+import { useAssetGroups, useCanonicalAssets } from "@/hooks/api/useOrganizationAssetsApi";
 import { useFormatter } from "@/i18n";
 import {
   type AmountField,
@@ -214,6 +215,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const save = useSaveOrganizationContext();
   // #1752: a card saves its own fields alone (PATCH); the asset rows never travel with them.
   const patch = usePatchOrganizationContext();
+  // The names a primary asset links to, read on the row APIs (#1752 slice 3b), never from the profile.
+  const linkGroups = useAssetGroups({ throwOnError: false });
+  const linkAssets = useCanonicalAssets({ offset: 0, limit: 200 });
   // Primary assets are an Inventory source (#1754, Sam 24 Nov 2026): the OpenCRQ sync is configured and run in
   // CTEM > Inventory > Sources; the card only names it and its last sync, never a second OpenCRQ action.
   const { data: inventorySyncs } = useOrganizationSyncs("inventory", !reader);
@@ -473,9 +477,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         else toast({ title: t_i18n("The organization profile was not saved"), description: err.message, variant: "error" });
       },
     };
-    // The asset and group tables are rows: they keep their own write; every other card patches its field alone.
-    if (field === "assets_exposure" || field === "asset_groups") save.mutate({ profile: parsed.profile as OrganizationProfile, source: "form" }, options);
-    else patch.mutate({ fields: { [field]: parsed.profile[field] }, based_on_version: data.version ?? null }, options);
+    // The asset and group rows are written through their own row APIs on CTEM > Inventory (#1752 slice 3b): never here.
+    if (field === "assets_exposure" || field === "asset_groups") return;
+    patch.mutate({ fields: { [field]: parsed.profile[field] }, based_on_version: data.version ?? null }, options);
   };
   // One list card in edit (#12256): the other cards stay as they read; the form is not opened.
   const startListEdit = (key: ListKey) => {
@@ -1041,7 +1045,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       read: (v) => readCell((v.asset_names ?? []).join(", ")),
       edit: (v, set) => {
         const names = v.asset_names ?? [];
-        const options = [...(current?.asset_groups ?? []), ...(current?.assets_exposure ?? [])].filter((asset) => asset.name.trim()).map((asset) => ({ value: asset.name, label: asset.name }));
+        // The groups and assets come from their row APIs (#1752 slice 3b): the profile answers no row.
+        const options = [...(linkGroups.data?.items ?? []), ...(linkAssets.data?.items ?? [])].filter((asset) => asset.name.trim()).map((asset) => ({ value: asset.name, label: asset.name }));
         return (
           <MultiSelect
             aria-label={t_i18n("Assets")}
@@ -1377,10 +1382,11 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         fold={(section) =>
           cardFold(
             section,
+            // The profile API answers counts, never the rows (#1752 slice 3b).
             section === "assets_exposure"
-              ? (current.assets_exposure ?? []).length
+              ? (data?.row_counts?.assets_exposure ?? 0)
               : section === "asset_groups"
-                ? (current.asset_groups ?? []).length
+                ? (data?.row_counts?.asset_groups ?? 0)
                 : section === "enterprise_knowledge"
                   ? (current.enterprise_knowledge ?? []).length
                   : null,
@@ -2092,7 +2098,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             {missingIn("exposure")}
             {/* The field changes proposed outside the form, the loop trace's scope proposal first among them (CTEM-30). */}
             {full && <OrganizationProposalsCard />}
-            {exposureCards((["assets_exposure", "asset_groups", "prioritization_policy"] as const).filter(show))}
+            {/* The asset and group tables are CTEM > Inventory's, on the row APIs (#1752 slice 3b). */}
+            {exposureCards((["prioritization_policy"] as const).filter(show))}
             {/* Owned domains, address ranges and the outside lens pass (CTEM-26 slice 2, #1140). */}
             {show("outside_lens") && <OrganizationOutsideLensCard id={`${fieldId}-outside_lens`} fold={cardFold("outside_lens", null)} />}
             {/* The OpenCRQ evidence health pass, on by default (#1344): the signal sources' Turn on lands here. */}
