@@ -726,14 +726,18 @@ async def set_primary_asset_links(
     for name_key, group_id in groups:
         found.add(name_key)
         db.add(
-            OrganizationPrimaryAssetLink(organization_id=organization_id, primary_asset_key=jewel_key, group_id=group_id)
+            OrganizationPrimaryAssetLink(
+                organization_id=organization_id, primary_asset_key=jewel_key, group_id=group_id
+            )
         )
     for name_key, record_id in records:
         found.add(name_key)
         if record_id in synced_records:
             continue  # the synced link stands for it, kept above
         db.add(
-            OrganizationPrimaryAssetLink(organization_id=organization_id, primary_asset_key=jewel_key, record_id=record_id)
+            OrganizationPrimaryAssetLink(
+                organization_id=organization_id, primary_asset_key=jewel_key, record_id=record_id
+            )
         )
     await db.flush()
     return [keys[k] for k in keys if k not in found]

@@ -343,7 +343,12 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
                 db, plan.profile, source="draft", author_user_id=owner.id, sources=sync_provenance(plan, sync, owner)
             )
             result["version"] = saved.version
-        if not plan.error and sync.section == "primary_assets" and sync.source == "opencrq" and plan.profile is not None:
+        if (
+            not plan.error
+            and sync.section == "primary_assets"
+            and sync.source == "opencrq"
+            and plan.profile is not None
+        ):
             # Supporting asset -> primary asset links (#1591), on unless the sync's filter says "false".
             from app.services import organization_context_opencrq_links as opencrq_links
 

@@ -35,7 +35,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.utils import format_exception_message
-from app.services.organization_context import PrimaryAsset, OrganizationProfile, TechStackEntry
+from app.services.organization_context import OrganizationProfile, PrimaryAsset, TechStackEntry
 
 logger = logging.getLogger(__name__)
 

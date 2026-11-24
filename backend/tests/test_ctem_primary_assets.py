@@ -17,7 +17,9 @@ WORKSTATIONS = "Employee workstations (laptops and desktops)"
 def _profile(**policy: object) -> oc.OrganizationProfile:
     return oc.parse_profile(
         {
-            "primary_assets": [{"name": WORKSTATIONS, "criticality": "high", "source": "opencrq", "external_id": "pa-1"}],
+            "primary_assets": [
+                {"name": WORKSTATIONS, "criticality": "high", "source": "opencrq", "external_id": "pa-1"}
+            ],
             "tech_stack": [{"product": "Windows"}],
             "prioritization_policy": {"min_primary_asset_criticality": "medium", "cvss_min": 7, **policy},
         }

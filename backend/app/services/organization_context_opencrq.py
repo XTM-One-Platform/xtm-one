@@ -36,7 +36,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.organization_context import PrimaryAsset, OrganizationProfile
+from app.services.organization_context import OrganizationProfile, PrimaryAsset
 
 #: Profile criticality -> OpenCRQ supporting-asset criticality.
 TO_OPENCRQ: dict[str, str] = {"low": "low", "medium": "medium", "high": "high", "critical": "very_high"}

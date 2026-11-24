@@ -49,8 +49,8 @@ from app.services.organization_context import (
     LEGACY_ASSET_TYPES,
     AssetEntry,
     AssetGroupEntry,
-    PrimaryAsset,
     OrganizationProfile,
+    PrimaryAsset,
     TechStackEntry,
 )
 from app.services.organization_context_microsoft import os_family

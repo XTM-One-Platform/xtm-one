@@ -112,7 +112,9 @@ def _needles(names: dict[str, str]) -> dict[str, str]:
     return {f"n{i}": f'%"{old}"%' for i, old in enumerate(names)}
 
 
-def _rewrite_json(conn: sa.engine.Connection, table: str, columns: tuple[str, ...], names: dict[str, str], cast: str) -> None:
+def _rewrite_json(
+    conn: sa.engine.Connection, table: str, columns: tuple[str, ...], names: dict[str, str], cast: str
+) -> None:
     """Every row of *table* whose *columns* name an old name, rewritten with :func:`rename`."""
     inspector = sa.inspect(conn)
     if not inspector.has_table(table):

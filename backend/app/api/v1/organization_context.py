@@ -1696,7 +1696,13 @@ async def set_primary_asset_asset_links(
         await db.rollback()
         raise HTTPException(status_code=422, detail="No asset or asset group is named: " + ", ".join(missing))
     await _audit_rows(
-        db, admin, "update", None, "primary_asset_links", f"Primary asset {primary_asset} covers {len(body.names)} items", {}
+        db,
+        admin,
+        "update",
+        None,
+        "primary_asset_links",
+        f"Primary asset {primary_asset} covers {len(body.names)} items",
+        {},
     )
     await db.commit()
     return {"primary_asset": primary_asset, "names": body.names}
