@@ -123,12 +123,15 @@ class PreviousPass:
 
 @dataclass(frozen=True)
 class Baseline:
-    """What an earlier pass kept of one host (``signalled``: the signal keys still holding)."""
+    """What an earlier pass kept of one host (``signalled``: the signal keys still holding;
+    ``ip``: the address it was last seen on, so a host in scope only by its address keeps
+    its unseen check)."""
 
     host: str
     ports: tuple[str, ...]
     last_seen_at: datetime
     signalled: tuple[str, ...] = ()
+    ip: str = ""
 
 
 @dataclass(frozen=True)
@@ -429,7 +432,7 @@ def diff(
     for host, before in baseline.items():
         if host in seen or before.last_seen_at > limit:
             continue
-        if host not in declared and not in_scope(host, "", domains, ranges):
+        if host not in declared and not in_scope(host, before.ip, domains, ranges):
             continue
         days = max(stale_days, (now - before.last_seen_at).days)
         found.append(
@@ -490,7 +493,9 @@ async def _baseline(db: AsyncSession, organization_id: uuid.UUID) -> dict[str, C
 def _as_baseline(row: CtemSurfaceObservation) -> Baseline:
     ports = tuple(f"{p.get('port')}/{p.get('transport') or 'tcp'}" for p in (row.ports or []) if isinstance(p, dict))
     seen = row.last_seen_at if row.last_seen_at.tzinfo else row.last_seen_at.replace(tzinfo=UTC)
-    return Baseline(host=row.host, ports=ports, last_seen_at=seen, signalled=tuple(row.signalled or []))
+    return Baseline(
+        host=row.host, ports=ports, last_seen_at=seen, signalled=tuple(row.signalled or []), ip=row.ip or ""
+    )
 
 
 async def _previous_pass(db: AsyncSession, organization_id: uuid.UUID) -> PreviousPass | None:

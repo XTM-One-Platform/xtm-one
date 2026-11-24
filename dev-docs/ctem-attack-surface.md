@@ -123,7 +123,8 @@ asset always counts). A provider also answers other names, such as the reverse
 DNS of a shared hosting IP: such a name raises nothing on any path (5, 6 or 7),
 is never stored in the baseline, is counted as `out_of_scope` in the pass
 summary, and is named in `shared_ip_names` in the evidence of the owned hosts on
-the same IP.
+the same IP. The unseen check of path 6 reads the address a baseline host was
+last seen on, so a host in scope only through an owned range keeps it.
 
 Credit budget per pass (Shodan): up to `_SHODAN_DNS_PAGES` (5) pages of
 `/dns/domain` and `_SHODAN_SEARCH_PAGES` (3) pages of 100 matches of each host

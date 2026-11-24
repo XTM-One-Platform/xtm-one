@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -221,6 +222,15 @@ def test_an_out_of_scope_host_raises_no_path_6_either() -> None:
     assert _diff([_obs("gone.hosting.example", "198.51.100.8", resolves=False)], {}, profile) == []
     stale = {"old.hosting.example": _base("old.hosting.example", 80, days_ago=30)}
     assert _diff([], stale, profile) == []
+
+
+def test_a_host_in_scope_by_its_address_keeps_its_unseen_check() -> None:
+    """A baseline host scoped only by its stored address still raises path 6 once gone."""
+    gone = replace(_base("edge.cdn.example", 443, days_ago=30), ip="203.0.113.30")
+    found = _diff([], {"edge.cdn.example": gone})
+    assert [(f.trigger_path, f.host, f.detail) for f in found] == [("stale_asset", "edge.cdn.example", "unseen")]
+    outside = replace(gone, ip="198.51.100.8")
+    assert _diff([], {"edge.cdn.example": outside}) == []
 
 
 def test_the_first_pass_sets_the_baseline_and_raises_no_drift() -> None:
