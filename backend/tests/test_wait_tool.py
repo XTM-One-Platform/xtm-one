@@ -1259,6 +1259,77 @@ async def test_loop_parks_on_tool_free_exit_while_spawned_tasks_run(
     assert "I launched the work" in (implicit_assistant[0].content or "")
 
 
+async def test_final_answer_with_only_never_started_children_ends_the_run(
+    monkeypatch: pytest.MonkeyPatch, _quiet_langfuse: None
+) -> None:
+    """A child still never started after one whole park no longer holds the run.
+
+    The first final answer parks once (a child is ``pending`` for the moments
+    before a worker picks it up, and a delegating run stays open until its
+    child finishes). When the child is still ``pending`` after that park, the
+    next final answer ends the run and names the child left running on its own.
+    """
+    monkeypatch.setattr(wp, "MIN_GRANTED_WAIT_SECONDS", 0.05)
+    monkeypatch.setattr(al, "MIN_GRANTED_WAIT_SECONDS", 0.05)
+
+    async def _condition(ids: list[str]) -> tuple[bool, dict[str, str]]:
+        return False, dict.fromkeys(ids, "pending")
+
+    definitions, executor = _dummy_executor()
+    llm = _ScriptedLLM(  # type: ignore[no-untyped-call]
+        [
+            ChatResponse(content="Report: launched.", model="stub", stop_reason="stop"),
+            ChatResponse(content='{"verdict": "done"}', model="stub", stop_reason="stop"),
+        ]
+    )
+    messages = [
+        ChatMessage(role="user", content="do the work"),
+        ChatMessage(
+            role="assistant",
+            content="",
+            tool_calls=[ToolCall(id="s1", name="spawn_background_task", arguments={"agent_id": "x", "task": "go"})],
+        ),
+        ChatMessage(
+            role="tool",
+            name="spawn_background_task",
+            tool_call_id="s1",
+            content=(
+                f"Background task spawned successfully.\nTask ID: {_PENDING_TASK_ID}\nTarget agent: x\nStatus: pending\n"
+            ),
+        ),
+    ]
+
+    response = await al.run_agent_loop(
+        llm=llm,
+        messages=messages,
+        tools=definitions,
+        executor=executor,
+        max_iterations=5,
+        wait_policy=wp.WaitPolicy(per_call_seconds=1, total_seconds=30),
+        wait_condition=_condition,
+    )
+    assert response.content == '{"verdict": "done"}'
+    assert llm.call_count == 2
+    assert response.stop_reason != "waiting_on_tasks"
+    assert response.pending_task_ids == [_PENDING_TASK_ID]
+    assert len([m for m in messages if m.role == "tool" and m.name == "wait"]) == 1
+
+
+@pytest.mark.parametrize(
+    ("statuses", "answer", "expected"),
+    [
+        ({"a": "pending"}, "Report: done.", ["a"]),
+        ({"a": "pending", "b": "running"}, "Report: done.", []),
+        ({"a": "pending"}, "Still waiting for the analyst.", []),
+        ({}, "Report: done.", []),
+        ({"a": "pending"}, "  ", []),
+    ],
+)
+def test_never_started_task_ids(statuses: dict[str, str], answer: str, expected: list[str]) -> None:
+    """Only an all-pending set under a deliverable answer is left behind."""
+    assert al.never_started_task_ids(["a", *(["b"] if "b" in statuses else [])], statuses, answer) == expected
+
+
 async def test_implicit_park_announces_wait_start_to_the_ui(
     monkeypatch, _quiet_langfuse
 ):
