@@ -69,6 +69,7 @@ import {
   useOrganizationSyncs,
   useOrganizationPirs,
   useOrganizationReaders,
+  usePatchOrganizationContext,
   useSaveOrganizationContext,
 } from "@/hooks/api/useOrganizationContextApi";
 import { useFormatter } from "@/i18n";
@@ -181,7 +182,7 @@ const AMOUNT_INPUT_CLASS = "[&_input]:pr-36";
 
 /**
  * The cards of the profile one page mounts alone (#1178, Sam 22 Nov 2026): CTEM > Inventory edits the software inventory,
- * the assets and exposure, the asset groups, the policy and the outside lens with the same cards,
+ * the AI systems, the assets and exposure, the asset groups, the policy and the outside lens with the same cards,
  * the same per-card edit and the same Save as Settings, nothing stored twice. Without it the whole profile page.
  */
 export type OrganizationEmbed = {
@@ -211,6 +212,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // In the reader's locale, as every date next to a DataTable (data-table-locale-dates gate).
   const savedAt = data?.created_at ? intl.formatDate(new Date(data.created_at), { dateStyle: "medium", timeStyle: "short" }) : "";
   const save = useSaveOrganizationContext();
+  // #1752: a card saves its own fields alone (PATCH); the asset rows never travel with them.
+  const patch = usePatchOrganizationContext();
   // Primary assets are an Inventory source (#1754, Sam 24 Nov 2026): the OpenCRQ sync is configured and run in
   // CTEM > Inventory > Sources; the card only names it and its last sync, never a second OpenCRQ action.
   const { data: inventorySyncs } = useOrganizationSyncs("inventory", !reader);
@@ -458,17 +461,21 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     }
     const parsed = fromForm(next);
     if ("invalid" in parsed) return;
-    save.mutate({ profile: parsed.profile as OrganizationProfile, source: "form" }, {
+    const field = exposureEdit.card === "accepted_risks" ? "prioritization_policy" : exposureEdit.card;
+    const options = {
       onSuccess: () => {
         stopExposureEdit();
         toast({ title: t_i18n("Organization profile saved"), variant: "success" });
       },
-      onError: (err) => {
+      onError: (err: Error) => {
         const issue = exposureIssueFromRefusal(next, err.message);
         if (issue) setRefusedIssue(issue);
         else toast({ title: t_i18n("The organization profile was not saved"), description: err.message, variant: "error" });
       },
-    });
+    };
+    // The asset and group tables are rows: they keep their own write; every other card patches its field alone.
+    if (field === "assets_exposure" || field === "asset_groups") save.mutate({ profile: parsed.profile as OrganizationProfile, source: "form" }, options);
+    else patch.mutate({ fields: { [field]: parsed.profile[field] }, based_on_version: data.version ?? null }, options);
   };
   // One list card in edit (#12256): the other cards stay as they read; the form is not opened.
   const startListEdit = (key: ListKey) => {
@@ -487,7 +494,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     const parsed = fromForm({ ...toForm(data.profile), [key]: committedValues(listEdits[key]!.rows as EditRow<unknown>[]) });
     if ("invalid" in parsed) return;
     const kept = committedValues(listEdits[key]!.rows as EditRow<Provenance>[]);
-    save.mutate({ profile: parsed.profile as OrganizationProfile, source: "form" }, {
+    patch.mutate({ fields: { [key]: parsed.profile[key] }, based_on_version: data.version ?? null }, {
       onSuccess: () => {
         // The synced rows removed with "Exclude from this sync" go on their sync's exclusions (#1134).
         synced.commit(kept);
@@ -783,7 +790,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     );
   };
   /**
-   * The two lists (primary assets, software inventory) read on the shared DataTable (data
+   * The three lists (primary assets, software inventory, AI systems) read on the shared DataTable (data
    * tables slice 9): search, filters, sort, CSV and the pager. In edit they keep all of it on the
    * list editor (#12256, OrganizationListEditor): one row open at a time, the order frozen.
    */
@@ -1431,7 +1438,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                 <div className="max-w-xs space-y-1 content-compact">
                   <p>
                     {t_i18n(
-                      "What every agent and fleet reads before it ranks, scopes or estimates: your sector, regions, primary assets, software, intelligence requirements, risk appetite and costs. Agents cite the fields they used and name the ones not filled, never guess them. Each save is a new version.",
+                      "What every agent and fleet reads before it ranks, scopes or estimates: your sector, regions, primary assets, software, AI systems, intelligence requirements, risk appetite and costs. Agents cite the fields they used and name the ones not filled, never guess them. Each save is a new version.",
                     )}
                   </p>
                   <p data-testid="settings.organization.shared">{t_i18n("Shared context: the whole profile is visible to every user and every agent of this XTM One platform.")}</p>

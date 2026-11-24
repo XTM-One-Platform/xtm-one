@@ -90,16 +90,18 @@ const SOURCE_LOGOS: Record<ImportSourceKey, ElementType> = {
 const SECTION_LABELS = {
   assets: "Assets",
   asset_groups: "Asset groups",
-  tech_stack: "Software",
+  ai_systems: "AI systems",
+  software: "Software",
   crown_jewels: "Primary assets",
   pirs: "PIRs",
 } as const satisfies Record<ImportSectionKey, string>;
 
-/** One line each, of the same length, so the cards read alike. @i18n-keys */
+/** One line each, of the same length, so the six cards read alike. @i18n-keys */
 const SECTION_HINTS = {
   assets: "Hosts, applications and services to protect.",
   asset_groups: "The groups your assets are organized into.",
-  tech_stack: "The security products already in place.",
+  ai_systems: "The AI models and agents your teams test.",
+  software: "The security products already in place.",
   crown_jewels: "The assets your business cannot afford to lose.",
   pirs: "The intelligence needs your agents follow.",
 } as const satisfies Record<ImportSectionKey, string>;
@@ -107,7 +109,8 @@ const SECTION_HINTS = {
 const SECTION_GLYPHS: Record<ImportSectionKey, ElementType> = {
   assets: glyph("server"),
   asset_groups: glyph("network"),
-  tech_stack: glyph("shield-check"),
+  ai_systems: glyph("bot"),
+  software: glyph("shield-check"),
   crown_jewels: glyph("key-round"),
   pirs: glyph("file-text"),
 };
@@ -239,6 +242,8 @@ const MAPPING_NOTES = {
   batchType: "The type you pick on the previous step",
   createdBy: "createdBy, when the System names no owner",
   platformMarkings: "With the platform and the markings, as platform: and marking: tags",
+  aiKind: "Always Model API",
+  aiExposure: "Public when internet-facing, else internal",
   veryHighCritical: "Very high becomes Critical",
   deviceOwner: "Only when Device owner is on",
   osTaxonomy: "From the operating system, and the device model when the source gives it",
@@ -434,7 +439,15 @@ const MAPPINGS: Record<string, { fields: ProfileField[]; rows: MappingRow[] }> =
       { to: "external_id", from: ["sys_id"] },
     ],
   },
-  "tech_stack:openaev": { fields: ["product"], rows: [{ to: "product", from: ["security_platform_name"] }] },
+  "ai_systems:openaev": {
+    fields: ["name", "kind", "exposure", "owner"],
+    rows: [
+      { to: "name", from: ["asset_name"] },
+      { to: "kind", from: [], note: "aiKind" },
+      { to: "exposure", from: ["asset_internet_facing"], note: "aiExposure" },
+    ],
+  },
+  "software:openaev": { fields: ["product"], rows: [{ to: "product", from: ["security_platform_name"] }] },
   "crown_jewels:opencrq": {
     fields: ["name", "criticality", "owner"],
     rows: [
@@ -465,7 +478,7 @@ interface Props {
  * The sections each surface imports into (#1367): the same split as the backend's SECTION_SCOPES. Primary assets are an
  * Inventory source since #1754 (their OpenCRQ sync runs with the asset sources), so Sources > Add source offers them.
  */
-export const INVENTORY_IMPORT_SECTIONS = ["assets", "asset_groups", "tech_stack", "crown_jewels"] as const satisfies readonly ImportSectionKey[];
+export const INVENTORY_IMPORT_SECTIONS = ["assets", "asset_groups", "software", "ai_systems", "crown_jewels"] as const satisfies readonly ImportSectionKey[];
 export const PROFILE_IMPORT_SECTIONS = ["pirs"] as const satisfies readonly ImportSectionKey[];
 
 export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, quickSetupPending, sections: offered }: Props) {
