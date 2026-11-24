@@ -78,10 +78,14 @@ const MICROSOFT_VALUE_LABELS = {
   medium: "Medium",
   low: "Low",
   none: "None",
+  windows11: "Windows 11",
+  windows10: "Windows 10",
+  windowsserver2022: "Windows Server 2022",
+  windowsserver2019: "Windows Server 2019",
 } as const;
 
 /** The Microsoft filters whose values are enumerations worded above. */
-const MICROSOFT_WORDED: ReadonlySet<string> = new Set(["compliance", "ownership", "health_status", "exposure_level"]);
+const MICROSOFT_WORDED: ReadonlySet<string> = new Set(["compliance", "ownership", "health_status", "exposure_level", "os_platform"]);
 
 /** ServiceNow's operational status choice values. @i18n-keys */
 const OPERATIONAL_STATUS_LABELS = { "1": "Operational", "2": "Non-operational", "3": "Repair in progress", "4": "DR standby", "5": "Ready", "6": "Retired (ServiceNow status)" } as const;
