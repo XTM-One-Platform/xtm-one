@@ -130,11 +130,11 @@ from app.services.builtin_tool_groups import schema_chars
 #: organization_context group (#1676: +1,528, opt-in and administrator-only, total 476,895 on 24 Nov 2026).
 #: Raised to 478,000 for the ctem_repair group (#1778: three CTEM administrator repairs, +977,
 #: and +13 on the agent builder's group list, total 477,872 on 24 Nov 2026).
-#: Raised to 478,300 for search_config_text of the platform group (#1759: +268, total 478,140 on 24 Nov 2026).
-TOTAL_SCHEMA_CHARS_CEILING = 478_300
 #: Raised to 478,500 for list_ctem_assets and the source_provider and since filters of
 #: list_ctem_signals in the ctem_read group (#1782: +500, opt-in, on 24 Nov 2026).
-TOTAL_SCHEMA_CHARS_CEILING = 478_500
+#: Raised to 478,800 for search_config_text of the platform group (#1759: +268, on top of #1782,
+#: 24 Nov 2026).
+TOTAL_SCHEMA_CHARS_CEILING = 478_800
 
 #: Ceilings of the groups that carry one of their own (group id -> characters);
 #: generate_presentation, platform and coordination since the chat-reactivity
