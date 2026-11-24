@@ -146,9 +146,10 @@ export function OrganizationFxRatesCard({ id: anchorId }: { id: string }) {
                     onClick={() => setRows(rows.filter((_, i) => i !== index))}
                   />
                 </div>
-                {/* UX round 1 B2-B4: currency pickers, a visible label on every field, one baseline (no counter). */}
-                <div className="grid items-start gap-3 sm:grid-cols-2 md:grid-cols-6">
-                  <SettingsField id={`${rowId}-from`} label={t_i18n("From currency")}>
+                {/* UX round 1 B2-B4: currency pickers, a visible label on every field, one baseline (no counter).
+                    UX round 2 B1: the date picker never gets less than a third of the row, so the date is never cut. */}
+                <div className="grid items-start gap-3 sm:grid-cols-2 md:grid-cols-6 xl:grid-cols-12">
+                  <SettingsField id={`${rowId}-from`} label={t_i18n("From currency")} className="md:col-span-2">
                     <SearchableSelect
                       id={`${rowId}-from`}
                       aria-labelledby={settingsFieldLabelId(`${rowId}-from`)}
@@ -159,7 +160,7 @@ export function OrganizationFxRatesCard({ id: anchorId }: { id: string }) {
                       onValueChange={(value) => setRow(index, { from_currency: value })}
                     />
                   </SettingsField>
-                  <SettingsField id={`${rowId}-to`} label={t_i18n("To currency")}>
+                  <SettingsField id={`${rowId}-to`} label={t_i18n("To currency")} className="md:col-span-2">
                     <SearchableSelect
                       id={`${rowId}-to`}
                       aria-labelledby={settingsFieldLabelId(`${rowId}-to`)}
@@ -170,7 +171,7 @@ export function OrganizationFxRatesCard({ id: anchorId }: { id: string }) {
                       onValueChange={(value) => setRow(index, { to_currency: value })}
                     />
                   </SettingsField>
-                  <SettingsField id={`${rowId}-rate`} label={t_i18n("Rate")}>
+                  <SettingsField id={`${rowId}-rate`} label={t_i18n("Rate")} className="md:col-span-2">
                     <Input
                       id={`${rowId}-rate`}
                       aria-labelledby={settingsFieldLabelId(`${rowId}-rate`)}
@@ -181,7 +182,7 @@ export function OrganizationFxRatesCard({ id: anchorId }: { id: string }) {
                       onChange={(e) => setRow(index, { rate: e.target.value })}
                     />
                   </SettingsField>
-                  <SettingsField id={`${rowId}-as-of`} label={t_i18n("As of")}>
+                  <SettingsField id={`${rowId}-as-of`} label={t_i18n("As of")} className="md:col-span-2 xl:col-span-3">
                     <DateFilterInput
                       id={`${rowId}-as-of`}
                       className="w-full"
@@ -191,7 +192,7 @@ export function OrganizationFxRatesCard({ id: anchorId }: { id: string }) {
                       onChange={(day) => setRow(index, { as_of: day })}
                     />
                   </SettingsField>
-                  <SettingsField id={`${rowId}-source`} label={t_i18n("Source")} className="md:col-span-2">
+                  <SettingsField id={`${rowId}-source`} label={t_i18n("Source")} className="md:col-span-4 xl:col-span-3">
                     <Input
                       id={`${rowId}-source`}
                       aria-labelledby={settingsFieldLabelId(`${rowId}-source`)}
