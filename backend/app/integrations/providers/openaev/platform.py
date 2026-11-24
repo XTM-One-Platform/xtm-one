@@ -27,6 +27,34 @@ from app.core.module_versions import RegisteredVersionFn, version_answer
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import PlatformCapabilities, _api, _search_body, is_not_found_error, json_answer
+from .engine_schema import engine_entity_of, engine_filter_keys
+
+
+async def _engine_keys_lines(base_url: str, headers: dict[str, str], class_name: str) -> list[str]:
+    """The engine filter keys of the entity indexing *class_name*, for query_openaev_analytics.
+
+    The analytics engine filters on its own indexed fields, not on the model
+    attributes above (asset_tags there is base_tags_side here).
+    """
+    entity = engine_entity_of(class_name)
+    if not entity:
+        return []
+    keys, err = await engine_filter_keys(_api, base_url, headers, [entity])
+    if err or not keys:
+        return [f"Engine keys of '{entity}' for query_openaev_analytics: unavailable ({err or 'none reported'})."]
+    lines = [
+        f"Engine keys of '{entity}' ({len(keys)}) - the ONLY keys query_openaev_analytics "
+        "accepts (the model keys above are for search tools):"
+    ]
+    for name in sorted(keys):
+        entry = keys[name]
+        line = f"  - {name}"
+        if entry["type"]:
+            line += f" ({entry['type']})"
+        if entry["operators"]:
+            line += f" operators: {', '.join(sorted(entry['operators']))}"
+        lines.append(line)
+    return lines
 
 
 def _version_from_body(body: str | None) -> str:
@@ -667,10 +695,13 @@ def register(
                 "list filterable attributes",
                 params={"filterableOnly": "true"}, json=[],
             )
-            if err:
-                return err
-            schemas = resp.json() or []
+            schemas = (resp.json() or []) if resp is not None and not err else []
             if not schemas:
+                engine_lines = await _engine_keys_lines(base_url, headers, class_name)
+                if engine_lines:
+                    return "\n".join(engine_lines)
+                if err:
+                    return err
                 return (
                     f"No filterable attributes reported for '{class_name}'. Check "
                     "the class name (it is the OpenAEV model class, e.g. Asset)."
@@ -696,6 +727,7 @@ def register(
                 "instead of returning an error, so always take keys from this list "
                 "rather than guessing."
             )
+            lines.extend(await _engine_keys_lines(base_url, headers, class_name))
             return "\n".join(lines)
 
         if action == "get":
@@ -910,7 +942,8 @@ def register(
                 "tenant id and which PREVIEW FEATURES are enabled - check this "
                 "first when an endpoint unexpectedly 404s, because disabled "
                 "preview features answer 404 rather than 403), 'filter_keys' "
-                "(class_name - the valid filter 'key' names for an entity; "
+                "(class_name - the valid filter 'key' names for an entity, and "
+                "the engine keys query_openaev_analytics accepts; "
                 "OpenAEV silently coerces an unknown filter operator to 'eq' "
                 "instead of erroring, so never guess keys), 'get' (full "
                 "settings), 'get_runtime' (the runtime settings in full: inject "
