@@ -1,9 +1,9 @@
-"""manage_opencti_notifier, _trigger and _notification refuse fields the action does not apply.
+"""manage_opencti_notifier, _trigger and _notification name fields the action does not apply as ignored; the action runs.
 
 Same contract as the user, group, role, profile, ingestion, form, label and workspace
 tools: a field the chosen action ignores (name on delete, recipients on update,
 event_types on an activity live trigger, an argument the tool does not declare) is
-named in the answer and nothing is sent to OpenCTI.
+named in the answer as ignored and the action runs with the rest.
 """
 
 import contextlib
@@ -68,15 +68,14 @@ async def _run(executor: CallableToolExecutor, tool: str, arguments: dict[str, A
         ("manage_opencti_notification", {"action": "delete", "notification_id": "x1", "read": True}, "read"),
     ],
 )
-async def test_unapplied_field_is_refused_and_nothing_is_sent(
+async def test_unapplied_field_is_named_as_ignored_and_the_action_runs(
     monkeypatch: pytest.MonkeyPatch, tool: str, arguments: dict[str, Any], named: str
 ) -> None:
-    executor, calls = _build(monkeypatch)
+    executor, _calls = _build(monkeypatch)
     result = await _run(executor, tool, arguments)
     assert f"action '{arguments['action']}' does not apply" in result.content, result.content
     assert named in result.content
-    assert "nothing was written" in result.content
-    assert calls.count == 0
+    assert "ignored and the rest ran" in result.content
 
 
 async def test_notifier_delete_with_its_own_field_runs(monkeypatch: pytest.MonkeyPatch) -> None:

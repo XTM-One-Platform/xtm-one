@@ -45,6 +45,7 @@ from app.integrations.http import RefreshableHeaders, parse_compound_token
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import _format_entity, _format_relationship
+from .access import install_ignored_arguments_note
 from .access import register as register_access
 from .audit import register as register_audit
 from .capabilities import install_capability_gate
@@ -183,6 +184,9 @@ def build_tools(
     # name before any request, the capability gate's probe included
     # (ids.short_id_refusal).
     install_short_id_guard(executor, [tool.name for tool in tools])
+    # An argument the chosen action does not apply never refuses the whole action:
+    # the action runs and the answer names what was ignored (access._refuse_unapplied).
+    install_ignored_arguments_note(executor, [tool.name for tool in tools])
     # How this platform names the objects it holds, read on the tools' own
     # connection (naming.platform_names_lookup): the grounded STIX extraction
     # names its objects so, and its bundle merges into them.

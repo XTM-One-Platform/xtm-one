@@ -981,6 +981,27 @@ across the organization for `list_ctem_cases`, bound to that case alone for
 `get_ctem_case` (its note then says "on this case").
 Tests: `tests/test_ctem_read_tools.py`.
 
+### 8.1bis Signals and cases on any agent: the `ctem` group
+
+The built-in group `ctem` (`backend/app/services/builtin_tools/ctem.py`)
+offers every signal tool (`record_ctem_signal`, `record_ctem_signals`,
+`list_ctem_signals`), `triage_ctem_signals` (dismiss, restore or re-check, the
+`POST /ctem-signals/triage` rule) and every case tool to any agent it is
+bound to, wired by `ctem_tools_for` in `agent_chat` and `assignment_engine`
+after `ctem_read`, XTM One mode only. The reach is the acting person's CTEM
+right (`services/ctem_access.py`, #1748): an administrator or a `decide` right
+reads and acts on the organization's signals and cases, a `view` right reads
+them and every write is refused with the view-only message, anyone else works
+on the signals they recorded and the cases their own read shows.
+`triage_ctem_signals` reaches exactly what `list_ctem_signals` reads
+(`reader_scope`, agent reach): an administrator kept to their own by strict
+admin access for agent tools or the Platform Health reach triages only their
+own signals. Administrator
+operations (`delete_ctem_cases`, the `ctem_repair` group) stay administrator
+only. A function the agent already carries (by its built-in slug or through
+`ctem_read`) stays its own; the group never offers it twice.
+Tests: `tests/test_ctem_group_tools.py`.
+
 ### 8.2 Administrator repairs: the `ctem_repair` group
 
 Three administrator routes have agent tools in the built-in group

@@ -281,6 +281,12 @@ def build_builtin_tool_member_catalog(*, include_disabled: bool = False) -> dict
     crp_defs, _ = build_ctem_repair_tools(user_id="")
     catalog["ctem_repair"] = _extract(crp_defs)
 
+    # CTEM signal and case tools on any agent (#1748), from the real builder.
+    from app.services.builtin_tools import build_ctem_tools
+
+    ctem_defs, _ = build_ctem_tools(user_id="", agent_id="")
+    catalog["ctem"] = _extract(ctem_defs)
+
     # Memory Steward (#8258): every call checks the work is Platform Health's.
     from app.services.builtin_tools import build_memory_steward_tools
 

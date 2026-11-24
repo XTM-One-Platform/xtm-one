@@ -222,7 +222,12 @@ async def link_identity(
     if identity_id:
         node = await read_identity(gql, identity_id)
         if node is None:
-            raise LookupError(f"OpenCTI holds no Organization {identity_id}")
+            # An entity created in an OpenCTI draft is not readable outside it: such an id is refused, never
+            # stored as linked; it links once the draft is approved.
+            raise LookupError(
+                f"OpenCTI holds no Organization {identity_id} outside a draft. If it was created in an OpenCTI "
+                "draft, approve that draft first, then link it again; nothing was linked."
+            )
         if node.get("x_opencti_organization_type") or not wanted_type:
             return node["id"], None
         _, err = await gql(

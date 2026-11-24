@@ -130,7 +130,9 @@ async def test_other_errors_are_passed_through_without_a_read(monkeypatch: pytes
     assert not any("playbook(id:" in q for q in stub.queries)
 
 
-async def test_success_is_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_success_points_to_the_step_read(monkeypatch: pytest.MonkeyPatch) -> None:
     content = await _execute(monkeypatch, _Stub(None))
 
-    assert content == "Triggered playbook pb-1 on entity report-1 (accepted: True)."
+    assert content.startswith("Triggered playbook pb-1 on entity report-1 (accepted: True).")
+    assert "action='get'" in content
+    assert "failed step" in content
