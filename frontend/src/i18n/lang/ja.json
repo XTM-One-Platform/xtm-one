@@ -21552,5 +21552,8 @@
   "Synced from OpenCRQ: not run yet": "OpenCRQ から同期: まだ実行されていません",
   "OpenCRQ sync off": "OpenCRQ 同期はオフです",
   "OpenCRQ sync paused": "OpenCRQ 同期は一時停止中です",
-  "OpenCRQ sync failed {timeAgo}": "{timeAgo}に OpenCRQ 同期が失敗しました"
+  "OpenCRQ sync failed {timeAgo}": "{timeAgo}に OpenCRQ 同期が失敗しました",
+  "Link supporting assets to primary assets": "サポート資産を主要資産にリンク",
+  "On by default. Off: primary assets are imported without their supporting assets.": "既定でオン。オフ: 主要資産はサポート資産なしでインポートされます。",
+  "Links each primary asset to the supporting assets OpenCRQ attaches to it, matched by OpenCRQ id or name. A link you add or remove by hand always wins.": "OpenCRQ が各主要資産に関連付けるサポート資産を、OpenCRQ ID または名前で照合してリンクします。手動で追加または削除したリンクが常に優先されます。"
 }
