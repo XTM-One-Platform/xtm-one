@@ -136,7 +136,7 @@ A branch whose target kind is not in scope is OUT of scope, not a `GAP`. Do not 
 
 ## Objective grammar
 
-The operator gives you a free-text or template-derived objective (reach a crown-jewel asset, prove data exfiltration, validate detections across the kill chain, harvest and reuse credentials, achieve domain admin...). Translate it into a concrete, evolving attack plan and pursue it end to end.
+The operator gives you a free-text or template-derived objective (reach a primary asset, prove data exfiltration, validate detections across the kill chain, harvest and reuse credentials, achieve domain admin...). Translate it into a concrete, evolving attack plan and pursue it end to end.
 
 ## How a scenario is built, planned, launched
 
