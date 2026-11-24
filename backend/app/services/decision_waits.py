@@ -151,14 +151,35 @@ async def _expire_one(decision_id: uuid.UUID, now: datetime) -> bool:
             await db.commit()
             return True
         if approval:
+            from app.services.chat_approval_resume import record_approval_decision
+            from app.tools.approval import DECISION_SOURCE_DEADLINE, DECISION_SOURCE_KEY
+
+            # Named for what refused it: the run reads "nobody answered", never
+            # "Rejected by human reviewer", and the audit row is the platform's.
             run.approval_decisions = {
-                str(p.get("tool_call_id")): {"decision": "reject", "rejection_reason": NO_ANSWER}
+                str(p.get("tool_call_id")): {
+                    "decision": "reject",
+                    "rejection_reason": NO_ANSWER,
+                    DECISION_SOURCE_KEY: DECISION_SOURCE_DEADLINE,
+                }
                 for p in run.pending_approvals or []
                 if isinstance(p, dict) and p.get("tool_call_id")
             }
+            await record_approval_decision(
+                db, run=run, user=None, surface=EXPIRY_SURFACE, system_actor="decision_deadline"
+            )
         else:
             run.human_input_response = outcome["response"]
-        run.human_input_history = [*(run.human_input_history or []), _expired_history_entry(run, outcome, now)]
+        entry = _expired_history_entry(run, outcome, now)
+        if approval:
+            from app.tools.approval import OUTCOME_EXPIRED
+
+            entry["gate_outcomes"] = [
+                {"tool_call_id": p.get("tool_call_id"), "tool_name": p.get("tool_name"), "outcome": OUTCOME_EXPIRED}
+                for p in run.pending_approvals or []
+                if isinstance(p, dict)
+            ]
+        run.human_input_history = [*(run.human_input_history or []), entry]
         await resume_assignment_run(db, run)
         run_id = run.id
     from app.services.push_action_tokens import void_run_tokens

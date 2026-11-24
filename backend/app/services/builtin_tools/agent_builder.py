@@ -1191,6 +1191,10 @@ def _iter_run_search_sections(run, *, hide_parent: bool = False) -> list[tuple[s
         value = getattr(run, label, None)
         if value:
             sections.append((label, str(value)))
+    # The durable trail of who answered which pause, gate decisions included:
+    # the live question / response above are cleared at the resume.
+    for i, entry in enumerate(getattr(run, "human_input_history", None) or []):
+        sections.append((f"human_input_history[{i}]", _dump(entry)))
     for label in ("trigger_payload", "trigger_context", "actions_taken"):
         value = getattr(run, label, None)
         if not value:
@@ -1309,6 +1313,40 @@ def _event_latency_line(run) -> str | None:
     return line + ")"
 
 
+#: Entries of ``human_input_history`` get_run lists (the newest ones).
+_HUMAN_INPUT_HISTORY_SHOWN = 20
+
+
+def _human_input_history_lines(run: Any) -> list[str]:
+    """get_run's "Human input history" block: who answered each pause, when,
+    from where, and each gated call's outcome (``human_input_history``).
+
+    A pause the deadline ended reads ``by Deadline``: never a person.
+    """
+    history = [e for e in (getattr(run, "human_input_history", None) or []) if isinstance(e, dict)]
+    if not history:
+        return []
+    shown = history[-_HUMAN_INPUT_HISTORY_SHOWN:]
+    lines = ["", f"Human input history ({len(history)}):"]
+    if len(shown) < len(history):
+        lines.append(f"(the {len(shown)} newest; search=... reads every entry)")
+    for entry in shown:
+        who = entry.get("responded_by") or "unknown"
+        if entry.get("responded_by_id"):
+            who += f" (id: `{entry['responded_by_id']}`)"
+        head = f"- {entry.get('responded_at') or '?'}: {entry.get('resolution') or '?'} by {who}"
+        if entry.get("surface"):
+            head += f" via {entry['surface']}"
+        lines.append(head)
+        if entry.get("response"):
+            lines.append(f"  answer: {entry['response']}")
+        for gate in entry.get("gate_outcomes") or []:
+            if isinstance(gate, dict):
+                name = gate.get("tool_name") or "?"
+                lines.append(f"  {name} ({gate.get('tool_call_id') or '?'}): {gate.get('outcome')}")
+    return lines
+
+
 def _search_run_content(run, search: str, *, hide_parent: bool = False) -> str:
     """Grep a single run's full content and format a bounded excerpt report."""
     from app.services.assignment_helpers import _UNTRUSTED_TRIGGER_TYPES
@@ -1356,7 +1394,7 @@ def _search_run_content(run, search: str, *, hide_parent: bool = False) -> str:
     if not parts:
         return (
             f"No matches for `{search}` in this run (searched result "
-            "summary, error, human-input exchange, trigger payload, "
+            "summary, error, human-input exchange and history, trigger payload, "
             "trigger context, actions taken, and the full conversation "
             "log). The run likely never touched what you are looking for "
             "— try other candidate runs, or conclude that no run handled "
@@ -9114,6 +9152,7 @@ def build_agent_builder_tool(
                 if run.human_input_response:
                     parts.append("Human response:")
                     parts.append(run.human_input_response)
+            parts.extend(_human_input_history_lines(run))
             if run.error:
                 parts.append("")
                 parts.append("Error:")

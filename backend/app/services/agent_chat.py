@@ -7795,6 +7795,7 @@ async def run_agent_chat(
                                 "conversation, so the approved call was not "
                                 "run. Ask again if you still want it."
                             ),
+                            "source": "not_offered",
                         }
                         for _cid, _d in resume_decisions.items()
                     }
