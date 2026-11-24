@@ -3113,7 +3113,9 @@ async def set_fleet_case_ownership(
     request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    _gate: None = Depends(require_agentic_ai_licensed),
+    # Its catch-up hands open cases to the fleet, which starts new AI work, as
+    # Enable does: refused while AI is off.
+    _gate: None = Depends(require_agentic_ai),
 ) -> FleetResponse:
     """Set the CTEM cases a fleet runs (#1966): administrators, any fleet but a built-in one.
 
