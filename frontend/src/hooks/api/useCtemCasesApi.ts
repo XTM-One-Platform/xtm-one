@@ -117,7 +117,9 @@ interface CtemCaseValidation {
   provider: string;
   kind: string;
   ref: string;
-  result: "passed" | "not_exposed" | "failed" | "pending";
+  /** "inconclusive" (#1692): a pass that proves nothing, the word given kept in `reported_result`. */
+  result: "passed" | "not_exposed" | "failed" | "pending" | "inconclusive";
+  reported_result?: "passed" | "not_exposed";
   at: string;
   mitigation_only?: boolean;
   note?: string | null;

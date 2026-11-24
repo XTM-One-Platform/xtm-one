@@ -3333,6 +3333,7 @@
   "Includes {count, plural, one {# pre-configured assignment} other {# pre-configured assignments}} (disabled by default)": "{count, plural, other {#件の事前設定済みアサインメント}}が含まれます（デフォルトで無効）",
   "Incorporating your message…": "メッセージを取り込み中…",
   "Incomplete": "未完了",
+  "Inconclusive": "判定不能",
   "Increase priority": "優先度を上げる",
   "Indexing stalled: no embedding provider configured": "インデックス作成が停止：埋め込みプロバイダーが未設定",
   "Inferred from the error text rather than read from a status code or an exception type: indicative, not authoritative.": "ステータスコードや例外の種類からではなく、エラーテキストから推定されたものです。参考情報であり、確定的ではありません。",

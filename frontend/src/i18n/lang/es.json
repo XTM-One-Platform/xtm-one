@@ -3333,6 +3333,7 @@
   "Includes {count, plural, one {# pre-configured assignment} other {# pre-configured assignments}} (disabled by default)": "Incluye {count, plural, one {# asignación preconfigurada} other {# asignaciones preconfiguradas}} (desactivadas por defecto)",
   "Incorporating your message…": "Incorporando su mensaje…",
   "Incomplete": "Incompleto",
+  "Inconclusive": "No concluyente",
   "Increase priority": "Aumentar la prioridad",
   "Indexing stalled: no embedding provider configured": "Indexación detenida: no hay un proveedor de embeddings configurado",
   "Inferred from the error text rather than read from a status code or an exception type: indicative, not authoritative.": "Inferido del texto del error en lugar de leerse de un código de estado o un tipo de excepción: indicativo, no concluyente.",
