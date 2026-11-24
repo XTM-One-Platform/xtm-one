@@ -8,6 +8,7 @@
  */
 import { Icon } from "@filigran/design-system";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CASE_SECTION_ICON, CaseCardTitleText } from "./case-icons";
 import type { CtemCaseTreatmentPlan } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { safeExternalUrl } from "@/lib/utils";
@@ -21,7 +22,9 @@ export function CaseTreatmentPlan({ plan }: { plan: CtemCaseTreatmentPlan | null
   return (
     <Card data-testid="ctem-case-treatment-plan">
       <CardHeader>
-        <CardTitle>{t_i18n("Treatment plan")}</CardTitle>
+        <CardTitle>
+          <CaseCardTitleText icon={CASE_SECTION_ICON.treatment_plan}>{t_i18n("Treatment plan")}</CaseCardTitleText>
+        </CardTitle>
       </CardHeader>
       <CardContent className="content-base">
         {!plan ? (

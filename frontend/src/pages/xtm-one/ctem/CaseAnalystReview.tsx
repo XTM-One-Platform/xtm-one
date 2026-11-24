@@ -13,6 +13,7 @@
  */
 import { Icon } from "@filigran/design-system";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CASE_SECTION_ICON, CaseCardTitleText } from "./case-icons";
 import { WorkItemDecisionCard } from "@/components/work-items/WorkItemDecisionCard";
 import type { CtemCaseEvent, CtemCaseGateRecord, CtemCaseThreatPackage } from "@/hooks/api/useCtemCasesApi";
 import { useWorkItems } from "@/hooks/api/useWorkItemApi";
@@ -23,7 +24,7 @@ import { waitsForAnswer } from "@/lib/work-item-context";
 import { GATE_CARD_STATUS_LABEL, latestGate } from "./case-gates";
 import { REVIEW_GATE, REVIEW_STAGE_LABEL, reviewAnswerer, reviewDecisionKey, reviewStage } from "./case-review";
 import { CaseSectionReason } from "./CaseSectionReason";
-import { GateDecisionRecord, gateRecordOf } from "./GateDecisionRecord";
+import { GateDecisionRecord, gateAnswererName, gateRecordOf } from "./GateDecisionRecord";
 
 export function CaseAnalystReview({
   caseId,
@@ -68,13 +69,15 @@ export function CaseAnalystReview({
   return (
     <Card data-testid="ctem-case-analyst-review">
       <CardHeader>
-        <CardTitle>{t_i18n("Analyst review")}</CardTitle>
+        <CardTitle>
+          <CaseCardTitleText icon={CASE_SECTION_ICON.analyst_review}>{t_i18n("Analyst review")}</CaseCardTitleText>
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 content-base">
         {record && (
           <GateDecisionRecord
             record={record}
-            byLabel={record.answered_by?.name ? null : who}
+            byLabel={record.answered_by?.name ? null : (gateAnswererName(record, history, personName) ?? who)}
             testId="ctem-case-analyst-review-record"
           />
         )}

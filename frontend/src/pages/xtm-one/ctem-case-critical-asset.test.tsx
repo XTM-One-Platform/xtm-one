@@ -3,7 +3,7 @@
 // reached", never the raw event key.
 
 import { describe, expect, it, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { renderWithProviders } from "@/testing/providers";
@@ -74,6 +74,8 @@ describe("CtemCaseDetail critical asset reached (CTEM-13-UI)", () => {
         </Routes>
       </MemoryRouter>,
     );
+    // The History Table opens a row's dialog, where the event is worded (#1679).
+    fireEvent.click(screen.getByTestId("ctem-audit-row"));
     const event = screen.getByTestId("ctem-case-source-event");
     expect(event).toHaveTextContent("Critical asset reached");
     expect(event).not.toHaveTextContent("critical_asset_reached");
