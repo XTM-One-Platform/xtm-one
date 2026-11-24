@@ -96,8 +96,8 @@ export function caseLoopMarks(c: Pick<CtemCaseSummary, "state" | "validations" |
   };
 }
 
-/** Product names of the validation providers a case can carry. */
-const PROVIDER_NAMES: Readonly<Record<string, string>> = { openaev: "OpenAEV", opencti: "OpenCTI", aikido: "Aikido Security" };
+/** Product names of the validation providers a case can carry (one map: the loop marks and the Validation card, #1782). */
+export const PROVIDER_NAMES: Readonly<Record<string, string>> = { openaev: "OpenAEV", opencti: "OpenCTI", aikido: "Aikido Security" };
 
 /** The re-test words of an OpenAEV member of a case (CTEM-14-UI). @i18n-keys */
 const RETEST_LABELS = {

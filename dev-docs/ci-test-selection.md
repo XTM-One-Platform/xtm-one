@@ -38,6 +38,10 @@ Replayed over `main`'s last 60 merges (18 Nov 2026, timed on the queue's own run
 - **core** (ten shards) for any other change.
 - **a2a** and **evaluation** for their own modules and the modules those import directly, their specs, their UI (a `frontend/src` path naming the area), and what every project runs on: the images and their start script, the compose files, the dependencies, the database and its init script, the suite's harness (a file of `tests_e2e/` outside the areas' directories that is not a core spec) (`E2E_EVERY_PROJECT`). Their code reaches most of `app` through the agentic loop, so a deeper rule would run them on every change; the nightly run covers the rest. A new Playwright project needs its `E2E_AREAS` entry: `tests/test_selection.py` fails while `e2e.yml`'s matrix shards a project the selection does not decide.
 
+## A red merge group stops at once
+
+Every job a required check reads (`CI verdict`, `E2E (Playwright / Chromium)`) ends with `.github/actions/fail-fast`, which runs only when that job failed in a merge group. It cancels the run, and the aggregator (`if: always()`) still runs: it sees the failed and cancelled jobs and reports red, so the queue ejects the pull request at its first red job instead of after the slowest shard (on the queue of 19-23 Nov 2026, a red group reported red after 9.5 minutes, its first red job having ended at 6.7), and rebuilds the groups behind it sooner. A pull request, a manual run and the nightly run keep running every job to its end, so their reports stay whole. Only the jobs that carry the step get `actions: write`, next to the workflows' read-only default. `tests/test_ci_fail_fast.py` pins the shape on both workflows.
+
 ## Running everything on a branch
 
 `gh workflow run ci.yml --ref <branch>` and `gh workflow run e2e.yml --ref <branch>` run every job. The Video Studio ultra render (50 to 85 minutes) runs nightly, opening an issue when it fails, and by hand: `gh workflow run video-studio-ultra.yml --ref <branch>` before merging a change to the render pipeline.

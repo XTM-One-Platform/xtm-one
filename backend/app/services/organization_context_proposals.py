@@ -75,6 +75,8 @@ PROPOSABLE_PRODUCT_PATHS: tuple[str, ...] = ("shipped_products",)
 #: The knowledge bases of the organization's procedures (#11543), linked by an agent as by the form (#1691).
 #: Linking grants nothing: a reader only searches the linked bases it can read already.
 PROPOSABLE_KNOWLEDGE_PATHS: tuple[str, ...] = ("enterprise_knowledge",)
+#: What each PIR asks, its owner, cadence and crown jewels, by PIR id (#1773). Not a contract field.
+PROPOSABLE_PIR_PATHS: tuple[str, ...] = ("pir_details",)
 
 
 def _contract_paths(role: str) -> tuple[str, ...]:
@@ -91,6 +93,7 @@ def _contract_paths(role: str) -> tuple[str, ...]:
             + PROPOSABLE_RATE_PATHS
             + PROPOSABLE_PRODUCT_PATHS
             + PROPOSABLE_KNOWLEDGE_PATHS
+            + PROPOSABLE_PIR_PATHS
         )
     return tuple(path for path, _label in TRACKED_CONTRACT_FIELDS)
 
@@ -116,10 +119,13 @@ def _is_empty(path: str, value: Any) -> bool:
 
 
 def validate_field_changes(organization: Any, current: dict[str, Any], changes: list[dict[str, Any]]) -> list[dict]:
-    """*changes* (``[{field, value, basis}]``) checked against *organization*'s contract, values normalised.
+    """*changes* (``[{field, value, basis, confirm}]``) checked against *organization*'s contract, values normalised.
 
     ``ProposalError`` names the first bad change. Each kept change carries
     ``current`` and ``conflict`` (the current version already holds a value).
+    ``confirm`` true on a value equal to the current one keeps it as a
+    confirmation (#1773): nothing changes but who confirmed it, when and on
+    what basis (``confirmed`` true on the kept change).
     """
     from app.services.organizations import parse_for
 
@@ -150,17 +156,22 @@ def validate_field_changes(organization: Any, current: dict[str, Any], changes: 
         except ValueError as exc:
             raise ProposalError(f"'{path}': {exc}") from None
         current_value = _get(current, path)
-        if _is_empty(path, normalised) or normalised == current_value:
-            raise ProposalError(f"'{path}': the proposed value is empty or already the current one.")
-        kept.append(
-            {
-                "field": path,
-                "value": normalised,
-                "basis": str(raw.get("basis") or "").strip()[:BASIS_MAX_CHARS],
-                "current": current_value,
-                "conflict": not _is_empty(path, current_value),
-            }
-        )
+        confirmed = bool(raw.get("confirm")) and not _is_empty(path, normalised) and normalised == current_value
+        if not confirmed and (_is_empty(path, normalised) or normalised == current_value):
+            raise ProposalError(
+                f"'{path}': the proposed value is empty or already the current one "
+                "(send confirm: true to record that the current value is still right)."
+            )
+        entry = {
+            "field": path,
+            "value": normalised,
+            "basis": str(raw.get("basis") or "").strip()[:BASIS_MAX_CHARS],
+            "current": current_value,
+            "conflict": not confirmed and not _is_empty(path, current_value),
+        }
+        if confirmed:
+            entry["confirmed"] = True
+        kept.append(entry)
     return kept
 
 
@@ -284,10 +295,15 @@ async def apply_changes(
     data = orgs.parse_for(target, current.profile if current else {}).model_dump(mode="json")
     kept = validate_field_changes(target, data, list(changes or []))
     source = f"{AGENT_SOURCE_PREFIX}{agent_name}".strip()[:300] if agent_name.strip() else CHAT_SOURCE
+    from datetime import UTC, datetime
+
     sources: dict[str, dict[str, str]] = {}
     for entry in kept:
         data = _set(data, entry["field"], entry["value"])
         sources[entry["field"]] = {"source": source, "basis": entry.get("basis") or ""}
+        if entry.get("confirmed"):
+            # #1773: the value is unchanged; the version records who confirmed it and when.
+            sources[entry["field"]]["confirmed_at"] = datetime.now(UTC).isoformat(timespec="seconds")
     try:
         profile = orgs.parse_for(target, data)
     except ValueError as exc:
@@ -304,7 +320,7 @@ async def apply_changes(
         "organization_id": str(target.id),
         "organization": target.name,
         "version": row.version,
-        "fields": [entry["field"] for entry in kept],
+        "fields": [entry["field"] + (" (confirmed)" if entry.get("confirmed") else "") for entry in kept],
     }
 
 

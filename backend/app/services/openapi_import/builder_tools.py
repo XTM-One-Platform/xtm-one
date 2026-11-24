@@ -231,10 +231,22 @@ async def replace_for_update(
 
 
 def tools_line(row: Any) -> str:
-    """One result line naming the tools an imported spec exposes."""
-    names = [str(t.get("name")) for t in (row.active_tools or []) if isinstance(t, dict)]
-    shown = ", ".join(names[:40]) + (f" and {len(names) - 40} more" if len(names) > 40 else "")
-    line = f"\n  \u2022 Tools ({len(names)}): {shown or 'none selected'}"
+    """The operation table of the tools an imported spec exposes.
+
+    One line per tool with its access and ``METHOD /path``
+    (``service.operation_table``), so the caller never rebuilds it from the spec.
+    """
+    from app.services.openapi_import.service import imported_operations, operation_table
+
+    operations = imported_operations(row.active_tools)
+    reads = sum(1 for op in operations if op["access"] == "read")
+    if operations:
+        line = (
+            f"\n  \u2022 Tools ({len(operations)}: {reads} read, {len(operations) - reads} write):\n"
+            + operation_table(row.active_tools)
+        )
+    else:
+        line = "\n  \u2022 Tools (0): none selected"
     if row.warnings:
         line += f"\n  \u2022 Spec warnings: {len(row.warnings)} (see the integration's API page)"
     return line
