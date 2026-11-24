@@ -212,12 +212,15 @@ async def test_the_list_filters_by_state(api):
 
 
 async def test_a_viewer_sees_the_shared_case_with_only_their_issues_and_restricted_rows(api):
-    """#11613: the hidden issue is a bare Restricted row; scores and assets cover the visible one only."""
+    """#11613: the hidden issue is a bare Restricted row. The detail aggregates are unknown for this
+    viewer (null with aggregates_restricted), never a count of the visible issue read as the case's."""
     async with api.client as client:
         listed = (await client.get("/api/v1/ctem-cases")).json()["cases"][0]
         detail = (await client.get(f"/api/v1/ctem-cases/{api.case.id}")).json()
     assert listed["issue_count"] == 2 and listed["restricted_count"] == 1
-    assert listed["max_cvss"] == 9.8 and listed["asset_count"] == 1 and listed["priority"] == "critical"
+    assert listed["max_cvss"] is None and listed["asset_count"] is None and listed["priority"] == "critical"
+    assert listed["aggregates_restricted"] is True and listed["members_without_details"] == 1
+    assert detail["aggregates_restricted"] is True and detail["asset_count"] == listed["asset_count"]
     assert detail["issues"][0]["name"] == "CVE-2026-1"
     assert detail["issues"][1] == {"restricted": True}
     text = str(detail)

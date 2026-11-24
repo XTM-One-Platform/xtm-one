@@ -20,6 +20,36 @@ from app.core.database import get_db
 from app.services import ctem_cases as rules
 from app.services import ctem_cases_source as source
 
+
+def _write_db() -> SimpleNamespace:
+    """A session double for the write phase: counts commits, records each statement executed."""
+    executed: list[tuple[str, Any]] = []
+    db = SimpleNamespace(commits=0, executed=executed)
+
+    async def commit() -> None:
+        db.commits += 1
+
+    async def execute(statement: Any, params: Any = None) -> None:
+        db.executed.append((str(statement), params))
+
+    db.commit, db.execute = commit, execute
+    return db
+
+
+@pytest.fixture(autouse=True)
+def _no_gate_reads(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
+    """The gate's reads prepared before the write phase (#1953), recorded instead of read."""
+    from app.services import ctem_scope_gate_store as gate_store
+
+    prepared: list[Any] = []
+
+    async def prepare(db: Any, organization_id: Any) -> None:
+        prepared.append(organization_id)
+
+    monkeypatch.setattr(gate_store, "prepare_system_reads", prepare)
+    return prepared
+
+
 STACK = [{"product": "Tomcat", "vendor": "Apache", "cpe": "", "label": "Apache Tomcat"}]
 SOFTWARE = [
     {"id": "sw-1", "name": "tomcat", "vendor": "apache", "cpe": ""},
@@ -174,12 +204,7 @@ async def test_recompute_merges_and_resolves_only_what_the_reader_confirms_close
     async def forget(user_id, vertical):
         forgotten.append(user_id)
 
-    db = SimpleNamespace(commits=0)
-
-    async def commit():
-        db.commits += 1
-
-    db.commit = commit
+    db = _write_db()
     monkeypatch.setattr(source, "read_open_issues", read)
     monkeypatch.setattr(source.store, "apply_recompute", apply)
     monkeypatch.setattr(source.store, "member_ids", members)
@@ -187,6 +212,8 @@ async def test_recompute_merges_and_resolves_only_what_the_reader_confirms_close
     answer = await source.recompute_for_user(db, organization_id=uuid.uuid4(), user_id="u-1", vertical="cyber")
     assert answer["applied"] is True and answer["created"] == 1 and answer["issues"] == 1
     assert db.commits == 1 and forgotten == ["u-1"]
+    # #1953: the write phase fails fast on a held row instead of waiting until the statement timeout.
+    assert [p for s, p in db.executed if "lock_timeout" in s] == [{"timeout": source.WRITE_LOCK_TIMEOUT}]
     assert asked == [["opencti:v-1", "opencti:v-9"]]
     assert applied == [["opencti:v-9"] if complete else []]
 
@@ -269,12 +296,7 @@ async def test_recompute_applies_when_opencti_and_openaev_answer(monkeypatch):
     async def forget(user_id, vertical):
         return None
 
-    db = SimpleNamespace()
-
-    async def commit():
-        return None
-
-    db.commit = commit
+    db = _write_db()
     monkeypatch.setattr(source, "_organization_software", stack)
     monkeypatch.setattr(source, "_user_creds", creds)
     monkeypatch.setattr(source, "_read_opencti", read_opencti)
@@ -334,3 +356,22 @@ async def test_recompute_route_builds_the_callers_own_cases_and_is_throttled(mon
     assert first.status_code == 200 and first.json()["applied"] is True
     assert second.status_code == 429
     assert calls == [(str(member.id), "cyber")]
+
+
+@pytest.mark.asyncio
+async def test_recompute_route_answers_409_while_another_recompute_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#1953: one recompute per organization at a time; the route never queues a second one."""
+    from app.services import ctem_cases_refresh as refresh
+
+    async def busy(db: Any, *, organization_id: Any, user_id: str, vertical: str) -> dict[str, Any]:
+        return refresh.busy_answer(vertical)
+
+    async def slot(user_id: str, vertical: str) -> bool:
+        return True
+
+    monkeypatch.setattr(refresh, "recompute_as", busy)
+    monkeypatch.setattr(api_module, "recompute_slot", slot)
+    member = SimpleNamespace(id=uuid.uuid4(), ctem_vertical=None, is_admin=False)
+    async with _client(monkeypatch, member) as client:  # type: ignore[no-untyped-call]
+        answer = await client.post("/api/v1/ctem-cases/recompute")
+    assert answer.status_code == 409 and "already running" in answer.json()["detail"]

@@ -58,7 +58,7 @@ def no_database(monkeypatch):
 
 
 async def test_a_builtin_fleet_is_generated_like_a_custom_one(no_database) -> None:
-    """#9768 S2: built-in and custom at the same level; the built-in result is a local version."""
+    """#9768 S2: the draft reads a built-in fleet like a custom one (the save refuses it, #1956)."""
     answer = {k: f"Text of {k}." for k in DOC_SECTIONS}
     model = _Model(json.dumps(answer))
     draft = await gen.draft_fleet_documentation(object(), uuid.uuid4(), _fleet(is_builtin=True), llm=model)
@@ -114,17 +114,17 @@ async def test_a_stale_regenerate_is_refused_before_the_model(no_database, finge
     assert model.messages == []
 
 
-async def test_a_builtin_regenerate_is_a_local_version_that_keeps_the_shipped_copy(no_database, fingerprint) -> None:
+async def test_a_builtin_regenerate_is_refused_before_the_model(no_database, fingerprint) -> None:
+    """#1956: the seed writes a built-in fleet's documentation; no regenerate, no local version."""
     shipped = {"sections": {"purpose": "Shipped."}, "structured": None}
-    fleet = _fleet(
-        is_builtin=True,
-        documentation={"sections": {"purpose": "Shipped."}, "version": 1, "updated_by": "seed", "shipped": shipped},
-    )
-    answer = {k: f"Text of {k}." for k in DOC_SECTIONS}
-    await gen.regenerate_fleet_documentation(object(), uuid.uuid4(), fleet, llm=_Model(json.dumps(answer)))
-    assert fleet.documentation["local"] is True
-    assert fleet.documentation["shipped"] == shipped
-    assert fleet.documentation["version"] == 2
+    stored = {"sections": {"purpose": "Shipped."}, "version": 1, "updated_by": "seed", "shipped": shipped}
+    fleet = _fleet(is_builtin=True, documentation=dict(stored))
+    model = _Model(json.dumps({k: f"Text of {k}." for k in DOC_SECTIONS}))
+    with pytest.raises(FleetActionRefusedError) as refused:
+        await gen.regenerate_fleet_documentation(object(), uuid.uuid4(), fleet, llm=model)
+    assert refused.value.status_code == 422
+    assert model.messages == []
+    assert fleet.documentation == stored
 
 
 async def test_an_unknown_section_is_refused_before_the_model(no_database) -> None:
@@ -448,6 +448,8 @@ class _ExpiringFleet:
     Reading an expired attribute of an async session's object lazy-loads it
     outside the greenlet: MissingGreenlet in production, a RuntimeError here.
     """
+
+    is_builtin = False
 
     def __init__(self) -> None:
         self._id = uuid.uuid4()
