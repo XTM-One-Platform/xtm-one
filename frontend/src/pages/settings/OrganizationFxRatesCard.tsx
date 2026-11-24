@@ -15,11 +15,13 @@ import { DateFilterInput } from "@/components/ui/date-filter-input";
 import { Input } from "@/components/ui/input";
 import { RowRemoveButton } from "@/components/ui/row-remove-button";
 import { SECTION_BAR_ANCHOR_CLASS } from "@/components/ui/section-index";
-import { SettingsCard, SettingsField, SettingsSaveBar, settingsFieldHintId } from "@/components/ui/settings-form";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import { SettingsCard, SettingsField, SettingsSaveBar, settingsFieldHintId, settingsFieldLabelId } from "@/components/ui/settings-form";
 import { useToast } from "@/components/ui/toast";
 import { useOrganizationContext, usePatchOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
+import { CURRENCIES } from "@/lib/organization-profile";
 import {
   emptyRateRow,
   FX_RATE_PROBLEM_LABELS,
@@ -31,6 +33,10 @@ import {
   REFERENCE_BOUNDS,
 } from "@/lib/organization-reference";
 import { OrganizationProvenanceLine } from "./OrganizationProvenanceLine";
+
+/** The currency picker's options (the list the Currency field offers), a stored code outside it kept first. */
+const currencyOptionsOf = (value: string) =>
+  (value && !(CURRENCIES as readonly string[]).includes(value) ? [value, ...CURRENCIES] : [...CURRENCIES]).map((code) => ({ value: code, label: code }));
 
 const RatesGlyph = ({ className }: { className?: string }) => <Icon name="chart-column" size={16} className={className} aria-hidden />;
 
@@ -121,68 +127,92 @@ export function OrganizationFxRatesCard({ id: anchorId }: { id: string }) {
           {rows.map((row, index) => {
             const problem = rateProblem(row);
             const rowId = `${id}-rate-${index}`;
+            const currencyInvalid = problem === "currency" || problem === "same_currency" ? true : undefined;
+            // The date picker draws its own error line; the row line then keeps the help.
+            const rowProblem = problem === "date" ? null : problem;
             return (
-              <SettingsField
+              <div
                 key={index}
-                id={rowId}
-                label={t_i18n("Rate {index}", { index: index + 1 })}
-                helper={t_i18n("One unit of the first currency is the rate in the second, on that day, from that source.")}
-                error={problem ? t_i18n(FX_RATE_PROBLEM_LABELS[problem]) : undefined}
-                wide
+                role="group"
+                className="space-y-2 border-t border-elevation-subtle-soft pt-3 first:border-t-0 first:pt-0"
+                aria-labelledby={`${rowId}-title`}
+                aria-describedby={settingsFieldHintId(rowId)}
+                data-testid="settings.organization.fx-rates.row"
               >
-                <div className="flex flex-wrap items-center gap-2" data-testid="settings.organization.fx-rates.row">
-                  <Input
-                    id={rowId}
-                    className="w-20"
-                    aria-label={t_i18n("From currency")}
-                    aria-describedby={settingsFieldHintId(rowId)}
-                    aria-invalid={problem === "currency" || problem === "same_currency" ? true : undefined}
-                    placeholder="USD"
-                    maxLength={3}
-                    value={row.from_currency}
-                    onChange={(e) => setRow(index, { from_currency: e.target.value.toUpperCase() })}
-                  />
-                  <span aria-hidden>→</span>
-                  <Input
-                    className="w-20"
-                    aria-label={t_i18n("To currency")}
-                    aria-invalid={problem === "currency" || problem === "same_currency" ? true : undefined}
-                    placeholder={currency || "EUR"}
-                    maxLength={3}
-                    value={row.to_currency}
-                    onChange={(e) => setRow(index, { to_currency: e.target.value.toUpperCase() })}
-                  />
-                  <Input
-                    className="w-28"
-                    inputMode="decimal"
-                    aria-label={t_i18n("Rate")}
-                    aria-invalid={problem === "rate" ? true : undefined}
-                    placeholder="0.92"
-                    value={row.rate}
-                    onChange={(e) => setRow(index, { rate: e.target.value })}
-                  />
-                  <DateFilterInput
-                    className="w-40"
-                    aria-label={t_i18n("As of")}
-                    value={row.as_of}
-                    error={problem === "date" ? t_i18n(FX_RATE_PROBLEM_LABELS.date) : undefined}
-                    onChange={(day) => setRow(index, { as_of: day })}
-                  />
-                  <Input
-                    className="min-w-40 flex-1"
-                    aria-label={t_i18n("Source")}
-                    aria-invalid={problem === "source" ? true : undefined}
-                    placeholder={t_i18n("European Central Bank")}
-                    maxLength={REFERENCE_BOUNDS.source}
-                    value={row.source}
-                    onChange={(e) => setRow(index, { source: e.target.value })}
-                  />
+                <div className="flex items-center justify-between gap-2">
+                  <p id={`${rowId}-title`} className="font-medium">{t_i18n("Rate {index}", { index: index + 1 })}</p>
                   <RowRemoveButton
                     label={t_i18n("Remove rate {index}", { index: index + 1 })}
                     onClick={() => setRows(rows.filter((_, i) => i !== index))}
                   />
                 </div>
-              </SettingsField>
+                {/* UX round 1 B2-B4: currency pickers, a visible label on every field, one baseline (no counter). */}
+                <div className="grid items-start gap-3 sm:grid-cols-2 md:grid-cols-6">
+                  <SettingsField id={`${rowId}-from`} label={t_i18n("From currency")}>
+                    <SearchableSelect
+                      id={`${rowId}-from`}
+                      aria-labelledby={settingsFieldLabelId(`${rowId}-from`)}
+                      aria-invalid={currencyInvalid}
+                      options={currencyOptionsOf(row.from_currency)}
+                      sort={false}
+                      value={row.from_currency || null}
+                      onValueChange={(value) => setRow(index, { from_currency: value })}
+                    />
+                  </SettingsField>
+                  <SettingsField id={`${rowId}-to`} label={t_i18n("To currency")}>
+                    <SearchableSelect
+                      id={`${rowId}-to`}
+                      aria-labelledby={settingsFieldLabelId(`${rowId}-to`)}
+                      aria-invalid={currencyInvalid}
+                      options={currencyOptionsOf(row.to_currency)}
+                      sort={false}
+                      value={row.to_currency || null}
+                      onValueChange={(value) => setRow(index, { to_currency: value })}
+                    />
+                  </SettingsField>
+                  <SettingsField id={`${rowId}-rate`} label={t_i18n("Rate")}>
+                    <Input
+                      id={`${rowId}-rate`}
+                      aria-labelledby={settingsFieldLabelId(`${rowId}-rate`)}
+                      inputMode="decimal"
+                      aria-invalid={problem === "rate" ? true : undefined}
+                      placeholder="0.92"
+                      value={row.rate}
+                      onChange={(e) => setRow(index, { rate: e.target.value })}
+                    />
+                  </SettingsField>
+                  <SettingsField id={`${rowId}-as-of`} label={t_i18n("As of")}>
+                    <DateFilterInput
+                      id={`${rowId}-as-of`}
+                      className="w-full"
+                      aria-labelledby={settingsFieldLabelId(`${rowId}-as-of`)}
+                      value={row.as_of}
+                      error={problem === "date" ? t_i18n(FX_RATE_PROBLEM_LABELS.date) : undefined}
+                      onChange={(day) => setRow(index, { as_of: day })}
+                    />
+                  </SettingsField>
+                  <SettingsField id={`${rowId}-source`} label={t_i18n("Source")} className="md:col-span-2">
+                    <Input
+                      id={`${rowId}-source`}
+                      aria-labelledby={settingsFieldLabelId(`${rowId}-source`)}
+                      aria-invalid={problem === "source" ? true : undefined}
+                      placeholder={t_i18n("European Central Bank")}
+                      title={row.source || undefined}
+                      value={row.source}
+                      onChange={(e) => setRow(index, { source: e.target.value })}
+                    />
+                  </SettingsField>
+                </div>
+                <p
+                  id={settingsFieldHintId(rowId)}
+                  role={rowProblem ? "alert" : undefined}
+                  className={rowProblem ? "content-compact text-feedback-error-primary" : "content-compact text-default-secondary"}
+                >
+                  {rowProblem
+                    ? t_i18n(FX_RATE_PROBLEM_LABELS[rowProblem])
+                    : t_i18n("One unit of the first currency is the rate in the second, on that day, from that source.")}
+                </p>
+              </div>
             );
           })}
           <Button

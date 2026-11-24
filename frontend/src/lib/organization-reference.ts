@@ -122,7 +122,7 @@ function pirDetailEmpty(detail: PirDetail): boolean {
 
 /**
  * The PIR details a save sends: one per PIR still followed that says something, trimmed,
- * each crown jewel once. A PIR no longer followed loses its details, as it loses its name.
+ * each primary asset once. A PIR no longer followed loses its details, as it loses its name.
  */
 export function pirDetailsOf(pirIds: readonly string[], details: Record<string, PirDetail>): Record<string, PirDetail> {
   const kept: Record<string, PirDetail> = {};
@@ -144,7 +144,7 @@ export function pirDetailsOf(pirIds: readonly string[], details: Record<string, 
 export function pirDetailProblem(detail: PirDetail): string | null {
   if (detail.question.trim().length > REFERENCE_BOUNDS.question) return "The question is 1,000 characters at most.";
   if (detail.owner.trim().length > REFERENCE_BOUNDS.owner) return "The owner is 200 characters at most.";
-  if (detail.crown_jewels.length > REFERENCE_BOUNDS.jewels) return "50 crown jewels at most.";
+  if (detail.crown_jewels.length > REFERENCE_BOUNDS.jewels) return "50 primary assets at most.";
   return null;
 }
 

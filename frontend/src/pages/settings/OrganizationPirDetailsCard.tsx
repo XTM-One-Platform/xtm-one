@@ -3,8 +3,8 @@
 /**
  * Settings > Organization > Identity and risk: "PIR details" (#1773).
  * What the organization says about each PIR it follows (OpenCTI keeps the PIR itself):
- * the intelligence question, its owner, how often it is reviewed and the crown jewels it
- * serves. One row per PIR of `pir_ids`, the PIR by its last known name. Edit
+ * the intelligence question, its owner, how often it is reviewed and the primary assets it
+ * serves (the `crown_jewels` field). One row per PIR of `pir_ids`, the PIR by its last known name. Edit
  * (administrators) opens the rows; Save sends `pir_details` alone through PATCH (#1738).
  */
 
@@ -51,7 +51,9 @@ export function OrganizationPirDetailsCard({ id: anchorId }: { id: string }) {
   const names = profile?.pir_names ?? {};
   const stored = profile?.pir_details ?? {};
   const jewels = (profile?.crown_jewels ?? []).map((jewel) => jewel.name).filter(Boolean);
-  const nameOf = (pirId: string) => names[pirId] || pirId;
+  // Never the PIR id (#9615), and never the bare name the PIR chips already show (#11589): one titled line per PIR.
+  const titleOf = (pirId: string, index: number) =>
+    names[pirId] ? t_i18n("PIR: {name}", { name: names[pirId] }) : t_i18n("PIR {number}, name not available", { number: index + 1 });
   const detailOf = (pirId: string) => draft?.[pirId] ?? stored[pirId] ?? emptyPirDetail();
 
   const problems = draft ? pirIds.map((pirId) => pirDetailProblem(detailOf(pirId))) : [];
@@ -88,7 +90,7 @@ export function OrganizationPirDetailsCard({ id: anchorId }: { id: string }) {
       data-testid="settings.organization.pir-details"
       icon={PirGlyph}
       title={t_i18n("PIR details")}
-      description={t_i18n("For each PIR followed: the question it answers, who owns it, how often it is reviewed and the crown jewels it serves. OpenCTI keeps the PIR itself.")}
+      description={t_i18n("For each PIR followed: the question it answers, who owns it, how often it is reviewed and the primary assets it serves. OpenCTI keeps the PIR itself.")}
       action={
         !draft && isAdmin && pirIds.length > 0 ? (
           <Button
@@ -114,12 +116,12 @@ export function OrganizationPirDetailsCard({ id: anchorId }: { id: string }) {
             if (!draft) {
               return (
                 <div key={pirId} className="space-y-1" data-testid="settings.organization.pir-details.row">
-                  <p className="font-medium break-words">{nameOf(pirId)}</p>
+                  <p className="font-medium break-words">{titleOf(pirId, index)}</p>
                   <SettingsReadGrid>
                     <SettingsReadField label={t_i18n("Question")} value={detail.question} wide />
                     <SettingsReadField label={t_i18n("Owner")} value={detail.owner} />
                     <SettingsReadField label={t_i18n("Review cadence")} value={cadenceText(detail.review_cadence)} />
-                    <SettingsReadField label={t_i18n("Crown jewels served")} value={detail.crown_jewels.join(", ")} wide />
+                    <SettingsReadField label={t_i18n("Primary assets served")} value={detail.crown_jewels.join(", ")} wide />
                   </SettingsReadGrid>
                 </div>
               );
@@ -127,12 +129,13 @@ export function OrganizationPirDetailsCard({ id: anchorId }: { id: string }) {
             const problem = problems[index];
             return (
               <div key={pirId} className="space-y-2 border-t border-elevation-subtle-soft pt-3 first:border-t-0 first:pt-0" data-testid="settings.organization.pir-details.row">
-                <p className="font-medium break-words">{nameOf(pirId)}</p>
+                <p className="font-medium break-words">{titleOf(pirId, index)}</p>
                 <SettingsFieldGrid>
                   <SettingsField
                     id={`${rowId}-question`}
                     label={t_i18n("Question")}
                     helper={t_i18n("The intelligence question this PIR answers.")}
+                    info={t_i18n("Example: Which ransomware groups target European banks this quarter? Agents read it with the PIR in the organization context. Left empty, they read the PIR by its name alone.")}
                     error={problem ? t_i18n(problem) : undefined}
                     wide
                   >
@@ -146,19 +149,31 @@ export function OrganizationPirDetailsCard({ id: anchorId }: { id: string }) {
                       onChange={(e) => setDetail(pirId, { question: e.target.value })}
                     />
                   </SettingsField>
-                  <SettingsField id={`${rowId}-owner`} label={t_i18n("Owner")}>
+                  <SettingsField
+                    id={`${rowId}-owner`}
+                    label={t_i18n("Owner")}
+                    helper={t_i18n("The team or person who answers for this PIR.")}
+                    info={t_i18n("Example: CTI team. Agents read it with the PIR in the organization context. Left empty, the PIR names no owner.")}
+                  >
                     <Input
                       id={`${rowId}-owner`}
                       aria-labelledby={settingsFieldLabelId(`${rowId}-owner`)}
+                      aria-describedby={settingsFieldHintId(`${rowId}-owner`)}
                       maxLength={REFERENCE_BOUNDS.owner}
                       value={detail.owner}
                       onChange={(e) => setDetail(pirId, { owner: e.target.value })}
                     />
                   </SettingsField>
-                  <SettingsField id={`${rowId}-cadence`} label={t_i18n("Review cadence")}>
+                  <SettingsField
+                    id={`${rowId}-cadence`}
+                    label={t_i18n("Review cadence")}
+                    helper={t_i18n("How often the question is reviewed.")}
+                    info={t_i18n("Example: Quarterly. Agents read it with the PIR in the organization context. Left empty, the PIR has no review cadence.")}
+                  >
                     <SearchableSelect
                       id={`${rowId}-cadence`}
                       aria-labelledby={settingsFieldLabelId(`${rowId}-cadence`)}
+                      aria-describedby={settingsFieldHintId(`${rowId}-cadence`)}
                       pinned={[{ value: NO_CADENCE, label: t_i18n("Not set") }]}
                       options={REVIEW_CADENCES.filter(Boolean).map((cadence) => ({ value: cadence, label: t_i18n(REVIEW_CADENCE_LABELS[cadence]) }))}
                       sort={false}
@@ -166,10 +181,17 @@ export function OrganizationPirDetailsCard({ id: anchorId }: { id: string }) {
                       onValueChange={(value) => setDetail(pirId, { review_cadence: (value === NO_CADENCE ? "" : value) as ReviewCadence })}
                     />
                   </SettingsField>
-                  <SettingsField id={`${rowId}-jewels`} label={t_i18n("Crown jewels served")} wide>
+                  <SettingsField
+                    id={`${rowId}-jewels`}
+                    label={t_i18n("Primary assets served")}
+                    helper={t_i18n("The declared primary assets this PIR protects.")}
+                    info={t_i18n("Example: Payment platform, picked from the primary assets declared above. Agents read them with the PIR in the organization context. Left empty, the PIR names no primary asset.")}
+                    wide
+                  >
                     <MultiSelect
                       id={`${rowId}-jewels`}
-                      aria-label={t_i18n("Crown jewels served")}
+                      aria-label={t_i18n("Primary assets served")}
+                      aria-describedby={settingsFieldHintId(`${rowId}-jewels`)}
                       options={[...new Set([...jewels, ...detail.crown_jewels])].map((name) => ({ value: name, label: name }))}
                       selected={detail.crown_jewels}
                       onToggle={(name) =>
@@ -178,8 +200,8 @@ export function OrganizationPirDetailsCard({ id: anchorId }: { id: string }) {
                         })
                       }
                       placeholder={t_i18n("None")}
-                      searchPlaceholder={t_i18n("Search a crown jewel")}
-                      emptyOptionsLabel={t_i18n("No crown jewel declared")}
+                      searchPlaceholder={t_i18n("Search a primary asset")}
+                      emptyOptionsLabel={t_i18n("No primary asset declared")}
                       noMatchLabel={t_i18n("No match")}
                     />
                   </SettingsField>

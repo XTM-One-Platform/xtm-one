@@ -12,9 +12,10 @@ import { Textarea } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { MultiSelect } from "@/components/ui/multi-select";
 import { TagInput } from "@/components/ui/tag-input";
 import { SearchableSelect, type SelectOption } from "@/components/ui/searchable-select";
-import { SettingsField, settingsFieldLabelId } from "@/components/ui/settings-form";
+import { SettingsField, settingsFieldHintId, settingsFieldLabelId } from "@/components/ui/settings-form";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -30,7 +31,7 @@ import {
   type RowsOutcome,
 } from "@/hooks/api/useOrganizationAssetsApi";
 import { useFormatter } from "@/i18n";
-import { ASSET_CRITICALITY_LABELS, parseTypeValue, typeOptions, typeValue } from "@/lib/asset-taxonomy";
+import { ASSET_CATEGORY_LABELS, ASSET_CRITICALITY_LABELS, parseTypeValue, typeOptions, typeValue } from "@/lib/asset-taxonomy";
 import { ENVIRONMENT_LABELS, EXPOSURE_LABELS } from "@/lib/organization-import-filters";
 import type { GroupMembershipRule } from "@/lib/organization-profile";
 import { fieldEditable, membershipRuleOf, nameProblem, newAssetGroupRow, newAssetRow, rowPatches, type InventorySection, type RowRef } from "./inventory-entries";
@@ -434,13 +435,49 @@ function EntryForm({
             <p className="content-compact text-default-secondary">
               {t_i18n("Assets also join the group when they match one of these, besides those naming it. Left empty, members are named one by one.")}
             </p>
-            <SettingsField id="entry-rule_tags" label={t_i18n("Tags")} helper={t_i18n("Assets carrying one of these tags, for example pci.")}>
+            <SettingsField
+              id="entry-rule_tags"
+              label={t_i18n("Tags")}
+              helper={t_i18n("Assets carrying one of these tags, for example pci.")}
+              info={t_i18n("The tags of the inventory rows. An asset carrying one of them joins the group. Left empty, tags add no member.")}
+            >
               <TagInput id="entry-rule_tags" value={listOf(draft.rule_tags)} onChange={(tags) => set("rule_tags")(JSON.stringify(tags))} disabled={locked("membership_rule")} />
             </SettingsField>
-            <SettingsField id="entry-rule_categories" label={t_i18n("Categories")} helper={t_i18n("Assets of one of these categories, for example web_application.")}>
-              <TagInput id="entry-rule_categories" value={listOf(draft.rule_categories)} onChange={(tags) => set("rule_categories")(JSON.stringify(tags))} disabled={locked("membership_rule")} preserveCase />
+            <SettingsField
+              id="entry-rule_categories"
+              label={t_i18n("Categories")}
+              helper={t_i18n("Assets of one of these categories, for example {category}.", { category: t_i18n(ASSET_CATEGORY_LABELS.web_application) })}
+              info={t_i18n("The asset categories of the inventory. An asset of one of them joins the group. Left empty, categories add no member.")}
+            >
+              {/* UX round 1 B6: the closed category list, by its labels, never the raw keys. */}
+              <MultiSelect
+                id="entry-rule_categories"
+                aria-label={t_i18n("Categories")}
+                aria-describedby={settingsFieldHintId("entry-rule_categories")}
+                options={[
+                  ...Object.entries(ASSET_CATEGORY_LABELS).map(([value, label]) => ({ value, label: t_i18n(label) })),
+                  ...listOf(draft.rule_categories)
+                    .filter((value) => !(value in ASSET_CATEGORY_LABELS))
+                    .map((value) => ({ value, label: value })),
+                ]}
+                selected={listOf(draft.rule_categories)}
+                onToggle={(value) => {
+                  const current = listOf(draft.rule_categories);
+                  set("rule_categories")(JSON.stringify(current.includes(value) ? current.filter((v) => v !== value) : [...current, value]));
+                }}
+                disabled={locked("membership_rule")}
+                placeholder={t_i18n("None")}
+                searchPlaceholder={t_i18n("Search a category")}
+                emptyOptionsLabel={t_i18n("No category")}
+                noMatchLabel={t_i18n("No match")}
+              />
             </SettingsField>
-            <SettingsField id="entry-rule_name_contains" label={t_i18n("Name contains")} helper={t_i18n("Assets whose name holds this text, case ignored.")}>
+            <SettingsField
+              id="entry-rule_name_contains"
+              label={t_i18n("Name contains")}
+              helper={t_i18n("Assets whose name holds this text, case ignored.")}
+              info={t_i18n("Example: payments. An asset whose name holds it joins the group. Left empty, the name adds no member.")}
+            >
               <Input id="entry-rule_name_contains" aria-labelledby={settingsFieldLabelId("entry-rule_name_contains")} value={draft.rule_name_contains} onChange={(e) => set("rule_name_contains")(e.target.value)} disabled={locked("membership_rule")} maxLength={200} />
             </SettingsField>
           </fieldset>
