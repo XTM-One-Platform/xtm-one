@@ -474,7 +474,8 @@ async def test_options_of_a_source_that_fails_name_the_reason(monkeypatch):
 @pytest.mark.asyncio
 async def test_a_source_that_cannot_feed_the_section_is_refused_without_io():
     read = await imp.read_source(None, user_id=uuid.uuid4(), section="pirs", source="openaev", filters={})
-    assert read.error == "openaev cannot feed pirs"
+    # #1774: the refusal names what the source feeds instead.
+    assert read.error == "openaev cannot feed pirs: it feeds assets, asset_groups, tech_stack"
 
 
 @pytest.mark.asyncio
