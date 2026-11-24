@@ -151,7 +151,7 @@ const FIELD_IMPORT_SECTION: Record<SourcedSection, ImportSectionKey> = {
   assets_exposure: "assets",
   asset_groups: "asset_groups",
   software: "software",
-  crown_jewels: "crown_jewels",
+  primary_assets: "primary_assets",
 };
 
 /**
