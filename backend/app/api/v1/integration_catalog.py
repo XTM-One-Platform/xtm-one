@@ -36,6 +36,7 @@ from app.integrations.providers.rydoo.webhooks import TRIGGER_EVENTS as RYDOO_TR
 from app.integrations.providers.spendesk.webhooks import EVENT_TYPES as SPENDESK_EVENT_TYPES
 from app.integrations.providers.spendesk.webhooks import TRIGGER_EVENTS as SPENDESK_TRIGGER_EVENTS
 from app.services.dealhub_events import catalog_events as _dealhub_catalog_events
+from app.services.opencrq_job_events import FILTER_KEYS as _OPENCRQ_FILTER_KEYS
 from app.services.tool_classification import definition_tool_type
 from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
 
@@ -6318,18 +6319,21 @@ PROVIDER_CATALOG = {
                 "label": "Risk scenarios recomputed",
                 "description": "Triggers when a CRQ simulation or the re-pricing of risk scenarios finishes in OpenCRQ. Uses polling (every minute).",
                 "mechanism": "polling",
+                "filter_keys": _OPENCRQ_FILTER_KEYS,
             },
             {
                 "event": "finding_score_changed",
                 "label": "Finding scores recomputed",
                 "description": "Triggers when OpenCRQ finishes recomputing finding scores. Uses polling (every minute).",
                 "mechanism": "polling",
+                "filter_keys": _OPENCRQ_FILTER_KEYS,
             },
             {
                 "event": "control_validation_ingested",
                 "label": "Control validation ingested",
                 "description": "Triggers when OpenCRQ finishes ingesting OpenAEV results or recording the proven posture. Uses polling (every minute).",
                 "mechanism": "polling",
+                "filter_keys": _OPENCRQ_FILTER_KEYS,
             },
         ],
         "setup_guide": {

@@ -226,11 +226,23 @@ class RunHeld:
     refusal: str
 
 
-class DeadlineCutTimeoutError(TimeoutError):
+class AssignmentTimeoutError(TimeoutError):
+    """The run's own wall-clock bound fired around the agent loop.
+
+    ``run_stop_reason`` is what the failed run records as its ``stop_reason``
+    (#1695): without it a run the timeout stopped read like any other failure.
+    """
+
+    run_stop_reason = "timeout"
+
+
+class DeadlineCutTimeoutError(AssignmentTimeoutError):
     """A run's loop timed out on a bound its orchestration deadline cut short
     of its budget by more than the grace (``deadline_cut_budget``): the
     engine's timeout, credited back free and recorded as
     ``engine_deadline_exceeded``, as the dead-letter it replaces was."""
+
+    run_stop_reason = "deadline"
 
 
 def _unstart_reclaimed_run(run: AssignmentRun, reclaimed: bool) -> bool:
@@ -715,16 +727,21 @@ def _loop_timeout_error(
     """What a ``TimeoutError`` around the agent loop is recorded as.
 
     The deadline's (:class:`DeadlineCutTimeoutError`) when the ``wait_for``
-    fired on a bound the deadline cut; the run's own otherwise, and
-    for a timeout raised before the bound elapsed (a setup call).
+    fired on a bound the deadline cut; the run's own
+    (:class:`AssignmentTimeoutError`) when it fired on the run's budget; a
+    plain ``TimeoutError`` for a timeout raised before the bound elapsed (a
+    setup call), which did not stop the run on its timeout.
     """
     message = _format_assignment_timeout_error(
         run_timeout, elapsed_seconds, max_iterations
     )
-    if deadline_cut and run_timeout is not None and elapsed_seconds >= run_timeout:
+    bound_fired = run_timeout is not None and elapsed_seconds >= run_timeout
+    if deadline_cut and bound_fired:
         return DeadlineCutTimeoutError(
             f"{message}: what its deadline left of its {int(budget or 0)}s budget"
         )
+    if bound_fired:
+        return AssignmentTimeoutError(message)
     return TimeoutError(message)
 
 
@@ -920,6 +937,35 @@ def _apply_iteration_timeout_floor(
         )
         return floor
     return timeout
+
+
+def describe_effective_timeout(
+    stored_timeout_seconds: int | None,
+    effective_max_iterations: int,
+    grace_seconds: float,
+) -> str:
+    """The run budget an assignment's runs get, and why, in one line (#1695).
+
+    The same arithmetic as :func:`_apply_iteration_timeout_floor` (without its
+    log line): the stored ``timeout_seconds`` raised to the 600 s static floor
+    or to ``max_iterations`` x 20 s, plus the orchestration grace, counted from
+    the run's start (queue time is not charged).
+    """
+    stored = _UNSET_TIMEOUT_FALLBACK_SECONDS if stored_timeout_seconds is None else stored_timeout_seconds
+    if stored <= 0:
+        return "no wall-clock bound (timeout disabled)"
+    iteration_floor = effective_max_iterations * _MIN_SECS_PER_ITERATION
+    effective = max(stored, _MIN_ASSIGNMENT_TIMEOUT_SECONDS, iteration_floor)
+    if effective == stored:
+        why = "the stored value, above the floor"
+    elif effective == iteration_floor:
+        why = f"raised to the iteration floor, max_iterations {effective_max_iterations} x {_MIN_SECS_PER_ITERATION}s"
+    else:
+        why = f"raised to the {_MIN_ASSIGNMENT_TIMEOUT_SECONDS}s static floor"
+    return (
+        f"{int(effective)}s ({why}) plus {int(grace_seconds)}s grace, counted from "
+        f"the run's start; a run stopped by it ends failed with stop_reason timeout"
+    )
 
 
 def resolve_effective_max_iterations(
@@ -3837,6 +3883,43 @@ async def _run_unless_stopped(executor, call, cancel_event) -> str:
     return result.content
 
 
+def _refusal_without_run(decision: dict[str, Any], *, decided: bool) -> tuple[str | None, str]:
+    """(gate outcome, first sentence of the tool result) of a call not run.
+
+    Only a verdict a person gave reads "Rejected by human reviewer": a call
+    the deadline refused, one the decision set carried no verdict for and one
+    whose tool left the run's surface each say what refused it, so neither the
+    agent nor an auditor credits a person with a refusal nobody made. The
+    outcome is ``None`` for a person's refusal (the caller keeps
+    ``human_<verdict>``).
+    """
+    from app.tools.approval import (
+        DECISION_SOURCE_DEADLINE,
+        DECISION_SOURCE_KEY,
+        DECISION_SOURCE_NOT_OFFERED,
+        OUTCOME_EXPIRED,
+        OUTCOME_NOT_OFFERED,
+        OUTCOME_UNDECIDED,
+    )
+
+    source = decision.get(DECISION_SOURCE_KEY)
+    if source == DECISION_SOURCE_DEADLINE:
+        return OUTCOME_EXPIRED, (
+            "Not run: nobody answered the approval request before its deadline, "
+            "so the platform refused it. No person rejected it."
+        )
+    if source == DECISION_SOURCE_NOT_OFFERED:
+        reason = decision.get("rejection_reason") or "This tool is no longer available."
+        return OUTCOME_NOT_OFFERED, f"Not run: {reason}"
+    if not decided:
+        return OUTCOME_UNDECIDED, (
+            "Not run: the approval answer carried no verdict for this call, so it "
+            "was refused by default. No person rejected it."
+        )
+    reason = decision.get("rejection_reason") or "No reason given."
+    return None, f"Rejected by human reviewer: {reason}"
+
+
 async def _apply_approval_decisions(
     *,
     executor,
@@ -3868,18 +3951,23 @@ async def _apply_approval_decisions(
     for proposal in proposals:
         call_id = proposal.get("tool_call_id")
         tool_name = proposal.get("tool_name", "")
+        decided = isinstance(decisions.get(call_id), dict)
         decision = decisions.get(call_id) or {}
         verdict = decision.get("decision", "reject")
+        refusal = None if is_approval(verdict) else _refusal_without_run(decision, decided=decided)
 
         if outcomes is not None:
-            # The human's verdict IS this call's gate outcome (FR-020).
-            outcomes[call_id] = f"human_{verdict}"
+            # The human's verdict IS this call's gate outcome (FR-020); a
+            # refusal no person gave is named for what refused it.
+            if refusal and refusal[0]:
+                outcomes[call_id] = refusal[0]
+            else:
+                outcomes[call_id] = f"human_{verdict}"
 
         # An allow-list, so anything unrecognised refuses. This is the last
         # point before execution: a verdict the transports let through — a typo,
         # a stale client's value — must not become consent here.
-        if not is_approval(verdict):
-            reason = decision.get("rejection_reason") or "No reason given."
+        if refusal is not None:
             # A structured refusal, not an exception: the agent should be able
             # to read this, understand the action was declined, and adapt —
             # rather than treat it as a tool malfunction and retry blindly.
@@ -3887,7 +3975,7 @@ async def _apply_approval_decisions(
                 ChatMessage(
                     role="tool",
                     content=(
-                        f"Rejected by human reviewer: {reason} "
+                        f"{refusal[1]} "
                         f"The {tool_name} call was not executed. Do not retry it "
                         f"unchanged; propose an alternative or ask how to proceed."
                     ),
@@ -8093,6 +8181,7 @@ async def execute_assignment_run(
                                     "assignment, so the approved call was not "
                                     "run."
                                 ),
+                                "source": "not_offered",
                             }
                             for _cid, _d in _resume_decisions.items()
                         }
@@ -9335,6 +9424,10 @@ async def execute_assignment_run(
             _apply_failure_classification(run, _failure)
             run.status = "failed"
             run.error = error_msg
+            # A run its own timeout (or its deadline) stopped says so in a
+            # field, not only in the error text (#1695).
+            if _timeout_stop := getattr(e, "run_stop_reason", None):
+                run.stop_reason = _timeout_stop
             # Persist the trace id even on failure — that's when deep-linking
             # to the Langfuse trace matters most (usage only when the loop
             # returned before the run failed).
@@ -9499,6 +9592,21 @@ async def execute_assignment_run(
             run.result_summary,
             is_company=run.is_company_managed,
         )
+        # The background tasks the run spawned that never started have no one
+        # left to collect them: cancelled with their cause, so none runs for
+        # nobody. A running child keeps running and delivers as before.
+        if run.status in ("failed", "completed"):
+            try:
+                from app.services.sub_agent import cancel_unstarted_tasks_of_ended_run
+
+                async with async_session() as _children_db:
+                    await cancel_unstarted_tasks_of_ended_run(_children_db, run.id)
+            except Exception as exc:
+                logger.warning(
+                    "Run %s ended; its never-started background tasks were not cancelled: %s",
+                    run.id,
+                    format_exception_message(exc),
+                )
         # After the commit: a subscriber that reads the run sees how it ended.
         if run.status in ("failed", "completed"):
             # The frictions the run left with no disposition: counted on the

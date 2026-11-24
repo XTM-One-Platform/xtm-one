@@ -471,6 +471,91 @@ async def retire_for_new_turn(
     return retired
 
 
+#: ``AuditLog.entity_type`` of an approval decision on an assignment run, the
+#: same as its refusals: one place answers "who decided what on this run".
+RUN_APPROVAL_ENTITY = "assignment_run_approval"
+
+
+def approval_verdict_rows(proposals: Any, decisions: Any) -> list[dict[str, Any]]:
+    """One ``{tool_call_id, tool, verdict, reason}`` per proposal, in call order.
+
+    A call the set carries no verdict for reads ``undecided``: it is refused by
+    default, and the row must not claim a verdict nobody gave.
+    """
+    decided = decisions if isinstance(decisions, dict) else {}
+    rows: list[dict[str, Any]] = []
+    for proposal in proposals or []:
+        if not isinstance(proposal, dict):
+            continue
+        call_id = str(proposal.get("tool_call_id") or "")
+        decision = decided.get(call_id)
+        decision = decision if isinstance(decision, dict) else None
+        rows.append(
+            {
+                "tool_call_id": call_id,
+                "tool": proposal.get("tool_name"),
+                "verdict": str(decision.get("decision") or "reject") if decision else "undecided",
+                "reason": (decision or {}).get("rejection_reason") or None,
+            }
+        )
+    return rows
+
+
+async def record_approval_decision(
+    db: AsyncSession,
+    *,
+    run: Any,
+    user: Any | None,
+    surface: str | None,
+    system_actor: str | None = None,
+) -> None:
+    """Audit the verdicts just stored on *run* (``approval_decisions``).
+
+    One row per decision set, one entry per call in ``details.verdicts``: the
+    actor, each verdict, its reason, the tool, the run and the surface. A
+    person's decision is written under *user*; a decision no person made (the
+    deadline) passes ``user=None`` and *system_actor*, and is written as
+    ``system:<actor>`` anchored on the run's owner, so the trail never credits
+    a person with it. Flushed in the caller's transaction, inside a savepoint,
+    and never raises: an audit write that failed must not cost the decision.
+    """
+    from app.services.audit import log_audit, log_system_audit
+
+    verdicts = approval_verdict_rows(run.pending_approvals, run.approval_decisions)
+    if not verdicts:
+        return
+    counts: dict[str, int] = {}
+    for row in verdicts:
+        counts[row["verdict"]] = counts.get(row["verdict"], 0) + 1
+    tally = ", ".join(f"{n} {verdict}" for verdict, n in sorted(counts.items()))
+    details = {"run_id": str(run.id), "surface": surface, "verdicts": verdicts}
+    try:
+        async with db.begin_nested():
+            if user is not None:
+                await log_audit(
+                    db,
+                    user=user,
+                    action="decide",
+                    entity_type=RUN_APPROVAL_ENTITY,
+                    entity_id=run.id,
+                    summary=f"Approval decision on run {run.id}: {tally}",
+                    details=details,
+                )
+            elif system_actor and run.user_id:
+                await log_system_audit(
+                    db,
+                    actor=system_actor,
+                    anchor_user_id=run.user_id,
+                    action="decide",
+                    entity_type=RUN_APPROVAL_ENTITY,
+                    entity_id=run.id,
+                    summary=f"Approval decision on run {run.id} by {system_actor}: {tally}",
+                    details=details,
+                )
+    except Exception:
+        logger.warning("Could not audit the approval decision on run %s (%s)", run.id, surface, exc_info=True)
+
+
 async def record_refused_decision(
     db: AsyncSession,
     *,

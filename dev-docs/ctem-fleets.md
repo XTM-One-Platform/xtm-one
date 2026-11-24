@@ -1267,8 +1267,17 @@ kinds and `event_poller` polls them every 60 s.
   inclusive, so the run at the cursor comes back and the seen set skips it
   (`message_id` = `opencrq:<tenant>:<run id>`). The first poll starts from now.
 - The run receives `entity`: run id, kind, status, enqueued, started and
-  finished times, processed and expected totals, progress message, trigger,
-  attempt, tenant and the instance URL.
+  finished times, processed and expected totals, progress message (OpenCRQ's
+  `currentStep`), trigger, attempt, tenant and the instance URL.
+- Moved scenarios (#1663): a `crq-price-recompute` run's progress message is
+  a JSON summary; its `moved` ids, `movedCount` and, when OpenCRQ reports it,
+  `movedAle` travel as `moved_scenario_ids`, `moved_count` and `moved_ale`
+  (`risk_scenario_id`, `ale_before`, `ale_after`, `ale_delta`) on the payload
+  top level and the entity, merged across a coalesced page. The filter keys
+  of every OpenCRQ event (`FILTER_KEYS`, declared in the catalog) are
+  `tenant_id`, `kind`, `risk_scenario_ids`, `moved_scenario_ids` and
+  `moved_count`, all payload fields, so `{"moved_scenario_ids": "<id>"}`
+  runs the assignment when that scenario moved.
 - Coalescing (#1417): a poll page is ONE event, not one per job. The newest
   run is the entity and the `message_id`; `covers` lists the runs of the page
   (their own `message_id`s, marked seen at dispatch), `run_count` counts them,

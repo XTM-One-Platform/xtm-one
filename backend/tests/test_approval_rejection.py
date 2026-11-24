@@ -143,7 +143,9 @@ async def test_missing_decision_defaults_to_reject():
     messages, executor = await _apply([_proposal("c1")], {})
 
     assert executor.calls == []
-    assert "Rejected by human" in messages[0].content
+    # Refused by default, and never credited to a person who gave no verdict.
+    assert "Rejected by human" not in messages[0].content
+    assert "No person rejected it" in messages[0].content
 
 
 async def test_approve_always_executes_like_approve():

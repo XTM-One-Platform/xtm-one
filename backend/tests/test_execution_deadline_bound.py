@@ -545,7 +545,8 @@ def test_a_deadline_is_spent_once_the_grace_is_all_that_is_left():
     [
         (600.5, True, "DeadlineCutTimeoutError"),
         (30.0, True, "TimeoutError"),
-        (1800.5, False, "TimeoutError"),
+        # The run's own budget fired: a timeout stop (#1695).
+        (1800.5, False, "AssignmentTimeoutError"),
     ],
     ids=["the-cut-bound-fired", "a-setup-call-timed-out", "the-budget-fired"],
 )
