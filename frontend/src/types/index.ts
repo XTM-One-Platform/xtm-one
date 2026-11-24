@@ -6577,6 +6577,10 @@ export interface WorkItem {
   attachments?: WorkItemAttachments;
   /** The agent behind each run its stamped notes name (detail only, #776). */
   note_runs?: Record<string, WorkItemNoteRun>;
+  /** Whether the reader may change it (detail only, #1845); absent on a list row. */
+  can_write?: boolean;
+  /** Why the reader may not change it, when can_write is false (detail only, #1845). */
+  read_only_reason?: string | null;
 }
 
 /** The run a stamped note names: its agent as the reader may see it, and whether the reader may open it. */
