@@ -17681,7 +17681,7 @@
   "The import failed.": "インポートに失敗しました。",
   "The rules the CTEM funnel and its agents apply. Money thresholds stay in Risk appetite.": "CTEM ファネルとそのエージェントが適用するルール。金額のしきい値はリスク許容度に残ります。",
   "Unknown primary assets (ignored): {names}": "不明な主要資産 (無視): {names}",
-  "Upload a CSV with columns: name, type, environment, internet_facing, owner, group, primary_assets. Rows are upserted by name.": "次の列を含む CSV をアップロードしてください: name, type, environment, internet_facing, owner, group, crown_jewels。行は名前で作成または更新されます。",
+  "Upload a CSV with columns: name, type, environment, internet_facing, owner, group, primary_assets. Rows are upserted by name.": "次の列を含む CSV をアップロードしてください: name, type, environment, internet_facing, owner, group, primary_assets。行は名前で作成または更新されます。",
   "Use the recommended policy": "推奨ポリシーを使用",
   "What runs where, and what the internet can reach. Link assets to primary assets from the primary asset rows.": "何がどこで動いているか、インターネットから何に到達できるか。資産と主要資産のリンクは主要資産の行で設定します。",
   "Your procedures and reference documents. Agents search them on demand, each within the knowledge bases its user can read.": "手順書と参照文書。エージェントは必要に応じて、ユーザーが閲覧できるナレッジベースの範囲で検索します。",
