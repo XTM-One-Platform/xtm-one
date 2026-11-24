@@ -904,6 +904,16 @@ A scheduled assignment whose configuration points at a resource its integration 
 
 ---
 
+## CTEM case owner
+
+A CTEM case opened from a signal starts with an owner: the owner of an affected asset in the inventory, else the owner of an asset group that asset belongs to, else the default below. An owner counts only when it is the email of an active account; any other name is skipped, never guessed. Each assignment is written in the case history with how the owner was found.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `CTEM_CASE_DEFAULT_OWNER` | No | (empty) | Email of the account a new case is assigned to when no affected asset or asset group names an owner with an account. Empty: the case opens without an owner. |
+
+---
+
 ## Messaging channels
 
 | Variable | Required | Default | Description |
