@@ -52,14 +52,13 @@ DIRECTIONS: dict[tuple[str, str], tuple[tuple[str, ...], str]] = {
     ("asset_groups", "openaev"): ((INBOUND,), "Planned: OpenAEV asset group writes are not wired for syncs yet."),
     ("pirs", "opencti"): ((INBOUND,), "Planned: OpenCTI PIR writes are not wired for syncs yet."),
     ("assets", "opencti"): ((INBOUND,), "OpenCTI Systems are owned by its connectors."),
-    ("ai_systems", "openaev"): ((INBOUND, OUTBOUND), ""),
     ("tech_stack", "openaev"): ((INBOUND,), "OpenAEV software inventory is read from its agents."),
 }
 
 #: Supporting assets an outbound run creates with: a crown jewel carries no OpenCRQ category.
 OUTBOUND_CATEGORY = "generic_asset"
-#: The sections whose outbound run writes OpenAEV AI targets (#1501; ``ai_systems`` the deprecated alias).
-AI_TARGET_SECTIONS: frozenset[str] = frozenset({"assets", "ai_systems"})
+#: The sections whose outbound run writes OpenAEV AI targets (#1501).
+AI_TARGET_SECTIONS: frozenset[str] = frozenset({"assets"})
 #: The provider an AI target created from XTM One carries when the row names none (OpenAEV requires one).
 DEFAULT_AI_TARGET_PROVIDER = "custom_http"
 #: The fields of an OpenAEV AI target the asset row is the master of; every other field of the

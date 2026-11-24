@@ -912,7 +912,7 @@ def build_organization_context_write_tools(
                 "properties": {
                     "section": {
                         "type": "string",
-                        "enum": ["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"],
+                        "enum": ["assets", "asset_groups", "tech_stack", "crown_jewels", "pirs"],
                     },
                     "source": {"type": "string", "enum": _import_sources},
                     "filters": {"type": "object", "description": "The filters the dialog offers for that source."},
