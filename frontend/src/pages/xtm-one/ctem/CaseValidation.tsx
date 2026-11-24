@@ -30,6 +30,7 @@ import { CaseSectionReason } from "./CaseSectionReason";
 import { CASE_FACT_ICON, CASE_SECTION_ICON, CaseCardTitleText, CaseFactChip, CaseIcon } from "./case-icons";
 import { GateDecisionRecord, gateAnswererName, gateRecordOf } from "./GateDecisionRecord";
 import { ToneBadge, type HotTone } from "@/components/ui/tone-badge";
+import { TruncatedText } from "@/components/ui/truncated-text";
 
 /** The result word of a validation reference, translated where drawn. @i18n-keys */
 const RESULT_LABEL = {
@@ -164,7 +165,7 @@ export function CaseValidation({
                       <CaseFactChip
                         icon={mode === "safe" ? CASE_FACT_ICON.safe : CASE_FACT_ICON.unsafe}
                         tone={mode === "safe" ? "green" : "orange"}
-                        title={t_i18n(SAFE_MODE_LABEL[mode])}
+                        tip={t_i18n(SAFE_MODE_LABEL[mode])}
                         testId="ctem-case-validation-mode"
                       >
                         {t_i18n(SAFE_MODE_CHIP[mode])}
@@ -184,9 +185,10 @@ export function CaseValidation({
                       </span>
                       <ol className="flex min-w-0 flex-wrap items-center gap-1.5" aria-label={t_i18n("Run order")} data-testid="ctem-case-validation-order">
                         {v.run_order.map((group, step) => (
-                          <li key={`${group}-${step}`} className="min-w-0" title={group}>
+                          <li key={`${group}-${step}`} className="min-w-0">
+                            {/* A cut group name is named whole by the shared tooltip, keyboard included (UX round 1 on #1708, B4). */}
                             <ToneBadge tone="neutral" className="max-w-full">
-                              <span className="min-w-0 truncate">{t_i18n("{step}. {group}", { step: step + 1, group })}</span>
+                              <TruncatedText text={t_i18n("{step}. {group}", { step: step + 1, group })} />
                             </ToneBadge>
                           </li>
                         ))}

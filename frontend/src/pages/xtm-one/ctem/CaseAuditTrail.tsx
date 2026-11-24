@@ -115,7 +115,8 @@ export function CaseAuditTrail({
   const actorCell = (row: AuditRow) => {
     const type = actorType(row);
     return (
-      <span className="inline-flex min-w-0 max-w-full items-center gap-1.5" data-testid="ctem-audit-actor" data-actor-type={row.actorType}>
+      // `flex`, as the Action cell: an inline-flex box sat on the text baseline, 2 px high (UX round 1 on #1708, B3).
+      <span className="flex min-w-0 max-w-full items-center gap-1.5" data-testid="ctem-audit-actor" data-actor-type={row.actorType}>
         <CaseIcon name={actorIcon(row.actorType)} className="text-default-secondary" />
         <TruncatedText text={actorName(row)} className="font-medium" />
         {type && <span className="sr-only">{type}</span>}

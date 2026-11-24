@@ -17,7 +17,6 @@ import { Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, Dia
 import type { CtemCaseEvent, CtemCaseGateRecord, CtemCaseRun } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { AUDIT_PHASE_LABEL, AUTONOMY_LABEL, AUTONOMY_VARIANT, type AuditRow } from "@/lib/ctem-case-audit";
-import { GATE_LABEL } from "./case-gates";
 import { CASE_FACT_ICON, CaseFactChip, CaseIcon, actorIcon, caseEventIcon } from "./case-icons";
 import { GateDecisionRecord, gateAnswererName, gateRecordOf } from "./GateDecisionRecord";
 
@@ -70,9 +69,14 @@ export function CaseEventDialog({
   const run = row?.kind === "run" ? row.run : null;
   const change = event && event.kind !== "gate" ? changeText(event) : null;
   const record = event?.kind === "gate" && event.from ? gateRecordOf(gates, event.from) : null;
-  const note = event?.kind === "note" ? (event.reason ?? "").trim() : "";
+  const note = event?.kind === "note" ? (event.reason ?? "").trim() || (event.headline ?? "").trim() : "";
   const issue = event?.issue && event.issue !== "Restricted" ? event.issue : null;
   const evidence = event && event.kind !== "gate" && event.kind !== "ticket" && event.kind !== "retest_requested" ? event.evidence : null;
+  // Each thing said once (UX round 1 on #1708, B1): a gate row's record says what happened
+  // and a note row's text sits under Note alone, so neither repeats it as a fact.
+  const isNote = event?.kind === "note";
+  const showWhat = !record && !isNote;
+  const facts = [showWhat, !!change, !!issue, !!evidence].filter(Boolean).length;
 
   // Mounted only while a row is open: the content always holds its title (an accessible name).
   if (!row) return null;
@@ -84,7 +88,7 @@ export function CaseEventDialog({
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <CaseIcon name={caseEventIcon(row.kind === "run" ? "run" : row.event.kind)} className="text-default-secondary" />
-                <span className="min-w-0">{actionText(row)}</span>
+                <span className="min-w-0">{isNote ? t_i18n("Added a note") : actionText(row)}</span>
               </DialogTitle>
               <DialogDescription>{when(row.at) ?? t_i18n("Not dated")}</DialogDescription>
             </DialogHeader>
@@ -101,28 +105,33 @@ export function CaseEventDialog({
                 </Badge>
               </div>
 
-              <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-                <Fact icon={CASE_FACT_ICON.meaning} label={t_i18n("What happened")} testId="ctem-case-event-what">
-                  {run ? renderRun(run) : event ? renderEvent(event) : null}
-                </Fact>
-                {change && (
-                  <Fact icon={CASE_FACT_ICON.state} label={t_i18n("Change (from → to)")} testId="ctem-case-event-change">
-                    <span>{`${change.from} → ${change.to}`}</span>
-                  </Fact>
-                )}
-                {issue && (
-                  <Fact icon="list-checks" label={t_i18n("Case issue")} testId="ctem-case-event-issue">
-                    <span>{issue}</span>
-                  </Fact>
-                )}
-                {evidence && (
-                  <Fact icon="paperclip" label={t_i18n("Evidence")} testId="ctem-case-event-evidence">
-                    <span className="break-all">{evidence}</span>
-                  </Fact>
-                )}
-              </dl>
+              {/* Two columns only for two facts or more: one fact alone spans the body (B2). */}
+              {facts > 0 && (
+                <dl className={facts > 1 ? "grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2" : "grid grid-cols-1 gap-y-3"}>
+                  {showWhat && (
+                    <Fact icon={CASE_FACT_ICON.meaning} label={t_i18n("What happened")} testId="ctem-case-event-what">
+                      {run ? renderRun(run) : event ? renderEvent(event) : null}
+                    </Fact>
+                  )}
+                  {change && (
+                    <Fact icon={CASE_FACT_ICON.state} label={t_i18n("Change (from → to)")} testId="ctem-case-event-change">
+                      <span>{`${change.from} → ${change.to}`}</span>
+                    </Fact>
+                  )}
+                  {issue && (
+                    <Fact icon="list-checks" label={t_i18n("Case issue")} testId="ctem-case-event-issue">
+                      <span>{issue}</span>
+                    </Fact>
+                  )}
+                  {evidence && (
+                    <Fact icon="paperclip" label={t_i18n("Evidence")} testId="ctem-case-event-evidence">
+                      <span className="break-all">{evidence}</span>
+                    </Fact>
+                  )}
+                </dl>
+              )}
 
-              {note && note !== (event?.headline ?? "").trim() && (
+              {note && (
                 <section className="flex flex-col gap-1" aria-label={t_i18n("Note")}>
                   <h4 className="flex items-center gap-1.5 content-compact text-default-secondary">
                     <CaseIcon name={caseEventIcon("note")} />
@@ -137,7 +146,6 @@ export function CaseEventDialog({
               {record && (
                 <GateDecisionRecord
                   record={record}
-                  title={event?.from ? t_i18n(GATE_LABEL[event.from] ?? event.from) : undefined}
                   byLabel={record.answered_by?.name ? null : gateAnswererName(record, history, (id) => personName(id))}
                   testId="ctem-case-event-gate-record"
                 />

@@ -84,7 +84,9 @@ describe("CaseValidation", () => {
     expect(screen.getByTestId("ctem-case-validation-gate").textContent).toContain("Passed automatically: safe mode");
     // Mode, result and run order are chips (#1679): the short word on the chip, the sentence as its tooltip.
     expect(screen.getByTestId("ctem-case-validation-mode").textContent).toBe("Read-only");
-    expect(screen.getByTestId("ctem-case-validation-mode").getAttribute("title")).toBe("Safe mode: read-only checks only");
+    // The sentence is the chip's tooltip on a tab stop, never a native title (UX round 1 on #1708, B4).
+    expect(screen.getByTestId("ctem-case-validation-mode").getAttribute("title")).toBeNull();
+    expect(screen.getByLabelText("Read-only. Safe mode: read-only checks only")).toBeInTheDocument();
     expect(screen.getByTestId("ctem-case-validation-mode").getAttribute("data-tone")).toBe("green");
     expect(screen.getByTestId("ctem-case-validation-result").getAttribute("data-tone")).toBeTruthy();
     expect(screen.getByTestId("ctem-case-validation-provider").textContent).toBe("OpenAEV");
@@ -102,7 +104,8 @@ describe("CaseValidation", () => {
     expect(screen.getByText("Waiting for a person")).toBeTruthy();
     expect(state.calls.some((c) => (c as { filters: { correlation_key: string } }).filters.correlation_key === "ctem:validation:c1")).toBe(true);
     expect(screen.getByTestId("ctem-case-validation-mode").textContent).toBe("Changes the target");
-    expect(screen.getByTestId("ctem-case-validation-mode").getAttribute("title")).toBe("Not read-only: a test that changes the target ran");
+    expect(screen.getByTestId("ctem-case-validation-mode").getAttribute("title")).toBeNull();
+    expect(screen.getByLabelText("Changes the target. Not read-only: a test that changes the target ran")).toBeInTheDocument();
     expect(screen.getByTestId("ctem-case-validation-mode").getAttribute("data-tone")).toBe("orange");
     expect(screen.getByTestId("ctem-case-validation-result").textContent).toBe("Pending");
   });

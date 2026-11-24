@@ -11,7 +11,9 @@
 import type * as React from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { Icon, type IconName } from "@filigran/design-system";
+import { BadgeFocusTrigger } from "@/components/ui/badge";
 import { type HotTone, ToneBadge } from "@/components/ui/tone-badge";
+import { Tip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 /** The icon of each case card header, by section. */
@@ -109,28 +111,39 @@ export function CaseCardTitleText({ icon, children }: { icon: IconName; children
 /**
  * A fact as a chip with its icon: a person, an agent, a wait, a mode. An agent
  * reads in the info tone (never the green link colour), a person and a plain
- * fact in the neutral tone; `to` makes the whole chip a link.
+ * fact in the neutral tone; `to` makes the whole chip a link. `tip` explains the
+ * chip in the design-system tooltip on a focusable chip, so it opens from the
+ * keyboard too (never a native title: UX round 1 on #1708, B4).
  */
 export function CaseFactChip({
   icon,
   tone = "neutral",
   to,
-  title,
+  tip,
   testId,
   children,
 }: {
   icon: IconName;
   tone?: HotTone;
   to?: string;
-  title?: string;
+  tip?: string;
   testId?: string;
   children: React.ReactNode;
 }) {
   const chip = (
-    <ToneBadge tone={tone} icon={<CaseIcon name={icon} />} title={title} data-testid={testId} className="max-w-full">
+    <ToneBadge tone={tone} icon={<CaseIcon name={icon} />} data-testid={testId} className="max-w-full">
       <span className="min-w-0 truncate">{children}</span>
     </ToneBadge>
   );
+  if (tip && !to) {
+    return (
+      <Tip content={tip} side="top">
+        <BadgeFocusTrigger aria-label={typeof children === "string" ? `${children}. ${tip}` : tip} className="max-w-full">
+          {chip}
+        </BadgeFocusTrigger>
+      </Tip>
+    );
+  }
   if (!to) return chip;
   return (
     <RouterLink to={to} className="inline-flex max-w-full rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2">

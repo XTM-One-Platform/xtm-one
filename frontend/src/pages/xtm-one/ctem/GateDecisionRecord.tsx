@@ -414,7 +414,8 @@ export function GateDecisionRecord({
           </Field>
         </Step>
       )}
-      <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2" data-testid={`${testId}-explain`}>
+      {/* Two columns only for two facts: one fact alone spans the body (UX round 1 on #1708, B2). */}
+      <dl className={nextSentence ? "grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2" : "grid grid-cols-1 gap-y-2"} data-testid={`${testId}-explain`}>
         <Field label={t_i18n("What it means")} icon={CASE_FACT_ICON.meaning} testId={`${testId}-meaning`}>
           {t_i18n(GATE_CHIP_MEANING[chip])}
         </Field>
