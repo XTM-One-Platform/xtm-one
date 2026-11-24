@@ -3915,7 +3915,7 @@ async def run_agent_chat(
                 )
 
         # Fetch user group IDs for three-tier visibility on handover agents
-        from app.api.v1.helpers import get_user_group_ids, user_visible_filter
+        from app.api.v1.helpers import get_user_group_ids
 
         user_group_ids: list[str] = []
         if h_ids and not is_anonymous_user:
@@ -3961,12 +3961,21 @@ async def run_agent_chat(
                         .order_by(Agent.name)
                     )
                 else:
+                    # The configured handover is the grant: a peer the
+                    # person may not open is still loaded (never listed or
+                    # opened by them), the exposure rule kept.
+                    from app.services.fleets import (
+                        configured_handover_reach,
+                        handover_peer_clause,
+                    )
+
+                    granted = await configured_handover_reach(_db, agent.id, h_ids)
                     r = await _db.execute(
                         select(Agent)
                         .where(
                             Agent.id.in_(h_ids),
                             Agent.enabled.is_(True),
-                            user_visible_filter(Agent, uuid.UUID(user_id), user_group_ids),
+                            handover_peer_clause(uuid.UUID(user_id), user_group_ids, granted),
                             active_handover_target_clause(),
                         )
                         .order_by(Agent.name)

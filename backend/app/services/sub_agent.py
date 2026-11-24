@@ -3724,7 +3724,7 @@ async def _execute_sub_agent_task(
             # already resolved with `user_visible_filter`, so re-loading here with
             # a narrower two-tier `or_()` structurally broke delegation to any
             # group-shared peer agent (every run failed "not accessible").
-            from app.api.v1.helpers import get_user_group_ids, user_visible_filter
+            from app.api.v1.helpers import get_user_group_ids
 
             # Platform Health's delegated work sees what its run with no user saw
             # at spawn, never what the row's owner of record sees.
@@ -3732,11 +3732,23 @@ async def _execute_sub_agent_task(
             _target_group_ids = (
                 await get_user_group_ids(db, _target_user_uuid) if _target_user_uuid else []
             )
+            # The spawning agent's configured handover is the grant, as at
+            # spawn (services/fleets.py configured_handover_reach): a delegate
+            # peer the person may not open still starts.
+            from app.services.fleets import configured_handover_reach, handover_peer_clause
+
+            _parent_id = safe_uuid(getattr(task, "parent_agent_id", None))
+            _granted: set[uuid.UUID] = set()
+            if _target_user_uuid is not None and _parent_id is not None:
+                _parent_handovers = (
+                    await db.execute(select(Agent.handover_agent_ids).where(Agent.id == _parent_id))
+                ).scalar_one_or_none()
+                _granted = await configured_handover_reach(db, _parent_id, _parent_handovers)
             agent_result = await db.execute(
                 select(Agent).where(
                     Agent.id == uuid.UUID(target_agent_id),
                     Agent.enabled.is_(True),
-                    user_visible_filter(Agent, _target_user_uuid, _target_group_ids),
+                    handover_peer_clause(_target_user_uuid, _target_group_ids, _granted),
                 )
             )
             agent = agent_result.scalar_one_or_none()
