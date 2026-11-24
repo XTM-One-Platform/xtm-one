@@ -17,6 +17,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import { waitsForAnswer } from "@/lib/work-item-context";
 import { GATE_CARD_STATUS_LABEL, latestGate } from "./case-gates";
+import { PROVIDER_NAMES } from "./case-loop";
 import {
   SAFE_MODE_LABEL,
   VALIDATION_GATE,
@@ -37,9 +38,6 @@ const RESULT_LABEL = {
   pending: "Pending",
   inconclusive: "Inconclusive",
 } as const;
-
-/** Product names of the validation providers a case can carry. */
-const PROVIDER_NAMES: Readonly<Record<string, string>> = { openaev: "OpenAEV", opencti: "OpenCTI" };
 
 export function CaseValidation({
   caseId,

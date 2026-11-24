@@ -122,6 +122,8 @@ Every path decides with the same index and the same OpenCRQ read: a `system` sig
 
 OpenCRQ Dependency Rule links come through `assetDependencies.getSupportToPrimaryLinksByPrimaryAssetId` (field `source: rule`, `ruleId`) and are stored with source `rule`; an OpenCRQ supporting asset is matched to an inventory record by its OpenCRQ id, then by name or device hostname.
 
+The loop trace (`DecisionReason`, `frontend/src/pages/xtm-one/ctem/loop/decision-primary-assets.ts`) draws a row "Primary assets reached" with each chain (software, asset, `group <name>`, primary asset `as <role>`), from `scope.sources[].chain` and else `reconcile.primary_assets`; when `inventory_links_read` is true and nothing is reached it says so. The "Scope threshold" row names its source: "set by the prioritization policy" or "scope default" from `scope.threshold_source`.
+
 ## 4. Severity and SLA
 
 Points = scope criticality (low 1, medium 2, high 3, critical 4) + lens
