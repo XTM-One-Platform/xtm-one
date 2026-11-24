@@ -981,10 +981,14 @@ describe("OrganizationSection", () => {
     expect(chip.textContent).not.toMatch(/Synced from OpenCRQ/);
     if (cause) {
       const trigger = screen.getByTestId("settings.organization.primary-assets-source-cause");
+      // The line is the only place the problem shows: it links to Sources, where the sync is run and fixed (UX round 2 B1, #1818).
+      expect(trigger.tagName).toBe("A");
+      expect(trigger.getAttribute("href")).toBe("/ctem/inventory/sources");
       fireEvent.focus(trigger);
       expect((await screen.findAllByText(cause)).length).toBeGreaterThan(0);
     } else {
       expect(screen.queryByTestId("settings.organization.primary-assets-source-cause")).toBeNull();
+      expect(screen.getByTestId("settings.organization.primary-assets-source-link").getAttribute("href")).toBe("/ctem/inventory/sources");
     }
   });
 

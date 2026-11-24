@@ -25,6 +25,7 @@ export const FILTER_LABELS = {
   created_after: "Created on or after",
   min_criticality: "Lowest criticality",
   tenant_id: "Tenant",
+  link_supporting_assets: "Link supporting assets to primary assets",
   pir_ids: "PIRs",
   search: "Name contains",
   // Microsoft Intune and Defender for Endpoint (#1251).
@@ -116,6 +117,13 @@ const SWITCH_VALUE_LABELS = {
 
 type Translate = (text: string, values?: Record<string, string | number>) => string;
 
+/** The OpenCRQ primary-asset sync's link option (#1591): on unless its filter says "false" (backend link_option_on). */
+export function linkOptionOn(filters: Record<string, unknown> | null | undefined): boolean {
+  const raw = filters?.link_supporting_assets;
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return !["false", "0", "off", "no"].includes(String(value ?? "").trim().toLowerCase());
+}
+
 /** The words of one filter value as the source writes it: a taxonomy, criticality, exposure or environment in the profile's words, else the value. */
 export function filterValueLabel(t: Translate, key: string, value: string): string {
   const lower = value.toLowerCase();
@@ -129,6 +137,7 @@ export function filterValueLabel(t: Translate, key: string, value: string): stri
   if (key === "ci_class" && value in CI_CLASS_LABELS) return t(CI_CLASS_LABELS[value as keyof typeof CI_CLASS_LABELS]);
   if (key === "last_seen_days" && /^\d+$/.test(value)) return t("{count, plural, one {Within # day} other {Within # days}}", { count: Number(value) });
   if (key in SWITCH_VALUE_LABELS) return t(SWITCH_VALUE_LABELS[key as keyof typeof SWITCH_VALUE_LABELS]);
+  if (key === "link_supporting_assets") return linkOptionOn({ link_supporting_assets: value }) ? t("On") : t("Off");
   return value;
 }
 

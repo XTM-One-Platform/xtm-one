@@ -17,7 +17,7 @@
  */
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { landOnCard } from "@/lib/land-on-card";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Bot, Building2, Coins, Import, Link2, Lock, MessageSquare, Package, Pencil, Plus, RefreshCw, Server, Shield, Sparkles, Ticket } from "lucide-react";
 import { TagInput } from "@/components/ui/tag-input";
 
@@ -1871,22 +1871,29 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             action={
               <>
                 {attention("crown_jewels")}
-                {/* The OpenCRQ source of the list (#1754): its icon and last sync, as the asset lists name theirs. It is run and configured in Sources. */}
+                {/* The OpenCRQ source of the list (#1754): its icon and last sync, as the asset lists name theirs. It is run and configured
+                    in Sources, so every state of the line links there (UX round 2 B1, #1818): the line is the only place a failed or paused sync shows. */}
                 {opencrqSourceLine && (
                   <span data-testid="settings.organization.primary-assets-source" className="inline-flex min-w-0 items-center gap-1.5 content-compact text-default-secondary">
                     <ProviderLogo provider="opencrq" decorative className="h-4 w-4 shrink-0" />
                     {opencrqSourceCause ? (
                       <Tip content={opencrqSourceCause}>
-                        <span
-                          className={`whitespace-nowrap ${opencrqSourceError ? "text-feedback-error-primary" : "text-feedback-warning-primary"}`}
-                          tabIndex={0}
+                        <Link
+                          to="/ctem/inventory/sources"
+                          className={`whitespace-nowrap rounded-sm underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus ${opencrqSourceError ? "text-feedback-error-primary" : "text-feedback-warning-primary"}`}
                           data-testid="settings.organization.primary-assets-source-cause"
                         >
                           {opencrqSourceLine}
-                        </span>
+                        </Link>
                       </Tip>
                     ) : (
-                      <span className="whitespace-nowrap">{opencrqSourceLine}</span>
+                      <Link
+                        to="/ctem/inventory/sources"
+                        className="whitespace-nowrap rounded-sm underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
+                        data-testid="settings.organization.primary-assets-source-link"
+                      >
+                        {opencrqSourceLine}
+                      </Link>
                     )}
                   </span>
                 )}
