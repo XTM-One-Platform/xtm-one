@@ -1043,6 +1043,7 @@ async def ensure_fleet_past_due_listener(db: AsyncSession, fleet: Fleet, agent: 
     found = next((row for row in existing if is_fleet_past_due_listener(row)), None)
     if found is not None:
         found.prompt = fleet_past_due_prompt(fleet)
+        found.ai_label = False
         return False
     if check is None:
         check = next(iter(await _seeded_health_checks(db, agent.id)), None)
@@ -1058,6 +1059,8 @@ async def ensure_fleet_past_due_listener(db: AsyncSession, fleet: Fleet, agent: 
         trigger_config=fleet_past_due_trigger(),
         prompt=fleet_past_due_prompt(fleet),
         enabled=bool(getattr(check, "enabled", False)) and not is_emergency_stopped(check),
+        # Platform-seeded: no AI label prompt, so its work items and notes carry no "[AI-generated]" prefix.
+        ai_label=False,
         max_iterations=FLEET_HEALTH_CHECK_MAX_ITERATIONS,
         run_as_all_users=False,
     )
