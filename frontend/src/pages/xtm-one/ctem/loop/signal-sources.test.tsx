@@ -74,11 +74,12 @@ describe("signal source rules", () => {
     expect(connectedCount(PATHS)).toBe(1);
   });
 
-  it("sends Connect to the right page: a listener to its integration, a pass and the playbook to the organization profile", () => {
+  it("sends Connect to the right page: a listener to its integration, a pass and the playbook to their inventory card", () => {
     expect(connectHref({ provider: "aikido", kind: "listener" })).toBe("/integrations/new?provider=aikido");
     // The outside lens card lives on CTEM > Inventory (#1178).
     expect(connectHref({ provider: "shodan", kind: "pass" })).toContain("/ctem/inventory");
-    expect(connectHref({ provider: "opencti", kind: "pir_playbook" })).toContain("/settings/organization");
+    // The PIR list lives on the Prioritization policy card of CTEM > Inventory > Exposure policy (#1889).
+    expect(connectHref({ provider: "opencti", kind: "pir_playbook" })).toBe("/ctem/inventory/exposure?card=prioritization_policy");
     expect(connectTarget(PATHS[0])?.kind).toBe("pir_playbook");
     expect(connectTarget(PATHS[2])).toBeNull();
   });
