@@ -1580,6 +1580,10 @@ export interface ProviderCatalogItem {
   supports_assignment_webhooks: boolean;
   supports_webhook_management: boolean;
   setup_guide: SetupGuide | null;
+  /** One guide per authentication mode (`{oauth: guide, api_key: guide}`), for a
+   * provider whose modes are set up apart; `setup_guide` where no mode is chosen
+   * or a mode has none. Read through `setupGuideFor`. */
+  auth_setup_guides?: Record<string, SetupGuide> | null;
   has_oauth_defaults: boolean;
   has_oauth_extra_config: boolean;
   is_custom?: boolean;
@@ -6573,6 +6577,10 @@ export interface WorkItem {
   attachments?: WorkItemAttachments;
   /** The agent behind each run its stamped notes name (detail only, #776). */
   note_runs?: Record<string, WorkItemNoteRun>;
+  /** Whether the reader may change it (detail only, #1845); absent on a list row. */
+  can_write?: boolean;
+  /** Why the reader may not change it, when can_write is false (detail only, #1845). */
+  read_only_reason?: string | null;
 }
 
 /** The run a stamped note names: its agent as the reader may see it, and whether the reader may open it. */
@@ -7649,9 +7657,6 @@ export interface Group {
   ai_enabled?: boolean;
   /** What the group is for the LLM analytics; `auto` = not classified. */
   kind?: GroupKind;
-  /** People who sign in through single sign-on join the group at every
-   *  sign-in (`services/group_auto_join.py`); admin routes only. */
-  auto_join?: boolean;
   created_at: string;
   updated_at: string;
 }
