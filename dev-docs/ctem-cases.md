@@ -382,7 +382,13 @@ explained. A single-platform answer draws the card as before.
   the system evidence "every member issue closed at source" (history line),
   unless it is in "accepted risk", which keeps its state until expiry.
 - A resolved case whose issues return is reopened ("needs attention") with a
-  history line "reopened: issues open again at source".
+  history line "reopened: issues open again at source". A case a person, an
+  agent or a gate resolved (its newest `resolved` transition carries evidence
+  other than the two recompute writes, a gate answered not exploitable for
+  example) holds while its issues stay as they were (#1646): recompute reopens
+  it only on a changed issue (a new member, a member that closed and came
+  back, a moved fixed version), with the history line "reopened: issues
+  changed since the closure decision (<the closure evidence>)".
 - State, owner, due date, notes and history are never written by recompute.
 - Every case a recompute writes is worked by the loop (#1206): a new case
   raises `ctem_case.opened`, a reopen `ctem_case.reopened`, a resolve
