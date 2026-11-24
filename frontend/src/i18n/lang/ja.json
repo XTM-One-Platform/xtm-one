@@ -21667,5 +21667,8 @@
   "Auto join updated": "自動参加を更新しました",
   "Auto join could not be updated": "自動参加を更新できませんでした",
   "Single sign-on users join this group": "SSO ユーザーはこのグループに参加します",
-  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "シングルサインオン (SSO) でサインインしたユーザーは、サインインのたびにこのグループへ自動的に参加します。手動、SAML グループマッピング、SCIM で追加されたメンバーはそのまま保持されます。"
+  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "シングルサインオン (SSO) でサインインしたユーザーは、サインインのたびにこのグループへ自動的に参加します。手動、SAML グループマッピング、SCIM で追加されたメンバーはそのまま保持されます。",
+  "Platform Health specialists": "Platform Health スペシャリスト",
+  "Platform Health's internal tools: diagnosis, experiments, sandbox, Flow Lab, memory and module checks": "Platform Health の内部ツール: 診断、実験、サンドボックス、Flow Lab、メモリ、モジュールチェック",
+  "The tools Platform Health's own specialists work with: quality diagnosis, experiments and evaluations on sandbox copies, the Flow Lab, memory consolidation, module checks and improvement proposals. Carried by the Platform Health fleet's agents alone, each scoped to the functions it uses; never offered on the Tools page, in an agent's configuration or in a chat. Every write refuses anyone but Platform Health.": "Platform Health のスペシャリストが使うツールです: 品質診断、サンドボックスコピーでの実験と評価、Flow Lab、メモリ統合、モジュールチェック、改善提案。Platform Health フリートのエージェントだけが持ち、それぞれ使う関数に限定されます。ツールページ、エージェント設定、チャットでは提供されません。書き込みは Platform Health 以外を拒否します。"
 }
