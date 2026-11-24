@@ -317,6 +317,7 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   notion: "Notion",
   hubspot: "HubSpot",
   jira: "Jira",
+  kubernetes: "Kubernetes",
   drata: "Drata",
   hibob: "HiBob",
   carta: "Carta",
