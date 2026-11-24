@@ -1154,7 +1154,7 @@ LAB_ORG_COMPLETE_PROFILE = {
     **LAB_ORG_PROFILE,
     "regions": ["FR", "US"],
     "crown_jewels": [{"name": "Payments platform", "business_service": "Card payments", "criticality": "critical"}],
-    "tech_stack": [dict(entry) for entry in LAB_ORG_TECH_STACK],
+    "software": [dict(entry) for entry in LAB_ORG_TECH_STACK],
     "pir_ids": ["5b1e0c3a-7d2f-4e61-9a10-000000000001"],
     "risk_appetite": {"approval_threshold": 50000},
     "ticketing": {"integration": "jira", "project": "SEC"},
@@ -1260,7 +1260,7 @@ def org_ai_draft_answer(request: dict) -> str | None:
         {"field": "size", "value": "251-1000", "confidence": "medium", "basis": "'about 400 people'"},
         {"field": "loaded_hourly_rate", "value": 95, "confidence": "medium", "check": True,
          "basis": "inferred from the sector and the regions, not read in a source"},
-        {"field": "tech_stack", "value": [{"vendor": "Microsoft", "product": "Exchange Online", "cpe": ""}],
+        {"field": "software", "value": [{"vendor": "Microsoft", "product": "Exchange Online", "cpe": ""}],
          "confidence": "low", "basis": "'our mail runs in the cloud'"},
     ]
     return json.dumps({
@@ -6189,11 +6189,11 @@ def seed_ctem_screens_scope(token: str) -> None:
 
     current = api("GET", "/organization-context", token)
     profile = dict(current.get("profile") or {}) if isinstance(current, dict) else {}
-    stack = list(profile.get("tech_stack") or [])
+    stack = list(profile.get("software") or [])
     have = {str(entry.get("product", "")).lower() for entry in stack}
     missing = [dict(entry) for entry in ctem_sample.SCREENS_TECH_STACK if entry["product"].lower() not in have]
     if missing or not profile.get("name"):
-        profile = {**LAB_ORG_PROFILE, **profile, "tech_stack": stack + missing}
+        profile = {**LAB_ORG_PROFILE, **profile, "software": stack + missing}
         body = {"profile": profile, "source": "form"}
         if isinstance(current, dict) and current.get("version") is not None:
             body["based_on_version"] = current["version"]
@@ -8224,7 +8224,7 @@ def seed_org_ai_draft_stub(token: str, base: str) -> dict[str, str]:
             lab_switch("LAB_CTEM_KEV_TAILORED", LAB_CTEM_KEV_TAILORED_STATES),
             lab_switch("LAB_CTEM_OPENCTI", LAB_CTEM_OPENCTI_STATES),
         ):
-            profile["tech_stack"] = [dict(entry) for entry in LAB_ORG_TECH_STACK]
+            profile["software"] = [dict(entry) for entry in LAB_ORG_TECH_STACK]
         saved = api("PUT", "/organization-context", token, {"profile": profile, "source": "form"})
         version = saved.get("version") if isinstance(saved, dict) else None
     return {"id": f"profile version {version}", "url": f"{base}/settings/organization"}
@@ -8304,8 +8304,8 @@ def seed_org_synced(token: str, base: str) -> dict[str, str]:
     current = api("GET", "/organization-context", token)
     profile = dict((current.get("profile") if isinstance(current, dict) else None) or LAB_ORG_PROFILE)
     expected: dict[str, set[tuple[str, str]]] = {}
-    # The sync section ``software`` (#1495) still fills the profile list ``tech_stack``.
-    fields = {"software": "tech_stack"}
+    # The sync section ``software`` (#1495) still fills the profile list ``software``.
+    fields = {"software": "software"}
     for section, (source, rows) in LAB_ORG_SYNCED_ROWS.items():
         sync = syncs.get((section, source)) or _created(api("POST", "/organization-context/syncs", token, {
             "section": section, "source": source, "frequency": "daily", "hour": 6, "minute": 0,
