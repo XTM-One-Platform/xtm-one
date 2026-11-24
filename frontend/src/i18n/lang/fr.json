@@ -21651,5 +21651,10 @@
   "Example: Payment platform, picked from the primary assets declared above. Agents read them with the PIR in the organization context. Left empty, the PIR names no primary asset.": "Exemple : plateforme de paiement, choisie parmi les actifs primaires déclarés plus haut. Les agents les lisent avec le PIR dans le contexte de l'organisation. Vide, le PIR ne nomme aucun actif primaire.",
   "The tags of the inventory rows. An asset carrying one of them joins the group. Left empty, tags add no member.": "Les tags des lignes de l'inventaire. Un actif qui porte l'un d'eux rejoint le groupe. Vide, les tags n'ajoutent aucun membre.",
   "The asset categories of the inventory. An asset of one of them joins the group. Left empty, categories add no member.": "Les catégories d'actifs de l'inventaire. Un actif de l'une d'elles rejoint le groupe. Vide, les catégories n'ajoutent aucun membre.",
-  "Example: payments. An asset whose name holds it joins the group. Left empty, the name adds no member.": "Exemple : payments. Un actif dont le nom le contient rejoint le groupe. Vide, le nom n'ajoute aucun membre."
+  "Example: payments. An asset whose name holds it joins the group. Left empty, the name adds no member.": "Exemple : payments. Un actif dont le nom le contient rejoint le groupe. Vide, le nom n'ajoute aucun membre.",
+  "Auto join": "Adhésion automatique",
+  "Auto join updated": "Adhésion automatique mise à jour",
+  "Auto join could not be updated": "L'adhésion automatique n'a pas pu être mise à jour",
+  "Single sign-on users join this group": "Les utilisateurs SSO rejoignent ce groupe",
+  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "Les personnes qui se connectent par authentification unique (SSO) rejoignent ce groupe automatiquement, à chaque connexion. Les membres ajoutés à la main, par le mappage des groupes SAML ou par SCIM restent tels quels."
 }

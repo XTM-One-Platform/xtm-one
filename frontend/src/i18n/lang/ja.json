@@ -21651,5 +21651,10 @@
   "Example: Payment platform, picked from the primary assets declared above. Agents read them with the PIR in the organization context. Left empty, the PIR names no primary asset.": "例: 決済プラットフォーム(上で登録した主要資産から選択)。エージェントは組織コンテキストで PIR とともに読みます。空の場合、PIR は主要資産を指しません。",
   "The tags of the inventory rows. An asset carrying one of them joins the group. Left empty, tags add no member.": "インベントリ行のタグ。いずれかのタグを持つ資産がグループに加わります。空の場合、タグではメンバーは増えません。",
   "The asset categories of the inventory. An asset of one of them joins the group. Left empty, categories add no member.": "インベントリの資産カテゴリ。いずれかのカテゴリの資産がグループに加わります。空の場合、カテゴリではメンバーは増えません。",
-  "Example: payments. An asset whose name holds it joins the group. Left empty, the name adds no member.": "例: payments。名前にこの文字列を含む資産がグループに加わります。空の場合、名前ではメンバーは増えません。"
+  "Example: payments. An asset whose name holds it joins the group. Left empty, the name adds no member.": "例: payments。名前にこの文字列を含む資産がグループに加わります。空の場合、名前ではメンバーは増えません。",
+  "Auto join": "自動参加",
+  "Auto join updated": "自動参加を更新しました",
+  "Auto join could not be updated": "自動参加を更新できませんでした",
+  "Single sign-on users join this group": "SSO ユーザーはこのグループに参加します",
+  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "シングルサインオン (SSO) でサインインしたユーザーは、サインインのたびにこのグループへ自動的に参加します。手動、SAML グループマッピング、SCIM で追加されたメンバーはそのまま保持されます。"
 }
