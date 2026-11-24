@@ -817,7 +817,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     db, cases, actor=user, reason=reason or f"by agent {agent_id}", dry_run=bool(dry_run)
                 )
                 await db.commit()
-                return _dump({**result, "unknown": unknown})
+                # Same hand-off as the REST route: released signals decided again after the commit (#1950).
+                return _dump({**case_delete.hand_off_released(result), "unknown": unknown})
         except Exception:
             logger.warning("CTEM case delete failed", exc_info=True)
             return "Error: the cases could not be deleted right now. Say so; nothing was changed."
