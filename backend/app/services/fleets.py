@@ -815,6 +815,7 @@ async def set_orchestrator(db: AsyncSession, fleet: Fleet, agent_id: uuid.UUID |
         await grant_fleet_health_advisory(db, agent)
         await ensure_fleet_health_check(db, fleet, agent)
         await ensure_fleet_health_answered(db, fleet, agent)
+        await ensure_fleet_past_due_listener(db, fleet, agent)
 
 
 #: The live program reads every fleet orchestrator carries (#10979): a fleet's
@@ -918,8 +919,12 @@ FLEET_HEALTH_CHECK_DETAILS = "Fleet health check: off until the fleet is enabled
 FLEET_HEALTH_KEY_PREFIX = "fleet-health:"
 #: The listener that applies an owner's answer to a fleet health decision item (#1406).
 FLEET_HEALTH_ANSWERED_NAME = "Fleet health answered"
+#: The listener that reacts when a member's work item crosses its due date (#1662).
+FLEET_PAST_DUE_NAME = "Overdue work items"
 #: The fleet service's own assignments of an orchestrator: never seed rows, never exported.
-FLEET_HEALTH_ASSIGNMENT_NAMES: frozenset[str] = frozenset({FLEET_HEALTH_CHECK_NAME, FLEET_HEALTH_ANSWERED_NAME})
+FLEET_HEALTH_ASSIGNMENT_NAMES: frozenset[str] = frozenset(
+    {FLEET_HEALTH_CHECK_NAME, FLEET_HEALTH_ANSWERED_NAME, FLEET_PAST_DUE_NAME}
+)
 
 
 def fleet_health_check_gate(fleet_id: uuid.UUID) -> dict[str, object]:
@@ -981,6 +986,95 @@ def is_fleet_health_answered(assignment: object) -> bool:
         and isinstance(config, dict)
         and config.get("event") == "work_item.status_changed"
     )
+
+
+def fleet_past_due_trigger() -> dict[str, object]:
+    """The work items of the fleet's members that crossed their due date (#1662)."""
+    return {"event": "work_item.past_due", "scope": "fleet"}
+
+
+def fleet_past_due_prompt(fleet: Fleet) -> str:
+    return (
+        f"A work item of the fleet '{fleet.name}' (fleet_id {fleet.id}) crossed its due date: the trigger "
+        "below names it (work_item_id, owner_agent_id, due_at, overdue_seconds). Read it with get_work_item. "
+        "When it is done or cancelled meanwhile, or its due date moved ahead, stop there. Otherwise make it "
+        "move once: a member owns it and it waits for nothing, add a note naming the overdue date and the "
+        "next step so its owner's inbox takes it; it waits on a blocker, a person or no owner, follow the "
+        "skill 'Fleet health advisory' for a past_due finding (the owner decides: a new due date, a new "
+        "owner or a cancellation, with one deduplicated advisory). Never set a due date of your own. "
+        "Nothing else."
+    )
+
+
+def is_fleet_past_due_listener(assignment: object) -> bool:
+    """Whether *assignment* is a fleet's seeded "Overdue work items" listener."""
+    config = getattr(assignment, "trigger_config", None)
+    return (
+        getattr(assignment, "name", None) == FLEET_PAST_DUE_NAME
+        and getattr(assignment, "trigger_type", None) == "platform_event"
+        and isinstance(config, dict)
+        and config.get("event") == "work_item.past_due"
+    )
+
+
+async def ensure_fleet_past_due_listener(db: AsyncSession, fleet: Fleet, agent: Agent, check: Any = None) -> bool:
+    """Give the orchestrator *agent* the listener of its members' overdue items; whether it was created.
+
+    Same life as "Fleet health answered": born with the switch and run-as of
+    the orchestrator's seeded health check, none without one nor on the
+    Platform Health fleet; an existing one keeps its switch and follows *fleet*.
+    """
+    from app.services.health.read_only import is_health_fleet
+
+    if is_health_fleet(fleet):
+        return False
+    from app.models.assignment import Assignment
+    from app.services.assignment_pause import CREATED_DISABLED_REASON, is_emergency_stopped, pause_assignment
+
+    existing = (
+        (
+            await db.execute(
+                select(Assignment).where(Assignment.agent_id == agent.id, Assignment.name == FLEET_PAST_DUE_NAME)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    found = next((row for row in existing if is_fleet_past_due_listener(row)), None)
+    if found is not None:
+        found.prompt = fleet_past_due_prompt(fleet)
+        found.ai_label = False
+        return False
+    if check is None:
+        check = next(iter(await _seeded_health_checks(db, agent.id)), None)
+    if check is None:
+        return False
+    listener = Assignment(
+        agent_id=agent.id,
+        user_id=agent.user_id,
+        is_company_managed=bool(agent.is_company_managed),
+        name=FLEET_PAST_DUE_NAME,
+        description="Makes a member's work item move once it crosses its due date, or asks its owner.",
+        trigger_type="platform_event",
+        trigger_config=fleet_past_due_trigger(),
+        prompt=fleet_past_due_prompt(fleet),
+        enabled=bool(getattr(check, "enabled", False)) and not is_emergency_stopped(check),
+        # Platform-seeded: no AI label prompt, so its work items and notes carry no "[AI-generated]" prefix.
+        ai_label=False,
+        max_iterations=FLEET_HEALTH_CHECK_MAX_ITERATIONS,
+        run_as_all_users=False,
+    )
+    listener.run_as_user_id = getattr(check, "run_as_user_id", None)
+    if not listener.enabled:
+        pause_assignment(
+            listener,
+            reason=CREATED_DISABLED_REASON,
+            details=FLEET_HEALTH_CHECK_DETAILS,
+            actor_user_id=None,
+            actor_label="Fleet health",
+        )
+    db.add(listener)
+    return True
 
 
 async def ensure_fleet_health_answered(db: AsyncSession, fleet: Fleet, agent: Agent, check: Any = None) -> bool:
@@ -1099,13 +1193,16 @@ async def _seeded_health_listeners(db: AsyncSession, agent_id: uuid.UUID) -> lis
     rows = (
         (
             await db.execute(
-                select(Assignment).where(Assignment.agent_id == agent_id, Assignment.name == FLEET_HEALTH_ANSWERED_NAME)
+                select(Assignment).where(
+                    Assignment.agent_id == agent_id,
+                    Assignment.name.in_((FLEET_HEALTH_ANSWERED_NAME, FLEET_PAST_DUE_NAME)),
+                )
             )
         )
         .scalars()
         .all()
     )
-    return [row for row in rows if is_fleet_health_answered(row)]
+    return [row for row in rows if is_fleet_health_answered(row) or is_fleet_past_due_listener(row)]
 
 
 async def set_fleet_health_check(
@@ -1130,6 +1227,7 @@ async def set_fleet_health_check(
             if agent is not None:
                 await ensure_fleet_health_check(db, fleet, agent)
                 await ensure_fleet_health_answered(db, fleet, agent)
+                await ensure_fleet_past_due_listener(db, fleet, agent)
         return None
     if lowered == HEALTH_CHECK_OFF:
         record = _health_check_record(HEALTH_CHECK_OFF, actor)
@@ -1274,7 +1372,11 @@ async def drop_fleet_health_check(db: AsyncSession, agent_id: uuid.UUID) -> bool
     dropped = False
     candidates: list[Any] = [*rows, *await _seeded_health_listeners(db, agent_id)]
     for assignment in candidates:
-        seeded = is_fleet_health_check(assignment) or is_fleet_health_answered(assignment)
+        seeded = (
+            is_fleet_health_check(assignment)
+            or is_fleet_health_answered(assignment)
+            or is_fleet_past_due_listener(assignment)
+        )
         if seeded and not assignment.enabled and has_never_run(assignment):
             await db.delete(assignment)
             dropped = True
@@ -1478,7 +1580,8 @@ async def backfill_fleet_health_advisory(db: AsyncSession) -> int:
         granted = await grant_fleet_health_advisory(db, agent)
         created = await ensure_fleet_health_check(db, fleet, agent)
         listening = await ensure_fleet_health_answered(db, fleet, agent)
-        if granted or created or listening:
+        overdue = await ensure_fleet_past_due_listener(db, fleet, agent)
+        if granted or created or listening or overdue:
             changed += 1
     changed += await grant_health_check_holders(db)
     if changed:
