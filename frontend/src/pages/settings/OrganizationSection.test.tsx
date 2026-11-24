@@ -1215,7 +1215,7 @@ describe("OrganizationSection", () => {
     expect(panel.textContent).not.toContain("tenant id");
     // The drafted PIR shows by its OpenCTI name in the picker (UX B1).
     expect(await screen.findByText("Ransomware on energy")).toBeTruthy();
-    // The drafted tech stack is named in the panel and saved with the profile, its card living on CTEM > Inventory (#1178).
+    // The drafted software inventory is named in the panel and saved with the profile, its card living on CTEM > Inventory (#1178).
     expect(put).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: /Save/ }));
     await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
