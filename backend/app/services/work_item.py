@@ -776,7 +776,8 @@ def serialize_work_item(
         # person's decision, and what the views show of a blocked item.
         "blocked_on_refs": list(getattr(item, "blocked_on_refs", None) or []),
         "blocked_reason": getattr(item, "blocked_reason", None),
-        "needs_human": bool(getattr(item, "needs_human", None)),
+        # A finished item never waits for a person, a row written before #1719 included.
+        "needs_human": bool(getattr(item, "needs_human", None)) and item.status not in WORK_ITEM_TERMINAL_STATUSES,
         # The person a needs_human item waits for when not its user (#11893).
         "waits_for_user_id": (str(recipient) if (recipient := getattr(item, "waits_for_user_id", None)) else None),
         # The decision asked of a person; None on a legacy item (#9437).
@@ -2840,6 +2841,7 @@ async def update_work_item(
             item.blocked_reason = None
             item.needs_human = None
             item.ask = None
+        _clear_person_wait_if_finished(item)
         if fleet_impact is not None:
             await check_targets(
                 db, impact, owner_agent_id=item.owner_agent_id, created_by_agent_id=item.created_by_agent_id
@@ -3730,6 +3732,7 @@ async def complete_work_item(
             item.attachment_file_ids = _with_cited_attachment_ids(item, cited_file_ids)
         previous_status = item.status
         item.status = status
+        _clear_person_wait_if_finished(item)
         if result is not None:
             item.result = result
         if stated_verdict is not None:
@@ -3752,6 +3755,18 @@ async def complete_work_item(
     if finished_note is not None:
         await _signal_finished_to_holder(str(wid), safe_uuid(finished_note["holder_run_id"]), finished_note, title)
     return await _read_back(work_item_id, user_id=user_id, writer=writer)
+
+
+def _clear_person_wait_if_finished(item: WorkItem) -> None:
+    """A done or cancelled *item* no longer waits for a person (#1719).
+
+    ``needs_human`` and the ask go with the finish, so no view, bell or tool
+    read-back shows a finished item as a pending decision; the open decision
+    row is closed as cancelled by the flush hook (``decision_hooks``).
+    """
+    if item.status in WORK_ITEM_TERMINAL_STATUSES and getattr(item, "needs_human", None):
+        item.needs_human = None
+        item.ask = None
 
 
 def _with_cited_attachment_ids(item: WorkItem, cited: Sequence[str]) -> list[str] | None:
@@ -4818,7 +4833,9 @@ async def answer_work_item(
     text, answered_by, answered_at) and as a stamped note on top of the
     description; ``needs_human``, the ask and the other why fields are
     cleared and the item goes back to ``open``, unclaimed, so its owner
-    agent's inbox takes it at once with the answer in its context.
+    agent's inbox takes it at once with the answer in its context. An option
+    marked ``keeps_waiting`` records the answer and the note alone: the item
+    stays blocked on the person with its ask, nothing is dispatched (#1719).
 
     Raises :class:`WorkItemNotWaitingError` when the item does not wait for
     a person (not ``needs_human``, or finished) and ``ValueError`` for an
@@ -4854,6 +4871,7 @@ async def answer_work_item(
             raise WorkItemNotWaitingError("this work item is not waiting for a person's answer")
         ask = getattr(item, "ask", None) or {}
         label = None
+        chosen = None
         if key:
             chosen = next(
                 (o for o in ask.get("options") or [] if str(o.get("key", "")).casefold() == key.casefold()),
@@ -4880,6 +4898,16 @@ async def answer_work_item(
         if words:
             said = f"{said}: {words}" if said else words
         who = f" by {answered_by}" if answered_by else ""
+        from app.services.decision_ask import keeps_waiting
+
+        if keeps_waiting(chosen):
+            # "Keep waiting" (#1719): the answer is recorded, the item stays as it
+            # is, still waiting with its ask and blockers, and nothing dispatches it.
+            note = stamped_note(f"ANSWERED{who}: {said} (keeps waiting)", now)
+            item.description = f"{note}\n\n{item.description}" if item.description else note
+            item.last_activity_at = now
+            await db.commit()
+            return await _read_back(work_item_id, user_id=user_id, writer=writer)
         note = stamped_note(f"ANSWERED{who}: {said}", now)
         item.description = f"{note}\n\n{item.description}" if item.description else note
         previous_status = item.status

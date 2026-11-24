@@ -95,7 +95,7 @@ widened):
 {
   "question": str,                       # one sentence, required
   "context"?: str,                       # 2 to 4 plain lines (#776)
-  "options"?: [{"key", "label", "effect"?, "kind"?}],
+  "options"?: [{"key", "label", "effect"?, "kind"?, "keeps_waiting"?}],
   "recommendation"?: option key,
   "deadline"?: ISO-8601 UTC,
   "links"?: [{"label", "url"}],          # source links (decision-card links work, #834)
@@ -106,6 +106,16 @@ widened):
 - `kind` on an option is new and optional: `approve`, `approve_always`,
   `reject`, `consent` or absent. It drives the push actions and the button
   tones; it never changes what the answer does (the source does).
+- `keeps_waiting: true` on a work item option (#1719) marks a "keep waiting"
+  answer: `answer_work_item` records it (`payload.answer`, a stamped
+  `ANSWERED ... (keeps waiting)` note) and leaves the item as it was, still
+  blocked on the person with its ask and blockers: no status change, no
+  dispatch to the owner's inbox. Any other option releases the item as before.
+- A work item that reaches `done` or `cancelled` (`complete_work_item`,
+  `update_work_item` status) no longer waits for a person (#1719): its
+  `needs_human` and ask are cleared in the same write, its open decision is
+  closed as cancelled, and the serializer and the tool read-backs never show a
+  finished item as waiting, a row finished before the fix included.
 - No options means a free-text answer. An answer always carries
   `{option?, text?}`; a decision with options accepts a text beside the option
   (a note), a decision without options needs the text.
