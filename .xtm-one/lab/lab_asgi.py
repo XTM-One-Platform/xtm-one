@@ -1282,14 +1282,15 @@ stub_model_catalogs(dict(os.environ))
 
 
 #: The crown jewels the lab's OpenCRQ sync plans over, in the shape ``CrownJewel`` validates: one row per plan kind
-#: against :data:`LAB_OPENCRQ_ASSETS` (linked by name, criticality pushed, ambiguous name, asset OpenCRQ lacks).
+#: against :data:`LAB_OPENCRQ_ASSETS` (linked by name, ambiguous name, a typed row linked to an asset OpenCRQ
+#: lacks). Nothing is pushed since #1591: ``pushed_to_opencrq`` stays empty.
 LAB_OPENCRQ_JEWELS = [
     {"name": "Customer portal", "criticality": "high"},
     {"name": "Payment gateway", "criticality": "critical", "opencrq_asset_id": "lab-asset-payments"},
     {"name": "Data warehouse", "criticality": "medium"},
-    {"name": "Legacy billing", "criticality": "high", "opencrq_asset_id": "lab-asset-retired"},
+    {"name": "Legacy billing", "criticality": "high", "opencrq_asset_id": "lab-asset-retired", "source": "manual"},
 ]
-#: The supporting assets the lab's OpenCRQ answers, in the shape ``supportingAssets.listSupportingAssets`` lists.
+#: The primary assets the lab's OpenCRQ answers (#1591), one row per asset.
 LAB_OPENCRQ_ASSETS = [
     {"id": "lab-asset-portal", "name": "Customer portal", "criticality": "high"},
     {"id": "lab-asset-payments", "name": "Payment gateway", "criticality": "high"},

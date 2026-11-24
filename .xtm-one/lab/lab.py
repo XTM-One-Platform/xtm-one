@@ -8218,8 +8218,9 @@ def seed_org_setup_prompt(token: str, base: str) -> dict[str, str]:
     return {"id": "propose true", "url": f"{base}/"}
 
 
-#: The plan kinds Check against OpenCRQ must answer one row each in a lab (``lab_asgi.stub_opencrq_sync``).
-OPENCRQ_SYNC_PLAN_KINDS = ("linked", "pushed_to_opencrq", "pulled_from_opencrq", "ambiguous", "not_in_opencrq")
+#: The plan kinds Check against OpenCRQ must answer one row each in a lab (``lab_asgi.stub_opencrq_sync``);
+#: ``pushed_to_opencrq`` stays empty since #1591 (nothing is written to OpenCRQ).
+OPENCRQ_SYNC_PLAN_KINDS = ("linked", "pulled_from_opencrq", "ambiguous", "not_in_opencrq")
 
 
 def seed_opencrq_sync_stub(token: str, base: str) -> dict[str, str]:
@@ -8236,6 +8237,8 @@ def seed_opencrq_sync_stub(token: str, base: str) -> dict[str, str]:
     plan = answer.get("plan") if isinstance(answer, dict) else None
     if not isinstance(plan, dict) or any(len(plan.get(kind) or []) != 1 for kind in OPENCRQ_SYNC_PLAN_KINDS):
         raise RuntimeError(f"the OpenCRQ sync answered {str(answer)[:300]}")
+    if plan.get("pushed_to_opencrq"):
+        raise RuntimeError(f"the OpenCRQ sync answered a push {str(answer)[:300]}")
     if answer.get("applied") is not False or answer.get("errors") != [] or "version" not in answer:
         raise RuntimeError(f"the OpenCRQ sync answered {str(answer)[:300]}")
     return {"id": f"{len(OPENCRQ_SYNC_PLAN_KINDS)} plan rows", "url": f"{base}/settings/organization"}

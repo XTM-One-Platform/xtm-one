@@ -2632,18 +2632,19 @@ def test_the_lab_answers_the_opencrq_sync_plan_from_its_fixture(monkeypatch):
             body=route.OpenCrqSyncRequest(apply=apply), db=Db(), admin=admin,
         ))
 
-    kinds = ("linked", "pushed_to_opencrq", "pulled_from_opencrq", "ambiguous", "not_in_opencrq")
+    kinds = ("linked", "pulled_from_opencrq", "ambiguous", "not_in_opencrq")
     dry = sync(False)
     assert dry.applied is False and dry.errors == [] and dry.version == 3
     assert {kind: len(dry.plan[kind]) for kind in kinds} == dict.fromkeys(kinds, 1)
-    assert dry.plan["pushed_to_opencrq"][0]["criticality"] == "very_high"
+    assert dry.plan["pushed_to_opencrq"] == []  # #1591: nothing is written to OpenCRQ
+    assert dry.plan["not_in_opencrq"] == [{"crown_jewel": "Legacy billing", "opencrq_asset_id": "lab-asset-retired"}]
     assert dry.plan["ambiguous"] == ["Data warehouse"]
     assert sync(False).plan == dry.plan
 
     applied = sync(True)
     assert applied.applied is True and applied.plan == dry.plan and saves == []
     agreed = sync(False)
-    assert all(agreed.plan[kind] == [] for kind in kinds)
+    assert all(agreed.plan[kind] == [] for kind in (*kinds, "pushed_to_opencrq"))
     assert sync(False).plan == dry.plan
 
     tree = ast.parse(LAB.read_text(encoding="utf-8"))
