@@ -354,6 +354,12 @@ and `asset_groups` into row writes (`apply_profile_lists`). Row API, administrat
 - `GET /api/v1/organization-context/changes?entity_id=&since=&before_id=&limit=`: the change log, newest first;
   `POST /api/v1/organization-context/changes/restore` `{change_ids}`: a delete comes back, an update gets its
   `before` fields, a create goes.
+- `PATCH /api/v1/organization-context` `{fields, based_on_version}` (administrators, #1738): the next profile
+  version with those top-level fields set, every other field as stored; 422 for `assets_exposure`,
+  `asset_groups` or an unknown field, 409 on a stale base. The settings cards that edit non-row fields (owned
+  domains, address ranges, outside lens) use it, so no asset row travels with them. `PUT` and the version
+  restore judge the synced-row lock (#1367) against the profile `GET` answered (rows from the records), never
+  the stored version JSON: a sync that moved `last_seen` since no longer refuses a save that did not touch it.
 
 Group memberships kept in sync (#1556): a group source answers each group's members (OpenAEV: static and
 dynamic, a dynamic group stored as its resolved members), and `organization_asset_records.sync_group_members`
