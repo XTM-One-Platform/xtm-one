@@ -3,7 +3,8 @@
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { UsersRound, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Badge, BadgeFocusTrigger } from "@/components/ui/badge";
+import { Tip } from "@/components/ui/tooltip";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { NavFamilyHeader } from "@/components/layout/NavFamilyHeader";
@@ -64,9 +65,16 @@ export default function Groups() {
           </span>
           <TruncatedText text={g.name} className="min-w-[240px] font-medium" />
           {g.auto_join && (
-            <Badge variant="outline" className="shrink-0 whitespace-nowrap" title={t_i18n("Single sign-on users join this group")}>
-              {t_i18n("Auto join")}
-            </Badge>
+            <Tip content={t_i18n("Single sign-on users join this group")} side="top">
+              <BadgeFocusTrigger
+                className="shrink-0"
+                aria-label={`${t_i18n("Auto join")}. ${t_i18n("Single sign-on users join this group")}`}
+              >
+                <Badge variant="outline" className="whitespace-nowrap">
+                  {t_i18n("Auto join")}
+                </Badge>
+              </BadgeFocusTrigger>
+            </Tip>
           )}
         </span>
       ),
