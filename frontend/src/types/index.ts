@@ -75,10 +75,6 @@ export interface User {
    *  on the platform config: read both through `useAiEnabled()`. */
   ai_disabled_by_group?: boolean;
   ai_disabled_group?: string | null;
-  /** The person's CTEM level (`services/ctem_access.py`): `decide` reads and acts on
-   *  every signal and case and answers their gates, `view` reads them only; null = own
-   *  signals only. Read it through `ctemMayDecide()`. */
-  ctem_access?: "admin" | "decide" | "view" | null;
   // CTEM command center (XTM One home) per-user preferences.
   ctem_vertical: CtemVertical;
   ctem_splash_seen: boolean;
@@ -1584,6 +1580,10 @@ export interface ProviderCatalogItem {
   supports_assignment_webhooks: boolean;
   supports_webhook_management: boolean;
   setup_guide: SetupGuide | null;
+  /** One guide per authentication mode (`{oauth: guide, api_key: guide}`), for a
+   * provider whose modes are set up apart; `setup_guide` where no mode is chosen
+   * or a mode has none. Read through `setupGuideFor`. */
+  auth_setup_guides?: Record<string, SetupGuide> | null;
   has_oauth_defaults: boolean;
   has_oauth_extra_config: boolean;
   is_custom?: boolean;
@@ -7653,17 +7653,11 @@ export interface Group {
   ai_enabled?: boolean;
   /** What the group is for the LLM analytics; `auto` = not classified. */
   kind?: GroupKind;
-  /** The CTEM right the group grants its members; null = none. Admin routes only. */
-  ctem_access?: GroupCtemAccess | null;
-  /** With `decide`: the members get a notification for each case gate. */
-  ctem_notify?: boolean;
   created_at: string;
   updated_at: string;
 }
 
 export type GroupKind = "org_unit" | "access" | "distribution" | "auto";
-
-export type GroupCtemAccess = "view" | "decide";
 
 export type GroupDetail = Group;
 

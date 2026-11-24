@@ -21596,16 +21596,8 @@
   "Nobody answered before the deadline: the step did not run.": "Nobody answered before the deadline: the step did not run.",
   "The decision was withdrawn before an answer.": "The decision was withdrawn before an answer.",
   "No answer": "No answer",
-  "CTEM access": "CTEM access",
-  "CTEM access updated": "CTEM access updated",
-  "CTEM access could not be updated": "CTEM access could not be updated",
-  "What the members may do on the signals and cases the platform records. Administrators keep full access.": "What the members may do on the signals and cases the platform records. Administrators keep full access.",
-  "No CTEM access": "No CTEM access",
-  "View signals and cases": "View signals and cases",
-  "View and decide": "View and decide",
-  "Members see only the signals they record themselves.": "Members see only the signals they record themselves.",
-  "Members read every signal and case of the organization, read only.": "Members read every signal and case of the organization, read only.",
-  "Members also triage signals, change cases (owner, due date, state, accepted risk) and answer the case decisions. Their agents get the same reach.": "Members also triage signals, change cases (owner, due date, state, accepted risk) and answer the case decisions. Their agents get the same reach.",
-  "Notify the members of case decisions": "Notify the members of case decisions",
-  "Off: the members can still answer from the case page, without a notification.": "Off: the members can still answer from the case page, without a notification."
+  "{product} rejected your sign-in token, so open exposures there may be missing.": "{product} rejected your sign-in token, so open exposures there may be missing.",
+  "{product} could not answer because the query was too large, so open exposures there may be missing.": "{product} could not answer because the query was too large, so open exposures there may be missing.",
+  "{product} did not answer in time, so open exposures there may be missing.": "{product} did not answer in time, so open exposures there may be missing.",
+  "No {product} connection could be used for this read, so open exposures there may be missing.": "No {product} connection could be used for this read, so open exposures there may be missing."
 }
