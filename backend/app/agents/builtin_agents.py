@@ -4079,7 +4079,7 @@ BUILTIN_SKILLS: list[dict] = [
             "in dry-run, unchanged, refused for consent or budget), and report "
             "counts only, never memory content."
         ),
-        "compatibility": "memory_steward",
+        "compatibility": "health_specialists",
         "content": "memory-steward",
         "tags": ["builtin", "health", "memory"],
         "platform_targets": ["global"],
@@ -4286,7 +4286,7 @@ BUILTIN_SKILLS: list[dict] = [
             "tell a pattern from noise, record each finding once with checked evidence, and draft one "
             "targeted variant for the Experimenter to measure."
         ),
-        "compatibility": "health_diagnosis",
+        "compatibility": "health_specialists",
         "content": "health-quality-analyst",
         "tags": ["builtin", "health", "quality"],
         "platform_targets": ["global"],
@@ -4301,7 +4301,7 @@ BUILTIN_SKILLS: list[dict] = [
             "experiment to it, read the comparison and the simulated writes, and file only what the "
             "measurement earned, or unmeasured with its reason."
         ),
-        "compatibility": "health_experiments",
+        "compatibility": "health_specialists",
         "content": "health-experimenter",
         "tags": ["builtin", "health", "evaluation"],
         "platform_targets": ["global"],
@@ -4316,7 +4316,7 @@ BUILTIN_SKILLS: list[dict] = [
             "flow's or an assignment's evidence, designs one variant on a sandbox flow that keeps its source's "
             "reach, and hands it to the Experimenter to measure."
         ),
-        "compatibility": "flow_lab",
+        "compatibility": "health_specialists",
         "content": "health-flow-lab",
         "tags": ["builtin", "health", "flows"],
         "platform_targets": ["global"],
@@ -4332,7 +4332,7 @@ BUILTIN_SKILLS: list[dict] = [
                 f"The {label} health checks Platform Health runs on a registered {label} platform, read-only: "
                 "each check, what it reads, its warn and fail thresholds, and the report it ends with."
             ),
-            "compatibility": "health_modules",
+            "compatibility": "health_specialists",
             "content": f"health-{module}-checks",
             "tags": ["builtin", "health", "modules", module],
             "platform_targets": ["xtm_one", "dev"],
