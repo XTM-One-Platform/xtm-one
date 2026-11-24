@@ -13,6 +13,7 @@
 import { Link as RouterLink } from "react-router-dom";
 import { Link } from "@filigran/design-system";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CASE_SECTION_ICON, CaseCardTitleText } from "./case-icons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCtemCaseSignals } from "@/hooks/api/useCtemSignalsApi";
 import { useFormatter } from "@/i18n";
@@ -33,7 +34,9 @@ export function CaseOpenedBy({ caseId, history }: { caseId: string; history?: re
   return (
     <Card data-testid="ctem-case-opened-by">
       <CardHeader>
-        <CardTitle>{t_i18n("Opened by")}</CardTitle>
+        <CardTitle>
+          <CaseCardTitleText icon={CASE_SECTION_ICON.opened_by}>{t_i18n("Opened by")}</CaseCardTitleText>
+        </CardTitle>
       </CardHeader>
       <CardContent>
         {isLoading && !data ? (
