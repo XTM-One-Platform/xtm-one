@@ -1895,6 +1895,10 @@ async def run_agent_chat(
     # (an agent account's rule): every other provider's bindings are
     # dropped after pinning. ``None``: the agent's own, unfiltered.
     allowed_integration_providers: set[str] | None = None,
+    # ``{provider: integration id}`` the run that spawned this turn resolved its
+    # per-user (template) bindings to (a background task, #1792): taken first
+    # when still eligible for this turn, so parent and child act as one account.
+    inherited_template_picks: dict[str, str] | None = None,
     # Filled with the integrations this turn did not use for its user because
     # of who may use them, nested consult and transfer turns included:
     # the caller shows them on the reply
@@ -5260,6 +5264,7 @@ async def run_agent_chat(
             None if is_anonymous_user else user_id,
             company_automation=company_automation,
             scope_headers=scope_headers,
+            inherited_template_picks=inherited_template_picks,
         )
         effective_bindings: dict[str, str] = _resolved_bindings.bindings
         binding_origin_map: dict[str, str] = _resolved_bindings.origins
@@ -6393,6 +6398,7 @@ async def run_agent_chat(
 
             if _needs_bg:
                 from app.services.builtin_tools import build_sub_agent_tools
+                from app.services.integration_tools import template_picks as _template_picks
 
                 # Delegations tee: the spawn hook feeds BOTH the
                 # caller's delegations sink (the On-delegate attachment) and
@@ -6432,6 +6438,9 @@ async def run_agent_chat(
                     # transferred one or a delegated task runs its own turn, not
                     # in evaluation mode, under the parent run it creates.
                     cap_scope=f"evaluation_turn:{uuid.uuid4()}" if evaluation_mode else None,
+                    # This turn's per-user picks: its tasks act as the same
+                    # accounts (#1792).
+                    inherited_template_picks=_template_picks(effective_bindings, binding_origin_map),
                     element_scope=_element_scope,
                 )
             else:

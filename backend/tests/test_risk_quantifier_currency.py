@@ -106,7 +106,10 @@ def test_the_always_on_block_carries_the_rate_only_when_one_is_set() -> None:
     text = inj.render_summary(Row())
     assert "1 USD = 0.9 EUR (2026-11-20, Central bank reference)" in text
     Row.profile = {"name": "Acme", "currency": "EUR"}
-    assert "fx_rates" not in inj.render_summary(Row())
+    text = inj.render_summary(Row())
+    assert "1 USD = 0.9 EUR" not in text
+    # #1773: the missing rate is named instead, never left to a guessed rate.
+    assert "No reference exchange rate into EUR (fx_rates)." in text
 
 
 def test_the_rates_are_not_a_category_of_the_index() -> None:

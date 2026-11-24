@@ -283,6 +283,7 @@ class WorkspaceIngestor:
             CheckoutRecord,
             CheckoutRecordError,
             changes_since,
+            read_record_bytes,
         )
         from app.services.sandbox_workspace.gitignore import GitIgnore, gitignore_paths
 
@@ -295,7 +296,7 @@ class WorkspaceIngestor:
         # A status, diff or commit of the round that edits the checkout sees the edit (#11714).
         await self._settled()
         try:
-            record_entry, data = await self.session.get_bytes(f"{base}/{RECORD_NAME}")
+            record_entry, data = await read_record_bytes(self.session, base)
         except FileNotFoundError:
             raise ValueError(
                 f"{display(base)}/ holds no {RECORD_NAME}: it was not written by materialize_repository (or the "
@@ -340,14 +341,14 @@ class WorkspaceIngestor:
     ) -> str:
         """Move the checkout *record* to the commit made from it (``checkout.advance``).
 
-        Rewrites ``<checkout>/.xtm-checkout.json`` and returns the sentence for
+        Rewrites ``<checkout>/.xtm-checkout`` and returns the sentence for
         the commit's result. *rewrites* (repository path -> bytes) are the
         workspace files the commit merged with the branch: they are written
         first, so the workspace holds what was committed. Never raises: the
         commit is made whatever happens to the record, so a failure is said,
         not thrown.
         """
-        from app.services.sandbox_workspace.checkout import CheckoutRecord, advance, origin
+        from app.services.sandbox_workspace.checkout import CheckoutRecord, advance, origin, write_record
 
         if not isinstance(record, CheckoutRecord):
             return ""
@@ -355,7 +356,7 @@ class WorkspaceIngestor:
         try:
             for repo_path, data in (rewrites or {}).items():
                 await self.session.put_bytes(record.workspace_path(repo_path), data, operation="checkout_merge")
-            await self.session.put_bytes(moved.record_path, moved.to_json(), operation="checkout_advance")
+            await write_record(self.session, moved, operation="checkout_advance")
         except (QuotaExceededError, WorkspaceUnavailableError, WorkspacePathError) as exc:
             metrics.operation("checkout_advance", "refused")
             return (
@@ -384,13 +385,13 @@ class WorkspaceIngestor:
         ``from_checkout`` adopts the landed commit. Never raises: the commit
         goes on without the note.
         """
-        from app.services.sandbox_workspace.checkout import CheckoutRecord, with_pending
+        from app.services.sandbox_workspace.checkout import CheckoutRecord, with_pending, write_record
 
         if not isinstance(record, CheckoutRecord) or not self.session.available:
             return False
         noted = with_pending(record, branch=branch, parent=parent, written=written, removed=removed)
         try:
-            await self.session.put_bytes(noted.record_path, noted.to_json(), operation="checkout_advance")
+            await write_record(self.session, noted, operation="checkout_advance")
         except Exception as exc:  # the commit is made without the note
             logger.warning("checkout pending note failed: %s", format_exception_message(exc))
             return False
@@ -401,13 +402,13 @@ class WorkspaceIngestor:
 
         Returns the sentence for the result, ``""`` when the record was not moved. Never raises.
         """
-        from app.services.sandbox_workspace.checkout import CheckoutRecord, adopt_pending, origin
+        from app.services.sandbox_workspace.checkout import CheckoutRecord, adopt_pending, origin, write_record
 
         if not isinstance(record, CheckoutRecord) or not self.session.available:
             return ""
         moved = adopt_pending(record, commit=commit)
         try:
-            await self.session.put_bytes(moved.record_path, moved.to_json(), operation="checkout_advance")
+            await write_record(self.session, moved, operation="checkout_advance")
         except Exception as exc:  # the record stays: the drift reconcile still runs
             logger.warning("checkout adoption of a landed commit failed: %s", format_exception_message(exc))
             metrics.operation("checkout_adopt_landed", "failed")
@@ -425,7 +426,7 @@ class WorkspaceIngestor:
         Raises what the session raises; a missing or unreadable record is no
         record.
         """
-        from app.services.sandbox_workspace.checkout import RECORD_NAME, CheckoutRecord, CheckoutRecordError
+        from app.services.sandbox_workspace.checkout import CheckoutRecord, CheckoutRecordError, read_record_bytes
 
         cache: dict[str, CheckoutRecord | None] = {}
         found: dict[str, object] = {}
@@ -437,7 +438,7 @@ class WorkspaceIngestor:
                 root = "/".join(parts[:depth])
                 if root not in cache:
                     try:
-                        _entry, data = await self.session.get_bytes(f"{root}/{RECORD_NAME}")
+                        _entry, data = await read_record_bytes(self.session, root)
                         cache[root] = CheckoutRecord.from_json(data, path=root)
                     except (FileNotFoundError, CheckoutRecordError):
                         cache[root] = None
@@ -466,7 +467,7 @@ class WorkspaceIngestor:
         written. *committed* names every path the commit wrote or deleted
         (the written ones when not given). Never raises: the commit is made.
         """
-        from app.services.sandbox_workspace.checkout import CheckoutRecord, advance_files, origin
+        from app.services.sandbox_workspace.checkout import CheckoutRecord, advance_files, origin, write_record
 
         if not self.session.available or not written:
             return ""
@@ -499,7 +500,7 @@ class WorkspaceIngestor:
                         "so the next from_checkout merges the branch's changes."
                     )
                     continue
-                await self.session.put_bytes(moved.record_path, moved.to_json(), operation="checkout_advance")
+                await write_record(self.session, moved, operation="checkout_advance")
                 metrics.operation("checkout_advance_files", "ok")
                 lines.append(
                     f"Checkout record {display(moved.record_path)} moved to {origin(moved)}: "

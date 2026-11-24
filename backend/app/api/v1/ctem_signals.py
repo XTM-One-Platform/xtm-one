@@ -109,12 +109,17 @@ async def list_ctem_signals(
     trigger_path: TriggerPath | None = Query(default=None),
     lens: Lens | None = Query(default=None),
     case_id: uuid.UUID | None = Query(default=None),
+    source_provider: str | None = Query(default=None, max_length=40),
+    since: datetime | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=signals.MAX_PAGE),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """One page of signals, newest sighting first, with the total and the counts by state."""
+    """One page of signals, newest sighting first, with the total and the counts by state.
+
+    ``source_provider`` keeps one provider; ``since`` keeps the signals last seen at or after it (#1782).
+    """
     _require_xtm_one()
     primary = await get_primary(db)
     if primary is None:
@@ -127,6 +132,8 @@ async def list_ctem_signals(
         trigger_path=trigger_path,
         lens=lens,
         case_id=case_id,
+        source_provider=source_provider,
+        since=since if since is None or since.tzinfo else since.replace(tzinfo=UTC),
         limit=limit,
         offset=offset,
     )

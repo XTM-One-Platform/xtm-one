@@ -85,8 +85,13 @@ def build_sub_agent_tools(
     evaluation_chain: bool = False,
     evaluation_tool_approval: bool | None = None,
     cap_scope: str | None = None,
+    inherited_template_picks: Mapping[str, str] | None = None,
 ) -> tuple[list[ToolDefinition], CallableToolExecutor] | None:
     """Build tools for spawning and managing background sub-agent tasks.
+
+    ``inherited_template_picks`` is ``{provider: integration id}`` the spawning
+    run resolved its per-user (template) bindings to: stored on every task it
+    spawns, so the task's turn acts as the same account (#1792).
 
     Injected when the agent has handover_agent_ids configured — the same
     set of peer agents available for consult/transfer are also available
@@ -294,6 +299,7 @@ def build_sub_agent_tools(
                     f"{format_exception_message(resolver_err)}"
                 )
 
+        from app.services.integration_tools import INHERITED_TEMPLATE_PICKS_KEY
         from app.services.sub_agent import (
             count_active_sub_agent_executions,
             create_sub_agent_task,
@@ -372,6 +378,12 @@ def build_sub_agent_tools(
                         ),
                         # The caller's per-call answer shape, read by the worker.
                         **({CALL_OUTPUT_SCHEMA_KEY: _call_schema} if _call_schema is not None else {}),
+                        # The spawning run's per-user picks, kept by the task's turn.
+                        **(
+                            {INHERITED_TEMPLATE_PICKS_KEY: dict(inherited_template_picks)}
+                            if inherited_template_picks
+                            else {}
+                        ),
                     }
                     or None
                 ),

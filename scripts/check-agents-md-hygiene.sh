@@ -18,7 +18,8 @@
 #
 # Usage: bash scripts/check-agents-md-hygiene.sh
 #
-# On a partial sandbox checkout (a .xtm-checkout.json whose sub_paths name
+# On a partial sandbox checkout (a .xtm-checkout record, or the legacy
+# .xtm-checkout.json, whose sub_paths name
 # the parts of the tree it holds), a dev-docs/ pointer outside those parts is
 # not judged: the checkout lacks it, CI checks the whole tree.
 
@@ -29,14 +30,21 @@ cd "$(git rev-parse --show-toplevel)"
 fail=0
 
 scope=()
-if [[ -f .xtm-checkout.json ]] && command -v python3 > /dev/null; then
+record=""
+for name in .xtm-checkout .xtm-checkout.json; do
+  if [[ -f "$name" ]]; then
+    record="$name"
+    break
+  fi
+done
+if [[ -n "$record" ]] && command -v python3 > /dev/null; then
   while IFS= read -r sub; do
     [[ -n "$sub" ]] && scope+=("$sub")
   done < <(python3 -c 'import json,sys
-try: d = json.load(open(".xtm-checkout.json"))
+try: d = json.load(open(sys.argv[1]))
 except Exception: sys.exit(0)
 for s in d.get("sub_paths") or []:
-    if isinstance(s, str) and s.strip("/"): print(s.strip("/"))')
+    if isinstance(s, str) and s.strip("/"): print(s.strip("/"))' "$record")
 fi
 
 # Whether the checkout holds $1: always on a whole tree.

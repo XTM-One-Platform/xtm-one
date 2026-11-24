@@ -34,7 +34,9 @@ from app.services.builtin_tools import (
     ctem_read_tools_for,
     offers_ctem_read_tools,
 )
-from app.services.builtin_tools.ctem_read import empty_sections, opened_by
+from app.services.builtin_tools.ctem_read import asset_page, empty_sections, opened_by
+from app.services.builtin_tools.ctem_signals import _since
+from app.services.ctem_signals import provider_name, to_dict
 from app.tools.base import ToolCall
 from tests.test_ctem_case_tools import AGENT, env  # noqa: F401  (the shared fixture)
 
@@ -84,11 +86,70 @@ def test_a_ctem_agent_is_never_offered_a_function_twice(xtm_one: None) -> None:
     wired = ctem_read_tools_for(triage, ["ctem_read"], user_id=str(uuid.uuid4()))
     assert wired is not None
     defs, executor = wired
-    assert [d.name for d in defs] == ["list_ctem_cases", "get_ctem_case"]
+    assert [d.name for d in defs] == ["list_ctem_cases", "get_ctem_case", "list_ctem_assets"]
     assert executor.handler("list_ctem_signals") is None
-    # Carries both: nothing to add.
+    # Carries both: only the inventory read is added (#1782).
     orchestrator = _custom_agent(slug="ctem-vuln-prioritization-orchestrator", builtin=True)
-    assert ctem_read_tools_for(orchestrator, ["ctem_read"], user_id=str(uuid.uuid4())) is None
+    wired = ctem_read_tools_for(orchestrator, ["ctem_read"], user_id=str(uuid.uuid4()))
+    assert wired is not None
+    assert [d.name for d in wired[0]] == ["list_ctem_assets"]
+
+
+def test_the_asset_page_carries_the_counts_by_source_and_category() -> None:
+    """#1782: the inventory read answers the page, its next offset and the counts of the same filters."""
+    page = {
+        "items": [{"id": "a1", "name": "web-01", "sources": ["openaev"], "records": [{"source": "openaev"}]}],
+        "total": 3,
+        "offset": 0,
+        "limit": 1,
+    }
+    facets = {
+        "source": [{"value": "openaev", "count": 2}, {"value": "intune", "count": 1}],
+        "category": [{"value": "endpoint", "count": 3}],
+    }
+    body = asset_page(page, facets)
+    assert body["total"] == 3 and body["next_offset"] == 1
+    assert body["by_source"]["openaev"] == {"name": "OpenAEV", "assets": 2}
+    assert body["by_source"]["intune"] == {"name": "intune", "assets": 1}
+    assert body["by_category"] == {"endpoint": 3}
+    assert "records" not in body["assets"][0]
+    assert asset_page({**page, "total": 1}, {})["next_offset"] is None
+
+
+def test_a_signal_names_its_provider_product() -> None:
+    """#1782: an agent reads \"Aikido Security\", never the bare key alone."""
+    assert provider_name("aikido") == "Aikido Security"
+    assert provider_name("OpenAEV") == "OpenAEV"
+    assert provider_name("acme") == "acme"
+    signal = SimpleNamespace(
+        id=uuid.uuid4(),
+        trigger_path="code_flaw",
+        lens="inside",
+        source_provider="aikido",
+        source_external_id="42",
+        subject_kind="package",
+        subject_ref="lodash",
+        subject_label=None,
+        observed_at=None,
+        first_seen_at=None,
+        last_seen_at=None,
+        seen_count=1,
+        evidence={},
+        dedupe_key="k",
+        state="new",
+        decision=None,
+        case_id=None,
+        recorded_via="tool",
+    )
+    source = to_dict(signal)["source"]  # type: ignore[arg-type]
+    assert source == {"provider": "aikido", "name": "Aikido Security", "external_id": "42"}
+
+
+def test_since_reads_a_date_or_a_time_as_utc() -> None:
+    """#1782: the since filter of list_ctem_signals."""
+    assert _since("") is None and _since("not a date") is None
+    assert _since("2026-11-20") == datetime(2026, 11, 20, tzinfo=UTC)
+    assert _since("2026-11-20T08:00:00Z") == datetime(2026, 11, 20, 8, tzinfo=UTC)
 
 
 def _event(kind: str, at: datetime, actor: str = "system", **kw: Any) -> CtemCaseEvent:
