@@ -110,18 +110,24 @@ def after_triage(case: CtemCase, at: datetime, *, actor: str, what: str) -> Ctem
 
 
 def after_gate(case: CtemCase, at: datetime, *, key: str, outcome: str, by: str, actor: str) -> CtemCaseEvent | None:
-    """The status a gate event implies: waited parks the case on a person, answered or passed moves it on."""
+    """The status a gate event implies: waited parks the case on a person, passed moves it on.
+
+    A person's answer never moves the case by code (#1675): approve, reject or a
+    free-text answer, the Gate answered run reads it and sets the next state
+    itself with update_ctem_case (back to analysis, validation again, remediate,
+    close with evidence). Only the bookkeeping stays here: waited parks the case
+    on the person, and a gate that passed without a person moves it on.
+    """
     if case.state not in OPEN_STATES:
         return None
     if outcome == "waited":
         return move(case, "waiting_decision", at, actor=actor, reason=f"waits on {by or 'a person'} at gate {key}")
+    if outcome == "answered":
+        return None
     target = GATE_NEXT.get(key)
     if case.state == "waiting_decision":
-        # The answer moves the case to what the gate's next step implies; a gate with no next
-        # step returns it to the analysis it paused.
-        target = target or "analyzing"
-        verb = "answered by " + (by or "a person") if outcome == "answered" else "passed"
-        return move(case, target, at, actor=actor, reason=f"gate {key} {verb}")
+        # Passed without a person: the gate's next step, else the analysis it paused.
+        return move(case, target or "analyzing", at, actor=actor, reason=f"gate {key} passed")
     if target is not None and _forward(case.state, target):
         return move(case, target, at, actor=actor, reason=f"gate {key} passed automatically")
     return None

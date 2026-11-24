@@ -377,6 +377,26 @@ async def expire_acceptances(db: AsyncSession, *, now: datetime | None = None) -
     return expired
 
 
+async def close_without_retest_answered(db: AsyncSession, case_id: uuid.UUID) -> bool:
+    """Whether a person answered the ``ctem.close_without_retest`` decision of the case (#1675).
+
+    Read from the case's gate events (``ctem_case_loop.record_gate``: kind
+    ``gate``, the key in ``from_value``, the outcome in ``to_value``). The agent
+    read the answer and decided to close; the rule never refuses that decision.
+    """
+    found = await db.scalar(
+        select(CtemCaseEvent.id)
+        .where(
+            CtemCaseEvent.case_id == case_id,
+            CtemCaseEvent.kind == "gate",
+            CtemCaseEvent.from_value == "ctem.close_without_retest",
+            CtemCaseEvent.to_value == "answered",
+        )
+        .limit(1)
+    )
+    return found is not None
+
+
 async def update_case(
     db: AsyncSession,
     case: CtemCase,
@@ -407,6 +427,14 @@ async def update_case(
     if state is None:
         rules.check_owner(case.state, new_owner)
     else:
+        answered = False
+        if (
+            state in ("resolved", "mitigated_watching")
+            and actor_kind != "user"
+            and (state == "mitigated_watching" or getattr(case, "validation_plan", False))
+            and not rules.passing(rules.latest_validation(getattr(case, "validations", None)))
+        ):
+            answered = await close_without_retest_answered(db, case.id)
         rules.check_transition(
             current=case.state,
             target=state,
@@ -418,6 +446,7 @@ async def update_case(
             now=now,
             validation_plan=bool(getattr(case, "validation_plan", False)),
             validations=getattr(case, "validations", None),
+            close_without_retest_answered=answered,
         )
     if new_owner != case.owner_user_id:
         db.add(

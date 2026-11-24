@@ -2185,6 +2185,7 @@ async def create_work_item(
     from app.services.work_item_fleet_impact import check_targets, normalize_fleet_impact
 
     impact = normalize_fleet_impact(fleet_impact)
+    gate_warning: str | None = None
 
     async with async_session() as db:
         # A target outside the fleet of its owner or creator is refused.
@@ -2194,11 +2195,12 @@ async def create_work_item(
         if workspace_id is None:
             workspace_id = await _default_workspace(db, user_id, creator_uuid)
         if require_person_ask:
-            # A CTEM case's decisions wait in order, each card self-contained (#1606).
+            # A CTEM case's decision cards are self-contained (#1606).
             from app.services import ctem_gate_order
 
             ctem_gate_order.refuse_run_pointer(key, structured_ask)
-            await ctem_gate_order.refuse_mobilize_before_review(
+            # The order of the decisions is the agent's call (#1675): a warning, never a refusal.
+            gate_warning = await ctem_gate_order.mobilize_before_review_warning(
                 db, key, needs_human, user_id=user_uuid, workspace_id=workspace_id
             )
         if red_key:
@@ -2357,7 +2359,10 @@ async def create_work_item(
         from app.services.work_item_blocked_refs import schedule_reference_state_check
 
         schedule_reference_state_check(item_id)
-    return await _read_back(item_id, user_id=user_id, writer=writer) or {"id": item_id}
+    created = await _read_back(item_id, user_id=user_id, writer=writer) or {"id": item_id}
+    if gate_warning:
+        created = {**created, "warnings": [gate_warning]}
+    return created
 
 
 def _names_deployment(refs: object) -> bool:
@@ -2517,6 +2522,7 @@ async def update_work_item(
         return None
     uid = safe_uuid(user_id) if user_id else None
     now = datetime.now(UTC)
+    gate_warning: str | None = None
 
     async with async_session() as db:
         _readable, writable = await _workspace_tiers(db, user_id)
@@ -2652,7 +2658,8 @@ async def update_work_item(
                 )
                 ctem_gate_order.refuse_run_pointer(item.correlation_key, new_ask)
             if needs_human and not stored_human:
-                await ctem_gate_order.refuse_mobilize_before_review(
+                # The order of the decisions is the agent's call (#1675): a warning, never a refusal.
+                gate_warning = await ctem_gate_order.mobilize_before_review_warning(
                     db,
                     item.correlation_key,
                     True,
@@ -2912,7 +2919,10 @@ async def update_work_item(
         from app.services.work_item_blocked_refs import schedule_reference_state_check
 
         schedule_reference_state_check(item_id)
-    return await _read_back(item_id, user_id=user_id, writer=writer)
+    updated = await _read_back(item_id, user_id=user_id, writer=writer)
+    if gate_warning and updated is not None:
+        updated = {**updated, "warnings": [gate_warning]}
+    return updated
 
 
 async def _live_foreign_holder(

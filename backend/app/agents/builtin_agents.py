@@ -2986,11 +2986,14 @@ def _gate_answered_assignment(common: dict[str, Any], *, fleet_key: str) -> dict
             "Read the case its key names (the case id, else the case of the subject id, found with "
             "list_ctem_cases) with get_ctem_case, and write the decision on it with "
             "update_ctem_case gate (outcome answered, the gate, the option chosen, who answered). "
-            "Approved: run exactly what the ask covered and continue the loop from that step, "
-            "writing every result on the case; the case's own work item keyed "
-            f"`{fleet_key}:case:` followed by the case id gets a note. Rejected or deferred: "
-            "record it on the case with the reason and stop or re-plan as the answer says. End with "
-            "the case id, the gate, the decision and the next step."
+            "The answer does not move the case: you decide its next state and set it with "
+            "update_ctem_case state and the reason. Approved: run exactly what the ask covered and "
+            "continue the loop from that step, writing every result on the case; the case's own work "
+            f"item keyed `{fleet_key}:case:` followed by the case id gets a note. Rejected, deferred "
+            "or answered in the person's own words: record it on the case with the reason and move "
+            "the case where the answer and the evidence point (back to analyzing, validation again, "
+            "remediating, or closed with its evidence), filing a new decision if you judge one is "
+            "needed. End with the case id, the gate, the decision, the state you set and the next step."
         ),
     )
 

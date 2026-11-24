@@ -366,6 +366,8 @@ async def resolve_approve_tool_calls(db: AsyncSession, agent) -> bool:
     turns it on. Not ``human_in_the_loop``: that switch keeps its prompt-driven
     meaning.
     """
+    if await seeded_fleet_member(db, agent):
+        return False
     own = getattr(agent, "approve_tool_calls", None) if agent is not None else None
     if own is not None:
         return bool(own)
@@ -379,6 +381,31 @@ async def resolve_approve_tool_calls(db: AsyncSession, agent) -> bool:
         logger.exception("Could not read the install's approval default — gating")
         return True
     return agent_asks(None, install_default_asks(default))
+
+
+async def seeded_fleet_member(db: AsyncSession, agent) -> bool:
+    """Whether *agent* is a built-in agent of a built-in (seeded) fleet: never an in-run approval card (#1675).
+
+    A seeded fleet's tools are always offered and authorized on every
+    deployment; its gates are decision items between steps. ``False`` on a
+    failed read, so the agent's own switch decides as before.
+    """
+    if agent is None or not getattr(agent, "is_builtin", False) or getattr(agent, "id", None) is None:
+        return False
+    try:
+        from app.models.fleet import Fleet, FleetMember
+
+        async with db.begin_nested():
+            found = await db.scalar(
+                select(FleetMember.id)
+                .join(Fleet, Fleet.id == FleetMember.fleet_id)
+                .where(FleetMember.agent_id == agent.id, Fleet.is_builtin.is_(True))
+                .limit(1)
+            )
+    except Exception:
+        logger.exception("Could not read whether agent %s is a seeded fleet member", getattr(agent, "id", None))
+        return False
+    return found is not None
 
 
 def gate_off_outcome(agent) -> str | None:

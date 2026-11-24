@@ -31,17 +31,24 @@ message carries resolves (section 9, I.7).
 Fleet gates are a source of decisions 2 and 5, never a gate of their own: a
 gate of a fleet's approval catalog (`dev-docs/ctem-fleets.md` section 11) that
 waits at the fleet's autonomy level and pins is an instruction to the members
-(#1467): no tool call pauses unless an administrator opted the fleet in to
+(#1467): no tool call pauses unless an administrator opted a custom fleet in to
 tool-level enforcement (`Fleet.enforce_gates_at_tool_level`, off by default),
-in which case it pauses its tools through gate 2; it asks through gate 5 (a `needs_human` work item with an ask) when it has no
-tool, with the gate key as the decision's source. The CTEM loop fleets (#916,
+in which case it pauses its tools through gate 2; it asks through gate 5 (a
+`needs_human` work item with an ask), with the gate key as the decision's
+source. A built-in (seeded) fleet never uses gate 2 (#1675, Sam, 24 Nov 2026):
+its tools are always offered and authorized on every deployment, no seeded gate
+declares `tools` or `grant`, the seed forces `enforce_gates_at_tool_level`
+off, the API refuses turning it on, `fleet_enforces_at_tool_level` answers
+false whatever is stored, and a built-in member of a built-in fleet never gets
+an in-run approval card (`hitl_whitelist.seeded_fleet_member`). A seeded gate
+that waits is one decision item between steps; the agent reads the answer and
+decides the next state itself. The CTEM loop fleets (#916,
 CTEM-34) declare one key per loop stage (`ctem.validation.non_readonly`,
 `ctem.analyst_review`, `ctem.remediation.decision`, `ctem.mobilize`,
 `ctem.production_change`, `ctem.accept_risk`, `ctem.close_without_retest`);
 out of the box two gates wait per case, the OpenAEV validation (one decision
-per validation: a gate's `grant` lets the approved call cover the creation and
-the launch of the objects it named or created) and `ctem.mobilize` (one
-decision per case). A built-in
+per validation: its ask names the scenario, targets and schedule it covers)
+and `ctem.mobilize` (one decision per case). A built-in
 fleet takes pins and added gates in its customer layer, kept across seed
 upgrades. No CTEM-specific card, endpoint, table, bell kind or channel
 message; the G2 migration backfills them like any other.
