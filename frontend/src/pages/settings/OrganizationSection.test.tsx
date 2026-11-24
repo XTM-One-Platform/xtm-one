@@ -52,7 +52,7 @@ async function draftFromPlatforms() {
 const INVENTORY_CARDS = {
   business: ["crown_jewels", "shipped_products", "tracked_organizations"],
   technology: ["tech_stack"],
-  exposure: ["prioritization_policy", "outside_lens", "evidence_health"],
+  exposure: ["assets_exposure", "asset_groups", "prioritization_policy", "outside_lens", "evidence_health"],
 } as const;
 /**
  * Renders the page on one of its tabs (#12329); none is the first tab. The Technology and Exposure cards render
@@ -104,7 +104,6 @@ beforeEach(() => {
     if (path === "/organizations") return [];
     if (path === "/integrations") return [];
     if (path === "/organization-context/pirs") return { pirs: [{ id: "pir-1", name: "Ransomware on energy" }], unavailable: null };
-    if (path === "/organization-context/readers") return READERS;
     if (path === "/organization-context/import/sources") return { sections: [] };
     if (path === "/organization-context/attack-surface/providers") return { providers: ["shodan"] };
     // The Sources and syncs table of the Knowledge and sources tab (#1276).
@@ -112,22 +111,6 @@ beforeEach(() => {
     throw new Error(`unexpected GET ${path}`);
   });
 });
-
-const READERS = {
-  readers: {
-    sector: [{ fleet_id: "f-1", name: "Threat response" }],
-    regions: [{ fleet_id: "f-1", name: "Threat response" }],
-    crown_jewels: [
-      { fleet_id: "f-1", name: "Threat response" },
-      { fleet_id: "f-2", name: "Vulnerability prioritization" },
-    ],
-  },
-  agents: {
-    risk_appetite: [{ agent_id: "a-1", name: "Risk Quantifier" }],
-    currency: [{ agent_id: "a-1", name: "Risk Quantifier" }],
-    pir_ids: [{ agent_id: "a-2", name: "Threat Relevance Analyst" }],
-  },
-};
 
 describe("OrganizationSection primary asset widths at 1080 (#1174 UX r2 B1 and B2)", () => {
   // The primary assets table measures 810 px in its 72rem card at 1080; Assets and Source step aside there.
@@ -145,43 +128,16 @@ describe("OrganizationSection primary asset widths at 1080 (#1174 UX r2 B1 and B
   });
 });
 
-describe("OrganizationSection used by (#9173 S2)", () => {
-  it("names the fleets reading each part, once per card, linked to the fleet page, and only in read mode", async () => {
+describe("OrganizationSection without reader rows (#1878)", () => {
+  it("shows no Used by or Read by agents row on any card, in read mode or in edit, and never asks who reads the profile", async () => {
     renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
-    // The first tab holds three of the cards that name their readers (#12329).
-    await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(3));
-    const [identity, risk, intelligence] = screen.getAllByTestId("settings.organization.used-by");
-    // The seeded agents reading the risk appetite and the PIRs (#10063 r1 A3), once each, linked to the agent page.
-    expect(risk.dataset.fields).toBe("risk_appetite currency loaded_hourly_rate");
-    expect(within(risk).queryByTestId("settings.organization.used-by.fleets")).toBeNull();
-    expect(within(risk).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["/agents/a-1"]);
-    expect(within(intelligence).getAllByRole("link").map((a) => a.textContent)).toEqual(["Threat Relevance Analyst"]);
-    expect(identity.dataset.fields).toBe("sector regions");
-    expect(within(identity).getAllByRole("link").map((a) => a.textContent)).toEqual(["Threat response"]);
+    expect((await screen.findByTestId("settings.organization.identity")).textContent).toContain("Acme");
+    expect(screen.queryByText("Used by")).toBeNull();
+    expect(screen.queryByText("Read by agents")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
-    await waitFor(() => expect(screen.queryByTestId("settings.organization.used-by")).toBeNull());
-  });
-
-  it("lays every line on one shared label grid, so the chips start at the same column on every card (#10166 UX r1 B1)", async () => {
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
-    await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(3));
-    for (const block of screen.getAllByTestId("settings.organization.used-by")) {
-      expect(block.dataset.layout).toBe("label-grid");
-      expect(block.dataset.align).toBe("start");
-      for (const row of block.querySelectorAll<HTMLElement>("[data-row]")) {
-        // Each line is a display-contents row: its label and its chip list are direct cells of the block's grid.
-        expect(row.dataset.row).toBe("contents");
-        expect(Array.from(row.children).map((cell) => (cell as HTMLElement).dataset.cell)).toEqual(["label", "chips"]);
-        // Both labels sit in every label cell (same column width on every card); only the row's own one is exposed.
-        const label = row.querySelector<HTMLElement>("[data-cell='label']")!;
-        expect(Array.from(label.querySelectorAll<HTMLElement>("[data-label]")).map((el) => el.dataset.label)).toEqual(["fleets", "agents"]);
-        expect(label.querySelectorAll("[data-label]:not([aria-hidden='true'])")).toHaveLength(1);
-        // #10166 UX r2 B1: each label is laid out in the chip's box and the grid aligns cells at the start,
-        // so the label text centres on the first chip row.
-        for (const el of label.querySelectorAll<HTMLElement>("[data-label]")) expect(el.dataset.box).toBe("chip-row");
-        expect(row.querySelector<HTMLElement>("[data-cell='chips'] [data-slot='badge']")!.dataset.box).toBe("chip-row");
-      }
-    }
+    expect(await screen.findByTestId("settings.save-bar")).toBeTruthy();
+    expect(screen.queryByText("Used by")).toBeNull();
+    expect(get.mock.calls.map(([path]) => path)).not.toContain("/organization-context/readers");
   });
 });
 
@@ -191,7 +147,6 @@ describe("OrganizationSection identity header and threshold previews (#9173 S2)"
       if (path === "/organization-context") return { ...CONTEXT, profile: { ...CONTEXT.profile, ...profile } };
       if (path === "/organizations" || path === "/integrations") return [];
       if (path === "/organization-context/pirs") return { pirs: [], unavailable: null };
-      if (path === "/organization-context/readers") return READERS;
       throw new Error(`unexpected GET ${path}`);
     });
 
@@ -264,10 +219,8 @@ describe("OrganizationSection panels (#12329, #1690)", () => {
 
   it("mounts only the cards an embedding page names, with no header, tab bar or Sources panel (#1178)", async () => {
     renderPage("exposure");
-    expect(await screen.findByTestId("settings.organization.panel-exposure")).toBeTruthy();
+    expect(await screen.findByTestId("settings.organization.assets-exposure")).toBeTruthy();
     expect(screen.queryAllByRole("tab")).toHaveLength(0);
-    // The asset and group tables live on the Inventory row APIs, never in the profile cards (#1752 slice 3b).
-    expect(screen.queryByTestId("settings.organization.assets-exposure")).toBeNull();
     expect(screen.queryByTestId("settings.organization.tech-stack")).toBeNull();
     expect(screen.queryByTestId("settings.organization.primary-assets")).toBeNull();
   });
@@ -342,12 +295,10 @@ describe("OrganizationSection", () => {
     expect(missing.textContent).toContain("Loaded hourly rate");
   });
 
-  it("names the fleets reading the primary assets on CTEM > Inventory, linked to the fleet page (#1690)", async () => {
+  it("shows the primary assets on CTEM > Inventory with no Used by row above them (#1690, #1878)", async () => {
     renderPage("business");
-    await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(1));
-    const [jewels] = screen.getAllByTestId("settings.organization.used-by");
-    expect(within(jewels).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["/fleets/f-1", "/fleets/f-2"]);
     expect(await screen.findByText("Payments")).toBeTruthy();
+    expect(screen.queryByText("Used by")).toBeNull();
   });
 
   it("counts the fields not filled Settings draws and opens the form on a missing field (#9173 S1c, #1690)", async () => {
@@ -409,7 +360,7 @@ describe("OrganizationSection", () => {
   });
 
   it("keeps a list card on CTEM > Inventory always expanded, its count in the header (#1690, Sam 24 Nov 2026)", async () => {
-    for (const tab of ["business", "technology"]) {
+    for (const tab of ["business", "exposure"]) {
       const view = renderPage(tab);
       await waitFor(() => expect(screen.getAllByTestId("settings.card-count").length).toBeGreaterThan(0));
       expect(screen.queryAllByTestId("settings.card-collapse")).toHaveLength(0);
@@ -521,12 +472,27 @@ describe("OrganizationSection", () => {
     expect(body.fields.tech_stack[150].product).toBe("Jira");
   });
 
-  it("draws no asset or group table on the Exposure tab: the rows are on their row APIs, never on the profile (#1752 slice 3b)", async () => {
+  it("edits one exposure card alone, keeps the others in read mode and saves the profile with that card changed (#12256 slice 2)", async () => {
+    const base = get.getMockImplementation()!;
+    const groups = [{ name: "DMZ", description: "Edge", internet_facing: "yes" }];
+    get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, asset_groups: groups } } : base(path)));
+    put.mockResolvedValue({ ...CONTEXT, version: 4 });
     renderPage("exposure");
-    await screen.findByTestId("settings.organization.panel-exposure");
-    expect(screen.queryByTestId("settings.organization.asset-groups")).toBeNull();
-    expect(screen.queryByTestId("settings.organization.assets-exposure")).toBeNull();
-    expect(put).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: /Edit Asset groups/ }));
+    const card = screen.getByTestId("settings.organization.asset-groups");
+    const bar = await within(card).findByTestId("settings.save-bar");
+    // The other cards wait for this one; the form is not opened.
+    expect((screen.getByRole("button", { name: /Edit Assets and exposure/ }) as HTMLButtonElement).disabled).toBe(true);
+    const save = within(bar).getByRole("button", { name: "Save" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.change(within(card).getByDisplayValue("Edge"), { target: { value: "Edge network" } });
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
+    const [, body] = put.mock.calls[0] as [string, { profile: { asset_groups: { description: string }[]; tech_stack: unknown[] }; source: string }];
+    expect(body.source).toBe("form");
+    expect(body.profile.asset_groups[0].description).toBe("Edge network");
+    expect(body.profile.tech_stack).toEqual(CONTEXT.profile.tech_stack);
   });
 
   it("drops an exposure card's edit on Cancel, nothing sent (#12256 slice 2)", async () => {
@@ -551,6 +517,38 @@ describe("OrganizationSection", () => {
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: /Edit Primary assets/ })));
   });
 
+  it("pages an exposure card in edit at 25 rows with its search, and pins an added row first (#12271 UX r1 B2)", async () => {
+    const base = get.getMockImplementation()!;
+    const asset = (i: number) => ({
+      name: `asset-${String(i).padStart(3, "0")}`,
+      category: "generic_asset",
+      subcategory: "",
+      criticality: "unknown",
+      environment: "",
+      internet_facing: "unknown",
+      owner: "",
+      group: "",
+      tech_stack: [],
+      tags: [],
+      source: "manual",
+      external_id: "",
+    });
+    const assets = Array.from({ length: 60 }, (_, i) => asset(i));
+    get.mockImplementation(async (path: string) => (path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, assets_exposure: assets } } : base(path)));
+    renderPage("exposure");
+    fireEvent.click(await screen.findByRole("button", { name: /Edit Assets and exposure/ }));
+    const card = screen.getByTestId("settings.organization.assets-exposure");
+    await within(card).findByTestId("settings.save-bar");
+    // 25 rows a page, never the 60.
+    expect(within(card).getAllByTestId("settings.organization.asset-row")).toHaveLength(25);
+    // The search stays while editing.
+    fireEvent.change(within(card).getByRole("searchbox"), { target: { value: "asset-059" } });
+    await waitFor(() => expect(within(card).getAllByTestId("settings.organization.asset-row")).toHaveLength(1));
+    // An added row clears the search and is first on the first page.
+    fireEvent.click(within(card).getByRole("button", { name: "Add an asset" }));
+    await waitFor(() => expect(within(card).getAllByTestId("settings.organization.asset-row")).toHaveLength(25));
+    expect((within(within(card).getAllByTestId("settings.organization.asset-row")[0]).getByRole("textbox", { name: "Asset" }) as HTMLInputElement).value).toBe("");
+  });
 
   it("pastes a list into a card in edit, skips the rows already there, sets a vendor on the selected rows and saves (#12256 slice 2)", async () => {
     const base = get.getMockImplementation()!;
@@ -913,42 +911,15 @@ describe("OrganizationSection", () => {
     expect(post).not.toHaveBeenCalledWith("/organization-context/opencrq-sync", expect.anything());
   });
 
-  it("names the OpenCRQ source and its last sync on the primary assets card, read from the inventory syncs (#1754)", async () => {
-    const lastRun = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-    const opencrqSync = { id: "s-crq", section: "crown_jewels", source: "opencrq", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: lastRun, last_result: { added: 1, updated: 0, removed: 0, version: 4, error: null } };
+  it("names no source on the primary assets card, even with an OpenCRQ primary-asset sync saved (#1883)", async () => {
+    const opencrqSync = { id: "s-crq", section: "crown_jewels", source: "opencrq", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: new Date().toISOString(), last_result: { added: 1, updated: 0, removed: 0, version: 4, error: null } };
     const base = get.getMockImplementation();
     get.mockImplementation(async (path: string) => (path.startsWith("/organization-context/syncs") ? [opencrqSync] : base?.(path)));
     renderPage("business");
-    const chip = await screen.findByTestId("settings.organization.primary-assets-source");
-    expect(chip.textContent).toMatch(/Synced from OpenCRQ/);
-    expect(get).toHaveBeenCalledWith(expect.stringMatching(/^\/organization-context\/syncs\?.*scope=inventory/));
-    expect(screen.queryByRole("button", { name: /Sync with OpenCRQ now|Check against OpenCRQ/ })).toBeNull();
-  });
-
-  it.each([
-    ["a failed last run", { last_result: { added: 0, updated: 0, removed: 0, version: 4, error: "OpenCRQ: no integration" } }, /OpenCRQ sync failed/, "OpenCRQ: no integration"],
-    ["a paused sync", { paused_reason: "owner lost access" }, /OpenCRQ sync paused/, "owner lost access"],
-    ["a sync turned off", { enabled: false }, /OpenCRQ sync off/, null],
-  ])("never says Synced on the primary assets card for %s (UX round 1 B1, #1818)", async (_state, override, line, cause) => {
-    const lastRun = new Date(Date.now() - 60 * 1000).toISOString();
-    const opencrqSync = { id: "s-crq", section: "crown_jewels", source: "opencrq", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: lastRun, last_result: { added: 1, updated: 0, removed: 0, version: 4, error: null }, ...override };
-    const base = get.getMockImplementation();
-    get.mockImplementation(async (path: string) => (path.startsWith("/organization-context/syncs") ? [opencrqSync] : base?.(path)));
-    renderPage("business");
-    const chip = await screen.findByTestId("settings.organization.primary-assets-source");
-    expect(chip.textContent).toMatch(line);
-    expect(chip.textContent).not.toMatch(/Synced from OpenCRQ/);
-    if (cause) {
-      const trigger = screen.getByTestId("settings.organization.primary-assets-source-cause");
-      // The line is the only place the problem shows: it links to Sources, where the sync is run and fixed (UX round 2 B1, #1818).
-      expect(trigger.tagName).toBe("A");
-      expect(trigger.getAttribute("href")).toBe("/ctem/inventory/sources");
-      fireEvent.focus(trigger);
-      expect((await screen.findAllByText(cause)).length).toBeGreaterThan(0);
-    } else {
-      expect(screen.queryByTestId("settings.organization.primary-assets-source-cause")).toBeNull();
-      expect(screen.getByTestId("settings.organization.primary-assets-source-link").getAttribute("href")).toBe("/ctem/inventory/sources");
-    }
+    const card = await screen.findByTestId("settings.organization.primary-assets");
+    expect(screen.queryByTestId("settings.organization.primary-assets-source")).toBeNull();
+    expect(card.textContent).not.toMatch(/Synced from OpenCRQ|not run yet|OpenCRQ sync/);
+    expect(get).not.toHaveBeenCalledWith(expect.stringMatching(/^\/organization-context\/syncs\?.*scope=inventory/));
   });
 
   it("shows the one Sources and syncs table as the last block of the Knowledge and sources tab, each section chip linked to its tab filtered on that source (#1276)", async () => {

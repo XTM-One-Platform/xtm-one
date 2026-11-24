@@ -10,8 +10,7 @@ saving it; ``POST /ai-draft`` proposes field values with a model from the
 inputs the administrator gives (#9484, nothing saved); ``GET /pirs`` lists
 the connected OpenCTI's PIRs for the PIR picker (administrators);
 ``GET /proposals`` and ``POST /proposals/{id}/decide`` review the changes
-proposed from chat (#9484, S-a2); ``GET /readers`` names the fleets that
-read each part of the profile (#9173, S2); ``GET /setup-prompt`` and
+proposed from chat (#9484, S-a2); ``GET /setup-prompt`` and
 ``POST /setup-prompt`` carry the first-login setup proposal, shown once per
 instance (#9173, S3); ``DELETE /setup-prompt`` forgets its answer so it is
 proposed again (Settings > Platform, Reset onboarding). The
@@ -148,10 +147,6 @@ def _response(
     row_counts: dict[str, int] | None = None,
 ) -> OrganizationContextResponse:
     profile = profile if profile is not None else org_context.parse_profile(row.profile if row else {})
-    # #1752 slice 3b: the profile API carries profile fields only. The asset and group rows are read
-    # through their own paged APIs (/assets, /asset-groups); the answer names how many there are.
-    if row_counts is None:
-        row_counts = {name: len(getattr(profile, name)) for name in sorted(_ROW_FIELDS)}
     return OrganizationContextResponse(
         ignored_row_fields=ignored_row_fields or [],
         row_counts=row_counts,
@@ -159,7 +154,7 @@ def _response(
         source=row.source if row else None,
         created_at=row.created_at if row else None,
         author_user_id=str(row.author_user_id) if row and row.author_user_id else None,
-        profile=profile.model_dump(mode="json", exclude=set(_ROW_FIELDS)),
+        profile=profile.model_dump(mode="json"),
         missing_fields=org_context.missing_fields(profile),
         removed_rows=removed_rows or {},
         sources=row.sources if row else None,
@@ -483,10 +478,6 @@ async def save_organization_context(
         rows_from = await org_context.hydrated_profile(db, current)
     else:
         stored = await _lock_base(db, current)
-        # #1752 slice 3b: GET answers no asset or group row, so a save that leaves a row list out keeps the stored one.
-        for name in sorted(_ROW_FIELDS):
-            if name not in submitted and stored is not None and stored.get(name):
-                submitted[name] = stored[name]
     try:
         profile = org_context.parse_profile(submitted)
     except ValueError as exc:
@@ -1860,42 +1851,6 @@ async def sync_organization_context_with_opencrq(
     )
 
 
-class OrganizationFieldReader(BaseModel):
-    fleet_id: str
-    name: str
-
-
-class OrganizationAgentReader(BaseModel):
-    agent_id: str
-    name: str
-
-
-class OrganizationReadersResponse(BaseModel):
-    #: Profile field -> the fleets the caller can see whose documentation needs it.
-    readers: dict[str, list[OrganizationFieldReader]]
-    #: Profile field -> the seeded agents the caller can see whose persona reads it (#10063 r1 A3).
-    agents: dict[str, list[OrganizationAgentReader]] = {}
-
-
-@router.get("/readers", response_model=OrganizationReadersResponse)
-async def list_organization_context_readers(
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
-) -> OrganizationReadersResponse:
-    """The fleets and seeded agents that read each part of the profile.
-
-    Fleets from their documented prerequisites, agents from what their persona
-    reads. Rows only (no run, no model call); only what the caller can see.
-    """
-    from app.services.organization_context_readers import profile_field_readers
-
-    readers, agents = await profile_field_readers(db, user)
-    return OrganizationReadersResponse(
-        readers={field: [OrganizationFieldReader(**row) for row in rows] for field, rows in readers.items()},
-        agents={field: [OrganizationAgentReader(**row) for row in rows] for field, rows in agents.items()},
-    )
-
-
 @router.get("/pirs", response_model=OrganizationPirsResponse)
 async def list_organization_pirs(
     db: AsyncSession = Depends(get_db),
@@ -2150,7 +2105,7 @@ class ImportSourcesResponse(BaseModel):
 
 
 class ImportRequest(BaseModel):
-    section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"]
+    section: Literal["assets", "asset_groups", "ai_systems", "software", "crown_jewels", "pirs"]
     source: Literal[
         "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
     ]
@@ -2217,7 +2172,7 @@ class ImportFilterOptionsResponse(BaseModel):
 
 @router.get("/import/options", response_model=ImportFilterOptionsResponse)
 async def list_organization_import_options(
-    section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"],
+    section: Literal["assets", "asset_groups", "ai_systems", "software", "crown_jewels", "pirs"],
     source: Literal[
         "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
     ],
@@ -2337,7 +2292,7 @@ async def apply_organization_import(
 
 class OrganizationSyncRequest(BaseModel):
     #: A section of the import, or ``all`` for the global schedule that runs every section sync.
-    section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs", "all"]
+    section: Literal["assets", "asset_groups", "ai_systems", "software", "crown_jewels", "pirs", "all"]
     source: Literal[
         "openaev",
         "opencti",
