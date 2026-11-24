@@ -103,6 +103,6 @@ describe("the one scope threshold", () => {
     expect(items[0].closest("dd")).not.toHaveAttribute("title");
     const inputs = screen.getByTestId("ctem-decision-inputs");
     expect(inputs).toHaveTextContent("Primary assets named");
-    expect(inputs).not.toHaveTextContent("Primary assets");
+    expect(inputs).not.toHaveTextContent(/Primary assets(?! (named|reached))/);
   });
 });
