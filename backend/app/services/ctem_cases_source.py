@@ -7,9 +7,10 @@ the acting user's own credentials (the posture's ``_user_creds``), so a case
 only ever groups what that user can see:
 
 - OpenCTI: the Vulnerabilities related by ``has`` to a Software observable
-  matching the organization profile's tech stack (the tailored KEV match,
-  ``ctem_metrics_collector._stack_matches``), with the Course of Action that
-  ``remediates`` or ``mitigates`` each one (rule R1). Without a tech stack
+  matching the organization's Software entities (#1495: the synced and
+  hand-typed software of the asset store, ``ctem_metrics_collector._organization_software``;
+  the tailored KEV match, ``_stack_matches``), with the Course of Action that
+  ``remediates`` or ``mitigates`` each one (rule R1). Without any software
   OpenCTI contributes nothing: no case from the whole vulnerability base.
 - OpenAEV: the findings of type ``cve`` created within the validation window,
   with the assets they were found on (rule R3 joins them to OpenCTI by CVE).
@@ -46,7 +47,7 @@ from app.services.ctem_metrics_collector import (
     _AEV_VALIDATION_WINDOW_DAYS,
     _STACK_SOFTWARE_CAP,
     _fg,
-    _profile_tech_stack,
+    _organization_software,
     _stack_matches,
     _user_creds,
 )
@@ -523,7 +524,7 @@ async def read_open_issues(
     out = SourceRead()
     if normalize_vertical(vertical) != VERTICAL_CYBER:
         return out
-    stack = await _profile_tech_stack(db)
+    stack = await _organization_software(db)
     out.no_stack = not stack
     creds: dict[str, tuple[str, dict[str, str]] | None] = {}
     for provider in ("opencti", "openaev"):

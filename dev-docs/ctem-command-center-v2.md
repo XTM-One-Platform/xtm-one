@@ -165,7 +165,7 @@ administrator.
 
 #11213 (slice 2): the KEV row is tailored when the primary organization
 profile lists a `tech_stack`. `build_posture_for_user` (cyber) reads the
-profile in its DB phase (`_profile_tech_stack`), and in the network phase
+profile in its DB phase (`_organization_software` since #1495, the Software entities plus the profile rows no entity carries), and in the network phase
 `_octi_kev_tailored` resolves the OpenCTI `Software` observables matching the
 stack (CPE equal, else product name with the vendor when both name one; at
 most 500) and counts the KEV vulnerabilities related to them

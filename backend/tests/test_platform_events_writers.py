@@ -98,6 +98,24 @@ async def test_a_scheduled_run_names_itself_as_the_writer(landed):
 
 
 @pytest.mark.asyncio
+async def test_a_persons_answer_marks_its_status_change_answered(landed):
+    # A decision listener hears the answer whatever the item's key, never another release.
+    landed.row = _item(status="open", correlation_key="ctem:f1:version-read:abc")
+    await wi.publish_transition(landed.row.id, previous_status="blocked", note="ANSWERED: yes", answered=True)
+    assert landed.published == ["work_item.note_added", "work_item.status_changed"]
+    by_name = dict(zip(landed.published, landed.data, strict=True))
+    assert by_name["work_item.status_changed"]["answered"] is True
+    assert "answered" not in by_name["work_item.note_added"]
+
+
+@pytest.mark.asyncio
+async def test_a_release_is_not_an_answer(landed):
+    landed.row = _item(status="open")
+    await wi.publish_transition(landed.row.id, previous_status="blocked")
+    assert "answered" not in landed.data[0]
+
+
+@pytest.mark.asyncio
 async def test_the_scheduled_wrapper_forwards_the_writer(monkeypatch):
     from app.services import scheduled_work_item_runner as runner
 

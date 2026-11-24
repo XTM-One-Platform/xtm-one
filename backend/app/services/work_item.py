@@ -3369,6 +3369,7 @@ async def publish_transition(
     claimed_by_agent_id: object = None,
     actor_run_id: object = None,
     actor_agent_id: object = None,
+    answered: bool = False,
 ) -> None:
     """Raise the ``work_item.*`` events of a write committed outside the service's own writers.
 
@@ -3382,7 +3383,11 @@ async def publish_transition(
     and a *note* ``work_item.note_added``. *actor_agent_id* / *actor_run_id*
     name the agent and run that made the write (a scheduled item's own run), so
     an assignment ignoring its own events is not woken by them; a write the
-    platform made alone leaves both ``None``. Never raises.
+    platform made alone leaves both ``None``. *answered* marks the write of a
+    person's answer (:func:`answer_work_item`): its ``work_item.status_changed``
+    carries ``answered: true``, so a listener hears the answer itself, whatever
+    key the decision item was filed under, and not any other release of a
+    blocked item. Never raises.
     """
     from types import SimpleNamespace
 
@@ -3403,6 +3408,10 @@ async def publish_transition(
         else:
             actor = SimpleNamespace(agent_id=actor_agent_id, run_id=actor_run_id)
             events = update_events(item, previous_status=previous_status, note=note, writer=actor)
+            if answered:
+                for name, data in events:
+                    if name == "work_item.status_changed":
+                        data["answered"] = True
     except Exception as exc:
         logger.warning("Work item %s platform events not built: %s", wid, format_exception_message(exc))
         return
@@ -4879,7 +4888,7 @@ async def answer_work_item(
             await db.commit()
         finally:
             answer_actor.reset(token)
-    await publish_transition(wid, previous_status=previous_status, note=note)
+    await publish_transition(wid, previous_status=previous_status, note=note, answered=True)
     return await _read_back(work_item_id, user_id=user_id, writer=writer)
 
 
