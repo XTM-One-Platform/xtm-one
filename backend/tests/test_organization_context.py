@@ -35,7 +35,7 @@ FULL = {
     "crown_jewels": [
         {"name": "SCADA", "business_service": "Grid operations", "owner": "OT", "criticality": "critical"}
     ],
-    "tech_stack": [{"product": "Windows Server 2019", "vendor": "Microsoft", "cpe": "cpe:2.3:o:microsoft:windows_server_2019:-:*:*:*:*:*:*:*"}],
+    "software": [{"product": "Windows Server 2019", "vendor": "Microsoft", "cpe": "cpe:2.3:o:microsoft:windows_server_2019:-:*:*:*:*:*:*:*"}],
     "pir_ids": ["pir-1", "pir-1", " "],
     "risk_appetite": {"annual_loss_threshold": 2_000_000, "approval_threshold": 50_000},
     "loaded_hourly_rate": 95,

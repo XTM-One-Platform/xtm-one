@@ -437,16 +437,16 @@ def test_pirs_merge_adds_and_names():
 
 
 def test_software_merge_never_duplicates_a_product():
-    profile = _profile(tech_stack=[oc.TechStackEntry(product="Splunk")])
+    profile = _profile(software=[oc.SoftwareEntry(product="Splunk")])
     rows = [
-        oc.TechStackEntry(product="splunk", source="openaev", external_id="splunk"),
-        oc.TechStackEntry(product="CrowdStrike", source="openaev", external_id="crowdstrike"),
+        oc.SoftwareEntry(product="splunk", source="openaev", external_id="splunk"),
+        oc.SoftwareEntry(product="CrowdStrike", source="openaev", external_id="crowdstrike"),
     ]
     plan = imp.plan_import(profile, "software", "openaev", imp.ReadResult(rows=rows, total=2))
     # The typed "Splunk" is a person's row: the import never takes it over (#1134).
     assert (plan.new, plan.skipped) == (["CrowdStrike"], ["splunk"])
     assert plan.profile is not None
-    assert [(t.product, t.source) for t in plan.profile.tech_stack] == [
+    assert [(t.product, t.source) for t in plan.profile.software] == [
         ("Splunk", "manual"),
         ("CrowdStrike", "openaev"),
     ]

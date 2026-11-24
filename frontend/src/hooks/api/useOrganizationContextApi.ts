@@ -29,7 +29,7 @@ interface CrownJewel {
   sync_id?: string;
 }
 
-interface TechStackEntry {
+interface SoftwareEntry {
   product: string;
   vendor: string;
   cpe: string;
@@ -47,7 +47,7 @@ export interface OrganizationProfile {
   regions: string[];
   size: "" | "1-50" | "51-250" | "251-1000" | "1001-5000" | "5001-20000" | "20000+";
   crown_jewels: CrownJewel[];
-  tech_stack: TechStackEntry[];
+  software: SoftwareEntry[];
   /** What the organization ships, with its source repositories (#1432); absent when none is declared. */
   shipped_products?: { product: string; vendor: string; cpe: string; repositories: string[] }[];
   pir_ids: string[];
@@ -300,7 +300,7 @@ export function usePatchOrganizationContext() {
 
 /** One per-field proposal of "Draft with AI" (#9484): nothing is saved until it is accepted. */
 export interface AiDraftProposal {
-  /** A contract path, such as "tech_stack" or "risk_appetite.approval_threshold". */
+  /** A contract path, such as "software" or "risk_appetite.approval_threshold". */
   field: string;
   value: unknown;
   /** "description", "document:<name>", "website:<url>", "opencti", "openaev" or "opencrq". */

@@ -39,7 +39,7 @@ ONBOARDING_GROUPS: tuple[tuple[str, ...], ...] = (
     ("regions",),
     ("size",),
     ("crown_jewels",),
-    ("tech_stack",),
+    ("software",),
     ("pir_ids",),
     ("currency", "loaded_hourly_rate"),
     ("risk_appetite.annual_loss_threshold", "risk_appetite.approval_threshold"),
@@ -56,7 +56,7 @@ FIELD_HINTS: dict[str, str] = {
         "the crown jewels and the business services they carry (list of {name, business_service, owner, "
         "criticality: low|medium|high|critical})"
     ),
-    "tech_stack": "the main products in use (list of {product, vendor})",
+    "software": "the main products in use (list of {product, vendor})",
     "pir_ids": "the OpenCTI priority intelligence requirements to follow (list of OpenCTI PIR ids)",
     "currency": "the currency of every amount (ISO 4217 code, e.g. EUR)",
     "loaded_hourly_rate": "the loaded cost of one hour of work, in that currency (number)",

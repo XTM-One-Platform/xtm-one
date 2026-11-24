@@ -51,7 +51,7 @@ EXPOSED_NOT_LINKED = "assets_not_linked"
 #: Layer key -> (source, the organization context category that unlocks it, or None).
 LAYERS: tuple[tuple[str, str, str | None], ...] = (
     ("known", "opencti", None),
-    ("relevant", "organization", "tech_stack"),
+    ("relevant", "organization", "software"),
     ("exploitable", "opencti", None),
     ("exposed", "organization", "assets"),
     ("business_impact", "organization", "crown_jewels"),

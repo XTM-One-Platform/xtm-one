@@ -4541,11 +4541,11 @@ def test_lab_ctem_kev_tailored_saves_the_tech_stack_with_the_profile_only_when_o
         "seed_org_ai_draft_stub",
     )
     _lab_namespace(*names, api=api)["seed_org_ai_draft_stub"]("t", "http://localhost:3100")
-    assert "tech_stack" not in saved[-1]
+    assert "software" not in saved[-1]
     ns = _lab_namespace(*names, api=api, env={"LAB_CTEM_KEV_TAILORED": "on"})
     ns["seed_org_ai_draft_stub"]("t", "http://localhost:3100")
-    assert saved[-1]["tech_stack"] == [dict(e) for e in ns["LAB_ORG_TECH_STACK"]]
-    assert len(parse_profile(saved[-1]).tech_stack) == len(ns["LAB_ORG_TECH_STACK"]) >= 3
+    assert saved[-1]["software"] == [dict(e) for e in ns["LAB_ORG_TECH_STACK"]]
+    assert len(parse_profile(saved[-1]).software) == len(ns["LAB_ORG_TECH_STACK"]) >= 3
 
 
 def test_lab_ctem_kev_tailored_narrows_the_cyber_kev_count_to_the_saved_stack(monkeypatch):

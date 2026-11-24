@@ -47,7 +47,7 @@ def test_each_platform_maps_to_its_fields_with_its_source():
     facts = _facts()
     assert (facts.name, facts.sector) == ("Acme Energy", "Energy")
     assert facts.pir_ids == ["pir-1", "pir-2"]
-    assert [t.product for t in facts.tech_stack] == ["CrowdStrike Falcon", "Splunk"]
+    assert [t.product for t in facts.software] == ["CrowdStrike Falcon", "Splunk"]
     assert [(j.name, j.criticality, j.opencrq_asset_id) for j in facts.crown_jewels] == [
         ("SCADA", "critical", "a2"),
         ("Billing", "high", "a1"),
@@ -57,7 +57,7 @@ def test_each_platform_maps_to_its_fields_with_its_source():
         "name": "opencti",
         "sector": "opencti",
         "pir_ids": "opencti",
-        "tech_stack": "openaev",
+        "software": "openaev",
         "crown_jewels": "opencrq",
     }
 
@@ -69,8 +69,8 @@ def test_the_draft_fills_only_the_empty_fields_and_keeps_the_input_untouched():
     assert [j.name for j in draft.profile.crown_jewels] == ["ERP"]
     assert draft.profile.sector == "Energy"
     assert draft.profile.pir_ids == ["pir-1", "pir-2"]
-    assert [f["field"] for f in draft.filled] == ["sector", "pir_ids", "tech_stack"]
-    assert {f["field"]: f["source"] for f in draft.filled}["tech_stack"] == "openaev"
+    assert [f["field"] for f in draft.filled] == ["sector", "pir_ids", "software"]
+    assert {f["field"]: f["source"] for f in draft.filled}["software"] == "openaev"
     assert current.sector == "" and current.pir_ids == []
 
 
@@ -105,7 +105,7 @@ async def test_a_failing_platform_is_reported_and_the_others_still_draft(monkeyp
         "OpenCRQ: RuntimeError",
         "OpenCTI: not connected, or no token for this administrator",
     ]
-    assert [t.product for t in facts.tech_stack] == ["Splunk"]
+    assert [t.product for t in facts.software] == ["Splunk"]
 
 
 async def test_the_draft_starts_from_the_current_version_and_saves_nothing(monkeypatch):

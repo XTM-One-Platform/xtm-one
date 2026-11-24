@@ -30,11 +30,11 @@ export const FUNNEL_MIN_WIDTH_PCT = 14;
 
 /** The profile field each layer a not configured state asks for: its call to action opens the card that edits it. */
 export const FUNNEL_LAYER_FIELD: Partial<Record<CtemFunnelLayerKey, string>> = {
-  relevant: "tech_stack",
+  relevant: "software",
   exposed: "assets_exposure",
   business_impact: "crown_jewels",
   policy: "prioritization_policy",
-  open_issues: "tech_stack",
+  open_issues: "software",
 };
 
 /** Settings > Organization, on the tab and card of the field a not configured layer needs (#12329 tabs). */
@@ -155,7 +155,7 @@ export function withCasesLayer(funnel: CtemFunnel, cases: FunnelCases | undefine
       if (!isCasesLayer(layer)) return layer;
       return buildable
         ? { ...layer, count: cases.open, drop: null, state: "live", category: null }
-        : { ...layer, count: null, drop: null, state: "not_configured", category: "tech_stack" };
+        : { ...layer, count: null, drop: null, state: "not_configured", category: "software" };
     }),
   };
 }

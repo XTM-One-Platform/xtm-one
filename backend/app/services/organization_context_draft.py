@@ -35,7 +35,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.utils import format_exception_message
-from app.services.organization_context import CrownJewel, OrganizationProfile, TechStackEntry
+from app.services.organization_context import CrownJewel, OrganizationProfile, SoftwareEntry
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ class PlatformFacts:
     pir_ids: list[str] = field(default_factory=list)
     #: OpenCTI's name of each PIR in ``pir_ids`` (#11589): a drafted PIR is saved with its name.
     pir_names: dict[str, str] = field(default_factory=dict)
-    tech_stack: list[TechStackEntry] = field(default_factory=list)
+    software: list[SoftwareEntry] = field(default_factory=list)
     crown_jewels: list[CrownJewel] = field(default_factory=list)
     #: profile field -> the platform the value came from.
     sources: dict[str, str] = field(default_factory=dict)
@@ -102,7 +102,7 @@ def merge_draft(current: OrganizationProfile, facts: PlatformFacts) -> Draft:
     _fill("pir_ids", facts.pir_ids[:100], f"{len(facts.pir_ids[:100])} PIR(s)")
     # Every PIR the draft holds keeps its OpenCTI name, a name already saved included (#11589).
     draft.pir_names = {**{k: v for k, v in facts.pir_names.items() if k in draft.pir_ids}, **draft.pir_names}
-    _fill("tech_stack", facts.tech_stack[:500], f"{len(facts.tech_stack[:500])} product(s)")
+    _fill("software", facts.software[:500], f"{len(facts.software[:500])} product(s)")
     _fill("crown_jewels", facts.crown_jewels[:200], f"{len(facts.crown_jewels[:200])} asset(s)")
     return Draft(profile=draft, filled=filled, unavailable=list(facts.unavailable))
 
@@ -132,16 +132,16 @@ def opencti_facts(settings_data: dict, pirs_data: dict, facts: PlatformFacts) ->
 def openaev_facts(platforms: list[dict], facts: PlatformFacts) -> None:
     """Map OpenAEV's security platforms onto the software inventory of *facts* (no I/O)."""
     seen: set[str] = set()
-    entries: list[TechStackEntry] = []
+    entries: list[SoftwareEntry] = []
     for item in platforms[:MAX_ITEMS]:
         product = str(item.get("asset_name") or item.get("security_platform_name") or "").strip()
         if not product or product.casefold() in seen:
             continue
         seen.add(product.casefold())
-        entries.append(TechStackEntry(product=product[:200]))
+        entries.append(SoftwareEntry(product=product[:200]))
     if entries:
-        facts.tech_stack = entries
-        facts.sources["tech_stack"] = "openaev"
+        facts.software = entries
+        facts.sources["software"] = "openaev"
 
 
 def opencrq_facts(assets: list[dict], facts: PlatformFacts) -> None:

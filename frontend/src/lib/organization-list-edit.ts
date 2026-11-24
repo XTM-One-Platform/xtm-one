@@ -199,7 +199,7 @@ export const LIST_RULES = {
     check: (value: Jewel): ListIssue[] => (value.name.trim() ? [] : [LIST_ISSUES.emptyName]),
     identity: (value: Jewel) => value.name.trim(),
   },
-  tech_stack: {
+  software: {
     check: (value: Tech): ListIssue[] => [
       ...(value.product.trim() ? [] : [LIST_ISSUES.emptyName]),
       ...(value.product.trim() && !value.vendor.trim() ? [LIST_ISSUES.vendor] : []),
