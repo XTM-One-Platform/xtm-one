@@ -223,3 +223,95 @@ async def test_assignment_scope_suppresses_non_matching_entity_types(monkeypatch
 
     assert triggered == ["contact"]
     assert result["count"] == 1
+
+
+# ---------------------------------------------------------------------------
+# The payload filter on the event (propertyName, propertyValue, operators)
+# ---------------------------------------------------------------------------
+
+_CHANGES = [
+    {
+        "subscriptionType": "deal.propertyChange",
+        "objectId": 1,
+        "propertyName": "dealstage",
+        "propertyValue": "closedwon",
+    },
+    {"subscriptionType": "deal.propertyChange", "objectId": 2, "propertyName": "amount", "propertyValue": "10"},
+    {"subscriptionType": "contact.propertyChange", "objectId": 3, "propertyName": "dealstage", "propertyValue": "lead"},
+]
+
+_STAGE_WON = {
+    "provider": "hubspot",
+    "event": "entity_updated",
+    "filter": {
+        "scope": {"crm_object_type": ["deal"]},
+        "propertyName": "dealstage",
+        "propertyValue": {"in": ["closedwon"]},
+    },
+}
+
+
+def _patch_filtered(monkeypatch) -> list[tuple[dict, dict]]:
+    counted: list[tuple[dict, dict]] = []
+
+    async def _fake_count(filtered, reasons=None):
+        counted.append((dict(filtered), dict(reasons or {})))
+
+    monkeypatch.setattr(webhooks, "_count_filtered", _fake_count)
+    return counted
+
+
+@pytest.mark.asyncio
+async def test_fanout_property_filter_runs_only_the_matching_change(monkeypatch):
+    agent = _make_agent()
+    wf = _make_assignment(agent.id, _STAGE_WON)
+    db = _FakeDB([_FakeResult([agent]), _FakeResult([wf])])
+    _patch_session(monkeypatch, db)
+    triggered = _patch_trigger(monkeypatch)
+    counted = _patch_filtered(monkeypatch)
+
+    result = await webhooks._handle_hubspot_webhook(
+        integration_id=str(uuid.uuid4()),
+        integration=_make_integration(),
+        body=b"[]",
+        events=list(_CHANGES),
+        request=_make_request(),
+    )
+
+    assert triggered == ["deal"]
+    assert result["count"] == 1
+    # The amount change is dropped by the filter and counted; the contact by the scope (not counted).
+    assert counted == [
+        ({str(wf.id): 1}, {str(wf.id): {webhooks.reason_label("propertyName does not match the filter"): 1}})
+    ]
+
+
+@pytest.mark.asyncio
+async def test_assignment_property_filter_runs_only_the_matching_change(monkeypatch):
+    agent = _make_agent()
+    wf = _make_assignment(agent.id, _STAGE_WON)
+    db = _FakeDB([_FakeResult([wf]), _FakeResult([agent])])
+    _patch_session(monkeypatch, db)
+    triggered = _patch_trigger(monkeypatch)
+    counted = _patch_filtered(monkeypatch)
+
+    result = await webhooks._handle_hubspot_assignment_webhook(
+        integration_id=str(uuid.uuid4()),
+        integration=_make_integration(),
+        body=b"[]",
+        events=list(_CHANGES),
+        assignment_id=str(wf.id),
+        request=_make_request(),
+    )
+
+    assert triggered == ["deal"]
+    assert result["count"] == 1
+    assert [f for f, _ in counted] == [{str(wf.id): 1}]
+
+
+def test_the_catalog_lists_the_hubspot_filter_keys():
+    from app.api.v1.integration_catalog import PROVIDER_CATALOG
+
+    for event in PROVIDER_CATALOG["hubspot"]["available_events"]:
+        keys = event.get("filter_keys") or {}
+        assert {"scope", "propertyName", "propertyValue"} <= set(keys), event["event"]

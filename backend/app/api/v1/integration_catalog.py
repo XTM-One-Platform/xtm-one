@@ -597,6 +597,17 @@ _GITHUB_PAYLOAD_FILTER_KEYS: dict[str, str] = {
     ),
 }
 
+#: A HubSpot CRM event: the object-type scope plus the payload filter on the
+#: delivered event (``webhooks._hubspot_filter_reason``).
+_HUBSPOT_FILTER_KEYS: dict[str, str] = {
+    "scope": 'The CRM entity types, as {"crm_object_type": ["deal", ...]} (the Scope picker)',
+    "propertyName": 'entity_updated: only changes of this property (a list means any), e.g. "dealstage"',
+    "propertyValue": "entity_updated: only this new value; operators allowed",
+    "changeSource": 'Only changes from this source, e.g. {"ne": "INTEGRATION"}',
+    "operators": _GITHUB_PAYLOAD_FILTER_KEYS["operators"],
+    "all / any / not": _GITHUB_PAYLOAD_FILTER_KEYS["all / any / not"],
+}
+
 #: A GitHub CI or push event: the payload filter plus the open pull request
 #: its head commit belongs to (``providers/github/event_enrichment.py``).
 _GITHUB_HEAD_FILTER_KEYS: dict[str, str] = {
@@ -2071,18 +2082,21 @@ PROVIDER_CATALOG = {
                 "label": "Entity created",
                 "description": "Triggers when a contact, company, deal, or other CRM entity is created in HubSpot.",
                 "mechanism": "webhook",
+                "filter_keys": _HUBSPOT_FILTER_KEYS,
             },
             {
                 "event": "entity_updated",
                 "label": "Entity property updated",
                 "description": "Triggers when a property on a CRM entity is changed in HubSpot (e.g. email, stage, amount).",
                 "mechanism": "webhook",
+                "filter_keys": _HUBSPOT_FILTER_KEYS,
             },
             {
                 "event": "entity_deleted",
                 "label": "Entity deleted",
                 "description": "Triggers when a contact, company, deal, or other CRM entity is deleted in HubSpot.",
                 "mechanism": "webhook",
+                "filter_keys": _HUBSPOT_FILTER_KEYS,
             },
         ],
         "element_types": [
