@@ -74,8 +74,8 @@ export const FUNNEL_LAYER_COPY: Record<CtemFunnelLayerKey, { name: string; defin
   },
   business_impact: {
     name: "Business impact",
-    definition: "On an asset that supports a primary asset.",
-    cta: "Map primary assets to assets",
+    definition: "On an asset that supports a crown jewel.",
+    cta: "Map crown jewels to assets",
   },
   policy: {
     name: "After policy",
@@ -139,7 +139,7 @@ export function isCasesLayer(layer: CtemFunnelLayer): boolean {
  *
  * - `cases` undefined (not read yet, or the read failed): the layer stays as
  *   the backend sent it, without a count.
- * - cases cannot be built (no tech stack and no OpenAEV) and none exists: not
+ * - cases cannot be built (no software inventory and no OpenAEV) and none exists: not
  *   configured, leading to Settings > Organization; never an invented 0.
  * - otherwise live, with the exact count of open cases and no drop: a case
  *   groups the issues above, it removes none of them.

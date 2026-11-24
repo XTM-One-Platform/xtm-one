@@ -16,10 +16,11 @@ export const PROFILE_TABS = ["identity", "business", "technology", "exposure", "
 export type ProfileTab = (typeof PROFILE_TABS)[number];
 
 /**
- * The tabs Settings > Organization draws (#1178, Sam 22 Nov 2026): the Technology and Exposure cards live on
- * CTEM > Inventory now; the five tabs stay the grouping of fields (drafts, unsaved markers, missing fields).
+ * The tabs Settings > Organization keeps (#1178, Sam 22 Nov 2026; #1690, Sam 24 Nov 2026): the Business, Technology
+ * and Exposure cards live on CTEM > Inventory now, so Settings draws no tab bar (identity, knowledge through its
+ * button); the five tabs stay the grouping of fields (drafts, unsaved markers, missing fields).
  */
-export const SETTINGS_PROFILE_TABS = ["identity", "business", "knowledge"] as const satisfies readonly ProfileTab[];
+const SETTINGS_PROFILE_TABS = ["identity", "knowledge"] as const satisfies readonly ProfileTab[];
 
 /** Whether a tab's cards live on CTEM > Inventory instead of Settings. */
 export function isInventoryTab(tab: ProfileTab): boolean {
@@ -61,6 +62,10 @@ export type ProfileCard = keyof typeof PROFILE_CARD_TAB;
  */
 export const INVENTORY_CARD_PATH: Partial<Record<ProfileCard, string>> = {
   tech_stack: "/ctem/inventory/software",
+  // The business inputs have their own Inventory tab (#1690).
+  crown_jewels: "/ctem/inventory/business",
+  shipped_products: "/ctem/inventory/business",
+  tracked_organizations: "/ctem/inventory/business",
   assets_exposure: "/ctem/inventory",
   // The settings cards have their own Inventory tab (#1511), never an edit view opened by URL only.
   prioritization_policy: "/ctem/inventory/exposure",
@@ -144,7 +149,7 @@ export function parseProfileCard(raw: string | null | undefined): ProfileCard | 
 
 /**
  * The link to the card that edits a field: its tab's path with `?card=<card>`, so a call to
- * action ("Map primary assets to assets") opens the right tab scrolled to the right card, never the
+ * action ("Map crown jewels to assets") opens the right tab scrolled to the right card, never the
  * first tab. An unknown field opens the first tab.
  */
 export function profileFieldHref(path: string): string {
