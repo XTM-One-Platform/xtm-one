@@ -1102,6 +1102,42 @@ def test_a_narrow_checkout_of_a_package_source_directory_keeps_the_package_root(
     assert [(w.sub_path, w.directory) for w in tree.widened] == [("front/src/a", "front")]
 
 
+def test_an_add_paths_file_is_kept_as_that_file_and_a_directory_still_widens() -> None:
+    """#1919: add_paths of one file grew the checkout by its whole package (3,875 files)."""
+    import io
+    import tarfile
+
+    from app.services.sandbox_workspace.repository import extract_tree
+
+    members = {
+        "r-sha/.xtm-one/checks.toml": b'[check.unit]\nargv = ["pytest"]\ncwd = "backend"\n',
+        "r-sha/backend/app/one.py": b"",
+        "r-sha/backend/app/two.py": b"",
+        "r-sha/front/package.json": b"{}",
+        "r-sha/front/config.ts": b"",
+        "r-sha/front/src/a/x.ts": b"",
+        "r-sha/front/src/a/y.ts": b"",
+    }
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        for name, content in members.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(content)
+            archive.addfile(info, io.BytesIO(content))
+    data = buffer.getvalue()
+    asked = ["front/src/a/x.ts", "backend/app/one.py"]
+    exact = extract_tree(data, sub_paths=asked, max_bytes=1024 * 1024, exact_files=True)
+    written = {path for path, _ in exact.files}
+    assert exact.widened == [] and exact.sub_paths == asked
+    assert {"front/src/a/x.ts", "backend/app/one.py"} <= written
+    assert not written & {"front/src/a/y.ts", "front/config.ts", "backend/app/two.py"}
+    # A directory asked with exact_files still widens; without exact_files a file widens as before.
+    folder = extract_tree(data, sub_paths=["front/src/a"], max_bytes=1024 * 1024, exact_files=True)
+    assert folder.sub_paths == ["front"]
+    widened = extract_tree(data, sub_paths=["backend/app/one.py"], max_bytes=1024 * 1024)
+    assert widened.sub_paths == ["backend"] and "backend/app/two.py" in {p for p, _ in widened.files}
+
+
 def test_nothing_is_widened_without_a_declaration_or_a_check_directory():
     assert detect.widen_to_check_dirs(["backend/app"], {}) == (["backend/app"], [])
     root_only = checks.load_checks('[check.root]\nargv = ["make"]\n')
