@@ -6,6 +6,7 @@ import {
   UsersRound, Trash2, X, Users, Pencil, FileText, Gauge, Save, Zap, Key, UserCog, Sparkles,
 } from "lucide-react";
 import { Icon } from "@filigran/design-system";
+import { GroupAutoJoinCard } from "@/components/groups/GroupAutoJoinCard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { userSelectOption } from "@/components/ui/entity-select-options";
@@ -140,6 +141,7 @@ function OverviewTab({ group, groupId }: { group: NonNullable<ReturnType<typeof 
       <ProfileCard group={group} groupId={groupId} />
       <GroupAiAccessCard group={group} groupId={groupId} />
       <GroupCtemAccessCard group={group} groupId={groupId} />
+      <GroupAutoJoinCard group={group} groupId={groupId} />
     </div>
   );
 }

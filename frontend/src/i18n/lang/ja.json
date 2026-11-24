@@ -21664,5 +21664,10 @@
   "Members read every signal and case of the organization, read only.": "メンバーは組織のすべてのシグナルとケースを読み取り専用で表示できます。",
   "Members also triage signals, change cases (owner, due date, state, accepted risk) and answer the case decisions. Their agents get the same reach.": "メンバーはシグナルのトリアージ、ケースの変更（担当者、期限、状態、受容リスク）、ケースの決定への回答も行えます。メンバーのエージェントも同じ範囲を持ちます。",
   "Notify the members of case decisions": "ケースの決定をメンバーに通知",
-  "Off: the members can still answer from the case page, without a notification.": "オフ：メンバーは通知なしでケースページから回答できます。"
+  "Off: the members can still answer from the case page, without a notification.": "オフ：メンバーは通知なしでケースページから回答できます。",
+  "Auto join": "自動参加",
+  "Auto join updated": "自動参加を更新しました",
+  "Auto join could not be updated": "自動参加を更新できませんでした",
+  "Single sign-on users join this group": "SSO ユーザーはこのグループに参加します",
+  "People who sign in through single sign-on join this group automatically, at every sign-in. Members added by hand, by SAML group mapping or by SCIM are kept as they are.": "シングルサインオン (SSO) でサインインしたユーザーは、サインインのたびにこのグループへ自動的に参加します。手動、SAML グループマッピング、SCIM で追加されたメンバーはそのまま保持されます。"
 }
