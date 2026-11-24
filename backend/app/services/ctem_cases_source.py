@@ -698,8 +698,9 @@ async def _reads_opencti(db: AsyncSession, user_id: str) -> bool:
 async def _signal_members(db: AsyncSession, *, organization_id: uuid.UUID, user_id: str) -> list[rules.SourceIssue]:
     """The signals attached to cases that *user_id* may read (#857), as case members.
 
-    The signal API's own rule: an administrator reads every signal of the
-    organization, anyone else the signals recorded for them. A case opened from
+    The signal API's own rule: an administrator or a CTEM view or decide right
+    (``services/ctem_access.py``) reads every signal of the organization, anyone
+    else the signals recorded for them. A case opened from
     a signal the viewer may not read stays absent, as a source issue they cannot
     see does.
     """
@@ -721,7 +722,12 @@ async def _signal_members(db: AsyncSession, *, organization_id: uuid.UUID, user_
         )
         .where(CtemSignal.organization_id == organization_id)
     )
-    if not getattr(viewer, "is_admin", False):
+    from app.services import ctem_access
+
+    whole = bool(getattr(viewer, "is_admin", False)) or (
+        viewer is not None and await ctem_access.group_right(db, user_id) is not None
+    )
+    if not whole:
         statement = statement.where(CtemSignal.recorded_by == str(user_id))
     rows = (await db.execute(statement)).scalars().all()
     return [
