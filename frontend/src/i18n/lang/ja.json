@@ -15032,6 +15032,7 @@
   "Review and decide on the target's page": "対象のページで確認して判断する",
   "Shadow pairs needed": "必要なシャドーの組",
   "Signal": "シグナル",
+  "Signal: {path}": "シグナル: {path}",
   "Signals are read without any model call, every 15 minutes for feedback and failures, hourly for cost and models.": "シグナルはモデル呼び出しなしで読み取られます。フィードバックと失敗は15分ごと、コストとモデルは1時間ごとです。",
   "Signals": "シグナル",
   "Skipped or not completed": "スキップまたは未完了",
