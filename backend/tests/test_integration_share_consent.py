@@ -30,6 +30,7 @@ from app.services.integration_credentials import (
     oauth_credentials_usable,
     resolve_session_integration_bindings,
 )
+from app.services.integration_tools import BindingBasis, ToolBindings
 from app.tools.base import ToolDefinition
 from tests.integration_credential_fakes import OWNER_ID, FakeSession, make_integration
 from tests.test_agent_builder_crud_tools import (
@@ -335,7 +336,7 @@ async def _member_run(integration: Integration) -> dict:
     context = {"source": "assignment", "user_id": str(_MEMBER)}
     await integration_tools.build_integration_tools(
         FakeSession({Integration: [integration]}),
-        {"slack": [str(integration.id)]},
+        ToolBindings({"slack": [str(integration.id)]}, basis=BindingBasis.CALLER_CHECKED, reason="test"),
         context=context,
     )
     return context

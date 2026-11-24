@@ -92,10 +92,10 @@ export const PICKUP_TONE: Record<WorkItemPickupState, string> = {
  * What happens to the item, in a sentence. `{agent}` is the owner, `{date}`
  * when an inbox takes it, `{count}` how many pull requests it waits on
  * (`waitingPullRequestCount`). Read by
- * `t_i18n(PICKUP_EXPLANATIONS[state], ...)`.
+ * `t_i18n(pickupExplanation(state, canWrite), ...)`.
  * @i18n-keys
  */
-export const PICKUP_EXPLANATIONS = {
+const PICKUP_EXPLANATIONS = {
   scheduled: "The platform runs it at its time, with no assignment to set up.",
   finished: "Nothing acts on a finished item. Put it back in the queue to have it done again.",
   in_progress: "{agent} claimed it and is working on it. If nothing moves, put it back in the queue.",
@@ -111,6 +111,27 @@ export const PICKUP_EXPLANATIONS = {
   filtered_out: "{agent} has an inbox, but its filters leave this item out, so nothing picks it up automatically.",
   manual: "No assignment or flow drains the queue of {agent}, so nothing picks this item up automatically: it waits until that agent is asked to process its work items, or until someone completes it.",
 } as const;
+
+/**
+ * The sentences of `PICKUP_EXPLANATIONS` that ask the reader to change the
+ * item, said instead to a reader who may not change it (`can_write` false,
+ * #1845): the dialog never advises an action it refuses.
+ * @i18n-keys
+ */
+const READ_ONLY_PICKUP_EXPLANATIONS = {
+  finished: "Nothing acts on a finished item. Someone who can change it must put it back in the queue to have it done again.",
+  in_progress: "{agent} claimed it and is working on it. If nothing moves, someone who can change it must put it back in the queue.",
+  unassigned: "No owner agent is set, so nothing routes it to anyone. Someone who can change it must complete it or assign an agent.",
+} as const satisfies Partial<Record<WorkItemPickupState, string>>;
+
+/**
+ * The explanation of a pickup state for this reader: the read-only sentence
+ * when the reader may not change the item and the state has one.
+ */
+export function pickupExplanation(state: WorkItemPickupState, canWrite: boolean | undefined): string {
+  const readOnly: Partial<Record<WorkItemPickupState, string>> = READ_ONLY_PICKUP_EXPLANATIONS;
+  return (canWrite === false && readOnly[state]) || PICKUP_EXPLANATIONS[state];
+}
 
 /**
  * Whether the item waits for a person: nothing will act on it otherwise. The

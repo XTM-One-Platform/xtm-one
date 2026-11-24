@@ -954,6 +954,11 @@ async def list_provider_catalog(
             continue
 
         guide = _resolve_guide(val.get("setup_guide"))
+        auth_guides = {
+            mode: resolved
+            for mode, mode_guide in (val.get("auth_setup_guides") or {}).items()
+            if (resolved := _resolve_guide(mode_guide)) is not None
+        } or None
         # The facets one selector value changes; guides resolved like the base.
         variants = {
             value: ProviderCatalogVariant(
@@ -1029,6 +1034,7 @@ async def list_provider_catalog(
                     "supports_webhook_management", False
                 ),
                 setup_guide=guide,
+                auth_setup_guides=auth_guides,
                 has_oauth_defaults=key in providers_with_defaults,
                 has_oauth_extra_config=providers_with_defaults.get(key, False),
                 is_custom=bool(val.get("is_custom", False)),
@@ -4698,14 +4704,14 @@ async def test_integration_tool(
     if integration.status not in ("connected", "configured"):
         return {"status": "error", "message": "Integration is not connected"}
 
-    from app.services.integration_tools import build_integration_tools
+    from app.services.integration_tools import BindingBasis, ToolBindings, build_integration_tools
     from app.tools.base import ToolCall
 
     bindings = {integration.provider: str(integration.id)}
     try:
         defs, executor = await build_integration_tools(
             db,
-            bindings,
+            ToolBindings(bindings, basis=BindingBasis.CALLER_CHECKED, reason="the route's integration access check"),
             context={
                 "source": "tool_test",
                 "integration": integration.name,

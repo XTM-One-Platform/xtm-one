@@ -8,7 +8,7 @@
  * default. Consumers resolve once and read plain fields.
  */
 
-import type { ProviderCatalogItem, ProviderCatalogVariant } from "@/types";
+import type { ProviderCatalogItem, ProviderCatalogVariant, SetupGuide } from "@/types";
 
 type Entry = Pick<ProviderCatalogItem, "variant_selector" | "variants">;
 
@@ -54,4 +54,16 @@ export function otherVariantFieldKeys(entry: Entry | undefined, value: string | 
       .filter(([key]) => key !== value)
       .flatMap(([, variant]) => Object.keys(variant.extra_fields ?? {})),
   );
+}
+
+/**
+ * The setup guide of `authType`: the entry's guide for that authentication
+ * mode when it has one (`auth_setup_guides`), else its own `setup_guide`.
+ * Pass the entry as resolved for its variant.
+ */
+export function setupGuideFor(
+  entry: Pick<ProviderCatalogItem, "setup_guide" | "auth_setup_guides"> | undefined,
+  authType: string | null | undefined,
+): SetupGuide | null | undefined {
+  return (authType ? entry?.auth_setup_guides?.[authType] : undefined) ?? entry?.setup_guide;
 }

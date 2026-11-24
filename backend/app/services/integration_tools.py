@@ -18,13 +18,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import dataclasses
+import enum
 import functools
 import inspect
 import json as _json
 import logging
 import re
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import parse_qs
@@ -5898,6 +5899,215 @@ async def shadow_invisible_bindings(
     return fallback
 
 
+class BindingBasis(enum.StrEnum):
+    """Why a tool build may use the integration bindings it is handed."""
+
+    #: ``resolve_agent_integration_bindings`` resolved them for the person the
+    #: run acts for (a chat turn's session selection, checked by
+    #: ``resolve_session_integration_bindings``, counts as well).
+    RESOLVED = "resolved"
+    #: The run acts as the agent's owner and no one else (the public widget).
+    OWNER_RUN = "owner_run"
+    #: The caller checked that the person may use each integration itself.
+    CALLER_CHECKED = "caller_checked"
+    #: An administrator bound them for everyone (the General Assistant).
+    ADMIN_CONFIGURED = "admin_configured"
+    #: Used as bound for whoever acts, with no check: a known gap, to close.
+    UNCHECKED = "unchecked"
+
+
+class ToolBindings(Mapping[str, Any]):
+    """The integration bindings a tool build may use, and why (*basis*, *reason*).
+
+    The only thing :func:`build_integration_tools` accepts: a plain dict is
+    refused, so every caller says on what ground the credentials it builds
+    with may act for the person the run serves. ``tests/test_agent_integration_bindings.py``
+    pins which module uses which basis.
+    """
+
+    __slots__ = ("_bindings", "basis", "reason")
+
+    def __init__(self, bindings: Mapping[str, Any], *, basis: BindingBasis, reason: str) -> None:
+        if not isinstance(basis, BindingBasis) or not reason.strip():
+            raise ValueError("ToolBindings needs a BindingBasis and the reason it applies")
+        self._bindings = dict(bindings)
+        self.basis = basis
+        self.reason = reason
+
+    def __getitem__(self, key: str) -> Any:
+        return self._bindings[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._bindings)
+
+    def __len__(self) -> int:
+        return len(self._bindings)
+
+    def __repr__(self) -> str:
+        return f"ToolBindings({self._bindings!r}, basis={self.basis.value!r})"
+
+
+@dataclasses.dataclass
+class AgentIntegrationBindings:
+    """An agent's integration bindings resolved for the person a run acts for.
+
+    *bindings* / *origins*: flattened slot -> integration id, and how each slot
+    was bound. *withheld*: what the run does not use for that person and
+    nothing replaced, ``missing_integration_bindings`` entries told to the
+    model and shown on the reply.
+    """
+
+    bindings: dict[str, str]
+    origins: dict[str, str]
+    withheld: list[dict]
+
+    @property
+    def tool_bindings(self) -> ToolBindings:
+        """The resolved bindings, for :func:`build_integration_tools`."""
+        return ToolBindings(
+            self.bindings, basis=BindingBasis.RESOLVED, reason="resolved for the person the run acts for"
+        )
+
+
+async def resolve_agent_integration_bindings(
+    db: AsyncSession,
+    agent: Any,
+    acting_user_id: str | None,
+    *,
+    company_automation: bool = False,
+    scope_headers: dict[str, str] | None = None,
+    inherited_template_picks: Mapping[str, str] | None = None,
+) -> AgentIntegrationBindings:
+    """THE resolution of *agent*'s integration bindings for *acting_user_id*.
+
+    Every run that builds an agent's integration tools for a person resolves
+    them here, so who may use which credential is decided once:
+
+    1. the direct bindings, minus the ones the owner lost access to
+       (``integration_credentials.drop_orphaned_bindings``);
+    2. for anyone but the owner, minus the ones they may not use
+       (:func:`shadow_invisible_bindings`), the integrations the agent lends
+       (``integration_credentials.lent_integration_ids``) kept;
+    3. the template bindings, plus the providers step 2 dropped, resolved to
+       the person's own integrations (:func:`template_candidate_filter`),
+       the account a spawning run picked first when still eligible
+       (*inherited_template_picks*, ``{provider: integration id}``).
+
+    *acting_user_id* ``None`` or not a UUID: no one to check against, so the
+    run is the owner's own (steps 2 and 3 skipped), as an anonymous chat turn.
+    """
+    from app.api.v1.helpers import get_user_group_ids
+    from app.services.integration_credentials import drop_orphaned_bindings, lent_integration_ids
+    from app.services.integration_user_credentials import connected_for_clause
+
+    bindings = flatten_bindings(getattr(agent, "integration_bindings", None) or {})
+    origins = dict.fromkeys(bindings, DIRECT_BINDING_ORIGIN)
+    dropped: list[dict] = []
+    await drop_orphaned_bindings(db, agent, bindings, origins, withheld=dropped)
+
+    acting_uuid = normalize_acting_user_id(acting_user_id)
+    if acting_uuid is None:
+        return AgentIntegrationBindings(bindings, origins, dropped)
+
+    shadowed: list[str] = []
+    if bindings and acting_uuid != normalize_acting_user_id(getattr(agent, "user_id", None)):
+        shadowed = await shadow_invisible_bindings(
+            db,
+            bindings,
+            origins,
+            acting_user_id=str(acting_uuid),
+            user_group_ids=await get_user_group_ids(db, acting_uuid),
+            withheld=dropped,
+            lent_ids=lent_integration_ids(agent),
+            lent_owner_id=getattr(agent, "user_id", None),
+        )
+
+    templates = list(getattr(agent, "integration_template_bindings", None) or [])
+    needed = [p for p in dict.fromkeys([*templates, *shadowed]) if p not in bindings]
+    if needed:
+        result = await db.execute(
+            select(Integration)
+            .where(
+                Integration.provider.in_(needed),
+                await template_candidate_filter(db, acting_uuid, company_automation=company_automation),
+                connected_for_clause(acting_uuid),
+            )
+            .order_by(Integration.provider, Integration.created_at, Integration.id)
+        )
+        by_provider: dict[str, list[Integration]] = {}
+        for row in result.scalars().all():
+            by_provider.setdefault(row.provider, []).append(row)
+        for provider, candidates in by_provider.items():
+            inherited_id = (inherited_template_picks or {}).get(provider)
+            picked, origin = await resolve_template_integration(
+                db,
+                provider,
+                candidates,
+                scope_headers,
+                acting_user_id=acting_uuid,
+                context=f"agent={getattr(agent, 'name', '')}",
+                inherited_id=inherited_id,
+            )
+            if inherited_id and (picked is None or str(picked.id) != inherited_id):
+                # The run cannot use its spawning run's account: said in the
+                # logs, never a silent other view.
+                logger.warning(
+                    "Template binding %s of agent %s: the spawning run used integration %s, "
+                    "this run resolved %s (origin %s) for user %s",
+                    provider,
+                    getattr(agent, "name", ""),
+                    inherited_id,
+                    str(picked.id) if picked else None,
+                    origin,
+                    acting_uuid,
+                )
+            if picked is not None:
+                bindings[provider] = str(picked.id)
+                origins[provider] = origin or ""
+
+    # A dropped binding the person's own integration of the provider replaced
+    # is not missing.
+    withheld = [
+        entry for entry in dropped if not (entry.get("provider") in shadowed and entry.get("provider") in bindings)
+    ]
+    return AgentIntegrationBindings(bindings, origins, withheld)
+
+
+def prebuilt_tools_refusal(
+    prebuilt: Any,
+    *,
+    agent: Any,
+    acting_user_id: str | None,
+    effective_bindings: Mapping[str, str],
+) -> str | None:
+    """Why a run may not use integration tools built before it, or ``None``.
+
+    Tools built once for several runs (an evaluation's entries) must say for
+    whom (``acting_user_id``) and from which bindings (``bindings``) they were
+    built. A run acting for a person takes them only when built for that
+    person from bindings it resolved itself
+    (:func:`resolve_agent_integration_bindings`); a run with no person (the
+    owner's own) only when built for the owner or no one. Anything else is
+    refused, and the run builds its own tools.
+    """
+    from app.services.integration_credentials import canonical_integration_ids
+
+    built_from = getattr(prebuilt, "bindings", None)
+    if not isinstance(built_from, Mapping):
+        return "they do not say which bindings they were built from"
+    built_for = normalize_acting_user_id(getattr(prebuilt, "acting_user_id", None))
+    acting = normalize_acting_user_id(acting_user_id)
+    if acting is None:
+        if built_for not in (None, normalize_acting_user_id(getattr(agent, "user_id", None))):
+            return "they were built for someone other than the agent's owner"
+        return None
+    if built_for != acting:
+        return "they were built for someone other than the person the run acts for"
+    if not canonical_integration_ids(built_from.values()) <= canonical_integration_ids(effective_bindings.values()):
+        return "they hold an integration the run's own resolution does not give its person"
+    return None
+
+
 async def pin_bindings(
     db: AsyncSession,
     effective_bindings: dict[str, str],
@@ -5998,7 +6208,7 @@ async def pin_bindings(
 
 async def build_integration_tools(
     db: AsyncSession,
-    bindings: dict[str, list[str]] | dict[str, str],
+    bindings: ToolBindings,
     *,
     context: dict[str, Any] | None = None,
     channel_bot_mode: bool = False,
@@ -6008,10 +6218,11 @@ async def build_integration_tools(
     Parameters
     ----------
     bindings:
-        Maps provider keys to lists of Integration UUIDs (new format) or
-        single Integration UUIDs (legacy/flattened format).  Lists are
+        :class:`ToolBindings`: maps provider keys to lists of Integration
+        UUIDs (new format) or single Integration UUIDs (legacy/flattened
+        format), with the basis on which they may be used. Lists are
         internally flattened to ``provider#N`` keys for multi-instance
-        support.
+        support. A plain dict is refused (``TypeError``).
     context:
         Optional dict of contextual fields (agent, assignment, source, …)
         used to enrich log messages so tool-resolution issues can be traced
@@ -6024,7 +6235,13 @@ async def build_integration_tools(
     Each provider receives a *refresh_fn* callback so its tools can
     auto-refresh expired OAuth tokens on 401/403 responses.
     """
-    flat = _ensure_flat(bindings)
+    if not isinstance(bindings, ToolBindings):
+        raise TypeError(
+            "build_integration_tools takes ToolBindings: resolve_agent_integration_bindings(...)"
+            ".tool_bindings, or ToolBindings(..., basis=..., reason=...) saying why they may be used"
+        )
+    logger.debug("Integration tool build: basis=%s (%s)", bindings.basis.value, bindings.reason)
+    flat = _ensure_flat(dict(bindings))
     if channel_bot_mode:
         definitions, executor = await _build_channel_bot_tools_inner(db, flat, context or {})
     else:
@@ -7526,7 +7743,7 @@ def pick_template_integration(
 ) -> tuple[Integration | None, str | None]:
     """Pick a per-user (template) binding without scope disambiguation.
 
-    For callers with no request scope to match on (evaluation runs). Drops
+    For callers with no request scope to match on (assignment runs, scheduled work items). Drops
     another user's personal integrations, prefers the acting user's own private
     row, and otherwise falls back to a company-wide one. Returns
     ``(integration, origin)`` — see :func:`classify_template_pick`.
