@@ -124,6 +124,15 @@ The **Priority intelligence requirements (PIRs)** are not on this page: pick the
 
 A value that is not valid (a region that is not a country code, an amount that is not a number) is refused, and the message names the field.
 
+### Pause and resume CTEM case opening
+
+The **Case opening** switch sits in the toolbar of **CTEM > Cases**, beside **Group by** and **Views**, and on the header of **CTEM > Signals > Sources**, for administrators. It is on by default. Hover it to see how many confirmed signals are waiting while it is off.
+
+- **Off**: a confirmed signal opens no case. It stays confirmed and waits; an empty Cases list says case opening is off. Case deadlines, announcements and the stall reminder keep running, and a case can still be split by hand.
+- **On again**: every waiting signal opens (or joins) its case at once, without waiting for the next scheduled pass, and the Cases list fills while you watch.
+
+Other users do not see the switch. Every change is in the audit log.
+
 ## Primary assets and business services
 
 The primary assets are the assets that matter most to the business. Without them, agents cannot rank findings by business impact. In edit mode, `Add a primary asset` adds a row with:
