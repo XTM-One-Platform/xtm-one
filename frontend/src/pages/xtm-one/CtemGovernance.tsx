@@ -24,7 +24,7 @@ import { useNow } from "@/hooks/useTick";
 import { useMe } from "@/hooks/api/useAuthApi";
 import { useCtemPosture, useCtemPostureHistory } from "@/hooks/api/useCtemMetricsApi";
 import { useCtemLoopMeasures } from "@/hooks/api/useCtemCasesApi";
-import { useOrganizationContext, useSaveOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
+import { useOrganizationContext, usePatchOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
 import { useFormatter } from "@/i18n";
 import { CTEM_BAND_CONFIG, CTEM_PRODUCT_INFO } from "@/lib/constants";
 import { profileFieldHref } from "@/lib/organization-profile-tabs";
@@ -328,7 +328,7 @@ export default function CtemGovernance() {
   const { data: posture, isLoading } = useCtemPosture(vertical);
   const { data: histResp } = useCtemPostureHistory(vertical);
   const { data: context } = useOrganizationContext();
-  const save = useSaveOrganizationContext();
+  const save = usePatchOrganizationContext();
   const [editing, setEditing] = useState(false);
   const today = new Date(useNow());
 
@@ -349,7 +349,8 @@ export default function CtemGovernance() {
   const saveTarget = (value: number) => {
     if (!profile) return;
     save.mutate(
-      { profile: { ...profile, posture_target: value }, source: "form" },
+      // #1752: the target alone travels, never the asset rows.
+      { fields: { posture_target: value }, based_on_version: context?.version ?? null },
       {
         onSuccess: () => {
           setEditing(false);
