@@ -99,6 +99,9 @@ def build_organization_context_tool(
         wanted = str(category or "").strip().lower()
         try:
             async with async_session() as db:
+                if wanted and wanted != "*" and cats.get(wanted) is not None and not cats.available():
+                    # Copilot mode (#1690): the profile is its identity alone, no category is read.
+                    return cats.render_categories({})
                 if wanted:
                     row = await current_version(db)
                     # #1543: the asset and group rows come from the asset records, paged like every category.
@@ -115,7 +118,7 @@ def build_organization_context_tool(
                     found_category = cats.get(wanted)
                     if found_category is None:
                         return (
-                            f"No category {wanted!r}. One of: {', '.join(cats.CATEGORY_NAMES)} "
+                            f"No category {wanted!r}. One of: {', '.join(cats.available_names())} "
                             '(get_organization_context(category="*") lists them with their sizes).'
                         )
                     if found_category.name == cats.ENTERPRISE_KNOWLEDGE:

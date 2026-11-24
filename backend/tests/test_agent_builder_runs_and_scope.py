@@ -274,6 +274,7 @@ def test_list_runs_status_description_matches_engine_vocabulary():
     validation."""
     from app.services.assignment_engine import (
         ACTIVE_RUN_STATUSES,
+        QUEUED_RUN_STATUS,
         TERMINAL_RUN_STATUSES,
     )
 
@@ -282,7 +283,7 @@ def test_list_runs_status_description_matches_engine_vocabulary():
     )
     schema = next(d for d in definitions if d.name == "list_runs").input_schema
     description = schema["properties"]["status"]["description"]
-    for status in ACTIVE_RUN_STATUSES + TERMINAL_RUN_STATUSES:
+    for status in (*ACTIVE_RUN_STATUSES, QUEUED_RUN_STATUS, *TERMINAL_RUN_STATUSES):
         assert f"'{status}'" in description
 
 
@@ -759,6 +760,26 @@ async def test_list_runs_accepts_reserved_statuses(monkeypatch):
     result = await _call(executor, "list_runs", status="cancelled")
 
     assert not result.is_error
+    assert result.content == "No runs found."
+
+
+@pytest.mark.asyncio
+async def test_list_runs_accepts_queued_status(monkeypatch):
+    """A queued run (a delivery waiting for a busy assignment) is neither
+    active nor terminal: the filter must accept 'queued' instead of refusing
+    it, so queued runs are listable rather than a silent zero."""
+    created = []
+    monkeypatch.setattr(
+        database,
+        "async_session",
+        _session_factory(created, execute_results=[0]),
+    )
+
+    _, executor = build_agent_builder_tool(SimpleNamespace(), str(uuid.uuid4()))
+    result = await _call(executor, "list_runs", status="queued")
+
+    assert not result.is_error
+    assert "Invalid status" not in result.content
     assert result.content == "No runs found."
 
 

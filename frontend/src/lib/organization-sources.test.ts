@@ -7,7 +7,7 @@ import { sourceSectionHref } from "./organization-sources";
 describe("organization sources (#1134 S2 part 2, #1276, #1178)", () => {
   it("links a crown jewels chip to the Settings tab filtered on the source's label", () => {
     expect(sourceSectionHref("crown_jewels", { key: "opencrq", label: "OpenCRQ" })).toBe(
-      "/settings/organization/profile/business?card=crown_jewels&ocj_f_source=OpenCRQ",
+      "/ctem/inventory/business?card=crown_jewels&ocj_f_source=OpenCRQ",
     );
   });
 

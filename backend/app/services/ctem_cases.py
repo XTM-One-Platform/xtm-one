@@ -458,6 +458,7 @@ def check_transition(
     validation_plan: bool = False,
     validations: Iterable[dict[str, Any]] | None = None,
     resolution_kind: str | None = None,
+    close_without_retest_answered: bool = False,
 ) -> None:
     """Raise :class:`CaseRuleError` when the transition is refused.
 
@@ -465,7 +466,10 @@ def check_transition(
     case to ``remediating`` takes or names its owner (#1503; the loop moves it
     there on a ticket or a decision without one). A case with a
     validation plan resolves, or goes to ``mitigated_watching``, only when its
-    newest validation reference passed (#857): free-text evidence is not proof.
+    newest validation reference passed (#857): free-text evidence is not proof,
+    unless a person decided otherwise (#1675): a person's own move, or a
+    ``ctem.close_without_retest`` decision answered on the case
+    (*close_without_retest_answered*), lets it close without the re-test.
     """
     if target not in CASE_STATES:
         raise CaseRuleError(f"unknown state {target!r}")
@@ -483,9 +487,10 @@ def check_transition(
     if target == "resolved" and not evidence:
         raise CaseRuleError("resolving a case needs evidence (a ticket, a change or a validation run)")
     proven = passing(latest_validation(validations))
-    if target in ("resolved", "mitigated_watching") and validation_plan and not proven:
+    decided = actor_kind == "user" or close_without_retest_answered
+    if target in ("resolved", "mitigated_watching") and validation_plan and not proven and not decided:
         raise CaseRuleError("this case has a validation plan: it closes only on a passing validation reference")
-    if target == "mitigated_watching" and not proven:
+    if target == "mitigated_watching" and not proven and not decided:
         raise CaseRuleError("mitigated, watching needs a passing validation reference of the mitigation")
     if target == "accepted_risk":
         if actor_kind != "user":
