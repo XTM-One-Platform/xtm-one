@@ -6,7 +6,7 @@ time (a member added later answers, a member removed cannot) and the first
 answer closes the decision for all. Nullable JSON, no backfill.
 
 Revision ID: w1748wigroups01
-Revises: s1495swsection01
+Revises: n1883nodefsync01
 Create Date: 2026-11-24 12:20:00.000000
 """
 
@@ -20,7 +20,7 @@ from app.core.migration_ddl import set_lock_timeout, terminate_lock_holders
 revision: str = "w1748wigroups01"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "s1495swsection01"
+down_revision: str | Sequence[str] | None = "n1883nodefsync01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
