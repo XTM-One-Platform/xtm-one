@@ -1082,14 +1082,18 @@ def _handed_to_clause(actor: CompanyManagedWriter | None) -> Any:
     as the owner agent's own person, so no other tier admits it and the hand-off
     is dropped without anyone seeing it. This tier admits it to the owner
     agent's own tools, dispatch and settlement (never to a person's read), on
-    one of two grants only (Sam's decision on #858):
+    one of three grants only (Sam's decisions on #858 and #1967):
 
     1. the creator may open the owner agent: their own, company-managed and not
        narrowed, or shared with them or one of their groups
        (``shared_with_user_column_clause``; an administrator's role is no grant);
     2. the creating agent's home fleet and the owner agent's home fleet are
        connected, either fleet naming the other or the other's agent as a
-       ``connected`` member.
+       ``connected`` member;
+    3. the creating agent holds a configured handover (any type) to the owner
+       agent, outside the exposure rule's refusal (a non-exposed home member
+       of another fleet stays out): the handover an owner or an administrator
+       configured is the grant, whatever the person may open.
 
     Nothing else widens: the same check refuses the hand-off at creation
     (:func:`_refuse_unreachable_owner`), so an item no tier gives its owner
@@ -1104,6 +1108,7 @@ def _handed_to_clause(actor: CompanyManagedWriter | None) -> Any:
         or_(
             _creator_may_open_agent(WorkItem.user_id, agent_id),
             _fleets_connected(WorkItem.created_by_agent_id, agent_id),
+            _creator_hands_over_to(WorkItem.created_by_agent_id, agent_id),
         ),
     )
 
@@ -1164,6 +1169,58 @@ def _fleets_connected(creator_agent: Any, owner_agent: Any) -> Any:
     )
 
 
+def _creator_hands_over_to(creator_agent: Any, owner_agent: uuid.UUID) -> Any:
+    """Grant 3 of :func:`_handed_to_clause`: *creator_agent* holds a handover to *owner_agent*.
+
+    Any handover type in the creating agent's ``handover_agent_ids``, unless
+    the owner agent is a non-exposed home member of a fleet other than the
+    creating agent's home fleet (the exposure rule of ``services/fleets.py``,
+    the orchestrator always exposed). *owner_agent* is a value, never a
+    column: both callers name the one owner agent.
+    """
+    from sqlalchemy.orm import aliased
+
+    from app.models.agent import Agent
+    from app.models.fleet import FLEET_ROLE_MEMBER, Fleet, FleetMember
+
+    source = aliased(Agent)
+    configured = (
+        select(source.id)
+        .where(
+            source.id == creator_agent,
+            when_json_parseable(
+                source.handover_agent_ids,
+                cast(source.handover_agent_ids, JSONB).contains([str(owner_agent)]),
+            ),
+        )
+        .exists()
+    )
+    creator_member = aliased(FleetMember)
+    # Nested two levels under a listing: correlate everything but its own
+    # table, as _fleets_connected does (#890).
+    creator_home = (
+        select(creator_member.fleet_id)
+        .where(creator_member.agent_id == creator_agent, creator_member.role == FLEET_ROLE_MEMBER)
+        .correlate_except(creator_member)
+        .limit(1)
+        .scalar_subquery()
+    )
+    owner_member = aliased(FleetMember)
+    unexposed_elsewhere = (
+        select(owner_member.id)
+        .join(Fleet, Fleet.id == owner_member.fleet_id)
+        .where(
+            owner_member.agent_id == owner_agent,
+            owner_member.role == FLEET_ROLE_MEMBER,
+            owner_member.is_exposed.is_(False),
+            Fleet.orchestrator_agent_id.is_distinct_from(owner_agent),
+            or_(creator_home.is_(None), owner_member.fleet_id != creator_home),
+        )
+        .exists()
+    )
+    return and_(configured, not_(unexposed_elsewhere))
+
+
 class OwnerAgentUnreachableError(ValueError):
     """A work item handed to an agent its owner runs could never read (#858)."""
 
@@ -1194,7 +1251,7 @@ async def _refuse_unreachable_owner(
     is_company_managed: bool,
     writer: CompanyManagedWriter,
 ) -> None:
-    """Refuse a person's item for an agent neither grant of :func:`_handed_to_clause` reaches.
+    """Refuse a person's item for an agent no grant of :func:`_handed_to_clause` reaches.
 
     Only an agent's own filing (its create_work_item tool, *writer* naming
     the agent) of a person's item handed to another agent is checked: the
@@ -1219,10 +1276,11 @@ async def _refuse_unreachable_owner(
                 Agent.name,
                 _creator_may_open_agent(user, owner_agent_id),
                 _fleets_connected(creator, owner_agent_id) if created_by_agent_id else false(),
+                _creator_hands_over_to(creator, owner_agent_id) if created_by_agent_id else false(),
             ).where(Agent.id == owner_agent_id)
         )
     ).first()
-    if row is None or row[1] or row[2]:
+    if row is None or row[1] or row[2] or row[3]:
         return
     raise OwnerAgentUnreachableError(
         f"The work item cannot be handed to {row[0]!r}: that agent is not shared with you "
