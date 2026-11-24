@@ -29,11 +29,13 @@ from __future__ import annotations
 
 import logging
 import uuid
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
+import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.utils import format_exception_message
@@ -55,6 +57,59 @@ from app.services.ctem_metrics_collector import (
 from app.services.ctem_verticals import VERTICAL_CYBER, normalize_vertical
 
 logger = logging.getLogger(__name__)
+
+#: Why a product contributed nothing to a read (#1852), per product in :attr:`SourceRead.reasons`.
+REASON_REJECTED = "rejected"  # the product refused this user's token (401, 403)
+REASON_TOO_LARGE = "too_large"  # the product could not answer the query (clause limit, database error)
+REASON_TIMEOUT = "timeout"
+REASON_NOT_CONNECTED = "not_connected"  # no credentials could be resolved for this user
+REASON_UNAVAILABLE = "unavailable"  # anything else
+#: Reasons that belong to one identity, never to the product: one user's failure is not an outage.
+IDENTITY_REASONS = frozenset({REASON_REJECTED, REASON_NOT_CONNECTED})
+
+#: The integration fields ``integration_tools._get_token`` binds on the log context; a read
+#: of another product must not carry them (#1852: the OpenCTI line named the OpenAEV integration).
+_INTEGRATION_LOG_KEYS = (
+    "integration_name",
+    "integration_owner_user_id",
+    "integration_auth_type",
+    "integration_is_company_managed",
+)
+
+#: The error of the last failed source read in this task, set by the readers before they answer None.
+_read_error: ContextVar[str | None] = ContextVar("ctem_cases_read_error", default=None)
+
+
+def failure_reason(error: str | BaseException | None) -> str:
+    """The reason kind of a failed read, from the provider's error text or the exception raised."""
+    if isinstance(error, httpx.TimeoutException):
+        return REASON_TIMEOUT
+    text = (format_exception_message(error) if isinstance(error, BaseException) else (error or "")).lower()
+    if not text:
+        return REASON_UNAVAILABLE
+    if any(m in text for m in ("auth_required", "401", "403", "forbidden", "unauthorized", "forbidden_access")):
+        return REASON_REJECTED
+    if any(m in text for m in ("too_many_clauses", "too many clauses", "database_error", "maxclausecount")):
+        return REASON_TOO_LARGE
+    if any(m in text for m in ("timed out", "timeout", "readtimeout", "connecttimeout")):
+        return REASON_TIMEOUT
+    return REASON_UNAVAILABLE
+
+
+def _failed(err: str | None) -> None:
+    _read_error.set(err)
+
+
+def _bind_read_context(user_id: str, provider: str) -> None:
+    """Name the reader and the product on every log line of this read, and drop the integration
+    fields an earlier token resolution left on the context (#1852)."""
+    structlog.contextvars.unbind_contextvars(*_INTEGRATION_LOG_KEYS)
+    structlog.contextvars.bind_contextvars(ctem_read_user_id=str(user_id), ctem_read_provider=provider)
+
+
+def _clear_read_context() -> None:
+    structlog.contextvars.unbind_contextvars("ctem_read_user_id", "ctem_read_provider", *_INTEGRATION_LOG_KEYS)
+
 
 #: Most vulnerability memberships (software x vulnerability) read from OpenCTI.
 OCTI_ISSUE_CAP = 2000
@@ -153,11 +208,19 @@ class SourceRead:
 
     issues: list[rules.SourceIssue] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)
+    #: Why each product of :attr:`missing` contributed nothing (``REASON_*``, #1852).
+    reasons: dict[str, str] = field(default_factory=dict)
     no_stack: bool = False
     #: Members the reader can read by id that are no longer open.
     closed: list[rules.SourceIssue] = field(default_factory=list)
     #: False when a read hit its cap: then nothing is resolved from it.
     complete: bool = True
+
+    def fail(self, provider: str, reason: str) -> None:
+        """Name *provider* among the missing products with *reason*."""
+        if provider not in self.missing:
+            self.missing.append(provider)
+        self.reasons[provider] = reason
 
 
 def _float(value: Any) -> float | None:
@@ -413,6 +476,7 @@ async def _read_opencti(
     )
     if err:
         logger.info("CTEM cases: OpenCTI stack software unavailable: %s", err)
+        _failed(err)
         return None
     ids = [n["id"] for n in software if n.get("id") and _stack_matches(n, stack)]
     if not ids:
@@ -425,6 +489,7 @@ async def _read_opencti(
             data, err = await _graphql(client, base_url, headers, _OCTI_STACK_VULNS, variables)
             if err:
                 logger.info("CTEM cases: OpenCTI stack vulnerabilities unavailable: %s", err)
+                _failed(err)
                 return None
             conn = (data or {}).get("stixCoreRelationships") or {}
             relations.extend((e or {}).get("node") or {} for e in conn.get("edges") or [])
@@ -487,6 +552,7 @@ async def _read_openaev(
         )
         if err or resp is None:
             logger.info("CTEM cases: OpenAEV findings unavailable: %s", err)
+            _failed(err)
             return None
         body = resp.json() or {}
         content = body.get("content") or []
@@ -575,46 +641,62 @@ async def read_open_issues(
     stack = await _organization_software(db)
     out.no_stack = not stack
     creds: dict[str, tuple[str, dict[str, str]] | None] = {}
-    for provider in ("opencti", "openaev"):
-        try:
-            creds[provider] = await _user_creds(db, user_id, provider)
-        except Exception as exc:  # one product failing never blocks the other
-            logger.warning("CTEM cases: creds error for %s: %s", provider, format_exception_message(exc))
-            creds[provider] = None
-    octi = creds.get("opencti")
-    if octi and stack:
-        base_url, headers = octi
-        try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                found = await _read_opencti(client, base_url, attach_probe(headers, base_url), stack)
-        except Exception as exc:
-            logger.warning("CTEM cases: OpenCTI read failed: %s", format_exception_message(exc))
-            found = None
-        if found is None:
-            out.missing.append("opencti")
+    try:
+        for provider in ("opencti", "openaev"):
+            _bind_read_context(user_id, provider)
+            try:
+                creds[provider] = await _user_creds(db, user_id, provider)
+            except Exception as exc:  # one product failing never blocks the other
+                logger.warning(
+                    "CTEM cases: creds error for %s as user %s: %s", provider, user_id, format_exception_message(exc)
+                )
+                creds[provider] = None
+        octi = creds.get("opencti")
+        _bind_read_context(user_id, "opencti")
+        if octi and stack:
+            base_url, headers = octi
+            _read_error.set(None)
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    found = await _read_opencti(client, base_url, attach_probe(headers, base_url), stack)
+                error: str | BaseException | None = _read_error.get()
+            except Exception as exc:
+                logger.warning("CTEM cases: OpenCTI read failed as user %s: %s", user_id, format_exception_message(exc))
+                found, error = None, exc
+            if found is None:
+                out.fail("opencti", failure_reason(error))
+                logger.info("CTEM cases: OpenCTI missing for user %s: %s", user_id, out.reasons["opencti"])
+            else:
+                out.issues.extend(found.issues)
+                out.complete = out.complete and found.complete
+        elif not octi:
+            out.fail("opencti", REASON_NOT_CONNECTED)
+            logger.info("CTEM cases: OpenCTI missing for user %s: %s", user_id, REASON_NOT_CONNECTED)
+        aev = creds.get("openaev")
+        _bind_read_context(user_id, "openaev")
+        if aev:
+            base_url, headers = aev
+            _read_error.set(None)
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    found_aev = await _read_openaev(client, base_url, headers, now)
+                error = _read_error.get()
+            except Exception as exc:
+                logger.warning("CTEM cases: OpenAEV read failed as user %s: %s", user_id, format_exception_message(exc))
+                found_aev, error = None, exc
+            if found_aev is None:
+                out.fail("openaev", failure_reason(error))
+                logger.info("CTEM cases: OpenAEV missing for user %s: %s", user_id, out.reasons["openaev"])
+            else:
+                out.issues.extend(found_aev)
+                out.complete = out.complete and len(found_aev) < AEV_FINDING_CAP
         else:
-            out.issues.extend(found.issues)
-            out.complete = out.complete and found.complete
-    elif not octi:
-        out.missing.append("opencti")
-    aev = creds.get("openaev")
-    if aev:
-        base_url, headers = aev
-        try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                found = await _read_openaev(client, base_url, headers, now)
-        except Exception as exc:
-            logger.warning("CTEM cases: OpenAEV read failed: %s", format_exception_message(exc))
-            found = None
-        if found is None:
-            out.missing.append("openaev")
-        else:
-            out.issues.extend(found)
-            out.complete = out.complete and len(found) < AEV_FINDING_CAP
-    else:
-        out.missing.append("openaev")
-    if members:
-        await _read_closed_members(out, creds, members)
+            out.fail("openaev", REASON_NOT_CONNECTED)
+            logger.info("CTEM cases: OpenAEV missing for user %s: %s", user_id, REASON_NOT_CONNECTED)
+        if members:
+            await _read_closed_members(out, creds, members)
+    finally:
+        _clear_read_context()
     return out
 
 
@@ -660,7 +742,7 @@ async def read_view(db: AsyncSession, user_id: str, vertical: str) -> Any:
     primary = await get_primary(db)
     members = await store.member_ids(db, organization_id=primary.id, vertical=vertical) if primary else []
     read = await read_open_issues(db, user_id, vertical, members=members)
-    view = ViewerView(missing=list(read.missing), complete=read.complete)
+    view = ViewerView(missing=list(read.missing), reasons=dict(read.reasons), complete=read.complete)
     view.opencrq = await _reads_opencrq(db, user_id)
     view.opencti = await _reads_opencti(db, user_id)
     for issue in read.closed:
@@ -769,7 +851,12 @@ async def recompute_for_user(
     vertical = normalize_vertical(vertical)
     members = await store.member_ids(db, organization_id=organization_id, vertical=vertical)
     read = await read_open_issues(db, user_id, vertical, now=now, members=members)
-    answer: dict[str, Any] = {"vertical": vertical, "missing": read.missing, "no_stack": read.no_stack}
+    answer: dict[str, Any] = {
+        "vertical": vertical,
+        "missing": read.missing,
+        "reasons": dict(read.reasons),
+        "no_stack": read.no_stack,
+    }
     if read.missing:
         answer["applied"] = False
         return answer

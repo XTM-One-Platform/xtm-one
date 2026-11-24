@@ -100,6 +100,8 @@ PROVIDER_CATALOG = {
 
 No env vars: users paste the credential in the UI. An OAuth provider sets `auth_type: "oauth"`, `fields: ["client_id", "client_secret"]` and its `authorize_url` / `token_url` / `scopes` (the `jira` entry).
 
+A provider with several `supported_auth_types` set up apart gives each mode its own guide in `auth_setup_guides` (`{"oauth": guide, "api_key": guide}`, the `planhat` entry): the setup guide button shows the mode chosen in the form or stored on the integration (`setupGuideFor()`, `frontend/src/lib/catalog-variants.ts`), and `setup_guide` (covering every mode) where no mode is chosen yet or a mode has none. Placeholders are filled as in `setup_guide`.
+
 **Every catalog entry MUST set `integration_category` to one of the marketplace
 taxonomy values** (they drive the faceted sidebar and category sections on
 `/integrations/new` — an unknown value gets its own facet under a trailing

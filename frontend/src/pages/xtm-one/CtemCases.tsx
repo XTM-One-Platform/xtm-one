@@ -127,7 +127,7 @@ export default function CtemCases() {
   const ownerName = (id: string | null) => (id ? (owners?.find((o) => o.id === id)?.full_name ?? null) : null);
 
   // A product that could not be read never yields the all-clear sentence (#12139).
-  const empty = useCasesEmptyLabel(data?.details_unavailable);
+  const empty = useCasesEmptyLabel(data?.details_unavailable, data?.details_unavailable_reasons);
   const rows = useMemo(() => applyCaseQuickFilters(cases, scope, toggles, now, meId), [cases, scope, toggles, now, meId]);
   const countOf = (chip: CaseScopeChip | CaseToggle) => (data ? caseQuickFilterCount(chip, cases, scope, toggles, now, meId) : undefined);
   const groupBy = useMemo<DataTableGroupBy<CtemCaseSummary> | undefined>(() => {
