@@ -109,17 +109,34 @@ TRANSIENT_RETRY_STATUSES = frozenset({502, 503, 504})
 _CONNECT_MAX_RETRIES = 2
 _CONNECT_BASE_DELAY = 1.0
 
-# provider -> wall time of the first connection failure of the current outage,
-# cleared by the first response the provider answers. Process-local: it names
-# how long this worker has been unable to reach the provider.
-_UNREACHABLE_SINCE: dict[str, float] = {}
+# provider -> (wall time of the first connection failure of the current outage,
+# wall time of its latest one), cleared by the first response the provider
+# answers. Process-local: it names how long this worker has been unable to
+# reach the provider.
+_UNREACHABLE_SINCE: dict[str, tuple[float, float]] = {}
+
+# A connection failure more than this many seconds after the previous one
+# starts a new outage: the old one may have ended while no call reached the
+# provider (a rarely used provider), so its start is not carried over.
+_OUTAGE_STALE_SECONDS = 300.0
+
+
+def _record_connect_failure(provider: str, now: float | None = None) -> None:
+    """Record a connection failure: extend the current outage, or start a new one."""
+    now = time.time() if now is None else now
+    entry = _UNREACHABLE_SINCE.get(provider)
+    if entry is None or now - entry[1] > _OUTAGE_STALE_SECONDS:
+        _UNREACHABLE_SINCE[provider] = (now, now)
+    else:
+        _UNREACHABLE_SINCE[provider] = (entry[0], now)
 
 
 def _outage_line(provider: str, retries: int) -> str:
     """The outage status a connection failure ends with: since when, retries made."""
-    since = _UNREACHABLE_SINCE.get(provider)
-    if since is None:
+    entry = _UNREACHABLE_SINCE.get(provider)
+    if entry is None:
         return ""
+    since = entry[0]
     stamp = time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime(since))
     minutes = max(0.0, (time.time() - since) / 60.0)
     return (
@@ -1195,7 +1212,7 @@ async def safe_request(
         except httpx.HTTPError as exc:
             is_connect = isinstance(exc, httpx.ConnectError) and not getattr(exc, "is_relay_error", False)
             if is_connect:
-                _UNREACHABLE_SINCE.setdefault(provider, time.time())
+                _record_connect_failure(provider)
                 if attempt < _CONNECT_MAX_RETRIES:
                     wait = random.uniform(0, _CONNECT_BASE_DELAY * (2**attempt))  # noqa: S311
                     # Retry jitter for backoff; not used for secrets or security decisions.

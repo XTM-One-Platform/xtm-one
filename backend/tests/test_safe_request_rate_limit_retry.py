@@ -491,6 +491,19 @@ async def test_connect_error_then_answer_clears_the_outage():
     assert "BlipProvider" not in http_mod._UNREACHABLE_SINCE
 
 
+def test_stale_outage_start_is_replaced():
+    """A failure long after the previous one starts a new outage; a close one extends it."""
+    http_mod._UNREACHABLE_SINCE.pop("StaleProvider", None)
+    http_mod._record_connect_failure("StaleProvider", now=1000.0)
+    http_mod._record_connect_failure("StaleProvider", now=1000.0 + http_mod._OUTAGE_STALE_SECONDS - 1)
+    assert http_mod._UNREACHABLE_SINCE["StaleProvider"][0] == 1000.0
+
+    later = 1000.0 + 3 * http_mod._OUTAGE_STALE_SECONDS
+    http_mod._record_connect_failure("StaleProvider", now=later)
+    assert http_mod._UNREACHABLE_SINCE["StaleProvider"] == (later, later)
+    http_mod._UNREACHABLE_SINCE.pop("StaleProvider", None)
+
+
 @pytest.mark.asyncio
 async def test_timeout_is_not_retried():
     """A timeout may have reached the provider: returned at once, no retry."""
