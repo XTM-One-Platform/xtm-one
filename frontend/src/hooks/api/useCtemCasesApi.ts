@@ -79,6 +79,8 @@ export interface CtemCaseSummary {
   phase?: CtemStageKey | null;
   /** The gate the case waits on now: its key, who (a user id, a role or a policy, as the loop wrote it) and since when (#1503). */
   waiting_on?: { gate: string | null; by: string | null; since: string | null } | null;
+  /** When the case sweep found the case waiting on nobody, while nothing moved it since (#1736); null otherwise. */
+  stalled_since?: string | null;
 }
 
 /** Where a synced ticket stands against its case (backend ctem_case_loop.TICKET_SYNC_STATES, #917). */
