@@ -7,7 +7,9 @@
  *
  * - Signals in 30 days: the paths' `count_30d`, the all-time total under it.
  * - Unmatched: the signals no inventory entry holds, parked until one does (#1505), the new ones under it.
- * - Cases opened: the signals that opened a case, the watchlist under it.
+ * - Signals with a case: the signals in state case_opened (many feed one case), the
+ *   open cases under it, read from the Cases page's own query and open filter so the
+ *   two pages never disagree (#1935: the card said "Cases opened" over a signal count).
  * - Trigger paths connected: N of the live catalogue, the connected sources'
  *   logos and the Sources link on its subtitle line.
  *
@@ -27,6 +29,7 @@ import { Icon } from "@filigran/design-system";
 import { ProviderLogo } from "@/components/ui/provider-logo";
 import { StatCard } from "@/components/ui/stat-card";
 import { Tip } from "@/components/ui/tooltip";
+import { isOpenCaseState, useCtemCases } from "@/hooks/api/useCtemCasesApi";
 import { CTEM_SIGNAL_STATES, useCtemSignalPaths, useRecentCtemSignals } from "@/hooks/api/useCtemSignalsApi";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
@@ -58,6 +61,10 @@ export function SignalsSummaryStrip() {
   const { data: pathData } = useCtemSignalPaths();
   const paths = pathData?.paths ?? [];
   const counts = recent?.counts;
+  // A section of the page: a refused cases read leaves the subtitle pending, never the page to the error boundary.
+  const { data: casesData } = useCtemCases({ throwOnError: false });
+  const caseRows = casesData?.cases;
+  const openCases = Array.isArray(caseRows) ? caseRows.filter((c) => isOpenCaseState(c.state)).length : undefined;
   const total = counts ? CTEM_SIGNAL_STATES.reduce((sum, s) => sum + (counts[s] ?? 0), 0) : undefined;
   const last30 = pathData ? paths.reduce((sum, p) => sum + (p.count_30d ?? 0), 0) : undefined;
   const connected = connectedCount(paths);
@@ -90,9 +97,9 @@ export function SignalsSummaryStrip() {
       />
       <StatCard
         icon={CaseGlyph}
-        label={t_i18n("Cases opened")}
+        label={t_i18n("Signals with a case")}
         value={counts ? (counts.case_opened ?? 0) : pending}
-        subtitle={counts ? t_i18n("{count, plural, one {# on the watchlist} other {# on the watchlist}}", { count: counts.watchlist ?? 0 }) : pending}
+        subtitle={openCases === undefined ? pending : t_i18n("{count, plural, =0 {No open case} one {# open case} other {# open cases}}", { count: openCases })}
         onClick={() => navigate(signalsHref({ state: "case_opened" }))}
       />
       <StatCard
