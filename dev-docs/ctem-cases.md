@@ -844,6 +844,23 @@ the Cases API answers, the layer shows no count. The sample funnel keeps it
 viewer-scoped total of open member issues the Cases API does not answer yet;
 they are not drawn rather than estimated from one page of the list.
 
+### 7.6 Cases in motion on the command center and the stage pages (#1621)
+
+`GET /ctem-cases/overview` (`services/ctem_cases_overview.py`) rolls up the
+cases the caller sees, with the list's visibility rule, so each count equals
+the list it links to: `counts` by status, `open`, per CTEM phase (`phases`,
+keyed by `ctem_case_audit.PHASES`) the open and waiting cases, the counts by
+status and the five open cases that need attention first (waiting for a
+decision, then priority, then the oldest status; each with the crown jewel it
+touches among the issues the caller sees), `no_phase_open` (open cases with no
+event yet: in the band, in no stage card), `waiting` (the open cases waiting
+for a decision with their gate, the oldest one and its age in hours) and
+`funnel` (`in_case`: distinct OpenCTI vulnerabilities, the funnel's unit,
+carried by an open case; `resolved_recent`: cases resolved in the last
+`resolved_window_days`). Three reads whatever the number of phases: the
+cases, the viewer's view, the history of every visible case. No organization
+context: every figure 0.
+
 ## 8. Agent tools (new, no existing contract changed)
 
 | Tool | Does |
