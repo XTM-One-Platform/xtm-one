@@ -2811,6 +2811,8 @@ async def _evaluate_one_gate_check(
             exc_info=True,
         )
         return None
+    if outcome.error and check.get("integration_id"):
+        outcome = await _with_integration_state(db, check, outcome)
     if outcome.passed and outcome.error:
         logger.warning(
             "Assignment '%s': %s: %s - the run proceeds",
@@ -2819,6 +2821,26 @@ async def _evaluate_one_gate_check(
             outcome.error,
         )
     return outcome
+
+
+async def _with_integration_state(
+    db: AsyncSession, check: dict[str, Any], outcome: ActivationCheckOutcome
+) -> ActivationCheckOutcome:
+    """*outcome* with its error naming the check's integration when it is not usable (#1665).
+
+    A gate tool of an integration in ``error`` or ``reauthorize`` fails, or is
+    not built at all; the reason recorded on the integration is what the owner
+    needs on the run, not only the tool's own failure.
+    """
+    import dataclasses
+
+    from app.services.integration_status import unusable_integrations
+
+    integration_id = str(check["integration_id"])
+    state = (await unusable_integrations(db, [integration_id])).get(integration_id)
+    if state is None:
+        return outcome
+    return dataclasses.replace(outcome, error=f"integration {integration_id} {state}; {outcome.error}")
 
 
 async def _skip_by_activation_check(

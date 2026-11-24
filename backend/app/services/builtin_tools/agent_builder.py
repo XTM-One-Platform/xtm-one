@@ -2856,6 +2856,29 @@ def build_agent_builder_tool(
                         )
                 else:
                     parts.append("**Connected Integrations:** None")
+                # The ones in trouble, with why and since when (#1665): a binding
+                # or a gate check on them fails until they are reconnected.
+                from app.services.integration_status import UNUSABLE_STATUSES, describe_unusable
+
+                broken = (
+                    (
+                        await _db.execute(
+                            select(Integration)
+                            .where(
+                                caller_visible_filter(Integration, uid, group_ids),
+                                Integration.status.in_(UNUSABLE_STATUSES),
+                            )
+                            .order_by(Integration.name)
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                if broken:
+                    parts.append("**Integrations not usable:**")
+                    for i in broken:
+                        state = describe_unusable(i.status, i.status_reason, i.status_reason_at)
+                        parts.append(f"  • {i.name} (id: `{i.id}`, provider: {i.provider}): {state}")
 
             if resource_type in ("all", "knowledge_bases"):
                 q = (
@@ -4585,8 +4608,13 @@ def build_agent_builder_tool(
                     if human_in_the_loop is None
                     else ("Yes" if human_in_the_loop else "No")
                 )
+                # A gate check on an integration in error is saved, and named (#1665).
+                from app.services.integration_status import gate_check_integration_warning
+
+                _gate_warning = await gate_check_integration_warning(_db, check_value) if check_value else None
                 return (
-                    f"Assignment **{name}** added to agent **{agent.name}** successfully!\n"
+                    (f"{_gate_warning}\n" if _gate_warning else "")
+                    + f"Assignment **{name}** added to agent **{agent.name}** successfully!\n"
                     f"  • ID: `{wf.id}`\n"
                     f"  • Trigger: {trigger_type}\n"
                     f"  • Human-in-the-loop: {hitl_display}"
@@ -7939,7 +7967,11 @@ def build_agent_builder_tool(
                     if _gate_refusal is not None:
                         return f"{_gate_refusal} Nothing was saved."
                 assignment.activation_check = check_value
-                updated.append("activation_check (tool gate)")
+                # A gate check on an integration in error is saved, and named (#1665).
+                from app.services.integration_status import gate_check_integration_warning
+
+                _gate_warning = await gate_check_integration_warning(_db, check_value) if check_value else None
+                updated.append("activation_check (tool gate)" + (f". {_gate_warning}" if _gate_warning else ""))
             if (description or "").strip():
                 assignment.description = (
                     None

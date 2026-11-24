@@ -71,6 +71,7 @@ from app.models.integration import Integration
 from app.models.integration_user_credential import IntegrationUserCredential
 from app.models.mcp_server import MCPServer
 from app.models.mcp_server_user_credential import MCPServerUserCredential
+from app.services.integration_status import record_status_reason
 from app.services.integration_user_credentials import (
     holder_ref,
     integration_of,
@@ -546,7 +547,7 @@ def _mark_needs_reauthorization(integration: Integration | IntegrationUserCreden
     surfaces the problem to the user and removes the integration from the
     refresh loop until the OAuth callback resets it to ``connected``.
     """
-    integration.status = "reauthorize"
+    record_status_reason(integration, "reauthorize", f"re-authorization required: {reason}")
     logger.warning(
         "Marking integration %s (%s) as needing re-authorization: %s. "
         "Automatic token refresh is suspended until the user re-authorizes.",
@@ -821,7 +822,7 @@ async def _do_refresh_integration(
         what=f"integration {integration.name} ({integration.provider})",
     ):
         if await _tokens_still_stored(integration, tokens_unchanged):
-            integration.status = "error"
+            record_status_reason(integration, "error", "token refresh refused: the token endpoint is not allowed")
             await _back_off_refused_token_url(cooldown_key)
         return False
 
@@ -900,7 +901,9 @@ async def _do_refresh_integration(
         if reason:
             _mark_needs_reauthorization(integration, reason)
             return False
-        integration.status = "error"
+        record_status_reason(
+            integration, "error", f"token refresh failed: HTTP {e.response.status_code} from the token endpoint"
+        )
         # Apply a cooldown so the scheduler doesn't retry a failing
         # integration on every tick: 1 hour for auth errors (401/403 —
         # possibly rotated client credentials), 15 minutes for anything
@@ -939,7 +942,7 @@ async def _do_refresh_integration(
         if reason:
             _mark_needs_reauthorization(integration, reason)
             return False
-        integration.status = "error"
+        record_status_reason(integration, "error", f"token refresh failed: {format_refresh_error(e)}")
         # Transient failure (network timeout, DNS, a malformed answer, ...):
         # back off instead of retrying on every scheduler tick.
         cooldown = _AUTH_FAIL_COOLDOWN if _refused_inside_a_success(e) else _TRANSIENT_FAIL_COOLDOWN
