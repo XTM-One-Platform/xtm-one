@@ -1,4 +1,4 @@
-"""the profile's tech stack rows become hand-typed software (#1495, slice 3b)
+"""the profile's ``tech_stack`` rows become hand-typed software (#1495, slice 3b)
 
 Each row of the current profile version's ``tech_stack`` of every
 organization becomes a Software of ``origin`` ``manual`` (vendor, product,
@@ -50,7 +50,7 @@ depends_on: str | Sequence[str] | None = None
 
 #: Sources whose typed CPE is the administrator's own (``organization_context.HAND_SOURCES`` that day).
 _HAND_SOURCES = frozenset({"manual", "csv", "api"})
-#: Tech stack kinds that are a SaaS product rather than installed software.
+#: Legacy ``tech_stack`` kinds that are a SaaS product rather than installed software.
 _SAAS_KINDS = frozenset({"saas", "cloud_service"})
 
 

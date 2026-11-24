@@ -3,7 +3,7 @@
 """The organization profile: one structured, versioned context every agent reads.
 
 The contract is ``dev-docs/ctem-fleets.md`` section 6 (#8987): sector,
-regions, size, crown jewels, tech stack, AI systems inventory, PIRs, risk
+regions, size, crown jewels, software, AI systems inventory, PIRs, risk
 appetite, loaded hourly rate and currency, ticketing target. It replaces
 the free-text ``company-context`` knowledge base as the source agents
 reason from: a stage analyst ranks by the crown jewels it reads here and
@@ -280,7 +280,7 @@ class TechStackEntry(BaseModel):
 
 
 class ShippedProduct(BaseModel):
-    """A product the organization ships (#1432), apart from the tech stack it runs.
+    """A product the organization ships (#1432), apart from the software it runs.
 
     ``repositories`` are the ``owner/name`` of its source repositories: a
     vulnerability on the product (matched by CPE, then by product and vendor)
@@ -946,7 +946,7 @@ class OrganizationProfile(BaseModel):
     crown_jewels: list[CrownJewel] = Field(default_factory=list, max_length=200)
     tech_stack: list[TechStackEntry] = Field(default_factory=list, max_length=500)
     #: What the organization ships, with its source repositories (#1432). Not a contract
-    #: field: a vendor-free organization ships nothing; the tech stack is what it runs.
+    #: field: a vendor-free organization ships nothing; the software is what it runs.
     shipped_products: list[ShippedProduct] = Field(default_factory=list, max_length=200)
     #: No ``ai_systems`` list since #1501: an AI system is an asset of category ``ai_target``
     #: (``assets_exposure``); a profile saved before reads its rows there (:func:`ai_system_asset`).
@@ -1772,7 +1772,7 @@ def _insert_before(data: dict[str, Any], before: str, key: str, value: Any) -> d
 def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     """The profile as dumped before #11543: the parts it added left out, an empty crown jewel link too.
 
-    An empty tech stack version (CTEM-11) is left out the same way, and so are
+    An empty software version (CTEM-11) is left out the same way, and so are
     empty reference exchange rates (#1383), and
     ticketing sync settings left at their defaults (#917) and the provenance of
     a typed row (#1134: ``source`` manual, no ``external_id``, no ``sync_id``).

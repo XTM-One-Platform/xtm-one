@@ -151,7 +151,7 @@ const canPurgeSource = (source: OrganizationSource) => source.kind === "agent" |
 interface Props {
   /**
    * The sections listed: "profile" (crown jewels) in Settings, "inventory" (assets, asset groups,
-   * tech stack, AI systems) on the CTEM Inventory, "" every section. A Sync all schedule saved before #1548 shows in each.
+   * software inventory, AI systems) on the CTEM Inventory, "" every section. A Sync all schedule saved before #1548 shows in each.
    */
   scope?: OrganizationSyncScope;
   /** Opens the step-by-step import (platform, section, filters with a live preview, schedule, review). */
