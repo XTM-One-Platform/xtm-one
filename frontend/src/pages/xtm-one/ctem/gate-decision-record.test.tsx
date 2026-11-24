@@ -218,6 +218,30 @@ describe("GateDecisionRecord", () => {
     expect(screen.getAllByText(/Nov 22, 2026/)).toHaveLength(1);
   });
 
+  it("titles the step of an expired gate No answer and of a cancelled gate Cancelled, never Decided (UX r3 B7 on #1708)", () => {
+    const { unmount } = render(
+      <GateDecisionRecord record={rec({ status: "expired", answered_at: null, answered_by: null, option: null, comment: null, surface: null, wait_seconds: 4 * 3600, next: null })} />,
+    );
+    const expiredStep = screen.getByTestId("ctem-gate-record-step-decided");
+    expect(expiredStep.getAttribute("aria-label")).toBe("No answer");
+    expect(screen.queryByText("Decided")).toBeNull();
+    unmount();
+    render(
+      <GateDecisionRecord record={rec({ status: "cancelled", answered_at: null, answered_by: null, option: null, comment: null, surface: null, wait_seconds: 3600, next: null })} />,
+    );
+    expect(screen.getByTestId("ctem-gate-record-step-decided").getAttribute("aria-label")).toBe("Cancelled");
+    expect(screen.queryByText("Decided")).toBeNull();
+  });
+
+  it("draws the Asked by agent chip label through TruncatedText so a cut name gets its tooltip (UX r3 B6 on #1708)", () => {
+    render(<GateDecisionRecord record={rec({})} />);
+    const askedBy = screen.getByTestId("ctem-gate-record-asked-by");
+    const link = askedBy.querySelector("a");
+    expect(link).toBeTruthy();
+    // TruncatedText is a Radix tooltip trigger: its span carries data-state.
+    expect(link?.querySelector("span[data-state]")).toBeTruthy();
+  });
+
   it("shows no header time on a cancelled gate", () => {
     render(
       <GateDecisionRecord record={rec({ status: "cancelled", answered_at: null, answered_by: null, option: null, comment: null, surface: null, wait_seconds: null, next: null, asked_at: "2026-11-22T08:17:00Z", deadline: "2026-11-23T08:17:00Z" })} />,

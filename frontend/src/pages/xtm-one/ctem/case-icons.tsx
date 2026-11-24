@@ -14,6 +14,7 @@ import { Icon, type IconName } from "@filigran/design-system";
 import { BadgeFocusTrigger } from "@/components/ui/badge";
 import { type HotTone, ToneBadge } from "@/components/ui/tone-badge";
 import { Tip } from "@/components/ui/tooltip";
+import { TruncatedText } from "@/components/ui/truncated-text";
 import { cn } from "@/lib/utils";
 
 /** The icon of each case card header, by section. */
@@ -113,7 +114,10 @@ export function CaseCardTitleText({ icon, children }: { icon: IconName; children
  * reads in the info tone (never the green link colour), a person and a plain
  * fact in the neutral tone; `to` makes the whole chip a link. `tip` explains the
  * chip in the design-system tooltip on a focusable chip, so it opens from the
- * keyboard too (never a native title: UX round 1 on #1708, B4).
+ * keyboard too (never a native title: UX round 1 on #1708, B4). A label cut by
+ * its field is named whole by the shared TruncatedText tooltip, on hover and on
+ * focus of the chip's link (UX round 3 on #1708, B6); a chip with a `tip` keeps
+ * the tip for its explanation.
  */
 export function CaseFactChip({
   icon,
@@ -132,7 +136,11 @@ export function CaseFactChip({
 }) {
   const chip = (
     <ToneBadge tone={tone} icon={<CaseIcon name={icon} />} data-testid={testId} className="max-w-full">
-      <span className="min-w-0 truncate">{children}</span>
+      {typeof children === "string" && !tip ? (
+        <TruncatedText text={children} />
+      ) : (
+        <span className="min-w-0 truncate">{children}</span>
+      )}
     </ToneBadge>
   );
   if (tip && !to) {

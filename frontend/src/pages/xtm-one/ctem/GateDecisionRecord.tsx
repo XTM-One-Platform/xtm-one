@@ -306,6 +306,14 @@ export function GateDecisionRecord({
   const nextState = next?.kind === "state" && next.to && next.to in CASE_STATE_LABEL ? (next.to as CtemCaseState) : null;
   const showAsked = !passed && (!!record.asked_by_agent || !!askedOf || !!record.asked_at);
   const nextSentence = (GATE_CHIP_NEXT as Partial<Record<GateChip, string>>)[chip];
+  // The second step is named for what happened: nobody decided an expired or a cancelled gate (UX round 3 on #1708, B7).
+  const outcomeStep = passed
+    ? { label: t_i18n("Passed"), icon: CASE_FACT_ICON.decided }
+    : status === "expired"
+      ? { label: t_i18n("No answer"), icon: CASE_FACT_ICON.wait }
+      : status === "cancelled"
+        ? { label: t_i18n("Cancelled"), icon: CASE_FACT_ICON.state }
+        : { label: t_i18n("Decided"), icon: CASE_FACT_ICON.decided };
 
   return (
     <div className="flex min-w-0 flex-col gap-3" data-testid={testId} data-status={status} data-chip={chip}>
@@ -348,7 +356,7 @@ export function GateDecisionRecord({
         </Step>
       )}
       {(answered || reason || (status !== "waiting" && wait) || record.work_item_id) && (
-        <Step label={passed ? t_i18n("Passed") : t_i18n("Decided")} icon={CASE_FACT_ICON.decided} testId={`${testId}-step-decided`}>
+        <Step label={outcomeStep.label} icon={outcomeStep.icon} testId={`${testId}-step-decided`}>
           {answered && (
             <Field label={t_i18n("Decided by")} icon={CASE_FACT_ICON.person} testId={`${testId}-by`}>
               <CaseFactChip icon={CASE_FACT_ICON.person}>{decidedBy}</CaseFactChip>
