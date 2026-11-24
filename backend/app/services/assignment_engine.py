@@ -6413,6 +6413,14 @@ async def execute_assignment_run(
             )
             if _ctem_read is not None:
                 composite.add_tools(*_ctem_read)
+            # --- CTEM administrator repairs (#1778): the CTEM case agents, or the group bound ---
+            from app.services.builtin_tools import ctem_repair_tools_for
+
+            _ctem_repair = (
+                ctem_repair_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if run.user_id else None
+            )
+            if _ctem_repair is not None:
+                composite.add_tools(*_ctem_repair)
             # --- Learned skill (#914): a built-in agent records durable lessons ---
             from app.services.builtin_tools import build_learned_lesson_tool, offers_learned_lesson_tool
 

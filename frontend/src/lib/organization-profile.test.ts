@@ -59,7 +59,7 @@ describe("organization profile form", () => {
     assert.deepEqual(cleaned.profile.shipped_products, [{ product: "Acme Agent", vendor: "Acme", cpe: "", repositories: ["acme/agent"] }]);
   });
 
-  it("keeps the assets, the policy, the knowledge links and the crown jewel links through a save (#11543)", () => {
+  it("keeps the assets, the policy, the knowledge links and the primary asset links through a save (#11543)", () => {
     const filled: ProfileLike = {
       ...PROFILE,
       crown_jewels: [{ ...PROFILE.crown_jewels[0], asset_names: ["web-1"] }],

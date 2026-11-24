@@ -125,6 +125,13 @@ from .ctem_read import (
     ctem_read_tools_for,
     offers_ctem_read_tools,
 )
+from .ctem_repair import (
+    CTEM_REPAIR_GROUP,
+    CTEM_REPAIR_TOOL_NAMES,
+    build_ctem_repair_tools,
+    ctem_repair_tools_for,
+    offers_ctem_repair_tools,
+)
 from .ctem_signals import (
     CTEM_SIGNAL_TOOL_NAMES,
     build_ctem_signal_tools,
@@ -440,6 +447,8 @@ __all__ = [
     "CTEM_CASE_TOOL_NAMES",
     "CTEM_READ_GROUP",
     "CTEM_READ_TOOL_NAMES",
+    "CTEM_REPAIR_GROUP",
+    "CTEM_REPAIR_TOOL_NAMES",
     "CTEM_SIGNAL_TOOL_NAMES",
     "DOCX_CONTENT_TYPE",
     "FLOW_LAB_READ_TOOLS",
@@ -471,6 +480,7 @@ __all__ = [
     "build_computer_use_tools",
     "build_ctem_case_tools",
     "build_ctem_read_tools",
+    "build_ctem_repair_tools",
     "build_ctem_signal_tools",
     "build_custom_dashboard_tools",
     "build_deep_investigation_tool",
@@ -531,6 +541,7 @@ __all__ = [
     "consult_refusal",
     "consulted_peer_handover",
     "ctem_read_tools_for",
+    "ctem_repair_tools_for",
     "delegated_parent_id",
     "ensure_deck_tools",
     "extract_visited_agents",
@@ -573,6 +584,7 @@ __all__ = [
     "offered_handover_types",
     "offers_ctem_case_tools",
     "offers_ctem_read_tools",
+    "offers_ctem_repair_tools",
     "offers_ctem_signal_tools",
     "offers_learned_lesson_tool",
     "offers_organization_context_write",

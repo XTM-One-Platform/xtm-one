@@ -28,7 +28,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * keeps the sample with one reason and one way forward. Nothing here runs a
  * model at load: Refresh is the only thing that generates.
  *
- * The analyst reads the organization profile (sector, regions, crown jewels,
+ * The analyst reads the organization profile (sector, regions, primary assets,
  * software inventory, PIRs) to rank what it reports; while no profile was ever saved
  * the briefing is generic, and the shared notice says so with the setup call
  * to action (#11324).
@@ -226,8 +226,8 @@ export function BriefingCard({
         {ready && noProfile && (
           <GenericContextNotice
             title={t_i18n("This briefing is generic")}
-            adminText={t_i18n("No organization context is set, so the analyst cannot rank findings by your sector, regions, crown jewels or software. Set it up, then generate the briefing again.")}
-            readerText={t_i18n("No organization context is set, so the analyst cannot rank findings by your sector, regions, crown jewels or software. An administrator can set it up.")}
+            adminText={t_i18n("No organization context is set, so the analyst cannot rank findings by your sector, regions, primary assets or software. Set it up, then generate the briefing again.")}
+            readerText={t_i18n("No organization context is set, so the analyst cannot rank findings by your sector, regions, primary assets or software. An administrator can set it up.")}
             testId="ctem-briefing-generic"
           />
         )}

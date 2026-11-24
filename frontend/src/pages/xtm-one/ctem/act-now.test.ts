@@ -149,7 +149,7 @@ describe("actNowQueue", () => {
     expect(generic).toContain("Why it is there: Actively exploited.");
     expect(generic).toContain("This action is generic");
     expect(generic).toContain("guide me step by step");
-    const tailored = actNowAskAiPrompt(t, { title: "Patch", reason: "Crown jewel", tailored: true });
+    const tailored = actNowAskAiPrompt(t, { title: "Patch", reason: "Primary asset", tailored: true });
     expect(tailored).toContain("ranked by our organization context");
     expect(tailored).not.toContain("(stage:");
   });

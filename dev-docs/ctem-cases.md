@@ -981,6 +981,27 @@ across the organization for `list_ctem_cases`, bound to that case alone for
 `get_ctem_case` (its note then says "on this case").
 Tests: `tests/test_ctem_read_tools.py`.
 
+### 8.2 Administrator repairs: the `ctem_repair` group
+
+Three administrator routes have agent tools in the built-in group
+`ctem_repair` (`backend/app/services/builtin_tools/ctem_repair.py`), the same
+service functions and answers as the routes:
+
+| Tool | Route |
+| --- | --- |
+| `list_ctem_attack_surface_passes` | `GET /ctem-signals/attack-surface/passes` |
+| `repair_ctem_attack_surface_new_hosts` | `POST /ctem-signals/attack-surface/repair-new-hosts` |
+| `repair_ctem_threat_packages` | `POST /ctem-cases/threat-packages/repair` |
+
+The group is wired for the built-in CTEM case agents (section 8) and for any
+agent it is bound to, through `ctem_repair_tools_for` in `agent_chat` and
+`assignment_engine`, in XTM One mode only. It acts for the person the turn or
+run acts for, who must be an administrator, as on the routes; anyone else gets
+that fact and nothing runs. A repair defaults to a dry run that writes nothing
+and answers the counts and the ids; `dry_run` false applies it. There is no
+approval card: the agent reads the dry run and decides.
+Tests: `tests/test_ctem_repair_tools.py`.
+
 ## 9. UX decisions (round 1, 13 Nov 2026)
 
 1. Command center widget: in the default layout right after Act now, as a
@@ -1005,7 +1026,7 @@ The third brick of the spine: signal (`dev-docs/ctem-signals.md`) -> reconcile a
 
 **Schedule.** The autonomous tick runs `ctem_case_loop.sweep` once per `CTEM_CASE_SWEEP_SECONDS` (default 3600, minimum 60, a Redis slot): opens the cases of confirmed signals still waiting (a failed opening is retried here; each signal opens in its own savepoint, so one that fails is logged, counted `skipped` and left `confirmed` without stopping the pass) and escalates every open case past its SLA once. A case key or title longer than its 300-character column is bounded: the title is cut, the key keeps its head and a digest of the whole so two long subjects never share a case.
 
-**Events (platform-wide, ids and facts only, no title).** `ctem_case.opened`, `ctem_case.reopened`, `ctem_case.resolved`, `ctem_case.sla_breached`, raised after the commit with a stable event id, by every writer of a case: the loop (signals, validations, sweep), the source recompute, a manual split and the backfill of section 4.3 (#1206); filter keys `case_id`, `state`, `severity`, `trigger_path`, `remediation_kind`, `validation.provider`, `validation.result` and the rest of `_CTEM_CASE_KEYS`. CTEM-04 starts fleet runs from them; CTEM-15 maps OpenAEV deliveries to the validation route.
+**Events (platform-wide, ids and facts only, no title).** `ctem_case.opened`, `ctem_case.reopened`, `ctem_case.resolved`, `ctem_case.sla_breached`, `ctem_case.stalled` (an open case that waits on nobody past `CTEM_CASE_STALL_HOURS`, a `stalled` case event written with it, `services/ctem_case_stall.py`), raised after the commit with a stable event id, by every writer of a case: the loop (signals, validations, sweep), the source recompute, a manual split and the backfill of section 4.3 (#1206); filter keys `case_id`, `state`, `severity`, `trigger_path`, `remediation_kind`, `validation.provider`, `validation.result` and the rest of `_CTEM_CASE_KEYS`. CTEM-04 starts fleet runs from them; CTEM-15 maps OpenAEV deliveries to the validation route.
 
 **OpenAEV results move the case (CTEM-15, #918).** The seeded assignment "OpenAEV results into cases" of the vulnerability fleet provisions the OpenAEV triggers `simulation_finished`, `finding_updated`, `finding_deleted`, `scenario_score_degraded` and `critical_asset_reached` (optional: an OpenAEV that refuses it keeps the others, its state lists it under `unsupported_events` and the next check retries); its filter drops every delivery, so it never runs. On a verified delivery, the webhook route (`services/ctem_openaev_events.py`) finds the cases that wait on the delivered object (an `openaev` validation reference whose `ref` names it, or an `openaev` member with that id; states `needs_attention`, `in_progress`, `mitigated_watching`, `resolved`), writes one `source_event` history entry per case and raises `ctem_case.validation_finished` once per case and occurrence, with `openaev {event, resource_type, resource_id, platform_url}` on top of the case routing; like the other case events it is in `VIEWER_CHECKED_EVENTS`, so only a run whose user reads the case hears it (#933). Both loop fleets hear it (routed by `trigger_path`), read the result in OpenAEV and write it with `record_ctem_case_validation`, which resolves or reopens the case. No poll, no model call before the run. A `scenario_score_degraded` delivery records a path 8 (`mitigation_regression`) signal through the signal table; an `asset_stale` delivery (an `ASSET` update trigger filtered on `asset_status` = `STALE`, raised once by OpenAEV's freshness job when an asset stays unseen past the tenant's `asset_stale_after_days`, CTEM-27) records a path 6 (`stale_asset`) signal, outside lens, the asset as subject. OpenAEV sends it only to readers of the asset in the trigger's tenant; XTM One records it as a `system` signal, which only administrators read. A `critical_asset_reached` delivery (CTEM-13: a finished simulation's attack path reached a high or very high criticality asset) records a path 4 (`proven_exploitable`) signal with the simulation as subject and its OpenAEV link, and moves the cases waiting on that simulation like `simulation_finished`; the case history names it "Critical asset reached". OpenAEV names no asset in it: the reached assets are read in its attack path with the reader's own rights.
 

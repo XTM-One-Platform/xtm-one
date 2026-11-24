@@ -165,7 +165,13 @@ Common rules:
   owns every case on every trigger path (section 14). Its "Case opened or
   reopened" automation (platform_event, scope all, seeded off) hears
   `ctem_case.opened`, `ctem_case.reopened`, `ctem_case.sla_breached`,
-  `ctem_case.validation_finished` and `ctem_case.retest_requested`. A use-case
+  `ctem_case.validation_finished`, `ctem_case.retest_requested` and
+  `ctem_case.stalled`. A case never waits on nobody: the hourly case sweep
+  raises `ctem_case.stalled` on an open case with no open needs_human `ctem:`
+  item of the case, no armed `ctem-loop-reminder:` timer and no case event for
+  `CTEM_CASE_STALL_HOURS` (default 6), once per stall window, and the owning
+  fleet re-runs its loop; every loop run ends on an ask to a named person with a
+  deadline, an armed reminder, or a terminal state. A use-case
   fleet takes the cases of its own paths only while its case automation is
   enabled (Vulnerability management: `new_vulnerability`). The owner is
   computed when the event is published (`services/ctem_case_routing.py`

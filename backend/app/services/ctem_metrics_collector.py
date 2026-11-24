@@ -922,7 +922,7 @@ def _vendors_agree(a: str, b: str) -> bool:
     return not a or not b or a == b
 
 
-def _stack_matches(node: dict, stack: list[dict[str, str]]) -> str | None:
+def _stack_matches(node: dict[str, Any], stack: list[dict[str, Any]]) -> str | None:
     """The stack product a Software observable stands for, or ``None``.
 
     A CPE equal to the entry's wins; otherwise the product name must match
@@ -947,7 +947,7 @@ async def _octi_kev_tailored(
     client: httpx.AsyncClient,
     base_url: str,
     headers: dict[str, str],
-    stack: list[dict[str, str]],
+    stack: list[dict[str, Any]],
     user_id: str,
 ) -> dict[str, Any] | None:
     """Known-exploited vulnerabilities restricted to the organization's software inventory.
@@ -1032,7 +1032,7 @@ async def _octi_kev_tailored(
     }
 
 
-async def _organization_software(db: AsyncSession | None) -> list[dict[str, str]]:
+async def _organization_software(db: AsyncSession | None) -> list[dict[str, Any]]:
     """What the primary organization runs, as the CVE matcher reads it (#1495), ``[]`` when nothing.
 
     The Software entities of the asset store (synced and hand-typed), with the

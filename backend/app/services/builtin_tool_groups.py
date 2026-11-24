@@ -280,6 +280,17 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         agent_keyed=True,
     ),
     BuiltinToolGroup(
+        # CTEM administrator repairs (#1778): the attack surface pass summary and
+        # repair and the threat package repair, the REST routes' admin scope.
+        id="ctem_repair",
+        name="CTEM Repair",
+        tagline="Read the attack surface passes and run the CTEM repairs, administrators",
+        detail="Lets the agent read the latest attack surface passes (what each read covered, hosts observed, signals per path), discard the new-host signals raised without a complete previous read, and correct the threat packages stored with a Grouping page whose Grouping is not live. A repair defaults to a dry run that writes nothing and answers the counts and the ids. It acts for the person the turn or run acts for, who must be an administrator, as on the REST routes. XTM One mode only.",
+        category="security",
+        icon="Stethoscope",
+        agent_keyed=True,
+    ),
+    BuiltinToolGroup(
         id="stix_extractor",
         # Off by default and never reached through Threat Intelligence: one call reads a
         # report through hundreds of model calls (up to 30 min), so an agent carries it

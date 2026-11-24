@@ -567,7 +567,7 @@ export interface CtemCasesOverviewCase {
   updated_at: string | null;
   state_since: string | null;
   waiting_on: { gate: string | null; by: string | null; since: string | null } | null;
-  /** The crown jewel the case touches among the issues the caller sees; null when none. */
+  /** The primary asset the case touches among the issues the caller sees; null when none. */
   crown_jewel: string | null;
 }
 

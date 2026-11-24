@@ -566,6 +566,30 @@ class KnowledgeBaseWriteRefusal:
     detail: str
 
 
+@functools.cache
+def _user_content_builtin_slugs() -> frozenset[str]:
+    """Slugs of the built-in knowledge bases whose documents are the customer's.
+
+    Their seed entry sets ``user_content``: the platform seeds the collection
+    and its configuration, never its documents (Company Context), so a document
+    added there is never reverted by a boot and stays writable.
+    """
+    from app.agents.builtin_agents import BUILTIN_KNOWLEDGE_BASES
+
+    return frozenset(kb["slug"] for kb in BUILTIN_KNOWLEDGE_BASES if kb.get("user_content"))
+
+
+def builtin_knowledge_base_holds_user_content(kb: KnowledgeBase) -> bool:
+    """True for a built-in KB whose seed entry leaves its documents to the customer."""
+    if not getattr(kb, "is_builtin", False):
+        return False
+    slugs = _user_content_builtin_slugs()
+    return any(
+        isinstance(tag, str) and tag.startswith("slug:") and tag[5:] in slugs
+        for tag in (getattr(kb, "tags", None) or [])
+    )
+
+
 def knowledge_base_content_lock(kb: KnowledgeBase, *, package_installed: bool) -> str | None:
     """The lock on *kb*'s content, whoever writes - or ``None`` when unlocked.
 
@@ -580,7 +604,7 @@ def knowledge_base_content_lock(kb: KnowledgeBase, *, package_installed: bool) -
         return KB_WRITE_PACKAGE_INSTALLED
     if owning_workspace_id(kb) is not None:
         return KB_WRITE_WORKSPACE
-    if getattr(kb, "is_builtin", False):
+    if getattr(kb, "is_builtin", False) and not builtin_knowledge_base_holds_user_content(kb):
         return KB_WRITE_BUILTIN
     if getattr(kb, "is_read_only", False):
         return KB_WRITE_READ_ONLY
@@ -671,7 +695,10 @@ async def knowledge_base_write_refusal(
        Owned by a workspace - written by whoever manages the
        workspace, never by an agent's grant, and its internal Conversations
        knowledge base by the indexer alone; nothing below applies to it.
-    2. Built-in - seeded and re-synced at startup, immutable for everyone.
+    2. Built-in - seeded and re-synced at startup, immutable for everyone,
+       except a built-in KB whose seed entry leaves its documents to the
+       customer (``user_content``, Company Context): its documents follow
+       the rules below like any company-managed KB.
     3. When *user* is given, the caller must manage the KB
        (:func:`manage_knowledge_base_error`). ``None`` means an agent writing
        under the write grant its configuration holds, which is that grant's
