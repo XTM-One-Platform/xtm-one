@@ -21682,5 +21682,14 @@
   "Wait for the prioritization policy to be saved.": "Espere a que se guarde la política de priorización.",
   "Platform Health specialists": "Especialistas de Platform Health",
   "Platform Health's internal tools: diagnosis, experiments, sandbox, Flow Lab, memory and module checks": "Herramientas internas de Platform Health: diagnóstico, experimentos, sandbox, Flow Lab, memoria y comprobaciones de módulos",
-  "The tools Platform Health's own specialists work with: quality diagnosis, experiments and evaluations on sandbox copies, the Flow Lab, memory consolidation, module checks and improvement proposals. Carried by the Platform Health fleet's agents alone, each scoped to the functions it uses; never offered on the Tools page, in an agent's configuration or in a chat. Every write refuses anyone but Platform Health.": "Las herramientas de los especialistas de Platform Health: diagnóstico de calidad, experimentos y evaluaciones sobre copias en sandbox, Flow Lab, consolidación de memoria, comprobaciones de módulos y propuestas de mejora. Solo las llevan los agentes de la flota de Platform Health, cada uno limitado a las funciones que usa; nunca se ofrecen en la página Herramientas, en la configuración de un agente ni en un chat. Toda escritura rechaza a cualquiera que no sea Platform Health."
+  "The tools Platform Health's own specialists work with: quality diagnosis, experiments and evaluations on sandbox copies, the Flow Lab, memory consolidation, module checks and improvement proposals. Carried by the Platform Health fleet's agents alone, each scoped to the functions it uses; never offered on the Tools page, in an agent's configuration or in a chat. Every write refuses anyone but Platform Health.": "Las herramientas de los especialistas de Platform Health: diagnóstico de calidad, experimentos y evaluaciones sobre copias en sandbox, Flow Lab, consolidación de memoria, comprobaciones de módulos y propuestas de mejora. Solo las llevan los agentes de la flota de Platform Health, cada uno limitado a las funciones que usa; nunca se ofrecen en la página Herramientas, en la configuración de un agente ni en un chat. Toda escritura rechaza a cualquiera que no sea Platform Health.",
+  "Case opening": "Apertura de casos",
+  "Case opening: {state}": "Apertura de casos: {state}",
+  "Case opening on": "Apertura de casos activada",
+  "Case opening off": "Apertura de casos desactivada",
+  "Case opening is off": "La apertura de casos está desactivada",
+  "Open a case for each confirmed signal": "Abrir un caso por cada señal confirmada",
+  "{count, plural, =0 {Off: no confirmed signal is waiting} one {Off: # confirmed signal is waiting} other {Off: # confirmed signals are waiting}}": "{count, plural, =0 {Desactivada: ninguna señal confirmada en espera} one {Desactivada: # señal confirmada en espera} other {Desactivada: # señales confirmadas en espera}}",
+  "Case opening was not changed": "No se cambió la apertura de casos",
+  "CTEM case opening turned on or off": "Apertura de casos CTEM activada o desactivada"
 }
