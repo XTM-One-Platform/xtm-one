@@ -146,6 +146,8 @@ async def test_the_list_answers_the_cases_and_every_state_count(api):
     body = response.json()
     assert body["counts"] == {state: int(state == "new") for state in CASE_STATES}
     assert [c["title"] for c in body["cases"]] == ["Upgrade Apache Tomcat to 9.0.98"]
+    # No history names a signal or a split (#1723): the Cases list's "Opened by" filter reads legacy.
+    assert body["cases"][0]["opened_by"] == "legacy"
 
 
 async def test_a_case_carries_its_loop_fields(api):
