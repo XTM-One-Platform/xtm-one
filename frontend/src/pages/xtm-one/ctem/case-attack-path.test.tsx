@@ -4,7 +4,7 @@
 // never blank.
 
 import { describe, expect, it } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemCaseAttackPath } from "@/hooks/api/useCtemCasesApi";
 import { CaseAttackPath } from "./CaseAttackPath";
@@ -83,5 +83,30 @@ describe("CaseAttackPath", () => {
   it("is never blank before triage reads it", () => {
     renderWithProviders(<CaseAttackPath reading={null} />);
     expect(screen.getByTestId("ctem-case-attack-path-empty")).toBeInTheDocument();
+  });
+
+  it("folds a long path to the five nearest hops behind Show all (#1679, point 5)", () => {
+    const hops = Array.from({ length: 12 }, (_, i) => ({
+      from: `Host ${i}`,
+      to: `Host ${i + 1}`,
+      nature: "inferred" as const,
+      simulation_name: null,
+      simulation_url: null,
+      seen_at: null,
+    }));
+    renderWithProviders(<CaseAttackPath reading={{ ...READING, hops }} />);
+    expect(screen.getAllByTestId("ctem-case-attack-path-hop")).toHaveLength(5);
+    expect(within(screen.getAllByTestId("ctem-case-attack-path-hop")[0]).getByText("Host 1")).toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: "Show all (12)" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle).toHaveAttribute("aria-controls", "ctem-case-attack-path-hops");
+    fireEvent.click(toggle);
+    expect(screen.getAllByTestId("ctem-case-attack-path-hop")).toHaveLength(12);
+    expect(screen.getByRole("button", { name: "Show fewer" })).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("draws no fold on a short path", () => {
+    renderWithProviders(<CaseAttackPath reading={READING} />);
+    expect(screen.queryByTestId("ctem-case-attack-path-more")).not.toBeInTheDocument();
   });
 });
