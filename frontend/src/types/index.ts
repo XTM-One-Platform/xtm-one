@@ -1580,6 +1580,10 @@ export interface ProviderCatalogItem {
   supports_assignment_webhooks: boolean;
   supports_webhook_management: boolean;
   setup_guide: SetupGuide | null;
+  /** One guide per authentication mode (`{oauth: guide, api_key: guide}`), for a
+   * provider whose modes are set up apart; `setup_guide` where no mode is chosen
+   * or a mode has none. Read through `setupGuideFor`. */
+  auth_setup_guides?: Record<string, SetupGuide> | null;
   has_oauth_defaults: boolean;
   has_oauth_extra_config: boolean;
   is_custom?: boolean;
