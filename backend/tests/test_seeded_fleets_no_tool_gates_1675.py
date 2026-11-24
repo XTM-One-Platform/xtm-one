@@ -43,7 +43,7 @@ def test_analyst_review_still_offers_apply_opencti_draft():
 
 
 def test_member_prompt_never_says_tool_calls_pause_unenforced():
-    block = fleet_autonomy.fleet_autonomy_block("low", enforced=False)
+    block = fleet_autonomy.fleet_autonomy_block("low", [], enforced=False)
     assert "never a pause inside a run" in block
     assert "pauses the tool calls" not in block
 
@@ -79,6 +79,7 @@ def _transition(**kw):
         "current": "remediating",
         "target": "resolved",
         "actor_kind": "agent",
+        "owner_user_id": None,
         "reason": "fixed",
         "evidence": "ticket done",
         "now": NOW,
