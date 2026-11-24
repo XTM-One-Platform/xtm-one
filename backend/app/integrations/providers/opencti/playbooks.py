@@ -753,6 +753,46 @@ def _fmt_playbook(node: dict) -> str:
     return "\n".join(parts)
 
 
+# Step statuses OpenCTI writes for a step that did its work; any other status
+# (error, failed, ...) is a failed step whose message is shown.
+_STEP_OK_STATUSES = frozenset({"success", "succeeded", "complete", "completed", "done", "ok"})
+_EXECUTIONS_SHOWN = 5
+_STEP_MESSAGE_LIMIT = 400
+
+
+def _fmt_executions(execs: list[dict[str, Any]], node_names: dict[str, str]) -> list[str]:
+    """The recent executions with each failed step and its reason.
+
+    A step that failed (an AI agent call that errored, a connector that
+    refused) is otherwise only visible in the OpenCTI UI: the reason is the
+    step's ``message``, shown here with the node name it ran.
+    """
+    lines = [f"  recent executions: {len(execs)}"]
+    for execution in execs[:_EXECUTIONS_SHOWN]:
+        steps = execution.get("steps") or []
+        failed = [s for s in steps if str(s.get("status") or "").lower() not in _STEP_OK_STATUSES]
+        verdict = f"{len(failed)} failed" if failed else "no failed step"
+        lines.append(
+            f"  - execution {execution.get('id', '?')} at {execution.get('execution_start') or '?'}: "
+            f"{len(steps)} step(s), {verdict}"
+        )
+        for step in failed:
+            step_id = str(step.get("id") or "?")
+            name = node_names.get(step_id) or node_names.get(step_id.split("-", 1)[-1]) or ""
+            label = f"{name} ({step_id})" if name else step_id
+            message = str(step.get("message") or "no message")
+            if len(message) > _STEP_MESSAGE_LIMIT:
+                message = message[:_STEP_MESSAGE_LIMIT] + " ... (truncated)"
+            # A step message can quote the processed entity: data, never instructions.
+            lines.append(
+                wrap_untrusted(
+                    f"failed step {label}, status {step.get('status') or 'unknown'}: {message}",
+                    "OpenCTI playbook step",
+                )
+            )
+    return lines
+
+
 def register(
     base_url: str, headers: dict[str, str], executor: CallableToolExecutor
 ) -> list[ToolDefinition]:
@@ -878,10 +918,15 @@ def register(
                 f"  queue_messages: {pb.get('queue_messages', 0)}",
             ]
             execs = pb.get("last_executions") or []
-            if execs:
-                lines.append(f"  recent executions: {len(execs)}")
             definition = pb.get("playbook_definition")
             graph = _parse_graph(definition)
+            if execs:
+                node_names = {
+                    str(n.get("id")): str(n.get("name") or "")
+                    for n in (graph[0] if graph else [])
+                    if isinstance(n, dict) and n.get("id")
+                }
+                lines.extend(_fmt_executions(execs, node_names))
             if graph is None:
                 lines.append(f"  definition: {len(definition)} chars, not readable JSON")
             else:
@@ -963,7 +1008,9 @@ def register(
                 return err
             return (
                 f"Triggered playbook {playbook_id} on entity {entity_id} "
-                f"(accepted: {data.get('playbookExecute')})."
+                f"(accepted: {data.get('playbookExecute')}). The run is asynchronous: "
+                "read action='get' for its steps, a failed step (an AI agent call "
+                "included) is listed there with its reason."
             )
 
         if action == "duplicate":
