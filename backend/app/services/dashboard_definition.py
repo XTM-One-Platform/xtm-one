@@ -1198,6 +1198,28 @@ def widget_view(definition: dict, *, layout_id: str | None = None) -> list[dict]
     return sorted(widgets, key=lambda w: (w["layout"]["y"], w["layout"]["x"]))
 
 
+#: The shape of an answer in words (an agent's, an assignment's, a variable's).
+_ANSWER_SHAPES = ("text",)
+
+
+def visualization_catalog(shape: str | None = None) -> list[dict]:
+    """The data visualizations, each with the data shapes it draws and its options (read from their models):
+    what an agent reads to pick one. Narrowed to those drawing *shape* when given."""
+    from app.services.dashboard_platform import SHAPE_VIEWS
+    from app.services.dashboard_visualization_options import option_names
+
+    catalog = []
+    for viz_type in DATA_TYPES:
+        view = TYPE_TO_VIEW.get(viz_type)
+        if viz_type == "xtm.platformlink":
+            continue
+        shapes = list(_ANSWER_SHAPES) if viz_type == "xtm.answer" else [s for s, views in SHAPE_VIEWS.items() if view in views]
+        if shape is not None and shape not in shapes:
+            continue
+        catalog.append({"type": viz_type, "shapes": shapes, "options": option_names(viz_type)})
+    return catalog
+
+
 def summary_widgets(spec: object) -> list[dict]:
     """The widget view of a stored dashboard of either version."""
     return widget_view(upgrade(spec))

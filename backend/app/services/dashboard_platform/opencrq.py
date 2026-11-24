@@ -111,6 +111,28 @@ def check_native(native: object) -> NativeCheck:
     return NativeCheck(native=out, shape=metric.shape, native_type=name, title=metric.label)  # type: ignore[arg-type]
 
 
+def describe(widget_type: str | None = None) -> dict:
+    """OpenCRQ's metrics, or one of them with an example configuration."""
+    if widget_type is None:
+        return {"types": [{"type": name, "label": m.label, "draws": m.shape, "windowDays": m.window} for name, m in METRICS.items()]}
+    if widget_type not in METRICS:
+        raise NativeError(f"OpenCRQ metric must be one of: {', '.join(METRICS)}.")
+    metric = METRICS[widget_type]
+    example: dict = {"metric": widget_type}
+    if metric.window:
+        example["window_days"] = DEFAULT_WINDOW_DAYS
+    return {
+        "type": widget_type,
+        "label": metric.label,
+        "draws": metric.shape,
+        "example": example,
+        "rules": [
+            "organization_id (an OpenCRQ organization's id) narrows it to one scope; without it, every scope.",
+            "window_days (1-366) is how many days back a metric over time reads." if metric.window else "It takes no window_days.",
+        ],
+    }
+
+
 def form() -> dict:
     """The editor of an OpenCRQ widget (:mod:`.forms`): one metric of the catalog, and its window when it takes one.
 

@@ -539,7 +539,15 @@ def test_live_platform_widgets_and_their_tools_come_with_the_dashboard_studio(da
         "list_platform_integrations", "preview_platform_widget", "list_widget_packs", "get_widget_pack",
         "insert_widgets_from_pack", "save_dashboard_as_pack", "import_widget_pack", "publish_dashboard",
         "export_dashboard", "send_dashboard_export",
+        "dashboard_catalog", "describe_platform_widget", "lookup_platform_values", "preview_source", "add_widget",
+        "check_dashboard",
     ]  # fmt: skip
+    # What only reads is declared so: no approval asked of the agent's users for it.
+    from app.services.tool_classification import definition_tool_type
+
+    assert {d.name for d in definitions if definition_tool_type(d) == "read"} >= {
+        "dashboard_catalog", "describe_platform_widget", "lookup_platform_values", "preview_source", "check_dashboard",
+    }  # fmt: skip
     build = definitions[0].input_schema["properties"]["widgets"]["items"]["properties"]["kind"]["enum"]
     assert build[-1] == "platform"
     assert "- platform: LIVE data from OpenCTI, OpenAEV or OpenCRQ" in definitions[0].description

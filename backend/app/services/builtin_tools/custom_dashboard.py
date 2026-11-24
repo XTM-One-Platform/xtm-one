@@ -38,7 +38,10 @@ too, with:
   dashboard export - after ``download_xtm_hub_resource``, say);
 * ``publish_dashboard`` - send a dashboard to OpenCTI or OpenAEV as one of
   theirs, with the user's own access there (a write: gated by the agent's
-  approvals like any other).
+  approvals like any other);
+* ``dashboard_catalog``, ``describe_platform_widget``, ``lookup_platform_values``,
+  ``preview_source``, ``add_widget``, ``check_dashboard`` - find the data, write a
+  widget right the first time and check it (``custom_dashboard_studio``).
 
 What the agent may and may not author
 -------------------------------------
@@ -834,6 +837,17 @@ def build_custom_dashboard_tools(
         executor.register("publish_dashboard", _publish_dashboard)
         executor.register("export_dashboard", _export_dashboard)
         executor.register("send_dashboard_export", _send_dashboard_export)
+        from .custom_dashboard_studio import build_dashboard_studio_tools
+
+        studio_defs, studio_handlers = build_dashboard_studio_tools(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            assignment_run_id=assignment_run_id,
+            edit=_edit_dashboard,
+            source=_SOURCE,
+        )
+        for name, handler in studio_handlers.items():
+            executor.register(name, handler)
 
     tones = "|".join(DASHBOARD_TONES)
     action = "{label, href: a platform path like /agents | prompt: a question for the assistant}"
@@ -1191,4 +1205,6 @@ def build_custom_dashboard_tools(
                 source=_SOURCE,
             ),
         ]
+    if studio:
+        definitions += studio_defs
     return definitions, executor

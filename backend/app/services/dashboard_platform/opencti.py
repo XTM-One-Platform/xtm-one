@@ -225,6 +225,82 @@ def check_native(native: object) -> NativeCheck:
     )
 
 
+# ── What an agent reads before writing a widget (``describe_widget``) ──────
+
+
+def _group(*filters: dict) -> dict:
+    return {"mode": "and", "filters": list(filters), "filterGroups": []}
+
+
+def _eq(key: str, *values: str) -> dict:
+    return {"key": [key], "values": list(values), "operator": "eq", "mode": "or"}
+
+
+def _example(widget_type: str) -> dict:
+    """A configuration of *widget_type* OpenCTI's editor could have written: valid, and a sensible start."""
+    _max, shape, perspectives = WIDGET_TYPES[widget_type]
+    perspective = perspectives[0]
+    if perspective == "relationships":
+        target = "Country" if widget_type == "map" else "Sector"
+        selection: dict = {
+            "label": f"Intrusion sets targeting a {target.lower()}", "perspective": "relationships", "isTo": True,
+            "attribute": "internal_id", "date_attribute": "created_at", "number": 10,
+            "filters": _group(_eq("relationship_type", "targets")),
+            "dynamicFrom": _group(_eq("entity_type", "Intrusion-Set")), "dynamicTo": _group(_eq("entity_type", target)),
+        }  # fmt: skip
+    else:
+        selection = {
+            "label": "Threats", "perspective": "entities", "isTo": True, "date_attribute": "created_at", "number": 10,
+            "attribute": "entity_type", "filters": _group(_eq("entity_type", "Intrusion-Set", "Malware", "Threat-Actor-Group")),
+        }  # fmt: skip
+        if widget_type in ("list", "timeline", "bookmark", "number"):
+            selection["filters"] = _group(_eq("entity_type", "Report"))
+            selection["label"] = "Reports"
+    parameters: dict = {"title": selection["label"]}
+    if shape == "series":
+        parameters["interval"] = "month"
+    editor = EDITOR_TYPES.get(widget_type, {})
+    for flag in ("stacked", "legend"):
+        if editor.get(flag):
+            parameters[flag] = flag == "legend"
+    if editor.get("distributed"):
+        parameters["distributed"] = False
+    return {"type": widget_type, "perspective": perspective, "dataSelection": [selection], "parameters": parameters}
+
+
+def describe(widget_type: str | None = None) -> dict:
+    """OpenCTI's widget types, or one of them with an example configuration and the rules it follows."""
+    if widget_type is None:
+        return {
+            "types": [
+                {"type": t, "draws": shape, "view": PREFERRED_VIEWS.get(t), "dataSelections": f"1-{limit}", "perspectives": list(persp)}
+                for t, (limit, shape, persp) in WIDGET_TYPES.items()
+            ]
+        }
+    if widget_type not in WIDGET_TYPES:
+        raise NativeError(f"OpenCTI widget type must be one of: {', '.join(WIDGET_TYPES)}.")
+    limit, shape, perspectives = WIDGET_TYPES[widget_type]
+    return {
+        "type": widget_type,
+        "draws": shape,
+        "view": PREFERRED_VIEWS.get(widget_type),
+        "perspectives": list(perspectives),
+        "dataSelections": f"1-{limit}",
+        "example": _example(widget_type),
+        "rules": [
+            "dataSelection entries: label, perspective, filters (a filter group), attribute (what a breakdown counts), "
+            "date_attribute, number (top N), isTo; relationships also take dynamicFrom / dynamicTo (filter groups on "
+            "their source and target) and isTo (count the target side).",
+            "A filter group is {mode: and|or, filters: [{key: [key], values: [...], operator, mode: or|and}], "
+            f"filterGroups: [nested groups]}}; operators: {', '.join(sorted(OPERATORS))}.",
+            "The keys, the entity types, the attributes and the values come from the platform: look them up "
+            "(kinds entity_types, filter_keys, attributes, values) instead of guessing them.",
+            f"parameters: title, description, interval ({', '.join(INTERVALS)}) for a series, stacked, legend, distributed.",
+            "A dashboard input is read as '$token$' in a filter value.",
+        ],
+    }
+
+
 # ── The widget editor (``forms``): OpenCTI's own, ``opencti-front/src/private/components/widgets/*`` ──
 
 #: Widget type -> what OpenCTI's editor offers for it (``widgetUtils.tsx``), in its order: data

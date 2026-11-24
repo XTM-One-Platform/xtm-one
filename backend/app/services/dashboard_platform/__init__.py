@@ -167,6 +167,16 @@ def check_native(source: str, native: object) -> NativeCheck:
     return check
 
 
+def describe_widget(source: str, widget_type: str | None = None) -> dict:
+    """What *source*'s widgets are (without *widget_type*), or one type with an example configuration that
+    passes :func:`check_native` and the rules it follows: what an agent reads before writing one."""
+    if source not in PLATFORM_SOURCES:
+        raise NativeError(f"source must be one of: {', '.join(PLATFORM_SOURCES)}.")
+    from importlib import import_module
+
+    return {"source": source, **import_module(f"{__name__}.{source}").describe(widget_type)}
+
+
 def resolve_view(check: NativeCheck, view: str | None) -> str | None:
     """The view a widget is drawn with: *view* when it suits the data, else the shape's default.
 

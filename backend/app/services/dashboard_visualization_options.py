@@ -578,6 +578,32 @@ OPTIONS_BY_TYPE: dict[str, type[_Options]] = {
 }
 
 
+def _choices(annotation: Any) -> list | None:
+    """The values a ``Literal`` annotation (or an optional one) allows; ``None`` for anything else."""
+    from typing import Literal, get_args, get_origin
+
+    if get_origin(annotation) is Literal:
+        return list(get_args(annotation))
+    for arg in get_args(annotation):
+        found = _choices(arg)
+        if found:
+            return found
+    return None
+
+
+def option_names(viz_type: str) -> list[dict]:
+    """The options *viz_type* takes, read from its model: each name as stored, and its values when they are a list."""
+    model = OPTIONS_BY_TYPE.get(viz_type, _Options)
+    described = []
+    for name, info in model.model_fields.items():
+        entry: dict = {"name": info.alias or name}
+        choices = _choices(info.annotation)
+        if choices:
+            entry["values"] = choices
+        described.append(entry)
+    return described
+
+
 def validate_options(viz_type: str, options: dict[str, Any]) -> dict[str, Any]:
     """A data visualization's options, checked against its type's model, as stored (camelCase).
 
