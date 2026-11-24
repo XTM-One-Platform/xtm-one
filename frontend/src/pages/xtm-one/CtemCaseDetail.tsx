@@ -472,6 +472,12 @@ export default function CtemCaseDetail() {
 
   const ownerName = personName(kase.owner_user_id);
   const restricted = kase.restricted_count;
+  // A member seen without its details makes KEV, CVSS and asset counts unknown, never computed (UX round 1 on #1931, B1).
+  const aggregatesRestricted = kase.aggregates_restricted === true;
+  const withoutDetails = kase.members_without_details ?? 0;
+  const aggregatesSubtitle = aggregatesRestricted
+    ? t_i18n("Unknown: {count, plural, one {# open issue} other {# open issues}} not readable with details", { count: withoutDetails })
+    : t_i18n("On the issues you can see");
   // The Re-test column exists only when a member carries the OpenAEV lifecycle,
   // so an older case looks the same as before (UX round 1 on #962, B1).
   const showRetest = hasRetestData(kase.issues ?? []);
@@ -709,22 +715,28 @@ export default function CtemCaseDetail() {
           icon={IssuesGlyph}
           label={t_i18n("Open issues")}
           value={kase.open_issue_count}
-          subtitle={restricted > 0 ? t_i18n("{count, plural, one {# restricted} other {# restricted}}", { count: restricted }) : t_i18n("All visible to you")}
+          subtitle={
+            restricted > 0
+              ? t_i18n("{count, plural, one {# restricted} other {# restricted}}", { count: restricted })
+              : aggregatesRestricted
+                ? t_i18n("{count, plural, one {# without details} other {# without details}}", { count: withoutDetails })
+                : t_i18n("All visible to you")
+          }
         />
-        <StatCard icon={KevGlyph} label={t_i18n("KEV")} value={formatCount(intl.locale, kase.kev_count)} subtitle={t_i18n("On the issues you can see")} />
+        <StatCard icon={KevGlyph} label={t_i18n("KEV")} value={formatCount(intl.locale, kase.kev_count)} subtitle={aggregatesSubtitle} />
         <StatCard
           icon={ScoreGlyph}
           label={t_i18n("Max CVSS")}
           value={formatCount(intl.locale, kase.max_cvss)}
-          subtitle={t_i18n("On the issues you can see")}
+          subtitle={aggregatesSubtitle}
         />
         <StatCard
           icon={AssetsGlyph}
           label={t_i18n("Assets")}
           value={formatCount(intl.locale, kase.asset_count)}
           subtitle={
-            kase.crown_jewel_count == null
-              ? t_i18n("On the issues you can see")
+            aggregatesRestricted || kase.crown_jewel_count == null
+              ? aggregatesSubtitle
               : t_i18n("{count, plural, one {# primary asset} other {# primary assets}}", { count: kase.crown_jewel_count })
           }
         />
