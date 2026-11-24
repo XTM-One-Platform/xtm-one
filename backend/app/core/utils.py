@@ -1368,6 +1368,60 @@ def describe_schedule_next_run(
     }
 
 
+def describe_schedule_history(assignment: object) -> dict[str, str | None]:
+    """What a schedule assignment last did, as the ``get_assignment`` tool shows it.
+
+    ``last_triggered_at`` (the last fire) and ``schedule_resumed_at`` (the last
+    time it was enabled again) in UTC ISO 8601, and ``skipped_slot``: the latest
+    cron occurrence after the last fire (or the creation) and at or before the
+    resume, which never ran because the schedule was off and the resume does
+    not catch up (:func:`schedule_base`). ``None`` for each value not set.
+
+    >>> from types import SimpleNamespace as N
+    >>> t1 = datetime(2026, 11, 1, 7, 30, tzinfo=UTC)
+    >>> t2 = datetime(2026, 11, 3, 8, 0, tzinfo=UTC)
+    >>> h = describe_schedule_history(N(trigger_config={"cron": "0 7 * * *"},
+    ...     last_triggered_at=t1, schedule_resumed_at=t2))
+    >>> h["skipped_slot"]
+    '2026-11-03T07:00:00+00:00'
+    >>> describe_schedule_history(N(trigger_config={"cron": "0 7 * * *"},
+    ...     last_triggered_at=t2, schedule_resumed_at=t1))["skipped_slot"] is None
+    True
+    >>> describe_schedule_history(N())["last_triggered_at"] is None
+    True
+    """
+
+    def _stamp(name: str) -> datetime | None:
+        value = getattr(assignment, name, None)
+        return value.astimezone(UTC) if isinstance(value, datetime) else None
+
+    last = _stamp("last_triggered_at")
+    resumed = _stamp("schedule_resumed_at")
+    skipped: datetime | None = None
+    floor = last or _stamp("created_at")
+    config = getattr(assignment, "trigger_config", None)
+    cron = config.get("cron") if isinstance(config, dict) else None
+    if resumed is not None and (last is None or resumed > last) and isinstance(cron, str) and cron.strip():
+        from croniter import CroniterBadCronError, croniter
+
+        zone, _ = schedule_timezone(config)
+        try:
+            if zone is None or zone is UTC:
+                prev = croniter(cron.strip(), resumed).get_prev(datetime).astimezone(UTC)
+            else:
+                wall = resumed.astimezone(zone).replace(tzinfo=None)
+                prev = _wall_time_instant(croniter(cron.strip(), wall).get_prev(datetime), zone)
+            if floor is None or prev > floor:
+                skipped = prev
+        except (CroniterBadCronError, ValueError, TypeError, AttributeError):
+            skipped = None
+    return {
+        "last_triggered_at": last.isoformat() if last else None,
+        "schedule_resumed_at": resumed.isoformat() if resumed else None,
+        "skipped_slot": skipped.isoformat() if skipped else None,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Webhook secret helpers (SEC-5)
 # ---------------------------------------------------------------------------

@@ -1112,7 +1112,9 @@ def _catalog_list_page(
 def _run_status_vocabulary() -> tuple[str, ...]:
     """Canonical run status vocabulary for the run tools.
 
-    Single source of truth: the engine's ``ACTIVE_RUN_STATUSES`` +
+    Single source of truth: the engine's ``ACTIVE_RUN_STATUSES``, its
+    ``QUEUED_RUN_STATUS`` (a delivery waiting for a busy assignment, neither
+    active nor terminal, so a filter without it answered a silent zero) and
     ``TERMINAL_RUN_STATUSES`` (includes the reserved "skipped" /
     "cancelled" states), imported lazily because ``assignment_engine``
     imports ``builtin_tools`` at module level. Shared by the ``list_runs``
@@ -1121,10 +1123,11 @@ def _run_status_vocabulary() -> tuple[str, ...]:
     """
     from app.services.assignment_engine import (
         ACTIVE_RUN_STATUSES,
+        QUEUED_RUN_STATUS,
         TERMINAL_RUN_STATUSES,
     )
 
-    return ACTIVE_RUN_STATUSES + TERMINAL_RUN_STATUSES
+    return (*ACTIVE_RUN_STATUSES, QUEUED_RUN_STATUS, *TERMINAL_RUN_STATUSES)
 
 
 #: In-run deep search (``get_run`` with ``search``) — excerpt shaping caps.
@@ -7767,6 +7770,16 @@ def build_agent_builder_tool(
                     parts.append("  • Next run: none (cron not parseable)")
                 if _sched["timezone_warning"]:
                     parts.append(f"  • Timezone: {_sched['timezone_warning']}")
+                from app.core.utils import describe_schedule_history
+
+                _hist = describe_schedule_history(assignment)
+                parts.append(f"  • Last triggered: {_hist['last_triggered_at'] or 'never'}")
+                parts.append(f"  • Schedule resumed at: {_hist['schedule_resumed_at'] or 'never'}")
+                if _hist["skipped_slot"]:
+                    parts.append(
+                        f"  • Skipped slot: {_hist['skipped_slot']} UTC (off at that time; "
+                        "no catch-up after the resume)"
+                    )
 
             # Integration events: how they arrive, when last, and how many the
             # trigger's filter dropped before any run.
@@ -7792,7 +7805,8 @@ def build_agent_builder_tool(
                         f"  • Delivery: poll every {delivery.get('interval_seconds', 300) // 60} min{reason}"
                     )
                 if delivery.get("mode") != "webhook":
-                    parts.append(f"  • Last poll: {delivery.get('last_poll_at') or 'never'}")
+                    _catching_up = " (still reading a backlog)" if delivery.get("catching_up") else ""
+                    parts.append(f"  • Last poll: {delivery.get('last_poll_at') or 'never'}{_catching_up}")
                     if delivery.get("poll_skipped"):
                         parts.append(f"  • Poll skipped: {delivery['poll_skipped']}")
                 parts.append(f"  • Last notification: {delivery.get('last_notification_at') or 'never'}")

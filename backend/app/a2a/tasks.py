@@ -42,6 +42,7 @@ from app.a2a.audit import audit_actor
 from app.core.config import settings
 from app.core.redaction import known_secrets_scoped
 from app.core.utils import safe_uuid
+from app.core.worker_shutdown import TurnWoundDown
 from app.models.a2a import A2AExposure, A2ATask
 from app.models.agent import Agent
 from app.models.assignment import AssignmentRun
@@ -1522,6 +1523,155 @@ def platform_interruption(cancel_event: asyncio.Event | None) -> str | None:
     return f"{INTERRUPTED_ERROR_TEXT} ({why}) before it finished; send the task again"
 
 
+def _resumes_of(trigger_context: dict[str, Any] | None) -> list[dict[str, Any]]:
+    from app.services import background_checkpoint
+
+    return background_checkpoint.resumes_of(trigger_context)
+
+
+def _handed_back(trigger_context: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The hand-back a stopping worker recorded on an external run, else ``None``."""
+    from app.services.background_checkpoint import HANDED_BACK_KEY
+
+    back = (trigger_context or {}).get(HANDED_BACK_KEY)
+    return back if isinstance(back, dict) else None
+
+
+def _attempt_of(trigger_context: dict[str, Any] | None) -> int:
+    """The attempt an execution of an external run is: the hand-back's own when it resumes one.
+
+    A hand-back gives its attempt back, so the resume is read as graceful
+    (``background_checkpoint._hand_back_is_current``); otherwise one more than
+    the resumes already made.
+    """
+    back = _handed_back(trigger_context)
+    recorded = (back or {}).get("attempt")
+    if isinstance(recorded, int) and not isinstance(recorded, bool) and recorded > 0:
+        return recorded
+    return len(_resumes_of(trigger_context)) + 1
+
+
+def _record_resume(trigger_context: dict[str, Any] | None, *, attempt: int, replay: Any) -> dict[str, Any]:
+    """*trigger_context* with this resume recorded and its hand-back cleared."""
+    from app.services import background_checkpoint
+
+    context = dict(trigger_context or {})
+    updated = background_checkpoint.record_resume(
+        context,
+        attempt=attempt,
+        cause=background_checkpoint.lost_cause(context, attempt=attempt),
+        replayed_calls=replay.replayed_calls,
+        resumed_from=replay.turn_id,
+        graceful=True,
+        completed_calls=replay.completed_calls,
+    )
+    updated.pop(background_checkpoint.HANDED_BACK_KEY, None)
+    return updated
+
+
+async def _hand_back(task_id: uuid.UUID, run_id: uuid.UUID, checkpoint: Any, *, attempt: int) -> bool:
+    """Hand an external run its stopping worker cut back for the next worker; whether it was.
+
+    The checkpoint is flushed first, every completed round in it; then the run
+    goes back to ``pending`` with the hand-back recorded and the task's lease
+    refreshed, so the reaper does not read it abandoned and the next live
+    worker's sweep (:func:`resume_handed_back_tasks`) resumes it under the same
+    task id. Conditional on the run still ``running``: a cancel or a terminal
+    write that landed first stands. Shielded: the drain that cut the run does
+    not cut its hand-back. Any failure answers ``False`` and the caller fails
+    the task with the platform-restart reason, as before.
+    """
+    from app.core import worker_shutdown
+    from app.core.database import async_session
+    from app.services import background_checkpoint
+
+    request = worker_shutdown.shutdown_request()
+    signal = request.detail if request is not None else "a stop request"
+
+    async def _write() -> bool:
+        await checkpoint.aclose(flush=True)
+        async with async_session() as db:
+            # The task row before the run row, as every writer of the pair.
+            await db.execute(select(A2ATask).where(A2ATask.id == task_id).with_for_update())
+            run = (
+                await db.execute(select(AssignmentRun).where(AssignmentRun.id == run_id).with_for_update())
+            ).scalar_one_or_none()
+            if run is None or run.status != "running":
+                return False
+            now = datetime.now(UTC)
+            await db.execute(update(A2ATask).where(A2ATask.id == task_id).values(lease_heartbeat_at=now))
+            await db.execute(
+                update(AssignmentRun)
+                .where(AssignmentRun.id == run_id, AssignmentRun.status == "running")
+                .values(
+                    status="pending",
+                    trigger_context=background_checkpoint.handed_back(
+                        run.trigger_context, attempt=attempt, signal=signal, now=now
+                    ),
+                )
+            )
+            await db.commit()
+        return True
+
+    try:
+        handed = await asyncio.shield(_write())
+    except BaseException as exc:
+        # A failed hand-back falls back to the failure the caller writes.
+        logger.warning("A2A task %s (run %s) could not be handed back: %s", task_id, run_id, exc)
+        return False
+    if handed:
+        logger.warning(
+            "A2A task %s (run %s) handed back at attempt %s: its worker is stopping; "
+            "the next worker resumes it from its checkpoint under the same task id",
+            task_id,
+            run_id,
+            attempt,
+        )
+    return handed
+
+
+#: Seconds a hand-back is left to its own worker's drain before another worker resumes it.
+HAND_BACK_SETTLE_SECONDS = 5
+
+
+async def resume_handed_back_tasks(db: AsyncSession, *, limit: int = 20) -> list[uuid.UUID]:
+    """The external tasks a stopping worker handed back, to resume on this worker.
+
+    Never on a worker that is itself stopping. Each task is dispatched once per
+    sweep; the executor's conditional claim (``pending`` to ``running``) keeps a
+    second worker's dispatch of the same task from executing it twice.
+    """
+    from app.core import worker_shutdown
+    from app.services.background_checkpoint import HANDED_BACK_KEY
+
+    if worker_shutdown.shutdown_request() is not None:
+        return []
+    settled = datetime.now(UTC) - timedelta(seconds=HAND_BACK_SETTLE_SECONDS)
+    rows = (
+        await db.execute(
+            select(A2ATask.id, AssignmentRun.trigger_context)
+            .join(AssignmentRun, AssignmentRun.id == A2ATask.run_id)
+            .where(
+                AssignmentRun.status == "pending",
+                AssignmentRun.trigger_context[HANDED_BACK_KEY].isnot(None),
+                A2ATask.cancel_requested_at.is_(None),
+            )
+            .limit(limit)
+        )
+    ).all()
+    due: list[uuid.UUID] = []
+    for task_id, context in rows:
+        back = _handed_back(context)
+        at = (back or {}).get("at")
+        try:
+            moment = datetime.fromisoformat(at) if isinstance(at, str) else None
+        except ValueError:
+            moment = None
+        if moment is None or moment <= settled:
+            due.append(task_id)
+    return due
+
+
 def _executing_user_id(exposure: A2AExposure) -> str:
     """The identity an external run executes as.
 
@@ -1948,6 +2098,29 @@ async def execute_task_run(task_id: uuid.UUID) -> None:
         if (run.trigger_payload or {}).get("a2a_queued") and not await _wait_for_context_turn(db, task, run.id):
             return
 
+        # A run its stopping worker handed back resumes here from its
+        # checkpoint, the same task id answering the partner: the bounds of the
+        # assignment runs apply, past them the task fails with their reason.
+        from app.services import assignment_run_resume
+
+        resume_replay = None
+        attempt = _attempt_of(run.trigger_context)
+        if _handed_back(run.trigger_context) is not None:
+            resume_replay = await assignment_run_resume.load_replay(run.id)
+            refused = assignment_run_resume.resume_refused(
+                run.trigger_context,
+                attempt=attempt,
+                completed_calls=resume_replay.completed_calls,
+            )
+            if refused is not None:
+                await assignment_run_resume.discard(run.id)
+                await _finalise_run(db, task, run.id, "failed", None, refused[:2000])
+                return
+            resumed_context = _record_resume(run.trigger_context, attempt=attempt, replay=resume_replay)
+            attempt = len(_resumes_of(resumed_context)) + 1
+        else:
+            resumed_context = None
+
         # Claim the run with a conditional UPDATE, never a plain ORM write:
         # the terminal-state read above and this transition are not atomic
         # across replicas, and a cancel committed in the gap must win — an
@@ -1970,6 +2143,8 @@ async def execute_task_run(task_id: uuid.UUID) -> None:
                 ),
                 ChatMessage(role="assistant", content=str(payload["a2a_question"])),
             ]
+        if resume_replay is not None and resume_replay.history:
+            prior_history.extend(assignment_run_resume.restore_history(resume_replay.history))
         # The task row before the run row, the order every writer in this
         # module takes them in (see ``_finalise_run``), so a cancel racing the
         # claim waits for it instead of deadlocking with it.
@@ -1989,8 +2164,11 @@ async def execute_task_run(task_id: uuid.UUID) -> None:
             # conversation.
             .values(
                 status="running",
-                started_at=now,
+                # A resume keeps the first start: the task's wall time spans its resumes.
+                started_at=(run.started_at if resumed_context is not None else None) or now,
                 messages=[{"role": "user", "content": message}],
+                # The resume recorded with the claim, never by a blind write before it.
+                **({"trigger_context": resumed_context} if resumed_context is not None else {}),
             )
         )
         await db.commit()
@@ -2008,6 +2186,13 @@ async def execute_task_run(task_id: uuid.UUID) -> None:
         # already honours between iterations.
         cancel_event = asyncio.Event()
         supervisor = asyncio.create_task(_supervise_run(task_id, cancel_event))
+        # Its completed tool rounds are checkpointed at every iteration
+        # boundary, so a worker asked to stop winds the run down there and
+        # hands it back (``_hand_back``) instead of failing the task.
+        checkpoint = assignment_run_resume.checkpoint_for(
+            run_id, replay=resume_replay, attempt=attempt, user_id=_executing_user_id(exposure)
+        )
+        handed_back = False
 
         status, summary, error = "failed", None, None
         # Set only by a run that ended by asking; see the branch below.
@@ -2066,6 +2251,7 @@ async def execute_task_run(task_id: uuid.UUID) -> None:
                     meter_quota=True,
                     cancel_event=cancel_event,
                     error_out=error_out,
+                    on_checkpoint=checkpoint.offer,
                 )
             if cancel_event.is_set():
                 status = "cancelled"
@@ -2088,17 +2274,28 @@ async def execute_task_run(task_id: uuid.UUID) -> None:
                 question = str(asked["question"])
             else:
                 status, summary = "completed", response_text
+        except TurnWoundDown:
+            # Its worker is stopping: the loop stopped at an iteration
+            # boundary, every call answered and checkpointed. Handed back,
+            # resumed by the next live worker under the same task id.
+            handed_back = await _hand_back(task_id, run_id, checkpoint, attempt=attempt)
+            if not handed_back:
+                status, error = "failed", platform_interruption(None) or INTERRUPTED_ERROR_TEXT
         except asyncio.CancelledError:
-            # Cut by a platform stop, not by its partner: failed now,
-            # with a reason the partner reads, rather than ``canceled``.
+            # Cut by a platform stop, not by its partner: handed back with
+            # the rounds its checkpoint holds, the call in flight named to
+            # the resumed turn; failed with a reason the partner reads only
+            # when the hand-back cannot be written.
             interrupted = platform_interruption(cancel_event)
             if interrupted is not None:
-                status, error = "failed", interrupted
-                logger.warning(
-                    "A2A task %s (run %s) cut by a platform stop: failed with a reason its partner reads",
-                    task_id,
-                    run_id,
-                )
+                handed_back = await _hand_back(task_id, run_id, checkpoint, attempt=attempt)
+                if not handed_back:
+                    status, error = "failed", interrupted
+                    logger.warning(
+                        "A2A task %s (run %s) cut by a platform stop: failed with a reason its partner reads",
+                        task_id,
+                        run_id,
+                    )
             else:
                 status = "cancelled"
             raise
@@ -2110,55 +2307,58 @@ async def execute_task_run(task_id: uuid.UUID) -> None:
             supervisor.cancel()
             with suppress(asyncio.CancelledError):
                 await supervisor
-            # Who produced this answer, for the artifact's attribution: the
-            # last agent to run, whatever got it there.
-            responding = safe_uuid(transferred_to)
-            # Who answers the partner's NEXT message, which is a different
-            # question — see ``_conversational_target``.
-            next_responsible = _conversational_target(handovers)
-            if next_responsible is not None:
-                from app.a2a import contexts as ctx_svc
-                from app.models.a2a import A2AContext
+            # A handed-back run is left running for the next worker: no
+            # terminal write, its checkpoint kept for the resume.
+            if not handed_back:
+                await checkpoint.aclose(flush=False)
+                await assignment_run_resume.discard(run_id)
+                # Who produced this answer, for the artifact's attribution: the
+                # last agent to run, whatever got it there.
+                responding = safe_uuid(transferred_to)
+                # Who answers the partner's NEXT message, which is a different
+                # question — see ``_conversational_target``.
+                next_responsible = _conversational_target(handovers)
+                if next_responsible is not None:
+                    from app.a2a import contexts as ctx_svc
+                    from app.models.a2a import A2AContext
 
-                context = (
-                    await db.execute(
-                        select(A2AContext).where(A2AContext.id == task.context_id)
-                    )
-                ).scalar_one_or_none()
-                # Only an agent this partner's own binding covers. Handover
-                # spans every configured peer, exposed or not, so the model can
-                # land the conversation on one the partner cannot reach —
-                # recorded, that refuses every follow-up in this context
-                # forever. The agent it addressed stays responsible instead.
-                reachable = await ctx_svc.reachable_agent_ids(db, task.client_id)
-                if context is not None and next_responsible in reachable:
-                    await ctx_svc.set_responsible(db, context, next_responsible)
-            # Before the terminal write, so a poll can never see the run
-            # completed with no question on the task it is meant to explain.
-            if question:
-                task.caller_question = question
-                task.clarification_count = (task.clarification_count or 0) + 1
-            await _finalise_run(
-                db,
-                task,
-                run_id,
-                status,
-                summary,
-                error,
-                # None unless a transfer happened.
-                responding_agent_id=responding,
-                conversation=conversation,
-            )
-            if error and error.startswith(QUOTA_EXHAUSTED_ERROR_PREFIX):
-                # FR-036: exhaustion is audit-logged naming the external
-                # client responsible, so an operator can attribute the
-                # consumption to the partner integration rather than to the
-                # run-as user's own work.
-                await _audit_quota_exhaustion(
+                    context = (
+                        await db.execute(select(A2AContext).where(A2AContext.id == task.context_id))
+                    ).scalar_one_or_none()
+                    # Only an agent this partner's own binding covers. Handover
+                    # spans every configured peer, exposed or not, so the model can
+                    # land the conversation on one the partner cannot reach —
+                    # recorded, that refuses every follow-up in this context
+                    # forever. The agent it addressed stays responsible instead.
+                    reachable = await ctx_svc.reachable_agent_ids(db, task.client_id)
+                    if context is not None and next_responsible in reachable:
+                        await ctx_svc.set_responsible(db, context, next_responsible)
+                # Before the terminal write, so a poll can never see the run
+                # completed with no question on the task it is meant to explain.
+                if question:
+                    task.caller_question = question
+                    task.clarification_count = (task.clarification_count or 0) + 1
+                await _finalise_run(
                     db,
-                    exposure=exposure,
-                    agent_name=agent.name,
-                    task_id=task_id,
-                    client_id=client_id,
-                    detail=error,
+                    task,
+                    run_id,
+                    status,
+                    summary,
+                    error,
+                    # None unless a transfer happened.
+                    responding_agent_id=responding,
+                    conversation=conversation,
                 )
+                if error and error.startswith(QUOTA_EXHAUSTED_ERROR_PREFIX):
+                    # FR-036: exhaustion is audit-logged naming the external
+                    # client responsible, so an operator can attribute the
+                    # consumption to the partner integration rather than to the
+                    # run-as user's own work.
+                    await _audit_quota_exhaustion(
+                        db,
+                        exposure=exposure,
+                        agent_name=agent.name,
+                        task_id=task_id,
+                        client_id=client_id,
+                        detail=error,
+                    )

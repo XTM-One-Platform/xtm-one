@@ -394,11 +394,32 @@ async def test_manage_player_allows_update_delete_outside_orchestrator_run(monke
     assert (fake.calls[-1]["json"] or {}).get("user_teams") == ["team-abc"]
 
 
-async def test_inject_update_omits_unprovided_flags(monkeypatch):
+async def test_inject_update_keeps_the_stored_fields(monkeypatch):
+    # OpenAEV's PUT replaces the whole inject (InjectInput): the tool reads it
+    # and sends every stored field back, only the asked ones changed.
     from app.integrations.providers.openaev import injects
 
     executor, _ = _build()
-    fake = _RecordingApi({"inject_id": "i1", "inject_title": "t"})
+    stored = {
+        "inject_id": "i1",
+        "inject_title": "t",
+        "inject_enabled": False,
+        "inject_all_teams": True,
+        "inject_depends_duration": 60,
+        "inject_injector_contract": {"injector_contract_id": "c1"},
+        "inject_injector": "inj1",
+        "inject_teams": ["t1"],
+        "inject_assets": [{"asset_id": "a1"}],
+        "inject_asset_groups": [],
+        "inject_tags": ["tag1"],
+        "inject_depends_on": [
+            {
+                "dependency_relationship": {"inject_parent_id": "p1", "inject_children_id": "i1"},
+                "dependency_condition": {"mode": "and", "conditions": []},
+            }
+        ],
+    }
+    fake = _RecordingApi(stored)
     monkeypatch.setattr(injects, "_api", fake)
     result = await _run(
         executor,
@@ -412,11 +433,39 @@ async def test_inject_update_omits_unprovided_flags(monkeypatch):
         },
     )
     assert not result.is_error, result.content
+    assert [c["method"] for c in fake.calls] == ["get", "put"]
     body = fake.last_json()
-    assert "inject_title" not in body
-    assert "inject_enabled" not in body
-    assert "inject_all_teams" not in body
-    assert body.get("inject_description") == "d"
+    assert body["inject_description"] == "d"
+    assert body["inject_title"] == "t"
+    assert body["inject_enabled"] is False
+    assert body["inject_all_teams"] is True
+    assert body["inject_depends_duration"] == 60
+    assert body["inject_injector_contract"] == "c1"
+    assert body["inject_injector"] == "inj1"
+    assert body["inject_teams"] == ["t1"]
+    assert body["inject_assets"] == ["a1"]
+    assert body["inject_tags"] == ["tag1"]
+    assert body["inject_depends_on"] == [
+        {
+            "dependency_relationship": {"inject_parent_id": "p1"},
+            "dependency_condition": {"mode": "and", "conditions": []},
+        }
+    ]
+
+
+async def test_inject_update_of_an_unreadable_inject_writes_nothing(monkeypatch):
+    from app.integrations.providers.openaev import injects
+
+    executor, _ = _build()
+    fake = _RecordingApi({"inject_id": "i1"})
+    monkeypatch.setattr(injects, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_inject",
+        {"action": "update", "scope": "scenario", "parent_id": "s1", "inject_id": "i1", "description": "d"},
+    )
+    assert "Nothing was written" in result.content
+    assert [c["method"] for c in fake.calls] == ["get"]
 
 
 async def test_inject_create_sends_defaults(monkeypatch):
@@ -852,6 +901,118 @@ async def test_asset_update_never_downgrades_on_another_error(monkeypatch, store
     assert len(puts) == 1
     assert "GENERIC_ASSET" not in result.content
     assert error in result.content
+
+
+async def test_asset_update_clears_the_named_fields(monkeypatch):
+    # An explicit clear unsets a field; an empty string alone is still no change.
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    current = {
+        "asset_id": "e1",
+        "asset_name": "shop",
+        "asset_url": "https://old.example",
+        "asset_subcategory": "WEBSITE",
+        "asset_internet_facing": True,
+        "asset_ips": ["10.0.0.5"],
+    }
+    fake = _RecordingApi(current)
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_asset",
+        {"action": "update", "asset_id": "e1", "clear": ["url", "subcategory", "internet_facing", "ips"]},
+    )
+    assert not result.is_error, result.content
+    sent = fake.last_json()
+    assert sent["asset_url"] is None
+    assert sent["asset_subcategory"] is None
+    assert sent["asset_internet_facing"] is None
+    assert sent["asset_ips"] == []
+    assert sent["asset_name"] == "shop"
+
+
+async def test_asset_update_refuses_an_unknown_clear_before_any_call(monkeypatch):
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    fake = _RecordingApi({})
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(executor, "manage_openaev_asset", {"action": "update", "asset_id": "e1", "clear": ["name"]})
+    assert "unknown field(s): name" in result.content
+    assert fake.calls == []
+
+
+async def test_asset_bulk_update_clears_the_url(monkeypatch):
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    fake = _RecordingApi(["a1"])
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(
+        executor, "manage_openaev_asset", {"action": "bulk_update", "asset_ids": ["a1"], "clear": ["url"]}
+    )
+    assert not result.is_error, result.content
+    assert fake.last_json() == {"asset_ids_to_process": ["a1"], "asset_url": ""}
+
+
+async def test_asset_group_update_keeps_the_stored_fields(monkeypatch):
+    # OpenAEV's PUT replaces the whole group (AssetGroupInput): a dynamic filter
+    # alone keeps the stored name, description and tags.
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    stored = {
+        "asset_group_id": "ag1",
+        "asset_group_name": "Web",
+        "asset_group_description": "front",
+        "asset_group_tags": ["t1", {"tag_id": "t2"}],
+        "asset_group_dynamic_filter": {"mode": "and", "filters": []},
+    }
+    fake = _RecordingApi(stored)
+    monkeypatch.setattr(assets, "_api", fake)
+    group = {"mode": "and", "filters": [{"key": "asset_tags", "operator": "contains", "values": ["t1"], "mode": "or"}]}
+    result = await _run(
+        executor,
+        "manage_openaev_asset_group",
+        {"action": "update", "asset_group_id": "ag1", "dynamic_filter": json.dumps(group)},
+    )
+    assert not result.is_error, result.content
+    assert [c["method"] for c in fake.calls] == ["get", "put"]
+    assert fake.last_json() == {
+        "asset_group_name": "Web",
+        "asset_group_description": "front",
+        "asset_group_tags": ["t1", "t2"],
+        "asset_group_dynamic_filter": group,
+    }
+
+
+def test_fmt_asset_prints_the_fields_the_write_tool_sets():
+    from app.integrations.providers.openaev._common import _fmt_asset
+
+    out = _fmt_asset(
+        {
+            "asset_id": "e1",
+            "asset_name": "shop",
+            "asset_category": "WEB_APPLICATION",
+            "asset_subcategory": "WEBSITE",
+            "asset_criticality": "HIGH",
+            "asset_internet_facing": False,
+            "asset_url": "https://shop.example",
+            "asset_external_reference": "dns:shop",
+            "asset_tags": [{"tag_id": "t1"}],
+        }
+    )
+    for line in (
+        "Category: WEB_APPLICATION",
+        "Subcategory: WEBSITE",
+        "Criticality: HIGH",
+        "Internet-facing: False",
+        "URL: https://shop.example",
+        "External reference: dns:shop",
+        "Tags: t1",
+    ):
+        assert line in out
 
 
 async def test_asset_update_of_a_missing_endpoint_writes_nothing(monkeypatch):

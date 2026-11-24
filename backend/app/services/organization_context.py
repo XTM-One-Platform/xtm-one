@@ -1153,7 +1153,7 @@ CONTRACT_FIELDS: tuple[tuple[str, str], ...] = (
     ("sector", "sector"),
     ("regions", "regions of operation"),
     ("size", "organization size"),
-    ("crown_jewels", "crown jewels and business services"),
+    ("crown_jewels", "primary assets and business services"),
     ("tech_stack", "software"),
     ("ai_systems", "AI systems inventory"),
     ("pir_ids", "priority intelligence requirements (PIRs)"),
