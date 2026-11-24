@@ -14,7 +14,6 @@ import { TruncatedText } from "@/components/ui/truncated-text";
 import type { CtemDecisionRecord, CtemSignalState } from "@/hooks/api/useCtemSignalsApi";
 import { useFormatter } from "@/i18n";
 import { formatDayIntl } from "@/lib/relative-time";
-import { primaryAssetsRow, thresholdSource, thresholdWithSource } from "./decision-primary-assets";
 
 type Translate = (id: string, values?: Record<string, string | number>) => string;
 
@@ -54,13 +53,13 @@ const REASON_SENTENCE = {
   accepted_risk: "Accepted risk owned by {owner} until {until}",
   score_below_policy: "{score} {value} below the policy minimum {minimum}",
   internet_exposure_required: "No internet-facing asset, and the policy requires internet exposure",
-  crown_jewel_below_policy: "No crown jewel at or above {minimum}",
+  crown_jewel_below_policy: "No primary asset at or above {minimum}",
   no_risk_scenario: "No risk scenario holds the subject",
   risk_scenario_unreadable: "A risk scenario is required and OpenCRQ could not be read",
   criticality_unknown: "Criticality unknown, below the scope threshold {threshold}",
   below_scope_threshold: "Criticality {criticality} below the scope threshold {threshold}",
   in_scope: "In scope: criticality {criticality} at or above {threshold}, confidence {confidence}",
-  no_dependency: "No crown jewel depends on this organization",
+  no_dependency: "No primary asset depends on this organization",
   account_disabled: "Not exposed: the account is disabled",
 } as const;
 const REASON_SENTENCES: Readonly<Record<string, string>> = REASON_SENTENCE;
@@ -79,12 +78,12 @@ const NEXT_STEP = {
   accepted_risk: "Becomes a case when the accepted risk ends on {until}",
   score_below_policy: "Becomes a case if {score} reaches {minimum}",
   internet_exposure_required: "Becomes a case if an internet-facing asset holds it",
-  crown_jewel_below_policy: "Becomes a case if a crown jewel at or above {minimum} holds it",
+  crown_jewel_below_policy: "Becomes a case if a primary asset at or above {minimum} holds it",
   no_risk_scenario: "Becomes a case once a risk scenario holds it",
   risk_scenario_unreadable: "Becomes a case once OpenCRQ can be read and a risk scenario holds it",
   criticality_unknown: "Becomes a case once an asset at or above {threshold} holds it",
   below_scope_threshold: "Becomes a case if criticality rises to {threshold}",
-  no_dependency: "Becomes a case once a crown jewel depends on this organization",
+  no_dependency: "Becomes a case once a primary asset depends on this organization",
   account_disabled: "Becomes a case if the account is enabled again",
 } as const;
 const NEXT_STEPS: Readonly<Record<string, string>> = NEXT_STEP;
@@ -109,7 +108,7 @@ const POLICY_RULE_LABEL = {
   cvss_min: "CVSS minimum",
   epss_min: "EPSS minimum",
   internet_exposure_required: "Internet exposure required",
-  min_crown_jewel_criticality: "Crown jewel minimum criticality",
+  min_crown_jewel_criticality: "Primary asset minimum criticality",
   require_risk_scenario: "Risk scenario required",
 } as const;
 const POLICY_RULE_LABELS: Readonly<Record<string, string>> = POLICY_RULE_LABEL;
@@ -182,11 +181,8 @@ export function nextStepSentence(
   return sentence ? t_i18n(sentence, sentenceParams(decision, t_i18n, formatDay)) : null;
 }
 
-/** One input of the trace: a value on one line, or several lines drawn whole (the primary asset chains). */
-type DecisionInput = { label: string; value: string; lines?: string[] };
-
 /** The inputs the gate read, labelled, in the order the rule reads them; empty values are left out. */
-function decisionInputs(decision: CtemDecisionRecord | null | undefined, t_i18n: Translate): DecisionInput[] {
+function decisionInputs(decision: CtemDecisionRecord | null | undefined, t_i18n: Translate): { label: string; value: string }[] {
   if (!decision) return [];
   const level = (value: unknown) => String(levelLabel(value, t_i18n));
   const list = (value: unknown) => (Array.isArray(value) ? value.filter(Boolean).map(String).join(", ") : "");
@@ -204,22 +200,15 @@ function decisionInputs(decision: CtemDecisionRecord | null | undefined, t_i18n:
   // CTEM-29-UI: a leaked identity resolves through the owned domain it is on, not an asset.
   const domains = list((scope?.sources ?? []).filter((s) => s.from === "owned_domain").map((s) => s.name));
   const matched = list(reconcile.assets) || (decision.reconcile && !domains ? t_i18n("None matched") : "");
-  const reached = primaryAssetsRow(decision, t_i18n);
-  const rows: DecisionInput[] = [
+  const rows: { label: string; value: string }[] = [
     { label: t_i18n("Lenses"), value: lenses },
     { label: t_i18n("Confidence"), value: level(reconcile.confidence) },
     { label: t_i18n("Matched assets"), value: matched },
-    // UX r1 B3 on #1796: the names the record matched, next to the primary assets reached below.
-    { label: t_i18n("Primary assets named"), value: list(reconcile.crown_jewels_named) },
+    { label: t_i18n("Primary assets"), value: list(reconcile.crown_jewels_named) },
     { label: t_i18n("Software"), value: list(reconcile.tech_stack) },
     { label: t_i18n("Owned domain"), value: domains },
     { label: t_i18n("Criticality"), value: criticalityAgainstThreshold(scope, t_i18n) },
-    // #1591 S3: the primary assets reached and their chains, then the one threshold and where it comes from.
-    { label: t_i18n("Primary assets reached"), value: reached.join("\n"), lines: reached },
-    {
-      label: t_i18n("Scope threshold"),
-      value: thresholdWithSource(scope?.threshold ? level(scope.threshold) : "", thresholdSource(decision), t_i18n),
-    },
+    { label: t_i18n("Scope threshold"), value: level(scope?.threshold) },
     { label: t_i18n("Risk scenarios"), value: list((scope?.risk_scenarios ?? []).map((s) => s.name)) },
     { label: t_i18n("Policy checks"), value: checks },
   ];
@@ -270,20 +259,9 @@ export function DecisionReason({
           {inputs.map((input) => (
             <div key={input.label} className="contents">
               <dt className="text-default-secondary">{input.label}</dt>
-              {input.lines ? (
-                // UX r1 B1 on #1796: every chain on its own line, wrapped, never cut.
-                <dd className="min-w-0 break-words">
-                  <ul className="flex flex-col" data-testid="ctem-decision-input-lines">
-                    {input.lines.map((line, index) => (
-                      <li key={`${index}-${line}`}>{line}</li>
-                    ))}
-                  </ul>
-                </dd>
-              ) : (
-                <dd className="min-w-0 truncate" title={input.value}>
-                  {input.value}
-                </dd>
-              )}
+              <dd className="min-w-0 truncate" title={input.value}>
+                {input.value}
+              </dd>
             </div>
           ))}
         </dl>
