@@ -27,6 +27,7 @@ OpenAEV) are not recreated by a recompute alone: recompute never builds a case
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from collections.abc import Iterable
@@ -34,7 +35,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ctem_case import CtemCase, CtemCaseEvent, CtemCaseIssue
@@ -199,21 +200,103 @@ async def plan(db: AsyncSession, case: CtemCase, history: list[CtemCaseEvent]) -
     )
 
 
-async def _release_signals(db: AsyncSession, case_id: uuid.UUID, *, now: datetime) -> None:
-    """Send the signals of a deleted case back to the scope gate (state ``new``, decided again)."""
+async def _release_signals(db: AsyncSession, case_ids: list[uuid.UUID], *, now: datetime) -> list[uuid.UUID]:
+    """Send the signals of the deleted cases back to the scope gate (state ``new``, no case, no decision).
+
+    One UPDATE for every case, no gate run and no remote read inside the delete:
+    deciding each signal here read OpenCRQ once per signal and held the row locks
+    for minutes on a case with a thousand signals (#1950). The released signals
+    are decided again after the commit by :func:`decide_released`. Answers their ids.
+    """
+    from app.models.ctem_signal import CtemSignal
+
+    if not case_ids:
+        return []
+    await _bound_lock_wait(db)
+    ids = list((await db.execute(select(CtemSignal.id).where(CtemSignal.case_id.in_(case_ids)))).scalars())
+    if ids:
+        await db.execute(
+            update(CtemSignal)
+            .where(CtemSignal.id.in_(ids))
+            .values(case_id=None, state="new", decision=None, updated_at=now)
+            .execution_options(synchronize_session=False)
+        )
+    return ids
+
+
+#: How long a delete waits for a signal row another writer holds (a CTEM recompute) before it answers busy.
+LOCK_TIMEOUT = "10s"
+#: What a delete answers when another writer held the signal rows past :data:`LOCK_TIMEOUT`.
+LOCK_BUSY_DETAIL = (
+    "The signals of these cases are being updated by a CTEM recompute; nothing was deleted. Try again in a minute."
+)
+
+
+def is_lock_wait(exc: BaseException) -> bool:
+    """A PostgreSQL lock or statement timeout (``55P03`` lock_not_available, ``57014`` query_canceled)."""
+    orig = getattr(exc, "orig", None)
+    code = getattr(orig, "sqlstate", None) or getattr(getattr(orig, "__cause__", None), "sqlstate", None)
+    return (
+        code in {"55P03", "57014"}
+        or "LockNotAvailable" in type(orig).__name__
+        or "QueryCanceled" in type(orig).__name__
+    )
+
+
+async def _bound_lock_wait(db: AsyncSession) -> None:
+    """Fail fast with :data:`LOCK_BUSY_DETAIL` instead of queueing behind a long recompute (#1950)."""
+    bind = getattr(db, "bind", None)
+    if getattr(getattr(bind, "dialect", None), "name", None) == "postgresql":
+        await db.execute(text(f"SET LOCAL lock_timeout = '{LOCK_TIMEOUT}'"))
+
+
+#: How many released signals one transaction of :func:`decide_released` decides.
+DECIDE_BATCH = 200
+
+
+async def decide_released(signal_ids: list[uuid.UUID], *, sessions: Any = None) -> int:
+    """The signals a case delete released, decided again by the scope gate after its commit.
+
+    Runs in its own sessions, :data:`DECIDE_BATCH` signals per transaction, the
+    OpenCRQ read once per reader per batch (``_decide_again``). A released signal
+    is never put in a case here: the scheduled case sweep groups the confirmed
+    ones by fix key. A failure leaves the rest ``new`` for the on-demand gate pass
+    (POST /ctem-signals/evaluate). Answers how many were decided.
+    """
+    from app.models.ctem_signal import CtemSignal
     from app.services import ctem_scope_gate_store as gate_store
 
-    for row in await _signals(db, case_id):
-        row.case_id = None
-        row.state = "new"
-        row.decision = None
-        row.updated_at = now
+    if sessions is None:
+        from app.core.database import async_session as sessions
+    decided = 0
+    for start in range(0, len(signal_ids), DECIDE_BATCH):
+        chunk = signal_ids[start : start + DECIDE_BATCH]
         try:
-            async with db.begin_nested():
-                await gate_store.evaluate_one(db, row, evaluator_id=None, now=now)
+            async with sessions() as db:
+                rows = list(
+                    (
+                        await db.execute(select(CtemSignal).where(CtemSignal.id.in_(chunk), CtemSignal.state == "new"))
+                    ).scalars()
+                )
+                await gate_store._decide_again(db, rows)
+                await db.commit()
+                decided += len(rows)
         except Exception:
-            # It stays new: the on-demand gate pass (POST /ctem-signals/evaluate) decides it.
-            logger.warning("CTEM signal %s released from a deleted case, gate not run", row.id, exc_info=True)
+            logger.warning("CTEM signals released by a case delete: gate not run on %d", len(chunk), exc_info=True)
+    return decided
+
+
+_DECIDING: set[asyncio.Task[int]] = set()
+
+
+def schedule_decide_released(signal_ids: list[uuid.UUID]) -> asyncio.Task[int] | None:
+    """Start :func:`decide_released` in the background once the delete committed; ``None`` when nothing to decide."""
+    if not signal_ids:
+        return None
+    task = asyncio.create_task(decide_released(list(signal_ids)), name="ctem-case-delete-decide")
+    _DECIDING.add(task)
+    task.add_done_callback(_DECIDING.discard)
+    return task
 
 
 async def delete_cases(
@@ -227,7 +310,10 @@ async def delete_cases(
 ) -> dict[str, Any]:
     """Delete *cases* as the administrator *actor* (a ``User``); the caller commits.
 
-    Answers ``{dry_run, count, cases: [summary]}``. A dry run writes nothing.
+    Answers ``{dry_run, count, cases: [summary], released_signals: [ids]}``. A dry
+    run writes nothing. The caller commits, then hands ``released_signals`` to
+    :func:`schedule_decide_released`: no signal is decided and no case is opened
+    inside the delete.
     """
     from app.services.audit import log_audit
 
@@ -252,7 +338,6 @@ async def delete_cases(
             timer.state = TIMER_CANCELLED
             timer.outcome = CANCELLED_TIMER_OUTCOME.format(case_id=case.id)
             timer.ended_at = now
-        await _release_signals(db, case.id, now=now)
         await log_audit(
             db,
             user=actor,
@@ -263,7 +348,10 @@ async def delete_cases(
             summary=f"Deleted CTEM case {case.title!r}" + (f": {note}" if note else ""),
             details={"reason": note or None, "case": deletion.summary(), "deleted_at": now.isoformat()},
         )
-        await db.delete(case)
+    released: list[uuid.UUID] = []
     if not dry_run:
+        released = await _release_signals(db, [c.id for c in cases], now=now)
+        for case in cases:
+            await db.delete(case)
         await db.flush()
-    return {"dry_run": dry_run, "count": len(summaries), "cases": summaries}
+    return {"dry_run": dry_run, "count": len(summaries), "cases": summaries, "released_signals": released}

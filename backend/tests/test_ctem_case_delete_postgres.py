@@ -40,17 +40,29 @@ async def _database() -> AsyncIterator[async_sessionmaker]:
 
 @pytest.fixture(autouse=True)
 def _gate(monkeypatch: pytest.MonkeyPatch) -> list[uuid.UUID]:
-    """The scope gate is decided again on a released signal; here it confirms it and records the call."""
+    """The scope gate decides the released signals after the commit; here it confirms them and records the calls.
+
+    A gate run or a case opened inside the delete itself fails the test (#1950).
+    """
+    from app.services import ctem_case_loop
     from app.services import ctem_scope_gate_store as gate_store
 
     decided: list[uuid.UUID] = []
 
-    async def evaluate_one(db: Any, row: CtemSignal, **_: Any) -> None:
-        decided.append(row.id)
-        row.state = "confirmed"
-        row.decision = {"outcome": "case", "state": "confirmed"}
+    async def decide_again(db: Any, rows: list[CtemSignal], **_: Any) -> dict[str, int]:
+        for row in rows:
+            decided.append(row.id)
+            row.state = "confirmed"
+            row.decision = {"outcome": "case", "state": "confirmed"}
+        return {"confirmed": len(rows)}
 
-    monkeypatch.setattr(gate_store, "evaluate_one", evaluate_one)
+    async def refused(*_: Any, **__: Any) -> None:
+        raise AssertionError("no per-signal gate run and no case opened inside a case delete")
+
+    monkeypatch.setattr(gate_store, "_decide_again", decide_again)
+    monkeypatch.setattr(gate_store, "evaluate_one", refused)
+    monkeypatch.setattr(gate_store, "read_scenarios", refused)
+    monkeypatch.setattr(ctem_case_loop, "open_from_signal", refused)
     return decided
 
 
@@ -167,6 +179,11 @@ async def test_a_delete_cascades_cancels_releases_and_audits(_gate):
         )
         await session.commit()
         assert result["dry_run"] is False and result["count"] == 1
+        assert result["released_signals"] == [world["signal"]] and _gate == []
+        session.expire_all()
+        released = await session.get(CtemSignal, world["signal"])
+        assert released.case_id is None and released.state == "new" and released.decision is None
+        assert await case_delete.decide_released(result["released_signals"], sessions=sessions) == 1
         session.expire_all()  # read back what the commit stored
         assert await session.get(CtemCase, world["legacy"]) is None
         assert await session.get(CtemCase, world["kept"]) is not None
@@ -194,8 +211,9 @@ async def test_the_fix_key_is_free_and_the_released_signal_waits_for_the_sweep()
     async with _database() as sessions, sessions() as session:
         world = await _world(session)
         cases, _ = await case_delete.select_cases(session, organization_id=world["org"], case_ids=[world["legacy"]])
-        await case_delete.delete_cases(session, cases, actor=world["admin"], dry_run=False, now=NOW)
+        result = await case_delete.delete_cases(session, cases, actor=world["admin"], dry_run=False, now=NOW)
         await session.commit()
+        await case_delete.decide_released(result["released_signals"], sessions=sessions)
         session.expire_all()  # read back what the commit stored
         holders = [c for c in (await session.execute(select(CtemCase))).scalars() if KEY in (c.keys or [])]
         assert holders == []  # no case owns the key: the next case for it opens fresh
@@ -221,3 +239,108 @@ async def test_a_filter_and_ids_combine_and_unknown_ids_are_named():
         )
         # kept was opened by a signal: the filter leaves it out, so it is named unknown with the stray id.
         assert cases == [] and sorted(unknown) == sorted([str(world["kept"]), str(stray)])
+
+
+async def test_sixteen_cases_and_a_thousand_signals_go_in_one_quick_delete(_gate):
+    """#1950: legacy, signal and split cases, any state, 1,216 signals: one delete, no gate run inside it."""
+    import time
+
+    async with _database() as sessions, sessions() as session:
+        world = await _world(session)
+        origins = [
+            ("created", KEY, None),  # legacy
+            ("created", "k", "signal s"),  # signal
+            ("created", "manual", None),  # split
+        ]
+        case_ids: list[uuid.UUID] = []
+        for n in range(16):
+            case = CtemCase(
+                organization_id=world["org"],
+                vertical="cyber",
+                title=f"Case {n}",
+                remediation_kind="upgrade",
+                keys=[f"upgrade:vendor/product-{n}@1"],
+                pinned_issues=[],
+                state=("new", "remediating", "validating", "resolved")[n % 4],
+                state_since=NOW,
+            )
+            session.add(case)
+            await session.flush()
+            kind, to_value, reason = origins[n % 3]
+            session.add(
+                CtemCaseEvent(case_id=case.id, at=NOW, actor="system", kind=kind, to_value=to_value, reason=reason)
+            )
+            session.add_all(
+                [
+                    CtemSignal(
+                        organization_id=world["org"],
+                        trigger_path="new_vulnerability",
+                        lens="inside",
+                        source_provider="opencti",
+                        subject_kind="software",
+                        subject_ref=f"cpe:/a:vendor:product-{n}",
+                        dedupe_key=f"d-{n}-{i}",
+                        state="case_opened",
+                        case_id=case.id,
+                        recorded_via="listener",
+                        recorded_by="system",
+                    )
+                    for i in range(76)
+                ]
+            )
+            case_ids.append(case.id)
+        await session.commit()
+        cases, unknown = await case_delete.select_cases(session, organization_id=world["org"], case_ids=case_ids)
+        assert len(cases) == 16 and unknown == []
+        assert {case_delete.origin(e) for e in (await case_delete._events(session, case_ids)).values()} == {
+            "legacy",
+            "signal",
+            "split",
+        }
+        started = time.monotonic()
+        result = await case_delete.delete_cases(session, cases, actor=world["admin"], dry_run=False, now=NOW)
+        await session.commit()
+        elapsed = time.monotonic() - started
+        assert result["count"] == 16 and len(result["released_signals"]) == 16 * 76
+        assert elapsed < 5, f"delete took {elapsed:.1f} s"
+        assert _gate == []  # nothing decided inside the delete
+        session.expire_all()
+        left = (await session.execute(select(CtemCase.id).where(CtemCase.id.in_(case_ids)))).scalars().all()
+        assert left == []
+        states = (
+            await session.execute(
+                select(CtemSignal.state, CtemSignal.case_id).where(CtemSignal.id.in_(result["released_signals"]))
+            )
+        ).all()
+        assert {(s, c) for s, c in states} == {("new", None)}
+        # After the commit: decided in batches, none put in a case by the delete.
+        assert await case_delete.decide_released(result["released_signals"], sessions=sessions) == 16 * 76
+        session.expire_all()
+        opened = (
+            await session.execute(
+                select(CtemSignal.id).where(
+                    CtemSignal.id.in_(result["released_signals"]), CtemSignal.case_id.is_not(None)
+                )
+            )
+        ).all()
+        assert opened == []
+        remaining = set((await session.execute(select(CtemCase.id))).scalars().all())
+        assert remaining == {world["kept"], world["legacy"]}  # no case opened by the delete
+
+
+async def test_a_gate_failure_after_the_delete_leaves_the_signals_new(monkeypatch):
+    from app.services import ctem_scope_gate_store as gate_store
+
+    async def broken(*_: Any, **__: Any) -> None:
+        raise RuntimeError("OpenCRQ down")
+
+    monkeypatch.setattr(gate_store, "_decide_again", broken)
+    async with _database() as sessions, sessions() as session:
+        world = await _world(session)
+        cases, _ = await case_delete.select_cases(session, organization_id=world["org"], case_ids=[world["legacy"]])
+        result = await case_delete.delete_cases(session, cases, actor=world["admin"], dry_run=False, now=NOW)
+        await session.commit()
+        assert await case_delete.decide_released(result["released_signals"], sessions=sessions) == 0
+        session.expire_all()
+        assert await session.get(CtemCase, world["legacy"]) is None
+        assert (await session.get(CtemSignal, world["signal"])).state == "new"
