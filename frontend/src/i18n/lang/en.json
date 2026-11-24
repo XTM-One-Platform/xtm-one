@@ -13143,6 +13143,9 @@
   "No orchestrator": "No orchestrator",
   "Fleets": "Fleets",
   "Fleets row": "Fleets row",
+  "Fleets that read this part of the profile": "Fleets that read this part of the profile",
+  "Read by agents": "Read by agents",
+  "Agents that read this part of the profile": "Agents that read this part of the profile",
   "Fleets need the agentic AI licence": "Fleets need the agentic AI licence",
   "Fleets group agents around an orchestrator and a workspace. They are part of the agentic AI features of the Enterprise Edition.": "Fleets group agents around an orchestrator and a workspace. They are part of the agentic AI features of the Enterprise Edition.",
   "New fleet": "New fleet",
@@ -21557,5 +21560,14 @@
   "Link supporting assets to primary assets": "Link supporting assets to primary assets",
   "On by default. Off: primary assets are imported without their supporting assets.": "On by default. Off: primary assets are imported without their supporting assets.",
   "Links each primary asset to the supporting assets OpenCRQ attaches to it, matched by OpenCRQ id or name. A link you add or remove by hand always wins.": "Links each primary asset to the supporting assets OpenCRQ attaches to it, matched by OpenCRQ id or name. A link you add or remove by hand always wins.",
-  "Lets the agent record, list, dismiss, restore and re-check CTEM signals, and open, read and manage CTEM cases: owner, due date, notes, state, validation, tickets and remediation decisions. It acts for the person the turn or run acts for, with the rights of the CTEM pages: an administrator or a member of a group with the CTEM decide right reads and acts on every signal and case, a view right reads them and every change is refused, anyone else works on the signals they recorded and the cases they can see.": "Lets the agent record, list, dismiss, restore and re-check CTEM signals, and open, read and manage CTEM cases: owner, due date, notes, state, validation, tickets and remediation decisions. It acts for the person the turn or run acts for, with the rights of the CTEM pages: an administrator or a member of a group with the CTEM decide right reads and acts on every signal and case, a view right reads them and every change is refused, anyone else works on the signals they recorded and the cases they can see."
+  "Lets the agent record, list, dismiss, restore and re-check CTEM signals, and open, read and manage CTEM cases: owner, due date, notes, state, validation, tickets and remediation decisions. It acts for the person the turn or run acts for, with the rights of the CTEM pages: an administrator or a member of a group with the CTEM decide right reads and acts on every signal and case, a view right reads them and every change is refused, anyone else works on the signals they recorded and the cases they can see.": "Lets the agent record, list, dismiss, restore and re-check CTEM signals, and open, read and manage CTEM cases: owner, due date, notes, state, validation, tickets and remediation decisions. It acts for the person the turn or run acts for, with the rights of the CTEM pages: an administrator or a member of a group with the CTEM decide right reads and acts on every signal and case, a view right reads them and every change is refused, anyone else works on the signals they recorded and the cases they can see.",
+  "Asset deleted": "Asset deleted",
+  "Asset group deleted": "Asset group deleted",
+  "Software deleted": "Software deleted",
+  "Delete the asset \"{name}\"?": "Delete the asset \"{name}\"?",
+  "Delete the asset group \"{name}\"?": "Delete the asset group \"{name}\"?",
+  "Delete the software \"{name}\"?": "Delete the software \"{name}\"?",
+  "This asset was entered by hand: it leaves the inventory and its asset groups.": "This asset was entered by hand: it leaves the inventory and its asset groups.",
+  "This asset group was entered by hand: it is deleted and its assets stay in the inventory without it.": "This asset group was entered by hand: it is deleted and its assets stay in the inventory without it.",
+  "This software was typed by hand: it is deleted and leaves the assets it was attached to.": "This software was typed by hand: it is deleted and leaves the assets it was attached to."
 }

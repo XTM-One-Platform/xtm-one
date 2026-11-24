@@ -13141,6 +13141,9 @@
   "No orchestrator": "Sin orquestador",
   "Fleets": "Flotas",
   "Fleets row": "Fila de flotas",
+  "Fleets that read this part of the profile": "Flotas que leen esta parte del perfil",
+  "Read by agents": "Leído por los agentes",
+  "Agents that read this part of the profile": "Agentes que leen esta parte del perfil",
   "Fleets need the agentic AI licence": "Las flotas requieren la licencia de IA agéntica",
   "Fleets group agents around an orchestrator and a workspace. They are part of the agentic AI features of the Enterprise Edition.": "Una flota agrupa agentes en torno a un orquestador y un espacio de trabajo. Las flotas forman parte de las funciones de IA agéntica de la Enterprise Edition.",
   "New fleet": "Nueva flota",
@@ -21557,5 +21560,14 @@
   "Link supporting assets to primary assets": "Vincular los activos de soporte a los activos principales",
   "On by default. Off: primary assets are imported without their supporting assets.": "Activado por defecto. Desactivado: los activos principales se importan sin sus activos de soporte.",
   "Links each primary asset to the supporting assets OpenCRQ attaches to it, matched by OpenCRQ id or name. A link you add or remove by hand always wins.": "Vincula cada activo principal con los activos de soporte que OpenCRQ le asocia, reconocidos por su identificador de OpenCRQ o su nombre. Un vínculo añadido o eliminado a mano siempre prevalece.",
-  "Lets the agent record, list, dismiss, restore and re-check CTEM signals, and open, read and manage CTEM cases: owner, due date, notes, state, validation, tickets and remediation decisions. It acts for the person the turn or run acts for, with the rights of the CTEM pages: an administrator or a member of a group with the CTEM decide right reads and acts on every signal and case, a view right reads them and every change is refused, anyone else works on the signals they recorded and the cases they can see.": "Permite al agente registrar, listar, descartar, restaurar y volver a evaluar señales CTEM, y abrir, leer y gestionar casos CTEM: responsable, fecha límite, notas, estado, validación, tickets y decisiones de remediación. Actúa para la persona para la que actúa el turno o la ejecución, con los derechos de las páginas CTEM: un administrador o un miembro de un grupo con el derecho CTEM de decisión lee y actúa sobre cada señal y cada caso, un derecho de consulta los lee y se rechaza todo cambio, cualquier otra persona trabaja con las señales que registró y los casos que puede ver."
+  "Lets the agent record, list, dismiss, restore and re-check CTEM signals, and open, read and manage CTEM cases: owner, due date, notes, state, validation, tickets and remediation decisions. It acts for the person the turn or run acts for, with the rights of the CTEM pages: an administrator or a member of a group with the CTEM decide right reads and acts on every signal and case, a view right reads them and every change is refused, anyone else works on the signals they recorded and the cases they can see.": "Permite al agente registrar, listar, descartar, restaurar y volver a evaluar señales CTEM, y abrir, leer y gestionar casos CTEM: responsable, fecha límite, notas, estado, validación, tickets y decisiones de remediación. Actúa para la persona para la que actúa el turno o la ejecución, con los derechos de las páginas CTEM: un administrador o un miembro de un grupo con el derecho CTEM de decisión lee y actúa sobre cada señal y cada caso, un derecho de consulta los lee y se rechaza todo cambio, cualquier otra persona trabaja con las señales que registró y los casos que puede ver.",
+  "Asset deleted": "Activo eliminado",
+  "Asset group deleted": "Grupo de activos eliminado",
+  "Software deleted": "Software eliminado",
+  "Delete the asset \"{name}\"?": "¿Eliminar el activo «{name}»?",
+  "Delete the asset group \"{name}\"?": "¿Eliminar el grupo de activos «{name}»?",
+  "Delete the software \"{name}\"?": "¿Eliminar el software «{name}»?",
+  "This asset was entered by hand: it leaves the inventory and its asset groups.": "Este activo se introdujo a mano: sale del inventario y de sus grupos de activos.",
+  "This asset group was entered by hand: it is deleted and its assets stay in the inventory without it.": "Este grupo de activos se introdujo a mano: se elimina y sus activos permanecen en el inventario sin él.",
+  "This software was typed by hand: it is deleted and leaves the assets it was attached to.": "Este software se introdujo a mano: se elimina y deja los activos a los que estaba asociado."
 }
