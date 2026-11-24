@@ -514,18 +514,60 @@ class AssetEntry(BaseModel):
         return self
 
 
+class GroupMembershipRule(BaseModel):
+    """Which assets join an asset group without naming it in their ``group`` (#1773).
+
+    An asset matches when it carries one of ``tags``, is of one of
+    ``categories``, or its name holds ``name_contains`` (case-insensitive);
+    an empty rule matches nothing, so a group without one keeps its members
+    by name only, as before.
+    """
+
+    model_config = _Strict
+
+    tags: list[str] = Field(default_factory=list, max_length=50)
+    categories: list[str] = Field(default_factory=list, max_length=20)
+    name_contains: str = Field(default="", max_length=200)
+
+    @field_validator("tags", "categories")
+    @classmethod
+    def _clean(cls, value: list[str]) -> list[str]:
+        return _names(value)
+
+    def empty(self) -> bool:
+        return not (self.tags or self.categories or self.name_contains)
+
+    def matches(self, asset: AssetEntry) -> bool:
+        """Whether *asset* joins the group by this rule."""
+        if self.empty():
+            return False
+        tags = {t.lower() for t in asset.tags}
+        if tags & {t.lower() for t in self.tags}:
+            return True
+        if asset.category in self.categories:
+            return True
+        needle = self.name_contains.lower()
+        return bool(needle) and needle in asset.name.lower()
+
+
 class AssetGroupEntry(BaseModel):
     """A group of assets (OpenAEV's static asset group, #11781): assets join it through their ``group``.
 
     The fields an ``asset_group`` row of #11543 carried are kept, so the move
     from ``assets_exposure`` loses nothing; a nested ``group`` (OpenAEV has no
-    nested groups) is kept as the tag ``group:<name>``.
+    nested groups) is kept as the tag ``group:<name>``. Since #1773 a group
+    also carries the criticality its members take when they have none of
+    their own, and a membership rule (:class:`GroupMembershipRule`).
     """
 
     model_config = _Strict
 
     name: str = Field(min_length=1, max_length=200)
     description: str = Field(default="", max_length=1000)
+    #: The criticality a member of unknown criticality takes (#1773; ``unknown``: none given).
+    criticality: Literal["unknown", "low", "medium", "high", "very_high"] = "unknown"
+    #: Assets that join the group by rule, besides those naming it in ``group`` (#1773).
+    membership_rule: GroupMembershipRule = Field(default_factory=GroupMembershipRule)
     environment: Literal["", "production", "staging", "development", "test", "other"] = ""
     internet_facing: Literal["yes", "no", "unknown"] = "unknown"
     owner: str = Field(default="", max_length=200)
@@ -540,6 +582,27 @@ class AssetGroupEntry(BaseModel):
     @classmethod
     def _clean_names(cls, value: list[str]) -> list[str]:
         return _names(value)
+
+
+_CRITICALITY_RANK: tuple[str, ...] = ("unknown", "low", "medium", "high", "very_high")
+
+
+def groups_of(profile: Any, asset: AssetEntry) -> list[AssetGroupEntry]:
+    """The asset groups *asset* belongs to: the one its ``group`` names, and every group whose rule it matches (#1773)."""
+    named = asset.group.strip().lower()
+    return [
+        group
+        for group in getattr(profile, "asset_groups", None) or []
+        if (named and group.name.lower() == named) or group.membership_rule.matches(asset)
+    ]
+
+
+def effective_criticality(profile: Any, asset: AssetEntry) -> str:
+    """*asset*'s criticality, else the highest its groups give their members (#1773); ``unknown`` when none does."""
+    if asset.criticality != "unknown":
+        return asset.criticality
+    given = [g.criticality for g in groups_of(profile, asset) if g.criticality != "unknown"]
+    return max(given, key=_CRITICALITY_RANK.index) if given else "unknown"
 
 
 def legacy_group_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -660,6 +723,27 @@ class RiskAppetite(BaseModel):
 
     annual_loss_threshold: float | None = Field(default=None, ge=0)
     approval_threshold: float | None = Field(default=None, ge=0)
+
+
+class PirDetail(BaseModel):
+    """What one PIR of ``pir_ids`` asks and who answers for it (#1773).
+
+    OpenCTI keeps the PIR itself; the profile keeps what the organization
+    says about it: the intelligence question, its owner, how often it is
+    reviewed and the crown jewels it serves (by name).
+    """
+
+    model_config = _Strict
+
+    question: str = Field(default="", max_length=1000)
+    owner: str = Field(default="", max_length=200)
+    review_cadence: Literal["", "weekly", "monthly", "quarterly", "half_yearly", "yearly"] = ""
+    crown_jewels: list[str] = Field(default_factory=list, max_length=50)
+
+    @field_validator("crown_jewels")
+    @classmethod
+    def _clean(cls, value: list[str]) -> list[str]:
+        return _names(value)
 
 
 class FxRate(BaseModel):
@@ -955,6 +1039,9 @@ class OrganizationProfile(BaseModel):
     #: profile names a PIR even when OpenCTI cannot be read or deleted it (#9615).
     #: Not a contract field: ``missing_fields`` ignores it.
     pir_names: dict[str, str] = Field(default_factory=dict)
+    #: What each PIR asks, its owner, cadence and the crown jewels it serves, by PIR id (#1773).
+    #: Not a contract field; shown to agents only when filled.
+    pir_details: dict[str, PirDetail] = Field(default_factory=dict, max_length=100)
     risk_appetite: RiskAppetite = Field(default_factory=RiskAppetite)
     loaded_hourly_rate: float | None = Field(default=None, ge=0)
     currency: str = Field(default="", max_length=3)
@@ -1319,9 +1406,27 @@ def parse_profile(raw: Any) -> OrganizationProfile:
         raise ValueError(f"{where}: {first.get('msg', 'invalid value')}") from None
 
 
+#: The settable paths beyond the contract fields whose provenance a save keeps too (#1773): what an
+#: agent or the API may write (``organization_context_proposals``), so every written field says who and why.
+PROVENANCE_EXTRA_PATHS: tuple[str, ...] = (
+    "prioritization_policy.scope_min_criticality",
+    "owned_domains",
+    "address_ranges",
+    "attack_surface",
+    "fx_rates",
+    "shipped_products",
+    "enterprise_knowledge",
+    "pir_details",
+)
+
+
 def accepted_sources(raw: dict[str, Any] | None) -> dict[str, dict[str, str]] | None:
-    """The provenance an ``ai_draft`` save keeps: contract fields only, ``source`` and ``basis`` bounded."""
-    paths = {path for path, _label in CONTRACT_FIELDS}
+    """The provenance an ``ai_draft`` save keeps: the settable fields only, ``source`` and ``basis`` bounded.
+
+    An entry may also carry ``confirmed_at`` (#1773): the value was confirmed
+    unchanged at that time, by ``source``, on ``basis``.
+    """
+    paths = {path for path, _label in CONTRACT_FIELDS} | set(PROVENANCE_EXTRA_PATHS)
     kept: dict[str, dict[str, str]] = {}
     for path, entry in (raw or {}).items():
         if path not in paths or not isinstance(entry, dict):
@@ -1330,7 +1435,20 @@ def accepted_sources(raw: dict[str, Any] | None) -> dict[str, dict[str, str]] | 
             "source": str(entry.get("source") or "")[:300],
             "basis": str(entry.get("basis") or "")[:500],
         }
+        if entry.get("confirmed_at"):
+            kept[path]["confirmed_at"] = str(entry["confirmed_at"])[:40]
     return kept or None
+
+
+def rate_notice(profile: OrganizationProfile) -> str:
+    """A line naming the missing reference rates (#1773; ``""`` when none is missing).
+
+    A profile with a currency and no reference rate into it cannot convert an
+    OpenCRQ figure: the agent is told so rather than left to guess a rate.
+    """
+    if not profile.currency or any(r.to_currency == profile.currency for r in profile.fx_rates):
+        return ""
+    return f"No reference exchange rate into {profile.currency} (fx_rates)."
 
 
 def _of_organization(organization_id: uuid.UUID | None) -> ColumnElement[bool]:
@@ -1797,6 +1915,9 @@ def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     if not dumped.get("fx_rates"):
         # #1383: a profile with no reference rate dumps as before.
         dumped.pop("fx_rates", None)
+    if not dumped.get("pir_details"):
+        # #1773: a profile with no PIR detail dumps as before.
+        dumped.pop("pir_details", None)
     if not dumped.get("shipped_products"):
         # #1432: a profile that ships nothing dumps as before.
         dumped.pop("shipped_products", None)
@@ -1892,4 +2013,7 @@ def render_for_agent(
     ]
     if exposure:
         lines.append(exposure)
+    notice = "" if identity else rate_notice(profile)
+    if notice:
+        lines.append(notice)
     return "\n".join(lines)

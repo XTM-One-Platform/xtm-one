@@ -227,7 +227,15 @@ def rows_of(profile: OrganizationProfile, category: Category) -> list[Any]:
     if category is AI_SYSTEMS_ALIAS:
         values = [v for v in values if getattr(v, "category", "") == "ai_target"]
     if category.field == "pir_ids":
-        return [{"id": pir, "name": profile.pir_names.get(pir, "")} for pir in values]
+        # #1773: each PIR with what the organization says about it, when it says something.
+        rows: list[Any] = []
+        for pir in values:
+            row: dict[str, Any] = {"id": pir, "name": profile.pir_names.get(pir, "")}
+            detail = profile.pir_details.get(pir)
+            if detail is not None:
+                row.update({k: v for k, v in detail.model_dump(mode="json").items() if v not in ("", [])})
+            rows.append(row)
+        return rows
     return [value.model_dump(mode="json") if isinstance(value, BaseModel) else value for value in values]
 
 

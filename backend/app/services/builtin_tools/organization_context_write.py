@@ -771,7 +771,12 @@ def build_organization_context_write_tools(
                     },
                     "changes": {
                         "type": "array",
-                        "description": "Field changes: {field (contract path, e.g. tech_stack), value, basis}.",
+                        "description": (
+                            "Field changes: {field, value, basis, confirm?}. field is a path, dotted for a nested "
+                            "one (risk_appetite.approval_threshold, prioritization_policy.scope_min_criticality); "
+                            "also fx_rates and pir_details ({pir id: {question, owner, review_cadence, crown_jewels}}). "
+                            "confirm true with the current value records it is still right (who, when, basis)."
+                        ),
                         "items": {"type": "object"},
                     },
                     "based_on_version": {

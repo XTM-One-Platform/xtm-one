@@ -396,7 +396,8 @@ async def save_organization_context(
     # settings form; #1432: the form sends the shipped products (an empty list clears
     # them), and a client that leaves the key out keeps the stored ones.
     # A save that does not send one keeps the stored value.
-    kept = [key for key in ("fx_rates", "shipped_products") if key not in submitted]
+    # #1773: the PIR details are set by API or an agent too; a form save that leaves them out keeps them.
+    kept = [key for key in ("fx_rates", "shipped_products", "pir_details") if key not in submitted]
     if kept:
         current = await org_context.current_version(db)
         for key in kept:
