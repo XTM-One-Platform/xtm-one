@@ -17,7 +17,9 @@ call :func:`move` and add the event it answers:
   package) moves a ``new`` case to ``analyzing``.
 - :func:`after_gate`: a gate that waits on a person moves an open case to
   ``waiting_decision``; the answer (or an automatic pass) moves it to the
-  status the gate's next step implies (:data:`GATE_NEXT`).
+  status the gate's next step implies (:data:`GATE_NEXT`). An answer that
+  refuses the step (:func:`refuses`: reject, do not run, defer...) never takes
+  it: the case goes back to ``analyzing`` with the refusal as its reason.
 - :func:`after_ticket`: a ticket or a remediation plan moves the case to
   ``remediating``; the ticket done on a case with a re-test plan moves it to
   ``validating``.
@@ -50,6 +52,23 @@ GATE_NEXT: dict[str, str | None] = {
     "ctem.accept_risk": None,
     "ctem.close_without_retest": None,
 }
+
+#: What a refused gate refuses, for the reason of the move back to the analysis.
+GATE_REFUSED: dict[str, str] = {
+    "ctem.analyst_review": "review",
+    "ctem.remediation.decision": "remediation",
+    "ctem.mobilize": "mobilization",
+    "ctem.production_change": "production change",
+    "ctem.validation.non_readonly": "validation",
+    "ctem.accept_risk": "risk acceptance",
+    "ctem.close_without_retest": "closing without a re-test",
+}
+
+#: Words of an option (its key or its label) that refuse the step the gate asked for.
+_REFUSAL_WORDS: frozenset[str] = frozenset(
+    {"reject", "rejected", "refuse", "refused", "decline", "declined", "deny", "denied", "defer", "deferred"}
+)
+_REFUSAL_PHRASES: tuple[str, ...] = ("do not run", "dont run", "do not apply", "not now", "no go")
 
 #: Ticket statuses that say the change is in flight, and the one that says it landed.
 TICKET_ACTIVE = ("open", "in_progress")
@@ -109,12 +128,40 @@ def after_triage(case: CtemCase, at: datetime, *, actor: str, what: str) -> Ctem
     return move(case, "analyzing", at, actor=actor, reason=f"triage started: {what}")
 
 
-def after_gate(case: CtemCase, at: datetime, *, key: str, outcome: str, by: str, actor: str) -> CtemCaseEvent | None:
-    """The status a gate event implies: waited parks the case on a person, answered or passed moves it on."""
+def refuses(option: str | None) -> bool:
+    """True when the option chosen at a gate (its key or label) refuses the step: reject, do_not_run, defer..."""
+    text = " ".join("".join(c if c.isalnum() else " " for c in (option or "").casefold()).split())
+    if not text:
+        return False
+    if text in ("no", "none", "stop", "skip", "cancel") or _REFUSAL_WORDS.intersection(text.split()):
+        return True
+    padded = f" {text} "
+    return any(f" {phrase} " in padded for phrase in _REFUSAL_PHRASES)
+
+
+def after_gate(
+    case: CtemCase, at: datetime, *, key: str, outcome: str, by: str, actor: str, option: str = ""
+) -> CtemCaseEvent | None:
+    """The status a gate event implies: waited parks the case on a person, answered or passed moves it on.
+
+    An answer whose *option* refuses the step (:func:`refuses`) never takes the gate's next
+    status: a case waiting on it returns to ``analyzing``, any other case stays where it is.
+    """
     if case.state not in OPEN_STATES:
         return None
     if outcome == "waited":
         return move(case, "waiting_decision", at, actor=actor, reason=f"waits on {by or 'a person'} at gate {key}")
+    if outcome == "answered" and refuses(option):
+        if case.state != "waiting_decision":
+            return None
+        what = GATE_REFUSED.get(key, "step")
+        return move(
+            case,
+            "analyzing",
+            at,
+            actor=actor,
+            reason=f"{what} refused: gate {key} answered {option.strip()} by {by or 'a person'}",
+        )
     target = GATE_NEXT.get(key)
     if case.state == "waiting_decision":
         # The answer moves the case to what the gate's next step implies; a gate with no next

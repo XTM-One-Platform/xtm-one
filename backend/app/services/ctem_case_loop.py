@@ -903,8 +903,11 @@ def record_gate(
             evidence=(option or "").strip()[:300] or None,
         )
     )
-    # The gate moves the case status (#1503): waited parks it on a person, the answer moves it on.
-    moved = case_status.after_gate(case, now or datetime.now(UTC), key=key, outcome=outcome, by=by, actor=actor)
+    # The gate moves the case status (#1503): waited parks it on a person, the answer moves it on,
+    # unless the option chosen refuses the step.
+    moved = case_status.after_gate(
+        case, now or datetime.now(UTC), key=key, outcome=outcome, by=by, actor=actor, option=option
+    )
     if moved is not None:
         db.add(moved)
     return case

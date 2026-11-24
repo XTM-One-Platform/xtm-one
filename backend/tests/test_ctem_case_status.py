@@ -115,6 +115,45 @@ def test_gate_waits_then_the_answer_moves_on() -> None:
     assert "the CISO" in (reasons[0] or "")
 
 
+@pytest.mark.parametrize(
+    ("key", "option"),
+    [
+        ("ctem.validation.non_readonly", "do_not_run"),
+        ("ctem.validation.non_readonly", "C: Do not run it"),
+        ("ctem.remediation.decision", "reject"),
+        ("ctem.mobilize", "Rejected"),
+        ("ctem.production_change", "defer"),
+    ],
+)
+def test_a_refused_gate_never_takes_its_next_step(key: str, option: str) -> None:
+    db = _Recorder()
+    case = _case("analyzing")
+    loop.record_gate(_db(db), case, key=key, outcome="waited", by="the CISO", actor=AGENT, now=T0)
+    loop.record_gate(_db(db), case, key=key, outcome="answered", by="the CISO", option=option, actor=AGENT, now=T0)
+    assert case.state == "analyzing"
+    assert case.state not in ("validating", "remediating")
+    reason = [r.reason for r in db.rows if isinstance(r, CtemCaseEvent) and r.kind == "state"][-1] or ""
+    assert "refused" in reason and option in reason
+
+
+@pytest.mark.parametrize("option", ["A", "approve", "Run it against the asset", ""])
+def test_an_approving_answer_takes_the_next_step(option: str) -> None:
+    case = _case("waiting_decision")
+    moved = status.after_gate(
+        case, T0, key="ctem.validation.non_readonly", outcome="answered", by="x", actor=AGENT, option=option
+    )
+    assert moved is not None and case.state == "validating"
+
+
+def test_a_refusal_never_moves_a_case_not_waiting_on_it() -> None:
+    case = _case("remediating")
+    assert (
+        status.after_gate(case, T0, key="ctem.mobilize", outcome="answered", by="x", actor=AGENT, option="reject")
+        is None
+    )
+    assert case.state == "remediating"
+
+
 def test_an_automatic_pass_only_moves_forward() -> None:
     db = _Recorder()
     case = _case("validating")
