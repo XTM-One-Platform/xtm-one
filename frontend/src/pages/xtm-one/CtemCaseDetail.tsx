@@ -14,7 +14,6 @@ import { Icon, Textarea } from "@filigran/design-system";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CASE_SECTION_ICON, CaseCardTitleText } from "./ctem/case-icons";
 import { DataTable, TOOLBAR_CONTROL_HEIGHT, type DataTableColumn } from "@/components/ui/data-table";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { DateFilterInput } from "@/components/ui/date-filter-input";
@@ -718,7 +717,7 @@ export default function CtemCaseDetail() {
           value={formatCount(intl.locale, kase.max_cvss)}
           subtitle={t_i18n("On the issues you can see")}
         />
-        <StatCard icon={AssetsGlyph} label={t_i18n("Assets")} value={kase.asset_count} subtitle={t_i18n("{count, plural, one {# crown jewel} other {# crown jewels}}", { count: kase.crown_jewel_count })} />
+        <StatCard icon={AssetsGlyph} label={t_i18n("Assets")} value={kase.asset_count} subtitle={t_i18n("{count, plural, one {# primary asset} other {# primary assets}}", { count: kase.crown_jewel_count })} />
       </div>
 
       {/* The running versions come from the asset inventory, never typed by hand in the software inventory (#1252). */}
@@ -761,9 +760,7 @@ export default function CtemCaseDetail() {
 
       <Card>
         <CardHeader>
-          <CardTitle>
-            <CaseCardTitleText icon={CASE_SECTION_ICON.issues}>{t_i18n("Issues")}</CaseCardTitleText>
-          </CardTitle>
+          <CardTitle>{t_i18n("Issues")}</CardTitle>
         </CardHeader>
         <CardContent>
           <DataTable
@@ -813,9 +810,7 @@ export default function CtemCaseDetail() {
 
       <Card>
         <CardHeader>
-          <CardTitle>
-            <CaseCardTitleText icon={CASE_SECTION_ICON.history}>{t_i18n("History")}</CaseCardTitleText>
-          </CardTitle>
+          <CardTitle>{t_i18n("History")}</CardTitle>
         </CardHeader>
         <CardContent>
           <CaseAuditTrail
@@ -828,9 +823,6 @@ export default function CtemCaseDetail() {
             changeText={changeTextOf}
             renderRun={renderRun}
             renderEvent={renderEvent}
-            gates={kase.gates}
-            history={kase.history}
-            backTo={`/ctem/cases/${kase.id}`}
           />
         </CardContent>
       </Card>
