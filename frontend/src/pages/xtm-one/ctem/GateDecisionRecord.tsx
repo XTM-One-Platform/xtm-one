@@ -304,7 +304,16 @@ export function GateDecisionRecord({
   const next = record.next;
   const nextGate = next?.kind === "gate" && next.from ? next.from : null;
   const nextState = next?.kind === "state" && next.to && next.to in CASE_STATE_LABEL ? (next.to as CtemCaseState) : null;
-  const showAsked = !passed && (!!record.asked_by_agent || !!askedOf || !!record.asked_at);
+  const waiting = status === "waiting";
+  // A waiting gate opens its decision from the Asked step: nobody has decided it yet (UX round 4 on #1708, B8).
+  const showAsked = !passed && (!!record.asked_by_agent || !!askedOf || !!record.asked_at || (waiting && !!record.work_item_id));
+  const decisionLink = record.work_item_id ? (
+    <Field label={t_i18n("Decision")} icon={CASE_FACT_ICON.decision} testId={`${testId}-decision`}>
+      <Link asChild>
+        <RouterLink to={workItemPath(record.work_item_id)}>{t_i18n("Open the decision")}</RouterLink>
+      </Link>
+    </Field>
+  ) : null;
   const nextSentence = (GATE_CHIP_NEXT as Partial<Record<GateChip, string>>)[chip];
   // The second step is named for what happened: nobody decided an expired or a cancelled gate (UX round 3 on #1708, B7).
   const outcomeStep = passed
@@ -353,9 +362,10 @@ export function GateDecisionRecord({
               {when(record.deadline)}
             </Field>
           )}
+          {waiting && decisionLink}
         </Step>
       )}
-      {(answered || reason || (status !== "waiting" && wait) || record.work_item_id) && (
+      {!waiting && (answered || reason || wait || record.work_item_id) && (
         <Step label={outcomeStep.label} icon={outcomeStep.icon} testId={`${testId}-step-decided`}>
           {answered && (
             <Field label={t_i18n("Decided by")} icon={CASE_FACT_ICON.person} testId={`${testId}-by`}>
@@ -374,7 +384,7 @@ export function GateDecisionRecord({
               {t_i18n(reason.id, reason.values)}
             </Field>
           )}
-          {status !== "waiting" && wait && (
+          {wait && (
             <Field label={t_i18n("Waited")} icon={CASE_FACT_ICON.wait} testId={`${testId}-wait`}>
               <CaseFactChip icon={CASE_FACT_ICON.wait}>{wait}</CaseFactChip>
             </Field>
@@ -389,13 +399,7 @@ export function GateDecisionRecord({
               <blockquote className="whitespace-pre-line border-l-2 border-elevation-subtle pl-2 italic">{record.comment}</blockquote>
             </Field>
           )}
-          {record.work_item_id && (
-            <Field label={t_i18n("Decision")} icon={CASE_FACT_ICON.decision} testId={`${testId}-decision`}>
-              <Link asChild>
-                <RouterLink to={workItemPath(record.work_item_id)}>{t_i18n("Open the decision")}</RouterLink>
-              </Link>
-            </Field>
-          )}
+          {decisionLink}
         </Step>
       )}
       {next && (
