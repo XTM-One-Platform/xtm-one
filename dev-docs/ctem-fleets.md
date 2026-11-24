@@ -176,16 +176,22 @@ Common rules:
   case opened from a signal starts with an owner (`services/ctem_case_owner.py`):
   the owner of an affected asset's records, else of one of their asset groups,
   else `CTEM_CASE_DEFAULT_OWNER`, matched to an active account by email only;
-  an `owner` case event records how it was found. A use-case
-  fleet takes the cases of its own paths only while its case automation is
-  enabled (Vulnerability management: `new_vulnerability`). The owner is
-  computed when the event is published (`services/ctem_case_routing.py`
-  stamps `owner_fleet`) and each automation filters on it, so exactly one
-  fleet runs a case. Case events fire once: on fleet enable and on the
-  hourly case sweep, `catch_up` hands every open case its owner never ran
-  (no open `ctem:<fleet>:case:<id>` item, no `owner_requested` case event for
-  that owner) one `ctem_case.opened`, P1 first, soonest SLA first, 100 per
-  pass. `GET /ctem-cases/{id}` answers `owner_fleet` {slug, name, active};
+  an `owner` case event records how it was found. Which fleet runs a case
+  is declared on the fleet (#1966, `fleets.case_ownership`: `paths` null for
+  every trigger path or a list, `key` its case item prefix), and counts only
+  while a home member's "Case opened or reopened" automation is on. The loop
+  declares every path, Vulnerability management `new_vulnerability`, seeded
+  from `BUILTIN_FLEETS`; a fork carries its source's, an administrator sets
+  one on any other fleet (section 14). The owner is computed when the event
+  is published (`services/ctem_case_routing.py` stamps `owner_fleet`: a
+  built-in fleet's slug, `fleet:<id>` for any other) and each automation
+  filters on its own value, so exactly one fleet runs a case. Case events
+  fire once: on fleet enable, Pause all, Resume, Back to not set up, an
+  ownership change and the hourly case sweep, `catch_up` hands every open
+  case its owner never ran (no open `<key>:case:<id>` item of any declared
+  key, no `owner_requested` case event for that owner) one
+  `ctem_case.opened`, P1 first, soonest SLA first, 100 per pass.
+  `GET /ctem-cases/{id}` answers `owner_fleet` {slug, name, active, fleet_id};
   the case page header shows "Owned by <fleet>" linked to the fleet page, or
   "No active fleet owns this case" when it is null or inactive.
   The run owns one work item `ctem:<fleet>:case:<case id>` (an open
@@ -2386,6 +2392,33 @@ three use cases, each one understandable out of the box. `BUILTIN_FLEETS`
 A fifth entry fails `tests/test_builtin_fleets.py`: adding one is a product
 decision. An agent has one home fleet: the use-case fleets reach the loop's
 role agents (risk quantifier, remediation coordinator) as connected agents.
+
+### Custom case ownership (#1966)
+
+Any fleet can run CTEM cases: a customer forks a CTEM fleet, or builds one,
+and gives it the case work. `fleets.case_ownership` declares the trigger
+paths it takes (`paths` null = every path) and its case item key; the seed
+writes it on the built-in fleets (`case_ownership` of `BUILTIN_FLEETS`).
+
+- Fork: the copy carries the declaration (its own key
+  `ctem:fleet-<fork id>`), its copied "Case opened or reopened" automations
+  (off, like every copied automation) are pointed at the fork
+  (`owner_fleet` eq `fleet:<fork id>`), and every copied agent gets the
+  `ctem` tool group, so the forked orchestrator reads and manages cases
+  with no manual change.
+- Any other fleet: `PUT /fleets/{id}/case-ownership` {paths, key, clear},
+  administrators only, refused on a built-in fleet (fork it). It points the
+  home members' case automations at the fleet and runs the catch-up.
+- Precedence, among the fleets whose case automation is on and whose
+  declaration holds the path: a list of paths beats every path; then a fleet
+  that is not built-in beats a built-in one (a fork takes over from its
+  source); then the oldest fleet. None: the CTEM loop (inactive on the case
+  page). The loop's listener takes `owner_fleet` eq `ctem-loop` or no owner
+  stamped (the routing unreadable), never a case another fleet owns.
+- Switching: enabling a fork's case automation catches up the open cases it
+  now owns at once; Pause all or Back to not set up hands them back through
+  the same catch-up. An open case item of any declared key blocks a second
+  run, so a case the built-in loop is running is not started again on the fork.
 
 The five shared loop roles (relevance analyst, scenario creator, risk
 quantifier, remediation coordinator, threat hunt creator) are exposed

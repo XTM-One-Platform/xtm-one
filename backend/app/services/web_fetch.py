@@ -284,6 +284,10 @@ class FetchResult:
             (``server: LiteSpeed``, a hosting panel's own header).
         body_capped: Whether reading stopped at ``max_bytes`` - the body
             then holds the first ``max_bytes`` bytes of a longer response.
+        redirects: Each redirect hop followed, in order: its HTTP status,
+            the URL that answered it and its ``Location`` resolved against
+            that URL - what a caller checking a redirect reads, since
+            :attr:`url` names only where the chain ended.
     """
 
     url: str
@@ -296,6 +300,16 @@ class FetchResult:
     body: bytes = b""
     headers: dict[str, str] = field(default_factory=dict)
     body_capped: bool = False
+    redirects: list[RedirectHop] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class RedirectHop:
+    """One redirect a fetch followed: ``status`` from ``url``, to ``location``."""
+
+    status: int
+    url: str
+    location: str
 
 
 @dataclass(frozen=True)
@@ -461,6 +475,7 @@ async def fetch_and_extract(
     # keeps no connection and ignores environment proxies (`pinned_client`).
     async with pinned_client(timeout=timeout, headers={"User-Agent": USER_AGENT}) as client:
         resp = await _send(client, url, max_bytes)
+        redirects: list[RedirectHop] = []
         try:
             hops = 0
             while resp.status_code in _REDIRECT_STATUSES and "location" in resp.headers:
@@ -468,6 +483,7 @@ async def fetch_and_extract(
                 if hops > MAX_REDIRECTS:
                     raise ValueError(f"Too many redirects (more than {MAX_REDIRECTS}) while fetching: {url}")
                 next_url = urljoin(str(resp.url), resp.headers["location"])
+                redirects.append(RedirectHop(status=resp.status_code, url=str(resp.url), location=next_url))
                 await resp.aclose()
                 resp = await _send(client, next_url, max_bytes)
             if max_bytes is None:
@@ -502,6 +518,7 @@ async def fetch_and_extract(
             body=content,
             headers=_response_headers(resp),
             body_capped=body_capped,
+            redirects=redirects,
         )
 
     html = page_text
@@ -530,6 +547,7 @@ async def fetch_and_extract(
         body=content,
         headers=_response_headers(resp),
         body_capped=body_capped,
+        redirects=redirects,
     )
 
 

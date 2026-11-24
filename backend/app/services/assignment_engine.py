@@ -6943,9 +6943,10 @@ async def execute_assignment_run(
             )
             if agent.handover_agent_ids:
                 try:
-                    from app.api.v1.helpers import (
-                        get_user_group_ids,
-                        user_visible_filter,
+                    from app.api.v1.helpers import get_user_group_ids
+                    from app.services.fleets import (
+                        configured_handover_reach,
+                        handover_peer_clause,
                     )
 
                     h_uuids = [_uuid.UUID(h) for h in agent.handover_agent_ids if h]
@@ -6954,11 +6955,15 @@ async def execute_assignment_run(
                         if run.user_id:
                             _user_group_ids = await get_user_group_ids(db, run.user_id)
 
+                        # The configured handover is the grant, the exposure
+                        # rule kept: a peer the run's person may not open is
+                        # still reached through the tool of its type.
+                        _granted = await configured_handover_reach(db, agent.id, h_uuids) if run.user_id else set()
                         _ho_query = (
                             select(Agent)
                             .where(Agent.id.in_(h_uuids), Agent.enabled.is_(True))
                             .where(
-                                user_visible_filter(Agent, run.user_id, _user_group_ids)
+                                handover_peer_clause(run.user_id, _user_group_ids, _granted)
                             )
                         )
                         from app.services.fleet_runs import active_handover_target_clause

@@ -162,6 +162,8 @@ CTEM_LOOP_FLEET: dict[str, Any] = {
         "coverage and the risk register current."
     ),
     "icon": "Workflow",
+    # Every trigger path (#1390, #1966): the default owner of a case.
+    "case_ownership": {"paths": None, "key": "ctem:f1"},
     "orchestrator": _LOOP,
     "leads": [
         _POSTURE,
@@ -210,6 +212,8 @@ CTEM_VULN_PRIORITIZATION_FLEET: dict[str, Any] = {
         "closed by a re-test."
     ),
     "icon": "ListOrdered",
+    # Path 1 only, taken over from the loop while its case automation is on (#1390, #1966).
+    "case_ownership": {"paths": ["new_vulnerability"], "key": "ctem:f2"},
     "platform_targets": ["xtm_one", "dev"],
     "orchestrator": "ctem-vuln-prioritization-orchestrator",
     "members": [
