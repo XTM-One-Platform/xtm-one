@@ -115,12 +115,13 @@ def test_basic_block_names_the_identity_and_indexes_every_category() -> None:
             assert f"- {category.name} (" not in text
             continue
         assert f"- {category.name} (" in text, f"{category.name} missing from the index"
-    assert "- crown_jewels (" in text and "): 2 rows;" in text
+    assert "- primary_assets (" in text and "): 2 rows;" in text
+    assert "- crown_jewels (" not in text, "#1591: the deprecated alias is never announced"
     assert ": 1 row;" in text
     assert "- tracked_organizations (tracked organizations): 3 rows" in text
     assert "- software (" in text and "): not filled" in text
     assert "- tech_stack (" not in text, "the deprecated alias is never announced"
-    assert 'get_organization_context(category="crown_jewels")' in text
+    assert 'get_organization_context(category="primary_assets")' in text
     assert "UNTRUSTED" in text, "the profile is data a person typed: quarantined"
     assert len(text) <= inj.SUMMARY_MAX_CHARS
 
@@ -137,7 +138,8 @@ def test_the_index_is_generated_from_the_model() -> None:
     }
     # The object fields read as a category (#11543, #1691): their rules or settings are their rows.
     assert {c.field for c in cats.CATEGORIES if c.field} == list_fields | {"prioritization_policy", "attack_surface"}
-    assert {"crown_jewels", "software", "pirs", "tracked_organizations"} <= set(cats.CATEGORY_NAMES)
+    assert {"primary_assets", "software", "pirs", "tracked_organizations"} <= set(cats.CATEGORY_NAMES)
+    assert "crown_jewels" not in cats.CATEGORY_NAMES, "#1591: a deprecated alias, never a category of its own"
     assert "tech_stack" not in cats.CATEGORY_NAMES, "#1495: a deprecated alias, never a category of its own"
     assert {"assets_exposure", "prioritization_policy", "enterprise_knowledge"} <= set(cats.CATEGORY_NAMES)
 
@@ -161,7 +163,7 @@ def test_the_basic_block_cap_holds_whatever_the_list_lengths() -> None:
     assert len(text) <= inj.SUMMARY_MAX_CHARS
     # About 500 tokens: 4 characters a token is the bound the cap encodes.
     assert inj.SUMMARY_MAX_CHARS // 4 <= 500
-    assert "Product 499" not in text, "the software stays behind the tool"
+    assert "Product 499" not in text, "the tech stack stays behind the tool"
     assert "): 500 rows" in text
     assert not text.endswith("..."), "never cut: the block does not grow with a list"
     assert len(text) - len(small) < 400, "only the counts and the name grew"
@@ -179,7 +181,9 @@ def test_the_basic_block_cap_holds_whatever_the_list_lengths() -> None:
         (["pirs"], ["software"], [], []),
         # #1495: a stored selection naming the deprecated tech_stack reads as software.
         (["pirs"], ["tech_stack"], None, ["software"]),
-        (["pirs"], [], ["crown_jewels"], ["crown_jewels"]),
+        # #1591: a stored selection naming the deprecated crown_jewels reads as primary_assets.
+        (["pirs"], [], ["crown_jewels"], ["primary_assets"]),
+        (["crown_jewels", "primary_assets"], None, None, ["primary_assets"]),
         ([], ["tech_stack", "gone_from_the_model", "software"], None, ["software"]),
     ],
 )
@@ -200,7 +204,8 @@ def test_check_categories_reads_lists_strings_and_refuses_unknown_names() -> Non
     assert check_categories(None) is None
     assert check_categories("inherit") is None
     assert check_categories("none") == []
-    assert check_categories("Software, crown_jewels") == ["software", "crown_jewels"]
+    assert check_categories("Software, primary_assets") == ["software", "primary_assets"]
+    assert check_categories("crown_jewels") == ["primary_assets"], "#1591: the deprecated alias answers primary_assets"
     assert check_categories("Tech_Stack, software") == ["software"], "the deprecated alias answers software"
     with pytest.raises(ValueError, match="software"):
         check_categories(["vendors"])
