@@ -163,6 +163,16 @@ export interface CtemCaseVisibleIssue {
   retest_status?: "open" | "not_reproduced" | "resolved" | null;
   last_tested_at?: string | null;
   retest_pending?: boolean;
+  /**
+   * A signal member (source "signal", #1936): what it is, so a row never shows its id. The name is
+   * the subject label, else its ref; absent on an API older than #1936.
+   */
+  trigger_path?: string;
+  trigger_path_label?: string | null;
+  lens?: string;
+  source_provider?: string;
+  source_name?: string;
+  subject_kind?: string;
 }
 
 /** A member issue the caller cannot see in its source product: nothing but the flag. */
@@ -178,6 +188,8 @@ export interface CtemCaseEvent {
   kind: string;
   /** The member it is about, or "Restricted" when the caller cannot see it. */
   issue: string | null;
+  /** The name of the signal the event is about, when the caller sees it (#1936); never the id. */
+  issue_label?: string | null;
   from: string | null;
   to: string | null;
   reason: string | null;

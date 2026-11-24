@@ -15032,6 +15032,7 @@
   "Review and decide on the target's page": "Revisar y decidir en la página del objetivo",
   "Shadow pairs needed": "Pares en sombra necesarios",
   "Signal": "Señal",
+  "Signal: {path}": "Señal: {path}",
   "Signals are read without any model call, every 15 minutes for feedback and failures, hourly for cost and models.": "Las señales se leen sin ninguna llamada a un modelo, cada 15 minutos para valoraciones y fallos, cada hora para costes y modelos.",
   "Signals": "Señales",
   "Skipped or not completed": "Omitido o no completado",

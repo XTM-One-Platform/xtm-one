@@ -15032,6 +15032,7 @@
   "Review and decide on the target's page": "Review and decide on the target's page",
   "Shadow pairs needed": "Shadow pairs needed",
   "Signal": "Signal",
+  "Signal: {path}": "Signal: {path}",
   "Signals are read without any model call, every 15 minutes for feedback and failures, hourly for cost and models.": "Signals are read without any model call, every 15 minutes for feedback and failures, hourly for cost and models.",
   "Signals": "Signals",
   "Skipped or not completed": "Skipped or not completed",

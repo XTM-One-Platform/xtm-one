@@ -66,6 +66,9 @@ import { CaseTreatmentPlan } from "./ctem/CaseTreatmentPlan";
 import { CaseRunningVersions } from "./ctem/CaseRunningVersions";
 import { CaseAffectedAssets } from "./ctem/CaseAffectedAssets";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
+import { eventIssueLabel, isSignalIssue, issueLabel, memberAssetCount, memberKev, signalCaption, signalLensLabel, signalPathLabel } from "./ctem/case-issue-label";
+import { signalProviderName } from "./ctem/loop/SignalLoopTrace";
+import { ToneBadge } from "@/components/ui/tone-badge";
 import { CaseOwnedBy } from "./ctem/CaseOwnedBy";
 import { CaseLoopProvider } from "./ctem/CaseSectionReason";
 import { loopFleetOf } from "./ctem/case-loop-reason";
@@ -330,6 +333,8 @@ export default function CtemCaseDetail() {
       const target = changeWord("state", e.to);
       return target ? `${eventLabel(e)} ${t_i18n(target)}` : eventLabel(e);
     }
+    // "A signal joined the case" names the signal (#1936), on screen and in the CSV.
+    if (e.kind === "signal" && eventIssueLabel(e, t_i18n)) return `${eventLabel(e)}: ${eventIssueLabel(e, t_i18n)}`;
     const said = reasonLabel(e);
     const detail =
       e.kind === "gate" ? (e.from ? t_i18n(GATE_LABEL[e.from] ?? e.from) : "") : said ? t_i18n(said) : e.kind === "note" ? (e.headline ?? "") : "";
@@ -483,12 +488,27 @@ export default function CtemCaseDetail() {
       cell: (r) =>
         isRestrictedIssue(r.issue) ? (
           <RestrictedCell />
+        ) : isSignalIssue(r.issue) ? (
+          // A signal reads its name, its lens and source as chips and its trigger path as the
+          // caption, as the "Opened by" card does (#1936): never its id.
+          <span className="flex min-w-0 max-w-[26rem] flex-col" data-testid="ctem-case-issue-signal">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <TruncatedText text={issueLabel(r.issue, t_i18n)} className="font-medium" />
+              {r.issue.lens && <ToneBadge tone="neutral" className="shrink-0">{t_i18n(signalLensLabel(r.issue.lens))}</ToneBadge>}
+              {r.issue.source_provider && (
+                <ToneBadge tone="neutral" className="shrink-0" data-testid="ctem-case-issue-signal-source">
+                  {t_i18n("From {source}", { source: signalProviderName(r.issue.source_provider) })}
+                </ToneBadge>
+              )}
+            </span>
+            {signalCaption(r.issue, t_i18n) && <IssueCaption text={signalCaption(r.issue, t_i18n) ?? ""} />}
+          </span>
         ) : (
           // The issue, then "Open in <Module>" on the entity it came from (#1357): an OpenCTI
           // vulnerability by its id, an OpenAEV finding by its id; a signal has no module page.
           <span className="flex min-w-0 max-w-[26rem] items-center gap-1.5">
-            <span className="truncate font-medium" title={r.issue.name ?? r.issue.external_id}>
-              {r.issue.cve ?? r.issue.name ?? r.issue.external_id}
+            <span className="truncate font-medium" title={issueLabel(r.issue, t_i18n)}>
+              {issueLabel(r.issue, t_i18n)}
             </span>
             <ModulePivotLink
               module={pivotModuleOf(r.issue.source)}
@@ -500,8 +520,16 @@ export default function CtemCaseDetail() {
             />
           </span>
         ),
-      sortValue: (r) => (isRestrictedIssue(r.issue) ? "~" : (r.issue.cve ?? r.issue.name ?? "")),
-      csv: (r) => (isRestrictedIssue(r.issue) ? t_i18n("Restricted") : (r.issue.cve ?? r.issue.name ?? "")),
+      sortValue: (r) => (isRestrictedIssue(r.issue) ? "~" : issueLabel(r.issue, t_i18n)),
+      csv: (r) => (isRestrictedIssue(r.issue) ? t_i18n("Restricted") : issueLabel(r.issue, t_i18n)),
+    },
+    {
+      // The kind of a signal member in the CSV (#1936): its trigger path, empty for a product issue.
+      key: "trigger_path",
+      header: "Trigger path",
+      cell: () => null,
+      csv: (r) => (isRestrictedIssue(r.issue) || !isSignalIssue(r.issue) ? "" : (signalPathLabel(r.issue, t_i18n) ?? "")),
+      exportOnly: true,
     },
     {
       key: "source",
@@ -535,9 +563,10 @@ export default function CtemCaseDetail() {
     {
       key: "kev",
       header: "KEV",
-      cell: (r) => (isRestrictedIssue(r.issue) ? null : r.issue.kev ? t_i18n("Yes") : t_i18n("No")),
-      sortValue: (r) => (isRestrictedIssue(r.issue) ? -1 : r.issue.kev ? 1 : 0),
-      csv: (r) => (isRestrictedIssue(r.issue) ? "" : r.issue.kev ? "yes" : "no"),
+      // A signal has no KEV: its cell stays empty, never "No" (#1936).
+      cell: (r) => (isRestrictedIssue(r.issue) || memberKev(r.issue) === null ? null : memberKev(r.issue) ? t_i18n("Yes") : t_i18n("No")),
+      sortValue: (r) => (isRestrictedIssue(r.issue) || memberKev(r.issue) === null ? -1 : memberKev(r.issue) ? 1 : 0),
+      csv: (r) => (isRestrictedIssue(r.issue) || memberKev(r.issue) === null ? "" : memberKev(r.issue) ? "yes" : "no"),
       hideBelow: "3xl",
       hideable: true,
     },
@@ -545,8 +574,13 @@ export default function CtemCaseDetail() {
       key: "assets",
       header: "Assets",
       align: "right",
-      cell: (r) => (isRestrictedIssue(r.issue) ? null : formatCount(intl.locale, r.issue.assets?.length ?? 0)),
-      sortValue: (r) => (isRestrictedIssue(r.issue) ? -1 : (r.issue.assets?.length ?? 0)),
+      // A signal counts its assets only when it names one (#1936), never "0".
+      cell: (r) => {
+        if (isRestrictedIssue(r.issue)) return null;
+        const count = memberAssetCount(r.issue);
+        return count === null ? null : formatCount(intl.locale, count);
+      },
+      sortValue: (r) => (isRestrictedIssue(r.issue) ? -1 : (memberAssetCount(r.issue) ?? -1)),
       csv: (r) => (isRestrictedIssue(r.issue) ? "" : (r.issue.assets ?? []).join("; ")),
       hideBelow: "4xl",
       hideable: true,
@@ -788,7 +822,7 @@ export default function CtemCaseDetail() {
             }}
             defaultSort={{ key: "cvss", direction: "desc" }}
             defaultPageSize={10}
-            searchFields={(r) => (isRestrictedIssue(r.issue) ? [] : [r.issue.cve, r.issue.name])}
+            searchFields={(r) => (isRestrictedIssue(r.issue) ? [] : [r.issue.cve, issueLabel(r.issue, t_i18n)])}
             searchPlaceholder={t_i18n("Search CVE")}
             filtersInPill
             filters={[

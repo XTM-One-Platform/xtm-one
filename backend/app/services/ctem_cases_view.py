@@ -74,6 +74,9 @@ class ViewerView:
     #: The signal members (``signal:<id>``) this viewer may read, read fresh on
     #: every call and never cached: the signals API judges them, not a product.
     signals: set[str] = field(default_factory=set)
+    #: What each signal member of ``signals`` is (#1936): its name, path, lens and
+    #: source, read fresh with ``signals`` so a row never shows a bare id.
+    signal_details: dict[str, dict[str, Any]] = field(default_factory=dict)
     #: True when this viewer's own OpenCRQ read is available (#936): only then
     #: are the OpenCRQ asset names and scenario ids of a case's exploitation shown.
     opencrq: bool = False
@@ -209,7 +212,47 @@ async def viewer_view(db: Any, user_id: str, vertical: str, *, fresh: bool = Fal
     """
     view = await _product_view(db, user_id, vertical, fresh=fresh)
     seen = set(view.issues) | set(view.unavailable)
-    return replace(view, signals=await signal_members(db, user_id) | await source_signal_members(db, seen))
+    signals = await signal_members(db, user_id) | await source_signal_members(db, seen)
+    return replace(view, signals=signals, signal_details=await signal_details(db, signals))
+
+
+def signal_detail(signal: CtemSignal) -> dict[str, Any]:
+    """What a signal member is, as a case row names it (#1936): never its id as a label."""
+    from app.services.ctem_signals import PATH_CATALOG, provider_name
+
+    return {
+        "name": (signal.subject_label or signal.subject_ref or None),
+        "trigger_path": signal.trigger_path,
+        "trigger_path_label": PATH_CATALOG.get(signal.trigger_path, ("", ""))[0] or None,
+        "lens": signal.lens,
+        "source_provider": signal.source_provider,
+        "source_name": provider_name(signal.source_provider),
+        "subject_kind": signal.subject_kind,
+        "assets": [signal.subject_ref] if signal.subject_kind == "asset" and signal.subject_ref else [],
+        "first_seen_at": signal.first_seen_at.isoformat() if signal.first_seen_at else None,
+    }
+
+
+async def signal_details(db: Any, members: set[str]) -> dict[str, dict[str, Any]]:
+    """The details of the ``signal:<id>`` *members* a viewer may read, by member id (#1936).
+
+    Only the members already judged visible are read; an unreadable store answers
+    nothing and the row falls back to its trigger path label, never the id.
+    """
+    ids: list[uuid.UUID] = []
+    for member in members:
+        try:
+            ids.append(uuid.UUID(member.split(":", 1)[1]))
+        except (IndexError, ValueError):
+            continue
+    if not ids:
+        return {}
+    try:
+        rows = (await db.execute(select(CtemSignal).where(CtemSignal.id.in_(ids)))).scalars().all()
+    except Exception:
+        logger.info("CTEM cases: signal details unreadable", exc_info=True)
+        return {}
+    return {f"{SIGNAL_SOURCE}:{s.id}": signal_detail(s) for s in rows}
 
 
 async def source_signal_members(db: Any, seen: set[str]) -> set[str]:
@@ -301,9 +344,11 @@ def _member_id(row: CtemCaseIssue) -> str:
     return f"{row.source}:{row.external_id}"
 
 
-def _visible_issue(row: CtemCaseIssue, issue: rules.SourceIssue | None) -> dict[str, Any]:
-    if row.source == SIGNAL_SOURCE:  # the signal that opened or joined the case: its page holds the details
-        return {"source": row.source, "external_id": row.external_id, "open": row.open}
+def _visible_issue(
+    row: CtemCaseIssue, issue: rules.SourceIssue | None, signal: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    if row.source == SIGNAL_SOURCE:  # the signal that opened or joined the case: what it is, by name (#1936)
+        return {"source": row.source, "external_id": row.external_id, "open": row.open, **(signal or {})}
     if issue is None:  # seen before, its product does not answer now
         return {"source": row.source, "external_id": row.external_id, "open": row.open, "details_unavailable": True}
     return {
@@ -338,6 +383,14 @@ def _visible_issue(row: CtemCaseIssue, issue: rules.SourceIssue | None) -> dict[
             else {}
         ),
     }
+
+
+def _member_label(member: str, view: ViewerView) -> str | None:
+    signal = view.signal_details.get(member)
+    if signal is not None:
+        return signal.get("name") or None
+    issue = view.issues.get(member)
+    return (issue.cve or issue.name or None) if issue is not None else None
 
 
 def visible_members(rows: list[CtemCaseIssue], view: ViewerView) -> list[CtemCaseIssue]:
@@ -418,6 +471,9 @@ def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
     issue = row.issue
     if issue is not None and not view.sees(issue):
         issue = RESTRICTED
+    # A member the viewer sees is named, never shown by its id (#1936): a signal by its subject,
+    # a product issue by its CVE or name.
+    label = _member_label(issue, view) if issue and issue != RESTRICTED else None
     # A treatment plan's name and OpenCRQ link go to a viewer who reads OpenCRQ only (#1068).
     # A threat package's Grouping and coverage go to a viewer who reads OpenCTI only (#1115).
     hidden = (row.kind == "treatment_plan" and not view.opencrq) or (row.kind == "threat_package" and not view.opencti)
@@ -426,6 +482,7 @@ def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
         "actor": row.actor,
         "kind": row.kind,
         "issue": issue,
+        "issue_label": label,
         "from": None if hidden else row.from_value,
         "to": None if hidden else row.to_value,
         "reason": None if hidden else row.reason,
@@ -663,7 +720,9 @@ def hydrate(
     return {
         **head,
         "keys": list(case.keys or []),
-        "issues": [_visible_issue(r, view.issues.get(_member_id(r))) for r in visible]
+        "issues": [
+            _visible_issue(r, view.issues.get(_member_id(r)), view.signal_details.get(_member_id(r))) for r in visible
+        ]
         + [{"restricted": True} for _ in range(restricted)],
         # The running-versions record (#1694) is served by the case read's ``running_versions.history``.
         "history": [_event(e, view) for e in events if e.kind != VERSIONS_KIND],
