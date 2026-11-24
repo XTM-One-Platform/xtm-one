@@ -768,9 +768,18 @@ the Settings form carries it whole.
   border, exactly as on an entity page (Sam, 22 Nov 2026: no CTEM-only back
   link inside the band), the fix as title, badges on the breadcrumb line
   (state Chip, priority Chip, owner Avatar, due date), actions
-  in the platform order: More (`IconButton` + `Menu`: Split, Merge, Open in
-  Act now, A6), Accept risk, Assign, then the next state as the filled
-  primary ("Start", "Resolve", "Reopen").
+  in the platform order: Accept risk (while the state takes it), the next
+  state as the filled primary ("Start", "Resolve", "Reopen"), then the
+  "More actions" kebab (`EntityHeaderMoreActions` `menuOnly`, every width)
+  with every other case action (#1751): Assign owner, Set due date, the other
+  valid transitions (Resolve before remediation, Start), and Merge into another
+  case (a searchable picker of the other open cases, `POST /ctem-cases/merge`,
+  then the page of the case merged into). An action the state refuses stays
+  listed, disabled with its reason ("Accepted risk: reopen first"). One action
+  set for the bulk bar and the page: `ctem/case-actions.ts` (scope `both`,
+  `bulk` or `single`), the dialogs in `useCaseActionDialogs`
+  (`ctem/CasesBulkActions.tsx`); `case-actions.test.ts` fails when the two
+  drift apart. Split stays in the Issues table selection.
 - Summary: the shared `StatCard` row (issues, KEV, max CVSS, max EPSS, assets,
   crown jewels, first seen), wrapping to two rows at 1080; each value's
   tooltip names its source and read time.
