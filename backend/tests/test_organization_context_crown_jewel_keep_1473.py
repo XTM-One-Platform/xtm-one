@@ -28,7 +28,8 @@ def _typed(name: str, criticality: str) -> dict[str, Any]:
 
 
 def _assets(levels: dict[str, str]) -> list[dict[str, Any]]:
-    return [{"id": f"a-{name}", "name": name, "criticality": level} for name, level in levels.items()]
+    # OpenCRQ primary assets rated by one security need (#1591): the highest need is the criticality.
+    return [{"id": f"a-{name}", "name": name, "availability": level} for name, level in levels.items()]
 
 
 def _sync_read(assets: list[dict[str, Any]], min_level: str = "high") -> imp.ReadResult:
@@ -60,16 +61,15 @@ def test_three_typed_jewels_survive_the_reconcile_then_the_sync() -> None:
     # Saved then read back, as the next request does.
     saved = oc.parse_profile(reconcile.profile.model_dump(mode="json"))
     assert {j.source for j in saved.crown_jewels} == {"manual"}
-    # OpenCRQ now holds the pushed criticalities; the sync reads only >= high.
-    pushed = {name: level for _id, name, level in reconcile.pushed}
-    after_push = _assets({"Core": pushed.get("Core", "high"), "Billing": pushed["Billing"], "Wiki": pushed["Wiki"]})
-    plan = imp.plan_import(saved, "crown_jewels", "opencrq", _sync_read(after_push), remove_gone=True, sync_id=_SYNC)
+    # #1591: nothing is pushed to OpenCRQ; the sync reads the same primary assets (>= high).
+    assert reconcile.pushed == []
+    plan = imp.plan_import(saved, "crown_jewels", "opencrq", _sync_read(assets), remove_gone=True, sync_id=_SYNC)
     assert plan.profile is not None
     jewels = {j.name: j for j in plan.profile.crown_jewels}
     assert sorted(jewels) == ["Billing", "Core", "Wiki"]
     for name in ("Core", "Billing", "Wiki"):
         assert (jewels[name].owner, jewels[name].business_service) == (f"{name} owner", f"{name} svc")
-    assert plan.skipped == ["Core"]
+        assert jewels[name].source == "manual"
 
 
 def test_a_row_already_converted_by_an_older_build_is_kept_by_the_sync() -> None:
@@ -96,30 +96,16 @@ def test_a_sync_still_removes_the_rows_it_wrote() -> None:
     assert plan.profile is not None and plan.profile.crown_jewels == []
 
 
-def test_a_synced_jewel_pushed_below_the_threshold_becomes_a_linked_typed_row() -> None:
+def test_the_reconcile_never_releases_a_synced_row() -> None:
+    # #1591: no criticality is pushed, so no synced row falls below the sync's threshold by the reconcile.
     synced = oc.CrownJewel(
         name="Billing", criticality="medium", source="opencrq", external_id="a-Billing", sync_id=_SYNC, owner="CFO"
     )
     plan = plan_sync(oc.OrganizationProfile(crown_jewels=[synced]), _assets({"Billing": "high"}))
-    assert plan.released == [("Billing", "a-Billing")]
-    jewel = oc.parse_profile(plan.profile.model_dump(mode="json")).crown_jewels[0]
-    assert (jewel.source, jewel.external_id, jewel.opencrq_asset_id, jewel.owner) == ("manual", "", "a-Billing", "CFO")
-    assert plan.summary()["kept_below_sync_threshold"] == [{"crown_jewel": "Billing", "opencrq_asset_id": "a-Billing"}]
-    sync = imp.plan_import(
-        plan.profile,
-        "crown_jewels",
-        "opencrq",
-        _sync_read(_assets({"Billing": "medium"})),
-        remove_gone=True,
-        sync_id=_SYNC,
-    )
-    assert sync.profile is not None and [j.name for j in sync.profile.crown_jewels] == ["Billing"]
-
-
-def test_a_synced_jewel_pushed_at_or_above_the_threshold_stays_synced() -> None:
-    synced = oc.CrownJewel(name="Core", criticality="critical", source="opencrq", external_id="a-Core", sync_id=_SYNC)
-    plan = plan_sync(oc.OrganizationProfile(crown_jewels=[synced]), _assets({"Core": "high"}))
-    assert plan.released == [] and plan.profile.crown_jewels[0].source == "opencrq"
+    assert plan.released == [] and plan.pushed == []
+    jewel = plan.profile.crown_jewels[0]
+    assert (jewel.source, jewel.external_id, jewel.owner) == ("opencrq", "a-Billing", "CFO")
+    assert plan.summary()["kept_below_sync_threshold"] == []
 
 
 def test_removed_rows_names_what_a_save_dropped() -> None:

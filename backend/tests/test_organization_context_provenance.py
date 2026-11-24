@@ -19,7 +19,8 @@ from app.services import organization_context_sync as osync
 
 
 def _jewel(asset_id: str, name: str, level: str = "high") -> oc.CrownJewel:
-    jewel = imp.opencrq_jewel({"id": asset_id, "name": name, "criticality": level}, "low")
+    # An OpenCRQ primary asset rated by its integrity need (#1591).
+    jewel = imp.opencrq_primary_asset({"id": asset_id, "name": name, "integrity": level}, "low")
     assert jewel is not None
     return jewel
 

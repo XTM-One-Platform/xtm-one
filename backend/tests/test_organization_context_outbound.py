@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -14,7 +15,7 @@ from app.services import organization_context_import as imp
 from app.services import organization_context_outbound as outbound
 from app.services import organization_context_sync as osync
 
-OK = {"frequency": "daily", "hour": 6, "minute": 0, "weekday": 0, "timezone": "UTC"}
+OK: dict[str, Any] = {"frequency": "daily", "hour": 6, "minute": 0, "weekday": 0, "timezone": "UTC"}
 
 
 def _profile(*jewels: dict) -> oc.OrganizationProfile:
@@ -27,11 +28,15 @@ def test_every_import_pairing_names_its_directions_and_inbound_is_always_offered
             supported, reason = outbound.directions(section, source)
             assert outbound.INBOUND in supported
             assert (outbound.OUTBOUND in supported) == (reason == ""), (section, source)
-    assert outbound.supports("crown_jewels", "opencrq", outbound.OUTBOUND)
+    # #1591: OpenCRQ primary assets are read only; the old push wrote them as supporting assets.
+    assert not outbound.supports("crown_jewels", "opencrq", outbound.OUTBOUND)
+    assert "primary assets" in outbound.directions("crown_jewels", "opencrq")[1]
 
 
 def test_validate_refuses_outbound_where_the_platform_cannot_be_written():
-    osync.validate(section="crown_jewels", source="opencrq", direction="outbound", **OK)
+    osync.validate(section="crown_jewels", source="opencrq", direction="inbound", **OK)
+    with pytest.raises(osync.SyncRefusedError, match="cannot be outbound"):
+        osync.validate(section="crown_jewels", source="opencrq", direction="outbound", **OK)
     with pytest.raises(osync.SyncRefusedError, match="cannot be outbound"):
         osync.validate(section="assets", source="opencti", direction="outbound", **OK)
     with pytest.raises(osync.SyncRefusedError, match="cannot be outbound"):
@@ -41,18 +46,20 @@ def test_validate_refuses_outbound_where_the_platform_cannot_be_written():
 
 
 def test_define_keeps_the_stored_direction_when_omitted_and_a_new_direction_forgets_the_created_rows():
+    inbound = SimpleNamespace(direction="inbound", outbound_ids={})
+    # A save that omits the direction (a PUT from an older client) keeps the stored one.
+    osync.define(inbound, owner_id=uuid.uuid4(), section="crown_jewels", source="opencrq")
+    assert inbound.direction == "inbound" and inbound.outbound_ids == {}
+    # #1591: a stored outbound OpenCRQ sync is refused until saved inbound, which forgets the created rows.
     sync = SimpleNamespace(direction="outbound", outbound_ids={"crm": "a1"})
-    # A save that omits the direction (a PUT from an older client) keeps outbound and its created rows.
-    osync.define(sync, owner_id=uuid.uuid4(), section="crown_jewels", source="opencrq")
-    assert sync.direction == "outbound" and sync.outbound_ids == {"crm": "a1"}
+    with pytest.raises(osync.SyncRefusedError, match="cannot be outbound"):
+        osync.define(sync, owner_id=uuid.uuid4(), section="crown_jewels", source="opencrq")
+    assert sync.outbound_ids == {"crm": "a1"}
     osync.define(sync, owner_id=uuid.uuid4(), section="crown_jewels", source="opencrq", direction="inbound")
     assert sync.direction == "inbound" and sync.outbound_ids == {}
     new = SimpleNamespace()
     osync.define(new, owner_id=uuid.uuid4(), section="crown_jewels", source="opencrq")
     assert new.direction == "inbound" and new.outbound_ids == {}
-    fresh = SimpleNamespace()
-    osync.define(fresh, owner_id=uuid.uuid4(), section="crown_jewels", source="opencrq", direction="outbound")
-    assert fresh.direction == "outbound" and fresh.outbound_ids == {}
 
 
 def test_plan_creates_updates_and_deletes_only_what_the_sync_created():
