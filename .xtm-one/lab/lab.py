@@ -6058,7 +6058,11 @@ def seed_ctem_screens(token: str, base: str) -> dict[str, dict[str, str]]:
     ``lab_asgi`` answers the Cases source read with ``ctem_sample.SCREENS_ISSUES``; this runs the real recompute
     (``POST /ctem-cases/recompute``), which groups them and writes the cases, then reads the list back. A restart
     recomputes into the same cases (stable keys); a 429 (one recompute per minute) keeps the cases already there.
+
+    Since #1529 the recompute opens a case only through the scope gate, so the scope comes first
+    (:func:`seed_ctem_screens_scope`): without it every issue is a watchlisted signal and the list is empty.
     """
+    seed_ctem_screens_scope(token)
     try:
         answer = api("POST", "/ctem-cases/recompute?vertical=cyber", token)
     except RuntimeError as exc:
@@ -6080,6 +6084,35 @@ def seed_ctem_screens(token: str, base: str) -> dict[str, dict[str, str]]:
         f"CTEM cases ({len(cases)})": {"id": ",".join(c["id"] for c in cases), "url": f"{base}/ctem/cases"},
         "CTEM stages scored and funnel": {"id": ",".join(scored), "url": f"{base}/ctem/prioritization"},
     }
+
+
+def seed_ctem_screens_scope(token: str) -> None:
+    """Declare the scope the screens issues land in (#1529): tech stack products and the assets running them.
+
+    Adds ``ctem_sample.SCREENS_TECH_STACK`` to the saved profile (the products already there are kept) and
+    writes ``ctem_sample.SCREENS_ASSETS`` through the asset records (``source`` ``lab``, stable external ids,
+    so a restart updates nothing). Read back: the gate resolves each issue to a ``very_high`` asset and opens
+    its case. ``LAB_ORG_CONTEXT=missing`` declares nothing: that lab renders the screens with no profile. May raise.
+    """
+    if lab_switch("LAB_ORG_CONTEXT", LAB_ORG_CONTEXT_STATES) == "missing":
+        return
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import ctem_sample  # beside this file, standard library only
+
+    current = api("GET", "/organization-context", token)
+    profile = dict(current.get("profile") or {}) if isinstance(current, dict) else {}
+    stack = list(profile.get("tech_stack") or [])
+    have = {str(entry.get("product", "")).lower() for entry in stack}
+    missing = [dict(entry) for entry in ctem_sample.SCREENS_TECH_STACK if entry["product"].lower() not in have]
+    if missing or not profile.get("name"):
+        profile = {**LAB_ORG_PROFILE, **profile, "tech_stack": stack + missing}
+        body = {"profile": profile, "source": "form"}
+        if isinstance(current, dict) and current.get("version") is not None:
+            body["based_on_version"] = current["version"]
+        api("PUT", "/organization-context", token, body)
+    api("POST", "/organization-context/assets/records/batch", token, {
+        "rows": [dict(row) for row in ctem_sample.SCREENS_ASSETS],
+    })
 
 
 def seed_video_ready_render(token: str, base: str) -> dict[str, dict[str, str]]:
