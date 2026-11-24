@@ -5,7 +5,7 @@
 An ``integration_event`` assignment on OpenCTI may declare, in its
 ``trigger_config``, ``"runs_in_profile": "source"``: a delivery of a
 relationship (``has`` from a Software, Infrastructure or System to a
-Vulnerability) then starts a run only when its source names a tech stack
+Vulnerability) then starts a run only when its source names a software
 product or an asset of the primary organization profile. The receiver reads
 the rule after the signature check and before the trigger's filter, gate or
 run: a relationship on software the organization does not run costs no model
@@ -95,7 +95,7 @@ def drop_reason(profile: Any, payload: object) -> str | None:
     if profile is None:
         return "runs_in_profile: the organization profile is not saved yet"
     if not runs_in_profile(profile, name):
-        return f"runs_in_profile: {name[:120]} is not in the tech stack or the assets"
+        return f"runs_in_profile: {name[:120]} is not in the software inventory or the assets"
     return None
 
 

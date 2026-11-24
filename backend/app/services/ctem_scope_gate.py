@@ -10,7 +10,7 @@ those inputs and writes the decision on the signal. The design, the
 severity formula and the decision record are ``dev-docs/ctem-scope-gate.md``.
 
 1. **Reconcile** ("does the signal survive the cross-check?"): the subject
-   is resolved to profile assets, asset groups, crown jewels or tech stack
+   is resolved to profile assets, asset groups, crown jewels or software
    products on stable keys (hostname, IP, URL host, cloud id, external id);
    the lenses that saw the same subject are counted. A verdict that
    contradicts it (``not_exposed``, ``not_affected``, ``false_positive``,
@@ -262,7 +262,7 @@ def host_owned_domain(profile: OrganizationProfile, ref: str) -> str:
 
 
 def _product_matches(product: str, ref: str) -> bool:
-    """A tech stack product named in a software reference (a name, or a CPE's product part)."""
+    """A software product named in a software reference (a name, or a CPE's product part)."""
     p, r = product.strip().lower(), ref.strip().lower()
     if not p or not r:
         return False
@@ -315,7 +315,7 @@ def shipped_match(entry: ShippedProduct, ref: str) -> str:
 
 
 def runs_in_profile(profile: OrganizationProfile, name: str) -> list[str]:
-    """The tech stack products and assets of *profile* a software or asset *name* names (CTEM-08).
+    """The software products and assets of *profile* a software or asset *name* names (CTEM-08).
 
     *name* is the source of an OpenCTI ``has`` relationship (a Software name
     or CPE, an Infrastructure or System name). Empty: the organization does
@@ -570,7 +570,7 @@ def decide(
             )
         return done(
             "to_validate",
-            "subject not resolved to an asset, a crown jewel, the tech stack or a shipped product",
+            "subject not resolved to an asset, a crown jewel, the software inventory or a shipped product",
             code="subject_unresolved",
         )
 

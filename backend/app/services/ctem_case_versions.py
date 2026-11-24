@@ -4,7 +4,7 @@
 
 The running version of an upgrade case comes from the asset inventory (the
 canonical asset store of #1178, ``organization_asset_software``), never from a
-version typed in the tech stack. An operating system case (``Microsoft Windows``)
+version typed in the software inventory. An operating system case (``Microsoft Windows``)
 also reads the assets' ``os_family`` and ``os_version`` fields, where Intune,
 Defender and OpenAEV put the OS (#1430). This module answers, for one case:
 
@@ -509,7 +509,7 @@ async def assets_for_case(db: AsyncSession, case: Any, issues: Iterable[Mapping[
     asset, the versions of its product the inventory reports (``versions``,
     ``sources``, ``status`` against the fixed version) and ``version_source``
     ``inventory``; any other case, or an inventory that cannot be read, answers
-    ``version_source`` ``none``, never a version typed in the tech stack.
+    ``version_source`` ``none``, never a version typed in the software inventory.
     """
     answer = affected_assets(issues)
     answer["version_source"] = "none"

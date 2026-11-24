@@ -1223,7 +1223,7 @@ describe("OrganizationSection", () => {
     expect(panel.textContent).not.toContain("tenant id");
     // The drafted PIR shows by its OpenCTI name in the picker (UX B1).
     expect(await screen.findByText("Ransomware on energy")).toBeTruthy();
-    // The draft opened the first tab it filled, marked (#12329); the drafted tech stack is named in the panel and
+    // The draft opened the first tab it filled, marked (#12329); the drafted software inventory is named in the panel and
     // saved with the profile, its card living on CTEM > Inventory (#1178).
     expect(screen.getByTestId("settings.organization.tab-identity.drafted")).toBeTruthy();
     expect(put).not.toHaveBeenCalled();

@@ -195,7 +195,7 @@ def _opencti_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any]
         evidence["cpe"] = cpes
     if kind.startswith("relationship:"):
         # CTEM-08: the software or asset the relationship starts from, so the scope
-        # gate resolves the signal to the tech stack product it names.
+        # gate resolves the signal to the software product it names.
         from app.services.ctem_trigger_rules import source_name
 
         source = source_name(payload)

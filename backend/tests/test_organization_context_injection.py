@@ -161,7 +161,7 @@ def test_the_basic_block_cap_holds_whatever_the_list_lengths() -> None:
     assert len(text) <= inj.SUMMARY_MAX_CHARS
     # About 500 tokens: 4 characters a token is the bound the cap encodes.
     assert inj.SUMMARY_MAX_CHARS // 4 <= 500
-    assert "Product 499" not in text, "the tech stack stays behind the tool"
+    assert "Product 499" not in text, "the software stays behind the tool"
     assert "): 500 rows" in text
     assert not text.endswith("..."), "never cut: the block does not grow with a list"
     assert len(text) - len(small) < 400, "only the counts and the name grew"

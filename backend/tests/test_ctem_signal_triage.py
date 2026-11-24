@@ -247,7 +247,7 @@ def test_add_to_inventory_writes_one_row_per_subject_and_nothing_already_there()
         _subject("asset", "langfuse.one.example.com"),  # the same host twice: one row
         _subject("asset", "vpn.corp.example"),  # already an asset
         _subject("software", "cpe:2.3:a:grafana:grafana", label="Grafana"),
-        _subject("software", "jira"),  # already in the tech stack
+        _subject("software", "jira"),  # already in the software inventory
         _subject("identity", "ana@partner.example"),
         _subject("identity", "bob@corp.example"),  # already owned
         _subject("vulnerability", "CVE-2026-1"),  # never an inventory row

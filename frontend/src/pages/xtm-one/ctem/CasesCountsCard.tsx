@@ -8,7 +8,7 @@
  * each a link to the filtered Cases list. The counts are the list's own
  * (`GET /ctem-cases`, computed on the cases the caller sees, #11613), so the
  * row never counts a case the list would hide. No case and nothing to build
- * them from (no tech stack, no OpenAEV): one dismissible setup row.
+ * them from (no software inventory, no OpenAEV): one dismissible setup row.
  *
  * Cases in motion (#1621): each segment of the bar says its count and share on
  * hover, and the row ends with "Waiting for a decision: N, oldest X", a link
@@ -52,7 +52,7 @@ const SEGMENT_FILL: Record<CtemCaseState, string> = {
 const LINK = cn("content-compact font-medium text-accent hover:underline", BUTTON_ROLE_FOCUS_RING);
 
 export interface CasesCountsCardProps {
-  /** Whether cases can be built at all: a tech stack or OpenAEV connected. */
+  /** Whether cases can be built at all: a software inventory or OpenAEV connected. */
   configured: boolean;
   /** Open the OpenAEV connect dialog of the page. */
   onConnectOpenAev: () => void;

@@ -23,7 +23,7 @@ persists its answer in ``models/organization_asset.py`` and answers the reads:
   row write of ``organization_asset_records`` refreshes its own identity
   clusters, so this is one indexed probe after the first build).
 - The software the assets run is read as Software entities by
-  ``organization_software_store`` (#1495); the tech stack read it replaced is gone.
+  ``organization_software_store`` (#1495); the software read it replaced is gone.
 
 Since #1543 the asset records are the source of the rows; the store is their canonical view.
 """

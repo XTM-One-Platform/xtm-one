@@ -1,4 +1,4 @@
-"""The known-exploited count tailored to the organization profile's tech stack
+"""The known-exploited count tailored to the organization profile's software
 (#11213, slice 2): the Act now KEV row counts only the KEV vulnerabilities that
 affect software the organization runs, and names the products it matched.
 
@@ -127,7 +127,7 @@ async def test_build_posture_without_a_tech_stack_runs_no_tailoring(monkeypatch)
     _wire(monkeypatch, [])
 
     async def never(*args, **kwargs):  # pragma: no cover - must not run
-        raise AssertionError("no tech stack: no tailoring query")
+        raise AssertionError("no software: no tailoring query")
 
     monkeypatch.setattr(collector, "_octi_kev_tailored", never)
 
