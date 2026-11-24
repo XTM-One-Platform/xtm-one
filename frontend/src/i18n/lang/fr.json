@@ -20628,6 +20628,7 @@
   "Left for later: Members screen": "Laissé pour plus tard : écran Membres",
   "Complete on the Members screen": "Compléter dans l'écran Membres",
   "Run estimate": "Estimation des exécutions",
+  "Expected load": "Charge attendue",
   "I will do it later": "Je le ferai plus tard",
   "Autonomy": "Autonomie",
   "Run as and automations": "Exécuter en tant que et automatisations",
@@ -21433,12 +21434,12 @@
   "About this asset group": "À propos de ce groupe d'actifs",
   "{count, plural, one {# more member its source names is not in the inventory yet} other {# more members its source names are not in the inventory yet}}": "{count, plural, one {# autre membre nommé par sa source n'est pas encore dans l'inventaire} other {# autres membres nommés par sa source ne sont pas encore dans l'inventaire}}",
   "No asset of the inventory is in this group yet.": "Aucun actif de l'inventaire n'est encore dans ce groupe.",
-  "Fix not known for this platform": "Correctif inconnu pour cette plateforme",
-  "{count, plural, =0 {No asset is below the fixed version of its platform} one {# asset still below the fixed version of its platform} other {# assets still below the fixed version of their platform}}": "{count, plural, =0 {Aucun actif sous la version corrective de sa plateforme} one {# actif encore sous la version corrective de sa plateforme} other {# actifs encore sous la version corrective de leur plateforme}}",
-  "{count, plural, =0 {No asset runs the fixed version of its platform yet} one {# asset runs the fixed version of its platform or later} other {# assets run the fixed version of their platform or later}}": "{count, plural, =0 {Aucun actif n'exécute encore la version corrective de sa plateforme} one {# actif exécute la version corrective de sa plateforme ou une version ultérieure} other {# actifs exécutent la version corrective de leur plateforme ou une version ultérieure}}",
-  "Fixed version per platform: {list}": "Version corrective par plateforme : {list}",
-  "{version} names no platform while the assets run several: an asset not below it is not read as fixed.": "{version} ne nomme aucune plateforme alors que les actifs en exécutent plusieurs : un actif qui n'est pas en dessous n'est pas considéré comme corrigé.",
-  "{count, plural, one {# asset is on a platform with no known fix} other {# assets are on a platform with no known fix}}": "{count, plural, one {# actif est sur une plateforme sans correctif connu} other {# actifs sont sur une plateforme sans correctif connu}}",
-  "{count, plural, one {# asset runs several versions and is counted in each of its rows} other {# assets run several versions and are counted in each of their rows}}": "{count, plural, one {# actif exécute plusieurs versions et compte dans chacune de ses lignes} other {# actifs exécutent plusieurs versions et comptent dans chacune de leurs lignes}}",
-  "Not known": "Inconnue"
+  "{count, plural, =0 {No scheduled run a day.} one {About # scheduled run a day.} other {About # scheduled runs a day.}}": "{count, plural, =0 {Aucune exécution planifiée par jour.} one {Environ # exécution planifiée par jour.} other {Environ # exécutions planifiées par jour.}}",
+  "{count, plural, one {About # scheduled run a month.} other {About # scheduled runs a month.}}": "{count, plural, one {Environ # exécution planifiée par mois.} other {Environ # exécutions planifiées par mois.}}",
+  "{count, plural, one {About # scheduled run a year.} other {About # scheduled runs a year.}}": "{count, plural, one {Environ # exécution planifiée par an.} other {Environ # exécutions planifiées par an.}}",
+  "{count, plural, one {# automation runs once per event, as often as its events arrive.} other {# automations run once per event, as often as their events arrive.}}": "{count, plural, one {# automatisation s’exécute une fois par événement, aussi souvent que ses événements arrivent.} other {# automatisations s’exécutent une fois par événement, aussi souvent que leurs événements arrivent.}}",
+  "No cost yet: these automations have not run in the last {days, plural, one {# day} other {# days}}.": "Pas encore de coût : ces automatisations ne se sont pas exécutées {days, plural, one {le dernier # jour} other {ces # derniers jours}}.",
+  "About {cost} a day for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "Environ {cost} par jour pour les exécutions planifiées, d’après le coût moyen de leurs exécutions {days, plural, one {du dernier # jour} other {des # derniers jours}}.",
+  "About {cost} a month for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "Environ {cost} par mois pour les exécutions planifiées, d’après le coût moyen de leurs exécutions {days, plural, one {du dernier # jour} other {des # derniers jours}}.",
+  "About {cost} a year for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "Environ {cost} par an pour les exécutions planifiées, d’après le coût moyen de leurs exécutions {days, plural, one {du dernier # jour} other {des # derniers jours}}."
 }
