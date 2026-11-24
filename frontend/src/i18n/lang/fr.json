@@ -21556,5 +21556,14 @@
   "OpenCRQ sync failed {timeAgo}": "Échec de la synchronisation OpenCRQ {timeAgo}",
   "Link supporting assets to primary assets": "Lier les actifs supports aux actifs primaires",
   "On by default. Off: primary assets are imported without their supporting assets.": "Activé par défaut. Désactivé : les actifs primaires sont importés sans leurs actifs supports.",
-  "Links each primary asset to the supporting assets OpenCRQ attaches to it, matched by OpenCRQ id or name. A link you add or remove by hand always wins.": "Lie chaque actif primaire aux actifs supports qu'OpenCRQ lui rattache, reconnus par leur identifiant OpenCRQ ou leur nom. Un lien ajouté ou retiré à la main l'emporte toujours."
+  "Links each primary asset to the supporting assets OpenCRQ attaches to it, matched by OpenCRQ id or name. A link you add or remove by hand always wins.": "Lie chaque actif primaire aux actifs supports qu'OpenCRQ lui rattache, reconnus par leur identifiant OpenCRQ ou leur nom. Un lien ajouté ou retiré à la main l'emporte toujours.",
+  "Asset deleted": "Actif supprimé",
+  "Asset group deleted": "Groupe d'actifs supprimé",
+  "Software deleted": "Logiciel supprimé",
+  "Delete the asset \"{name}\"?": "Supprimer l'actif « {name} » ?",
+  "Delete the asset group \"{name}\"?": "Supprimer le groupe d'actifs « {name} » ?",
+  "Delete the software \"{name}\"?": "Supprimer le logiciel « {name} » ?",
+  "This asset was entered by hand: it leaves the inventory and its asset groups.": "Cet actif a été saisi à la main : il quitte l'inventaire et ses groupes d'actifs.",
+  "This asset group was entered by hand: it is deleted and its assets stay in the inventory without it.": "Ce groupe d'actifs a été saisi à la main : il est supprimé et ses actifs restent dans l'inventaire sans lui.",
+  "This software was typed by hand: it is deleted and leaves the assets it was attached to.": "Ce logiciel a été saisi à la main : il est supprimé et quitte les actifs auxquels il était rattaché."
 }
