@@ -688,6 +688,24 @@ class FleetEnableItemResponse(BaseModel):
     missing: list[str]
     #: Part of this call (every automation when the request named none).
     selected: bool = True
+    #: Runs a day its schedule starts (0 for a trigger that is not a schedule, #1538).
+    runs_per_day: float = 0.0
+    #: It runs once per event: its daily count is not known ahead.
+    event_driven: bool = False
+
+
+class FleetEnableEstimateResponse(BaseModel):
+    """The expected load of the automations picked (#1538): an order of magnitude, not a quote."""
+
+    #: Runs a day the picked schedules start (their cron over 30 days, divided by 30).
+    scheduled_runs_per_day: float
+    #: Picked automations that run once per event: their rate depends on the events.
+    event_automations: int
+    #: Mean cost of one run of the picked automations over ``cost_days``; None when none ran.
+    avg_cost_per_run: float | None = None
+    #: ``avg_cost_per_run`` times ``scheduled_runs_per_day``; None without a cost history.
+    cost_per_day: float | None = None
+    cost_days: int
 
 
 class FleetEnableResponse(BaseModel):
@@ -705,6 +723,8 @@ class FleetEnableResponse(BaseModel):
     items: list[FleetEnableItemResponse]
     #: The fleet's automations after the call.
     automations: FleetAutomationsResponse
+    #: On a dry run, the expected runs a day and cost of the picked automations (#1538); None otherwise.
+    estimate: FleetEnableEstimateResponse | None = None
 
 
 FleetBulkActionName = Literal["pause", "resume", "set_autonomy"]
