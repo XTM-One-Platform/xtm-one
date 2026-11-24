@@ -95,11 +95,11 @@ Groups have two uses:
 - **Sharing.** A resource shared with a group is shared with its current members. Adding someone to the group gives them access; removing them takes it away.
 - **Settings for a team.** A group can carry quotas and an AI switch, and can be reserved an LLM provider or kept off one (see [Reserving a provider for teams](settings.md#reserving-a-provider-for-teams) and [Keeping people off a provider](settings.md#keeping-people-off-a-provider)).
 
-With SAML, groups can also be created and filled from the identity provider at every sign-in (see [Group mapping](../deployment/authentication.md#group-mapping)).
+With SAML, groups can also be created and filled from the identity provider at every sign-in (see [Group mapping](../deployment/authentication.md#group-mapping)). A group with [Auto join](#auto-join) on takes in everyone who signs in through single sign-on.
 
 A group's page has four tabs:
 
-- `Overview`: its name, description and `Kind`, with the `AI access` card. The kind (`Org unit`, `Access list`, `Distribution list`, or `Not classified`) tells LLM Analytics which groups are org units.
+- `Overview`: its name, description and `Kind`, with the `AI access` and `Auto join` cards. The kind (`Org unit`, `Access list`, `Distribution list`, or `Not classified`) tells LLM Analytics which groups are org units.
 - `Members`: add members with `Add Member`, remove them, and search or filter by role. From a user's page, the `Groups` tab does the same with `Add to Group`.
 - `Managers`: the people who follow the AI usage of the group's members. See [Group managers](#group-managers).
 - `Quotas`: the limit each member gets. A user's own quota wins over the group's; with no group limit, members inherit the platform default.
@@ -123,6 +123,17 @@ For a member, as long as the group has it off:
 A person in several groups is cut off as soon as one of them has AI off. An administrator is held to it like everyone else: nothing an administrator needs to undo it (the groups page, the settings) uses a model. Everything that does not need a model keeps working, the same list as [Running without AI](running-without-ai.md#what-keeps-working).
 
 Members read the change within seconds; a replica that did not serve it follows within five. Switching it on or off is recorded in the audit log, with the previous value. The platform-wide switch wins: with AI off for the platform, a group's setting changes nothing.
+
+## Auto join
+
+The `Auto join` card's `Single sign-on users join this group` switch (default: off) adds everyone who signs in through single sign-on, OIDC or SAML, to the group at every sign-in: an account created at its first sign-in, an account an administrator created for a single sign-on user, and an existing account alike. The `Groups` list marks such a group with an `Auto join` badge. It is the way to give every single sign-on user a group's shares, quotas, AI access or provider reservation without adding each one by hand.
+
+- **Once per person.** Someone already in the group, however they joined, is left as is. Each membership it adds is recorded in the audit log, with the sign-in as the actor.
+- **Only single sign-on.** Local accounts, accounts provisioned through SCIM and accounts created through the API join only when they sign in through single sign-on.
+- **With SAML group mapping.** The mapping manages only the memberships it created, so it never removes one that auto join added, even when the assertion does not name the group.
+- **Removing someone.** An administrator can remove a member from the `Members` tab; while the switch stays on, the next single sign-on adds them again.
+
+Switching it on adds nobody at once: each person joins at their next single sign-on. Switching it off removes nobody. Both are recorded in the audit log with the previous value.
 
 ## Terms of Use
 

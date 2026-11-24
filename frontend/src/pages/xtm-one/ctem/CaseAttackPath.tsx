@@ -15,6 +15,7 @@ import type { CtemCaseAttackPath } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { safeExternalUrl } from "@/lib/utils";
 import { CaseSectionReason } from "./CaseSectionReason";
+import { CaseFoldToggle, useCaseFold } from "./case-fold";
 
 /** The exposure words, translated where drawn. @i18n-keys */
 const EXPOSURE_LABEL = {
@@ -78,6 +79,8 @@ const RESTRICTED = "Restricted";
 export function CaseAttackPath({ reading }: { reading: CtemCaseAttackPath | null | undefined }) {
   const { t_i18n } = useFormatter();
   const name = (asset: string) => (asset === RESTRICTED ? t_i18n("Restricted asset") : asset);
+  // Up to 40 hops per reading (ATTACK_PATH_MAX in ctem_case_loop): folded past five, nearest kept (#1679, point 5).
+  const hops = useCaseFold(reading?.hops ?? []);
 
   return (
     <Card data-testid="ctem-case-attack-path">
@@ -109,28 +112,31 @@ export function CaseAttackPath({ reading }: { reading: CtemCaseAttackPath | null
                 {t_i18n("No attack path leaves this asset in the latest simulations.")}
               </span>
             ) : (
-              <ol className="flex flex-col gap-1" aria-label={t_i18n("Hops, nearest first")}>
-                {reading.hops.map((h, i) => (
-                  <li key={`${h.from}-${h.to}-${i}`} className="flex min-w-0 flex-wrap items-center gap-x-2" data-testid="ctem-case-attack-path-hop">
-                    <span className="min-w-0 truncate" title={name(h.from)}>
-                      {name(h.from)}
-                    </span>
-                    <span aria-hidden="true" className="text-default-secondary">
-                      →
-                    </span>
-                    <span className="min-w-0 truncate font-medium" title={name(h.to)}>
-                      {name(h.to)}
-                    </span>
-                    <Chip
-                      label={t_i18n(NATURE_LABEL[h.nature] ?? NATURE_LABEL.inferred)}
-                      severity={NATURE_TONE[h.nature] ?? NATURE_TONE.inferred}
-                      className="shrink-0"
-                      data-testid="ctem-case-attack-path-nature"
-                    />
-                    <ProvenBy hop={h} />
-                  </li>
-                ))}
-              </ol>
+              <div className="flex flex-col gap-1">
+                <ol className="flex flex-col gap-1" aria-label={t_i18n("Hops, nearest first")} id="ctem-case-attack-path-hops">
+                  {hops.visible.map((h, i) => (
+                    <li key={`${h.from}-${h.to}-${i}`} className="flex min-w-0 flex-wrap items-center gap-x-2" data-testid="ctem-case-attack-path-hop">
+                      <span className="min-w-0 truncate" title={name(h.from)}>
+                        {name(h.from)}
+                      </span>
+                      <span aria-hidden="true" className="text-default-secondary">
+                        →
+                      </span>
+                      <span className="min-w-0 truncate font-medium" title={name(h.to)}>
+                        {name(h.to)}
+                      </span>
+                      <Chip
+                        label={t_i18n(NATURE_LABEL[h.nature] ?? NATURE_LABEL.inferred)}
+                        severity={NATURE_TONE[h.nature] ?? NATURE_TONE.inferred}
+                        className="shrink-0"
+                        data-testid="ctem-case-attack-path-nature"
+                      />
+                      <ProvenBy hop={h} />
+                    </li>
+                  ))}
+                </ol>
+                <CaseFoldToggle fold={hops} controls="ctem-case-attack-path-hops" testId="ctem-case-attack-path-more" />
+              </div>
             )}
             <div className="flex min-w-0 flex-col gap-1">
               <span className="text-default-secondary">{t_i18n("Primary assets reached")}</span>

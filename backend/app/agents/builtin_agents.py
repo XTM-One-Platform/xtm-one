@@ -2904,6 +2904,13 @@ BUILTIN_ASSIGNMENTS.extend(CTEM_F2_ASSIGNMENTS)
 # ``owner_fleet`` on the payload) and each case automation filters on it, so
 # exactly one fleet hears a case event.
 CTEM_CASE_ASSIGNMENT_NAME = "Case opened or reopened"
+#: Events of different cases run side by side, up to this many at once (#1923): the seeded
+#: event default (``assignment_dispatch.SEEDED_EVENT_CONCURRENCY``, one run) made the loop
+#: run of one case wait behind another case's, as #1649 found for "Gate answered".
+CTEM_CASE_LISTENER_CONCURRENCY = 5
+#: The payload path the case events are ordered by: two events of one case run one at a
+#: time, in arrival order; events of other cases run beside them.
+CTEM_CASE_ORDERING_KEY = "case_id"
 CTEM_LOOP_CASE_FLEET = "ctem-loop"
 CTEM_VULN_CASE_FLEET = "ctem-vuln-prioritization"
 #: The fleets that run cases: fleet slug -> the orchestrator holding the case
@@ -2977,6 +2984,10 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: di
             "event": list(_CASE_EVENT_NAMES),
             "filter": {"owner_fleet": owner_filter},
             "scope": "all",
+            # Named here, so the seed keeps it over the one-run event default and
+            # rewrites it on the row of an existing install at the next boot.
+            "max_concurrent_runs": CTEM_CASE_LISTENER_CONCURRENCY,
+            "ordering_key": CTEM_CASE_ORDERING_KEY,
         },
         "prompt": (
             "A CTEM case event is in the trigger below (event name, case_id, trigger_path, "
@@ -3375,6 +3386,10 @@ CTEM_F1_ASSIGNMENTS.append(
                     "starts_with": [CTEM_LOOP_REMINDER_PREFIX, *CTEM_LOOP_LEGACY_TIMER_PREFIXES],
                 }
             },
+            # Reminders of different cases side by side, one case's in order (#1923): the
+            # timer key names the case (`ctem-loop-reminder:CASE_ID`).
+            "max_concurrent_runs": CTEM_CASE_LISTENER_CONCURRENCY,
+            "ordering_key": "correlation_key",
         },
         # Takes the case listener's switch and run-as: a fleet already on gets it on upgrade.
         INHERIT_SWITCH_FROM_KEY: CTEM_F1_CASE_ASSIGNMENT["name"],

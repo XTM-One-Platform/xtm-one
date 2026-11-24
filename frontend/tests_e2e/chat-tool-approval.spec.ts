@@ -186,6 +186,8 @@ test.describe.serial('Chat - tool approval on the shared panel', () => {
 
     // A plain "Yes" left nothing standing: the next call asks again.
     expect(await approvalsOfTool()).toHaveLength(0);
+    // The send must not land while the previous turn still streams.
+    await chat.waitForTurnSettled();
     await chat.send(`${mark} and another`);
     await expect(undecided(page)).toHaveCount(1, { timeout: 60_000 });
     await expect(undecided(page)).toContainText(`again-${mark}.txt`);
@@ -266,6 +268,7 @@ test.describe.serial('Chat - tool approval on the shared panel', () => {
     page.on('request', (r) => {
       if (r.method() === 'POST' && new URL(r.url()).pathname === APPROVE) prompted += 1;
     });
+    await chat.waitForTurnSettled();
     await chat.send(`${mark} and another`);
     await expect(chat.transcript().getByText(`Written without asking ${mark}`)).toBeVisible({ timeout: 60_000 });
     await expect(undecided(page)).toHaveCount(0);

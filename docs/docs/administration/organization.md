@@ -166,7 +166,7 @@ The AI your organization runs or exposes is an asset of category `AI target`, as
 
 Each save is a new version: nothing is overwritten. The page shows the current version and when it was saved. When two administrators save at the same moment, the second save is refused: reload the page and save again.
 
-Scripts list the saved versions, newest first, with `GET /api/v1/organization-context/versions` (administrators only). Any signed-in user can read the current profile with `GET /api/v1/organization-context`.
+Scripts list the saved versions, newest first, with `GET /api/v1/organization-context/versions` (administrators only). Any signed-in user can read the current profile with `GET /api/v1/organization-context`. The profile carries its own fields only: assets and asset groups are read and written with `/api/v1/organization-context/assets` and `/api/v1/organization-context/asset-groups`, and the profile answers how many there are in `row_counts`. A save or a restore never changes an asset row, and a row list sent with it is ignored and named in `ignored_row_fields`. Restoring a version brings back profile fields only: assets keep their own history in CTEM > Inventory.
 
 ## Draft the profile from your platforms
 
