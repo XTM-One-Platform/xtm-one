@@ -21456,6 +21456,7 @@
   "{resolved} resolved in {days} d": "{resolved} résolus en {days} j",
   "Signals that opened a case, all time. Cases built from your stack's vulnerabilities are counted in Cases.": "Signaux ayant ouvert un cas, depuis le début. Les cas construits à partir des vulnérabilités de votre parc sont comptés dans Cas.",
   "Cases in this phase": "Cas de cette phase",
+  "Decisions and accepted risks": "Décisions et risques acceptés",
   "Opened {timeAgo}": "Ouvert {timeAgo}",
   "changed {timeAgo}": "modifié {timeAgo}",
   "touches {asset}": "touche {asset}",
