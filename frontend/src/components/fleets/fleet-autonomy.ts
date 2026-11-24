@@ -141,6 +141,63 @@ export function ctemGateWaitsByDefault(gate: Pick<FleetAutonomyGate, "impact">):
   return gate.impact === "destructive";
 }
 
+/**
+ * The gates step of the CTEM loop setup (#1087 item 4, #1830): one choice on the
+ * CTEM gate catalog. Fully autonomous: nothing waits. Recommended: the seeded
+ * level, so the destructive gates wait (Mobilize, and the OpenAEV validation on a
+ * fleet with that step, #1339), named from the live catalog. Add gates: the
+ * level choice. Each gate that waits is one decision item between steps (#1705),
+ * never a tool pause.
+ */
+export type CtemGateChoice = "autonomous" | "recommended" | "custom";
+
+export const CTEM_GATE_CHOICES: CtemGateChoice[] = ["autonomous", "recommended", "custom"];
+
+/** The level the Recommended choice writes: the seeded one (`builtin_fleet_docs`, Low). */
+export const CTEM_RECOMMENDED_LEVEL: FleetAutonomyLevel = "low";
+
+/** @i18n-keys */
+export const CTEM_GATE_CHOICE_LABELS = {
+  autonomous: "Fully autonomous",
+  recommended: "Recommended gates",
+  custom: "Add gates",
+} as const;
+
+/** The level a choice writes; `null` for Add gates, which keeps the level the reader picks. */
+export function ctemGateChoiceLevel(choice: CtemGateChoice): FleetAutonomyLevel | null {
+  if (choice === "autonomous") return "autonomous";
+  if (choice === "recommended") return CTEM_RECOMMENDED_LEVEL;
+  return null;
+}
+
+/** The choice a fleet's level and pins read as: no pin and the matching level, else Add gates. */
+export function ctemGateChoiceOf(level: string | null | undefined, catalog: Pick<FleetAutonomyGate, "pin">[]): CtemGateChoice {
+  if (catalog.some((gate) => gate.pin === "wait" || gate.pin === "run")) return "custom";
+  const effective = effectiveAutonomyLevel(level);
+  if (effective === "autonomous") return "autonomous";
+  if (effective === CTEM_RECOMMENDED_LEVEL) return "recommended";
+  return "custom";
+}
+
+/** The gates that wait at `level` with no pin (the choice clears the pins). */
+export function gatesWaitingAt(catalog: FleetAutonomyGate[], level: FleetAutonomyLevel): FleetAutonomyGate[] {
+  return catalog.filter((gate) => gate.by_level?.[level] ?? true);
+}
+
+/**
+ * The gates that run alone after a choice and waited before it (the current
+ * level and pins): the list the confirmation names, empty when nothing loses approval.
+ */
+export function ctemChoiceFreed(catalog: FleetAutonomyGate[], current: FleetAutonomyLevel, to: FleetAutonomyLevel): FleetAutonomyGate[] {
+  return catalog.filter((gate) => gateWaitsNow(gate, current) && !(gate.by_level?.[to] ?? true));
+}
+
+function gateWaitsNow(gate: FleetAutonomyGate, level: FleetAutonomyLevel): boolean {
+  if (gate.pin === "wait") return true;
+  if (gate.pin === "run") return false;
+  return gate.by_level?.[level] ?? true;
+}
+
 /** The per-action settings of a gate, in the order the control lists them (`fleet_autonomy.APPROVAL_PINS`). @i18n-keys */
 export const GATE_PIN_LABELS = {
   level: "Follows the level",
