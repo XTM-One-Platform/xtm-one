@@ -108,7 +108,7 @@ async def evaluate_prerequisites(
     if not prerequisites:
         return []
     from app.api.v1.helpers import get_user_group_ids
-    from app.services.organization_context import current_version, parse_profile
+    from app.services.organization_context import current_version, hydrated_profile, parse_profile
 
     if group_ids is None:
         group_ids = await get_user_group_ids(db, user.id)
@@ -126,7 +126,8 @@ async def evaluate_prerequisites(
             if profile is None:
                 row = await current_version(db)
                 try:
-                    profile = parse_profile(row.profile if row is not None else None)
+                    # The asset lists come from the asset records once imported (#1543), not the stored version.
+                    profile = await hydrated_profile(db, row)
                 except ValueError:
                     profile = parse_profile(None)
             if check == AI_TARGETS_CHECK:

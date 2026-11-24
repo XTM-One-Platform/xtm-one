@@ -24,7 +24,7 @@ Data only, no DDL, a no-op on re-run. The downgrade is a no-op: the rows are
 assets, which every version reads.
 
 Revision ID: r1844noaisys01
-Revises: c1748ctemgrp01
+Revises: s1495swsection01
 Create Date: 2026-11-24 11:00:00.000000
 """
 
@@ -40,7 +40,7 @@ from app.core.migration_ddl import set_lock_timeout
 revision: str = "r1844noaisys01"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "c1748ctemgrp01"
+down_revision: str | Sequence[str] | None = "s1495swsection01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -94,9 +94,10 @@ def _carried(assets: list[Any], row: dict[str, Any]) -> bool:
         source = str(asset.get("source") or "manual").strip().lower()
         if row.get("external_id") and source == row["source"] and asset.get("external_id") == row["external_id"]:
             return True
-        if asset.get("category") == "ai_target" and str(asset.get("name") or "").strip().casefold() == row[
-            "name"
-        ].casefold():
+        if (
+            asset.get("category") == "ai_target"
+            and str(asset.get("name") or "").strip().casefold() == row["name"].casefold()
+        ):
             return True
     return False
 
