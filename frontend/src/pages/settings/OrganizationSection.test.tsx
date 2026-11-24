@@ -104,7 +104,6 @@ beforeEach(() => {
     if (path === "/organizations") return [];
     if (path === "/integrations") return [];
     if (path === "/organization-context/pirs") return { pirs: [{ id: "pir-1", name: "Ransomware on energy" }], unavailable: null };
-    if (path === "/organization-context/readers") return READERS;
     if (path === "/organization-context/import/sources") return { sections: [] };
     if (path === "/organization-context/attack-surface/providers") return { providers: ["shodan"] };
     // The Sources and syncs table of the Knowledge and sources tab (#1276).
@@ -112,22 +111,6 @@ beforeEach(() => {
     throw new Error(`unexpected GET ${path}`);
   });
 });
-
-const READERS = {
-  readers: {
-    sector: [{ fleet_id: "f-1", name: "Threat response" }],
-    regions: [{ fleet_id: "f-1", name: "Threat response" }],
-    crown_jewels: [
-      { fleet_id: "f-1", name: "Threat response" },
-      { fleet_id: "f-2", name: "Vulnerability prioritization" },
-    ],
-  },
-  agents: {
-    risk_appetite: [{ agent_id: "a-1", name: "Risk Quantifier" }],
-    currency: [{ agent_id: "a-1", name: "Risk Quantifier" }],
-    pir_ids: [{ agent_id: "a-2", name: "Threat Relevance Analyst" }],
-  },
-};
 
 describe("OrganizationSection primary asset widths at 1080 (#1174 UX r2 B1 and B2)", () => {
   // The primary assets table measures 810 px in its 72rem card at 1080; Assets and Source step aside there.
@@ -145,42 +128,16 @@ describe("OrganizationSection primary asset widths at 1080 (#1174 UX r2 B1 and B
   });
 });
 
-describe("OrganizationSection used by (#9173 S2)", () => {
-  it("names the fleets reading each part, once per card, linked to the fleet page, and only in read mode", async () => {
+describe("OrganizationSection without reader rows (#1878)", () => {
+  it("shows no Used by or Read by agents row on any card, in read mode or in edit, and never asks who reads the profile", async () => {
     renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
-    // The first tab holds two of the cards that name their readers (#12329); the CTEM case sync card names none (#1889).
-    await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(2));
-    const [identity, risk] = screen.getAllByTestId("settings.organization.used-by");
-    // The seeded agents reading the risk appetite (#10063 r1 A3), once each, linked to the agent page.
-    expect(risk.dataset.fields).toBe("risk_appetite currency loaded_hourly_rate");
-    expect(within(risk).queryByTestId("settings.organization.used-by.fleets")).toBeNull();
-    expect(within(risk).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["/agents/a-1"]);
-    expect(identity.dataset.fields).toBe("sector regions");
-    expect(within(identity).getAllByRole("link").map((a) => a.textContent)).toEqual(["Threat response"]);
+    expect((await screen.findByTestId("settings.organization.identity")).textContent).toContain("Acme");
+    expect(screen.queryByText("Used by")).toBeNull();
+    expect(screen.queryByText("Read by agents")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
-    await waitFor(() => expect(screen.queryByTestId("settings.organization.used-by")).toBeNull());
-  });
-
-  it("lays every line on one shared label grid, so the chips start at the same column on every card (#10166 UX r1 B1)", async () => {
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
-    await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(2));
-    for (const block of screen.getAllByTestId("settings.organization.used-by")) {
-      expect(block.dataset.layout).toBe("label-grid");
-      expect(block.dataset.align).toBe("start");
-      for (const row of block.querySelectorAll<HTMLElement>("[data-row]")) {
-        // Each line is a display-contents row: its label and its chip list are direct cells of the block's grid.
-        expect(row.dataset.row).toBe("contents");
-        expect(Array.from(row.children).map((cell) => (cell as HTMLElement).dataset.cell)).toEqual(["label", "chips"]);
-        // Both labels sit in every label cell (same column width on every card); only the row's own one is exposed.
-        const label = row.querySelector<HTMLElement>("[data-cell='label']")!;
-        expect(Array.from(label.querySelectorAll<HTMLElement>("[data-label]")).map((el) => el.dataset.label)).toEqual(["fleets", "agents"]);
-        expect(label.querySelectorAll("[data-label]:not([aria-hidden='true'])")).toHaveLength(1);
-        // #10166 UX r2 B1: each label is laid out in the chip's box and the grid aligns cells at the start,
-        // so the label text centres on the first chip row.
-        for (const el of label.querySelectorAll<HTMLElement>("[data-label]")) expect(el.dataset.box).toBe("chip-row");
-        expect(row.querySelector<HTMLElement>("[data-cell='chips'] [data-slot='badge']")!.dataset.box).toBe("chip-row");
-      }
-    }
+    expect(await screen.findByTestId("settings.save-bar")).toBeTruthy();
+    expect(screen.queryByText("Used by")).toBeNull();
+    expect(get.mock.calls.map(([path]) => path)).not.toContain("/organization-context/readers");
   });
 });
 
@@ -190,7 +147,6 @@ describe("OrganizationSection identity header and threshold previews (#9173 S2)"
       if (path === "/organization-context") return { ...CONTEXT, profile: { ...CONTEXT.profile, ...profile } };
       if (path === "/organizations" || path === "/integrations") return [];
       if (path === "/organization-context/pirs") return { pirs: [], unavailable: null };
-      if (path === "/organization-context/readers") return READERS;
       throw new Error(`unexpected GET ${path}`);
     });
 
@@ -335,24 +291,20 @@ describe("OrganizationSection", () => {
     renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     expect((await screen.findByTestId("settings.organization.identity")).textContent).toContain("Acme");
     const missing = await screen.findByTestId("settings.organization.missing");
-    // The PIR list is reported on CTEM > Inventory with the Prioritization policy (#1889), never on Settings.
-    expect(missing.textContent).not.toContain("Priority intelligence requirements (PIRs)");
+    expect(missing.textContent).toContain("Priority intelligence requirements (PIRs)");
     expect(missing.textContent).toContain("Loaded hourly rate");
   });
 
-  it("names the fleets reading the primary assets on CTEM > Inventory, linked to the fleet page (#1690)", async () => {
+  it("shows the primary assets on CTEM > Inventory with no Used by row above them (#1690, #1878)", async () => {
     renderPage("business");
-    await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(1));
-    const [jewels] = screen.getAllByTestId("settings.organization.used-by");
-    expect(within(jewels).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["/fleets/f-1", "/fleets/f-2"]);
     expect(await screen.findByText("Payments")).toBeTruthy();
+    expect(screen.queryByText("Used by")).toBeNull();
   });
 
   it("counts the fields not filled Settings draws and opens the form on a missing field (#9173 S1c, #1690)", async () => {
     renderPage();
     const overview = await screen.findByTestId("settings.organization.overview");
-    // size and loaded_hourly_rate; pir_ids is reported on CTEM > Inventory with the Prioritization policy (#1889).
-    expect(overview.textContent).toContain("2 fields not filled");
+    expect(overview.textContent).toContain("3 fields not filled");
     expect(screen.queryByTestId("settings.save-bar")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Loaded hourly rate" }));
     const rate = await screen.findByRole("textbox", { name: "Loaded hourly rate" });
@@ -785,47 +737,23 @@ describe("OrganizationSection", () => {
     expect(await screen.findByText("Currency of the amounts", { selector: "label" })).toBeTruthy();
   });
 
-  it("shows no region picker at rest, and the picker tied to its help line on Edit (UX round 2 B2, #10855)", async () => {
+  it("shows no region or PIR picker at rest, and the pickers tied to their help line on Edit (UX round 2 B2, #10855)", async () => {
     renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     await screen.findByTestId("settings.organization.identity");
+    // Read mode shows the regions and the PIRs as names, with no picker at all (#9615, #10855).
     expect(screen.queryByRole("combobox", { name: "Regions of operation" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Priority intelligence requirements (PIRs)" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     const regions = await screen.findByRole("combobox", { name: "Regions of operation" });
     expect(regions).not.toBeDisabled();
     expect(document.getElementById(regions.getAttribute("aria-describedby") ?? "")).toBeTruthy();
-  });
-
-  // The PIR list lives on the Prioritization policy of CTEM > Inventory > Exposure policy (#1889).
-  const renderPolicy = () =>
-    renderWithProviders(
-      <MemoryRouter initialEntries={["/ctem/inventory/exposure"]}>
-        <OrganizationSection embed={{ cards: ["prioritization_policy"] }} />
-      </MemoryRouter>,
-    );
-  const editPolicy = async () => fireEvent.click(await screen.findByTestId("settings.organization.edit-prioritization_policy"));
-
-  it("draws the PIR list on the Prioritization policy only, never on Settings, edited with the card (#1889)", async () => {
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
-    await screen.findByTestId("settings.organization.identity");
-    expect(screen.queryByText("Priority intelligence requirements (PIRs)")).toBeNull();
-    expect(screen.queryByText("Ticketing and intelligence")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
-    await screen.findByRole("combobox", { name: "Regions of operation" });
-    expect(screen.queryByRole("combobox", { name: "Priority intelligence requirements (PIRs)" })).toBeNull();
-    cleanup();
-    renderPolicy();
-    const card = await screen.findByTestId("settings.organization.prioritization-policy");
-    expect(await within(card).findByText("Priority intelligence requirements (PIRs)")).toBeTruthy();
-    expect(screen.queryByRole("combobox", { name: "Priority intelligence requirements (PIRs)" })).toBeNull();
-    await editPolicy();
-    expect(await screen.findByRole("combobox", { name: "Priority intelligence requirements (PIRs)" })).not.toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Priority intelligence requirements (PIRs)" })).not.toBeDisabled();
   });
 
   const withPirs = (pirs: unknown, profile: Partial<OrganizationContextResponse["profile"]>) =>
     get.mockImplementation(async (path: string) => {
       if (path === "/organization-context") return { ...CONTEXT, profile: { ...CONTEXT.profile, ...profile } };
       if (path === "/organizations" || path === "/integrations") return [];
-      if (path === "/organization-context/readers") return READERS;
       if (path === "/organization-context/pirs") {
         if (pirs instanceof Error) throw pirs;
         return pirs;
@@ -838,28 +766,27 @@ describe("OrganizationSection", () => {
       { pirs: [{ id: "1ef07227-6f37", name: "Ransomware on energy" }], unavailable: null, opencti_url: "https://cti.example" },
       { pir_ids: ["1ef07227-6f37"] },
     );
-    renderPolicy();
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     const link = await screen.findByRole("link", { name: "Ransomware on energy" });
     expect(link.getAttribute("href")).toBe("https://cti.example/dashboard/pirs/1ef07227-6f37");
     expect(screen.queryByText("1ef07227-6f37")).toBeNull();
     expect(screen.queryByPlaceholderText("Search a PIR")).toBeNull();
   });
 
-  it("marks a PIR OpenCTI no longer has, with its last known name, and removes it with the card's Save (#9615, #1889)", async () => {
+  it("marks a PIR OpenCTI no longer has, with its last known name, and offers to remove it (#9615)", async () => {
     withPirs({ pirs: [], unavailable: null, opencti_url: "https://cti.example" }, { pir_ids: ["pir-gone"], pir_names: { "pir-gone": "Old campaign" } });
-    patch.mockResolvedValue({ ...CONTEXT, version: 4 });
-    renderPolicy();
+    put.mockResolvedValue({ ...CONTEXT, version: 4 });
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     // The state leads, so a chip cut at its width still says it; the chip carries the whole label as its title (UX round 1 B2).
     const chip = await screen.findByText("No longer in OpenCTI: Old campaign");
     expect(screen.getByTitle("No longer in OpenCTI: Old campaign")).toBeTruthy();
     expect(chip).toBeTruthy();
     expect(screen.queryByText("pir-gone")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
-    fireEvent.click(within(await screen.findByTestId("settings.save-bar")).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(patch).toHaveBeenCalled());
-    const [, body] = patch.mock.calls[0] as [string, { fields: { pir_ids: string[] } }];
-    expect(body.fields.pir_ids).toEqual([]);
-    expect(put).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: /Save/ }));
+    await waitFor(() => expect(put).toHaveBeenCalled());
+    const [, body] = put.mock.calls[0] as [string, { profile: { pir_ids: string[] } }];
+    expect(body.profile.pir_ids).toEqual([]);
   });
 
   it("writes a missing PIR out whole under the edit picker, state first (UX round 1 B2)", async () => {
@@ -867,9 +794,9 @@ describe("OrganizationSection", () => {
       pir_ids: ["pir-1", "pir-gone"],
       pir_names: { "pir-gone": "Initial access brokers selling our domains" },
     });
-    renderPolicy();
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     await screen.findByText("No longer in OpenCTI: Initial access brokers selling our domains");
-    await editPolicy();
+    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     const list = await screen.findByRole("list", { name: "PIR no longer in OpenCTI" });
     expect(within(list).getByText("No longer in OpenCTI: Initial access brokers selling our domains")).toBeTruthy();
     expect(within(list).queryByText("Ransomware on energy")).toBeNull();
@@ -877,7 +804,7 @@ describe("OrganizationSection", () => {
 
   it("keeps the last known names and offers Retry when OpenCTI cannot be read (#9615)", async () => {
     withPirs({ pirs: [], unavailable: "unreadable", opencti_url: "https://cti.example" }, { pir_ids: ["pir-1", "pir-2"], pir_names: { "pir-1": "Ransomware on energy" } });
-    renderPolicy();
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     expect(await screen.findByRole("link", { name: "Ransomware on energy" })).toBeTruthy();
     expect(screen.getByText("PIR name not available")).toBeTruthy();
     expect(screen.queryByText("pir-2")).toBeNull();
@@ -890,25 +817,24 @@ describe("OrganizationSection", () => {
     get.mockImplementation(async (path: string) => {
       if (path === "/organization-context") return { ...CONTEXT, profile: { ...CONTEXT.profile, pir_ids: ["pir-1", "pir-2"] } };
       if (path === "/organizations" || path === "/integrations") return [];
-      if (path === "/organization-context/readers") return READERS;
       if (path === "/organization-context/pirs") return new Promise(() => {});
       throw new Error(`unexpected GET ${path}`);
     });
-    renderPolicy();
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     expect(await screen.findByText("Loading the PIR names")).toBeTruthy();
     expect(screen.queryByText("PIR name not available")).toBeNull();
     // The outlined chip skeleton (UX #11595 R1 B1) is guarded on the source: tests_unit/organization-pirs-badge.test.ts.
     expect(screen.getAllByTestId("settings.organization.pir-chip-skeleton").length).toBe(2);
-    await editPolicy();
+    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     expect(await screen.findByTestId("settings.organization.pirs-loading")).toBeTruthy();
     expect(screen.queryByText("PIR name not available")).toBeNull();
   });
 
   it("offers Retry in edit mode too when OpenCTI cannot be read (#11589)", async () => {
     withPirs({ pirs: [], unavailable: "unreadable", opencti_url: "" }, { pir_ids: ["pir-1"], pir_names: { "pir-1": "Ransomware on energy" } });
-    renderPolicy();
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     await screen.findByText("Ransomware on energy");
-    await editPolicy();
+    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     const line = await screen.findByTestId("settings.organization.pirs-unreadable");
     expect(within(line).getByText("OpenCTI could not be read, names may be out of date")).toBeTruthy();
     const before = get.mock.calls.filter(([path]) => path === "/organization-context/pirs").length;
@@ -928,7 +854,7 @@ describe("OrganizationSection", () => {
       },
       { pir_ids: ["aaaa1111-x", "bbbb2222-y", "aaaa1111-x"] },
     );
-    renderPolicy();
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     expect(await screen.findByText("Retail threats (aaaa1111)")).toBeTruthy();
     expect(screen.getAllByText("Retail threats (aaaa1111)")).toHaveLength(1);
     expect(screen.getByText("Retail threats (bbbb2222)")).toBeTruthy();
@@ -937,42 +863,38 @@ describe("OrganizationSection", () => {
   it("shows eight PIRs, then +N more in place (#9615)", async () => {
     const ids = Array.from({ length: 11 }, (_, i) => `pir-${i}`);
     withPirs({ pirs: ids.map((id) => ({ id, name: `Name ${id}` })), unavailable: null, opencti_url: "" }, { pir_ids: ids });
-    renderPolicy();
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     expect(await screen.findByText("Name pir-7")).toBeTruthy();
     expect(screen.queryByText("Name pir-8")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "+3 more" }));
     expect(await screen.findByText("Name pir-10")).toBeTruthy();
   });
 
-  it("saves the names OpenCTI gives with the PIRs, from the whole form and from the policy card (#9615, #1889)", async () => {
+  it("saves the names OpenCTI gives with the PIRs (#9615)", async () => {
     withPirs({ pirs: [{ id: "pir-1", name: "Ransomware on energy" }], unavailable: null }, { pir_ids: ["pir-1"] });
     put.mockResolvedValue({ ...CONTEXT, version: 4 });
-    patch.mockResolvedValue({ ...CONTEXT, version: 4 });
-    const view = renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
-    await screen.findByTestId("settings.organization.identity");
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    // No OpenCTI address answered: the name is shown, unlinked.
+    expect(await screen.findByText("Ransomware on energy")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Ransomware on energy" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     fireEvent.change(screen.getByLabelText("Loaded hourly rate"), { target: { value: "120" } });
     fireEvent.click(await screen.findByRole("button", { name: /Save/ }));
     await waitFor(() => expect(put).toHaveBeenCalled());
     const [, body] = put.mock.calls[0] as [string, { profile: { pir_names: Record<string, string> } }];
     expect(body.profile.pir_names).toEqual({ "pir-1": "Ransomware on energy" });
-    view.unmount();
-    // No OpenCTI address answered: the name is shown, unlinked.
-    renderPolicy();
-    expect(await screen.findByText("Ransomware on energy")).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "Ransomware on energy" })).toBeNull();
   });
 
   it("says the PIRs could not be listed, never that OpenCTI has none, when OpenCTI did not answer (UX round 2 B4)", async () => {
     get.mockImplementation(async (path: string) => {
       if (path === "/organization-context") return CONTEXT;
       if (path === "/organizations" || path === "/integrations") return [];
-      if (path === "/organization-context/readers") return READERS;
       if (path === "/organization-context/pirs") return { pirs: [], unavailable: "unreadable" };
       throw new Error(`unexpected GET ${path}`);
     });
-    renderPolicy();
-    await editPolicy();
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    await screen.findByTestId("settings.organization.identity");
+    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     // Since #11589 an unreadable OpenCTI shows the Retry line in edit mode too, the helper stays the field's own.
     expect(await screen.findByTestId("settings.organization.pirs-unreadable")).toBeTruthy();
     fireEvent.click(screen.getByRole("combobox", { name: "Priority intelligence requirements (PIRs)" }));
@@ -1165,6 +1087,8 @@ describe("OrganizationSection", () => {
     expect(panel.textContent).toContain("OpenCRQ could not be read");
     // The backend's error text is never shown as is.
     expect(panel.textContent).not.toContain("tenant id");
+    // The drafted PIR shows by its OpenCTI name in the picker (UX B1).
+    expect(await screen.findByText("Ransomware on energy")).toBeTruthy();
     // The drafted software inventory is named in the panel and saved with the profile, its card living on CTEM > Inventory (#1178).
     expect(put).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: /Save/ }));
