@@ -259,7 +259,8 @@ DETECTION_DESK_AGENTS: list[dict[str, Any]] = [
         "icon": "Gauge",
         "output_schema": _REPORT_SCHEMA,
         "tags": ["builtin", "openaev", "detection", "fleet"],
-        "builtin_tool_ids": ["generate_file"],
+        # shared_state: the open gaps it reports are read from openaev:detection-desk:state (#1631).
+        "builtin_tool_ids": ["shared_state", "generate_file"],
         "integration_template_bindings": ["openaev"],
     },
 ]

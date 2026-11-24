@@ -870,6 +870,10 @@ def grant_group_functions(agent: Agent, group: str, functions: Sequence[str]) ->
 #: What every fleet orchestrator carries to advise on its fleet's health (#11700).
 #: ``dismiss_fleet_health_findings`` applies an owner's "ignore" answer (#1406).
 FLEET_HEALTH_FUNCTIONS: tuple[str, ...] = ("get_fleet_health", "dismiss_fleet_health_findings")
+#: The documentation tools every fleet orchestrator persona calls (#1631): the
+#: regeneration after a configuration change, and the About-page suggestions
+#: ``get_fleet_health`` counts and points to.
+FLEET_DOC_FUNCTIONS: tuple[str, ...] = ("regenerate_fleet_documentation", "list_fleet_doc_findings")
 FLEET_HEALTH_SKILL_SLUG = "fleet-health-advisory"
 #: The suggested practices of a fleet (#11948), worded as recommendations.
 FLEET_DESIGN_SKILL_SLUG = "fleet-design-practices"
@@ -878,13 +882,14 @@ FLEET_ORCHESTRATOR_SKILL_SLUGS: tuple[str, ...] = (FLEET_HEALTH_SKILL_SLUG, FLEE
 
 
 async def grant_fleet_health_advisory(db: AsyncSession, agent: Agent) -> bool:
-    """Give *agent* ``get_fleet_health`` and bind the seeded orchestrator skills
+    """Give *agent* ``get_fleet_health`` and the documentation tools
+    (:data:`FLEET_DOC_FUNCTIONS`), and bind the seeded orchestrator skills
     (:data:`FLEET_ORCHESTRATOR_SKILL_SLUGS`: ``fleet-health-advisory`` and
     ``fleet-design-practices``); whether anything changed. A skill this instance
     has not seeded is skipped (not an error). Idempotent."""
     from app.models.agent_skill import AgentSkill
 
-    changed = grant_group_functions(agent, "platform", FLEET_HEALTH_FUNCTIONS)
+    changed = grant_group_functions(agent, "platform", (*FLEET_HEALTH_FUNCTIONS, *FLEET_DOC_FUNCTIONS))
     rows = (
         await db.execute(select(AgentSkill.id, AgentSkill.tags).where(AgentSkill.is_company_managed.is_(True)))
     ).all()
