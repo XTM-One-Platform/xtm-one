@@ -291,7 +291,8 @@ describe("OrganizationSection", () => {
     renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     expect((await screen.findByTestId("settings.organization.identity")).textContent).toContain("Acme");
     const missing = await screen.findByTestId("settings.organization.missing");
-    expect(missing.textContent).toContain("Priority intelligence requirements (PIRs)");
+    // The PIR list is reported on CTEM > Inventory with the Prioritization policy (#1889), never on Settings.
+    expect(missing.textContent).not.toContain("Priority intelligence requirements (PIRs)");
     expect(missing.textContent).toContain("Loaded hourly rate");
   });
 
@@ -304,7 +305,8 @@ describe("OrganizationSection", () => {
   it("counts the fields not filled Settings draws and opens the form on a missing field (#9173 S1c, #1690)", async () => {
     renderPage();
     const overview = await screen.findByTestId("settings.organization.overview");
-    expect(overview.textContent).toContain("3 fields not filled");
+    // size and loaded_hourly_rate; pir_ids is reported on CTEM > Inventory with the Prioritization policy (#1889).
+    expect(overview.textContent).toContain("2 fields not filled");
     expect(screen.queryByTestId("settings.save-bar")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Loaded hourly rate" }));
     const rate = await screen.findByRole("textbox", { name: "Loaded hourly rate" });
@@ -737,17 +739,40 @@ describe("OrganizationSection", () => {
     expect(await screen.findByText("Currency of the amounts", { selector: "label" })).toBeTruthy();
   });
 
-  it("shows no region or PIR picker at rest, and the pickers tied to their help line on Edit (UX round 2 B2, #10855)", async () => {
+  it("shows no region picker at rest, and the picker tied to its help line on Edit (UX round 2 B2, #10855)", async () => {
     renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     await screen.findByTestId("settings.organization.identity");
-    // Read mode shows the regions and the PIRs as names, with no picker at all (#9615, #10855).
     expect(screen.queryByRole("combobox", { name: "Regions of operation" })).toBeNull();
-    expect(screen.queryByRole("combobox", { name: "Priority intelligence requirements (PIRs)" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     const regions = await screen.findByRole("combobox", { name: "Regions of operation" });
     expect(regions).not.toBeDisabled();
     expect(document.getElementById(regions.getAttribute("aria-describedby") ?? "")).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "Priority intelligence requirements (PIRs)" })).not.toBeDisabled();
+  });
+
+  // The PIR list lives on the Prioritization policy of CTEM > Inventory > Exposure policy (#1889).
+  const renderPolicy = () =>
+    renderWithProviders(
+      <MemoryRouter initialEntries={["/ctem/inventory/exposure"]}>
+        <OrganizationSection embed={{ cards: ["prioritization_policy"] }} />
+      </MemoryRouter>,
+    );
+  const editPolicy = async () => fireEvent.click(await screen.findByTestId("settings.organization.edit-prioritization_policy"));
+
+  it("draws the PIR list on the Prioritization policy only, never on Settings, edited with the card (#1889)", async () => {
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    await screen.findByTestId("settings.organization.identity");
+    expect(screen.queryByText("Priority intelligence requirements (PIRs)")).toBeNull();
+    expect(screen.queryByText("Ticketing and intelligence")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
+    await screen.findByRole("combobox", { name: "Regions of operation" });
+    expect(screen.queryByRole("combobox", { name: "Priority intelligence requirements (PIRs)" })).toBeNull();
+    cleanup();
+    renderPolicy();
+    const card = await screen.findByTestId("settings.organization.prioritization-policy");
+    expect(await within(card).findByText("Priority intelligence requirements (PIRs)")).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "Priority intelligence requirements (PIRs)" })).toBeNull();
+    await editPolicy();
+    expect(await screen.findByRole("combobox", { name: "Priority intelligence requirements (PIRs)" })).not.toBeDisabled();
   });
 
   const withPirs = (pirs: unknown, profile: Partial<OrganizationContextResponse["profile"]>) =>
@@ -766,27 +791,28 @@ describe("OrganizationSection", () => {
       { pirs: [{ id: "1ef07227-6f37", name: "Ransomware on energy" }], unavailable: null, opencti_url: "https://cti.example" },
       { pir_ids: ["1ef07227-6f37"] },
     );
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    renderPolicy();
     const link = await screen.findByRole("link", { name: "Ransomware on energy" });
     expect(link.getAttribute("href")).toBe("https://cti.example/dashboard/pirs/1ef07227-6f37");
     expect(screen.queryByText("1ef07227-6f37")).toBeNull();
     expect(screen.queryByPlaceholderText("Search a PIR")).toBeNull();
   });
 
-  it("marks a PIR OpenCTI no longer has, with its last known name, and offers to remove it (#9615)", async () => {
+  it("marks a PIR OpenCTI no longer has, with its last known name, and removes it with the card's Save (#9615, #1889)", async () => {
     withPirs({ pirs: [], unavailable: null, opencti_url: "https://cti.example" }, { pir_ids: ["pir-gone"], pir_names: { "pir-gone": "Old campaign" } });
-    put.mockResolvedValue({ ...CONTEXT, version: 4 });
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    patch.mockResolvedValue({ ...CONTEXT, version: 4 });
+    renderPolicy();
     // The state leads, so a chip cut at its width still says it; the chip carries the whole label as its title (UX round 1 B2).
     const chip = await screen.findByText("No longer in OpenCTI: Old campaign");
     expect(screen.getByTitle("No longer in OpenCTI: Old campaign")).toBeTruthy();
     expect(chip).toBeTruthy();
     expect(screen.queryByText("pir-gone")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
-    fireEvent.click(await screen.findByRole("button", { name: /Save/ }));
-    await waitFor(() => expect(put).toHaveBeenCalled());
-    const [, body] = put.mock.calls[0] as [string, { profile: { pir_ids: string[] } }];
-    expect(body.profile.pir_ids).toEqual([]);
+    fireEvent.click(within(await screen.findByTestId("settings.save-bar")).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    const [, body] = patch.mock.calls[0] as [string, { fields: { pir_ids: string[] } }];
+    expect(body.fields.pir_ids).toEqual([]);
+    expect(put).not.toHaveBeenCalled();
   });
 
   it("writes a missing PIR out whole under the edit picker, state first (UX round 1 B2)", async () => {
@@ -794,9 +820,9 @@ describe("OrganizationSection", () => {
       pir_ids: ["pir-1", "pir-gone"],
       pir_names: { "pir-gone": "Initial access brokers selling our domains" },
     });
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    renderPolicy();
     await screen.findByText("No longer in OpenCTI: Initial access brokers selling our domains");
-    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
+    await editPolicy();
     const list = await screen.findByRole("list", { name: "PIR no longer in OpenCTI" });
     expect(within(list).getByText("No longer in OpenCTI: Initial access brokers selling our domains")).toBeTruthy();
     expect(within(list).queryByText("Ransomware on energy")).toBeNull();
@@ -804,7 +830,7 @@ describe("OrganizationSection", () => {
 
   it("keeps the last known names and offers Retry when OpenCTI cannot be read (#9615)", async () => {
     withPirs({ pirs: [], unavailable: "unreadable", opencti_url: "https://cti.example" }, { pir_ids: ["pir-1", "pir-2"], pir_names: { "pir-1": "Ransomware on energy" } });
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    renderPolicy();
     expect(await screen.findByRole("link", { name: "Ransomware on energy" })).toBeTruthy();
     expect(screen.getByText("PIR name not available")).toBeTruthy();
     expect(screen.queryByText("pir-2")).toBeNull();
@@ -820,21 +846,21 @@ describe("OrganizationSection", () => {
       if (path === "/organization-context/pirs") return new Promise(() => {});
       throw new Error(`unexpected GET ${path}`);
     });
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    renderPolicy();
     expect(await screen.findByText("Loading the PIR names")).toBeTruthy();
     expect(screen.queryByText("PIR name not available")).toBeNull();
     // The outlined chip skeleton (UX #11595 R1 B1) is guarded on the source: tests_unit/organization-pirs-badge.test.ts.
     expect(screen.getAllByTestId("settings.organization.pir-chip-skeleton").length).toBe(2);
-    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
+    await editPolicy();
     expect(await screen.findByTestId("settings.organization.pirs-loading")).toBeTruthy();
     expect(screen.queryByText("PIR name not available")).toBeNull();
   });
 
   it("offers Retry in edit mode too when OpenCTI cannot be read (#11589)", async () => {
     withPirs({ pirs: [], unavailable: "unreadable", opencti_url: "" }, { pir_ids: ["pir-1"], pir_names: { "pir-1": "Ransomware on energy" } });
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    renderPolicy();
     await screen.findByText("Ransomware on energy");
-    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
+    await editPolicy();
     const line = await screen.findByTestId("settings.organization.pirs-unreadable");
     expect(within(line).getByText("OpenCTI could not be read, names may be out of date")).toBeTruthy();
     const before = get.mock.calls.filter(([path]) => path === "/organization-context/pirs").length;
@@ -854,7 +880,7 @@ describe("OrganizationSection", () => {
       },
       { pir_ids: ["aaaa1111-x", "bbbb2222-y", "aaaa1111-x"] },
     );
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    renderPolicy();
     expect(await screen.findByText("Retail threats (aaaa1111)")).toBeTruthy();
     expect(screen.getAllByText("Retail threats (aaaa1111)")).toHaveLength(1);
     expect(screen.getByText("Retail threats (bbbb2222)")).toBeTruthy();
@@ -863,26 +889,30 @@ describe("OrganizationSection", () => {
   it("shows eight PIRs, then +N more in place (#9615)", async () => {
     const ids = Array.from({ length: 11 }, (_, i) => `pir-${i}`);
     withPirs({ pirs: ids.map((id) => ({ id, name: `Name ${id}` })), unavailable: null, opencti_url: "" }, { pir_ids: ids });
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    renderPolicy();
     expect(await screen.findByText("Name pir-7")).toBeTruthy();
     expect(screen.queryByText("Name pir-8")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "+3 more" }));
     expect(await screen.findByText("Name pir-10")).toBeTruthy();
   });
 
-  it("saves the names OpenCTI gives with the PIRs (#9615)", async () => {
+  it("saves the names OpenCTI gives with the PIRs, from the whole form and from the policy card (#9615, #1889)", async () => {
     withPirs({ pirs: [{ id: "pir-1", name: "Ransomware on energy" }], unavailable: null }, { pir_ids: ["pir-1"] });
     put.mockResolvedValue({ ...CONTEXT, version: 4 });
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
-    // No OpenCTI address answered: the name is shown, unlinked.
-    expect(await screen.findByText("Ransomware on energy")).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "Ransomware on energy" })).toBeNull();
+    patch.mockResolvedValue({ ...CONTEXT, version: 4 });
+    const view = renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    await screen.findByTestId("settings.organization.identity");
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     fireEvent.change(screen.getByLabelText("Loaded hourly rate"), { target: { value: "120" } });
     fireEvent.click(await screen.findByRole("button", { name: /Save/ }));
     await waitFor(() => expect(put).toHaveBeenCalled());
     const [, body] = put.mock.calls[0] as [string, { profile: { pir_names: Record<string, string> } }];
     expect(body.profile.pir_names).toEqual({ "pir-1": "Ransomware on energy" });
+    view.unmount();
+    // No OpenCTI address answered: the name is shown, unlinked.
+    renderPolicy();
+    expect(await screen.findByText("Ransomware on energy")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Ransomware on energy" })).toBeNull();
   });
 
   it("says the PIRs could not be listed, never that OpenCTI has none, when OpenCTI did not answer (UX round 2 B4)", async () => {
@@ -892,9 +922,8 @@ describe("OrganizationSection", () => {
       if (path === "/organization-context/pirs") return { pirs: [], unavailable: "unreadable" };
       throw new Error(`unexpected GET ${path}`);
     });
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
-    await screen.findByTestId("settings.organization.identity");
-    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
+    renderPolicy();
+    await editPolicy();
     // Since #11589 an unreadable OpenCTI shows the Retry line in edit mode too, the helper stays the field's own.
     expect(await screen.findByTestId("settings.organization.pirs-unreadable")).toBeTruthy();
     fireEvent.click(screen.getByRole("combobox", { name: "Priority intelligence requirements (PIRs)" }));
@@ -1060,8 +1089,6 @@ describe("OrganizationSection", () => {
     expect(panel.textContent).toContain("OpenCRQ could not be read");
     // The backend's error text is never shown as is.
     expect(panel.textContent).not.toContain("tenant id");
-    // The drafted PIR shows by its OpenCTI name in the picker (UX B1).
-    expect(await screen.findByText("Ransomware on energy")).toBeTruthy();
     // The drafted software inventory is named in the panel and saved with the profile, its card living on CTEM > Inventory (#1178).
     expect(put).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: /Save/ }));
