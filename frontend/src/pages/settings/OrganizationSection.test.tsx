@@ -966,6 +966,28 @@ describe("OrganizationSection", () => {
     expect(screen.queryByRole("button", { name: /Sync with OpenCRQ now|Check against OpenCRQ/ })).toBeNull();
   });
 
+  it.each([
+    ["a failed last run", { last_result: { added: 0, updated: 0, removed: 0, version: 4, error: "OpenCRQ: no integration" } }, /OpenCRQ sync failed/, "OpenCRQ: no integration"],
+    ["a paused sync", { paused_reason: "owner lost access" }, /OpenCRQ sync paused/, "owner lost access"],
+    ["a sync turned off", { enabled: false }, /OpenCRQ sync off/, null],
+  ])("never says Synced on the primary assets card for %s (UX round 1 B1, #1818)", async (_state, override, line, cause) => {
+    const lastRun = new Date(Date.now() - 60 * 1000).toISOString();
+    const opencrqSync = { id: "s-crq", section: "crown_jewels", source: "opencrq", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: lastRun, last_result: { added: 1, updated: 0, removed: 0, version: 4, error: null }, ...override };
+    const base = get.getMockImplementation();
+    get.mockImplementation(async (path: string) => (path.startsWith("/organization-context/syncs") ? [opencrqSync] : base?.(path)));
+    renderPage("business");
+    const chip = await screen.findByTestId("settings.organization.primary-assets-source");
+    expect(chip.textContent).toMatch(line);
+    expect(chip.textContent).not.toMatch(/Synced from OpenCRQ/);
+    if (cause) {
+      const trigger = screen.getByTestId("settings.organization.primary-assets-source-cause");
+      fireEvent.focus(trigger);
+      expect((await screen.findAllByText(cause)).length).toBeGreaterThan(0);
+    } else {
+      expect(screen.queryByTestId("settings.organization.primary-assets-source-cause")).toBeNull();
+    }
+  });
+
   it("shows the one Sources and syncs table as the last block of the Knowledge and sources tab, each section chip linked to its tab filtered on that source (#1276)", async () => {
     const base = get.getMockImplementation();
     get.mockImplementation(async (path: string) =>

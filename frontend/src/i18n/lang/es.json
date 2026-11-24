@@ -21521,5 +21521,8 @@
   "Read the attack surface passes and run the CTEM repairs, administrators": "Leer las pasadas de superficie de ataque y ejecutar las reparaciones CTEM, administradores",
   "Lets the agent read the latest attack surface passes (what each read covered, hosts observed, signals per path), discard the new-host signals raised without a complete previous read, and correct the threat packages stored with a Grouping page whose Grouping is not live. A repair defaults to a dry run that writes nothing and answers the counts and the ids. It acts for the person the turn or run acts for, who must be an administrator, as on the REST routes. XTM One mode only.": "Permite al agente leer las últimas pasadas de superficie de ataque (lo que cubrió cada lectura, hosts observados, señales por ruta), descartar las señales de nuevo host generadas sin una lectura previa completa y corregir los paquetes de amenaza guardados con una página de Grouping cuyo Grouping no está activo. Una reparación es por defecto una simulación que no escribe nada y devuelve los recuentos y los identificadores. Actúa por la persona para la que actúa el turno o la ejecución, que debe ser administrador, como en las rutas REST. Solo en modo XTM One.",
   "Synced from OpenCRQ {timeAgo}": "Sincronizado desde OpenCRQ {timeAgo}",
-  "Synced from OpenCRQ: not run yet": "Sincronizado desde OpenCRQ: aún no se ha ejecutado"
+  "Synced from OpenCRQ: not run yet": "Sincronizado desde OpenCRQ: aún no se ha ejecutado",
+  "OpenCRQ sync off": "Sincronización de OpenCRQ desactivada",
+  "OpenCRQ sync paused": "Sincronización de OpenCRQ en pausa",
+  "OpenCRQ sync failed {timeAgo}": "La sincronización de OpenCRQ falló {timeAgo}"
 }

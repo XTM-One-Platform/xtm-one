@@ -1318,11 +1318,21 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   };
 
   // The OpenCRQ source of the primary assets, named on the card as the asset lists name theirs (#1754).
-  const opencrqSourceLine = opencrqJewelSync
-    ? opencrqJewelSync.last_run_at
-      ? t_i18n("Synced from OpenCRQ {timeAgo}", { timeAgo: formatTimeAgo(intl, opencrqJewelSync.last_run_at) })
-      : t_i18n("Synced from OpenCRQ: not run yet")
-    : null;
+  // The line is true to the sync's state (UX round 1 B1, #1818): off, paused or a failed last run is never called "Synced".
+  // The cause (the run's error or the pause reason) goes in a Tip, so a long reason never widens the card header.
+  const opencrqSourceError = opencrqJewelSync?.enabled && !opencrqJewelSync.paused_reason ? opencrqJewelSync.last_result?.error || "" : "";
+  const opencrqSourceCause = opencrqJewelSync?.enabled ? opencrqJewelSync.paused_reason || opencrqSourceError : "";
+  const opencrqSourceLine = !opencrqJewelSync
+    ? null
+    : !opencrqJewelSync.enabled
+      ? t_i18n("OpenCRQ sync off")
+      : opencrqJewelSync.paused_reason
+        ? t_i18n("OpenCRQ sync paused")
+        : !opencrqJewelSync.last_run_at
+          ? t_i18n("Synced from OpenCRQ: not run yet")
+          : opencrqSourceError
+            ? t_i18n("OpenCRQ sync failed {timeAgo}", { timeAgo: formatTimeAgo(intl, opencrqJewelSync.last_run_at) })
+            : t_i18n("Synced from OpenCRQ {timeAgo}", { timeAgo: formatTimeAgo(intl, opencrqJewelSync.last_run_at) });
 
   // The fields not filled that Settings still draws (#1690): the Business, Technology and Exposure fields are
   // reported on CTEM > Inventory, and Copilot mode reports none (Sam: "we don't care").
@@ -1865,7 +1875,19 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                 {opencrqSourceLine && (
                   <span data-testid="settings.organization.primary-assets-source" className="inline-flex min-w-0 items-center gap-1.5 content-compact text-default-secondary">
                     <ProviderLogo provider="opencrq" decorative className="h-4 w-4 shrink-0" />
-                    <span className="whitespace-nowrap">{opencrqSourceLine}</span>
+                    {opencrqSourceCause ? (
+                      <Tip content={opencrqSourceCause}>
+                        <span
+                          className={`whitespace-nowrap ${opencrqSourceError ? "text-feedback-error-primary" : "text-feedback-warning-primary"}`}
+                          tabIndex={0}
+                          data-testid="settings.organization.primary-assets-source-cause"
+                        >
+                          {opencrqSourceLine}
+                        </span>
+                      </Tip>
+                    ) : (
+                      <span className="whitespace-nowrap">{opencrqSourceLine}</span>
+                    )}
                   </span>
                 )}
                 {!reader && !listOpen("crown_jewels") && (
