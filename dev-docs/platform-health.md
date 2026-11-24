@@ -1079,7 +1079,7 @@ module's own objects, and generic integration health.
 | Check | Reads | Fail / warn (defaults) |
 |---|---|---|
 | `platform_version_licence` | platform version, licence expiry, settings sanity (base URL set) | licence under 30 days warn, 7 days fail; version behind the range XTM One supports fail; a missing setting warn |
-| `managers_running` | platform managers (rule engine, retention, expiration, history, notification, sync) | an enabled manager not running fail |
+| `managers_running` | `get_opencti_managers`: managers classed stream (continuous `running`) or cron (`running` only while a cycle executes; never judged on it), stream managers re-read 3 times 60 s apart (#1640); TASK_MANAGER by its effect in the background tasks | an enabled stream manager not running on all 3 reads fail; an unfinished background task with no execution for over 1 h warn, 6 h fail; absence of new objects is never evidence of a stopped manager |
 | `background_tasks` | background tasks: state, progress, errors | in progress over 24 h warn; any in error in 24 h warn, over 10 fail |
 | `workers_and_queues` | platform workers and the platform queues as a whole (total messages now and 1 h ago) | total over 100,000 and growing warn, over 1,000,000 fail; no worker consuming fail |
 | `streams` | live stream collections and their consumers: lag | lag over 1 h warn, 6 h fail |
@@ -1265,7 +1265,7 @@ source (13.4 scope).
   admin action, each run calls its module's tools and records a report with every check of
   its playbook (backend test, stubbed model and integrations,
   `tests/test_health_module_round_postgres.py`; lab retest at deploy).
-- (m) A stubbed module-native fault per module (OpenCTI: an enabled manager not running;
+- (m) A stubbed module-native fault per module (OpenCTI: an enabled stream manager not running on 3 reads;
   OpenAEV: a scheduled scenario whose start was missed; OpenCRQ: a failed job) yields a fail verdict and an open `<module>.agentic.<check>` finding with its
   recommendation; the next round with the fault removed resolves it.
 - (n) The seeded fleet: the orchestrator holds a `delegate` handover to each checker, each

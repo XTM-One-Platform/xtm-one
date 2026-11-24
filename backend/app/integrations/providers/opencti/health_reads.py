@@ -19,7 +19,12 @@ taking or returning a connector id:
 * ``list_opencti_background_tasks``: the newest background tasks with their type,
   progress, completion and errors (root ``backgroundTasks``; OpenCTI 6.0 or later).
 * ``get_opencti_managers``: the platform managers with their enabled, running and
-  warning flags (``settings.platform_modules``).
+  warning flags (``settings.platform_modules``), each classed stream (continuous)
+  or cron (intermittent) by :data:`MANAGER_KINDS`. ``running`` is not liveness:
+  OpenCTI sets it only while a node holds the manager's lock and executes its
+  handler (``managerModule.ts``), so an idle cron manager reads not running between
+  two cycles. Only an enabled stream manager down on every one of
+  :data:`_MANAGER_READS` reads, :data:`_MANAGER_REREAD_SECONDS` apart, is named down.
 * ``get_opencti_platform_queues``: workers consuming and messages queued, platform
   totals only (root ``rabbitMQMetrics``, MODULES); no queue is named.
 * ``list_opencti_stream_consumers``: live stream collections and their consumers'
@@ -46,6 +51,7 @@ the listing is returned wrapped as untrusted content.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final
@@ -92,6 +98,49 @@ _BACKGROUND_TASKS_QUERY: Final = (
 )
 
 _MANAGERS_QUERY: Final = "query HealthManagers { settings { platform_modules { id enable running warning } } }"
+
+#: OpenCTI manager id -> how its ``running`` flag behaves (OpenCTI master, read
+#: 24 Nov 2026, ``opencti-graphql/src/manager``). ``stream``: a stream processor, or
+#: the infinite-interval telemetry cron, keeps ``running`` true while a node holds
+#: the lock. ``cron``: ``running`` is true only while one cycle executes, false in
+#: between. An id missing here is reported ``unknown`` and never judged.
+MANAGER_KINDS: Final[dict[str, str]] = {
+    "RULE_ENGINE": "stream",
+    "HISTORY_MANAGER": "stream",
+    "SYNC_MANAGER": "stream",
+    "PUBLISHER_MANAGER": "stream",
+    "NOTIFICATION_MANAGER": "stream",
+    "ACTIVITY_MANAGER": "stream",
+    "PLAYBOOK_MANAGER": "stream",
+    "TELEMETRY_MANAGER": "stream",
+    "TASK_MANAGER": "cron",
+    "RETENTION_MANAGER": "cron",
+    "EXPIRATION_SCHEDULER": "cron",
+    "INGESTION_MANAGER": "cron",
+    "CONNECTOR_MANAGER": "cron",
+    "GARBAGE_COLLECTION_MANAGER": "cron",
+    "INDICATOR_DECAY_MANAGER": "cron",
+    "FILE_INDEX_MANAGER": "cron",
+    "DATA_SANITY_MANAGER": "cron",
+    "EXCLUSION_LIST_CACHE_BUILD_MANAGER": "cron",
+    "EXCLUSION_LIST_CACHE_SYNC_MANAGER": "cron",
+    "HUB_REGISTRATION_MANAGER": "cron",
+    "INGESTION_HEALTH_MANAGER": "cron",
+    "PIR_MANAGER": "cron",
+    "PLATFORM_USAGE_METRICS_MANAGER": "cron",
+    "WORKFLOW_STATUS_CLEANUP_MANAGER": "cron",
+    "XTM_ONE_REGISTRATION_MANAGER": "cron",
+    "CATALOG_MANAGER": "cron",
+}
+#: The reads one call makes while an enabled stream manager reads not running.
+_MANAGER_READS: Final = 3
+#: The seconds between two of those reads (one read is a 30 s heartbeat snapshot).
+_MANAGER_REREAD_SECONDS: Final = 60
+_MANAGERS_RUNNING_MEANING: Final = (
+    "running = a node is executing this manager's handler right now: continuous for"
+    " stream managers, intermittent for cron managers (not running between two cycles"
+    " is normal). A cron manager is never judged on it."
+)
 
 _QUEUES_QUERY: Final = (
     "query HealthPlatformQueues { rabbitMQMetrics { consumers overview {"
@@ -196,11 +245,26 @@ def _task_line(node: dict[str, Any]) -> str:
     return "\n".join([line, *shown])
 
 
+def manager_kind(manager_id: str) -> str:
+    """``stream``, ``cron`` or ``unknown`` for an OpenCTI manager id."""
+    return MANAGER_KINDS.get(manager_id, "unknown")
+
+
 def _manager_line(node: dict[str, Any]) -> str:
     enabled = "enabled" if node.get("enable") else "disabled"
     running = "running" if node.get("running") else "not running"
     warning = ", warning" if node.get("warning") else ""
-    return f"- {node.get('id') or '?'} [{enabled}, {running}{warning}]"
+    kind = manager_kind(str(node.get("id") or ""))
+    return f"- {node.get('id') or '?'} ({kind}) [{enabled}, {running}{warning}]"
+
+
+def _stream_down(nodes: list[dict[str, Any]]) -> set[str]:
+    """The enabled stream managers that read not running in *nodes*."""
+    return {
+        str(n.get("id"))
+        for n in nodes
+        if n.get("enable") and not n.get("running") and manager_kind(str(n.get("id") or "")) == "stream"
+    }
 
 
 def _stream_line(node: dict[str, Any]) -> str:
@@ -292,17 +356,51 @@ def register(base_url: str, headers: dict[str, str], executor: CallableToolExecu
         head = f"Background tasks (newest {len(nodes)}; {running} in progress, {failed} with errors):"
         return wrap_untrusted(head + "\n" + "\n".join(_task_line(n) for n in nodes), "OpenCTI background tasks")
 
-    async def get_opencti_managers() -> str:
+    async def _read_managers() -> tuple[list[dict[str, Any]], str | None]:
         data, err = await _gql(_MANAGERS_QUERY)
         if err:
-            return f"Managers: {err}"
+            return [], err
         nodes = [n for n in ((data.get("settings") or {}).get("platform_modules") or []) if isinstance(n, dict)]
+        return nodes, None
+
+    async def get_opencti_managers() -> str:
+        nodes, err = await _read_managers()
+        if err:
+            return f"Managers: {err}"
         if not nodes:
             return "Managers: none reported by this OpenCTI."
-        down = sum(1 for n in nodes if n.get("enable") and not n.get("running"))
-        return f"Managers ({len(nodes)}; {down} enabled and not running):\n" + "\n".join(
-            _manager_line(n) for n in nodes
-        )
+        first_down = _stream_down(nodes)
+        down, reads = set(first_down), 1
+        while down and reads < _MANAGER_READS:
+            await asyncio.sleep(_MANAGER_REREAD_SECONDS)
+            again, err = await _read_managers()
+            if err:
+                break
+            down &= _stream_down(again)
+            reads += 1
+        streams = sum(1 for n in nodes if manager_kind(str(n.get("id") or "")) == "stream")
+        lines = [
+            f"Managers ({len(nodes)}: {streams} stream, {len(nodes) - streams} cron or unknown).",
+            _MANAGERS_RUNNING_MEANING,
+        ]
+        if reads < _MANAGER_READS and down:
+            lines.append(
+                f"Enabled stream managers not running, re-read stopped after {reads} of"
+                f" {_MANAGER_READS} reads ({err}): {', '.join(sorted(down))}; not conclusive."
+            )
+        elif down:
+            lines.append(
+                f"Enabled stream managers not running on all {_MANAGER_READS} reads,"
+                f" {_MANAGER_REREAD_SECONDS} s apart: {', '.join(sorted(down))}."
+            )
+        else:
+            lines.append(f"Enabled stream managers not running on all {_MANAGER_READS} reads: none.")
+        recovered = first_down - down
+        if recovered:
+            lines.append(
+                f"Not running on the first read, running again within {reads} reads: {', '.join(sorted(recovered))}."
+            )
+        return "\n".join([*lines, *(_manager_line(n) for n in nodes)])
 
     async def get_opencti_platform_queues() -> str:
         data, err = await _gql(_QUEUES_QUERY)
@@ -411,7 +509,7 @@ def register(base_url: str, headers: dict[str, str], executor: CallableToolExecu
         ),
         ToolDefinition(
             name="get_opencti_managers",
-            description="Read-only: OpenCTI platform managers with their enabled, running and warning flags.",
+            description="Read-only: OpenCTI platform managers with enabled, running and warning flags, classed stream or cron.",
             input_schema={"type": "object", "properties": {}, "required": []},
             source=_SOURCE,
         ),
