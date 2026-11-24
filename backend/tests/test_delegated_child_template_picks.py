@@ -95,6 +95,8 @@ def test_openaev_not_found_names_the_tenant_and_how_it_was_chosen() -> None:
     assert _with_scope_hint("TENANT_ACCESS_DENIED", hint).endswith(hint)
     assert _with_scope_hint("OpenAEV error (HTTP 500): boom", hint) == "OpenAEV error (HTTP 500): boom"
     assert _with_scope_hint(None, hint) is None
+    lookup = " Note: the OpenAEV tenant for this request could not be resolved (x)."
+    assert _with_scope_hint("OpenAEV error (HTTP 404): Not Found", lookup) == "OpenAEV error (HTTP 404): Not Found"
 
 
 @pytest.mark.asyncio
