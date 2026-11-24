@@ -23,7 +23,9 @@
 # and seeded administrator, the Vite dev server), for a look at a change in the
 # browser. Throwaway credentials, valid only inside the lab. LAB_THEME =
 # "light" (or "dark") in env opens every session in that theme: [service.lab-light]
-# below is this lab in light, for a light-theme review in one call.
+# below is this lab in light, for a light-theme review in one call. Language: open
+# /api/v1/lab/locale/<en|fr|es|ja|default>?next=<path> on the preview (every user of the lab, #1653), or set
+# LAB_LOCALE in env for the seeded identities.
 # Every lab seeds an upcoming and a missed scheduled one-off owned by a member of
 # "Lab sample fleet", so the Reschedule dialog opens with no override (log lines
 # "seeded scheduled one-off: <url>" and "seeded scheduled one-off (missed): <url>", #11252).
