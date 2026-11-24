@@ -21599,5 +21599,17 @@
   "{product} rejected your sign-in token, so open exposures there may be missing.": "{product} a refusé votre jeton de connexion : des expositions ouvertes peuvent manquer.",
   "{product} could not answer because the query was too large, so open exposures there may be missing.": "{product} n'a pas pu répondre car la requête était trop volumineuse : des expositions ouvertes peuvent manquer.",
   "{product} did not answer in time, so open exposures there may be missing.": "{product} n'a pas répondu à temps : des expositions ouvertes peuvent manquer.",
-  "No {product} connection could be used for this read, so open exposures there may be missing.": "Aucune connexion {product} n'a pu servir à cette lecture : des expositions ouvertes peuvent manquer."
+  "No {product} connection could be used for this read, so open exposures there may be missing.": "Aucune connexion {product} n'a pu servir à cette lecture : des expositions ouvertes peuvent manquer.",
+  "CTEM access": "Accès CTEM",
+  "CTEM access updated": "Accès CTEM mis à jour",
+  "CTEM access could not be updated": "L’accès CTEM n’a pas pu être mis à jour",
+  "What the members may do on the signals and cases the platform records. Administrators keep full access.": "Ce que les membres peuvent faire sur les signaux et les cas enregistrés par la plateforme. Les administrateurs gardent un accès complet.",
+  "No CTEM access": "Aucun accès CTEM",
+  "View signals and cases": "Voir les signaux et les cas",
+  "View and decide": "Voir et décider",
+  "Members see only the signals they record themselves.": "Les membres ne voient que les signaux qu’ils enregistrent eux-mêmes.",
+  "Members read every signal and case of the organization, read only.": "Les membres lisent tous les signaux et cas de l’organisation, en lecture seule.",
+  "Members also triage signals, change cases (owner, due date, state, accepted risk) and answer the case decisions. Their agents get the same reach.": "Les membres trient aussi les signaux, modifient les cas (responsable, échéance, état, risque accepté) et répondent aux décisions des cas. Leurs agents ont la même portée.",
+  "Notify the members of case decisions": "Notifier les membres des décisions de cas",
+  "Off: the members can still answer from the case page, without a notification.": "Désactivé : les membres peuvent toujours répondre depuis la page du cas, sans notification."
 }
