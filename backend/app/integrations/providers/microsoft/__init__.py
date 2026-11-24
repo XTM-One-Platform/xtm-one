@@ -30,6 +30,7 @@ SharePoint and To Do for the signed-in user. Split by domain (mirrors the
 * ``teams_channels`` - teams, channels, channel messages and members.
 * ``teams_chats``    - chats and chat messages.
 * ``teams_chat_members`` - the members of an existing chat: list, add, remove.
+ * ``teams_members``  - the members of a team or a private / shared channel: add, remove.
 * ``meetings``       - online meetings, attendance, recordings, AI insights.
 * ``transcripts``    - meeting transcripts, and the transcripts embedded in
                        recordings (the user's OneDrive, channel folders).
@@ -56,11 +57,19 @@ from . import (
     teams_channels,
     teams_chat_members,
     teams_chats,
+    teams_members,
     transcripts,
 )
+from ._chat_file_markers import wrap_chat_send_file_markers
 from ._common import _BASE_URL, GRAPH_API, MicrosoftContext
 from ._drive import _drive_item_link_lines, _encode_share_id
-from .teams_scope import apply_teams_channel_scope
+
+# ``teams_scope`` is imported where it is used, never at package import time:
+# importlib holds a submodule's lock while it imports the parent package, so
+# a thread importing ``microsoft.teams_scope`` directly (``element_scope``,
+# ``integration_tools``) while another thread ran this ``__init__`` deadlocked
+# both on first use ("deadlock detected by _ModuleLock", a run failed at its
+# start). Same rule as ``app.services.openapi_import``.
 
 __all__ = [
     "GRAPH_API",
@@ -82,6 +91,7 @@ _DOMAINS = (
     teams_channels,
     teams_chats,
     teams_chat_members,
+    teams_members,
     meetings,
     transcripts,
 )
@@ -120,6 +130,10 @@ class MicrosoftIntegration(BaseIntegration):
                 "Channel.Create",
                 "Channel.ReadBasic.All",
                 "ChannelMember.Read.All",
+                # Add and remove team and channel members (admin consent in
+                # most tenants: optional in the catalog).
+                "ChannelMember.ReadWrite.All",
+                "TeamMember.ReadWrite.All",
                 "ChannelMessage.Read.All",
                 "ChannelMessage.Send",
                 # Calendar (own + calendars others have shared with the user;
@@ -208,7 +222,10 @@ def build_tools(
     definitions: list[ToolDefinition] = []
     for domain in _DOMAINS:
         definitions += domain.register(ctx, executor)
+    wrap_chat_send_file_markers(executor)
     teams_channel_scope = kwargs.get("teams_channel_scope")
     if teams_channel_scope is not None:
+        from .teams_scope import apply_teams_channel_scope
+
         return apply_teams_channel_scope(definitions, executor, teams_channel_scope)
     return definitions

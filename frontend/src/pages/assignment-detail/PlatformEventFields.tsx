@@ -30,6 +30,7 @@ import {
   platformEventDraft,
   platformEventFamily,
   platformWatchState,
+  platformEventScope,
   type PlatformEventDraft,
   type PlatformFilterRow,
 } from "@/lib/platform-events";
@@ -103,10 +104,11 @@ export function PlatformEventFields({
       {isAdmin && (
         <div className="space-y-1.5">
           <Label htmlFor={scopeId} className="block text-default-secondary">{t_i18n("Scope")}</Label>
-          <Select value={draft.scope} onValueChange={(v) => onChange({ ...draft, scope: v === "all" ? "all" : "own" })}>
-            <SelectTrigger id={scopeId} className="w-64" aria-label={t_i18n("Scope")}><SelectValue /></SelectTrigger>
+          <Select value={draft.scope} onValueChange={(v) => onChange({ ...draft, scope: platformEventScope(v) })}>
+            <SelectTrigger id={scopeId} className="w-96 max-w-full" aria-label={t_i18n("Scope")}><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="own">{t_i18n("This agent's objects")}</SelectItem>
+              <SelectItem value="fleet">{t_i18n("Objects of this agent's fleet")}</SelectItem>
               <SelectItem value="all">{t_i18n("Every object")}</SelectItem>
             </SelectContent>
           </Select>
@@ -208,7 +210,11 @@ export function PlatformEventSummary({ config }: { config: TriggerConfig }) {
           </span>
         ))}
         <span className="rounded-sm bg-elevation-hover px-2 py-0.5">
-          {draft.scope === "all" ? t_i18n("Every object") : t_i18n("This agent's objects")}
+          {draft.scope === "all"
+            ? t_i18n("Every object")
+            : draft.scope === "fleet"
+              ? t_i18n("Objects of this agent's fleet")
+              : t_i18n("This agent's objects")}
         </span>
         {watch === "armed" && (
           <span className="rounded-sm bg-accent/10 px-2 py-0.5 text-accent">

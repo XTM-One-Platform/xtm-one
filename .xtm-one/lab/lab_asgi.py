@@ -105,7 +105,7 @@ offers no other surface a review can open.
 
 Every lab answers ``GET /api/v1/lab/locale/<en|fr|es|ja|default>?next=<path>`` (``lab_locale``, #1653): the
 language is stored on every user of the lab and the answer redirects to ``next``, so one browser ``navigate`` reloads
-the app in that language.
+the app in that language. ``GET /api/v1/lab/theme/<light|dark>?next=<path>`` does the same for the theme (#1848).
 
 dev-docs/reference/agentic-labs.md, "The xtm-one lab".
 """
@@ -1594,6 +1594,10 @@ async def application(scope, receive, send):
     locale = lab_locale.asks_locale(scope)
     if locale is not None:
         await lab_locale.answer(scope, send, locale)
+        return
+    theme = lab_locale.asks_theme(scope)
+    if theme is not None:
+        await lab_locale.answer_theme(scope, send, theme)
         return
     whatsapp_page = whatsapp_decision_preview.answer(scope)
     if whatsapp_page is not None:

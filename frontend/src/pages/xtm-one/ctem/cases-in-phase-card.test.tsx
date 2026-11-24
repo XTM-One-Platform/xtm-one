@@ -65,7 +65,7 @@ describe("CasesInPhaseCard", () => {
     expect(screen.getByTestId("ctem-phase-cases-open").getAttribute("href")).toBe("/ctem/cases?c_f_phase=remediation");
   });
 
-  it("lists the decisions waiting and the cases that need attention first, with the crown jewel", () => {
+  it("lists the decisions waiting and the cases that need attention first, with the primary asset", () => {
     overview.value = { data: read(), isError: false };
     draw("remediation");
     expect(screen.getByTestId("ctem-phase-wait-c1").querySelector("a")?.getAttribute("href")).toBe("/ctem/cases/c1");

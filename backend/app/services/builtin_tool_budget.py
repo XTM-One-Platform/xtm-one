@@ -128,7 +128,13 @@ from app.services.builtin_tool_groups import schema_chars
 #: opt-in on any agent, and +33 on the agent builder's group list, total 475,367 on 23 Nov 2026).
 #: Raised to 477,000 for the profile versions, restore and OpenCRQ reconcile tools of the
 #: organization_context group (#1676: +1,528, opt-in and administrator-only, total 476,895 on 24 Nov 2026).
-TOTAL_SCHEMA_CHARS_CEILING = 477_000
+#: Raised to 478,000 for the ctem_repair group (#1778: three CTEM administrator repairs, +977,
+#: and +13 on the agent builder's group list, total 477,872 on 24 Nov 2026).
+#: Raised to 478,500 for list_ctem_assets and the source_provider and since filters of
+#: list_ctem_signals in the ctem_read group (#1782: +500, opt-in, on 24 Nov 2026).
+#: Raised to 478,800 for search_config_text of the platform group (#1759: +268, on top of #1782,
+#: 24 Nov 2026).
+TOTAL_SCHEMA_CHARS_CEILING = 478_800
 
 #: Ceilings of the groups that carry one of their own (group id -> characters);
 #: generate_presentation, platform and coordination since the chat-reactivity
@@ -149,8 +155,10 @@ GROUP_SCHEMA_CHARS_CEILING: dict[str, int] = {
     # 146,100 with Platform Health built in, its groups advertised by the agent builder
     # (#101: +158 on each of create_agent, update_agent and clone_agent, 146,023 on 18 Nov 2026);
     # 147,600 with the three knowledge base sync-source tools (#469: 147,482 on 19 Nov 2026);
-    # 147,650 with the ctem_read group in the agent builder's group list (#1337: 147,614 on 23 Nov 2026).
-    "platform": 147_650,
+    # 147,650 with the ctem_read group in the agent builder's group list (#1337: 147,614 on 23 Nov 2026);
+    # 147,700 with the ctem_repair group in that list (#1778: 147,663 on 24 Nov 2026);
+    # 148,100 with search_config_text, one read for a text across skills and configuration (#1759: about 147,980).
+    "platform": 148_100,
     # 35,700 with list_programs and get_program_status (#10833: 35,547 on
     # 10 Nov 2026); 36,200 with the verdict release of blocked_on (#11214: 36,186 on
     # 11 Nov 2026); 36,600 with the shared state lifecycle arguments (#11696:

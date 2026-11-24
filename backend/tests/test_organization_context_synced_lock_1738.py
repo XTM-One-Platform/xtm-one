@@ -37,8 +37,13 @@ class _Db:
         return None
 
 
-def _store(monkeypatch: pytest.MonkeyPatch, stored: dict[str, Any], records: list[dict[str, Any]]) -> list[Any]:
-    """Version 1 holds *stored*; the records hold *records* (what a sync wrote since)."""
+def _store(
+    monkeypatch: pytest.MonkeyPatch, stored: dict[str, Any], records: list[dict[str, Any]], *, imported: bool = False
+) -> list[Any]:
+    """Version 1 holds *stored*; the records hold *records* (what a sync wrote since).
+
+    *imported*: the records own the rows (#1543), so a profile save ignores them (#1752).
+    """
     saved: list[Any] = []
     row = SimpleNamespace(
         version=1,
@@ -76,6 +81,10 @@ def _store(monkeypatch: pytest.MonkeyPatch, stored: dict[str, Any], records: lis
     async def named(_db: Any, *, user_id: Any, profile: Any) -> Any:
         return profile
 
+    async def is_imported(_db: Any, _org: Any) -> bool:
+        return imported
+
+    monkeypatch.setattr("app.services.organization_asset_records.is_imported", is_imported)
     monkeypatch.setattr(oc, "current_version", current_version)
     monkeypatch.setattr(oc, "hydrated_profile", hydrated_profile)
     monkeypatch.setattr(oc, "save_version", save_version)
@@ -141,6 +150,67 @@ async def test_a_patch_saves_its_fields_alone(monkeypatch: pytest.MonkeyPatch) -
     assert saved[-1].profile["owned_domains"] == ["a.example", "b.example"]
     # The asset list is the stored one, untouched: no row write follows from the patch.
     assert saved[-1].profile["assets_exposure"][0]["last_seen"] == _SYNCED["last_seen"]
+
+
+@pytest.mark.asyncio
+async def test_a_put_ignores_the_rows_once_the_records_own_them(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#1752: the rows a PUT carries are ignored and named, the stored lists kept: no lock, no row write."""
+    stored = {"assets_exposure": [_SYNCED], "owned_domains": []}
+    records = [{**_SYNCED, "last_seen": "2026-11-24T06:00:00Z"}]
+    saved = _store(monkeypatch, stored, records, imported=True)
+    body = _get_body(records, stored)
+    body["assets_exposure"][0]["name"] = "Renamed by hand"
+    body["asset_groups"] = [{"name": "dmz"}]
+    body["owned_domains"] = ["example.com"]
+    db: Any = _Db()
+    answer = await api.save_organization_context(
+        api.SaveOrganizationContextRequest(profile=body, based_on_version=1),
+        db=db,
+        admin=SimpleNamespace(id=uuid.uuid4()),
+    )
+    assert db.committed and answer.ignored_row_fields == ["assets_exposure", "asset_groups"]
+    assert saved[-1].profile["owned_domains"] == ["example.com"]
+    # The stored lists go back untouched, so save_version finds no list change to apply to the records.
+    assert saved[-1].profile["assets_exposure"] == oc.parse_profile(stored).model_dump(mode="json")["assets_exposure"]
+    assert saved[-1].profile["asset_groups"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_put_without_rows_saves_while_a_sync_rewrites_them(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#1752: a client that sends no row list saves whatever a sync did to the records since its GET."""
+    stored = {"assets_exposure": [_SYNCED], "owned_domains": []}
+    records = [{**_SYNCED, "name": "Laptop-1 renamed by Intune", "last_seen": "2026-11-24T06:00:00Z"}]
+    saved = _store(monkeypatch, stored, records, imported=True)
+    db: Any = _Db()
+    answer = await api.save_organization_context(
+        api.SaveOrganizationContextRequest(profile={"owned_domains": ["example.com"]}, based_on_version=1),
+        db=db,
+        admin=SimpleNamespace(id=uuid.uuid4()),
+    )
+    assert db.committed and answer.ignored_row_fields == []
+    assert saved[-1].profile["owned_domains"] == ["example.com"]
+    # The answer names the records' rows, as GET does, not the stale stored list.
+    assert answer.profile["assets_exposure"][0]["name"] == "Laptop-1 renamed by Intune"
+
+
+@pytest.mark.asyncio
+async def test_a_restore_of_rows_alone_is_refused_once_the_records_own_them(monkeypatch: pytest.MonkeyPatch) -> None:
+    saved = _store(monkeypatch, {"assets_exposure": [_SYNCED]}, [_SYNCED], imported=True)
+
+    async def get_version(_db: Any, version: int, _org: Any = None) -> Any:
+        return SimpleNamespace(version=version, profile={"assets_exposure": []}, organization_id=_ORG)
+
+    monkeypatch.setattr(oc, "get_version", get_version)
+    db: Any = _Db()
+    with pytest.raises(HTTPException) as exc:
+        await api.restore_organization_context_version(
+            1,
+            api.RestoreOrganizationContextRequest(fields=["assets_exposure"], based_on_version=1),
+            db=db,
+            admin=SimpleNamespace(id=uuid.uuid4()),
+        )
+    assert exc.value.status_code == 422 and "own history" in exc.value.detail
+    assert saved == [] and not db.committed
 
 
 @pytest.mark.asyncio

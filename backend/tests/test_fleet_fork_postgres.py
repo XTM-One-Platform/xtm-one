@@ -154,8 +154,9 @@ async def test_a_copy_fork_copies_structure_repoints_handovers_and_switches_ever
             .all()
         )
         # The two set up above, plus the orchestrator's weekly fleet health check (#11700)
-        # and the "Fleet health answered" listener seeded with it (#1406).
-        assert len(copied) == result.assignments_copied == 4
+        # and the "Fleet health answered" (#1406) and "Overdue work items" (#1662)
+        # listeners seeded with it.
+        assert len(copied) == result.assignments_copied == 5
         # The tripwire: a fork never produces an enabled assignment, nor one
         # carrying the source's OpenCTI / OpenAEV provisioning state.
         assert not any(a.enabled for a in copied)

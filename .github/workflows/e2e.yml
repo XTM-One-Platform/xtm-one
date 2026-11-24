@@ -99,10 +99,10 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-26.04
     timeout-minutes: 10
-    # actions: read fetches the shard weights the nightly runs published.
+    # actions: read fetches the shard weights the nightly runs published; write lets a red job cancel the run (.github/actions/fail-fast).
     permissions:
       contents: read
-      actions: read
+      actions: write
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
       run: ${{ steps.select.outputs.run }}
@@ -174,6 +174,10 @@ jobs:
           python -m tests.selection e2e "${scope[@]}" --matrix "$MATRIX" \
             --github-output "$GITHUB_OUTPUT" --summary "$GITHUB_STEP_SUMMARY"
 
+      - name: Stop the merge group at its first red job
+        if: failure() && github.event_name == 'merge_group'
+        uses: ./.github/actions/fail-fast
+
   # One stack per job, each running its share of the spec files exactly as the
   # whole suite ran before: one Playwright worker against its own platform,
   # database and scripted model. The files are dealt by their CI timings
@@ -190,6 +194,9 @@ jobs:
     if: github.event_name != 'pull_request' && needs.select.outputs.run == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: write
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
@@ -529,6 +536,10 @@ jobs:
           docker compose logs --no-color --timestamps platform worker \
             | grep -E 'Agent loop iter|"level": "(warning|error|critical)"' | tail -n 400 || true
           echo "::endgroup::"
+
+      - name: Stop the merge group at its first red job
+        if: failure() && github.event_name == 'merge_group'
+        uses: ./.github/actions/fail-fast
 
   # The check the rest of the repository reads: one status for the whole suite,
   # under the name the single job used to carry. Required, so it runs even when

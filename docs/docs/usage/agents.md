@@ -46,9 +46,9 @@ Some entries describe something that changes: what a document's footer says, how
 
 - The older entry is kept and still found by a search, listed after the current ones and marked `Superseded`. It is never given to the agent as context again.
 - A state entry reaches the agent dated (`as of <date>, verify live`), with a reminder that it is a past observation and that the live document, deck or ticket is the one to check before acting on it.
-- The agent can also retire an entry that no longer holds (`invalidate_memory`), by its id or by its subject. A retired entry is kept and marked `Superseded` too.
+- The agent can also retire an entry that no longer holds (`invalidate_memory`), by its id or by its subject. A retired entry is kept and marked `Superseded` too. The agent's shared entries are retired this way only in a session of the agent's owner or of an administrator.
 
-Entries that name no subject behave as they always did. In a conversation, the agent replaces and retires only the memory it keeps for you: the memory it shares with every user of the agent stays as it is for the others, and the newer entry is the one you are shown.
+Entries that name no subject behave as they always did. In a conversation, the agent replaces only the memory it keeps for you, and retires the memory it shares with every user of the agent only for its owner or an administrator: otherwise that shared memory stays as it is for the others, and the newer entry is the one you are shown.
 
 ## What an assignment or a roster may name
 

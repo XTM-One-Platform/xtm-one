@@ -61,6 +61,21 @@ PATH_CATALOG: dict[str, tuple[str, str]] = {
     "blind_spot": ("Blind spot or coverage gap", "inside"),
 }
 
+#: Product names of the providers a signal or a validation names by key (#1782); any other key reads as written.
+PROVIDER_NAMES: dict[str, str] = {
+    "openaev": "OpenAEV",
+    "opencti": "OpenCTI",
+    "opencrq": "OpenCRQ",
+    "aikido": "Aikido Security",
+    "manual": "Manual",
+}
+
+
+def provider_name(key: str | None) -> str:
+    """The name a person reads for a provider key: the product's name when known, else the key."""
+    value = (key or "").strip()
+    return PROVIDER_NAMES.get(value.lower(), value)
+
 
 class SignalError(ValueError):
     """A signal refused before anything is written; the message says which field and why."""
@@ -249,6 +264,8 @@ async def list_signals(
     trigger_path: str | None = None,
     lens: str | None = None,
     case_id: uuid.UUID | None = None,
+    source_provider: str | None = None,
+    since: datetime | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[CtemSignal], int, dict[str, int]]:
@@ -256,7 +273,9 @@ async def list_signals(
 
     ``recorded_by`` ``None`` reads the whole organization (an administrator);
     a user id reads only the signals recorded for that user. The counts are of
-    the same filters except ``state``.
+    the same filters except ``state``. ``source_provider`` keeps one provider
+    (case-insensitive, as stored lower-case); ``since`` keeps the signals last
+    seen at or after it (#1782).
     """
     for name, value, allowed in (
         ("state", state, SIGNAL_STATES),
@@ -273,6 +292,10 @@ async def list_signals(
     if case_id is not None:
         # The signals that opened or joined one case (CTEM-03-UI #892: its "Opened by" card).
         base = base.where(CtemSignal.case_id == case_id)
+    if source_provider and source_provider.strip():
+        base = base.where(CtemSignal.source_provider == source_provider.strip().lower())
+    if since is not None:
+        base = base.where(CtemSignal.last_seen_at >= since)
     counted = base.with_only_columns(CtemSignal.state, func.count()).group_by(CtemSignal.state)
     counts = {s: 0 for s in SIGNAL_STATES}
     for value, number in (await db.execute(counted)).all():
@@ -399,7 +422,11 @@ def to_dict(signal: CtemSignal) -> dict[str, Any]:
         "trigger_path": signal.trigger_path,
         "trigger_path_label": PATH_CATALOG.get(signal.trigger_path, ("", ""))[0],
         "lens": signal.lens,
-        "source": {"provider": signal.source_provider, "external_id": signal.source_external_id},
+        "source": {
+            "provider": signal.source_provider,
+            "name": provider_name(signal.source_provider),
+            "external_id": signal.source_external_id,
+        },
         "subject": {"kind": signal.subject_kind, "ref": signal.subject_ref, "label": signal.subject_label},
         "observed_at": _iso(signal.observed_at),
         "first_seen_at": _iso(signal.first_seen_at),
@@ -458,11 +485,13 @@ def signal_event_id(name: str, signal: CtemSignal, marker: str) -> str:
 
 
 async def user_reads_signal(db: AsyncSession, user_id: str, signal_id: Any) -> bool:
-    """Whether *user_id* reads the signal *signal_id*: an administrator, or the signal's own recorder.
+    """Whether *user_id* reads the signal *signal_id*: an administrator, a CTEM view or decide
+    right (``services/ctem_access.py``), or the signal's own recorder.
 
-    The signal API's rule (:func:`_visible`): a listener's signal (``system``) is an administrator's read only.
+    The signal API's rule: a listener's signal (``system``) is read only with one of those rights.
     """
     from app.models.user import User
+    from app.services import ctem_access
 
     try:
         uid = uuid.UUID(str(user_id))
@@ -475,7 +504,9 @@ async def user_reads_signal(db: AsyncSession, user_id: str, signal_id: Any) -> b
     if recorded_by == str(uid):
         return True
     user = await db.get(User, uid)
-    return bool(getattr(user, "is_admin", False))
+    if bool(getattr(user, "is_admin", False)):
+        return True
+    return user is not None and await ctem_access.group_right(db, uid) is not None
 
 
 def path_catalog(

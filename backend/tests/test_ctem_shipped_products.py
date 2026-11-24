@@ -87,7 +87,7 @@ def test_a_settings_save_without_shipped_products_keeps_the_stored_ones() -> Non
     from app.api.v1 import organization_context as api
 
     source = inspect.getsource(api.save_organization_context)
-    assert '("fx_rates", "shipped_products")' in source
+    assert '("fx_rates", "shipped_products", "pir_details")' in source
 
 
 def test_the_index_names_shipped_products_only_once_filled() -> None:

@@ -601,22 +601,16 @@ async def _load_imported_tool_listing(
     return [(str(row[0]), str(row[1]), str(row[2]), row[3]) for row in rows]
 
 
-#: HTTP methods that only read: an imported operation using one whose tool
-#: name still classifies as a write is flagged in the listing.
-_READING_HTTP_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "QUERY"})
-
-
 def _format_imported_tool_listing(
     rows: list[tuple[str, str, str, list[Any] | None]],
 ) -> str | None:
     """The imported operations of spec-backed integrations, grouped by integration.
 
-    Each tool's access is the one a read-only binding enforces (the shared
-    name classifier); an HTTP method that reads where the name classifies as
-    a write is flagged, since the binding withholds that tool. ``None`` when
-    no integration has an imported operation.
+    Each tool's access is the one a read-only binding enforces: the
+    operation's HTTP method (``openapi_import.operations.method_access``),
+    never its generated name. ``None`` when no integration has an imported
+    operation.
     """
-    from app.services.integration_read_only import integration_tool_access
     from app.services.openapi_import.service import imported_operations
 
     blocks: list[str] = []
@@ -626,7 +620,7 @@ def _format_imported_tool_listing(
         if not operations:
             blocks.append(f"**{name}** (`{iid}`): no imported operation (no spec attached).")
             continue
-        access = [integration_tool_access(op["name"]) for op in operations]
+        access = [op["access"] for op in operations]
         reads = access.count("read")
         total += len(operations)
         lines = [
@@ -638,8 +632,6 @@ def _format_imported_tool_listing(
             line = f"  - {op['name']} [{value}] `{request}`"
             if op["operation"] != request:
                 line += f" (operation `{op['operation']}`)"
-            if value == "write" and op["method"] in _READING_HTTP_METHODS:
-                line += " - a read by its method, withheld as a write by its name"
             lines.append(line)
         blocks.append("\n".join(lines))
     if total == 0:
@@ -10153,6 +10145,11 @@ def build_agent_builder_tool(
                 rows, noun="skill", search=search, compact=compact, limit=limit, offset=offset
             )
 
+    async def _search_config_text(query: str = "", scope: object = "") -> str:
+        from app.services.config_text_search import search_config_text
+
+        return await search_config_text(user_id, query, scope)
+
     async def _get_skill(skill_id: str, outline: bool = False, section: str = "") -> str:
         from sqlalchemy import select
 
@@ -12425,6 +12422,14 @@ def build_agent_builder_tool(
             # integrations of this provider; update_integration sets it.
             if slug := getattr(integ, "tool_slug", None):
                 parts.append(f"  • Tool suffix: `__{slug}`")
+            # Whether the receiver secret of inbound events is set and its
+            # source, for a provider whose catalog takes one; never the value.
+            from app.api.v1.integration_catalog import PROVIDER_CATALOG
+
+            if "webhook_secret" in ((PROVIDER_CATALOG.get(integ.provider) or {}).get("extra_fields") or {}):
+                from app.services.trigger_provisioning import webhook_secret_state
+
+                parts.append(f"  • Webhook secret: {await webhook_secret_state(integ)}")
             # Which way an A2A partner relationship points (update_integration's
             # a2a_direction changes it); "none" names a row the repair missed.
             from app.a2a.providers import ALL_A2A_PROVIDERS, get_settings
@@ -13442,6 +13447,7 @@ def build_agent_builder_tool(
     executor.register("update_prompt", _update_prompt)
     executor.register("delete_prompt", _delete_prompt)
     executor.register("list_skills", _list_skills)
+    executor.register("search_config_text", _search_config_text)
     executor.register("get_skill", _get_skill)
     executor.register("create_skill", _create_skill)
     executor.register("update_skill", _update_skill)
@@ -16016,6 +16022,22 @@ def build_agent_builder_tool(
                 "List skills visible to the user (instruction sets for agents)."
             ),
             input_schema=_catalog_list_schema(),
+            source="builtin:platform",
+        ),
+        ToolDefinition(
+            name="search_config_text",
+            description=(
+                "Find a text in the skills, prompts, agent personas/guardrails "
+                "and assignment prompts you can see: id, field, matching lines."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "scope": {"type": "string", "description": "skill,prompt,agent,assignment (default all)"},
+                },
+                "required": ["query"],
+            },
             source="builtin:platform",
         ),
         ToolDefinition(

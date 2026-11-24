@@ -24,9 +24,10 @@ the loop (``dev-docs/ctem-signals.md`` section 6).
 
 from __future__ import annotations
 
+import functools
 import json
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from app.models.ctem_signal import LENSES, SIGNAL_STATES, SUBJECT_KINDS, TRIGGER_PATHS
@@ -60,6 +61,18 @@ def offers_ctem_signal_tools(agent_slug: str | None, *, is_builtin: bool) -> boo
     return bool(is_builtin and (agent_slug or "") in CTEM_SIGNAL_AGENT_SLUGS)
 
 
+def _since(value: str) -> datetime | None:
+    """An ISO-8601 date or time as an aware datetime (UTC when it names no zone), ``None`` when blank or bad."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
 def _dump(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False, default=str)
 
@@ -76,12 +89,17 @@ async def reader_scope(db: Any, user_id: uuid.UUID, *, agent_reach: bool = True)
     """
     from app.api.v1.helpers import agent_tool_admin_bypass
     from app.models.user import User
+    from app.services import ctem_access
     from app.services.health.identity import in_health_reach
 
     user = await db.get(User, user_id)
     is_admin = bool(getattr(user, "is_admin", False))
-    whole = agent_tool_admin_bypass(user) if agent_reach else is_admin
-    if whole:
+    # A CTEM view or decide right of the person's groups (#1748) is theirs in an agent tool too.
+    right = None if is_admin else await ctem_access.group_right(db, user_id)
+    whole = (agent_tool_admin_bypass(user) if agent_reach else is_admin) or right is not None
+    if right is not None:
+        reason = f"CTEM {right} right"
+    elif whole:
         reason = "administrator"
     elif not is_admin:
         reason = "not an administrator"
@@ -95,6 +113,8 @@ async def reader_scope(db: Any, user_id: uuid.UUID, *, agent_reach: bool = True)
         "is_admin": is_admin,
         "reason": reason,
     }
+    if right is not None:
+        block["ctem_right"] = right
     return whole, block
 
 
@@ -119,7 +139,7 @@ async def case_signal_scope(
     if case_id is None:
         statement = statement.where(CtemSignal.case_id.is_not(None))
     else:
-        # The case view's rule for a non-administrator: the signals recorded for them.
+        # The case view's rule without a CTEM right: the signals recorded for them.
         statement = statement.where(CtemSignal.case_id == case_id, CtemSignal.recorded_by != str(user_id))
     try:
         counted = int((await db.execute(statement)).scalar_one() or 0)
@@ -319,7 +339,14 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
             return "Error: the signal could not be recorded right now. Say so; nothing was recorded."
 
     async def _list(
-        state: str = "", trigger_path: str = "", lens: str = "", limit: int = 20, offset: int = 0, signal_id: str = ""
+        state: str = "",
+        trigger_path: str = "",
+        lens: str = "",
+        limit: int = 20,
+        offset: int = 0,
+        signal_id: str = "",
+        source_provider: str = "",
+        since: str = "",
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_signals as signals
@@ -327,6 +354,18 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
 
         if scope is None:
             return "No user: there are no signals to read."
+        since_at = _since(since)
+        if since and since_at is None:
+            return "since must be an ISO-8601 date or time, e.g. 2026-11-20 or 2026-11-20T08:00:00Z."
+        # The same filters for the page and the organization-wide count below.
+        listed = functools.partial(
+            signals.list_signals,
+            state=state or None,
+            trigger_path=trigger_path or None,
+            lens=lens or None,
+            source_provider=source_provider or None,
+            since=since_at,
+        )
         try:
             async with async_session() as db:
                 primary = await get_primary(db)
@@ -347,25 +386,19 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                     if row is None:
                         return "No such signal in your scope."
                     return _dump({"total": 1, "signals": [signals.to_dict(row)], "scope": scope_block})
-                rows, total, counts = await signals.list_signals(
+                rows, total, counts = await listed(
                     db,
                     organization_id=primary.id,
                     recorded_by=None if bypass else str(scope),
-                    state=state or None,
-                    trigger_path=trigger_path or None,
-                    lens=lens or None,
                     limit=max(1, min(int(limit or 20), 50)),
                     offset=max(0, int(offset or 0)),
                 )
                 if not bypass:
                     # A count only, no content: how many the same filters match beyond the person's own.
-                    _, org_total, _ = await signals.list_signals(
+                    _, org_total, _ = await listed(
                         db,
                         organization_id=primary.id,
                         recorded_by=None,
-                        state=state or None,
-                        trigger_path=trigger_path or None,
-                        lens=lens or None,
                         limit=1,
                         offset=0,
                     )
@@ -442,6 +475,8 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                     "limit": {"type": "integer"},
                     "offset": {"type": "integer"},
                     "signal_id": {"type": "string"},
+                    "source_provider": {"type": "string"},
+                    "since": {"type": "string", "description": "ISO-8601, on last seen."},
                 },
                 "required": [],
             },

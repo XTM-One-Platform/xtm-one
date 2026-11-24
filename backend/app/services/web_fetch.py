@@ -92,6 +92,7 @@ import httpx
 from app.core.destination_policy import IPAddress, forbidden_address_reason
 from app.core.egress import current_route
 from app.core.pinned_request import pinned_client, resolve_pinned_address, send_pinned
+from app.core.pinned_transport import PolicyRefusal
 from app.core.utils import format_exception_message
 from app.integrations.http import PLATFORM_USER_AGENT
 
@@ -749,9 +750,7 @@ async def _admitted_addresses(host: str, port: int, *, allow_private: bool) -> l
         except ValueError:
             continue
         if not _is_safe_address(ip, allow_private=allow_private):
-            raise httpcore.ConnectError(
-                f"Connection refused: {host} resolves to an address this platform does not call."
-            )
+            raise PolicyRefusal(f"Connection refused: {host} resolves to an address this platform does not call.")
         if str(ip) not in addresses:
             addresses.append(str(ip))
     if not addresses:
@@ -825,7 +824,7 @@ class _PolicyNetworkBackend(httpcore.AsyncNetworkBackend):
     async def connect_unix_socket(
         self, path: str, timeout: float | None = None, socket_options: object = None
     ) -> httpcore.AsyncNetworkStream:
-        raise httpcore.ConnectError("Outbound requests cannot use a Unix socket.")
+        raise PolicyRefusal("Outbound requests cannot use a Unix socket.")
 
     async def sleep(self, seconds: float) -> None:
         await self._inner.sleep(seconds)

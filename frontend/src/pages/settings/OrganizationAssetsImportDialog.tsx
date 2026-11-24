@@ -17,7 +17,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * CSV import dialog for assets and exposure (#11543 S3).
  *
  * Two steps: pick a file (preview), then apply. The preview shows the parsed
- * rows, the errors and the crown jewel links the file names. Apply saves and
+ * rows, the errors and the primary asset links the file names. Apply saves and
  * closes; a row refused is shown inline and the Apply button is disabled.
  */
 
@@ -144,7 +144,7 @@ export function OrganizationAssetsImportDialog({ open, onOpenChange }: Props) {
 
               {Object.keys(preview.links).length > 0 && (
                 <div className="space-y-1">
-                  <p className="content-compact font-semibold text-default-primary">{t_i18n("Crown jewel links")}</p>
+                  <p className="content-compact font-semibold text-default-primary">{t_i18n("Primary asset links")}</p>
                   <ul className="list-disc space-y-0.5 pl-5 content-compact text-default-secondary">
                     {Object.entries(preview.links).map(([jewel, assets]) => (
                       <li key={jewel}>
@@ -157,7 +157,7 @@ export function OrganizationAssetsImportDialog({ open, onOpenChange }: Props) {
 
               {preview.unknown_crown_jewels.length > 0 && (
                 <p className="content-compact text-feedback-warning-primary">
-                  {t_i18n("Unknown crown jewels (ignored): {names}", { names: preview.unknown_crown_jewels.join(", ") })}
+                  {t_i18n("Unknown primary assets (ignored): {names}", { names: preview.unknown_crown_jewels.join(", ") })}
                 </p>
               )}
 

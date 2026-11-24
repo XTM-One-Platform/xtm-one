@@ -5800,6 +5800,12 @@ async def execute_assignment_run(
                             _unresolved,
                         )
 
+            # The per-user (template) rows this run resolved: the tasks it spawns
+            # resolve to the same rows when eligible for them (#1792).
+            from app.services.integration_tools import template_picks as _template_picks
+
+            _run_template_picks = _template_picks(effective_bindings, binding_origin_map)
+
             # How the run's bound platforms name the objects they hold, filled by
             # the integration build (integration_tools.PLATFORM_NAMES_CONTEXT_KEY)
             # for the grounded STIX extraction below.
@@ -6413,6 +6419,14 @@ async def execute_assignment_run(
             )
             if _ctem_read is not None:
                 composite.add_tools(*_ctem_read)
+            # --- CTEM administrator repairs (#1778): the CTEM case agents, or the group bound ---
+            from app.services.builtin_tools import ctem_repair_tools_for
+
+            _ctem_repair = (
+                ctem_repair_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if run.user_id else None
+            )
+            if _ctem_repair is not None:
+                composite.add_tools(*_ctem_repair)
             # --- Learned skill (#914): a built-in agent records durable lessons ---
             from app.services.builtin_tools import build_learned_lesson_tool, offers_learned_lesson_tool
 
@@ -7579,6 +7593,9 @@ async def execute_assignment_run(
                         handover_type_map=agent.handover_types or {},
                         handover_peers=_configured_handover_peers,
                         resolve_owned_target=_owned_resolver,
+                        # The run's per-user picks: its tasks act as the same
+                        # accounts (#1792).
+                        inherited_template_picks=_run_template_picks,
                     )
                     if _sa_result:
                         composite.add_tools(*_sa_result)

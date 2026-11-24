@@ -11,7 +11,7 @@
 import { expect, test } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, sep } from "node:path";
-import { filterPanelAlign } from "./filter-pill";
+import { filterPanelAlign, filterPanelMaxHeight } from "./filter-pill";
 
 // vitest runs from frontend/ (CI and `yarn test`), as shadow-overlay-floating.test.ts.
 const SRC = join(process.cwd(), "src") + sep;
@@ -377,4 +377,19 @@ test("the pickers of a Filters pill fill the panel width", () => {
 
 test("the filter panel stays on the left edge when the right edge would not fit either", () => {
   expect(filterPanelAlign({ left: 100, right: 180 }, 288, 300)).toBe("left");
+});
+
+test("a fitted filter panel stops above the viewport's bottom edge and keeps a usable height", () => {
+  // The Cases Filters panel opened at y 248 in a 1080 viewport ran to y 1602 (UX r1 B1 on #1822).
+  expect(filterPanelMaxHeight(248, 1080)).toBe(824);
+  expect(filterPanelMaxHeight(248.6, 1080)).toBe(823);
+  // A pill near the bottom still opens a panel the user can scroll inside.
+  expect(filterPanelMaxHeight(1000, 1080)).toBe(160);
+});
+
+test("the Filters pill panel fits the viewport with its own scroller", () => {
+  const source = readFileSync(join(SRC, OWNER), "utf8");
+  const pill = source.slice(source.indexOf("export function FiltersPill("));
+  expect(pill).toMatch(/<FilterPillPanel[\s\S]*?\bfitViewport\b[\s\S]*?>/);
+  expect(source).toContain('fitViewport && "overflow-y-auto overscroll-contain"');
 });

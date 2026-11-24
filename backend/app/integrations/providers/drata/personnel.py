@@ -505,6 +505,7 @@ def register(
     return [
         ToolDefinition(
             name="list_drata_personnel",
+            personal_records=True,
             description="List personnel with compliance status. Optionally filter by employment and/or compliance status.",
             input_schema={
                 "type": "object",
@@ -535,6 +536,7 @@ def register(
         ),
         ToolDefinition(
             name="get_drata_personnel",
+            personal_records=True,
             description="Get details for a specific person. Accepts numeric ID or 'email:user@host'.",
             input_schema={
                 "type": "object",

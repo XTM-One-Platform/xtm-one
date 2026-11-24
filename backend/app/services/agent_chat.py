@@ -1882,6 +1882,10 @@ async def run_agent_chat(
     # (an agent account's rule): every other provider's bindings are
     # dropped after pinning. ``None``: the agent's own, unfiltered.
     allowed_integration_providers: set[str] | None = None,
+    # ``{provider: integration id}`` the run that spawned this turn resolved its
+    # per-user (template) bindings to (a background task, #1792): taken first
+    # when still eligible for this turn, so parent and child act as one account.
+    inherited_template_picks: dict[str, str] | None = None,
     # Filled with the integrations this turn did not use for its user because
     # of who may use them, nested consult and transfer turns included:
     # the caller shows them on the reply
@@ -4602,6 +4606,12 @@ async def run_agent_chat(
             ctem_read = ctem_read_tools_for(agent, agent_builtin_tool_ids, user_id=user_id)
             if ctem_read is not None:
                 composite.add_tools(*ctem_read)
+            # The CTEM administrator repairs (#1778): the CTEM case agents, or the group bound.
+            from app.services.builtin_tools import ctem_repair_tools_for
+
+            ctem_repair = ctem_repair_tools_for(agent, agent_builtin_tool_ids, user_id=user_id)
+            if ctem_repair is not None:
+                composite.add_tools(*ctem_repair)
             # The learned skill (#914): a built-in agent records durable lessons.
             from app.services.builtin_tools import build_learned_lesson_tool, offers_learned_lesson_tool
 
@@ -5347,6 +5357,7 @@ async def run_agent_chat(
                 for _tmpl_provider, _tmpl_integs in _by_provider.items():
                     if _tmpl_provider in effective_bindings:
                         continue
+                    _inherited_id = (inherited_template_picks or {}).get(_tmpl_provider)
                     _integ, _origin = await resolve_template_integration(
                         db,
                         _tmpl_provider,
@@ -5354,7 +5365,21 @@ async def run_agent_chat(
                         scope_headers,
                         acting_user_id=_acting_uuid,
                         context=f"agent={agent.name}",
+                        inherited_id=_inherited_id,
                     )
+                    if _inherited_id and (_integ is None or str(_integ.id) != _inherited_id):
+                        # The child cannot use its parent's account: said in
+                        # the logs, never a silent other view.
+                        logger.warning(
+                            "Template binding %s of agent %s: the spawning run used integration %s, "
+                            "this turn resolved %s (origin %s) for user %s",
+                            _tmpl_provider,
+                            agent.name,
+                            _inherited_id,
+                            str(_integ.id) if _integ else None,
+                            _origin,
+                            _acting_uuid,
+                        )
                     if _integ:
                         effective_bindings[_tmpl_provider] = str(_integ.id)
                         binding_origin_map[_tmpl_provider] = _origin
@@ -6472,6 +6497,7 @@ async def run_agent_chat(
 
             if _needs_bg:
                 from app.services.builtin_tools import build_sub_agent_tools
+                from app.services.integration_tools import template_picks as _template_picks
 
                 # Delegations tee: the spawn hook feeds BOTH the
                 # caller's delegations sink (the On-delegate attachment) and
@@ -6511,6 +6537,9 @@ async def run_agent_chat(
                     # transferred one or a delegated task runs its own turn, not
                     # in evaluation mode, under the parent run it creates.
                     cap_scope=f"evaluation_turn:{uuid.uuid4()}" if evaluation_mode else None,
+                    # This turn's per-user picks: its tasks act as the same
+                    # accounts (#1792).
+                    inherited_template_picks=_template_picks(effective_bindings, binding_origin_map),
                     element_scope=_element_scope,
                 )
             else:

@@ -678,7 +678,8 @@ def host_paths() -> list[str]:
 
 def host_origin(host: Path) -> str:
     """The host ref the log names: repository@commit (ref) from the checkout record, else the directory."""
-    record = host / ".xtm-checkout.json"
+    # The sandbox's checkout record: ".xtm-checkout", ".xtm-checkout.json" on a checkout written before the rename.
+    record = next((host / n for n in (".xtm-checkout", ".xtm-checkout.json") if (host / n).is_file()), host / ".xtm-checkout")
     if not record.is_file():
         return f"{host.name}/ (no checkout record)"
     data = json.loads(record.read_text(encoding="utf-8"))

@@ -737,24 +737,26 @@ async def assets_of_version(
 
 def matcher_entries(
     software: Iterable[Mapping[str, Any]], typed: Iterable[Mapping[str, Any]] = ()
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     """The products the CVE matcher looks for (pure, testable): one entry per software.
 
     *software* holds one mapping per software entity (``vendor``, ``product``,
     ``cpe``, ``versions``: the versions installed, ``unknown`` included). The
     entry's ``version`` is the installed version when the organization runs
     exactly one known version of it, else empty (several versions, or only
-    ``unknown``: the matcher then states no installed version, never a guess).
+    ``unknown``: the matcher then states no single installed version, never a
+    guess). ``versions`` lists every known installed version (#1783), so the
+    matcher checks each of them against OpenCTI's Software of that version.
     *typed* are rows typed in the organization profile before the profile moved
     to Software entities (``vendor``, ``product``, ``cpe``, ``version``): a row
     no software entity carries is still matched, so nothing typed is lost.
-    Each entry carries ``product``, ``vendor``, ``cpe``, ``version`` and
-    ``label`` (the name the case and the why line show).
+    Each entry carries ``product``, ``vendor``, ``cpe``, ``version``,
+    ``versions`` and ``label`` (the name the case and the why line show).
     """
-    out: list[dict[str, str]] = []
-    seen: dict[Key, dict[str, str]] = {}
+    out: list[dict[str, Any]] = []
+    seen: dict[Key, dict[str, Any]] = {}
 
-    def add(vendor: str, product: str, cpe: str, version: str) -> None:
+    def add(vendor: str, product: str, cpe: str, version: str, versions: list[str]) -> None:
         vendor, product = vendor.strip(), product.strip()
         if not product:
             return
@@ -774,6 +776,7 @@ def matcher_entries(
             "vendor": vendor,
             "cpe": cpe.strip(),
             "version": version.strip(),
+            "versions": versions,
             "label": display_name(vendor, product),
         }
         seen[key] = entry
@@ -792,13 +795,16 @@ def matcher_entries(
             str(soft.get("product") or ""),
             str(soft.get("cpe") or ""),
             known[0] if len(known) == 1 else "",
+            known,
         )
     for row in typed:
+        typed_version = str(row.get("version") or "").strip()
         add(
             str(row.get("vendor") or ""),
             str(row.get("product") or ""),
             str(row.get("cpe") or ""),
-            str(row.get("version") or ""),
+            typed_version,
+            [typed_version] if typed_version else [],
         )
     return out
 
@@ -885,8 +891,13 @@ async def create_software(
     description: str = "",
     cpe: str = "",
     purl: str = "",
+    version: str = "",
 ) -> dict[str, Any]:
-    """Type a software by hand (``origin`` ``manual``); 409 when the vendor and product already exist."""
+    """Type a software by hand (``origin`` ``manual``); 409 when the vendor and product already exist.
+
+    *version*, when given, is the version the organization runs: stored as a
+    version of the software (a hand-typed software keeps its typed versions).
+    """
     product = _cut(product, 200)
     if not product:
         raise SoftwareError("product is required")
@@ -922,7 +933,26 @@ async def create_software(
     _resolve(soft)
     db.add(soft)
     await db.flush()
+    typed_version = _cut(version, 100)
+    if typed_version and typed_version != identity.UNKNOWN_VERSION:
+        db.add(
+            OrganizationSoftwareVersion(
+                id=uuid.uuid4(),
+                organization_id=organization_id,
+                software_id=soft.id,
+                version=typed_version,
+                cpe=_cut(version_cpe(soft.cpe, typed_version), 300),
+            )
+        )
+        await db.flush()
     return _software_dict(soft)
+
+
+async def software_keys(db: AsyncSession, organization_id: uuid.UUID) -> set[Key]:
+    """The ``(vendor, product)`` keys of every software of *organization_id* (one read)."""
+    soft = OrganizationSoftware
+    rows = await db.execute(select(soft.vendor_key, soft.product_key).where(soft.organization_id == organization_id))
+    return {(str(vendor), str(product)) for vendor, product in rows.all()}
 
 
 #: The fields of a hand-typed software an administrator may change; a synced one takes ``cpe_override`` only.

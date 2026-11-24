@@ -36,7 +36,13 @@ from datetime import date
 from typing import Any
 
 from app.services.ctem_primary_assets import PrimaryAssetIndex
-from app.services.organization_context import AssetEntry, OrganizationProfile, ShippedProduct
+from app.services.organization_context import (
+    AssetEntry,
+    OrganizationProfile,
+    ShippedProduct,
+    effective_criticality,
+    groups_of,
+)
 
 #: Version of the decision record; a reader keys on it.
 DECISION_VERSION = 1
@@ -421,6 +427,7 @@ def resolve(
         ):
             out.products.append(entry.product)
     _resolve_shipped(profile, software, out)
+    _resolve_repositories(profile, software, out)
     if primary_assets is not None:
         refs = list(dict.fromkeys([*software, *out.products]))
         out.primary_assets = primary_assets.reach(refs, keys)
@@ -458,6 +465,45 @@ def _resolve_shipped(profile: OrganizationProfile, software: list[str], out: Res
             out.assets.append(asset)
 
 
+def _repository_token(value: str) -> str:
+    """A repository or product name folded for comparison: lower case, ``-``, ``_`` and spaces dropped."""
+    return re.sub(r"[\s_\-.]+", "", value.strip().lower())
+
+
+def repository_match(asset: AssetEntry, ref: str) -> bool:
+    """Whether a software reference names an imported repository asset (harness gap x12-02, #1774).
+
+    The GitHub and GitLab imports write each repository as an asset of subcategory
+    ``code_repository`` named ``owner/name``: a CPE whose product part, or a plain
+    name, is the repository's name (case, ``-`` and ``_`` folded) names it. A fork
+    never does: the organization does not ship it.
+    """
+    if asset.subcategory != "code_repository" or "fork" in asset.tags:
+        return False
+    name = asset.name.rsplit("/", 1)[-1]
+    text = str(ref or "").strip()
+    named = _cpe_vendor_product(text)
+    wanted = _repository_token(named[1] if named else text)
+    return bool(wanted) and wanted == _repository_token(name)
+
+
+def _resolve_repositories(profile: OrganizationProfile, software: list[str], out: Resolution) -> None:
+    """A product the organization ships, read from its imported repositories with no typed row (#1774).
+
+    A repository a ``shipped_products`` row already resolved is left to it.
+    """
+    if not software:
+        return
+    known = {r.lower() for r in out.repositories}
+    for asset in profile.assets_exposure:
+        if asset.name.lower() in known or not any(repository_match(asset, ref) for ref in software):
+            continue
+        out.shipped.append({"product": asset.name.rsplit("/", 1)[-1], "by": "repository", "repositories": [asset.name]})
+        out.repositories.append(asset.name)
+        if asset not in out.assets:
+            out.assets.append(asset)
+
+
 def _confidence(facts: SignalFacts, related: list[RelatedSignal]) -> tuple[str, list[str], bool]:
     lenses = sorted({facts.lens, *(r.lens for r in related if r.verdict not in CONTRADICTING_VERDICTS)})
     proven = (
@@ -477,6 +523,8 @@ def _confidence(facts: SignalFacts, related: list[RelatedSignal]) -> tuple[str, 
 def _jewels_of(profile: OrganizationProfile, resolution: Resolution) -> list[tuple[str, str]]:
     """``(name, criticality)`` of the crown jewels the resolved assets and groups run."""
     names = {a.name.lower() for a in resolution.assets} | {a.group.lower() for a in resolution.assets if a.group}
+    # #1773: the groups an asset joins by rule count as its groups too.
+    names |= {g.name.lower() for a in resolution.assets for g in groups_of(profile, a)}
     names |= {g.lower() for g in resolution.groups}
     named = {n.lower() for n in resolution.crown_jewels}
     linked = {str(h["primary_asset_key"]) for h in resolution.primary_assets}
@@ -647,6 +695,11 @@ def decide(
     for asset in resolution.assets:
         if asset.criticality in ASSET_TO_SCOPE:
             sources.append({"from": "asset", "name": asset.name, "criticality": ASSET_TO_SCOPE[asset.criticality]})
+            continue
+        # #1773: an asset of unknown criticality takes the one its groups give their members.
+        inherited = effective_criticality(profile, asset)
+        if inherited in ASSET_TO_SCOPE:
+            sources.append({"from": "asset_group", "name": asset.name, "criticality": ASSET_TO_SCOPE[inherited]})
     jewels = _jewels_of(profile, resolution)
     chains: dict[str, list[dict[str, Any]]] = {}
     for hit in resolution.primary_assets:
