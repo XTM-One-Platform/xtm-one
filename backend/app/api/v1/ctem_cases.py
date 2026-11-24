@@ -191,6 +191,7 @@ async def list_ctem_cases(
             "counts": {s: 0 for s in CASE_STATES},
             "cases": [],
             "details_unavailable": [],
+            "details_unavailable_reasons": {},
             "ticketing": {"connected": False, "reason": ticketing.NOT_CONNECTED, "settings": ticketing.SETTINGS_PATH},
         }
     # Cases stay current with no button (s.4.3): a viewer whose last recompute is
@@ -226,6 +227,9 @@ async def list_ctem_cases(
         "counts": {s: counts.get(s, 0) for s in CASE_STATES},
         "cases": rows,
         "details_unavailable": view.missing,
+        # Why each of those products did not answer this viewer's read (#1852): rejected, too_large,
+        # timeout, not_connected or unavailable, so the empty state says what failed.
+        "details_unavailable_reasons": {p: view.reasons.get(p, "unavailable") for p in view.missing},
         # Whether a ticketing target is declared (CTEM-19-UI, #1032): the case
         # screens say "No ticketing connected" with the settings link.
         "ticketing": await ticketing.ticketing_target(db),
