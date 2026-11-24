@@ -20970,6 +20970,8 @@
   "Unknown user": "Unknown user",
   "No schedule": "No schedule",
   "No sync scheduled": "No sync scheduled",
+  "Rows from an earlier sync, none scheduled": "Rows from an earlier sync, none scheduled",
+  "Set up a sync": "Set up a sync",
   "Writes when the agent sends rows": "Writes when the agent sends rows",
   "Writes at each CSV import": "Writes at each CSV import",
   "Writes at each API call": "Writes at each API call",

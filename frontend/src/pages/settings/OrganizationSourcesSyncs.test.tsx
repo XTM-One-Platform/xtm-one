@@ -7,7 +7,7 @@ import { MemoryRouter } from "react-router-dom";
 import { api } from "@/lib/api";
 import { renderWithProviders } from "@/testing/providers";
 import type { OrganizationSource, OrganizationSync } from "@/hooks/api/useOrganizationContextApi";
-import { OrganizationSourcesSyncs } from "./OrganizationSourcesSyncs";
+import { OrganizationSourcesSyncs, type SyncPreset } from "./OrganizationSourcesSyncs";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -68,10 +68,10 @@ function serve(syncs: OrganizationSync[], sources: OrganizationSource[]) {
   });
 }
 
-function render(scope: "" | "profile" | "inventory" = "") {
+function render(scope: "" | "profile" | "inventory" = "", onSetUpSync?: (preset: SyncPreset) => void) {
   renderWithProviders(
     <MemoryRouter>
-      <OrganizationSourcesSyncs scope={scope} onAddSource={() => {}} />
+      <OrganizationSourcesSyncs scope={scope} onAddSource={() => {}} onSetUpSync={onSetUpSync} />
     </MemoryRouter>,
   );
 }
@@ -166,6 +166,50 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     fireEvent.click(within(dialog).getByRole("radio", { name: /Purge the rows it wrote/ }));
     fireEvent.click(within(dialog).getByRole("button", { name: /^Purge/ }));
     await waitFor(() => expect(post).toHaveBeenCalledWith("/organization-context/sources/ciso-office/rows", { mode: "purge" }));
+  });
+
+  it.each([
+    ["opencrq", "OpenCRQ", { crown_jewels: 9 }, "crown_jewels"],
+    ["opencti", "OpenCTI", { assets_exposure: 12 }, "assets"],
+    ["openaev", "OpenAEV", { tech_stack: 4 }, "software"],
+  ] as const)("gives a %s source whose rows outlived their sync a menu: set up a sync, purge or hand over (#1940)", async (key, name, counts, section) => {
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    serve([], [source({ key, display_name: name, rows: counts, total, sync_ids: [] })]);
+    post.mockResolvedValue({ ...plan, source: key, count: total });
+    const onSetUpSync = vi.fn();
+    render("inventory", onSetUpSync);
+    const [row] = await rows();
+    expect(row.textContent).toContain("Rows from an earlier sync, none scheduled");
+    fireEvent.pointerDown(within(row).getByRole("button", { name: `Actions on ${name}` }), { button: 0, ctrlKey: false });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Set up a sync" }));
+    expect(onSetUpSync).toHaveBeenCalledWith({ section, source: key });
+    fireEvent.pointerDown(within(row).getByRole("button", { name: `Actions on ${name}` }), { button: 0, ctrlKey: false });
+    fireEvent.click(await screen.findByRole("menuitem", { name: `Remove or hand over the rows of ${name}` }));
+    const dialog = await screen.findByTestId("organization-sources.delete");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Make the rows editable" }));
+    await waitFor(() => expect(post).toHaveBeenCalledWith(`/organization-context/sources/${key}/rows`, { mode: "release" }));
+  });
+
+  it("offers no action on a connected platform with no row and no sync (#1940)", async () => {
+    serve([], [source({ key: "opencrq", display_name: "OpenCRQ", rows: {}, total: 0, sync_ids: [] })]);
+    render("inventory", vi.fn());
+    const [row] = await rows();
+    expect(row.textContent).toContain("No sync scheduled");
+    expect(within(row).queryByRole("button", { name: /Actions on/ })).toBeNull();
+  });
+
+  it("purges the rows of an API source with no sync (#1940: every source but hand rows)", async () => {
+    serve([], [source({ key: "api", kind: "api", display_name: "api", rows: { assets_exposure: 2 }, total: 2, sync_ids: [] })]);
+    post.mockResolvedValue({ ...plan, source: "api", count: 2 });
+    render();
+    const [row] = await rows();
+    fireEvent.pointerDown(within(row).getByRole("button", { name: /Actions on/ }), { button: 0, ctrlKey: false });
+    expect(screen.queryByRole("menuitem", { name: "Set up a sync" })).toBeNull();
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Remove or hand over the rows of/ }));
+    const dialog = await screen.findByTestId("organization-sources.delete");
+    fireEvent.click(within(dialog).getByRole("radio", { name: /Purge the rows it wrote/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Purge/ }));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/organization-context/sources/api/rows", { mode: "purge" }));
   });
 
   it("runs a sync now and reports its counts", async () => {
