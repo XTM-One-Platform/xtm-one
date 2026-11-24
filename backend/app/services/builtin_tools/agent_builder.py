@@ -9098,6 +9098,12 @@ def build_agent_builder_tool(
                 if run.started_at:
                     secs = (run.completed_at - run.started_at).total_seconds()
                     parts.append(f"Duration: {secs:.0f}s")
+            from app.services.hitl_resume_clock import awaiting_human_seconds
+
+            _paused = awaiting_human_seconds(run)
+            if _paused:
+                # Counted apart: a pause for a person is neither queue nor work time (#1645).
+                parts.append(f"Waiting for a person: {_paused:.0f}s (within the duration)")
             if run.total_input_tokens or run.total_output_tokens:
                 parts.append(
                     f"Tokens: {run.total_input_tokens or 0} in / "

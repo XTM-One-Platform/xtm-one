@@ -142,7 +142,10 @@ def test_a_resume_within_the_timeout_or_without_one_goes_on():
 
 def test_the_engine_keeps_the_first_start_and_reads_the_wall_time_before_resuming():
     source = inspect.getsource(assignment_engine.execute_assignment_run)
-    assert "run.started_at = (run.started_at if _resuming else None) or datetime.now(UTC)" in source
+    # A HITL resume keeps it too (#1645).
+    assert (
+        "run.started_at = (run.started_at if (_resuming or _hitl_resume) else None) or datetime.now(UTC)" in source
+    )
     wall = source.index("schedule_overlap.wall_time_refusal(run, effective_timeout=_wall_timeout)")
     assert wall < source.index("assignment_run_resume.resume_refused(")
     assert wall < source.index("await record_agentic_execution(SOURCE_ASSIGNMENT)")
