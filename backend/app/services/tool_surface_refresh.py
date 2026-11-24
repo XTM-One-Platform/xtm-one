@@ -1,0 +1,99 @@
+# Copyright (c) 2025-2026 Filigran SAS
+#
+# This file is part of the XTM One Enterprise Edition ("EE") and is
+# licensed under the XTM One Enterprise Edition License (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://github.com/XTM-One-Platform/xtm-one/blob/main/LICENSE
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+
+"""Rebuild a run's integration tools inside the turn, through the caller's own filters (#1874).
+
+A caller (the agent chat, the assignment engine) builds its tool surface once:
+the integration tools through ``build_integration_tools`` and its allow lists,
+then the whole composite narrowed by the built-in scoping, the deny list and the
+caller's own strips. When a tool of the run changes an integration the run is
+bound to (a new OpenAPI spec, a new operation), the loop asks for the surface
+again. :class:`IntegrationSurfaceRefresher` answers it with the SAME two
+functions the caller built its first surface with, so a refresh never widens
+past what a fresh turn of the same agent would get: no second copy of the
+allow, deny or strip rules lives here.
+
+The refresh rewrites the registries in place: the integration names the new
+build no longer carries leave the composite, the new ones are registered, and
+the scoped executor's allowed set is swapped for the narrowed surface.
+"""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+
+from app.tools.base import CompositeToolExecutor, ScopedToolExecutor, ToolDefinition, ToolExecutor
+
+logger = logging.getLogger(__name__)
+
+INTEGRATION_SOURCE_PREFIX = "integration:"
+
+RebuildIntegrations = Callable[[], Awaitable[tuple[list[ToolDefinition], ToolExecutor]]]
+NarrowSurface = Callable[[list[ToolDefinition]], list[ToolDefinition]]
+
+
+def integration_tool_names(tools: list[ToolDefinition]) -> set[str]:
+    """The names of the integration tools in *tools* (source ``integration:<provider>``)."""
+    return {t.name for t in tools if (t.source or "").startswith(INTEGRATION_SOURCE_PREFIX)}
+
+
+@dataclass(frozen=True, slots=True)
+class SurfaceRefresh:
+    """What one refresh changed: the narrowed surface and the names it added or dropped."""
+
+    tools: list[ToolDefinition]
+    added: tuple[str, ...]
+    removed: tuple[str, ...]
+
+
+@dataclass(slots=True)
+class IntegrationSurfaceRefresher:
+    """The caller's integration build and narrowing, replayed on the live registries.
+
+    ``rebuild_integrations`` answers the integration definitions and their
+    executor after the caller's integration allow lists (it opens its own
+    database session: the loop holds none). ``narrow`` is the function the
+    caller computed its offered surface with from ``composite.all_tools``.
+    """
+
+    composite: CompositeToolExecutor
+    scoped: ScopedToolExecutor
+    rebuild_integrations: RebuildIntegrations
+    narrow: NarrowSurface
+
+    async def refresh(self) -> SurfaceRefresh:
+        before = self.narrow(self.composite.all_tools)
+        old_integrations = integration_tool_names(self.composite.all_tools)
+        definitions, executor = await self.rebuild_integrations()
+        new_integrations = {t.name for t in definitions}
+        self.composite.remove_tools(old_integrations - new_integrations)
+        if definitions:
+            self.composite.add_tools(definitions, executor)
+        after = self.narrow(self.composite.all_tools)
+        self.scoped.replace_allowed(after)
+        before_names = {t.name for t in before}
+        after_names = {t.name for t in after}
+        refresh = SurfaceRefresh(
+            tools=after,
+            added=tuple(sorted(after_names - before_names)),
+            removed=tuple(sorted(before_names - after_names)),
+        )
+        logger.info(
+            "Tool surface refreshed inside the turn: %d tool(s), %d added, %d removed",
+            len(after),
+            len(refresh.added),
+            len(refresh.removed),
+        )
+        return refresh

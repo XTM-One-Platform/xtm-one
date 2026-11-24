@@ -18,7 +18,7 @@ assignments and the fleet entry; :mod:`app.agents.builtin_agents` and
 :mod:`app.agents.builtin_fleets` extend their lists with them.
 
 - ``ctem-ai-security-orchestrator`` runs the loop: an AI-enabled threat is
-  mapped to MITRE ATLAS, matched to the AI systems of the organization profile,
+  mapped to MITRE ATLAS, matched to the AI targets of the organization profile,
   an OpenAEV AI test is proposed behind an approval work item, the result is
   priced and a fix is tracked to its re-test.
 - ``ctem-ai-threat-analyst`` maps a report or a campaign to ATLAS techniques and
@@ -40,7 +40,7 @@ FLEET_SLUG = "ctem-ai-security"
 FLEET_NAME = "AI security"
 
 #: Work-item key prefixes of the fleet (section 4 common rules).
-AI_SYSTEM_PREFIX = "ctem:f3:ai-system:"
+AI_TARGET_PREFIX = "ctem:f3:ai-target:"
 APPROVAL_PREFIX = "ctem:f3:approval:"
 
 #: F1 agents F3 works with; connected, never members (they are home in F1).
@@ -87,7 +87,7 @@ _CASE_SCHEMA: dict = {
     "properties": {
         "threat": {"type": "string"},
         "atlas_techniques": {"type": "array", "items": {"type": "string"}},
-        "matched_ai_systems": {
+        "matched_ai_targets": {
             "type": "array",
             "items": {
                 "type": "object",
@@ -122,10 +122,10 @@ _CASE_SCHEMA: dict = {
         },
         "exposure": {"type": "string", "description": "Test results read, or 'pending approval'."},
         "fixes": {"type": "array", "items": {"type": "string"}},
-        "status": {"type": "string", "enum": ["not_relevant", "awaiting_approval", "tested", "fixed", "no_ai_system"]},
+        "status": {"type": "string", "enum": ["not_relevant", "awaiting_approval", "tested", "fixed", "no_ai_target"]},
         "missing_context": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["threat", "matched_ai_systems", "proposed_tests", "status", "missing_context"],
+    "required": ["threat", "matched_ai_targets", "proposed_tests", "status", "missing_context"],
 }
 
 AI_SECURITY_AGENTS: list[dict] = [
@@ -135,7 +135,7 @@ AI_SECURITY_AGENTS: list[dict] = [
         "name": "AI Security Orchestrator",
         "description": (
             "Orchestrates the AI security fleet: maps AI-enabled threats to MITRE ATLAS, "
-            "matches them to the organization's AI systems, proposes OpenAEV AI tests "
+            "matches them to the organization's AI targets, proposes OpenAEV AI tests "
             "behind approval and tracks exposure and fixes."
         ),
         "icon": "BrainCircuit",
@@ -162,7 +162,7 @@ AI_SECURITY_AGENTS: list[dict] = [
         "persona": THREAT_ANALYST,
         "name": "AI Threat Analyst",
         "description": (
-            "Maps AI-enabled tradecraft and attacks on AI systems to MITRE ATLAS techniques "
+            "Maps AI-enabled tradecraft and attacks on AI targets to MITRE ATLAS techniques "
             "and proposes the ATLAS entities in an OpenCTI draft for analyst review."
         ),
         "icon": "ScanEye",
@@ -198,7 +198,7 @@ AI_SECURITY_ASSIGNMENTS: list[dict] = [
     {
         **_COMMON,
         "name": "New AI-enabled report",
-        "description": "An OpenCTI report labelled 'ai' was created: map it to ATLAS, then judge its relevance to the AI systems.",
+        "description": "An OpenCTI report labelled 'ai' was created: map it to ATLAS, then judge its relevance to the AI targets.",
         "trigger_type": "integration_event",
         "trigger_config": {
             "provider": "opencti",
@@ -214,35 +214,37 @@ AI_SECURITY_ASSIGNMENTS: list[dict] = [
         "prompt": (
             "A report was created in OpenCTI: {{trigger.entity_name}} ({{trigger.entity_id}}).\n"
             "Run one case of the AI security loop on it: delegate the ATLAS mapping to the AI "
-            "Threat Analyst, match the techniques to the AI systems of the organization profile, "
+            "Threat Analyst, match the techniques to the AI target assets of the inventory, "
             "propose the OpenAEV AI tests behind approval work items, and answer with the case "
-            "JSON. A report with no AI-enabled tradecraft and no attack on an AI system closes "
+            "JSON. A report with no AI-enabled tradecraft and no attack on an AI target closes "
             "as not_relevant with the reason."
         ),
     },
     {
         **_COMMON,
         "name": "Weekly AI threat watch",
-        "description": "Weekly summary of the new AI campaigns with their ATLAS techniques, and the AI systems they reach.",
+        "description": "Weekly summary of the new AI campaigns with their ATLAS techniques, and the AI targets they reach.",
         "trigger_type": "schedule",
         "trigger_config": {"cron": "0 7 * * 2"},
         "prompt": (
             "Weekly AI threat watch. Read the OpenCTI reports, campaigns and intrusion sets of the "
             "last 7 days that carry the 'ai' label or an ATLAS technique, and the cases this fleet "
             "already holds (shared state ctem:f3:state). For each new one, run the loop once; for "
-            "an AI system of the profile with no baseline test yet, propose one behind approval. "
+            "an AI target asset of the inventory (category ai_target) with no baseline test yet, "
+            "propose one behind approval. "
             "Answer with the case JSON of the most important case and list the others in its fixes."
         ),
     },
     {
         **_COMMON,
-        "name": "AI system registered",
-        "description": "A work item whose key starts with ctem:f3:ai-system: (then the system name) asks for the baseline test proposal of a new AI system.",
+        "name": "AI target added",
+        "description": "A work item whose key starts with ctem:f3:ai-target: (then the asset name) asks for the baseline test proposal of a new AI target asset.",
         "trigger_type": "work_item",
-        "trigger_config": {"correlation_prefix": AI_SYSTEM_PREFIX},
+        "trigger_config": {"correlation_prefix": AI_TARGET_PREFIX},
         "prompt": (
-            "An AI system was registered in the organization profile (the work item names it). "
-            "Read it with get_organization_context, map the ATLAS techniques its kind and exposure "
+            "An asset of category ai_target was added to the inventory (the work item names it). "
+            "Read it with get_organization_context (category assets_exposure, query "
+            "category:ai_target), map the ATLAS techniques its kind and exposure "
             "make reachable, and propose its baseline OpenAEV tests (prompt injection, jailbreak, "
             "excessive agency, tool misuse, MCP tool poisoning where it uses tools) behind approval "
             "work items. Answer with the case JSON."
@@ -266,8 +268,14 @@ AI_SECURITY_FLEET: dict = {
         {"agent": THREAT_ANALYST, "role_label": "ATLAS mapping", "parent": ORCHESTRATOR},
     ],
     "connected": [
-        {"agent": "ctem-threat-relevance-analyst", "collaboration_instruction": "Relevance to the organization's AI systems"},
-        {"agent": "openaev-scenario-creator", "collaboration_instruction": "Builds the AI tests, launched only after approval"},
+        {
+            "agent": "ctem-threat-relevance-analyst",
+            "collaboration_instruction": "Relevance to the organization's AI targets",
+        },
+        {
+            "agent": "openaev-scenario-creator",
+            "collaboration_instruction": "Builds the AI tests, launched only after approval",
+        },
         {"agent": "ctem-risk-quantifier", "collaboration_instruction": "AI risk scenario in OpenCRQ"},
         {"agent": "ctem-remediation-coordinator", "collaboration_instruction": "Fixes ticketed after approval, then re-tested"},
         {"agent": "cti-ttp-harvester-filigran-ai", "collaboration_instruction": "TTP extraction consulted by the ATLAS mapping"},

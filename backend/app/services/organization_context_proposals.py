@@ -79,7 +79,7 @@ PROPOSABLE_KNOWLEDGE_PATHS: tuple[str, ...] = ("enterprise_knowledge",)
 PROPOSABLE_PIR_PATHS: tuple[str, ...] = ("pir_details",)
 #: The row fields an agent never writes through the profile (#1752): the asset records own them (#1543),
 #: each with its own lock and history. Field -> the ``upsert_organization_rows`` section that writes it.
-ROW_FIELDS: dict[str, str] = {"assets_exposure": "assets", "asset_groups": "asset_groups", "ai_systems": "assets"}
+ROW_FIELDS: dict[str, str] = {"assets_exposure": "assets", "asset_groups": "asset_groups"}
 
 
 def row_field_refusal(path: str) -> str:

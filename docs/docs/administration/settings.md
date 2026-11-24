@@ -68,7 +68,7 @@ Saving downloads the folder and adds its pictures to the templates at once, and 
 
 ## Organization
 
-`Organization` holds the organization profile: what your organization does, what it must protect, the technologies and AI systems it runs, and where findings become tickets. Agents read it to put security data into your organization's context. See [Organization profile](organization.md).
+`Organization` holds the organization profile: what your organization does, what it must protect, the technologies it runs, and where findings become tickets. Agents read it to put security data into your organization's context. See [Organization profile](organization.md).
 
 ## AI Models
 

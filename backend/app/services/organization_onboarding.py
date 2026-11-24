@@ -40,7 +40,6 @@ ONBOARDING_GROUPS: tuple[tuple[str, ...], ...] = (
     ("size",),
     ("crown_jewels",),
     ("tech_stack",),
-    ("ai_systems",),
     ("pir_ids",),
     ("currency", "loaded_hourly_rate"),
     ("risk_appetite.annual_loss_threshold", "risk_appetite.approval_threshold"),
@@ -58,10 +57,6 @@ FIELD_HINTS: dict[str, str] = {
         "criticality: low|medium|high|critical})"
     ),
     "tech_stack": "the main products in use (list of {product, vendor})",
-    "ai_systems": (
-        "the AI systems the organization runs or exposes (list of {name, kind: assistant|agent|model_api|embedded, "
-        "owner, exposure: internal|partner|public}); saved as assets of category ai_target"
-    ),
     "pir_ids": "the OpenCTI priority intelligence requirements to follow (list of OpenCTI PIR ids)",
     "currency": "the currency of every amount (ISO 4217 code, e.g. EUR)",
     "loaded_hourly_rate": "the loaded cost of one hour of work, in that currency (number)",

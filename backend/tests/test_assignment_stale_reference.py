@@ -894,6 +894,8 @@ async def _drive_run(
         "app.services.integration_tools.build_integration_tools": AsyncMock(return_value=([], None)),
         # The owner's access is judged by tests/test_orphaned_integration_bindings.py.
         "app.services.integration_credentials.drop_orphaned_bindings": AsyncMock(return_value=[]),
+        # Who may use them is judged by tests/test_assignment_run_bindings_postgres.py.
+        "app.services.integration_tools.shadow_invisible_bindings": AsyncMock(return_value=[]),
         "app.services.assignment_engine.resolve_run_max_iterations": AsyncMock(return_value=10),
         "app.services.assignment_engine.resolve_run_wait_policy": AsyncMock(return_value=WaitPolicy()),
         "app.tools.run_budget.build_run_budget_for_run": AsyncMock(return_value=None),

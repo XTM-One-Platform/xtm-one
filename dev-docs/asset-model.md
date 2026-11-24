@@ -152,26 +152,26 @@ as resolved at sync time.
 | Network | `asset_hostname`, `asset_ips`, `asset_mac_addresses`, `asset_seen_ip`, `asset_url` | endpoint facts: `hostname`, `ip_addresses`, `mac_addresses`, `seen_ip`; `url` | none | none (the profile names assets, it is not an inventory) |
 | Cloud | `asset_cloud_provider`, `asset_cloud_native_type`, `asset_cloud_region` | `cloud_provider`, `cloud_native_type`, `cloud_region` | none | none |
 
-## 7. AI systems
+## 7. AI targets
 
-Since #1501 an AI system is an asset of category `ai_target`, as in OpenAEV: subcategory `llm_model`,
+Since #1501 an AI target is an asset of category `ai_target`, as in OpenAEV: subcategory `llm_model`,
 `ai_agent`, `mcp_server` or `rag_pipeline`, with the `ai_target_provider`, `ai_target_endpoint`,
 `ai_target_model` and `ai_target_modality` fields on `AssetEntry`. It lives in `assets_exposure`, merged and
-identified like any asset; there is no `AiSystem` list in the profile any more.
+identified like any asset; the profile has no AI list, no field, category, import section or sync scope of its own
+(#1844, no alias).
 
-- **Profiles saved before #1501**: their `ai_systems` rows become `ai_target` assets at parse
-  (`OrganizationProfile._ai_systems_into_assets`): kind `agent` -> `ai_agent`, `model_api` -> `llm_model`,
-  `assistant` and `embedded` keep no subcategory and carry the tag `ai_kind:<kind>`; exposure `public` ->
-  internet facing, every exposure kept as the tag `exposure:<value>`; `openaev_asset_id` becomes source
-  `openaev` with that `external_id`, so the OpenAEV record merges instead of duplicating.
+- **Stored profiles**: the Alembic data migration `r1844noaisys01` turned every remaining profile `ai_systems`
+  row into an `ai_target` asset (kind `agent` -> `ai_agent`, `model_api` -> `llm_model`, `assistant` and
+  `embedded` keep no subcategory and carry the tag `ai_kind:<kind>`; exposure `public` -> internet facing, every
+  exposure kept as the tag `exposure:<value>`; `openaev_asset_id` becomes source `openaev` with that
+  `external_id`, so the OpenAEV record merges instead of duplicating), then dropped the key, with its syncs,
+  drafts and locks.
 - **Sync with OpenAEV**: the assets import reads `/api/ai_targets/search` beside the endpoints; the outbound
   assets sync creates and updates XTM One-owned AI target assets through `/api/ai_targets`, deletes only what it
   created, and never writes a row an OpenAEV inbound sync owns.
-- **Deprecated alias** (one release): `ai_systems` in `get_organization_context`, `upsert_organization_rows`,
-  `run_organization_import` and the syncs reads and writes the assets of category `ai_target`;
-  `OrganizationProfile.ai_systems` is a derived property and `legacy_dump` still emits the list for old readers.
-- **CTEM > Inventory**: no AI systems tab; `/ctem/inventory/ai-systems` opens the Assets tab filtered on
-  category `ai_target`.
+- **Agents** read them with `get_organization_context(category="assets_exposure", query="category:ai_target")`;
+  the fleet prerequisite is `profile:ai_targets`.
+- **CTEM > Inventory**: no AI tab; the Assets tab filtered on category `ai_target`.
 
 ## 8. OpenCTI Systems
 
@@ -243,7 +243,7 @@ records several sources hold on one thing into one canonical thing; the store of
   from an administrator's override (kept across syncs), else a source that reported it, else a dictionary
   lookup with its confidence, else `unresolved`: never guessed.
 - Sections: asset groups (external reference, then name) and the name-keyed sections (tech stack on CPE then
-  vendor and product, crown jewels, AI systems, PIRs, tracked organizations) use the same matching.
+  vendor and product, crown jewels, PIRs, tracked organizations) use the same matching.
 - Settings: the profile part `asset_identity` (`AssetIdentity`, an `EXPOSURE_FIELDS` part, never dumped into the
   always-on block) holds the organization's `key_order` (strong keys, most reliable first; a key left out never
   merges; empty: `DEFAULT_KEY_ORDER`) and `precedence` (field to sources or source classes in order, `*` any
@@ -356,8 +356,12 @@ and `asset_groups` into row writes (`apply_profile_lists`). Row API, administrat
   version's lists are kept, so `save_version` applies no row write and the synced-row lock never judges a
   profile save), and name what they ignored in `ignored_row_fields`; a restore naming only row fields is a 422
   (the rows keep their own history, restored from `/changes/restore`). Links of crown jewels and asset groups
-  are judged against the records. `GET` also answers `row_counts` (`{assets_exposure, asset_groups}`, `null`
-  before the import). Ignore, not 422: an older client or agent keeps saving its profile fields during a rollout.
+  are judged against the records. `GET`, `PATCH`, `PUT` and the restore answer profile fields only, never the
+  `assets_exposure` or `asset_groups` list: `row_counts` (`{assets_exposure, asset_groups}`) names how many
+  there are, and a `PUT` that leaves a row list out keeps the stored one (before the import too). The payload
+  size does not grow with the inventory. Ignore, not 422: an older client or agent keeps saving its profile
+  fields during a rollout. A sync holding the organization's row lock never blocks or refuses a profile save
+  (`test_organization_context_save_during_sync_postgres.py`).
 - `GET /api/v1/organization-context/changes?entity_id=&since=&before_id=&limit=`: the change log, newest first;
   `POST /api/v1/organization-context/changes/restore` `{change_ids}`: a delete comes back, an update gets its
   `before` fields, a create goes.
@@ -392,7 +396,7 @@ plan_record_upsert` / `plan_record_remove`, keyed on `(source, external_id)`, a 
 kept from the record) and write through `organization_asset_records.write_rows` / `remove_rows` with origin
 `agent:<source>`: no profile version, no 5,000 cap, each changed row in the change log with the agent as actor,
 one audit entry per call. A row of another source with the same name is added beside it (the store merges
-them); a row of the same source with the name of another record is refused. Tech stack and AI systems rows
+them); a row of the same source with the name of another record is refused. Tech stack rows
 stay on the profile path until they move to records (#1514, the Software entity).
 
 Imports and syncs of `assets` and `asset_groups` are planned on the records too

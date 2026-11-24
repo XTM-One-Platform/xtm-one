@@ -51,9 +51,11 @@ for (const [path, fields] of Object.entries(CARDS)) {
   });
 }
 
-test("the settings list and policy cards patch their field; only the asset tables keep the profile write", () => {
+test("the settings list and policy cards patch their field; the asset rows are never written from settings", () => {
   const section = read("../../pages/settings/OrganizationSection.tsx");
   assert.match(section, /patch\.mutate\(\{ fields: \{ \[key\]: parsed\.profile\[key\] \}/);
   assert.match(section, /patch\.mutate\(\{ fields: \{ \[field\]: parsed\.profile\[field\] \}/);
-  assert.match(section, /if \(field === "assets_exposure" \|\| field === "asset_groups"\) save\.mutate/);
+  // The asset and group rows are written through their row APIs on CTEM > Inventory (#1752 slice 3b).
+  assert.match(section, /if \(field === "assets_exposure" \|\| field === "asset_groups"\) return;/);
+  assert.doesNotMatch(section, /field === "asset_groups"\) save\.mutate/);
 });

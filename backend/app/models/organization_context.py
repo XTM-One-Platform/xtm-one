@@ -3,7 +3,7 @@
 """OrganizationContextVersion model - the organization profile every agent reads.
 
 One row per saved version of an organization's profile (sector,
-regions, crown jewels, software, AI systems, PIRs, risk appetite, ROI
+regions, crown jewels, software, PIRs, risk appetite, ROI
 rate, ticketing target: the contract of ``dev-docs/ctem-fleets.md`` section 6,
 validated by ``services/organization_context.py``). A save never edits a row:
 it inserts the next ``version`` of that organization (``organization_id``,
@@ -143,7 +143,7 @@ class OrganizationContextSync(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    #: A section of the import (assets, asset_groups, ai_systems, software, crown_jewels, pirs) or ``all``.
+    #: A section of the import (assets, asset_groups, software, crown_jewels, pirs) or ``all``.
     section: Mapped[str] = mapped_column(String(32), nullable=False)
     #: The platform it reads (empty for ``all``).
     source: Mapped[str] = mapped_column(String(16), nullable=False, default="", server_default=text("''"))
