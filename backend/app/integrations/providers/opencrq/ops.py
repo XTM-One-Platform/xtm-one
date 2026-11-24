@@ -1,14 +1,19 @@
 """OpenCRQ background job tools.
 
 * ``list_opencrq_jobs``  - background runs (CRQ simulations, syncs, recomputes).
-* ``get_opencrq_job``    - one job's status and enqueue / start times.
+* ``get_opencrq_job``    - one job's status and times, with its run detail (kind, finish
+  time, progress, current step, the risk scenario ids its payload names) when
+  the caller may read ``jobs.getRun``.
 * ``manage_opencrq_job`` - cancel a job or retry one from the DLQ.
 """
 
 from __future__ import annotations
 
+import json
 import logging
+from typing import Any
 
+from app.services.opencrq_job_events import risk_scenario_ids
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import (
@@ -28,11 +33,47 @@ _SOURCE = "integration:opencrq"
 _JOB_ACTIONS = ["cancel", "retry"]
 
 
-def _fmt_job(j: dict) -> str:
-    lines = [f"[Job] id: {j.get('id', 'N/A')}", f"  Status: {j.get('status', 'unknown')}"]
-    for key, field in (("enqueuedAt", "Enqueued"), ("startedAt", "Started")):
-        if j.get(key) is not None:
-            lines.append(f"  {field}: {j[key]}")
+def _run_scenario_ids(run: dict[str, Any]) -> list[str]:
+    """The risk scenario ids a run's job payload names; ``jobs.getRun`` serves the payload as JSON text."""
+    payload: Any = run.get("payload")
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except ValueError:
+            # A payload over OpenCRQ's cap is cut (it ends with an ellipsis): no ids to read.
+            return []
+    return risk_scenario_ids({"payload": payload})
+
+
+def _fmt_job(j: dict[str, Any], run: dict[str, Any] | None = None) -> str:
+    """The job's status and times; *run* (``jobs.getRun``) adds kind, finish, progress and scenarios."""
+    lines = [f"[Job] id: {j.get('id', 'N/A')}"]
+    if run and run.get("kind"):
+        lines.append(f"  Kind: {_one_line(run['kind'], 60)}")
+    lines.append(f"  Status: {j.get('status', 'unknown')}")
+    rows = [("enqueuedAt", "Enqueued"), ("startedAt", "Started")]
+    source = {**j, **(run or {})}
+    if run:
+        rows.append(("finishedAt", "Finished"))
+    for key, field in rows:
+        if source.get(key) is not None:
+            lines.append(f"  {field}: {source[key]}")
+    if not run:
+        return "\n".join(lines)
+    # ``is not None``: an expectedTotal of 0 is a progress to show.
+    if run.get("expectedTotal") is not None:
+        lines.append(f"  Progress: {run.get('processedTotal', 0)}/{run['expectedTotal']}")
+    elif run.get("processedTotal") is not None:
+        lines.append(f"  Processed: {run['processedTotal']}")
+    if run.get("attempt") is not None and run.get("maxAttempts") is not None:
+        lines.append(f"  Attempt: {run['attempt']}/{run['maxAttempts']}")
+    if run.get("currentStep"):
+        lines.append(f"  Current step: {_one_line(run['currentStep'], 300)}")
+    if run.get("lastError"):
+        lines.append(f"  Last error: {_one_line(run['lastError'], 300)}")
+    scenario_ids = _run_scenario_ids(run)
+    if scenario_ids:
+        lines.append(f"  Risk scenario ids: {', '.join(scenario_ids)}")
     return "\n".join(lines)
 
 
@@ -108,7 +149,23 @@ def register(
             return err
         if not job:
             return f"Job {job_id} not found."
-        return _fmt_job(job)
+        # The run detail needs MANAGE_SECURITY or platform access, like list_opencrq_jobs:
+        # without it the status and times above are still the answer.
+        run, run_err = await _trpc(
+            base_url,
+            headers,
+            "jobs.getRun",
+            "get job run",
+            input={"id": job_id},
+            tenant_id=tenant or "",
+        )
+        if run_err or not isinstance(run, dict):
+            return _fmt_job(job)
+        return _quarantined(
+            f"Job {job_id}:",
+            _fmt_job(job, run),
+            "background job (current step and last error of a connector or sync run)",
+        )
 
     async def manage_opencrq_job(
         action: str = "", job_id: str = "", tenant_id: str = ""
@@ -181,10 +238,11 @@ def register(
         ToolDefinition(
             name="get_opencrq_job",
             description=(
-                "Get an OpenCRQ background job's status and its enqueue and "
-                "start times (use after run_opencrq_crq_simulation to see "
-                "whether it is queued, running or finished). "
-                "list_opencrq_jobs also shows progress and errors."
+                "Get an OpenCRQ background job's status and times (use after "
+                "run_opencrq_crq_simulation to see whether it is queued, "
+                "running or finished); with MANAGE_SECURITY or platform "
+                "access also its kind, finish time, progress, current step, "
+                "last error and the risk scenario ids it covers."
             ),
             input_schema={
                 "type": "object",
