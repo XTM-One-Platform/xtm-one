@@ -42,7 +42,7 @@ export const SETUP_STEP_INTROS = {
   organization: "The loop ranks every signal against your primary assets and software, and opens tickets in your ticketing project.",
   modules: "The loop works with the modules connected to this platform. It runs with any of them and says what it cannot do without the others.",
   ecosystem: "Bind the tools the loop's agents act through. A slot left empty only limits what they can do, nothing breaks.",
-  gates: "Choose how much the fleet does without asking a person. The table under the levels shows, action by action, what waits at the level picked; you can change it later on the fleet page.",
+  gates: "Choose which CTEM gates wait for a person. A gate that waits is one decision between two steps of a case, never a pause inside a run; you can change it later on the fleet page.",
   preview: "Before anything runs: what the CTEM loop fleet switches on and how many runs a month to expect.",
   enable: "One switch turns on the CTEM loop fleet's automations. They run as you. Nothing ran before this step.",
 } as const satisfies Record<SetupStepKey, string>;

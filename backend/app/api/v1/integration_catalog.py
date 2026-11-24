@@ -5899,16 +5899,29 @@ PROVIDER_CATALOG = {
         "category": "integration",
         "integration_category": "business_operations",
         "integration_types": ["crm"],
-        "auth_type": "api_key",
-        "fields": ["api_key"],
+        # OAuth (a Planhat "OAuth Client" of the customer's tenant): each
+        # person signs in with their own Planhat account, through Planhat's
+        # login and so its SSO, and the agent acts with that user's role.
+        # The "inclusive" scope asks for the client's permissions intersected
+        # with the user's role, so a narrower role still authorizes. Planhat's
+        # refresh tokens are single-use: the per-integration refresh lock of
+        # services/token_refresh.py keeps two refreshes from spending one.
+        # A Private App API Access Token stays the user-agnostic alternative.
+        "auth_type": "oauth",
+        "supported_auth_types": ["oauth", "api_key"],
+        "fields": ["client_id", "client_secret", "api_key"],
+        "scopes": "inclusive",
+        "authorize_url": "https://ws.planhat.com/oauth/authorize",
+        "token_url": "https://api.planhat.com/oauth/token",
         "setup_guide": {
-            "title": "Planhat API Setup",
-            "url": "https://www.planhat.com/developers/api/introduction",
+            "title": "Planhat Setup",
+            "url": "https://help.planhat.com/en/articles/14060025-planhat-oauth-clients-overview",
             "steps": [
-                "Log in to Planhat and go to Settings > Private Apps.",
-                "Create a new Private App and name it '{APP_NAME}'.",
-                "Copy the API Access Token.",
-                "Paste the token as the API Key when creating the integration.",
+                "OAuth (each person's own Planhat account and permissions): in Planhat, open App Center > New App > OAuth Client and name it '{APP_NAME}'.",
+                "Set the Redirect URL to {base_url}/api/oauth/callback and the permission levels of the data models the agents use (Companies, Endusers, Conversations, Tasks, Opportunities, Licenses, Assets).",
+                "Copy the Client ID (pk_...) and the Client Secret (sk_..., shown once) and paste them below, then save and click Authorize.",
+                "To let every person act with their own Planhat account, share the integration with 'Don't share my connected account' on: each person then authorizes their own account on it.",
+                "API key instead (one technical account for everyone): in Planhat, create a Private App named '{APP_NAME}', copy its API Access Token and paste it as the API key below.",
             ],
             "permissions": [
                 {
@@ -5941,7 +5954,7 @@ PROVIDER_CATALOG = {
                     "description": "Read support tickets with status and severity",
                 },
             ],
-            "notes": "Planhat uses API Access Tokens for authentication. Tokens are generated from the Private Apps section in Settings. The token provides access based on the app's configured permissions.",
+            "notes": "Two modes. OAuth: each person authorizes with their own Planhat account (Planhat's login, and so its SSO), and the agent reads and writes with the intersection of the OAuth Client's permissions and that person's Planhat role. The access token lasts about an hour and is refreshed automatically; the refresh token lasts one year, after which the person authorizes again. Creating an OAuth Client needs access to Planhat's App Center (usually a system admin). API key: a Private App's API Access Token, whose permissions are the Private App's whatever the person, and whose actions appear as the Private App's.",
         },
     },
     "metabase": {
