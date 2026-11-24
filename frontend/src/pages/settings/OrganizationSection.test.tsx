@@ -958,42 +958,15 @@ describe("OrganizationSection", () => {
     expect(post).not.toHaveBeenCalledWith("/organization-context/opencrq-sync", expect.anything());
   });
 
-  it("names the OpenCRQ source and its last sync on the primary assets card, read from the inventory syncs (#1754)", async () => {
-    const lastRun = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-    const opencrqSync = { id: "s-crq", section: "crown_jewels", source: "opencrq", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: lastRun, last_result: { added: 1, updated: 0, removed: 0, version: 4, error: null } };
+  it("names no source on the primary assets card, even with an OpenCRQ primary-asset sync saved (#1883)", async () => {
+    const opencrqSync = { id: "s-crq", section: "crown_jewels", source: "opencrq", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: new Date().toISOString(), last_result: { added: 1, updated: 0, removed: 0, version: 4, error: null } };
     const base = get.getMockImplementation();
     get.mockImplementation(async (path: string) => (path.startsWith("/organization-context/syncs") ? [opencrqSync] : base?.(path)));
     renderPage("business");
-    const chip = await screen.findByTestId("settings.organization.primary-assets-source");
-    expect(chip.textContent).toMatch(/Synced from OpenCRQ/);
-    expect(get).toHaveBeenCalledWith(expect.stringMatching(/^\/organization-context\/syncs\?.*scope=inventory/));
-    expect(screen.queryByRole("button", { name: /Sync with OpenCRQ now|Check against OpenCRQ/ })).toBeNull();
-  });
-
-  it.each([
-    ["a failed last run", { last_result: { added: 0, updated: 0, removed: 0, version: 4, error: "OpenCRQ: no integration" } }, /OpenCRQ sync failed/, "OpenCRQ: no integration"],
-    ["a paused sync", { paused_reason: "owner lost access" }, /OpenCRQ sync paused/, "owner lost access"],
-    ["a sync turned off", { enabled: false }, /OpenCRQ sync off/, null],
-  ])("never says Synced on the primary assets card for %s (UX round 1 B1, #1818)", async (_state, override, line, cause) => {
-    const lastRun = new Date(Date.now() - 60 * 1000).toISOString();
-    const opencrqSync = { id: "s-crq", section: "crown_jewels", source: "opencrq", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: lastRun, last_result: { added: 1, updated: 0, removed: 0, version: 4, error: null }, ...override };
-    const base = get.getMockImplementation();
-    get.mockImplementation(async (path: string) => (path.startsWith("/organization-context/syncs") ? [opencrqSync] : base?.(path)));
-    renderPage("business");
-    const chip = await screen.findByTestId("settings.organization.primary-assets-source");
-    expect(chip.textContent).toMatch(line);
-    expect(chip.textContent).not.toMatch(/Synced from OpenCRQ/);
-    if (cause) {
-      const trigger = screen.getByTestId("settings.organization.primary-assets-source-cause");
-      // The line is the only place the problem shows: it links to Sources, where the sync is run and fixed (UX round 2 B1, #1818).
-      expect(trigger.tagName).toBe("A");
-      expect(trigger.getAttribute("href")).toBe("/ctem/inventory/sources");
-      fireEvent.focus(trigger);
-      expect((await screen.findAllByText(cause)).length).toBeGreaterThan(0);
-    } else {
-      expect(screen.queryByTestId("settings.organization.primary-assets-source-cause")).toBeNull();
-      expect(screen.getByTestId("settings.organization.primary-assets-source-link").getAttribute("href")).toBe("/ctem/inventory/sources");
-    }
+    const card = await screen.findByTestId("settings.organization.primary-assets");
+    expect(screen.queryByTestId("settings.organization.primary-assets-source")).toBeNull();
+    expect(card.textContent).not.toMatch(/Synced from OpenCRQ|not run yet|OpenCRQ sync/);
+    expect(get).not.toHaveBeenCalledWith(expect.stringMatching(/^\/organization-context\/syncs\?.*scope=inventory/));
   });
 
   it("shows the one Sources and syncs table as the last block of the Knowledge and sources tab, each section chip linked to its tab filtered on that source (#1276)", async () => {
