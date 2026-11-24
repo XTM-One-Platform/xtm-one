@@ -699,6 +699,9 @@ async def get_work_item(
         # disables its write actions instead of answering "not found".
         "can_write": can_write,
         "read_only_reason": read_only_reason,
+        # The decision recipient may cancel without any other write (#1910).
+        "can_cancel": can_write
+        or (access is not None and await work_item_service.person_may_cancel(work_item_id, user_id=str(user.id))),
         "roi": await _roi_block(described, user),
         "attachments": await _attachments_block(described),
         "note_runs": await _note_runs_block(described, user),
