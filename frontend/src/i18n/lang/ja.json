@@ -20628,6 +20628,7 @@
   "Left for later: Members screen": "後で設定: メンバー画面",
   "Complete on the Members screen": "メンバー画面で設定",
   "Run estimate": "実行見積もり",
+  "Expected load": "想定される負荷",
   "I will do it later": "後で設定する",
   "Autonomy": "自律性",
   "Run as and automations": "実行ユーザーと自動化",
@@ -21424,5 +21425,13 @@
   "Mitigated, watching needs a passing validation of the mitigation: set it from the case page.": "「緩和済み・監視中」には緩和策の検証合格が必要です。ケースページから設定してください。",
   "Resolving a case needs evidence: set it from the case page.": "ケースの解決には証拠が必要です。ケースページから設定してください。",
   "Accepting risk needs a reason and an expiry date: set it from the case page.": "リスク受容には理由と有効期限が必要です。ケースページから設定してください。",
-  "Remediating needs an owner: assign the case first.": "「修正中」には担当者が必要です。先にケースを割り当ててください。"
+  "Remediating needs an owner: assign the case first.": "「修正中」には担当者が必要です。先にケースを割り当ててください。",
+  "{count, plural, =0 {No scheduled run a day.} one {About # scheduled run a day.} other {About # scheduled runs a day.}}": "{count, plural, =0 {1 日あたりのスケジュール実行はありません。} other {1 日あたり約 # 回のスケジュール実行。}}",
+  "{count, plural, one {About # scheduled run a month.} other {About # scheduled runs a month.}}": "{count, plural, other {1 か月あたり約 # 回のスケジュール実行。}}",
+  "{count, plural, one {About # scheduled run a year.} other {About # scheduled runs a year.}}": "{count, plural, other {1 年あたり約 # 回のスケジュール実行。}}",
+  "{count, plural, one {# automation runs once per event, as often as its events arrive.} other {# automations run once per event, as often as their events arrive.}}": "{count, plural, other {# 件のオートメーションはイベントごとに 1 回実行され、イベントが届くたびに実行されます。}}",
+  "No cost yet: these automations have not run in the last {days, plural, one {# day} other {# days}}.": "コストはまだありません: これらのオートメーションは過去 {days, plural, other {# 日間}}に実行されていません。",
+  "About {cost} a day for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "スケジュール実行で 1 日あたり約 {cost}(過去 {days, plural, other {# 日間}}の実行の平均コストから算出)。",
+  "About {cost} a month for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "スケジュール実行で 1 か月あたり約 {cost}(過去 {days, plural, other {# 日間}}の実行の平均コストから算出)。",
+  "About {cost} a year for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "スケジュール実行で 1 年あたり約 {cost}(過去 {days, plural, other {# 日間}}の実行の平均コストから算出)。"
 }
