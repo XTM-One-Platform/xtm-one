@@ -442,14 +442,18 @@ async def test_tool_passes_list_changes_with_a_path_and_no_value(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_tool_refuses_an_archive_key_with_path_list_changes(monkeypatch):
-    called = False
+async def test_tool_archives_what_path_list_changes_drop_before_the_write(monkeypatch):
+    calls: list[dict] = []
+    stored = {"pools": {"connectors": {"open": [{"n": 1}, {"n": 2}, {"n": 3}]}}, "runs": [{"n": 9}]}
+
+    async def _get(**kwargs):
+        return {"key": kwargs["key"], "value": stored, "notes": []}
 
     async def _upsert(**kwargs):
-        nonlocal called
-        called = True
-        return {}
+        calls.append(kwargs)
+        return {"key": kwargs["key"], "value": {}, "notes": []}
 
+    monkeypatch.setattr(shared_state_service, "get_state", _get)
     monkeypatch.setattr(shared_state_service, "upsert_state", _upsert)
     _, executor = build_shared_state_tools(SimpleNamespace(), str(uuid.uuid4()), str(uuid.uuid4()))
     result = await _call(
@@ -458,7 +462,58 @@ async def test_tool_refuses_an_archive_key_with_path_list_changes(monkeypatch):
         key="pr-pools",
         path="pools.connectors",
         remove_json='{"open": [{"n": 1}]}',
+        keep_last_json='{"open": 1}',
+        confirm_trim=True,
         archive_key="pr-pools:archive",
     )
-    assert "archive_key works on the top-level lists only" in result.content
-    assert called is False
+    assert not result.is_error, result.content
+    assert [c["key"].endswith("pr-pools:archive") for c in calls] == [True, False]
+    assert calls[0]["append"] == {"open": [{"n": 1}, {"n": 2}]}
+    assert calls[1]["path"] == "pools.connectors"
+    assert calls[1]["expect_dropped"] == {"open": [{"n": 1}, {"n": 2}]}
+    assert "Archived 2 item(s) whole" in result.content
+
+
+@pytest.mark.asyncio
+async def test_tool_archives_what_a_path_unset_removes(monkeypatch):
+    calls: list[dict] = []
+
+    async def _get(**kwargs):
+        return {"key": kwargs["key"], "value": {"pools": {"c": {"open": [{"n": 1, "long": "L"}]}}}, "notes": []}
+
+    async def _upsert(**kwargs):
+        calls.append(kwargs)
+        return {"key": kwargs["key"], "value": {}, "notes": []}
+
+    monkeypatch.setattr(shared_state_service, "get_state", _get)
+    monkeypatch.setattr(shared_state_service, "upsert_state", _upsert)
+    _, executor = build_shared_state_tools(SimpleNamespace(), str(uuid.uuid4()), str(uuid.uuid4()))
+    result = await _call(
+        executor,
+        "set_shared_state",
+        key="pr-pools",
+        path="pools.c",
+        update_json='{"open": {"match": {"n": 1}, "unset": ["long"]}}',
+        archive_key="pr-pools:archive",
+    )
+    assert not result.is_error, result.content
+    archived = calls[0]["append"]["entries"][0]
+    assert archived["fields"] == {"long": "L"} and archived["source_key"] == "pr-pools#pools.c"
+
+
+@pytest.mark.asyncio
+async def test_upsert_refuses_a_path_list_that_changed_since_the_archive(monkeypatch):
+    state = _state({"pools": {"c": {"open": [{"n": 1}, {"n": 2}]}}})
+    session = _Session(state)
+    monkeypatch.setattr("app.core.database.async_session", lambda: session)
+    with pytest.raises(ValueError, match="changed between the archive and the write"):
+        await shared_state_service.upsert_state(
+            user_id=str(uuid.uuid4()),
+            key="pr-pools",
+            path="pools.c",
+            remove={"open": [{"n": 2}]},
+            expect_dropped={"open": [{"n": 1}]},
+            writer=COMPANY_AGENT,
+        )
+    assert state.value == {"pools": {"c": {"open": [{"n": 1}, {"n": 2}]}}}
+    assert session.committed is False

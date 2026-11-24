@@ -2626,6 +2626,7 @@ async def upsert_state(
                     f"the value under {'.'.join(value_path)!r} is not an object, so its lists "
                     "cannot be changed; nothing was written"
                 )
+            nested_dropped: dict[str, list[Any]] = {}
             nested, changes = apply_list_ops(
                 dict(held or {}),
                 append=append,
@@ -2635,8 +2636,15 @@ async def upsert_state(
                 update=update,
                 fold=fold,
                 guard_trim=guard_trim,
+                dropped=nested_dropped,
                 replaced_items=replaced_items,
             )
+            if expect_dropped is not None and nested_dropped != expect_dropped:
+                raise ValueError(
+                    "the list changed between the archive and the write: the items it "
+                    "would drop now are not the ones archived; the archive holds a copy, "
+                    "the list was not written: read it and write again"
+                )
             new_value = write_at_path(base_value, value_path, nested, replace=True)
             list_changes.clear()
             list_changes.update({f"{'.'.join(value_path)}.{name}": counts for name, counts in changes.items()})
