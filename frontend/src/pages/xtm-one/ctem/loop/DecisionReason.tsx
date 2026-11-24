@@ -14,6 +14,7 @@ import { TruncatedText } from "@/components/ui/truncated-text";
 import type { CtemDecisionRecord, CtemSignalState } from "@/hooks/api/useCtemSignalsApi";
 import { useFormatter } from "@/i18n";
 import { formatDayIntl } from "@/lib/relative-time";
+import { primaryAssetsRow, thresholdSource, thresholdWithSource } from "./decision-primary-assets";
 
 type Translate = (id: string, values?: Record<string, string | number>) => string;
 
@@ -208,7 +209,12 @@ function decisionInputs(decision: CtemDecisionRecord | null | undefined, t_i18n:
     { label: t_i18n("Software"), value: list(reconcile.tech_stack) },
     { label: t_i18n("Owned domain"), value: domains },
     { label: t_i18n("Criticality"), value: criticalityAgainstThreshold(scope, t_i18n) },
-    { label: t_i18n("Scope threshold"), value: level(scope?.threshold) },
+    // #1591 S3: the primary assets reached and their chains, then the one threshold and where it comes from.
+    { label: t_i18n("Primary assets reached"), value: primaryAssetsRow(decision, t_i18n) },
+    {
+      label: t_i18n("Scope threshold"),
+      value: thresholdWithSource(scope?.threshold ? level(scope.threshold) : "", thresholdSource(decision), t_i18n),
+    },
     { label: t_i18n("Risk scenarios"), value: list((scope?.risk_scenarios ?? []).map((s) => s.name)) },
     { label: t_i18n("Policy checks"), value: checks },
   ];
