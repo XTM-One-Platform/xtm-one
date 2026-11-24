@@ -841,7 +841,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             name="get_ctem_case",
             description=(
                 "Read one CTEM case: its fix, its member issues with their source product and id, "
-                "assets, crown jewels and its latest history. A null count is unknown for you, never none."
+                "assets, primary assets and its latest history. A null count is unknown for you, never none."
             ),
             input_schema={
                 "type": "object",
