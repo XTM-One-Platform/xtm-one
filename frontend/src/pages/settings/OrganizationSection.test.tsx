@@ -67,10 +67,6 @@ function renderPage(tab?: string) {
     </MemoryRouter>,
   );
 }
-/** Opens a tab as a pointer does: each tab is a link to its path (UX r1 B1 on #12332). */
-function openTab(name: RegExp) {
-  fireEvent.click(screen.getByRole("tab", { name }), { button: 0 });
-}
 
 const get = vi.mocked(api.get);
 const put = vi.mocked(api.put);
