@@ -57,6 +57,9 @@ def test_the_group_carries_the_update_and_the_proposal_tools():
         module.ORGANIZATION_RUN_SYNC_TOOL,
         module.ORGANIZATION_LIST_PROPOSALS_TOOL,
         module.ORGANIZATION_DECIDE_PROPOSAL_TOOL,
+        module.ORGANIZATION_VERSIONS_TOOL,
+        module.ORGANIZATION_RESTORE_TOOL,
+        "reconcile_organization_with_opencrq",
     }
     assert all(d.source == f"builtin:{ORGANIZATION_CONTEXT_WRITE_GROUP}" for d in defs)
     assert executor.handler(ORGANIZATION_UPDATE_TOOL) is not None
@@ -349,6 +352,8 @@ def test_every_import_sync_and_write_tool_states_the_shared_context() -> None:  
         module.ORGANIZATION_IMPORT_TOOL,
         module.ORGANIZATION_CREATE_SYNC_TOOL,
         module.ORGANIZATION_RUN_SYNC_TOOL,
+        module.ORGANIZATION_RESTORE_TOOL,
+        "reconcile_organization_with_opencrq",
     }
     for name in warned:
         assert by_name[name].endswith(module.SHARED_CONTEXT_CLAUSE), name
