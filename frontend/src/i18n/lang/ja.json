@@ -7731,7 +7731,7 @@
   "{name} stopped this command and every process it started. Its output until then is shown above.": "{name} がこのコマンドと、それが起動したすべてのプロセスを停止しました。停止までの出力は上に表示されています。",
   "This command was stopped with every process it started. Its output until then is shown above.": "このコマンドは、それが起動したすべてのプロセスとともに停止されました。停止までの出力は上に表示されています。",
   "The folder is empty.": "フォルダーは空です。",
-  "Show all {count}": "すべて表示（{count}）",
+  "Show all {count}": "{count} 件すべて表示",
   "{count} more not shown": "ほか {count} 件は非表示",
   "Enlarge the capture": "キャプチャを拡大",
   "The machine holds this command for your decision - approve or reject it above the message box.": "マシンはこのコマンドをあなたの判断待ちにしています。メッセージ欄の上で承認または却下してください。",
@@ -19961,7 +19961,7 @@
   "A risk scenario is required and OpenCRQ could not be read": "リスクシナリオが必須ですが、OpenCRQ を読み取れませんでした",
   "Criticality unknown, below the scope threshold {threshold}": "重要度が不明で、スコープしきい値 {threshold} 未満です",
   "Criticality {criticality} below the scope threshold {threshold}": "重要度 {criticality} はスコープしきい値 {threshold} 未満です",
-  "In scope: criticality {criticality} at or above {threshold}, confidence {confidence}": "スコープ内: 重要度 {criticality} はしきい値 {threshold} 以上、信頼度 {confidence}",
+  "In scope: criticality {criticality} (threshold {threshold}), confidence {confidence}": "スコープ内: 重要度 {criticality} (しきい値 {threshold})、信頼度 {confidence}",
   "Lenses": "視点",
   "Matched assets": "結び付いたアセット",
   "Scope threshold": "スコープしきい値",
@@ -21595,5 +21595,10 @@
   "No person was needed: the policy allowed the step.": "担当者は不要でした。ポリシーがステップを許可しました。",
   "Nobody answered before the deadline: the step did not run.": "期限までに誰も回答しませんでした。ステップは実行されませんでした。",
   "The decision was withdrawn before an answer.": "回答前に決定が取り下げられました。",
-  "No answer": "回答なし"
+  "No answer": "回答なし",
+  "See the loop trace of {subject}": "{subject} のループのトレースを見る",
+  "{count, plural, one {# signal} other {# signals}}": "{count, plural, other {# 件のシグナル}}",
+  "First seen {first}, last seen {last}": "初回検出 {first}、最終検出 {last}",
+  "Filter the signals": "シグナルを絞り込む",
+  "No signal matches the filter.": "条件に一致するシグナルはありません。"
 }
