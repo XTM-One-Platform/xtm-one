@@ -104,7 +104,6 @@ beforeEach(() => {
     if (path === "/organizations") return [];
     if (path === "/integrations") return [];
     if (path === "/organization-context/pirs") return { pirs: [{ id: "pir-1", name: "Ransomware on energy" }], unavailable: null };
-    if (path === "/organization-context/readers") return READERS;
     if (path === "/organization-context/import/sources") return { sections: [] };
     if (path === "/organization-context/attack-surface/providers") return { providers: ["shodan"] };
     // The Sources and syncs table of the Knowledge and sources tab (#1276).
@@ -112,22 +111,6 @@ beforeEach(() => {
     throw new Error(`unexpected GET ${path}`);
   });
 });
-
-const READERS = {
-  readers: {
-    sector: [{ fleet_id: "f-1", name: "Threat response" }],
-    regions: [{ fleet_id: "f-1", name: "Threat response" }],
-    crown_jewels: [
-      { fleet_id: "f-1", name: "Threat response" },
-      { fleet_id: "f-2", name: "Vulnerability prioritization" },
-    ],
-  },
-  agents: {
-    risk_appetite: [{ agent_id: "a-1", name: "Risk Quantifier" }],
-    currency: [{ agent_id: "a-1", name: "Risk Quantifier" }],
-    pir_ids: [{ agent_id: "a-2", name: "Threat Relevance Analyst" }],
-  },
-};
 
 describe("OrganizationSection primary asset widths at 1080 (#1174 UX r2 B1 and B2)", () => {
   // The primary assets table measures 810 px in its 72rem card at 1080; Assets and Source step aside there.
@@ -145,43 +128,16 @@ describe("OrganizationSection primary asset widths at 1080 (#1174 UX r2 B1 and B
   });
 });
 
-describe("OrganizationSection used by (#9173 S2)", () => {
-  it("names the fleets reading each part, once per card, linked to the fleet page, and only in read mode", async () => {
+describe("OrganizationSection without reader rows (#1878)", () => {
+  it("shows no Used by or Read by agents row on any card, in read mode or in edit, and never asks who reads the profile", async () => {
     renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
-    // The first tab holds three of the cards that name their readers (#12329).
-    await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(3));
-    const [identity, risk, intelligence] = screen.getAllByTestId("settings.organization.used-by");
-    // The seeded agents reading the risk appetite and the PIRs (#10063 r1 A3), once each, linked to the agent page.
-    expect(risk.dataset.fields).toBe("risk_appetite currency loaded_hourly_rate");
-    expect(within(risk).queryByTestId("settings.organization.used-by.fleets")).toBeNull();
-    expect(within(risk).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["/agents/a-1"]);
-    expect(within(intelligence).getAllByRole("link").map((a) => a.textContent)).toEqual(["Threat Relevance Analyst"]);
-    expect(identity.dataset.fields).toBe("sector regions");
-    expect(within(identity).getAllByRole("link").map((a) => a.textContent)).toEqual(["Threat response"]);
+    expect((await screen.findByTestId("settings.organization.identity")).textContent).toContain("Acme");
+    expect(screen.queryByText("Used by")).toBeNull();
+    expect(screen.queryByText("Read by agents")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
-    await waitFor(() => expect(screen.queryByTestId("settings.organization.used-by")).toBeNull());
-  });
-
-  it("lays every line on one shared label grid, so the chips start at the same column on every card (#10166 UX r1 B1)", async () => {
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
-    await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(3));
-    for (const block of screen.getAllByTestId("settings.organization.used-by")) {
-      expect(block.dataset.layout).toBe("label-grid");
-      expect(block.dataset.align).toBe("start");
-      for (const row of block.querySelectorAll<HTMLElement>("[data-row]")) {
-        // Each line is a display-contents row: its label and its chip list are direct cells of the block's grid.
-        expect(row.dataset.row).toBe("contents");
-        expect(Array.from(row.children).map((cell) => (cell as HTMLElement).dataset.cell)).toEqual(["label", "chips"]);
-        // Both labels sit in every label cell (same column width on every card); only the row's own one is exposed.
-        const label = row.querySelector<HTMLElement>("[data-cell='label']")!;
-        expect(Array.from(label.querySelectorAll<HTMLElement>("[data-label]")).map((el) => el.dataset.label)).toEqual(["fleets", "agents"]);
-        expect(label.querySelectorAll("[data-label]:not([aria-hidden='true'])")).toHaveLength(1);
-        // #10166 UX r2 B1: each label is laid out in the chip's box and the grid aligns cells at the start,
-        // so the label text centres on the first chip row.
-        for (const el of label.querySelectorAll<HTMLElement>("[data-label]")) expect(el.dataset.box).toBe("chip-row");
-        expect(row.querySelector<HTMLElement>("[data-cell='chips'] [data-slot='badge']")!.dataset.box).toBe("chip-row");
-      }
-    }
+    expect(await screen.findByTestId("settings.save-bar")).toBeTruthy();
+    expect(screen.queryByText("Used by")).toBeNull();
+    expect(get.mock.calls.map(([path]) => path)).not.toContain("/organization-context/readers");
   });
 });
 
@@ -191,7 +147,6 @@ describe("OrganizationSection identity header and threshold previews (#9173 S2)"
       if (path === "/organization-context") return { ...CONTEXT, profile: { ...CONTEXT.profile, ...profile } };
       if (path === "/organizations" || path === "/integrations") return [];
       if (path === "/organization-context/pirs") return { pirs: [], unavailable: null };
-      if (path === "/organization-context/readers") return READERS;
       throw new Error(`unexpected GET ${path}`);
     });
 
@@ -340,12 +295,10 @@ describe("OrganizationSection", () => {
     expect(missing.textContent).toContain("Loaded hourly rate");
   });
 
-  it("names the fleets reading the primary assets on CTEM > Inventory, linked to the fleet page (#1690)", async () => {
+  it("shows the primary assets on CTEM > Inventory with no Used by row above them (#1690, #1878)", async () => {
     renderPage("business");
-    await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(1));
-    const [jewels] = screen.getAllByTestId("settings.organization.used-by");
-    expect(within(jewels).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["/fleets/f-1", "/fleets/f-2"]);
     expect(await screen.findByText("Payments")).toBeTruthy();
+    expect(screen.queryByText("Used by")).toBeNull();
   });
 
   it("counts the fields not filled Settings draws and opens the form on a missing field (#9173 S1c, #1690)", async () => {
@@ -958,42 +911,15 @@ describe("OrganizationSection", () => {
     expect(post).not.toHaveBeenCalledWith("/organization-context/opencrq-sync", expect.anything());
   });
 
-  it("names the OpenCRQ source and its last sync on the primary assets card, read from the inventory syncs (#1754)", async () => {
-    const lastRun = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-    const opencrqSync = { id: "s-crq", section: "crown_jewels", source: "opencrq", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: lastRun, last_result: { added: 1, updated: 0, removed: 0, version: 4, error: null } };
+  it("names no source on the primary assets card, even with an OpenCRQ primary-asset sync saved (#1883)", async () => {
+    const opencrqSync = { id: "s-crq", section: "crown_jewels", source: "opencrq", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: new Date().toISOString(), last_result: { added: 1, updated: 0, removed: 0, version: 4, error: null } };
     const base = get.getMockImplementation();
     get.mockImplementation(async (path: string) => (path.startsWith("/organization-context/syncs") ? [opencrqSync] : base?.(path)));
     renderPage("business");
-    const chip = await screen.findByTestId("settings.organization.primary-assets-source");
-    expect(chip.textContent).toMatch(/Synced from OpenCRQ/);
-    expect(get).toHaveBeenCalledWith(expect.stringMatching(/^\/organization-context\/syncs\?.*scope=inventory/));
-    expect(screen.queryByRole("button", { name: /Sync with OpenCRQ now|Check against OpenCRQ/ })).toBeNull();
-  });
-
-  it.each([
-    ["a failed last run", { last_result: { added: 0, updated: 0, removed: 0, version: 4, error: "OpenCRQ: no integration" } }, /OpenCRQ sync failed/, "OpenCRQ: no integration"],
-    ["a paused sync", { paused_reason: "owner lost access" }, /OpenCRQ sync paused/, "owner lost access"],
-    ["a sync turned off", { enabled: false }, /OpenCRQ sync off/, null],
-  ])("never says Synced on the primary assets card for %s (UX round 1 B1, #1818)", async (_state, override, line, cause) => {
-    const lastRun = new Date(Date.now() - 60 * 1000).toISOString();
-    const opencrqSync = { id: "s-crq", section: "crown_jewels", source: "opencrq", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: lastRun, last_result: { added: 1, updated: 0, removed: 0, version: 4, error: null }, ...override };
-    const base = get.getMockImplementation();
-    get.mockImplementation(async (path: string) => (path.startsWith("/organization-context/syncs") ? [opencrqSync] : base?.(path)));
-    renderPage("business");
-    const chip = await screen.findByTestId("settings.organization.primary-assets-source");
-    expect(chip.textContent).toMatch(line);
-    expect(chip.textContent).not.toMatch(/Synced from OpenCRQ/);
-    if (cause) {
-      const trigger = screen.getByTestId("settings.organization.primary-assets-source-cause");
-      // The line is the only place the problem shows: it links to Sources, where the sync is run and fixed (UX round 2 B1, #1818).
-      expect(trigger.tagName).toBe("A");
-      expect(trigger.getAttribute("href")).toBe("/ctem/inventory/sources");
-      fireEvent.focus(trigger);
-      expect((await screen.findAllByText(cause)).length).toBeGreaterThan(0);
-    } else {
-      expect(screen.queryByTestId("settings.organization.primary-assets-source-cause")).toBeNull();
-      expect(screen.getByTestId("settings.organization.primary-assets-source-link").getAttribute("href")).toBe("/ctem/inventory/sources");
-    }
+    const card = await screen.findByTestId("settings.organization.primary-assets");
+    expect(screen.queryByTestId("settings.organization.primary-assets-source")).toBeNull();
+    expect(card.textContent).not.toMatch(/Synced from OpenCRQ|not run yet|OpenCRQ sync/);
+    expect(get).not.toHaveBeenCalledWith(expect.stringMatching(/^\/organization-context\/syncs\?.*scope=inventory/));
   });
 
   it("shows the one Sources and syncs table as the last block of the Knowledge and sources tab, each section chip linked to its tab filtered on that source (#1276)", async () => {

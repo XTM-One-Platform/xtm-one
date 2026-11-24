@@ -86,6 +86,46 @@ def test_the_product_matches_on_the_label_or_vendor_and_product():
     assert versions.product_keys(None) == ()
 
 
+def test_a_publisher_spelled_with_its_company_form_still_matches() -> None:
+    """#1736: device inventories write the publisher as ``Google LLC`` or prefix the product with it."""
+    assert versions.publisher_key("Google LLC") == "google"
+    assert versions.publisher_key("Microsoft Corporation") == "microsoft"
+    assert versions.publisher_key("Mozilla, Inc.") == "mozilla"
+    assert versions.publisher_key("LLC") == "llc"
+    assert versions.matches_case("Google Chrome", "Google LLC", "Chrome")
+    assert versions.matches_case("Google Chrome", "Google LLC", "Google LLC Google Chrome")
+    assert versions.matches_case("Google Chrome", "", "Google LLC Google Chrome")
+    assert versions.matches_case("Chrome", "Google LLC", "Google LLC Chrome")
+    # Never a product that merely ends with the label behind something that is not its publisher.
+    assert not versions.matches_case("Chrome", "Google LLC", "Remote Desktop Chrome")
+    assert not versions.matches_case("nginx", "F5", "nginx plus")
+
+
+def test_running_versions_count_the_publisher_prefixed_rows() -> None:
+    answer = versions.running_versions(
+        [
+            _row("131.0", 3, vendor="Google LLC", product="Google LLC Google Chrome"),
+            _row("130.0", 2, vendor="Google", product="Chrome"),
+        ],
+        product_label="Google Chrome",
+        fixed_version="131.0",
+    )
+    assert answer is not None
+    assert answer["asset_count"] == 5
+    assert (answer["assets_below_fixed"], answer["assets_on_fixed"]) == (2, 3)
+
+
+def test_the_product_read_also_binds_the_publisher_prefixed_pattern() -> None:
+    from sqlalchemy.dialects import postgresql
+
+    from app.models.organization_asset import OrganizationAssetSoftware
+
+    clause = versions.product_filter(OrganizationAssetSoftware.product_key, ("google_chrome%", "x"))
+    compiled = clause.compile(dialect=postgresql.dialect())  # type: ignore[no-untyped-call]
+    assert "LIKE" in str(compiled)
+    assert "% google\\_chrome\\%" in compiled.params.values()
+
+
 def test_no_asset_running_the_product_answers_none():
     assert (
         versions.running_versions(
