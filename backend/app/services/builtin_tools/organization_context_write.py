@@ -261,6 +261,12 @@ def build_organization_context_write_tools(
                             include_owner,
                             apply,
                         )
+                if section in org_rows.SOFTWARE_SECTIONS:
+                    from app.services.organization_asset_store import ensure_built
+
+                    org = await ensure_built(db)
+                    if org is not None:  # no profile yet: the profile path below creates the organization
+                        return await _software_rows(db, person, org, mode, source, rows, rows_format, apply)
                 current = await org_context.current_version(db)
                 base = org_context.parse_profile(current.profile if current else {})
                 if mode == "upsert":
@@ -286,6 +292,67 @@ def build_organization_context_write_tools(
         except Exception:
             logger.warning("Organization profile row write failed", exc_info=True)
             return "Error: the profile could not be changed right now. Say so; nothing was changed."
+
+    async def _software_rows(
+        db: Any,
+        person: Any,
+        org: uuid.UUID,
+        mode: str,
+        source: str,
+        rows: list[Any] | None,
+        rows_format: str,
+        apply: bool,
+    ) -> str:
+        """The software since #1495: new rows become hand-typed Software entities, existing ones are kept."""
+        import json
+
+        from app.services import organization_context_rows as org_rows
+        from app.services import organization_software_store as software_store
+
+        if mode != "upsert":
+            raise org_rows.RowError(
+                "software cannot be removed by source; an administrator deletes a hand-typed software "
+                "in Inventory > Software, a synced one leaves with its source"
+            )
+        mapped = org_rows.map_rows(list(rows or []), rows_format)
+        existing = await software_store.software_keys(db, org)
+        plan = org_rows.plan_software_upsert(source, mapped, existing=existing)
+        answer = plan.as_dict()
+        if not apply or not plan.changed:
+            answer["applied"] = False
+            answer["notice"] = SHARED_CONTEXT_NOTICE
+            return json.dumps(answer)
+        try:
+            for write in plan.writes:
+                await software_store.create_software(
+                    db,
+                    org,
+                    vendor=write["vendor"],
+                    product=write["product"],
+                    cpe=write["cpe"],
+                    version=write["version"],
+                )
+        except software_store.SoftwareError as exc:
+            await db.rollback()
+            return f"Not saved: {exc}"
+        from app.services.audit import log_audit
+
+        await log_audit(
+            db,
+            user=person,
+            action="create",
+            entity_type="organization_context",
+            entity_id=str(org),
+            entity_name="software",
+            summary=f"Organization software written by agent {agent_name or 'unknown'}: "
+            f"{org_rows.basis(plan, agent_name)}"[:500],
+            details={"agent": agent_name, "section": "software", "source": plan.source, **answer["counts"]},
+        )
+        await db.commit()
+        answer["applied"] = True
+        answer["history"] = "each new software is a hand-typed Software in Inventory > Software"
+        answer["notice"] = SHARED_CONTEXT_NOTICE
+        return json.dumps(answer)
 
     async def _record_rows(
         db: Any,
@@ -788,8 +855,8 @@ def build_organization_context_write_tools(
             name=ORGANIZATION_UPSERT_ROWS_TOOL,
             description=(
                 "Add or update rows of one profile section without resending the list: assets and asset groups keyed "
-                "on source + external_id (rows a person wrote are never touched), software and AI systems by name "
-                "(tech_stack: old alias of software). "
+                "on source + external_id (rows a person wrote are never touched), new software as Software "
+                "entities, AI systems by name (tech_stack: alias). "
                 "Validated like the CSV import. Preview first (apply false): counts and refusals with "
                 "reasons. A rows_format other than profile maps a platform's raw objects on the server."
                 + SHARED_CONTEXT_CLAUSE
