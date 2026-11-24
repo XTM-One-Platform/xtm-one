@@ -6531,10 +6531,10 @@ async def run_agent_chat(
                     # transferred one or a delegated task runs its own turn, not
                     # in evaluation mode, under the parent run it creates.
                     cap_scope=f"evaluation_turn:{uuid.uuid4()}" if evaluation_mode else None,
-                    element_scope=_element_scope,
                     # This turn's per-user picks: its tasks act as the same
                     # accounts (#1792).
                     inherited_template_picks=_template_picks(effective_bindings, binding_origin_map),
+                    element_scope=_element_scope,
                 )
             else:
                 sub_result = None
