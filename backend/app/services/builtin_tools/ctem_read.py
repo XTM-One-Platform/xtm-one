@@ -103,8 +103,15 @@ def opened_by(events: list[Any]) -> dict[str, Any] | None:
     return {"actor": first.actor, "at": first.at.isoformat(), "how": first.to_value}
 
 
-def empty_sections(rendered: dict[str, Any], running_versions: Any) -> dict[str, str]:
-    """Why each empty section of a rendered case is empty, keyed by the section."""
+def empty_sections(
+    rendered: dict[str, Any], running_versions: Any, inventory_sources: list[str] | None = None
+) -> dict[str, str]:
+    """Why each empty section of a rendered case is empty, keyed by the section.
+
+    *inventory_sources*, the imports the asset software came from, are named when an
+    upgrade's product runs on no asset: the loop then reads the deployment or asks the
+    asset owner with those sources listed, never asks what they already answered (#1736).
+    """
     reasons: dict[str, str] = {}
     if not rendered.get("exploitation"):
         reasons["exploitation"] = "no exploitation reading recorded on this case yet"
@@ -119,11 +126,17 @@ def empty_sections(rendered: dict[str, Any], running_versions: Any) -> dict[str,
     if not rendered.get("validations"):
         reasons["validations"] = "no validation recorded on this case"
     if running_versions is None:
-        reasons["running_versions"] = (
-            "no running version read for this upgrade"
-            if rendered.get("remediation_kind") == "upgrade"
-            else "only an upgrade case has running versions"
-        )
+        if rendered.get("remediation_kind") != "upgrade":
+            reasons["running_versions"] = "only an upgrade case has running versions"
+        elif inventory_sources:
+            reasons["running_versions"] = (
+                "no asset of the inventory runs this product; inventory sources checked: "
+                + ", ".join(inventory_sources)
+                + ". Read the deployment (image tags, Helm values) before asking the asset owner,"
+                " and list these sources in the ask"
+            )
+        else:
+            reasons["running_versions"] = "no running version read for this upgrade"
     if not rendered.get("history"):
         reasons["history"] = "no event recorded on this case"
     if rendered.get("details_unavailable"):
@@ -172,6 +185,11 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 if rendered is None:
                     return f"No case {case_id}."
                 running = await case_versions.for_case(db, case)
+                sources = (
+                    await case_versions.inventory_sources(db, primary.id)
+                    if running is None and rendered.get("remediation_kind") == "upgrade"
+                    else None
+                )
                 from .ctem_signals import case_signal_scope
 
                 return _dump(
@@ -180,7 +198,7 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         "running_versions": running,
                         "opened_by": opened_by(events),
                         "history_total": len(events),
-                        "empty_sections": empty_sections(rendered, running),
+                        "empty_sections": empty_sections(rendered, running, sources),
                         "scope": await case_signal_scope(db, scope, view.signals, case_id=case.id),
                     }
                 )
