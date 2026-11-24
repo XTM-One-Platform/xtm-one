@@ -3,7 +3,8 @@
 /**
  * The Asset groups tab of CTEM > Inventory (#1178; the AI systems tab retired by #1501: an AI system is an asset of
  * category AI target). The asset groups are rows of their own table since #1543 (`GET /asset-groups`, written one
- * row API call per group). The list is short, so search, filters and export run in the page.
+ * row API call per group). The list is short, so search, filters and export run in the page. A row opens the group's
+ * page (#1556): its fields and its member assets; the Assets column counts them from the membership index.
  */
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,7 @@ import { TruncatedText } from "@/components/ui/truncated-text";
 import { useAssetGroups, useDeleteAssetGroups, type AssetGroupRecord } from "@/hooks/api/useOrganizationAssetsApi";
 import { useFormatter } from "@/i18n";
 import { formatCount } from "@/lib/number-format";
-import { assetFieldLabel, sourceLabel } from "./inventory";
+import { assetFieldLabel, assetGroupPath, sourceLabel } from "./inventory";
 import { deletableRows, isSyncedRow } from "./inventory-entries";
 import { InventoryEntryDialog, type EntryDialogMode } from "./InventoryEntryDialog";
 
@@ -98,6 +99,24 @@ export function AssetGroupsTab({ add }: { add: AddRequest }) {
       hideBelow: "4xl",
     },
     {
+      key: "assets",
+      header: "Assets",
+      align: "right",
+      // The distinct assets in the group; the members its source named that the inventory lacks are said beside.
+      cell: (g) => (
+        <span className="whitespace-nowrap tabular-nums" data-unresolved={g.unresolved_members ?? 0}>
+          {formatCount(intl.locale, g.member_count)}
+          {(g.unresolved_members ?? 0) > 0 && (
+            <span className="ml-1.5 text-default-secondary">
+              {t_i18n("{count, plural, one {+# not in the inventory} other {+# not in the inventory}}", { count: g.unresolved_members ?? 0 })}
+            </span>
+          )}
+        </span>
+      ),
+      csv: (g) => g.member_count,
+      sortValue: (g) => g.member_count,
+    },
+    {
       key: "tech",
       header: "Tech stack",
       align: "right",
@@ -122,6 +141,7 @@ export function AssetGroupsTab({ add }: { add: AddRequest }) {
       rows={groups}
       columns={columns}
       rowKey={keyOf}
+      rowHref={(g) => assetGroupPath(g.id)}
       rowActions={
         isAdmin
           ? (g) => (

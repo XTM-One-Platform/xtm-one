@@ -118,7 +118,8 @@ def test_basic_block_names_the_identity_and_indexes_every_category() -> None:
     assert "- crown_jewels (" in text and "): 2 rows;" in text
     assert ": 1 row;" in text
     assert "- tracked_organizations (tracked organizations): 3 rows" in text
-    assert "- tech_stack (" in text and "): not filled" in text
+    assert "- software (" in text and "): not filled" in text
+    assert "- tech_stack (" not in text, "the deprecated alias is never announced"
     assert 'get_organization_context(category="crown_jewels")' in text
     assert "UNTRUSTED" in text, "the profile is data a person typed: quarantined"
     assert len(text) <= inj.SUMMARY_MAX_CHARS
@@ -136,7 +137,8 @@ def test_the_index_is_generated_from_the_model() -> None:
     }
     # The one object field read as a category (#11543): its rules are its rows.
     assert {c.field for c in cats.CATEGORIES if c.field} == list_fields | {"prioritization_policy"}
-    assert {"crown_jewels", "tech_stack", "pirs", "tracked_organizations"} <= set(cats.CATEGORY_NAMES)
+    assert {"crown_jewels", "software", "pirs", "tracked_organizations"} <= set(cats.CATEGORY_NAMES)
+    assert "tech_stack" not in cats.CATEGORY_NAMES, "#1495: a deprecated alias, never a category of its own"
     assert {"assets_exposure", "prioritization_policy", "enterprise_knowledge"} <= set(cats.CATEGORY_NAMES)
 
 
@@ -173,10 +175,12 @@ def test_the_basic_block_cap_holds_whatever_the_list_lengths() -> None:
     [
         ([], None, None, []),
         (["pirs"], None, None, ["pirs"]),
-        (["pirs"], ["tech_stack"], None, ["tech_stack"]),
-        (["pirs"], ["tech_stack"], [], []),
+        (["pirs"], ["software"], None, ["software"]),
+        (["pirs"], ["software"], [], []),
+        # #1495: a stored selection naming the deprecated tech_stack reads as software.
+        (["pirs"], ["tech_stack"], None, ["software"]),
         (["pirs"], [], ["crown_jewels"], ["crown_jewels"]),
-        ([], ["tech_stack", "gone_from_the_model", "tech_stack"], None, ["tech_stack"]),
+        ([], ["tech_stack", "gone_from_the_model", "software"], None, ["software"]),
     ],
 )
 def test_categories_most_specific_explicit_list_wins(
@@ -196,8 +200,9 @@ def test_check_categories_reads_lists_strings_and_refuses_unknown_names() -> Non
     assert check_categories(None) is None
     assert check_categories("inherit") is None
     assert check_categories("none") == []
-    assert check_categories("Tech_Stack, crown_jewels") == ["tech_stack", "crown_jewels"]
-    with pytest.raises(ValueError, match="tech_stack"):
+    assert check_categories("Software, crown_jewels") == ["software", "crown_jewels"]
+    assert check_categories("Tech_Stack, software") == ["software"], "the deprecated alias answers software"
+    with pytest.raises(ValueError, match="software"):
         check_categories(["vendors"])
 
 
@@ -247,25 +252,25 @@ BIG_STACK = {
 }
 
 
-async def test_an_agent_with_tech_stack_selected_gets_it_preloaded_capped_with_the_rest_named(
+async def test_an_agent_with_software_selected_gets_it_preloaded_capped_with_the_rest_named(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.services import organization_context_categories as cats
 
     await _with(monkeypatch, platform=True, profile=BIG_STACK)
     agent = SimpleNamespace(
-        id=uuid.uuid4(), organization_context_mode="inherit", organization_context_categories=["tech_stack"]
+        id=uuid.uuid4(), organization_context_mode="inherit", organization_context_categories=["software"]
     )
     text = await inj.organization_summary_for(_NO_DB, agent=agent)
-    preloaded = "Preloaded tech_stack" + text.split("Preloaded tech_stack", 1)[1]
+    preloaded = "Preloaded software" + text.split("Preloaded software", 1)[1]
     assert "Product 0" in preloaded
     assert "Product 499" not in preloaded
-    assert 'get_organization_context(category="tech_stack", offset=' in preloaded
+    assert 'get_organization_context(category="software", offset=' in preloaded
     assert len(preloaded) <= cats.PRELOAD_MAX_CHARS
     # An assignment's own empty list preloads nothing, for that assignment only.
     assignment = SimpleNamespace(organization_context_mode="inherit", organization_context_categories=[])
     assert "Preloaded" not in await inj.organization_summary_for(_NO_DB, agent=agent, assignment=assignment)
-    assert "Preloaded tech_stack" in await inj.organization_summary_for(_NO_DB, agent=agent)
+    assert "Preloaded software" in await inj.organization_summary_for(_NO_DB, agent=agent)
 
 
 async def test_global_default_preloads_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -372,13 +377,13 @@ def test_every_seeded_agent_resolves_on_with_the_tools() -> None:
             )
 
 
-def test_vulnerability_agents_preload_the_tech_stack() -> None:
+def test_vulnerability_agents_preload_the_software() -> None:
     from app.agents.builtin_agents import BUILTIN_AGENTS
 
     by_slug = {agent["slug"]: agent for agent in BUILTIN_AGENTS}
     for slug in ("ctem-vuln-prioritization-orchestrator", "ctem-vuln-triage-analyst", "ctem-remediation-coordinator"):
         if slug in by_slug:
-            assert "tech_stack" in by_slug[slug]["organization_context_categories"], slug
+            assert "software" in by_slug[slug]["organization_context_categories"], slug
 
 
 def test_the_seed_never_writes_the_mode_so_an_opt_out_survives_a_refresh() -> None:

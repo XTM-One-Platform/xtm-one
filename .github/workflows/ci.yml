@@ -2,7 +2,8 @@ name: CI
 
 # A pull request runs the static checks (lint, types, dead code, catalog
 # validators, migration history, secret scan, the frontend ratchet gates and
-# catalog tests), the frontend build and the ROI ledger's invariants. The
+# catalog tests), the frontend build, the ROI ledger's invariants and the
+# tool schema budget. The
 # suites and the database checks skip there
 # (`if: github.event_name != 'pull_request'`): the merge queue runs
 # them with the static checks again, since two pull requests each green on
@@ -123,6 +124,26 @@ jobs:
           tests/test_roi_ledger_anonymity.py
           tests/test_roi_export_ledger.py
           tests/test_roi_ledger_end_state.py
+
+  # The built-in tool schema ceilings (tests/test_builtin_tool_groups.py,
+  # app/services/builtin_tool_budget.py): a tool description that grows past
+  # one is refused on the pull request rather than ejected from the merge queue
+  # (#1625). Unit tests, no external service: under a minute.
+  tool-schema-budget:
+    name: Tool schema budget
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/backend-venv
+
+      - name: Run the schema budget suite
+        working-directory: backend
+        timeout-minutes: 10
+        env:
+          SECRET_KEY: "ci-test-secret-key-not-for-production"
+        run: python -m pytest -m "not integration" -q --tb=short tests/test_builtin_tool_groups.py
 
   # tsc, oxlint, knip and the i18n validator resolve the project's own
   # packages: these two jobs need their installs.
@@ -1149,7 +1170,7 @@ jobs:
   verdict:
     name: CI verdict
     if: always()
-    needs: [backend-lint, roi-invariants, frontend-lint, frontend-gates, office-addin-lint, secrets, select, backend, browser-tool, frontend, frontend-unit, bootstrap, migrations, shard-weights]
+    needs: [backend-lint, roi-invariants, tool-schema-budget, frontend-lint, frontend-gates, office-addin-lint, secrets, select, backend, browser-tool, frontend, frontend-unit, bootstrap, migrations, shard-weights]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
