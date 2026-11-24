@@ -17,7 +17,7 @@
  */
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { landOnCard } from "@/lib/land-on-card";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Bot, Building2, Coins, Import, Link2, Lock, MessageSquare, Package, Pencil, Plus, RefreshCw, Server, Shield, Sparkles, Ticket } from "lucide-react";
 import { TagInput } from "@/components/ui/tag-input";
 
@@ -66,7 +66,6 @@ import {
   type ProfileSource,
   useDraftOrganizationContext,
   useOrganizationContext,
-  useOrganizationSyncs,
   useOrganizationPirs,
   usePatchOrganizationContext,
   useSaveOrganizationContext,
@@ -100,7 +99,6 @@ import { TrackedOrganizations } from "./TrackedOrganizations";
 import { OrganizationSourcesSyncs } from "./OrganizationSourcesSyncs";
 import { useSyncedRemoval } from "./OrganizationSyncedRemoval";
 import { ProviderLogo } from "@/components/ui/provider-logo";
-import { formatTimeAgo } from "@/lib/relative-time";
 import { columnEditable, LOCAL_FIELDS, SOURCE_KIND_LABELS, sourceKind, sourcePlatform, type Provenance } from "@/lib/organization-provenance";
 import { OrganizationContextInjectionCard } from "./OrganizationContextInjectionCard";
 import { OrganizationCrownJewelsRestoreDialog } from "./OrganizationCrownJewelsRestoreDialog";
@@ -212,10 +210,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const save = useSaveOrganizationContext();
   // #1752: a card saves its own fields alone (PATCH); the asset rows never travel with them.
   const patch = usePatchOrganizationContext();
-  // Primary assets are an Inventory source (#1754, Sam 24 Nov 2026): the OpenCRQ sync is configured and run in
-  // CTEM > Inventory > Sources; the card only names it and its last sync, never a second OpenCRQ action.
-  const { data: inventorySyncs } = useOrganizationSyncs("inventory", !reader);
-  const opencrqJewelSync = (Array.isArray(inventorySyncs) ? inventorySyncs : []).find((entry) => entry.section === "crown_jewels" && entry.source === "opencrq");
+  // Primary assets are an Inventory source (#1754): their sources are configured and run in CTEM > Inventory > Sources
+  // like every other source, nothing is pre-provisioned and the card names none of them (Sam, 24 Nov 2026, #1883).
   const drafting = useDraftOrganizationContext();
   const [form, setForm] = useState<ProfileForm | null>(null);
   // The draft the form was opened from: the save is then recorded with source "draft".
@@ -1317,23 +1313,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       : t_i18n("Scenarios above {amount} per year are flagged for approval", { amount: money(value) });
   };
 
-  // The OpenCRQ source of the primary assets, named on the card as the asset lists name theirs (#1754).
-  // The line is true to the sync's state (UX round 1 B1, #1818): off, paused or a failed last run is never called "Synced".
-  // The cause (the run's error or the pause reason) goes in a Tip, so a long reason never widens the card header.
-  const opencrqSourceError = opencrqJewelSync?.enabled && !opencrqJewelSync.paused_reason ? opencrqJewelSync.last_result?.error || "" : "";
-  const opencrqSourceCause = opencrqJewelSync?.enabled ? opencrqJewelSync.paused_reason || opencrqSourceError : "";
-  const opencrqSourceLine = !opencrqJewelSync
-    ? null
-    : !opencrqJewelSync.enabled
-      ? t_i18n("OpenCRQ sync off")
-      : opencrqJewelSync.paused_reason
-        ? t_i18n("OpenCRQ sync paused")
-        : !opencrqJewelSync.last_run_at
-          ? t_i18n("Synced from OpenCRQ: not run yet")
-          : opencrqSourceError
-            ? t_i18n("OpenCRQ sync failed {timeAgo}", { timeAgo: formatTimeAgo(intl, opencrqJewelSync.last_run_at) })
-            : t_i18n("Synced from OpenCRQ {timeAgo}", { timeAgo: formatTimeAgo(intl, opencrqJewelSync.last_run_at) });
-
   // The fields not filled that Settings still draws (#1690): the Business, Technology and Exposure fields are
   // reported on CTEM > Inventory, and Copilot mode reports none (Sam: "we don't care").
   const missing = xtmOne ? (data?.missing_fields ?? []).filter((path) => { const owner = tabOfField(path); return owner !== null && !isInventoryTab(owner); }) : [];
@@ -1868,32 +1847,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             action={
               <>
                 {attention("crown_jewels")}
-                {/* The OpenCRQ source of the list (#1754): its icon and last sync, as the asset lists name theirs. It is run and configured
-                    in Sources, so every state of the line links there (UX round 2 B1, #1818): the line is the only place a failed or paused sync shows. */}
-                {opencrqSourceLine && (
-                  <span data-testid="settings.organization.primary-assets-source" className="inline-flex min-w-0 items-center gap-1.5 content-compact text-default-secondary">
-                    <ProviderLogo provider="opencrq" decorative className="h-4 w-4 shrink-0" />
-                    {opencrqSourceCause ? (
-                      <Tip content={opencrqSourceCause}>
-                        <Link
-                          to="/ctem/inventory/sources"
-                          className={`whitespace-nowrap rounded-sm underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus ${opencrqSourceError ? "text-feedback-error-primary" : "text-feedback-warning-primary"}`}
-                          data-testid="settings.organization.primary-assets-source-cause"
-                        >
-                          {opencrqSourceLine}
-                        </Link>
-                      </Tip>
-                    ) : (
-                      <Link
-                        to="/ctem/inventory/sources"
-                        className="whitespace-nowrap rounded-sm underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
-                        data-testid="settings.organization.primary-assets-source-link"
-                      >
-                        {opencrqSourceLine}
-                      </Link>
-                    )}
-                  </span>
-                )}
                 {!reader && !listOpen("crown_jewels") && (
                   // An icon button: a third labelled action wraps the card title at 1080 (UX round 1 B1, #1567).
                   <Tip content={editing || cardOpen ? t_i18n("Save or cancel the edit first.") : t_i18n("Restore from a past version")} wrap="auto">
