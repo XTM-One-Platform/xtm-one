@@ -21569,5 +21569,9 @@
   "Delete the software \"{name}\"?": "¿Eliminar el software «{name}»?",
   "This asset was entered by hand: it leaves the inventory and its asset groups.": "Este activo se introdujo a mano: sale del inventario y de sus grupos de activos.",
   "This asset group was entered by hand: it is deleted and its assets stay in the inventory without it.": "Este grupo de activos se introdujo a mano: se elimina y sus activos permanecen en el inventario sin él.",
-  "This software was typed by hand: it is deleted and leaves the assets it was attached to.": "Este software se introdujo a mano: se elimina y deja los activos a los que estaba asociado."
+  "This software was typed by hand: it is deleted and leaves the assets it was attached to.": "Este software se introdujo a mano: se elimina y deja los activos a los que estaba asociado.",
+  "{product} rejected your sign-in token, so open exposures there may be missing.": "{product} rechazó su token de inicio de sesión: pueden faltar exposiciones abiertas.",
+  "{product} could not answer because the query was too large, so open exposures there may be missing.": "{product} no pudo responder porque la consulta era demasiado grande: pueden faltar exposiciones abiertas.",
+  "{product} did not answer in time, so open exposures there may be missing.": "{product} no respondió a tiempo: pueden faltar exposiciones abiertas.",
+  "No {product} connection could be used for this read, so open exposures there may be missing.": "No se pudo usar ninguna conexión de {product} para esta lectura: pueden faltar exposiciones abiertas."
 }

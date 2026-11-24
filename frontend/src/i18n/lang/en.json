@@ -21569,5 +21569,9 @@
   "Delete the software \"{name}\"?": "Delete the software \"{name}\"?",
   "This asset was entered by hand: it leaves the inventory and its asset groups.": "This asset was entered by hand: it leaves the inventory and its asset groups.",
   "This asset group was entered by hand: it is deleted and its assets stay in the inventory without it.": "This asset group was entered by hand: it is deleted and its assets stay in the inventory without it.",
-  "This software was typed by hand: it is deleted and leaves the assets it was attached to.": "This software was typed by hand: it is deleted and leaves the assets it was attached to."
+  "This software was typed by hand: it is deleted and leaves the assets it was attached to.": "This software was typed by hand: it is deleted and leaves the assets it was attached to.",
+  "{product} rejected your sign-in token, so open exposures there may be missing.": "{product} rejected your sign-in token, so open exposures there may be missing.",
+  "{product} could not answer because the query was too large, so open exposures there may be missing.": "{product} could not answer because the query was too large, so open exposures there may be missing.",
+  "{product} did not answer in time, so open exposures there may be missing.": "{product} did not answer in time, so open exposures there may be missing.",
+  "No {product} connection could be used for this read, so open exposures there may be missing.": "No {product} connection could be used for this read, so open exposures there may be missing."
 }
