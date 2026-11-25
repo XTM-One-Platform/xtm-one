@@ -229,11 +229,12 @@ def case_source(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         asked["full"] += 1
         raise AssertionError("a case read never reads the whole stack")
 
-    async def lookup(src: str, cred: Any, ids: list[str]) -> list[Any]:
+    async def lookup(src: str, cred: Any, ids: list[str]) -> Any:
         asked["by_id"][src] = sorted(ids)
         if src == "opencti":
             return [_octi_issue(i) for i in ids if i == "v2"]
-        return [rules.SourceIssue(source="openaev", external_id=i, name=i) for i in ids if i == "f1"]
+        # OpenAEV answers (issues read by id, ids gone with a 404): f9 is neither (a 403).
+        return [rules.SourceIssue(source="openaev", external_id=i, name=i) for i in ids if i == "f1"], []
 
     async def no_access(db: Any, user_id: str) -> bool:
         return False

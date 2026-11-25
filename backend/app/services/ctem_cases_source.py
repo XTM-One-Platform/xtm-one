@@ -1034,7 +1034,7 @@ async def read_case_view(db: AsyncSession, user_id: str, vertical: str, members:
     # One session: the two credential checks run one after the other, never concurrently.
     view.opencrq = await _reads_opencrq(db, user_id)
     view.opencti = await _reads_opencti(db, user_id)
-    for issue in out.closed:
+    for issue in [*out.closed, *out.looked_up]:
         view.issues[issue.member_id] = issue
     for issue in out.issues:
         view.issues[issue.member_id] = issue
