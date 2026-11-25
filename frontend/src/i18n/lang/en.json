@@ -18244,6 +18244,7 @@
   "Every PIR": "Every PIR",
   "Hosts, applications and services, with their exposure and criticality.": "Hosts, applications and services, with their exposure and criticality.",
   "Import from the platforms": "Import from the platforms",
+  "Save the sync": "Save the sync",
   "In the profile": "In the profile",
   "In {platform}": "In {platform}",
   "Lowest criticality": "Lowest criticality",
@@ -21696,5 +21697,18 @@
   "{count, plural, one {# field not filled} other {# fields not filled}}": "{count, plural, one {# field not filled} other {# fields not filled}}",
   "{count, plural, one {# field not filled on this tab, reported by every agent that needs it.} other {# fields not filled on this tab, reported by every agent that needs them.}}": "{count, plural, one {# field not filled on this tab, reported by every agent that needs it.} other {# fields not filled on this tab, reported by every agent that needs them.}}",
   "Every field of this tab is filled.": "Every field of this tab is filled.",
-  "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}": "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}"
+  "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}": "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}",
+  "To create": "To create",
+  "To update": "To update",
+  "To remove": "To remove",
+  "Target platform": "Target platform",
+  "What to push": "What to push",
+  "Import from a platform": "Import from a platform",
+  "Push to a platform": "Push to a platform",
+  "The platform is the master: its rows fill this section.": "The platform is the master: its rows fill this section.",
+  "XTM One is the master: its rows are written to the platform.": "XTM One is the master: its rows are written to the platform.",
+  "Connected: the sync writes with your account.": "Connected: the sync writes with your account.",
+  "The first run writes these rows to {platform}. Later runs update and remove only what this sync created; the rest of {platform} is never touched.": "The first run writes these rows to {platform}. Later runs update and remove only what this sync created; the rest of {platform} is never touched.",
+  "The sync runs on this schedule, with these filters.": "The sync runs on this schedule, with these filters.",
+  "One section to one platform, no AI. Nothing is written before Save, and the platform's own rows are never touched.": "One section to one platform, no AI. Nothing is written before Save, and the platform's own rows are never touched."
 }

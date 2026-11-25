@@ -38,11 +38,14 @@ import {
   useOrganizationImportOptions,
   useOrganizationImportSources,
   useOrganizationPirs,
+  useOrganizationSyncDirections,
+  usePreviewNewOutboundSync,
   usePreviewOrganizationImport,
   type ImportFilterOption,
   type ImportPreviewResponse,
   type ImportSectionKey,
   type ImportSourceKey,
+  type SyncDirection,
 } from "@/hooks/api/useOrganizationContextApi";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
@@ -57,6 +60,7 @@ import {
   linkOptionOn,
   type FilterKey,
 } from "@/lib/organization-import-filters";
+import { outboundFilterKeys, outboundFilterValues, outboundSections, outboundSources } from "@/lib/organization-outbound-filters";
 import { IMPORT_SOURCE_NAMES, IMPORT_SOURCE_PROVIDER } from "@/lib/organization-profile";
 import { defaultSchedule, type SyncSchedule } from "@/lib/organization-sync-schedule";
 import { OrganizationSharedContextNotice } from "./OrganizationSharedContextNotice";
@@ -123,6 +127,17 @@ function onRadioKeyDown<T extends string>(event: KeyboardEvent<HTMLDivElement>, 
   document.getElementById(idOf(next))?.focus();
 }
 
+/** The two ways a sync runs (#1982 S4): the platform fills the profile, or the profile fills the platform. @i18n-keys */
+const DIRECTION_LABELS = {
+  inbound: { title: "Import from a platform", hint: "The platform is the master: its rows fill this section." },
+  outbound: { title: "Push to a platform", hint: "XTM One is the master: its rows are written to the platform." },
+} as const satisfies Record<SyncDirection, { title: string; hint: string }>;
+
+const DIRECTION_GLYPHS: Record<SyncDirection, ElementType> = { inbound: glyph("cloud-download"), outbound: glyph("cloud-upload") };
+
+/** @i18n-keys */
+const OUTBOUND_COUNT_LABELS = { enter: "To create", update: "To update", leave: "To remove" } as const;
+
 /** @i18n-keys */
 const STEP_TITLES = {
   section: "What to import",
@@ -132,7 +147,11 @@ const STEP_TITLES = {
   preview: "Preview",
 } as const;
 type Step = keyof typeof STEP_TITLES;
-const STEPS: Step[] = ["section", "source", "filters", "mapping", "preview"];
+const INBOUND_STEPS: Step[] = ["section", "source", "filters", "mapping", "preview"];
+/** An outbound sync maps nothing: the profile's own fields are written (dev-docs/asset-model.md). */
+const OUTBOUND_STEPS: Step[] = ["section", "source", "filters", "preview"];
+/** The steps whose title says the push, not the import. @i18n-keys */
+const OUTBOUND_STEP_TITLES = { section: "What to push", source: "Target platform" } as const satisfies Partial<Record<Step, string>>;
 
 /** @i18n-keys */
 const FILTER_HELP = {
@@ -482,11 +501,16 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
   const preview = usePreviewOrganizationImport();
   const apply = useApplyOrganizationImport();
   const createSync = useCreateOrganizationSync();
+  const outboundPreview = usePreviewNewOutboundSync();
+  const directionMatrix = useOrganizationSyncDirections(open);
   // #11994: the import reads, and a sync runs, with the signed-in administrator's permissions.
   const { data: me } = useMe(open);
   const meLabel = me?.email || me?.full_name || t_i18n("you");
 
   const [step, setStep] = useState<Step>("section");
+  // #1982 S4: inbound, the platform fills the profile; outbound, the profile's rows are pushed to the platform.
+  const [direction, setDirection] = useState<SyncDirection>("inbound");
+  const outbound = direction === "outbound";
   const [section, setSection] = useState<ImportSectionKey | null>(initialSection ?? null);
   const [source, setSource] = useState<ImportSourceKey | null>(initialSection ? (initialSource ?? null) : null);
   const [filters, setFilters] = useState<Record<string, string | string[]>>({});
@@ -498,18 +522,23 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
   const [keepSync, setKeepSync] = useState(false);
   const [schedule, setSchedule] = useState<SyncSchedule>(defaultSchedule);
   const pirs = useOrganizationPirs(open && section === "pirs");
-  const options = useOrganizationImportOptions(section, source, open && (step === "filters" || step === "mapping"));
+  // Outbound filters read the profile's own values: the platform is not read for them.
+  const options = useOrganizationImportOptions(section, source, open && direction === "inbound" && (step === "filters" || step === "mapping"));
 
   const platform = IMPORT_SOURCE_NAMES[source ?? ""] ?? source ?? "";
   const sectionEntry = sources.data?.sections.find((entry) => entry.section === section);
   const sourceEntry = sectionEntry?.sources.find((entry) => entry.source === source);
   const unavailable = options.data?.unavailable ?? {};
   const noTaxonomy = source === "opencti" && TAXONOMY_FILTERS.some((key) => unavailable[key] === "no_system_taxonomy");
-  const shownFilters = (sourceEntry?.filters ?? []).filter(
-    (key): key is FilterKey => key in FILTER_LABELS && !(noTaxonomy && (TAXONOMY_FILTERS as string[]).includes(key)),
-  );
-  const needsBatchType = section === "assets" && source === "opencti";
-  const stepIndex = STEPS.indexOf(step);
+  const shownFilters = outbound
+    ? outboundFilterKeys(section)
+    : (sourceEntry?.filters ?? []).filter((key): key is FilterKey => key in FILTER_LABELS && !(noTaxonomy && (TAXONOMY_FILTERS as string[]).includes(key)));
+  const needsBatchType = !outbound && section === "assets" && source === "opencti";
+  const steps = outbound ? OUTBOUND_STEPS : INBOUND_STEPS;
+  const stepIndex = steps.indexOf(step);
+  const stepTitle = (key: Step): string => (outbound && key in OUTBOUND_STEP_TITLES ? OUTBOUND_STEP_TITLES[key as keyof typeof OUTBOUND_STEP_TITLES] : STEP_TITLES[key]);
+  // Outbound is offered only on the sections of this surface that some platform takes (the backend's DIRECTIONS).
+  const pushSections = outboundSections(directionMatrix.data, offered);
   const body = () => ({
     section: section as ImportSectionKey,
     source: source as ImportSourceKey,
@@ -521,6 +550,7 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
   const close = (next: boolean) => {
     if (!next) {
       setStep("section");
+      setDirection("inbound");
       setSection(null);
       setSource(null);
       setFilters({});
@@ -529,6 +559,7 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
       setKeepSync(false);
       setSchedule(defaultSchedule());
       preview.reset();
+      outboundPreview.reset();
       apply.reset();
       createSync.reset();
     }
@@ -538,7 +569,8 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
   const pickSection = (next: ImportSectionKey) => {
     setSection(next);
     // The source and its filters belong to the section: a new section starts them over.
-    const first = sources.data?.sections.find((entry) => entry.section === next)?.sources.find((entry) => entry.available);
+    const readable = sources.data?.sections.find((entry) => entry.section === next)?.sources.filter((entry) => entry.available) ?? [];
+    const first = outbound ? readable.find((entry) => outboundSources(directionMatrix.data, next).includes(entry.source)) : readable[0];
     setSource(first?.source ?? null);
     setFilters({});
     setResult(null);
@@ -561,7 +593,7 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
   const saveSync = (imported: boolean) => {
     const { section: syncSection, source: syncSource, filters: syncFilters, batch_type } = body();
     createSync.mutate(
-      { section: syncSection, source: syncSource, filters: syncFilters, batch_type, remove_gone: removeGone, ...schedule, enabled: true },
+      { section: syncSection, source: syncSource, filters: syncFilters, batch_type, remove_gone: outbound ? false : removeGone, direction, ...schedule, enabled: true },
       {
         onSuccess: () => {
           toast({ title: imported ? t_i18n("Profile saved and kept in sync") : t_i18n("Sync saved"), variant: "success" });
@@ -593,8 +625,21 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
     if (step === "mapping") return showPreview();
     // The sources may have loaded after the section was picked: the first readable one is proposed then.
     if (step === "section" && source === null) setSource(sectionEntry?.sources.find((entry) => entry.available)?.source ?? null);
-    if (step === "filters" && !result) readPreview();
-    setStep(STEPS[stepIndex + 1]);
+    if (step === "filters" && outbound) {
+      createSync.reset();
+      outboundPreview.mutate({ section: section as ImportSectionKey, source: source as ImportSourceKey, filters });
+    } else if (step === "filters" && !result) readPreview();
+    setStep(steps[stepIndex + 1]);
+  };
+
+  const pickDirection = (next: SyncDirection) => {
+    setDirection(next);
+    // The sections and platforms differ by direction: the choice starts over.
+    setSection(null);
+    setSource(null);
+    setFilters({});
+    setResult(null);
+    outboundPreview.reset();
   };
   const canNext =
     (step === "section" && section !== null) ||
@@ -630,6 +675,7 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
   };
 
   const optionsOf = (key: FilterKey) => {
+    if (outbound) return outboundFilterValues(key).map((value) => ({ value, label: filterValueLabel(t_i18n, key, value) }));
     const all = options.data?.options[key] ?? [];
     const picked = listValue("category");
     const shown = key === "subcategory" && picked.length > 0 ? all.filter((o) => !o.parent || picked.includes(o.parent)) : all;
@@ -683,7 +729,7 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
             selected={listValue(key)}
             onToggle={(value) => toggle(key, value)}
             disabled={Boolean(reason)}
-            sort={!keepsSourceOrder(key)}
+            sort={!outbound && !keepsSourceOrder(key)}
             placeholder={options.isLoading ? t_i18n("Reading {platform}", { platform }) : t_i18n("Every value")}
             searchPlaceholder={t_i18n("Search a value")}
             emptyOptionsLabel={t_i18n("No value in {platform}", { platform })}
@@ -758,8 +804,11 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
     );
   };
 
-  const sectionKeys = (Object.keys(SECTION_LABELS) as ImportSectionKey[]).filter((key) => !offered || offered.includes(key));
-  const availableSources = (sectionEntry?.sources ?? []).filter((entry) => entry.available).map((entry) => entry.source);
+  const sectionKeys = (Object.keys(SECTION_LABELS) as ImportSectionKey[]).filter((key) => (outbound ? pushSections.includes(key) : !offered || offered.includes(key)));
+  // Outbound lists only the platforms that take the section; inbound every platform that fills it.
+  const pushTargets = outboundSources(directionMatrix.data, section);
+  const sourceEntries = (sectionEntry?.sources ?? []).filter((entry) => !outbound || pushTargets.includes(entry.source));
+  const availableSources = sourceEntries.filter((entry) => entry.available).map((entry) => entry.source);
   const pickSource = (next: ImportSourceKey) => {
     setSource(next);
     setFilters({});
@@ -768,11 +817,34 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
   const choiceId = (key: string) => `org-import-choice-${key}`;
 
   // The shared radio card (OptionCard); auto-rows-fr makes every row of the grid one height, so the six cards match.
+  const directionKeys: SyncDirection[] = pushSections.length > 0 ? ["inbound", "outbound"] : ["inbound"];
   const sectionStep = (
     <div className="space-y-3">
+      {directionKeys.length > 1 && (
+        <div
+          role="radiogroup"
+          aria-label={t_i18n("Direction")}
+          className="grid auto-rows-fr gap-2 sm:grid-cols-2"
+          data-testid="org-import.directions"
+          onKeyDown={(event) => onRadioKeyDown(event, directionKeys, direction, pickDirection, choiceId)}
+        >
+          {directionKeys.map((key) => (
+            <OptionCard
+              key={key}
+              id={choiceId(key)}
+              selected={direction === key}
+              tabIndex={direction === key ? 0 : -1}
+              onSelect={() => pickDirection(key)}
+              icon={DIRECTION_GLYPHS[key]}
+              title={t_i18n(DIRECTION_LABELS[key].title)}
+              description={t_i18n(DIRECTION_LABELS[key].hint)}
+            />
+          ))}
+        </div>
+      )}
       <div
         role="radiogroup"
-        aria-label={t_i18n(STEP_TITLES.section)}
+        aria-label={t_i18n(stepTitle("section"))}
         className="grid auto-rows-fr gap-2 sm:grid-cols-2"
         data-testid="org-import.sections"
         onKeyDown={(event) => onRadioKeyDown(event, sectionKeys, section, pickSection, choiceId)}
@@ -790,7 +862,7 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
           />
         ))}
       </div>
-      {onQuickSetup && (
+      {onQuickSetup && !outbound && (
         <div className="flex items-center justify-between gap-3 rounded-sm border border-elevation-subtle px-3 py-2">
           <p className="content-compact text-default-secondary">
             {t_i18n("Quick setup: fill the empty fields from every connected platform in one click, then review them in the form.")}
@@ -816,11 +888,11 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
       {sources.isError && <p className="content-compact text-feedback-error-primary">{t_i18n("The connected platforms could not be listed. Try again in a moment.")}</p>}
       <div
         role="radiogroup"
-        aria-label={t_i18n(STEP_TITLES.source)}
+        aria-label={t_i18n(stepTitle("source"))}
         className="grid gap-2"
         onKeyDown={(event) => onRadioKeyDown(event, availableSources, source, pickSource, choiceId)}
       >
-        {(sectionEntry?.sources ?? []).map((entry) => (
+        {sourceEntries.map((entry) => (
           <OptionCard
             key={entry.source}
             id={choiceId(entry.source)}
@@ -832,7 +904,9 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
             title={IMPORT_SOURCE_NAMES[entry.source] ?? entry.source}
             description={
               entry.available
-                ? t_i18n("Connected and readable with your account.")
+                ? outbound
+                  ? t_i18n("Connected: the sync writes with your account.")
+                  : t_i18n("Connected and readable with your account.")
                 : entry.reason_code === "not_connected"
                   ? t_i18n("Not available: no {source} integration is connected. Connect it in Settings > Integrations.", { source: IMPORT_SOURCE_NAMES[entry.source] ?? entry.source })
                   : entry.reason_code === "no_token"
@@ -1036,19 +1110,77 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
     </div>
   );
 
-  const content = { section: sectionStep, source: sourceStep, filters: filtersStep, mapping: mappingStep, preview: previewStep }[step];
+  // Outbound (#1982 S4): the first run's plan from POST /syncs/outbound-preview; nothing is written before Save.
+  const pushed = outboundPreview.data;
+  const outboundPreviewStep = (
+    <div className="space-y-3" data-testid="org-import.outbound-preview">
+      {outboundPreview.isPending && (
+        <p className="flex items-center gap-2 content-compact text-default-secondary" aria-live="polite">
+          <Spinner size="sm" />
+          {t_i18n("Reading {platform}", { platform })}
+        </p>
+      )}
+      {outboundPreview.isError && <p className="content-compact text-feedback-error-primary">{t_i18n("The preview could not be made. Try again in a moment.")}</p>}
+      {pushed?.error && (
+        <p className="content-compact text-feedback-error-primary" data-testid="org-import.read-error">
+          {t_i18n("{platform} could not be read. Nothing will be saved.", { platform })}
+        </p>
+      )}
+      {pushed && !pushed.error && (
+        <>
+          <dl className="grid grid-cols-3 gap-2" data-testid="org-import.outbound-counts">
+            {(Object.keys(OUTBOUND_COUNT_LABELS) as (keyof typeof OUTBOUND_COUNT_LABELS)[]).map((key) => (
+              <div key={key} className="rounded-sm border border-elevation-subtle px-3 py-2">
+                <dt className="content-compact text-default-secondary">{t_i18n(OUTBOUND_COUNT_LABELS[key])}</dt>
+                <dd className="content-base font-semibold text-default-primary">
+                  <CompactFigure exact={f.exactCount(pushed.counts[key])}>{f.count(pushed.counts[key])}</CompactFigure>
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <p className="content-compact text-default-secondary">
+            {t_i18n("The first run writes these rows to {platform}. Later runs update and remove only what this sync created; the rest of {platform} is never touched.", { platform })}
+          </p>
+          {pushed.enter.length > 0 && (
+            <ul className="max-h-40 space-y-0.5 overflow-y-auto content-compact text-default-primary" data-testid="org-import.sample">
+              {pushed.enter.map((name) => (
+                <li key={name} className="truncate" title={name}>
+                  {name}
+                </li>
+              ))}
+            </ul>
+          )}
+          <SettingsField id="org-import-sync" label={t_i18n("Schedule")} helper={t_i18n("The sync runs on this schedule, with these filters.")}>
+            <SyncScheduleFields idPrefix="org-import-sync" value={schedule} onChange={setSchedule} />
+          </SettingsField>
+          <OrganizationSharedContextNotice elevation={1} actor={{ mode: "runs", who: meLabel }} />
+        </>
+      )}
+      {createSync.isError && (
+        <p className="content-compact text-feedback-error-primary" data-testid="org-import.sync-error">
+          {t_i18n("The sync was not saved. Try again in a moment.")}
+        </p>
+      )}
+    </div>
+  );
+
+  const content = { section: sectionStep, source: sourceStep, filters: filtersStep, mapping: mappingStep, preview: outbound ? outboundPreviewStep : previewStep }[step];
   const importCount = (plan?.counts.new ?? 0) + (plan?.counts.updated ?? 0) + (removeGone ? goneCount : 0);
 
   return (
     <Dialog open={open} onOpenChange={close}>
       <DialogContent size="md">
         <DialogHeader>
-          <DialogTitle>{t_i18n("Import from the platforms")}</DialogTitle>
-          <DialogDescription>{t_i18n("One section from one platform, no AI. Nothing is saved before Import, and rows typed by hand are kept.")}</DialogDescription>
+          <DialogTitle>{outbound ? t_i18n("Push to a platform") : t_i18n("Import from the platforms")}</DialogTitle>
+          <DialogDescription>
+            {outbound
+              ? t_i18n("One section to one platform, no AI. Nothing is written before Save, and the platform's own rows are never touched.")
+              : t_i18n("One section from one platform, no AI. Nothing is saved before Import, and rows typed by hand are kept.")}
+          </DialogDescription>
         </DialogHeader>
         <DialogBody className="-m-1 space-y-4 p-1">
           <p className="content-compact font-medium text-default-secondary" data-testid="org-import.step">
-            {t_i18n("Step {current} of {total}: {title}", { current: stepIndex + 1, total: STEPS.length, title: t_i18n(STEP_TITLES[step]) })}
+            {t_i18n("Step {current} of {total}: {title}", { current: stepIndex + 1, total: steps.length, title: t_i18n(stepTitle(step)) })}
           </p>
           {content}
         </DialogBody>
@@ -1057,11 +1189,20 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
             {t_i18n("Cancel")}
           </Button>
           {stepIndex > 0 && (
-            <Button variant="secondary" onClick={() => setStep(STEPS[stepIndex - 1])}>
+            <Button variant="secondary" onClick={() => setStep(steps[stepIndex - 1])}>
               {t_i18n("Back")}
             </Button>
           )}
-          {step === "preview" ? (
+          {step === "preview" && outbound ? (
+            <Button
+              onClick={() => saveSync(false)}
+              disabled={!pushed || Boolean(pushed.error) || createSync.isPending}
+              aria-busy={createSync.isPending || undefined}
+            >
+              {createSync.isPending && <Spinner size="sm" tone="inherit" label={t_i18n("Saving...")} />}
+              {t_i18n("Save the sync")}
+            </Button>
+          ) : step === "preview" ? (
             <Button
               onClick={runImport}
               disabled={!plan || Boolean(plan.error) || (importCount === 0 && !keepSync) || apply.isPending || createSync.isPending}

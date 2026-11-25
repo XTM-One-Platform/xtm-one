@@ -624,6 +624,28 @@ export function useCreateOrganizationSync() {
   });
 }
 
+/** What a sync's next run would do (#1982): rows that enter, are updated, leave (and are removed) or stay. */
+export interface SyncChangePreview {
+  direction: SyncDirection;
+  counts: { enter: number; update: number; leave: number; kept: number };
+  /** Inbound: rows the platform would add; outbound: platform rows the run would create (a sample). */
+  enter: string[];
+  update: string[];
+  /** Rows this sync wrote that the next run removes (outbound: the platform rows it deletes). */
+  leave: string[];
+  /** Inbound: rows that left the filters but stay, another writer wrote them. */
+  kept: string[];
+  error: string | null;
+}
+
+/** The first run of a new outbound sync, before it is saved (#1982 S4): nothing is written. */
+export function usePreviewNewOutboundSync() {
+  return useMutation<SyncChangePreview, Error, { section: ImportSectionKey; source: ImportSourceKey; filters: Record<string, string | string[]> }>({
+    mutationFn: (body) => api.post("/organization-context/syncs/outbound-preview", body),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
 export function useUpdateOrganizationSync() {
   const qc = useQueryClient();
   return useMutation<OrganizationSync, Error, { id: string; body: OrganizationSyncBody }>({
