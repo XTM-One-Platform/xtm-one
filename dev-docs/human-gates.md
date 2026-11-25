@@ -84,8 +84,13 @@ What diverges, read on main:
   recipient (explicit, acting user, agent owner, then administrators). For a
   company-managed agent the owner is the seed account, never a decider (#2367):
   its decision goes to the CTEM `decide` groups (notify on) for CTEM work, else
-  to the owner of its home fleet when a person owns it, else to the
-  administrators; the seed owner only on a platform with no administrator.
+  to the person its run acts for (triggering user, else run-as user, carried on
+  the agent writer apart from the file owner a company-managed run leaves
+  empty), else to the owner of its home fleet when a person owns it, else to the
+  administrators; the seed owner only on a platform with no administrator. A
+  recipient such an agent names is kept only when it is a decider (run person,
+  acting user, administrator, home fleet owner, CTEM `decide` member for CTEM
+  work); the seed account or anyone else is dropped and this routing applies.
 - An `awaiting_human` run counts in the assignment's blocking statuses
   (`assignment_dispatch`), so a routinely pausing scheduled run holds its
   assignment's queue while it waits.

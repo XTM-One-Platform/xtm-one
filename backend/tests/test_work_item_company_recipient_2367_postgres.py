@@ -173,11 +173,11 @@ async def test_a_company_agent_in_a_persons_fleet_waits_for_the_fleet_owner() ->
 
 @pytest.mark.asyncio
 async def test_personal_agents_and_explicit_recipients_are_unchanged() -> None:
+    """A company-managed agent names a decider (an administrator here); any person since #2422 is not kept."""
     async with _temp_database() as sessions:
         async with sessions() as session:
             owner = await _make_user(session, email="personal-owner@example.com")
-            await _make_user(session, email="admin5@example.com", is_admin=True)
-            chosen = await _make_user(session, email="chosen5@example.com")
+            chosen = await _make_user(session, email="admin5@example.com", is_admin=True)
             seed_owner = await _make_user(session, email="seed5@example.com")
             personal = await _make_agent(session, name="Personal")
             personal.user_id = owner.id
