@@ -20,7 +20,12 @@ that case whatever the fleet or step that wrote it: no key list to keep in step.
 
 One audit row per case (who, when, reason, and the case summary, kept in the
 audit row since the case is gone). ``dry_run`` answers the same summary and
-writes nothing. The source issues of a case built by a recompute (OpenCTI,
+writes nothing. The summary names the case's threat package: its OpenCTI draft
+or Grouping lives outside XTM One and is not removed by the delete (#2328). A
+case read on the id of a deleted case answers that it was deleted, from the
+audit row (:func:`deleted_case_answer`), never a bare "No case".
+
+The source issues of a case built by a recompute (OpenCTI,
 OpenAEV) are not recreated by a recompute alone: recompute never builds a case
 (#1529); they come back through their signals and the gate.
 """
@@ -50,6 +55,11 @@ OPENED_BY_LEGACY = "legacy"
 CANCELLED_ITEM_RESULT = "Cancelled: CTEM case {case_id} was deleted by an administrator ({actor}). {reason}"
 #: The outcome written on a timer a case delete cancelled.
 CANCELLED_TIMER_OUTCOME = "cancelled: CTEM case {case_id} deleted"
+#: What the summary says about a threat package the delete leaves in OpenCTI (#2328).
+PACKAGE_LEFT = (
+    "The delete does not remove this threat package from OpenCTI: discard its draft or Grouping there, "
+    "or reuse it for the next case on the same fix."
+)
 
 
 def origin(events: Iterable[Any]) -> str:
@@ -86,8 +96,10 @@ class CaseDeletion:
     work_items: list[str] = field(default_factory=list)
     timers: list[str] = field(default_factory=list)
     signals: list[str] = field(default_factory=list)
+    threat_package: dict[str, Any] | None = None
 
     def summary(self) -> dict[str, Any]:
+        package = {**self.threat_package, "left_in_opencti": PACKAGE_LEFT} if self.threat_package else None
         return {
             "id": self.id,
             "title": self.title,
@@ -101,6 +113,7 @@ class CaseDeletion:
             "work_items": self.work_items,
             "timers": self.timers,
             "signals": self.signals,
+            "threat_package": package,
         }
 
 
@@ -182,6 +195,8 @@ async def _signals(db: AsyncSession, case_id: uuid.UUID) -> list[Any]:
 
 async def plan(db: AsyncSession, case: CtemCase, history: list[CtemCaseEvent]) -> CaseDeletion:
     """What deleting *case* removes, read without writing."""
+    from app.services.ctem_cases_view import threat_package_of
+
     members = (await db.execute(select(CtemCaseIssue.id).where(CtemCaseIssue.case_id == case.id))).all()
     created = getattr(case, "created_at", None)
     return CaseDeletion(
@@ -197,7 +212,42 @@ async def plan(db: AsyncSession, case: CtemCase, history: list[CtemCaseEvent]) -
         work_items=[i.correlation_key for i in await _open_items(db, case.id)],
         timers=[t.correlation_key for t in await _armed_timers(db, case.id)],
         signals=[str(s.id) for s in await _signals(db, case.id)],
+        threat_package=threat_package_of(history),
     )
+
+
+def deleted_case_text(case_id: str, row: Any) -> str:
+    """The answer of a case read on a deleted case, from its delete audit row (#2328)."""
+    at = getattr(row, "created_at", None)
+    details = getattr(row, "details", None) or {}
+    when = at.isoformat() if at else "an unknown time"
+    who = getattr(row, "user_email", None) or "an administrator"
+    text_out = f"Case {case_id} was deleted on {when} by {who}"
+    reason = details.get("reason")
+    text_out += f" ({reason})." if reason else "."
+    package = (details.get("case") or {}).get("threat_package")
+    if package:
+        name = f" {package['name']}" if package.get("name") else ""
+        text_out += (
+            f" Its threat package{name} (Grouping {package.get('grouping_id')}, "
+            f"page {package.get('url') or 'none'}) is left in OpenCTI."
+        )
+    return text_out + " A new case on the same fix has a new id: find it with list_ctem_cases."
+
+
+async def deleted_case_answer(db: AsyncSession, case_id: uuid.UUID) -> str | None:
+    """What a case read answers for *case_id* when a delete removed it, else ``None``."""
+    from app.models.audit_log import AuditLog
+
+    row = (
+        await db.execute(
+            select(AuditLog)
+            .where(AuditLog.entity_type == "ctem_case", AuditLog.action == "delete", AuditLog.entity_id == case_id)
+            .order_by(AuditLog.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return deleted_case_text(str(case_id), row) if row is not None else None
 
 
 async def _release_signals(db: AsyncSession, case_ids: list[uuid.UUID], *, now: datetime) -> list[uuid.UUID]:
