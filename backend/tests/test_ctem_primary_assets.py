@@ -130,7 +130,7 @@ def _fleet(count: int) -> pa.PrimaryAssetIndex:
 def test_the_record_counts_every_supporting_asset_behind_the_chains_it_keeps() -> None:
     """#1979: 10,000 laptops read 10,000 on the primary asset source, never the 5 chains kept."""
     decision = gate.decide(_profile(), _cve(), primary_assets=_fleet(10_000), today=TODAY)
-    jewel = next(s for s in decision.record["scope"]["sources"] if s["from"] == "crown_jewel")
+    jewel = next(s for s in decision.record["scope"]["sources"] if s["from"] == "primary_asset")
     assert len(jewel["chain"]) <= gate.CHAINS_KEPT
     assert jewel["assets_total"] == 10_000
     assert jewel["chain_total"] == len(

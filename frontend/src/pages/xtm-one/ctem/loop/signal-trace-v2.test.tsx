@@ -64,7 +64,7 @@ const signal: CtemSignal = {
       assets: [],
       lenses: ["world"],
       confidence: "low",
-      crown_jewels_named: ["Employee workstations"],
+      primary_assets_named: ["Employee workstations"],
       tech_stack: ["Windows"],
       inventory_links_read: true,
       primary_assets: [chain("LAPTOP-00001"), chain("LAPTOP-00002"), chain("LAPTOP-00003"), chain("LAPTOP-00004"), chain("LAPTOP-00005"), chain("LAPTOP-00006")],
@@ -76,7 +76,7 @@ const signal: CtemSignal = {
       risk_scenarios: [{ id: "scenario-1", name: "Ransomware on workstations" }],
       sources: [
         {
-          from: "crown_jewel",
+          from: "primary_asset",
           name: "Employee workstations",
           criticality: "high",
           chain: [chain("LAPTOP-00001"), chain("LAPTOP-00002"), chain("LAPTOP-00003"), chain("LAPTOP-00004"), chain("LAPTOP-00005")],
@@ -88,7 +88,7 @@ const signal: CtemSignal = {
     policy_checks: [
       { rule: "cvss_min", value: 7.8, threshold: 7, passed: true },
       { rule: "epss_min", value: 0.42, threshold: 0.1, passed: true },
-      { rule: "min_crown_jewel_criticality", value: "high", threshold: "high", passed: true },
+      { rule: "min_primary_asset_criticality", value: "high", threshold: "high", passed: true },
     ],
   } as CtemSignal["decision"],
   case_id: "case-7",
@@ -164,7 +164,7 @@ describe("loop trace v2 (#1979)", () => {
     await renderTrace(signal);
     const funnel = screen.getByTestId("ctem-policy-funnel");
     const steps = within(funnel).getAllByRole("listitem");
-    expect(steps.map((s) => s.getAttribute("data-rule"))).toEqual(["cvss_min", "epss_min", "min_crown_jewel_criticality", "outcome"]);
+    expect(steps.map((s) => s.getAttribute("data-rule"))).toEqual(["cvss_min", "epss_min", "min_primary_asset_criticality", "outcome"]);
     expect(steps[0]).toHaveTextContent("CVSS minimum");
     expect(steps[0]).toHaveTextContent("7.8 ≥ 7");
     expect(steps[0]).toHaveTextContent("Passed");
