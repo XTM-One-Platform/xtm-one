@@ -144,12 +144,13 @@ intent, kept by design.
 Nine new agents, all `platform_targets: ["xtm_one", "dev"]`, company-managed,
 built-in, JSON output schema per unit of work (section 5 reads it).
 
-## 4. The four seeded fleets
+## 4. The four defined fleets
 
-Since CTEM-31 (#1048, section 14) the seeded set is the generic CTEM loop
+Since CTEM-31 (#1048, section 14) the defined set is the generic CTEM loop
 (F1 core, F4 and M1 to M3 folded in as roles), F2 vulnerability management,
-F3 AI security and F5 third-party risk. The per-fleet sections below keep
-describing each role.
+F3 AI security and F5 third-party risk. Only the CTEM loop is seeded until
+the three use cases are tested (section 14). The per-fleet sections below
+keep describing each role.
 
 Common rules:
 
@@ -190,7 +191,11 @@ Common rules:
   ownership change and the hourly case sweep, `catch_up` hands every open
   case its owner never ran (no open `<key>:case:<id>` item of any declared
   key, no `owner_requested` case event for that owner) one
-  `ctem_case.opened`, P1 first, soonest SLA first, 100 per pass.
+  `ctem_case.opened`, P1 first, soonest SLA first, 100 per pass. An ask no
+  case automation answered (no run of the case since it, no open case item)
+  is made again after 15 minutes (`REASK_AFTER_SECONDS`) under a new event
+  id, 3 asks in all (`MAX_ASKS`), so a delivery lost to an exhausted pool
+  never leaves a case unowned (#2101).
   `GET /ctem-cases/{id}` answers `owner_fleet` {slug, name, active, fleet_id};
   the case page header shows "Owned by <fleet>" linked to the fleet page, or
   "No active fleet owns this case" when it is null or inactive.
@@ -1305,7 +1310,12 @@ kinds and `event_poller` polls them every 60 s.
   a JSON summary; its `moved` ids, `movedCount` and, when OpenCRQ reports it,
   `movedAle` travel as `moved_scenario_ids`, `moved_count` and `moved_ale`
   (`risk_scenario_id`, `ale_before`, `ale_after`, `ale_delta`) on the payload
-  top level and the entity, merged across a coalesced page. The filter keys
+  top level and the entity, merged across a coalesced page: `moved_count` is
+  the number of distinct moved scenarios (at least the largest count one run
+  reported, since OpenCRQ caps the ids), never a sum over runs (#2117). The
+  event declares `coalesce_merge` (union of the ids, `moved_ale` by scenario,
+  the count kept whole), so a page folded into a waiting run keeps both
+  pages' moves. The filter keys
   of every OpenCRQ event (`FILTER_KEYS`, declared in the catalog) are
   `tenant_id`, `kind`, `risk_scenario_ids`, `moved_scenario_ids` and
   `moved_count`, all payload fields, so `{"moved_scenario_ids": "<id>"}`
@@ -1320,7 +1330,9 @@ kinds and `event_poller` polls them every 60 s.
   `entity.risk_scenario_ids` and on each `covers` entry. The event carries
   `coalesce_key` = `opencrq:<tenant>:<event>`; the poller copies it into the
   trigger context and `trigger_or_queue_assignment` folds a later event with
-  the same key into the run of the same assignment still queued
+  the same key into the run of the same assignment that has not started,
+  queued or `pending` in a free slot (#2117; the executor re-reads the
+  payload under the row lock before it marks the run running)
   (`services/event_coalescing.py`, status `coalesced`). The risk desk's three
   event assignments run with `max_concurrent_runs: 1`: a burst of 30 jobs
   starts one run and queues at most one more.
@@ -2049,6 +2061,21 @@ slots (EDR/XDR, SIEM, beside ticketing and notification), under
 indicators and the EDR custom rules that support it go to prevention mode. The
 re-test still closes the case.
 
+The coverage scenario starts after the validation decision (#2102, Sam, 25 Nov
+2026). OpenAEV builds a scenario from every security coverage it receives and
+schedules it two minutes later only when the coverage carries a periodicity.
+When `ctem.validation.non_readonly` waits at the fleet's level (or is pinned
+`wait`), the orchestrators create the coverage without periodicity (auto
+enrichment left on), so the scenario exists unscheduled; the validation decision
+shows it (link, injects, targets, read-only or not) with a daily-repeat option,
+and the approval launches it (`manage_openaev_scenario` `launch`, then
+`schedule_recurrence` when the repeat is chosen). The run's integration context
+carries the gate keys that wait (`fleet_autonomy.waiting_gate_keys`, context key
+`fleet_waiting_gates`); with the validation gate among them,
+`manage_opencti_security_coverage` refuses a periodicity on `create` and
+`update`, naming the gate, so a repeat is never set through the coverage. When
+the gate runs, the coverage keeps `P1D` and starts on its own.
+
 No seeded gate names a tool or a grant (#1675, Sam, 24 Nov 2026): every tool
 is offered and runs when called; a gate that waits is one decision item the
 orchestrator files between two steps (`needs_human`, its ask card), and the
@@ -2400,11 +2427,11 @@ tools, CTEM-18, `ctem-cases.md` 9quater), so the fleet recommends (work items ke
 
 Tests: `tests/test_opencrq_risk_budget_desk_fleet.py`.
 
-## 14. Four seeded fleets: one generic CTEM loop and three use cases (CTEM-31, #1048)
+## 14. Four defined fleets: one generic CTEM loop and three use cases (CTEM-31, #1048)
 
-Sam, 21 Nov 2026: at most four seeded fleets, one generic loop end to end and
+Sam, 21 Nov 2026: at most four built-in fleets, one generic loop end to end and
 three use cases, each one understandable out of the box. `BUILTIN_FLEETS`
-(`backend/app/agents/builtin_fleets.py`) holds exactly:
+(`backend/app/agents/builtin_fleets.py`) defines exactly:
 
 | # | Slug | Name | What it carries |
 |---|---|---|---|
@@ -2416,6 +2443,26 @@ three use cases, each one understandable out of the box. `BUILTIN_FLEETS`
 A fifth entry fails `tests/test_builtin_fleets.py`: adding one is a product
 decision. An agent has one home fleet: the use-case fleets reach the loop's
 role agents (risk quantifier, remediation coordinator) as connected agents.
+
+### Seeded set: the CTEM loop only (#2105)
+
+Sam, 25 Nov 2026: the three use cases are defined but not seeded until they
+are tested. `SEEDED_BUILTIN_FLEET_SLUGS` is the switch (`{"ctem-loop"}`);
+`SEEDED_BUILTIN_FLEETS` is what `fleet_seed.seed_builtin_fleets` seeds.
+
+- Agents: `UNSEEDED_FLEET_AGENT_SLUGS`, derived from the definitions (the
+  orchestrators and home members of the unseeded fleets that no seeded fleet
+  names), are withheld by the agent seed with their assignments. Shared agents
+  (risk quantifier, remediation coordinator, the product assistants) stay.
+- Upgrade: the stale-fleet sweep removes the three company-managed fleets
+  (members back to the playground), the stale-agent sweep their exclusive
+  agents. A person's fork is kept; `RETIRED_FLEET_SUCCESSORS` names the CTEM
+  loop as its successor. With the F2 declaration gone, `new_vulnerability`
+  cases fall back to the loop (`paths` null).
+- Derived maps (`BUILTIN_FLEET_LEADS`, `BUILTIN_FLEET_LEAD_SLUGS`) cover the
+  seeded set only; the definitions, their documentation and tests stay.
+- Re-enabling a use case is adding its slug to the switch: it seeds again
+  exactly as its definition.
 
 ### Custom case ownership (#1966)
 
