@@ -6,9 +6,46 @@ import { screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { renderWithProviders } from "@/testing/providers";
 import { CaseWorkCard } from "./CaseWorkCard";
-import type { CaseAutomation } from "./case-workers";
+import type { CtemCaseGateRecord, CtemCaseRun } from "@/hooks/api/useCtemCasesApi";
+import { caseLoopWait, type CaseAutomation } from "./case-workers";
 
 const OFF: CaseAutomation = { id: "as1", name: "Work cases", enabled: false, agentId: "a2", agentName: "My agent", fleetId: "f1", fleetName: "SOC fleet" };
+
+const ON: CaseAutomation = { ...OFF, id: "as2", enabled: true, agentName: "Triage", fleetName: "CTEM loop" };
+const LAST: CtemCaseRun = {
+  id: "r9",
+  agent_id: "a2",
+  agent_name: "Triage",
+  status: "completed",
+  created_at: "2026-11-24T10:00:00Z",
+  completed_at: "2026-11-24T10:04:00Z",
+  outcome: "ok",
+};
+
+function gate(over: Partial<CtemCaseGateRecord>): CtemCaseGateRecord {
+  return {
+    key: "ctem.remediation.decision",
+    phase: null,
+    status: "waiting",
+    asked_at: "2026-11-24T10:05:00Z",
+    asked_of: null,
+    asked_by_agent: null,
+    deadline: null,
+    answered_at: null,
+    answered_by: null,
+    surface: null,
+    option: null,
+    comment: null,
+    reason: null,
+    passed_at: null,
+    wait_seconds: null,
+    decision_id: null,
+    work_item_id: null,
+    recorded_on_case: false,
+    next: null,
+    ...over,
+  };
+}
 
 function renderCard(ui: React.ReactElement) {
   return renderWithProviders(<MemoryRouter>{ui}</MemoryRouter>);
@@ -39,6 +76,33 @@ describe("CaseWorkCard", () => {
     expect(screen.getByText("Worked by My agent (SOC fleet)")).toBeInTheDocument();
     expect(screen.getByTestId("ctem-case-work-state").textContent).toMatch(/failed/);
     expect(screen.getByRole("button", { name: "Open the run" })).toBeInTheDocument();
+  });
+
+  it("shows the open gate's question and its decision when the loop waits on a person", () => {
+    const wait = caseLoopWait({ state: "analyzing", gates: [gate({ key: "ctem.analyst_review", work_item_id: "wi-1" })] });
+    renderCard(<CaseWorkCard work={{ kind: "on", automations: [ON], last: LAST }} wait={wait} loopFleetId={null} />);
+    expect(screen.getByTestId("ctem-case-work-state")).toHaveTextContent("Waits for a person");
+    expect(screen.getByTestId("ctem-case-work-gate")).toHaveTextContent("Review: an analyst checks the threat package");
+    expect(screen.getByRole("button", { name: "Open the decision" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Switch on" })).toBeNull();
+  });
+
+  it("shows the last run outcome and the stage the loop waits on when no gate is open", () => {
+    const wait = caseLoopWait({ state: "validating", gates: [gate({ status: "answered" })] });
+    renderCard(<CaseWorkCard work={{ kind: "on", automations: [ON], last: LAST }} wait={wait} loopFleetId={null} />);
+    expect(screen.getByTestId("ctem-case-work-state")).toHaveTextContent("Waits for the validation to finish");
+    expect(screen.queryByTestId("ctem-case-work-gate")).toBeNull();
+    const last = screen.getByTestId("ctem-case-work-last-run");
+    expect(last).toHaveTextContent("Last run by Triage");
+    expect(last).toHaveTextContent(/succeeded/i);
+    expect(screen.getByRole("button", { name: "Open the run" })).toBeInTheDocument();
+  });
+
+  it("names the other enabled automations behind and N more", () => {
+    const other = { ...ON, id: "as3", name: "Second worker", agentName: "Other agent" };
+    renderCard(<CaseWorkCard work={{ kind: "on", automations: [ON, other], last: null }} loopFleetId={null} />);
+    expect(screen.getByTestId("ctem-case-work-more")).toHaveTextContent("and 1 more");
+    expect(screen.getByTestId("ctem-case-work-more")).toHaveAttribute("tabindex", "0");
   });
 
   it("claims nothing while unknown", () => {
