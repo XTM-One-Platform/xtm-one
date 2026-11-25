@@ -79,12 +79,19 @@ describe("CaseWorkCard with an observer", () => {
     expect(screen.getByRole("button", { name: "Switch on" })).toBeInTheDocument();
   });
 
-  it("says how many automations are switched off in the on state", () => {
-    const automations = caseAutomations([observer, assignment({}), assignment({ id: "work-2", enabled: false })], AGENTS, CASE);
+  it("lists the automations switched off in the on state, by name with Switch on", () => {
+    const automations = caseAutomations(
+      [observer, assignment({}), assignment({ id: "work-2", name: "Work cases too", enabled: false })],
+      AGENTS,
+      CASE,
+    );
     renderCard(<CaseWorkCard work={caseWork({ licensed: true, automations, runs: [] })} loopFleetId={null} />);
     expect(screen.getByTestId("ctem-case-work")).toHaveAttribute("data-state", "on");
     expect(screen.getByText(/Worked by Vuln Orchestrator/)).toBeInTheDocument();
     expect(screen.getByTestId("ctem-case-work-switched-off")).toHaveTextContent("1 automation that can work this case is switched off");
+    const list = screen.getByTestId("ctem-case-work-switched-off-list");
+    expect(list).toHaveTextContent("Work cases too");
+    expect(screen.getAllByRole("button", { name: "Switch on" })).toHaveLength(1);
     expect(screen.queryByText(/Supervisor/)).toBeNull();
   });
 });
