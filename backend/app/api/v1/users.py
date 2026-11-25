@@ -1486,6 +1486,12 @@ async def update_user_email(
             status_code=400,
             detail="The platform admin account's email is set by ADMIN_EMAIL and cannot be changed",
         )
+    # Nor given to another account: the standing would follow it.
+    if settings.admin_email and email == settings.admin_email.strip().lower():
+        raise HTTPException(
+            status_code=400,
+            detail="This address is the platform admin's, set by ADMIN_EMAIL: it cannot be given to an account",
+        )
 
     domain_list = (await get_sso_config(db)).allowed_domain_list
     if not email_domain_allowed(email, domain_list):

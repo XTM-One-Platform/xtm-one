@@ -27,7 +27,7 @@ the task (a consult, a transfer) inherits it with the asyncio context. A
 background delegation crosses to the worker, so its execution payload carries
 ``PARTNER_TASK_PAYLOAD_KEY`` and the sub-agent adapter reopens the scope. An
 assignment run the task starts records the same keys on its ``trigger_payload``
-(``partner_task_payload``) and the assignment adapter reopens the scope.
+(``partner_scoped_payload``) and the assignment adapter reopens the scope.
 
 The scope also carries the partner principal that sent the task (its exposure
 and OAuth client), so the one read the anonymous builder lends a partner task,
@@ -110,16 +110,25 @@ def partner_principal_payload() -> dict[str, str] | None:
     return partner.as_payload() if partner is not None else None
 
 
-def partner_task_payload() -> dict[str, Any]:
-    """The keys a queued run carries to reopen the current partner-task scope, empty outside one.
+def partner_scoped_payload(payload: dict | None) -> dict | None:
+    """*payload* as an assignment run records it: the current partner-task scope, and only that.
 
     An assignment run started while answering a partner's task (``delegate_to_assignment``,
-    then whatever that run chains) records them on its ``trigger_payload``, and the
-    assignment worker reopens the scope from them (``queued_partner_task``,
-    ``queued_partner_principal``). Recorded on any other run they only narrow it."""
+    then whatever that run chains) records the scope on its ``trigger_payload``, and the
+    assignment worker reopens it (``queued_partner_task``, ``queued_partner_principal``).
+    The scope keys a caller's payload carries (a webhook body, a flow's data) are
+    dropped first: a principal named there would lend that partner's run history."""
+    if payload is not None and (PARTNER_TASK_PAYLOAD_KEY in payload or PARTNER_PRINCIPAL_PAYLOAD_KEY in payload):
+        payload = {
+            k: v for k, v in payload.items() if k not in (PARTNER_TASK_PAYLOAD_KEY, PARTNER_PRINCIPAL_PAYLOAD_KEY)
+        }
     if not in_partner_task():
-        return {}
-    return {PARTNER_TASK_PAYLOAD_KEY: True, PARTNER_PRINCIPAL_PAYLOAD_KEY: partner_principal_payload()}
+        return payload
+    return {
+        **(payload or {}),
+        PARTNER_TASK_PAYLOAD_KEY: True,
+        PARTNER_PRINCIPAL_PAYLOAD_KEY: partner_principal_payload(),
+    }
 
 
 def queued_partner_principal(payload: Any) -> PartnerPrincipal | None:

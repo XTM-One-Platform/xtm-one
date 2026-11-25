@@ -173,6 +173,17 @@ class TestAnAdministratorChangesIt:
         assert exc.value.status_code == 400 and "ADMIN_EMAIL" in exc.value.detail
         assert target.email == "jane@corp.com" and not audits
 
+    @pytest.mark.parametrize("email", ["root@corp.com", " Root@Corp.com "])
+    async def test_the_admin_email_address_is_never_given_to_an_account(self, audits, monkeypatch, open_domains, email):
+        """Platform administrator standing follows the address: given to an account no
+        one else holds it on (ADMIN_EMAIL changed, its account removed), it would carry it."""
+        monkeypatch.setattr("app.core.config.settings.admin_email", "root@corp.com")
+        target = _user()
+        with pytest.raises(HTTPException) as exc:
+            await _change(_AdminDB(target), target, email)
+        assert exc.value.status_code == 400 and "ADMIN_EMAIL" in exc.value.detail
+        assert target.email == "jane@corp.com" and not audits
+
     async def test_an_address_another_account_holds_is_a_conflict(self, audits, open_domains):
         target = _user()
         with pytest.raises(HTTPException) as exc:

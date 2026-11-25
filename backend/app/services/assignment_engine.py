@@ -10280,14 +10280,13 @@ def _acting_identity(user_id: _uuid.UUID | None, agent: Agent | None) -> _uuid.U
 
 
 def _with_partner_scope(payload: dict | None) -> dict | None:
-    """*payload* with the partner-task scope recorded when a partner's task starts the run.
+    """*payload* recording the partner-task scope a partner's task starts the run in, and no other.
 
     The assignment worker reopens it (``orchestration_adapters.assignment``), so
     the run gets what the task's own turn gets (``a2a.partner_scope``)."""
-    from app.a2a.partner_scope import partner_task_payload
+    from app.a2a.partner_scope import partner_scoped_payload
 
-    scope = partner_task_payload()
-    return {**(payload or {}), **scope} if scope else payload
+    return partner_scoped_payload(payload)
 
 
 async def trigger_assignment(
