@@ -1201,14 +1201,26 @@ async def read_view(db: AsyncSession, user_id: str, vertical: str) -> Any:
     from app.services.organizations import get_primary
 
     vertical = normalize_vertical(vertical)
+    phases: dict[str, float] = {}
+    started = time.perf_counter()
+
+    def lap(name: str) -> None:
+        nonlocal started
+        now = time.perf_counter()
+        phases[name] = (now - started) * 1000
+        started = now
+
     primary = await get_primary(db)
     members = await store.member_ids(db, organization_id=primary.id, vertical=vertical) if primary else []
+    lap("members")
     read = await read_open_issues(db, user_id, vertical, members=members)
+    lap("products")
     view = ViewerView(missing=list(read.missing), reasons=dict(read.reasons), complete=read.complete)
     # The members this read judged (#2113): a case opened after it is unjudged, never hidden.
     view.judged, view.built_at = set(members), datetime.now(UTC)
     view.opencrq = await _reads_opencrq(db, user_id)
     view.opencti = await _reads_opencti(db, user_id)
+    lap("access")
     for issue in [*read.closed, *read.looked_up]:
         view.issues[issue.member_id] = issue
     for issue in read.issues:
@@ -1218,6 +1230,14 @@ async def read_view(db: AsyncSession, user_id: str, vertical: str) -> Any:
         for issue in await _signal_members(db, organization_id=primary.id, user_id=user_id):
             view.issues[issue.member_id] = issue
             view.open_ids.add(issue.member_id)
+    lap("signals")
+    # Where a slow view build spends its time (#2232): the product reads alone were 5-7 s of 60-616 s.
+    logger.info(
+        "CTEM cases: view read of %s: %s (%d members)",
+        user_id,
+        ", ".join(f"{name} {ms:.0f} ms" for name, ms in phases.items()),
+        len(members),
+    )
     return view
 
 

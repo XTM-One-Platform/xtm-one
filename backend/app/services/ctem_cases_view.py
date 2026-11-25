@@ -61,10 +61,14 @@ LIST_BUILD_WAIT_SECONDS = 2.0
 #: The retry delay a list read names when the view is still building after that wait.
 LIST_RETRY_AFTER_SECONDS = 30
 #: How long a viewer's previous view answers a list read, marked stale, while the new one builds (#2232):
-#: a build after a case-opening drain outlived :data:`VIEW_TTL_SECONDS` on ctem.one, leaving only a 503.
-STALE_VIEW_TTL_SECONDS = 3600
-#: How long one pod holds the build of one view (#2232): the other pods serve the previous view meanwhile.
-BUILD_LOCK_SECONDS = 900
+#: a build after a case-opening drain outlived :data:`VIEW_TTL_SECONDS` on ctem.one, leaving only a 503,
+#: and an hour still left a 503 when rollouts killed the builds in flight: any age beats an empty list.
+STALE_VIEW_TTL_SECONDS = 7 * 24 * 3600
+#: How long one pod's build lock lives without a refresh (#2232): short, so a pod a rollout stops while it
+#: builds leaves the lock to the next pod within a minute instead of blocking every build for 15.
+BUILD_LOCK_SECONDS = 60
+#: How often the building pod extends its lock, well inside :data:`BUILD_LOCK_SECONDS`.
+BUILD_LOCK_REFRESH_SECONDS = 20
 #: The reasons a product gives about one identity (``ctem_cases_source.IDENTITY_REASONS``): the
 #: viewer has no access there, so what it did not return is refused, not unjudged (#2113).
 _IDENTITY_REASONS = frozenset({"rejected", "not_connected"})
@@ -572,6 +576,7 @@ def _revalidate(user_id: str, vertical: str, generation: str) -> asyncio.Task[No
             # Another pod builds this view (#2232): the list answers the previous one meanwhile.
             logger.info("CTEM cases: view of %s (generation %s) built by another pod", user_id, generation)
             return
+        keep = asyncio.create_task(_keep_build_lock(client, lock))
         try:
             from app.core.database import async_session
 
@@ -580,6 +585,7 @@ def _revalidate(user_id: str, vertical: str, generation: str) -> asyncio.Task[No
         except Exception:
             logger.info("CTEM cases: background view build failed for %s", user_id, exc_info=True)
         finally:
+            keep.cancel()
             await _release_build_lock(client, lock)
 
     task = asyncio.create_task(build())
@@ -597,6 +603,18 @@ async def _take_build_lock(client: Any, key: str) -> bool:
     except Exception:
         logger.info("CTEM cases: view build lock unreadable for %s", key, exc_info=True)
         return True
+
+
+async def _keep_build_lock(client: Any, key: str) -> None:
+    """Extend the build lock of *key* every :data:`BUILD_LOCK_REFRESH_SECONDS` while this pod builds (#2232)."""
+    if client is None:
+        return
+    while True:
+        await asyncio.sleep(BUILD_LOCK_REFRESH_SECONDS)
+        try:
+            await client.expire(key, BUILD_LOCK_SECONDS)
+        except Exception:
+            logger.info("CTEM cases: view build lock not extended for %s", key, exc_info=True)
 
 
 async def _release_build_lock(client: Any, key: str) -> None:
