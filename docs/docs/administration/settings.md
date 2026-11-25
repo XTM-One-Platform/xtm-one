@@ -750,6 +750,14 @@ The observability setup, edited with `Configure`:
 - `Store full payloads`: whether a trace keeps what was said (prompts, answers, tool arguments and tool results) or only its timings, token counts, cost, model, tool names and status
 - `Trace retention (days)`: how long stored traces are kept
 - `Audit log retention (days)`: how long audit log entries are kept, 90 days by default, from 30 to 3650 days. An hourly job deletes the older entries in batches, and keeps each user's most recent sign-in so their last login stays known. See [Logs](introduction.md#logs).
+- `Coordination retention`: how long the coordination records are kept, each from 0 to 3650 days, 0 keeping them forever:
+    - `Closed work items (days)`: done and cancelled work items are deleted this many days after their last update, 90 by default (`WORK_ITEM_RESOLVED_RETENTION_DAYS`).
+    - `Resolved shared state (days)`: resolved shared state entries are deleted this many days after their last update, 90 by default (`SHARED_STATE_RESOLVED_RETENTION_DAYS`).
+    - `Unclaimed open work items (days)`: open work items nobody picks up are cancelled this many days after their last activity, 14 by default (`WORK_ITEM_ABANDONED_AFTER_DAYS`).
+    - `Archived shared state items (days)`: list items moved to an archive entry are dropped this many days after they were archived, 14 by default (`SHARED_STATE_ARCHIVE_RETENTION_DAYS`).
+    - `Resolved worksets (days)`: resolved worksets are deleted with their documents, 7 days by default (`WORKSET_RESOLVED_RETENTION_DAYS`).
+
+    The environment variables give the defaults; a value saved here wins. An hourly sweep deletes what is past each window in batches and keeps draining on every scheduler tick until nothing is left. Active shared state entries and work items still open are never deleted. The values are read and written with `coordination_retention` in `GET` / `PUT /api/v1/settings/observability`, and `get_platform_overview` reports `work_item_retention_days` and `shared_state_retention_days`.
 - Langfuse configuration, the optional export to Langfuse, which the two switches above do not govern
 
 A change to the two switches applies within a few seconds on every server, to the traces written from then on; traces already stored keep what they hold until the retention deletes them. See [What a trace keeps](../deployment/monitoring.md#what-a-trace-keeps). The card also warns when the daily cost aggregation has not run for more than 48 hours, when prices have not been updated for a while, and lists the models seen in traces that have no price.

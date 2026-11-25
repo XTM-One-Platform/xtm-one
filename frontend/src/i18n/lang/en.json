@@ -21776,5 +21776,19 @@
   "Which side is the master of the list.": "Which side is the master of the list.",
   "The part of the organization context the sync writes to the platform.": "The part of the organization context the sync writes to the platform.",
   "The part of the organization context the platform fills.": "The part of the organization context the platform fills.",
-  "Rows the first run creates in {platform}": "Rows the first run creates in {platform}"
+  "Rows the first run creates in {platform}": "Rows the first run creates in {platform}",
+  "Coordination retention": "Coordination retention",
+  "How long work items, shared state and worksets are kept once they are closed. 0 keeps them forever.": "How long work items, shared state and worksets are kept once they are closed. 0 keeps them forever.",
+  "Closed work items (days)": "Closed work items (days)",
+  "Done and cancelled work items are deleted this many days after their last update.": "Done and cancelled work items are deleted this many days after their last update.",
+  "Resolved shared state (days)": "Resolved shared state (days)",
+  "Resolved shared state entries are deleted this many days after their last update.": "Resolved shared state entries are deleted this many days after their last update.",
+  "Unclaimed open work items (days)": "Unclaimed open work items (days)",
+  "Open work items nobody picks up are cancelled this many days after their last activity.": "Open work items nobody picks up are cancelled this many days after their last activity.",
+  "Archived shared state items (days)": "Archived shared state items (days)",
+  "List items moved to an archive entry are dropped this many days after they were archived.": "List items moved to an archive entry are dropped this many days after they were archived.",
+  "Resolved worksets (days)": "Resolved worksets (days)",
+  "Resolved worksets are deleted with their documents this many days after they were resolved.": "Resolved worksets are deleted with their documents this many days after they were resolved.",
+  "Kept forever": "Kept forever",
+  "An hourly sweep deletes what is past this window, in batches, until nothing is left. Active entries and work items still open are never deleted. 0 keeps them forever. Allowed range: {min} to {max}.": "An hourly sweep deletes what is past this window, in batches, until nothing is left. Active entries and work items still open are never deleted. 0 keeps them forever. Allowed range: {min} to {max}."
 }
