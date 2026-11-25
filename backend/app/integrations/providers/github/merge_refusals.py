@@ -14,6 +14,9 @@ GraphQL (draft, head, merge state, review decision, merge queue) and:
   answers "queued" with the position;
 - says the PR is already queued, with its position, and that no branch
   update is needed;
+- refuses to enqueue a head the merge queue ejected for failing checks with
+  no commit since: the queue would run the same tree and fail it again,
+  locking the branch for the fix meanwhile (#2010);
 - says a queue entry will NOT merge when its required review is missing
   (the queue applies no review bypass) or GitHub reads it UNMERGEABLE,
   with the cause, instead of "the queue merges it" (#409);
@@ -37,7 +40,10 @@ _FACTS_QUERY = (
     " mergeQueue(branch: $base) { id }"
     " pullRequest(number: $number) {"
     " id isDraft headRefOid mergeStateStatus reviewDecision isInMergeQueue"
-    " mergeQueueEntry { position state } } } }"
+    " mergeQueueEntry { position state }"
+    " timelineItems(last: 10, itemTypes: [PULL_REQUEST_COMMIT, HEAD_REF_FORCE_PUSHED_EVENT,"
+    " REMOVED_FROM_MERGE_QUEUE_EVENT]) {"
+    " nodes { __typename ... on RemovedFromMergeQueueEvent { createdAt reason } } } } } }"
 )
 
 _ENQUEUE_MUTATION = (
@@ -60,6 +66,28 @@ class MergeFacts:
     in_queue: bool
     queue_position: int | None
     queue_state: str
+    #: When the queue last ejected this head for failing checks with no commit
+    #: or force-push since ('' otherwise).
+    ejected_unchanged_at: str = ""
+
+
+def _ejected_unchanged_at(pr: dict[str, Any]) -> str:
+    """The time of a failed-checks ejection that is the PR's latest head event, else ''.
+
+    The timeline holds commits, force-pushes and queue removals; when its last
+    node is a removal for failed checks, the head the queue failed is still the
+    head, and enqueueing it again re-runs the same failing tree.
+    """
+    timeline = pr.get("timelineItems")
+    nodes = timeline.get("nodes") if isinstance(timeline, dict) else None
+    if not isinstance(nodes, list) or not nodes:
+        return ""
+    last = nodes[-1]
+    if not isinstance(last, dict) or last.get("__typename") != "RemovedFromMergeQueueEvent":
+        return ""
+    if str(last.get("reason") or "").lower() != "failed_checks":
+        return ""
+    return str(last.get("createdAt") or "unknown time")
 
 
 async def read_facts(
@@ -96,6 +124,7 @@ async def read_facts(
         in_queue=bool(pr.get("isInMergeQueue")) or bool(entry),
         queue_position=position if isinstance(position, int) else None,
         queue_state=str(entry.get("state") or ""),
+        ejected_unchanged_at=_ejected_unchanged_at(pr),
     )
 
 
@@ -181,6 +210,15 @@ async def refusal_answer(
         return (
             f"Error: Cannot merge PR #{number} in {repo}: it is a draft. Call `manage_github_pr` with "
             f"action='ready_for_review', then merge again.{said}"
+        )
+    if facts.base_has_queue and facts.ejected_unchanged_at:
+        return (
+            f"Error: PR #{number} in {repo} is NOT merged and was NOT added to the merge queue: the queue "
+            f"ejected head {facts.head[:12]} for failing checks at {facts.ejected_unchanged_at} and no commit "
+            f"was pushed since, so it would fail the same way and lock the branch meanwhile. Read the failed "
+            f"merge_group run (`list_github_workflow_runs` event='merge_group'), push the fix (or merge the base "
+            f"with `manage_github_pr` action='update_branch' when a sibling of its group caused it), then merge "
+            f"again on the new head.{said}"
         )
     if facts.base_has_queue:
         variables: dict[str, Any] = {"id": facts.pr_id}
