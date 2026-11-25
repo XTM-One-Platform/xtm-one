@@ -532,6 +532,17 @@ def _product_label(signal: CtemSignal) -> str | None:
     return label[:200] or None
 
 
+async def locked_case(db: AsyncSession, case_id: uuid.UUID) -> CtemCase | None:
+    """The case row read locked until the caller's commit (#2373), its attributes refreshed.
+
+    Every write of a case reads it this way before it decides from its state:
+    a concurrent write of the same case (a tool call, the API, a loop pass)
+    waits for this one's commit, then reads the state it left, so a ``state``
+    event never carries a ``from`` the case had already left.
+    """
+    return await db.get(CtemCase, case_id, with_for_update=True, populate_existing=True)
+
+
 def _transition(
     case: CtemCase,
     target: str,
@@ -1327,7 +1338,7 @@ async def close_signal_members(
             )
         )
         await db.flush()
-        case = await db.get(CtemCase, case_id)
+        case = await locked_case(db, case_id)
         if case is None or case.state not in OPEN_STATES:
             continue
         still_open = (

@@ -430,7 +430,7 @@ class CloseSession(FakeSession):
             return SimpleNamespace(scalars=lambda: value)
         return SimpleNamespace(scalar_one_or_none=lambda: value, first=lambda: value)
 
-    async def get(self, _model, _id):
+    async def get(self, _model: object, _id: object, **_options: object) -> object:
         return self.case
 
 

@@ -955,12 +955,21 @@ async def merged_with_prefix(
 
 
 async def get_case(
-    db: AsyncSession, case_id: uuid.UUID, *, organization_id: uuid.UUID
+    db: AsyncSession, case_id: uuid.UUID, *, organization_id: uuid.UUID, for_update: bool = False
 ) -> tuple[CtemCase, list[CtemCaseIssue], list[CtemCaseEvent]] | None:
-    """One case with its members and history; the caller hydrates it for one viewer."""
-    case = (
-        await db.execute(select(CtemCase).where(CtemCase.id == case_id, CtemCase.organization_id == organization_id))
-    ).scalar_one_or_none()
+    """One case with its members and history; the caller hydrates it for one viewer.
+
+    *for_update* (#2373) locks the case row until the caller's transaction ends:
+    every write path reads the case this way, so two concurrent writes of one
+    case run one after the other and the second reads the state and the history
+    the first committed (a gate decision recorded once, a state event from the
+    state it really left). The history is read after the lock, so it is the
+    committed one.
+    """
+    query = select(CtemCase).where(CtemCase.id == case_id, CtemCase.organization_id == organization_id)
+    if for_update:
+        query = query.with_for_update().execution_options(populate_existing=True)
+    case = (await db.execute(query)).scalar_one_or_none()
     if case is None:
         return None
     issues = list((await db.execute(select(CtemCaseIssue).where(CtemCaseIssue.case_id == case.id))).scalars())

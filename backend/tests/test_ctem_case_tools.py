@@ -81,7 +81,7 @@ def env(monkeypatch):
         assert organization_id == ORG
         return [(seen.case, rows)]
 
-    async def _get(_db, case_id, *, organization_id):
+    async def _get(_db: object, case_id: object, *, organization_id: object, **_options: object) -> object:
         if organization_id != ORG:
             return None
         if case_id in seen.created:
