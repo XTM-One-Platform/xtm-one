@@ -34,12 +34,14 @@ references:
   CTEM Assistant, given a handover to the orchestrator) added when missing;
 * stale built-in fleets (slug no longer seeded) deleted: their members go back
   to the playground, the workspace stays, like a REST delete;
-* the autonomy level (#10005): a built-in fleet starts at
-  :data:`SEEDED_FLEET_AUTONOMY_LEVEL` (``low``: only destructive actions wait).
-  An existing one still at the stored default that no person ever moved (no
-  ``autonomy_level_change`` audit row) is moved there at the next boot, with a
-  ``system:fleet-seed`` audit row; a level a person set is never overwritten.
-  The level changes nothing until someone enables the fleet.
+* the autonomy level (#10005, #2279): a built-in fleet starts at
+  :data:`SEEDED_FLEET_AUTONOMY_LEVEL` (``full_gates``: every gate waits, as a
+  decision item between steps, never a tool approval inside a run). An
+  existing one at another level that no person ever moved (no
+  ``autonomy_level_change`` audit row but a factory reset's) is moved there at
+  the next boot, with a ``system:fleet-seed`` audit row; a level a person set
+  is never overwritten. The level changes nothing until someone enables the
+  fleet.
 
 The API and the ``fleets`` tools keep a built-in fleet read-only
 (:func:`app.services.fleets.ensure_builtin_fleet_writable`); this seed is the
@@ -64,10 +66,16 @@ logger = logging.getLogger(__name__)
 #: The modes a built-in fleet can exist in, whatever its ``platform_targets``.
 FLEET_SEED_MODES: frozenset[str] = frozenset({"xtm_one", "dev"})
 
-#: The autonomy level a built-in fleet ships at (#10005): ``low``, the last
-#: level before full autonomy, where only ``destructive`` gates wait for a
-#: person. Custom fleets keep the model default (``full_gates``).
-SEEDED_FLEET_AUTONOMY_LEVEL = "low"
+#: The autonomy level a built-in fleet ships at (#2279, Sam, 25 Nov 2026):
+#: ``full_gates``, the model default every custom fleet starts at too. Each gate
+#: that waits is one decision item (a needs_human work item with its ask card)
+#: between steps; the fleet's tools stay authorized and no tool call pauses
+#: (#1675, ``enforce_gates_at_tool_level`` is forced off below). It was
+#: ``low`` from #10005 to #2279.
+SEEDED_FLEET_AUTONOMY_LEVEL = "full_gates"
+#: The audit ``details.reason`` of a factory reset's level row: a reset puts
+#: the shipped level back, it is not a person's choice of level.
+RESET_LEVEL_REASON = "fleet_reset"
 #: ``AuditLog.action`` of the seed moving a fleet to its shipped level.
 SEED_DEFAULT_AUDIT_ACTION = "autonomy_level_seed_default"
 #: ``system:<actor>`` of that row: the seed, never a user.
@@ -221,30 +229,30 @@ async def _upsert_fleet(db: AsyncSession, data: dict, owner_id: uuid.UUID) -> tu
 async def _apply_seed_autonomy(db: AsyncSession, fleet: Fleet, owner_id: uuid.UUID) -> bool:
     """Move *fleet* to :data:`SEEDED_FLEET_AUTONOMY_LEVEL` unless a person set its level; whether it moved.
 
-    A person's choice is read from the audit log: any ``autonomy_level_change``
-    row on the fleet (the PATCH and the bulk action write one) keeps the stored
-    level, whatever it is. Only a fleet still at the model default moves, so a
-    second boot changes nothing.
+    A person's choice is read from the audit log: an ``autonomy_level_change``
+    row on the fleet (the PATCH, the autonomy route and the bulk action write
+    one) keeps the stored level, whatever it is. A factory reset's row
+    (``details.reason`` :data:`RESET_LEVEL_REASON`) is not a choice. A fleet
+    already at the shipped level is left alone, so a second boot changes
+    nothing.
     """
     from app.services.audit import log_system_audit
-    from app.services.fleet_autonomy import DEFAULT_AUTONOMY_LEVEL, effective_level
+    from app.services.fleet_autonomy import effective_level
 
     previous = effective_level(fleet.autonomy_level)
-    if previous != DEFAULT_AUTONOMY_LEVEL or previous == SEEDED_FLEET_AUTONOMY_LEVEL:
+    if previous == SEEDED_FLEET_AUTONOMY_LEVEL:
         return False
     if fleet.id is not None:
-        person_set = (
+        rows = (
             await db.execute(
-                select(AuditLog.id)
-                .where(
+                select(AuditLog.details).where(
                     AuditLog.entity_type == "fleet",
                     AuditLog.entity_id == fleet.id,
                     AuditLog.action == "autonomy_level_change",
                 )
-                .limit(1)
             )
-        ).first()
-        if person_set is not None:
+        ).scalars()
+        if any(not isinstance(d, dict) or d.get("reason") != RESET_LEVEL_REASON for d in rows):
             return False
     fleet.autonomy_level = SEEDED_FLEET_AUTONOMY_LEVEL
     await db.flush()
