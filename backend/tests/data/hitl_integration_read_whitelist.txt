@@ -1410,9 +1410,11 @@ opencti:get_opencti_entity_stats
 opencti:get_opencti_error_rate
 opencti:get_opencti_licence
 opencti:get_opencti_managers
+opencti:get_opencti_nlq_context
 opencti:get_opencti_platform_queues
 opencti:get_opencti_platform_version
 opencti:get_opencti_relationship
+opencti:get_opencti_schema_attributes
 opencti:get_opencti_top_related
 opencti:list_opencti_background_tasks
 opencti:list_opencti_capabilities

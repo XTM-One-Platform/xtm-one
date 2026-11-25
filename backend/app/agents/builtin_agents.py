@@ -644,6 +644,13 @@ BUILTIN_AGENTS: list[dict] = [
         "memory_medium_term_enabled": False,
         "memory_persistent_enabled": False,
         "memory_user_enabled": False,
+        # PREPARE grounds the query in this OpenCTI's custom-field filter keys,
+        # which the filter schema skill cannot list (a tool result, not prompt).
+        "prepare_tool_ref": {
+            "source": "integration",
+            "provider": "opencti",
+            "tool_name": "get_opencti_nlq_context",
+        },
         "finalize_tool_ref": {
             "source": "integration",
             "provider": "opencti",
