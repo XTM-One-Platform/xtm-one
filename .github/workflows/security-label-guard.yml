@@ -1,0 +1,45 @@
+name: Security label guard
+
+# This repository is public: a vulnerability goes to a private GitHub security
+# advisory, never to an issue or a pull request, and the `security` label is
+# retired - on a public repository it would list every unfixed weakness in one
+# search (dev-docs/reference/security-reporting.md). This removes the label
+# wherever it is put, issue or pull request, and nothing else: no comment, no
+# summary, no log line naming the item, since any of those would be a public,
+# searchable pointer of its own. The triage of the item stays with a human.
+#
+# pull_request_target, so the token can write on a fork's pull request too: the
+# job checks nothing out and runs no code of the pull request, it only calls
+# the API with the item number. The removal is made with GITHUB_TOKEN, whose
+# events never start a workflow run.
+on:
+  issues:
+    types: [labeled]
+  pull_request_target:
+    types: [labeled]
+
+permissions: {}
+
+jobs:
+  remove-label:
+    name: Remove the label
+    # String comparison is case-insensitive in expressions: `Security` too.
+    if: github.event.label.name == 'security'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Remove the label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          LABEL: ${{ github.event.label.name }}
+        run: |
+          set -u
+          # A label someone removed meanwhile answers 404: nothing left to do.
+          if ! out=$(gh api -X DELETE "repos/${REPO}/issues/${NUMBER}/labels/$(jq -rn --arg l "$LABEL" '$l|@uri')" 2>&1); then
+            case "$out" in *"HTTP 404"*) exit 0 ;; *) echo "$out" >&2; exit 1 ;; esac
+          fi

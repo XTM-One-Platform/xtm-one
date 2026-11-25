@@ -122,7 +122,7 @@ license: $(BACKEND_VENV)/.synced ## Tag the Enterprise Edition files with their 
 
 # core.hooksPath is shared by every worktree of the clone and replaces .git/hooks:
 # an existing setting is never overwritten.
-setup-hooks: ## Have git check the Enterprise Edition license headers of each commit (.githooks/pre-commit)
+setup-hooks: ## Have git check each commit: Enterprise Edition license headers, no `security` scope (.githooks)
 	@./scripts/setup-hooks.sh
 
 e2e: frontend/node_modules/.yarn-state.yml ## Run the Playwright e2e tests against the dev stack (ARGS="tests_e2e/x.spec.ts")
