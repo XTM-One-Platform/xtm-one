@@ -116,6 +116,39 @@ def test_the_asset_page_carries_the_counts_by_source_and_category() -> None:
     assert asset_page({**page, "total": 1}, {})["next_offset"] is None
 
 
+def test_an_asset_names_the_id_its_source_knows() -> None:
+    """#2385: the module tools take the source's external_id, so the page keeps it and no other record field."""
+    record = {"source": "openaev", "external_id": "E1", "id": "R1", "name": "web-01"}
+    page = {"items": [{"id": "a1", "records": [record]}], "total": 1, "offset": 0, "limit": 50}
+    asset = asset_page(page, {})["assets"][0]
+    assert asset["source_ids"] == [{"source": "openaev", "external_id": "E1"}]
+    assert "records" not in asset and "R1" not in str(asset)
+
+
+def test_an_asset_of_two_sources_lists_both_ids() -> None:
+    """#2385: a merged asset names the id of each source, once."""
+    records = [
+        {"source": "openaev", "external_id": "E1"},
+        {"source": "opencti", "external_id": "C9"},
+        {"source": "openaev", "external_id": "E1"},
+        {"source": "intune"},
+    ]
+    page = {"items": [{"id": "a1", "records": records}], "total": 1, "offset": 0, "limit": 50}
+    assert asset_page(page, {})["assets"][0]["source_ids"] == [
+        {"source": "openaev", "external_id": "E1"},
+        {"source": "opencti", "external_id": "C9"},
+    ]
+
+
+def test_the_inventory_tool_says_which_id_a_module_takes() -> None:
+    """#2385: the description tells the inventory id from the source's external_id."""
+    import inspect
+
+    from app.services.builtin_tools import ctem_read
+
+    assert "Module tools take source_ids.external_id, not id." in inspect.getsource(ctem_read)
+
+
 def test_a_signal_names_its_provider_product() -> None:
     """#1782: an agent reads \"Aikido Security\", never the bare key alone."""
     assert provider_name("aikido") == "Aikido Security"
