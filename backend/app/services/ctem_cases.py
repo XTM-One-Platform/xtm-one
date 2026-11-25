@@ -180,6 +180,9 @@ class SourceIssue:
     last_tested_at: str | None = None
     #: A re-test is queued on the finding and has not finished.
     retest_pending: bool = False
+    #: Every OpenCTI Software the vulnerability names is a language package (``pkg:pypi``, a ``java``
+    #: CPE target): the case's running versions then count repository packages too (#2223).
+    language_package: bool = False
 
     def __post_init__(self) -> None:
         # A stored pair or mapping (a view cached before #2038) is read as a typed fact.
@@ -202,6 +205,8 @@ class Remediation:
     fixed_version: str | None = None
     #: ``((platform, version), ...)``: the fix of each platform the remediation names (#1572), else ``()``.
     fixed_versions: tuple[tuple[str, str], ...] = ()
+    #: The product is a language package (#2223): see :attr:`SourceIssue.language_package`.
+    language_package: bool = False
 
 
 def _norm(value: str | None) -> str:
@@ -242,12 +247,14 @@ def remediation_of(issue: SourceIssue) -> Remediation | None:
                 product_label=label,
                 fixed_version=fixed,
                 fixed_versions=issue.fixed_versions,
+                language_package=issue.language_package,
             )
         return Remediation(
             key=f"upgrade:{vendor}/{product}@latest",
             kind="upgrade",
             title=f"Upgrade {label} to a fixed version",
             product_label=label,
+            language_package=issue.language_package,
         )
     return None
 

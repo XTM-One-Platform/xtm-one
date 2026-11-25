@@ -464,6 +464,7 @@ async def for_case(db: AsyncSession, case: Any, *, with_devices: bool = False) -
         fixed_version=case.fixed_version,
         fixed_versions_by_platform=_case_platform_fixes(case),
         with_devices=with_devices,
+        case_id=getattr(case, "id", None),
     )
 
 
@@ -481,11 +482,13 @@ async def read_running_versions(
     fixed_version: str | None,
     fixed_versions_by_platform: Mapping[str, str] | None = None,
     with_devices: bool = False,
+    case_id: uuid.UUID | None = None,
 ) -> dict[str, Any] | None:
     """:func:`running_versions` over the organization's asset software (one grouped read).
 
     ``None`` when the case names no product, no asset runs it, or the store
-    cannot be read (a case read never fails on the inventory).
+    cannot be read (a case read never fails on the inventory). With *case_id*, a
+    language package row counts only for a package case (:func:`package_case_rows`, #2223).
     """
     keys = product_keys(product_label)
     if not keys:
@@ -494,7 +497,7 @@ async def read_running_versions(
     try:
         # A savepoint, so a failed read never leaves the caller's transaction aborted.
         async with db.begin_nested():
-            counted, named = await _read_rows(db, organization_id, keys, family)
+            counted, named = await _read_rows(db, organization_id, keys, family, case_id)
             os_assets = await _read_os_assets(db, organization_id, family) if family else []
             platforms = await _read_platforms(db, organization_id, keys) if counted else {}
     except Exception:  # the inventory never breaks a case read
@@ -918,7 +921,7 @@ async def assets_for_case(db: AsyncSession, case: Any, issues: Iterable[Mapping[
     family = os_family_of(getattr(case, "product_label", None))
     try:
         async with db.begin_nested():
-            found = await _read_asset_rows(db, case.organization_id, keys, names, family)
+            found = await _read_asset_rows(db, case.organization_id, keys, names, family, getattr(case, "id", None))
             os_assets = await _read_os_assets(db, case.organization_id, family, names) if family else []
     except Exception:  # the inventory never breaks a case read
         logger.info("CTEM case asset versions unavailable", exc_info=True)
@@ -956,8 +959,41 @@ def os_case_rows(soft: Any, asset: Any, family: str | None) -> list[ColumnElemen
     return [soft.purl == "", or_(os_family.is_(None), os_family == "", os_family == family)]
 
 
+def language_package_row(soft: Any) -> ColumnElement[bool]:
+    """A software row whose purl names a language ecosystem (``pkg:pypi``, ``pkg:maven``, ...), #2223.
+
+    Distribution packages (``pkg:deb``, ``pkg:rpm``) and rows with no purl are not.
+    """
+    from app.services.ctem_product_identity import ECOSYSTEM_TARGETS
+
+    return or_(*(func.lower(soft.purl).like(f"pkg:{kind}/%") for kind in sorted(ECOSYSTEM_TARGETS)))
+
+
+def package_case_rows(soft: Any, case_id: uuid.UUID | None) -> list[ColumnElement[bool]]:
+    """The condition a product case puts on language package rows (#2223), ``[]`` without a case.
+
+    A repository's ``pkg:maven/io.minio/minio`` is the MinIO SDK, not the MinIO server a
+    CVE affects: such a row counts as a running version only when a signal of the case says
+    the vulnerable OpenCTI Software is itself a language package
+    (``evidence.case_fix.language_package``, written by ``ctem_source_signals``). Package
+    CVEs still reach repositories through ``ctem_dependency_matches`` (purl match).
+    """
+    if case_id is None:
+        return []
+    from app.models.ctem_signal import CtemSignal
+
+    flag = CtemSignal.evidence["case_fix"]["language_package"].astext
+    is_package_case = select(CtemSignal.id).where(CtemSignal.case_id == case_id, flag == "true").limit(1).exists()
+    return [or_(~language_package_row(soft), is_package_case)]
+
+
 async def _read_asset_rows(
-    db: AsyncSession, organization_id: uuid.UUID, keys: tuple[str, ...], names: list[str], family: str | None = None
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    keys: tuple[str, ...],
+    names: list[str],
+    family: str | None = None,
+    case_id: uuid.UUID | None = None,
 ) -> list[dict[str, Any]]:
     """The software entries of the case's product on the named assets (one read)."""
     soft, asset = OrganizationAssetSoftware, OrganizationAsset
@@ -978,6 +1014,7 @@ async def _read_asset_rows(
             asset.name_key.in_([n[:300] for n in names]),
             product_filter(soft.product_key, keys),
             *os_case_rows(soft, asset, family),
+            *package_case_rows(soft, case_id),
         )
     )
     return [
@@ -1065,17 +1102,23 @@ async def _read_os_assets(
 
 
 async def _read_rows(
-    db: AsyncSession, organization_id: uuid.UUID, keys: tuple[str, ...], family: str | None = None
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    keys: tuple[str, ...],
+    family: str | None = None,
+    case_id: uuid.UUID | None = None,
 ) -> tuple[list[Any], dict[tuple[str, str, str], set[str]]]:
     """The (vendor, product, version) groups with their distinct asset ids, and the sources of each.
 
-    An operating system case (*family*) keeps only the rows :func:`os_case_rows` allows (#2036).
+    An operating system case (*family*) keeps only the rows :func:`os_case_rows` allows (#2036);
+    a case (*case_id*) keeps a language package row only as :func:`package_case_rows` says (#2223).
     """
     soft, asset = OrganizationAssetSoftware, OrganizationAsset
     where = (
         soft.organization_id == organization_id,
         product_filter(soft.product_key, keys),
         *os_case_rows(soft, asset, family),
+        *package_case_rows(soft, case_id),
     )
     joined = family is not None
 
