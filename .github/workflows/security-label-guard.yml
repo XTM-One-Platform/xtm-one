@@ -1,11 +1,12 @@
 name: Security label guard
 
 # Removes the retired `security` label from any issue or pull request
-# (dev-docs/reference/security-reporting.md). Every run looks the same - a fixed
-# name, a job that always runs, nothing in the log naming the item (no step
-# `env:`, which Actions prints, and a generic error) - so neither the item nor the
-# run list or logs point at what was labeled. pull_request_target is safe here:
-# nothing of the pull request is checked out or run.
+# (dev-docs/reference/security-reporting.md). It adds nothing that names the item:
+# no comment, a fixed run name, a job that always runs, no step `env:` (Actions
+# prints it) and a generic error. The labeling itself stays public (the item's
+# timeline, the repository's issue events; a failed removal is the only red
+# run): a labeled item counts as publicly flagged. pull_request_target is safe
+# here: nothing of the pull request is checked out or run.
 run-name: Security label guard
 
 on:
