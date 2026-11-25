@@ -27,6 +27,7 @@ import logging
 import time
 import uuid
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -436,6 +437,33 @@ async def prepare_system_reads(db: AsyncSession, organization_id: uuid.UUID) -> 
         logger.warning("CTEM scope gate: reads not prepared for %s", organization_id, exc_info=True)
 
 
+async def _with_cve_software(
+    db: AsyncSession, row: CtemSignal, facts: gate.SignalFacts, profile: Any, primary_assets: Any
+) -> gate.SignalFacts:
+    """*facts* with the software OpenCTI relates to the CVEs the signal names (#2171).
+
+    Read only when the signal names a CVE and resolves to nothing without it, with
+    the recorder's own OpenCTI access (a ``system`` signal: the OpenCRQ sync
+    owner's, as :func:`_scenarios_for`), once per session and CVE list. Never raises.
+    """
+    from app.services import ctem_cve_software
+
+    cves = gate.signal_cve_ids(facts.subject_ref, facts.subject_label, facts.evidence)
+    if not cves or gate.resolve(profile, facts, primary_assets).resolved:
+        return facts
+    try:
+        async with db.begin_nested():
+            fallback = await _session_cached(db, ("fallback_reader",), lambda: default_scenario_reader(db))
+        reader = scenario_reader(row, fallback)
+        found, how = await _session_cached(
+            db, ("cve_software", reader, tuple(cves)), lambda: ctem_cve_software.cve_software(db, reader, cves)
+        )
+    except Exception:
+        logger.warning("CTEM scope gate: CVE software not read for %s", getattr(row, "id", "?"), exc_info=True)
+        found, how = (), ctem_cve_software.LOOKUP_FAILED
+    return replace(facts, cve_software=tuple(found), cve_lookup=how)
+
+
 def dismissed(row: CtemSignal) -> bool:
     """A signal a person dismissed (#1505): no pass of the gate moves it back, only a restore."""
     return row.state == "discarded" and (row.decision or {}).get("reason_code") == DISMISSED_CODE
@@ -451,9 +479,13 @@ async def evaluate(
     now: datetime | None = None,
     events: Any = None,
     restore: bool = False,
+    remote_reads: bool = True,
 ) -> gate.Decision | None:
     """Decide *row* and write its state and decision; ``None`` when it opened a case or a person
     dismissed it (*restore* decides a dismissed one again). The caller commits.
+
+    *remote_reads* False (a pass that holds signal row locks, #1953) skips the
+    OpenCTI read of the software of the signal's CVEs (#2171).
 
     With *events* (``ctem_case_loop.PendingEvents``), a verdict that changes a
     verdict the signal already had adds ``ctem_signal.triaged`` (#1409); the first
@@ -475,9 +507,12 @@ async def evaluate(
     if scenarios is None:
         # #1591 S3: the same OpenCRQ read on every path; a system signal reads with the OpenCRQ sync owner's.
         scenarios = await _scenarios_for(db, row)
+    facts = facts_of(row)
+    if remote_reads and isinstance(facts, gate.SignalFacts):
+        facts = await _with_cve_software(db, row, facts, profile, primary_assets)
     decision = gate.decide(
         profile,
-        facts_of(row),
+        facts,
         related=await related_signals(db, row),
         scenarios=scenarios,
         primary_assets=primary_assets,

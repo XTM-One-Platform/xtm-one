@@ -60,6 +60,17 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
    then matched to the organization's software like any software reference.
    `reconcile.software_refs` lists every reference tried; an unresolved
    subject carries `reason_params` `{keys, software}`, the counts tried.
+   **CVE subjects without software** (#2171): a signal that names CVEs
+   (subject, label or evidence `cve` / `cves`) and resolves to nothing
+   without them has its CVEs looked up in OpenCTI with the recorder's own
+   access (a `system` signal: the OpenCRQ sync owner's): the Software each
+   is related to by `has` (name and CPE) joins the software references
+   (`reconcile.cve_software`). `reconcile.cve_lookup` says how the read went
+   (`read`, `no reader`, `no OpenCTI access`, `OpenCTI did not answer`;
+   `null` when not needed). The case recompute, which holds signal row
+   locks (#1953), decides without this read. `record_ctem_signal` names the
+   evidence keys the gate reads and answers a `hint` when the gate left the
+   signal `subject_unresolved` and its evidence holds none of them.
    **Shipped products** (`shipped_products`, what the organization ships,
    apart from the tech stack it runs): a software reference or a CPE of the
    evidence (`software`, `cpe`; the OpenCTI vulnerability listener copies
