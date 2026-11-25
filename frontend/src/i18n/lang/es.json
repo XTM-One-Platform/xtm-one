@@ -20370,6 +20370,7 @@
   "Triggers when an accounting period is closed, reopened, locked or unlocked. Uses polling (every 5 minutes); the first poll starts from now.": "Se activa cuando un período contable se cierra, se reabre, se bloquea o se desbloquea. Usa sondeo (cada 5 minutos); el primer sondeo parte de ahora.",
   "{source} · {by}": "{source} · {by}",
   "Confirm: {option}": "Confirmar: {option}",
+  "The agent acts on this answer as soon as it is sent, and it cannot be changed afterwards.": "El agente actúa sobre esta respuesta en cuanto se envía, y después no se puede cambiar.",
   "Runs this call once. The tool asks again next time.": "Ejecuta esta llamada una vez. La herramienta volverá a preguntar la próxima vez.",
   "{count, plural, one {Runs # call once.} other {Runs these # calls once.}} The tool asks again next time.": "{count, plural, one {Ejecuta # llamada una vez.} other {Ejecuta estas # llamadas una vez.}} La herramienta volverá a preguntar la próxima vez.",
   "This needs your own consent: the action is run as you approve it now, and it cannot be undone.": "Se necesita su propio consentimiento: la acción se ejecuta tal como la aprueba ahora y no se puede deshacer.",
