@@ -86,6 +86,15 @@ function coordinationInputsFrom(values: CoordinationRetention): Record<Coordinat
   >;
 }
 
+// Keeps the current state object when every window is unchanged, so an effect that re-syncs from a fresh
+// config object (a refetch, a re-render) does not schedule another render and loop.
+function keepCoordinationInputs(
+  current: Record<CoordinationRetentionKey, string>,
+  next: Record<CoordinationRetentionKey, string>,
+): Record<CoordinationRetentionKey, string> {
+  return COORDINATION_RETENTION_KEYS.every((key) => current[key] === next[key]) ? current : next;
+}
+
 export function ObservabilitySection() {
   const { t_i18n } = useFormatter();
   const { isAdmin } = useAuth();
@@ -174,7 +183,8 @@ export function ObservabilitySection() {
     setTraceRetentionInput(String(config.trace_retention_days));
     setTraceStorePayloads(config.trace_store_payloads);
     setAuditLogRetentionInput(String(config.audit_log_retention_days));
-    setCoordinationInputs(coordinationInputsFrom({ ...COORDINATION_RETENTION_DEFAULTS, ...(config.coordination_retention ?? {}) }));
+    const next = coordinationInputsFrom({ ...COORDINATION_RETENTION_DEFAULTS, ...(config.coordination_retention ?? {}) });
+    setCoordinationInputs((current) => keepCoordinationInputs(current, next));
   }, [config, editing]);
 
   useEffect(() => {
@@ -191,7 +201,8 @@ export function ObservabilitySection() {
       setTraceRetentionInput(String(config.trace_retention_days));
       setTraceStorePayloads(config.trace_store_payloads);
       setAuditLogRetentionInput(String(config.audit_log_retention_days));
-      setCoordinationInputs(coordinationInputsFrom({ ...COORDINATION_RETENTION_DEFAULTS, ...(config.coordination_retention ?? {}) }));
+      const next = coordinationInputsFrom({ ...COORDINATION_RETENTION_DEFAULTS, ...(config.coordination_retention ?? {}) });
+      setCoordinationInputs((current) => keepCoordinationInputs(current, next));
     }
 
     if (langfuseConfig) {
