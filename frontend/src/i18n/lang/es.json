@@ -17702,6 +17702,7 @@
   "On a reachable asset: internet-facing, or a user endpoint (phishing, browser, email).": "En un activo accesible: expuesto a Internet, o un equipo de usuario (phishing, navegador, correo).",
   "Add your assets and exposure": "Añadir sus activos y su exposición",
   "Not linked": "Sin vincular",
+  "No software inventory": "Sin inventario de software",
   "{total, plural, one {# asset read} other {# assets read}}. Reachable: {reachable} (user endpoints: {endpoints}). Proven unreachable: {unreachable}. Unknown: {unknown}.": "{total, plural, one {# activo leído} other {# activos leídos}}. Accesibles: {reachable} (equipos de usuario: {endpoints}). Inaccesibles comprobados: {unreachable}. Desconocidos: {unknown}.",
   "Business impact": "Impacto en el negocio",
   "On an asset that supports a primary asset.": "En un activo que sostiene un activo primario.",
@@ -21696,5 +21697,7 @@
   "{count, plural, one {# field not filled} other {# fields not filled}}": "{count, plural, one {# campo sin rellenar} other {# campos sin rellenar}}",
   "{count, plural, one {# field not filled on this tab, reported by every agent that needs it.} other {# fields not filled on this tab, reported by every agent that needs them.}}": "{count, plural, one {# campo sin rellenar en esta pestaña, señalado por cada agente que lo necesita.} other {# campos sin rellenar en esta pestaña, señalados por cada agente que los necesita.}}",
   "Every field of this tab is filled.": "Todos los campos de esta pestaña están rellenados.",
-  "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}": "{count, plural, one {# más en {tab}.} other {# más en {tab}.}}"
+  "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}": "{count, plural, one {# más en {tab}.} other {# más en {tab}.}}",
+  "{primary, plural, one {# primary asset} other {# primary assets}} reached through {supporting, plural, one {# supporting asset} other {# supporting assets}}.": "{primary, plural, one {# activo primario alcanzado} other {# activos primarios alcanzados}} a través de {supporting, plural, one {# activo de soporte} other {# activos de soporte}}.",
+  "{count, plural, one {# policy rule applied} other {# policy rules applied}}.": "{count, plural, one {# regla de política aplicada} other {# reglas de política aplicadas}}."
 }
