@@ -130,10 +130,10 @@ def test_the_agent_block_announces_the_filled_parts_by_one_line_never_their_rows
 
 
 def test_an_asset_validates_its_vocabularies():
-    asset = oc.AssetEntry(name=" web-1 ", tech_stack=["nginx", "nginx", " "], tags=["dmz"])
+    asset = oc.AssetEntry(name=" web-1 ", products=["nginx", "nginx", " "], tags=["dmz"])
     assert asset.name == "web-1"
     assert asset.internet_facing == "unknown"
-    assert asset.tech_stack == ["nginx"]
+    assert asset.products == ["nginx"]
     with pytest.raises(ValueError):
         oc.AssetEntry(name="x", internet_facing="maybe")  # type: ignore[arg-type]
     with pytest.raises(ValueError):
@@ -213,7 +213,7 @@ def test_a_legacy_profile_moves_its_asset_group_rows_to_asset_groups_losing_noth
                 "internet_facing": "yes",
                 "owner": "Network",
                 "group": "Perimeter",
-                "tech_stack": ["nginx"],
+                "products": ["nginx"],
                 "tags": ["edge"],
                 "source": "csv",
                 "external_id": "g-1",
@@ -237,7 +237,7 @@ def test_a_legacy_profile_moves_its_asset_group_rows_to_asset_groups_losing_noth
         "csv",
         "g-1",
     )
-    assert dmz.tech_stack == ["nginx"] and dmz.tags == ["edge", "group:Perimeter"]
+    assert dmz.products == ["nginx"] and dmz.tags == ["edge", "group:Perimeter"]
     assert [g.name for g in profile.asset_groups] == ["DMZ", "Perimeter"]
     assert imp.check_links(profile) == []
     again = oc.parse_profile(json.loads(json.dumps(profile.model_dump(mode="json"))))
@@ -249,7 +249,7 @@ def test_the_profile_round_trips_assets_links_policy_and_knowledge():
         **LEGACY,
         "primary_assets": [{**LEGACY["primary_assets"][0], "asset_names": ["DMZ", "web-1", "web-1"]}],
         "assets_exposure": [
-            {"name": "web-1", "group": "DMZ", "environment": "production", "tech_stack": ["nginx"]},
+            {"name": "web-1", "group": "DMZ", "environment": "production", "products": ["nginx"]},
         ],
         "asset_groups": [{"name": "DMZ", "internet_facing": "yes"}],
         "prioritization_policy": {
@@ -308,7 +308,7 @@ def test_links_to_unknown_assets_or_groups_are_named():
 # ── CSV import ──────────────────────────────────────────────────────────────
 
 CSV = (
-    b"name,type,environment,internet_facing,owner,group,tech_stack,tags,primary_assets\n"
+    b"name,type,environment,internet_facing,owner,group,products,tags,primary_assets\n"
     b"DMZ,asset_group,production,yes,Network,,,,SCADA\n"
     b"web-1,host,production,y,Web team,DMZ,nginx;OpenSSL,dmz|web,SCADA;Billing\n"
     b"db-1,database,PRODUCTION,no,DBA,,PostgreSQL,,\n"
@@ -326,7 +326,7 @@ def test_the_csv_preview_parses_rows_names_errors_and_links_without_writing():
     assert [(g.name, g.internet_facing, g.owner) for g in preview.groups] == [("DMZ", "yes", "Network")]
     assert (preview.assets[1].category, preview.assets[1].subcategory) == ("cloud_resource", "database")
     web = preview.assets[0]
-    assert (web.internet_facing, web.group, web.tech_stack, web.tags, web.source) == (
+    assert (web.internet_facing, web.group, web.products, web.tags, web.source) == (
         "yes",
         "DMZ",
         ["nginx", "OpenSSL"],

@@ -262,7 +262,7 @@ def test_the_screens_scope_puts_every_fixable_issue_on_a_critical_asset(monkeypa
     products = {i.product for members in grouping.groups.values() for i in members if i.product}
     assert products and products <= stack
     for product in products:
-        running = [a for a in assets if product in a.tech_stack]
+        running = [a for a in assets if product in a.products]
         assert running, product
         assert max(CRITICALITY_ORDER.index(ASSET_TO_SCOPE[a.criticality]) for a in running) >= threshold
     assert len({a.external_id for a in assets}) == len(assets)

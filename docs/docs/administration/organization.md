@@ -19,7 +19,7 @@ By default, every agent also starts each chat and each run with a short block: t
 
 A vulnerability on a product named like one of your imported GitHub or GitLab repositories (a CPE product part or a plain name, case, `-` and `_` ignored) resolves to that repository in CTEM without a `shipped_products` row; forks are left out.
 
-`primary_assets` and `tech_stack`, the former names of `primary_assets` and `software`, are still read for one release; a saved selection naming them was renamed on upgrade.
+`crown_jewels` and `tech_stack`, the former names of `primary_assets` and `software`, are no longer read; a saved selection naming them was renamed on upgrade. The product list of an asset or an asset group, and the asset CSV column, are named `products`.
 
 The short block stays the same size whatever the length of the lists. An agent asked about a vulnerability reads the software inventory page by page, or narrows it to a vendor or a product with `query`.
 

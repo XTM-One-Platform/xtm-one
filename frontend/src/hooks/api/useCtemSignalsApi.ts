@@ -30,7 +30,7 @@ export interface CtemDecisionRecord {
   reconcile?: {
     assets?: string[];
     primary_assets_named?: string[];
-    tech_stack?: string[];
+    products?: string[];
     lenses?: string[];
     confidence?: string;
   } & Record<string, unknown>;

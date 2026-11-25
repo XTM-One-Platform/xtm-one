@@ -68,7 +68,7 @@ LISTED = 25
 #: Row formats the upsert maps on the server: ``profile`` rows are taken as they are.
 ROW_FORMATS: tuple[str, ...] = ("profile", "intune_device", "intune_detected_app")
 #: Fields a person may have set on a synced row, kept when the source does not send them.
-_KEPT_FIELDS: tuple[str, ...] = ("environment", "owner", "tech_stack", "group", "description", "criticality")
+_KEPT_FIELDS: tuple[str, ...] = ("environment", "owner", "products", "group", "description", "criticality")
 
 
 @dataclass
