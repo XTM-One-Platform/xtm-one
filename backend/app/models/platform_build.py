@@ -41,3 +41,7 @@ class PlatformBuild(Base):
     #: next build diffs against it to tell the owners of agents scoped to a
     #: group which new functions their allowlist leaves out (#12192).
     builtin_tools: Mapped[dict[str, list[str]] | None] = mapped_column(JSON, nullable=True, default=None)
+    #: When ``platform.release.deployed`` was raised for the build: once its rollout
+    #: completed (``services/platform_builds.mark_released``), never at a first boot a
+    #: newer build may supersede within minutes. NULL until then.
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
