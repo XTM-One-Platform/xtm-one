@@ -1299,7 +1299,7 @@ async def _note_live_holder(
 
 
 async def _lock_current(
-    db: Any, assignment_id: uuid.UUID, name: str, payload: Mapping[str, Any]
+    db: Any, assignment_id: uuid.UUID, name: str, payload: Mapping[str, Any], *, lock: bool = True
 ) -> tuple[Any, bool] | None:
     """Lock the subscriber's row and check it still takes event *name*; (row, once), ``None`` when it does not.
 
@@ -1311,16 +1311,23 @@ async def _lock_current(
     one-off watch is marked fired by this event; nothing is committed here:
     the caller commits the mark with the run (or with the live holder's note),
     and a failure rolls both back, so the watch stays armed.
+
+    *lock* False (a standing subscription) reads the row without ``FOR UPDATE``:
+    a burst of one event (a case-opening drain raising ``ctem_case.opened`` per
+    case) then never queues every delivery on one row lock. A row read that way
+    which turned into a one-off watch since the snapshot is read again locked.
     """
     from sqlalchemy import select
 
     from app.models.assignment import Assignment
     from app.services.integration_event_filters import payload_filter_reason
 
-    row = (
-        await db.execute(select(Assignment).where(Assignment.id == assignment_id).with_for_update())
-    ).scalar_one_or_none()
+    query = select(Assignment).where(Assignment.id == assignment_id)
+    row = (await db.execute(query if not lock else query.with_for_update())).scalar_one_or_none()
     config = row.trigger_config if row is not None and isinstance(row.trigger_config, dict) else None
+    if not lock and config is not None and config.get(ONCE_KEY) is True:
+        row = (await db.execute(query.with_for_update())).scalar_one_or_none()
+        config = row.trigger_config if row is not None and isinstance(row.trigger_config, dict) else None
     if (
         row is None
         or not row.enabled
@@ -1365,7 +1372,7 @@ async def _deliver(name: str, payload: Mapping[str, Any], sub: Subscription, ass
         # snapshot, decides. A one-off watch is consumed by its first matching
         # event, before the live-holder shortcut: in the same transaction as the
         # run it starts, or as the note told to the live run holding the object.
-        current = await _lock_current(db, sub.assignment_id, name, payload)
+        current = await _lock_current(db, sub.assignment_id, name, payload, lock=sub.once)
         if current is None:
             # Fired, past its deadline, disabled or edited since the snapshot.
             return "watch already fired or changed"
