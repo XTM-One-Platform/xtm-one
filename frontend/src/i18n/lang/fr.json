@@ -18244,6 +18244,7 @@
   "Every PIR": "Tous les PIR",
   "Hosts, applications and services, with their exposure and criticality.": "Hôtes, applications et services, avec leur exposition et leur criticité.",
   "Import from the platforms": "Importer depuis les plateformes",
+  "Save the sync": "Enregistrer la synchronisation",
   "In the profile": "Dans le profil",
   "In {platform}": "Dans {platform}",
   "Lowest criticality": "Criticité minimale",
@@ -21696,5 +21697,18 @@
   "{count, plural, one {# field not filled} other {# fields not filled}}": "{count, plural, one {# champ non rempli} other {# champs non remplis}}",
   "{count, plural, one {# field not filled on this tab, reported by every agent that needs it.} other {# fields not filled on this tab, reported by every agent that needs them.}}": "{count, plural, one {# champ non rempli dans cet onglet, signalé par chaque agent qui en a besoin.} other {# champs non remplis dans cet onglet, signalés par chaque agent qui en a besoin.}}",
   "Every field of this tab is filled.": "Tous les champs de cet onglet sont remplis.",
-  "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}": "{count, plural, one {# de plus dans {tab}.} other {# de plus dans {tab}.}}"
+  "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}": "{count, plural, one {# de plus dans {tab}.} other {# de plus dans {tab}.}}",
+  "To create": "À créer",
+  "To update": "À mettre à jour",
+  "To remove": "À supprimer",
+  "Target platform": "Plateforme cible",
+  "What to push": "Quoi envoyer",
+  "Import from a platform": "Importer depuis une plateforme",
+  "Push to a platform": "Envoyer vers une plateforme",
+  "The platform is the master: its rows fill this section.": "La plateforme fait référence : ses lignes remplissent cette section.",
+  "XTM One is the master: its rows are written to the platform.": "XTM One fait référence : ses lignes sont écrites dans la plateforme.",
+  "Connected: the sync writes with your account.": "Connectée : la synchronisation écrit avec votre compte.",
+  "The first run writes these rows to {platform}. Later runs update and remove only what this sync created; the rest of {platform} is never touched.": "La première exécution écrit ces lignes dans {platform}. Les suivantes ne mettent à jour et ne suppriment que ce que cette synchronisation a créé ; le reste de {platform} n'est jamais modifié.",
+  "The sync runs on this schedule, with these filters.": "La synchronisation s'exécute selon ce planning, avec ces filtres.",
+  "One section to one platform, no AI. Nothing is written before Save, and the platform's own rows are never touched.": "Une section vers une plateforme, sans IA. Rien n'est écrit avant Enregistrer, et les lignes propres à la plateforme ne sont jamais modifiées."
 }
