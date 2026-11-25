@@ -103,6 +103,26 @@ def test_answered_event_without_a_decision_row() -> None:
     assert record["recorded_on_case"] is True
 
 
+def test_an_answer_an_agent_recorded_names_the_person_given_as_text() -> None:
+    """#2256: ``record_gate(by=<name>, actor=<agent>)`` names the person, never an unresolvable id."""
+    history = _history(
+        _gate("11:09", "ctem.analyst_review", "waited"),
+        _gate("12:10", "ctem.analyst_review", "answered", AGENT, reason="Jane Doe", evidence="A", actor_type="agent"),
+    )
+    record = _one(gates.resolve(history, [], names=NAMES, now=NOW), "ctem.analyst_review")
+    assert record["answered_by"] == {"id": "Jane Doe", "name": "Jane Doe"}
+
+
+def test_an_answer_named_by_a_word_or_an_unknown_id_stays_unnamed() -> None:
+    for reason in ("a person", "OpenCTI analyst mark", "55555555-5555-5555-5555-555555555555"):
+        history = _history(
+            _gate("11:09", "ctem.analyst_review", "waited"),
+            _gate("12:10", "ctem.analyst_review", "answered", AGENT, reason=reason, actor_type="agent"),
+        )
+        record = _one(gates.resolve(history, [], names=NAMES, now=NOW), "ctem.analyst_review")
+        assert record["answered_by"] == {"id": reason, "name": None}
+
+
 def test_rejected_answer_keeps_the_option_label() -> None:
     history = _history(_gate("11:56", "ctem.validation.non_readonly", "waited"))
     row = _decision(answer={"option": "B"}, answered_by=PERSON, answered_at=_at("12:00"), surface="teams_card")
