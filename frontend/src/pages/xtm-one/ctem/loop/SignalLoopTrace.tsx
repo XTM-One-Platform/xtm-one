@@ -637,6 +637,13 @@ export function signalCaseLink(caseId: string | null | undefined, currentCaseId?
   return caseDetailPath(caseId);
 }
 
+/**
+ * One label column for every gate list of the trace (#874 S2 UX round 1 B2): a fixed width,
+ * so the Decision, Reason and Next step values of consecutive gates start on one x in every
+ * locale (the longest label, fr "Étape suivante", fits in 6rem at caption size).
+ */
+const GATE_LABEL_GRID = "grid-cols-[6rem_1fr]";
+
 function SignalTrace({ signal, currentCaseId }: { signal: CtemSignal; currentCaseId?: string | null }) {
   const { t_i18n, intl } = useFormatter();
   const stages = signalLoop(signal);
@@ -665,12 +672,13 @@ function SignalTrace({ signal, currentCaseId }: { signal: CtemSignal; currentCas
             data-stage={stage.key}
             data-status={stage.status}
             className={cn(
-              "flex min-w-0 items-center gap-2 rounded-sm px-2 py-1.5",
+              // #874 S2 UX round 1 B1: the glyph sits on the title line, so a gate row and a one-line row align alike.
+              "flex min-w-0 items-start gap-2 rounded-sm px-2 py-1.5",
               (stage.status === "current" || stage.status === "stopped" || stage.status === "parked") && "layer-1 bg-elevation-hover",
               stage.status === "not_reached" && "text-default-secondary",
             )}
           >
-            <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+            <span className="mt-px flex h-4 w-4 shrink-0 items-center justify-center">
               <StageGlyph status={stage.status} />
             </span>
             <span className="min-w-0 flex-1">
@@ -685,18 +693,18 @@ function SignalTrace({ signal, currentCaseId }: { signal: CtemSignal; currentCas
                 {!gate && (stage.status === "stopped" || stage.status === "parked") ? ` · ${decisionSentence(signal.decision, t_i18n, formatDay)}` : ""}
               </span>
               {gate && (
-                <dl className="mt-0.5 grid grid-cols-[auto_1fr] gap-x-3 content-caption" data-testid="ctem-loop-gate" data-gate={stage.key}>
-                  <dt className="text-default-secondary">{t_i18n("Decision")}</dt>
+                <dl className={cn("mt-0.5 grid gap-x-3 content-caption", GATE_LABEL_GRID)} data-testid="ctem-loop-gate" data-gate={stage.key}>
+                  <dt className="min-w-0 break-words text-default-secondary">{t_i18n("Decision")}</dt>
                   <dd className="min-w-0 break-words font-medium">{gate.decision}</dd>
                   {gate.reason && (
                     <>
-                      <dt className="text-default-secondary">{t_i18n("Reason")}</dt>
+                      <dt className="min-w-0 break-words text-default-secondary">{t_i18n("Reason")}</dt>
                       <dd className="min-w-0 break-words">{gate.reason}</dd>
                     </>
                   )}
                   {gate.next && (
                     <>
-                      <dt className="text-default-secondary">{t_i18n("Next step")}</dt>
+                      <dt className="min-w-0 break-words text-default-secondary">{t_i18n("Next step")}</dt>
                       <dd className="min-w-0 break-words">{gate.next}</dd>
                     </>
                   )}
