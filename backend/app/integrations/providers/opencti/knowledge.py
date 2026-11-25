@@ -3325,6 +3325,10 @@ def register_knowledge(
 
     # ── 21. Create STIX domain object ────────────────────────────────
 
+    x_opencti_aliases_types = {
+        t: "x_opencti_aliases" for t in ("Individual", "Organization", "Sector", "Course-Of-Action")
+    }
+
     async def create_opencti_entity(
         type: str,
         name: str,
@@ -3371,7 +3375,9 @@ def register_knowledge(
         if confidence is not None:
             input_data["confidence"] = confidence
         if aliases:
-            input_data["aliases"] = aliases
+            # Identities and courses of action keep their aliases in x_opencti_aliases
+            # (OpenCTI's AddInput has no 'aliases' for them, the GraphQL call fails).
+            input_data[x_opencti_aliases_types.get(type, "aliases")] = aliases
         # Time-range fields (for types that support them)
         if first_seen:
             input_data["first_seen"] = first_seen

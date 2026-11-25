@@ -198,6 +198,20 @@ async def test_update_and_delete(monkeypatch: pytest.MonkeyPatch) -> None:
     assert rec.calls[-1][0] == "SecurityCoverageDelete"
 
 
+@pytest.mark.parametrize("flag", [True, False])
+async def test_update_writes_the_auto_enrichment_flag_both_ways(monkeypatch: pytest.MonkeyPatch, flag: bool) -> None:
+    executor, rec = _build(monkeypatch)
+    content = await _run(executor, action="update", coverage_id="sc1", auto_enrichment_disable=flag)
+    assert content == "Updated security coverage sc1: auto_enrichment_disable."
+    assert rec.calls[-1][1]["input"] == [{"key": "auto_enrichment_disable", "value": [flag]}]
+
+
+async def test_update_leaves_the_auto_enrichment_flag_when_not_given(monkeypatch: pytest.MonkeyPatch) -> None:
+    executor, rec = _build(monkeypatch)
+    await _run(executor, action="update", coverage_id="sc1", name="Renamed")
+    assert rec.calls[-1][1]["input"] == [{"key": "name", "value": ["Renamed"]}]
+
+
 async def test_update_without_a_field_writes_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
     executor, rec = _build(monkeypatch)
     content = await _run(executor, action="update", coverage_id="sc1")

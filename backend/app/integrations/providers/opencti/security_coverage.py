@@ -73,7 +73,16 @@ _APPLIES: dict[str, frozenset[str]] = {
         }
     ),
     "update": frozenset(
-        {"coverage_id", "name", "description", "periodicity", "duration", "type_affinity", "platforms_affinity"}
+        {
+            "coverage_id",
+            "name",
+            "description",
+            "periodicity",
+            "duration",
+            "type_affinity",
+            "platforms_affinity",
+            "auto_enrichment_disable",
+        }
     ),
     "delete": frozenset({"coverage_id"}),
 }
@@ -190,7 +199,7 @@ def register(
         duration: str = "",
         type_affinity: str = "",
         platforms_affinity: list[str] | None = None,
-        auto_enrichment_disable: bool = False,
+        auto_enrichment_disable: bool | None = None,
         search: str = "",
         limit: int = _DEFAULT_LIMIT,
         **unknown: object,
@@ -208,7 +217,7 @@ def register(
                 "duration": duration,
                 "type_affinity": type_affinity,
                 "platforms_affinity": platforms_affinity or None,
-                "auto_enrichment_disable": auto_enrichment_disable or None,
+                "auto_enrichment_disable": auto_enrichment_disable,
                 "search": search,
                 "limit": None if limit == _DEFAULT_LIMIT else limit,
             },
@@ -328,10 +337,13 @@ def register(
             ]
             if platforms_affinity:
                 edits.append({"key": "platforms_affinity", "value": list(platforms_affinity)})
+            if auto_enrichment_disable is not None:
+                # Tri-state: unset leaves the flag as stored, true and false are written.
+                edits.append({"key": "auto_enrichment_disable", "value": [bool(auto_enrichment_disable)]})
             if not edits:
                 return (
-                    "Error: give name, description, periodicity, duration, type_affinity or platforms_affinity "
-                    "to update; nothing was written."
+                    "Error: give name, description, periodicity, duration, type_affinity, platforms_affinity "
+                    "or auto_enrichment_disable to update; nothing was written."
                 )
             _, err = await _gql(_PATCH_MUTATION, {"id": coverage_id, "input": edits})
             if err:
@@ -390,7 +402,7 @@ def register(
                     },
                     "auto_enrichment_disable": {
                         "type": "boolean",
-                        "description": "true: OpenCTI does not send it to the validation module by itself (create).",
+                        "description": "true: OpenCTI never sends it to the validation module by itself (create, update; omit to keep).",
                     },
                     "search": {"type": "string"},
                     "limit": {"type": "integer", "default": _DEFAULT_LIMIT},
