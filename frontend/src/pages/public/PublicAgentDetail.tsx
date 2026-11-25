@@ -274,7 +274,7 @@ export default function PublicAgentDetail() {
                     <div className="flex items-center gap-2">
                       <TriggerIcon className="h-3.5 w-3.5 text-accent/60" />
                       <span className="content-base font-medium">{w.name}</span>
-                      <span className="rounded-full bg-elevation-hover px-2 py-0.5 content-caption text-default-secondary">
+                      <span className="rounded-sm border border-transparent bg-elevation-hover px-2 py-0.5 content-caption text-default-secondary">
                         {TRIGGER_LABELS[
                           w.trigger_type as keyof typeof TRIGGER_LABELS
                         ] ?? w.trigger_type}

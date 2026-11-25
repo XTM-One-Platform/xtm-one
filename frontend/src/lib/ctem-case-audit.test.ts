@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from "vitest";
 import type { CtemCaseEvent, CtemCaseRun } from "@/hooks/api/useCtemCasesApi";
-import { auditChange, auditRows, filterRows, gateAnswerKind, groupByPhase, personReason, phaseBand, reasonLabel, runPhase, type ChangeWords } from "./ctem-case-audit";
+import { auditChange, auditRows, filterRows, foldAnsweredRequests, gateAnswerKind, groupByPhase, personReason, phaseBand, reasonLabel, runPhase, type ChangeWords } from "./ctem-case-audit";
 import en from "@/i18n/lang/en.json";
 import fr from "@/i18n/lang/fr.json";
 import ja from "@/i18n/lang/ja.json";
@@ -48,6 +48,7 @@ describe("answered waiting gate (UX round 2 on #1520, B2)", () => {
     autonomy: "waiting",
     actor_type: "agent",
     actor: "ag-1",
+    from: "ctem.analyst_review",
     to: "waited",
     answer: { at: "2026-11-19T11:00:00Z", outcome: "answered", by: "u-1", option: "A" },
   });
@@ -56,6 +57,7 @@ describe("answered waiting gate (UX round 2 on #1520, B2)", () => {
     autonomy: "validated_by_person",
     actor_type: "person",
     actor: "u-1",
+    from: "ctem.analyst_review",
     to: "answered",
     waited_since: "2026-11-19T10:00:00Z",
   });
@@ -74,6 +76,16 @@ describe("answered waiting gate (UX round 2 on #1520, B2)", () => {
   it("gives the Autonomy filter one validated row for the gate", () => {
     const rows = auditRows([answer, request], undefined);
     expect(rows.filter((r) => r.autonomy === "validated_by_person")).toHaveLength(1);
+  });
+
+  it("folds an answered request into its answer for the Timeline, keeps an open one (#1679, point 2)", () => {
+    const rows = auditRows([answer, request, open], undefined);
+    expect(foldAnsweredRequests(rows).map((r) => r.autonomy)).toEqual(["validated_by_person", "waiting"]);
+  });
+
+  it("keeps an answered request whose answer row is not in the rows shown", () => {
+    const rows = auditRows([request], undefined);
+    expect(foldAnsweredRequests(rows).map((r) => r.autonomy)).toEqual(["waited"]);
   });
 });
 
@@ -102,6 +114,15 @@ describe("auditChange (UX round 2 on #1520, B1)", () => {
     expect(auditChange({ kind: "state", from: "needs_attention", to: "in_progress" }, words)).toEqual({ from: "Needs attention", to: "In progress" });
     expect(auditChange({ kind: "state", from: "needs_attention", to: "weird_key" }, words)).toBeNull();
     expect(auditChange({ kind: "source_event", from: "a", to: "b" }, words)).toBeNull();
+  });
+});
+
+describe("gate record step headings (advisory A1 of #1708 round 4)", () => {
+  it("names the step in ja, never the date label of its field", () => {
+    const catalog = ja as Record<string, string>;
+    expect(catalog["Asked (gate step)"]).not.toBe(catalog["Asked at"]);
+    expect(catalog["Asked (gate step)"]).not.toMatch(/日時/);
+    expect(catalog["Decided (gate step)"]).not.toMatch(/日時/);
   });
 });
 

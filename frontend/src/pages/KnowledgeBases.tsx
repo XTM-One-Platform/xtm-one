@@ -382,7 +382,7 @@ export default function KnowledgeBases() {
                             <button
                               type="button"
                               onClick={() => setSelectedChunk(result)}
-                              className="inline-flex items-center rounded-full border border-elevation-subtle-soft bg-elevation-hover px-2 py-0.5 content-caption font-medium text-default-secondary hover:border-accent/40 hover:text-accent transition-colors"
+                              className="inline-flex items-center rounded-sm border border-elevation-subtle-soft bg-elevation-hover px-2 py-0.5 content-caption font-medium text-default-secondary hover:border-accent/40 hover:text-accent transition-colors"
                             >
                               {t_i18n("See chunk")}
                             </button>

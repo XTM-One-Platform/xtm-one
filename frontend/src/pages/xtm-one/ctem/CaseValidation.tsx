@@ -9,6 +9,7 @@
  * validation references and `gate` events. Never blank: a case not validated
  * yet says so.
  */
+import type { IconName } from "@filigran/design-system";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { WorkItemDecisionCard } from "@/components/work-items/WorkItemDecisionCard";
 import { mayAnswerCaseGate } from "@/lib/ctem-access";
@@ -42,6 +43,15 @@ const RESULT_TONE: Record<keyof typeof RESULT_LABEL, HotTone> = {
   pending: "yellow",
   // A pass that proves nothing (#1692): no verdict colour.
   inconclusive: "neutral",
+};
+
+/** The icon of each result, before its word (#1679, point 5). */
+const RESULT_ICON: Record<keyof typeof RESULT_LABEL, IconName> = {
+  passed: "circle-check",
+  not_exposed: "shield-check",
+  failed: "circle-x",
+  pending: "clock",
+  inconclusive: "circle-question-mark",
 };
 
 /** DS logos of the validation providers a case can carry; their names come from case-loop's shared map. */
@@ -93,6 +103,7 @@ export function CaseValidation({
           <CaseSectionReason
             own={t_i18n("Checks in OpenAEV that prove whether the exposure is real, once the case is prioritized.")}
             source="openaev"
+            icon={CASE_SECTION_ICON.validation}
             testId="ctem-case-validation-empty"
           />
         )}
@@ -151,11 +162,15 @@ export function CaseValidation({
                       {PROVIDER_NAMES[v.provider] ?? v.provider}
                     </span>
                     {v.result in RESULT_LABEL ? (
-                      <ToneBadge tone={RESULT_TONE[v.result as keyof typeof RESULT_LABEL]} data-testid="ctem-case-validation-result">
+                      <ToneBadge
+                        tone={RESULT_TONE[v.result as keyof typeof RESULT_LABEL]}
+                        icon={<CaseIcon name={RESULT_ICON[v.result as keyof typeof RESULT_LABEL]} />}
+                        data-testid="ctem-case-validation-result"
+                      >
                         {t_i18n(RESULT_LABEL[v.result as keyof typeof RESULT_LABEL])}
                       </ToneBadge>
                     ) : (
-                      <ToneBadge tone="neutral" data-testid="ctem-case-validation-result">
+                      <ToneBadge tone="neutral" icon={<CaseIcon name={RESULT_ICON.inconclusive} />} data-testid="ctem-case-validation-result">
                         {v.result}
                       </ToneBadge>
                     )}

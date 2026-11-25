@@ -15,6 +15,8 @@ import { BadgeFocusTrigger } from "@/components/ui/badge";
 import { type HotTone, ToneBadge } from "@/components/ui/tone-badge";
 import { Tip } from "@/components/ui/tooltip";
 import { TruncatedText } from "@/components/ui/truncated-text";
+import { useFormatter } from "@/i18n";
+import { AUTONOMY_ICON, AUTONOMY_LABEL, AUTONOMY_TONE, type AutonomyClass } from "@/lib/ctem-case-audit";
 import { cn } from "@/lib/utils";
 
 /** The icon of each case card header, by section. */
@@ -110,6 +112,19 @@ export function CaseCardTitleText({ icon, children }: { icon: IconName; children
 }
 
 /**
+ * An empty state of the case page (#1679, point 5): the section's icon before the
+ * sentence that says what will appear, never a bare line of text.
+ */
+export function CaseEmptyLine({ icon, testId, children }: { icon: IconName; testId?: string; children: React.ReactNode }) {
+  return (
+    <p className="flex items-center gap-2 content-base text-default-secondary" data-testid={testId}>
+      <CaseIcon name={icon} />
+      <span className="min-w-0">{children}</span>
+    </p>
+  );
+}
+
+/**
  * A fact as a chip with its icon: a person, an agent, a wait, a mode. An agent
  * reads in the info tone (never the green link colour), a person and a plain
  * fact in the neutral tone; `to` makes the whole chip a link. `tip` explains the
@@ -157,5 +172,20 @@ export function CaseFactChip({
     <RouterLink to={to} className="inline-flex max-w-full rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2">
       {chip}
     </RouterLink>
+  );
+}
+
+/**
+ * The autonomy class of a History row as a chip with its icon, the hairline chip of
+ * every other fact (#1679: one chip style per strip, advisory A1 of #1708). `count`
+ * follows the label in a phase header.
+ */
+export function CaseAutonomyChip({ autonomy, count, testId }: { autonomy: AutonomyClass; count?: string; testId?: string }) {
+  const { t_i18n } = useFormatter();
+  const label = t_i18n(AUTONOMY_LABEL[autonomy]);
+  return (
+    <CaseFactChip icon={AUTONOMY_ICON[autonomy]} tone={AUTONOMY_TONE[autonomy]} testId={testId}>
+      {count === undefined ? label : `${label} ${count}`}
+    </CaseFactChip>
   );
 }

@@ -225,7 +225,7 @@ export function HolderClickerBar({ presentationId, total }: HolderClickerBarProp
       <div
         role="group"
         aria-label={t_i18n("Clicker")}
-        className="pointer-events-auto flex items-center gap-2 rounded-full border border-elevation-subtle-soft bg-elevation-default px-3 py-1.5"
+        className="pointer-events-auto flex items-center gap-2 rounded-sm border border-elevation-subtle-soft bg-elevation-default px-3 py-1.5"
       >
         <span className="content-compact text-default-primary">{t_i18n("You hold the clicker")}</span>
         <Button

@@ -304,7 +304,7 @@ function VideoProjectCard({ video, userId, handlers }: { video: VideoProject; us
           )}
           <DurationChip ms={ready?.duration_ms ?? video.estimated_duration_ms} />
           <span className="absolute inset-0 flex items-center justify-center bg-[color-mix(in_srgb,var(--bg-elevation-default)_50%,transparent)] opacity-0 transition-opacity group-hover:opacity-100">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-elevation-default px-3 py-1.5 content-compact font-medium">
+            <span className="inline-flex items-center gap-1.5 rounded-sm bg-elevation-default px-3 py-1.5 content-compact font-medium">
               <OpenIcon className="h-3.5 w-3.5 text-accent" /> {t_i18n(VIDEO_OPEN_LABELS[opens])}
             </span>
           </span>

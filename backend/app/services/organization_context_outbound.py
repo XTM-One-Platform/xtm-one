@@ -29,6 +29,10 @@ the OpenAEV assets they are linked to (:func:`plan_asset_group_outbound`), and a
 outbound sync's ``filters`` select the rows it pushes the way an import's select
 the rows it reads (:func:`outbound_row_matches`): a row leaving the filter is
 deleted from the platform only when this sync created it.
+
+Since #1982 S3 an outbound ``assets`` sync to ``opencti`` pushes the assets XTM One
+owns as Systems, their software as Software observables and each installation as
+a ``uses`` relationship (``organization_context_opencti_outbound``).
 """
 
 from __future__ import annotations
@@ -59,7 +63,9 @@ DIRECTIONS: dict[tuple[str, str], tuple[tuple[str, ...], str]] = {
     # #1982 S1: the groups XTM One owns, members linked to OpenAEV assets; OpenAEV's own groups are never touched.
     ("asset_groups", "openaev"): ((INBOUND, OUTBOUND), ""),
     ("pirs", "opencti"): ((INBOUND,), "Planned: OpenCTI PIR writes are not wired for syncs yet."),
-    ("assets", "opencti"): ((INBOUND,), "OpenCTI Systems are owned by its connectors."),
+    # #1982 S3: the assets XTM One owns as Systems, their software as Software and the installation as
+    # ``uses``; only what the sync created is touched, the Systems of OpenCTI's connectors never are.
+    ("assets", "opencti"): ((INBOUND, OUTBOUND), ""),
     ("software", "openaev"): ((INBOUND,), "OpenAEV software inventory is read from its agents."),
 }
 
@@ -130,6 +136,16 @@ class OutboundPlan:
     members: dict[str, list[str]] = field(default_factory=dict)
     #: Asset groups: ``group name: member name`` of each member with no OpenAEV counterpart (never created).
     unlinked: list[str] = field(default_factory=list)
+    #: OpenCTI (#1982 S3): the ``fieldPatch`` edits of each System updated, keyed on the asset's name.
+    patches: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    #: OpenCTI: the Software observables to create, ``(key, input)``.
+    software: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
+    #: OpenCTI: the ``uses`` relationships to create, ``(key, System key, Software key)``.
+    relations: list[tuple[str, str, str]] = field(default_factory=list)
+    #: OpenCTI: the ``uses`` relationships this sync created that no installation needs any more.
+    relations_delete: list[tuple[str, str]] = field(default_factory=list)
+    #: OpenCTI: Software keys no asset runs any more, forgotten (the observable is shared, never deleted).
+    released: list[str] = field(default_factory=list)
 
     def summary(self) -> dict[str, Any]:
         ref = f"{self.platform}_asset_id"
@@ -139,6 +155,16 @@ class OutboundPlan:
             "delete": [{"name": k, ref: a} for k, a in self.delete],
             "skipped": list(self.skipped),
             **({"unlinked_members": list(self.unlinked)} if self.unlinked else {}),
+            **(
+                {
+                    "software_create": [dict(body) for _, body in self.software],
+                    "installations_create": [k for k, _, _ in self.relations],
+                    "installations_delete": [k for k, _ in self.relations_delete],
+                    "software_released": list(self.released),
+                }
+                if self.platform == "opencti"
+                else {}
+            ),
             "error": self.error,
         }
 
@@ -504,8 +530,9 @@ async def run_outbound(
 ) -> tuple[OutboundPlan, dict[str, str]]:
     """Plan and, with *apply*, write an outbound sync; ``(plan, outbound_ids after the run)``.
 
-    ``primary_assets`` to ``opencrq``, the AI target assets and the asset groups to ``openaev``
-    are wired (:data:`DIRECTIONS`). Reads and writes with *user_id*'s token; a failed read writes nothing.
+    ``primary_assets`` to ``opencrq``, the AI target assets and the asset groups to ``openaev``,
+    the assets with their software to ``opencti`` (#1982 S3) are wired (:data:`DIRECTIONS`). Reads and
+    writes with *user_id*'s token; a failed read writes nothing.
     """
     from app.integrations.providers.opencrq._common import _resolve_tenant, _trpc
     from app.services import organization_context as org_context
@@ -518,6 +545,10 @@ async def run_outbound(
         return await _run_ai_target_outbound(db, sync, ids, user_id=user_id, apply=apply)
     if sync.source == "openaev" and sync.section in ASSET_GROUP_SECTIONS:
         return await _run_asset_group_outbound(db, sync, ids, user_id=user_id, apply=apply)
+    if sync.source == "opencti" and sync.section == "assets":
+        from app.services.organization_context_opencti_outbound import run_opencti_outbound
+
+        return await run_opencti_outbound(db, sync, ids, user_id=user_id, apply=apply)
     connection = await ocrq._opencrq_connection(db, str(user_id))
     if isinstance(connection, str):
         return OutboundPlan(error=connection), ids
