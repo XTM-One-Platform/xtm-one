@@ -25,7 +25,7 @@ def _brute(rows, labels):
 
 
 def test_same_results_as_matches_case():
-    rng = random.Random(1)
+    rng = random.Random(1)  # noqa: S311 - seeded test data, not crypto
     vendors = ["Google LLC", "Microsoft Corporation", "Mozilla", "Apple Inc.", "", "Oracle, Inc", "google"]
     products = [
         "Chrome", "Google Chrome", "Google LLC Google Chrome", "Windows", "Microsoft Windows",
