@@ -1508,7 +1508,9 @@ def build_work_item_tools(
                     return owner_err.replace("Nothing was done", "Nothing was listed")
                 owner_filter = full_owner
         try:
-            resolved = await coordination_scope.resolve_coordination_scope(agent_id, acting_user_id, scope)
+            resolved = await coordination_scope.resolve_coordination_scope(
+                agent_id, acting_user_id, scope, acting_admin=writer.acting_admin
+            )
         except Exception as exc:
             logger.error("list_work_items scope failed: %s", format_exception_message(exc), exc_info=True)
             return "Error: failed to resolve the scope of the listing. Please try again."
@@ -1832,7 +1834,9 @@ def build_work_item_tools(
         resolved = await coordination_scope.resolve_coordination_scope(agent_id, acting_user_id, "")
         if isinstance(resolved, str) or resolved.admits(item):
             return None
-        if allow_all and await coordination_scope.user_is_admin(acting_user_id):
+        # The run acts for an administrator: its company-managed run carries no
+        # person in acting_user_id, the writer says it (#2381).
+        if allow_all and (writer.acting_admin or await coordination_scope.user_is_admin(acting_user_id)):
             return None
         return resolved.refusal()
 
@@ -2060,7 +2064,9 @@ def build_work_item_tools(
         from app.services import coordination_scope
 
         try:
-            resolved = await coordination_scope.resolve_coordination_scope(agent_id, acting_user_id, scope)
+            resolved = await coordination_scope.resolve_coordination_scope(
+                agent_id, acting_user_id, scope, acting_admin=writer.acting_admin
+            )
         except Exception as exc:
             logger.error("program scope failed: %s", format_exception_message(exc), exc_info=True)
             return "Error: failed to resolve the scope of the read. Please try again."
