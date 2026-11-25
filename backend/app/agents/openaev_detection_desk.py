@@ -84,6 +84,9 @@ SHARED_AGENTS: tuple[str, ...] = (
 VERDICTS: tuple[str, ...] = ("blocked", "detected", "logged", "missed")
 #: The root causes the gap analyst can name.
 ROOT_CAUSES: tuple[str, ...] = ("none", "no_rule", "no_log", "broken_collector", "matching_defect", "unknown")
+#: The agent statuses of a pair whose payload never ran on the asset (#2380): such a pair
+#: was not tested, so it is never a gap; it goes to ``not_executed`` and out of the coverage.
+NOT_EXECUTED_STATUSES: tuple[str, ...] = ("AGENT_INACTIVE", "TIMEOUT", "ERROR", "ASSET_AGENTLESS", "OTHER")
 
 _TARGETS = ["xtm_one", "dev"]
 
@@ -93,7 +96,10 @@ _GAP_SCHEMA: dict[str, Any] = {
         "simulation": {"type": "string", "description": "The OpenAEV simulation analysed (name and id)."},
         "gaps": {
             "type": "array",
-            "description": "One entry per inject and asset whose strongest control is not 'blocked'.",
+            "description": (
+                "One entry per inject and asset whose payload ran and whose strongest control is not "
+                "'blocked'. A pair whose payload never ran goes to not_executed, never here."
+            ),
             "items": {
                 "type": "object",
                 "properties": {
@@ -115,9 +121,26 @@ _GAP_SCHEMA: dict[str, Any] = {
                 "required": ["technique", "asset", "verdict", "missing", "root_cause", "evidence"],
             },
         },
+        "not_executed": {
+            "type": "array",
+            "description": "One entry per inject and asset whose payload never ran on the asset: not tested, no gap.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "technique": {"type": "string", "description": "The ATT&CK technique of the inject."},
+                    "asset": {"type": "string", "description": "The asset or asset group targeted."},
+                    "status": {"type": "string", "enum": list(NOT_EXECUTED_STATUSES)},
+                    "evidence": {"type": "string", "description": "What in OpenAEV shows the payload did not run."},
+                },
+                "required": ["technique", "asset", "status", "evidence"],
+            },
+        },
         "coverage": {
             "type": "object",
-            "description": "Share of expectations met in this simulation, 0 to 100.",
+            "description": (
+                "Share of expectations met in this simulation, 0 to 100, over the pairs whose payload ran; "
+                "not_executed pairs are left out of the denominators."
+            ),
             "properties": {
                 "prevention": {"type": "number"},
                 "detection": {"type": "number"},
@@ -131,7 +154,7 @@ _GAP_SCHEMA: dict[str, Any] = {
         },
         "missing_context": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["simulation", "gaps", "missing_context"],
+    "required": ["simulation", "gaps", "not_executed", "missing_context"],
 }
 
 _REPORT_SCHEMA: dict[str, Any] = {
@@ -239,7 +262,8 @@ DETECTION_DESK_AGENTS: list[dict[str, Any]] = [
         "name": "Coverage Gap Analyst",
         "description": (
             "Sorts the results of one OpenAEV simulation into blocked, detected, logged and missed, "
-            "and names the root cause of each gap: no rule, no log or a broken collector."
+            "names the root cause of each gap: no rule, no log or a broken collector, and lists apart "
+            "the pairs whose payload never ran."
         ),
         "icon": "ScanSearch",
         "output_schema": _GAP_SCHEMA,
