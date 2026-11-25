@@ -2904,6 +2904,12 @@ CTEM_CASE_LISTENER_CONCURRENCY = 5
 #: The payload path the case events are ordered by: two events of one case run one at a
 #: time, in arrival order; events of other cases run beside them.
 CTEM_CASE_ORDERING_KEY = "case_id"
+#: A burst of ``ctem_case.opened`` (a reconcile opening 500 cases) is batched (#2286): the
+#: events of this window join one run, at most ``CTEM_CASE_BATCH_MAX_EVENTS`` cases each, so
+#: the burst starts a bounded number of Loop runs. Every other case event runs alone, at once.
+CTEM_CASE_BATCH_WINDOW_SECONDS = 60
+CTEM_CASE_BATCH_MAX_EVENTS = 5
+CTEM_CASE_BATCHED_EVENTS: tuple[str, ...] = ("ctem_case.opened",)
 #: The owner token of the two seeded case fleets (a built-in fleet's token is its slug).
 CTEM_LOOP_CASE_FLEET = "ctem-loop"
 CTEM_VULN_CASE_FLEET = "ctem-vuln-prioritization"
@@ -2972,10 +2978,16 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: di
             # rewrites it on the row of an existing install at the next boot.
             "max_concurrent_runs": CTEM_CASE_LISTENER_CONCURRENCY,
             "ordering_key": CTEM_CASE_ORDERING_KEY,
+            "batch_window_seconds": CTEM_CASE_BATCH_WINDOW_SECONDS,
+            "batch_events": list(CTEM_CASE_BATCHED_EVENTS),
+            "batch_max_events": CTEM_CASE_BATCH_MAX_EVENTS,
         },
         "prompt": (
             "A CTEM case event is in the trigger below (event name, case_id, trigger_path, "
-            "state, owner_fleet: the fleet the platform routed this case to, yours). The case "
+            "state, owner_fleet: the fleet the platform routed this case to, yours). Opened cases "
+            "arrive batched: when the trigger is a batch (batch true, an events list), work each "
+            "event of the list in order, one case at a time, exactly as below, each case under its "
+            "own work item and its own gates; never merge two cases' loops into one item. The case "
             "is the record of this loop: read it first with "
             "get_ctem_case. On ctem_case.opened or ctem_case.reopened: own the case's loop "
             f"under the work item keyed `{fleet_key}:case:` followed by the case_id (create "
