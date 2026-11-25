@@ -21684,6 +21684,6 @@
   "Platform Health specialists": "Platform Health スペシャリスト",
   "Platform Health's internal tools: diagnosis, experiments, sandbox, Flow Lab, memory and module checks": "Platform Health の内部ツール: 診断、実験、サンドボックス、Flow Lab、メモリ、モジュールチェック",
   "The tools Platform Health's own specialists work with: quality diagnosis, experiments and evaluations on sandbox copies, the Flow Lab, memory consolidation, module checks and improvement proposals. Carried by the Platform Health fleet's agents alone, each scoped to the functions it uses; never offered on the Tools page, in an agent's configuration or in a chat. Every write refuses anyone but Platform Health.": "Platform Health のスペシャリストが使うツールです: 品質診断、サンドボックスコピーでの実験と評価、Flow Lab、メモリ統合、モジュールチェック、改善提案。Platform Health フリートのエージェントだけが持ち、それぞれ使う関数に限定されます。ツールページ、エージェント設定、チャットでは提供されません。書き込みは Platform Health 以外を拒否します。",
-  "{primary, plural, one {# primary asset} other {# primary assets}} reached through {supporting, plural, one {# supporting asset} other {# supporting assets}}.": "{supporting, plural, other {#件のサポート資産}}を通じて{primary, plural, other {#件のプライマリ資産}}に到達。",
+  "{primary, plural, one {# primary asset} other {# primary assets}} reached through {supporting, plural, one {# supporting asset} other {# supporting assets}}.": "{supporting, plural, other {#件のサポート資産}}を通じて{primary, plural, other {#件の主要資産}}に到達。",
   "{count, plural, one {# policy rule applied} other {# policy rules applied}}.": "{count, plural, other {#件のポリシールールを適用}}。"
 }
