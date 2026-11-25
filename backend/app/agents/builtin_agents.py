@@ -334,7 +334,7 @@ _STAGE_DEFS: list[dict] = [
         "name": "CTEM Scoping Analyst",
         "icon": "Crosshair",
         "focus": "how completely the exposure surface is defined and in scope",
-        "cyber": "asset coverage of the attack surface - the share of endpoints carrying an active OpenAEV agent (target >90%) and the count of UNPROTECTED endpoints to close (below ~85% coverage validation is unreliable); OpenCTI observables/CVEs are the intel-side surface. Call out primary assets lacking coverage",
+        "cyber": "asset coverage of the attack surface - the share of endpoints carrying an active OpenAEV agent (target >90%) and the count of UNPROTECTED endpoints to close (below ~85% coverage validation is unreliable). Count them with search_openaev_assets filter_group and limit=1 (its total), hosts only (asset_category eq HOST; an agentless non-host asset is not a protection gap): total hosts; covered = hosts with asset_status eq ACTIVE; unprotected = hosts with asset_status in INACTIVE, AGENTLESS, STALE; coverage = covered / total. asset_status is not an analytics engine key; OpenCTI observables/CVEs are the intel-side surface. Call out primary assets lacking coverage",
         "fimi": "information-space coverage - narratives, channels, languages and events (especially elections) tracked in OpenCTI",
         "fraud": "brand & asset coverage - monitored brands/organizations, watched domains, and impersonation personas",
     },
