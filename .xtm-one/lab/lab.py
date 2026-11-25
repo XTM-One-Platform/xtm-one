@@ -6112,10 +6112,11 @@ def seed_ctem_screens(token: str, base: str) -> dict[str, dict[str, str]]:
     Since #1529 the recompute opens a case only through the scope gate, so the scope comes first
     (:func:`seed_ctem_screens_scope`): without it every issue is a watchlisted signal and the list is empty.
 
-    A 429 means the per-user slot (one recompute per minute) is taken, often by a background refresh a list
-    read started before the scope existed, which wrote no case: the seed waits the window out and recomputes
-    again (:func:`_ctem_screens_recompute`), so a twin lab never starts with 0 cases (gap
-    lab-ctem-screens-cases-seed-flaky).
+    A 429 means the per-user slot (one recompute per minute) is taken, and a 409 that another recompute of
+    the organization's cases runs (#1953), often the background refresh a list read started before the scope
+    existed, which wrote no case: the seed waits the window out and recomputes again
+    (:func:`_ctem_screens_recompute`), so a twin lab never starts with 0 cases (gap
+    lab-ctem-screens-cases-seed-flaky, #2030).
     """
     seed_ctem_screens_scope(token)
     listed = _ctem_screens_recompute(token)
@@ -6135,14 +6136,18 @@ def seed_ctem_screens(token: str, base: str) -> dict[str, dict[str, str]]:
 
 #: Seconds the seed waits for the recompute slot to free (the API's window is 60 s), and its attempts.
 CTEM_SCREENS_RECOMPUTE_WAIT = 62
-CTEM_SCREENS_RECOMPUTE_ATTEMPTS = 3
+CTEM_SCREENS_RECOMPUTE_ATTEMPTS = 4
+#: The recompute's answers that mean "try again shortly": the per-user slot taken (429) or another
+#: recompute of the organization's cases running (409, #1953).
+CTEM_SCREENS_RECOMPUTE_BUSY = (": 429 ", ": 409 ")
 
 
 def _ctem_screens_recompute(token: str, sleep=time.sleep) -> dict | list:
     """Recompute the cases and read the list until it holds 3 cases or the attempts run out.
 
-    A 429 (slot taken) or a list under 3 cases waits :data:`CTEM_SCREENS_RECOMPUTE_WAIT` seconds and recomputes
-    again; a recompute answering ``applied`` false raises at once (a product did not answer). Answers the last list.
+    A 429 (slot taken), a 409 (another recompute running) or a list under 3 cases waits
+    :data:`CTEM_SCREENS_RECOMPUTE_WAIT` seconds and recomputes again; a recompute answering ``applied`` false
+    raises at once (a product did not answer). Answers the last list.
     """
     listed: dict | list = {}
     for attempt in range(CTEM_SCREENS_RECOMPUTE_ATTEMPTS):
@@ -6151,9 +6156,9 @@ def _ctem_screens_recompute(token: str, sleep=time.sleep) -> dict | list:
         try:
             answer = api("POST", "/ctem-cases/recompute?vertical=cyber", token)
         except RuntimeError as exc:
-            if ": 429 " not in str(exc):
+            if not any(busy in str(exc) for busy in CTEM_SCREENS_RECOMPUTE_BUSY):
                 raise
-            log(f"CTEM cases recompute slot taken (attempt {attempt + 1}): waiting {CTEM_SCREENS_RECOMPUTE_WAIT}s")
+            log(f"CTEM cases recompute busy (attempt {attempt + 1}): waiting {CTEM_SCREENS_RECOMPUTE_WAIT}s")
             continue
         if not isinstance(answer, dict) or not answer.get("applied"):
             raise RuntimeError(f"the CTEM cases recompute answered {str(answer)[:300]}")
