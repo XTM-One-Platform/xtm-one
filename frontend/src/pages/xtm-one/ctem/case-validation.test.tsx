@@ -21,7 +21,7 @@ vi.mock("@/hooks/api/useWorkItemApi", async (importOriginal) => ({
   },
 }));
 vi.mock("@/components/work-items/WorkItemDecisionCard", () => ({
-  WorkItemDecisionCard: () => <div data-testid="unified-decision-card" />,
+  WorkItemDecisionCard: ({ inCase }: { inCase?: boolean }) => <div data-testid="unified-decision-card" data-in-case={String(Boolean(inCase))} />,
 }));
 
 const { CaseValidation } = await import("./CaseValidation");
@@ -91,10 +91,13 @@ describe("CaseValidation", () => {
   });
 
   it("renders a waiting validation on the unified decision card", () => {
-    state.items = [{ id: "w1", status: "blocked", needs_human: true, ask: { question: "Run it?", options: [] }, is_company_managed: false }];
+    // Even an item that names its case: inside the case, the card never offers "Open the case" (#2370).
+    const ctem_case = { id: "c1", title: "Case", state: "validating", path: "/ctem/cases/c1" };
+    state.items = [{ id: "w1", status: "blocked", needs_human: true, ask: { question: "Run it?", options: [] }, is_company_managed: false, ctem_case }];
     const history = [ev({ from: "ctem.validation.non_readonly", to: "waited" })];
     renderWithProviders(<CaseValidation caseId="c1" validations={[{ ...SAFE, result: "pending" }]} history={history} />);
     expect(screen.getByText("Waiting for a person")).toBeTruthy();
+    expect(screen.getByTestId("unified-decision-card").getAttribute("data-in-case")).toBe("true");
     expect(state.calls.some((c) => (c as { filters: { correlation_key: string } }).filters.correlation_key === "ctem:validation:c1")).toBe(true);
     expect(screen.queryByTestId("ctem-case-validation-mode")).toBeNull();
     expect(screen.getByTestId("ctem-case-validation-result").textContent).toBe("Pending");
