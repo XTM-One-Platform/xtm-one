@@ -117,6 +117,7 @@ async def _upsert(monkeypatch, state, **kw):
 @pytest.mark.asyncio
 async def test_take_records_the_run_and_answers_it(monkeypatch):
     state = _state()
+    state.is_lease = True
     _holders(monkeypatch)
     out = await _upsert(monkeypatch, state, value={"state": "held"}, hold="take", run_id=HOLDER)
     assert state.held_by_run_id == HOLDER
