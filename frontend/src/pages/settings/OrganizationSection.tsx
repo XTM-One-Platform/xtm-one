@@ -2090,7 +2090,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         canEdit={!reader}
         onOpenChange={(open) => !open && setPirDetails(null)}
       />
-      <AgenticGateDialogControlled open={aiGateOpen} onOpenChange={setAiGateOpen} feature={t_i18n("Draft with AI")} />
+      <AgenticGateDialogControlled open={aiGateOpen} onOpenChange={setAiGateOpen} feature={t_i18n("Continue onboarding in chat")} />
     </div>
   );
 }
