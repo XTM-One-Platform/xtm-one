@@ -1707,6 +1707,72 @@ async def list_primary_asset_link_counts(
     }
 
 
+@router.get("/primary-assets/{primary_asset}")
+async def get_primary_asset(
+    primary_asset: str,
+    q: str = Query("", max_length=200),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    through: str = Query("", max_length=100),
+    source: str = Query("", max_length=100),
+    sort: str = Query("name", max_length=20),
+    direction: str = Query("asc", pattern="^(asc|desc)$"),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """One primary asset's page (#1980 S2): its profile entry and a page of the assets that support it.
+
+    ``primary_asset`` is the profile entry as stored (criticality, owner,
+    business service, source); ``supporters`` is one page of the records linked
+    to it directly or through an asset group, searched on ``q`` (name or group),
+    with ``total`` and the whole primary asset's ``counts`` by path and source.
+    ``through`` and ``source`` are lists of values (comma between them) the rows
+    are filtered on; ``sort`` is ``name`` or ``criticality``, ``direction``
+    ``asc`` or ``desc``. 404 when no primary asset of the profile has that name.
+    """
+    from app.services.ctem_primary_assets import SUPPORTERS_SORTS, primary_asset_supporters
+
+    if sort not in SUPPORTERS_SORTS:
+        raise HTTPException(status_code=422, detail=f"sort must be one of {', '.join(SUPPORTERS_SORTS)}")
+
+    current = await org_context.current_version(db)
+    wanted = " ".join(primary_asset.split()).casefold()
+    entry = next(
+        (
+            dict(j)
+            for j in ((current.profile or {}) if current else {}).get("primary_assets") or []
+            if isinstance(j, dict) and " ".join(str(j.get("name") or "").split()).casefold() == wanted
+        ),
+        None,
+    )
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"No primary asset is named '{primary_asset}'")
+    org = await _built_store(db)
+    supporters = (
+        await primary_asset_supporters(
+            db,
+            org,
+            str(entry.get("name") or primary_asset),
+            q=q,
+            offset=offset,
+            limit=limit,
+            through=tuple(v for v in (p.strip() for p in through.split(",")) if v),
+            sources=tuple(v for v in (p.strip() for p in source.split(",")) if v),
+            sort=sort,
+            descending=direction == "desc",
+        )
+        if org is not None
+        else {
+            "items": [],
+            "total": 0,
+            "offset": offset,
+            "limit": limit,
+            "counts": {"total": 0, "through": {}, "source": {}},
+        }
+    )
+    return {"primary_asset": entry, "supporters": supporters}
+
+
 @router.put("/primary-assets/{primary_asset}/links")
 async def set_primary_asset_asset_links(
     primary_asset: str,
@@ -2596,43 +2662,6 @@ async def preview_organization_sync_change(
         excluded_ids=excluded,
     )
     # The plan of assets and groups reads the records; their first touch imports the profile rows (#1543).
-    await db.commit()
-    return SyncChangePreviewResponse(**change)
-
-
-class OutboundPreviewRequest(BaseModel):
-    """A new outbound sync as the Add a sync dialog would save it (#1982 S4)."""
-
-    section: Literal["assets", "asset_groups", "software", "primary_assets", "pirs"]
-    source: Literal["openaev", "opencti", "opencrq"]
-    filters: dict[str, Any] = {}
-
-
-@router.post("/syncs/outbound-preview", response_model=SyncChangePreviewResponse)
-async def preview_new_outbound_sync(
-    body: OutboundPreviewRequest,
-    db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
-) -> SyncChangePreviewResponse:
-    """What the first run of a new outbound sync would write, before it is saved (#1982 S4).
-
-    The same plan as the preview of an existing sync, with no platform row created yet; read with
-    this administrator's token. Nothing is written to the platform or saved. No model call.
-    """
-    from types import SimpleNamespace
-
-    from app.services import organization_context_outbound as outbound
-    from app.services import organization_context_sync as osync
-
-    if not outbound.supports(body.section, body.source, "outbound"):
-        raise HTTPException(status_code=422, detail=outbound.directions(body.section, body.source)[1])
-    # A sync not saved yet: the planner reads only these attributes of a stored one.
-    proposed: Any = SimpleNamespace(
-        id=None, section=body.section, source=body.source, direction="outbound", filters={}, outbound_ids={}
-    )
-    change = await osync.preview_change(
-        db, proposed, user_id=admin.id, filters=body.filters, batch_type="", remove_gone=True, excluded_ids=None
-    )
     await db.commit()
     return SyncChangePreviewResponse(**change)
 
