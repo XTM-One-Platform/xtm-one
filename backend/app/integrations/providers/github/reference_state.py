@@ -644,11 +644,6 @@ _IN_MERGE_QUEUE_QUERY = (
 )
 
 
-async def _in_merge_queue(owner: str, name: str, number: int, token: str) -> bool:
-    """Whether pull request *number* waits in its base's merge queue (#404); ``False`` when unreadable."""
-    return (await _merge_gates(owner, name, number, token))[0]
-
-
 async def _merge_gates(owner: str, name: str, number: int, token: str) -> tuple[bool, str | None]:
     """Whether pull request *number* is in its base's merge queue (#404), and its review decision (#2213).
 
