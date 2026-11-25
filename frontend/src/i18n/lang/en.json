@@ -17701,6 +17701,7 @@
   "On a reachable asset: internet-facing, or a user endpoint (phishing, browser, email).": "On a reachable asset: internet-facing, or a user endpoint (phishing, browser, email).",
   "Add your assets and exposure": "Add your assets and exposure",
   "Not linked": "Not linked",
+  "No software inventory": "No software inventory",
   "{total, plural, one {# asset read} other {# assets read}}. Reachable: {reachable} (user endpoints: {endpoints}). Proven unreachable: {unreachable}. Unknown: {unknown}.": "{total, plural, one {# asset read} other {# assets read}}. Reachable: {reachable} (user endpoints: {endpoints}). Proven unreachable: {unreachable}. Unknown: {unknown}.",
   "Business impact": "Business impact",
   "On an asset that supports a primary asset.": "On an asset that supports a primary asset.",
@@ -21681,5 +21682,7 @@
   "The primary assets of the inventory this PIR protects.": "The primary assets of the inventory this PIR protects.",
   "Example: Payment platform, picked from the primary assets of the inventory. Agents read them with the PIR in the organization context. Left empty, the PIR names no primary asset.": "Example: Payment platform, picked from the primary assets of the inventory. Agents read them with the PIR in the organization context. Left empty, the PIR names no primary asset.",
   "{set} of {total} set": "{set} of {total} set",
-  "Details of {name}, {count}": "Details of {name}, {count}"
+  "Details of {name}, {count}": "Details of {name}, {count}",
+  "{primary, plural, one {# primary asset} other {# primary assets}} reached through {supporting, plural, one {# supporting asset} other {# supporting assets}}.": "{primary, plural, one {# primary asset} other {# primary assets}} reached through {supporting, plural, one {# supporting asset} other {# supporting assets}}.",
+  "{count, plural, one {# policy rule applied} other {# policy rules applied}}.": "{count, plural, one {# policy rule applied} other {# policy rules applied}}."
 }
