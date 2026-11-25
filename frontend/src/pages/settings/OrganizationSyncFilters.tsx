@@ -79,13 +79,15 @@ const FILTER_HELP = {
  * source, so each filter reads the XTM One row's own value.
  * @i18n-keys
  */
-const OUTBOUND_FILTER_HELP: Partial<Record<FilterKey, { helper: string; info: string }>> = {
+const OUTBOUND_FILTER_HELP = {
   category: { helper: "Only XTM One assets of these categories. Empty: every category.", info: "The category of the asset row in XTM One, such as Host or Cloud resource." },
   criticality: { helper: "Only XTM One rows rated at one of these levels. Empty: every level.", info: "The criticality of the row in XTM One." },
   internet_facing: { helper: "Only XTM One rows with this exposure. Empty: any exposure.", info: "Whether the row in XTM One is marked reachable from the internet." },
   environment: { helper: "Only XTM One rows of these environments. Empty: every environment.", info: "The environment of the row in XTM One, such as Production." },
   search: { helper: "Only names holding this text. Empty: every name.", info: "Matched on the name of the XTM One row, ignoring case." },
-};
+} as const;
+
+const OUTBOUND_HELP_BY_KEY: Partial<Record<FilterKey, { helper: string; info: string }>> = OUTBOUND_FILTER_HELP;
 
 /** The filters read from the source as a list of values (a picker, never free text). */
 const PICKED: FilterKey[] = [
@@ -184,7 +186,7 @@ export function SyncFilterFields({ section, source, direction, filters, onChange
     return t_i18n("{platform} did not list these values. Try again in a moment.", { platform });
   };
 
-  const help = (key: FilterKey) => (outbound ? (OUTBOUND_FILTER_HELP[key] ?? FILTER_HELP[key]) : FILTER_HELP[key]);
+  const help = (key: FilterKey) => (outbound ? (OUTBOUND_HELP_BY_KEY[key] ?? FILTER_HELP[key]) : FILTER_HELP[key]);
 
   const filterControl = (key: FilterKey) => {
     const id = `org-import-filter-${key}`;
