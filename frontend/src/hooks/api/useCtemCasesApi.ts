@@ -538,6 +538,17 @@ export function ctemCasesPollInterval(status: "pending" | "error" | "success", e
   return status === "error" && !isNetworkError(error) ? false : REFETCH_INTERVAL_SLOW;
 }
 
+/** The query key of the Cases list (`useCtemCases`). */
+export const CTEM_CASE_LIST_KEY = ["ctem-cases", "list"] as const;
+
+/**
+ * The list row of one case, when the Cases list is in the query cache (#1986):
+ * the case page draws its header from it while the case itself is read.
+ */
+export function cachedCaseSummary(list: CtemCaseList | undefined, id: string | undefined): CtemCaseSummary | undefined {
+  return id ? list?.cases?.find((c) => c.id === id) : undefined;
+}
+
 /** Every case the caller sees (the page holds them all: the API caps a page at 200). */
 export function useCtemCases(options?: {
   /**
@@ -546,10 +557,16 @@ export function useCtemCases(options?: {
    * the whole page to the error boundary.
    */
   throwOnError?: boolean;
+  /**
+   * `false` until the list is needed: the case page reads it only for the
+   * Merge dialog (#1986), never on open; a list already in the cache shows at once.
+   */
+  enabled?: boolean;
 }) {
   return useQuery<CtemCaseList>({
-    queryKey: ["ctem-cases", "list"],
+    queryKey: CTEM_CASE_LIST_KEY,
     queryFn: () => api.get("/ctem-cases?limit=200"),
+    enabled: options?.enabled ?? true,
     retry: ctemCasesRetry,
     refetchInterval: (query) => ctemCasesPollInterval(query.state.status, query.state.error),
     placeholderData: keepPreviousData,

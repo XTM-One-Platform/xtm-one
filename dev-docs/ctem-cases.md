@@ -816,6 +816,15 @@ the Settings form carries it whole.
 
 ### 7.3 Case page `/ctem/cases/:id`
 
+- First paint (#1986): opened from the Cases list, the page draws its header
+  (title, state, urgency, owner, loop line) from the list row already in the
+  query cache while `GET /ctem-cases/{id}` runs, the sections as a card
+  skeleton below it; opened by URL with no cached list, the page skeleton. The
+  200-case list itself is read only when Merge into another case opens (the
+  picker says Loading while it runs), never on open. The "Open in <Module>"
+  pivots take the module base URLs from `GET /platform/registrations` (the
+  active registration, the canonical identifier first), never from
+  `/ctem-metrics/posture`, so the page does not wait on a posture build.
 - Header: the CTEM header band (`CtemPageHeader`) with the shared
   `LocationBackButton` "Back to Cases" first, above the band and outside its
   border, exactly as on an entity page (Sam, 22 Nov 2026: no CTEM-only back
