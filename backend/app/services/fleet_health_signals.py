@@ -40,7 +40,10 @@ was read from, so one read tells a fleet orchestrator everything the seeded
 * ``wait_cycle``: blocked items waiting on each other, through ``blocked_on`` or a
   pull request a review item gates (:mod:`app.services.work_item_wait_cycles`, #606).
 * ``blocked_chain_stalled``: a chain of blocked items waiting on each other, every
-  one quiet for two hours and none held by a live run.
+  one quiet for two hours and none held by a live run. A chain that ends on a
+  person's open decision (a readable card, unanswered, not past its due date) is
+  no finding: it is listed under ``waiting_on_people`` with its age and recipient
+  (#2326).
 * ``disabled_owner``: a disabled member that still owns open items.
 * ``oversize_state``: an active shared-state entry of the fleet over the soft
   size limit (``shared_state_value_soft_limit_chars``).
@@ -128,7 +131,10 @@ FINDING_ADVICE: dict[str, str] = {
         "ids and timestamps go in blocked_reason."
     ),
     "wait_cycle": "Block the review on the fix item and let the merge wait on the review, or drop one wait.",
-    "blocked_chain_stalled": "Read the chain's first blocker: unblock it, re-point the waits or cancel the chain.",
+    "blocked_chain_stalled": (
+        "Read the chain's end: a decision past its due date, remind the person; a decision answered that did "
+        "not release its chain, reopen it; any other blocker, unblock it or re-point the waits."
+    ),
     "disabled_owner": "Hand the items to an enabled member or cancel them.",
     "oversize_state": "Archive or split the entry (keep_last_json with archive_key, or one key per object).",
     "handover_not_allowed": (
@@ -252,6 +258,8 @@ class FleetHealthReport:
     findings: list[FleetFinding]
     #: The live dismissals of the fleet (#12014), each with ``hides``.
     dismissed: list[dict[str, Any]] = field(default_factory=list)
+    #: Chains waiting on a person's open decision (#2326): informational, no finding.
+    waiting_on_people: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def healthy(self) -> bool:
@@ -265,6 +273,7 @@ class FleetHealthReport:
             "status": self.status,
             "findings": [f.as_dict() for f in self.findings],
             "dismissed": [dict(d) for d in self.dismissed],
+            "waiting_on_people": [dict(w) for w in self.waiting_on_people],
         }
 
 
@@ -283,6 +292,7 @@ async def build_fleet_health_report(
     status, members, _in_workspace = await build_fleet_health(db, fleet, user_id=user_id, run_scope=run_scope, now=now)
     ids = [m.agent_id for m in members]
     findings: list[FleetFinding] = []
+    person_waits: list[dict[str, Any]] = []
 
     failing = [m.agent_id for m in members if m.status == "failing"]
     if failing:
@@ -295,7 +305,7 @@ async def build_fleet_health_report(
         findings.append(_finding("disabled_owner", f"{len(held)} disabled member(s) still own open work items", held))
 
     findings += await _assignment_findings(db, ids, run_scope=run_scope, now=now)
-    findings += await _work_item_findings(db, fleet, ids, user_id=user_id, now=now)
+    findings += await _work_item_findings(db, fleet, ids, user_id=user_id, now=now, person_waits=person_waits)
     findings += await _shared_state_findings(db, fleet, ids, user_id=user_id)
     findings += await _handover_findings(db, fleet)
     findings += await _cost_findings(db, ids, run_scope=run_scope, now=now)
@@ -317,6 +327,7 @@ async def build_fleet_health_report(
         ],
         findings=active,
         dismissed=dismissed,
+        waiting_on_people=person_waits,
     )
 
 
@@ -392,7 +403,13 @@ async def _assignment_findings(
 
 
 async def _work_item_findings(
-    db: AsyncSession, fleet: Fleet, agent_ids: Sequence[uuid.UUID], *, user_id: str, now: datetime
+    db: AsyncSession,
+    fleet: Fleet,
+    agent_ids: Sequence[uuid.UUID],
+    *,
+    user_id: str,
+    now: datetime,
+    person_waits: list[dict[str, Any]] | None = None,
 ) -> list[FleetFinding]:
     from app.core.utils import safe_uuid
     from app.models.work_item import WORK_ITEM_OPEN_STATUSES, WorkItem
@@ -509,7 +526,7 @@ async def _work_item_findings(
                 unreadable,
             )
         )
-    out += await _wait_graph_findings(db, scope, now)
+    out += await _wait_graph_findings(db, scope, now, person_waits=person_waits)
     return out
 
 
@@ -609,9 +626,19 @@ def _heard_by_listener(owner: uuid.UUID | None, key: str | None, listeners: dict
     return any(field_matches(item, "correlation_key", match) for match in listeners.get(owner, []))
 
 
-async def _wait_graph_findings(db: AsyncSession, scope: Any, now: datetime) -> list[FleetFinding]:
-    """``wait_cycle`` and ``blocked_chain_stalled`` over the fleet's open items (#606)."""
-    from app.services.work_item_wait_cycles import find_cycles, load_nodes, stalled_chains
+async def _wait_graph_findings(
+    db: AsyncSession, scope: Any, now: datetime, *, person_waits: list[dict[str, Any]] | None = None
+) -> list[FleetFinding]:
+    """``wait_cycle`` and ``blocked_chain_stalled`` over the fleet's open items (#606).
+
+    The chains waiting on a person's open decision go to *person_waits* (#2326).
+    """
+    from app.services.work_item_wait_cycles import (
+        find_cycles,
+        load_nodes,
+        person_wait_chains,
+        stalled_chains,
+    )
 
     nodes = await load_nodes(db, scope=scope)
     cycles = find_cycles(nodes)
@@ -627,11 +654,34 @@ async def _wait_graph_findings(db: AsyncSession, scope: Any, now: datetime) -> l
         out.append(
             _finding(
                 "blocked_chain_stalled",
-                f"{len(chains)} blocked chain(s) with no progress for 2 hours or more",
+                f"{len(chains)} blocked chain(s) with no activity on any item for 2 hours or more, "
+                "not waiting on a person's open decision",
                 stalled,
             )
         )
+    if person_waits is not None:
+        person_waits.extend(person_wait_rows(nodes, person_wait_chains(nodes, now, in_cycles=in_cycles), now))
     return out
+
+
+def person_wait_rows(nodes: dict[str, Any], chains: Sequence[Sequence[str]], now: datetime) -> list[dict[str, Any]]:
+    """One row per chain waiting on people: its items, the decisions, their recipients and age (#2326). Pure."""
+    from app.services.work_item_wait_cycles import chain_ends
+
+    rows: list[dict[str, Any]] = []
+    for chain in chains:
+        ends = chain_ends(chain, nodes)
+        since = [s for s in (nodes[i].created_at or nodes[i].last_activity_at for i in ends) if s is not None]
+        oldest = min((s if s.tzinfo else s.replace(tzinfo=UTC)) for s in since) if since else None
+        rows.append(
+            {
+                "items": list(chain),
+                "decisions": ends,
+                "recipients": sorted({nodes[i].recipient or "administrators" for i in ends}),
+                "age_hours": round((now - oldest).total_seconds() / 3600, 1) if oldest else None,
+            }
+        )
+    return rows
 
 
 async def _shared_state_findings(
@@ -788,6 +838,17 @@ def format_report(report: FleetHealthReport, *, applied: dict[str, int] | None =
         lines.append(f"    evidence: {', '.join(f.evidence)}{more}")
     if applied:
         lines.append("Applied: " + ", ".join(f"{k} {v}" for k, v in applied.items()))
+    if report.waiting_on_people:
+        waits = report.waiting_on_people
+        lines.append(f"Waiting on a person's decision ({len(waits)} chain(s), no finding):")
+        for w in waits[:MAX_EVIDENCE]:
+            age = f"{w['age_hours']} h" if w.get("age_hours") is not None else "age unknown"
+            lines.append(
+                f"  • decision {', '.join(w['decisions'])} for {', '.join(w['recipients'])}, {age}; "
+                f"{len(w['items'])} item(s) wait"
+            )
+        if len(waits) > MAX_EVIDENCE:
+            lines.append(f"  (+{len(waits) - MAX_EVIDENCE} more)")
     if report.dismissed:
         lines.append(f"Dismissed ({len(report.dismissed)}, restore with dismiss_fleet_health_findings):")
         for d in report.dismissed:
