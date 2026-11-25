@@ -62,9 +62,9 @@ def test_without_links_a_windows_cve_stays_held_by_the_primary_asset_policy() ->
 def test_a_link_through_an_asset_group_of_intune_devices_opens_the_case_with_the_chain() -> None:
     decision = gate.decide(_profile(), _cve(), primary_assets=_index(), today=TODAY)
     assert decision.outcome == "case" and decision.state == "confirmed"
-    jewel = next(s for s in decision.record["scope"]["sources"] if s["from"] == "primary_asset")
-    assert jewel["name"] == WORKSTATIONS and jewel["criticality"] == "high"
-    hop = jewel["chain"][0]
+    pa_row = next(s for s in decision.record["scope"]["sources"] if s["from"] == "primary_asset")
+    assert pa_row["name"] == WORKSTATIONS and pa_row["criticality"] == "high"
+    hop = pa_row["chain"][0]
     assert hop["software"] == "Windows" and hop["asset"] == "LAPTOP-042"
     assert hop["through_kind"] == "asset_group" and hop["through"] == "All Windows x86_64"
     assert hop["source"] == "rule" and hop["roles"] == ["used_by"]
@@ -130,10 +130,10 @@ def _fleet(count: int) -> pa.PrimaryAssetIndex:
 def test_the_record_counts_every_supporting_asset_behind_the_chains_it_keeps() -> None:
     """#1979: 10,000 laptops read 10,000 on the primary asset source, never the 5 chains kept."""
     decision = gate.decide(_profile(), _cve(), primary_assets=_fleet(10_000), today=TODAY)
-    jewel = next(s for s in decision.record["scope"]["sources"] if s["from"] == "primary_asset")
-    assert len(jewel["chain"]) <= gate.CHAINS_KEPT
-    assert jewel["assets_total"] == 10_000
-    assert jewel["chain_total"] == len(
+    pa_row = next(s for s in decision.record["scope"]["sources"] if s["from"] == "primary_asset")
+    assert len(pa_row["chain"]) <= gate.CHAINS_KEPT
+    assert pa_row["assets_total"] == 10_000
+    assert pa_row["chain_total"] == len(
         [h for h in decision.record["reconcile"]["primary_assets"] if h["primary_asset_key"] == _key(WORKSTATIONS)]
     )
     totals = decision.record["reconcile"]["primary_asset_totals"][_key(WORKSTATIONS)]

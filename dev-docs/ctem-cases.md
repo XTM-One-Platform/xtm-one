@@ -588,8 +588,8 @@ explained. A single-platform answer draws the card as before.
 | `ctem_case_issues` | case_id, source (`opencti` / `openaev`), external_id, open |
 | `ctem_case_events` | case_id, at, actor (user id or agent id, or `system`), kind (`created`, `state`, `owner`, `due`, `issue_added`, `issue_closed`, `issue_reopened`, `merge`, `split`, `note`, `versions` (#1694)), issue (member id, else null), from, to, reason, evidence |
 
-No source content is stored (#11613): priority, counts, scores, assets, crown
-jewels and names are computed per viewer at read time (principle 8).
+No source content is stored (#11613): priority, counts, scores, assets, primary
+assets and names are computed per viewer at read time (principle 8).
 
 The downgrade drops the three tables; nothing else changes.
 

@@ -249,12 +249,12 @@ def test_cve_thresholds_route_to_the_watchlist_and_kev_passes_them():
 def test_internet_exposure_and_primary_asset_minimum_are_honoured():
     inside = gate.decide(_profile(internet_exposure_required=True), _facts(lens="inside", ref="db-1"), today=TODAY)
     assert inside.outcome == "watchlist" and "internet" in inside.reason
-    jewel = gate.decide(
+    pa_row = gate.decide(
         _profile(min_primary_asset_criticality="critical", scope_min_criticality="medium"),
         _facts(ref="wiki.example.com"),
         today=TODAY,
     )
-    assert jewel.outcome == "watchlist" and "primary asset at or above critical" in jewel.reason
+    assert pa_row.outcome == "watchlist" and "primary asset at or above critical" in pa_row.reason
 
 
 def test_risk_scenarios_add_criticality_and_can_be_required():

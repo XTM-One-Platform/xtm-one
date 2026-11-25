@@ -147,7 +147,7 @@ class ProductIndex:
 class Link:
     """One link of a record or a group to a primary asset."""
 
-    jewel_key: str
+    primary_asset_key: str
     source: str
     roles: tuple[str, ...] = ()
     via: str = ""
@@ -211,11 +211,11 @@ class PrimaryAssetIndex:
         found: dict[tuple[str, str, str], dict[str, Any]] = {}
         for reacher, matched in self._matching(software, keys):
             for link, kind, through in reacher.links:
-                key = (link.jewel_key, through, link.source)
+                key = (link.primary_asset_key, through, link.source)
                 if key in found:
                     continue
                 found[key] = {
-                    "primary_asset_key": link.jewel_key,
+                    "primary_asset_key": link.primary_asset_key,
                     "software": matched,
                     "asset": reacher.name,
                     "through": through,
@@ -229,8 +229,8 @@ class PrimaryAssetIndex:
             found.values(), key=lambda h: (h["primary_asset_key"], rank.get(h["source"], 9), h["through"], h["asset"])
         )
 
-    def supporting(self, software: list[str], keys: list[str] | None, jewel_key: str) -> list[dict[str, Any]]:
-        """Every inventory asset *software* or *keys* name that reaches *jewel_key*, one entry per asset.
+    def supporting(self, software: list[str], keys: list[str] | None, primary_asset_key: str) -> list[dict[str, Any]]:
+        """Every inventory asset *software* or *keys* name that reaches *primary_asset_key*, one entry per asset.
 
         Unlike :meth:`reach`, which keeps one chain per (through, source), this lists each
         supporting asset, its best link first: ``{asset, software, through, through_kind,
@@ -239,7 +239,11 @@ class PrimaryAssetIndex:
         rank = {s: n for n, s in enumerate(SOURCE_ORDER)}
         out: list[dict[str, Any]] = []
         for reacher, matched in self._matching(software, keys):
-            links = [(link, kind, through) for link, kind, through in reacher.links if link.jewel_key == jewel_key]
+            links = [
+                (link, kind, through)
+                for link, kind, through in reacher.links
+                if link.primary_asset_key == primary_asset_key
+            ]
             if not links:
                 continue
             link, kind, through = min(links, key=lambda e: (rank.get(e[0].source, 9), e[1] != "asset", e[2]))
@@ -265,9 +269,9 @@ class PrimaryAssetIndex:
         for reacher, _ in self._matching(software, keys):
             kinds: dict[str, set[str]] = {}
             for link, kind, _through in reacher.links:
-                kinds.setdefault(link.jewel_key, set()).add(kind)
-            for jewel_key, seen in kinds.items():
-                row = out.setdefault(jewel_key, {"assets": 0, "direct": 0, "via_group": 0})
+                kinds.setdefault(link.primary_asset_key, set()).add(kind)
+            for primary_asset_key, seen in kinds.items():
+                row = out.setdefault(primary_asset_key, {"assets": 0, "direct": 0, "via_group": 0})
                 row["assets"] += 1
                 if "asset" in seen:
                     row["direct"] += 1
@@ -327,8 +331,8 @@ async def load_index(
         return index
     record_links: dict[uuid.UUID, list[tuple[Link, str, str]]] = {}
     group_links: dict[uuid.UUID, list[Link]] = {}
-    for record_id, group_id, jewel_key, source, roles, via in rows:
-        item = Link(str(jewel_key), str(source or "manual"), tuple(str(r) for r in roles or ()), str(via or ""))
+    for record_id, group_id, linked_key, source, roles, via in rows:
+        item = Link(str(linked_key), str(source or "manual"), tuple(str(r) for r in roles or ()), str(via or ""))
         if record_id is not None:
             record_links.setdefault(record_id, []).append((item, "asset", ""))
         elif group_id is not None:
@@ -584,11 +588,11 @@ async def asset_primary_assets(
     ).all()
     out: dict[tuple[str, str, str], dict[str, Any]] = {}
     for kind, rows in (("asset", direct), ("asset_group", grouped)):
-        for jewel_key, source, roles, via, through in rows:
+        for primary_asset_key, source, roles, via, through in rows:
             out.setdefault(
-                (str(jewel_key), str(through), str(source)),
+                (str(primary_asset_key), str(through), str(source)),
                 {
-                    "primary_asset": str(jewel_key),
+                    "primary_asset": str(primary_asset_key),
                     "through": str(through),
                     "through_kind": kind,
                     "source": str(source),

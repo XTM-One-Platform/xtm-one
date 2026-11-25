@@ -125,7 +125,7 @@ describe("actNowCases", () => {
     expect(actNowCases(cases, scopes).map((c) => c.id)).toEqual(["e", "a", "b", "c"]);
   });
 
-  it("names a crown jewel the scope gate reached through an asset, once (#2343)", () => {
+  it("names a primary asset the scope gate reached through an asset, once (#2343)", () => {
     const scopes = caseScopes([
       {
         case_id: "f",

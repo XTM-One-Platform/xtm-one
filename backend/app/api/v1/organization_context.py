@@ -1785,11 +1785,11 @@ async def set_primary_asset_asset_links(
 
     org = await _write_org(db)
     current = await org_context.current_version(db)
-    jewels = {
+    pa_rows = {
         str(j.get("name") or "").strip().lower()
         for j in ((current.profile or {}) if current else {}).get("primary_assets") or []
     }
-    if primary_asset.strip().lower() not in jewels:
+    if primary_asset.strip().lower() not in pa_rows:
         raise HTTPException(status_code=404, detail=f"No primary asset is named '{primary_asset}'")
     missing = await records.set_primary_asset_links(db, org, primary_asset, body.names)
     if missing:

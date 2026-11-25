@@ -127,11 +127,11 @@ def parse_assets_csv(data: bytes, profile: OrganizationProfile) -> AssetsPreview
     if unknown:
         raise ValueError(f"unknown column(s) {', '.join(unknown)}; the columns are {', '.join(COLUMNS)}")
     preview = AssetsPreview()
-    jewels = {jewel.name.lower(): jewel.name for jewel in profile.primary_assets}
+    pa_rows = {pa_row.name.lower(): pa_row.name for pa_row in profile.primary_assets}
     existing = {asset.name.lower() for asset in profile.assets_exposure}
     existing_groups = {group.name.lower() for group in profile.asset_groups}
     seen: set[str] = set()
-    unknown_jewels: dict[str, None] = {}
+    unknown_pa_rows: dict[str, None] = {}
     for line, raw in enumerate(reader, start=2):
         if len(preview.assets) + len(preview.errors) >= MAX_ROWS:
             preview.errors.append(RowError(line, "", f"more than {MAX_ROWS} rows; the rest is not read"))
@@ -193,15 +193,15 @@ def parse_assets_csv(data: bytes, profile: OrganizationProfile) -> AssetsPreview
             if asset.name.lower() in existing:
                 preview.replaced.append(asset.name)
             asset_name = asset.name
-        for jewel in _split(row.get("primary_assets", "")):
-            known = jewels.get(jewel.lower())
+        for pa_row in _split(row.get("primary_assets", "")):
+            known = pa_rows.get(pa_row.lower())
             if known is None:
-                unknown_jewels[jewel] = None
+                unknown_pa_rows[pa_row] = None
                 continue
             preview.links.setdefault(known, [])
             if asset_name not in preview.links[known]:
                 preview.links[known].append(asset_name)
-    preview.unknown_primary_assets = list(unknown_jewels)
+    preview.unknown_primary_assets = list(unknown_pa_rows)
     return preview
 
 
@@ -215,14 +215,14 @@ def merge_assets(profile: OrganizationProfile, preview: AssetsPreview) -> Organi
     kept = [asset for asset in profile.assets_exposure if asset.name.lower() not in incoming]
     incoming_groups = {group.name.lower() for group in preview.groups}
     kept_groups = [group for group in profile.asset_groups if group.name.lower() not in incoming_groups]
-    jewels = []
-    for jewel in profile.primary_assets:
-        added = preview.links.get(jewel.name, [])
-        jewels.append(jewel.model_copy(update={"asset_names": list(dict.fromkeys([*jewel.asset_names, *added]))}))
+    pa_rows = []
+    for pa_row in profile.primary_assets:
+        added = preview.links.get(pa_row.name, [])
+        pa_rows.append(pa_row.model_copy(update={"asset_names": list(dict.fromkeys([*pa_row.asset_names, *added]))}))
     data = profile.model_dump(mode="json")
     data["assets_exposure"] = [a.model_dump(mode="json") for a in [*kept, *preview.assets]]
     data["asset_groups"] = [g.model_dump(mode="json") for g in [*kept_groups, *preview.groups]]
-    data["primary_assets"] = [j.model_dump(mode="json") for j in jewels]
+    data["primary_assets"] = [j.model_dump(mode="json") for j in pa_rows]
     return OrganizationProfile.model_validate(data)
 
 
@@ -231,9 +231,9 @@ def check_links(profile: OrganizationProfile) -> list[str]:
     groups = {group.name.lower() for group in profile.asset_groups}
     names = {asset.name.lower() for asset in profile.assets_exposure} | groups
     problems = [
-        f"primary asset {jewel.name!r} links {name!r}, which is not an asset"
-        for jewel in profile.primary_assets
-        for name in jewel.asset_names
+        f"primary asset {pa_row.name!r} links {name!r}, which is not an asset"
+        for pa_row in profile.primary_assets
+        for name in pa_row.asset_names
         if name.lower() not in names
     ]
     problems += [

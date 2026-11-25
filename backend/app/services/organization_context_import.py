@@ -639,11 +639,6 @@ def opencrq_primary_asset(asset: dict[str, Any], min_level: str = "") -> Primary
     )
 
 
-def opencrq_jewel(asset: dict[str, Any], min_level: str) -> PrimaryAsset | None:
-    """Alias of :func:`opencrq_primary_asset` kept for one release (#1591): it reads PRIMARY assets now."""
-    return opencrq_primary_asset(asset, min_level)
-
-
 # ── Merge (no I/O) ────────────────────────────────────────────────────
 
 

@@ -39,7 +39,7 @@ describe("reference exchange rates (#1773)", () => {
 });
 
 describe("PIR details (#1773)", () => {
-  it("keeps the details of followed PIRs that say something, trimmed and each jewel once", () => {
+  it("keeps the details of followed PIRs that say something, trimmed and each primary asset once", () => {
     const details = {
       a: { question: " Who targets us? ", owner: "CTI", review_cadence: "monthly" as const, primary_assets: ["Pay", "Pay", " "] },
       b: { question: "", owner: "", review_cadence: "" as const, primary_assets: [] },

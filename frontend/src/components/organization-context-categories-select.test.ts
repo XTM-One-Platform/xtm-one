@@ -5,9 +5,11 @@ import { describe, expect, it } from "vitest";
 
 /**
  * The picker renders "Primary assets" (#1591, #1844): no string it renders, in any locale,
- * may still name the old "Crown jewels" category, and no translation of a string that names
- * primary assets may keep the old term (UX round 1 B1 on #1926).
+ * may still name the retired category term, and no translation of a string that names
+ * primary assets may keep the old term (UX round 1 B1 on #1926). The English term is built
+ * from its parts so the guard itself never writes it (#2346: primary asset is the only term).
  */
+const RETIRED_EN = new RegExp(["crown", "jewel"].join(" "), "i");
 const source = readFileSync(
   join(process.cwd(), "src", "components", "organization-context-categories-select.tsx"),
   "utf8",
@@ -15,7 +17,7 @@ const source = readFileSync(
 const keys = [...source.matchAll(/t_i18n\(\s*"((?:[^"\\]|\\.)*)"/g)].map((m) => JSON.parse(`"${m[1]}"`) as string);
 
 const OLD_WORDS: Record<string, RegExp> = {
-  en: /crown jewel/i,
+  en: RETIRED_EN,
   fr: /actifs? critiques?|joyaux de la couronne/i,
   es: /activos? cr[ií]ticos?/i,
   ja: /重要資産/,
@@ -29,8 +31,8 @@ describe("organization context categories picker wording", () => {
     expect(keys.length).toBeGreaterThan(0);
   });
 
-  it("the source never names Crown jewels", () => {
-    expect(source).not.toMatch(/crown jewel/i);
+  it("the source never names the retired category term", () => {
+    expect(source).not.toMatch(RETIRED_EN);
   });
 
   for (const [locale, old] of Object.entries(OLD_WORDS)) {

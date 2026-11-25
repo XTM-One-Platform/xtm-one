@@ -39,7 +39,7 @@ export const REVIEW_CADENCE_LABELS: Record<ReviewCadence, string> = {
 };
 
 /** The server's bounds (FxRate, PirDetail, OrganizationProfile). */
-export const REFERENCE_BOUNDS = { rates: 50, source: 200, question: 1000, owner: 200, jewels: 50 } as const;
+export const REFERENCE_BOUNDS = { rates: 50, source: 200, question: 1000, owner: 200, primary_assets: 50 } as const;
 
 /** A rate row as the form edits it: every value as typed. */
 export interface FxRateRow {
@@ -154,7 +154,7 @@ export function pirDetailFilled(detail: PirDetail | undefined): number {
 export function pirDetailProblem(detail: PirDetail): string | null {
   if (detail.question.trim().length > REFERENCE_BOUNDS.question) return "The question is 1,000 characters at most.";
   if (detail.owner.trim().length > REFERENCE_BOUNDS.owner) return "The owner is 200 characters at most.";
-  if (detail.primary_assets.length > REFERENCE_BOUNDS.jewels) return "50 primary assets at most.";
+  if (detail.primary_assets.length > REFERENCE_BOUNDS.primary_assets) return "50 primary assets at most.";
   return null;
 }
 

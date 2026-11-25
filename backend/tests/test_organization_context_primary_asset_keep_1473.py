@@ -1,7 +1,7 @@
 """Hand-typed primary assets survive the OpenCRQ reconcile and the primary-asset sync (#1473).
 
 A link set by the reconcile never hands a typed row to the sync; a sync only
-removes the rows it wrote; a jewel whose criticality the reconcile pushes
+removes the rows it wrote; a primary asset whose criticality the reconcile pushes
 below the sync's threshold stays in the profile; a stale save is refused and
 a save says which rows it dropped; a past version can be read and restored.
 """
@@ -33,7 +33,7 @@ def _assets(levels: dict[str, str]) -> list[dict[str, Any]]:
 
 
 def _sync_read(assets: list[dict[str, Any]], min_level: str = "high") -> imp.ReadResult:
-    rows = [j for j in (imp.opencrq_jewel(a, min_level) for a in assets) if j]
+    rows = [j for j in (imp.opencrq_primary_asset(a, min_level) for a in assets) if j]
     return imp.ReadResult(rows=rows, total=len(rows))
 
 
@@ -41,16 +41,16 @@ def test_a_link_keeps_a_typed_row_typed() -> None:
     profile = oc.parse_profile(
         {"primary_assets": [{**_typed("ERP", "medium"), "source": "manual", "opencrq_asset_id": "a-1"}]}
     )
-    jewel = profile.primary_assets[0]
-    assert (jewel.source, jewel.external_id, jewel.opencrq_asset_id) == ("manual", "", "a-1")
+    pa_row = profile.primary_assets[0]
+    assert (pa_row.source, pa_row.external_id, pa_row.opencrq_asset_id) == ("manual", "", "a-1")
 
 
 def test_a_row_saved_before_provenance_still_reads_as_an_opencrq_row() -> None:
-    jewel = oc.parse_profile({"primary_assets": [{"name": "Payments", "opencrq_asset_id": "a-1"}]}).primary_assets[0]
-    assert (jewel.source, jewel.external_id) == ("opencrq", "a-1")
+    pa_row = oc.parse_profile({"primary_assets": [{"name": "Payments", "opencrq_asset_id": "a-1"}]}).primary_assets[0]
+    assert (pa_row.source, pa_row.external_id) == ("opencrq", "a-1")
 
 
-def test_three_typed_jewels_survive_the_reconcile_then_the_sync() -> None:
+def test_three_typed_primary_assets_survive_the_reconcile_then_the_sync() -> None:
     """The acceptance scenario: critical, medium and low typed, OpenCRQ assets of the same names."""
     profile = oc.parse_profile(
         {"primary_assets": [_typed("Core", "critical"), _typed("Billing", "medium"), _typed("Wiki", "low")]}
@@ -65,11 +65,11 @@ def test_three_typed_jewels_survive_the_reconcile_then_the_sync() -> None:
     assert reconcile.pushed == []
     plan = imp.plan_import(saved, "primary_assets", "opencrq", _sync_read(assets), remove_gone=True, sync_id=_SYNC)
     assert plan.profile is not None
-    jewels = {j.name: j for j in plan.profile.primary_assets}
-    assert sorted(jewels) == ["Billing", "Core", "Wiki"]
+    pa_rows = {j.name: j for j in plan.profile.primary_assets}
+    assert sorted(pa_rows) == ["Billing", "Core", "Wiki"]
     for name in ("Core", "Billing", "Wiki"):
-        assert (jewels[name].owner, jewels[name].business_service) == (f"{name} owner", f"{name} svc")
-        assert jewels[name].source == "manual"
+        assert (pa_rows[name].owner, pa_rows[name].business_service) == (f"{name} owner", f"{name} svc")
+        assert pa_rows[name].source == "manual"
 
 
 def test_a_row_already_converted_by_an_older_build_is_kept_by_the_sync() -> None:
@@ -103,8 +103,8 @@ def test_the_reconcile_never_releases_a_synced_row() -> None:
     )
     plan = plan_sync(oc.OrganizationProfile(primary_assets=[synced]), _assets({"Billing": "high"}))
     assert plan.released == [] and plan.pushed == []
-    jewel = plan.profile.primary_assets[0]
-    assert (jewel.source, jewel.external_id, jewel.owner) == ("opencrq", "a-Billing", "CFO")
+    pa_row = plan.profile.primary_assets[0]
+    assert (pa_row.source, pa_row.external_id, pa_row.owner) == ("opencrq", "a-Billing", "CFO")
     assert plan.summary()["kept_below_sync_threshold"] == []
 
 
@@ -166,7 +166,7 @@ def _store(monkeypatch: pytest.MonkeyPatch, versions: dict[int, dict[str, Any]])
 
 @pytest.mark.asyncio
 async def test_a_save_based_on_a_stale_version_is_refused_and_nothing_is_lost(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Client A added a jewel (v2); client B saves its copy based on v1: 409, v2 kept."""
+    """Client A added a primary asset (v2); client B saves its copy based on v1: 409, v2 kept."""
     versions: dict[int, dict[str, Any]] = {
         1: {"primary_assets": [{"name": "A"}]},
         2: {"primary_assets": [{"name": "A"}, {"name": "B"}]},
@@ -214,7 +214,7 @@ async def test_a_version_reads_whole_and_a_restore_names_its_source(monkeypatch:
 
 @pytest.mark.asyncio
 async def test_a_restore_linking_an_asset_gone_since_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A restore runs the checks of a form save: a jewel linking an asset no longer listed is a 422, nothing saved."""
+    """A restore runs the checks of a form save: a primary asset linking an asset no longer listed is a 422, nothing saved."""
     versions: dict[int, dict[str, Any]] = {
         1: {"assets_exposure": [{"name": "ERP"}], "primary_assets": [{"name": "A", "asset_names": ["ERP"]}]},
         2: {"assets_exposure": [], "primary_assets": []},

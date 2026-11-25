@@ -162,9 +162,9 @@ const MISSING_TARGET: Record<string, string> = {
  * each, their headers whole and their inputs usable on a synced row. Business service and Owner
  * share what is left; OpenCRQ holds its header and the sort mark.
  */
-export const JEWEL_WIDTHS = { select: 32, name: 240, criticality: 120, assets: 200, opencrq: 112, source: 112, actions: 96 } as const;
+export const PRIMARY_ASSET_WIDTHS = { select: 32, name: 240, criticality: 120, assets: 200, opencrq: 112, source: 112, actions: 96 } as const;
 /** The card width below which Assets and Source of the primary assets table go to the Columns pill. */
-const JEWEL_STEP_ASIDE = "6xl" as const;
+const PRIMARY_ASSET_STEP_ASIDE = "6xl" as const;
 
 /** The values of the primary assets' OpenCRQ filter. @i18n-keys */
 const OPENCRQ_LINK_LABELS = { linked: "Linked to OpenCRQ", not_linked: "Not linked to OpenCRQ" } as const;
@@ -802,20 +802,20 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
    * else the count of its stored links (a sync writes hundreds: a count, never a list); the typed names before the
    * link counts answer.
    */
-  const jewelLinkTotal = (jewel: { name: string; asset_names?: string[] }) => {
-    const total = linkCounts.data?.items?.[primaryAssetLinkKey(jewel.name)]?.total ?? 0;
-    return total > (jewel.asset_names ?? []).length ? total : null;
+  const primaryAssetLinkTotal = (pa: { name: string; asset_names?: string[] }) => {
+    const total = linkCounts.data?.items?.[primaryAssetLinkKey(pa.name)]?.total ?? 0;
+    return total > (pa.asset_names ?? []).length ? total : null;
   };
   // The count is compact from 1,000 ("1.2K linked assets", UX r1 B1 on #2000), its exact value on the DS tooltip.
   const linkedAssetsText = (total: number) =>
     t_i18n("{count, plural, one {{shown} linked asset} other {{shown} linked assets}}", { count: total, shown: formatCount(locale, total) });
-  const jewelAssetsText = (jewel: { name: string; asset_names?: string[] }) => {
-    const total = jewelLinkTotal(jewel);
-    return total === null ? (jewel.asset_names ?? []).join(", ") : linkedAssetsText(total);
+  const primaryAssetLinksText = (pa: { name: string; asset_names?: string[] }) => {
+    const total = primaryAssetLinkTotal(pa);
+    return total === null ? (pa.asset_names ?? []).join(", ") : linkedAssetsText(total);
   };
-  const jewelAssetsCell = (jewel: { name: string; asset_names?: string[] }) => {
-    const total = jewelLinkTotal(jewel);
-    if (total === null || formatCount(locale, total) === exactCount(locale, total)) return readCell(jewelAssetsText(jewel));
+  const primaryAssetLinksCell = (pa: { name: string; asset_names?: string[] }) => {
+    const total = primaryAssetLinkTotal(pa);
+    if (total === null || formatCount(locale, total) === exactCount(locale, total)) return readCell(primaryAssetLinksText(pa));
     return (
       <Tip content={exactCount(locale, total)}>
         <RowAwareTipTrigger className={`inline-flex min-w-0 tabular-nums ${TIP_WRAP_FOCUS_RING}`}>
@@ -840,12 +840,12 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   };
   // Source steps aside below a 72rem card (UX r1 B1 and B2 on #1174): at 1080 the fixed 128 px cut
   // Business service and Owner to nothing. The lock tip and the Source filter still name it there.
-  const SOURCE_WIDTH = JEWEL_WIDTHS.source;
+  const SOURCE_WIDTH = PRIMARY_ASSET_WIDTHS.source;
   const sourceColumn = <R extends { value: Provenance }>(): DataTableColumn<R> => ({
     key: "source",
     header: "Source",
     hideable: true,
-    hideBelow: JEWEL_STEP_ASIDE,
+    hideBelow: PRIMARY_ASSET_STEP_ASIDE,
     width: SOURCE_WIDTH,
     cell: ({ value }) => sourceCell(value),
     interactive: true,
@@ -862,7 +862,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     key: "source",
     header: "Source",
     hideable: true,
-    hideBelow: JEWEL_STEP_ASIDE,
+    hideBelow: PRIMARY_ASSET_STEP_ASIDE,
     width: SOURCE_WIDTH,
     read: (v) => sourceCell(v),
     sortValue: (v) => sourceLabel(v).toLowerCase(),
@@ -885,16 +885,16 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     options: Object.entries(labels).map(([value, name]) => ({ value, label: t_i18n(name) })),
     ordered,
   });
-  type JewelRow = { index: number; value: ProfileForm["primary_assets"][number] };
+  type PrimaryAssetRow = { index: number; value: ProfileForm["primary_assets"][number] };
   type TechRow = { index: number; value: ProfileForm["software"][number] };
-  const jewelColumns: DataTableColumn<JewelRow>[] = [
+  const primaryAssetColumns: DataTableColumn<PrimaryAssetRow>[] = [
     {
       key: "name",
       header: "Primary asset",
-      width: readWidth(JEWEL_WIDTHS.name),
+      width: readWidth(PRIMARY_ASSET_WIDTHS.name),
       cell: ({ value }) => readCell(value.name),
       interactive: true,
-      sortValue: sortable<JewelRow>(({ value }) => value.name.toLowerCase()),
+      sortValue: sortable<PrimaryAssetRow>(({ value }) => value.name.toLowerCase()),
       firstSort: "asc",
       csv: ({ value }) => value.name,
     },
@@ -904,7 +904,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       hideable: true,
       cell: ({ value }) => readCell(value.business_service),
       interactive: true,
-      sortValue: sortable<JewelRow>(({ value }) => value.business_service.toLowerCase()),
+      sortValue: sortable<PrimaryAssetRow>(({ value }) => value.business_service.toLowerCase()),
       firstSort: "asc",
       csv: ({ value }) => value.business_service,
     },
@@ -914,7 +914,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       hideable: true,
       cell: ({ value }) => readCell(value.owner),
       interactive: true,
-      sortValue: sortable<JewelRow>(({ value }) => value.owner.toLowerCase()),
+      sortValue: sortable<PrimaryAssetRow>(({ value }) => value.owner.toLowerCase()),
       firstSort: "asc",
       csv: ({ value }) => value.owner,
     },
@@ -923,10 +923,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       header: "Criticality",
       hideable: true,
       headerClassName: "w-44",
-      width: readWidth(JEWEL_WIDTHS.criticality),
+      width: readWidth(PRIMARY_ASSET_WIDTHS.criticality),
       cell: ({ value }) => readCell(value.criticality ? optionLabel(CRITICALITY_LABELS, value.criticality) : ""),
       interactive: true,
-      sortValue: sortable<JewelRow>(({ value }) => Object.keys(CRITICALITY_LABELS).indexOf(value.criticality)),
+      sortValue: sortable<PrimaryAssetRow>(({ value }) => Object.keys(CRITICALITY_LABELS).indexOf(value.criticality)),
       firstSort: "desc",
       csv: ({ value }) => value.criticality,
     },
@@ -936,11 +936,11 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       header: "Assets",
       hideable: true,
       // Steps aside at 1080 so Business service reads whole (UX r2 B2 on #1174); the Columns pill brings it back.
-      hideBelow: JEWEL_STEP_ASIDE,
-      cell: ({ value }) => jewelAssetsCell(value),
+      hideBelow: PRIMARY_ASSET_STEP_ASIDE,
+      cell: ({ value }) => primaryAssetLinksCell(value),
       interactive: true,
       // An export keeps exact data: the stored link count as a number, else the typed names.
-      csv: ({ value }) => String(jewelLinkTotal(value) ?? (value.asset_names ?? []).join("; ")),
+      csv: ({ value }) => String(primaryAssetLinkTotal(value) ?? (value.asset_names ?? []).join("; ")),
     },
     {
       key: "opencrq",
@@ -948,7 +948,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       hideable: true,
       // 112 px: the header and its sort mark read whole (96 cut it, UX r2 B2 on #1174).
       headerClassName: "w-28",
-      width: readWidth(JEWEL_WIDTHS.opencrq),
+      width: readWidth(PRIMARY_ASSET_WIDTHS.opencrq),
       cell: ({ value }) =>
         value.opencrq_asset_id ? (
           <Tip content={t_i18n("Linked to OpenCRQ")}>
@@ -958,16 +958,16 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           </Tip>
         ) : null,
       interactive: true,
-      sortValue: sortable<JewelRow>(({ value }) => !!value.opencrq_asset_id),
+      sortValue: sortable<PrimaryAssetRow>(({ value }) => !!value.opencrq_asset_id),
       csv: ({ value }) => value.opencrq_asset_id,
     },
-    sourceColumn<JewelRow>(),
+    sourceColumn<PrimaryAssetRow>(),
   ];
-  const jewelFilters: DataTableFilter<JewelRow>[] = [
+  const primaryAssetFilters: DataTableFilter<PrimaryAssetRow>[] = [
     // Ordinal scale: low to critical, never alphabetical (#12289).
-    optionFilter<JewelRow>("criticality", "Criticality", CRITICALITY_LABELS, ({ value }) => value.criticality, true),
-    optionFilter<JewelRow>("opencrq", "OpenCRQ", OPENCRQ_LINK_LABELS, ({ value }) => (value.opencrq_asset_id ? "linked" : "not_linked")),
-    sourceFilter<JewelRow>(),
+    optionFilter<PrimaryAssetRow>("criticality", "Criticality", CRITICALITY_LABELS, ({ value }) => value.criticality, true),
+    optionFilter<PrimaryAssetRow>("opencrq", "OpenCRQ", OPENCRQ_LINK_LABELS, ({ value }) => (value.opencrq_asset_id ? "linked" : "not_linked")),
+    sourceFilter<PrimaryAssetRow>(),
   ];
   const techColumns: DataTableColumn<TechRow>[] = [
     {
@@ -1027,7 +1027,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     sourceFilter<TechRow>(),
   ];
   // The list editors (#12256): the same columns, a closed row read as text, the open one as fields.
-  type Jewel = ProfileForm["primary_assets"][number];
+  type PrimaryAsset = ProfileForm["primary_assets"][number];
   type Tech = ProfileForm["software"][number];
   type Shipped = ProfileForm["shipped_products"][number];
   const pick = (labels: Record<string, string>, value: string, label: string, onChange: (value: string) => void) => (
@@ -1049,8 +1049,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   );
   // The values a free-text field already holds in its list, offered as it is typed (slice 2): 150 rows stay consistent.
   const suggestId = (key: ListKey, field: string) => `${fieldId}-${key}-${field}-suggestions`;
-  const jewelEdit: ListEditColumn<Jewel>[] = [
-    { key: "name", header: "Primary asset", width: readWidth(JEWEL_WIDTHS.name), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("Primary asset", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
+  const primaryAssetEdit: ListEditColumn<PrimaryAsset>[] = [
+    { key: "name", header: "Primary asset", width: readWidth(PRIMARY_ASSET_WIDTHS.name), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("Primary asset", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
     { key: "business_service", header: "Business service", hideable: true, read: (v) => readCell(v.business_service), edit: (v, set) => editText("Business service", v.business_service, (business_service) => set({ business_service })), sortValue: (v) => v.business_service.toLowerCase(), firstSort: "asc" },
     { key: "owner", header: "Owner", hideable: true, read: (v) => readCell(v.owner), edit: (v, set) => editText("Owner", v.owner, (owner) => set({ owner }), false, "Owner", suggestId("primary_assets", "owner")), sortValue: (v) => v.owner.toLowerCase(), firstSort: "asc" },
     { key: "criticality", header: "Criticality", hideable: true, headerClassName: "w-44", width: readWidth(120), read: (v) => readCell(v.criticality ? optionLabel(CRITICALITY_LABELS, v.criticality) : ""), edit: (v, set) => pick(CRITICALITY_LABELS, v.criticality, "Criticality", (criticality) => set({ criticality })), sortValue: (v) => Object.keys(CRITICALITY_LABELS).indexOf(v.criticality), firstSort: "desc" },
@@ -1060,9 +1060,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       hideable: true,
       // 200 px so "Link assets" and the chevron fit; Business service and Owner share the rest (UX r2 B1 on #12261).
       // Below 72rem it steps aside, else the two local fields of a synced row kept 61 px (UX r2 B1 on #1174).
-      hideBelow: JEWEL_STEP_ASIDE,
-      width: readWidth(JEWEL_WIDTHS.assets),
-      read: (v) => jewelAssetsCell(v),
+      hideBelow: PRIMARY_ASSET_STEP_ASIDE,
+      width: readWidth(PRIMARY_ASSET_WIDTHS.assets),
+      read: (v) => primaryAssetLinksCell(v),
       edit: (v, set) => {
         const names = v.asset_names ?? [];
         // The groups and assets come from their row APIs (#1752 slice 3b): the profile answers no row.
@@ -1085,7 +1085,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         );
       },
     },
-    sourceEdit<Jewel>(),
+    sourceEdit<PrimaryAsset>(),
   ];
   // Edit mode: the CPE input takes what is left, so the fixed columns give it 100 px more at 1080,
   // Vendor scale (UX round 3 B2 on #931: 240/200/180 left CPE 62 px, header and input clipped).
@@ -1102,7 +1102,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     { key: "vendor", header: "Vendor", hideable: true, width: readWidth(160), read: (v) => readCell(v.vendor), edit: (v, set) => editText("Vendor", v.vendor, (vendor) => set({ vendor }), false, "Vendor", suggestId("shipped_products", "vendor")), sortValue: (v) => v.vendor.toLowerCase(), firstSort: "asc" },
     // Below 72rem CPE steps aside to the Columns pill with Source, so the repositories column keeps at least
     // 240 px for its tag input (UX r1 B2 on #1483: at 1080 it had 58 px, header and chips cut).
-    { key: "cpe", header: "CPE (optional)", hideable: true, hideBelow: JEWEL_STEP_ASIDE, width: readWidth(240), read: (v) => readCell(v.cpe), edit: (v, set, bad) => editText("CPE (optional)", v.cpe, (cpe) => set({ cpe }), bad, "cpe:2.3:a:vendor:product:*"), sortValue: (v) => v.cpe.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.cpe] },
+    { key: "cpe", header: "CPE (optional)", hideable: true, hideBelow: PRIMARY_ASSET_STEP_ASIDE, width: readWidth(240), read: (v) => readCell(v.cpe), edit: (v, set, bad) => editText("CPE (optional)", v.cpe, (cpe) => set({ cpe }), bad, "cpe:2.3:a:vendor:product:*"), sortValue: (v) => v.cpe.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.cpe] },
     {
       key: "repositories",
       header: "Source repositories",
@@ -1152,7 +1152,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         headers: { name: header("Primary asset"), business_service: header("Business service"), owner: header("Owner"), criticality: header("Criticality"), opencrq_asset_id: header("OpenCRQ") },
         choices: { criticality: choiceWords(CRITICALITY_LABELS) },
         identity: LIST_RULES.primary_assets.identity,
-      } as PasteSpec<Jewel>,
+      } as PasteSpec<PrimaryAsset>,
     },
     software: {
       title: "Paste products",
@@ -1929,8 +1929,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             }
           >
             {listEditor("primary_assets", {
-              columns: jewelEdit,
-              filters: [valueFilter("criticality", "Criticality", CRITICALITY_LABELS, (v: Jewel) => v.criticality, true)], // ordinal scale (#12289)
+              columns: primaryAssetEdit,
+              filters: [valueFilter("criticality", "Criticality", CRITICALITY_LABELS, (v: PrimaryAsset) => v.criticality, true)], // ordinal scale (#12289)
               searchFields: (v) => [v.name, v.business_service, v.owner],
               rowLabel: (v) => v.name,
               storageKey: "settings-organization-primary-assets",
@@ -1942,14 +1942,14 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               ) : (
                 <DataTable
                   rows={current.primary_assets.map((value, index) => ({ index, value }))}
-                  columns={jewelColumns}
+                  columns={primaryAssetColumns}
                   layout={tableLayout}
                   rowKey={(row) => String(row.index)}
                   // Each saved primary asset opens its page (#1980 S2): its supporting assets and the cases on it.
                   rowHref={(row) => (row.value.name.trim() ? primaryAssetPath(row.value.name) : undefined)}
                   searchFields={(row) => [row.value.name, row.value.business_service, row.value.owner]}
                   searchPlaceholder={t_i18n("Search...")}
-                  filters={jewelFilters}
+                  filters={primaryAssetFilters}
                   exportName="primary-assets"
                   urlKey="ocj_"
                   storageKey="settings-organization-primary-assets"

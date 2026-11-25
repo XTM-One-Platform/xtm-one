@@ -667,7 +667,7 @@ export function toForm(profile: ProfileLike): ProfileForm {
     // The reference rates and the PIR details have their own cards (#1773): carried whole so no other save resets them.
     ...(profile.pir_details ? { pir_details: profile.pir_details } : {}),
     ...(profile.fx_rates ? { fx_rates: profile.fx_rates } : {}),
-    primary_assets: profile.primary_assets.map((jewel) => ({ ...jewel })),
+    primary_assets: profile.primary_assets.map((pa) => ({ ...pa })),
     software: profile.software.map((entry) => ({ ...entry })),
     shipped_products: (profile.shipped_products ?? []).map((entry) => ({ ...entry, repositories: [...entry.repositories] })),
     annual_loss_threshold: numberText(profile.risk_appetite.annual_loss_threshold),
@@ -753,7 +753,7 @@ export function fromForm(form: ProfileForm): { profile: ProfileLike } | { invali
         pir_names: pirNamesOf(form.pir_ids, form.pir_names ?? {}),
         ...(form.pir_details ? { pir_details: form.pir_details } : {}),
         ...(form.fx_rates ? { fx_rates: form.fx_rates } : {}),
-        primary_assets: form.primary_assets.filter((jewel) => jewel.name.trim()),
+        primary_assets: form.primary_assets.filter((pa) => pa.name.trim()),
         // An empty version is left out: the saved shape of a profile that never declares one stays the same.
         software: form.software
           .filter((entry) => entry.product.trim())
