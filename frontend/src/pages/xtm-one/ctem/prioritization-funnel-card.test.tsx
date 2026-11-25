@@ -169,6 +169,41 @@ describe("PrioritizationFunnel", () => {
     fireEvent.focus(bar);
     expect((await screen.findByRole("tooltip")).textContent).toContain("Known vulnerabilities: 4,214");
   });
+
+  // #1980: the business impact and policy layers read the live configuration.
+  it("draws live business impact and policy layers with what they read", async () => {
+    const live: CtemFunnel = {
+      ...SAMPLE_FUNNEL,
+      layers: SAMPLE_FUNNEL.layers.map((layer) =>
+        layer.key === "business_impact"
+          ? { ...layer, count: 12, drop: 9, state: "live", category: null, primary_assets: 3, supporting_assets: 263 }
+          : layer.key === "policy"
+            ? { ...layer, count: 7, drop: 5, state: "live", category: null, rules: ["cvss_min", "accepted_risks"] }
+            : layer,
+      ),
+    };
+    draw(<PrioritizationFunnel variant="stage" funnel={live} openctiUrl="https://cti.example" />);
+    expect(screen.getByTestId("ctem-funnel-count-business_impact").textContent).toBe("12");
+    expect(screen.getByTestId("ctem-funnel-count-policy").textContent).toBe("7");
+    expect(screen.queryByRole("link", { name: "Map primary assets to assets" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Set a prioritization policy" })).toBeNull();
+    fireEvent.focus(screen.getByRole("group", { name: /^Business impact, 12/ }));
+    expect((await screen.findByTestId("ctem-funnel-scope-business_impact")).textContent).toBe(
+      "3 primary assets reached through 263 supporting assets.",
+    );
+  });
+
+  it("says a configured layer has no software inventory instead of not configured", () => {
+    const noSoftware: CtemFunnel = {
+      ...SAMPLE_FUNNEL,
+      layers: SAMPLE_FUNNEL.layers.map((layer) =>
+        layer.key === "business_impact" ? { ...layer, state: "not_available", category: null, reason: "no_software" } : layer,
+      ),
+    };
+    draw(<PrioritizationFunnel variant="stage" funnel={noSoftware} openctiUrl="https://cti.example" />);
+    expect(screen.getByTestId("ctem-funnel-count-business_impact").textContent).toBe("No software inventory");
+    expect(screen.queryByRole("link", { name: "Map primary assets to assets" })).toBeNull();
+  });
 });
 
 // #11545 S5b: the last layer is the open cases, exact, leading to the Cases list.
@@ -356,6 +391,17 @@ describe("PrioritizationFunnelCard", () => {
     expect(screen.queryByTestId("ctem-funnel-count-exposed")).toBeNull();
     expect(screen.getByTestId("ctem-funnel-compact-unconfigured").textContent).toBe("3 layers not configured");
     expect(screen.getByRole("link", { name: "Open Prioritization" }).getAttribute("href")).toBe("/ctem/prioritization");
+  });
+
+  // #1980: the widget reads the open cases too, never "not available" over open cases.
+  it("fills the cases layer from the Cases API", () => {
+    casesRead.value = { data: { counts: { new: 10, waiting_decision: 6, resolved: 4 } } };
+    try {
+      draw(<PrioritizationFunnelCard funnel={SAMPLE_FUNNEL} sample={false} openctiUrl="https://cti.example" />);
+      expect(screen.getByRole("link", { name: "Cases, 16 open cases" }).getAttribute("href")).toBe("/ctem/cases");
+    } finally {
+      casesRead.value = { data: undefined };
+    }
   });
 
   it("opens the exact value on keyboard focus of a widget step", async () => {
