@@ -1710,6 +1710,61 @@ def ci_poll_candidate(item: Any) -> bool:
     return parked_without_release(item) or red_deferred(item)
 
 
+def ci_snapshot_stale(item: Any) -> bool:
+    """Whether *item* is blocked on something else while its views still say it waits for CI. Pure.
+
+    An item blocked on a reference (a review, a merge) or another item is not
+    a :func:`ci_poll_candidate`: its pull requests' CI snapshot is the one taken
+    when it was blocked, so a check that finished since still reads "Waiting
+    for CI" (#2262). The poll reads such an item to refresh the snapshot alone,
+    with no dispatch: its own blocker releases it.
+    """
+    if getattr(item, "status", None) != "blocked" or ci_poll_candidate(item):
+        return False
+    if getattr(item, "needs_human", None):
+        return False
+    return bool(pull_requests_waiting_for_ci({"payload": getattr(item, "payload", None)}))
+
+
+def record_polled_ci(
+    payload: dict[str, Any] | None, *, repo: str, number: int, state: dict[str, Any]
+) -> dict[str, Any]:
+    """*payload* with the live CI verdict *state* of one pull request recorded, owing no dispatch. Pure.
+
+    The snapshot refresh of :func:`ci_snapshot_stale` items: a decided verdict
+    becomes the head's CI (a new head forgets the old one's), the dispatch keys
+    are left as they are, so a later release of the item dispatches as usual.
+    """
+    out = dict(payload or {})
+    bindings = pull_request_bindings(out)
+    wanted = (str(repo).strip().lower(), number)
+    binding = next((b for b in bindings if (b["repo"], b["number"]) == wanted), None)
+    sha = state.get("head_sha") if isinstance(state, dict) else None
+    if binding is None or binding.get("state", "open") != "open" or not isinstance(sha, str) or not sha:
+        return out
+    ci = dict(binding.get("ci") or {}) if isinstance(binding.get("ci"), dict) else {}
+    if binding.get("head_sha") != sha or ci.get("head_sha") not in (None, sha):
+        binding["head_sha"] = sha
+        ci = {"head_sha": sha}
+    if isinstance(state.get("draft"), bool):
+        binding["draft"] = state["draft"]
+    conclusion = state.get("conclusion")
+    if conclusion in ("success", "failure"):
+        ci["head_sha"] = sha
+        ci["runs"] = {
+            POLLED_RUN_KEY: {
+                "run_id": polled_decider(state),
+                "name": "checks of the head (read)",
+                "status": "completed",
+                "conclusion": conclusion,
+                "url": state.get("run_url"),
+            }
+        }
+    binding["ci"] = ci
+    out["pull_requests"] = bindings
+    return out
+
+
 def parked_without_release(item: Any) -> bool:
     """Whether *item* is blocked with nothing a platform event releases, on an open pull request it names.
 
@@ -1733,6 +1788,14 @@ async def _apply_polled(item_id: uuid.UUID, reads: dict[tuple[str, int], dict], 
     to_dispatch: list[CiCompleted] = []
     async with async_session() as db:
         item = (await db.execute(select(WorkItem).where(WorkItem.id == item_id).with_for_update())).scalar_one_or_none()
+        if item is not None and ci_snapshot_stale(item):
+            # The snapshot alone (#2262): its own blocker releases it, nothing is dispatched.
+            payload = item.payload
+            for (repo, number), state in reads.items():
+                payload = record_polled_ci(payload, repo=repo, number=number, state=state)
+            item.payload = payload
+            await db.commit()
+            return []
         if item is None or not ci_poll_candidate(item):
             return []
         payload = item.payload
@@ -1846,7 +1909,7 @@ async def poll_pull_request_ci(now: datetime | None = None) -> dict:
                     [b for b in pull_request_bindings(item.payload) if b.get("state", "open") == "open"],
                 )
                 for item in rows
-                if ci_poll_candidate(item)
+                if (ci_poll_candidate(item) or ci_snapshot_stale(item))
                 and now_mono - _ci_polled.get(item.id, -CI_POLL_QUIET_SECONDS) >= CI_POLL_QUIET_SECONDS
             ][:CI_POLL_MAX_ITEMS]
             tokens: dict[tuple[str, str], str | None] = {}
