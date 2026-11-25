@@ -17701,6 +17701,7 @@
   "On a reachable asset: internet-facing, or a user endpoint (phishing, browser, email).": "Sur un actif joignable : exposé à Internet, ou un poste utilisateur (hameçonnage, navigateur, e-mail).",
   "Add your assets and exposure": "Ajouter vos actifs et leur exposition",
   "Not linked": "Non relié",
+  "No software inventory": "Aucun inventaire logiciel",
   "{total, plural, one {# asset read} other {# assets read}}. Reachable: {reachable} (user endpoints: {endpoints}). Proven unreachable: {unreachable}. Unknown: {unknown}.": "{total, plural, one {# actif lu} other {# actifs lus}}. Joignables : {reachable} (postes utilisateurs : {endpoints}). Injoignables avérés : {unreachable}. Inconnus : {unknown}.",
   "Business impact": "Impact métier",
   "On an asset that supports a primary asset.": "Sur un actif qui soutient un actif primaire.",
@@ -21691,5 +21692,7 @@
   "Open a case for each confirmed signal": "Ouvrir un cas pour chaque signal confirmé",
   "{count, plural, =0 {Off: no confirmed signal is waiting} one {Off: # confirmed signal is waiting} other {Off: # confirmed signals are waiting}}": "{count, plural, =0 {Désactivée : aucun signal confirmé en attente} one {Désactivée : # signal confirmé en attente} other {Désactivée : # signaux confirmés en attente}}",
   "Case opening was not changed": "L'ouverture des cas n'a pas été modifiée",
-  "CTEM case opening turned on or off": "Ouverture des cas CTEM activée ou désactivée"
+  "CTEM case opening turned on or off": "Ouverture des cas CTEM activée ou désactivée",
+  "{primary, plural, one {# primary asset} other {# primary assets}} reached through {supporting, plural, one {# supporting asset} other {# supporting assets}}.": "{primary, plural, one {# actif primaire atteint} other {# actifs primaires atteints}} via {supporting, plural, one {# actif support} other {# actifs supports}}.",
+  "{count, plural, one {# policy rule applied} other {# policy rules applied}}.": "{count, plural, one {# règle de politique appliquée} other {# règles de politique appliquées}}."
 }
