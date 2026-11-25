@@ -463,7 +463,11 @@ async def evaluate(
         return None
     before = signals.verdict_of(row.state)
     at = now or datetime.now(UTC)
-    profile = profile if profile is not None else await _profile(db, row.organization_id)
+    if profile is None:
+        # Per-signal callers (a pass recording many signals) build the software profile once per
+        # session and organization: rebuilt per signal it held the web loop for seconds on a large store.
+        org = row.organization_id
+        profile = await _session_cached(db, ("profile", org), lambda: _profile(db, org))
     if primary_assets is None:
         # Per-signal callers (listeners) share one index per session and organization (#1591 S3 review).
         org_id = row.organization_id

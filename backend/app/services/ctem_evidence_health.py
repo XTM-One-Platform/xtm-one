@@ -25,6 +25,7 @@ decides what each signal becomes. No model call, no gate. Design:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from dataclasses import dataclass, field
@@ -238,6 +239,8 @@ async def run_pass(
         counts["new"] += 1
         counts[gap.event] = counts.get(gap.event, 0) + 1
         events = await ctem_scope_gate_store.evaluate_after_record(db, signal, created=created)
+        # Hand the loop back between signals: a pass of hundreds of gaps never holds it in one go.
+        await asyncio.sleep(0)
         if events:
             pending.items.extend(events.items)
             pending.verticals |= events.verticals

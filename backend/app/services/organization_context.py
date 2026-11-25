@@ -21,6 +21,7 @@ and the fleet runs alike.
 
 from __future__ import annotations
 
+import asyncio
 import re
 import uuid
 from datetime import date
@@ -1428,7 +1429,18 @@ async def software_profile(
     if not software:
         return row, profile
     typed = [{"vendor": e.vendor, "product": e.product, "cpe": e.cpe, "version": e.version} for e in profile.software]
-    entries = [
+    # Pure CPU over every software of the store (thousands on a large estate): built in a worker
+    # thread so the web event loop keeps serving requests meanwhile.
+    entries = await asyncio.to_thread(_software_entries, software, typed)
+    # model_copy does not validate: the store may hold more software than a typed list may.
+    return row, profile.model_copy(update={"software": entries})
+
+
+def _software_entries(software: list[dict[str, Any]], typed: list[dict[str, Any]]) -> list[SoftwareEntry]:
+    """The profile's software rows for the store's *software* and the *typed* rows (pure)."""
+    from app.services import organization_software_store as software_store
+
+    return [
         SoftwareEntry(
             product=entry["product"][:200],
             vendor=entry["vendor"][:200],
@@ -1438,8 +1450,6 @@ async def software_profile(
         )
         for entry in software_store.matcher_entries(software, typed)
     ]
-    # model_copy does not validate: the store may hold more software than a typed list may.
-    return row, profile.model_copy(update={"software": entries})
 
 
 async def list_versions(
