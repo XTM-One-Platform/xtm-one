@@ -34,6 +34,8 @@ _NAMES = (
     "LAB_DOC_DRAFT_HOLD_DEFAULT_SECONDS",
     "LAB_DOC_DRAFT_HOLD_MAX_SECONDS",
     "doc_draft_hold_seconds",
+    "doc_draft_findings",
+    "LAB_DOC_DRAFT_FINDINGS",
 )
 
 
@@ -169,6 +171,35 @@ def test_a_draft_without_the_hold_never_sleeps_and_the_refusal_wins_over_the_hol
     assert slept == []
     with pytest.raises(FleetDocDraftError, match="answered no documentation"):
         extract_sections(refused, list(DOC_SECTIONS))
+
+
+def _whole_draft(description: str):
+    from app.services.fleet_doc_generation import STRUCTURED_GUIDE
+
+    request = _request(list(DOC_SECTIONS), description=description, members=_MEMBERS)
+    request["messages"][-1]["content"] += f"\n\n{STRUCTURED_GUIDE}"
+    return extract_sections(_lab_namespace()["doc_draft_answer"](request, 8), list(DOC_SECTIONS))
+
+
+def test_the_findings_marker_gives_a_whole_draft_findings_the_parser_keeps():
+    """A Regenerate in the lab keeps the Suggestions chip: the parser keeps three findings of three kinds."""
+    draft = _whole_draft("x (lab:draft-findings).")
+    assert [f["kind"] for f in draft.findings] == [
+        "missing_automation",
+        "no_gate_on_sensitive_action",
+        "description_mismatch",
+    ]
+    assert draft.findings[0]["member"] == "Lab Orchestrator"
+    assert all(f["id"] and f["suggested_fix"] for f in draft.findings)
+
+
+def test_the_corporate_fleet_carries_the_findings_marker():
+    marker = _lab_namespace()["LAB_DOC_DRAFT_FINDINGS"]
+    assert f"nothing in it can start a run ({marker})." in LAB.read_text(encoding="utf-8")
+
+
+def test_a_whole_draft_without_the_findings_marker_raises_none():
+    assert _whole_draft("Seeded by the lab.").findings == []
 
 
 def test_any_other_request_is_not_a_draft():
