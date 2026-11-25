@@ -21777,17 +21777,7 @@
   "The part of the organization context the sync writes to the platform.": "La partie du contexte de l'organisation que la synchronisation écrit dans la plateforme.",
   "The part of the organization context the platform fills.": "La partie du contexte de l'organisation que la plateforme remplit.",
   "Rows the first run creates in {platform}": "Lignes que la première exécution crée dans {platform}",
-  "Ticket": "Ticket",
-  "Applied change": "Changement appliqué",
-  "Ticket and applied change": "Ticket et changement appliqué",
-  "Indicators blocked": "Indicateurs bloqués",
-  "Detection rule deployed": "Règle de détection déployée",
-  "Configuration changed": "Configuration modifiée",
-  "Control restored": "Contrôle rétabli",
-  "Pushed": "Poussé",
-  "Returned ids": "Identifiants renvoyés",
-  "How to revert": "Comment annuler",
-  "Applied changes": "Changements appliqués",
-  "Applied a change through an integration": "A appliqué un changement via une intégration",
-  "How the fix is carried out once decided: a ticket for the owner, a change applied through a bound integration after the production change gate, or both.": "Comment le correctif est mis en œuvre une fois décidé : un ticket pour le responsable, un changement appliqué via une intégration liée après l'étape de changement en production, ou les deux."
+  "Observer only": "Observateur uniquement",
+  "This automation watches the objects of its events without working them: a CTEM case it hears is not shown as worked by it.": "Cette automatisation observe les objets de ses événements sans les traiter : un cas CTEM qu’elle reçoit n’est pas affiché comme traité par elle.",
+  "{count, plural, one {# automation that can work this case is switched off} other {# automations that can work this case are switched off}}": "{count, plural, one {# automatisation qui peut traiter ce cas est désactivée} other {# automatisations qui peuvent traiter ce cas sont désactivées}}"
 }
