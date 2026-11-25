@@ -1287,10 +1287,27 @@ def parse_profile(raw: Any) -> OrganizationProfile:
         raise ValueError(f"{where}: {first.get('msg', 'invalid value')}") from None
 
 
+#: The prioritization policy rules an agent may set or propose, one path each (#937, #2129): the scope
+#: threshold and the scalar rules (thresholds, the KEV override, the time to fix per severity). The lists
+#: (exclusions, accepted risks) stay with the settings form.
+POLICY_SETTABLE_PATHS: tuple[str, ...] = (
+    "prioritization_policy.scope_min_criticality",
+    "prioritization_policy.cvss_min",
+    "prioritization_policy.epss_min",
+    "prioritization_policy.kev_always_in",
+    "prioritization_policy.internet_exposure_required",
+    "prioritization_policy.min_primary_asset_criticality",
+    "prioritization_policy.require_risk_scenario",
+    "prioritization_policy.sla_hours",
+    "prioritization_policy.pir_min_score_vulnerability",
+    "prioritization_policy.pir_min_score_threat",
+    "prioritization_policy.identity_criticality",
+)
+
 #: The settable paths beyond the contract fields whose provenance a save keeps too (#1773): what an
 #: agent or the API may write (``organization_context_proposals``), so every written field says who and why.
 PROVENANCE_EXTRA_PATHS: tuple[str, ...] = (
-    "prioritization_policy.scope_min_criticality",
+    *POLICY_SETTABLE_PATHS,
     "owned_domains",
     "address_ranges",
     "attack_surface",
