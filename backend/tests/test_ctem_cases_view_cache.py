@@ -266,6 +266,12 @@ async def test_a_list_read_with_no_view_waits_briefly_then_says_it_is_rebuilding
     await tasks[0]
 
 
+def test_a_list_read_gives_up_waiting_for_the_build_within_two_seconds() -> None:
+    # #2139: a 503 held 10 s on ctem.one was no fail-fast answer.
+    assert 0 < view_of.LIST_BUILD_WAIT_SECONDS <= 2.0
+    assert view_of.LIST_RETRY_AFTER_SECONDS > view_of.LIST_BUILD_WAIT_SECONDS
+
+
 @pytest.mark.asyncio
 async def test_a_list_read_with_no_view_answers_the_build_that_finished_in_the_wait(
     redis: Any, judged: list[str], monkeypatch: pytest.MonkeyPatch

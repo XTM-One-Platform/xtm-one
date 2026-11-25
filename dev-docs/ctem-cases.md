@@ -889,7 +889,7 @@ generation, still in its TTL, answers while the new one builds in the background
 (`Server-Timing` `cache-stale`); the cases opened since it was built are
 answered as `unjudged_cases` with `view.stale` true, never as hidden (#2113).
 With none, the read waits
-`LIST_BUILD_WAIT_SECONDS` (10 s) for that build, then answers 503 with
+`LIST_BUILD_WAIT_SECONDS` (2 s, #2139: a 503 held 10 s was no fail-fast answer) for that build, then answers 503 with
 `Retry-After` (`LIST_RETRY_AFTER_SECONDS`, 30 s): never a whole view build on
 the request (400 s on a large tenant). Event visibility (`user_sees_case`)
 reads the case's own members, like the case page.

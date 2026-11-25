@@ -55,8 +55,9 @@ VIEW_TTL_SECONDS = 300
 LAST_SEEN_TTL_SECONDS = 7 * 24 * 3600
 #: The label of an issue the viewer cannot see, as OpenCTI shows it.
 RESTRICTED = "Restricted"
-#: How long a list read with no view to answer from waits for the background build (#2092).
-LIST_BUILD_WAIT_SECONDS = 10.0
+#: How long a list read with no view to answer from waits for the background build (#2092):
+#: short, a 503 held 10 s on ctem.one was no fail-fast answer (#2139).
+LIST_BUILD_WAIT_SECONDS = 2.0
 #: The retry delay a list read names when the view is still building after that wait.
 LIST_RETRY_AFTER_SECONDS = 30
 #: The reasons a product gives about one identity (``ctem_cases_source.IDENTITY_REASONS``): the
