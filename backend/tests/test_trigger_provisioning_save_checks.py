@@ -81,3 +81,10 @@ def test_a_usable_block_and_other_triggers_pass_the_save_check() -> None:
 def test_a_wrong_openaev_block_is_refused_at_save_time() -> None:
     error = provision_spec_error("integration_event", {"provider": "openaev", "provision": {"fleet": "F"}})
     assert error is not None and "provision.fleet and provision.purpose are required" in error
+
+
+def test_a_refusal_is_a_sentence_the_save_path_can_follow() -> None:
+    """#2195: callers append "Nothing was saved."; the refusal ends with its own full stop, once."""
+    error = provision_spec_error("integration_event", {"provider": "openaev", "provision": {"fleet": "F"}})
+    assert error == "Invalid trigger_config: provision.fleet and provision.purpose are required."
+    assert not error.endswith("..")

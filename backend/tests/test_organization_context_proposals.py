@@ -115,6 +115,22 @@ def test_the_outside_lens_settings_are_fields_of_the_primary_profile_only():
         assert path not in proposals._contract_paths("tracked")
 
 
+def test_an_agent_can_set_the_evidence_health_pass_of_the_primary_profile() -> None:
+    """#2196: the OpenCRQ evidence health opt-in is writable by an agent, validated by its model."""
+    kept = proposals.validate_field_changes(
+        PRIMARY, {}, [{"field": "evidence_health", "value": {"enabled": True, "max_age_days": 60}}]
+    )
+    value = kept[0]["value"]
+    assert value["enabled"] is True
+    assert value["max_age_days"] == 60
+    assert value["cadence_hours"] == 24
+    assert "evidence_health" not in proposals._contract_paths("tracked")
+    with pytest.raises(proposals.ProposalError, match="evidence_health"):
+        proposals.validate_field_changes(
+            PRIMARY, {}, [{"field": "evidence_health", "value": {"enabled": True, "max_age_days": 0}}]
+        )
+
+
 def test_enterprise_knowledge_is_a_field_an_agent_can_change_on_the_primary_profile() -> None:
     """#1691: update/propose link the procedure knowledge bases as the Settings form does."""
     link = {"knowledge_base_id": "8a0b3c1e-0000-4000-8000-000000000001", "label": "SOPs", "kind": "sop"}
