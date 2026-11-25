@@ -1353,7 +1353,8 @@ async def sweep(
     events: PendingEvents | None = None,
     now: datetime | None = None,
 ) -> dict[str, int]:
-    """The scheduled pass: open the cases of waiting confirmed signals, escalate SLA breaches. The caller commits.
+    """The scheduled pass: open the cases of waiting confirmed signals, close the cases of retired assets,
+    escalate SLA breaches. The caller commits.
 
     While an administrator paused case opening (#1951, services/ctem_case_opening.py) the
     waiting signals stay confirmed with no case; the SLA, announce and stall passes still run.
@@ -1361,9 +1362,22 @@ async def sweep(
     from app.services import ctem_case_opening as case_opening
 
     now = now or datetime.now(UTC)
-    counts = {"opened": 0, "joined": 0, "skipped": 0, "sla_breached": 0, "announced": 0, "stalled": 0}
+    counts = {
+        "opened": 0,
+        "joined": 0,
+        "skipped": 0,
+        "sla_breached": 0,
+        "announced": 0,
+        "stalled": 0,
+        "retired": 0,
+    }
     if await case_opening.may_open_waiting(db, vertical):
         await open_waiting(db, vertical=vertical, events=events, now=now, counts=counts)
+    # ctem-autoresolve-archived-asset: a case on an asset the inventory archived or removed closes, its
+    # decisions cancelled, before the SLA pass escalates it.
+    from app.services.ctem_case_asset_retire import close_retired_asset_cases
+
+    counts["retired"] = await close_retired_asset_cases(db, events=events, now=now)
     rows = (
         (
             await db.execute(
