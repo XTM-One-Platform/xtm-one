@@ -16,6 +16,7 @@ with AI off, like the posture they come from.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime
 from typing import Any, Literal
@@ -26,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_admin
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import async_session, get_db
 from app.core.redis import redis_client
 from app.models.ctem_case import CASE_STATES
 from app.models.user import User
@@ -660,25 +661,51 @@ async def get_ctem_case(
         raise HTTPException(status_code=404, detail="Case not found")
     (case, _, events), rendered = shown
     async with view_of.timed("details"):
+        trail, inventory, settings_of = await asyncio.gather(
+            _trail_of(db, case, rendered, user.id),
+            _inventory_of(case, rendered, events),
+            _settings_of(case),
+        )
+    body = {**rendered, **trail, **inventory, **settings_of}
+    response.headers["Server-Timing"] = view_of.server_timing(phases)
+    return body
+
+
+#: The session the case page's independent detail reads open (#1986): each group of reads runs on
+#: its own connection, concurrently with the others, instead of one after the other on the request's.
+detail_session = async_session
+
+
+async def _trail_of(db: AsyncSession, case: Any, rendered: dict[str, Any], viewer_id: uuid.UUID) -> dict[str, Any]:
+    """The audit trail and the gate records, on the request's session (the records extend the trail)."""
+    async with view_of.timed("details-trail"):
         # The audit trail (#1490): each event with its CTEM phase, autonomy class and actor, and the phases.
-        audit = await case_audit_view.audit_trail(db, rendered.get("history") or [], viewer_id=user.id)
+        audit = await case_audit_view.audit_trail(db, rendered.get("history") or [], viewer_id=viewer_id)
         # One resolved decision record per gate (#1518): the decision row joined with the gate events;
         # the waiting gate events of the history carry the same record in ``answer``.
-        gate_records = await case_gates_view.gate_records(db, str(case.id), audit["history"], viewer_id=user.id)
-        body = {
-            **rendered,
-            **audit,
-            "gates": gate_records,
+        gate_records = await case_gates_view.gate_records(db, str(case.id), audit["history"], viewer_id=viewer_id)
+    return {**audit, "gates": gate_records}
+
+
+async def _inventory_of(case: Any, rendered: dict[str, Any], events: list[Any]) -> dict[str, Any]:
+    """The inventory reads of the case, on a session of their own."""
+    async with view_of.timed("details-inventory"), detail_session() as db:
+        return {
             # The versions the case's product runs on the assets (#1252), never a typed software version.
             "running_versions": _with_history(await case_versions.for_case(db, case), events),
             # The assets its visible issues name, with the version each runs from the inventory (#1176 slice 3b).
             "affected_assets": await case_versions.assets_for_case(db, case, rendered.get("issues") or []),
+        }
+
+
+async def _settings_of(case: Any) -> dict[str, Any]:
+    """The ticketing target and the owner fleet of the case, on a session of their own."""
+    async with view_of.timed("details-settings"), detail_session() as db:
+        return {
             "ticketing": await ticketing.ticketing_target(db),
             # The fleet that runs the case (#1390): {slug, name, active}; active false = no active fleet owns it.
             "owner_fleet": await case_routing.owner_view(db, case),
         }
-    response.headers["Server-Timing"] = view_of.server_timing(phases)
-    return body
 
 
 @router.delete("/{case_id}")

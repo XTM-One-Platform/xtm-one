@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import Any
 
 import httpx
 import pytest
@@ -131,6 +135,13 @@ def api(monkeypatch):
     # XTM One mode: the platform mode of the test settings already is xtm_one.
     monkeypatch.setattr(api_module, "_require_xtm_one", lambda: None)
 
+    @asynccontextmanager
+    async def _detail_session() -> AsyncIterator[_Db]:
+        # The independent detail reads open their own session (#1986); here, the fake one.
+        yield seen.db
+
+    monkeypatch.setattr(api_module, "detail_session", _detail_session)
+
     app = FastAPI()
     app.include_router(api_module.router, prefix="/api/v1/ctem-cases")
     app.dependency_overrides[deps.get_current_user] = lambda: seen.user
@@ -254,6 +265,42 @@ async def test_a_case_shows_where_its_issues_came_from(api):
     issue = response.json()["issues"][0]
     assert (issue["source"], issue["external_id"], issue["name"]) == ("opencti", "vuln--1", "CVE-2026-1")
     assert issue["cvss"] == 9.8 and issue["assets"] == ["web-1"]
+
+
+async def test_the_detail_reads_of_a_case_run_concurrently(
+    api: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1986: the inventory and the settings reads run beside the trail, each on its own session."""
+    started: list[str] = []
+    both = asyncio.Event()
+
+    async def _waits(name: str, answer: Any) -> Any:
+        started.append(name)
+        if len(started) == 2:
+            both.set()
+        # Each read waits for the other: run one after the other, the request would time out.
+        await asyncio.wait_for(both.wait(), timeout=2)
+        return answer
+
+    async def _ticketing_target(_db: object) -> Any:
+        return await _waits("ticketing", {"connected": False})
+
+    async def _for_case(_db: object, _case: object) -> Any:
+        return await _waits("versions", None)
+
+    from app.services import ctem_case_versions
+
+    monkeypatch.setattr(ticketing, "ticketing_target", _ticketing_target)
+    monkeypatch.setattr(ctem_case_versions, "for_case", _for_case)
+    async with api.client as client:
+        response = await client.get(f"/api/v1/ctem-cases/{api.case.id}")
+    assert response.status_code == 200, response.text
+    assert sorted(started) == ["ticketing", "versions"]
+    body = response.json()
+    assert body["ticketing"] == {"connected": False} and body["owner_fleet"]["slug"] == "ctem-loop"
+    timing = response.headers["Server-Timing"]
+    for phase in ("details-trail", "details-inventory", "details-settings", "details"):
+        assert f"{phase};dur=" in timing
 
 
 async def test_an_unknown_case_is_404(api):

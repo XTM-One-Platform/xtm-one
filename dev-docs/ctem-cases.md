@@ -326,6 +326,13 @@ opens the asset overview (`/ctem/inventory/assets/:id`: its software with every
 version and source, SBOM included, its source records and its cases); a row
 outside the inventory is no link (CTEM-20-UI).
 
+**Detail reads gathered.** The case read runs its independent detail reads
+concurrently: the audit trail and the gate records on the request's session,
+the inventory reads (`running_versions`, `affected_assets`) and the settings
+reads (`ticketing`, `owner_fleet`) each on a session of their own. Its
+`Server-Timing` header names each group (`details-trail`, `details-inventory`,
+`details-settings`) beside the total `details` phase.
+
 **Leaving the scope.** At every recompute (`ctem_cases_store.apply_recompute`)
 an upgrade case with a known fixed version, open or resolved, is checked
 against the inventory (`ctem_case_versions.fixed_in_inventory`): when every
