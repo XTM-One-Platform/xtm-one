@@ -273,6 +273,25 @@ async def test_plain_write_is_sent_once(http: AsyncMock) -> None:
     assert "Idempotency-Key" not in kwargs["headers"]
 
 
+@pytest.mark.asyncio
+async def test_draft_and_task_bodies_name_their_fields_before_the_call(http: AsyncMock) -> None:
+    """#2183: an unknown key or priority is refused locally, with the accepted fields named."""
+    _, handlers = _tools()
+    files, tasks = handlers["manage_wordsmith_files"], handlers["manage_wordsmith_tasks"]
+    answer = await files(operation="create_draft", body={"blueprint_id": "b1", "name": "x", "placeholders": {}})
+    assert answer.startswith("Error: create_draft does not accept name, placeholders.")
+    assert "values (" in answer and "file_name (" in answer
+    answer = await tasks(operation="create_task", body={"title": "t", "additional_context": "c"})
+    assert "does not accept additional_context" in answer
+    answer = await tasks(operation="create_task", body={"title": "t", "priority": "normal"})
+    assert "no_priority, urgent, high, medium, low" in answer
+    http.assert_not_called()
+
+    http.return_value = (_resp(202, {"operation_id": "op1"}), None)
+    await files(operation="create_draft", body={"blueprint_id": "b1", "values": {"party": "A"}, "file_name": "x"})
+    assert http.call_args.kwargs["json"]["values"] == {"party": "A"}
+
+
 # ── Agents ──────────────────────────────────────────────────────────────
 
 

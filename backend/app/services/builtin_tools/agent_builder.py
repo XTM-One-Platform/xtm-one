@@ -7859,6 +7859,17 @@ def build_agent_builder_tool(
                     for _reason, _count in list(_reasons.items())[:10]:
                         parts.append(f"    - {_count} x {_reason}")
 
+            # Webhook deliveries the secret refused (#2180): why a sender gets 401.
+            if assignment.trigger_type == "webhook":
+                from app.services.webhook_refusals import refusals
+
+                _refused = await refusals(assignment.id)
+                if _refused:
+                    parts.append(f"  • Refused deliveries (last {len(_refused)}, newest first):")
+                    for _row in _refused:
+                        _names = ", ".join(_row.get("auth_headers") or []) or "no auth header"
+                        parts.append(f"    - {_row.get('at', '?')}: {_row.get('reason', '?')} ({_names})")
+
             # Surface the prompts in FULL (never truncated) so the agent can
             # faithfully inspect and edit them. The activation gate prompt is a
             # distinct field from the action prompt — both must be visible or

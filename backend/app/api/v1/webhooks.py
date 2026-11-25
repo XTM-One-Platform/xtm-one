@@ -3111,6 +3111,23 @@ def _verify_assignment_webhook_secret(
             )
 
 
+async def _verify_or_record_refusal(
+    body: bytes,
+    request: Request,
+    webhook_secret: object,
+    *,
+    assignment_id: str,
+) -> None:
+    """``_verify_assignment_webhook_secret``, and a refusal kept for the owner to read (#2180)."""
+    try:
+        _verify_assignment_webhook_secret(body, request, webhook_secret, assignment_id=assignment_id)
+    except HTTPException as exc:
+        from app.services.webhook_refusals import record_refusal
+
+        await record_refusal(assignment_id, exc.detail, request.headers.keys())
+        raise
+
+
 def _verify_opencti_token_header(
     extra_config_enc: str | None,
     request: Request,
@@ -5301,7 +5318,7 @@ async def receive_direct_assignment_webhook(
     # instead of inheriting the remediated incident's 24-hour downgrade.
     await _clear_direct_webhook_drift_state(str(assignment_uuid))
 
-    _verify_assignment_webhook_secret(
+    await _verify_or_record_refusal(
         body,
         request,
         (wf_pre.trigger_config or {}).get("webhook_secret"),
@@ -5818,7 +5835,7 @@ async def receive_webhook(agent_id: str, path: str, request: Request) -> dict:
     for wf_pre in pre_assignments:
         cfg_pre = wf_pre.trigger_config or {}
         if cfg_pre.get("path", "") == path:
-            _verify_assignment_webhook_secret(
+            await _verify_or_record_refusal(
                 body,
                 request,
                 cfg_pre.get("webhook_secret"),
