@@ -18244,6 +18244,7 @@
   "Every PIR": "Todos los PIR",
   "Hosts, applications and services, with their exposure and criticality.": "Hosts, aplicaciones y servicios, con su exposición y criticidad.",
   "Import from the platforms": "Importar desde las plataformas",
+  "Save the sync": "Guardar la sincronización",
   "In the profile": "En el perfil",
   "In {platform}": "En {platform}",
   "Lowest criticality": "Criticidad mínima",
@@ -21698,5 +21699,18 @@
   "Every field of this tab is filled.": "Todos los campos de esta pestaña están rellenados.",
   "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}": "{count, plural, one {# más en {tab}.} other {# más en {tab}.}}",
   "To validate": "Por validar",
-  "Running version not verified: validate it before acting on the case.": "Versión en ejecución no verificada: valídela antes de actuar sobre el caso."
+  "Running version not verified: validate it before acting on the case.": "Versión en ejecución no verificada: valídela antes de actuar sobre el caso.",
+  "To create": "Por crear",
+  "To update": "Por actualizar",
+  "To remove": "Por eliminar",
+  "Target platform": "Plataforma de destino",
+  "What to push": "Qué enviar",
+  "Import from a platform": "Importar desde una plataforma",
+  "Push to a platform": "Enviar a una plataforma",
+  "The platform is the master: its rows fill this section.": "La plataforma es la referencia: sus filas llenan esta sección.",
+  "XTM One is the master: its rows are written to the platform.": "XTM One es la referencia: sus filas se escriben en la plataforma.",
+  "Connected: the sync writes with your account.": "Conectada: la sincronización escribe con su cuenta.",
+  "The first run writes these rows to {platform}. Later runs update and remove only what this sync created; the rest of {platform} is never touched.": "La primera ejecución escribe estas filas en {platform}. Las siguientes solo actualizan y eliminan lo que creó esta sincronización; el resto de {platform} nunca se modifica.",
+  "The sync runs on this schedule, with these filters.": "La sincronización se ejecuta con esta programación y estos filtros.",
+  "One section to one platform, no AI. Nothing is written before Save, and the platform's own rows are never touched.": "Una sección hacia una plataforma, sin IA. Nada se escribe antes de Guardar, y las filas propias de la plataforma nunca se modifican."
 }
