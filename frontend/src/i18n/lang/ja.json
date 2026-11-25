@@ -18245,6 +18245,7 @@
   "Every PIR": "すべての PIR",
   "Hosts, applications and services, with their exposure and criticality.": "ホスト、アプリケーション、サービスと、その公開範囲と重要度。",
   "Import from the platforms": "プラットフォームからインポート",
+  "Save the sync": "同期を保存",
   "In the profile": "プロファイル側",
   "In {platform}": "{platform} 側",
   "Lowest criticality": "最低重要度",
@@ -21701,5 +21702,18 @@
   "To validate": "要検証",
   "Running version not verified: validate it before acting on the case.": "稼働中のバージョンは未検証です。ケースに対応する前に検証してください。",
   "{primary, plural, one {# primary asset} other {# primary assets}} reached through {supporting, plural, one {# supporting asset} other {# supporting assets}}.": "{supporting, plural, other {#件のサポート資産}}を通じて{primary, plural, other {#件の主要資産}}に到達。",
-  "{count, plural, one {# policy rule applied} other {# policy rules applied}}.": "{count, plural, other {#件のポリシールールを適用}}。"
+  "{count, plural, one {# policy rule applied} other {# policy rules applied}}.": "{count, plural, other {#件のポリシールールを適用}}。",
+  "To create": "作成予定",
+  "To update": "更新予定",
+  "To remove": "削除予定",
+  "Target platform": "送信先プラットフォーム",
+  "What to push": "送信する内容",
+  "Import from a platform": "プラットフォームからインポート",
+  "Push to a platform": "プラットフォームへ送信",
+  "The platform is the master: its rows fill this section.": "プラットフォームが正となり、その行がこのセクションを埋めます。",
+  "XTM One is the master: its rows are written to the platform.": "XTM One が正となり、その行がプラットフォームに書き込まれます。",
+  "Connected: the sync writes with your account.": "接続済み: 同期はあなたのアカウントで書き込みます。",
+  "The first run writes these rows to {platform}. Later runs update and remove only what this sync created; the rest of {platform} is never touched.": "初回の実行でこれらの行を {platform} に書き込みます。以降の実行では、この同期が作成したものだけを更新・削除し、{platform} のその他のデータには一切触れません。",
+  "The sync runs on this schedule, with these filters.": "同期はこのスケジュールとこれらのフィルターで実行されます。",
+  "One section to one platform, no AI. Nothing is written before Save, and the platform's own rows are never touched.": "1 つのセクションを 1 つのプラットフォームへ、AI なし。保存するまで何も書き込まれず、プラットフォーム固有の行には一切触れません。"
 }
