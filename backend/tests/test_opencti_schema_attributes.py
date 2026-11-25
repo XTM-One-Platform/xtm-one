@@ -704,3 +704,25 @@ def test_the_nlq_agent_prepares_its_query_with_the_custom_field_keys() -> None:
         "provider": "opencti",
         "tool_name": "get_opencti_nlq_context",
     }
+
+
+async def test_schema_attributes_names_the_stix_filter_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    keys = {"customFieldStixFilterKeys": ["x_opencti_cf_case_reference"]}
+    executor, rec, _ = _build(monkeypatch, [(_REPORT_FIELDS, None), (keys, None)])
+    result = await _call(executor, "get_opencti_schema_attributes", entity_type="report")
+    assert rec.calls[1][1] == {"t": "Report"}
+    assert (
+        "Custom-field keys of STIX filters (playbooks, live streams, triggers) for Report: "
+        "x_opencti_cf_case_reference." in result.content
+    )
+    assert result.structured["stix_filter_keys"] == ["x_opencti_cf_case_reference"]
+
+
+async def test_an_opencti_without_stix_filter_keys_lists_the_fields_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    refused = "GraphQL error in 'CustomFieldStixFilterKeys': Cannot query field \"customFieldStixFilterKeys\""
+    executor, _, _ = _build(monkeypatch, [(_REPORT_FIELDS, None), ({}, refused)])
+    result = await _call(executor, "get_opencti_schema_attributes", entity_type="Report")
+    assert "STIX filters" not in result.content
+    assert "x_opencti_cf_case_reference" in result.content

@@ -603,8 +603,13 @@ def _schema_attributes_answer(
     *,
     mandatory_only: bool,
     note: str = "",
+    stix_filter_keys: list[str] | None = None,
 ) -> ToolResult:
-    """The answer of ``get_opencti_schema_attributes``: mandatory fields first."""
+    """The answer of ``get_opencti_schema_attributes``: mandatory fields first.
+
+    *stix_filter_keys* are the custom-field keys STIX filters (playbooks, live
+    streams, triggers) take for the type, a list OpenCTI keeps apart.
+    """
     mandatory = [a for a in attributes if a["mandatory"]]
     optional = [] if mandatory_only else [a for a in attributes if not a["mandatory"]]
     lines = [
@@ -622,11 +627,20 @@ def _schema_attributes_answer(
         "A field the create tool has no parameter for (a custom field included) goes in "
         "its 'attributes' argument, keyed by the name above; a ref field takes IDs."
     )
+    if stix_filter_keys:
+        lines.append(
+            "Custom-field keys of STIX filters (playbooks, live streams, triggers) for "
+            f"{entity_type}: {', '.join(stix_filter_keys)}."
+        )
     shown = mandatory + optional
     return ToolResult(
         tool_call_id="",
         content="\n".join(lines),
-        structured={"entity_type": entity_type, "attributes": shown},
+        structured={
+            "entity_type": entity_type,
+            "attributes": shown,
+            "stix_filter_keys": list(stix_filter_keys or []),
+        },
     )
 
 # STIX 2.1 ``standard_id`` pattern — ``<type>--<uuid>`` (e.g.
@@ -3863,15 +3877,27 @@ def register_knowledge(
             data, err = await _graphql(client, base_url, headers, query, {"t": entity_type})
             if _is_legacy_schema_attributes(err):
                 return await _legacy_schema_attributes(client, entity_type, mandatory_only)
-        if err:
-            return err
-        maps = data.get("schemaAttributes") or []
-        if not maps:
-            return f"Error: OpenCTI returned no fields for type '{entity_type}'."
-        found = maps[0]
+            if err:
+                return err
+            maps = data.get("schemaAttributes") or []
+            if not maps:
+                return f"Error: OpenCTI returned no fields for type '{entity_type}'."
+            found = maps[0]
+            canonical = str(found.get("type") or entity_type)
+            # Playbook, live stream and trigger filters are STIX filters, with
+            # their own custom-field key list: best effort, an OpenCTI without
+            # it lists the fields alone.
+            keys_data, keys_err = await _graphql(
+                client,
+                base_url,
+                headers,
+                "query CustomFieldStixFilterKeys($t: String) { customFieldStixFilterKeys(entityType: $t) }",
+                {"t": canonical},
+            )
+        stix_filter_keys = [] if keys_err else [str(k) for k in keys_data.get("customFieldStixFilterKeys") or []]
         attributes = [_schema_attribute(a) for a in found.get("attributes") or []]
         return _schema_attributes_answer(
-            found.get("type") or entity_type, attributes, mandatory_only=mandatory_only
+            canonical, attributes, mandatory_only=mandatory_only, stix_filter_keys=stix_filter_keys
         )
 
     # The fields and custom field definitions of a type, read once a minute
@@ -7050,7 +7076,9 @@ def register_knowledge(
                 "instance defines them: each field's description (what to put, its "
                 "format, an example), whether this instance makes it mandatory at "
                 "creation, its default values, and the instance's custom fields "
-                "(x_opencti_cf_...). Read it before creating an object of a type "
+                "(x_opencti_cf_...) with the custom-field keys STIX filters "
+                "(playbooks, live streams, triggers) take for the type. Read it "
+                "before creating an object of a type "
                 "whose mandatory or custom fields you do not know, then pass the "
                 "fields the create tool has no parameter for in its 'attributes'."
             ),
