@@ -177,9 +177,12 @@ def _live_ci(monkeypatch, state):
 async def test_a_second_release_on_the_same_red_defers_the_item_instead_of_looping(settle):
     item = _item(status="in_progress", blocked_on_refs=None, not_before=None, payload={"pull_requests": [_red()]})
     out, _ = await settle(item)
-    # The first release on a red goes back to the queue at once: the next run fixes it.
-    assert out == "released" and item.status == "open" and item.not_before is None
-    item.status = "in_progress"
+    # The first release on a red goes back to the queue after the red hand-off: the
+    # head's red event fixes it first, the next inbox run only if nobody did.
+    assert out == "released" and item.status == "open"
+    assert timedelta(0) < item.not_before - datetime.now(UTC) <= wi_service.RED_HANDOFF_DEFER
+    # The next run starts once the hand-off is over.
+    item.status, item.not_before = "in_progress", None
     out, _ = await settle(item)
     # Same head, same check runs: a run at once would see the same thing (a held draft
     # at its rerun cap was dispatched five times in four minutes).
@@ -193,16 +196,30 @@ async def test_a_second_release_on_the_same_red_defers_the_item_instead_of_loopi
 async def test_a_release_on_a_new_head_or_a_new_conclusion_is_not_deferred(settle):
     item = _item(status="in_progress", blocked_on_refs=None, not_before=None, payload={"pull_requests": [_red()]})
     await settle(item)
-    item.status = "in_progress"
+    item.status, item.not_before = "in_progress", None
     item.payload = {**item.payload, "pull_requests": [_red("def")]}
     out, _ = await settle(item)
-    assert out == "released" and item.not_before is None
-    item.status = "in_progress"
+    assert out == "released" and item.not_before - datetime.now(UTC) <= wi_service.RED_HANDOFF_DEFER
+    item.status, item.not_before = "in_progress", None
     rerun = _red("def")
     rerun["ci"]["runs"]["ci"]["run_id"] = 2
     item.payload = {**item.payload, "pull_requests": [rerun]}
     out, _ = await settle(item)
-    assert out == "released" and item.not_before is None
+    assert out == "released" and item.not_before - datetime.now(UTC) <= wi_service.RED_HANDOFF_DEFER
+    assert wi_service.RED_DEFERRED_UNTIL_KEY not in item.payload
+
+
+@pytest.mark.asyncio
+async def test_a_first_red_release_is_held_back_for_the_heads_red_event(settle):
+    # The red-check event and an inbox run both took one red head: the inbox waits
+    # for the red event's hand-off; a not_before already past is replaced.
+    past = datetime.now(UTC) - timedelta(minutes=5)
+    item = _item(status="in_progress", blocked_on_refs=None, not_before=past, payload={"pull_requests": [_red()]})
+    out, _ = await settle(item)
+    assert out == "released" and item.status == "open"
+    assert timedelta(0) < item.not_before - datetime.now(UTC) <= wi_service.RED_HANDOFF_DEFER
+    assert item.claimed_by_run_id is None
+    assert "for the head's red event" in item.claim_notes[-1]["text"]
 
 
 def test_the_ci_completion_clears_only_the_deferral_of_an_unchanged_red():

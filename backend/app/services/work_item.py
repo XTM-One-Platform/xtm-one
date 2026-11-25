@@ -3989,6 +3989,13 @@ RED_DEFERRED_UNTIL_KEY = "_red_deferred_until"
 #: on the claim. Past the hand-off, a live claim keeps it back
 #: (``shared_state_pull_requests``), a merge releases it, else the inbox takes it.
 GREEN_HANDOFF_DEFER = timedelta(minutes=3)
+#: How long :func:`settle_inbox_work_item` holds back an item released for the
+#: first time on a red head. The head's red event (a listener woken by the
+#: failing check, which takes the branch lease and pushes the fix) arrives within
+#: seconds of that read: an inbox run started at once is a second run on the
+#: same red. Past the hand-off, a live branch lease keeps it back
+#: (``shared_state_pull_requests``), else the inbox takes it.
+RED_HANDOFF_DEFER = timedelta(minutes=3)
 
 
 def clear_red_deferral(item: Any) -> bool:
@@ -4470,6 +4477,14 @@ async def settle_inbox_work_item(
                 now=now,
             )
             item.payload = {**(item.payload or {}), RED_RELEASED_ON_KEY: signature}
+            if not unchanged and item.status == "open" and not exhausted:
+                # First release on this red: held back for the head's red event, which
+                # takes the branch lease and fixes it; never a second run on one red.
+                item.not_before = now + RED_HANDOFF_DEFER
+                item.claim_notes[-1]["text"] = (
+                    f"{item.claim_notes[-1]['text']}; held back until "
+                    f"{item.not_before.strftime('%Y-%m-%dT%H:%M:%SZ')} for the head's red event"
+                )
             if unchanged and item.status == "open":
                 # The previous run was released on this very red and nothing moved on
                 # GitHub since (a held draft at its rerun cap): another run at once
