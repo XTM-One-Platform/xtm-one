@@ -10,7 +10,9 @@
  *   fleet, and "Switch on";
  * - a run works the case, or failed: the agent, its fleet, the run state and
  *   the run;
- * - automations are on and wait for the next case event: who they are.
+ * - automations are on and wait for the next case event: who they are, and
+ *   how many that could also work it are switched off.
+ * An observer of the case events (`trigger_config.role`, #2054) is never named.
  * Calls to action are DS buttons; no inline link in the secondary colour.
  */
 import { useState, type ComponentProps } from "react";
@@ -275,6 +277,7 @@ function WorkedBy({ work }: { work: Extract<CaseWork, { kind: "running" | "faile
       ? workerLabel(work.automations[0], unknownAgent)
       : unknownAgent;
   const more = work.kind === "on" ? work.automations.length - 1 : 0;
+  const switchedOff = work.kind === "on" ? work.off : [];
   const queued = run && (run.status === "pending" || run.status === "queued");
   const state =
     work.kind === "failed"
@@ -294,6 +297,13 @@ function WorkedBy({ work }: { work: Extract<CaseWork, { kind: "running" | "faile
               {t_i18n("Worked by {who}", { who })}
               {more > 0 && ` ${t_i18n("{count, plural, one {and # more} other {and # more}}", { count: more })}`}
             </span>
+            {switchedOff.length > 0 && (
+              <span className="content-compact text-default-secondary" data-testid="ctem-case-work-switched-off">
+                {t_i18n("{count, plural, one {# automation that can work this case is switched off} other {# automations that can work this case are switched off}}", {
+                  count: switchedOff.length,
+                })}
+              </span>
+            )}
             <span
               className={work.kind === "failed" ? "content-compact text-feedback-error-primary" : "content-compact text-default-secondary"}
               data-testid="ctem-case-work-state"

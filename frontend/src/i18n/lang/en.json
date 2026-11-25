@@ -21776,5 +21776,8 @@
   "Which side is the master of the list.": "Which side is the master of the list.",
   "The part of the organization context the sync writes to the platform.": "The part of the organization context the sync writes to the platform.",
   "The part of the organization context the platform fills.": "The part of the organization context the platform fills.",
-  "Rows the first run creates in {platform}": "Rows the first run creates in {platform}"
+  "Rows the first run creates in {platform}": "Rows the first run creates in {platform}",
+  "Observer only": "Observer only",
+  "This automation watches the objects of its events without working them: a CTEM case it hears is not shown as worked by it.": "This automation watches the objects of its events without working them: a CTEM case it hears is not shown as worked by it.",
+  "{count, plural, one {# automation that can work this case is switched off} other {# automations that can work this case are switched off}}": "{count, plural, one {# automation that can work this case is switched off} other {# automations that can work this case are switched off}}"
 }

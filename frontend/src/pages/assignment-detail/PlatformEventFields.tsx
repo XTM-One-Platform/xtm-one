@@ -125,6 +125,25 @@ export function PlatformEventFields({
         <Switch aria-label={t_i18n("One-off watch")} checked={draft.once} onCheckedChange={(v) => onChange({ ...draft, once: v })} />
       </div>
 
+      <div className="flex items-start justify-between gap-3 rounded-sm border border-elevation-subtle-soft bg-elevation-default p-3">
+        <div className="space-y-0.5">
+          <p className="content-compact font-medium">{t_i18n("Observer only")}</p>
+          <p className="content-caption text-default-secondary leading-relaxed">
+            {t_i18n("This automation watches the objects of its events without working them: a CTEM case it hears is not shown as worked by it.")}
+          </p>
+        </div>
+        <Switch
+          aria-label={t_i18n("Observer only")}
+          checked={draft.observer === true}
+          onCheckedChange={(v) => {
+            const next = { ...draft };
+            if (v) next.observer = true;
+            else delete next.observer;
+            onChange(next);
+          }}
+        />
+      </div>
+
       <PlatformDeadlineField draft={draft} onChange={onChange} />
     </div>
   );

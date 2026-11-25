@@ -25,7 +25,14 @@ on a schedule::
         "scope": "own",                        # "own" (default), "fleet" or "all"
         "once": False,                         # True: a one-off watch
         "expires_at": "2026-11-02T09:00:00Z",  # optional deadline
+        "role": "observer",                    # optional: watches, never works the object
     }
+
+**Role.** ``role = "observer"`` declares that the assignment watches the
+objects of its events (a supervisor reading a case lifecycle) without working
+them. Delivery is unchanged; readers that ask who works an object (the CTEM
+case page) leave observers out. Absent (or ``"worker"``), the assignment works
+what it hears.
 
 **One-off watch.** ``once = true`` makes the trigger a watch: the first event
 that matches starts one run, and the subscription ends there. The delivery
@@ -127,6 +134,11 @@ FIRED_EVENT_KEY = "fired_event_id"
 FIRED_AT_KEY = "fired_at"
 #: ``trigger_config`` key of the subscription's deadline (ISO 8601 date-time with its offset).
 EXPIRES_AT_KEY = "expires_at"
+#: ``trigger_config`` key of the assignment's role on its events, and its values.
+ROLE_KEY = "role"
+ROLE_OBSERVER = "observer"
+ROLE_WORKER = "worker"
+TRIGGER_ROLES: frozenset[str] = frozenset({ROLE_OBSERVER, ROLE_WORKER})
 #: Dedupe window of a platform event's run (seconds).
 DEDUP_WINDOW_SECONDS = 24 * 3600
 #: Bound of a note text carried in a payload.
@@ -620,6 +632,9 @@ def trigger_config_error(trigger_type: object, trigger_config: object) -> str | 
         return "Invalid trigger_config: 'scope' must be 'own', 'fleet' or 'all'."
     if not isinstance(trigger_config.get(ONCE_KEY, False), bool):
         return "Invalid trigger_config: 'once' must be true or false."
+    role = trigger_config.get(ROLE_KEY)
+    if role is not None and not (isinstance(role, str) and role in TRIGGER_ROLES):
+        return "Invalid trigger_config: 'role' must be 'observer' or 'worker'."
     deadline = trigger_config.get(EXPIRES_AT_KEY)
     if deadline is not None and parse_deadline(deadline) is None:
         return (
