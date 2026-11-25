@@ -8510,7 +8510,12 @@ async def execute_assignment_run(
                 # tool of the run changes an integration it is bound to (#1874).
                 if loop_kwargs["executor"] is not None and _rebuild_integration_tools is not None:
                     loop_kwargs["tool_surface_refresher"] = IntegrationSurfaceRefresher(
-                        composite, loop_kwargs["executor"], _rebuild_integration_tools, _narrow_tool_surface
+                        composite,
+                        loop_kwargs["executor"],
+                        _rebuild_integration_tools,
+                        _narrow_tool_surface,
+                        # update_agent on this run's own agent refreshes it too (#2205).
+                        agent_id=str(agent.id),
                     )
                 # Tool groups the assignment declares are on the wire from the
                 # first request, so the cached prompt prefix holds all run.
