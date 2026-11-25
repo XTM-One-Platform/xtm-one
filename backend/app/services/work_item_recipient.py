@@ -258,7 +258,7 @@ def _is_ctem(agent: Any, fleet: Any) -> bool:
 def _persons_fleet_owner(fleet: Any) -> uuid.UUID | None:
     """The owner of a home fleet a person owns (a seeded fleet's owner is the seed account)."""
     if fleet is not None and not fleet[1] and fleet[3] is not None:
-        return fleet[3]
+        return safe_uuid(fleet[3])
     return None
 
 
@@ -310,7 +310,7 @@ async def _run_person(db: Any, agent: Any, run_person_id: uuid.UUID | None) -> u
         return None
     if person is None or not person.is_active or _is_seed_account(person, agent):
         return None
-    return person.id
+    return safe_uuid(person.id)
 
 
 async def _company_agent_recipient(db: Any, agent: Any, *, run_person_id: uuid.UUID | None = None) -> Recipient | None:
