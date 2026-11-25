@@ -110,6 +110,17 @@ def env(monkeypatch):
     monkeypatch.setattr(store, "get_case", _get)
     monkeypatch.setattr(store, "create_manual_case", _create)
 
+    # No case of these tests was merged away (#2289): the merge lookups answer none.
+    async def _merged_into(_db: object, case_id: object, *, organization_id: object) -> object:
+        return seen.merged.get(case_id)
+
+    async def _merged_with_prefix(_db: object, prefix: str, *, organization_id: object, limit: int = 2) -> list[object]:
+        return [m for m in seen.merged.values() if str(m.case_id).startswith(prefix)][:limit]
+
+    seen.merged = {}
+    monkeypatch.setattr(store, "merged_into", _merged_into)
+    monkeypatch.setattr(store, "merged_with_prefix", _merged_with_prefix)
+
     async def _events(_db: object, case_ids: list[object]) -> dict[object, list[object]]:
         return {cid: [] for cid in case_ids}
 
