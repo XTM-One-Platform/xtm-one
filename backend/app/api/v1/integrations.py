@@ -4596,6 +4596,45 @@ async def _test_integration(
     }
 
 
+@router.get("/{integration_id}/notion-webhook")
+async def get_notion_webhook_setup(
+    integration_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    """The Notion webhook setup of an integration: the URL to subscribe and the verification token.
+
+    Notion sends the token once, to the URL, when the admin creates the
+    subscription; the receiver keeps it (``notion_webhooks``) and the admin
+    pastes it in Notion's Verify form. Only a user who may edit the integration
+    reads the token.
+    """
+    from app.services import notion_webhooks
+
+    user_group_ids = await get_user_group_ids(db, user.id)
+    integration = await get_user_integration(db, user.id, integration_id, user_group_ids, is_admin=user.is_admin)
+    if integration.provider != notion_webhooks.PROVIDER:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Not a Notion integration.")
+    if not can_manage(user, integration, user_group_ids):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to edit this integration.",
+        )
+    extra = decrypt_json(integration.extra_config_enc) if integration.extra_config_enc else {}
+    token = notion_webhooks.stored_token(extra if isinstance(extra, dict) else {})
+    return {
+        "webhook_url": f"{settings.base_url}/api/hooks/integrations/{integration.id}",
+        "verification_token": token,
+        "events": list(notion_webhooks.EVENTS),
+        "next_step": (
+            "Paste the token in the Verify form of the subscription in Notion."
+            if token
+            else "Create the subscription in the connection's Webhooks tab of Notion with this URL; "
+            "Notion then sends the verification token here."
+        ),
+    }
+
+
 @router.get("/{integration_id}/tools")
 async def list_integration_tools(
     integration_id: str,
