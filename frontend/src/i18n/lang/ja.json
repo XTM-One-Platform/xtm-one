@@ -21697,11 +21697,14 @@
   "Show all supporting assets": "すべてのサポート資産を表示",
   "Hide supporting assets": "サポート資産を非表示",
   "{count, plural, one {supporting asset} other {supporting assets}}": "{count, plural, other {サポート資産}}",
-  "{count, plural, one {# direct link} other {# direct links}}": "{count, plural, other {直接リンク #件}}",
-  "{count, plural, one {# through an asset group} other {# through asset groups}}": "{count, plural, other {資産グループ経由 #件}}",
   "Source finding": "ソースの検出結果",
   "Subject details": "対象の詳細",
   "Evidence coverage": "証跡のカバレッジ",
   "Surface change": "攻撃対象領域の変化",
-  "Inventory freshness": "インベントリの鮮度"
+  "Inventory freshness": "インベントリの鮮度",
+  "{count, plural, one {direct link} other {direct links}}": "{count, plural, other {件の直接リンク}}",
+  "{count, plural, one {through an asset group} other {through asset groups}}": "{count, plural, other {件が資産グループ経由}}",
+  "≥ {threshold}": "{threshold}以上",
+  "< {threshold}": "{threshold}未満",
+  "{total} {count, plural, one {asset} other {assets}}: {names}": "{total}件の資産: {names}"
 }
