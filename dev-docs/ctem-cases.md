@@ -299,10 +299,26 @@ same way.
   read, marked; no link-based count is computed, because the ids of members a
   viewer cannot read are never served (ids-only rule of the case loop). Signal
   members carry no issue details for anyone and never restrict. The list
-  answers `hidden_cases` (API top level; `scope.hidden_cases` in
-  `list_ctem_cases`): the open cases the viewer sees none of, a count only, so
-  a page is never read as the organization total. Tests:
-  `tests/test_ctem_case_scope_limited_aggregates.py`.
+  answers (API top level; under `scope` in `list_ctem_cases`,
+  `ctem_cases_view.list_visibility`, #2113) `hidden_cases`, the open cases the
+  viewer is refused (every member judged by their view, none theirs), and
+  `unjudged_cases`, the open cases their view could not judge now (a product
+  that did not answer for a product reason such as timeout or too_large, a
+  capped read, or a case opened after an older view was built: the view keeps
+  the member ids its read was given, `judged`), each with its split by state
+  (`hidden_by_state`, `unjudged_by_state`), `counts_partial` and `view`
+  (`complete`, `capped`, `stale`, `age_seconds`, `products_missing` with
+  reasons). For each state, the store's cases = `counts` + hidden + unjudged.
+  A product that refuses the identity (`rejected`, `not_connected`) makes its
+  members refused, hence hidden. Visibility stays per person for
+  administrators too: an administrator sees a product member only through
+  their own OpenCTI / OpenAEV credentials (signal members are read whole for
+  them), so an administrator's `hidden_cases` means members their own product
+  accounts do not return. A case deleted between the case read and the view
+  read (a bulk delete releases its signals in its own transaction) is re-read
+  by id and left out (`drop_gone`), never counted as hidden. Tests:
+  `tests/test_ctem_case_scope_limited_aggregates.py`,
+  `tests/test_ctem_case_list_unjudged.py`.
 - where the per-platform fix comes from (slice 2 of #1572): the OpenCTI reader
   reads each Software that `remediates` the vulnerability with its `cpe`;
   `ctem_fixed_version.platform_of_software` takes the platform from the CPE
@@ -870,7 +886,9 @@ List reads after a case-opening drain (#2092): the list, the overview and the
 loop measures read the caller's view with `stale_ok`. A generation bump (a case
 opened) retires every cached view; the caller's own newest view of the previous
 generation, still in its TTL, answers while the new one builds in the background
-(`Server-Timing` `cache-stale`). With none, the read waits
+(`Server-Timing` `cache-stale`); the cases opened since it was built are
+answered as `unjudged_cases` with `view.stale` true, never as hidden (#2113).
+With none, the read waits
 `LIST_BUILD_WAIT_SECONDS` (10 s) for that build, then answers 503 with
 `Retry-After` (`LIST_RETRY_AFTER_SECONDS`, 30 s): never a whole view build on
 the request (400 s on a large tenant). Event visibility (`user_sees_case`)
@@ -1106,7 +1124,9 @@ rule (`ctem_cases_view.signal_members`, the admin flag alone); under `own`,
 `hidden_by_scope` counts the case-bound signals the person does not see:
 across the organization for `list_ctem_cases`, bound to that case alone for
 `get_ctem_case` (its note then says "on this case"). `list_ctem_cases` also
-answers `scope.hidden_cases`, the open cases the person sees none of; a `null`
+answers `scope.hidden_cases`, the open cases the person is refused, and
+`scope.unjudged_cases` with `scope.view`, the ones their view could not judge
+now (#2113, scope-limited aggregates above); a `null`
 aggregate on a case means unknown for this reader, never none (section on
 scope-limited aggregates above).
 Tests: `tests/test_ctem_read_tools.py`.

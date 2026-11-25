@@ -59,6 +59,9 @@ RESTRICTED = "Restricted"
 LIST_BUILD_WAIT_SECONDS = 10.0
 #: The retry delay a list read names when the view is still building after that wait.
 LIST_RETRY_AFTER_SECONDS = 30
+#: The reasons a product gives about one identity (``ctem_cases_source.IDENTITY_REASONS``): the
+#: viewer has no access there, so what it did not return is refused, not unjudged (#2113).
+_IDENTITY_REASONS = frozenset({"rejected", "not_connected"})
 
 
 class ViewRebuildingError(Exception):
@@ -105,9 +108,49 @@ class ViewerView:
     #: True when this viewer's own OpenCTI read is available (CTEM-16-UI, #1115): only
     #: then are the name, ids and link of a case's threat package shown.
     opencti: bool = False
+    #: The member ids of the shared cases this view's read was given (#2113): a product member
+    #: outside it belongs to a case opened after the view was built, never judged by it. ``None``
+    #: for a view cached before the field (judged as before).
+    judged: set[str] | None = None
+    #: When the source read of this view ended (UTC, #2113).
+    built_at: datetime | None = None
+    #: True when a list read answered from an older generation's view (#2092, #2113).
+    stale: bool = False
 
     def sees(self, member_id: str) -> bool:
         return member_id in self.issues or member_id in self.unavailable or member_id in self.signals
+
+    def judges(self, member_id: str) -> bool:
+        """Whether this view's read decided *member_id* (#2113): seen, or refused by a product that answered.
+
+        A product member is NOT judged when its product did not answer for a reason of the
+        product (timeout, too large, unavailable: never the identity reasons, which say the
+        viewer has no access), when a read hit its cap, or when the member joined the cases
+        after the view was built. Signal members are read fresh on every call: always judged.
+        """
+        if self.sees(member_id):
+            return True
+        source = member_id.split(":", 1)[0]
+        if source == SIGNAL_SOURCE:
+            return True
+        if source in self.missing and self.reasons.get(source, "unavailable") not in _IDENTITY_REASONS:
+            return False
+        if not self.complete:
+            return False
+        if self.judged is None:  # a view cached before #2113: only an older view may predate a case
+            return not self.stale
+        return member_id in self.judged
+
+    def condition(self) -> dict[str, Any]:
+        """What this view could read (#2113), so a count it leaves out is never read as hidden."""
+        age = int((datetime.now(UTC) - self.built_at).total_seconds()) if self.built_at else None
+        return {
+            "complete": self.complete and not self.missing,
+            "capped": not self.complete,
+            "stale": self.stale,
+            "age_seconds": max(0, age) if age is not None else None,
+            "products_missing": {p: self.reasons.get(p, "unavailable") for p in self.missing},
+        }
 
     def to_json(self) -> str:
         return json.dumps(
@@ -121,6 +164,8 @@ class ViewerView:
                 "no_access": self.no_access,
                 "opencrq": self.opencrq,
                 "opencti": self.opencti,
+                "judged": sorted(self.judged) if self.judged is not None else None,
+                "built_at": self.built_at.isoformat() if self.built_at else None,
             }
         )
 
@@ -130,6 +175,8 @@ class ViewerView:
         issues = [_issue_from_json(i) for i in data.get("issues") or []]
         missing = list(data.get("missing") or [])
         stored = data.get("reasons") if isinstance(data.get("reasons"), dict) else {}
+        judged = data.get("judged")
+        built = data.get("built_at")
         return cls(
             issues={i.member_id: i for i in issues},
             open_ids=set(data.get("open_ids") or []),
@@ -140,6 +187,8 @@ class ViewerView:
             no_access=bool(data.get("no_access", False)),
             opencrq=bool(data.get("opencrq", False)),
             opencti=bool(data.get("opencti", False)),
+            judged=set(judged) if isinstance(judged, list) else None,
+            built_at=datetime.fromisoformat(built) if isinstance(built, str) and built else None,
         )
 
 
@@ -455,6 +504,8 @@ async def _list_view(client: Any, user_id: str, vertical: str, generation: str) 
     if older is not None:
         mark("cache", "stale")
         _revalidate(user_id, vertical, generation)
+        # The cases opened since it was built have members it never judged (#2113): unjudged, never hidden.
+        older.stale = True
         return older
     task = _revalidate(user_id, vertical, generation)
     if task is not None:
@@ -1175,14 +1226,68 @@ def list_for_viewer(
     return rows[start : start + max(1, limit)], counts
 
 
-def hidden_case_count(cases: list[tuple[CtemCase, list[CtemCaseIssue]]], view: ViewerView) -> int:
-    """The open cases of the organization this viewer sees none of: a count only, never named.
+def unseen_cases(cases: list[tuple[CtemCase, list[CtemCaseIssue]]], view: ViewerView) -> dict[str, dict[str, int]]:
+    """The cases this viewer sees none of, by state, split into ``hidden`` and ``unjudged`` (#2113).
 
-    Answered beside a list so its length is never read as the organization total.
+    ``hidden``: every member was judged by the view and none is the viewer's to see (refused).
+    ``unjudged``: a member the view did not judge (its product did not answer, a read hit its cap,
+    or the case opened after the view was built): not counted as hidden, never silently dropped.
+    For each state, the cases of the store = the list's count + hidden + unjudged.
     """
+    out: dict[str, dict[str, int]] = {"hidden": {}, "unjudged": {}}
+    for case, members in cases:
+        if visible_members(members, view):
+            continue
+        kind = "unjudged" if any(not view.judges(_member_id(r)) for r in members) else "hidden"
+        out[kind][case.state] = out[kind].get(case.state, 0) + 1
+    return out
+
+
+def _open_total(by_state: dict[str, int]) -> int:
     from app.models.ctem_case import OPEN_STATES
 
-    return sum(1 for case, members in cases if case.state in OPEN_STATES and not visible_members(members, view))
+    return sum(n for state, n in by_state.items() if state in OPEN_STATES)
+
+
+async def drop_gone(
+    db: Any, cases: list[tuple[CtemCase, list[CtemCaseIssue]]], view: ViewerView
+) -> list[tuple[CtemCase, list[CtemCaseIssue]]]:
+    """*cases* without the ones deleted after they were read (#2113), read again by id.
+
+    A list reads the cases, then the viewer's view (its signal members in later statements).
+    A delete committed in between (a bulk delete releases the case's signals in its own
+    transaction) leaves a case read first with no visible member: it would count as hidden.
+    Only those candidates are re-read; an unreadable store keeps the list as read.
+    """
+    candidates = [case.id for case, members in cases if not visible_members(members, view)]
+    if not candidates:
+        return cases
+    try:
+        rows = await db.execute(select(CtemCase.id).where(CtemCase.id.in_(candidates)))
+        present = set(rows.scalars())
+    except Exception:
+        logger.info("CTEM cases: deleted-case re-check unreadable", exc_info=True)
+        return cases
+    gone = set(candidates) - present
+    return [(case, members) for case, members in cases if case.id not in gone] if gone else cases
+
+
+def list_visibility(cases: list[tuple[CtemCase, list[CtemCaseIssue]]], view: ViewerView) -> dict[str, Any]:
+    """What a list answer says beside its counts (#2113), so its length is never read as the org total.
+
+    ``hidden_cases``: the open cases this viewer is refused (a count only, never named);
+    ``unjudged_cases``: the open cases the view could not judge now (neither listed nor hidden);
+    both by state, ``counts_partial`` when some are unjudged, and the view's condition.
+    """
+    unseen = unseen_cases(cases, view)
+    return {
+        "hidden_cases": _open_total(unseen["hidden"]),
+        "unjudged_cases": _open_total(unseen["unjudged"]),
+        "hidden_by_state": unseen["hidden"],
+        "unjudged_by_state": unseen["unjudged"],
+        "counts_partial": bool(unseen["unjudged"]),
+        "view": view.condition(),
+    }
 
 
 def names_asset(rows: list[CtemCaseIssue], view: ViewerView, asset: str) -> bool:
