@@ -2784,12 +2784,35 @@ RUST_FORMAT_GLOBS = ("*.rs",)
 _RUST_DEFAULT_EDITION = "2015"
 
 
-def _rust_edition(manifest: dict[str, Any]) -> str:
-    """The edition a ``Cargo.toml`` declares (``[package]``, else ``[workspace.package]``), Cargo's default else."""
+def _declared_edition(manifest: dict[str, Any]) -> str | None:
+    """The edition a ``Cargo.toml`` names itself (``[package]``, else ``[workspace.package]``); ``None`` else.
+
+    A member's ``edition.workspace = true`` is a table, not a name: it inherits the root's and counts as none.
+    """
     for edition in (_dig(manifest, "package", "edition"), _dig(manifest, "workspace", "package", "edition")):
         if isinstance(edition, str) and edition.isdigit():
             return edition
-    return _RUST_DEFAULT_EDITION
+    return None
+
+
+def _rust_edition(directory: str, files: Mapping[str, bytes]) -> str:
+    """The edition rustfmt parses the changed files of the Cargo root *directory* with.
+
+    The root manifest's own edition first. A virtual workspace (``[workspace]`` with ``members``, no
+    ``[workspace.package].edition``) names none: each member declares its own, so the newest edition among
+    the member manifests below *directory* is taken (a newer edition parses the older syntax, 2015 does not
+    parse ``async fn`` or ``.await``). Cargo's default (2015) only when no manifest names one.
+    """
+    root = _declared_edition(_toml(files.get(_join(directory, "Cargo.toml"))))
+    if root:
+        return root
+    prefix = f"{directory}/" if directory else ""
+    members = [
+        _declared_edition(_toml(data))
+        for path, data in files.items()
+        if posixpath.basename(path) == "Cargo.toml" and path.startswith(prefix) and not _skipped(path)
+    ]
+    return max((edition for edition in members if edition), key=int, default=_RUST_DEFAULT_EDITION)
 
 
 def _rust(collector: _Collector, paths: frozenset[str], files: Mapping[str, bytes]) -> None:
@@ -2799,7 +2822,7 @@ def _rust(collector: _Collector, paths: frozenset[str], files: Mapping[str, byte
         collector.add(directory, "rust", "install", ["cargo", "fetch", *locked], source)
         collector.add(directory, "rust", "lint", ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"], source)
         collector.add(directory, "rust", "format", ["cargo", "fmt", "--all", "--check"], source)
-        _rust_format_apply(collector, directory, source, _rust_edition(_toml(files.get(source))))
+        _rust_format_apply(collector, directory, source, _rust_edition(directory, files))
         collector.add(directory, "rust", "unit", ["cargo", "test", *locked], source)
         collector.add(directory, "rust", "build", ["cargo", "build", *locked], source)
 

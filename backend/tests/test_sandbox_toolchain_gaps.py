@@ -34,6 +34,28 @@ def test_rust_format_apply_reads_the_workspace_edition_and_falls_back_to_cargo_d
     assert _named(bare, "rust-format-apply").argv[-1] == "2015"
 
 
+def test_rust_format_apply_reads_the_member_editions_of_a_virtual_workspace() -> None:
+    virtual = _detect(
+        {
+            "Cargo.toml": '[workspace]\nmembers = ["a", "b", "c"]\n',
+            "a/Cargo.toml": '[package]\nname = "a"\nedition = "2018"\n',
+            "b/Cargo.toml": '[package]\nname = "b"\nedition = "2021"\n',
+            "c/Cargo.toml": '[package]\nname = "c"\nedition.workspace = true\n',
+            "b/src/lib.rs": "pub async fn f() {}\n",
+        }
+    )
+    apply = _named(virtual, "rust-format-apply")
+    assert apply.argv == ("rustfmt", "--edition", "2021")
+    # The root's own edition wins over its members'.
+    rooted = _detect(
+        {
+            "Cargo.toml": '[workspace]\nmembers = ["a"]\n[workspace.package]\nedition = "2018"\n',
+            "a/Cargo.toml": '[package]\nname = "a"\nedition = "2021"\n',
+        }
+    )
+    assert _named(rooted, "rust-format-apply").argv[-1] == "2018"
+
+
 def test_a_poetry_project_with_extras_installs_them() -> None:
     pyproject = '[tool.poetry]\nname = "x"\n[tool.poetry.extras]\nfull = ["pyyaml"]\n'
     found = _detect({"pyproject.toml": pyproject, "poetry.lock": ""})
