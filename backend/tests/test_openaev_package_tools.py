@@ -1138,7 +1138,6 @@ async def test_empty_update_bodies_are_rejected():
         ),
         ("manage_openaev_challenge", {"action": "update", "challenge_id": "c1"}),
         ("manage_openaev_vulnerability", {"action": "update", "vulnerability_id": "v1"}),
-        ("manage_openaev_finding", {"action": "update", "finding_id": "f1"}),
         (
             "manage_openaev_kill_chain_phase",
             {"action": "update", "phase_id": "p1"},

@@ -81,7 +81,7 @@ import { usePlatformRegistrations } from "@/hooks/api/usePlatformApi";
 import { useModuleBaseUrls } from "@/hooks/useModuleBaseUrls";
 import { pivotModuleOf } from "@/lib/module-pivot";
 import { CaseAttentionNow } from "./ctem/CaseAttentionNow";
-import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
+import { CASE_STATE_LABEL, CaseOwner, CaseStateChip, CaseToValidateChip } from "./ctem/cases-shared";
 import { EntityHeaderMoreActions, EntityPageHeader } from "@/components/ui/entity-page-header";
 import type { OverflowMenuItem } from "@/components/ui/overflow-menu";
 import { caseActionDef, caseHeaderActions, type CaseActionId } from "./ctem/case-actions";
@@ -714,6 +714,7 @@ export default function CtemCaseDetail() {
           <>
             <CaseStateChip state={kase.state} />
             <CaseUrgencyChip severity={kase.severity} priority={kase.priority} />
+            <CaseToValidateChip unverified={kase.version_unverified} />
             <CaseOwner name={ownerName} />
             <CaseOwnedBy owner={kase.owner_fleet} fleets={fleets.data} caseId={kase.id} />
             <CaseLoopLine c={kase} now={now} />

@@ -45,12 +45,13 @@ from app.services.builtin_tools import (
 from app.tools.base import ToolDefinition
 
 
-def _make_tool(name: str) -> ToolDefinition:
+def _make_tool(name: str, *, read_only: bool = False) -> ToolDefinition:
     return ToolDefinition(
         name=name,
         description=f"fake tool {name}",
         input_schema={"type": "object", "properties": {}},
         source="test",
+        read_only=read_only,
     )
 
 
@@ -61,7 +62,6 @@ def _make_tool(name: str) -> ToolDefinition:
 
 def test_manage_openaev_tools_are_writes():
     for name in (
-        "manage_openaev_finding",
         "manage_openaev_asset",
         "manage_openaev_threat_arsenal",
         "manage_openaev_inject",
@@ -98,6 +98,21 @@ def test_read_only_openaev_tools_are_not_writes():
         assert not is_openaev_write_tool(name), name
 
 
+def test_a_manage_tool_its_provider_declares_read_only_is_not_a_write() -> None:
+    """Read-only since OpenAEV #9233 (get and summary only): the definition says so, not its name."""
+    from app.integrations.providers.openaev.findings import register
+    from app.tools.base import CallableToolExecutor
+
+    finding = next(
+        td for td in register("https://openaev.test", {}, CallableToolExecutor()) if td.name == "manage_openaev_finding"
+    )
+    assert finding.read_only
+    assert not is_openaev_write_tool(finding)
+    assert strip_openaev_write_tools([finding]) == [finding]
+    # The name alone stays a write: only the provider's declaration exempts it.
+    assert is_openaev_write_tool("manage_openaev_finding")
+
+
 def test_non_openaev_tools_are_not_writes():
     for name in ("web_fetch", "manage_github_issue", "search_knowledge"):
         assert not is_openaev_write_tool(name), name
@@ -110,7 +125,7 @@ def test_non_openaev_tools_are_not_writes():
 
 def test_strip_removes_only_openaev_writes():
     tools = [
-        _make_tool("manage_openaev_finding"),
+        _make_tool("manage_openaev_finding", read_only=True),
         _make_tool("manage_openaev_asset"),
         _make_tool("author_openaev_attack_path_step"),
         _make_tool("promote_openaev_finding_to_asset"),
@@ -125,6 +140,7 @@ def test_strip_removes_only_openaev_writes():
 
     # Reads + the specialist's own non-OpenAEV tools survive.
     assert kept == {
+        "manage_openaev_finding",
         "search_openaev_findings",
         "read_openaev_attack_path_state",
         "get_openaev_run_scope",
@@ -140,7 +156,7 @@ def test_strip_keeps_the_arsenal_but_strips_every_other_write():
     # OTHER global write and every run-scoped write is still stripped.
     tools = [
         _make_tool("manage_openaev_threat_arsenal"),
-        _make_tool("manage_openaev_finding"),
+        _make_tool("manage_openaev_finding", read_only=True),
         _make_tool("manage_openaev_asset"),
         _make_tool("manage_openaev_inject"),
         _make_tool("author_openaev_attack_path_step"),
@@ -154,6 +170,7 @@ def test_strip_keeps_the_arsenal_but_strips_every_other_write():
     assert kept == {
         "manage_openaev_threat_arsenal",
         "search_openaev_injector_contracts",
+        "manage_openaev_finding",
     }
 
 

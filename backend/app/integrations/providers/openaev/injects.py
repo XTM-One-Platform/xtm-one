@@ -24,17 +24,15 @@ from typing import Any
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import (
+    FINDINGS_KEPT_AS_HISTORY,
     _api,
     _fmt_expectation_results_by_type,
     _inject_row_executed,
     _relation_ids,
     _search_body,
-    findings_fate,
     inject_read_answer,
     inject_targets_line,
     json_window,
-    keep_findings_params,
-    keep_findings_schema,
     mirror_content_targets,
 )
 from .testing import _contract_id, _stored_documents
@@ -402,7 +400,6 @@ def register(
         message: str = "",
         search: str = "",
         limit: int = 20,
-        keep_findings: bool = True,
         offset: int = 0,
     ) -> str:
         action = (action or "").strip().lower()
@@ -598,11 +595,11 @@ def register(
                 return "inject_id is required for action 'delete'."
             _, err = await _api(
                 base_url, headers, "delete", f"{base}/injects/{inject_id}",
-                "delete inject", params=keep_findings_params(keep_findings),
+                "delete inject",
             )
             if err:
                 return err
-            return f"Deleted inject {inject_id}. " + findings_fate(keep_findings, "inject")
+            return f"Deleted inject {inject_id}. {FINDINGS_KEPT_AS_HISTORY}"
 
         if action == "duplicate":
             if not inject_id:
@@ -704,8 +701,8 @@ def register(
                 "or 'global' (by inject_id). Actions: 'list' (search), 'get', 'create' "
                 "(title + injector_contract_id, optional content JSON, depends_duration "
                 "seconds, team_ids, asset_ids, asset_group_ids, all_teams, tag_ids), "
-                "'update' (inject_id + fields; the others are kept), 'delete' (inject_id, "
-                "keep_findings), 'duplicate' (inject_id), 'activation' (inject_id + "
+                "'update' (inject_id + fields; the others are kept), 'delete' (inject_id; its "
+                "findings stay as history), 'duplicate' (inject_id), 'activation' (inject_id + "
                 "enabled). Build an ATTACK "
                 "PATH (not flat atomic tests) by CHAINING injects: pass "
                 "parent_inject_id so this inject runs AFTER that parent (optionally "
@@ -752,7 +749,6 @@ def register(
                     "message": {"type": "string", "description": "Status message (set_status)."},
                     "search": {"type": "string"},
                     "limit": {"type": "integer", "default": 20},
-                    "keep_findings": keep_findings_schema(),
                     "offset": {
                         "type": "integer",
                         "default": 0,
