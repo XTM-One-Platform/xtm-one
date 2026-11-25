@@ -7,17 +7,17 @@
  * primary asset is the norm), with how it reaches it, its roles and the security needs it inherits; then the open
  * cases one of whose issues reaches it. Opened from the Business tab and from the case page, by name, never by id.
  */
-import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
 import { Card } from "@/components/ui/card";
-import { DataTable, type DataTableColumn, type DataTableFilter, type DataTableState } from "@/components/ui/data-table";
+import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
 import { EntityPageHeader } from "@/components/ui/entity-page-header";
 import { NotFoundState } from "@/components/ui/not-found-state";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { type CtemCaseSummary, useCtemCasesForPrimaryAsset } from "@/hooks/api/useCtemCasesApi";
 import { usePrimaryAsset, type PrimaryAssetSupporter } from "@/hooks/api/useOrganizationAssetsApi";
 import { useFormatter } from "@/i18n";
+import { readTableState } from "@/lib/data-table-state";
 import { CRITICALITY_LABELS } from "@/lib/organization-profile";
 import { AssetSection, Fact } from "./ctem/AssetOverview";
 import { CasePriorityChip, CaseStateChip } from "./ctem/cases-shared";
@@ -28,6 +28,13 @@ import { linkRoleLabel } from "./ctem/loop/decision-primary-assets";
 /** The supporting asset table opens at 25 rows, the platform's page size; the picker changes it. */
 const SUPPORTERS_PAGE_SIZE = 25;
 const BUSINESS_TAB = `${INVENTORY_PATH}/business`;
+/**
+ * The two tables keep their search, filters, sort and page in the URL under their own prefix (UX r2 B5 on #2027,
+ * Sam's standards s.3), so Back from an asset lands on the same rows and a deep link reads them cold.
+ */
+const SUPPORTERS_URL_KEY = "s_";
+const CASES_URL_KEY = "oc_";
+const NAME_SORT = { key: "name", direction: "asc" } as const;
 
 /** The cases still to work: a resolved one is history, read from the Cases page. */
 const OPEN_STATES = new Set(["new", "analyzing", "waiting_decision", "remediating", "validating", "mitigated_watching", "accepted_risk"]);
@@ -73,16 +80,18 @@ export default function CtemPrimaryAssetDetail() {
   };
   const { name } = useParams<{ name: string }>();
   const navigate = useNavigate();
-  // Page, page size, search, filters and sort all reach the API: the supporting assets are read on the server.
-  const [page, setPage] = useState({ index: 0, size: SUPPORTERS_PAGE_SIZE, search: "", through: "", source: "", sort: "name", direction: "asc" });
+  // Page, page size, search, filters and sort all reach the API, read from the table's URL state (the table writes it).
+  const [searchParams] = useSearchParams();
+  const table = readTableState(searchParams, SUPPORTERS_URL_KEY, { sort: NAME_SORT, pageSize: SUPPORTERS_PAGE_SIZE });
+  const serverSort = table.sort && SERVER_SORTS.has(table.sort.key) ? table.sort : NAME_SORT;
   const read = usePrimaryAsset(name, {
-    q: page.search,
-    offset: page.index * page.size,
-    limit: page.size,
-    through: page.through,
-    source: page.source,
-    sort: page.sort,
-    direction: page.direction,
+    q: table.search,
+    offset: table.page * table.pageSize,
+    limit: table.pageSize,
+    through: (table.filters.through ?? []).join(","),
+    source: (table.filters.source ?? []).join(","),
+    sort: serverSort.key,
+    direction: serverSort.direction,
   });
   const cases = useCtemCasesForPrimaryAsset(read.data?.primary_asset.name);
   const entry = read.data?.primary_asset;
@@ -148,7 +157,8 @@ export default function CtemPrimaryAssetDetail() {
     {
       key: "name",
       header: "Asset",
-      cell: (s) => <TruncatedText text={s.name} className="max-w-[16rem] font-medium" />,
+      // 12rem below the 4xl container (1080), 16rem above: the table never scrolls sideways (UX r2 B6 on #2027).
+      cell: (s) => <TruncatedText text={s.name} className="max-w-[12rem] font-medium @4xl:max-w-[16rem]" />,
       csv: (s) => s.name,
       // The store answers by name: the one server sort.
       sortValue: (s) => s.name.toLowerCase(),
@@ -198,6 +208,8 @@ export default function CtemPrimaryAssetDetail() {
       ),
       csv: (s) => s.source,
       hideable: true,
+      // With Inherited needs, the column that gives way below 4xl, so a long asset name never scrolls the table (UX r2 B6).
+      hideBelow: "4xl",
     },
   ];
 
@@ -214,18 +226,6 @@ export default function CtemPrimaryAssetDetail() {
       options: Object.keys(counts?.source ?? {}).map((value) => ({ value, label: linkSource(value) })),
     },
   ];
-  const onTableState = (state: DataTableState) => {
-    const sort = state.sort && SERVER_SORTS.has(state.sort.key) ? state.sort : null;
-    setPage({
-      index: state.page,
-      size: state.pageSize,
-      search: state.search,
-      through: (state.filters.through ?? []).join(","),
-      source: (state.filters.source ?? []).join(","),
-      sort: sort?.key ?? "name",
-      direction: sort?.direction ?? "asc",
-    });
-  };
 
   const openCases = (cases.data?.cases ?? []).filter((c) => OPEN_STATES.has(c.state));
   const date = (value: string | null) => (value ? intl.formatDate(value, { dateStyle: "medium" }) : "");
@@ -272,7 +272,8 @@ export default function CtemPrimaryAssetDetail() {
           rowKey={(s) => `${s.record_id}|${s.through_kind}|${s.through}`}
           rowHref={(s) => (s.asset_id ? `${INVENTORY_PATH}/assets/${s.asset_id}` : undefined)}
           server={{ total: supporters?.total ?? 0 }}
-          onStateChange={onTableState}
+          urlKey={SUPPORTERS_URL_KEY}
+          defaultSort={NAME_SORT}
           filters={filters}
           defaultPageSize={SUPPORTERS_PAGE_SIZE}
           searchPlaceholder={t_i18n("Search assets or asset groups by name")}
@@ -301,6 +302,7 @@ export default function CtemPrimaryAssetDetail() {
           defaultPageSize={25}
           noFilters="The cases on one primary asset."
           exportName="ctem-primary-asset-cases"
+          urlKey={CASES_URL_KEY}
           isLoading={cases.isLoading && !cases.data}
           isError={cases.isError}
           onRetry={() => void cases.refetch()}

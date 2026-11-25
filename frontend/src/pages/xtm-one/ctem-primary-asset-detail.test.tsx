@@ -75,11 +75,11 @@ vi.mock("@/hooks/api/useCtemCasesApi", async (importOriginal) => ({
   },
 }));
 
-function renderPage() {
+function renderPage(search = "") {
   calls.length = 0;
   caseCalls.length = 0;
   return renderWithProviders(
-    <MemoryRouter initialEntries={["/ctem/inventory/primary-assets/Payments%20platform"]}>
+    <MemoryRouter initialEntries={[`/ctem/inventory/primary-assets/Payments%20platform${search}`]}>
       <Routes>
         <Route path="/ctem/inventory/primary-assets/:name" element={<CtemPrimaryAssetDetail />} />
       </Routes>
@@ -145,6 +145,17 @@ describe("CtemPrimaryAssetDetail", () => {
     renderPage();
     expect(screen.getByTestId("ctem-primary-asset-overview").textContent).toContain("None linked yet");
     expect(screen.getAllByText("No asset of the inventory supports this primary asset yet.").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("reads its search, filters, sort and page from the URL, so Back and a deep link land on the same rows (UX r2 B5)", () => {
+    state.missing = false;
+    state.empty = false;
+    renderPage("?s_q=laptop&s_f_through=asset_group&s_sort=criticality:desc&s_page=3&s_size=50");
+    expect(calls[calls.length - 1]).toEqual({
+      name: "Payments platform",
+      page: { q: "laptop", offset: 100, limit: 50, through: "asset_group", source: "", sort: "criticality", direction: "desc" },
+    });
+    expect((screen.getByRole("searchbox") as HTMLInputElement).value).toBe("laptop");
   });
 
   it("answers an unknown name with the not found state", () => {
