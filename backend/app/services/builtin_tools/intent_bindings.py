@@ -250,19 +250,46 @@ def build_intent_binding_tools(
 
     # -- list ------------------------------------------------------------------
 
+    async def _no_account_agent(db: AsyncSession, ref: str) -> tuple[Agent | None, str | None]:
+        """The agent *ref* names for a run with no account (an A2A task, a
+        company-managed run): the agents ``get_agent`` shows it, through
+        ``caller_visible_filter``."""
+        from sqlalchemy import select
+
+        from app.api.v1.helpers import caller_visible_filter
+        from app.models.agent import Agent
+
+        ref = (ref or "").strip()
+        if not ref:
+            return None, "agent_id is required (an agent id or its slug)."
+        parsed = safe_uuid(ref)
+        clause = Agent.id == parsed if parsed is not None else Agent.slug == ref.lower()
+        agent = (await db.execute(select(Agent).where(clause, caller_visible_filter(Agent, None)))).scalar_one_or_none()
+        if agent is None:
+            return None, f"Agent `{ref[:80]}` not found or you don't have access."
+        return agent, None
+
     async def _list_agent_intent_bindings(agent_id: str) -> str:
         from app.core.database import async_session
 
         async with async_session() as db:
             user = await _caller(db)
             if user is None:
-                return _ANONYMOUS_REFUSAL
-            agent, err = await _agent(db, user, agent_id)
-            if agent is None:
-                return err or "Agent not found."
-            lines = await agent_binding_lines(db, agent, user.id)
-            not_listed = catalog_eligibility(agent)
-            winners = await agent_winner_lines(db, user, agent) if lines else []
+                # A run with no account reads what get_agent shows it: the
+                # global bindings of the agents it may see; writes stay refused.
+                agent, err = await _no_account_agent(db, agent_id)
+                if agent is None:
+                    return err or "Agent not found."
+                lines = await agent_binding_lines(db, agent, None)
+                not_listed = catalog_eligibility(agent)
+                winners: list[str] = []
+            else:
+                agent, err = await _agent(db, user, agent_id)
+                if agent is None:
+                    return err or "Agent not found."
+                lines = await agent_binding_lines(db, agent, user.id)
+                not_listed = catalog_eligibility(agent)
+                winners = await agent_winner_lines(db, user, agent) if lines else []
         head = f"Intent bindings of **{agent.name}** (`{agent.slug}`):"
         body = [f"  • {line}" for line in lines] or [
             f"  • none: no connected platform offers this agent. Bind it with `{BIND_TOOL}`."

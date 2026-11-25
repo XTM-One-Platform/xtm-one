@@ -286,6 +286,37 @@ def login_error(value: Any, field: str = "login") -> str | None:
     return None
 
 
+#: The prefix GitHub gives an enterprise team's slug in an organization's team
+#: listing (``ent:<slug>``): the team endpoints take it as it is (#2155).
+ENTERPRISE_TEAM_PREFIX = "ent:"
+
+#: A team slug: lower-case letters, digits, hyphens and underscores.
+_TEAM_SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$")
+
+
+def team_slug_error(value: Any) -> str | None:
+    """Why *value* is not a team slug ``list_github_teams`` returns, or ``None``.
+
+    An enterprise team reads ``ent:<slug>`` in an organization's listing; the
+    prefix is accepted, the rest is checked as a slug.
+    """
+    raw = _coerce_str(value).strip()
+    if not raw:
+        return "Error: 'team_slug' is required."
+    if _is_template_token(raw):
+        return (
+            f"Error: 'team_slug' value {raw!r} looks like an unsubstituted template "
+            f"placeholder. {_placeholder_hint('team_slug')}"
+        )
+    slug = raw[len(ENTERPRISE_TEAM_PREFIX) :] if raw.lower().startswith(ENTERPRISE_TEAM_PREFIX) else raw
+    if not _TEAM_SLUG_RE.match(slug):
+        return (
+            f"Error: invalid team_slug '{raw}'. Pass the slug list_github_teams shows "
+            "(letters, digits, hyphens, underscores; an enterprise team with its ent: prefix, e.g. ent:security-team)."
+        )
+    return None
+
+
 def _enc(value: Any) -> str:
     """Percent-encode a free-form path segment (branch / ref / tag / file path).
 
@@ -380,7 +411,43 @@ async def safe_request(
     """:func:`app.integrations.http.safe_request` behind :func:`request_path_error`."""
     if err := request_path_error(url):
         return None, err
-    return await _http_safe_request(client, method, url, provider, action, **kwargs)
+    resp, err = await _http_safe_request(client, method, url, provider, action, **kwargs)
+    if err and (moved := _MOVED_REPOSITORY_RE.search(err)):
+        err = await _name_moved_repository(client, provider, err, moved.group(1), kwargs.get("headers"))
+    return resp, err
+
+
+#: A redirect GitHub answers for a transferred or renamed repository: the
+#: request names the old ``owner/name``, the ``Location`` its ``/repositories/{id}``.
+_MOVED_REPOSITORY_RE = re.compile(r"HTTP 30[1278]\b.*Moved to: https://api\.github\.com/repositories/(\d+)")
+
+
+async def _name_moved_repository(
+    client: Any, provider: str, err: str, repository_id: str, headers: dict[str, str] | None
+) -> str:
+    """*err* with the new ``owner/name`` of the moved repository, when it is readable (#2155).
+
+    GitHub answers a request on a transferred or renamed repository's old name
+    with a 301 to ``/repositories/{id}``; the caller needs the new name to call
+    again, never the id. An unreadable repository keeps *err* as it is.
+    """
+    resp, read_err = await _http_safe_request(
+        client,
+        "get",
+        f"{_BASE_URL}/repositories/{repository_id}",
+        provider,
+        f"read the moved repository {repository_id}",
+        headers=headers or {},
+    )
+    full_name = ""
+    if not read_err and resp is not None:
+        try:
+            full_name = str((resp.json() or {}).get("full_name") or "")
+        except ValueError:
+            full_name = ""
+    if not full_name:
+        return err
+    return f"{err} The repository moved: it is now {full_name}. Call again with repo='{full_name}'."
 
 
 # ---------------------------------------------------------------------------

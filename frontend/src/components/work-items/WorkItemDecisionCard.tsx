@@ -40,18 +40,35 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *
  * #842 S3: the layout is the shared `DecisionCard` (one component for every
  * human gate); this file maps a work item to its view and sends the answer.
+ *
+ * #2150: an option the agent marked `confirm` (a terminal one: cancel, close)
+ * opens the card's confirm panel before it is sent, so one misclick never
+ * hands the item back to its agent with the wrong answer.
  */
 import { useState } from "react";
 
 import { ChatMarkdown } from "@/components/chat/ChatMarkdown";
-import { DecisionCard, type DecisionAnswer, type DecisionView } from "@/components/decisions/DecisionCard";
+import { DecisionCard, type DecisionAnswer, type DecisionOption, type DecisionView } from "@/components/decisions/DecisionCard";
 import { useToast } from "@/components/ui/toast";
 import { WorkItemAskAgent } from "@/components/work-items/WorkItemAskAgent";
 import { useAnswerWorkItem } from "@/hooks/api/useWorkItemApi";
 import { useFormatter } from "@/i18n";
-import type { WorkItem } from "@/types";
+import type { WorkItem, WorkItemAskOption } from "@/types";
 
 type Translate = ReturnType<typeof useFormatter>["t_i18n"];
+
+/** The ask's options as tiles: one marked `confirm` asks for a second click (#2150). Pure. */
+export function askOptions(options: readonly WorkItemAskOption[], t_i18n: Translate): DecisionOption[] {
+  return options.map(({ confirm, ...option }) =>
+    confirm
+      ? {
+          ...option,
+          confirm: t_i18n("The agent acts on this answer as soon as it is sent, and it cannot be changed afterwards."),
+          warning: true,
+        }
+      : option,
+  );
+}
 
 /** A work item as the shared card reads it. Pure: tests read it. */
 export function workItemDecisionView(item: WorkItem, t_i18n: Translate): DecisionView {
@@ -66,7 +83,7 @@ export function workItemDecisionView(item: WorkItem, t_i18n: Translate): Decisio
       ask?.question?.trim() ||
       (title ? t_i18n("Decision needed: {title}", { title }) : t_i18n("An agent waits for your decision on this work item.")),
     context: (ask?.context ?? "").split("\n"),
-    options: ask?.options ?? [],
+    options: askOptions(ask?.options ?? [], t_i18n),
     recommendation: ask?.recommendation ?? null,
     deadline: ask?.deadline ?? null,
     links: ask?.links?.length ? ask.links : (fallback?.links ?? []),

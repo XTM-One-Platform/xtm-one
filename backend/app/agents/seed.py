@@ -69,6 +69,7 @@ from app.services.agent_config_versioning import (
 from app.services.assignment_activation_check import parse_activation_check
 from app.services.assignment_dispatch import seeded_trigger_config
 from app.services.assignment_pause import (
+    FLEET_PAUSE_REASON,
     clear_pause_provenance,
     is_emergency_stopped,
     mark_schedule_resumed,
@@ -898,6 +899,14 @@ async def seed_builtin_assignments(
                 # for an automation that writes shared data under an identity
                 # only an administrator can choose.
                 pass
+            elif desired_enabled and existing.paused_reason == FLEET_PAUSE_REASON and not was_enabled:
+                # A fleet's Pause all switched it off (#2157: the dashboard schedules of a
+                # seeded fleet's members): the fleet's Resume re-enables it, a boot never does.
+                logger.info(
+                    "Built-in assignment '%s' (agent '%s') stays paused: its fleet is paused.",
+                    data["name"],
+                    agent_slug,
+                )
             elif desired_enabled and emergency_stopped:
                 # An emergency stop outlives a restart: the stop's resume
                 # re-enables this assignment, a boot never does. The stamp
@@ -1941,7 +1950,6 @@ _EDITING_INTENTS: list[tuple[str, str]] = [
 _EDITING_INTENT_AGENTS: list[tuple[str, str]] = [
     ("opencti-assistant", "cti"),
     ("openaev-assistant", "aev"),
-    ("opencrq-assistant", "crq"),
     ("fimi-analyst", "fimi"),
 ]
 
@@ -1995,9 +2003,6 @@ _INTENT_DESCRIPTIONS: dict[str, str] = {
     "cti.stix_harvester": "Extract cyber threat intelligence from documents into STIX 2.1 bundles",
     "cti.stix_transformer": "Transform a STIX 2.1 bundle (enrich, filter, rewrite, normalize) and return a valid STIX 2.1 bundle",
     "cti.stix_consumer": "Consume a STIX 2.1 bundle as the final step of an OpenCTI playbook (summarize, alert, post, dispatch)",
-    "crq.control_gap_analysis": "Analyze control capability gaps against a compliance framework",
-    "crq.risk_scenario_generator": "Draft risk scenarios from business and threat context",
-    "crq.assessment_summary": "Summarize a compliance assessment and its requirement answers",
 }
 
 def _build_intent_bindings() -> list[dict]:
