@@ -13,31 +13,19 @@ import asyncio
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, cast
+from typing import Any
 
 import pytest
-from sqlalchemy import Table
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import app.models  # noqa: F401 - registers every mapper on Base.metadata
 from app.api.v1 import organization_context as api
 from app.models.organization import Organization
-from app.models.organization_asset import (
-    OrganizationAsset,
-    OrganizationAssetDecision,
-    OrganizationAssetSbom,
-    OrganizationAssetSoftware,
-    OrganizationAssetSource,
-    OrganizationSoftware,
-    OrganizationSoftwareDependency,
-    OrganizationSoftwareVersion,
-)
-from app.models.organization_asset_record import RECORD_MODELS
 from app.models.organization_context import OrganizationContextVersion
 from app.models.user import User
 from app.services import organization_asset_records as records
 from app.services import organization_context as org_context
-from tests.scratch_database import scratch_database, with_referenced_tables
+from tests.scratch_database import ALL_TABLES, scratch_database
 
 pytestmark = pytest.mark.integration
 
@@ -55,21 +43,7 @@ _SYNCED = {
 
 @asynccontextmanager
 async def _database() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    models: list[Any] = [
-        User,
-        OrganizationAsset,
-        OrganizationAssetSource,
-        OrganizationAssetSoftware,
-        OrganizationAssetDecision,
-        OrganizationAssetSbom,
-        OrganizationSoftware,
-        OrganizationSoftwareVersion,
-        OrganizationSoftwareDependency,
-        OrganizationContextVersion,
-        *RECORD_MODELS,
-    ]
-    tables = with_referenced_tables([cast(Table, m.__table__) for m in models])
-    async with scratch_database("orgsavesync", tables=tables) as db:
+    async with scratch_database("orgsavesync", tables=ALL_TABLES, extensions=("vector",)) as db:
         yield db.sessions
 
 
