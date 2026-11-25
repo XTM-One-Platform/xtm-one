@@ -375,11 +375,13 @@ async def test_a_merged_duplicate_never_comes_back_and_the_survivor_keeps_its_sl
     from app.services import ctem_case_loop as loop
 
     async with _database() as sessions, sessions() as session:
-        org_id, owner_id = await _seed(session)
+        org_id, _ = await _seed(session)
         issues = [_issue("v1", "CVE-1"), _other("o1", "CVE-9")]
         await store.apply_recompute(session, organization_id=org_id, vertical="cyber", issues=issues, now=NOW)
         await session.commit()
-        target, merged = sorted((await session.execute(select(CtemCase))).scalars(), key=lambda c: "Tomcat" not in c.title)
+        target, merged = sorted(
+            (await session.execute(select(CtemCase))).scalars(), key=lambda c: "Tomcat" not in c.title
+        )
         sla, target_id = target.sla_due_at, target.id
         await store.merge_cases(
             session,
