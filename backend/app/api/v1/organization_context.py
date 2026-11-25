@@ -2600,6 +2600,43 @@ async def preview_organization_sync_change(
     return SyncChangePreviewResponse(**change)
 
 
+class OutboundPreviewRequest(BaseModel):
+    """A new outbound sync as the Add a sync dialog would save it (#1982 S4)."""
+
+    section: Literal["assets", "asset_groups", "software", "primary_assets", "pirs"]
+    source: Literal["openaev", "opencti", "opencrq"]
+    filters: dict[str, Any] = {}
+
+
+@router.post("/syncs/outbound-preview", response_model=SyncChangePreviewResponse)
+async def preview_new_outbound_sync(
+    body: OutboundPreviewRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> SyncChangePreviewResponse:
+    """What the first run of a new outbound sync would write, before it is saved (#1982 S4).
+
+    The same plan as the preview of an existing sync, with no platform row created yet; read with
+    this administrator's token. Nothing is written to the platform or saved. No model call.
+    """
+    from types import SimpleNamespace
+
+    from app.services import organization_context_outbound as outbound
+    from app.services import organization_context_sync as osync
+
+    if not outbound.supports(body.section, body.source, "outbound"):
+        raise HTTPException(status_code=422, detail=outbound.directions(body.section, body.source)[1])
+    # A sync not saved yet: the planner reads only these attributes of a stored one.
+    proposed: Any = SimpleNamespace(
+        id=None, section=body.section, source=body.source, direction="outbound", filters={}, outbound_ids={}
+    )
+    change = await osync.preview_change(
+        db, proposed, user_id=admin.id, filters=body.filters, batch_type="", remove_gone=True, excluded_ids=None
+    )
+    await db.commit()
+    return SyncChangePreviewResponse(**change)
+
+
 @router.delete("/syncs/{sync_id}", status_code=204)
 async def delete_organization_sync(
     sync_id: uuid.UUID,
