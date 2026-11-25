@@ -95,6 +95,24 @@ def _rank(case: CtemCase, members: list[rules.SourceIssue], now: datetime) -> bo
     return True
 
 
+def _rerank(case: CtemCase, members: list[rules.SourceIssue], now: datetime) -> bool:
+    """Recompute an open reader case's severity from *members* alone, after issues left it (#2047).
+
+    Unlike :func:`_rank`, it may relax: the issues that drove the old severity are fixed below every
+    running version. A severity the loop set from a decision record (no source member left) is kept.
+    """
+    if not members or case.state not in OPEN_STATES:
+        return False
+    severity = PRIORITY_SEVERITY[rules.default_priority(members)]
+    if case.severity == severity:
+        return False
+    from app.services import ctem_case_loop as loop
+
+    case.severity = severity
+    case.sla_due_at = now + timedelta(hours=loop.DEFAULT_SLA_HOURS[severity])
+    return True
+
+
 def _event(case_id: uuid.UUID, actor: str, kind: str, **kw: Any) -> CtemCaseEvent:
     return CtemCaseEvent(case_id=case_id, actor=actor, kind=kind, at=kw.pop("at", None) or datetime.now(UTC), **kw)
 
@@ -172,8 +190,11 @@ async def apply_recompute(
     # One inventory read per upgrade case: it decides #1252 and records the per-device history (#1694).
     history = await events_of(db, [c.id for c in cases])
     fixed_in_inventory: set[uuid.UUID] = set()
+    # #2047: every version each upgrade case's product runs, so an issue fixed below all of them leaves the case.
+    running_of: dict[uuid.UUID, tuple[str, ...] | None] = {}
     for c in cases:
         running = await ctem_case_versions.for_case(db, c, with_devices=True)
+        running_of[c.id] = ctem_case_versions.every_running_version(running)
         await version_history.record(db, c, running, history.get(c.id, []), at=now)
         if (
             c.state in (*OPEN_STATES, "resolved")
@@ -195,6 +216,7 @@ async def apply_recompute(
             validation_plan=bool(getattr(c, "validation_plan", False)),
             fixed_in_inventory=c.id in fixed_in_inventory,
             decided_closure=decided.get(c.id),
+            running_versions=running_of.get(c.id),
         )
         for c in cases
     ]
@@ -269,9 +291,12 @@ async def apply_recompute(
         for member_id in plan.reopen:
             rows[member_id].open = True
             db.add(_event(case.id, actor, "issue_reopened", issue=member_id, at=now))
+        settled = set(plan.settled)
         for member_id in plan.resolve:
             rows[member_id].open = False
-            evidence = not_affected.get(member_id) or rules.CLOSED_AT_SOURCE
+            evidence = not_affected.get(member_id) or (
+                rules.FIXED_BELOW_RUNNING if member_id in settled else rules.CLOSED_AT_SOURCE
+            )
             db.add(_event(case.id, actor, "issue_closed", issue=member_id, evidence=evidence, at=now))
         if plan.add or plan.reopen or plan.resolve or plan.add_keys:
             counts["updated"] += 1
@@ -289,7 +314,7 @@ async def apply_recompute(
                 )
             )
             counts["resolved" if plan.new_state == "resolved" else "reopened"] += 1
-            if plan.evidence == rules.FIXED_IN_INVENTORY:
+            if plan.evidence in (rules.FIXED_IN_INVENTORY, rules.ALL_FIXED_BELOW_RUNNING):
                 case.resolution_kind = "fixed"
             case.state = plan.new_state
             case.state_since = now
@@ -299,7 +324,12 @@ async def apply_recompute(
         still_open = [
             seen[m] for m, row in rows.items() if m in seen and (row.open or m in plan.reopen) and m not in plan.resolve
         ]
-        _rank(case, [*still_open, *(seen[m] for m in plan.add if m in seen)], now)
+        still_open = [*still_open, *(seen[m] for m in plan.add if m in seen)]
+        if settled:
+            # #2047: the CVEs that left the case no longer drive it; its priority is the one of those left.
+            _rerank(case, still_open, now)
+        else:
+            _rank(case, still_open, now)
     grouping = rules.group_issues(issues)
     counts["no_known_fix"] = len(grouping.no_known_fix)
     counts["not_affected"] = len(grouping.not_affected)

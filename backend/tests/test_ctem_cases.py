@@ -162,6 +162,7 @@ def test_recompute_adds_members_and_never_sets_owner_or_state():
         "reason",
         "evidence",
         "add_keys",
+        "settled",
     }
 
 
