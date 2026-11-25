@@ -1022,6 +1022,10 @@ LAB_DOC_DRAFT_HOLD = "lab:draft-hold"
 LAB_DOC_DRAFT_HOLD_DEFAULT_SECONDS = 60
 LAB_DOC_DRAFT_HOLD_MAX_SECONDS = 110
 
+#: A fleet whose description carries this marker gets configuration findings with each whole draft
+#: (``doc_draft_findings``), so a Regenerate from About keeps the Suggestions chip a real model raises.
+LAB_DOC_DRAFT_FINDINGS = "lab:draft-findings"
+
 
 def doc_draft_hold_seconds(description: object) -> int:
     """The seconds a fleet description's ``lab:draft-hold [seconds]`` marker holds a draft; 0 without it."""
@@ -1084,7 +1088,37 @@ def doc_draft_answer(request: dict, number: int) -> str | None:
             "gates": [{"action": "Approve the proposal", "module": "platform", "approver": "the fleet owner"}],
             "objects": [{"module": "platform", "objects": ["work items"]}],
         },
+        "findings": doc_draft_findings(context, fleet.get("description")),
     })
+
+
+def doc_draft_findings(context: object, description: object) -> list[dict]:
+    """The findings a whole draft carries: three of different kinds with ``LAB_DOC_DRAFT_FINDINGS``, else none.
+
+    The drafter's parser keeps them (``clean_findings``), so the About page's Suggestions chip, its dialog
+    and Dismiss render after a Regenerate a person starts in the lab, not only on the seeded version.
+    """
+    if LAB_DOC_DRAFT_FINDINGS not in str(description or ""):
+        return []
+    names = doc_draft_member_names(context)
+    first, last = names[0], names[-1]
+    return [
+        {
+            "kind": "missing_automation", "member": first, "subject": "",
+            "finding": f"{first} is described as answering every new email, but nothing starts it on one.",
+            "suggested_fix": "Add an automation on new emails that starts this member.",
+        },
+        {
+            "kind": "no_gate_on_sensitive_action", "member": last, "subject": "",
+            "finding": f"{last} can post to external channels without waiting for a person's approval.",
+            "suggested_fix": "Require an approval on posts to external channels.",
+        },
+        {
+            "kind": "description_mismatch", "member": "", "subject": "",
+            "finding": "The fleet description names a weekly report that no member produces.",
+            "suggested_fix": "Remove the weekly report from the description, or give a member that task.",
+        },
+    ]
 
 
 def doc_draft_member_names(context: object) -> list[str]:
@@ -7239,7 +7273,8 @@ def seed_corporate_flow_fleet(token: str, base: str) -> dict[str, dict[str, str]
         })
     fleet = _created(api("POST", "/fleets", token, {
         "name": f"{SEED_NAME} corporate fleet",
-        "description": "Seeded by the lab: a corporate-sized data flow, nothing in it can start a run.",
+        # lab:draft-findings is LAB_DOC_DRAFT_FINDINGS: a Regenerate keeps its Suggestions (doc_draft_findings).
+        "description": "Seeded by the lab: a corporate-sized data flow, nothing in it can start a run (lab:draft-findings).",
     }))
     root = _created(api("POST", f"/fleets/{fleet}/members", token, {
         "agent_id": orchestrator, "role_label": CORPORATE_FLEET_AGENTS[0][1],
