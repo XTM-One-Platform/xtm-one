@@ -79,8 +79,8 @@ class CaseValidation(BaseModel):
     #: The target asset groups in the order they were tested.
     run_order: list[str] | None = Field(default=None, max_length=20)
     #: #1500: remediation (a version inventory) or validation (a test); a patch or upgrade case resolves
-    #: only on remediation evidence.
-    evidence_type: Literal["remediation", "validation"] | None = None
+    #: only on remediation evidence. #2118: exposure, a passive read confirming the case affected (failed only).
+    evidence_type: Literal["remediation", "validation", "exposure"] | None = None
 
 
 class CaseUpdate(BaseModel):
