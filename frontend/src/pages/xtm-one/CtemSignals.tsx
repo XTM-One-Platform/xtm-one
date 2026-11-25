@@ -53,6 +53,7 @@ import { useFormatter } from "@/i18n";
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import { DecisionReason, decisionSentence, SIGNAL_STATE_LABEL } from "./ctem/loop/DecisionReason";
 import { SignalSourcesPanel } from "./ctem/loop/SignalSourcesPanel";
+import { CaseOpeningSwitch } from "./ctem/CaseOpeningSwitch";
 import { signalProviderName } from "./ctem/loop/SignalLoopTrace";
 import { LoopTraceSheet } from "./ctem/loop/LoopTraceSheet";
 import { SignalsSummaryStrip } from "./ctem/loop/SignalsSummaryStrip";
@@ -123,6 +124,8 @@ function SignalSourcesPage() {
         title={t_i18n("Signal sources")}
         info={t_i18n("The trigger paths that start the exposure management loop, by lens, with the sources that feed each one on this platform and whether they are connected.")}
         infoLabel={t_i18n("About the signal sources")}
+        // #1951: the case opening switch also sits where the thresholds are configured.
+        actions={<CaseOpeningSwitch testId="ctem-signal-sources-case-opening" />}
       />
       <SignalSourcesPanel />
     </div>

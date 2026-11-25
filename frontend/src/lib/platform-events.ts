@@ -77,6 +77,7 @@ const PLATFORM_EVENT_LABELS = {
   "ctem_case.resolved": "CTEM case resolved",
   "ctem_case.sla_breached": "CTEM case past its SLA",
   "ctem_case.stalled": "CTEM case waiting on nobody",
+  "ctem_case.opening_changed": "CTEM case opening turned on or off",
   "ctem_case.validation_finished": "CTEM case validation finished",
   "ctem_case.retest_requested": "CTEM case re-test requested",
   "ctem_signal.recorded": "CTEM signal recorded",

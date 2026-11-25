@@ -1211,9 +1211,60 @@ async def sweep(
     events: PendingEvents | None = None,
     now: datetime | None = None,
 ) -> dict[str, int]:
-    """The scheduled pass: open the cases of waiting confirmed signals, escalate SLA breaches. The caller commits."""
+    """The scheduled pass: open the cases of waiting confirmed signals, escalate SLA breaches. The caller commits.
+
+    While an administrator paused case opening (#1951, services/ctem_case_opening.py) the
+    waiting signals stay confirmed with no case; the SLA, announce and stall passes still run.
+    """
+    from app.services import ctem_case_opening as case_opening
+
     now = now or datetime.now(UTC)
     counts = {"opened": 0, "joined": 0, "skipped": 0, "sla_breached": 0, "announced": 0, "stalled": 0}
+    if await case_opening.may_open_waiting(db, vertical):
+        await open_waiting(db, vertical=vertical, events=events, now=now, counts=counts)
+    rows = (
+        (
+            await db.execute(
+                select(CtemCase).where(
+                    CtemCase.state.in_(OPEN_STATES),
+                    CtemCase.sla_due_at.is_not(None),
+                    CtemCase.sla_due_at <= now,
+                    CtemCase.sla_breached_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for case in rows:
+        if not breached(case, now):
+            continue
+        case.sla_breached_at = now
+        db.add(_event(case.id, rules.SYSTEM_ACTOR, "sla_breached", now, to_value=case.severity, reason="SLA breached"))
+        counts["sla_breached"] += 1
+        if events is not None:
+            events.add(CASE_SLA_BREACHED, case_data(case), _event_id(CASE_SLA_BREACHED, case, "sla"))
+            events.frame(case, "sla_breached", now)
+    counts["announced"] = await announce_unannounced(db, events=events, now=now)
+    # #1736: an open case no gate and no reminder waits on is raised once per stall window.
+    from app.services.ctem_case_stall import sweep_stalled
+
+    counts["stalled"] = await sweep_stalled(db, events=events, now=now, actor=rules.SYSTEM_ACTOR)
+    return counts
+
+
+async def open_waiting(
+    db: AsyncSession,
+    *,
+    vertical: str,
+    events: PendingEvents | None,
+    now: datetime,
+    counts: dict[str, int],
+) -> None:
+    """Open the cases of up to ``SWEEP_BATCH`` waiting confirmed signals, oldest sighting first; adds to *counts*.
+
+    The caller checked :func:`ctem_case_opening.may_open_waiting` and commits.
+    """
     waiting = (
         (
             await db.execute(
@@ -1247,35 +1298,6 @@ async def sweep(
             continue
         opened = events is not None and len(events.items) > before
         counts["opened" if opened else "joined"] += 1
-    rows = (
-        (
-            await db.execute(
-                select(CtemCase).where(
-                    CtemCase.state.in_(OPEN_STATES),
-                    CtemCase.sla_due_at.is_not(None),
-                    CtemCase.sla_due_at <= now,
-                    CtemCase.sla_breached_at.is_(None),
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    for case in rows:
-        if not breached(case, now):
-            continue
-        case.sla_breached_at = now
-        db.add(_event(case.id, rules.SYSTEM_ACTOR, "sla_breached", now, to_value=case.severity, reason="SLA breached"))
-        counts["sla_breached"] += 1
-        if events is not None:
-            events.add(CASE_SLA_BREACHED, case_data(case), _event_id(CASE_SLA_BREACHED, case, "sla"))
-            events.frame(case, "sla_breached", now)
-    counts["announced"] = await announce_unannounced(db, events=events, now=now)
-    # #1736: an open case no gate and no reminder waits on is raised once per stall window.
-    from app.services.ctem_case_stall import sweep_stalled
-
-    counts["stalled"] = await sweep_stalled(db, events=events, now=now, actor=rules.SYSTEM_ACTOR)
-    return counts
 
 
 async def announce_unannounced(db: AsyncSession, *, events: PendingEvents | None, now: datetime | None = None) -> int:

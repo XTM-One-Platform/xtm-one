@@ -1108,6 +1108,18 @@ The third brick of the spine: signal (`dev-docs/ctem-signals.md`) -> reconcile a
 
 **Visibility.** A `signal` member is shown to a viewer under the signal API's rule (an administrator, or the user it was recorded for); a case with no member the viewer sees stays absent, as before (#11613).
 
+### 9bis.1 Case opening: the administrator switch (#1951)
+
+**One persisted setting, per vertical.** `platform_settings.ctem_case_opening` (JSON, migration `c1951caseopen01`) holds `{vertical: false}` for a vertical whose case opening is paused; NULL or a missing vertical is on, the behaviour before the switch, so a fresh install opens cases. Never an environment variable. `services/ctem_case_opening.py` owns it.
+
+**Off: nothing opens, the signals wait.** The three paths that open a case from a confirmed signal read the switch first: the scope gate's confirmation (`ctem_scope_gate_store.evaluate_after_record`), a source read (`ctem_cases_store._case_of_signal`) and the scheduled sweep (`ctem_case_loop.sweep`, through `open_waiting`). A confirmed signal stays `confirmed` with `case_id` null. The rest of the sweep (SLA breaches, announce, stall) keeps running; a manual split still creates a case.
+
+**On again: an immediate drain.** `PUT /api/v1/ctem-cases/opening {on: true}` starts `ctem_case_opening.drain` in the background: sweep batches (`SWEEP_BATCH`) back to back, each in its own transaction under `pg_advisory_xact_lock(hashtext('ctem-case-drain:<vertical>'))`, committed, then its events and live frames published, so the Cases list fills while the viewer watches. It stops when a pass opens and joins nothing, when case opening is paused again, or after `DRAIN_MAX_PASSES` (100); it logs its totals. Two concurrent drains never open a fix twice: the second pass waits for the first's commit and then finds those signals linked.
+
+**API.** `GET /api/v1/ctem-cases/opening` answers `{vertical, on, waiting}` (`waiting`: confirmed signals with no case) to anyone who reads cases. `PUT` takes `{on, vertical?}`, `require_admin`; a change writes one audit row (`entity_type` `ctem_case_opening`, who, when, on or off) and raises the platform-wide event `ctem_case.opening_changed` (`vertical`, `on`, `changed_by`, `waiting`); the same value again changes nothing (`changed: false`). It answers `{vertical, on, waiting, changed, draining}`.
+
+**Screens.** `CaseOpeningSwitch` is a discreet control for administrators only (Sam, 24 Nov 2026); anyone else sees nothing in every state. On Cases it sits in the table toolbar beside Group by and Views, a 32 px control with their border, padding and label, drawn disabled until the setting is read so the toolbar never shifts; on the Signal sources header it is the same control. Its tooltip is one line, with the waiting count while it is off. While it is off the empty Cases list keeps its usual sentence and adds one muted line, "Case opening is off" (`CaseOpeningOffEmptyState`). Turning it on or off toasts one line, "Case opening on" or "Case opening off"; the opening read is polled every 3 s while signals wait.
+
 ## 10. Slices
 
 | Slice | Content | Gate |
