@@ -405,7 +405,7 @@ export function PostureOrbit({
         })}
       </div>
       {integrationCount > 0 && (
-        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-accent/20 text-accent text-[9px] font-bold rounded-full px-2.5 py-0.5 border border-accent/30 backdrop-blur-xs whitespace-nowrap">
+        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-accent/20 text-accent text-[9px] font-bold rounded-sm px-2 py-0.5 border border-accent/30 backdrop-blur-xs whitespace-nowrap">
           {t_i18n("{count} connected", { count: formatCompactNumber(integrationCount) })}
         </div>
       )}

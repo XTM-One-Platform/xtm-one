@@ -6,8 +6,10 @@
  * ToneBadge, the hot hues of Work items and Tasks, #1267), owners as the DS Avatar,
  * "Unassigned" in secondary text, never a warning colour.
  */
-import { Avatar, Icon } from "@filigran/design-system";
+import { Avatar, Icon, type IconName } from "@filigran/design-system";
+import { useTriggerTabIndex } from "@/components/ui/row-target-context";
 import { type HotTone, ToneBadge } from "@/components/ui/tone-badge";
+import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import type { CtemCasePriority, CtemCaseState } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
@@ -63,11 +65,20 @@ export const CASE_PRIORITY_LABEL: Record<CtemCasePriority, string> = {
 export const CASE_PRIORITY_RANK: Record<CtemCasePriority, number> = { critical: 4, high: 3, medium: 2, low: 1 };
 
 /**
- * The DS icon a state carries inside its badge, before the label, so the
+ * The DS icon every state carries inside its badge, before the label, so the
  * badge keeps the left edge and baseline of its siblings (UX round 2 of #857,
- * B1).
+ * B1) and every state chip reads with its icon (#1679, point 5).
  */
-const CASE_STATE_ICON: Partial<Record<CtemCaseState, "eye">> = { mitigated_watching: "eye" };
+const CASE_STATE_ICON: Record<CtemCaseState, IconName> = {
+  new: "circle-plus",
+  analyzing: "search",
+  waiting_decision: "clock",
+  remediating: "wrench",
+  validating: "shield-check",
+  mitigated_watching: "eye",
+  resolved: "circle-check",
+  accepted_risk: "scale",
+};
 
 export function CaseStateChip({ state }: { state: CtemCaseState }) {
   const { t_i18n } = useFormatter();
@@ -85,25 +96,78 @@ export function CasePriorityChip({ priority }: { priority: CtemCasePriority }) {
 }
 
 /**
+ * The "to validate" marker of a case whose running version OpenCTI cannot
+ * place (#2004): the case keeps its members, priority and SLA; the version is
+ * validated first. Neutral, so it never reads as a priority or a state. The
+ * reason is the DS tooltip, on hover and on keyboard focus, never the native
+ * title (UX round 1 B1 on #2007).
+ */
+export function CaseToValidateChip({ unverified }: { unverified?: boolean }) {
+  const { t_i18n } = useFormatter();
+  const tabIndex = useTriggerTabIndex();
+  if (!unverified) return null;
+  return (
+    <Tip content={t_i18n("Running version not verified: validate it before acting on the case.")}>
+      <span tabIndex={tabIndex} className={`inline-flex shrink-0 ${TIP_WRAP_FOCUS_RING}`} data-testid="ctem-case-to-validate">
+        <ToneBadge tone="neutral">{t_i18n("To validate")}</ToneBadge>
+      </span>
+    </Tip>
+  );
+}
+
+/**
+ * What one product's failed read means, in plain words (#1852), by the reason
+ * the API sends in `details_unavailable_reasons`. Never says the reader lacks
+ * access: a rejected token or a missing connection is the platform's to fix.
+ */
+function reasonSentence(t_i18n: (key: string, values?: Record<string, string>) => string, reason: string | undefined, product: string): string | null {
+  switch (reason) {
+    case "rejected":
+      return t_i18n("{product} rejected your sign-in token, so open exposures there may be missing.", { product });
+    case "too_large":
+      return t_i18n("{product} could not answer because the query was too large, so open exposures there may be missing.", { product });
+    case "timeout":
+      return t_i18n("{product} did not answer in time, so open exposures there may be missing.", { product });
+    case "not_connected":
+      return t_i18n("No {product} connection could be used for this read, so open exposures there may be missing.", { product });
+    default:
+      return null;
+  }
+}
+
+/**
  * The sentence of an empty Cases list or board (#12139): "No open exposure"
  * is an all-clear only when every product answered the read. When the list
- * carries `details_unavailable`, the sentence names the products that could
- * not be read instead (by display name, with an ICU plural), and `unread`
+ * carries `details_unavailable`, the sentence names each product that could
+ * not be read and why (#1852: `reasons`, one sentence per known reason; the
+ * products with no known reason share the ICU plural sentence), and `unread`
  * lets the board draw a warning icon.
  */
-export function useCasesEmptyLabel(detailsUnavailable: readonly string[] | undefined): { label: string; unread: boolean } {
+export function useCasesEmptyLabel(
+  detailsUnavailable: readonly string[] | undefined,
+  reasons?: Readonly<Record<string, string>>,
+): { label: string; unread: boolean } {
   const { t_i18n, intl } = useFormatter();
   const products = detailsUnavailable ?? [];
   if (products.length === 0) return { label: t_i18n("No open exposure on your software"), unread: false };
   // The API sends product ids ("openaev"): show their display names.
-  const names = products.map((p) => CTEM_PRODUCT_INFO[p]?.name ?? p);
-  return {
-    label: t_i18n(
-      "{count, plural, one {{products} could not be read, so open exposures there may be missing.} other {{products} could not be read, so open exposures there may be missing.}}",
-      { products: formatList(names, intl.locale), count: names.length },
-    ),
-    unread: true,
-  };
+  const name = (p: string) => CTEM_PRODUCT_INFO[p]?.name ?? p;
+  const sentences: string[] = [];
+  const unexplained: string[] = [];
+  for (const p of products) {
+    const sentence = reasonSentence(t_i18n, reasons?.[p], name(p));
+    if (sentence) sentences.push(sentence);
+    else unexplained.push(name(p));
+  }
+  if (unexplained.length > 0) {
+    sentences.push(
+      t_i18n(
+        "{count, plural, one {{products} could not be read, so open exposures there may be missing.} other {{products} could not be read, so open exposures there may be missing.}}",
+        { products: formatList(unexplained, intl.locale), count: unexplained.length },
+      ),
+    );
+  }
+  return { label: sentences.join(" "), unread: true };
 }
 
 /** The owner as the DS Avatar and their name, or "Unassigned" in secondary text. */

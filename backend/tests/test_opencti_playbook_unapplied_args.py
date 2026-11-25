@@ -1,9 +1,9 @@
-"""manage_opencti_playbook refuses fields the action does not apply.
+"""manage_opencti_playbook names fields the action does not apply as ignored; the action runs.
 
 Same contract as the other manage_opencti_* tools: a field the chosen action ignores
 (running on an execute, entity_id on a toggle, name on a get, component_id on a list,
-an argument the tool does not declare) is named in the answer and nothing is sent to
-OpenCTI.
+an argument the tool does not declare) is named in the answer as ignored and the action
+runs with the rest.
 """
 
 from typing import Any
@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 import app.integrations.providers.opencti.playbooks as playbooks_mod
+from app.integrations.providers.opencti.access import install_ignored_arguments_note
 from app.tools.base import CallableToolExecutor, ToolCall
 
 TOOL = "manage_opencti_playbook"
@@ -30,6 +31,7 @@ async def _run(monkeypatch: pytest.MonkeyPatch, arguments: dict[str, Any]) -> tu
     monkeypatch.setattr(playbooks_mod, "_graphql", calls)
     executor = CallableToolExecutor()
     playbooks_mod.register("https://demo.opencti.io", {}, executor)
+    install_ignored_arguments_note(executor, [TOOL])
     result = await executor.execute_tool(ToolCall(id="call-1", name=TOOL, arguments=arguments))
     return result.content, calls
 
@@ -47,14 +49,13 @@ async def _run(monkeypatch: pytest.MonkeyPatch, arguments: dict[str, Any]) -> tu
         ({"action": "list", "public": True}, "public"),
     ],
 )
-async def test_unapplied_field_is_refused_and_nothing_is_sent(
+async def test_unapplied_field_is_named_as_ignored_and_the_action_runs(
     monkeypatch: pytest.MonkeyPatch, arguments: dict[str, Any], named: str
 ) -> None:
-    content, calls = await _run(monkeypatch, arguments)
+    content, _calls = await _run(monkeypatch, arguments)
     assert f"action '{arguments['action']}' does not apply" in content, content
     assert named in content
-    assert "nothing was written" in content
-    assert calls.count == 0
+    assert "ignored and the rest ran" in content
 
 
 @pytest.mark.parametrize(

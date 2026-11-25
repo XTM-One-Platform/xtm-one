@@ -92,6 +92,7 @@ EXPECTED_TOOLS = {
     "update_opencrq_financial_profile",
     # Assets & vulnerabilities
     "list_opencrq_primary_assets",
+    "get_opencrq_primary_asset",
     "list_opencrq_business_value_categories",
     "create_opencrq_primary_asset",
     "update_opencrq_primary_asset",
@@ -323,6 +324,7 @@ SMOKE_CALLS = [
     ("get_opencrq_financial_summary", {"risk_scenario_id": ""}),
     ("list_opencrq_primary_assets", {"organization_id": ""}),
     ("get_opencrq_supporting_asset", {"supporting_asset_id": ""}),
+    ("get_opencrq_primary_asset", {"primary_asset_id": ""}),
     ("search_opencrq_cves", {"query": "ab"}),
     # Frameworks / controls (new)
     ("list_opencrq_drata_controls", {}),
@@ -1301,6 +1303,146 @@ async def test_primary_asset_creation_sends_business_value_categories():
         assert "family_ids" not in props and "category_ids" not in props
 
 
+async def test_primary_asset_update_sends_native_fields_and_keeps_what_is_omitted() -> None:
+    with _recorded_trpc(opencrq_assets) as calls:
+        await _run(
+            "update_opencrq_primary_asset",
+            primary_asset_id="p-1",
+            availability="high",
+            integrity="HIGH",
+            confidentiality="very_high",
+            traceability="medium",
+            business_function=" Card payments ",
+            rto_minutes=240,
+        )
+        await _run("update_opencrq_primary_asset", primary_asset_id="p-1", rto_minutes=60)
+        await _run("update_opencrq_primary_asset", primary_asset_id="p-1", availability=None, reference="")
+    assert calls[0]["procedure"] == "primaryAssets.updatePrimaryAsset"
+    assert calls[0]["input"] == {
+        "id": "p-1",
+        "availability": "high",
+        "integrity": "high",
+        "confidentiality": "very_high",
+        "traceability": "medium",
+        "businessFunction": "Card payments",
+        "rtoMinutes": 240,
+    }
+    # Only what is passed is sent: OpenCRQ leaves an omitted key unchanged.
+    assert calls[1]["input"] == {"id": "p-1", "rtoMinutes": 60}
+    # null (or an empty string) is sent as null, which clears the field.
+    assert calls[2]["input"] == {"id": "p-1", "availability": None, "reference": None}
+
+
+async def test_primary_asset_creation_sends_native_fields_only_when_given() -> None:
+    with _recorded_trpc(opencrq_assets) as calls:
+        await _run(
+            "create_opencrq_primary_asset",
+            organization_id="o-1",
+            name="Payments",
+            business_value_category_ids=["c-1"],
+            reference="PA-01",
+            confidentiality="very_high",
+            mtpd_minutes=1440,
+        )
+    sent = calls[0]["input"]
+    assert sent["reference"] == "PA-01"
+    assert sent["confidentiality"] == "very_high"
+    assert sent["mtpdMinutes"] == 1440
+    assert not {"availability", "integrity", "traceability", "rtoMinutes", "businessFunction"} & set(sent)
+
+
+@pytest.mark.parametrize(
+    ("args", "refusal"),
+    [
+        ({"availability": "critical"}, "availability must be one of: low, medium, high, very_high"),
+        ({"rto_minutes": -1}, "rto_minutes must be a whole number of minutes from 0 to 5256000"),
+        ({"rpo_minutes": 5256001}, "rpo_minutes must be a whole number of minutes"),
+        ({"mtpd_minutes": 1.5}, "mtpd_minutes must be a whole number of minutes"),
+        ({"reference": "x" * 65}, "reference must be at most 64 characters"),
+        ({"business_function": "x" * 129}, "business_function must be at most 128 characters"),
+    ],
+)
+async def test_a_primary_asset_value_opencrq_would_refuse_is_refused_before_any_call(
+    args: dict[str, object], refusal: str
+) -> None:
+    with _recorded_trpc(opencrq_assets) as calls:
+        out = await _run("update_opencrq_primary_asset", primary_asset_id="p-1", **args)
+        out_create = await _run(
+            "create_opencrq_primary_asset",
+            organization_id="o-1",
+            name="P",
+            business_value_category_ids=["c-1"],
+            **args,
+        )
+    assert refusal in out
+    assert refusal in out_create
+    assert calls == []
+
+
+def test_primary_asset_tools_state_the_scale_and_the_units() -> None:
+    update = _tool_properties("update_opencrq_primary_asset")
+    create = _tool_properties("create_opencrq_primary_asset")
+    for criterion in ("availability", "integrity", "confidentiality", "traceability"):
+        assert update[criterion]["enum"] == ["low", "medium", "high", "very_high", None]
+        assert create[criterion]["enum"] == ["low", "medium", "high", "very_high"]
+        assert "low < medium < high < very_high" in update[criterion]["description"]
+        assert "null" in update[criterion]["type"]
+    for duration in ("rto_minutes", "rpo_minutes", "mtpd_minutes"):
+        assert "whole minutes" in update[duration]["description"]
+        assert update[duration]["maximum"] == 10 * 365 * 24 * 60
+    assert update["reference"]["maxLength"] == 64
+    assert update["business_function"]["maxLength"] == 128
+
+
+async def test_primary_asset_list_and_get_show_native_fields_and_the_computed_overall_level() -> None:
+    asset = {
+        "id": "p-1",
+        "organizationId": "o-1",
+        "organization": {"id": "o-1", "name": "Acme"},
+        "name": "Payments",
+        "reference": "PA-01",
+        "businessFunction": "Card payments",
+        "availability": "high",
+        "integrity": "high",
+        "confidentiality": "very_high",
+        "traceability": "medium",
+        "rtoMinutes": 240,
+        "rpoMinutes": None,
+        "mtpdMinutes": 1440,
+        "owner": {"id": None, "name": None},
+        "businessValueCategories": [{"id": "c-1", "code": "pd", "name": "Personal data"}],
+    }
+    unset = {"id": "p-2", "name": "Archive"}
+    with _recorded_trpc(
+        opencrq_assets,
+        {"primaryAssets.getPrimaryAssets": [asset, unset], "primaryAssets.getPrimaryAsset": asset},
+    ) as calls:
+        listed = await _run("list_opencrq_primary_assets", organization_id="o-1")
+        got = await _run("get_opencrq_primary_asset", primary_asset_id="p-1")
+    assert calls[1]["procedure"] == "primaryAssets.getPrimaryAsset"
+    assert calls[1]["input"] == {"id": "p-1"}
+    assert "A/I/C/T: high/high/very_high/medium (overall very_high, computed)" in listed
+    assert "RTO 240 min (4 h), RPO not set, MTPD 1440 min (1 d)" in listed
+    assert "Business function: Card payments" in listed
+    assert "ref PA-01" in listed
+    assert "A/I/C/T: not set/not set/not set/not set (overall not set, computed)" in listed
+    for expected in (
+        "[PrimaryAsset] Payments",
+        "Reference: PA-01",
+        "Business function: Card payments",
+        "Availability: high",
+        "Confidentiality: very_high",
+        "Traceability: medium",
+        "Overall level (computed, the highest criterion set): very_high",
+        "RTO: 240 min (4 h)",
+        "RPO: not set",
+        "MTPD: 1440 min (1 d)",
+        "Business value categories: Personal data",
+        "Owner: none",
+    ):
+        assert expected in got, expected
+
+
 async def test_supporting_asset_writes_send_criticality():
     with _recorded_trpc(opencrq_assets) as calls:
         await _run(
@@ -1445,6 +1587,19 @@ async def test_jobs_list_sends_kinds_and_statuses_and_reads_the_envelope():
         "kinds": ["crq-simulation"], "statuses": ["dlq"], "limit": 10, "offset": 0,
     }
     assert "41, showing 1" in out and "crq-simulation: dlq" in out and "boom" in out
+
+
+async def test_jobs_list_filters_on_the_partial_status_opencrq_writes():
+    """OpenCRQ's terminal ``partial`` (a bounded run handed to a continuation) is a status filter."""
+    page = {"items": [{"id": "j-2", "kind": "nist-sync", "status": "partial"}], "total": 1}
+    with _recorded_trpc(opencrq_ops, {"jobs.listAllRuns": page}) as calls:
+        out = await _run("list_opencrq_jobs", statuses=["partial"])
+    assert calls[0]["input"]["statuses"] == ["partial"]
+    assert "nist-sync: partial" in out
+    schema = next(
+        d for d in opencrq_ops.register("https://crq", {}, CallableToolExecutor()) if d.name == "list_opencrq_jobs"
+    ).input_schema
+    assert "partial" in schema["properties"]["statuses"]["items"]["enum"]
 
 
 async def test_crq_settings_update_sends_every_setting_opencrq_accepts():

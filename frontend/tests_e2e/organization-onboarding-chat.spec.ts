@@ -82,12 +82,12 @@ test.describe.serial('Organization profile: onboarding in chat', () => {
 
     const mark = marker('orgonboard');
     const question = `Which currency are your amounts in, and what is your loaded hourly rate? ${mark}`;
-    const done = `Saved: EUR and 95 per hour; AI systems skipped. ${mark}`;
+    const done = `Saved: EUR and 95 per hour; ticketing target skipped. ${mark}`;
     await scripted.arm(INTERVIEW, [
       { tool: TOOL, arguments: { action: 'next' } },
       { text: question },
       { tool: TOOL, arguments: { action: 'save', answers: { currency: 'EUR', loaded_hourly_rate: 95 } } },
-      { tool: TOOL, arguments: { action: 'skip', fields: ['ai_systems'] } },
+      { tool: TOOL, arguments: { action: 'skip', fields: ['ticketing'] } },
       { text: done },
     ]);
 
@@ -108,7 +108,7 @@ test.describe.serial('Organization profile: onboarding in chat', () => {
     await expect(chat.transcript().getByText(INTERVIEW, { exact: false })).toBeVisible({ timeout: 30_000 });
     await expect(chat.transcript().getByText(question)).toBeVisible({ timeout: 60_000 });
 
-    await chat.send(`EUR, 95 an hour, and skip the AI systems ${mark}`);
+    await chat.send(`EUR, 95 an hour, and skip the ticketing target ${mark}`);
     await expect(chat.transcript().getByText(done)).toBeVisible({ timeout: 60_000 });
 
     // The tool was offered and called: the answers are a new version, read back from the API.
@@ -118,11 +118,11 @@ test.describe.serial('Organization profile: onboarding in chat', () => {
     expect(after.version ?? 0).toBeGreaterThan(before.version ?? 0);
     expect(after.profile.currency).toBe('EUR');
     expect(after.profile.loaded_hourly_rate).toBe(95);
-    expect(after.profile.onboarding_skipped).toContain('ai_systems');
+    expect(after.profile.onboarding_skipped).toContain('ticketing');
     expect(after.missing_fields).not.toContain('currency');
 
-    // The page reads the same state: the hourly rate is shown in the saved currency.
-    await page.goto('/settings/organization');
+    // The page reads the same state: the hourly rate is shown in the saved currency, on the Risk and response tab (#1975).
+    await page.goto('/settings/organization/profile/risk');
     await expect(page.getByTestId('settings.organization.read.loaded_hourly_rate')).toContainText('EUR', { timeout: 15_000 });
   });
 });

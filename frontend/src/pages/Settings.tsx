@@ -49,6 +49,7 @@ import { emptyChatProviders } from "@/pages/settings/emptyChatProviders";
 import { PronunciationLexiconSection } from "@/pages/settings/PronunciationLexiconSection";
 import { HealthSection } from "@/pages/settings/HealthSection";
 import { RenderRetentionSection } from "@/pages/settings/RenderRetentionSection";
+import { ImageModelSummary } from "@/pages/settings/ImageModelSummary";
 import { SpeechGenerationSection } from "@/pages/settings/SpeechGenerationSection";
 import { VideoGenerationSection } from "@/pages/settings/VideoGenerationSection";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
@@ -63,7 +64,7 @@ import {
   useGeneralAssistantConfig,
   useUpdateGeneralAssistantConfig, useAvailableModels, useAvailableEmbeddingModels, useAvailableDecisionModels,
   useAvailableImageModels, useTestEmbeddingModel, useValidateProvider,
-  useModelAnnouncementStatus,
+  useModelAnnouncementStatus, useMediaModelsInUse,
 } from "@/hooks/api/useSettingsApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useAuthConfig } from "@/hooks/api/useAuthApi";
@@ -304,6 +305,7 @@ function SettingsPage() {
     isFetching: refreshingImageModels,
     refetch: refetchImageModels,
   } = useAvailableImageModels();
+  const { data: mediaModelsInUse } = useMediaModelsInUse(!!gaConfig && !gaConfig.image_model);
   const testEmbeddingModel = useTestEmbeddingModel();
   const { data: gaIntegrations } = useIntegrations();
   const { data: gaMcpServers } = useMCPServers();
@@ -931,7 +933,7 @@ function SettingsPage() {
 
       {/* Organization (#8987): the profile every agent reads. Not wrapped:
           filling it involves no model, so it stays editable with AI off. */}
-      {/* The scheduled imports and the agents' context default sit in its "Knowledge and sources" tab (#12329). */}
+      {/* Two tabs (#1975): Organization (identity, enterprise knowledge, the agents' context default), Risk and response. */}
       {tab === "organization" && organizationSection === "profile" && <OrganizationSection />}
       {/* Not wrapped either: the departments analytics roll usage up to
           involve no model, so they stay editable with AI off. */}
@@ -1761,30 +1763,14 @@ function SettingsPage() {
                 : fallbackImageProviderKey
                   ? (PROVIDER_DISPLAY_NAMES[fallbackImageProviderKey] || fallbackImageProviderKey)
                   : null;
-              const currentImageModel = gaConfig?.image_model || "—";
-              const hasActiveImageModel = currentImageModel !== "—";
-              return hasImageModels || hasConfiguredImageProvider ? (
+              return hasImageModels || hasConfiguredImageProvider || mediaModelsInUse?.image ? (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between rounded-sm bg-elevation-default p-3.5">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-sm bg-filigran-ia-primary/10">
-                        <Image className="h-4 w-4 text-filigran-ia-primary" />
-                      </div>
-                      <div>
-                        <p className="content-base font-medium">
-                          {hasActiveImageModel ? currentImageModel : t_i18n("No image model selected")}
-                        </p>
-                        <span className="content-compact text-default-secondary">
-                          {imageProviderName
-                            ? t_i18n("Image Provider: {provider}", { provider: imageProviderName })
-                            : t_i18n('Click "Configure" to pick a default image model')}
-                        </span>
-                      </div>
-                    </div>
-                    {hasActiveImageModel && (
-                      <Badge variant="success" className="content-caption"><Check className="h-3 w-3 mr-1" />{t_i18n("Active")}</Badge>
-                    )}
-                  </div>
+                  <ImageModelSummary
+                    model={gaConfig?.image_model}
+                    providerName={imageProviderName}
+                    inUse={mediaModelsInUse?.image}
+                    providers={providers}
+                  />
                   {imageEditing && (
                     <>
                       <ModelListRefreshing active={refreshingImageModels} />

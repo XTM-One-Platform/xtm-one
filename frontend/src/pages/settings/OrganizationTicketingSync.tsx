@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Settings > Organization > Ticketing and intelligence: how CTEM cases sync
+ * Settings > Organization > CTEM case sync (#1889): how CTEM cases sync
  * with the ticketing target (#917, dev-docs/ctem-ticketing.md).
  *
  * Read view: one tile per setting, the program default named when a value is

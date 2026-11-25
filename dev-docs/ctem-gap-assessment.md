@@ -121,7 +121,7 @@ protected" signal); OpenCTI observable/identity breadth.
   (EASM), no cloud posture (CSPM), no identity exposure (ITDR), no code/secrets.
   Gartner Discovery+Scoping expect the *full* surface; we cover endpoints + intel.
 - **[X1] No scope-domain construct.** No notion of "regulated zone", "internet-
-  facing", "crown-jewel service" to scope a program to.
+  facing", "primary-asset service" to scope a program to.
 
 **Recommend:** asset criticality + owner + business-service fields (AEV endpoints /
 asset groups, or a shared model); EASM / cloud / identity discovery connectors;

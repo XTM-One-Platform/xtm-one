@@ -50,7 +50,7 @@ PATH_CATALOG: dict[str, tuple[str, str]] = {
     "new_vulnerability": ("New vulnerability on a running version", "world"),
     "relevant_threat": ("Relevant new threat or actor", "world"),
     "code_flaw": ("Code or dependency flaw before production", "inside"),
-    "proven_exploitable": ("Proven exploitable to a crown jewel", "inside"),
+    "proven_exploitable": ("Proven exploitable to a primary asset", "inside"),
     "new_exposure": ("New exposure", "outside"),
     "stale_asset": ("Stale or orphaned asset", "outside"),
     "surface_drift": ("Attack-surface drift", "outside"),

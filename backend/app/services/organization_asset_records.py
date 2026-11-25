@@ -45,7 +45,7 @@ from app.models.organization_asset_record import (
     OrganizationAssetIdentifier,
     OrganizationAssetImport,
     OrganizationAssetRecord,
-    OrganizationCrownJewelLink,
+    OrganizationPrimaryAssetLink,
 )
 from app.services import organization_asset_identity as identity
 from app.services import organization_asset_store as store
@@ -294,7 +294,7 @@ async def ensure_records(db: AsyncSession, organization_id: uuid.UUID | None = N
 
     ``None`` names the primary organization; no profile and no organization
     answers ``None``. The import reads the current profile version's
-    ``assets_exposure``, ``asset_groups`` and crown jewels' ``asset_names``,
+    ``assets_exposure``, ``asset_groups`` and primary assets' ``asset_names``,
     writes one ``import`` change, then builds the canonical store from the
     records. The caller commits.
     """
@@ -355,7 +355,7 @@ async def ensure_records(db: AsyncSession, organization_id: uuid.UUID | None = N
         seen.add(ref)
         rows.append(value)
     await _insert_records(db, org, rows, actor="import")
-    await _link_crown_jewels(db, org, profile.get("crown_jewels") or [])
+    await _link_primary_assets(db, org, profile.get("primary_assets") or [])
     db.add(OrganizationAssetImport(organization_id=org, profile_version=int(version.version) if version else 0))
     _log(
         db,
@@ -659,42 +659,42 @@ async def record_groups(
     return list(out.values())
 
 
-async def _link_crown_jewels(db: AsyncSession, organization_id: uuid.UUID, jewels: Iterable[Any]) -> None:
-    """The crown jewels' ``asset_names`` as links to the records and groups of those names."""
+async def _link_primary_assets(db: AsyncSession, organization_id: uuid.UUID, jewels: Iterable[Any]) -> None:
+    """The primary assets' ``asset_names`` as links to the records and groups of those names."""
     for jewel in jewels:
         if not isinstance(jewel, Mapping):
             continue
-        await set_crown_jewel_links(db, organization_id, str(jewel.get("name") or ""), jewel.get("asset_names") or [])
+        await set_primary_asset_links(db, organization_id, str(jewel.get("name") or ""), jewel.get("asset_names") or [])
 
 
-async def set_crown_jewel_links(
-    db: AsyncSession, organization_id: uuid.UUID, crown_jewel: str, names: Iterable[Any]
+async def set_primary_asset_links(
+    db: AsyncSession, organization_id: uuid.UUID, primary_asset: str, names: Iterable[Any]
 ) -> list[str]:
-    """Replace the links of *crown_jewel* with the records and groups *names* name; answer the names found none.
+    """Replace the links of *primary_asset* with the records and groups *names* name; answer the names found none.
 
     A person's write (#1591): the manual links are replaced; a link a sync wrote
     (``source`` opencrq or rule) whose record *names* leaves out is marked
     ``removed``, so the sync never adds it back, and one *names* keeps is kept
     (restored if it was removed). Manual wins over the sync either way.
     """
-    jewel_key = _key(crown_jewel)[:200]
+    jewel_key = _key(primary_asset)[:200]
     if not jewel_key:
         return []
     await db.execute(
-        delete(OrganizationCrownJewelLink).where(
-            OrganizationCrownJewelLink.organization_id == organization_id,
-            OrganizationCrownJewelLink.crown_jewel_key == jewel_key,
-            OrganizationCrownJewelLink.source == "manual",
+        delete(OrganizationPrimaryAssetLink).where(
+            OrganizationPrimaryAssetLink.organization_id == organization_id,
+            OrganizationPrimaryAssetLink.primary_asset_key == jewel_key,
+            OrganizationPrimaryAssetLink.source == "manual",
         )
     )
     keys = {_key(n)[:200]: str(n) for n in names if _key(n)}
     synced = list(
         (
             await db.execute(
-                select(OrganizationCrownJewelLink).where(
-                    OrganizationCrownJewelLink.organization_id == organization_id,
-                    OrganizationCrownJewelLink.crown_jewel_key == jewel_key,
-                    OrganizationCrownJewelLink.source != "manual",
+                select(OrganizationPrimaryAssetLink).where(
+                    OrganizationPrimaryAssetLink.organization_id == organization_id,
+                    OrganizationPrimaryAssetLink.primary_asset_key == jewel_key,
+                    OrganizationPrimaryAssetLink.source != "manual",
                 )
             )
         ).scalars()
@@ -726,17 +726,44 @@ async def set_crown_jewel_links(
     for name_key, group_id in groups:
         found.add(name_key)
         db.add(
-            OrganizationCrownJewelLink(organization_id=organization_id, crown_jewel_key=jewel_key, group_id=group_id)
+            OrganizationPrimaryAssetLink(
+                organization_id=organization_id, primary_asset_key=jewel_key, group_id=group_id
+            )
         )
     for name_key, record_id in records:
         found.add(name_key)
         if record_id in synced_records:
             continue  # the synced link stands for it, kept above
         db.add(
-            OrganizationCrownJewelLink(organization_id=organization_id, crown_jewel_key=jewel_key, record_id=record_id)
+            OrganizationPrimaryAssetLink(
+                organization_id=organization_id, primary_asset_key=jewel_key, record_id=record_id
+            )
         )
     await db.flush()
     return [keys[k] for k in keys if k not in found]
+
+
+async def primary_asset_link_counts(db: AsyncSession, organization_id: uuid.UUID) -> dict[str, dict[str, int]]:
+    """Per primary asset key, how many assets and groups support it, by source (#1978 S2).
+
+    Counts the stored links (``manual``, ``opencrq``, ``rule``), a person's
+    removal (``removed``) left out: what the Assets column of the primary
+    assets table reads, so a synced link shows without touching the profile's
+    ``asset_names``. One grouped query, whatever the number of links.
+    """
+    link = OrganizationPrimaryAssetLink
+    rows = (
+        await db.execute(
+            select(link.primary_asset_key, link.source, func.count())
+            .where(link.organization_id == organization_id, link.removed.is_(False))
+            .group_by(link.primary_asset_key, link.source)
+        )
+    ).all()
+    out: dict[str, dict[str, int]] = {}
+    for jewel_key, source, count in rows:
+        by_source = out.setdefault(str(jewel_key), {})
+        by_source[str(source or "manual")] = by_source.get(str(source or "manual"), 0) + int(count)
+    return out
 
 
 # ── Writes ────────────────────────────────────────────────────────────
@@ -745,6 +772,18 @@ async def set_crown_jewel_links(
 def _is_hand(origin: str) -> bool:
     """A person's write (the form, the API): a sync, an import or an agent writing its source's rows owns them."""
     return not origin.startswith(("sync:", "agent:")) and origin not in ("import", "profile")
+
+
+def _is_synced_row(source: str | None, external_id: str | None) -> bool:
+    """Whether a record or group is owned by a platform sync (it comes back on the next sync if a person deletes it)."""
+    from app.services.organization_context import is_platform_source
+
+    return is_platform_source(source or "") and bool((external_id or "").strip())
+
+
+def _hand_delete(origin: str) -> bool:
+    """A person deleting rows (the form, the API); a restore replays the log and keeps its own rule."""
+    return _is_hand(origin) and origin != "restore"
 
 
 def _local_fields() -> frozenset[str]:
@@ -886,7 +925,11 @@ async def delete_records(
     actor: str,
     if_match: int | None = None,
 ) -> list[uuid.UUID]:
-    """Delete records of this organization (an unknown id is skipped); log each; refresh their clusters."""
+    """Delete records of this organization (an unknown id is skipped); log each; refresh their clusters.
+
+    A person's delete (#1729) never removes a record a platform sync owns: one such record asked alone is refused
+    (422), and in a batch it is skipped (the answer names only the removed ids).
+    """
     if len(record_ids) > MAX_BATCH:
         raise RecordError(f"at most {MAX_BATCH} records per call")
     await ensure_records(db, organization_id)
@@ -905,6 +948,11 @@ async def delete_records(
     )
     if if_match is not None and len(records) == 1 and records[0].row_version != if_match:
         raise StaleRowError(f"the asset record changed since version {if_match} (now {records[0].row_version})")
+    if _hand_delete(origin):
+        kept = [r for r in records if not _is_synced_row(r.source, r.external_id)]
+        if len(record_ids) == 1 and records and not kept:
+            raise RecordError("this asset record is kept in sync by its source; it goes when its source no longer reports it")
+        records = kept
     return await _remove(db, organization_id, records, origin=origin, actor=actor)
 
 
@@ -1201,6 +1249,9 @@ async def delete_group(
     group = await get_group(db, organization_id, group_id)
     if if_match is not None and if_match != group.row_version:
         raise StaleRowError(f"the asset group changed since version {if_match} (now {group.row_version})")
+    if _hand_delete(origin) and _is_synced_row(group.source, group.external_id):
+        # A person's delete (#1729) never removes a group a platform sync owns: it would come back on the next sync.
+        raise RecordError("this asset group is kept in sync by its source; it goes when its source no longer reports it")
     members = list(
         (
             await db.execute(

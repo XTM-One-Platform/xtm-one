@@ -137,6 +137,11 @@ _MAX_DELEGATION_DEPTH = 5
 RUN_TRIGGER_TYPE_KEY = "run_trigger_type"
 #: The ``trigger_type`` of the run ``run_agent_once`` creates for its task.
 RUN_ONCE_TRIGGER_TYPE = "run_once"
+#: Task metadata flag of a ``run_agent_once(dry_run=true)`` task (#1911): its
+#: turn is bound to a ``dry_run`` sandbox session, reads run live and every
+#: write is logged and answered that it was not executed. On the task row, so
+#: a resumed attempt keeps it.
+RUN_DRY_RUN_KEY = "dry_run"
 # Platform-driven continuations when a sub-agent run dies waiting on
 # still-running children. A run whose ONLY remaining work is waiting on
 # a genuinely-running delegation must not "time out" and abandon it — it parks
@@ -3719,7 +3724,7 @@ async def _execute_sub_agent_task(
             # already resolved with `user_visible_filter`, so re-loading here with
             # a narrower two-tier `or_()` structurally broke delegation to any
             # group-shared peer agent (every run failed "not accessible").
-            from app.api.v1.helpers import get_user_group_ids, user_visible_filter
+            from app.api.v1.helpers import get_user_group_ids
 
             # Platform Health's delegated work sees what its run with no user saw
             # at spawn, never what the row's owner of record sees.
@@ -3727,11 +3732,23 @@ async def _execute_sub_agent_task(
             _target_group_ids = (
                 await get_user_group_ids(db, _target_user_uuid) if _target_user_uuid else []
             )
+            # The spawning agent's configured handover is the grant, as at
+            # spawn (services/fleets.py configured_handover_reach): a delegate
+            # peer the person may not open still starts.
+            from app.services.fleets import configured_handover_reach, handover_peer_clause
+
+            _parent_id = safe_uuid(getattr(task, "parent_agent_id", None))
+            _granted: set[uuid.UUID] = set()
+            if _target_user_uuid is not None and _parent_id is not None:
+                _parent_handovers = (
+                    await db.execute(select(Agent.handover_agent_ids).where(Agent.id == _parent_id))
+                ).scalar_one_or_none()
+                _granted = await configured_handover_reach(db, _parent_id, _parent_handovers)
             agent_result = await db.execute(
                 select(Agent).where(
                     Agent.id == uuid.UUID(target_agent_id),
                     Agent.enabled.is_(True),
-                    user_visible_filter(Agent, _target_user_uuid, _target_group_ids),
+                    handover_peer_clause(_target_user_uuid, _target_group_ids, _granted),
                 )
             )
             agent = agent_result.scalar_one_or_none()
@@ -3949,6 +3966,12 @@ async def _execute_sub_agent_task(
             _held_item_steering = await _held_item_stack.enter_async_context(
                 work_item_note_steering.session_for_runs((task_id, assignment_run_id))
             )
+            if (task.metadata_json or {}).get(RUN_DRY_RUN_KEY) is True:
+                # run_agent_once(dry_run=true) (#1911): no write of this turn,
+                # its nested consults included, is executed.
+                from app.services.health.sandbox.session import SandboxSession, sandbox_session
+
+                _held_item_stack.enter_context(sandbox_session(SandboxSession(mode="dry_run")))
             try:
                 with (
                     count_llm_retries()

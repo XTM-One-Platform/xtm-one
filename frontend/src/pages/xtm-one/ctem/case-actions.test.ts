@@ -9,6 +9,7 @@ import { CTEM_CASE_STATES, type CtemCaseState } from "@/hooks/api/useCtemCasesAp
 import {
   BULK_CASE_ACTIONS,
   CASE_ACTIONS,
+  CASE_DELETE,
   SINGLE_CASE_ACTIONS,
   caseActionAvailability,
   caseHeaderActions,
@@ -66,6 +67,16 @@ describe("case actions by state", () => {
   });
 
   it("gives no action to a viewer who may not decide", () => {
-    expect(caseHeaderActions("new", false)).toEqual({ buttons: [], menu: [] });
+    expect(caseHeaderActions("new", false)).toEqual({ buttons: [], menu: [], canDelete: false });
+  });
+
+  it.each(CTEM_CASE_STATES.map((s) => [s]))("offers Delete to an administrator only, on a %s case too (#1950)", (state) => {
+    expect(caseHeaderActions(state as CtemCaseState, true, true).canDelete).toBe(true);
+    expect(caseHeaderActions(state as CtemCaseState).canDelete).toBe(false);
+  });
+
+  it("keeps Delete an admin-only action of both surfaces, out of the state actions", () => {
+    expect(CASE_DELETE).toEqual({ label: "Delete", adminOnly: true, surfaces: ["bulk", "single"] });
+    expect(CASE_ACTIONS.map((a) => a.label)).not.toContain("Delete");
   });
 });

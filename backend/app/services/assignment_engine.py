@@ -134,6 +134,7 @@ from app.services.builtin_tools import (
     merge_tool_allow_lists,
     offered_handover_types,
 )
+from app.services.ctem_module_preflight import guarding_module_accounts, stage_need
 from app.services.decision_waits import holds_assignment
 from app.services.element_scope import assignment_run_scope
 from app.services.event_bus import (
@@ -162,6 +163,7 @@ from app.services.orchestration_engine import (
     notify_orchestration_wake,
     queued_deadline,
 )
+from app.services.tool_surface_refresh import IntegrationSurfaceRefresher
 from app.tools.base import FileContext, HumanInputRequestedError, ScopedToolExecutor
 from app.tools.wait_policy import WaitPolicy
 
@@ -2684,7 +2686,7 @@ async def _activation_check_executor(
         READ_ONLY_CONTEXT_KEY,
         read_only_integration_ids,
     )
-    from app.services.integration_tools import build_integration_tools, flatten_bindings
+    from app.services.integration_tools import BindingBasis, ToolBindings, build_integration_tools, flatten_bindings
     from app.tools.base import CompositeToolExecutor
 
     composite = CompositeToolExecutor()
@@ -2757,7 +2759,17 @@ async def _activation_check_executor(
             SIGNATURE_CONTEXT_KEY: getattr(agent, "integration_signatures", None),
             LIVE_WRITES_CONTEXT_KEY: live_writes_overrides(agent, bindings),
         }
-        composite.add_tools(*await build_integration_tools(db, bindings, context=context))
+        composite.add_tools(
+            *await build_integration_tools(
+                db,
+                ToolBindings(
+                    bindings,
+                    basis=BindingBasis.UNCHECKED,
+                    reason="an assignment's activation check: the agent's bindings as bound",
+                ),
+                context=context,
+            )
+        )
     return composite
 
 
@@ -3035,6 +3047,75 @@ async def _skip_by_any_of_checks(
         preview="\n\n".join(previews),
         live_holder=live_holder,
     )
+
+
+async def _skip_by_module_preflight(
+    db: AsyncSession,
+    *,
+    run: AssignmentRun,
+    agent,
+    assignment: Assignment,
+    effective_user_id,
+) -> bool:
+    """End a per-user CTEM stage run at zero tokens when the member has no module account.
+
+    ``True`` when the run was ended skipped with the reason ``no_module_account``.
+    Any agent other than a seeded CTEM stage agent, a run with no member, and a
+    preflight that cannot decide all let the run go ahead (#2042).
+    """
+    from app.services import ctem_module_preflight as preflight_mod
+
+    need = preflight_mod.stage_need(getattr(agent, "slug", None), is_builtin=bool(getattr(agent, "is_builtin", False)))
+    if need is None or not effective_user_id:
+        return False
+    user_id = str(effective_user_id)
+
+    async def _resolve(module: str) -> tuple[str, str, str] | None:
+        from app.services.ctem_metrics_collector import _user_creds
+
+        creds = await _user_creds(db, user_id, module)
+        if creds is None:
+            return None
+        base_url, headers = creds
+        token = str(headers.get("Authorization", "")).removeprefix("Bearer ")
+        return (base_url, base_url, token) if token else None
+
+    try:
+        verdict = await preflight_mod.preflight(need, user_id, _resolve)
+    except Exception as exc:  # the preflight never blocks a run
+        logger.warning(
+            "Assignment '%s': CTEM module preflight failed (%s) - the run proceeds",
+            assignment.name,
+            format_exception_message(exc),
+        )
+        return False
+    run.trigger_context = {
+        **(run.trigger_context or {}),
+        "module_accounts": dict(verdict.states),
+    }
+    if verdict.proceed:
+        return False
+    await ensure_single_writer()
+    now = datetime.now(UTC)
+    run.status = "skipped"
+    run.error = preflight_mod.NO_MODULE_ACCOUNT
+    run.result_summary = verdict.summary
+    run.total_input_tokens = 0
+    run.total_output_tokens = 0
+    run.started_at = run.started_at or now
+    run.completed_at = now
+    await db.commit()
+    await _release_run_work_item(run, agent, failed=False)
+    await _publish_run_status(
+        str(run.user_id),
+        str(run.id),
+        "skipped",
+        assignment.name,
+        run.result_summary,
+        is_company=run.is_company_managed,
+    )
+    logger.info("Assignment '%s' skipped by the CTEM module preflight: %s", assignment.name, verdict.summary)
+    return True
 
 
 async def _end_run_skipped_by_gate_check(
@@ -4741,6 +4822,17 @@ async def execute_assignment_run(
             effective_user_id=effective_user_id,
         ):
             return
+        # ── CTEM module account preflight (#2042) ───────────────────────
+        # A per-user CTEM stage run for a member with no account on the
+        # modules it reads ends here, before the charge and any model call.
+        if _gate_check_due(run, resuming=_resuming) and await _skip_by_module_preflight(
+            db,
+            run=run,
+            agent=agent,
+            assignment=assignment,
+            effective_user_id=effective_user_id,
+        ):
+            return
         # Outcome of the quota enforcement, attached to the workflow trace
         # metadata below so the Trace Explorer can show the platform-action
         # consumption of this run.
@@ -5812,12 +5904,17 @@ async def execute_assignment_run(
             _platform_names: list = []
             # The run's bound MITRE ATT&CK sources, for the same extraction.
             _attack_sources: list = []
+            # The integration build of this run, replayed when a tool of the run
+            # changes an integration it is bound to (#1874); None: no refresh.
+            _rebuild_integration_tools: Any = None
             if effective_bindings:
                 try:
                     from app.services.assignment_helpers import resolve_hitl
                     from app.services.integration_tools import (
                         ATTACK_SOURCES_CONTEXT_KEY,
                         PLATFORM_NAMES_CONTEXT_KEY,
+                        BindingBasis,
+                        ToolBindings,
                         build_integration_tools,
                     )
 
@@ -5895,7 +5992,11 @@ async def execute_assignment_run(
                     integration_context[ATTACK_SOURCES_CONTEXT_KEY] = _attack_sources
                     integ_defs, integ_exec = await build_integration_tools(
                         db,
-                        effective_bindings,
+                        ToolBindings(
+                            effective_bindings,
+                            basis=BindingBasis.UNCHECKED,
+                            reason="an assignment run: the agent's bindings as bound",
+                        ),
                         context=integration_context,
                     )
                     missing_bindings = integration_context.get(
@@ -5969,6 +6070,42 @@ async def execute_assignment_run(
                             len(filtered_defs),
                             len(integ_defs) - len(filtered_defs),
                         )
+
+                    _refresh_bindings = dict(effective_bindings)
+                    _refresh_context = dict(integration_context)
+                    _refresh_allowed = merge_tool_allow_lists(
+                        agent.integration_allowed_tools or {},
+                        assignment.integration_allowed_tools or {},
+                    )
+                    _refresh_guard = auth_guard
+
+                    async def _rebuild_integration_tools_now() -> tuple[list[Any], Any]:
+                        """This run's integration build, allow lists and auth guard,
+                        in a session of its own (the loop holds none)."""
+                        context = {
+                            **_refresh_context,
+                            # The agent's read-only bindings, read as the first build reads them.
+                            READ_ONLY_CONTEXT_KEY: read_only_integration_ids(agent, _refresh_bindings),
+                            # The agent's signature overrides, as the first build hands them.
+                            SIGNATURE_CONTEXT_KEY: getattr(agent, "integration_signatures", None),
+                            "missing_integration_bindings": [],
+                            PLATFORM_NAMES_CONTEXT_KEY: [],
+                            ATTACK_SOURCES_CONTEXT_KEY: [],
+                        }
+                        async with async_session() as refresh_db:
+                            defs, executor = await build_integration_tools(
+                                refresh_db,
+                                ToolBindings(
+                                    _refresh_bindings,
+                                    basis=BindingBasis.UNCHECKED,
+                                    reason="an assignment run: the agent's bindings as bound, rebuilt in the run",
+                                ),
+                                context=context,
+                            )
+                        defs = filter_integration_tools(defs, _refresh_allowed)
+                        return defs, AuthGuardedExecutor(executor, defs, _refresh_guard)
+
+                    _rebuild_integration_tools = _rebuild_integration_tools_now
                 except Exception as e:
                     # Without integration tools the assignment runs with a
                     # silently degraded toolbox — operators frequently see
@@ -6419,6 +6556,14 @@ async def execute_assignment_run(
             )
             if _ctem_read is not None:
                 composite.add_tools(*_ctem_read)
+            # --- CTEM group (#1748): signal and case tools on any agent, the run user's rights ---
+            from app.services.builtin_tools import ctem_tools_for
+
+            _ctem_group = (
+                ctem_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if run.user_id else None
+            )
+            if _ctem_group is not None:
+                composite.add_tools(*_ctem_group)
             # --- CTEM administrator repairs (#1778): the CTEM case agents, or the group bound ---
             from app.services.builtin_tools import ctem_repair_tools_for
 
@@ -6497,7 +6642,14 @@ async def execute_assignment_run(
                 from app.services.builtin_tools import build_friction_tools
 
                 composite.add_tools(
-                    *build_friction_tools(str(run.user_id or _run_file_owner_id or ""), str(agent.id), run_id=run.id)
+                    *build_friction_tools(
+                        str(run.user_id or _run_file_owner_id or ""),
+                        str(agent.id),
+                        run_id=run.id,
+                        # The trace supervision grant reaches the supervised agents' frictions too (#1928).
+                        supervision_target_agent_ids=agent.trace_supervision_target_agent_ids,
+                        allow_cross_agent="inspect_agent_traces" in agent_builtin_tool_ids,
+                    )
                 )
                 # Per-object timers ride with shared state: a run arms a date and
                 # the platform raises timer.due then (services/platform_timers.py).
@@ -6752,7 +6904,7 @@ async def execute_assignment_run(
                 composite.add_tools(pi_defs, pi_exec)
 
             # --- Memory Steward (#8258): refused to anyone but Platform Health ---
-            if "memory_steward" in agent_builtin_tool_ids:
+            if "health_specialists" in agent_builtin_tool_ids:
                 from app.services.builtin_tools import build_memory_steward_tools
 
                 # The run's Platform Health cycle pays for the pass's model calls.
@@ -6821,14 +6973,14 @@ async def execute_assignment_run(
 
             # --- Platform Health sandbox (#8255): a Platform Health run has no user of its
             # own; the tools apply their own rule (Platform Health or an admin).
-            if "health_sandbox" in agent_builtin_tool_ids:
+            if "health_specialists" in agent_builtin_tool_ids:
                 from app.services.health.sandbox.tools import build_sandbox_tools
 
                 composite.add_tools(
                     *build_sandbox_tools(db, str(effective_user_id) if effective_user_id else None)
                 )
             # --- Platform Health evaluation (#8257): the same rule, the tools' own.
-            if "health_evaluation" in agent_builtin_tool_ids:
+            if "health_specialists" in agent_builtin_tool_ids:
                 from app.services.health.evaluation_tools import build_health_evaluation_tools
 
                 composite.add_tools(
@@ -6836,7 +6988,7 @@ async def execute_assignment_run(
                         db, str(effective_user_id) if effective_user_id else None, run_id=str(run.id)
                     )
                 )
-            if "improvement_proposals" in agent_builtin_tool_ids:
+            if "health_specialists" in agent_builtin_tool_ids:
                 from app.services.builtin_tools.improvements import build_improvement_tools
 
                 composite.add_tools(
@@ -6872,9 +7024,10 @@ async def execute_assignment_run(
             )
             if agent.handover_agent_ids:
                 try:
-                    from app.api.v1.helpers import (
-                        get_user_group_ids,
-                        user_visible_filter,
+                    from app.api.v1.helpers import get_user_group_ids
+                    from app.services.fleets import (
+                        configured_handover_reach,
+                        handover_peer_clause,
                     )
 
                     h_uuids = [_uuid.UUID(h) for h in agent.handover_agent_ids if h]
@@ -6883,11 +7036,15 @@ async def execute_assignment_run(
                         if run.user_id:
                             _user_group_ids = await get_user_group_ids(db, run.user_id)
 
+                        # The configured handover is the grant, the exposure
+                        # rule kept: a peer the run's person may not open is
+                        # still reached through the tool of its type.
+                        _granted = await configured_handover_reach(db, agent.id, h_uuids) if run.user_id else set()
                         _ho_query = (
                             select(Agent)
                             .where(Agent.id.in_(h_uuids), Agent.enabled.is_(True))
                             .where(
-                                user_visible_filter(Agent, run.user_id, _user_group_ids)
+                                handover_peer_clause(run.user_id, _user_group_ids, _granted)
                             )
                         )
                         from app.services.fleet_runs import active_handover_target_clause
@@ -7914,7 +8071,6 @@ async def execute_assignment_run(
                     getattr(assignment, "builtin_allowed_tools", None) or {},
                 )
                 if _builtin_allowed:
-                    from app.services.builtin_tools import filter_builtin_tools
                     from app.services.builtin_tools.filtering import (
                         builtin_tools_outside_scope,
                         describe_outside_builtin_scope,
@@ -7928,15 +8084,23 @@ async def execute_assignment_run(
                             describe_outside_builtin_scope(_group, scope="this agent's or this assignment's"),
                             registered=True,
                         )
-                    effective_tools = filter_builtin_tools(
-                        effective_tools, _builtin_allowed
-                    )
-                if agent.tool_deny_list:
-                    from app.services.builtin_tools import apply_tool_deny_list
+                _deny_list = agent.tool_deny_list
 
-                    effective_tools = apply_tool_deny_list(
-                        effective_tools, agent.tool_deny_list
-                    )
+                def _narrow_tool_surface(tools: list[Any]) -> list[Any]:
+                    """The offered surface from the composite's tools: the one
+                    narrowing a refresh inside the turn replays (#1874)."""
+                    narrowed = tools
+                    if _builtin_allowed:
+                        from app.services.builtin_tools import filter_builtin_tools
+
+                        narrowed = filter_builtin_tools(narrowed, _builtin_allowed)
+                    if _deny_list:
+                        from app.services.builtin_tools import apply_tool_deny_list
+
+                        narrowed = apply_tool_deny_list(narrowed, _deny_list)
+                    return narrowed
+
+                effective_tools = _narrow_tool_surface(effective_tools)
 
                 # --- Per-tool approval gate ------------------------
                 # Resolve everything the gate needs ONCE for this run and close
@@ -8294,6 +8458,12 @@ async def execute_assignment_run(
                     user_id=effective_user_id,
                 )
                 loop_kwargs["on_checkpoint"] = _run_checkpoint.offer
+                # The run's own build and narrowing, replayed by the loop when a
+                # tool of the run changes an integration it is bound to (#1874).
+                if loop_kwargs["executor"] is not None and _rebuild_integration_tools is not None:
+                    loop_kwargs["tool_surface_refresher"] = IntegrationSurfaceRefresher(
+                        composite, loop_kwargs["executor"], _rebuild_integration_tools, _narrow_tool_surface
+                    )
                 # Tool groups the assignment declares are on the wire from the
                 # first request, so the cached prompt prefix holds all run.
                 _preload_groups = assignment_dispatch.preload_tool_groups(
@@ -8445,6 +8615,15 @@ async def execute_assignment_run(
                                 assignment_id=assignment.id,
                                 work_item_id=(getattr(run, "trigger_payload", None) or {}).get("work_item_id"),
                             )
+                        ),
+                        # A per-user CTEM stage run stops calling a module
+                        # that refused its member (#2042).
+                        guarding_module_accounts(
+                            stage_need(
+                                getattr(agent, "slug", None),
+                                is_builtin=bool(getattr(agent, "is_builtin", False)),
+                            )
+                            is not None
                         ),
                         turn_binding(_turn_session),
                     ):

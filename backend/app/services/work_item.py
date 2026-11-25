@@ -781,6 +781,8 @@ def serialize_work_item(
         "needs_human": bool(getattr(item, "needs_human", None)) and item.status not in WORK_ITEM_TERMINAL_STATUSES,
         # The person a needs_human item waits for when not its user (#11893).
         "waits_for_user_id": (str(recipient) if (recipient := getattr(item, "waits_for_user_id", None)) else None),
+        # The groups a needs_human item waits for instead of one person (#1748).
+        "waits_for_group_ids": list(getattr(item, "waits_for_group_ids", None) or []) or None,
         # The decision asked of a person; None on a legacy item (#9437).
         "ask": getattr(item, "ask", None) or None,
         # What a decision card shows when its ask is missing or incomplete:
@@ -901,7 +903,45 @@ def _stored_recipient_clause(user_uuid: uuid.UUID) -> Any:
     wherever it was filed. The owner agent's person gets no standing grant
     here: the hand-off rules of #858 / #890 decide that.
     """
-    return WorkItem.waits_for_user_id == user_uuid
+    from app.services.work_item_recipient import group_member_clause
+
+    # A member of the groups a decision is addressed to reads it too (#1748).
+    return or_(WorkItem.waits_for_user_id == user_uuid, group_member_clause(user_uuid))
+
+
+def _recipient_tier_applies(user_uuid: uuid.UUID | None, writer: CompanyManagedWriter) -> bool:
+    """Whether the decision recipient's write tier (#1910) may admit this write.
+
+    A person on the REST API only (no acting agent, no flow): the tier lets the
+    person a decision waits for cancel it or answer it, nothing else, and never
+    widens what an agent or a flow may write.
+    """
+    return user_uuid is not None and writer.agent_id is None and writer.flow_id is None
+
+
+async def _audit_recipient_write(
+    db: Any, user_uuid: uuid.UUID | None, item: WorkItem, *, action: str, summary: str
+) -> None:
+    """One audit row for a write admitted by the decision recipient's tier (#1910); never fails the write."""
+    from app.models.user import User
+    from app.services.audit import log_audit
+
+    try:
+        user = (await db.execute(select(User).where(User.id == user_uuid))).scalar_one_or_none()
+        if user is None:
+            return
+        await log_audit(
+            db,
+            user=user,
+            action=action,
+            entity_type="work_item",
+            entity_id=item.id,
+            entity_name=(item.title or "")[:255],
+            summary=summary[:1000],
+            details={"tier": "decision_recipient"},
+        )
+    except Exception as exc:
+        logger.warning("Could not audit the recipient's %s of work item %s: %s", action, item.id, exc)
 
 
 def _writable_clause(
@@ -1042,14 +1082,18 @@ def _handed_to_clause(actor: CompanyManagedWriter | None) -> Any:
     as the owner agent's own person, so no other tier admits it and the hand-off
     is dropped without anyone seeing it. This tier admits it to the owner
     agent's own tools, dispatch and settlement (never to a person's read), on
-    one of two grants only (Sam's decision on #858):
+    one of three grants only (Sam's decisions on #858 and #1967):
 
     1. the creator may open the owner agent: their own, company-managed and not
        narrowed, or shared with them or one of their groups
        (``shared_with_user_column_clause``; an administrator's role is no grant);
     2. the creating agent's home fleet and the owner agent's home fleet are
        connected, either fleet naming the other or the other's agent as a
-       ``connected`` member.
+       ``connected`` member;
+    3. the creating agent holds a configured handover (any type) to the owner
+       agent, outside the exposure rule's refusal (a non-exposed home member
+       of another fleet stays out): the handover an owner or an administrator
+       configured is the grant, whatever the person may open.
 
     Nothing else widens: the same check refuses the hand-off at creation
     (:func:`_refuse_unreachable_owner`), so an item no tier gives its owner
@@ -1064,6 +1108,7 @@ def _handed_to_clause(actor: CompanyManagedWriter | None) -> Any:
         or_(
             _creator_may_open_agent(WorkItem.user_id, agent_id),
             _fleets_connected(WorkItem.created_by_agent_id, agent_id),
+            _creator_hands_over_to(WorkItem.created_by_agent_id, agent_id),
         ),
     )
 
@@ -1124,6 +1169,58 @@ def _fleets_connected(creator_agent: Any, owner_agent: Any) -> Any:
     )
 
 
+def _creator_hands_over_to(creator_agent: Any, owner_agent: uuid.UUID) -> Any:
+    """Grant 3 of :func:`_handed_to_clause`: *creator_agent* holds a handover to *owner_agent*.
+
+    Any handover type in the creating agent's ``handover_agent_ids``, unless
+    the owner agent is a non-exposed home member of a fleet other than the
+    creating agent's home fleet (the exposure rule of ``services/fleets.py``,
+    the orchestrator always exposed). *owner_agent* is a value, never a
+    column: both callers name the one owner agent.
+    """
+    from sqlalchemy.orm import aliased
+
+    from app.models.agent import Agent
+    from app.models.fleet import FLEET_ROLE_MEMBER, Fleet, FleetMember
+
+    source = aliased(Agent)
+    configured = (
+        select(source.id)
+        .where(
+            source.id == creator_agent,
+            when_json_parseable(
+                source.handover_agent_ids,
+                cast(source.handover_agent_ids, JSONB).contains([str(owner_agent)]),
+            ),
+        )
+        .exists()
+    )
+    creator_member = aliased(FleetMember)
+    # Nested two levels under a listing: correlate everything but its own
+    # table, as _fleets_connected does (#890).
+    creator_home = (
+        select(creator_member.fleet_id)
+        .where(creator_member.agent_id == creator_agent, creator_member.role == FLEET_ROLE_MEMBER)
+        .correlate_except(creator_member)
+        .limit(1)
+        .scalar_subquery()
+    )
+    owner_member = aliased(FleetMember)
+    unexposed_elsewhere = (
+        select(owner_member.id)
+        .join(Fleet, Fleet.id == owner_member.fleet_id)
+        .where(
+            owner_member.agent_id == owner_agent,
+            owner_member.role == FLEET_ROLE_MEMBER,
+            owner_member.is_exposed.is_(False),
+            Fleet.orchestrator_agent_id.is_distinct_from(owner_agent),
+            or_(creator_home.is_(None), owner_member.fleet_id != creator_home),
+        )
+        .exists()
+    )
+    return and_(configured, not_(unexposed_elsewhere))
+
+
 class OwnerAgentUnreachableError(ValueError):
     """A work item handed to an agent its owner runs could never read (#858)."""
 
@@ -1154,7 +1251,7 @@ async def _refuse_unreachable_owner(
     is_company_managed: bool,
     writer: CompanyManagedWriter,
 ) -> None:
-    """Refuse a person's item for an agent neither grant of :func:`_handed_to_clause` reaches.
+    """Refuse a person's item for an agent no grant of :func:`_handed_to_clause` reaches.
 
     Only an agent's own filing (its create_work_item tool, *writer* naming
     the agent) of a person's item handed to another agent is checked: the
@@ -1179,10 +1276,11 @@ async def _refuse_unreachable_owner(
                 Agent.name,
                 _creator_may_open_agent(user, owner_agent_id),
                 _fleets_connected(creator, owner_agent_id) if created_by_agent_id else false(),
+                _creator_hands_over_to(creator, owner_agent_id) if created_by_agent_id else false(),
             ).where(Agent.id == owner_agent_id)
         )
     ).first()
-    if row is None or row[1] or row[2]:
+    if row is None or row[1] or row[2] or row[3]:
         return
     raise OwnerAgentUnreachableError(
         f"The work item cannot be handed to {row[0]!r}: that agent is not shared with you "
@@ -2284,7 +2382,7 @@ async def create_work_item(
                         if exc.reason == "archived":
                             message = str(exc).rstrip(".")
                 raise WorkspaceWriteRefusedError(message)
-        waits_for = await _resolved_recipient(
+        waits_for, waits_for_groups = await _resolved_recipients(
             db,
             needs_human=bool(needs_human),
             recipient=recipient,
@@ -2297,6 +2395,7 @@ async def create_work_item(
         item = WorkItem(
             user_id=user_uuid,
             waits_for_user_id=waits_for,
+            waits_for_group_ids=waits_for_groups,
             is_company_managed=is_company_managed,
             workspace_id=workspace_id,
             owner_agent_id=owner_uuid,
@@ -2718,7 +2817,7 @@ async def update_work_item(
 
         if recipient is not None or (human and not stored_human):
             # Who the decision waits for, resolved before anything is written (#11893).
-            item.waits_for_user_id = await _resolved_recipient(
+            item.waits_for_user_id, item.waits_for_group_ids = await _resolved_recipients(
                 db,
                 needs_human=bool(human),
                 recipient=recipient,
@@ -3727,9 +3826,18 @@ async def complete_work_item(
         item = (
             await db.execute(select(WorkItem).where(WorkItem.id == wid, _writable_clause(uid, writable, writer)))
         ).scalar_one_or_none()
+        by_recipient = False
+        if item is None and status == "cancelled" and _recipient_tier_applies(uid, writer):
+            # The person a decision waits for may cancel it (#1910): that tier only.
+            item = (
+                await db.execute(select(WorkItem).where(WorkItem.id == wid, _stored_recipient_clause(uid)))
+            ).scalar_one_or_none()
+            by_recipient = item is not None
         if item is None or await _gate_write(db, writer, item, "complete") is None:
             return None
         _refuse_scheduled(item, "completed")
+        if by_recipient:
+            await _audit_recipient_write(db, uid, item, action="cancel", summary=f"Cancelled work item {item.title}")
         if writer_run_ids is not None and not take_over:
             _refuse_write_by_former_holder(item, writer_run_ids)
             await _refuse_drop_under_live_holder(db, item, holder_dropping_write(status, item.status), writer_run_ids)
@@ -3881,6 +3989,13 @@ RED_DEFERRED_UNTIL_KEY = "_red_deferred_until"
 #: on the claim. Past the hand-off, a live claim keeps it back
 #: (``shared_state_pull_requests``), a merge releases it, else the inbox takes it.
 GREEN_HANDOFF_DEFER = timedelta(minutes=3)
+#: How long :func:`settle_inbox_work_item` holds back an item released for the
+#: first time on a red head. The head's red event (a listener woken by the
+#: failing check, which takes the branch lease and pushes the fix) arrives within
+#: seconds of that read: an inbox run started at once is a second run on the
+#: same red. Past the hand-off, a live branch lease keeps it back
+#: (``shared_state_pull_requests``), else the inbox takes it.
+RED_HANDOFF_DEFER = timedelta(minutes=3)
 
 
 def clear_red_deferral(item: Any) -> bool:
@@ -4362,6 +4477,14 @@ async def settle_inbox_work_item(
                 now=now,
             )
             item.payload = {**(item.payload or {}), RED_RELEASED_ON_KEY: signature}
+            if not unchanged and item.status == "open" and not exhausted:
+                # First release on this red: held back for the head's red event, which
+                # takes the branch lease and fixes it; never a second run on one red.
+                item.not_before = now + RED_HANDOFF_DEFER
+                item.claim_notes[-1]["text"] = (
+                    f"{item.claim_notes[-1]['text']}; held back until "
+                    f"{item.not_before.strftime('%Y-%m-%dT%H:%M:%SZ')} for the head's red event"
+                )
             if unchanged and item.status == "open":
                 # The previous run was released on this very red and nothing moved on
                 # GitHub since (a held draft at its rerun cap): another run at once
@@ -4825,6 +4948,42 @@ class WorkItemNotWaitingError(ValueError):
     """The item asks nothing of a person: there is nothing to answer."""
 
 
+def _not_waiting_message(item: Any) -> str:
+    """Why an answer is refused: who decided first and when (#1748), else the item no longer waits."""
+    answer = (getattr(item, "payload", None) or {}).get("answer")
+    if isinstance(answer, dict) and answer.get("answered_at"):
+        who = answer.get("answered_by") or "another person"
+        return f"already decided by {who} at {answer['answered_at']}"
+    return "this work item is not waiting for a person's answer"
+
+
+async def _refuse_decided_for_group_member(
+    db: Any, wid: uuid.UUID, uid: uuid.UUID, writer: CompanyManagedWriter
+) -> None:
+    """Raise the "already decided" refusal for a member of a group item someone else answered (#1748).
+
+    The answer clears ``needs_human``, so the row no longer matches the
+    recipient tier of :func:`answer_work_item` for the other members of its
+    groups (a concurrent second answer included, re-checked once it gets the
+    row lock): they would read "not found". A member of the groups the item
+    was addressed to reads who decided first and when instead. Returns when
+    the item is not such an answered group item, so the caller answers as before.
+    """
+    from app.services.work_item_recipient import group_member_clause
+
+    decided = (
+        await db.execute(select(WorkItem).where(WorkItem.id == wid, group_member_clause(uid)))
+    ).scalar_one_or_none()
+    if decided is None or getattr(decided, "needs_human", None):
+        return
+    answer = (getattr(decided, "payload", None) or {}).get("answer")
+    if not (isinstance(answer, dict) and answer.get("answered_at")):
+        return
+    if await _gate_write(db, writer, decided, "answer") is None:
+        return
+    raise WorkItemNotWaitingError(_not_waiting_message(decided))
+
+
 async def answer_work_item(
     work_item_id: str,
     *,
@@ -4873,11 +5032,16 @@ async def answer_work_item(
         item = (
             await db.execute(select(WorkItem).where(WorkItem.id == wid, answerable).with_for_update())
         ).scalar_one_or_none()
+        if item is None and uid is not None:
+            await _refuse_decided_for_group_member(db, wid, uid, writer)
         if item is None or await _gate_write(db, writer, item, "answer") is None:
             return None
         _refuse_scheduled(item, "answered")
+        by_recipient = (
+            await db.execute(select(WorkItem.id).where(WorkItem.id == wid, _writable_clause(uid, writable, writer)))
+        ).scalar_one_or_none() is None
         if not getattr(item, "needs_human", None) or item.status in WORK_ITEM_TERMINAL_STATUSES:
-            raise WorkItemNotWaitingError("this work item is not waiting for a person's answer")
+            raise WorkItemNotWaitingError(_not_waiting_message(item))
         ask = getattr(item, "ask", None) or {}
         label = None
         chosen = None
@@ -4906,6 +5070,11 @@ async def answer_work_item(
         said = f"[{key}] {label}" if key else ""
         if words:
             said = f"{said}: {words}" if said else words
+        if by_recipient and getattr(item, "needs_human", None):
+            # An answer the recipient tier admitted is audited with its person (#1910).
+            await _audit_recipient_write(
+                db, uid, item, action="answer", summary=f"Answered work item {item.title}: {said}"
+            )
         who = f" by {answered_by}" if answered_by else ""
         from app.services.decision_ask import keeps_waiting
 
@@ -5095,6 +5264,11 @@ async def ask_work_item(
             item.blocked_on = None
             item.blocked_on_refs = None
             item.needs_human = None
+            # The person's ask is the wake: a pickup deferral (a run's own, the
+            # unchanged-red or green hand-off defer) would keep the inbox from
+            # taking it until then, with a note saying it was sent (#1862).
+            item.not_before = None
+            payload.pop(RED_DEFERRED_UNTIL_KEY, None)
         item.payload = payload
         item.last_activity_at = now
         agent_ref = {"id": str(agent.id), "name": agent.name}
@@ -5160,6 +5334,88 @@ async def get_work_item(
         **same_red,
         "read_only": not _writable(reader, item, policies),
     }
+
+
+#: Why a person reads an item they cannot change (#1845), by the read tier that admits it.
+READ_ONLY_IN_WORKSPACE = (
+    "Read-only for you: it is filed in the workspace {workspace}, where you can view items but not change them."
+)
+READ_ONLY_OTHER_PERSON = "Read-only for you: it was created in another person's chat."
+READ_ONLY_RECIPIENT = (
+    "Read-only for you: it belongs to another person; as the person it waits for you can answer or cancel it, "
+    "not change it otherwise."
+)
+
+
+async def person_write_access(work_item_id: str, *, user_id: str | None) -> tuple[bool, str | None] | None:
+    """Whether a person may change an item they read (#1845).
+
+    ``None`` when the item is not visible to them (the caller answers not
+    found); ``(True, None)`` when :func:`_writable_clause` admits them;
+    ``(False, reason)`` when they read it through a tier that grants no write
+    (a ``read_only`` workspace, the stored decision recipient, another
+    person's unfiled item), so a refused write is answered 403 with why,
+    never "not found".
+    """
+    from app.core.database import async_session
+    from app.models.workspace import Workspace
+
+    wid = safe_uuid(work_item_id)
+    if wid is None:
+        return None
+    uid = safe_uuid(user_id) if user_id else None
+    async with async_session() as db:
+        readable, writable = await _workspace_tiers(db, user_id)
+        item = (
+            await db.execute(select(WorkItem).where(WorkItem.id == wid, _visible_clause(uid, readable)))
+        ).scalar_one_or_none()
+        if item is None:
+            return None
+        writable_row = (
+            await db.execute(select(WorkItem.id).where(WorkItem.id == wid, _writable_clause(uid, writable)))
+        ).scalar_one_or_none()
+        if writable_row is not None:
+            return True, None
+        if await _is_stored_recipient(db, wid, uid):
+            return False, READ_ONLY_RECIPIENT
+        if item.workspace_id is None:
+            return False, READ_ONLY_OTHER_PERSON
+        if item.workspace_id in set(readable):
+            name = (
+                await db.execute(select(Workspace.name).where(Workspace.id == item.workspace_id))
+            ).scalar_one_or_none()
+            return False, READ_ONLY_IN_WORKSPACE.format(workspace=name or "(unnamed)")
+        return False, READ_ONLY_RECIPIENT
+
+
+async def _is_stored_recipient(db: Any, wid: uuid.UUID, uid: uuid.UUID | None) -> bool:
+    """Whether *uid* is the stored decision recipient of item *wid* (#901, #1910)."""
+    if uid is None:
+        return False
+    row = (
+        await db.execute(select(WorkItem.id).where(WorkItem.id == wid, _stored_recipient_clause(uid)))
+    ).scalar_one_or_none()
+    return row is not None
+
+
+async def person_may_cancel(work_item_id: str, *, user_id: str | None) -> bool:
+    """Whether a person may cancel an item: any write tier, or its decision recipient (#1910)."""
+    from app.core.database import async_session
+
+    wid = safe_uuid(work_item_id)
+    uid = safe_uuid(user_id) if user_id else None
+    if wid is None or uid is None:
+        return False
+    async with async_session() as db:
+        _readable, writable = await _workspace_tiers(db, user_id)
+        row = (
+            await db.execute(
+                select(WorkItem.id).where(
+                    WorkItem.id == wid, or_(_writable_clause(uid, writable), _stored_recipient_clause(uid))
+                )
+            )
+        ).scalar_one_or_none()
+    return row is not None
 
 
 async def list_visible_work_items_by_ids(ids: Sequence[str], *, user_id: str | None) -> list[dict]:
@@ -5871,6 +6127,41 @@ async def _resolved_recipient(
         workspace_id=workspace_id,
     )
     return found.user_id if found.user_id != item_user_id else None
+
+
+async def _resolved_recipients(
+    db: Any,
+    *,
+    needs_human: bool,
+    recipient: str | None,
+    acting_user_id: uuid.UUID | None,
+    agent_id: uuid.UUID | None,
+    item_user_id: uuid.UUID | None,
+    is_company_managed: bool,
+    workspace_id: uuid.UUID | None,
+) -> tuple[uuid.UUID | None, list[str] | None]:
+    """``(waits_for_user_id, waits_for_group_ids)`` a write stores (#11893, #1748).
+
+    A recipient naming groups (``group:<id>``, comma-separated) stores the group
+    ids and no person; anything else is :func:`_resolved_recipient`.
+    """
+    from app.services.work_item_recipient import _resolve_groups, group_refs
+
+    groups = group_refs(recipient) if needs_human else None
+    if groups:
+        found = await _resolve_groups(db, groups)
+        return None, list(found.group_ids)
+    person = await _resolved_recipient(
+        db,
+        needs_human=needs_human,
+        recipient=recipient,
+        acting_user_id=acting_user_id,
+        agent_id=agent_id,
+        item_user_id=item_user_id,
+        is_company_managed=is_company_managed,
+        workspace_id=workspace_id,
+    )
+    return person, None
 
 
 def _waits_for_person_clause(user_uuid: uuid.UUID, now: datetime):

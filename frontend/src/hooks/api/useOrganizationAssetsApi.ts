@@ -331,7 +331,7 @@ export interface AssetGroupRecord {
   internet_facing: string;
   owner: string;
   tags: string[];
-  tech_stack: string[];
+  products: string[];
   source: string;
   external_id: string;
   member_count: number;
@@ -366,6 +366,95 @@ export function useAssetGroups(options: { throwOnError?: false } = {}) {
   });
 }
 
+/** How many assets and groups support one primary asset, by where the link comes from (#1978 S2). */
+export interface PrimaryAssetLinkCount {
+  total: number;
+  manual: number;
+  opencrq: number;
+  rule: number;
+}
+
+/** The key a primary asset's links are counted under: its name, whitespace collapsed and lower-cased (the API's key). */
+export function primaryAssetLinkKey(name: string): string {
+  return name.split(/\s+/).filter(Boolean).join(" ").toLowerCase();
+}
+
+/**
+ * The stored links of every primary asset, counted (`GET /primary-assets/link-counts`, #1978 S2): a link an OpenCRQ
+ * or rule sync wrote shows here, the profile's `asset_names` holding only the names a person typed. Under the asset
+ * key, so an asset write reads it again.
+ */
+export function usePrimaryAssetLinkCounts() {
+  return useQuery<{ items: Record<string, PrimaryAssetLinkCount> }>({
+    queryKey: [...KEY, "primary-asset-link-counts"],
+    queryFn: () => api.get("/organization-context/primary-assets/link-counts"),
+    throwOnError: false,
+  });
+}
+
+/** One record that supports a primary asset, directly or through an asset group (#1980 S2). */
+export interface PrimaryAssetSupporter {
+  record_id: string;
+  /** The canonical asset the record is in; null until the identity engine matched it. */
+  asset_id: string | null;
+  name: string;
+  category: string;
+  criticality: string;
+  /** `asset`: linked directly; `asset_group`: a member of the group named in `through`. */
+  through_kind: "asset" | "asset_group";
+  through: string;
+  source: string;
+  roles: string[];
+  inherited_needs: Record<string, string>;
+  via: string;
+}
+
+/** One primary asset's page: its profile entry and one page of its supporting assets. */
+export interface PrimaryAssetPage {
+  primary_asset: {
+    name: string;
+    criticality?: string;
+    owner?: string;
+    business_service?: string;
+    description?: string;
+    source?: string;
+  };
+  supporters: {
+    items: PrimaryAssetSupporter[];
+    total: number;
+    offset: number;
+    limit: number;
+    counts: { total: number; through: Record<string, number>; source: Record<string, number> };
+  };
+}
+
+/**
+ * One primary asset and a page of the assets that support it, searched, filtered (`through`, `source`: values with a
+ * comma between them), sorted (`name` or `criticality`) and paged on the server (#1980 S2).
+ */
+export function usePrimaryAsset(
+  name: string | undefined,
+  page: { q: string; offset: number; limit: number; through: string; source: string; sort: string; direction: string },
+) {
+  const params = new URLSearchParams({
+    q: page.q,
+    offset: String(page.offset),
+    limit: String(page.limit),
+    through: page.through,
+    source: page.source,
+    sort: page.sort,
+    direction: page.direction,
+  });
+  return useQuery<PrimaryAssetPage>({
+    queryKey: [...KEY, "primary-asset", name, page.q, page.offset, page.limit, page.through, page.source, page.sort, page.direction],
+    queryFn: () => api.get(`/organization-context/primary-assets/${encodeURIComponent(name ?? "")}?${params.toString()}`),
+    enabled: Boolean(name),
+    placeholderData: (previous) => previous,
+    retry: (failureCount, error) => !isAssetNotFound(error) && failureCount < 2,
+    throwOnError: false,
+  });
+}
+
 /** One asset record, for the update form (`GET /assets/records/{id}`). */
 export function useAssetRecord(id: string | undefined) {
   return useQuery<AssetRecord>({
@@ -381,7 +470,7 @@ export function useAssetRecord(id: string | undefined) {
 }
 
 /** The fields a person sets on a record or a group from the Inventory. */
-export type RowPatch = Record<string, string>;
+export type RowPatch = Record<string, string | { tags: string[]; categories: string[]; name_contains: string }>;
 
 /** What a write of several rows answers: the rows written and the rows the API refused, with its reason. */
 export interface RowsOutcome {
@@ -479,6 +568,15 @@ export function useDeleteAssetGroups() {
       return { groups };
     },
     onError: (_error, _ids, context) => context?.groups && qc.setQueryData(GROUPS_KEY, context.groups),
+    onSettled: () => invalidateAssets(qc),
+  });
+}
+
+/** Delete hand-typed software, one DELETE each (`DELETE /software/{id}`, #1729); a synced one is refused (422) and reported. */
+export function useDeleteSoftware() {
+  const qc = useQueryClient();
+  return useMutation<RowsOutcome, Error, string[]>({
+    mutationFn: async (ids) => outcome(ids, await Promise.allSettled(ids.map((id) => api.delete(`/organization-context/software/${id}`)))),
     onSettled: () => invalidateAssets(qc),
   });
 }

@@ -8,6 +8,8 @@
  * into it, places each run in the phase the case was in when it started,
  * groups by phase and filters. Pure: nothing here reads the network.
  */
+import type { IconName } from "@filigran/design-system";
+import type { HotTone } from "@/components/ui/tone-badge";
 import type { CtemCaseEvent, CtemCasePhase, CtemCaseRun } from "@/hooks/api/useCtemCasesApi";
 import { caseActivity } from "@/lib/ctem-case-activity";
 
@@ -49,16 +51,32 @@ export const AUTONOMY_LABEL = {
   system: "System",
 } as const satisfies Record<AutonomyClass, string>;
 
-/** The badge variant of each class: only a gate still waiting stands out. */
-export const AUTONOMY_VARIANT: Record<AutonomyClass, "success" | "warning" | "secondary" | "outline"> = {
-  autonomous: "secondary",
-  validated_by_person: "success",
-  validated_by_policy: "outline",
-  waiting: "warning",
-  waited: "outline",
-  changed: "outline",
-  by_person: "secondary",
-  system: "outline",
+/**
+ * The chip tone of each class, on the hairline chip of every other case fact (#1679,
+ * advisory A1 of #1708: never a filled badge beside hairline chips): only a gate
+ * still waiting stands out, a person's validation reads as passed, the rest neutral.
+ */
+export const AUTONOMY_TONE: Record<AutonomyClass, HotTone> = {
+  autonomous: "neutral",
+  validated_by_person: "green",
+  validated_by_policy: "neutral",
+  waiting: "yellow",
+  waited: "neutral",
+  changed: "neutral",
+  by_person: "neutral",
+  system: "neutral",
+};
+
+/** The icon of each class, before its label (#1679, point 5). */
+export const AUTONOMY_ICON: Record<AutonomyClass, IconName> = {
+  autonomous: "bot",
+  validated_by_person: "badge-check",
+  validated_by_policy: "shield-check",
+  waiting: "clock",
+  waited: "clock",
+  changed: "refresh-cw",
+  by_person: "user",
+  system: "settings",
 };
 
 export type ActorType = "person" | "agent" | "system";
@@ -153,6 +171,27 @@ function answeredClass(e: CtemCaseEvent, served: AutonomyClass): AutonomyClass {
 export function gateAnswerKind(answer: { outcome: string | null } | null | undefined): "policy" | "person" | null {
   if (!answer) return null;
   return answer.outcome === "passed_automatically" ? "policy" : "person";
+}
+
+/**
+ * The rows of the Timeline (#1679, point 2): a gate request that has its answer is
+ * folded into the answer, so a gate reads as one entry (the answer, whose dialog
+ * holds the whole decision record: asked, decided, then). An unanswered request
+ * stays; the Table keeps every row for the audit and the CSV.
+ */
+export function foldAnsweredRequests(rows: readonly AuditRow[]): AuditRow[] {
+  // The answer row of a request: the same gate key, at the time the request's answer names.
+  const answers = new Set(
+    rows.flatMap((r) =>
+      r.kind === "event" && r.event.kind === "gate" && r.autonomy !== "waited" && r.autonomy !== "waiting" && r.event.from
+        ? [`${r.event.from}@${time(r.event.at)}`]
+        : [],
+    ),
+  );
+  return rows.filter((r) => {
+    if (r.kind !== "event" || r.autonomy !== "waited" || !r.event.from || !r.event.answer) return true;
+    return !answers.has(`${r.event.from}@${time(r.event.answer.at)}`);
+  });
 }
 
 /** The classes a phase header counts: an answered request is told by its answer row. */

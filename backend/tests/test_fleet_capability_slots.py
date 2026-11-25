@@ -119,7 +119,7 @@ def test_every_slot_names_a_known_capability() -> None:
 
 
 def test_the_ctem_roles_the_brief_names_have_their_slots() -> None:
-    assert slots.slots_for_role("Mobilization") == ("ticketing", "notification")
+    assert slots.slots_for_role("Mobilization") == ("ticketing", "notification", "edr_xdr", "siem")
     assert {"edr_xdr", "scanner", "easm"} <= set(slots.slots_for_role("Validation"))
     assert {"vulnerability_intelligence", "asset_inventory"} <= set(slots.slots_for_role("Triage"))
     assert slots.slots_for_role("Orchestrator") == ()

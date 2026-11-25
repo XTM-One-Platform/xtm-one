@@ -7,7 +7,7 @@ import { MemoryRouter } from "react-router-dom";
 import { api } from "@/lib/api";
 import { renderWithProviders } from "@/testing/providers";
 import type { OrganizationSource, OrganizationSync } from "@/hooks/api/useOrganizationContextApi";
-import { OrganizationSourcesSyncs } from "./OrganizationSourcesSyncs";
+import { OrganizationSourcesSyncs, type SyncPreset } from "./OrganizationSourcesSyncs";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -68,10 +68,10 @@ function serve(syncs: OrganizationSync[], sources: OrganizationSource[]) {
   });
 }
 
-function render(scope: "" | "profile" | "inventory" = "") {
+function render(scope: "" | "profile" | "inventory" = "", onSetUpSync?: (preset: SyncPreset) => void) {
   renderWithProviders(
     <MemoryRouter>
-      <OrganizationSourcesSyncs scope={scope} onAddSource={() => {}} />
+      <OrganizationSourcesSyncs scope={scope} onAddSource={() => {}} onSetUpSync={onSetUpSync} />
     </MemoryRouter>,
   );
 }
@@ -100,8 +100,8 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
       [sync()],
       [
         source(),
-        source({ key: "ciso-office", kind: "agent", display_name: "ciso-office", rows: { crown_jewels: 4 }, total: 4, written_by_agent: "CISO Office", sync_ids: [] }),
-        source({ key: "manual", kind: "manual", display_name: "manual", rows: { crown_jewels: 2 }, total: 2, sync_ids: [] }),
+        source({ key: "ciso-office", kind: "agent", display_name: "ciso-office", rows: { primary_assets: 4 }, total: 4, written_by_agent: "CISO Office", sync_ids: [] }),
+        source({ key: "manual", kind: "manual", display_name: "manual", rows: { primary_assets: 2 }, total: 2, sync_ids: [] }),
       ],
     );
     render();
@@ -149,8 +149,8 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     serve(
       [],
       [
-        source({ key: "ciso-office", kind: "agent", display_name: "ciso-office", rows: { crown_jewels: 4 }, total: 4, written_by_agent: "CISO Office", sync_ids: [] }),
-        source({ key: "manual", kind: "manual", display_name: "manual", rows: { crown_jewels: 2 }, total: 2, sync_ids: [] }),
+        source({ key: "ciso-office", kind: "agent", display_name: "ciso-office", rows: { primary_assets: 4 }, total: 4, written_by_agent: "CISO Office", sync_ids: [] }),
+        source({ key: "manual", kind: "manual", display_name: "manual", rows: { primary_assets: 2 }, total: 2, sync_ids: [] }),
       ],
     );
     post.mockResolvedValue({ ...plan, source: "ciso-office", count: 4 });
@@ -161,11 +161,55 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     const agent = all.find((row) => row.textContent?.includes("CISO Office"));
     if (!agent) throw new Error("agent row missing");
     fireEvent.pointerDown(within(agent).getByRole("button", { name: "Actions on CISO Office" }), { button: 0, ctrlKey: false });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove or hand over the rows of CISO Office" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove or hand over the rows" }));
     const dialog = await screen.findByTestId("organization-sources.delete");
     fireEvent.click(within(dialog).getByRole("radio", { name: /Purge the rows it wrote/ }));
     fireEvent.click(within(dialog).getByRole("button", { name: /^Purge/ }));
     await waitFor(() => expect(post).toHaveBeenCalledWith("/organization-context/sources/ciso-office/rows", { mode: "purge" }));
+  });
+
+  it.each([
+    ["opencrq", "OpenCRQ", { primary_assets: 9 }, "primary_assets"],
+    ["opencti", "OpenCTI", { assets_exposure: 12 }, "assets"],
+    ["openaev", "OpenAEV", { software: 4 }, "software"],
+  ] as const)("gives a %s source whose rows outlived their sync a menu: set up a sync, purge or hand over (#1940)", async (key, name, counts, section) => {
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    serve([], [source({ key, display_name: name, rows: counts, total, sync_ids: [] })]);
+    post.mockResolvedValue({ ...plan, source: key, count: total });
+    const onSetUpSync = vi.fn();
+    render("inventory", onSetUpSync);
+    const [row] = await rows();
+    expect(row.textContent).toContain("Rows from an earlier sync, none scheduled");
+    fireEvent.pointerDown(within(row).getByRole("button", { name: `Actions on ${name}` }), { button: 0, ctrlKey: false });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Set up a sync" }));
+    expect(onSetUpSync).toHaveBeenCalledWith({ section, source: key });
+    fireEvent.pointerDown(within(row).getByRole("button", { name: `Actions on ${name}` }), { button: 0, ctrlKey: false });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove or hand over the rows" }));
+    const dialog = await screen.findByTestId("organization-sources.delete");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Make the rows editable" }));
+    await waitFor(() => expect(post).toHaveBeenCalledWith(`/organization-context/sources/${key}/rows`, { mode: "release" }));
+  });
+
+  it("offers no action on a connected platform with no row and no sync (#1940)", async () => {
+    serve([], [source({ key: "opencrq", display_name: "OpenCRQ", rows: {}, total: 0, sync_ids: [] })]);
+    render("inventory", vi.fn());
+    const [row] = await rows();
+    expect(row.textContent).toContain("No sync scheduled");
+    expect(within(row).queryByRole("button", { name: /Actions on/ })).toBeNull();
+  });
+
+  it("purges the rows of an API source with no sync (#1940: every source but hand rows)", async () => {
+    serve([], [source({ key: "api", kind: "api", display_name: "api", rows: { assets_exposure: 2 }, total: 2, sync_ids: [] })]);
+    post.mockResolvedValue({ ...plan, source: "api", count: 2 });
+    render();
+    const [row] = await rows();
+    fireEvent.pointerDown(within(row).getByRole("button", { name: /Actions on/ }), { button: 0, ctrlKey: false });
+    expect(screen.queryByRole("menuitem", { name: "Set up a sync" })).toBeNull();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove or hand over the rows" }));
+    const dialog = await screen.findByTestId("organization-sources.delete");
+    fireEvent.click(within(dialog).getByRole("radio", { name: /Purge the rows it wrote/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Purge/ }));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/organization-context/sources/api/rows", { mode: "purge" }));
   });
 
   it("runs a sync now and reports its counts", async () => {
@@ -202,12 +246,12 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
 
   it("counts a platform with several syncs as one source, and gives each kind with no sync its own schedule words (UX r1 B3, B4 on #1294)", async () => {
     serve(
-      [sync({ id: "s-1", source: "openaev" }), sync({ id: "s-2", source: "openaev", section: "tech_stack" })],
+      [sync({ id: "s-1", source: "openaev" }), sync({ id: "s-2", source: "openaev", section: "software" })],
       [
         source({ key: "openaev", display_name: "OpenAEV", sync_ids: ["s-1", "s-2"] }),
         source({ key: "csv", kind: "csv", display_name: "csv", rows: { assets_exposure: 3 }, total: 3, sync_ids: [] }),
         source({ key: "api", kind: "api", display_name: "api", rows: { assets_exposure: 2 }, total: 2, sync_ids: [] }),
-        source({ key: "manual", kind: "manual", display_name: "manual", rows: { crown_jewels: 1 }, total: 1, sync_ids: [] }),
+        source({ key: "manual", kind: "manual", display_name: "manual", rows: { primary_assets: 1 }, total: 1, sync_ids: [] }),
       ],
     );
     render();
@@ -221,9 +265,9 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
 
   it("lands an Assets chip filtered on the source key and draws a section with no Source filter as plain text (UX round 5 on #1254, B11)", async () => {
     serve(
-      [sync({ id: "s-1", source: "openaev", section: "tech_stack" })],
+      [sync({ id: "s-1", source: "openaev", section: "software" })],
       [
-        source({ key: "openaev", display_name: "OpenAEV", rows: { tech_stack: 4 }, total: 4, sync_ids: ["s-1"] }),
+        source({ key: "openaev", display_name: "OpenAEV", rows: { software: 4 }, total: 4, sync_ids: ["s-1"] }),
         source({ key: "csv", kind: "csv", display_name: "csv", rows: { assets_exposure: 12 }, total: 12, sync_ids: [] }),
       ],
     );
@@ -287,7 +331,7 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
       [],
       [
         source({ key: "intune", kind: "agent", display_name: "Microsoft Intune", rows: { assets_exposure: 12 }, total: 12, written_by_agent: "CISO Office", sync_ids: [] }),
-        source({ key: "ciso-notes", kind: "agent", display_name: "ciso-notes", rows: { crown_jewels: 1 }, total: 1, written_by_agent: "CISO Office", sync_ids: [] }),
+        source({ key: "ciso-notes", kind: "agent", display_name: "ciso-notes", rows: { primary_assets: 1 }, total: 1, written_by_agent: "CISO Office", sync_ids: [] }),
       ],
     );
     render();
@@ -315,8 +359,8 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     serve(
       [
         sync({ id: "s-1" }),
-        sync({ id: "s-2", source: "openaev", section: "tech_stack" }),
-        sync({ id: "s-3", source: "openaev", section: "ai_systems", enabled: false }),
+        sync({ id: "s-2", source: "openaev", section: "software" }),
+        sync({ id: "s-3", source: "openaev", section: "asset_groups", enabled: false }),
         sync({ id: "s-all", section: "all", source: "", filters: {} }),
       ],
       [source(), source({ key: "openaev", display_name: "OpenAEV", sync_ids: ["s-2", "s-3"] })],
@@ -327,8 +371,8 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     expect(get).toHaveBeenCalledWith(`/organization-context/syncs?scope=${scope}`);
     const header = screen.getByTestId("organization-sources");
     const runAll = within(header).getByRole("button", { name: /Run all syncs/ });
-    // "Run all syncs" (secondary) before "Add a source" (primary), and no button creates a Sync all.
-    const add = within(header).getByRole("button", { name: /Add a source/ });
+    // "Run all syncs" (secondary) before "Add a sync" (primary), and no button creates a Sync all.
+    const add = within(header).getByRole("button", { name: /Add a sync/ });
     expect(runAll.compareDocumentPosition(add) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByText(/Add a Sync all schedule|Add Sync all/)).toBeNull();
     fireEvent.click(runAll);
@@ -342,7 +386,7 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
   });
 
   it("reports the syncs that failed after Run all syncs", async () => {
-    serve([sync({ id: "s-1" }), sync({ id: "s-2", source: "openaev", section: "tech_stack" })], [source(), source({ key: "openaev", display_name: "OpenAEV", sync_ids: ["s-2"] })]);
+    serve([sync({ id: "s-1" }), sync({ id: "s-2", source: "openaev", section: "software" })], [source(), source({ key: "openaev", display_name: "OpenAEV", sync_ids: ["s-2"] })]);
     post.mockResolvedValueOnce(sync({ id: "s-1" })).mockRejectedValueOnce(new Error("Timeout"));
     render("inventory");
     await rows();
@@ -369,10 +413,10 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     expect(await screen.findByRole("heading", { name: "Edit the sync" })).toBeTruthy();
   });
 
-  it("shows a centred first-use state with Add a source when nothing feeds the sections", async () => {
+  it("shows a centred first-use state with Add a sync when nothing feeds the sections", async () => {
     serve([], []);
     render();
     const empty = await screen.findByTestId("organization-sources.empty");
-    expect(within(empty).getByRole("button", { name: /Add a source/ })).toBeTruthy();
+    expect(within(empty).getByRole("button", { name: /Add a sync/ })).toBeTruthy();
   });
 });

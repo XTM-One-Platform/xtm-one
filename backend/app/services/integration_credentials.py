@@ -108,6 +108,13 @@ OWNER_LOST_ACCESS_REASON = "owner_lost_access"
 #: (``services/integration_invalid_notice.py``), never a silent absence.
 INTEGRATION_INVALID_REASON = "integration_invalid"
 
+#: ``missing_integration_bindings`` reason for a bound integration that holds no
+#: usable credential for another reason than a missing configuration key: it
+#: was never signed in, its token expired and could not be refreshed, or its
+#: secret was removed. It yields no tool; the turn says so to the model
+#: (:func:`format_invalid_integration_prompt_note`), never a silent absence.
+INTEGRATION_NOT_CONNECTED_REASON = "integration_not_connected"
+
 #: ``missing_integration_bindings`` reason for an integration a chat turn's
 #: session selection named on a company-managed agent that is not
 #: company-managed (a person's own integration): a company-managed agent is the
@@ -553,9 +560,19 @@ def invalid_config_binding(
     return entry
 
 
+def not_connected_binding(integration: Any, *, binding_key: str | None = None) -> dict[str, Any]:
+    """The ``missing_integration_bindings`` entry for a bound integration that
+    yielded no credential while its configuration is complete
+    (:data:`INTEGRATION_NOT_CONNECTED_REASON`)."""
+    entry: dict[str, Any] = refused_binding(integration, binding_key=binding_key)
+    entry["reason"] = INTEGRATION_NOT_CONNECTED_REASON
+    return entry
+
+
 def format_invalid_integration_prompt_note(missing_bindings: Iterable[Any] | None) -> str:
     """Tool Availability note for a turn that lost integrations to an invalid
-    configuration: each integration by its label with the keys it lacks.
+    configuration (each integration by its label with the keys it lacks) or to
+    a missing credential (each integration by its label, not connected).
 
     Empty unless one was lost, so a healthy turn carries no text (the contract
     of :func:`format_unshared_oauth_prompt_note`). Labels and keys are
@@ -563,7 +580,13 @@ def format_invalid_integration_prompt_note(missing_bindings: Iterable[Any] | Non
     """
     lines: list[str] = []
     seen: set[str] = set()
+    unconnected: list[str] = []
     for entry in missing_bindings or []:
+        if isinstance(entry, dict) and entry.get("reason") == INTEGRATION_NOT_CONNECTED_REASON:
+            label = json.dumps(refused_binding_label(entry))
+            if label not in unconnected:
+                unconnected.append(label)
+            continue
         if not isinstance(entry, dict) or entry.get("reason") != INTEGRATION_INVALID_REASON:
             continue
         label = refused_binding_label(entry)
@@ -577,16 +600,26 @@ def format_invalid_integration_prompt_note(missing_bindings: Iterable[Any] | Non
             continue
         seen.add(line)
         lines.append(line)
-    if not lines:
-        return ""
-    return (
-        "\n\n**Tool Availability Notice**: The integration(s) "
-        + ", ".join(lines)
-        + " are bound but yield no tools on this turn: their stored configuration "
-        "lacks a key their provider needs. If the request needs them, say so: the "
-        "integration's owner sets the key on the integration's page (or with "
-        "update_integration). Their owners have been notified."
-    )
+    note = ""
+    if lines:
+        note += (
+            "\n\n**Tool Availability Notice**: The integration(s) "
+            + ", ".join(lines)
+            + " are bound but yield no tools on this turn: their stored configuration "
+            "lacks a key their provider needs. If the request needs them, say so: the "
+            "integration's owner sets the key on the integration's page (or with "
+            "update_integration). Their owners have been notified."
+        )
+    if unconnected:
+        note += (
+            "\n\n**Tool Availability Notice**: The integration(s) "
+            + ", ".join(unconnected)
+            + " are bound but yield no tools on this turn: they hold no usable "
+            "credential (never signed in, or the sign-in expired or was revoked). "
+            "If the request needs them, say so: the integration's owner connects it "
+            "again from the integration's page."
+        )
+    return note
 
 
 def unshared_oauth_bindings(missing_bindings: Iterable[Any] | None) -> list[dict]:
@@ -771,6 +804,7 @@ _UNAVAILABLE_REASON_TEXT = {
     OWN_ACCOUNT_NOT_CONNECTED_REASON: "the acting user has not connected their own account to it",
     OWNER_LOST_ACCESS_REASON: "the agent's owner no longer has access to it",
     INTEGRATION_INVALID_REASON: "its stored configuration lacks a key its provider needs",
+    INTEGRATION_NOT_CONNECTED_REASON: "it holds no usable credential (never signed in, or the sign-in expired or was revoked)",
     NOT_COMPANY_MANAGED_REASON: (
         "it is a personal integration and this agent is company-managed (company-managed integrations only)"
     ),

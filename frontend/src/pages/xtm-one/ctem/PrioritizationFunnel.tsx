@@ -81,6 +81,7 @@ import {
   type FunnelRow,
 } from "./prioritization-funnel";
 import { HiddenChartValues } from "./stage-heroes";
+import { signalsHref } from "./loop/signals-route";
 
 /** OpenCTI, opened in a new tab; nothing when its URL is unknown or unsafe. */
 function OpenOpenCti({ openctiUrl }: { openctiUrl?: string | null }) {
@@ -298,7 +299,21 @@ export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = fal
   const stateText = (layer: CtemFunnelLayer) => {
     if (layer.state === "not_configured") return t_i18n("Not configured");
     if (layer.reason === "assets_not_linked") return t_i18n("Not linked");
+    if (layer.reason === "no_software") return t_i18n("No software inventory");
     return t_i18n("Not available yet");
+  };
+  /** What the business impact and policy layers read from the live configuration (#1980); null elsewhere. */
+  const scopeText = (layer: CtemFunnelLayer) => {
+    if (layer.key === "business_impact" && layer.primary_assets != null && layer.supporting_assets != null) {
+      return t_i18n(
+        "{primary, plural, one {# primary asset} other {# primary assets}} reached through {supporting, plural, one {# supporting asset} other {# supporting assets}}.",
+        { primary: layer.primary_assets, supporting: layer.supporting_assets },
+      );
+    }
+    if (layer.key === "policy" && layer.rules && layer.rules.length > 0) {
+      return t_i18n("{count, plural, one {# policy rule applied} other {# policy rules applied}}.", { count: layer.rules.length });
+    }
+    return null;
   };
   /** The reachability split of the profile assets the Exposed layer read; null on any other layer. */
   const reachabilityText = (layer: CtemFunnelLayer) =>
@@ -351,6 +366,7 @@ export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = fal
         </p>
         <p>{definitionOf(row.layer)}</p>
         {reachabilityText(row.layer) && <p>{reachabilityText(row.layer)}</p>}
+        {scopeText(row.layer) && <p data-testid={`ctem-funnel-scope-${row.layer.key}`}>{scopeText(row.layer)}</p>}
         {dropText(row, exact) && <p>{dropText(row, exact)}</p>}
         {row.layer.state === "live" && readText && <p>{readText}</p>}
         {destination && (
@@ -770,12 +786,7 @@ export function PrioritizationFunnelWithCases({
   // B2 on #11678); a previous answer kept by the query is not shown as current.
   const { data: read, isError } = useCtemCases({ throwOnError: false });
   const data = isError ? undefined : read;
-  const cases = data
-    ? {
-        open: CTEM_OPEN_CASE_STATES.reduce((sum, s) => sum + (data.counts[s] ?? 0), 0),
-        total: Object.values(data.counts).reduce((sum, value) => sum + (value ?? 0), 0),
-      }
-    : undefined;
+  const cases = funnelCasesOf(data);
   const caseStates: FunnelCaseStates | undefined = data
     ? {
         waiting_decision: data.counts.waiting_decision ?? 0,
@@ -820,6 +831,19 @@ function SignalGateCounts() {
       {/* UX r1 B1 on #875: the card already counts open cases; this line names its
           scope (signals) so its "opened a case" never reads as a second case total. */}
       {t_i18n("Signals: {total} in, {confirmed} confirmed, {inScope} in scope, {cases} opened a case, {watchlist} on the watchlist", gate)}
+      {/* #874 S2: the watchlist is a filter of the signals list (`/ctem/signals?state=watchlist`). */}
+      {gate.watchlist > 0 && (
+        <>
+          {" "}
+          <Link
+            to={signalsHref({ state: "watchlist" })}
+            className={cn("rounded-sm text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)}
+            data-testid="ctem-funnel-gate-watchlist"
+          >
+            {t_i18n("Show the watchlist")}
+          </Link>
+        </>
+      )}
     </p>
   );
 }
@@ -918,6 +942,16 @@ export function PrioritizationFunnelPlaceholder({
   );
 }
 
+/** The open and total case counts the cases layer reads, from a `GET /ctem-cases` answer; undefined before it. */
+function funnelCasesOf(data: { counts: Partial<Record<string, number>> } | undefined) {
+  return data
+    ? {
+        open: CTEM_OPEN_CASE_STATES.reduce((sum, s) => sum + (data.counts[s] ?? 0), 0),
+        total: Object.values(data.counts).reduce<number>((sum, value) => sum + (value ?? 0), 0),
+      }
+    : undefined;
+}
+
 /** The command center widget: the compact funnel in a card, linking to the stage page.
  *  `placeholder`: OpenCTI connected and no funnel yet (#11662), drawn instead of the funnel. */
 export function PrioritizationFunnelCard({
@@ -937,6 +971,9 @@ export function PrioritizationFunnelCard({
   // The funnel ends in action (#1621): the vulnerabilities an open case carries, same unit as the steps.
   const { data: overview } = useCtemCasesOverview();
   const inCase = overview ? { count: overview.funnel.in_case, resolved: overview.funnel.resolved_recent, days: overview.funnel.resolved_window_days } : null;
+  // The cases layer reads the Cases API here too (#1980): the card never says "not available" over open cases.
+  const { data: read, isError } = useCtemCases({ throwOnError: false });
+  const cases = sample || isError ? undefined : funnelCasesOf(read);
   return (
     <Card className="flex h-full flex-col overflow-hidden" data-testid="ctem-funnel-card">
       <CardContent className="flex flex-1 flex-col gap-3 p-4">
@@ -956,7 +993,7 @@ export function PrioritizationFunnelCard({
           {placeholder ? (
             <PrioritizationFunnelPlaceholder display={placeholder} variant="compact" openctiUrl={openctiUrl} />
           ) : (
-            <PrioritizationFunnel funnel={funnel} variant="compact" openctiUrl={openctiUrl} sample={sample} readAt={readAt} inCase={inCase} />
+            <PrioritizationFunnel funnel={withCasesLayer(funnel, cases)} variant="compact" openctiUrl={openctiUrl} sample={sample} readAt={readAt} inCase={inCase} />
           )}
         </div>
       </CardContent>

@@ -447,12 +447,18 @@ async def may_answer(db: AsyncSession, decision: Decision, user: Any) -> bool:
     if kind == "group":
         from app.models.group import GroupMember
 
-        try:
-            group_id = uuid.UUID(ref)
-        except ValueError:
+        # A decision addressed to several groups names them all in its ask (#1748).
+        listed = (decision.ask or {}).get("recipient_groups") if isinstance(decision.ask, dict) else None
+        group_ids = []
+        for raw in [ref, *(listed or [])]:
+            try:
+                group_ids.append(uuid.UUID(str(raw)))
+            except ValueError:
+                continue
+        if not group_ids:
             return False
         found = await db.scalar(
-            select(GroupMember.id).where(GroupMember.group_id == group_id, GroupMember.user_id == user.id)
+            select(GroupMember.id).where(GroupMember.group_id.in_(group_ids), GroupMember.user_id == user.id).limit(1)
         )
         return found is not None
     return False

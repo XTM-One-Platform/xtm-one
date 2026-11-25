@@ -96,6 +96,20 @@ def _scheduled_refusal(exc: ScheduledWorkItemError) -> HTTPException:
     return HTTPException(status_code=exc.status_code, detail=str(exc))
 
 
+async def _write_missed(work_item_id: str, user: User) -> HTTPException:
+    """The answer to a person's write that matched no item (#1845).
+
+    403 with the reason when they read the item through a tier that grants no
+    write (a read-only workspace, the decision recipient, another person's
+    chat), so the dialog never says "not found" about the item it shows; 404
+    when they cannot read it either.
+    """
+    access = await work_item_service.person_write_access(work_item_id, user_id=str(user.id))
+    if access is not None and not access[0]:
+        return HTTPException(status_code=403, detail=access[1])
+    return HTTPException(status_code=404, detail="Work item not found")
+
+
 class WorkItemCreate(BaseModel):
     title: str
     description: str | None = None
@@ -677,8 +691,17 @@ async def get_work_item(
     if item is None:
         raise HTTPException(status_code=404, detail="Work item not found")
     described = (await work_item_context.describe_work_items([item], viewer=user))[0]
+    access = await work_item_service.person_write_access(work_item_id, user_id=str(user.id))
+    can_write, read_only_reason = access if access is not None else (False, None)
     return {
         **described,
+        # Whether the reader may change it, and why not (#1845): the dialog
+        # disables its write actions instead of answering "not found".
+        "can_write": can_write,
+        "read_only_reason": read_only_reason,
+        # The decision recipient may cancel without any other write (#1910).
+        "can_cancel": can_write
+        or (access is not None and await work_item_service.person_may_cancel(work_item_id, user_id=str(user.id))),
         "roi": await _roi_block(described, user),
         "attachments": await _attachments_block(described),
         "note_runs": await _note_runs_block(described, user),
@@ -806,7 +829,7 @@ async def update_work_item(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if item is None:
-        raise HTTPException(status_code=404, detail="Work item not found")
+        raise await _write_missed(work_item_id, user)
     return item
 
 
@@ -829,7 +852,7 @@ async def complete_work_item(
     except ScheduledWorkItemError as exc:
         raise _scheduled_refusal(exc) from exc
     if item is None:
-        raise HTTPException(status_code=404, detail="Work item not found")
+        raise await _write_missed(work_item_id, user)
     return item
 
 
@@ -865,7 +888,7 @@ async def answer_work_item(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if item is None:
-        raise HTTPException(status_code=404, detail="Work item not found")
+        raise await _write_missed(work_item_id, user)
     return item
 
 
@@ -901,7 +924,7 @@ async def ask_work_item(
     except work_item_service.WorkItemAskRefusedError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if sent is None:
-        raise HTTPException(status_code=404, detail="Work item not found")
+        raise await _write_missed(work_item_id, user)
     return sent
 
 
@@ -926,7 +949,7 @@ async def requeue_work_item(
     except ScheduledWorkItemError as exc:
         raise _scheduled_refusal(exc) from exc
     if item is None:
-        raise HTTPException(status_code=404, detail="Work item not found")
+        raise await _write_missed(work_item_id, user)
     return item
 
 
@@ -946,4 +969,4 @@ async def delete_work_item(
     except ScheduledWorkItemError as exc:
         raise _scheduled_refusal(exc) from exc
     if not deleted:
-        raise HTTPException(status_code=404, detail="Work item not found")
+        raise await _write_missed(work_item_id, user)

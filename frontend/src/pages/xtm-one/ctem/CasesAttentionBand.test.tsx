@@ -13,7 +13,7 @@ vi.mock("@/hooks/useAuth", () => ({ useAuth: () => auth }));
 vi.mock("@/hooks/api/useOrganizationContextApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useOrganizationContextApi")>()),
   useOrganizationContext: () => ({ data: undefined }),
-  useSaveOrganizationContext: () => ({ isPending: false, mutate: () => undefined }),
+  usePatchOrganizationContext: () => ({ isPending: false, mutate: () => undefined }),
 }));
 
 vi.mock("@/hooks/api/useAuthApi", async (importOriginal) => ({
@@ -45,7 +45,7 @@ function kase(over: Partial<CtemCaseSummary>): CtemCaseSummary {
     state: "new",
     open_issue_count: 3,
     restricted_count: 0,
-    crown_jewel_count: 0,
+    primary_asset_count: 0,
     kev_count: 1,
     asset_count: 0,
     owner_user_id: null,

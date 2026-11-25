@@ -915,6 +915,8 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
             },
             # The same message to the same recipients twice is refused.
             send_guard=SendGuard(recipients=("chat_id",), body=("message", "card")),
+            # Its [[FILE:id]] markers are sent as Teams files (_chat_file_markers.py).
+            outbound_keeps_file_markers=True,
             read_back=WriteReadBack(
                 kind="chat_message",
                 id_pattern=r"Message ID: ([^\s.]+)",

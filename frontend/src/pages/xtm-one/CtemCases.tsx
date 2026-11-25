@@ -23,6 +23,8 @@ import {
   CASE_TOGGLES,
   applyCaseQuickFilters,
   caseQuickFilterCount,
+  caseWaitFacet,
+  isStalledCase,
   readCaseScope,
   readCaseToggles,
   writeCaseToggles,
@@ -43,10 +45,11 @@ import { caseWaitWho, caseWaitWhoLabel } from "./ctem/case-wait";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { useMe, useUserDirectoryByIds } from "@/hooks/api/useAuthApi";
 import { useAuth } from "@/hooks/useAuth";
-import { CTEM_CASE_STATES, useCtemCases, type CtemCaseOpenedBy, type CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
+import { CTEM_CASE_STATES, useCtemCaseOpening, useCtemCases, type CtemCaseOpenedBy, type CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
 import { CasesBulkActions } from "./ctem/CasesBulkActions";
 import { CasesDeleteAction } from "./ctem/CasesDeleteAction";
 import { CasesFreshness } from "./ctem/CasesFreshness";
+import { CaseOpeningOffEmptyState, CaseOpeningSwitch } from "./ctem/CaseOpeningSwitch";
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import { useFormatter } from "@/i18n";
 import { formatCount } from "@/lib/number-format";
@@ -57,6 +60,7 @@ import {
   CasePriorityChip,
   CaseOwner,
   CaseStateChip,
+  CaseToValidateChip,
   useCasesEmptyLabel,
 } from "./ctem/cases-shared";
 import { CTEM_STAGE_CONFIG, CTEM_STAGE_KEYS } from "@/lib/constants";
@@ -125,7 +129,10 @@ export default function CtemCases() {
   const ownerName = (id: string | null) => (id ? (owners?.find((o) => o.id === id)?.full_name ?? null) : null);
 
   // A product that could not be read never yields the all-clear sentence (#12139).
-  const empty = useCasesEmptyLabel(data?.details_unavailable);
+  const empty = useCasesEmptyLabel(data?.details_unavailable, data?.details_unavailable_reasons);
+  // #1951: while case opening is off, the empty list adds one muted line under its usual sentence.
+  const { data: opening } = useCtemCaseOpening();
+  const paused = opening?.on === false;
   const rows = useMemo(() => applyCaseQuickFilters(cases, scope, toggles, now, meId), [cases, scope, toggles, now, meId]);
   const countOf = (chip: CaseScopeChip | CaseToggle) => (data ? caseQuickFilterCount(chip, cases, scope, toggles, now, meId) : undefined);
   const groupBy = useMemo<DataTableGroupBy<CtemCaseSummary> | undefined>(() => {
@@ -153,7 +160,13 @@ export default function CtemCases() {
       // The default sort (#1503): priority, critical first; the attention score and its band are gone.
       key: "priority",
       header: "Priority",
-      cell: (c) => <CasePriorityChip priority={c.priority} />,
+      // A version-blind case keeps its priority and says the version is to validate (#2004).
+      cell: (c) => (
+        <span className="inline-flex items-center gap-1">
+          <CasePriorityChip priority={c.priority} />
+          <CaseToValidateChip unverified={c.version_unverified} />
+        </span>
+      ),
       sortValue: (c) => CASE_PRIORITY_RANK[c.priority],
       csv: (c) => c.priority,
       firstSort: "desc",
@@ -195,12 +208,12 @@ export default function CtemCases() {
       defaultHidden: true,
     },
     {
-      key: "crown_jewels",
+      key: "primary_assets",
       header: "Primary assets",
       align: "right",
-      cell: (c) => formatCount(intl.locale, c.crown_jewel_count),
-      sortValue: (c) => c.crown_jewel_count,
-      csv: (c) => c.crown_jewel_count,
+      cell: (c) => formatCount(intl.locale, c.primary_asset_count),
+      sortValue: (c) => c.primary_asset_count,
+      csv: (c) => c.primary_asset_count,
       firstSort: "desc",
       hideBelow: "6xl",
       hideable: true,
@@ -315,6 +328,14 @@ export default function CtemCases() {
       header: "Waits on",
       cell: (c) => {
         const wait = c.state === "waiting_decision" ? c.waiting_on : null;
+        // An open case the sweep found waiting on nobody says so (#1736): no gate, no reminder, nothing moved it since.
+        if (!wait && isStalledCase(c) && c.stalled_since) {
+          return (
+            <span className="block max-w-[14rem] text-feedback-warning-primary" data-testid="ctem-case-waits-on-nobody">
+              <TruncatedText text={t_i18n("Nobody, since {date}", { date: intl.formatDate(c.stalled_since, { day: "numeric", month: "short" }) })} />
+            </span>
+          );
+        }
         if (!wait) return <span className="text-default-secondary">-</span>;
         // Never the raw `by`: a person by name, a role or policy in words, else "a person" (UX r1 B3 on #1515).
         const who = caseWaitWhoLabel(caseWaitWho(wait.by, ownerName), t_i18n);
@@ -326,8 +347,13 @@ export default function CtemCases() {
           </span>
         );
       },
-      sortValue: (c) => (c.state === "waiting_decision" ? (c.waiting_on?.since ?? "") : ""),
-      csv: (c) => (c.state === "waiting_decision" && c.waiting_on ? caseWaitWhoLabel(caseWaitWho(c.waiting_on.by, ownerName), t_i18n) : ""),
+      sortValue: (c) => (c.state === "waiting_decision" ? (c.waiting_on?.since ?? "") : isStalledCase(c) ? (c.stalled_since ?? "") : ""),
+      csv: (c) =>
+        c.state === "waiting_decision" && c.waiting_on
+          ? caseWaitWhoLabel(caseWaitWho(c.waiting_on.by, ownerName), t_i18n)
+          : isStalledCase(c)
+            ? "nobody"
+            : "",
       hideBelow: "6xl",
       hideable: true,
     },
@@ -401,6 +427,8 @@ export default function CtemCases() {
           <>
             <CasesGroupByPill value={groupKey} onChange={setGroupKey} />
             <CasesViewsPill />
+            {/* #1951: administrators only, at the toolbar's 32 px like Group by and Views. */}
+            <CaseOpeningSwitch />
           </>
         }
         defaultSort={{ key: "priority", direction: "desc" }}
@@ -462,9 +490,20 @@ export default function CtemCases() {
             ],
           },
           {
-            key: "crown_jewels",
+            // Whom an open case waits on (#1736): a person (a gate of the loop) or nobody (the sweep found it stalled).
+            key: "waits_on",
+            label: "Waits on",
+            values: (c) => caseWaitFacet(c),
+            options: [
+              { value: "person", label: t_i18n("A person") },
+              { value: "nobody", label: t_i18n("Stalled (case filter)") },
+            ],
+          },
+          {
+            key: "primary_assets",
             label: "Primary assets",
-            values: (c) => [c.crown_jewel_count > 0 ? "yes" : "no"],
+            // Null is unknown for this reader: in neither option, never "No primary asset".
+            values: (c) => (c.primary_asset_count == null ? [] : [c.primary_asset_count > 0 ? "yes" : "no"]),
             options: [
               { value: "yes", label: t_i18n("Touches a primary asset") },
               { value: "no", label: t_i18n("No primary asset") },
@@ -473,7 +512,7 @@ export default function CtemCases() {
           {
             key: "kev",
             label: "KEV",
-            values: (c) => [c.kev_count > 0 ? "yes" : "no"],
+            values: (c) => (c.kev_count == null ? [] : [c.kev_count > 0 ? "yes" : "no"]),
             options: [
               { value: "yes", label: t_i18n("Has a KEV issue") },
               { value: "no", label: t_i18n("No KEV issue") },
@@ -496,6 +535,7 @@ export default function CtemCases() {
         isError={isError}
         onRetry={() => void refetch()}
         emptyLabel={empty.label}
+        emptyContent={paused ? <CaseOpeningOffEmptyState label={empty.label} /> : undefined}
         noResultsLabel={t_i18n("No case matches these filters")}
         rowTestId="ctem-cases-row"
       />

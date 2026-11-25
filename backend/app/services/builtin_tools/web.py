@@ -471,6 +471,13 @@ def build_web_fetch_tool(
 
         parts = [f"# {result.title}" if result.title else f"# {result.url}"]
         parts.append(f"URL: {result.url}")
+        # Each redirect followed, as the server answered it (status and Location), then the final status;
+        # a page reached without a redirect reads as it always did.
+        hops = getattr(result, "redirects", None) or []
+        for hop in hops:
+            parts.append(f"Redirect: {hop.status} {hop.url} -> {hop.location}")
+        if hops:
+            parts.append(f"Status: {result.status_code}")
         parts.append(f"Content-Type: {result.content_type}")
         if sanitized:
             parts.append("Kept file: sanitized (script, style, svg, img, link, iframe and media elements dropped).")

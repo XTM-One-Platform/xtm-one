@@ -136,15 +136,15 @@ def test_policy_pass_names_its_reason_kind() -> None:
             "11:58", "ctem.mobilize", "passed_automatically", reason="pre-approved runbook patch-windows (level medium)"
         ),
         _gate("11:59", "ctem.remediation.decision", "passed_automatically", reason="within the approval threshold"),
-        _gate(
-            "12:00", "ctem.validation.non_readonly", "passed_automatically", reason="safe mode: read-only checks only"
-        ),
+        _gate("12:00", "ctem.validation.non_readonly", "passed_automatically", reason="fleet level"),
         _gate("12:01", "ctem.analyst_review", "passed_automatically", reason="fleet level"),
     )
     records = {r["key"]: r for r in gates.resolve(history, [], now=NOW)}
     assert records["ctem.mobilize"]["reason"] == {"kind": "runbook", "runbook": "patch-windows"}
     assert records["ctem.remediation.decision"]["reason"] == {"kind": "within_threshold"}
-    assert records["ctem.validation.non_readonly"]["reason"] == {"kind": "safe_mode"}
+    # #1810: a reason is never read as a class of the inject.
+    assert records["ctem.validation.non_readonly"]["reason"] == {"kind": "fleet_level"}
+    assert "safe_mode" not in gates.REASON_KINDS
     assert records["ctem.analyst_review"]["reason"] == {"kind": "fleet_level"}
     assert all(r["status"] == gates.PASSED_AUTOMATICALLY for r in records.values())
     assert records["ctem.mobilize"]["passed_at"] == _at("11:58")
@@ -171,6 +171,22 @@ def test_attach_extends_answer_on_the_waiting_event() -> None:
     assert asked["answer"]["comment"] == "ok"
     assert asked["answer"]["wait_seconds"] == 600.0
     assert asked["answer"]["recorded_on_case"] is False
+
+
+def test_a_waiting_record_says_whether_its_decision_was_filed() -> None:
+    """#1954: a gate can read waiting with no decision item; the record says so, the page does not point to a list."""
+    history = _history(_gate("11:09", "ctem.analyst_review", "waited"))
+    lost = _one(gates.resolve(history, [], now=NOW, filed={"ctem.analyst_review": False}), "ctem.analyst_review")
+    assert lost["status"] == gates.WAITING and lost["decision_filed"] is False and lost["asked_of"] is None
+    filed = _one(gates.resolve(history, [], now=NOW, filed={"ctem.analyst_review": True}), "ctem.analyst_review")
+    assert filed["decision_filed"] is True
+    assert _one(gates.resolve(history, [], now=NOW), "ctem.analyst_review")["decision_filed"] is None
+    answered = _history(
+        _gate("11:09", "ctem.analyst_review", "waited"),
+        _gate("12:10", "ctem.analyst_review", "answered", PERSON, reason=PERSON, evidence="B"),
+    )
+    record = _one(gates.resolve(answered, [], now=NOW, filed={"ctem.analyst_review": False}), "ctem.analyst_review")
+    assert record["decision_filed"] is None
 
 
 def test_attach_keeps_what_the_case_event_said() -> None:

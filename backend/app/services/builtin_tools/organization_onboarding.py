@@ -114,7 +114,7 @@ def build_organization_onboarding_tool(
                 "fields": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": 'skip: the contract paths the user skips, e.g. ["ai_systems"].',
+                    "description": 'skip: the contract paths the user skips, e.g. ["ticketing"].',
                 },
             },
             "required": [],

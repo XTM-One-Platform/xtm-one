@@ -228,7 +228,7 @@ test.describe('Presentations — deck toolbar and keyboard', () => {
   });
 
   // Logo placement: the resolver's answer is pinned per layout in
-  // `logo-position.spec.ts`; this is the rendered half - the position the bar
+  // `tests_unit/logo-position.test.ts`; this is the rendered half - the position the bar
   // publishes as `data-logo-position`, and where the mark actually lands in
   // the row the exports and the layout audit read. The preview deck opens on a
   // left-aligned title (auto -> start), runs through body slides (always the

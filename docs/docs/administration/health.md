@@ -19,6 +19,8 @@ The platform ships a built-in fleet named **Platform Health**, in a company-mana
 
 The fleet, its agents, their assignments and its workspace are **built in and read-only for everyone**, administrators included: nobody edits, switches off, deletes, duplicates or forks them, and every attempt answers "Platform Health is built in and read-only." The platform rewrites their definition at every start. What an administrator tunes is set in Settings > Automations > Platform Health (below). None of the agents can edit an agent or a flow directly. The fleet never supervises itself.
 
+The fleet's tools and skills are its own. The Tools page and the agent builder show one health group, **Platform Health** (read signals, cycles and digests; ask it to improve an agent or a flow); the specialists' tools are one internal group that only the fleet's agents carry. The Skills catalogue shows **Platform Health: module checks** (the OpenCTI, OpenAEV and OpenCRQ checks, one section per module), **Fleet health advisory** and **Fleet design and operations**; the Memory Steward, Quality Analyst, Flow Lab and Experimenter skills are internal, bound to their agents only.
+
 Every piece of Platform Health work is a run of one of the fleet's assignments, and every run starts inside a **cycle**: a unit of work with its own share of the Platform Health budget. Each cycle ends with a digest.
 
 ## Settings > Automations > Platform Health

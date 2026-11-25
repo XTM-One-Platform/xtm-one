@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * The five tabs of Settings > Organization > Profile (#12329): every card of the
- * profile page, and every field of the profile contract, sits in exactly one tab.
+ * The tabs of the organization profile (#12329, #1975): every card of the profile, and every field of the profile
+ * contract, sits in exactly one tab. Settings draws two of them (Organization, Risk and response); the other three
+ * are the CTEM > Inventory pages the business, technology and exposure cards moved to (#1178, #1690).
  * The tab is a segment of the page path (`/settings/organization/profile/<tab>`, the
  * first tab the bare `/settings/organization`; path routes, not a query, #10203), so a
  * tab can be linked to and the browser's Back returns to the previous one. A missing field, a refused Save,
@@ -12,15 +13,15 @@
  */
 
 /** The tabs, in page order; the first is the default. */
-export const PROFILE_TABS = ["identity", "business", "technology", "exposure", "knowledge"] as const;
+export const PROFILE_TABS = ["organization", "risk", "business", "technology", "exposure"] as const;
 export type ProfileTab = (typeof PROFILE_TABS)[number];
 
 /**
- * The tabs Settings > Organization keeps (#1178, Sam 22 Nov 2026; #1690, Sam 24 Nov 2026): the Business, Technology
- * and Exposure cards live on CTEM > Inventory now, so Settings draws no tab bar (identity, knowledge through its
- * button); the five tabs stay the grouping of fields (drafts, unsaved markers, missing fields).
+ * The tabs Settings > Organization > Profile draws (#1975, Sam 24 Nov 2026): who you are and what agents read
+ * (Organization), how CTEM decides and acts (Risk and response). The Business, Technology and Exposure cards live on
+ * CTEM > Inventory (#1178, #1690); the five tabs stay the grouping of fields (drafts, unsaved markers, missing fields).
  */
-const SETTINGS_PROFILE_TABS = ["identity", "knowledge"] as const satisfies readonly ProfileTab[];
+export const SETTINGS_PROFILE_TABS = ["organization", "risk"] as const satisfies readonly ProfileTab[];
 
 /** Whether a tab's cards live on CTEM > Inventory instead of Settings. */
 export function isInventoryTab(tab: ProfileTab): boolean {
@@ -29,30 +30,29 @@ export function isInventoryTab(tab: ProfileTab): boolean {
 
 /** The tab names (at most three words). @i18n-keys */
 export const PROFILE_TAB_LABELS = {
-  identity: "Identity and risk",
+  organization: "Organization",
+  risk: "Risk and response",
   business: "Business",
   technology: "Technology",
   exposure: "Exposure",
-  knowledge: "Knowledge and sources",
 } as const satisfies Record<ProfileTab, string>;
 
 /** Every card of the profile page, by its key, and the tab that shows it. */
 export const PROFILE_CARD_TAB = {
-  identity: "identity",
-  risk_appetite: "identity",
-  ticketing: "identity",
-  crown_jewels: "business",
+  identity: "organization",
+  risk_appetite: "risk",
+  ticketing: "risk",
+  primary_assets: "business",
   shipped_products: "business",
   tracked_organizations: "business",
-  tech_stack: "technology",
+  software: "technology",
   assets_exposure: "exposure",
   asset_groups: "exposure",
   prioritization_policy: "exposure",
   outside_lens: "exposure",
   evidence_health: "exposure",
-  enterprise_knowledge: "knowledge",
-  scheduled_imports: "knowledge",
-  context_injection: "knowledge",
+  enterprise_knowledge: "organization",
+  context_injection: "organization",
 } as const satisfies Record<string, ProfileTab>;
 export type ProfileCard = keyof typeof PROFILE_CARD_TAB;
 
@@ -61,9 +61,9 @@ export type ProfileCard = keyof typeof PROFILE_CARD_TAB;
  * mounts the card with its edit (OrganizationSection embed).
  */
 export const INVENTORY_CARD_PATH: Partial<Record<ProfileCard, string>> = {
-  tech_stack: "/ctem/inventory/software",
+  software: "/ctem/inventory/software",
   // The business inputs have their own Inventory tab (#1690).
-  crown_jewels: "/ctem/inventory/business",
+  primary_assets: "/ctem/inventory/business",
   shipped_products: "/ctem/inventory/business",
   tracked_organizations: "/ctem/inventory/business",
   assets_exposure: "/ctem/inventory",
@@ -84,8 +84,9 @@ export function profileCardHref(card: ProfileCard, params: URLSearchParams = new
 
 /**
  * Every field of the profile (a form key or a contract path) and the card that edits it.
- * pir_names travels with pir_ids; posture_target is set on the CTEM governance page and
- * only carried by the form, so it opens the exposure tab, where the policy lives.
+ * pir_names travels with pir_ids, edited on the Prioritization policy beside the PIR score thresholds (#1889);
+ * posture_target is set on the CTEM governance page and only carried by the form, so it opens the exposure tab,
+ * where the policy lives.
  */
 export const PROFILE_FIELD_CARD = {
   name: "identity",
@@ -99,13 +100,11 @@ export const PROFILE_FIELD_CARD = {
   annual_loss_threshold: "risk_appetite",
   approval_threshold: "risk_appetite",
   ticketing: "ticketing",
-  pir_ids: "ticketing",
-  pir_names: "ticketing",
-  crown_jewels: "crown_jewels",
+  pir_ids: "prioritization_policy",
+  pir_names: "prioritization_policy",
+  primary_assets: "primary_assets",
   shipped_products: "shipped_products",
-  tech_stack: "tech_stack",
-  // #1501: the AI systems are the assets of category ai_target, edited on the asset list.
-  ai_systems: "assets_exposure",
+  software: "software",
   assets_exposure: "assets_exposure",
   asset_groups: "asset_groups",
   prioritization_policy: "prioritization_policy",

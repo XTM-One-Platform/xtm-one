@@ -228,7 +228,7 @@ A placebo comparison's run is refused by `trigger-from-runs`, `replay` and `resc
 - `reuse`: `inherit` (default, writes nothing), `on` or `off`, stored as the `manual` `reuse` parameter, winning over a `reuse` key in `params`; else 422 (§7).
 - `placebo`, `confirm_write_tools`, `placebo_seed`: `dev-docs/agent-placebo-evaluation.md`.
 
-A launch refusal (`check_launchable`, `plan_launch` in `services/evaluation/launch.py`) carries its own status: 400, 422 for an unavailable model.
+A launch refusal (`check_launchable`, `plan_launch` in `services/evaluation/launch.py`) carries its own status: 400, 422 for an unavailable model, 409 when the evaluation's owner is no longer an active administrator (`owner_refusal`: its runs act as its owner, whoever starts them; an ownerless evaluation is not checked). The same rule fails a run when it starts or resumes, and closes a callback episode's resume with that reason.
 
 **Re-run and re-score** (§8):
 
@@ -819,7 +819,7 @@ No JWT, no AI gate (the episode was already dispatched). The signature is compar
 - `op` is `lt`, `lte`, `gt`, `gte` or `eq`. An unknown param, metric or tag key, aggregate or operator matches no run; an unknown score `field` is a 422.
 - Newest first; `limit` 100 by default, 500 at most (422 above).
 - Evaluation, score and date filters run in SQL; the others filter the newest `max(5 × limit, 100)` of those runs, so an older match can be missed.
-- A row (`RunSearchResultItem`) carries headlines, own and effective tags, `is_baseline`, `anomaly_count` and `platform_error_count`, not parameters or metric aggregates (the run's own routes serve them).
+- A row (`RunSearchResultItem`) carries headlines, own and effective tags, `is_baseline`, `anomaly_count`, `platform_error_count` and, for a placebo comparison's run, `arm`, `placebo_target` and `placebo_comparison_id` (`real` and null elsewhere), not parameters or metric aggregates (the run's own routes serve them).
 
 ### Comparison tool
 

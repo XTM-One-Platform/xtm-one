@@ -26,7 +26,7 @@ function kase(over: Partial<CtemCaseSummary> = {}): CtemCaseSummary {
     open_issue_count: 1,
     restricted_count: 0,
     asset_count: 1,
-    crown_jewel_count: 0,
+    primary_asset_count: 0,
     kev_count: 0,
     max_cvss: null,
     max_epss: null,
@@ -40,11 +40,11 @@ function kase(over: Partial<CtemCaseSummary> = {}): CtemCaseSummary {
 describe("case attention (#1176)", () => {
   it("adds every reason and names each one", () => {
     const a = caseAttention(
-      kase({ priority: "critical", kev_count: 175, asset_count: 914, crown_jewel_count: 2, owner_user_id: null, due_at: null, created_at: new Date(NOW - 3 * DAY).toISOString() }),
+      kase({ priority: "critical", kev_count: 175, asset_count: 914, primary_asset_count: 2, owner_user_id: null, due_at: null, created_at: new Date(NOW - 3 * DAY).toISOString() }),
       NOW,
     );
     expect(a.score).toBe(40 + 15 + 15 + 5 + 3);
-    expect(a.reasons.map((r) => r.kind)).toEqual(["priority", "kev", "crown_jewel", "no_owner", "age"]);
+    expect(a.reasons.map((r) => r.kind)).toEqual(["priority", "kev", "primary_asset", "no_owner", "age"]);
     expect(a.reasons).toContainEqual({ kind: "kev", count: 175, assets: 914 });
     expect(a.next).toBe("assign");
   });
@@ -72,7 +72,7 @@ describe("case attention (#1176)", () => {
       expect(caseAttention(kase({ kev_count: 2 }), NOW, { ...W, kev: 0 }).score).toBe(0);
     });
     it("primary asset", () => {
-      expect(kinds({ crown_jewel_count: 1 }, { ...W, crownJewel: 0 })).not.toContain("crown_jewel");
+      expect(kinds({ primary_asset_count: 1 }, { ...W, primaryAsset: 0 })).not.toContain("primary_asset");
     });
     it("overdue, without falling back to due soon", () => {
       const r = kinds({ due_at: new Date(NOW - DAY).toISOString() }, { ...W, overdue: 0 });

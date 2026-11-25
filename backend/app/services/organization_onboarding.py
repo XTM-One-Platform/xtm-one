@@ -38,9 +38,8 @@ ONBOARDING_GROUPS: tuple[tuple[str, ...], ...] = (
     ("sector",),
     ("regions",),
     ("size",),
-    ("crown_jewels",),
-    ("tech_stack",),
-    ("ai_systems",),
+    ("primary_assets",),
+    ("software",),
     ("pir_ids",),
     ("currency", "loaded_hourly_rate"),
     ("risk_appetite.annual_loss_threshold", "risk_appetite.approval_threshold"),
@@ -53,15 +52,11 @@ FIELD_HINTS: dict[str, str] = {
     "sector": "the sector, e.g. Finance, Energy, Technology (text; sub_sector optional)",
     "regions": 'the countries of operation (list of ISO 3166-1 alpha-2 codes, e.g. ["FR", "US"])',
     "size": "the number of employees (one of 1-50, 51-250, 251-1000, 1001-5000, 5001-20000, 20000+)",
-    "crown_jewels": (
-        "the crown jewels and the business services they carry (list of {name, business_service, owner, "
+    "primary_assets": (
+        "the primary assets and the business services they carry (list of {name, business_service, owner, "
         "criticality: low|medium|high|critical})"
     ),
-    "tech_stack": "the main products in use (list of {product, vendor})",
-    "ai_systems": (
-        "the AI systems the organization runs or exposes (list of {name, kind: assistant|agent|model_api|embedded, "
-        "owner, exposure: internal|partner|public}); saved as assets of category ai_target"
-    ),
+    "software": "the main products in use (list of {product, vendor})",
     "pir_ids": "the OpenCTI priority intelligence requirements to follow (list of OpenCTI PIR ids)",
     "currency": "the currency of every amount (ISO 4217 code, e.g. EUR)",
     "loaded_hourly_rate": "the loaded cost of one hour of work, in that currency (number)",

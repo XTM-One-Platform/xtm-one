@@ -40,7 +40,8 @@ from app.tools.base import CallableToolExecutor, ToolDefinition
 
 logger = logging.getLogger(__name__)
 
-EVALUATION_SUITE_ID = "health_evaluation"
+#: Its functions belong to Platform Health's one internal group (#1943).
+EVALUATION_SUITE_ID = "health_specialists"
 _SOURCE = f"builtin:{EVALUATION_SUITE_ID}"
 REFUSED = "Refused: Platform Health evaluation is not available to this caller for this target."
 

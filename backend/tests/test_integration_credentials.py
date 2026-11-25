@@ -33,6 +33,7 @@ from app.services.integration_credentials import (
     require_oauth_credentials_usable,
     resolve_session_integration_bindings,
 )
+from app.services.integration_tools import BindingBasis, ToolBindings
 from app.tools.base import ToolDefinition
 from tests.integration_credential_fakes import (
     COLLEAGUE_ID,
@@ -328,7 +329,7 @@ async def test_worked_on_main_every_binding_resolves_whatever_its_sharing(_slack
     context = {"source": "assignment", "user_id": str(COLLEAGUE_ID)}
 
     definitions, _executor = await integration_tools.build_integration_tools(
-        db, {"slack": [str(integration.id)]}, context=context
+        db, ToolBindings({"slack": [str(integration.id)]}, basis=BindingBasis.CALLER_CHECKED, reason="test"), context=context
     )
 
     assert _slack_builder.built == ["plain:enc-access-token"]
@@ -376,7 +377,7 @@ async def test_worked_on_main_a_co_editor_s_own_token_on_a_shared_agent(
     context = {"source": source, "agent_id": str(agent.id), **credential}
 
     definitions, _ = await integration_tools.build_integration_tools(
-        db, {"slack": [str(colleagues_own.id)]}, context=context
+        db, ToolBindings({"slack": [str(colleagues_own.id)]}, basis=BindingBasis.CALLER_CHECKED, reason="test"), context=context
     )
 
     assert _slack_builder.built == ["plain:enc-access-token"]
@@ -397,7 +398,7 @@ async def test_a_vouched_binding_spelled_in_upper_case_still_resolves(_slack_bui
     context = {"source": "assignment", "agent_id": str(agent.id), "user_id": str(OWNER_ID)}
 
     definitions, _ = await integration_tools.build_integration_tools(
-        db, {"slack": [str(colleagues_own.id).upper()]}, context=context
+        db, ToolBindings({"slack": [str(colleagues_own.id).upper()]}, basis=BindingBasis.CALLER_CHECKED, reason="test"), context=context
     )
 
     assert _slack_builder.built == ["plain:enc-access-token"]
@@ -428,7 +429,7 @@ async def test_worked_on_main_an_ownerless_company_integration_on_an_admin_manag
     context = {"source": "assignment", "agent_id": str(agent.id), "user_id": str(COLLEAGUE_ID)}
 
     definitions, _ = await integration_tools.build_integration_tools(
-        db, {"slack": [str(ownerless.id)]}, context=context
+        db, ToolBindings({"slack": [str(ownerless.id)]}, basis=BindingBasis.CALLER_CHECKED, reason="test"), context=context
     )
 
     assert _slack_builder.built == ["plain:enc-access-token"]
@@ -444,7 +445,7 @@ async def test_worked_on_main_the_general_assistant_s_admin_configured_bindings(
 
     await integration_tools.build_integration_tools(
         db,
-        {"slack": [str(admins_own.id)]},
+        ToolBindings({"slack": [str(admins_own.id)]}, basis=BindingBasis.CALLER_CHECKED, reason="test"),
         context={"source": "general_assistant", "user_id": str(COLLEAGUE_ID)},
     )
 
@@ -460,7 +461,7 @@ async def test_worked_on_main_a_duplicated_agent_keeps_the_token_it_carries(_sla
     context = {"source": "assignment", "agent_id": str(bobs_copy.id), "user_id": str(OWNER_ID)}
 
     definitions, _ = await integration_tools.build_integration_tools(
-        db, {"slack": [str(alices.id)]}, context=context
+        db, ToolBindings({"slack": [str(alices.id)]}, basis=BindingBasis.CALLER_CHECKED, reason="test"), context=context
     )
 
     assert _slack_builder.built == ["plain:enc-access-token"]
@@ -509,7 +510,7 @@ async def test_worked_on_main_a_build_without_any_identity_resolves_its_bindings
     db = FakeSession({Integration: [integration]})
 
     definitions, _ = await integration_tools.build_integration_tools(
-        db, {"slack": [str(integration.id)]}
+        db, ToolBindings({"slack": [str(integration.id)]}, basis=BindingBasis.CALLER_CHECKED, reason="test")
     )
 
     assert definitions
@@ -523,7 +524,7 @@ async def test_a_non_canonical_binding_id_resolves_through_get_token_s_own_load(
 
     definitions, _ = await integration_tools.build_integration_tools(
         db,
-        {"slack": [str(integration.id).upper()]},
+        ToolBindings({"slack": [str(integration.id).upper()]}, basis=BindingBasis.CALLER_CHECKED, reason="test"),
         context={"user_id": str(COLLEAGUE_ID)},
     )
 

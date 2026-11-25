@@ -113,6 +113,7 @@ from app.services.run_ledger import (
     record_helper_ledger,
     tool_ledger_call,
 )
+from app.services.tool_surface_refresh import IntegrationSurfaceRefresher
 from app.tools.agent_loop import (
     CONTINUATION_COMPOSING_REASONS,
     SLOW_TURN_WARN_SECONDS,
@@ -142,8 +143,10 @@ if TYPE_CHECKING:
     from app.services.desktop_session import DesktopContext
     from app.services.fleet_studio import FleetStudioContext
     from app.services.presentation_studio import StudioContext
+    from app.services.tool_surface_refresh import RebuildIntegrations
     from app.services.video_studio.studio import VideoStudioContext
     from app.tools.agent_loop import SteeringMessage
+    from app.tools.base import ToolExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -734,6 +737,49 @@ async def _load_pipeline_tool_unbound(
                     integ_id_str,
                 )
 
+        # The pinned integration acts for someone other than the agent's owner
+        # only when they may use it, as a direct binding: visible to them, or
+        # lent by the agent. Otherwise the fallback below picks one of theirs.
+        from app.services.integration_credentials import normalize_acting_user_id
+
+        _acting = normalize_acting_user_id(user_id)
+        _owner = normalize_acting_user_id(getattr(agent, "user_id", None))
+        if integ is not None and _acting is not None and _acting != _owner:
+            from app.api.v1.helpers import get_user_group_ids
+            from app.services.integration_credentials import lent_integration_ids
+            from app.services.integration_tools import shadow_invisible_bindings
+
+            _pinned = {provider: str(integ.id)}
+            await shadow_invisible_bindings(
+                db,
+                _pinned,
+                {},
+                acting_user_id=str(_acting),
+                user_group_ids=await get_user_group_ids(db, _acting),
+                lent_ids=lent_integration_ids(agent),
+                lent_owner_id=_owner,
+            )
+            if not _pinned:
+                from app.services.openapi_import.service import provider_resolves_per_user
+
+                if not provider_resolves_per_user(provider):
+                    # Each integration of the provider is a different API: none
+                    # of the person's own stands in for the pinned one.
+                    logger.info(
+                        "Pipeline LOAD: pinned integration %s withheld for user %s, no per-user equivalent",
+                        integ.id,
+                        _acting,
+                    )
+                    return None
+                logger.info(
+                    "Pipeline LOAD: pinned integration %s withheld for user %s, picking theirs",
+                    integ.id,
+                    _acting,
+                )
+                integ = None
+        # A run with no person is the owner's own: it keeps the pinned integration.
+        _owner_run_pin = integ is not None and _acting is None
+
         # Fallback: scope-based resolution (legacy refs without integration_id).
         # ``scope_headers`` come from the platform request a turn answers; an
         # evaluation answers none, so it passes none and takes the resolver's
@@ -804,10 +850,19 @@ async def _load_pipeline_tool_unbound(
             READ_ONLY_CONTEXT_KEY,
             read_only_integration_ids,
         )
+        from app.services.integration_tools import BindingBasis, ToolBindings
 
         defs, executor = await build_integration_tools(
             db,
-            {provider: [str(integ.id)]},
+            ToolBindings(
+                {provider: [str(integ.id)]},
+                basis=BindingBasis.OWNER_RUN if _owner_run_pin else BindingBasis.CALLER_CHECKED,
+                reason=(
+                    "the pipeline tool ref's pinned integration, for the owner's own run"
+                    if _owner_run_pin
+                    else "the pinned integration the person may use, else one picked through template_candidate_filter"
+                ),
+            ),
             context={
                 "source": "pipeline",
                 "agent": agent.name,
@@ -1461,17 +1516,17 @@ def _add_platform_builder_tools(
 
         # ROI and outcomes (#10006 S2), with the REST routes' access rules.
         composite.add_tools(*build_roi_tools(actor_id))
-    if "health_sandbox" in agent_builtin_tool_ids and health_actor is not None:
+    if "health_specialists" in agent_builtin_tool_ids and health_actor is not None:
         from app.services.health.sandbox.tools import build_sandbox_tools
 
         # Its own access rule (Platform Health or an administrator) on every call.
         composite.add_tools(*build_sandbox_tools(db, health_actor or None))
-    if "health_evaluation" in agent_builtin_tool_ids and health_actor is not None:
+    if "health_specialists" in agent_builtin_tool_ids and health_actor is not None:
         from app.services.health.evaluation_tools import build_health_evaluation_tools
 
         # Its own access rule (Platform Health, or an administrator where evaluation is on).
         composite.add_tools(*build_health_evaluation_tools(db, health_actor or None, run_id=run_id))
-    if "improvement_proposals" in agent_builtin_tool_ids and health_actor is not None:
+    if "health_specialists" in agent_builtin_tool_ids and health_actor is not None:
         from app.services.builtin_tools.improvements import build_improvement_tools
 
         # Its own access rule (scope in a Platform Health run, the target's managers
@@ -3860,7 +3915,7 @@ async def run_agent_chat(
                 )
 
         # Fetch user group IDs for three-tier visibility on handover agents
-        from app.api.v1.helpers import get_user_group_ids, user_visible_filter
+        from app.api.v1.helpers import get_user_group_ids
 
         user_group_ids: list[str] = []
         if h_ids and not is_anonymous_user:
@@ -3906,12 +3961,21 @@ async def run_agent_chat(
                         .order_by(Agent.name)
                     )
                 else:
+                    # The configured handover is the grant: a peer the
+                    # person may not open is still loaded (never listed or
+                    # opened by them), the exposure rule kept.
+                    from app.services.fleets import (
+                        configured_handover_reach,
+                        handover_peer_clause,
+                    )
+
+                    granted = await configured_handover_reach(_db, agent.id, h_ids)
                     r = await _db.execute(
                         select(Agent)
                         .where(
                             Agent.id.in_(h_ids),
                             Agent.enabled.is_(True),
-                            user_visible_filter(Agent, uuid.UUID(user_id), user_group_ids),
+                            handover_peer_clause(uuid.UUID(user_id), user_group_ids, granted),
                             active_handover_target_clause(),
                         )
                         .order_by(Agent.name)
@@ -4606,6 +4670,12 @@ async def run_agent_chat(
             ctem_read = ctem_read_tools_for(agent, agent_builtin_tool_ids, user_id=user_id)
             if ctem_read is not None:
                 composite.add_tools(*ctem_read)
+            # The CTEM group (#1748): the signal and case tools on any agent, the owner's rights.
+            from app.services.builtin_tools import ctem_tools_for
+
+            ctem_group = ctem_tools_for(agent, agent_builtin_tool_ids, user_id=user_id)
+            if ctem_group is not None:
+                composite.add_tools(*ctem_group)
             # The CTEM administrator repairs (#1778): the CTEM case agents, or the group bound.
             from app.services.builtin_tools import ctem_repair_tools_for
 
@@ -5008,7 +5078,16 @@ async def run_agent_chat(
             composite.add_tools(cs_defs, cs_exec)
             from app.services.builtin_tools import build_friction_tools
 
-            composite.add_tools(*build_friction_tools(user_id, str(agent.id), run_id=parent_run_id))
+            composite.add_tools(
+                *build_friction_tools(
+                    user_id,
+                    str(agent.id),
+                    run_id=parent_run_id,
+                    # The trace supervision grant reaches the supervised agents' frictions too (#1928).
+                    supervision_target_agent_ids=agent.trace_supervision_target_agent_ids,
+                    allow_cross_agent="inspect_agent_traces" in agent_builtin_tool_ids,
+                )
+            )
             if user_id:
                 from app.services.builtin_tools import build_timer_tools
 
@@ -5241,164 +5320,27 @@ async def run_agent_chat(
             composite.add_tools(ch_defs, ch_exec)
 
         # --- Integration tools (built-in tools powered by bound integrations) ---
-        from app.services.integration_tools import DIRECT_BINDING_ORIGIN, flatten_bindings
+        # Who may use which bound credential is decided once, for every run
+        # that builds an agent's integration tools for a person.
+        from app.services.integration_tools import resolve_agent_integration_bindings
 
-        effective_bindings: dict[str, str] = flatten_bindings(
-            agent.integration_bindings or {}
+        _resolved_bindings = await resolve_agent_integration_bindings(
+            db,
+            agent,
+            None if is_anonymous_user else user_id,
+            company_automation=company_automation,
+            scope_headers=scope_headers,
+            inherited_template_picks=inherited_template_picks,
         )
-        binding_origin_map: dict[str, str] = {
-            key: DIRECT_BINDING_ORIGIN for key in effective_bindings
-        }
-
-        logger.debug(
-            "Scope resolve: agent=%s direct_bindings=%s template_bindings=%s scope_headers=%s",
-            agent.name,
-            effective_bindings,
-            agent.integration_template_bindings,
-            scope_headers,
-        )
-
-        # Least-privilege guard: a shared agent must never run a fixed integration
-        # binding using another user's personal credentials. Drop bindings the
-        # acting user cannot see and fall back to per-user (template) resolution
-        # below, so each user transparently uses their OWN integration of that
-        # provider. Skipped for the owner's own runs (nothing to shadow) and for
-        # anonymous users (no identity to enforce against).
-        _shadowed_providers: list[str] = []
-        # What the guard dropped, said on the reply and to the model unless the
-        # user's own integration of that provider replaces it below.
-        _shadow_withheld: list[dict] = []
-        # An orphaned binding (the agent's owner lost access to the
-        # integration) is used by nobody, the owner's own turns included.
-        from app.services.integration_credentials import drop_orphaned_bindings
-
-        await drop_orphaned_bindings(
-            db, agent, effective_bindings, binding_origin_map, withheld=_shadow_withheld
-        )
-        if (
-            effective_bindings
-            and not is_anonymous_user
-            and user_id
-            and str(agent.user_id) != user_id
-        ):
-            from app.api.v1.helpers import get_user_group_ids
-            from app.services.integration_credentials import lent_integration_ids
-            from app.services.integration_tools import shadow_invisible_bindings
-
-            _acting_group_ids = await get_user_group_ids(db, uuid.UUID(user_id))
-            # The owner's personal integrations this agent lends stay bound:
-            # used through this agent only (Agent.integration_lending).
-            _shadowed_providers = await shadow_invisible_bindings(
-                db,
-                effective_bindings,
-                binding_origin_map,
-                acting_user_id=user_id,
-                user_group_ids=_acting_group_ids,
-                withheld=_shadow_withheld,
-                lent_ids=lent_integration_ids(agent),
-                lent_owner_id=agent.user_id,
-            )
-
-        # Resolve template bindings: the current user's own connected
-        # integrations plus genuine company-wide ones (``is_company_managed`` /
-        # legacy ``platform_managed``). Company-managed integrations keep a real
-        # (admin) owner, so ``user_id == <current user>`` no longer matches them
-        # for other users — hence the explicit company-wide clause, which keeps a
-        # shared API-key / OAuth integration reachable by template-bound tools
-        # for every user it is not restricted from. A *colleague's personal*
-        # integration is never eligible, nor a company-managed one
-        # restricted to others; ``template_candidate_filter`` builds that
-        # rule for every path, assignments and evaluations included. The shadowed
-        # providers go through the same rule, so the gate's drop holds for every
-        # user the rule refuses.
-        # When multiple integrations exist for the same provider, use the
-        # integration's scope_config to disambiguate (match_key filtering).
-        # Single batched query instead of one per provider.
-        _template_providers = list(agent.integration_template_bindings or [])
-        for _sp in _shadowed_providers:
-            if _sp not in _template_providers:
-                _template_providers.append(_sp)
-        if _template_providers and not is_anonymous_user:
-            _needed_providers = [
-                p
-                for p in _template_providers
-                if p not in effective_bindings
-            ]
-            if _needed_providers:
-                from app.services.integration_tools import (
-                    resolve_template_integration,
-                    template_candidate_filter,
-                )
-
-                _acting_uuid = uuid.UUID(user_id)
-                _tmpl_result = await db.execute(
-                    select(Integration)
-                    .where(
-                        Integration.provider.in_(_needed_providers),
-                        await template_candidate_filter(
-                            db, _acting_uuid, company_automation=company_automation
-                        ),
-                        connected_for_clause(_acting_uuid),
-                    )
-                    .order_by(
-                        Integration.provider, Integration.created_at, Integration.id
-                    )
-                )
-                _by_provider: dict[str, list] = {}
-                for _tmpl_integ in _tmpl_result.scalars().all():
-                    _by_provider.setdefault(_tmpl_integ.provider, []).append(_tmpl_integ)
-
-                logger.debug(
-                    "Scope resolve: needed_providers=%s found_by_provider=%s",
-                    _needed_providers,
-                    {k: [str(i.id) for i in v] for k, v in _by_provider.items()},
-                )
-
-                for _tmpl_provider, _tmpl_integs in _by_provider.items():
-                    if _tmpl_provider in effective_bindings:
-                        continue
-                    _inherited_id = (inherited_template_picks or {}).get(_tmpl_provider)
-                    _integ, _origin = await resolve_template_integration(
-                        db,
-                        _tmpl_provider,
-                        _tmpl_integs,
-                        scope_headers,
-                        acting_user_id=_acting_uuid,
-                        context=f"agent={agent.name}",
-                        inherited_id=_inherited_id,
-                    )
-                    if _inherited_id and (_integ is None or str(_integ.id) != _inherited_id):
-                        # The child cannot use its parent's account: said in
-                        # the logs, never a silent other view.
-                        logger.warning(
-                            "Template binding %s of agent %s: the spawning run used integration %s, "
-                            "this turn resolved %s (origin %s) for user %s",
-                            _tmpl_provider,
-                            agent.name,
-                            _inherited_id,
-                            str(_integ.id) if _integ else None,
-                            _origin,
-                            _acting_uuid,
-                        )
-                    if _integ:
-                        effective_bindings[_tmpl_provider] = str(_integ.id)
-                        binding_origin_map[_tmpl_provider] = _origin
+        effective_bindings: dict[str, str] = _resolved_bindings.bindings
+        binding_origin_map: dict[str, str] = _resolved_bindings.origins
 
         # Bindings withheld because they hold a colleague's unshared personal
         # OAuth token: told to the model below, never a silent absence.
         _unshared_oauth_bindings: list[dict] = []
         # Everything this turn does not use for its user because of who may
-        # use it: told to the model and shown on the reply. A dropped
-        # binding the user's own integration of the provider replaced is not
-        # missing and is not reported.
-        _withheld_integration_bindings: list[dict] = [
-            entry
-            for entry in _shadow_withheld
-            if not (
-                entry.get("provider") in _shadowed_providers
-                and entry.get("provider") in effective_bindings
-            )
-        ]
+        # use it: told to the model and shown on the reply.
+        _withheld_integration_bindings: list[dict] = _resolved_bindings.withheld
 
         # Session-level integration overrides *replace* the agent's bindings for
         # this message (the chat UI sends the full set of enabled integrations),
@@ -5481,6 +5423,25 @@ async def run_agent_chat(
 
         _turn_stages.mark("scope_and_bindings")
         _invalid_integration_note = ""
+        # The integration build of this turn, replayed when a tool of the turn
+        # changes an integration it is bound to (#1874); None: no refresh.
+        _rebuild_integration_tools: RebuildIntegrations | None = None
+        if prebuilt_integration_tools is not None:
+            from app.services.integration_tools import prebuilt_tools_refusal
+
+            _prebuilt_refusal = prebuilt_tools_refusal(
+                prebuilt_integration_tools,
+                agent=agent,
+                acting_user_id=None if is_anonymous_user else user_id,
+                effective_bindings=effective_bindings,
+            )
+            if _prebuilt_refusal is not None:
+                # Never a credential this turn's person may not use: the turn
+                # builds its own tools from its own resolution instead.
+                logger.error(
+                    "Prebuilt integration tools refused for agent %s: %s", agent.id, _prebuilt_refusal
+                )
+                prebuilt_integration_tools = None
         if prebuilt_integration_tools is not None:
             integ_defs, integ_exec = prebuilt_integration_tools[0], prebuilt_integration_tools[1]
             if integ_defs:
@@ -5528,9 +5489,18 @@ async def run_agent_chat(
                     PLATFORM_NAMES_CONTEXT_KEY: _platform_names,
                     ATTACK_SOURCES_CONTEXT_KEY: _attack_sources,
             }
+            from app.services.integration_tools import BindingBasis, ToolBindings
+
             integ_defs, integ_exec = await build_integration_tools(
                 db,
-                effective_bindings,
+                # resolve_agent_integration_bindings, or the session selection
+                # resolve_session_integration_bindings checked, then pinned
+                # (pin_bindings) or narrowed: never a credential the person may not use.
+                ToolBindings(
+                    effective_bindings,
+                    basis=BindingBasis.RESOLVED,
+                    reason="the chat turn's own resolution for its person",
+                ),
                 context=_integration_build_context,
             )
             # A bound integration its stored configuration leaves without a
@@ -5547,14 +5517,53 @@ async def run_agent_chat(
             composite.withhold_integrations(
                 unavailable_integration_reasons(_integration_build_context.get("missing_integration_bindings"))
             )
+            # Tool-level scoping per provider (agent-configured only).
+            integ_allowed = agent.integration_allowed_tools or {}
             if integ_defs:
-                # Apply tool-level scoping per provider (agent-configured only)
-                integ_allowed = agent.integration_allowed_tools or {}
                 if integ_allowed:
                     from app.services.builtin_tools import filter_integration_tools
 
                     integ_defs = filter_integration_tools(integ_defs, integ_allowed)
                 composite.add_tools(integ_defs, integ_exec)
+
+            _refresh_bindings = dict(effective_bindings)
+            _refresh_context = dict(_integration_build_context)
+
+            async def _rebuild_integration_tools_now() -> "tuple[list[ToolDefinition], ToolExecutor]":
+                """This turn's integration build and allow list, in a session of its own."""
+                from app.core.database import async_session as _refresh_session
+
+                # Fresh sinks: what the first build collected for the extraction
+                # is not collected twice.
+                context = {
+                    **_refresh_context,
+                    # The agent's read-only bindings, read as the first build reads them.
+                    READ_ONLY_CONTEXT_KEY: read_only_integration_ids(agent, _refresh_bindings),
+                    # The agent's signature overrides, as the first build hands them.
+                    SIGNATURE_CONTEXT_KEY: getattr(agent, "integration_signatures", None),
+                    "missing_integration_bindings": [],
+                    PLATFORM_NAMES_CONTEXT_KEY: [],
+                    ATTACK_SOURCES_CONTEXT_KEY: [],
+                }
+                async with _refresh_session() as refresh_db:
+                    defs, executor = await build_integration_tools(
+                        refresh_db,
+                        # The same resolution as the turn's first build: never a
+                        # credential the person may not use.
+                        ToolBindings(
+                            _refresh_bindings,
+                            basis=BindingBasis.RESOLVED,
+                            reason="the chat turn's own resolution, rebuilt in the turn",
+                        ),
+                        context=context,
+                    )
+                if defs and integ_allowed:
+                    from app.services.builtin_tools import filter_integration_tools
+
+                    defs = filter_integration_tools(defs, integ_allowed)
+                return defs, executor
+
+            _rebuild_integration_tools = _rebuild_integration_tools_now
 
         # --- Missing integration warning (inject into system prompt) ---
         if agent.integration_template_bindings:
@@ -6753,8 +6762,6 @@ async def run_agent_chat(
         effective_tools = composite.all_tools
         _builtin_allowed = getattr(agent, "builtin_allowed_tools", None)
         if _builtin_allowed:
-            # Per-function built-in scoping, before the deny list.
-            from app.services.builtin_tools import filter_builtin_tools
             from app.services.builtin_tools.filtering import (
                 builtin_tools_outside_scope,
                 describe_outside_builtin_scope,
@@ -6764,13 +6771,6 @@ async def run_agent_chat(
             # exists outside the allowlist (#12192).
             for _name, _group in builtin_tools_outside_scope(effective_tools, _builtin_allowed).items():
                 composite.withhold([_name], describe_outside_builtin_scope(_group), registered=True)
-            effective_tools = filter_builtin_tools(effective_tools, _builtin_allowed)
-        if agent.tool_deny_list:
-            from app.services.builtin_tools import apply_tool_deny_list
-
-            effective_tools = apply_tool_deny_list(
-                effective_tools, agent.tool_deny_list
-            )
 
         # WS10 / D3 - consult vs delegate. A CONSULT (caller-driven restrict, set
         # by ``_consult_agent``) is advise-only: the Payload Creator returns a
@@ -6796,38 +6796,55 @@ async def run_agent_chat(
             ):
                 restrict_openaev_writes = True
 
-        # Advisory specialist: withhold every OpenAEV mutation tool so a
-        # consulted agent can never write to OpenAEV directly during a run
-        # (the orchestrator is the single author). Read-only OpenAEV tools
-        # stay. Enforced in code so the contract holds even for a user-created
-        # specialist whose own OpenAEV integration is bound with write scope.
-        # A caller-driven consult additionally drops arsenal create/update
-        # (``allow_arsenal=False``); the identity-forced delegate path keeps them.
-        if restrict_openaev_writes:
-            from app.services.builtin_tools import strip_openaev_write_tools
-
-            _before = len(effective_tools)
-            effective_tools = strip_openaev_write_tools(
-                effective_tools, allow_arsenal=not _arsenal_consult_readonly
-            )
-            if len(effective_tools) != _before:
-                logger.info(
-                    "Advisory consult: withheld %d OpenAEV write tool(s) from '%s'",
-                    _before - len(effective_tools),
-                    agent.name,
-                )
-
-        # Attack Path Orchestrator: keep manage_openaev_threat_arsenal for
-        # list/get, but drop create/update/duplicate/delete from the schema
-        # so it cannot author junk payloads itself and must consult_agent
-        # the Payload Creator. Nested consults of that specialist do NOT
-        # hit this branch (target slug is openaev-payload-creator).
         from app.services.builtin_tools import is_openaev_orchestrator_agent
 
-        if is_openaev_orchestrator_agent(agent.slug, is_builtin=agent.is_builtin):
-            from app.services.builtin_tools import narrow_orchestrator_arsenal_tools
+        _narrow_orchestrator = is_openaev_orchestrator_agent(agent.slug, is_builtin=agent.is_builtin)
+        _strip_openaev_writes = restrict_openaev_writes
 
-            effective_tools = narrow_orchestrator_arsenal_tools(effective_tools)
+        def _narrow_tool_surface(tools: list[ToolDefinition]) -> list[ToolDefinition]:
+            """The offered surface from the composite's tools: the one narrowing a
+            refresh inside the turn replays (#1874), so it never widens past it."""
+            narrowed = tools
+            if _builtin_allowed:
+                # Per-function built-in scoping, before the deny list.
+                from app.services.builtin_tools import filter_builtin_tools
+
+                narrowed = filter_builtin_tools(narrowed, _builtin_allowed)
+            # Deny list takes precedence over all allow lists.
+            if agent.tool_deny_list:
+                from app.services.builtin_tools import apply_tool_deny_list
+
+                narrowed = apply_tool_deny_list(narrowed, agent.tool_deny_list)
+            # Advisory specialist: withhold every OpenAEV mutation tool so a
+            # consulted agent can never write to OpenAEV directly during a run
+            # (the orchestrator is the single author). Read-only OpenAEV tools
+            # stay. Enforced in code so the contract holds even for a user-created
+            # specialist whose own OpenAEV integration is bound with write scope.
+            # A caller-driven consult additionally drops arsenal create/update
+            # (``allow_arsenal=False``); the identity-forced delegate path keeps them.
+            if _strip_openaev_writes:
+                from app.services.builtin_tools import strip_openaev_write_tools
+
+                _before = len(narrowed)
+                narrowed = strip_openaev_write_tools(narrowed, allow_arsenal=not _arsenal_consult_readonly)
+                if len(narrowed) != _before:
+                    logger.info(
+                        "Advisory consult: withheld %d OpenAEV write tool(s) from '%s'",
+                        _before - len(narrowed),
+                        agent.name,
+                    )
+            # Attack Path Orchestrator: keep manage_openaev_threat_arsenal for
+            # list/get, but drop create/update/duplicate/delete from the schema
+            # so it cannot author junk payloads itself and must consult_agent
+            # the Payload Creator. Nested consults of that specialist do NOT
+            # hit this branch (target slug is openaev-payload-creator).
+            if _narrow_orchestrator:
+                from app.services.builtin_tools import narrow_orchestrator_arsenal_tools
+
+                narrowed = narrow_orchestrator_arsenal_tools(narrowed)
+            return narrowed
+
+        effective_tools = _narrow_tool_surface(effective_tools)
 
         _eval_tool_names: list[str] = [t.name for t in effective_tools]
         _eval_traces: list[dict[str, Any]] = []
@@ -7943,6 +7960,12 @@ async def run_agent_chat(
             # other runs do not ask for it.
             if evaluation_mode:
                 loop_kwargs["report_tool_durations"] = True
+            # The turn's own build and narrowing, replayed by the loop when a tool
+            # of the turn changes an integration it is bound to (#1874).
+            if loop_kwargs["executor"] is not None and _rebuild_integration_tools is not None:
+                loop_kwargs["tool_surface_refresher"] = IntegrationSurfaceRefresher(
+                    composite, loop_kwargs["executor"], _rebuild_integration_tools, _narrow_tool_surface
+                )
             # Fast-path: when the agent config declares a finalize_on_builtin_tool,
             # pass it to the loop so it can short-circuit after a successful tool
             # result without making an extra LLM call (e.g. stix_bundle_validator).

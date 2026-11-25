@@ -301,6 +301,7 @@ OPENCRQ_MCP_TOOLS: frozenset[str] = frozenset(
         "update_opencrq_financial_profile",
         # Assets & vulnerabilities
         "list_opencrq_primary_assets",
+        "get_opencrq_primary_asset",
         "list_opencrq_business_value_categories",
         "create_opencrq_primary_asset",
         "update_opencrq_primary_asset",
@@ -448,6 +449,7 @@ OPENCRQ_MCP_READ_TOOLS: frozenset[str] = frozenset(
         "get_opencrq_loss_driver",
         "get_opencrq_financial_profile",
         "list_opencrq_primary_assets",
+        "get_opencrq_primary_asset",
         "list_opencrq_business_value_categories",
         "list_opencrq_supporting_assets",
         "get_opencrq_supporting_asset",
@@ -545,11 +547,15 @@ async def _build_platform_tools(
     definitions so a non-listed tool can never execute — even if a client
     guesses its registered name. A read-only API key keeps the read list.
     """
-    from app.services.integration_tools import build_integration_tools
+    from app.services.integration_tools import BindingBasis, ToolBindings, build_integration_tools
 
     definitions, executor = await build_integration_tools(
         db,
-        {provider: [str(registration.integration_id)]},
+        ToolBindings(
+            {provider: [str(registration.integration_id)]},
+            basis=BindingBasis.CALLER_CHECKED,
+            reason="the platform integration acts with a JWT minted for the caller",
+        ),
         context={
             "source": "mcp_platform",
             "user_id": str(user.id),

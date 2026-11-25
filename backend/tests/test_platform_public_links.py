@@ -26,6 +26,7 @@ from app.core.platform_identity import (
 )
 from app.core.security import encrypt_value
 from app.models.integration import Integration
+from app.services.integration_tools import BindingBasis, ToolBindings
 from app.tools.base import CallableToolExecutor, ToolCall, ToolDefinition, ToolResult
 
 PUBLIC = "http://localhost:8080"
@@ -377,7 +378,7 @@ async def test_the_tools_call_the_internal_url_and_link_to_the_registered_url(pl
 
     integ = _integration(INTERNAL)
     db = _Db([_registration(integ.id)], [integ])
-    _defs, executor = await build_integration_tools(db, {"opencti": [str(integ.id)]})
+    _defs, executor = await build_integration_tools(db, ToolBindings({"opencti": [str(integ.id)]}, basis=BindingBasis.CALLER_CHECKED, reason="test"))
 
     assert await _run(executor, "opencti_lookup") == f"Link: [Open in OpenCTI]({PUBLIC}/dashboard/id/{ENTITY})"
     assert await _run(executor, "opencti_lookup_result") == f"{PUBLIC}/dashboard/id/{ENTITY}"
@@ -389,7 +390,7 @@ async def test_without_an_internal_url_the_tools_are_left_as_built(platform_tool
 
     integ = _integration(INTERNAL)
     db = _Db([_registration(integ.id, api_url=None)], [integ])
-    _defs, executor = await build_integration_tools(db, {"opencti": [str(integ.id)]})
+    _defs, executor = await build_integration_tools(db, ToolBindings({"opencti": [str(integ.id)]}, basis=BindingBasis.CALLER_CHECKED, reason="test"))
 
     assert await _run(executor, "opencti_lookup") == f"Link: [Open in OpenCTI]({INTERNAL}/dashboard/id/{ENTITY})"
     assert executor.handler("opencti_lookup").__name__ == "lookup"
@@ -401,7 +402,7 @@ async def test_an_integration_no_registration_created_costs_no_query(platform_to
 
     integ = _integration(INTERNAL, auth_type="api_key")
     db = _Db([_registration(integ.id)], [integ])
-    _defs, executor = await build_integration_tools(db, {"opencti": [str(integ.id)]})
+    _defs, executor = await build_integration_tools(db, ToolBindings({"opencti": [str(integ.id)]}, basis=BindingBasis.CALLER_CHECKED, reason="test"))
 
     assert await _run(executor, "opencti_lookup") == f"Link: [Open in OpenCTI]({INTERNAL}/dashboard/id/{ENTITY})"
     assert db.registration_reads == 0

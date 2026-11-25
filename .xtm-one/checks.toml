@@ -736,7 +736,7 @@ lifetime = 7200
 env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_ORG_SETUP_PROMPT = "on", LAB_THEME = "light" }
 
 # Organization profile rows a platform sync wrote (#1345). LAB_ORG_SYNCED = "on" saves one disabled
-# sync per section (crown jewels from OpenCRQ, tech stack and AI systems from OpenAEV) and the next
+# sync per section (primary assets from OpenCRQ, tech stack from OpenAEV) and the next
 # profile version with synced rows (source, external_id, sync_id) next to typed rows, read back from
 # GET /organization-context: the Source column, locked rows, bulk Set and the synced-removal dialog of
 # Settings > Organization render with no fetch override. The log line "seeded org synced rows: <url>".
@@ -1790,6 +1790,8 @@ report_path = ".xtm/tripwires.xml"
 # it prints the selection with each file's reason and runs the files the queue's
 # unit job runs. args ["--list"] with no file: the selection of the change, nothing run.
 # A change the queue runs whole for (a conftest.py, the dependencies) is named, not run.
+# A pre-push guard (#2073): a pull request's CI runs no backend suite, so a Python change pushed without
+# this selection passing went red in the queue only. Its run without args (on the change) counts.
 [check.backend-queue-tests]
 description = "the backend unit tests the merge queue would run for the change (tests/selection.py), run before the push; no args: the change; args: --list (the selection only), --part i/n (one share of a selection over the 900 s budget, exit 3 names the parts), --budget 0 (no budget) or changed paths from backend/"
 argv = ["python", "-m", "scripts.queue_tests"]
@@ -1802,6 +1804,7 @@ affected = "files"
 affected_by_default = true
 affected_narrows_args = true
 affected_whole_repository = true
+pre_push = ["*.py"]
 
 # The formatter, advisory: CI does not gate it and main is not format-clean.
 # Run it with affected=true: affected = "lines" hands scripts/format_changed.py

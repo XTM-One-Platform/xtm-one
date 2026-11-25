@@ -43,19 +43,15 @@ logger = logging.getLogger(__name__)
 #: The global schedule's section: it runs every other enabled sync in order.
 ALL_SECTIONS = "all"
 #: The sections a sync may keep up to date: the import's, never a typed field.
-SYNCABLE_SECTIONS: tuple[str, ...] = ("assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs")
+SYNCABLE_SECTIONS: tuple[str, ...] = ("assets", "asset_groups", "software", "primary_assets", "pirs")
 #: Where each section's syncs are configured (#1134 S2, Sam 22 Nov 2026): the business profile
 #: in Settings > Organization, the inventory in CTEM > Inventory. The global ``all`` schedule is in both.
-#: Primary assets (``crown_jewels``) are an Inventory source since they moved to Inventory > Business
+#: Primary assets (``primary_assets``) are an Inventory source since they moved to Inventory > Business
 #: (#1690): their OpenCRQ sync is listed next to the asset sources (Sam, 24 Nov 2026).
 SECTION_SCOPES: dict[str, tuple[str, ...]] = {
     "profile": ("pirs",),
-    "inventory": ("assets", "asset_groups", "tech_stack", "ai_systems", "crown_jewels"),
+    "inventory": ("assets", "asset_groups", "software", "primary_assets"),
 }
-#: The primary-asset source every platform with OpenCRQ connected gets by default: daily, links on.
-DEFAULT_PRIMARY_ASSET_SYNC: dict[str, Any] = {"section": "crown_jewels", "source": "opencrq", "frequency": "daily"}
-#: How many administrators :func:`ensure_default_primary_asset_sync` tries as the owner.
-DEFAULT_OWNER_CANDIDATES = 5
 #: How long a run may hold its lock before another run may take it.
 LOCK_SECONDS = 900
 #: Read errors that mean the owner cannot read the platform any more: the sync pauses.
@@ -324,7 +320,7 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
             sync_id=str(sync.id),
         )
         result["added"], result["updated"] = len(plan.new), len(plan.updated)
-        # Superseded rows (#1591: an older build's supporting-asset crown jewels) count as removed, so a run
+        # Superseded rows (#1591: an older build's supporting-asset primary assets) count as removed, so a run
         # that only drops them still saves the cleaned profile.
         result["removed"] = (
             (len(plan.gone) - len(plan.gone_kept) if plan.remove_gone else 0)
@@ -347,12 +343,17 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
                 db, plan.profile, source="draft", author_user_id=owner.id, sources=sync_provenance(plan, sync, owner)
             )
             result["version"] = saved.version
-        if not plan.error and sync.section == "crown_jewels" and sync.source == "opencrq" and plan.profile is not None:
+        if (
+            not plan.error
+            and sync.section == "primary_assets"
+            and sync.source == "opencrq"
+            and plan.profile is not None
+        ):
             # Supporting asset -> primary asset links (#1591), on unless the sync's filter says "false".
             from app.services import organization_context_opencrq_links as opencrq_links
 
             links = await opencrq_links.sync_links_for(
-                db, user_id=owner.id, filters=sync.filters or {}, jewels=list(plan.profile.crown_jewels)
+                db, user_id=owner.id, filters=sync.filters or {}, jewels=list(plan.profile.primary_assets)
             )
             if links is not None:
                 result["links"] = links
@@ -444,85 +445,73 @@ async def _run_outbound(
         )
 
 
-async def _default_owner(db: AsyncSession) -> User | None:
-    """The first active administrator who can read the company-managed OpenCRQ, or None."""
-    from app.services.organization_context_opencrq import _opencrq_connection
+def _change_counts(enter: list[str], update: list[str], leave: list[str], kept: list[str]) -> dict[str, Any]:
+    from app.services.organization_context_import import SAMPLE_SIZE
 
-    admins = (
-        (
-            await db.execute(
-                select(User)
-                .where(User.role == "admin", User.is_active.is_(True))
-                .order_by(User.created_at)
-                .limit(DEFAULT_OWNER_CANDIDATES)
-            )
-        )
-        .scalars()
-        .all()
-    )
-    for admin in admins:
-        try:
-            connection = await _opencrq_connection(db, str(admin.id))
-        except Exception as exc:  # one unreadable administrator never stops the others
-            logger.warning(
-                "Primary-asset source: OpenCRQ unreadable for %s: %s", admin.id, format_exception_message(exc)
-            )
-            continue
-        if not isinstance(connection, str):
-            return admin
-    return None
+    return {
+        "counts": {"enter": len(enter), "update": len(update), "leave": len(leave), "kept": len(kept)},
+        "enter": enter[:SAMPLE_SIZE],
+        "update": update[:SAMPLE_SIZE],
+        "leave": leave[:SAMPLE_SIZE],
+        "kept": kept[:SAMPLE_SIZE],
+    }
 
 
-async def ensure_default_primary_asset_sync(db: AsyncSession) -> OrganizationContextSync | None:
-    """Create the default OpenCRQ primary-asset source when OpenCRQ is connected and none exists (the caller commits).
+async def preview_change(
+    db: AsyncSession,
+    sync: OrganizationContextSync,
+    *,
+    user_id: uuid.UUID,
+    filters: dict[str, Any],
+    batch_type: str,
+    remove_gone: bool,
+    excluded_ids: list[str] | None,
+) -> dict[str, Any]:
+    """What the next run of *sync* would do with these settings, before they are saved (#1982 S2).
 
-    The source is on, daily at 06:00 UTC, the supporting-asset links on (#1591 default). Turning it off keeps
-    the row, so it is never created again; a source an administrator deleted is never created again either
-    (the audit trail says so). Answers the row created, or None when nothing was created.
+    Read with *user_id*'s token (saving makes it the one the runs read with). Inbound: the rows the
+    platform would add (``enter``), update, and the rows this sync wrote that would be removed
+    (``leave``, only with ``remove_gone``) or kept because another writer wrote them (``kept``).
+    Outbound: the platform rows the run would create (``enter``), update and delete (``leave``,
+    only rows this sync created). Nothing is written to the platform, the profile or the sync.
     """
-    from app.models.audit_log import AuditLog
+    from types import SimpleNamespace
 
-    section, source = DEFAULT_PRIMARY_ASSET_SYNC["section"], DEFAULT_PRIMARY_ASSET_SYNC["source"]
-    exists = await db.execute(
-        select(OrganizationContextSync.id)
-        .where(OrganizationContextSync.section == section, OrganizationContextSync.source == source)
-        .limit(1)
-    )
-    if exists.first() is not None:
-        return None
-    deleted = await db.execute(
-        select(AuditLog.id)
-        .where(
-            AuditLog.entity_type == "organization_context_sync",
-            AuditLog.action == "delete",
-            AuditLog.entity_name == f"{section} from {source}",
+    from app.services import organization_context_import as imp
+    from app.services import organization_context_outbound as outbound
+
+    direction = getattr(sync, "direction", None) or "inbound"
+    if direction == "outbound":
+        proposed = SimpleNamespace(
+            section=sync.section,
+            source=sync.source,
+            filters=filters,
+            outbound_ids=dict(getattr(sync, "outbound_ids", None) or {}),
         )
-        .limit(1)
-    )
-    if deleted.first() is not None:
-        return None
-    # Connected = an administrator reads the company-managed OpenCRQ (_opencrq_connection applies the
-    # integration visibility and access_restricted rules); none can: nothing is created.
-    owner = await _default_owner(db)
-    if owner is None:
-        return None
-    row = OrganizationContextSync()
-    define(row, owner_id=owner.id, section=section, source=source, frequency=DEFAULT_PRIMARY_ASSET_SYNC["frequency"])
-    db.add(row)
-    await db.flush()
-    from app.services.audit import log_audit
-
-    await log_audit(
+        pushed, _ids = await outbound.run_outbound(db, proposed, user_id=user_id, apply=False)
+        enter = [name for name, _ in pushed.create]
+        update = [name for _, name, _ in pushed.update]
+        leave = [key for key, _ in pushed.delete]
+        return {"direction": direction, **_change_counts(enter, update, leave, []), "error": pushed.error or None}
+    plan, _version = await imp.preview_import(
         db,
-        user=owner,
-        action="create",
-        entity_type="organization_context_sync",
-        entity_id=row.id,
-        entity_name=f"{section} from {source}",
-        summary="Primary assets from OpenCRQ scheduled daily by default (OpenCRQ connected)",
-        details={"default": True, **DEFAULT_PRIMARY_ASSET_SYNC},
+        user_id=user_id,
+        section=sync.section,
+        source=sync.source,
+        filters=filters,
+        batch_type=batch_type,
+        remove_gone=remove_gone,
+        excluded_ids=clean_exclusions(list(excluded_ids or [])),
+        sync_id=str(sync.id),
     )
-    return row
+    kept = list(plan.gone_kept)
+    leave = [name for name in plan.gone if name not in set(kept)] if remove_gone else []
+    leave += list(plan.excluded_removed)
+    return {
+        "direction": direction,
+        **_change_counts(list(plan.new), list(plan.updated), leave, kept),
+        "error": plan.error or None,
+    }
 
 
 async def section_syncs(db: AsyncSession) -> list[OrganizationContextSync]:
@@ -572,12 +561,6 @@ async def run_due_syncs(db: AsyncSession, *, now: datetime | None = None) -> int
     Each sync commits on its own, so one that fails never undoes another.
     """
     now = now or datetime.now(UTC)
-    try:
-        if await ensure_default_primary_asset_sync(db) is not None:
-            await db.commit()
-    except Exception as exc:  # the default source never stops the due syncs
-        logger.error("Default primary-asset source not created: %s", format_exception_message(exc), exc_info=True)
-        await db.rollback()
     due_ids = list(
         (
             await db.execute(

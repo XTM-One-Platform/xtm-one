@@ -693,7 +693,7 @@ export function FleetDataFlow({ flow, loading, error, onRetry, onOpenAgent }: Fl
                         <button
                           key={chip.label}
                           type="button"
-                          className="absolute flex items-center whitespace-nowrap rounded-full border border-elevation-subtle px-2 content-compact text-accent outline-none focus-visible:ring-2 focus-visible:ring-focus"
+                          className="absolute flex items-center whitespace-nowrap rounded-sm border border-elevation-subtle px-2 content-compact text-accent outline-none focus-visible:ring-2 focus-visible:ring-focus"
                           style={{ left: 10 + chip.x, top: chip.y, width: chip.w, height: chip.h }}
                           aria-expanded={chip.toggle === "less"}
                           onClick={() => setExpanded(chip.toggle === "more" ? card.id : null)}
@@ -706,8 +706,8 @@ export function FleetDataFlow({ flow, loading, error, onRetry, onOpenAgent }: Fl
                           className={cn(
                             // A long label (a schedule) wraps in the full card width, never cut (UX #9882 r2 B3);
                             // top-aligned so a wrapped label never spills over the row above (r4 B1).
-                            "absolute flex bg-elevation-hover px-2 content-compact leading-4",
-                            chip.h > 20 ? "items-start rounded-sm py-0.5" : "items-center whitespace-nowrap rounded-full",
+                            "absolute flex rounded-sm bg-elevation-hover px-2 content-compact leading-4",
+                            chip.h > 20 ? "items-start py-0.5" : "items-center whitespace-nowrap",
                             off ? "text-default-secondary" : "text-default-primary",
                           )}
                           style={{ left: 10 + chip.x, top: chip.y, width: chip.w, height: chip.h }}

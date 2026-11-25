@@ -1680,6 +1680,54 @@ async def refused_cross_fleet_handovers(
     )
 
 
+async def configured_handover_reach(
+    db: AsyncSession, source_agent_id: uuid.UUID | None, configured: Iterable[object] | None
+) -> set[uuid.UUID]:
+    """The configured handover targets of *source_agent_id* the handover itself grants.
+
+    A handover an owner or an administrator configured is the grant (Sam,
+    24 Nov 2026): the peer is reached in a person's chat or run whatever that
+    person may open. *configured* is the source's ``handover_agent_ids``; a
+    target that is a non-exposed home member of another fleet is left out, as
+    the exposure rule refuses it (:func:`refused_cross_fleet_handovers`). The
+    person gains nothing on the peer itself: this only widens which peers the
+    source's handover tools load.
+    """
+    targets = [t for t in _as_uuids(configured) if t != source_agent_id]
+    if not targets or source_agent_id is None:
+        return set()
+    hidden = await _crossing_unexposed(db, source_agent_id, targets)
+    return {t for t in targets if t not in hidden}
+
+
+def handover_peer_clause(
+    user_id: uuid.UUID | None, user_group_ids: list[str] | None, granted: Iterable[uuid.UUID]
+) -> Any:
+    """SQL filter on ``Agent`` for the handover peers a person's turn loads.
+
+    The peers the person may open (``user_visible_filter``, unchanged), or one
+    the configured handover grants (*granted*, :func:`configured_handover_reach`).
+    A granted peer still passes ``hidden_rows_excluded``: an internal or
+    sandbox agent is never a peer. With no acting person the grant is not
+    applied: the run keeps the peers it loaded before.
+    """
+    from sqlalchemy import and_, or_
+
+    from app.api.v1.helpers import hidden_rows_excluded, user_visible_filter
+
+    if user_id is None:
+        # No acting person: the company-managed tier the visibility filter
+        # answers for no user, unchanged.
+        return user_visible_filter(Agent, None, user_group_ids)  # type: ignore[arg-type]
+    visible = user_visible_filter(Agent, user_id, user_group_ids)
+    ids = list(granted)
+    if not ids:
+        return visible
+    reached = Agent.id.in_(ids)
+    hidden = hidden_rows_excluded(Agent)
+    return or_(visible, and_(hidden, reached) if hidden is not None else reached)
+
+
 @dataclass(frozen=True)
 class BoundaryViolation:
     """A configured handover into this fleet that its exposure no longer allows."""

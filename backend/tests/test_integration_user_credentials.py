@@ -38,6 +38,7 @@ from app.services.integration_credentials import (
     resolve_session_integration_bindings,
     unavailable_integrations_notice,
 )
+from app.services.integration_tools import BindingBasis, ToolBindings
 from app.tools.base import ToolDefinition
 from tests.integration_credential_fakes import (
     COLLEAGUE_ID,
@@ -388,7 +389,7 @@ async def test_each_person_s_run_acts_with_their_own_account(_visible, _slack_bu
     for acting in (OWNER_ID, COLLEAGUE_ID, THIRD_ID):
         key = "credential_user_id" if source in ("flow", "public_chat") else "user_id"
         await integration_tools.build_integration_tools(
-            db, {"slack": [str(integration.id)]}, context={"source": source, key: str(acting)}
+            db, ToolBindings({"slack": [str(integration.id)]}, basis=BindingBasis.CALLER_CHECKED, reason="test"), context={"source": source, key: str(acting)}
         )
 
     assert _slack_builder == [
@@ -406,7 +407,7 @@ async def test_a_person_without_their_own_account_gets_no_tools_and_is_told(_vis
     context = {"source": "assignment", "user_id": str(acting) if acting else None}
 
     definitions, _ = await integration_tools.build_integration_tools(
-        db, {"slack": [str(integration.id)]}, context=context
+        db, ToolBindings({"slack": [str(integration.id)]}, basis=BindingBasis.CALLER_CHECKED, reason="test"), context=context
     )
 
     assert definitions == []
@@ -422,7 +423,7 @@ async def test_a_shared_integration_still_resolves_as_bound(_visible, _slack_bui
     db = FakeSession({Integration: [integration]})
 
     await integration_tools.build_integration_tools(
-        db, {"slack": [str(integration.id)]}, context={"source": "assignment", "user_id": str(COLLEAGUE_ID)}
+        db, ToolBindings({"slack": [str(integration.id)]}, basis=BindingBasis.CALLER_CHECKED, reason="test"), context={"source": "assignment", "user_id": str(COLLEAGUE_ID)}
     )
 
     assert _slack_builder == ["plain:enc-access-token"]

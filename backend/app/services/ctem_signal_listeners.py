@@ -256,7 +256,7 @@ _AIKIDO_SCAN_ID_KEYS = ("scan_id", "ci_scan_id", "id")
 _AIKIDO_SUBJECT_KEYS = ("affected_package", "affected_file", "code_repo_name", "container_repo_name", "domain", "title")
 #: The repository and image an issue sits on: written to ``evidence.assets``, so the scope
 #: gate resolves them to a profile asset row (source ``aikido``, its name or external id)
-#: and, through the crown jewel's asset names, to the crown jewel (CTEM-25).
+#: and, through the primary asset's asset names, to the primary asset (CTEM-25).
 _AIKIDO_ASSET_KEYS = ("code_repo_name", "code_repo_id", "container_repo_name", "container_repo_id")
 #: Facts copied to the evidence as they are. Never the secret: a ``leaked_secret`` issue
 #: keeps its type, file and repository, the source link stays in Aikido.
@@ -633,8 +633,8 @@ async def note_tracked_organizations(payload: Mapping[str, Any], organization_id
 
     *organization_ids* are the XTM One organizations ``organization_events.annotate_payload``
     found in the delivery. The subject is the organization's name, so the scope gate
-    resolves it to the asset row that names it and, through a crown jewel's asset names,
-    to the crown jewel its services support; no dependency sends it to the watchlist.
+    resolves it to the asset row that names it and, through a primary asset's asset names,
+    to the primary asset its services support; no dependency sends it to the watchlist.
     No model call; never raises. How many signals were recorded.
     """
     from app.core.config import settings

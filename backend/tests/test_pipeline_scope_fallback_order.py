@@ -105,13 +105,14 @@ async def test_first_candidate_wins_among_company_wide_rows():
 
 
 def test_every_template_candidate_query_breaks_a_timestamp_tie_on_id():
-    """Chat template bindings, assignments, evaluations and the pipeline
-    fallback read candidates in one order, so one agent resolves one
-    instance on every path - down to two rows created at the same instant."""
+    """Chat and evaluation template bindings (their shared resolver),
+    assignments and the pipeline fallback read candidates in one order, so one
+    agent resolves one instance on every path - down to two rows created at
+    the same instant."""
     app_dir = pathlib.Path(__file__).resolve().parents[1] / "app" / "services"
     models = {"Integration", "_IntegModel"}
     queries: list[str] = []
-    for name in ("agent_chat.py", "assignment_engine.py", "evaluation_engine.py"):
+    for name in ("agent_chat.py", "assignment_engine.py", "integration_tools.py"):
         tree = ast.parse((app_dir / name).read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if not (
@@ -131,7 +132,7 @@ def test_every_template_candidate_query_breaks_a_timestamp_tie_on_id():
             assert cols[-2:] == [(cols[-1][0], "created_at"), (cols[-1][0], "id")], (
                 f"{name}:{node.lineno} orders integrations by created_at without the id tie-break"
             )
-    assert len(queries) == 4, queries
+    assert len(queries) == 3, queries
 
 
 @pytest.mark.asyncio

@@ -101,7 +101,7 @@ button, the browser extension or a playbook; stays outside fleets),
 | `opencti-dashboard-creator`, `opencti-dashboard-widget-creator` | Chat, handover | ONE-OFF | Widget creator consulted by F4 for the board dashboard |
 | `opencti-detection-rule-converter` | Handover from threat hunt | FOLD into F1 and F2 as consulted member (detections drafted) | Shared member: a fleet may connect it rather than own it |
 | `opencti-threat-hunt-creator` | Chat, handover | FOLD into F1 (hunt package for a relevant threat) | None |
-| `openaev-scenario-creator` | Chat, handover | FOLD into F1 and F3 (scenario built) | Read the organization's assets and AI systems from the context contract before choosing targets |
+| `openaev-scenario-creator` | Chat, handover | FOLD into F1 and F3 (scenario built) | Read the organization's assets and AI targets from the context contract before choosing targets |
 | `openaev-payload-creator` | `aev.attack_path_additional_agent`, handover | FOLD into F1, F2, F3 as consulted member | None |
 | `openaev-scenario-publisher` | Handover | ONE-OFF (catalogue PR) | None |
 | `openaev-attack-path-orchestrator` | `aev.attack_path_orchestrator` | ONE-OFF (autonomous pentest) | None in this program |
@@ -171,16 +171,27 @@ Common rules:
   item of the case, no armed `ctem-loop-reminder:` timer and no case event for
   `CTEM_CASE_STALL_HOURS` (default 6), once per stall window, and the owning
   fleet re-runs its loop; every loop run ends on an ask to a named person with a
-  deadline, an armed reminder, or a terminal state. A use-case
-  fleet takes the cases of its own paths only while its case automation is
-  enabled (Vulnerability management: `new_vulnerability`). The owner is
-  computed when the event is published (`services/ctem_case_routing.py`
-  stamps `owner_fleet`) and each automation filters on it, so exactly one
-  fleet runs a case. Case events fire once: on fleet enable and on the
-  hourly case sweep, `catch_up` hands every open case its owner never ran
-  (no open `ctem:<fleet>:case:<id>` item, no `owner_requested` case event for
-  that owner) one `ctem_case.opened`, P1 first, soonest SLA first, 100 per
-  pass. `GET /ctem-cases/{id}` answers `owner_fleet` {slug, name, active};
+  deadline, an armed reminder, or a terminal state. A deferred or not-validated
+  answer records when to ask again and arms `ctem-loop-reminder:<case id>`. A
+  case opened from a signal starts with an owner (`services/ctem_case_owner.py`):
+  the owner of an affected asset's records, else of one of their asset groups,
+  else `CTEM_CASE_DEFAULT_OWNER`, matched to an active account by email only;
+  an `owner` case event records how it was found. Which fleet runs a case
+  is declared on the fleet (#1966, `fleets.case_ownership`: `paths` null for
+  every trigger path or a list, `key` its case item prefix), and counts only
+  while a home member's "Case opened or reopened" automation is on. The loop
+  declares every path, Vulnerability management `new_vulnerability`, seeded
+  from `BUILTIN_FLEETS`; a fork carries its source's, an administrator sets
+  one on any other fleet (section 14). The owner is computed when the event
+  is published (`services/ctem_case_routing.py` stamps `owner_fleet`: a
+  built-in fleet's slug, `fleet:<id>` for any other) and each automation
+  filters on its own value, so exactly one fleet runs a case. Case events
+  fire once: on fleet enable, Pause all, Resume, Back to not set up, an
+  ownership change and the hourly case sweep, `catch_up` hands every open
+  case its owner never ran (no open `<key>:case:<id>` item of any declared
+  key, no `owner_requested` case event for that owner) one
+  `ctem_case.opened`, P1 first, soonest SLA first, 100 per pass.
+  `GET /ctem-cases/{id}` answers `owner_fleet` {slug, name, active, fleet_id};
   the case page header shows "Owned by <fleet>" linked to the fleet page, or
   "No active fleet owns this case" when it is null or inactive.
   The run owns one work item `ctem:<fleet>:case:<case id>` (an open
@@ -284,7 +295,7 @@ Assignments (on the orchestrator):
 | New relevant threat | `integration_event` OpenCTI create on Intrusion-Set, Campaign, Report (S2), listen-only (#1580) | Provisions the OpenCTI trigger; the webhook route records the `relevant_threat` signal, no run |
 | Threat activity flagged in a PIR | `integration_event` OpenCTI PIR playbook, listen-only (#1580) | Provisions the PIR playbook; the delivery records the `relevant_threat` signal, no run |
 | Threat signal recorded | `platform_event` `ctem_signal.recorded` and `ctem_signal.triaged`, filter `trigger_path` `relevant_threat`, `source_provider` `opencti`, `pir_floor_met` true (#1678: the listener stamps it when a PIR score at delivery reaches the policy's `pir_min_score_threat`; below it the signal waits for the weekly sweep), verdict `to_validate` or none; `max_concurrent_runs` 5, ordered by `signal_id`; takes the switch of New relevant threat on upgrade | Triage of a signal the case loop does not own yet; a confirmed signal opens its case through the case loop |
-| Weekly threat sweep | `schedule` `0 7 * * 1` | Catches what events missed |
+| Weekly threat sweep | `schedule` `30 6 * * 1` (#1832) | Catches what events missed: records a signal per relevant entity created or updated in 7 days |
 | Re-test due | `work_item` prefix `ctem:f1:retest:` | Re-runs the validated scenario after a fix |
 
 Loop: relevance (score against sector, regions, tech stack, PIRs; one rule,
@@ -325,7 +336,7 @@ AI red team injectors, template assignment `cti-adversary-analyst`
 `04-mitre-atlas-mapping`. Orchestrator `ctem-ai-security-orchestrator`;
 members `ctem-ai-threat-analyst` (ATLAS mapping, consults
 `cti-ttp-harvester-filigran-ai`), `ctem-threat-relevance-analyst` (relevance
-to the organization's AI systems), `openaev-scenario-creator` (AI tests:
+to the organization's AI targets), `openaev-scenario-creator` (AI tests:
 prompt injection, jailbreak, excessive agency, tool misuse, MCP tool
 poisoning), `ctem-risk-quantifier` (AI risk scenario in OpenCRQ),
 `ctem-remediation-coordinator`; connected `ctem-assistant`,
@@ -335,9 +346,9 @@ poisoning), `ctem-risk-quantifier` (AI risk scenario in OpenCRQ),
 |---|---|---|
 | New AI-enabled report | `integration_event` OpenCTI create on Report labelled AI or with an ATLAS technique (S2) | Map, then relevance |
 | Weekly AI threat watch | `schedule` `0 7 * * 2` | Summary of new AI campaigns with ATLAS techniques |
-| AI system registered | `work_item` prefix `ctem:f3:ai-system:` (from the context contract, S3) | Baseline test proposal |
+| AI target added | `work_item` prefix `ctem:f3:ai-target:` (an asset of category `ai_target` added to the inventory) | Baseline test proposal |
 
-Every test of an AI system is behind approval; ATLAS entities are proposed in
+Every test of an AI target is behind approval; ATLAS entities are proposed in
 an OpenCTI draft for analyst review, never written to the knowledge directly.
 Units: AI threat mapped, AI test run, AI exposure fixed.
 
@@ -348,7 +359,7 @@ assignments and the `ctem-ai-security` entry of `BUILTIN_FLEETS`
 (`builtin_agents.py` and `builtin_fleets.py` extend their lists with them):
 
 - `ctem-ai-security-orchestrator` (Orchestrator, exposed): JSON case output
-  (matched AI systems, proposed tests, status, missing context), tools
+  (matched AI targets, proposed tests, status, missing context), tools
   `work_items` and `shared_state`, bindings `opencti` and `openaev`, delegates
   to the analyst and the four agents shared with F1. Each proposed test is a
   work item `ctem:f3:approval:` + system + test with `needs_human` true; the
@@ -359,8 +370,9 @@ assignments and the `ctem-ai-security` entry of `BUILTIN_FLEETS`
   `cti-ttp-harvester-filigran-ai`.
 - Assignments on the orchestrator: "New AI-enabled report" (OpenCTI
   `integration_event`, provisioned trigger on Report labelled `ai`, S2a),
-  "Weekly AI threat watch" (`0 7 * * 2`), "AI system registered" (`work_item`,
-  `correlation_prefix` `ctem:f3:ai-system:`).
+  "Weekly AI threat watch" (`0 7 * * 2`), "AI target added" (`work_item`,
+  `correlation_prefix` `ctem:f3:ai-target:`; renamed from "AI system registered"
+  by migration `r1844noaisys01`, #1844).
 - ROI (section 5.4): the analyst counts `atlas_mapping` per technique in
   `atlas_techniques`, the orchestrator `ai_test_plan` per entry of
   `proposed_tests`.
@@ -371,11 +383,11 @@ assignments and the `ctem-ai-security` entry of `BUILTIN_FLEETS`
   `deep-investigation-agent`. A slug not seeded yet is skipped by the fleet
   and handover seeds, so F3 seeds alone and gains them when F1 lands.
 
-Gaps, degraded cleanly: OpenCTI has no AI-system object and OpenAEV no AI
-target asset type; the organization profile's `ai_systems` (with its
-`openaev_asset_id`) is the inventory, and an AI system with no asset id gets
-the test proposal only. The "AI system registered" work item is created by
-whoever registers the system until the profile emits it on save. The ATLAS
+Gaps, degraded cleanly: OpenCTI has no AI-system object. Since #1501 and
+#1844 the AI targets are the inventory assets of category `ai_target` (with
+their OpenAEV id); an AI target with no OpenAEV id gets the test proposal
+only. The "AI target added" work item is created by whoever adds the asset
+until the inventory emits it on save. The ATLAS
 technique filter of the event trigger waits for an OpenCTI label convention;
 the `ai` label is the filter today.
 
@@ -390,7 +402,7 @@ Orchestrator `ctem-posture-orchestrator`; members the five stage analysts
 |---|---|---|
 | Weekly assessments | existing weekly stage assignments, kept | Unchanged |
 | Event refresh | `platform_event` `work_item.completed` on keys `ctem:f1:`, `ctem:f2:`, `ctem:f3:` | Refreshes the stages the closed case touched, debounced to one refresh per stage per hour |
-| Monthly board report | `schedule` `0 9 1 * *` on the orchestrator, an hour after the monthly briefing | Board-ready report: stage scores and trend, F1-F3 outcomes, loss avoided, ROI |
+| Monthly board report | `schedule` `0 11 1 * *` on the orchestrator, after the monthly briefing and the OpenCRQ Board pack (#1832) | Board-ready report: stage scores and trend, the CTEM cases of the month (`ctem_read`), loss avoided, ROI |
 
 The existing assignments keep their names (a renamed seed is swept and born
 again). F4 adds one orchestrator and two assignments; it changes no stage
@@ -572,9 +584,9 @@ from it, provenance `restored from v<n>` (administrators). The free-text
 |---|---|---|
 | sector, sub-sector | vocabulary | F1, F2, F3 relevance |
 | regions of operation | ISO country list | F1, F3 relevance |
-| crown jewels | assets with business service and owner | F1, F2 prioritization, OpenCRQ |
+| primary assets | assets with business service and owner | F1, F2 prioritization, OpenCRQ |
 | tech stack | CPE / product list | F2 asset match, stage prioritization |
-| AI systems inventory | name, kind (assistant, agent, model API), owner, exposure, OpenAEV asset id | F3 |
+| AI targets (assets of category `ai_target`) | name, subcategory, provider, endpoint, model, owner, internet facing, OpenAEV id | F3 |
 | PIRs | OpenCTI PIR ids (`manage_opencti_pir` exists today) | F1, F3 relevance |
 | risk appetite | loss threshold per year, approval threshold | F1, F2, F3 approvals and ranking |
 | loaded hourly rate, currency | number | ROI (section 5) |
@@ -652,7 +664,7 @@ defaults are `GET|PUT /api/v1/organization-context/injection` (`enabled`,
 `categories`, `available_categories` read-only). Every seeded agent
 inherits (the seed never writes the mode, so a person's opt-out survives a
 refresh); the CTEM vulnerability orchestrator, triage analyst and
-remediation coordinator preload `tech_stack`, `crown_jewels`,
+remediation coordinator preload `tech_stack`, `primary_assets`,
 `assets_exposure` and `prioritization_policy` (#11543).
 
 The #11543 categories ride the same registry: `assets_exposure` and
@@ -667,10 +679,10 @@ from the linked knowledge bases the person the turn acts for can read
 `user_visible_filter`), a run acting for nobody gets none. The three
 prompt builders pass that person to `build_organization_context_tool`.
 
-OpenCRQ crown-jewel sync (slice 3d,
+OpenCRQ primary-asset sync (slice 3d,
 `services/organization_context_opencrq.py`): an administrator calls
 `POST /api/v1/organization-context/opencrq-sync` (`{"apply": false}` answers
-the plan, `true` writes it) and the crown jewels are reconciled with the
+the plan, `true` writes it) and the primary assets are reconciled with the
 company-managed OpenCRQ's supporting assets, read with a token minted for
 that administrator:
 
@@ -680,13 +692,13 @@ that administrator:
 - profile to OpenCRQ: a linked jewel's criticality is written to the asset
   (`low`, `medium`, `high`, `critical` -> `very_high`) when they differ;
 - OpenCRQ to profile: a `very_high` asset no jewel names joins the profile
-  as a `critical` crown jewel linked to it;
+  as a `critical` primary asset linked to it;
 - a jewel whose asset OpenCRQ no longer holds is reported
   (`not_in_opencrq`) and kept;
 - a link never makes a typed jewel an OpenCRQ row: it stays `manual` with
   `opencrq_asset_id` as a link (only a row with no `source` at all, saved
   before provenance, reads as an OpenCRQ row);
-- a synced jewel whose pushed criticality falls below the crown-jewel sync's
+- a synced jewel whose pushed criticality falls below the primary-asset sync's
   `min_criticality` becomes a typed row linked to its asset
   (`kept_below_sync_threshold`), so the sync never removes a jewel for a
   criticality the reconcile wrote. A sync with `remove_gone` removes only the
@@ -752,9 +764,9 @@ answers:
   `low`; `basis` quotes where the value was read.
 - Values come out typed and validated by `OrganizationProfile` before they
   are answered: ISO regions and currency, the size band, tech stack entries
-  with vendor, product and a CPE only when one is matched, crown jewels
+  with vendor, product and a CPE only when one is matched, primary assets
   linked to an OpenCRQ asset when the name matches exactly one (the rule of
-  the OpenCRQ sync above), AI systems with kind and exposure, PIRs matched
+  the OpenCRQ sync above), AI targets with kind and exposure, PIRs matched
   to existing OpenCTI PIR ids. A PIR the model suggests creating is answered
   under `suggested_pirs` and never created.
 - Amounts (risk appetite thresholds, loaded hourly rate) carry their
@@ -771,10 +783,9 @@ answers:
 user's quota (`enforce_agentic_quota`, source `organization_ai_draft`), a
 refusal answered before any read. The panel shows the estimate ("about one
 chat turn") before running. No model at page load, no background run, no
-seeded automation. Community Edition or no LLM configured: the "With AI"
-entry stays in the "Draft" menu with a lock icon and opens the single CTA
-of #9173 (trial, license or configure an LLM) in place of the dialog;
-"From the platforms" stays.
+seeded automation. Community Edition or no LLM configured: the one "Draft"
+button still opens the dialog, which drafts from the connected platforms
+alone and says in one line that documents and AI need a model (#1991).
 
 **Tracked organizations.** From a name alone the draft proposes sector,
 regions, website, the OpenCTI organization matched by search (the
@@ -862,17 +873,30 @@ profile is now version 5".
 **The page header (read mode).** Edit stays the one primary action (on
 main it renders `variant="secondary"`, `OrganizationSection.tsx`; S-b makes
 it the filled primary). The
-two drafts become one secondary menu button "Draft" with two entries,
-"From the platforms" (free, no model) and "With AI" (metered, the estimate
-in its help line), so the header is one row at 1024 in en, fr, es and ja.
-The card of a tracked organization (section 9.8) carries the same "Draft"
-menu in its actions, never two buttons. In edit mode the same menu sits in
-the form toolbar.
+drafts are ONE secondary button "Draft" (#1991, Sam 24 Nov 2026; it
+replaced the menu "From the platforms", "With AI", "From a connected
+integration"), so the header is one row at 1024 in en, fr, es and ja. One
+click runs one pass: the connected platforms (`POST
+/organization-context/draft`, free, no model) always, and the AI (`POST
+/organization-context/ai-draft`, metered) when a model is available; the
+platform values come first, the AI completes the fields they left, and both
+land in the one review below. The draft proposes only the fields of the two
+Settings tabs (Organization; Risk and response): the frontend
+`isSettingsDraftField` and the backend `OUT_OF_SCOPE_PATHS`
+(`services/organization_context_ai_draft.py`) drop primary assets, software,
+the inventory rows and the PIRs, which CTEM > Inventory > Sources and the
+Prioritization policy card import. The fill agent of "From a connected
+integration" (#11888) was removed: Inventory > Sources imports assets from
+every platform and asset integration. The card of a tracked organization
+(section 9.8) keeps its own "Draft with AI" button.
 
-**The panel.** "With AI" opens a centred dialog (`components/ui/dialog.tsx`;
+**The panel.** "Draft" opens a centred dialog (`components/ui/dialog.tsx`;
 no drawer anywhere in the app, Sam 7 Nov 2026, #9502): the `DialogTitle`
-"Draft with AI", one line of description ("Proposes values from what you
-give; nothing is saved until you accept."), the inputs in a body that
+"Draft", one line of description ("Draft reads your platforms and documents
+and proposes values to review. Nothing is saved until you click Save."),
+the connected platforms first; without a model, one line "Documents and AI
+need a model: this draft reads the connected platforms only." in place of
+the AI inputs, never a lock; then the inputs in a body that
 scrolls inside the dialog, and a footer with Cancel then Draft (primary).
 The review diff replaces the inputs in the same dialog, footer Cancel then
 Save accepted (n). Draft is disabled while no input is given and no
@@ -1040,7 +1064,7 @@ the #9173 CTA in Community Edition or without an LLM.
 |---|---|
 | S1 seed infrastructure | Shipped in #8988: `fleets.is_builtin`, `BUILTIN_FLEETS` (`backend/app/agents/builtin_fleets.py`, entry shape in its docstring) seeded by `app.agents.fleet_seed.seed_builtin_fleets` at boot in xtm_one and dev modes (company-managed, by slug, members by agent slug, gated member skipped with reports moved up, workspace per fleet, `entry_handovers` to the orchestrator, stale ones swept); REST, `fleets` tools and `apply_fleet_spec` refuse writes except `BUILTIN_FLEET_WRITABLE_FIELDS`. Left: max_iterations 100 on single-shot generators |
 | S2 reactive modules | No OpenAEV or OpenCRQ event; OpenCTI event filters by entity type and label to verify; debounce for F4 refresh |
-| S3 organization context | Store, API and `get_organization_context` shipped (#8987 slice 1); S2 trigger filters derived from the profile's PIRs (section 8.3); injection in fleet runs (section 6, slice 3b); filters from sector and regions (section 8.3, slice 3c); OpenCRQ crown-jewel sync (section 6, slice 3d); onboarding form in Settings > Organization (administrators: every contract field, the missing fields named, each save a version with source `form`, the OpenCRQ check as a dry-run plan then apply; slice 2a); draft from OpenCTI, OpenAEV and OpenCRQ (`POST /organization-context/draft`, section 6, slice 2b); "Draft from the platforms" in Settings > Organization opens the form on the draft, names the platform of each filled field and each platform not read, saves with source `draft` (slice 2c). S3 complete |
+| S3 organization context | Store, API and `get_organization_context` shipped (#8987 slice 1); S2 trigger filters derived from the profile's PIRs (section 8.3); injection in fleet runs (section 6, slice 3b); filters from sector and regions (section 8.3, slice 3c); OpenCRQ primary-asset sync (section 6, slice 3d); onboarding form in Settings > Organization (administrators: every contract field, the missing fields named, each save a version with source `form`, the OpenCRQ check as a dry-run plan then apply; slice 2a); draft from OpenCTI, OpenAEV and OpenCRQ (`POST /organization-context/draft`, section 6, slice 2b); "Draft from the platforms" in Settings > Organization opens the form on the draft, names the platform of each filled field and each platform not read, saves with source `draft` (slice 2c). S3 complete |
 | S4 ROI engine | Units in output schemas, baselines, rate, aggregation per agent and fleet, last-30-day usage |
 | F1 to F3 | F1 shipped in #9114: `ctem-threat-response` in `BUILTIN_FLEETS`, the orchestrator and the three shared role agents (`CTEM_FLEET_AGENTS`, F2 and F3 reuse them by slug, with their ROI units), the three orchestrator assignments (`CTEM_F1_ASSIGNMENTS`; the OpenCTI trigger provisioned from the profile's sector and regions). Approval work items are the orchestrator's persona (`needs_human`, keys `ctem:f1:`). Left: OpenCRQ write path for expected loss (UC7; the quantifier drafts, never writes); ticketing integration |
 | F4 | Orchestrator, event refresh assignment |
@@ -1155,7 +1179,9 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   object, holds the threshold and an edit in Settings needs no reprovision.
 - PIR flags (CTEM-05): `provision.mode: "pir_playbook"` (with
   `organization_context: ["pir_ids"]`, required) provisions an OpenCTI
-  playbook instead of a live trigger. OpenCTI flags an entity in a PIR
+  playbook instead of a live trigger; `provision.pir_ids` (OpenCTI ids of
+  profile PIRs) narrows it to a subset, an id outside the profile being an
+  error that names it. OpenCTI flags an entity in a PIR
   through its internal `in-pir` relationship and writes the entity's
   `pir_information` without a stream event, so a live trigger with a
   `pir_score` filter never sees the flag. The playbook entry built for it,
@@ -1363,10 +1389,10 @@ in an expected loss for the primary organization and proposed actions.
 - The profile contract (section 6) is kept for the primary. A tracked
   organization's profile is a subset plus two fields: `sector`, `regions`,
   `services` (what it supplies to or consumes from the primary: name,
-  direction `supplies` or `consumes`, the crown jewels it supports, the
+  direction `supplies` or `consumes`, the primary assets it supports, the
   OpenCRQ supporting asset id when linked), and `contacts_owner` (the
   internal owner of the relationship, a user, never the third party's
-  contact). Crown jewels, AI systems, risk appetite, rate and ticketing
+  contact). Primary assets, AI targets, risk appetite, rate and ticketing
   stay primary-only: the loss is always the primary's.
 - API: `GET /api/v1/organizations` (list), `POST` / `PATCH` / archive for
   tracked ones (administrators), and the per-organization profile at
@@ -1462,7 +1488,7 @@ fleet-run block, the ROI report, the draft and the OpenCRQ sync).
   default like every seeded fleet); it reuses the F1 role agents by slug
   and adds one orchestrator. A supplier-exposure case holds: the threat or breach
   (OpenCTI entity), the organization and its relationship, the dependency
-  (the services it supplies and the crown jewels behind them), the
+  (the services it supplies and the primary assets behind them), the
   expected loss from OpenCRQ (section 9.6) and the proposed actions
   (contact the supplier, compensating control, contract clause, monitoring
   raised). Every action is an approval work item for a person
@@ -2007,9 +2033,21 @@ risk) declare one gate per loop stage, from
 | `ctem.analyst_review` | Review of the threat package before its security coverage is requested | low |
 | `ctem.remediation.decision` | Decide the remediation option and record it as an OpenCRQ treatment plan | high |
 | `ctem.mobilize` | Tickets, owners notified, prepared change handed over: one decision per case | destructive |
-| `ctem.production_change` | A change applied on production through an integration | high |
+| `ctem.production_change` | A change applied on production through an integration: indicators blocked in the EDR in prevention mode, a rule deployed, a configuration changed (#2061) | high |
 | `ctem.accept_risk` | Residual risk accepted beyond the policy cap | high |
 | `ctem.close_without_retest` | A case closed with no passing re-test | high |
+
+Mobilize is not only a ticket (#2061, Sam, 25 Nov 2026): each action of the
+Remediation Coordinator declares its `mode`, `ticket`, `applied_change` or
+`both`. An applied change runs through an integration bound to the Mobilization
+slots (EDR/XDR, SIEM, beside ticketing and notification), under
+`ctem.production_change`, and is written on the case with `update_ctem_case`
+`applied_change` {integration, kind (`ioc_prevention`, `detection_rule`,
+`configuration`, `control_restored`), pushed, ids, rollback}: one
+`applied_change` event in the remediation phase that moves an open case to
+`remediating`. Sigma stays detection (converted and deployed as a rule); only
+indicators and the EDR custom rules that support it go to prevention mode. The
+re-test still closes the case.
 
 No seeded gate names a tool or a grant (#1675, Sam, 24 Nov 2026): every tool
 is offered and runs when called; a gate that waits is one decision item the
@@ -2034,7 +2072,7 @@ OpenAEV validation (on the three fleets with the OpenAEV validation step) and
 `ctem.mobilize`; every other gate runs and the case records it as passed
 automatically. Reads and drafts are never a decision. One decision per
 validation: its ask names the scenario or atomic test, its targets, schedule
-and safe mode, and the answer covers creating and launching exactly that; a
+and what it will do to them, and the answer covers creating and launching exactly that; a
 new target, schedule or object is a new decision, by the persona. The coverage
 request is under `ctem.analyst_review` alone (#1467). Full human gates: every
 gate waits. Full autonomous: nothing waits. A pin (`wait` or `run`) moves one gate
@@ -2167,7 +2205,7 @@ What waits and what runs alone at Low, per seeded fleet
 
 Reclassified with #10005: the three OpenAEV launches (`high` to
 `destructive`) because an executed inject runs payloads on the
-organization's endpoints or AI systems, which the fleet cannot tell from
+organization's endpoints or AI targets, which the fleet cannot tell from
 production, and cannot be undone; the supplier action (`high` to
 `destructive`) because contacting a third party or changing a contract
 clause leaves the platform irreversibly. Agents lower a level freely and
@@ -2271,9 +2309,11 @@ team can act on. Module `app/agents/opencti_pir_desk.py`.
 | `opencti-assistant`, `opencti-entity-insights`, `opencti-dashboard-creator` (connected) | Chat, context, dashboards | exempt |
 
 Automations (all opt-in, off): `PIR match created` (provisioned OpenCTI
-trigger: create of Report, Intrusion-Set, Campaign or Vulnerability with
+trigger: create of Report or Vulnerability with
 `organization_context: ["pir_ids"]`, so only entities flagged in one of the
-organization's PIRs reach it), `Weekly PIR answer` (Mondays 07:00),
+organization's PIRs reach it; threat activity, Intrusion-Set and Campaign, is
+the CTEM loop's `Threat activity flagged in a PIR`, one owner per entity type,
+and each STIX id is triaged once, #1832), `Weekly PIR answer` (Mondays 07:00),
 `Half-year threat landscape` (1 January and 1 July), `Stale indicator
 clean-up` (monthly). One gate: `indicator.revoke`, impact destructive, so it
 waits at Low: the orchestrator files one approval work item per indicator
@@ -2344,8 +2384,8 @@ the source; OpenCTI is never required.
 Automations (all opt-in, off): `Scenario re-priced`, `Finding re-scored`
 and `Control validation ingested` (the OpenCRQ job-run events of
 `services/opencrq_job_events.py`, polled every 60 s, no provisioning),
-`Weekly investment review` (Mondays 07:00), `Monthly Board pack` (the 1st
-at 08:00). One gate: `opencrq.register.write` (create or update a scenario,
+`Weekly investment review` (Mondays 07:30), `Monthly Board pack` (the 1st
+at 10:00; staggered off the PIR answer and after the briefing, #1832). One gate: `opencrq.register.write` (create or update a scenario,
 its loss estimates, the risk tolerance), impact high, so it runs logged at
 Low and waits at the higher levels; the personas propose such a change as a
 `needs_human` work item and never make it.
@@ -2376,6 +2416,67 @@ three use cases, each one understandable out of the box. `BUILTIN_FLEETS`
 A fifth entry fails `tests/test_builtin_fleets.py`: adding one is a product
 decision. An agent has one home fleet: the use-case fleets reach the loop's
 role agents (risk quantifier, remediation coordinator) as connected agents.
+
+### Custom case ownership (#1966)
+
+Any fleet can run CTEM cases: a customer forks a CTEM fleet, or builds one,
+and gives it the case work. `fleets.case_ownership` declares the trigger
+paths it takes (`paths` null = every path) and its case item key; the seed
+writes it on the built-in fleets (`case_ownership` of `BUILTIN_FLEETS`).
+
+- Fork: the copy carries the declaration (its own key
+  `ctem:fleet-<fork id>`), its copied "Case opened or reopened" automations
+  (off, like every copied automation) are pointed at the fork
+  (`owner_fleet` eq `fleet:<fork id>`), and every copied agent gets the
+  `ctem` tool group, so the forked orchestrator reads and manages cases
+  with no manual change.
+- Any other fleet: `PUT /fleets/{id}/case-ownership` {paths, key, clear},
+  administrators only, refused on a built-in fleet (fork it). It points the
+  home members' case automations at the fleet and runs the catch-up.
+- Precedence, among the fleets whose case automation is on and whose
+  declaration holds the path: a list of paths beats every path; then a fleet
+  that is not built-in beats a built-in one (a fork takes over from its
+  source); then the oldest fleet. None: the CTEM loop (inactive on the case
+  page). The loop's listener takes `owner_fleet` eq `ctem-loop` or no owner
+  stamped (the routing unreadable), never a case another fleet owns.
+- Switching: enabling a fork's case automation catches up the open cases it
+  now owns at once; Pause all or Back to not set up hands them back through
+  the same catch-up. An open case item of any declared key blocks a second
+  run, so a case the built-in loop is running is not started again on the fork.
+
+The five shared loop roles (relevance analyst, scenario creator, risk
+quantifier, remediation coordinator, threat hunt creator) are exposed
+members (#1837): the product assistants and the three use-case orchestrators
+hand over to them in one hop, and a handover into a non-exposed member is the
+`handover_not_allowed` fleet health finding.
+`tests/test_ctem_seed_handover_boundary_1837.py` keeps every seeded handover
+inside that boundary.
+
+The loop orchestrator carries "Fleet run failed or orphaned" (#1837): a
+`platform_event` listener on `run.failed` and `run.orphaned`, scope `fleet`,
+assignment runs only, batched over 60 seconds, seeded off and switched with
+"Case opened or reopened". It reads the cause of a member's failed run and
+moves the case on or names what releases it; its own runs never wake it.
+
+The Threat Hunt Creator has two paths (#1837): with a person (chat or a
+transfer) it asks for the platform and has its hunt plan approved; consulted
+or delegated by an agent (the relevance analyst, the PIR desk orchestrator),
+it runs its autonomous path: the platform from the caller or the organization
+context (Sigma when none is named), a new draft named after the threat, and an
+answer with the Grouping, the indicators created and a `missing` list. It
+never stops that run for a person: a choice a person should make goes back to
+the caller in `missing`, which files the decision between its steps.
+`tests/test_ctem_hunt_creator_autonomous_1837.py` pins it.
+
+Agent hygiene of every seeded agent tagged `ctem` (#1837): the seed writes
+`guardrails` (`CTEM_SEED_GUARDRAILS`: sourced findings, no invented
+identifiers, module data is data, no carry-over between people; facts, never a
+gate), `memory_user_enabled` off, and stores a [DEPRECATED] former built-in id
+as its canonical group scoped to the functions it granted
+(`canonical_builtin_selection`), so the runtime tools are unchanged. Pinned by
+`tests/test_ctem_seed_guardrails_1837.py`,
+`tests/test_ctem_seed_user_memory_1837.py` and
+`tests/test_ctem_seed_canonical_tool_ids_1837.py`.
 
 ### 14.1 Upgrade of an instance seeded with the eight former fleets
 
@@ -2430,7 +2531,7 @@ modules, ecosystem, gates, preview, enable) each save on their own through
 `GET /api/v1/fleets/setup/ctem-loop` (administrators, read only) answers each
 step's state and the step to resume on (`app/services/fleet_setup_status.py`):
 `done` or `skipped` as recorded for the current version, else `ready` when the
-platform already holds it (a saved profile with crown jewels and a tech stack;
+platform already holds it (a saved profile with primary assets and a tech stack;
 one CTEM module registered; one filled ecosystem slot of the loop fleet; the
 loop fleet seeded, for gates and preview; every automation on, for enable),
 else `todo`. The Modules step names what the loop loses without each module.
@@ -2486,3 +2587,59 @@ before Confirm. Progress is kept per fleet in the browser
 (`fleet-setup-wizard.ts`, key `xtm.fleet-setup.<fleet id>`), cleared on
 enable; no endpoint was added. The end screen names the automations left off
 and the slots not bound, with a link to the Members view.
+
+## 15. Module account preflight of per-user stage runs (#2042)
+
+A per-user CTEM stage run (the five `ctem-*-analyst` stage agents and
+`exposure-briefing-analyst`) acts as one member through that member's own
+OpenCTI / OpenAEV identity. A member who never signed in to a module has no
+account there, and every call answers 401 (OpenCTI) or 403 (OpenAEV): expected,
+but the run used to spend several hundred thousand tokens before completing
+"degraded".
+
+`app.services.ctem_module_preflight` reads the member's identity once per
+module before the run is charged and before any model call
+(`assignment_engine._skip_by_module_preflight`, right after the activation
+check): OpenCTI `query { me { id } }`, OpenAEV `GET /api/me`, with the same
+per-user platform JWT the run's tools send (module auth is unchanged). Answers
+are cached per member and integration (present 30 min, missing 10 min;
+`forget(user_id)` drops them).
+
+- `STAGE_NEEDS` maps each stage slug to its need: groups that must all be met,
+  each met by any of its modules. Every stage today needs OpenCTI or OpenAEV
+  (`ANY_CTEM_MODULE`), since each falls back to the module it has.
+- A need not met ends the run `skipped`, `error = "no_module_account"`, zero
+  tokens, its result naming the module(s) and telling the member to sign in to
+  them once. The states read are kept on `trigger_context.module_accounts`.
+- Anything that is not a clear no-account answer (timeout, 5xx, unreadable
+  body, no credential) is `unknown` and the run goes ahead: the preflight never
+  blocks a run on a guess.
+
+### 15.1 Mid-run guard
+
+A member who has an account on one module and is refused by the other during
+the run (the preflight reads the identity, a tool still answers 401 / 403) is
+guarded inside the run. `assignment_engine` binds
+`guarding_module_accounts(True)` around the agent loop of a per-user stage run
+(the agents `STAGE_NEEDS` names); every other run binds it off.
+
+- The first tool error of a module that reads as a missing account (the
+  401 / 403 wording of `integrations.http.format_http_error`, OpenCTI
+  `AUTH_REQUIRED` / "You must be logged in") marks the module refused for the
+  run (`note_tool_refusal`). A capability denial (OpenCTI `FORBIDDEN_ACCESS`)
+  or a 5xx does not.
+- Every later call to a tool of that module in the run is answered without
+  being sent (`not_run = "module_refused"`, `refusal_answer`): no retry across
+  the module's tools.
+- That refusal is an expected outcome: `agent_loop._log_tool_result` records
+  it as `expected_error`, disposed `platform_acceptable` / `accepted` with the
+  reason `no_module_account: <module>`, never as an undisposed `tool_error`.
+
+The stage card (#2042): `GET /ctem-metrics/stages/{stage}/assessment` reads the
+user's newest run for the vertical; when it was skipped `no_module_account` and
+no assessment can be shown, it answers `status: "no_module_account"` with
+`no_module_account: [modules]` (the `missing` ones of
+`trigger_context.module_accounts`) and never `stale`, so the page does not start
+another run that would be skipped again. The card's AI strip draws
+`StageSignInHint` (`frontend/src/pages/xtm-one/ctem/stage-sign-in-hint.tsx`):
+"Sign in to <modules> once, then regenerate".

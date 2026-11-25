@@ -52,6 +52,7 @@ from __future__ import annotations
 import asyncio
 import bisect
 import contextlib
+import dataclasses
 import functools
 import hashlib
 import inspect
@@ -70,6 +71,7 @@ from collections.abc import (
     Iterable,
     Iterator,
     Mapping,
+    Sequence,
 )
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -94,6 +96,8 @@ from app.services.context_usage import (
     CONTEXT_LEVEL_OVERFLOWED,
     split_tokens,
 )
+from app.services.ctem_module_preflight import refusal_answer as ctem_refusal_answer
+from app.services.ctem_module_preflight import refused_module as ctem_refused_module
 from app.services.langfuse_tracing import (
     USAGE_PARTS_KEY as _LF_USAGE_PARTS_KEY,
 )
@@ -267,6 +271,7 @@ from app.tools.write_coalescing import (
 
 if TYPE_CHECKING:
     from app.llm.base import BaseLLMProvider, ChatMessage, ChatResponse
+    from app.services.tool_surface_refresh import IntegrationSurfaceRefresher
 
     # ``True`` for a tool result the model has not been sent yet — see
     # ``_unseen_tool_result_predicate`` and the curation passes that take it.
@@ -2331,6 +2336,109 @@ def _run_pause_names(
     if polls and all(t.source == _BUILTIN_STATUS_POLL_SOURCE for t in polls):
         owned.add(CHECK_TASK_STATUS_TOOL_NAME)
     return frozenset(owned)
+
+
+@dataclass(frozen=True, slots=True)
+class _ToolSurface:
+    """The per-run maps the loop derives from its tool list, built in one place.
+
+    ``effective_tools`` is the sanitised list offered to the model;
+    ``name_map`` resolves a call name back to the original the executor
+    registered; the other maps are keyed by LLM-visible name. A refresh of the
+    tools inside the turn (#1874) rebuilds all of them through
+    ``_build_tool_surface``, so no map can describe another list.
+    """
+
+    effective_tools: list[ToolDefinition] | None
+    name_map: _ExecutorNameMap
+    schema_map: dict[str, dict[str, Any]]
+    coalescing_map: dict[str, WriteCoalescing]
+    execution_timeouts: dict[str, int]
+    send_guard_map: dict[str, SendGuard]
+    read_back_map: dict[str, tuple[WriteReadBack, str]]
+    #: ORIGINAL names of the tools whose successful call reloads the surface
+    #: (``ToolDefinition.changes_tool_surface``, #1874).
+    surface_changing: frozenset[str] = frozenset()
+
+
+def _build_tool_surface(tools: list[ToolDefinition] | None) -> _ToolSurface:
+    """Sanitise *tools* for the provider and derive every per-name map of the run.
+
+    Every dispatch-side lookup of "which registered tool did the model mean"
+    goes through ONE map: it canonicalises in the LLM-visible name space first
+    (the gate's rules), then reverse-maps to the original (``_ExecutorNameMap``).
+    It is built from the FULL sanitised list, before any provider truncation,
+    so a call is always resolved against what the model could have been
+    offered. The known-alias table is translated into the visible space once
+    and handed to that map and, through its resolver, to the gate, so an alias
+    can never mean one tool to the gate and another to dispatch.
+
+    The schema map is keyed by the sanitised names and resolved through the
+    same canonicalisation, so an ambiguous name validates against no schema,
+    never the wrong one.
+    """
+    renamed: dict[str, str] = {}  # sanitised -> original (renamed only)
+    original_to_visible: dict[str, str] = {}  # every original -> its visible name
+    effective_tools: list[ToolDefinition] | None = None
+    if tools:
+        effective_tools = []
+        for t, (_orig, clean) in zip(tools, build_llm_tool_names([t.name for t in tools]), strict=True):
+            original_to_visible[t.name] = clean
+            if clean != t.name:
+                renamed[clean] = t.name
+                logger.debug("Sanitised tool name '%s' -> '%s' (source: %s)", t.name, clean, t.source)
+                effective_tools.append(dataclasses.replace(t, name=clean))
+            else:
+                effective_tools.append(t)
+    name_map = _ExecutorNameMap(
+        renamed,
+        (t.name for t in effective_tools or []),
+        aliases=visible_aliases(original_to_visible, declared_aliases(tools or ())),
+    )
+    read_back_map: dict[str, tuple[WriteReadBack, str]] = {}
+    for td in effective_tools or []:
+        if td.read_back is None:
+            continue
+        original = name_map.get(td.name, td.name)
+        suffix = original[len(td.base_name) :] if td.base_name and original.startswith(td.base_name) else ""
+        read_back_map[td.name] = (td.read_back, suffix)
+    return _ToolSurface(
+        effective_tools=effective_tools,
+        name_map=name_map,
+        schema_map={td.name: td.input_schema for td in effective_tools or []},
+        coalescing_map={td.name: td.coalesce for td in effective_tools or [] if td.coalesce is not None},
+        execution_timeouts={td.name: td.execution_timeout for td in effective_tools or [] if td.execution_timeout > 0},
+        send_guard_map={td.name: td.send_guard for td in effective_tools or [] if td.send_guard is not None},
+        read_back_map=read_back_map,
+        surface_changing=frozenset(
+            name_map.get(td.name, td.name) for td in effective_tools or [] if td.changes_tool_surface
+        ),
+    )
+
+
+def _surface_refresh_note(added: Sequence[str], removed: Sequence[str], *, gated: bool) -> str:
+    """The system note that tells the model its tool list changed inside the turn (#1874)."""
+    parts: list[str] = []
+    if added:
+        parts.append(f"added {', '.join(added[:_TRUNCATION_NOTICE_MAX_NAMES])}")
+        if len(added) > _TRUNCATION_NOTICE_MAX_NAMES:
+            parts[-1] += f" and {len(added) - _TRUNCATION_NOTICE_MAX_NAMES} more"
+    if removed:
+        parts.append(f"removed {', '.join(removed[:_TRUNCATION_NOTICE_MAX_NAMES])}")
+        if len(removed) > _TRUNCATION_NOTICE_MAX_NAMES:
+            parts[-1] += f" and {len(removed) - _TRUNCATION_NOTICE_MAX_NAMES} more"
+    load_hint = f" (through `{LOAD_TOOLS_TOOL_NAME}` when their group is not loaded)" if gated and added else ""
+    return (
+        "Note: the integration tools of this turn were reloaded after that change: "
+        f"{'; '.join(parts)}. The added tools can be called from the next step{load_hint}; "
+        "the removed ones no longer exist."
+    )
+
+
+_SURFACE_REFRESH_FAILED_NOTE = (
+    "Note: the integration tools could not be reloaded after that change; this turn keeps the "
+    "tool list it had, and the next turn reads the new one."
+)
 
 
 def _debited_tool_calls(
@@ -6436,9 +6544,15 @@ def _log_tool_result(tc: ToolCall, result: ToolResult, probe: str | None = None)
         else:
             note_probe_passed(tc.name, probe)
     elif errored:
-        from app.services.frictions import note_tool_error
+        from app.services.ctem_module_preflight import NO_MODULE_ACCOUNT, note_tool_refusal
+        from app.services.frictions import note_expected_error, note_tool_error
 
-        note_tool_error(tc.name, result.content)
+        # A per-user CTEM stage run refused by a module the member has no
+        # account on: expected, recorded already disposed of (#2042).
+        if (refused := note_tool_refusal(tc.name, result.content)) is not None:
+            note_expected_error(tc.name, result.content, f"{NO_MODULE_ACCOUNT}: {refused}")
+        else:
+            note_tool_error(tc.name, result.content)
     if result.is_error:
         logger.warning(
             "Tool '%s' returned error (id=%s): %.500s",
@@ -9920,6 +10034,10 @@ async def run_agent_loop(
     # Evaluation only: each tool_done carries its tool's time.
     report_tool_durations: bool = False,
     context_sections: Mapping[str, int] | None = None,
+    # The caller's own integration build and narrowing (#1874): a tool of the
+    # turn that changes an integration the run is bound to refreshes the
+    # surface through it at the end of that iteration. None: no refresh.
+    tool_surface_refresher: IntegrationSurfaceRefresher | None = None,
 ) -> ChatResponse:
     """Run the agentic loop until the LLM stops calling tools.
 
@@ -10407,89 +10525,31 @@ async def run_agent_loop(
     # collision-suffix disambiguation — come from the shared
     # ``build_llm_tool_names`` so the executors' self-correction listings
     # can never drift from the names actually offered here.
-    _renamed_tools: dict[str, str] = {}  # sanitised → original (renamed only)
-    _original_to_visible: dict[str, str] = {}  # every original → its visible name
-    if tools:
-        sanitised_tools: list[ToolDefinition] = []
-        for t, (_orig, clean) in zip(
-            tools, build_llm_tool_names([t.name for t in tools]), strict=True
-        ):
-            _original_to_visible[t.name] = clean
-            if clean != t.name:
-                _renamed_tools[clean] = t.name
-                logger.debug(
-                    "Sanitised tool name '%s' → '%s' (source: %s)",
-                    t.name,
-                    clean,
-                    t.source,
-                )
-                import dataclasses as _dc
-
-                sanitised_tools.append(_dc.replace(t, name=clean))
-            else:
-                sanitised_tools.append(t)
-        effective_tools: list[ToolDefinition] | None = sanitised_tools
-    else:
-        effective_tools = None
-    # Every dispatch-side lookup of "which registered tool did the model
-    # mean" goes through this ONE map: it canonicalises in the LLM-visible
-    # name space first (the gate's rules), then reverse-maps to the original
-    # — see ``_ExecutorNameMap``.  Built from the FULL sanitised list, before
-    # any provider truncation, so a call is always resolved against what the
-    # model could have been offered.  The known-alias table is translated into
-    # the visible space ONCE here and handed to both this map and the gate
-    # below, so an alias can never mean one tool to the gate and another to
-    # dispatch (a sanitisation collision would otherwise route
-    # ``list_github_issues`` to ``search.github.issues`` instead of the
-    # ``search_github_issues`` it stands for).
-    _visible_aliases = visible_aliases(_original_to_visible, declared_aliases(tools or ()))
-    _tool_name_map = _ExecutorNameMap(
-        _renamed_tools,
-        (t.name for t in effective_tools or []),
-        aliases=_visible_aliases,
-    )
-
-    # ── Tool input-schema lookup for pre-execution validation ─────────
-    # Keyed by the *sanitised* names the LLM is offered (the names that come
-    # back on tool calls), resolved through the same canonicalisation as
-    # dispatch so a reordered call like ``jira_search_issues`` for the
-    # registered ``search_jira_issues`` is validated against the right
-    # schema — and an ambiguous one against none, so a collision can never
-    # validate against the wrong schema.  A missed lookup simply skips
-    # validation and defers to the executor's own unknown-tool handling.
-    _tool_schema_map: dict[str, dict[str, Any]] = {
-        _td.name: _td.input_schema for _td in effective_tools or []
-    }
+    # Built by ONE function so a refresh inside the turn (#1874) rebuilds
+    # every map from the same rules; the closures below read these names at
+    # call time, so rebinding them swaps the surface for all of them.
+    _surface = _build_tool_surface(tools)
+    effective_tools = _surface.effective_tools
+    _tool_name_map = _surface.name_map
+    _tool_schema_map = _surface.schema_map
 
     def _lookup_tool_schema(name: str) -> dict[str, Any] | None:
         canonical = _tool_name_map.canonical_visible(name)
         return _tool_schema_map.get(canonical) if canonical is not None else None
 
-    # The update tools that declare how their calls on one object in a round
-    # are merged (``ToolDefinition.coalesce``), by LLM-visible name.
-    _tool_coalescing_map: dict[str, WriteCoalescing] = {
-        _td.name: _td.coalesce for _td in effective_tools or [] if _td.coalesce is not None
-    }
+    _tool_coalescing_map = _surface.coalescing_map
 
     def _lookup_tool_coalescing(name: str) -> WriteCoalescing | None:
         return _tool_coalescing_map.get(name)
 
-    # The tools that declare their own execution timeout
-    # (``ToolDefinition.execution_timeout``), by LLM-visible name.
-    _tool_execution_timeouts: dict[str, int] = {
-        _td.name: _td.execution_timeout for _td in effective_tools or [] if _td.execution_timeout > 0
-    }
+    _tool_execution_timeouts = _surface.execution_timeouts
 
     def _declared_timeout(name: str) -> int:
         canonical = _tool_name_map.canonical_visible(name)
         return _tool_execution_timeouts.get(canonical, 0) if canonical is not None else 0
 
-    # The send tools that declare their recipient and body arguments
-    # (``ToolDefinition.send_guard``), by LLM-visible name, and the
-    # run's successful sends they are matched against.
-    _tool_send_guard_map: dict[str, SendGuard] = {
-        _td.name: _td.send_guard for _td in effective_tools or [] if _td.send_guard is not None
-    }
+    _tool_send_guard_map = _surface.send_guard_map
+    _surface_changing_tools = _surface.surface_changing
     _send_ledger = send_guard.SendLedger()
 
     async def _record_send(tc: ToolCall, result: Any) -> None:
@@ -10503,21 +10563,7 @@ async def run_agent_loop(
         if _sg_fp is not None:
             await _send_ledger.record(_sg_fp, tc.id)
 
-    # The write tools that declare a post-write read-back
-    # (``ToolDefinition.read_back``), by LLM-visible name, with the
-    # instance suffix their read tool shares, and the run's ledger of
-    # writes the consistency block compares a new one with.
-    _tool_read_back_map: dict[str, tuple[WriteReadBack, str]] = {}
-    for _td in effective_tools or []:
-        if _td.read_back is None:
-            continue
-        _rb_orig = _tool_name_map.get(_td.name, _td.name)
-        _rb_suffix = (
-            _rb_orig[len(_td.base_name) :]
-            if _td.base_name and _rb_orig.startswith(_td.base_name)
-            else ""
-        )
-        _tool_read_back_map[_td.name] = (_td.read_back, _rb_suffix)
+    _tool_read_back_map = _surface.read_back_map
     _read_back_ledger = write_read_back.ReadBackLedger()
 
     async def _with_read_back(tc: ToolCall, result: Any, content: str) -> str:
@@ -10895,6 +10941,84 @@ async def run_agent_loop(
                 logger.info("Model cap change restored %d tool(s) under %d", len(_restored), cap)
                 messages.append(LLMMessage(role="system", content=_build_tool_restored_notice(_restored)))
         return cap
+
+    async def _refresh_tool_surface() -> LLMMessage | None:
+        """Reload the integration tools after a call changed them (#1874).
+
+        The caller's refresher rebuilds the integrations through its own allow
+        lists and narrowing and swaps the scoped executor's allowed set; the
+        loop then rebuilds every per-name map with ``_build_tool_surface`` and,
+        when the run is gated, a new gate over the new list with the groups
+        the model had loaded revealed again. A failure keeps the old surface.
+        """
+        nonlocal _surface, effective_tools, _tool_name_map, _tool_schema_map, _tool_coalescing_map
+        nonlocal _tool_execution_timeouts, _tool_send_guard_map, _tool_read_back_map, _surface_changing_tools
+        nonlocal tool_gate, _ungated_pool, _run_pauses
+        if tool_surface_refresher is None:
+            return None
+        try:
+            refreshed = await tool_surface_refresher.refresh()
+        except Exception:
+            logger.warning("Tool surface refresh failed; the turn keeps its tool list", exc_info=True)
+            return LLMMessage(role="system", content=_SURFACE_REFRESH_FAILED_NOTE)
+        if not refreshed.added and not refreshed.removed:
+            return None
+        _surface = _build_tool_surface(refreshed.tools)
+        effective_tools = _surface.effective_tools
+        _tool_name_map = _surface.name_map
+        _tool_schema_map = _surface.schema_map
+        _tool_coalescing_map = _surface.coalescing_map
+        _tool_execution_timeouts = _surface.execution_timeouts
+        _tool_send_guard_map = _surface.send_guard_map
+        _tool_read_back_map = _surface.read_back_map
+        _surface_changing_tools = _surface.surface_changing
+        _gated = False
+        if tool_gate is not None:
+            _revealed = sorted(tool_gate.revealed_group_ids)
+            _new_gate = (
+                build_tool_gate(
+                    effective_tools,
+                    enabled=True,
+                    min_tools=_progressive_min_tools,
+                    max_visible=provider_max_tools,
+                    resolver=_tool_name_map.resolver,
+                    on_demand=builtin_on_demand_groups(),
+                    withheld=_executor_withheld(executor),
+                    withheld_integrations=_executor_withheld_integrations(executor),
+                )
+                if effective_tools
+                else None
+            )
+            if _new_gate is not None:
+                try:
+                    _new_gate.preload_groups(_revealed)
+                except Exception:
+                    logger.warning("Tool surface refresh: loaded groups not carried over", exc_info=True)
+                tool_gate = _new_gate
+                _gated = True
+                effective_tools = [*(effective_tools or []), tool_gate.load_tools_definition]
+                if _catalog_message is not None:
+                    _catalog_message.content = tool_gate.catalog_prompt
+                _lf_update_trace_tools(_root_trace_ctx, tool_gate.visible_tools())
+            else:
+                tool_gate = None
+                if _catalog_message is not None:
+                    _catalog_message.content = (
+                        f"Note: every tool of this run is now offered directly; `{LOAD_TOOLS_TOOL_NAME}` is gone."
+                    )
+        if tool_gate is None:
+            _ungated_pool = list(effective_tools or [])
+            if effective_tools and len(effective_tools) > provider_max_tools:
+                effective_tools = sorted(effective_tools, key=tool_retention_key)[:provider_max_tools]
+        _run_pauses = _run_pause_names(effective_tools, _tool_name_map, wait_offered=_wait_definition is not None)
+        return LLMMessage(
+            role="system",
+            content=_surface_refresh_note(refreshed.added, refreshed.removed, gated=_gated),
+        )
+
+    # Set by a successful call of a ``changes_tool_surface`` tool; the refresh
+    # runs once at the end of that step.
+    _tool_surface_changed = False
 
     # Track whether we already injected the wind-down nudge
     wind_down_injected = False
@@ -15903,6 +16027,39 @@ async def run_agent_loop(
             for tc in tool_calls:
                 _lb_orig_name = _tool_name_map.get(tc.name, tc.name)
                 tool_call_totals[tc.name] = tool_call_totals.get(tc.name, 0) + 1
+                # A module that refused the member of a per-user CTEM stage
+                # run is not called again in the run (#2042).
+                if (_refused_module := ctem_refused_module(_lb_orig_name)) is not None:
+                    _refused_answer = ctem_refusal_answer(_refused_module)
+                    logger.info(
+                        "CTEM guard: '%s' not sent, %s already refused this member (id=%s)",
+                        tc.name,
+                        _refused_module,
+                        tc.id,
+                    )
+                    messages.append(
+                        LLMMessage(
+                            role="tool",
+                            content=_refused_answer,
+                            tool_call_id=tc.id,
+                            name=tc.name,
+                            not_run="module_refused",
+                        )
+                    )
+                    await _emit(
+                        on_event,
+                        {
+                            "status": "tool_done",
+                            **_tool_timing(report_tool_durations, 0),
+                            "tool": tc.name,
+                            "success": False,
+                            "tool_input": _serialize_tool_arguments(tc.arguments),
+                            "tool_input_full": _serialize_tool_arguments_full(tc.arguments),
+                            "tool_output": _refused_answer,
+                            "tool_output_full": _refused_answer,
+                        },
+                    )
+                    continue
                 _lb_decision = loop_breaker.screen(_lb_orig_name, tc.arguments)
                 if _lb_decision.action == "allow":
                     _screened_calls.append(tc)
@@ -17091,6 +17248,12 @@ async def run_agent_loop(
                     _tc_write_took_effect = (
                         _tc_is_write and not result.is_error and not getattr(result, "no_op", False)
                     )
+                    if (
+                        _tc_orig_name in _surface_changing_tools
+                        and not result.is_error
+                        and not getattr(result, "no_op", False)
+                    ):
+                        _tool_surface_changed = True
                     _track_tool_result(
                         tc.name,
                         is_error=result.is_error,
@@ -17572,6 +17735,12 @@ async def run_agent_loop(
                             and not getattr(result, "no_op", False)
                         ):
                             _effective_writes.append(_result_orig_name)
+                        if (
+                            _result_orig_name in _surface_changing_tools
+                            and not result.is_error
+                            and not getattr(result, "no_op", False)
+                        ):
+                            _tool_surface_changed = True
                         _track_tool_result(
                             tc.name,
                             is_error=result.is_error,
@@ -17657,6 +17826,15 @@ async def run_agent_loop(
                         _tool_name_map.get(tool_calls[_ci].name, tool_calls[_ci].name),
                         tool_calls[_ci].arguments,
                     )
+
+            # ── Tool surface refresh (#1874) ──────────────────────
+            # A call of this step changed an integration the run is bound to:
+            # the next request carries the reloaded tool list.
+            if _tool_surface_changed:
+                _tool_surface_changed = False
+                _surface_note = await _refresh_tool_surface()
+                if _surface_note is not None:
+                    messages.append(_surface_note)
 
             # Mixed wait+work: pause only after sibling tools have run.
             _early = await _after_sibling_tools()

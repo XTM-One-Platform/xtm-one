@@ -6,8 +6,9 @@
  * of a fleet run). An administrator fills it once; each save is a new
  * version. The overview names how complete it is and the fields not filled,
  * the same list the agents report instead of guessing; a missing field opens
- * the form on it. The primary assets reconcile with OpenCRQ's supporting assets:
- * "Check against OpenCRQ" shows the plan, "Apply" writes it. Administrators
+ * the form on it. The primary assets sync from OpenCRQ as an Inventory source
+ * (CTEM > Inventory > Sources, #1754): the card names that source and its last
+ * sync, and has no OpenCRQ button. Administrators
  * only. Built on the settings form kit (#9173, S1c). Five real tabs (#12329):
  * every card sits in one tab (lib/organization-profile-tabs.ts), the tab is a
  * path segment (/settings/organization/profile/<tab>), only the active panel is rendered, and the whole-profile
@@ -17,7 +18,7 @@
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { landOnCard } from "@/lib/land-on-card";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Bot, Building2, Coins, Import, Link2, Lock, MessageSquare, Package, Pencil, Plus, RefreshCw, Server, Shield, Sparkles, Ticket } from "lucide-react";
+import { Building2, Coins, Link2, Lock, MessageSquare, Package, Pencil, Plus, RefreshCw, Server, Shield, Sparkles } from "lucide-react";
 import { TagInput } from "@/components/ui/tag-input";
 
 import { Badge } from "@/components/ui/badge";
@@ -38,7 +39,6 @@ import {
   type SettingsCardFold,
   SettingsField,
   SettingsFieldGrid,
-  SettingsGroupTitle,
   SettingsSaveBar,
   settingsFieldHintId,
   settingsFieldLabelId,
@@ -48,32 +48,26 @@ import { ISO_3166_NUMERIC } from "@/components/presentation/blocks/chart-map-cou
 import { useIntegrationElements, useIntegrations } from "@/hooks/api/useIntegrationApi";
 import { useToast } from "@/components/ui/toast";
 import { AgenticGateDialogControlled } from "@/components/ui/license-gate-dialog";
-import { OverflowMenu, type OverflowMenuItem } from "@/components/ui/overflow-menu";
 import { useAgenticAIEnabled, useIsXtmOne } from "@/hooks/usePlatformConfig";
 import { useAiActionDisabled } from "@/hooks/useAiDisabled";
 import { OrganizationAiDraftDialog } from "./OrganizationAiDraftDialog";
 import { OrganizationAssetsImportDialog } from "./OrganizationAssetsImportDialog";
-import { OrganizationFillAgentDialog } from "./OrganizationFillAgentDialog";
 import { OrganizationImportDialog, PROFILE_IMPORT_SECTIONS } from "./OrganizationImportDialog";
 import { EXPOSURE_SECTIONS, type ExposureCard, type ExposureIssue, OrganizationExposureCards, exposureIssueFromRefusal, exposureIssues } from "./OrganizationExposureCards";
 import { primeOrganizationOnboarding } from "@/lib/organization-onboarding";
 import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
 import { TruncatedText } from "@/components/ui/truncated-text";
+import { exactCount, formatCount } from "@/lib/number-format";
 import {
-  type OpenCrqLevel,
-  type OpenCrqSyncResponse,
-  type OrganizationDraftResponse,
   type OrganizationProfile,
-  type ProfileSource,
-  useDraftOrganizationContext,
-  useOpenCrqSync,
   useOrganizationContext,
-  useOrganizationSyncs,
-  useRunOrganizationSync,
   useOrganizationPirs,
-  useOrganizationReaders,
+  usePatchOrganizationContext,
   useSaveOrganizationContext,
 } from "@/hooks/api/useOrganizationContextApi";
+import { primaryAssetLinkKey, useAssetGroups, useCanonicalAssets, usePrimaryAssetLinkCounts } from "@/hooks/api/useOrganizationAssetsApi";
+import { primaryAssetPath } from "@/pages/xtm-one/ctem/inventory";
+import { useTriggerTabIndex } from "@/components/ui/row-target-context";
 import { useFormatter } from "@/i18n";
 import {
   type AmountField,
@@ -91,10 +85,8 @@ import {
   isSupportedRecordType,
   fromForm,
   toForm,
-  unreadablePlatform,
 } from "@/lib/organization-profile";
 import { distinctName, OrganizationPirsView, pirLabels, PirsUnreadable, usePirText } from "./OrganizationPirs";
-import { OrganizationUsedBy } from "./OrganizationUsedBy";
 import { OrganizationTicketingSync } from "./OrganizationTicketingSync";
 import { type BulkField, type ListEditColumn, ListSaveBar, OrganizationListEditor } from "./OrganizationListEditor";
 import { OrganizationListPasteDialog } from "./OrganizationListPasteDialog";
@@ -104,32 +96,33 @@ import { TrackedOrganizations } from "./TrackedOrganizations";
 import { OrganizationSourcesSyncs } from "./OrganizationSourcesSyncs";
 import { useSyncedRemoval } from "./OrganizationSyncedRemoval";
 import { ProviderLogo } from "@/components/ui/provider-logo";
-import { MIN_CRITICALITY_LABELS } from "@/lib/organization-import-filters";
 import { columnEditable, LOCAL_FIELDS, SOURCE_KIND_LABELS, sourceKind, sourcePlatform, type Provenance } from "@/lib/organization-provenance";
 import { OrganizationContextInjectionCard } from "./OrganizationContextInjectionCard";
-import { OrganizationCrownJewelsRestoreDialog } from "./OrganizationCrownJewelsRestoreDialog";
+import { OrganizationPrimaryAssetsRestoreDialog } from "./OrganizationPrimaryAssetsRestoreDialog";
 import { OrganizationProposalsCard } from "./OrganizationProposalsCard";
 import { OrganizationEvidenceHealthCard } from "./OrganizationEvidenceHealthCard";
 import { OrganizationOutsideLensCard } from "./OrganizationOutsideLensCard";
+import { OrganizationFxRatesCard } from "./OrganizationFxRatesCard";
+import { OrganizationPirDetailsDialog } from "./OrganizationPirDetailsDialog";
 import {
   PROFILE_CARD_PARAM,
   PROFILE_CARD_TAB,
   PROFILE_TABS,
   PROFILE_TAB_LABELS,
+  SETTINGS_PROFILE_TABS,
   type ProfileCard,
   type ProfileTab,
   changedTabs,
   isInventoryTab,
   profileFieldHref,
-  groupByTab,
   parseProfileCard,
   profileTabOfPath,
   profileTabPath,
   tabOfField,
   tabsOfFields,
 } from "@/lib/organization-profile-tabs";
-import { Icon, Spinner } from "@filigran/design-system";
-import { BackButton } from "@/components/ui/back-button";
+import { Icon } from "@filigran/design-system";
+import { DetailTabs } from "@/components/ui/detail-tabs";
 
 const NO_SIZE = "none";
 const NO_VALUE = "none";
@@ -138,12 +131,12 @@ const NO_VALUE = "none";
 const COUNTRY_CODES = Object.keys(ISO_3166_NUMERIC);
 
 /** The lists edited in their own card (#12256). */
-const LIST_KEYS = ["crown_jewels", "shipped_products", "tech_stack"] as const;
+const LIST_KEYS = ["primary_assets", "shipped_products", "software"] as const;
 /** @i18n-keys */
 const LIST_TITLES = {
-  crown_jewels: "Primary assets and business services",
+  primary_assets: "Primary assets and business services",
   shipped_products: "Shipped products",
-  tech_stack: "Software",
+  software: "Software",
 } as const;
 type ListKey = (typeof LIST_KEYS)[number];
 /** The exposure tables edited in their own card (#12256 slice 2). @i18n-keys */
@@ -175,14 +168,6 @@ const JEWEL_STEP_ASIDE = "6xl" as const;
 
 /** The values of the primary assets' OpenCRQ filter. @i18n-keys */
 const OPENCRQ_LINK_LABELS = { linked: "Linked to OpenCRQ", not_linked: "Not linked to OpenCRQ" } as const;
-/** The OpenCRQ assets read, counted by criticality, when none reaches the check's threshold (#1558). @i18n-keys */
-const OPENCRQ_COUNT_LABELS = {
-  unknown: "{count, plural, one {# unrated} other {# unrated}}",
-  low: "{count, plural, one {# low} other {# low}}",
-  medium: "{count, plural, one {# medium} other {# medium}}",
-  high: "{count, plural, one {# high} other {# high}}",
-  very_high: "{count, plural, one {# very high} other {# very high}}",
-} as const;
 /**
  * An amount field: the room for its unit goes on the inner input element (the
  * library's className lands on the wrapper), so the field keeps the column
@@ -192,7 +177,7 @@ const AMOUNT_INPUT_CLASS = "[&_input]:pr-36";
 
 /**
  * The cards of the profile one page mounts alone (#1178, Sam 22 Nov 2026): CTEM > Inventory edits the software inventory,
- * the AI systems, the assets and exposure, the asset groups, the policy and the outside lens with the same cards,
+ * the assets and exposure, the asset groups, the policy and the outside lens with the same cards,
  * the same per-card edit and the same Save as Settings, nothing stored twice. Without it the whole profile page.
  */
 export type OrganizationEmbed = {
@@ -200,6 +185,19 @@ export type OrganizationEmbed = {
   /** A reader's view (#1511): the cards at rest, no Edit (the outside lens and evidence health cards gate theirs too). */
   readOnly?: boolean;
 };
+
+/**
+ * A tooltip trigger in a primary assets cell: a tab stop of its own outside a routed row, none inside one, where the
+ * row (it opens the primary asset's page, #1980 S2) is the one stop (data-table gate 10, #12070).
+ */
+function RowAwareTipTrigger({ className, role, ariaLabel, children }: { className: string; role?: string; ariaLabel?: string; children: ReactNode }) {
+  const tabIndex = useTriggerTabIndex();
+  return (
+    <span tabIndex={tabIndex} role={role} aria-label={ariaLabel} className={className}>
+      {children}
+    </span>
+  );
+}
 
 export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {}) {
   const { t_i18n, locale, intl } = useFormatter();
@@ -222,18 +220,16 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // In the reader's locale, as every date next to a DataTable (data-table-locale-dates gate).
   const savedAt = data?.created_at ? intl.formatDate(new Date(data.created_at), { dateStyle: "medium", timeStyle: "short" }) : "";
   const save = useSaveOrganizationContext();
-  const sync = useOpenCrqSync();
-  // One mechanism for OpenCRQ (#1134 S2): once primary assets sync from OpenCRQ, the card's OpenCRQ
-  // button runs that sync (its filters, links and direction), never a second set of rules.
-  const { data: profileSyncs } = useOrganizationSyncs("profile", !reader);
-  const opencrqJewelSync = (Array.isArray(profileSyncs) ? profileSyncs : []).find((entry) => entry.section === "crown_jewels" && entry.source === "opencrq");
-  const runSyncNow = useRunOrganizationSync();
-  const drafting = useDraftOrganizationContext();
+  // #1752: a card saves its own fields alone (PATCH); the asset rows never travel with them.
+  const patch = usePatchOrganizationContext();
+  // The names a primary asset links to, read on the row APIs (#1752 slice 3b), never from the profile.
+  const linkGroups = useAssetGroups({ throwOnError: false });
+  const linkAssets = useCanonicalAssets({ offset: 0, limit: 200 });
+  // The stored links counted per primary asset (#1978 S2): an OpenCRQ or rule sync writes links, never asset_names.
+  const linkCounts = usePrimaryAssetLinkCounts();
+  // Primary assets are an Inventory source (#1754): their sources are configured and run in CTEM > Inventory > Sources
+  // like every other source, nothing is pre-provisioned and the card names none of them (Sam, 24 Nov 2026, #1883).
   const [form, setForm] = useState<ProfileForm | null>(null);
-  // The draft the form was opened from: the save is then recorded with source "draft".
-  const [draft, setDraft] = useState<OrganizationDraftResponse | null>(null);
-  const [draftFailed, setDraftFailed] = useState(false);
-  const [plan, setPlan] = useState<OpenCrqSyncResponse | null>(null);
   // "Restore from a past version" on the primary-asset card (#1558).
   const [restoreOpen, setRestoreOpen] = useState(false);
   // The amount field the last Save refused: marked aria-invalid (the Input adapter draws the error border) until edited.
@@ -258,20 +254,22 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // returns to the previous one; the query (?setup=1) is kept.
   const location = useLocation();
   const navigate = useNavigate();
-  // Settings draws its own tabs only: a tab whose cards live on CTEM > Inventory reads as an unknown tab, the first one.
+  // Copilot mode keeps the Identity card alone (#1690, Sam 24 Nov 2026): no risk appetite, ticketing or case sync,
+  // no fields-not-filled banner; the stored values stay untouched. Its profile is the Organization tab alone.
+  const xtmOne = useIsXtmOne();
+  const settingsTabs: readonly ProfileTab[] = xtmOne ? SETTINGS_PROFILE_TABS : [PROFILE_TABS[0]];
+  // Settings draws its own tabs only (#1975): a tab whose cards live on CTEM > Inventory, or a former one
+  // (/profile/knowledge, /profile/identity), reads as an unknown tab, the first one (no redirect, #797).
   const pathTab = profileTabOfPath(location.pathname);
-  const tab = embed ? PROFILE_CARD_TAB[embed.cards[0]] : isInventoryTab(pathTab) ? PROFILE_TABS[0] : pathTab;
+  const tab = embed ? PROFILE_CARD_TAB[embed.cards[0]] : settingsTabs.includes(pathTab) ? pathTab : PROFILE_TABS[0];
   const [focusRetry, setFocusRetry] = useState(0);
   // The card landing in progress (landOnCard), ended by the next landing or when the page unmounts.
   const endCardLanding = useRef<(() => void) | null>(null);
   // A tab whose cards live on CTEM > Inventory is never opened from Settings (#1690): the form stays where it is.
   const goToTab = (next: ProfileTab | null) => {
-    if (embed || !next || next === tab || isInventoryTab(next)) return;
+    if (embed || !next || next === tab || !settingsTabs.includes(next)) return;
     navigate({ pathname: profileTabPath(next), search: location.search });
   };
-  // Copilot mode keeps the Identity card alone (#1690, Sam 24 Nov 2026): no risk appetite, ticketing or case sync,
-  // no fields-not-filled banner; the stored values stay untouched.
-  const xtmOne = useIsXtmOne();
 
   const editing = form !== null;
   // The list cards in edit (#12256): one card alone from its own Edit, or the three while the whole
@@ -281,11 +279,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const [exposureEdit, setExposureEdit] = useState<{ card: ExposureCard; form: ProfileForm } | null>(null);
   // The list whose "Paste a list" dialog is open (slice 2).
   const [pasteFor, setPasteFor] = useState<ListKey | null>(null);
-  // Read mode only (#9173 S2): the fleets that need each part, from their documented prerequisites,
-  // and the seeded agents whose persona reads it (#10063 r1 A3).
-  const readers = useOrganizationReaders(!editing);
-  const usedBy = editing ? undefined : readers.data?.readers;
-  const usedByAgents = editing ? undefined : readers.data?.agents;
   const saved = data ? toForm(data.profile) : null;
   const current = form ?? saved;
   const listCard = LIST_KEYS.find((key) => listEdits[key] !== undefined && !editing) ?? null;
@@ -349,6 +342,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // A saved PIR without a name while OpenCTI's list is on its way: a skeleton, never placeholder text (#11589).
   const pirsLoading = savedPirs.some((pir) => pir.state === "loading");
   const savedPirIds = current?.pir_ids;
+  // The PIR whose details dialog is open (#1974), from its row on the Prioritization policy card.
+  const [pirDetails, setPirDetails] = useState<{ id: string; name: string } | null>(null);
   const missingPirs = useMemo(
     () => savedPirs.filter((pir) => pir.state === "missing" && savedPirIds?.includes(pir.id)),
     [savedPirs, savedPirIds],
@@ -384,7 +379,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       : pirs.data?.unavailable
         ? t_i18n("The PIRs could not be listed: OpenCTI did not answer.")
         : t_i18n("No PIR in OpenCTI");
-  const dirty = editing && (draft !== null || JSON.stringify(withLists(form)) !== JSON.stringify(saved));
+  const dirty = editing && JSON.stringify(withLists(form)) !== JSON.stringify(saved);
   // The open form as a profile, for "With AI" from the form: its proposals are reviewed against what is typed.
   const formProfile = useMemo(() => {
     if (!form) return null;
@@ -434,18 +429,14 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   /** A card's edit closed: the focus goes back to its Edit button. */
   const focusCardEdit = (card: string | null | undefined) => card && setFocusAfter({ targets: [byTestId(`settings.organization.edit-${card}`)] });
 
-  // Editing closes the OpenCRQ plan: Apply rewrites the profile, and a Save of the
-  // form opened before it would PUT the stale copy and drop what Apply wrote.
   const startEdit = () => {
     if (!data || cardOpen) return;
-    setPlan(null);
     setListEdits({});
     setForm(toForm(data.profile));
   };
   // One exposure card in edit (#12256 slice 2): the other cards stay as they read; the form is not opened.
   const startExposureEdit = (card: ExposureCard) => {
     if (!data || cardOpen) return;
-    setPlan(null);
     setCheckExposure(false);
     setRefusedIssue(null);
     setExposureEdit({ card, form: toForm(data.profile) });
@@ -463,7 +454,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       ? edit.form.prioritization_policy
         ? { ...base, prioritization_policy: { ...(base.prioritization_policy ?? edit.form.prioritization_policy), accepted_risks: edit.form.prioritization_policy.accepted_risks } }
         : base
-      : { ...base, [edit.card]: edit.form[edit.card] };
+      : edit.card === "prioritization_policy"
+        ? // The PIR list is edited on the Prioritization policy card (#1889).
+          { ...base, prioritization_policy: edit.form.prioritization_policy, pir_ids: edit.form.pir_ids, pir_names: edit.form.pir_names }
+        : { ...base, [edit.card]: edit.form[edit.card] };
   const exposureDirty = (edit: { card: ExposureCard; form: ProfileForm }) =>
     saved !== null && JSON.stringify(exposureSaved(edit, saved)) !== JSON.stringify(saved);
   const saveExposure = () => {
@@ -474,24 +468,31 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       setCheckExposure(true);
       return;
     }
-    const parsed = fromForm(next);
+    // The names OpenCTI gives now are saved with the PIRs, as the whole form's Save does (#9615).
+    const live = Object.fromEntries((pirs.data?.pirs ?? []).map((pir) => [pir.id, pir.name]));
+    const parsed = fromForm({ ...next, pir_names: { ...(next.pir_names ?? {}), ...live } });
     if ("invalid" in parsed) return;
-    save.mutate({ profile: parsed.profile as OrganizationProfile, source: "form" }, {
+    const field = exposureEdit.card === "accepted_risks" ? "prioritization_policy" : exposureEdit.card;
+    const options = {
       onSuccess: () => {
         stopExposureEdit();
         toast({ title: t_i18n("Organization profile saved"), variant: "success" });
       },
-      onError: (err) => {
+      onError: (err: Error) => {
         const issue = exposureIssueFromRefusal(next, err.message);
         if (issue) setRefusedIssue(issue);
         else toast({ title: t_i18n("The organization profile was not saved"), description: err.message, variant: "error" });
       },
-    });
+    };
+    // The asset and group rows are written through their own row APIs on CTEM > Inventory (#1752 slice 3b): never here.
+    if (field === "assets_exposure" || field === "asset_groups") return;
+    // The Prioritization policy carries the PIR list with it (#1889); every other card patches its field alone.
+    const withPirs = field === "prioritization_policy" ? { pir_ids: parsed.profile.pir_ids, pir_names: parsed.profile.pir_names } : {};
+    patch.mutate({ fields: { [field]: parsed.profile[field], ...withPirs }, based_on_version: data.version ?? null }, options);
   };
   // One list card in edit (#12256): the other cards stay as they read; the form is not opened.
   const startListEdit = (key: ListKey) => {
     if (!data) return;
-    setPlan(null);
     setListEdits({ [key]: { rows: startRows(toForm(data.profile)[key] as unknown[]), open: null } } as ListEdits);
   };
   const stopListEdit = () => {
@@ -506,7 +507,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     const parsed = fromForm({ ...toForm(data.profile), [key]: committedValues(listEdits[key]!.rows as EditRow<unknown>[]) });
     if ("invalid" in parsed) return;
     const kept = committedValues(listEdits[key]!.rows as EditRow<Provenance>[]);
-    save.mutate({ profile: parsed.profile as OrganizationProfile, source: "form" }, {
+    patch.mutate({ fields: { [key]: parsed.profile[key] }, based_on_version: data.version ?? null }, {
       onSuccess: () => {
         // The synced rows removed with "Exclude from this sync" go on their sync's exclusions (#1134).
         synced.commit(kept);
@@ -529,19 +530,25 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     setRefusedIssue(null);
     setExposureEdit((prev) => (prev ? { ...prev, form: { ...prev.form, ...patch } } : prev));
   };
-  // A PIR OpenCTI no longer has, taken out from the read view: the form opens without it, Save writes it.
+  // A PIR OpenCTI no longer has, taken out from the read view: the Prioritization policy card opens in
+  // edit without it (#1889), Save writes it.
   const removePir = (id: string) => {
     if (!data) return;
-    const base = form ?? toForm(data.profile);
-    setPlan(null);
-    setForm({ ...base, pir_ids: base.pir_ids.filter((pir) => pir !== id) });
+    if (form) {
+      setForm({ ...form, pir_ids: form.pir_ids.filter((pir) => pir !== id) });
+      return;
+    }
+    if (cardOpen) return;
+    const base = toForm(data.profile);
+    setCheckExposure(false);
+    setRefusedIssue(null);
+    setExposureEdit({ card: "prioritization_policy", form: { ...base, pir_ids: base.pir_ids.filter((pir) => pir !== id) } });
   };
   const stopEditing = () => {
     setFocusAfter({ targets: [byTestId("settings.organization.edit")] });
     setForm(null);
     setListEdits({});
     setExposureEdit(null);
-    setDraft(null);
     setInvalidField(null);
     setCheckExposure(false);
     setRefusedIssue(null);
@@ -557,11 +564,19 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     return () => window.removeEventListener("beforeunload", warn);
   }, [leaveGuard]);
   // Opened once from the setup proposal: the parameter leaves the URL, so a reload shows the page as it is.
+  // The form opens on the first Settings tab with a field not filled (#1975).
   useEffect(() => {
     if (!setupRequested || !data) return;
     setSetupGuide(true);
-    setPlan(null);
     setForm((prev) => prev ?? toForm(data.profile));
+    const firstMissing = xtmOne ? tabsOfFields(data.missing_fields ?? []).find((key) => settingsTabs.includes(key)) : undefined;
+    if (!embed && firstMissing && firstMissing !== tab) {
+      const next = new URLSearchParams(location.search);
+      next.delete("setup");
+      const search = next.toString();
+      navigate({ pathname: profileTabPath(firstMissing), search: search ? `?${search}` : "" }, { replace: true });
+      return;
+    }
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
@@ -570,7 +585,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       },
       { replace: true },
     );
-  }, [setupRequested, data, setSearchParams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- settingsTabs and embed are fixed for the page's life
+  }, [setupRequested, data, setSearchParams, xtmOne, tab, navigate, location.search]);
   // A link to one card (`?card=<key>`, profileFieldHref): its tab opens, the page lands on the card, and the
   // parameter leaves the URL in place, so Back returns to the page the link was on.
   const requestedCard = parseProfileCard(searchParams.get(PROFILE_CARD_PARAM));
@@ -578,7 +594,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     if (!requestedCard || !data || !show(requestedCard)) return;
     const cardTab = PROFILE_CARD_TAB[requestedCard];
     // A card Settings does not draw reads as an unknown card: the parameter is dropped, nothing opens.
-    if (!embed && isInventoryTab(cardTab)) {
+    if (!embed && !settingsTabs.includes(cardTab)) {
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
@@ -614,7 +630,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const jumpTo = (path: string) => {
     // A field whose card moved to CTEM > Inventory opens it there (#1178).
     const fieldTab = tabOfField(path);
-    if (!embed && fieldTab && isInventoryTab(fieldTab)) {
+    if (!embed && fieldTab && !settingsTabs.includes(fieldTab)) {
       navigate(profileFieldHref(path));
       return;
     }
@@ -623,34 +639,15 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     if (!editing) startEdit();
     setFocusTarget(`${fieldId}-${MISSING_TARGET[path] ?? path}`);
   };
-  // Opens the form on the profile proposed by the platforms; nothing is saved until Save.
-  const startDraft = () =>
-    drafting.mutate(undefined, {
-      onSuccess: (result) => {
-        setPlan(null);
-        setInvalidField(null);
-        setDraft(result);
-        setListEdits({});
-        setForm(toForm(result.profile));
-        // The form opens on the first Settings tab the platforms filled.
-        goToTab(tabsOfFields(result.filled.map((row) => row.field))[0] ?? null);
-      },
-      // Inline with Retry (section 6.1), a catalogued sentence, never the backend's text.
-      onError: () => setDraftFailed(true),
-      onSettled: (_result, error) => !error && setDraftFailed(false),
-    });
-
-  // "With AI" (#9484): one metered model call on the administrator's click, never at page load.
+  // "Draft" (#1991): one dialog, the platforms always and the AI when a model is available, never at page load.
   const agenticEnabled = useAgenticAIEnabled();
   const aiActionDisabled = useAiActionDisabled();
   const aiAvailable = agenticEnabled && !aiActionDisabled;
   const [aiDraftOpen, setAiDraftOpen] = useState(false);
   const [aiGateOpen, setAiGateOpen] = useState(false);
   const [assetsImportOpen, setAssetsImportOpen] = useState(false);
-  // "From the platforms" (#11780): the import stepper; its "Quick setup" runs today's one-click draft.
-  const [platformImportOpen, setPlatformImportOpen] = useState(false);
-  // "From a connected integration" (#11888): an agent reads it and previews the assets in a chat.
-  const [fillAgentOpen, setFillAgentOpen] = useState(false);
+  // The OpenCTI PIR import of the Prioritization policy card (#1938): the PIRs section alone.
+  const [pirImportOpen, setPirImportOpen] = useState(false);
   // The chat onboarding (#11224): a new chat with the default assistant interviews for the fields left.
   const startOnboarding = () => {
     if (!aiAvailable) {
@@ -661,21 +658,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     navigate("/chat");
   };
   const connectedPlatforms = [...new Set(integrations.map((integration) => integration.provider).filter((provider) => provider in PLATFORM_NAMES))];
-  const draftMenuItems: OverflowMenuItem[] = [
-    { id: "draft-platforms", label: t_i18n("From the platforms"), icon: Import, onSelect: () => setPlatformImportOpen(true) },
-    {
-      id: "draft-ai",
-      label: t_i18n("With AI"),
-      icon: aiAvailable ? Sparkles : Lock,
-      onSelect: () => (aiAvailable ? setAiDraftOpen(true) : setAiGateOpen(true)),
-    },
-    {
-      id: "draft-integration",
-      label: t_i18n("From a connected integration"),
-      icon: aiAvailable ? Bot : Lock,
-      onSelect: () => (aiAvailable ? setFillAgentOpen(true) : setAiGateOpen(true)),
-    },
-  ];
 
   const submit = () => {
     if (!form) return;
@@ -706,8 +688,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       goToTab("exposure");
       return;
     }
-    const source: ProfileSource = draft ? "draft" : "form";
-    save.mutate({ profile: parsed.profile as OrganizationProfile, source }, {
+    save.mutate({ profile: parsed.profile as OrganizationProfile, source: "form" }, {
       onSuccess: () => {
         stopEditing();
         toast({ title: t_i18n("Organization profile saved"), variant: "success" });
@@ -723,25 +704,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     });
   };
 
-  // The threshold of the check (#1558): the one the last plan answered (the saved sync's filter by default), or the level picked.
-  const runSync = (apply: boolean, level?: OpenCrqLevel) =>
-    sync.mutate(
-      { apply, ...((level ?? plan?.plan.min_criticality) ? { min_criticality: level ?? plan?.plan.min_criticality } : {}) },
-      {
-        onSuccess: (result) => {
-          setPlan(result.applied ? null : result);
-          if (result.applied) toast({ title: t_i18n("Primary assets synchronized with OpenCRQ"), variant: "success" });
-        },
-        onError: (err) => toast({ title: t_i18n("OpenCRQ could not be read"), description: err.message, variant: "error" }),
-      },
-    );
-
-  /** The translated criticality, never the raw enum value inside a translated sentence: a profile level, else an OpenCRQ level (very_high), which the push rows carry (UX B1). */
-  const criticalityLabel = (value: string) => {
-    if (value in CRITICALITY_LABELS) return t_i18n(CRITICALITY_LABELS[value as keyof typeof CRITICALITY_LABELS]);
-    if (value in MIN_CRITICALITY_LABELS) return t_i18n(MIN_CRITICALITY_LABELS[value as keyof typeof MIN_CRITICALITY_LABELS]);
-    return value;
-  };
   /** The helper and the bubble of a field, from the field contract (UX B3). */
   const help = (key: keyof typeof FIELD_HELP) => ({ helper: t_i18n(FIELD_HELP[key].helper), info: t_i18n(FIELD_HELP[key].info) });
   const text = (key: "name" | "sector" | "sub_sector", title: string, placeholder?: string) => {
@@ -824,7 +786,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     );
   };
   /**
-   * The three lists (primary assets, software inventory, AI systems) read on the shared DataTable (data
+   * The two lists (primary assets, software inventory) read on the shared DataTable (data
    * tables slice 9): search, filters, sort, CSV and the pager. In edit they keep all of it on the
    * list editor (#12256, OrganizationListEditor): one row open at a time, the order frozen.
    */
@@ -835,6 +797,33 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // "Not set" takes the table's compact text so every row keeps one height (UX r2 B1 on #10804).
   const readCell = (value: string) =>
     value.trim() ? <TruncatedText text={value} /> : <span className="content-compact text-default-secondary">{t_i18n("Not set")}</span>;
+  /**
+   * What the Assets column of a primary asset reads (#1978 S2): the names typed by hand while they are all its links,
+   * else the count of its stored links (a sync writes hundreds: a count, never a list); the typed names before the
+   * link counts answer.
+   */
+  const jewelLinkTotal = (jewel: { name: string; asset_names?: string[] }) => {
+    const total = linkCounts.data?.items?.[primaryAssetLinkKey(jewel.name)]?.total ?? 0;
+    return total > (jewel.asset_names ?? []).length ? total : null;
+  };
+  // The count is compact from 1,000 ("1.2K linked assets", UX r1 B1 on #2000), its exact value on the DS tooltip.
+  const linkedAssetsText = (total: number) =>
+    t_i18n("{count, plural, one {{shown} linked asset} other {{shown} linked assets}}", { count: total, shown: formatCount(locale, total) });
+  const jewelAssetsText = (jewel: { name: string; asset_names?: string[] }) => {
+    const total = jewelLinkTotal(jewel);
+    return total === null ? (jewel.asset_names ?? []).join(", ") : linkedAssetsText(total);
+  };
+  const jewelAssetsCell = (jewel: { name: string; asset_names?: string[] }) => {
+    const total = jewelLinkTotal(jewel);
+    if (total === null || formatCount(locale, total) === exactCount(locale, total)) return readCell(jewelAssetsText(jewel));
+    return (
+      <Tip content={exactCount(locale, total)}>
+        <RowAwareTipTrigger className={`inline-flex min-w-0 tabular-nums ${TIP_WRAP_FOCUS_RING}`}>
+          <span className="truncate">{linkedAssetsText(total)}</span>
+        </RowAwareTipTrigger>
+      </Tip>
+    );
+  };
   /** Where a row came from (#1134): the platform's logo and name, or Typed, CSV, API, Agent. */
   const sourceLabel = (value: Provenance) => {
     const kind = sourceKind(value.source);
@@ -896,8 +885,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     options: Object.entries(labels).map(([value, name]) => ({ value, label: t_i18n(name) })),
     ordered,
   });
-  type JewelRow = { index: number; value: ProfileForm["crown_jewels"][number] };
-  type TechRow = { index: number; value: ProfileForm["tech_stack"][number] };
+  type JewelRow = { index: number; value: ProfileForm["primary_assets"][number] };
+  type TechRow = { index: number; value: ProfileForm["software"][number] };
   const jewelColumns: DataTableColumn<JewelRow>[] = [
     {
       key: "name",
@@ -948,9 +937,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       hideable: true,
       // Steps aside at 1080 so Business service reads whole (UX r2 B2 on #1174); the Columns pill brings it back.
       hideBelow: JEWEL_STEP_ASIDE,
-      cell: ({ value }) => readCell((value.asset_names ?? []).join(", ")),
+      cell: ({ value }) => jewelAssetsCell(value),
       interactive: true,
-      csv: ({ value }) => (value.asset_names ?? []).join("; "),
+      // An export keeps exact data: the stored link count as a number, else the typed names.
+      csv: ({ value }) => String(jewelLinkTotal(value) ?? (value.asset_names ?? []).join("; ")),
     },
     {
       key: "opencrq",
@@ -962,9 +952,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       cell: ({ value }) =>
         value.opencrq_asset_id ? (
           <Tip content={t_i18n("Linked to OpenCRQ")}>
-            <span tabIndex={0} role="img" aria-label={t_i18n("Linked to OpenCRQ")} className={`inline-flex ${TIP_WRAP_FOCUS_RING}`}>
+            <RowAwareTipTrigger role="img" ariaLabel={t_i18n("Linked to OpenCRQ")} className={`inline-flex ${TIP_WRAP_FOCUS_RING}`}>
               <Link2 className="h-4 w-4 text-feedback-success-primary" />
-            </span>
+            </RowAwareTipTrigger>
           </Tip>
         ) : null,
       interactive: true,
@@ -1037,8 +1027,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     sourceFilter<TechRow>(),
   ];
   // The list editors (#12256): the same columns, a closed row read as text, the open one as fields.
-  type Jewel = ProfileForm["crown_jewels"][number];
-  type Tech = ProfileForm["tech_stack"][number];
+  type Jewel = ProfileForm["primary_assets"][number];
+  type Tech = ProfileForm["software"][number];
   type Shipped = ProfileForm["shipped_products"][number];
   const pick = (labels: Record<string, string>, value: string, label: string, onChange: (value: string) => void) => (
     <Select value={value} onValueChange={onChange}>
@@ -1062,7 +1052,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const jewelEdit: ListEditColumn<Jewel>[] = [
     { key: "name", header: "Primary asset", width: readWidth(JEWEL_WIDTHS.name), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("Primary asset", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
     { key: "business_service", header: "Business service", hideable: true, read: (v) => readCell(v.business_service), edit: (v, set) => editText("Business service", v.business_service, (business_service) => set({ business_service })), sortValue: (v) => v.business_service.toLowerCase(), firstSort: "asc" },
-    { key: "owner", header: "Owner", hideable: true, read: (v) => readCell(v.owner), edit: (v, set) => editText("Owner", v.owner, (owner) => set({ owner }), false, "Owner", suggestId("crown_jewels", "owner")), sortValue: (v) => v.owner.toLowerCase(), firstSort: "asc" },
+    { key: "owner", header: "Owner", hideable: true, read: (v) => readCell(v.owner), edit: (v, set) => editText("Owner", v.owner, (owner) => set({ owner }), false, "Owner", suggestId("primary_assets", "owner")), sortValue: (v) => v.owner.toLowerCase(), firstSort: "asc" },
     { key: "criticality", header: "Criticality", hideable: true, headerClassName: "w-44", width: readWidth(120), read: (v) => readCell(v.criticality ? optionLabel(CRITICALITY_LABELS, v.criticality) : ""), edit: (v, set) => pick(CRITICALITY_LABELS, v.criticality, "Criticality", (criticality) => set({ criticality })), sortValue: (v) => Object.keys(CRITICALITY_LABELS).indexOf(v.criticality), firstSort: "desc" },
     {
       key: "assets",
@@ -1072,10 +1062,11 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       // Below 72rem it steps aside, else the two local fields of a synced row kept 61 px (UX r2 B1 on #1174).
       hideBelow: JEWEL_STEP_ASIDE,
       width: readWidth(JEWEL_WIDTHS.assets),
-      read: (v) => readCell((v.asset_names ?? []).join(", ")),
+      read: (v) => jewelAssetsCell(v),
       edit: (v, set) => {
         const names = v.asset_names ?? [];
-        const options = [...(current?.asset_groups ?? []), ...(current?.assets_exposure ?? [])].filter((asset) => asset.name.trim()).map((asset) => ({ value: asset.name, label: asset.name }));
+        // The groups and assets come from their row APIs (#1752 slice 3b): the profile answers no row.
+        const options = [...(linkGroups.data?.items ?? []), ...(linkAssets.data?.items ?? [])].filter((asset) => asset.name.trim()).map((asset) => ({ value: asset.name, label: asset.name }));
         return (
           <MultiSelect
             aria-label={t_i18n("Assets")}
@@ -1087,7 +1078,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             onToggle={(name) => set({ asset_names: names.includes(name) ? names.filter((n) => n !== name) : [...names, name] })}
             placeholder={t_i18n("Link assets")}
             searchPlaceholder={t_i18n("Search...")}
-            emptyOptionsLabel={t_i18n("No asset yet: add them under Assets and exposure.")}
+            // The rows live in Inventory > Assets (UX r1 B1 on #1892); no empty hint while the row APIs still load (A1).
+            emptyOptionsLabel={linkGroups.isLoading || linkAssets.isLoading ? t_i18n("Loading...") : t_i18n("No asset yet: add them in Inventory > Assets.")}
             noMatchLabel={t_i18n("No match")}
           />
         );
@@ -1099,7 +1091,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // Vendor scale (UX round 3 B2 on #931: 240/200/180 left CPE 62 px, header and input clipped).
   const techEdit: ListEditColumn<Tech>[] = [
     { key: "product", header: "Product", width: readWidth(200), read: (v) => readCell(v.product), edit: (v, set, bad) => editText("Product", v.product, (product) => set({ product }), bad), sortValue: (v) => v.product.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
-    { key: "vendor", header: "Vendor", hideable: true, width: readWidth(160), read: (v) => readCell(v.vendor), edit: (v, set, bad) => editText("Vendor", v.vendor, (vendor) => set({ vendor }), bad, "Vendor", suggestId("tech_stack", "vendor")), sortValue: (v) => v.vendor.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.vendor] },
+    { key: "vendor", header: "Vendor", hideable: true, width: readWidth(160), read: (v) => readCell(v.vendor), edit: (v, set, bad) => editText("Vendor", v.vendor, (vendor) => set({ vendor }), bad, "Vendor", suggestId("software", "vendor")), sortValue: (v) => v.vendor.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.vendor] },
     { key: "cpe", header: "CPE (optional)", hideable: true, read: (v) => readCell(v.cpe), edit: (v, set, bad) => editText("CPE (optional)", v.cpe, (cpe) => set({ cpe }), bad, "cpe:2.3:a:vendor:product:*"), sortValue: (v) => v.cpe.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.cpe] },
     { key: "version", header: "Version (optional)", hideable: true, width: readWidth(160), read: (v) => readCell(v.version ?? ""), edit: (v, set) => editText("Version (optional)", v.version ?? "", (version) => set({ version }), false, "1.25.3"), sortValue: (v) => (v.version ?? "").toLowerCase(), firstSort: "asc" },
     sourceEdit<Tech>(),
@@ -1137,19 +1129,19 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   ];
   /** Per list (slice 2): the fields the selection toolbar sets, the free-text fields suggested from the list, and "Paste a list". */
   const LIST_BULK = {
-    crown_jewels: [
-      { key: "owner", label: "Owner", suggestions: suggestId("crown_jewels", "owner") },
+    primary_assets: [
+      { key: "owner", label: "Owner", suggestions: suggestId("primary_assets", "owner") },
       { key: "criticality", label: "Criticality", options: CRITICALITY_LABELS },
       { key: "business_service", label: "Business service" },
     ],
-    tech_stack: [{ key: "vendor", label: "Vendor", suggestions: suggestId("tech_stack", "vendor") }],
+    software: [{ key: "vendor", label: "Vendor", suggestions: suggestId("software", "vendor") }],
     shipped_products: [{ key: "vendor", label: "Vendor", suggestions: suggestId("shipped_products", "vendor") }],
   } as const;
-  const LIST_SUGGESTED: { [K in ListKey]: readonly (keyof ProfileForm[K][number] & string)[] } = { crown_jewels: ["owner"], shipped_products: ["vendor"], tech_stack: ["vendor"] };
+  const LIST_SUGGESTED: { [K in ListKey]: readonly (keyof ProfileForm[K][number] & string)[] } = { primary_assets: ["owner"], shipped_products: ["vendor"], software: ["vendor"] };
   const choiceWords = (labels: Record<string, string>) => Object.fromEntries(Object.entries(labels).map(([key, label]) => [key, [label, t_i18n(label)]]));
   const header = (label: string) => [label, t_i18n(label)];
   const PASTE = {
-    crown_jewels: {
+    primary_assets: {
       title: "Paste primary assets",
       example: "Customer portal, Online sales, Jane Doe, critical",
       fieldLabels: { name: "Primary asset", business_service: "Business service", owner: "Owner", criticality: "Criticality" },
@@ -1159,10 +1151,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         name: "name",
         headers: { name: header("Primary asset"), business_service: header("Business service"), owner: header("Owner"), criticality: header("Criticality"), opencrq_asset_id: header("OpenCRQ") },
         choices: { criticality: choiceWords(CRITICALITY_LABELS) },
-        identity: LIST_RULES.crown_jewels.identity,
+        identity: LIST_RULES.primary_assets.identity,
       } as PasteSpec<Jewel>,
     },
-    tech_stack: {
+    software: {
       title: "Paste products",
       example: "Jira, Atlassian",
       fieldLabels: { product: "Product", vendor: "Vendor", cpe: "CPE (optional)", version: "Version (optional)" },
@@ -1171,7 +1163,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         empty: { product: "", vendor: "", cpe: "", version: "" },
         name: "product",
         headers: { product: header("Product"), vendor: header("Vendor"), cpe: header("CPE (optional)"), version: [...header("Version (optional)"), "Version"] },
-        identity: LIST_RULES.tech_stack.identity,
+        identity: LIST_RULES.software.identity,
       } as PasteSpec<Tech>,
     },
     // The repositories are added on the row once pasted: a line holds one value per field.
@@ -1203,7 +1195,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   ) => {
     if (!listOpen(key)) return null;
     const rows = listRows(key);
-    const rules = LIST_RULES[key] as unknown as { check: (value: ProfileForm[K][number]) => ReturnType<typeof LIST_RULES.tech_stack.check>; identity: (value: ProfileForm[K][number]) => string };
+    const rules = LIST_RULES[key] as unknown as { check: (value: ProfileForm[K][number]) => ReturnType<typeof LIST_RULES.software.check>; identity: (value: ProfileForm[K][number]) => string };
     return (
       <>
         {LIST_SUGGESTED[key].map((field) => (
@@ -1276,7 +1268,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         <Button
           variant="secondary"
           className="gap-1.5"
-          disabled={!data || cardOpen !== null || drafting.isPending}
+          disabled={!data || cardOpen !== null}
           onClick={() => startListEdit(key)}
           aria-label={t_i18n("Edit {name}", { name: t_i18n(LIST_TITLES[key]) })}
           data-testid={`settings.organization.edit-${key}`}
@@ -1292,7 +1284,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         <Button
           variant="secondary"
           className="gap-1.5"
-          disabled={!data || cardOpen !== null || drafting.isPending}
+          disabled={!data || cardOpen !== null}
           onClick={() => startExposureEdit(card)}
           aria-label={t_i18n("Edit {name}", { name: t_i18n(EXPOSURE_TITLES[card]) })}
           data-testid={`settings.organization.edit-${card}`}
@@ -1304,7 +1296,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   /** "4 need attention", on the card's header in read mode. */
   const attention = (key: ListKey) => {
     if (!saved || listOpen(key)) return null;
-    const rules = LIST_RULES[key] as unknown as { check: (value: unknown) => ReturnType<typeof LIST_RULES.tech_stack.check>; identity: (value: unknown) => string };
+    const rules = LIST_RULES[key] as unknown as { check: (value: unknown) => ReturnType<typeof LIST_RULES.software.check>; identity: (value: unknown) => string };
     const count = attentionCount(saved[key] as unknown[], rules.check, rules.identity);
     return count ? (
       <Badge variant="warning" data-testid={`settings.organization.attention-${key}`}>
@@ -1358,34 +1350,111 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       : t_i18n("Scenarios above {amount} per year are flagged for approval", { amount: money(value) });
   };
 
-  // "Already agree" only on the backend's in_sync (#1134 S2): an empty profile against a non-empty
-  // OpenCRQ is an import to propose, never agreement. An older backend without it: nothing listed.
-  const planEmpty =
-    plan &&
-    (plan.plan.in_sync ?? true) &&
-    !plan.plan.linked.length &&
-    !plan.plan.pushed_to_opencrq.length &&
-    !plan.plan.pulled_from_opencrq.length &&
-    !plan.plan.ambiguous.length &&
-    !plan.plan.not_in_opencrq.length;
-  // Nothing to link and no asset at the threshold (#1558): the plan says so with the counts, never "already agree".
-  const noneRated = !!planEmpty && (current?.crown_jewels.length ?? 0) === 0 && plan?.plan.assets_read !== undefined;
-  const ratedCounts = plan?.plan.by_criticality
-    ? (Object.entries(plan.plan.by_criticality) as [keyof typeof OPENCRQ_COUNT_LABELS, number][])
-        .filter(([level]) => level in OPENCRQ_COUNT_LABELS)
-        .map(([level, count]) => t_i18n(OPENCRQ_COUNT_LABELS[level], { count }))
-        .join(", ")
-    : "";
-
   // The fields not filled that Settings still draws (#1690): the Business, Technology and Exposure fields are
   // reported on CTEM > Inventory, and Copilot mode reports none (Sam: "we don't care").
   const missing = xtmOne ? (data?.missing_fields ?? []).filter((path) => { const owner = tabOfField(path); return owner !== null && !isInventoryTab(owner); }) : [];
+  /**
+   * The PIR list on the Prioritization policy card (#1889): it filters the PIR playbooks beside the two PIR
+   * score thresholds. Read mode: the names as wrapped chips linked to OpenCTI (#9615); edit: the picker.
+   */
+  const pirList = (pirEditing: boolean, pirForm: ProfileForm, pirUpdate: (patch: Partial<ProfileForm>) => void) =>
+    !pirEditing ? (
+      <SettingsReadField
+        label={t_i18n("Priority intelligence requirements (PIRs)")}
+        info={help("pir_ids").info}
+        wide
+        value={
+          <OrganizationPirsView
+            pirs={savedPirs}
+            list={pirs.data}
+            unreadable={pirsUnreadable}
+            retrying={pirs.isFetching}
+            onRetry={() => void pirs.refetch()}
+            onRemove={removePir}
+            details={data?.profile.pir_details}
+            onDetails={(id, name) => setPirDetails({ id, name })}
+          />
+        }
+      />
+    ) : (
+      <SettingsField
+        id={`${fieldId}-pir_ids`}
+        label={t_i18n("Priority intelligence requirements (PIRs)")}
+        wide
+        {...help("pir_ids")}
+        helper={
+          pirs.data?.unavailable === "not_connected"
+            ? t_i18n("The PIRs of OpenCTI could not be listed: the saved ones are kept.")
+            : t_i18n(FIELD_HELP.pir_ids.helper)
+        }
+      >
+        <div className="flex flex-col gap-1.5">
+          {pirsLoading ? (
+            // The picker waits for the names: its chips would otherwise read a placeholder (#11589).
+            <div
+              className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-sm border border-elevation-subtle-soft px-2 py-1.5"
+              role="status"
+              aria-busy="true"
+              aria-label={t_i18n("Loading the PIR names")}
+              data-testid="settings.organization.pirs-loading"
+            >
+              {savedPirs.slice(0, 8).map((pir) => (
+                <Skeleton key={pir.id} className="h-6 w-32 rounded-sm" />
+              ))}
+            </div>
+          ) : (
+            <MultiSelect
+              id={`${fieldId}-pir_ids`}
+              aria-label={t_i18n("Priority intelligence requirements (PIRs)")}
+              aria-describedby={settingsFieldHintId(`${fieldId}-pir_ids`)}
+              options={pirOptions}
+              selected={pirForm.pir_ids}
+              onToggle={(id) => pirUpdate({ pir_ids: pirForm.pir_ids.includes(id) ? pirForm.pir_ids.filter((p) => p !== id) : [...pirForm.pir_ids, id] })}
+              placeholder={t_i18n("Pick the PIRs")}
+              searchPlaceholder={t_i18n("Search a PIR")}
+              emptyOptionsLabel={pirsEmptyLabel}
+              noMatchLabel={t_i18n("No matching PIR")}
+            />
+          )}
+          {/* Edit mode says it too, with Retry, as read mode does (#11589). */}
+          {pirsUnreadable && <PirsUnreadable retrying={pirs.isFetching} onRetry={() => void pirs.refetch()} />}
+          {/* The picker's chips cut a long label at 250 px and take no title (library Chip):
+              a PIR OpenCTI no longer has is also written out whole here (UX round 1 B2). */}
+          {missingPirs.length > 0 && (
+            <ul className="flex flex-col gap-0.5 content-compact text-default-secondary" data-testid="settings.organization.pirs-missing" aria-label={t_i18n("PIR no longer in OpenCTI")}>
+              {missingPirs.map((pir) => (
+                <li key={pir.id} className="break-words">{pirText(pir)}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </SettingsField>
+    );
+  /**
+   * The OpenCTI PIR sources and syncs, under the PIR list of the Prioritization policy (#1938): the profile scope of
+   * the syncs (section pirs). Off only while the policy itself is being saved, never for another card's edit. Never
+   * mounted for a reader: the syncs and sources routes are administrators-only (a 403 would reach the card).
+   */
+  const policySaving = patch.isPending || save.isPending;
+  const pirSources = reader ? undefined : (
+    <OrganizationSourcesSyncs
+      variant="section"
+      scope="profile"
+      title={t_i18n("PIR sources")}
+      description={t_i18n("The OpenCTI imports and syncs that keep the PIR list up to date.")}
+      onAddSource={() => setPirImportOpen(true)}
+      disabled={policySaving}
+      disabledReason={t_i18n("Wait for the prioritization policy to be saved.")}
+    />
+  );
   /** The exposure cards a tab draws (#12329): the exposure tab three, the knowledge tab one. */
   const exposureCards = (cards: readonly (typeof EXPOSURE_SECTIONS)[number][]) =>
     current && (
       <OrganizationExposureCards
         cards={cards}
         readOnly={reader}
+        pirList={pirList}
+        pirSources={pirSources}
         current={!editing && exposureEdit ? exposureEdit.form : current}
         editing={editing}
         fieldId={fieldId}
@@ -1413,10 +1482,11 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         fold={(section) =>
           cardFold(
             section,
+            // The profile API answers counts, never the rows (#1752 slice 3b).
             section === "assets_exposure"
-              ? (current.assets_exposure ?? []).length
+              ? (data?.row_counts?.assets_exposure ?? 0)
               : section === "asset_groups"
-                ? (current.asset_groups ?? []).length
+                ? (data?.row_counts?.asset_groups ?? 0)
                 : section === "enterprise_knowledge"
                   ? (current.enterprise_knowledge ?? []).length
                   : null,
@@ -1435,7 +1505,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         <p>{t_i18n("Fields not filled, reported by every agent that needs them:")}</p>
         <div className="flex flex-wrap gap-2">
           {paths.map((path) => (
-            <Button key={path} variant="secondary" className="gap-1.5" disabled={drafting.isPending || cardOpen !== null} onClick={() => jumpTo(path)}>
+            <Button key={path} variant="secondary" className="gap-1.5" disabled={cardOpen !== null} onClick={() => jumpTo(path)}>
               <Icon name="plus" size={16} aria-hidden />
               {t_i18n((FIELD_LABELS as Record<string, string>)[path] ?? path)}
             </Button>
@@ -1445,25 +1515,46 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     );
   };
 
+  // Completeness and unsaved edits per tab, on the tab bar (UX r1 B1 on #1984, the #12329 contract): the missing
+  // count of each tab, and which tab holds the fields an open edit changed.
+  const unsavedTabs = new Set<ProfileTab>();
+  if (editing && form && saved) changedTabs(saved, withLists(form)).forEach((key) => unsavedTabs.add(key));
+  const missingOf = (key: ProfileTab) => missing.filter((path) => tabOfField(path) === key).length;
+  const tabTrailing = (key: ProfileTab) => {
+    const count = editing ? 0 : missingOf(key);
+    const unsaved = editing && unsavedTabs.has(key);
+    if (!count && !unsaved) return undefined;
+    return (
+      <>
+        {count > 0 && (
+          <Badge
+            variant="warning"
+            className="ml-1.5"
+            data-testid={`settings.organization.tab-${key}-missing`}
+          >
+            <span aria-hidden>{count}</span>
+            <span className="sr-only">{t_i18n("{count, plural, one {# field not filled} other {# fields not filled}}", { count })}</span>
+          </Badge>
+        )}
+        {unsaved && (
+          <span
+            className="ml-1.5 inline-flex items-center gap-1 content-compact text-default-secondary"
+            data-testid={`settings.organization.tab-${key}-unsaved`}
+          >
+            <Pencil className="h-3 w-3" aria-hidden /> {t_i18n("Unsaved")}
+          </span>
+        )}
+      </>
+    );
+  };
+  // The overview row counts the active tab and names the other tab's count, never one total on both tabs.
+  const missingHere = missingOf(tab);
+  const missingElsewhere = settingsTabs.filter((key) => key !== tab && missingOf(key) > 0);
+
   return (
     <div data-testid="settings.organization" className="space-y-4">
-      {/* The Knowledge and sources page draws its own header, like its siblings (Inventory sources, the asset page):
-          the back link first, then its title; the profile's Draft, Edit and fields banner stay on the profile
-          (UX round 1 on #1476, B1). */}
-      {full && tab === "knowledge" && (
-        <div className="space-y-2" data-testid="settings.organization.knowledge-header">
-          <BackButton to={profileTabPath("identity")} label="Back to Organization Profile" />
-          <h3 className="flex items-center gap-2 title-xs">
-            {t_i18n(PROFILE_TAB_LABELS.knowledge)}
-            <InfoTip
-              label={t_i18n("About the knowledge and sources")}
-              content={t_i18n("The procedures and reference documents agents search, the organization context they preload, and the sources that feed the primary assets and PIRs.")}
-            />
-          </h3>
-        </div>
-      )}
       {/* A short header (#12329): the title with its explanation in a bubble, the version line, Draft and Edit. */}
-      {full && tab !== "knowledge" && (
+      {full && (
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 max-w-3xl space-y-1">
           <h3 className="flex items-center gap-2 title-xs">
@@ -1474,7 +1565,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                 <div className="max-w-xs space-y-1 content-compact">
                   <p>
                     {t_i18n(
-                      "What every agent and fleet reads before it ranks, scopes or estimates: your sector, regions, primary assets, software, AI systems, intelligence requirements, risk appetite and costs. Agents cite the fields they used and name the ones not filled, never guess them. Each save is a new version.",
+                      "What every agent and fleet reads before it ranks, scopes or estimates: your sector, regions, primary assets, software, intelligence requirements, risk appetite and costs. Agents cite the fields they used and name the ones not filled, never guess them. Each save is a new version.",
                     )}
                   </p>
                   <p data-testid="settings.organization.shared">{t_i18n("Shared context: the whole profile is visible to every user and every agent of this XTM One platform.")}</p>
@@ -1495,31 +1586,23 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         </div>
         {(!editing || setupGuide) && (
           <div className="flex shrink-0 items-center gap-2">
-            {/* Knowledge and sources is a page of its own, opened from here (#1367, point 7: a button, not a tab). */}
-            {full && (
-              <Button variant="secondary" className="gap-1.5" onClick={() => goToTab("knowledge")} data-testid="settings.organization.knowledge">
-                <Icon name="database" size={16} aria-hidden /> {t_i18n(PROFILE_TAB_LABELS.knowledge)}
-              </Button>
-            )}
-            {/* One "Draft" menu (section 6.1): the free deterministic draft and the metered AI draft. */}
-            <OverflowMenu
-              label={t_i18n("Draft")}
-              size="md"
-              busy={isLoading || !data || drafting.isPending || cardOpen !== null}
-              trigger={
-                <>
-                  {drafting.isPending && <Spinner size="sm" tone="inherit" />}{!drafting.isPending && <Import className="h-3.5 w-3.5" />}
-                  {t_i18n("Draft")}
-                </>
-              }
-              items={draftMenuItems}
-            />
-            {/* Disabled while a draft is pending: its result opens the form and would replace what was typed meanwhile. */}
+            {/* One "Draft" button (#1991): the platforms and the AI in one pass, one review, nothing saved before Save. */}
             {/* A card in edit keeps the page's Edit, Draft and jumps disabled: each opens the whole form
                 and would drop the card's rows without a word (UX r1 B1 on #12261). */}
+            <Tip content={cardOpen ? t_i18n("Save or cancel the edit first.") : ""} wrap="auto">
+              <Button
+                variant="secondary"
+                className="gap-1.5"
+                onClick={() => setAiDraftOpen(true)}
+                disabled={isLoading || !data || cardOpen !== null}
+                data-testid="settings.organization.draft-open"
+              >
+                <Sparkles className="h-3.5 w-3.5" /> {t_i18n("Draft")}
+              </Button>
+            </Tip>
             {!editing && (
               <Tip content={cardOpen ? t_i18n("Save or cancel the edit first.") : ""} wrap="auto">
-                <Button className="gap-1.5" onClick={startEdit} disabled={isLoading || !data || drafting.isPending || cardOpen !== null} data-testid="settings.organization.edit">
+                <Button className="gap-1.5" onClick={startEdit} disabled={isLoading || !data || cardOpen !== null} data-testid="settings.organization.edit">
                   <Pencil className="h-3.5 w-3.5" /> {t_i18n("Edit")}
                 </Button>
               </Tip>
@@ -1529,95 +1612,60 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       </div>
       )}
 
+      {/* The two tabs of the profile (#1975, Sam 24 Nov 2026): who you are and what agents read, then how CTEM
+          decides and acts. Path routes (#10203), the tablist of the rest of Settings; Copilot mode has one tab, no bar. */}
+      {full && settingsTabs.length > 1 && (
+        <DetailTabs
+          tabs={settingsTabs.map((key) => ({
+            key,
+            label: PROFILE_TAB_LABELS[key],
+            to: profileTabPath(key),
+            trailing: tabTrailing(key),
+            testId: `settings.organization.tab-${key}`,
+          }))}
+          active={tab}
+          ariaLabel={t_i18n("Organization profile tabs")}
+          testId="settings.organization.tabs"
+        />
+      )}
+
       {setupGuide && editing && (
         <p data-testid="settings.organization.setup-guide" className="rounded-sm border border-elevation-subtle p-3 content-base">
-          {t_i18n("Start from a draft: Draft > From the platforms reads OpenCTI, OpenAEV and OpenCRQ, Draft > With AI proposes values to review. Nothing is saved until you click Save.")}
+          {t_i18n("Draft reads your platforms and documents and proposes values to review. Nothing is saved until you click Save.")}
         </p>
       )}
 
       {/* One compact row instead of the four figure cards (#12329): the completeness is per tab on the tab
           bar, the fields not filled sit at the top of their tab, and onboarding stays one click away. */}
-      {full && missing.length > 0 && !editing && tab !== "knowledge" && (
+      {full && missing.length > 0 && !editing && (
         <div data-testid="settings.organization.overview" className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-elevation-subtle px-3 py-2 content-base">
           <p>
-            {t_i18n("{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}", {
-              count: missing.length,
-            })}
+            {missingHere > 0
+              ? t_i18n("{count, plural, one {# field not filled on this tab, reported by every agent that needs it.} other {# fields not filled on this tab, reported by every agent that needs them.}}", {
+                  count: missingHere,
+                })
+              : t_i18n("Every field of this tab is filled.")}
+            {missingElsewhere.map((key) => (
+              <span key={key} data-testid={`settings.organization.overview-${key}`}>
+                {" "}
+                {t_i18n("{count, plural, one {# more on {tab}.} other {# more on {tab}.}}", { count: missingOf(key), tab: t_i18n(PROFILE_TAB_LABELS[key]) })}
+              </span>
+            ))}
           </p>
-          <Button data-testid="settings.organization.continue-onboarding" variant="secondary" className="gap-1.5" disabled={drafting.isPending} onClick={startOnboarding}>
+          <Button data-testid="settings.organization.continue-onboarding" variant="secondary" className="gap-1.5" onClick={startOnboarding}>
             {aiAvailable ? <MessageSquare className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
             {t_i18n("Continue onboarding in chat")}
           </Button>
         </div>
       )}
 
-      {full && draftFailed && !editing && (
-        <div role="alert" data-testid="settings.organization.draft-error" className="flex items-center justify-between gap-3 rounded-sm border border-alert-error bg-alert-error p-3 content-base">
-          <p className="space-x-1">
-            <span className="font-medium">{t_i18n("The draft could not be made")}</span>
-            <span>{t_i18n("Try again in a moment.")}</span>
-          </p>
-          <Button variant="secondary" onClick={startDraft} disabled={drafting.isPending}>
-            {t_i18n("Retry")}
-          </Button>
-        </div>
-      )}
-
-      {draft && (
-        <div data-testid="settings.organization.draft" className="space-y-1.5 rounded-sm border border-elevation-subtle p-3 content-base">
-          <p className="font-medium">{t_i18n("Drafted from the platforms, not saved yet. Review the fields, then save.")}</p>
-          {draft.filled.length === 0 ? (
-            <p className="text-default-secondary">{t_i18n("The platforms had nothing to add to the empty fields.")}</p>
-          ) : (
-            // Grouped by the tab that holds each field (#12329), with the number filled per tab.
-            <div className="space-y-1.5">
-              {groupByTab(draft.filled, (row) => row.field).map((group) => (
-                <div key={group.tab ?? "other"} data-testid={`settings.organization.draft-group-${group.tab ?? "other"}`}>
-                  <p className="font-medium">
-                    {group.tab ? t_i18n(PROFILE_TAB_LABELS[group.tab]) : t_i18n("Other")}{" "}
-                    <span className="font-normal text-default-secondary">{t_i18n("{count, plural, one {# field} other {# fields}}", { count: group.items.length })}</span>
-                  </p>
-                  <ul className="list-disc space-y-0.5 pl-5">
-                    {group.items.map((row) => (
-                      <li key={row.field}>
-                        {t_i18n("{field} from {platform}", {
-                          field: t_i18n((FIELD_LABELS as Record<string, string>)[row.field] ?? row.field),
-                          platform: PLATFORM_NAMES[row.source] ?? row.source,
-                        })}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          )}
-          {/* A platform that could not be read links where to fix it (staging defect b); its own sentence, never the backend's text (#9102 A1). */}
-          {(draft.unavailable ?? []).map((line) => {
-            const platform = unreadablePlatform(line);
-            return (
-              <p key={line} className="text-default-secondary">
-                {platform === "OpenCTI PIRs"
-                  ? t_i18n("OpenCTI PIRs could not be read")
-                  : platform
-                    ? t_i18n("{platform} could not be read", { platform })
-                    : t_i18n("A platform could not be read")}
-                {" "}
-                <a className="text-accent underline" href="/settings/integrations">
-                  {t_i18n("Settings > Integrations")}
-                </a>
-              </p>
-            );
-          })}
-        </div>
-      )}
-
       {current && (
-        // The URL holds the panel (#12329): Settings draws no tab bar since #1690 (Identity, and Knowledge
-        // through its button); the Business, Technology and Exposure cards live on CTEM > Inventory.
+        // The URL holds the panel (#12329, #1975): Organization and Risk and response on Settings; the Business,
+        // Technology and Exposure cards live on CTEM > Inventory.
         <div className="space-y-4">
-          {tab === "identity" && (
-          <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.identity)} className="space-y-4" data-testid="settings.organization.panel-identity">
-          {missingIn("identity")}
+          {tab === "organization" && (
+          <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.organization)} className="space-y-4" data-testid="settings.organization.panel-organization">
+          {missingIn("organization")}
           <SettingsCard
             id={`${fieldId}-identity`}
             className={SECTION_BAR_ANCHOR_CLASS}
@@ -1627,7 +1675,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             title={t_i18n("Identity")}
             description={t_i18n("Who you are, where you operate and how large you are.")}
           >
-            <OrganizationUsedBy fields={["sector", "regions"]} readers={usedBy} agents={usedByAgents} />
             {!editing ? (
               <SettingsReadGrid data-testid="settings.organization.identity">
                 <SettingsReadField label={t_i18n("Organization name")} info={help("name").info} value={current.name.trim()} />
@@ -1694,9 +1741,17 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             </SettingsFieldGrid>
             )}
           </SettingsCard>
+          {/* What agents read beside the profile (#1975: no Knowledge and sources page any more): the procedures and
+              reference documents they search, and the platform default of the organization summary cascade (#11533).
+              Each saves on its own; no draft fills them. */}
+          {show("enterprise_knowledge") && exposureCards(["enterprise_knowledge"])}
+          {full && <OrganizationContextInjectionCard />}
+          </div>
+          )}
 
-          {xtmOne && (
-          <>
+          {tab === "risk" && xtmOne && (
+          <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.risk)} className="space-y-4" data-testid="settings.organization.panel-risk">
+          {missingIn("risk")}
           <SettingsCard
             id={`${fieldId}-risk_appetite`}
             className={SECTION_BAR_ANCHOR_CLASS}
@@ -1706,7 +1761,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             title={t_i18n("Risk appetite and costs")}
             description={t_i18n("Pick the currency first: every amount below is in it. The risk quantifier compares scenarios with the thresholds; the ROI figures use the hourly rate.")}
           >
-            <OrganizationUsedBy fields={["risk_appetite", "currency", "loaded_hourly_rate"]} readers={usedBy} agents={usedByAgents} />
             {!editing ? (
               <SettingsReadGrid data-testid="settings.organization.risk">
                 <SettingsReadField label={t_i18n(FIELD_LABELS.currency)} info={help("currency").info} mono value={current.currency} />
@@ -1735,16 +1789,23 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             )}
           </SettingsCard>
 
+          {/* One section for the ticketing system and how CTEM cases sync with it (#1889, #917): the PIR list
+              moved to the Prioritization policy of CTEM > Inventory. Part of the profile form, read by the next sync. */}
           <SettingsCard
             id={`${fieldId}-ticketing`}
             className={SECTION_BAR_ANCHOR_CLASS}
             data-anchor="card"
             tabIndex={-1}
-            icon={Ticket}
-            title={t_i18n("Ticketing and intelligence")}
-            description={t_i18n("Where agents open tickets and which OpenCTI PIRs they follow.")}
+            icon={RefreshCw}
+            title={t_i18n("CTEM case sync")}
+            description={
+              current.ticketing.integration
+                ? t_i18n("How CTEM cases open, update and close their tickets. A change applies to the next sync.")
+                : t_i18n("No ticketing connected: cases stay in XTM One. Set the ticketing integration and project to sync them.")
+            }
+            data-testid="settings.organization.ticketing-sync-group"
           >
-            <OrganizationUsedBy fields={["ticketing", "pir_ids"]} readers={usedBy} agents={usedByAgents} />
+            <div className="space-y-4">
             {!editing ? (
               <SettingsReadGrid data-testid="settings.organization.ticketing">
                 <SettingsReadField
@@ -1756,22 +1817,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                   label={t_i18n("Ticketing project")}
                   info={help("ticketing_project").info}
                   value={current.ticketing.project ? (projectOptions.find((p) => p.id === current.ticketing.project)?.name ?? current.ticketing.project) : ""}
-                />
-                <SettingsReadField
-                  label={t_i18n("Priority intelligence requirements (PIRs)")}
-                  info={help("pir_ids").info}
-                  wide
-                  value={
-                    // Read mode (#9615): the names as wrapped chips linked to OpenCTI, no search, no remove cross, no chevron.
-                    <OrganizationPirsView
-                      pirs={savedPirs}
-                      list={pirs.data}
-                      unreadable={pirsUnreadable}
-                      retrying={pirs.isFetching}
-                      onRetry={() => void pirs.refetch()}
-                      onRemove={removePir}
-                    />
-                  }
                 />
               </SettingsReadGrid>
             ) : (
@@ -1822,68 +1867,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                   />
                 )}
               </SettingsField>
-              <SettingsField
-                id={`${fieldId}-pir_ids`}
-                label={t_i18n("Priority intelligence requirements (PIRs)")}
-                wide
-                {...help("pir_ids")}
-                helper={
-                  pirs.data?.unavailable === "not_connected"
-                    ? t_i18n("The PIRs of OpenCTI could not be listed: the saved ones are kept.")
-                    : t_i18n(FIELD_HELP.pir_ids.helper)
-                }
-              >
-                <div className="flex flex-col gap-1.5">
-                  {pirsLoading ? (
-                    // The picker waits for the names: its chips would otherwise read a placeholder (#11589).
-                    <div
-                      className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-sm border border-elevation-subtle-soft px-2 py-1.5"
-                      role="status"
-                      aria-busy="true"
-                      aria-label={t_i18n("Loading the PIR names")}
-                      data-testid="settings.organization.pirs-loading"
-                    >
-                      {savedPirs.slice(0, 8).map((pir) => (
-                        <Skeleton key={pir.id} className="h-6 w-32 rounded-sm" />
-                      ))}
-                    </div>
-                  ) : (
-                    <MultiSelect
-                      id={`${fieldId}-pir_ids`}
-                      aria-label={t_i18n("Priority intelligence requirements (PIRs)")}
-                      aria-describedby={settingsFieldHintId(`${fieldId}-pir_ids`)}
-                      options={pirOptions}
-                      selected={current.pir_ids}
-                      onToggle={(id) => update({ pir_ids: current.pir_ids.includes(id) ? current.pir_ids.filter((p) => p !== id) : [...current.pir_ids, id] })}
-                      placeholder={t_i18n("Pick the PIRs")}
-                      searchPlaceholder={t_i18n("Search a PIR")}
-                      emptyOptionsLabel={pirsEmptyLabel}
-                      noMatchLabel={t_i18n("No matching PIR")}
-                    />
-                  )}
-                  {/* Edit mode says it too, with Retry, as read mode does (#11589). */}
-                  {pirsUnreadable && <PirsUnreadable retrying={pirs.isFetching} onRetry={() => void pirs.refetch()} />}
-                  {/* The picker's chips cut a long label at 250 px and take no title (library Chip):
-                      a PIR OpenCTI no longer has is also written out whole here (UX round 1 B2). */}
-                  {missingPirs.length > 0 && (
-                    <ul className="flex flex-col gap-0.5 content-compact text-default-secondary" data-testid="settings.organization.pirs-missing" aria-label={t_i18n("PIR no longer in OpenCTI")}>
-                      {missingPirs.map((pir) => (
-                        <li key={pir.id} className="break-words">{pirText(pir)}</li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </SettingsField>
             </SettingsFieldGrid>
             )}
-            {/* How CTEM cases sync with the target (#917): part of the profile form, read by the next sync. */}
-            <div className="space-y-3 border-t border-elevation-subtle-soft pt-4" data-testid="settings.organization.ticketing-sync-group">
-              <SettingsGroupTitle icon={RefreshCw}>{t_i18n("CTEM case sync")}</SettingsGroupTitle>
-              <p className="content-compact text-default-secondary">
-                {current.ticketing.integration
-                  ? t_i18n("How CTEM cases open, update and close their tickets. A change applies to the next sync.")
-                  : t_i18n("No ticketing connected: cases stay in XTM One. Set the ticketing integration above to sync them.")}
-              </p>
               <OrganizationTicketingSync
                 idPrefix={`${fieldId}-ticketing-sync`}
                 sync={current.ticketing.sync}
@@ -1893,8 +1878,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               />
             </div>
           </SettingsCard>
-          </>
-          )}
+          {/* The reference rates (#1773): their own card, saved through PATCH alone. The PIR details open from each PIR of the Prioritization policy card (#1974). */}
+          {!editing && <OrganizationFxRatesCard id={`${fieldId}-fx_rates`} />}
           </div>
           )}
 
@@ -1902,10 +1887,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.business)} className="space-y-4" data-testid="settings.organization.panel-business">
           {missingIn("business")}
           <SettingsCard
-            id={`${fieldId}-crown_jewels`}
+            id={`${fieldId}-primary_assets`}
             className={SECTION_BAR_ANCHOR_CLASS}
             data-anchor="card"
-            {...cardFold("crown_jewels", current.crown_jewels.length)}
+            {...cardFold("primary_assets", current.primary_assets.length)}
             tabIndex={-1}
             data-testid="settings.organization.primary-assets"
             icon={Shield}
@@ -1913,39 +1898,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             description={t_i18n("What the business cannot lose, ranked by criticality.")}
             action={
               <>
-                {attention("crown_jewels")}
-                {/* The OpenCRQ check and the restore write the profile: administrators only, a reader sees the list (#1690). */}
-                {!reader && (
-                <Tip content={editing || cardOpen ? t_i18n("Save or cancel the edit first.") : ""} wrap="auto">
-                  {opencrqJewelSync ? (
-                    <Button
-                      variant="secondary"
-                      className="gap-1.5"
-                      data-testid="settings.organization.opencrq-run-now"
-                      disabled={editing || cardOpen !== null || runSyncNow.isPending}
-                      aria-busy={runSyncNow.isPending || undefined}
-                      onClick={() =>
-                        runSyncNow.mutate(opencrqJewelSync.id, {
-                          onSuccess: (result) =>
-                            result.last_result?.error
-                              ? toast({ title: t_i18n("The OpenCRQ sync failed"), description: result.last_result.error, variant: "error" })
-                              : toast({ title: t_i18n("Primary assets synchronized with OpenCRQ"), variant: "success" }),
-                          onError: (err) => toast({ title: t_i18n("OpenCRQ could not be read"), description: err.message, variant: "error" }),
-                        })
-                      }
-                    >
-                      {runSyncNow.isPending && <Spinner size="sm" tone="inherit" />}{!runSyncNow.isPending && <RefreshCw className="h-3.5 w-3.5" />}
-                      {t_i18n("Sync with OpenCRQ now")}
-                    </Button>
-                  ) : (
-                    <Button variant="secondary" className="gap-1.5" disabled={editing || cardOpen !== null || sync.isPending} onClick={() => runSync(false)} aria-busy={sync.isPending || undefined}>
-                      {sync.isPending && <Spinner size="sm" tone="inherit" />}{!sync.isPending && <RefreshCw className="h-3.5 w-3.5" />}
-                      {t_i18n("Check against OpenCRQ")}
-                    </Button>
-                  )}
-                </Tip>
-                )}
-                {!reader && !listOpen("crown_jewels") && (
+                {attention("primary_assets")}
+                {!reader && !listOpen("primary_assets") && (
                   // An icon button: a third labelled action wraps the card title at 1080 (UX round 1 B1, #1567).
                   <Tip content={editing || cardOpen ? t_i18n("Save or cancel the edit first.") : t_i18n("Restore from a past version")} wrap="auto">
                     <Button
@@ -1960,13 +1914,13 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                     </Button>
                   </Tip>
                 )}
-                {listEditAction("crown_jewels")}
-                {pasteAction("crown_jewels")}
-                {listOpen("crown_jewels") && (
+                {listEditAction("primary_assets")}
+                {pasteAction("primary_assets")}
+                {listOpen("primary_assets") && (
                   <Button
                     variant="secondary"
                     className="gap-1.5"
-                    onClick={() => addListRow("crown_jewels", { name: "", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" })}
+                    onClick={() => addListRow("primary_assets", { name: "", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" })}
                   >
                     <Plus className="h-3.5 w-3.5" /> {t_i18n("Add a primary asset")}
                   </Button>
@@ -1974,24 +1928,25 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               </>
             }
           >
-            <OrganizationUsedBy fields={["crown_jewels"]} readers={usedBy} agents={usedByAgents} />
-            {listEditor("crown_jewels", {
+            {listEditor("primary_assets", {
               columns: jewelEdit,
               filters: [valueFilter("criticality", "Criticality", CRITICALITY_LABELS, (v: Jewel) => v.criticality, true)], // ordinal scale (#12289)
               searchFields: (v) => [v.name, v.business_service, v.owner],
               rowLabel: (v) => v.name,
-              storageKey: "settings-organization-crown-jewels",
+              storageKey: "settings-organization-primary-assets",
               rowTestId: "settings.organization.primary-asset-row",
               emptyLabel: t_i18n("No primary asset yet: agents cannot rank by business impact."),
             }) ??
-              (current.crown_jewels.length === 0 ? (
+              (current.primary_assets.length === 0 ? (
                 <p className="text-default-secondary">{t_i18n("No primary asset yet: agents cannot rank by business impact.")}</p>
               ) : (
                 <DataTable
-                  rows={current.crown_jewels.map((value, index) => ({ index, value }))}
+                  rows={current.primary_assets.map((value, index) => ({ index, value }))}
                   columns={jewelColumns}
                   layout={tableLayout}
                   rowKey={(row) => String(row.index)}
+                  // Each saved primary asset opens its page (#1980 S2): its supporting assets and the cases on it.
+                  rowHref={(row) => (row.value.name.trim() ? primaryAssetPath(row.value.name) : undefined)}
                   searchFields={(row) => [row.value.name, row.value.business_service, row.value.owner]}
                   searchPlaceholder={t_i18n("Search...")}
                   filters={jewelFilters}
@@ -2002,80 +1957,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                   rowTestId="settings.organization.primary-asset-row"
                 />
               ))}
-            {plan && (
-              <div data-testid="settings.organization.opencrq-plan" className="mt-3 space-y-1.5 rounded-sm border border-elevation-subtle p-3">
-                {noneRated ? (
-                  <div className="space-y-1" data-testid="settings.organization.opencrq-none-rated">
-                    <p>
-                      {t_i18n("{count, plural, =0 {No OpenCRQ supporting asset is rated {threshold} or above: no asset read.} one {No OpenCRQ supporting asset is rated {threshold} or above: # asset read.} other {No OpenCRQ supporting asset is rated {threshold} or above: # assets read.}}", {
-                        count: plan.plan.assets_read ?? 0,
-                        threshold: t_i18n(MIN_CRITICALITY_LABELS[plan.plan.min_criticality ?? "high"]),
-                      })}
-                    </p>
-                    {ratedCounts && <p className="text-default-secondary">{t_i18n("By criticality: {counts}", { counts: ratedCounts })}</p>}
-                  </div>
-                ) : planEmpty ? (
-                  <p>{t_i18n("The primary assets and OpenCRQ already agree.")}</p>
-                ) : (
-                  <ul className="list-disc space-y-1 pl-5">
-                    {plan.plan.linked.map((row) => (
-                      <li key={`l-${row.opencrq_asset_id}`}>{t_i18n("Link {name} to its OpenCRQ asset", { name: row.crown_jewel })}</li>
-                    ))}
-                    {plan.plan.pushed_to_opencrq.map((row) => (
-                      <li key={`p-${row.opencrq_asset_id}`}>{t_i18n("Set {name} to {criticality} in OpenCRQ", { name: row.name, criticality: criticalityLabel(row.criticality) })}</li>
-                    ))}
-                    {plan.plan.pulled_from_opencrq.map((row) => (
-                      <li key={`u-${row.opencrq_asset_id}`}>{t_i18n("Add {name} from OpenCRQ as a primary asset", { name: row.name })}</li>
-                    ))}
-                    {plan.plan.ambiguous.map((name) => (
-                      <li key={`a-${name}`}>{t_i18n("{name} matches several OpenCRQ assets: link it by hand", { name })}</li>
-                    ))}
-                    {plan.plan.not_in_opencrq.map((row) => (
-                      <li key={`s-${row.opencrq_asset_id}`}>{t_i18n("{name} is linked to an asset OpenCRQ no longer holds", { name: row.crown_jewel })}</li>
-                    ))}
-                  </ul>
-                )}
-                {plan.errors.map((error) => (
-                  <p key={error} className="text-default-secondary">{error}</p>
-                ))}
-                {plan.plan.min_criticality && (
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
-                    <span id={`${fieldId}-opencrq-threshold`} className="content-compact text-default-secondary">
-                      {t_i18n("Pull OpenCRQ assets rated")}
-                    </span>
-                    <div className="w-40">
-                      <Select
-                        value={plan.plan.min_criticality}
-                        disabled={editing || sync.isPending}
-                        onValueChange={(value) => runSync(false, value as OpenCrqLevel)}
-                      >
-                        <SelectTrigger aria-labelledby={`${fieldId}-opencrq-threshold`} data-testid="settings.organization.opencrq-threshold">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(Object.keys(MIN_CRITICALITY_LABELS) as OpenCrqLevel[]).map((level) => (
-                            <SelectItem key={level} value={level}>
-                              {t_i18n("{level} or above", { level: t_i18n(MIN_CRITICALITY_LABELS[level]) })}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                )}
-                <div className="flex gap-2 pt-1">
-                  {!planEmpty && (
-                    <Button className="gap-1.5" disabled={editing || sync.isPending} onClick={() => runSync(true)}>
-                      {t_i18n("Apply")}
-                    </Button>
-                  )}
-                  <Button variant="ghost" onClick={() => setPlan(null)}>
-                    {t_i18n("Close")}
-                  </Button>
-                </div>
-              </div>
-            )}
-            <OrganizationCrownJewelsRestoreDialog open={restoreOpen} onOpenChange={setRestoreOpen} currentVersion={data?.version ?? null} />
+            <OrganizationPrimaryAssetsRestoreDialog open={restoreOpen} onOpenChange={setRestoreOpen} currentVersion={data?.version ?? null} />
           </SettingsCard>
 
           {/* What the organization ships (#1432), apart from the software inventory it runs: CTEM resolves a vulnerability on one to its repositories. */}
@@ -2140,12 +2022,12 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           {tab === "technology" && (
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.technology)} className="space-y-4" data-testid="settings.organization.panel-technology">
           {missingIn("technology")}
-          {show("tech_stack") && (
+          {show("software") && (
           <SettingsCard
-            id={`${fieldId}-tech_stack`}
+            id={`${fieldId}-software`}
             className={SECTION_BAR_ANCHOR_CLASS}
             data-anchor="card"
-            {...cardFold("tech_stack", current.tech_stack.length)}
+            {...cardFold("software", current.software.length)}
             tabIndex={-1}
             data-testid="settings.organization.tech-stack"
             icon={Server}
@@ -2157,19 +2039,18 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             }
             action={
               <>
-                {attention("tech_stack")}
-                {listEditAction("tech_stack")}
-                {pasteAction("tech_stack")}
-                {listOpen("tech_stack") && (
-                  <Button variant="secondary" className="gap-1.5" onClick={() => addListRow("tech_stack", { product: "", vendor: "", cpe: "", version: "" })}>
+                {attention("software")}
+                {listEditAction("software")}
+                {pasteAction("software")}
+                {listOpen("software") && (
+                  <Button variant="secondary" className="gap-1.5" onClick={() => addListRow("software", { product: "", vendor: "", cpe: "", version: "" })}>
                     <Plus className="h-3.5 w-3.5" /> {t_i18n("Add a product")}
                   </Button>
                 )}
               </>
             }
           >
-            <OrganizationUsedBy fields={["tech_stack"]} readers={usedBy} agents={usedByAgents} />
-            {listEditor("tech_stack", {
+            {listEditor("software", {
               columns: techEdit,
               filters: [{ key: "vendor", label: "Vendor", values: (v: Tech) => [v.vendor.trim()] }],
               searchFields: (v) => [v.product, v.vendor, v.cpe, v.version],
@@ -2178,11 +2059,11 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               rowTestId: "settings.organization.tech-row",
               emptyLabel: techEmptyLabel,
             }) ??
-              (current.tech_stack.length === 0 ? (
+              (current.software.length === 0 ? (
                 <p className="text-default-secondary">{techEmptyLabel}</p>
               ) : (
                 <DataTable
-                  rows={current.tech_stack.map((value, index) => ({ index, value }))}
+                  rows={current.software.map((value, index) => ({ index, value }))}
                   columns={techColumns}
                   layout={tableLayout}
                   rowKey={(row) => String(row.index)}
@@ -2206,7 +2087,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             {missingIn("exposure")}
             {/* The field changes proposed outside the form, the loop trace's scope proposal first among them (CTEM-30). */}
             {full && <OrganizationProposalsCard />}
-            {exposureCards((["assets_exposure", "asset_groups", "prioritization_policy"] as const).filter(show))}
+            {/* The asset and group tables are CTEM > Inventory's, on the row APIs (#1752 slice 3b). */}
+            {exposureCards((["prioritization_policy"] as const).filter(show))}
             {/* Owned domains, address ranges and the outside lens pass (CTEM-26 slice 2, #1140). */}
             {show("outside_lens") && <OrganizationOutsideLensCard id={`${fieldId}-outside_lens`} fold={cardFold("outside_lens", null)} />}
             {/* The OpenCRQ evidence health pass, on by default (#1344): the signal sources' Turn on lands here. */}
@@ -2216,21 +2098,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           </div>
           )}
 
-          {/* Enterprise knowledge, the scheduled imports and the context agents preload: what feeds the profile and how it is read. */}
-          {tab === "knowledge" && (
-          <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.knowledge)} className="space-y-4" data-testid="settings.organization.panel-knowledge">
-            {missingIn("knowledge")}
-            {exposureCards(["enterprise_knowledge"])}
-            {/* The platform default of the organization summary cascade (#11533). */}
-            <OrganizationContextInjectionCard />
-            {/* Sources and syncs (#1276), the tab's last block so the table fits the window under the
-                tab bar: one scroller, nothing below the list (UX r1 B1, B2 on #1294). The business profile's
-                sources here, the inventory's on CTEM > Inventory > Sources (#1178). */}
-            <OrganizationSourcesSyncs scope="profile" onAddSource={() => setPlatformImportOpen(true)} disabled={editing || cardOpen !== null || drafting.isPending} />
-          </div>
-          )}
-
-          {/* One save bar for the whole form, on every tab, sticky at the bottom (#12329). */}
+          {/* One save bar for the whole form, sticky at the bottom (#12329), on both tabs (#1975). */}
           {editing && <SettingsSaveBar dirty={dirty} saving={save.isPending} saveDisabled={scoreInvalid} onSave={submit} onCancel={stopEditing} />}
         </div>
       )}
@@ -2241,6 +2109,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           onOpenChange={setAiDraftOpen}
           profile={formProfile ?? data.profile}
           platforms={connectedPlatforms}
+          aiAvailable={aiAvailable}
           // From the open form (the setup path): "Apply accepted (n)" fills the form, its own Save writes it.
           onApply={
             editing
@@ -2262,21 +2131,14 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       {assetsImportOpen && <OrganizationAssetsImportDialog open={assetsImportOpen} onOpenChange={setAssetsImportOpen} />}
       {pasteFor && listOpen(pasteFor) && pasteDialog(pasteFor)}
       {synced.element}
-      {fillAgentOpen && <OrganizationFillAgentDialog open={fillAgentOpen} onOpenChange={setFillAgentOpen} />}
-      {platformImportOpen && (
-        <OrganizationImportDialog
-          open={platformImportOpen}
-          onOpenChange={setPlatformImportOpen}
-          // The inventory sections are imported from CTEM > Inventory > Sources only (#1367, point 5).
-          sections={PROFILE_IMPORT_SECTIONS}
-          quickSetupPending={drafting.isPending}
-          onQuickSetup={() => {
-            setPlatformImportOpen(false);
-            startDraft();
-          }}
-        />
-      )}
-      <AgenticGateDialogControlled open={aiGateOpen} onOpenChange={setAiGateOpen} feature={t_i18n("Draft with AI")} />
+      {pirImportOpen && <OrganizationImportDialog open={pirImportOpen} onOpenChange={setPirImportOpen} sections={PROFILE_IMPORT_SECTIONS} />}
+      <OrganizationPirDetailsDialog
+        pirId={pirDetails?.id ?? null}
+        pirName={pirDetails?.name ?? ""}
+        canEdit={!reader}
+        onOpenChange={(open) => !open && setPirDetails(null)}
+      />
+      <AgenticGateDialogControlled open={aiGateOpen} onOpenChange={setAiGateOpen} feature={t_i18n("Continue onboarding in chat")} />
     </div>
   );
 }

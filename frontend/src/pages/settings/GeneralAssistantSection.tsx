@@ -915,31 +915,31 @@ export function GeneralAssistantSection({
 
             {/* Summary badges */}
             <div className="flex flex-wrap gap-2 pt-1">
-              <div className="flex items-center gap-1.5 rounded-full bg-elevation-hover px-3 py-1.5 border border-elevation-subtle-soft">
+              <div className="flex items-center gap-1.5 rounded-sm bg-elevation-hover px-2 py-1.5 border border-elevation-subtle-soft">
                 <Cog className="h-3 w-3 text-default-secondary" />
                 <span className="content-caption text-default-secondary">{boundIntegrations} {t_i18n(pluralize(boundIntegrations, "integration"))}</span>
               </div>
-              <div className="flex items-center gap-1.5 rounded-full bg-elevation-hover px-3 py-1.5 border border-elevation-subtle-soft">
+              <div className="flex items-center gap-1.5 rounded-sm bg-elevation-hover px-2 py-1.5 border border-elevation-subtle-soft">
                 <Terminal className="h-3 w-3 text-default-secondary" />
                 <span className="content-caption text-default-secondary">{boundMcps} MCP {t_i18n(pluralize(boundMcps, "server"))}</span>
               </div>
-              <div className="flex items-center gap-1.5 rounded-full bg-elevation-hover px-3 py-1.5 border border-elevation-subtle-soft">
+              <div className="flex items-center gap-1.5 rounded-sm bg-elevation-hover px-2 py-1.5 border border-elevation-subtle-soft">
                 <Sparkles className="h-3 w-3 text-default-secondary" />
                 <span className="content-caption text-default-secondary">{t_i18n("{count, plural, one {# built-in tool} other {# built-in tools}}", { count: boundBuiltins })}</span>
               </div>
-              <div className="flex items-center gap-1.5 rounded-full bg-elevation-hover px-3 py-1.5 border border-elevation-subtle-soft" data-testid="ga-chip-skills">
+              <div className="flex items-center gap-1.5 rounded-sm bg-elevation-hover px-2 py-1.5 border border-elevation-subtle-soft" data-testid="ga-chip-skills">
                 <BookMarked className="h-3 w-3 text-default-secondary" />
                 <span className="content-caption text-default-secondary">{boundSkills} {t_i18n(pluralize(boundSkills, "skill"))}</span>
               </div>
-              <div className="flex items-center gap-1.5 rounded-full bg-elevation-hover px-3 py-1.5 border border-elevation-subtle-soft">
+              <div className="flex items-center gap-1.5 rounded-sm bg-elevation-hover px-2 py-1.5 border border-elevation-subtle-soft">
                 <Wrench className="h-3 w-3 text-default-secondary" />
                 <span className="content-caption text-default-secondary">{boundTools} {t_i18n("custom")} {t_i18n(pluralize(boundTools, "tool"))}</span>
               </div>
-              <div className="flex items-center gap-1.5 rounded-full bg-elevation-hover px-3 py-1.5 border border-elevation-subtle-soft">
+              <div className="flex items-center gap-1.5 rounded-sm bg-elevation-hover px-2 py-1.5 border border-elevation-subtle-soft">
                 <BookOpen className="h-3 w-3 text-default-secondary" />
                 <span className="content-caption text-default-secondary">{boundKbs} {t_i18n(pluralize(boundKbs, "knowledge base"))}</span>
               </div>
-              <div className="flex items-center gap-1.5 rounded-full bg-elevation-hover px-3 py-1.5 border border-elevation-subtle-soft">
+              <div className="flex items-center gap-1.5 rounded-sm bg-elevation-hover px-2 py-1.5 border border-elevation-subtle-soft">
                 <ArrowLeftRight className="h-3 w-3 text-default-secondary" />
                 <span className="content-caption text-default-secondary">{boundHandover} {t_i18n("handover")} {t_i18n(pluralize(boundHandover, "agent"))}</span>
               </div>

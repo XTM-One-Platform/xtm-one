@@ -88,9 +88,13 @@ def test_the_seed_stores_every_declared_gate_with_its_tools(slug):
 
 
 @pytest.mark.parametrize("slug", SLUGS)
-async def test_a_whole_regenerate_keeps_the_enforced_gates_of_a_builtin_fleet(slug, no_database):
+async def test_a_regenerate_never_touches_the_enforced_gates_of_a_builtin_fleet(slug, no_database):
+    """#1956: a built-in fleet is never regenerated, so the model's gates never reach its catalog."""
+    from app.services.fleets import FleetActionRefusedError
+
     fleet = _seeded_fleet(slug)
     catalog_before = json.loads(json.dumps(fleet.approval_gates))
+    doc_before = json.loads(json.dumps(fleet.documentation))
     rules_before = {
         lvl: gated_tool_rules(lvl, fleet_gates(fleet.approval_gates, fleet.documentation)) for lvl in AUTONOMY_LEVELS
     }
@@ -98,12 +102,10 @@ async def test_a_whole_regenerate_keeps_the_enforced_gates_of_a_builtin_fleet(sl
         "sections": {k: f"Text of {k}." for k in DOC_SECTIONS},
         "structured": {"purpose_line": "Regenerated.", "gates": _MODEL_GATES},
     }
-    await gen.regenerate_fleet_documentation(object(), uuid.uuid4(), fleet, llm=_Model(json.dumps(answer)))
-    assert fleet.documentation["local"] is True
-    assert fleet.documentation["structured"]["purpose_line"] == "Regenerated."
-    # The catalog is untouched and the documentation shows it, not the model's gates.
+    with pytest.raises(FleetActionRefusedError):
+        await gen.regenerate_fleet_documentation(object(), uuid.uuid4(), fleet, llm=_Model(json.dumps(answer)))
     assert fleet.approval_gates == catalog_before
-    assert fleet.documentation["structured"].get("gates", []) == catalog_before
+    assert fleet.documentation == doc_before
     for lvl in AUTONOMY_LEVELS:
         assert gated_tool_rules(lvl, fleet_gates(fleet.approval_gates, fleet.documentation)) == rules_before[lvl], (
             slug,

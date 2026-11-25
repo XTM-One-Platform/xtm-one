@@ -269,6 +269,57 @@ describe("the work item detail", () => {
     expect(screen.queryByText("Put back in the queue")).toBeNull();
   });
 
+  // #1845: an item the reader may read but not change keeps its write
+  // actions visible, disabled, with the reason the server gives.
+  it("disables the write actions on an item the reader cannot change, with why", () => {
+    const close = vi.fn();
+    const remove = vi.fn();
+    const reason = "Read-only for you: it was created in another person's chat.";
+    openDialog(item({ can_write: false, read_only_reason: reason }), { close, remove, requeue: vi.fn() });
+    for (const name of ["Mark done", "Cancel work item", "Delete"]) {
+      const button = screen.getByRole("button", { name });
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+      expect(button.closest("[aria-disabled='true']")).not.toBeNull();
+    }
+    fireEvent.click(screen.getByText("Cancel work item"));
+    expect(close).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  // UX round 1 of #1850, B1: the unassigned callout never asks a read-only
+  // reader to complete the item the dialog refuses to let them change.
+  it("tells a read-only reader of an unassigned item who can act on it", () => {
+    const unassigned = (can_write: boolean) =>
+      item({
+        can_write,
+        read_only_reason: can_write ? null : "Read-only for you.",
+        context: context({ owner_agent: null, pickup: { ...context().pickup, state: "unassigned" } }),
+      });
+    const { unmount } = openDialog(unassigned(false), { close: vi.fn() });
+    const text = document.body.textContent ?? "";
+    expect(text).not.toContain("Complete it yourself");
+    expect(text).toContain("Someone who can change it must complete it or assign an agent.");
+    unmount();
+    openDialog(unassigned(true), { close: vi.fn() });
+    expect(document.body.textContent).toContain("Complete it yourself, or ask an agent to take it over.");
+  });
+
+  // #1910: the decision recipient may cancel, and nothing else.
+  it("enables Cancel alone for the decision recipient", () => {
+    const close = vi.fn();
+    const reason = "Read-only for you: it belongs to another person.";
+    openDialog(item({ can_write: false, can_cancel: true, read_only_reason: reason }), { close, remove: vi.fn() });
+    expect((screen.getByRole("button", { name: "Cancel work item" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "Delete" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByText("Cancel work item"));
+    expect(close).toHaveBeenCalledWith(expect.objectContaining({ can_cancel: true }), "cancelled");
+  });
+
+  it("keeps the write actions enabled when the reader may change the item", () => {
+    openDialog(item({ can_write: true, read_only_reason: null }), { close: vi.fn() });
+    expect((screen.getByRole("button", { name: "Cancel work item" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   // UX round 1 of #9890, B1: an always-enabled button is never wrapped in a
   // focusable span that reports it disabled (two tab stops, refused clicks).
   it("leaves the always-enabled actions out of any aria-disabled wrapper", () => {

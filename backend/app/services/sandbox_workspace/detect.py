@@ -1418,6 +1418,7 @@ class _Collector:
         *,
         runs_on: str = "",
         env: Mapping[str, str | None] | None = None,
+        stores: bool = False,
         **report: str,
     ) -> bool:
         key = (directory, stack, kind)
@@ -1440,6 +1441,7 @@ class _Collector:
             description=source[:200],
             env=tuple(sorted((k, v) for k, v in (env or {}).items() if v is not None))[:MAX_ENV],
             env_unset=tuple(sorted(k for k, v in (env or {}).items() if v is None))[:MAX_ENV],
+            stores=stores,
         )
         return True
 
@@ -1733,6 +1735,16 @@ def _dig(value: object, *keys: str) -> object:
     return value
 
 
+#: A CI service image that is a PostgreSQL server (``postgres:16``, ``pgvector/pgvector:0.8.7-pg17``,
+#: ``timescale/timescaledb``, ``postgis/postgis``): the job's checks run with the offline stores (#1858).
+_POSTGRES_IMAGE = re.compile(r"(?:^|/)(?:postgres|postgresql|pgvector|timescaledb[\w-]*|postgis)(?::|@|$)")
+
+
+def is_postgres_image(image: str) -> bool:
+    """Whether a CI service *image* runs PostgreSQL (its registry, tag and digest read as written)."""
+    return bool(_POSTGRES_IMAGE.search(image.strip().lower()))
+
+
 def _workflows(collector: _Collector, files: Mapping[str, bytes], infra: list[Infra], dirs: frozenset[str]) -> None:
     budget = MAX_RUN_LINES
     for path in sorted(p for p in files if _is_workflow(p)):
@@ -1745,9 +1757,11 @@ def _workflows(collector: _Collector, files: Mapping[str, bytes], infra: list[In
             if not isinstance(job, dict) or shipping or any(word in str(job_id).lower() for word in _SHIPPING):
                 continue  # a release, publish or deploy job ships the code, it does not check it
             services = job.get("services") if isinstance(job.get("services"), dict) else {}
+            job_postgres = False
             for name, service in services.items():
                 image = service.get("image", "") if isinstance(service, dict) else str(service or "")
                 infra.append(Infra(str(name), str(image), f"{path} job {job_id}"))
+                job_postgres = job_postgres or is_postgres_image(str(image))
             job_dir = _clean_dir("", str(_dig(job, "defaults", "run", "working-directory") or top or ""))
             job_env = _layer_env(workflow_env, job.get("env"))
             steps = job.get("steps") if isinstance(job.get("steps"), list) else []
@@ -1794,7 +1808,17 @@ def _workflows(collector: _Collector, files: Mapping[str, bytes], infra: list[In
                             argv = _with_job_tools(stack, kind, argv, parsed[2], tools, parsed[0])
                         source = f"{path} job {job_id}: {line}"
                         kind = _second_tool_kind(collector, parsed[0], stack, kind, parsed[2], f"{path} job {job_id}: ")
-                        if collector.add(parsed[0], stack, kind, argv, source, runs_on=runs_on, env=step_env) and job_python:
+                        added = collector.add(
+                            parsed[0],
+                            stack,
+                            kind,
+                            argv,
+                            source,
+                            runs_on=runs_on,
+                            env=step_env,
+                            stores=job_postgres and kind != "install",
+                        )
+                        if added and job_python:
                             collector.pythons[(parsed[0], stack, kind)] = job_python
 
 
@@ -2260,6 +2284,8 @@ def _node(collector: _Collector, paths: frozenset[str], files: Mapping[str, byte
                 argv = [manager, script] if manager == "yarn" else [manager, "run", script]
                 collector.add(directory, "node", kind, argv, f"{path} scripts.{script}")
                 used.add(script)
+                if kind == "format":
+                    _node_format_apply(collector, directory, path, manager, script, str(_mapping(scripts)[script]))
                 if kind == "unit":
                     _node_test_files(collector, directory, path, script, scripts[script], paths)
         _node_vitest_files(collector, directory, path, manager, manifest, paths)
@@ -2271,6 +2297,41 @@ def _node(collector: _Collector, paths: frozenset[str], files: Mapping[str, byte
         _runtime_first(collector, directory, manager, manifest, files)
     for directory, path, manager, scripts, used in named:
         _node_named_scripts(collector, directory, path, manager, scripts, used)
+
+
+def _node_format_apply(collector: _Collector, directory: str, path: str, manager: str, script: str, body: str) -> None:
+    """``node-format-apply``: the write mode of a ``format:check`` script that runs ``prettier --check``.
+
+    The format kind runs the script (``pnpm run format:check``), whose argv names no formatter, so
+    :func:`_apply_formatters` offered no write sibling and a red format check was fixed through a
+    hand-written node script (gap no-format-write-check). The script's own prettier call is run in write
+    mode through the manager's binary runner (:data:`_NODE_EXEC`: ``yarn prettier``, ``pnpm exec prettier``,
+    ``npx --no-install prettier``), on the changed files by default like every prettier write.
+    """
+    if _SHELL_CHARS & set(body):
+        return  # a chained or piped script: its formatter call is not the whole command
+    try:
+        tokens = tuple(shlex.split(body))
+    except ValueError:
+        return
+    written, tool = _write_argv(tokens)
+    runner = _NODE_EXEC.get(manager)
+    if tool != "prettier" or not runner or posixpath.basename(tokens[0]) != "prettier":
+        return
+    key = (directory, "node", "format-apply")
+    if not collector.add(
+        directory, "node", "format-apply", [*runner, *written], f"{path} scripts.{script} (write mode)"
+    ):
+        return
+    spec = collector.found[key]
+    collector.found[key] = replace(
+        spec,
+        report="lines",
+        report_path="",
+        description=f"write mode of scripts.{script} (prettier --write): rewrites the files it would refuse"[:200],
+        affected="files",
+        affected_by_default=True,
+    )
 
 
 #: A ``test:`` script that runs the unit suite under another name (``test:ci-unit``), not a watch or coverage run.
@@ -2940,6 +3001,97 @@ def _node_relock(collector: _Collector) -> None:
         )
 
 
+#: A git command that reads or writes the repository (``git status``, ``execSync('git diff ...')``): a script
+#: holding one needs a ``.git``, which a checkout has not.
+_GIT_CALL = re.compile(
+    r"(?<![\w./-])git\s+(?:-C\s+\S+\s+)?"
+    r"(?:status|diff|ls-files|rev-parse|log|show|merge-base|describe|stash|add|commit|checkout|blame|grep)\b"
+)
+#: A repository file a package.json script runs (``tsx scripts/check.ts``, ``node bin/x.mjs``, ``bash run.sh``).
+_SCRIPT_FILE = re.compile(
+    r"(?:^|[\s;&|(])(?:tsx|ts-node|node|bun|bash|sh|python3?)\s+(?:-{1,2}[\w-]+(?:=\S+)?\s+)*"
+    r"([\w@./-]+\.(?:ts|mts|cts|js|mjs|cjs|sh|py))(?![\w.])"
+)
+#: Repository files :func:`script_files` names at most.
+MAX_SCRIPT_FILES = 40
+
+
+def _manifest_scripts(files: Mapping[str, bytes]) -> dict[str, tuple[str, dict[str, str]]]:
+    """Every read ``package.json`` by directory: its package ``name`` and its string scripts."""
+    found: dict[str, tuple[str, dict[str, str]]] = {}
+    for path in sorted(p for p in files if posixpath.basename(p) == "package.json"):
+        manifest = _json(files[path])
+        scripts = {k: v for k, v in _mapping(manifest.get("scripts")).items() if isinstance(v, str)}
+        name = manifest.get("name") if isinstance(manifest.get("name"), str) else ""
+        found[posixpath.dirname(path)] = (name, scripts)
+    return found
+
+
+def _run_files(directory: str, body: str) -> list[str]:
+    """The repository paths (from the checkout root) of the files the script *body* of *directory* runs."""
+    out = []
+    for match in _SCRIPT_FILE.finditer(body):
+        rel = posixpath.normpath(_join(directory, match.group(1)))
+        if not rel.startswith("../") and rel != "..":
+            out.append(rel)
+    return out
+
+
+def script_files(paths: Iterable[str], files: Mapping[str, bytes]) -> list[str]:
+    """The repository files the read ``package.json`` scripts run, present in the listing *paths*, bounded.
+
+    Read after :func:`candidates` and given to :func:`detect` with them, so a check whose script runs
+    a file that calls git is detected as one (:func:`_apply_git_repo`).
+    """
+    listing = frozenset(paths)
+    picked: list[str] = []
+    for directory, (_name, scripts) in _manifest_scripts(files).items():
+        for body in scripts.values():
+            for rel in _run_files(directory, body):
+                if rel in listing and rel not in picked and not _skipped(rel):
+                    picked.append(rel)
+    return picked[:MAX_SCRIPT_FILES]
+
+
+def _check_script(spec: CheckSpec, manifests: Mapping[str, tuple[str, dict[str, str]]]) -> tuple[str, str] | None:
+    """The (directory, script name) a node check runs: ``yarn x``, ``npm run x``, ``yarn workspace <name> x``."""
+    argv = list(spec.argv)
+    if len(argv) < 2 or posixpath.basename(argv[0]) not in ("yarn", "npm", "pnpm", "bun"):
+        return None
+    directory = spec.cwd
+    rest = argv[1:]
+    if rest[0] == "workspace" and len(rest) >= 3:
+        directory = next((d for d, (name, _s) in manifests.items() if name and name == rest[1]), "")
+        if not directory:
+            return None
+        rest = rest[2:]
+    if rest[0] in ("run", "run-script") and len(rest) >= 2:
+        rest = rest[1:]
+    return directory, rest[0]
+
+
+def _apply_git_repo(collector: _Collector, files: Mapping[str, bytes]) -> None:
+    """``git_repo`` on every node check whose script calls git, itself or through a file it runs (#1958).
+
+    A checkout has no ``.git``: the check then runs in a throwaway repository of the checkout
+    (:data:`checks.GIT_REPO_SHELL`), as a declared ``git_repo = true`` check does and as CI runs it in a clone.
+    """
+    manifests = _manifest_scripts(files)
+    for key, spec in list(collector.found.items()):
+        if key[1] != "node" or spec.git_repo:
+            continue
+        found = _check_script(spec, manifests)
+        if found is None:
+            continue
+        directory, script = found
+        body = manifests.get(directory, ("", {}))[1].get(script, "")
+        if not body:
+            continue
+        sources = [body, *(_text(files.get(rel)) for rel in _run_files(directory, body))]
+        if any(_GIT_CALL.search(text) for text in sources):
+            collector.found[key] = replace(spec, git_repo=True)
+
+
 def _compose(files: Mapping[str, bytes], infra: list[Infra]) -> None:
     for path in sorted(p for p in files if _COMPOSE.match(posixpath.basename(p))):
         services = _yaml(files[path]).get("services")
@@ -2974,6 +3126,7 @@ def detect(paths: Iterable[str], files: Mapping[str, bytes], *, images: Iterable
     _apply_pnpm(collector, files)
     _apply_formatters(collector)
     _node_relock(collector)
+    _apply_git_repo(collector, files)
     _actions_lint(collector, listing)
     _compose(files, infra)
     unique = list(dict.fromkeys(row for row in infra if row.name))[:MAX_INFRA]

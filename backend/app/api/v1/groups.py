@@ -53,6 +53,9 @@ class UpdateGroupRequest(BaseModel):
     ctem_access: str | None = None
     # With `decide`: notify the members of the case gates (`null` leaves it).
     ctem_notify: bool | None = None
+    # People who sign in through single sign-on join the group at every sign-in
+    # (`services/group_auto_join.py`); `null` or omitted leaves it.
+    auto_join: bool | None = None
 
     _fit_columns = column_length_validator(Group, "name", "kind", "ctem_access", stripped=True)
 
@@ -68,6 +71,7 @@ class GroupListItem(BaseModel):
     kind: str = "auto"
     ctem_access: str | None = None
     ctem_notify: bool = True
+    auto_join: bool = False
     created_at: str
     updated_at: str
 
@@ -121,6 +125,7 @@ class GroupDetailResponse(BaseModel):
     kind: str = "auto"
     ctem_access: str | None = None
     ctem_notify: bool = True
+    auto_join: bool = False
     created_at: str
     updated_at: str
 
@@ -291,6 +296,7 @@ async def list_groups(
             kind=g.kind or "auto",
             ctem_access=ctem_access.group_ctem_access(g),
             ctem_notify=ctem_access.group_ctem_notify(g),
+            auto_join=bool(g.auto_join),
             created_at=g.created_at.isoformat() if g.created_at else "",
             updated_at=g.updated_at.isoformat() if g.updated_at else "",
         )
@@ -356,6 +362,7 @@ async def get_group(
         kind=group.kind or "auto",
         ctem_access=ctem_access.group_ctem_access(group),
         ctem_notify=ctem_access.group_ctem_notify(group),
+        auto_join=bool(group.auto_join),
         created_at=group.created_at.isoformat() if group.created_at else "",
         updated_at=group.updated_at.isoformat() if group.updated_at else "",
     )
@@ -696,6 +703,13 @@ async def update_group(
         group.ctem_notify = body.ctem_notify
     # No cache to drop: the CTEM reach is read on every call (signal members included).
 
+    auto_join_change: dict[str, bool] | None = None
+    if body.auto_join is not None and body.auto_join != bool(group.auto_join):
+        # Audited with the value it replaces; it grants memberships at the next
+        # single sign-on of each person, none now.
+        auto_join_change = {"auto_join": body.auto_join, "previous_auto_join": bool(group.auto_join)}
+        group.auto_join = body.auto_join
+
     await db.flush()
 
     # A request that also changes the name, description or quotas keeps the
@@ -703,6 +717,10 @@ async def update_group(
     other_fields = sorted(body.model_fields_set - {"ai_enabled"})
     summary = f"Updated group '{group.name}'"
     details: dict[str, Any] | None = dict(ctem_change) if ctem_change else None
+    if auto_join_change:
+        details = {**(details or {}), **auto_join_change}
+        if not (body.model_fields_set - {"auto_join"}):
+            summary = f"Switched auto join {'on' if auto_join_change['auto_join'] else 'off'} for group '{group.name}'"
     if ai_change:
         ai_text = "on" if ai_change["ai_enabled"] else "off"
         details = {**(details or {}), **ai_change}
@@ -742,6 +760,7 @@ async def update_group(
         kind=group.kind or "auto",
         ctem_access=ctem_access.group_ctem_access(group),
         ctem_notify=ctem_access.group_ctem_notify(group),
+        auto_join=bool(group.auto_join),
         created_at=group.created_at.isoformat() if group.created_at else "",
         updated_at=group.updated_at.isoformat() if group.updated_at else "",
     )

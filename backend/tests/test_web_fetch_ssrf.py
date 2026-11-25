@@ -268,6 +268,10 @@ async def test_fetch_public_to_public_redirect_allowed(monkeypatch):
     assert result.url == "https://other.example.org/page"
     assert result.status_code == 200
     assert result.title == "Final Page"
+    # The hop followed is reported as the server answered it, unfollowed.
+    assert [(h.status, h.url, h.location) for h in result.redirects] == [
+        (302, "https://example.com/", "https://other.example.org/page")
+    ]
     # The hop is pinned like the first request: its own checked address,
     # its own name as Host and TLS server name.
     hop = web.requests[1]
@@ -290,6 +294,7 @@ async def test_fetch_relative_redirect_resolved_and_validated(monkeypatch):
     assert web.calls == ["https://example.com/start", "https://example.com/next"]
     assert result.text == "plain body"
     assert result.url == "https://example.com/next"
+    assert [(h.status, h.location) for h in result.redirects] == [(302, "https://example.com/next")]
 
 
 # ── fetch_and_extract connects to the checked address (DNS rebinding) ────────

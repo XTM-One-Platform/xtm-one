@@ -40,9 +40,8 @@ const PROFILE = {
     sub_sector: "",
     regions: ["FR"],
     size: "",
-    crown_jewels: [],
-    tech_stack: [],
-    ai_systems: [],
+    primary_assets: [],
+    software: [],
     pir_ids: [],
     risk_appetite: { annual_loss_threshold: null, approval_threshold: null },
     loaded_hourly_rate: null,
@@ -59,7 +58,6 @@ beforeEach(() => {
       throw Object.assign(new Error("Admin privileges required"), { status: 403 });
     }
     if (path === "/organization-context") return PROFILE;
-    if (path === "/organization-context/readers") return { readers: {}, agents: {} };
     if (path === "/organization-context/attack-surface/providers") return { providers: ["shodan"] };
     if (path === "/organization-context/pirs") return { pirs: [], unavailable: null };
     if (path.startsWith("/organization-context/syncs") || path.startsWith("/organization-context/sources")) return [];

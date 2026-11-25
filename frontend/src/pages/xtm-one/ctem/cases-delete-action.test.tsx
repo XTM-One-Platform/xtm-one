@@ -7,7 +7,7 @@ import { act, screen } from "@testing-library/react";
 
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemCaseDeleteResult } from "@/hooks/api/useCtemCasesApi";
-import { CasesDeleteAction } from "./CasesDeleteAction";
+import { CasesDeleteAction, useCaseDelete } from "./CasesDeleteAction";
 import { deletePreviewTotals } from "./cases-delete";
 
 const state = vi.hoisted(() => ({
@@ -59,5 +59,42 @@ describe("Delete on the Cases list", () => {
     expect(preview).toHaveTextContent("2 open work items cancelled");
     expect(preview).toHaveTextContent("1 timer cancelled");
     expect(preview).toHaveTextContent("1 signal sent back to the scope gate");
+  });
+});
+
+// The case page's More actions row (#1950) runs the same flow through useCaseDelete.
+describe("Delete on the case page", () => {
+  it("is not offered to a non-administrator", () => {
+    state.isAdmin = false;
+    try {
+      function Probe() {
+        const remove = useCaseDelete(["c1"], () => undefined);
+        return <span data-testid="probe">{remove.allowed ? "allowed" : "refused"}</span>;
+      }
+      renderWithProviders(<Probe />);
+      expect(screen.getByTestId("probe")).toHaveTextContent("refused");
+    } finally {
+      state.isAdmin = true;
+    }
+  });
+
+  it("asks an administrator's dry run for the case before the delete", async () => {
+    state.calls = [];
+    const done = vi.fn();
+    function Page() {
+      const remove = useCaseDelete(["c1"], done);
+      return (
+        <>
+          <button type="button" onClick={remove.ask}>
+            Delete
+          </button>
+          {remove.dialog}
+        </>
+      );
+    }
+    renderWithProviders(<Page />);
+    await act(async () => screen.getByRole("button", { name: "Delete" }).click());
+    expect(state.calls).toEqual([{ case_ids: ["c1"], dry_run: true }]);
+    expect(await screen.findByTestId("ctem-cases-delete-preview")).toHaveTextContent("2 cases and their history");
   });
 });

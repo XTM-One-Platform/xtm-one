@@ -16,7 +16,7 @@
 The ``organization_context`` built-in group (``builtin_tools/organization_context_write``)
 is a generic layer and names no platform (invariant 18). A platform-specific action on
 the profile that an administrator's agent must be able to run, today the OpenCRQ
-crown-jewel reconcile of Settings > Organization (``POST /organization-context/opencrq-sync``,
+primary-asset reconcile of Settings > Organization (``POST /organization-context/opencrq-sync``,
 ``organization_context_opencrq.run_sync``), is declared here: its definition and its
 handler, which the group registers as they are.
 """
@@ -33,6 +33,7 @@ from app.tools.base import ToolDefinition
 logger = logging.getLogger(__name__)
 
 OPENCRQ_RECONCILE_TOOL = "reconcile_organization_with_opencrq"
+OPENCTI_LINK_TOOL = "link_tracked_organization_to_opencti"
 _CRITICALITIES = ("low", "medium", "high", "very_high")
 
 #: One declared tool: its definition and its async handler.
@@ -84,10 +85,66 @@ def declared_organization_tools(
             logger.warning("Organization OpenCRQ reconcile failed", exc_info=True)
             return "Error: the OpenCRQ reconcile could not run right now. Say so; nothing was changed."
 
+    async def _link_opencti(organization: str = "", identity_id: str = "", create: bool = False) -> str:
+        from app.core.database import async_session
+        from app.services import organizations as orgs
+        from app.services.organization_opencti import link_identity, opencti_gql
+
+        if not str(organization or "").strip():
+            return "Not linked: name the tracked organization (name or id)."
+        wanted = str(identity_id or "").strip()
+        if not wanted and not create:
+            return "Not linked: give the OpenCTI Organization id, or create true to create one named like it."
+        try:
+            async with async_session() as db:
+                person = await admin(db)
+                if person is None:
+                    return refusal
+                target = await orgs.resolve(db, str(organization))
+                if target is None or target.role != "tracked":
+                    return f"Not linked: no tracked organization is named {organization!r} (or several are)."
+                gql = await opencti_gql(db, str(person.id))
+                if isinstance(gql, str):
+                    return f"Not linked: {gql}."
+                # The same service as Settings > Organization (POST /organizations/ID/opencti-identity).
+                try:
+                    linked, type_set = await link_identity(
+                        gql, name=target.name, relationship=target.relationship or "", identity_id=wanted, create=create
+                    )
+                except (LookupError, RuntimeError, ValueError) as exc:
+                    return f"Not linked: {str(exc)[:300]}"
+                target.opencti_organization_id = linked
+                await db.commit()
+                return json.dumps(
+                    {
+                        "organization": target.name,
+                        "organization_id": str(target.id),
+                        "opencti_organization_id": linked,
+                        "organization_type_set": type_set,
+                    }
+                )
+        except Exception:
+            logger.warning("Tracked organization OpenCTI link failed", exc_info=True)
+            return "Error: the OpenCTI link could not be saved right now. Say so; nothing was changed."
+
+    link_definition = ToolDefinition(
+        name=OPENCTI_LINK_TOOL,
+        description="Link a tracked organization to an OpenCTI Organization: id or create.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "organization": {"type": "string"},
+                "identity_id": {"type": "string"},
+                "create": {"type": "boolean"},
+            },
+            "required": ["organization"],
+        },
+    )
+
     definition = ToolDefinition(
         name=OPENCRQ_RECONCILE_TOOL,
         description=(
-            "Reconcile the crown jewels with OpenCRQ's primary assets: apply false answers the "
+            "Reconcile the primary assets with OpenCRQ's primary assets: apply false answers the "
             "plan, true saves a version of the profile (nothing is written to OpenCRQ)." + shared_context_clause
         ),
         input_schema={
@@ -99,4 +156,4 @@ def declared_organization_tools(
             },
         },
     )
-    return [(definition, _reconcile)]
+    return [(definition, _reconcile), (link_definition, _link_opencti)]

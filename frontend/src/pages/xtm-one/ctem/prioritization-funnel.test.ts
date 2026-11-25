@@ -77,7 +77,7 @@ test("a drop names the live layer it was taken from, skipping a not configured o
     ...SAMPLE_FUNNEL,
     layers: [
       SAMPLE_FUNNEL.layers[0],
-      { key: "relevant", count: null, drop: null, state: "not_configured", source: "organization", category: "tech_stack" },
+      { key: "relevant", count: null, drop: null, state: "not_configured", source: "organization", category: "software" },
       { key: "exploitable", count: 300, drop: 3914, state: "live", source: "opencti", category: null, basis: "known" },
     ],
   };
@@ -96,17 +96,17 @@ test("the sample funnel is monotonic and its drops add up", () => {
 test("a not configured layer leads to the Settings card of its field, never the bare first tab", () => {
   const notConfigured = (key: CtemFunnel["layers"][number]["key"]) =>
     funnelLayerHref({ key, count: null, drop: null, state: "not_configured", source: "organization", category: null }, "https://cti.example");
-  assert.equal(notConfigured("relevant"), "/ctem/inventory/software?card=tech_stack");
+  assert.equal(notConfigured("relevant"), "/ctem/inventory/software?card=software");
   assert.equal(notConfigured("exposed"), "/ctem/inventory?card=assets_exposure");
-  assert.equal(notConfigured("business_impact"), "/ctem/inventory/business?card=crown_jewels");
+  assert.equal(notConfigured("business_impact"), "/ctem/inventory/business?card=primary_assets");
   assert.equal(notConfigured("policy"), "/ctem/inventory/exposure?card=prioritization_policy");
-  assert.equal(notConfigured("open_issues"), "/ctem/inventory/software?card=tech_stack");
+  assert.equal(notConfigured("open_issues"), "/ctem/inventory/software?card=software");
   // Every layer with a call to action names a field, so no CTA falls back to the first tab.
   for (const [key, copy] of Object.entries(FUNNEL_LAYER_COPY)) {
     if (copy.cta) assert.ok(FUNNEL_LAYER_FIELD[key as keyof typeof FUNNEL_LAYER_FIELD], key);
     if (copy.cta) assert.notEqual(notConfigured(key as keyof typeof FUNNEL_LAYER_COPY), "/settings/organization", key);
   }
-  assert.equal(isOrganizationSettingsHref("/settings/organization/profile/business?card=crown_jewels"), true);
+  assert.equal(isOrganizationSettingsHref("/settings/organization/profile/business?card=primary_assets"), true);
   assert.equal(isOrganizationSettingsHref("/settings/organization"), true);
   assert.equal(isOrganizationSettingsHref("/ctem/cases"), false);
 });
@@ -156,14 +156,14 @@ test("without a software, OpenAEV or any case, the cases layer is not configured
     ...SAMPLE_FUNNEL,
     layers: SAMPLE_FUNNEL.layers.map((layer) => {
       if (layer.key === "known") return { ...layer, asset_findings: null };
-      if (layer.key === "relevant") return { ...layer, count: null, drop: null, state: "not_configured", category: "tech_stack" };
+      if (layer.key === "relevant") return { ...layer, count: null, drop: null, state: "not_configured", category: "software" };
       return layer;
     }),
   };
   const layer = casesLayer(withCasesLayer(bare, { open: 0, total: 0 }));
   assert.equal(layer.state, "not_configured");
   assert.equal(layer.count, null);
-  assert.equal(funnelLayerHref(layer, "https://cti.example"), "/ctem/inventory/software?card=tech_stack");
+  assert.equal(funnelLayerHref(layer, "https://cti.example"), "/ctem/inventory/software?card=software");
   // A case that exists (built before the stack was removed) is still counted.
   assert.equal(casesLayer(withCasesLayer(bare, { open: 2, total: 3 })).count, 2);
   // OpenAEV alone builds cases.

@@ -89,6 +89,14 @@ _TITLES: dict[str, str] = {
     "restore_coverage": "Restore coverage of {subject}",
 }
 
+#: The action a ``control_decay`` signal asks for, by its evidence state (#2069): a control never
+#: measured has nothing to restore. Titled on the asset name; the reason stays on the signal.
+_CONTROL_DECAY_TITLES: dict[str, str] = {
+    "never_measured": "Put in place and measure the control on {asset}",
+    "attested_only": "Measure the control on {asset} (attested only)",
+    "expired": "Re-test the control on {asset}",
+}
+
 #: Most signals the sweep opens cases for in one pass.
 SWEEP_BATCH = 500
 #: The member source of a signal attached to a case.
@@ -191,8 +199,46 @@ def fix_of(signal: CtemSignal) -> CaseFix:
             title=f"Upgrade {subject} to a fixed version"[:COLUMN_MAX],
         )
     key = _bounded_key(f"{kind}:{signal.subject_kind}/{_norm(signal.subject_ref)}")
+    decay = _CONTROL_DECAY_TITLES.get(str(evidence.get("state") or "")) if path == "control_decay" else None
+    asset = (signal.subject_ref or "").strip()
+    if decay and asset:
+        return CaseFix(key=key, kind=kind, title=decay.format(asset=asset)[:COLUMN_MAX])
     title = _TITLES.get(kind, "Remediate {subject}").format(subject=subject)[:COLUMN_MAX]
     return CaseFix(key=key, kind=kind, title=title)
+
+
+#: Why a software signal with nothing to install opens no upgrade case (#2047).
+NOTHING_TO_UPGRADE = (
+    "no CVE, no affected version range and no fixed version: nothing to install (a vendor fix made "
+    "service-side); kept to validate, no upgrade case"
+)
+#: Evidence keys any one of which names something an upgrade can act on.
+_UPGRADE_FACTS: tuple[str, ...] = (
+    "cve",
+    "cve_id",
+    "cves",
+    "vulnerable_range",
+    "affected_versions",
+    "affected_packages",
+    "fixed_version",
+    "patched_versions",
+)
+
+
+def nothing_to_upgrade(signal: CtemSignal, fix: CaseFix) -> bool:
+    """Whether *fix* is an ``@latest`` upgrade the signal gives nothing to act on (pure, #2047).
+
+    True only for an ``upgrade:...@latest`` key from a signal that names no CVE (subject or evidence),
+    no affected range and no fixed version. A signal with any of them keeps its upgrade case.
+    """
+    if fix.kind != "upgrade" or not fix.key.endswith("@latest") or fix.fixed_version:
+        return False
+    for ref in (signal.subject_ref, signal.subject_label):
+        if str(ref or "").strip().upper().startswith("CVE-"):
+            return False
+    evidence = getattr(signal, "evidence", None)
+    evidence = evidence if isinstance(evidence, dict) else {}
+    return not any(evidence.get(k) for k in _UPGRADE_FACTS)
 
 
 def source_fix_of(evidence: dict[str, Any]) -> CaseFix | None:
@@ -291,17 +337,25 @@ def _event(case_id: uuid.UUID, actor: str, kind: str, at: datetime, **kw: Any) -
 
 
 async def _open_case_for_key(db: AsyncSession, organization_id: uuid.UUID, vertical: str, key: str) -> CtemCase | None:
-    rows = (
-        await db.execute(
-            select(CtemCase).where(
-                CtemCase.organization_id == organization_id,
-                CtemCase.vertical == vertical,
-                CtemCase.state.in_(OPEN_STATES),
+    rows = list(
+        (
+            await db.execute(
+                select(CtemCase).where(
+                    CtemCase.organization_id == organization_id,
+                    CtemCase.vertical == vertical,
+                    CtemCase.state.in_(OPEN_STATES),
+                )
             )
-        )
-    ).scalars()
+        ).scalars()
+    )
     for case in rows:
         if key in (case.keys or []):
+            return case
+    # The same fix of the same product under another spelling (vendor present or absent, label case)
+    # joins the open case and adds its key there, so one fix never holds two SLAs (#2037).
+    for case in rows:
+        if any(rules.same_product_key(key, k) for k in case.keys or []):
+            case.keys = [*(case.keys or []), key]
             return case
     return None
 
@@ -323,6 +377,12 @@ async def open_from_signal(
         return None
     now = now or datetime.now(UTC)
     fix = fix_of(signal)
+    if nothing_to_upgrade(signal, fix):
+        # #2047: no CVE, no affected range, no fixed version: a vendor fix made service-side leaves nothing to
+        # install, so no upgrade case opens; the signal is kept and parked for a person to validate.
+        signal.state = "to_validate"
+        signal.decision = {**decision, "outcome": "review", "state": "to_validate", "reason": NOTHING_TO_UPGRADE}
+        return None
     severity, hours, scenarios = severity_of(decision)
     case = await _open_case_for_key(db, signal.organization_id, vertical, fix.key)
     created = case is None
@@ -352,6 +412,13 @@ async def open_from_signal(
         db.add(case)
         await db.flush()
         db.add(_event(case.id, rules.SYSTEM_ACTOR, "created", now, to_value=fix.key, reason=f"signal {signal.id}"))
+        # #1736 slice 3: the owner comes from the asset or asset group owner, else the instance default.
+        from app.services.ctem_case_owner import owner_for_signal
+
+        owner, how = await owner_for_signal(db, signal)
+        if owner is not None:
+            case.owner_user_id = owner
+            db.add(_event(case.id, rules.SYSTEM_ACTOR, "owner", now, to_value=str(owner), reason=how))
     else:
         # A second signal on the same fix: the most urgent severity and the earliest SLA win.
         if severity and (case.severity is None or _SEVERITY_RANK[severity] < _SEVERITY_RANK.get(case.severity, 9)):
@@ -468,6 +535,12 @@ def _transition(
 
 #: The asset groups one validation reference names in its run order (CTEM-12-UI).
 RUN_ORDER_MAX = 20
+#: The remediation kinds a version inventory resolves (a patch or an upgrade): a test never does.
+VERSION_REMEDIATIONS: tuple[str, ...] = ("patch", "upgrade")
+#: What a validation reference proves, as the agent says it: the fix in place (a version inventory), or a test.
+REMEDIATION_EVIDENCE = "remediation"
+VALIDATION_EVIDENCE = "validation"
+EVIDENCE_TYPES: tuple[str, ...] = (REMEDIATION_EVIDENCE, VALIDATION_EVIDENCE)
 
 
 def _upsert_validation(validations: list[dict[str, Any]], entry: dict[str, Any]) -> tuple[list[dict[str, Any]], bool]:
@@ -506,10 +579,8 @@ async def record_validation(
     result: str,
     mitigation_only: bool = False,
     note: str | None = None,
-    safe_mode: bool | None = None,
     run_order: list[str] | None = None,
     conclusive: bool | None = None,
-    inject_class: str | None = None,
     evidence_type: str | None = None,
     actor: str = rules.SYSTEM_ACTOR,
     events: PendingEvents | None = None,
@@ -520,17 +591,13 @@ async def record_validation(
     ``result``: ``passed`` (the exposure is gone), ``not_exposed`` (it never
     was), ``failed`` (still exposed) or ``pending``. ``mitigation_only``: the
     pass proves a mitigation, not the permanent fix, so the case goes to
-    ``mitigated_watching`` and the re-test stays on. ``safe_mode`` (CTEM-12):
-    true when only read-only injects ran, false when a non-read-only one ran,
-    None when the module did not say. ``run_order``: the target asset groups in
-    the order they were tested (at most 20 names). ``conclusive`` (#1458):
-    false when a pass only says an exploit attempt did not land (it proves
-    nothing, so the case stays open with its remediation), true when the check
-    proves the exposure gone (the fixed version read), None when the writer did
-    not say (a scanner closing the finding at source). ``inject_class``: the
-    platform's reading of the inject that ran (``ctem_inject_effects``); an
-    intrusive or unknown inject is never recorded as safe mode, and its pass is
-    inconclusive unless ``conclusive`` is true. ``evidence_type`` (#1500):
+    ``mitigated_watching`` and the re-test stays on. ``run_order``: the target
+    asset groups in the order they were tested (at most 20 names). ``conclusive``
+    (#1458), set by the agent that read the check: false when a pass proves
+    nothing (the case stays open with its remediation), true when the check
+    proves the exposure gone, None when the writer did not say (a scanner
+    closing the finding at source). The platform never derives it from what the
+    inject is (#1810). ``evidence_type`` (#1500):
     ``remediation`` (the fix in place: a version inventory showing every
     in-scope endpoint at or above the fixed build) or ``validation`` (a
     detection or behaviour test). A pass that proves nothing is stored as
@@ -541,16 +608,6 @@ async def record_validation(
     a conclusive check (the fixed version read) count as remediation, anything
     else as validation, recorded and never resolving. The caller commits.
     """
-    from app.services.ctem_inject_effects import (
-        CLASSES,
-        EVIDENCE_TYPES,
-        READ_ONLY,
-        REMEDIATION_EVIDENCE,
-        VALIDATION_EVIDENCE,
-        VERSION_REMEDIATIONS,
-        checked_safe_mode,
-    )
-
     if result not in VALIDATION_RESULTS:
         raise rules.CaseRuleError(f"unknown validation result {result!r}")
     if not (provider or "").strip() or not (ref or "").strip():
@@ -566,13 +623,6 @@ async def record_validation(
         "mitigation_only": bool(mitigation_only),
         "note": (note or "").strip()[:500] or None,
     }
-    if inject_class is not None and inject_class not in CLASSES:
-        raise rules.CaseRuleError(f"unknown inject class {inject_class!r}")
-    if inject_class is not None:
-        entry["inject_class"] = inject_class
-        safe_mode, _warning = checked_safe_mode(safe_mode, inject_class)
-        if conclusive is None and inject_class != READ_ONLY:
-            conclusive = False
     if evidence_type is not None and evidence_type not in EVIDENCE_TYPES:
         raise rules.CaseRuleError(f"unknown evidence type {evidence_type!r}")
     if (case.remediation_kind or "") in VERSION_REMEDIATIONS:
@@ -585,8 +635,6 @@ async def record_validation(
             conclusive = False
     elif evidence_type is not None:
         entry["evidence_type"] = evidence_type
-    if safe_mode is not None:
-        entry["safe_mode"] = bool(safe_mode)
     if conclusive is not None:
         entry["conclusive"] = bool(conclusive)
     order = [str(name).strip()[:120] for name in (run_order or []) if str(name).strip()][:RUN_ORDER_MAX]
@@ -983,6 +1031,64 @@ def record_gate(
     return case
 
 
+#: How an applied change was carried out (#2061): the ``kind`` of an ``applied_change`` event.
+APPLIED_CHANGE_KINDS: tuple[str, ...] = ("ioc_prevention", "detection_rule", "configuration", "control_restored")
+
+
+def record_applied_change(
+    db: AsyncSession,
+    case: CtemCase,
+    change: dict[str, Any],
+    *,
+    actor: str = rules.SYSTEM_ACTOR,
+    now: datetime | None = None,
+) -> CtemCase:
+    """Write a change applied through a bound integration under ``ctem.production_change`` (#2061).
+
+    *change* is ``{integration, kind, pushed, ids, rollback}``: the integration that
+    carried it, one of :data:`APPLIED_CHANGE_KINDS`, what was pushed (the indicators
+    with their prevention action, scope and expiry; the rule; the setting), the ids
+    the integration returned and how to revert it. One ``applied_change`` event:
+    ``from`` the integration, ``to`` the kind, ``reason`` what was pushed,
+    ``evidence`` ``{ids, rollback}`` as JSON. The rollback is required: a change
+    nobody can revert is refused. An open case moves to ``remediating``. The
+    gate itself is written by :func:`record_gate`. The caller commits.
+    """
+    import json
+
+    if not isinstance(change, dict):
+        raise rules.CaseRuleError("applied_change must be an object with integration, kind, pushed and rollback")
+    integration = str(change.get("integration") or "").strip()[:300]
+    kind = str(change.get("kind") or "").strip()
+    pushed = str(change.get("pushed") or "").strip()[:4000]
+    rollback = str(change.get("rollback") or "").strip()[:2000]
+    if kind not in APPLIED_CHANGE_KINDS:
+        raise rules.CaseRuleError(f"applied_change.kind must be one of {', '.join(APPLIED_CHANGE_KINDS)}")
+    if not integration or not pushed or not rollback:
+        raise rules.CaseRuleError("applied_change needs the integration, what was pushed and the rollback")
+    raw_ids = change.get("ids") or []
+    if not isinstance(raw_ids, list):
+        raise rules.CaseRuleError("applied_change.ids must be the list of ids the integration returned")
+    ids = [str(i).strip()[:200] for i in raw_ids if str(i).strip()][:200]
+    at = now or datetime.now(UTC)
+    db.add(
+        _event(
+            case.id,
+            actor,
+            "applied_change",
+            at,
+            from_value=integration,
+            to_value=kind,
+            reason=pushed,
+            evidence=json.dumps({"ids": ids, "rollback": rollback}),
+        )
+    )
+    moved = case_status.after_applied_change(case, at, actor=actor, evidence=f"{kind} via {integration}")
+    if moved is not None:
+        db.add(moved)
+    return case
+
+
 #: An OpenCRQ treatment plan page: ``https://host/<tenant>/treatment-plans/<uuid>`` (CTEM-18-UI, #1068).
 _PLAN_URL = re.compile(r"^https?://[^\s/?#]+(?:/[A-Za-z0-9._-]+)*/treatment-plans/([0-9a-fA-F-]{36})$")
 
@@ -1223,9 +1329,60 @@ async def sweep(
     events: PendingEvents | None = None,
     now: datetime | None = None,
 ) -> dict[str, int]:
-    """The scheduled pass: open the cases of waiting confirmed signals, escalate SLA breaches. The caller commits."""
+    """The scheduled pass: open the cases of waiting confirmed signals, escalate SLA breaches. The caller commits.
+
+    While an administrator paused case opening (#1951, services/ctem_case_opening.py) the
+    waiting signals stay confirmed with no case; the SLA, announce and stall passes still run.
+    """
+    from app.services import ctem_case_opening as case_opening
+
     now = now or datetime.now(UTC)
     counts = {"opened": 0, "joined": 0, "skipped": 0, "sla_breached": 0, "announced": 0, "stalled": 0}
+    if await case_opening.may_open_waiting(db, vertical):
+        await open_waiting(db, vertical=vertical, events=events, now=now, counts=counts)
+    rows = (
+        (
+            await db.execute(
+                select(CtemCase).where(
+                    CtemCase.state.in_(OPEN_STATES),
+                    CtemCase.sla_due_at.is_not(None),
+                    CtemCase.sla_due_at <= now,
+                    CtemCase.sla_breached_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for case in rows:
+        if not breached(case, now):
+            continue
+        case.sla_breached_at = now
+        db.add(_event(case.id, rules.SYSTEM_ACTOR, "sla_breached", now, to_value=case.severity, reason="SLA breached"))
+        counts["sla_breached"] += 1
+        if events is not None:
+            events.add(CASE_SLA_BREACHED, case_data(case), _event_id(CASE_SLA_BREACHED, case, "sla"))
+            events.frame(case, "sla_breached", now)
+    counts["announced"] = await announce_unannounced(db, events=events, now=now)
+    # #1736: an open case no gate and no reminder waits on is raised once per stall window.
+    from app.services.ctem_case_stall import sweep_stalled
+
+    counts["stalled"] = await sweep_stalled(db, events=events, now=now, actor=rules.SYSTEM_ACTOR)
+    return counts
+
+
+async def open_waiting(
+    db: AsyncSession,
+    *,
+    vertical: str,
+    events: PendingEvents | None,
+    now: datetime,
+    counts: dict[str, int],
+) -> None:
+    """Open the cases of up to ``SWEEP_BATCH`` waiting confirmed signals, oldest sighting first; adds to *counts*.
+
+    The caller checked :func:`ctem_case_opening.may_open_waiting` and commits.
+    """
     waiting = (
         (
             await db.execute(
@@ -1259,35 +1416,6 @@ async def sweep(
             continue
         opened = events is not None and len(events.items) > before
         counts["opened" if opened else "joined"] += 1
-    rows = (
-        (
-            await db.execute(
-                select(CtemCase).where(
-                    CtemCase.state.in_(OPEN_STATES),
-                    CtemCase.sla_due_at.is_not(None),
-                    CtemCase.sla_due_at <= now,
-                    CtemCase.sla_breached_at.is_(None),
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    for case in rows:
-        if not breached(case, now):
-            continue
-        case.sla_breached_at = now
-        db.add(_event(case.id, rules.SYSTEM_ACTOR, "sla_breached", now, to_value=case.severity, reason="SLA breached"))
-        counts["sla_breached"] += 1
-        if events is not None:
-            events.add(CASE_SLA_BREACHED, case_data(case), _event_id(CASE_SLA_BREACHED, case, "sla"))
-            events.frame(case, "sla_breached", now)
-    counts["announced"] = await announce_unannounced(db, events=events, now=now)
-    # #1736: an open case no gate and no reminder waits on is raised once per stall window.
-    from app.services.ctem_case_stall import sweep_stalled
-
-    counts["stalled"] = await sweep_stalled(db, events=events, now=now, actor=rules.SYSTEM_ACTOR)
-    return counts
 
 
 async def announce_unannounced(db: AsyncSession, *, events: PendingEvents | None, now: datetime | None = None) -> int:

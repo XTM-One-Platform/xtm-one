@@ -109,7 +109,7 @@ def _signal(**kw) -> SimpleNamespace:
             "scope": {
                 "criticality": "critical",
                 "risk_scenarios": [{"id": "rs-1", "name": "Data theft"}],
-                "sources": [{"from": "crown_jewel", "name": "Customer SaaS hosting", "criticality": "critical"}],
+                "sources": [{"from": "primary_asset", "name": "Customer SaaS hosting", "criticality": "critical"}],
             },
         },
     )
@@ -293,6 +293,38 @@ def test_paths_with_no_cve_map_to_their_remediation_kind(path, kind):
     assert loop.fix_of(_signal(trigger_path=path)).kind == kind
 
 
+@pytest.mark.parametrize(
+    "state,title",
+    [
+        ("never_measured", "Put in place and measure the control on kibana.example.com"),
+        ("attested_only", "Measure the control on kibana.example.com (attested only)"),
+        ("expired", "Re-test the control on kibana.example.com"),
+        ("unknown_state", "Restore the control on kibana.example.com: some reason"),
+        (None, "Restore the control on kibana.example.com: some reason"),
+    ],
+)
+def test_a_control_decay_case_is_worded_by_its_evidence_state(state, title):
+    """#2069: wording only; the key and kind stay those of every control_decay case of the asset."""
+    evidence = {"state": state} if state else {}
+    fix = loop.fix_of(
+        _signal(
+            trigger_path="control_decay",
+            subject_ref="kibana.example.com",
+            subject_label="kibana.example.com: some reason",
+            evidence=evidence,
+        )
+    )
+    assert fix.title == title
+    assert fix.kind == "restore_control" and fix.key == "restore_control:asset/kibana.example.com"
+
+
+def test_a_mitigation_regression_keeps_the_restore_wording():
+    fix = loop.fix_of(
+        _signal(trigger_path="mitigation_regression", subject_label="WAF rule", evidence={"state": "never_measured"})
+    )
+    assert fix.title == "Restore the control on WAF rule"
+
+
 def test_a_software_subject_on_a_vulnerability_path_is_an_upgrade():
     fix = loop.fix_of(_signal(trigger_path="new_vulnerability", subject_kind="software", subject_ref="NGINX"))
     assert fix.kind == "upgrade" and fix.key == "upgrade:-/nginx@latest"
@@ -398,7 +430,8 @@ async def test_the_sweep_skips_a_signal_it_cannot_open_and_goes_on(monkeypatch):
     bad, good = _signal(), _signal(subject_ref="vpn.example.com", subject_label="vpn.example.com")
     late = _case(sla_due_at=NOW - timedelta(hours=1))
     bad = _ExpiringSignal(**vars(bad))
-    db = SweepSession([bad, good], [], [late])  # signals, the good signal's case lookup, late cases
+    # signals, the good signal's case lookup, its owner lookup (#1736 slice 3), late cases
+    db = SweepSession([bad, good], [], [], [late])
     real = loop.open_from_signal
 
     async def open_or_fail(session, signal, **kw):
@@ -556,7 +589,7 @@ async def test_a_failed_validation_on_an_open_case_only_records_it():
 
 
 @pytest.mark.asyncio
-async def test_a_validation_records_safe_mode_and_run_order_when_given() -> None:
+async def test_a_validation_records_the_run_order_when_given() -> None:
     case = _case()
     await loop.record_validation(
         cast("AsyncSession", FakeSession()),
@@ -565,17 +598,16 @@ async def test_a_validation_records_safe_mode_and_run_order_when_given() -> None
         kind="validation",
         ref="sc-1",
         result="pending",
-        safe_mode=True,
         run_order=[" DMZ web ", "", "Core"] + [f"g{i}" for i in range(30)],
         now=NOW,
     )
     entry = case.validations[-1]
-    assert entry["safe_mode"] is True
+    assert "safe_mode" not in entry
     assert entry["run_order"][:2] == ["DMZ web", "Core"] and len(entry["run_order"]) == loop.RUN_ORDER_MAX
 
 
 @pytest.mark.asyncio
-async def test_a_validation_without_safe_mode_keeps_the_entry_shape() -> None:
+async def test_a_validation_without_run_order_keeps_the_entry_shape() -> None:
     case = _case()
     await loop.record_validation(
         cast("AsyncSession", FakeSession()), case, provider="openaev", kind="check", ref="r", result="pending", now=NOW

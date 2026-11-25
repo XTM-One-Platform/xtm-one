@@ -12,7 +12,9 @@
  * and no figure. Never blank: a case not decided yet says so.
  */
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CASE_SECTION_ICON, CaseCardTitleText } from "./case-icons";
 import { WorkItemDecisionCard } from "@/components/work-items/WorkItemDecisionCard";
+import { mayAnswerCaseGate } from "@/lib/ctem-access";
 import type { CtemCaseEvent, CtemCaseGateRecord } from "@/hooks/api/useCtemCasesApi";
 import { useWorkItems } from "@/hooks/api/useWorkItemApi";
 import { useAuth } from "@/hooks/useAuth";
@@ -30,7 +32,7 @@ import {
   remediationOptionLines,
 } from "./case-gates";
 import { CaseSectionReason } from "./CaseSectionReason";
-import { GateDecisionRecord, gateRecordOf } from "./GateDecisionRecord";
+import { GateDecisionRecord, gateAnswererName, gateRecordOf } from "./GateDecisionRecord";
 
 export function CaseRemediationDecision({
   caseId,
@@ -46,7 +48,7 @@ export function CaseRemediationDecision({
   personName?: (id: string) => string | null;
 }) {
   const { t_i18n, intl } = useFormatter();
-  const { isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
   const gate = latestGate(history, REMEDIATION_GATE);
   // The decision record wins over the case event: an answered decision never reads as waiting (#1518).
   const record = gateRecordOf(gates, REMEDIATION_GATE);
@@ -62,18 +64,21 @@ export function CaseRemediationDecision({
   return (
     <Card data-testid="ctem-case-remediation">
       <CardHeader>
-        <CardTitle>{t_i18n("Remediation decision")}</CardTitle>
+        <CardTitle>
+          <CaseCardTitleText icon={CASE_SECTION_ICON.remediation_decision}>{t_i18n("Remediation decision")}</CaseCardTitleText>
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 content-base">
         {record ? (
           <GateDecisionRecord
             record={record}
-            byLabel={record.answered_by ? personName?.(record.answered_by.id) : null}
+            byLabel={gateAnswererName(record, history, personName)}
             testId="ctem-case-remediation-record"
           />
         ) : !gate ? (
           <CaseSectionReason
             own={t_i18n("The remediation options with their cost and the one approved, once the case is validated.")}
+            icon={CASE_SECTION_ICON.remediation_decision}
             testId="ctem-case-remediation-empty"
           />
         ) : (
@@ -98,9 +103,17 @@ export function CaseRemediationDecision({
           </div>
         )}
         {waiting && item && (
-          <WorkItemDecisionCard item={item} canAnswer={!item.is_company_managed || isAdmin} onAnswered={() => items.refetch()} />
+          <WorkItemDecisionCard item={item} canAnswer={mayAnswerCaseGate(item, user, Boolean(isAdmin))}
+              readOnlyNote={t_i18n("Only an administrator or a member of a group with View and decide can answer this decision.")}
+              onAnswered={() => items.refetch()}
+            />
         )}
-        {waiting && !item && !items.isLoading && (
+        {waiting && !item && !items.isLoading && record?.decision_filed === false && (
+          <p className="text-default-secondary" data-testid="ctem-case-remediation-not-filed">
+            {t_i18n("No remediation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.")}
+          </p>
+        )}
+        {waiting && !item && !items.isLoading && record?.decision_filed !== false && (
           <p className="text-default-secondary" data-testid="ctem-case-remediation-elsewhere">
             {t_i18n("A person decides it: the decision is in their Waiting for you list.")}
           </p>

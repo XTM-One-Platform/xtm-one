@@ -153,10 +153,9 @@ def test_a_step_without_a_known_gate_key_keeps_its_stored_flag():
 _PROFILE_ROUTES = {
     "profile:sector": "/settings/organization?card=identity",
     "profile:regions": "/settings/organization?card=identity",
-    "profile:crown_jewels": "/settings/organization/profile/business?card=crown_jewels",
+    "profile:primary_assets": "/settings/organization/profile/business?card=primary_assets",
     "profile:tracked_organizations": "/settings/organization/profile/business?card=tracked_organizations",
-    "profile:tech_stack": "/settings/organization/profile/technology?card=tech_stack",
-    "profile:ai_systems": "/settings/organization/profile/technology?card=ai_systems",
+    "profile:software": "/settings/organization/profile/technology?card=software",
 }
 
 
@@ -170,11 +169,15 @@ def test_a_profile_prerequisite_opens_the_tab_and_card_of_its_field_never_the_ba
             if not item["check"].startswith("profile:"):
                 continue
             seen.add(item["check"])
+            if item["check"] == "profile:ai_targets":
+                # #1844: AI targets are assets, fixed on the CTEM Inventory, never a profile card.
+                assert item["fix_route"] == "/ctem/inventory", (slug, item)
+                continue
             assert item["fix_route"] == _PROFILE_ROUTES[item["check"]], (slug, item)
             assert item["fix_route"] not in ("/settings/organization", "/settings/organization/profile"), slug
         # The routes pass the save rules (fix_route pattern).
         assert clean_structured(parts)["prerequisites"], slug
-    assert "profile:crown_jewels" in seen
+    assert "profile:primary_assets" in seen and "profile:ai_targets" in seen
     for check, route in _PROFILE_ROUTES.items():
         assert profile_fix_route(check.split(":", 1)[1]) == route
 

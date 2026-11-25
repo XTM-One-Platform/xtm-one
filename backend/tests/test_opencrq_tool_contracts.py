@@ -720,7 +720,7 @@ READS = {
         ("supportingAssets.getSupportingAsset",),
         (
             "URL: https://cmdb.acme.io/srv-0412", "Linked person: Jane Doe",
-            "Tags: crown-jewel (hand-set), edr",
+            "Tags: primary-asset (hand-set), edr",
         ),
         overrides={
             "supportingAssets.getSupportingAsset": {
@@ -728,7 +728,7 @@ READS = {
                 "url": "https://cmdb.acme.io/srv-0412",
                 "linkedPerson": "Jane Doe",
                 "tags": [
-                    {"id": "11111111-0000-4000-8000-000000000001", "name": "crown-jewel", "isManual": True},
+                    {"id": "11111111-0000-4000-8000-000000000001", "name": "primary-asset", "isManual": True},
                     {"id": "11111111-0000-4000-8000-000000000002", "name": "edr", "isManual": False},
                 ],
             },
@@ -1163,7 +1163,7 @@ WRITES = {
         "update_opencrq_supporting_asset",
         {
             "supporting_asset_id": SUPPORTING_ASSET, "category": "identity", "subcategory": " Service_Account ",
-            "tag_names": [" crown-jewel ", "", "edr"],
+            "tag_names": [" primary-asset ", "", "edr"],
             "properties": {"user_principal_name": "svc@acme.io", "is_enabled": True, "privileged_pim_roles": []},
         },
         opencrq_assets,
@@ -1171,7 +1171,7 @@ WRITES = {
         "supportingAssets.updateSupportingAsset",
         {
             "id": SUPPORTING_ASSET, "categoryId": "identity", "subcategoryId": "service_account",
-            "tagNames": ["crown-jewel", "edr"],
+            "tagNames": ["primary-asset", "edr"],
             "properties": {
                 "family": "identity", "userPrincipalName": "svc@acme.io", "isEnabled": True,
                 "privilegedPimRoles": [],
@@ -2470,7 +2470,7 @@ async def test_supporting_asset_creation_sends_every_field_opencrq_accepts():
             "create_opencrq_supporting_asset",
             name="ACME-SRV-0500", category="host", exposure="internal", criticality="high",
             subcategory="server", url="https://cmdb.acme.io/srv-0500", linked_person="Jane Doe",
-            tag_names=["crown-jewel", " edr "],
+            tag_names=["primary-asset", " edr "],
             properties={
                 "family": "machine", "hostname": "acme-srv-0500", "ip_addresses": ["10.0.0.5"],
                 "cloud_provider": "aws", "arch": "x86_64", "is_eol": False,
@@ -2488,7 +2488,7 @@ async def test_supporting_asset_creation_sends_every_field_opencrq_accepts():
             "id": asset_id, "name": "ACME-SRV-0500", "description": None, "ownerId": None,
             "exposure": "internal", "categoryId": "host", "criticality": "high",
             "subcategoryId": "server", "url": "https://cmdb.acme.io/srv-0500", "linkedPerson": "Jane Doe",
-            "tagNames": ["crown-jewel", "edr"],
+            "tagNames": ["primary-asset", "edr"],
             "properties": {
                 "family": "machine", "hostname": "acme-srv-0500", "ipAddresses": ["10.0.0.5"],
                 "cloudProvider": "aws", "arch": "x86_64", "isEol": False,

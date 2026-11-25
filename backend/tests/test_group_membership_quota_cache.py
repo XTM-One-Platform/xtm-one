@@ -229,7 +229,12 @@ class _SyncDb:
         rendered = str(stmt)
         if "FROM agents" in rendered:
             return _Rows([])
-        return _Rows(self.memberships if "FROM group_members" in rendered else self.groups)
+        if "FROM group_members" in rendered:
+            return _Rows(self.memberships)
+        if "groups.auto_join IS true" in rendered:
+            # The ids of the auto-join groups among the user's SAML memberships.
+            return _Rows([g.id for g in self.groups if g.auto_join])
+        return _Rows(self.groups)
 
     def add(self, obj):
         self.added.append(obj)
@@ -301,6 +306,22 @@ async def test_an_assertion_with_no_group_reports_what_it_removed(dana, source, 
     assert db.deleted == ([membership] if changed else [])
 
 
+@pytest.mark.parametrize("names", [[], ["Analysts"]])
+async def test_a_saml_membership_of_an_auto_join_group_is_never_removed_as_stale(
+    dana: SimpleNamespace, names: list[str]
+) -> None:
+    """Auto join turned on after the mapping wrote the row (#1901): the row
+    stays "saml" and the mapping keeps it whatever the assertion names."""
+    everyone = Group(id=uuid.uuid4(), name="Everyone", auto_join=True)
+    analysts = Group(id=uuid.uuid4(), name="Analysts")
+    membership = _membership(everyone, dana, "saml")
+    db = _SyncDb(memberships=[membership], groups=[everyone, analysts])
+
+    await _sync_user_groups(db, dana, names, auto_create=False)
+    assert db.deleted == []
+    assert membership.source == "saml"
+
+
 class _ScriptedDb:
     """Answers each query in turn, as ``_rename_uuid_groups`` asks them."""
 
@@ -370,6 +391,10 @@ class _Result:
 
     def scalar_one_or_none(self):
         return self._value
+
+    def all(self):
+        # No group has auto join on in this fake (#1901).
+        return []
 
 
 class _AcsDb:

@@ -225,9 +225,10 @@ async def test_two_users_with_different_visibility_share_cases_and_see_only_thei
     """#11613: Alice sees CVE-1 and CVE-2 in OpenCTI, Bob only CVE-1 (another group, other markings).
 
     One shared case. Bob's recompute (he cannot see CVE-2) neither closes nor
-    shrinks it; rendered for Bob, CVE-2 is a bare Restricted row and the
-    aggregates cover CVE-1 only; Carol (sees neither) does not see the case or
-    its count; Bob cannot split CVE-2 out; nothing of the source is stored.
+    shrinks it; rendered for Bob, CVE-2 is a bare Restricted row; Carol (sees neither) does not see the case or
+    its count; Bob cannot split CVE-2 out; nothing of the source is stored. Since #1930
+    Bob's detail aggregates are unknown (null with aggregates_restricted), never the
+    CVE-1-only figures a reader takes for the case's.
     """
     from app.services import ctem_cases_view as view_of
 
@@ -276,7 +277,10 @@ async def test_two_users_with_different_visibility_share_cases_and_see_only_thei
         assert for_alice is not None and for_bob is not None
         assert for_alice["restricted_count"] == 0 and for_alice["max_cvss"] == 10.0
         # CVE-2 and the signal it recorded are both restricted for Bob.
-        assert for_bob["restricted_count"] == 2 and for_bob["max_cvss"] == 9.8 and for_bob["kev_count"] == 0
+        assert for_bob["restricted_count"] == 2 and for_bob["members_without_details"] == 1
+        assert for_bob["aggregates_restricted"] is True
+        assert for_bob["max_cvss"] is None and for_bob["kev_count"] is None
+        assert for_alice["aggregates_restricted"] is False and for_alice["members_without_details"] == 0
         assert {"restricted": True} in for_bob["issues"]
         assert "CVE-2" not in str(for_bob) and "secret-host" not in str(for_bob) and "opencti:v2" not in str(for_bob)
         assert view_of.hydrate(case_id, rows, events, carol) is None
@@ -364,6 +368,75 @@ async def test_a_manual_merge_keeps_the_survivor_and_maps_every_key_through_reco
                 source_ids=[target.id],
                 actor=str(owner_id),
             )
+
+
+async def test_a_merged_duplicate_never_comes_back_and_the_survivor_keeps_its_sla() -> None:
+    """#2037: merge, then two recompute passes: no new case, no ctem_case.opened, the SLA of the survivor kept."""
+    from app.services import ctem_case_loop as loop
+
+    async with _database() as sessions, sessions() as session:
+        org_id, _ = await _seed(session)
+        issues = [_issue("v1", "CVE-1"), _other("o1", "CVE-9")]
+        await store.apply_recompute(session, organization_id=org_id, vertical="cyber", issues=issues, now=NOW)
+        await session.commit()
+        target, merged = sorted(
+            (await session.execute(select(CtemCase))).scalars(), key=lambda c: "Tomcat" not in c.title
+        )
+        sla, target_id = target.sla_due_at, target.id
+        await store.merge_cases(
+            session,
+            organization_id=org_id,
+            vertical="cyber",
+            target_id=target_id,
+            source_ids=[merged.id],
+            actor="agent-1",
+            now=NOW,
+        )
+        await session.commit()
+        for hours in (1, 2):
+            events = loop.PendingEvents()
+            counts = await store.apply_recompute(
+                session,
+                organization_id=org_id,
+                vertical="cyber",
+                issues=issues,
+                events=events,
+                now=NOW + timedelta(hours=hours),
+            )
+            await session.commit()
+            assert counts["created"] == 0 and loop.CASE_OPENED not in _names(events)
+        (survivor,) = (await session.execute(select(CtemCase))).scalars().all()
+        assert survivor.id == target_id and survivor.sla_due_at == sla
+        merge = (
+            await session.execute(
+                select(CtemCaseEvent).where(CtemCaseEvent.case_id == target_id, CtemCaseEvent.kind == "merge")
+            )
+        ).scalar_one()
+        assert merge.actor == "agent-1"
+
+
+async def test_a_vendor_less_spelling_of_an_open_case_product_opens_no_second_case() -> None:
+    """#2037: MinIO under minio/minio and -/minio, same CVEs and assets: one case."""
+
+    def _minio(ext: str, cve: str, vendor: str | None, product: str) -> rules.SourceIssue:
+        return rules.SourceIssue(
+            source="opencti", external_id=ext, name=cve, cve=cve, product=product, vendor=vendor, cvss=9.8
+        )
+
+    async with _database() as sessions, sessions() as session:
+        org_id, _ = await _seed(session)
+        first = [_minio("m1", "CVE-2023-28432", None, "minio")]
+        await store.apply_recompute(session, organization_id=org_id, vertical="cyber", issues=first, now=NOW)
+        await session.commit()
+        second = [*first, _minio("m2", "CVE-2023-28434", "MinIO", "MinIO")]
+        counts = await store.apply_recompute(
+            session, organization_id=org_id, vertical="cyber", issues=second, now=NOW + timedelta(hours=1)
+        )
+        await session.commit()
+        assert counts["created"] == 0
+        (case,) = (await session.execute(select(CtemCase))).scalars().all()
+        assert set(case.keys) == {"upgrade:-/minio@latest", "upgrade:minio/minio@latest"}
+        assert await _members(session, case) == {"opencti:m1": True, "opencti:m2": True}
 
 
 def _names(events: Any) -> list[str]:
@@ -575,6 +648,143 @@ async def test_a_manual_split_announces_the_new_case() -> None:
         await session.commit()
         assert _names(events) == [loop.CASE_OPENED]
         assert events.items[0][1]["case_id"] == str(manual.id)
+
+
+async def test_the_openaev_identity_remap_keeps_the_case_merges_duplicates_and_retires_the_rest():
+    """OpenAEV #9233 re-keyed every finding (xtm-one #1994): the case keeps its row, owner and history."""
+    async with _database() as sessions, sessions() as session:
+        org_id, owner_id = await _seed(session)
+        case = CtemCase(
+            organization_id=org_id,
+            vertical="cyber",
+            title="Tomcat",
+            remediation_kind="upgrade",
+            keys=[KEY],
+            pinned_issues=["openaev:o1"],
+            state="remediating",
+            owner_user_id=owner_id,
+        )
+        session.add(case)
+        await session.flush()
+        session.add_all(
+            [
+                CtemCaseIssue(case_id=case.id, source="openaev", external_id="o1", open=True),
+                CtemCaseIssue(case_id=case.id, source="openaev", external_id="o2", open=False),
+                # The new id of o2 joined since the OpenAEV deploy: a duplicate.
+                CtemCaseIssue(case_id=case.id, source="openaev", external_id="n2", open=True),
+                CtemCaseIssue(case_id=case.id, source="openaev", external_id="o3", open=True),
+                CtemCaseIssue(case_id=case.id, source="opencti", external_id="v1", open=True),
+            ]
+        )
+        await session.flush()
+        first_row = (await session.execute(select(CtemCaseIssue).where(CtemCaseIssue.external_id == "o1"))).scalar_one()
+
+        counts = await store.remap_members(
+            session,
+            organization_id=org_id,
+            vertical="cyber",
+            remap={"openaev:o1": "openaev:n1", "openaev:o2": "openaev:n2", "openaev:o3": None},
+            retired_line="Replaced by OpenAEV finding identity migration",
+            now=NOW,
+        )
+        await session.commit()
+
+        assert counts == {"remapped": 1, "merged": 1, "retired": 1, "resolved": 0}
+        assert await _members(session, case) == {"openaev:n1": True, "openaev:n2": True, "opencti:v1": True}
+        moved = (await session.execute(select(CtemCaseIssue).where(CtemCaseIssue.external_id == "n1"))).scalar_one()
+        assert moved.id == first_row.id  # the same row: nothing of the case is lost
+        await session.refresh(case)
+        assert case.state == "remediating" and case.owner_user_id == owner_id
+        assert case.pinned_issues == ["openaev:n1"]
+        notes = (
+            (
+                await session.execute(
+                    select(CtemCaseEvent).where(CtemCaseEvent.case_id == case.id, CtemCaseEvent.kind == "note")
+                )
+            )
+            .scalars()
+            .all()
+        )
+        retired = [e for e in notes if e.issue == "openaev:o3"]
+        assert [e.reason for e in retired] == ["Replaced by OpenAEV finding identity migration"]
+        assert {(e.from_value, e.to_value) for e in notes if e.from_value} == {
+            ("openaev:o1", "openaev:n1"),
+            ("openaev:o2", "openaev:n2"),
+        }
+
+        # A second pass with the same answer finds nothing left to move.
+        again = await store.remap_members(
+            session,
+            organization_id=org_id,
+            vertical="cyber",
+            remap={"openaev:o1": "openaev:n1", "openaev:o3": None},
+            retired_line="Replaced by OpenAEV finding identity migration",
+            now=NOW,
+        )
+        assert again == {"remapped": 0, "merged": 0, "retired": 0, "resolved": 0}
+
+
+async def test_a_case_whose_members_were_all_retired_resolves_instead_of_staying_open_empty() -> None:
+    """No member left for a recompute to resolve: the retirement resolves the case (xtm-one #2011 review)."""
+    async with _database() as sessions, sessions() as session:
+        org_id, owner_id = await _seed(session)
+        emptied = CtemCase(
+            organization_id=org_id,
+            vertical="cyber",
+            title="Tomcat",
+            remediation_kind="upgrade",
+            keys=[KEY],
+            state="remediating",
+            owner_user_id=owner_id,
+        )
+        kept = CtemCase(
+            organization_id=org_id,
+            vertical="cyber",
+            title="Nginx",
+            remediation_kind="upgrade",
+            keys=["other"],
+            state="new",
+            owner_user_id=owner_id,
+        )
+        session.add_all([emptied, kept])
+        await session.flush()
+        session.add_all(
+            [
+                CtemCaseIssue(case_id=emptied.id, source="openaev", external_id="o1", open=True),
+                CtemCaseIssue(case_id=emptied.id, source="openaev", external_id="o2", open=False),
+                CtemCaseIssue(case_id=kept.id, source="openaev", external_id="o3", open=True),
+                CtemCaseIssue(case_id=kept.id, source="opencti", external_id="v1", open=True),
+            ]
+        )
+        await session.flush()
+
+        counts = await store.remap_members(
+            session,
+            organization_id=org_id,
+            vertical="cyber",
+            remap={"openaev:o1": None, "openaev:o2": None, "openaev:o3": None},
+            retired_line="Replaced by OpenAEV finding identity migration",
+            now=NOW,
+        )
+        await session.commit()
+
+        assert counts == {"remapped": 0, "merged": 0, "retired": 3, "resolved": 1}
+        await session.refresh(emptied)
+        await session.refresh(kept)
+        assert emptied.state == "resolved" and emptied.owner_user_id == owner_id
+        assert kept.state == "new" and await _members(session, kept) == {"opencti:v1": True}
+        states = (
+            (
+                await session.execute(
+                    select(CtemCaseEvent).where(CtemCaseEvent.case_id == emptied.id, CtemCaseEvent.kind == "state")
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert [(e.from_value, e.to_value, e.evidence) for e in states] == [
+            ("remediating", "resolved", "Replaced by OpenAEV finding identity migration")
+        ]
 
 
 async def test_the_schema_refuses_an_incomplete_accepted_risk():
