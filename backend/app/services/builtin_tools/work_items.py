@@ -2168,6 +2168,11 @@ def build_work_item_tools(
 
     executor.register(_CARD_TOOL, build_send_decision_card(agent_id, acting_user_id, _read_for_card))
 
+    from app.services.notification_feed_tool import TOOL_NAME as _BELL_TOOL
+    from app.services.notification_feed_tool import build_list_my_notifications, notifications_definition
+
+    executor.register(_BELL_TOOL, build_list_my_notifications(acting_user_id))
+
     definitions = [
         ToolDefinition(
             name="create_work_item",
@@ -2540,6 +2545,7 @@ def build_work_item_tools(
             source="builtin:coordination",
         ),
         decision_card_definition(),
+        notifications_definition(),
     ]
 
     return definitions, executor

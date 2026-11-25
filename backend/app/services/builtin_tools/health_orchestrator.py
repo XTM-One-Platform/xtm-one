@@ -47,6 +47,7 @@ TOOL_NAMES: Final = (
     "list_health_cycles",
     "get_health_cycle",
     "request_health_cycle",
+    "get_platform_health",
 )
 _MAX_LIMIT: Final = 50
 _GENERIC_ERROR: Final = "Platform Health could not answer this right now."
@@ -270,8 +271,59 @@ def build_health_orchestrator_tools(
             return f"Not started: {result.message(DEFAULT_NAME)}"
         return f"Started Platform Health cycle {result.cycle_id} on the {target_type} {resolved[1]}."
 
+    async def get_platform_health(module: str = "", limit: int = 20) -> str:
+        """The Platform Health page as the person reads it: module cards, open findings, alert settings (#2199).
+
+        The page's own reads (``api/v1/platform_health_findings.py``), so the role scope is the page's:
+        every module for an administrator, the generic modules and the agents they manage otherwise.
+        """
+        from app.api.v1.platform_health_findings import health_overview, list_health_findings
+        from app.core.database import async_session
+        from app.services.health.settings import load_health_settings
+
+        try:
+            async with async_session() as db:
+                _principal, user = await _caller(db, user_id)
+                if user is None:
+                    return "The Platform Health page is read for a signed-in person."
+                overview = await health_overview(user=user, db=db)
+                findings = await list_health_findings(
+                    module=[str(module)[:64]] if module else None,
+                    severity=None,
+                    category=None,
+                    finding_status=None,
+                    agentic=None,
+                    limit=max(1, min(int(limit or 20), _MAX_LIMIT)),
+                    offset=0,
+                    user=user,
+                    db=db,
+                )
+                page: dict[str, Any] = {
+                    "scope": overview.scope,
+                    "overall": overview.overall,
+                    "modules": [card.model_dump(mode="json") for card in overview.modules],
+                    "open_findings": findings.total,
+                    "findings": [finding.model_dump(mode="json") for finding in findings.items],
+                }
+                if user.is_admin:
+                    alerts = (await load_health_settings(db)).alert_emails
+                    page["alert_emails"] = {
+                        "enabled": alerts.enabled,
+                        "recipients": len(alerts.recipients),
+                        "min_severity": alerts.min_severity,
+                        "immediate": alerts.immediate,
+                        "digest": alerts.digest,
+                        "alert_after_minutes": alerts.alert_after_minutes,
+                    }
+        except Exception:
+            logger.exception("get_platform_health failed")
+            return _GENERIC_ERROR
+        return "The Platform Health page as you may read it (scores and findings as recorded):\n" + _data(
+            page, "Platform Health page"
+        )
+
     executor = CallableToolExecutor()
-    functions = [list_health_signals, list_health_cycles, get_health_cycle]
+    functions = [list_health_signals, list_health_cycles, get_health_cycle, get_platform_health]
     if allow_requests:
         functions.append(request_health_cycle)
     for fn in functions:
@@ -327,6 +379,17 @@ def build_health_orchestrator_tools(
             description="Ask Platform Health to investigate and improve one agent or flow you may manage. Starts at most one cycle per target at a time.",
             input_schema={"type": "object", "properties": target_props, "required": ["target"]},
             aliases=_former_names("request_health_cycle"),
+        ),
+        ToolDefinition(
+            name="get_platform_health",
+            description="Read the Platform Health page as you may see it: module scores, open findings, alert email settings. Read-only.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "module": {"type": "string", "description": "One module's findings only."},
+                    **limit_prop,
+                },
+            },
         ),
     ]
     if not allow_requests:
