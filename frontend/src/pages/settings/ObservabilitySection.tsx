@@ -121,24 +121,29 @@ export function ObservabilitySection() {
     COORDINATION_RETENTION_KEYS.map((key) => [key, parseCoordinationRetentionDays(coordinationInputs[key])]),
   ) as Record<CoordinationRetentionKey, number | null>;
   const coordinationRetention = { ...COORDINATION_RETENTION_DEFAULTS, ...(config?.coordination_retention ?? {}) };
-  const coordinationLabels: Record<CoordinationRetentionKey, { label: string; helper: string }> = {
+  const coordinationLabels: Record<CoordinationRetentionKey, { title: string; label: string; helper: string }> = {
     work_item_resolved_days: {
+      title: t_i18n("Closed work items"),
       label: t_i18n("Closed work items (days)"),
       helper: t_i18n("Done and cancelled work items are deleted this many days after their last update."),
     },
     shared_state_resolved_days: {
+      title: t_i18n("Resolved shared state"),
       label: t_i18n("Resolved shared state (days)"),
       helper: t_i18n("Resolved shared state entries are deleted this many days after their last update."),
     },
     work_item_abandoned_days: {
+      title: t_i18n("Unclaimed open work items"),
       label: t_i18n("Unclaimed open work items (days)"),
       helper: t_i18n("Open work items nobody picks up are cancelled this many days after their last activity."),
     },
     shared_state_archive_days: {
+      title: t_i18n("Archived shared state items"),
       label: t_i18n("Archived shared state items (days)"),
       helper: t_i18n("List items moved to an archive entry are dropped this many days after they were archived."),
     },
     workset_resolved_days: {
+      title: t_i18n("Resolved worksets"),
       label: t_i18n("Resolved worksets (days)"),
       helper: t_i18n("Resolved worksets are deleted with their documents this many days after they were resolved."),
     },
@@ -397,12 +402,15 @@ export function ObservabilitySection() {
             <div className="space-y-3 border-t border-elevation-subtle-soft pt-4">
               <p className="content-compact font-medium text-default-secondary">{t_i18n("Coordination retention")}</p>
 
-              <div className="rounded-sm bg-elevation-default p-4 space-y-2" data-testid="observability-coordination-retention">
+              <div className="space-y-3" data-testid="observability-coordination-retention">
                 {COORDINATION_RETENTION_KEYS.map((key) => (
-                  <div key={key} className="flex items-center justify-between gap-3">
+                  <div key={key} className="flex items-center justify-between gap-3 rounded-sm bg-elevation-default p-4">
                     <div className="flex items-center gap-3 min-w-0">
-                      <Clock3 className="h-4 w-4 shrink-0 text-default-secondary" />
-                      <p className="content-compact">{coordinationLabels[key].helper}</p>
+                      <Clock3 className="h-5 w-5 shrink-0 text-default-secondary" />
+                      <div className="min-w-0">
+                        <p className="content-base font-medium">{coordinationLabels[key].title}</p>
+                        <p className="content-compact text-default-secondary">{coordinationLabels[key].helper}</p>
+                      </div>
                     </div>
                     <Badge variant="outline" className="content-caption shrink-0">
                       {retentionText(coordinationRetention[key])}
