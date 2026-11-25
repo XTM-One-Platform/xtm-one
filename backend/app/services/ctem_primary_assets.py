@@ -33,6 +33,41 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 #: The order a link source is shown in when several reach the same primary asset: a person's first.
 SOURCE_ORDER: tuple[str, ...] = ("manual", "rule", "opencrq")
+#: The link sources a person or OpenCRQ recorded (#2396): a primary asset they reach is ``proven``.
+PROVEN_SOURCES: frozenset[str] = frozenset({"manual", "opencrq"})
+
+
+def link_basis(chain: Iterable[Any] | None) -> str:
+    """``proven`` when a hop of *chain* is a ``manual`` or ``opencrq`` link, else ``inferred`` (#2396).
+
+    A rule link, a name match or a primary asset named in the evidence is inferred.
+    """
+    for hop in chain or ():
+        if isinstance(hop, dict) and str(hop.get("source") or "") in PROVEN_SOURCES:
+            return "proven"
+    return "inferred"
+
+
+def decision_primary_assets(decision: Any) -> list[dict[str, str]]:
+    """``[{name, basis}]`` of the primary assets a gate decision's scope names, in order (#2396).
+
+    *basis* is the one the decision recorded; a decision written before #2396 has
+    none and is read from its kept chain (no chain: a name match, ``inferred``).
+    """
+    scope = decision.get("scope") if isinstance(decision, dict) else None
+    sources = scope.get("sources") if isinstance(scope, dict) else None
+    out: dict[str, str] = {}
+    for entry in sources if isinstance(sources, list) else []:
+        if not isinstance(entry, dict) or entry.get("from") != "primary_asset" or not entry.get("name"):
+            continue
+        basis = entry.get("basis")
+        if basis not in ("proven", "inferred"):
+            basis = link_basis(entry.get("chain"))
+        name = str(entry["name"])
+        out[name] = "proven" if "proven" in (out.get(name), basis) else "inferred"
+    return [{"name": n, "basis": b} for n, b in out.items()]
+
+
 #: Records read at most as members of a linked group (a larger group is cut, said in ``truncated``).
 MAX_MEMBERS = 20000
 #: Installed software rows read at most for the assets that reach a primary asset.

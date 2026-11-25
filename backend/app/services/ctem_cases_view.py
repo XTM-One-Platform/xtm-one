@@ -207,6 +207,7 @@ def _issue_json(issue: rules.SourceIssue) -> dict[str, Any]:
     out = asdict(issue)
     out["assets"] = list(issue.assets)
     out["primary_assets"] = list(issue.primary_assets)
+    out["inferred_primary_assets"] = list(issue.inferred_primary_assets)
     out["first_seen_at"] = issue.first_seen_at.isoformat() if issue.first_seen_at else None
     return out
 
@@ -215,6 +216,7 @@ def _issue_from_json(data: dict[str, Any]) -> rules.SourceIssue:
     data = dict(data)
     data["assets"] = tuple(data.get("assets") or ())
     data["primary_assets"] = tuple(data.get("primary_assets") or ())
+    data["inferred_primary_assets"] = tuple(data.get("inferred_primary_assets") or ())
     seen = data.get("first_seen_at")
     data["first_seen_at"] = datetime.fromisoformat(seen) if seen else None
     # Typed facts (#2038); a view cached before it holds (version, outcome) pairs, read the same way.
@@ -803,7 +805,11 @@ def _visible_issue(
     row: CtemCaseIssue, issue: rules.SourceIssue | None, signal: dict[str, Any] | None = None
 ) -> dict[str, Any]:
     if row.source == SIGNAL_SOURCE:  # the signal that opened or joined the case: what it is, by name (#1936)
-        return {"source": row.source, "external_id": row.external_id, "open": row.open, **(signal or {})}
+        out = {"source": row.source, "external_id": row.external_id, "open": row.open, **(signal or {})}
+        if issue is not None:  # #2396: the primary assets its gate decision reached, which the case counts
+            out["primary_assets"] = list(issue.primary_assets)
+            out["primary_asset_links"] = primary_asset_links(issue)
+        return out
     if issue is None:  # seen before, its product does not answer now
         return {"source": row.source, "external_id": row.external_id, "open": row.open, "details_unavailable": True}
     return {
@@ -816,6 +822,8 @@ def _visible_issue(
         "kev": issue.kev,
         "assets": list(issue.assets),
         "primary_assets": list(issue.primary_assets),
+        # #2396: each primary asset with its link basis, proven (manual or OpenCRQ link) or inferred.
+        "primary_asset_links": primary_asset_links(issue),
         "first_seen_at": issue.first_seen_at.isoformat() if issue.first_seen_at else None,
         "open": row.open,
         # The version knowledge of this viewer's own OpenCTI read (CTEM-11, #946; shown by #928).
@@ -841,6 +849,20 @@ def _visible_issue(
     }
 
 
+def primary_asset_links(issue: rules.SourceIssue) -> list[dict[str, str]]:
+    """``[{name, basis}]`` of the primary assets *issue* reaches, ``proven`` or ``inferred`` (#2396)."""
+    inferred = set(issue.inferred_primary_assets)
+    return [{"name": j, "basis": "inferred" if j in inferred else "proven"} for j in issue.primary_assets]
+
+
+#: How a case counts its primary assets (#2396): the reader repeats it beside the counts.
+PRIMARY_ASSET_BASIS = (
+    "primary_asset_count counts the primary assets a manual or OpenCRQ link proves; "
+    "inferred_primary_asset_count those reached only through an inventory rule, a name match "
+    "or the evidence; each issue row lists its primary assets with their basis"
+)
+
+
 def _member_label(member: str, view: ViewerView) -> str | None:
     signal = view.signal_details.get(member)
     if signal is not None:
@@ -856,7 +878,14 @@ def visible_members(rows: list[CtemCaseIssue], view: ViewerView) -> list[CtemCas
 SEVERITY_PRIORITY: dict[str, str] = {"P1": "critical", "P2": "high", "P3": "medium"}
 
 #: The aggregates computed from member details: null for a viewer missing the details of an open member.
-DETAIL_AGGREGATES: tuple[str, ...] = ("asset_count", "primary_asset_count", "kev_count", "max_cvss", "max_epss")
+DETAIL_AGGREGATES: tuple[str, ...] = (
+    "asset_count",
+    "primary_asset_count",
+    "inferred_primary_asset_count",
+    "kev_count",
+    "max_cvss",
+    "max_epss",
+)
 #: Why they are null: the reader repeats it instead of reading "none".
 AGGREGATES_RESTRICTED_REASON = (
     "unknown for this reader: some open issues of the case are not readable with their details "
@@ -965,6 +994,8 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         "facts_reason": FACTS_UNREAD_REASON if unread else None,
         "asset_count": agg["asset_count"],
         "primary_asset_count": agg["primary_asset_count"],
+        "inferred_primary_asset_count": agg["inferred_primary_asset_count"],
+        "primary_asset_basis": PRIMARY_ASSET_BASIS,
         "kev_count": agg["kev_count"],
         "max_cvss": agg["max_cvss"],
         "max_epss": agg["max_epss"],
