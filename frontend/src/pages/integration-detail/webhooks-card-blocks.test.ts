@@ -28,6 +28,10 @@ describe("hasWebhookDeliveredEvents", () => {
     expect(hasWebhookDeliveredEvents(undefined)).toBe(false);
   });
 
+  it("is false for a provider whose events come from a stream the platform reads", () => {
+    expect(hasWebhookDeliveredEvents(catalog(["stream", "stream"]))).toBe(false);
+  });
+
   it.each([
     ["webhook", ["webhook"]],
     ["hybrid", ["hybrid"]],

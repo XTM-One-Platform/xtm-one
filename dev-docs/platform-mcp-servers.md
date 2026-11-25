@@ -198,13 +198,13 @@ characters hosted clients accept when its slug is longer (`agent_tool_name()`: t
 64-bit digest, which no lowercase slug can spell; `tools/call` still accepts
 the full slug).
 
-### OpenCTI (28 tools)
+### OpenCTI (31 tools)
 
 | Category | Tools |
 | --- | --- |
-| Search & read | `search_opencti`, `get_opencti_entity`, `get_opencti_relationship`, `list_opencti_entities`, `list_opencti_observables`, `list_opencti_relationships`, `get_opencti_container_full`, `get_opencti_entity_stats`, `get_opencti_top_related`, `get_opencti_entity_history`, `validate_nlq_filter` |
-| Create | `create_opencti_entity`, `create_opencti_relationship`, `create_opencti_observable`, `create_opencti_indicator`, `create_opencti_container`, `create_opencti_note` |
-| Update | `update_opencti_field`, `update_opencti_relationship_field` |
+| Search & read | `search_opencti`, `get_opencti_entity`, `get_opencti_relationship`, `list_opencti_entities`, `list_opencti_observables`, `list_opencti_relationships`, `get_opencti_container_full`, `get_opencti_entity_stats`, `get_opencti_top_related`, `get_opencti_entity_history`, `validate_nlq_filter`, `get_opencti_platform_version`, `get_opencti_schema_attributes` |
+| Create | `create_opencti_entity`, `create_opencti_relationship`, `create_opencti_observable`, `create_opencti_indicator`, `create_opencti_container`, `create_opencti_note` (all but the observable take `attributes`: the instance's mandatory and custom fields, read with `get_opencti_schema_attributes`) |
+| Update | `update_opencti_field`, `update_opencti_relationship_field` (a custom field by its `x_opencti_cf_` name) |
 | Delete | `delete_opencti_entity`, `delete_opencti_relationship` |
 | Labels & markings | `add_opencti_label`, `remove_opencti_label`, `add_opencti_marking`, `remove_opencti_marking`, `list_opencti_markings` |
 | Containers | `add_opencti_to_container`, `remove_opencti_from_container` |

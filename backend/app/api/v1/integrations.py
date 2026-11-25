@@ -84,6 +84,7 @@ from app.api.v1.integration_catalog import (
     PROVIDER_CATALOG,
     build_dummy_token,
     build_provider_tools,
+    credential_fields_by_auth_type,
     integration_owns_oauth_scopes,
     invalid_extra_fields,
     is_certified_provider,
@@ -391,7 +392,9 @@ def _is_sensitive_setting_name(key: str) -> bool:
     # `type` of "secret".
     if lowered.endswith(("_id", "_url", "_urls")):
         return False
-    return any(token in lowered for token in ("secret", "token", "key", "password"))
+    # A connection string (``event_hub_connection_string``) embeds its shared
+    # access key: ``Endpoint=...;SharedAccessKey=...``.
+    return any(token in lowered for token in ("secret", "token", "key", "password", "connection_string"))
 
 
 # Placeholder returned instead of secret extra_config values in API responses.
@@ -991,6 +994,7 @@ async def list_provider_catalog(
                 auth_type=val["auth_type"],
                 supported_auth_types=val.get("supported_auth_types"),
                 fields=val["fields"],
+                fields_by_auth_type=credential_fields_by_auth_type(val),
                 # A2A only. Absent from this list, the catalog endpoint drops
                 # them and the creation form cannot offer a direction — which
                 # makes every integration an operator creates inbound and the

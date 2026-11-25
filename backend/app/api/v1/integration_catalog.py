@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Mapping
 from typing import Any
 
 from app.api.v1.schemas.integration import ProviderTool
@@ -36,6 +37,7 @@ from app.integrations.providers.rydoo.webhooks import TRIGGER_EVENTS as RYDOO_TR
 from app.integrations.providers.spendesk.webhooks import EVENT_TYPES as SPENDESK_EVENT_TYPES
 from app.integrations.providers.spendesk.webhooks import TRIGGER_EVENTS as SPENDESK_TRIGGER_EVENTS
 from app.services.dealhub_events import catalog_events as _dealhub_catalog_events
+from app.services.defender_stream import catalog_events as _defender_catalog_events
 from app.services.opencrq_job_events import FILTER_KEYS as _OPENCRQ_FILTER_KEYS
 from app.services.tool_classification import definition_tool_type
 from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
@@ -296,6 +298,33 @@ def supported_auth_types(entry: dict | None) -> list[str]:
         return list(declared)
     default = entry.get("auth_type")
     return [default] if default else []
+
+
+#: The credential fields each authentication mode asks for in the creation form.
+#: A mode absent from it (``none``, ``platform_managed``) asks for none.
+_CREDENTIAL_FIELDS_OF_MODE: dict[str, tuple[str, ...]] = {
+    "oauth": ("client_id", "client_secret"),
+    "client_credentials": ("client_id", "client_secret"),
+    "oauth_password": ("client_id", "client_secret"),
+    "api_key": ("api_key",),
+    "bot_token": ("api_key",),
+}
+
+
+def credential_fields_by_auth_type(entry: Mapping[str, Any] | None) -> dict[str, list[str]] | None:
+    """The credential fields of each mode of a provider with several auth types
+    (#2317), so the creation form shows the fields of the mode picked rather than
+    those of the default one (``fields``, kept as it is). None for a single mode.
+    An OAuth client the platform registers itself (``oauth_registration``) is
+    asked for nothing."""
+    modes = supported_auth_types(dict(entry) if entry else None)
+    if len(modes) < 2:
+        return None
+    registers_client = bool((entry or {}).get("oauth_registration"))
+    return {
+        mode: [] if mode == "oauth" and registers_client else list(_CREDENTIAL_FIELDS_OF_MODE.get(mode, ()))
+        for mode in modes
+    }
 
 
 def unsupported_auth_type_message(auth_type: str, provider: str, supported: list[str]) -> str:
@@ -885,12 +914,12 @@ PROVIDER_CATALOG = {
             ),
         },
     },
-    # --- Model server on the customer's network, reached through a relay ---
+    # --- Model server, reached directly or through a relay ---
     "lmstudio": {
         "name": "LM Studio",
         "description": (
-            "Run the platform on models served by LM Studio inside your network, reached "
-            "through an XTM One Relay. See the models on the server, load and unload them, "
+            "Run the platform on models served by LM Studio, reached directly or through an "
+            "XTM One Relay. See the models on the server, load and unload them, "
             "download new ones from the LM Studio catalog or Hugging Face, and feed the "
             "platform's LM Studio LLM provider with the models you pick."
         ),
@@ -898,24 +927,22 @@ PROVIDER_CATALOG = {
         "category": "integration",
         "integration_category": "ai_models",
         "integration_types": ["llm"],
-        # Reached only from the relay installed next to the server.
-        "requires_relay": True,
         # The token is optional (LM Studio asks for one only when Require
         # Authentication is on): an extra field, so the integration is
         # connected as soon as its server URL is set.
         "auth_type": "none",
         "fields": [],
         "extra_fields": {
-            "base_url": "LM Studio server URL, as the relay reaches it (e.g. http://gpu-host:1234)",
+            "base_url": "LM Studio server URL, as the platform or its relay reaches it (e.g. http://gpu-host:1234)",
             "api_token": "API token (optional: only when Require Authentication is on in LM Studio)",
         },
         "setup_guide": {
             "title": "LM Studio Setup",
             "url": "https://lmstudio.ai/docs/developer/rest",
             "steps": [
-                "Install LM Studio 0.4 or later on the machine that serves the models, open Developer and start the server. Turn on Serve on Local Network so the relay can reach it.",
-                "Install an XTM One Relay in the same network (Settings > Relays), and allow the server's host and port in the relay's destinations.",
-                "Choose that relay group in Route through relay, and enter the server URL as the relay reaches it (for example http://gpu-host:1234).",
+                "Install LM Studio 0.4 or later on the machine that serves the models, open Developer and start the server. Turn on Serve on Local Network when the platform or the relay runs on another machine.",
+                "Enter the server URL as the platform reaches it (for example http://gpu-host:1234, or http://host.docker.internal:1234 for an LM Studio on the machine running the platform's containers), and leave Route through relay on Direct.",
+                "When the platform cannot reach the server's network, install an XTM One Relay in that network (Settings > Relays), allow the server's host and port in the relay's destinations, choose its group in Route through relay, and enter the server URL as the relay reaches it.",
                 "Optional: when Require Authentication is on in LM Studio's server settings, create a token (Manage Tokens) and paste it in the API token field. Leave it empty otherwise.",
                 "To let the platform run on LM Studio, make the integration company-managed, then open its Models tab and create the LM Studio LLM provider from it.",
             ],
@@ -930,8 +957,8 @@ PROVIDER_CATALOG = {
                 },
             ],
             "notes": (
-                "Every request leaves from the relay, never from the platform: the integration "
-                "refuses to call the server without a relay group. The platform LLM provider fed "
+                "With a relay group, every request leaves from the relay; without one, the "
+                "platform calls the server directly. The platform LLM provider fed "
                 "by this integration holds no URL or token of its own; it reads them, and the "
                 "relay group, from the integration on every request, so an edit here applies to it. "
                 "Unlinking the provider, deleting the integration or making it private stops it."
@@ -6879,7 +6906,14 @@ PROVIDER_CATALOG = {
         "token_url": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
         "extra_fields": {
             "tenant_id": "Azure AD Tenant ID (required)",
+            "event_hub_namespace": "Event Hub namespace: the <name>.servicebus.windows.net host the Defender XDR Streaming API sends alert events to",
+            "event_hub_name": "Event Hub name: the hub of that namespace the Streaming API writes to",
+            "event_hub_consumer_group": "Event Hub consumer group: optional, $Default when empty",
+            "event_hub_connection_string": "Event Hub connection string: optional, used instead of the Entra app's Azure Event Hubs Data Receiver role",
         },
+        # Alert events: the Defender XDR Streaming API to the tenant's Azure
+        # Event Hub, read by the platform's consumer (services/defender_stream.py).
+        "available_events": _defender_catalog_events(),
         "setup_guide": {
             "title": "Microsoft Defender XDR Integration Setup",
             "url": "https://learn.microsoft.com/en-us/graph/api/resources/security-api-overview",

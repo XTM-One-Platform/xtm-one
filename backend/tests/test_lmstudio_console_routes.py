@@ -1,4 +1,4 @@
-"""The LM Studio console routes without a database: their gates, the relay route, their answers to failures.
+"""The LM Studio console routes without a database: their gates, their route, their answers to failures.
 
 Who may open the console, the platform provider it feeds and the provider's
 own resolution run on a real PostgreSQL in ``test_lmstudio_console_postgres.py``;
@@ -95,7 +95,7 @@ def console_of(monkeypatch):
 
         async def _route(db, row):
             assert row is integration
-            return _ROUTE
+            return _ROUTE if row.relay_group_id is not None else None
 
         async def _audit(db, **kwargs):
             audits.append(kwargs)
@@ -184,20 +184,17 @@ async def test_every_server_call_runs_on_the_integration_s_relay_route(monkeypat
     assert current_route() is None
 
 
-async def test_an_unrouted_integration_sends_nothing(monkeypatch, console_of):
+async def test_an_unrouted_integration_calls_its_server_directly(monkeypatch, console_of):
     console_of(_integration(routed=False))
     sent: list = []
 
     async def _list(connection):
-        sent.append(connection)
+        sent.append((current_route(), connection.base_url))
         return []
 
     monkeypatch.setattr(client, "list_models", _list)
-    with pytest.raises(HTTPException) as raised:
-        await console.get_models("x", user=_ADMIN, db=_Db(), _ai_gate=None)
-    assert raised.value.status_code == 409
-    assert raised.value.detail == {"code": "lmstudio_not_routed", "message": client.PUBLIC_MESSAGES["not_routed"]}
-    assert sent == []
+    await console.get_models("x", user=_ADMIN, db=_Db(), _ai_gate=None)
+    assert sent == [(None, "http://gpu-host:1234")]
 
 
 async def test_changing_the_server_is_for_its_holder_and_is_audited(monkeypatch, console_of):
@@ -278,8 +275,9 @@ def test_the_server_url_is_shown_and_the_token_is_a_redacted_extra_field():
 
     entry = PROVIDER_CATALOG["lmstudio"]
     # No credential field: the token is optional, so the integration is
-    # connected once its URL is set (``auth_type`` ``none``), and never direct.
-    assert (entry["auth_type"], entry["fields"], entry["requires_relay"]) == ("none", [], True)
+    # connected once its URL is set (``auth_type`` ``none``), directly or
+    # through a relay group.
+    assert (entry["auth_type"], entry["fields"], entry.get("requires_relay", False)) == ("none", [], False)
     assert list(entry["extra_fields"]) == [client.BASE_URL_FIELD, client.TOKEN_FIELD]
     assert not _is_sensitive_setting_name(client.BASE_URL_FIELD)
     assert _is_sensitive_setting_name(client.TOKEN_FIELD)

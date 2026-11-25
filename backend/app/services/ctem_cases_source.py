@@ -28,6 +28,7 @@ source products decide what the viewer sees.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 import uuid
@@ -236,9 +237,10 @@ _AEV_CVE_FINDINGS_FILTER = {
     "filters": [{"key": "finding_type", "mode": "or", "operator": "eq", "values": ["cve"]}],
 }
 
-#: The last detection of a Finding as OpenAEV's ``/api/findings/search`` filters it: a finding is
-#: read while it was seen in the window (OpenAEV #9233 moves ``finding_updated_at`` on each
-#: occurrence), not while it was created in it.
+#: The server-side window of ``/api/findings/search``: ``finding_updated_at`` is the queryable
+#: time (OpenAEV #9233 moves it on each occurrence). Any later write moves it too, so the rows it
+#: keeps are a superset; :func:`_seen_since` then keeps a finding by its last detection,
+#: ``finding_last_seen``, when OpenAEV answers it (OpenAEV #9846).
 _AEV_FINDING_UPDATED_AT = "finding_updated_at"
 #: Only the findings still open at source join a case (``finding_status`` is ``@Queryable``).
 _AEV_OPEN_FINDING = {"key": "finding_status", "mode": "or", "operator": "eq", "values": ["OPEN"]}
@@ -366,7 +368,100 @@ def _remediating_node(node: dict[str, Any]) -> dict[str, Any]:
     return {**node, "name": head, "version": version or tail}
 
 
+#: Seconds a matcher stack is shared by every viewer build and pod of an organization (#2232): the
+#: stack is the organization's software and inventory, never the viewer's, so one build computes it.
+MATCHER_STACK_TTL_SECONDS = 300
+#: Seconds a build waits for the stack another pod is computing before it computes its own.
+MATCHER_STACK_WAIT_SECONDS = 180.0
+_MATCHER_STACK_POLL_SECONDS = 0.5
+#: One computation of a stack key at a time on this worker.
+_MATCHER_STACK_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+def _matcher_stack_key(organization_id: uuid.UUID, profile_version: int) -> str:
+    return f"ctem:cases:matcher-stack:{organization_id}:{profile_version}"
+
+
+async def _stack_redis() -> Any | None:
+    try:
+        from app.core.redis import redis_client
+
+        return await redis_client()
+    except Exception:  # no Redis: each worker computes its own stack
+        return None
+
+
+async def _cached_stack(client: Any, key: str) -> list[dict[str, Any]] | None:
+    try:
+        raw = await client.get(key)
+    except Exception:
+        logger.info("CTEM cases: matcher stack cache unreadable", exc_info=True)
+        return None
+    if raw is None:
+        return None
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if isinstance(value, list) else None
+
+
 async def _matcher_stack(db: AsyncSession) -> list[dict[str, Any]]:
+    """The organization's matcher stack (:func:`_compute_matcher_stack`), computed once per
+    organization and profile version and shared across viewers and pods through Redis (#2232).
+
+    A view build after a case-opening drain read it once per viewer and per pod (150 s each on
+    ctem.one). A build that finds another pod computing it (``SET NX`` lock) waits for its answer
+    up to :data:`MATCHER_STACK_WAIT_SECONDS`, then computes its own. Without Redis, or with no
+    organization profile, it is computed as before.
+    """
+    from app.services import organization_context as org_context
+
+    try:
+        row = await org_context.current_version(db)
+    except Exception:
+        row = None
+    client = await _stack_redis() if row is not None else None
+    if row is None or client is None:
+        return await _compute_matcher_stack(db)
+    key = _matcher_stack_key(row.organization_id, int(row.version))
+    cached = await _cached_stack(client, key)
+    if cached is not None:
+        return cached
+    local = _MATCHER_STACK_LOCKS.setdefault(key, asyncio.Lock())
+    async with local:
+        cached = await _cached_stack(client, key)
+        if cached is not None:
+            return cached
+        lock_key = f"{key}:lock"
+        try:
+            owner = bool(await client.set(lock_key, "1", ex=int(MATCHER_STACK_WAIT_SECONDS), nx=True))
+        except Exception:
+            owner = True
+        if not owner:
+            deadline = time.monotonic() + MATCHER_STACK_WAIT_SECONDS
+            while time.monotonic() < deadline:
+                await asyncio.sleep(_MATCHER_STACK_POLL_SECONDS)
+                cached = await _cached_stack(client, key)
+                if cached is not None:
+                    return cached
+        try:
+            stack = await _compute_matcher_stack(db)
+            try:
+                await client.set(key, json.dumps(stack), ex=MATCHER_STACK_TTL_SECONDS)
+            except Exception:
+                logger.info("CTEM cases: matcher stack not cached", exc_info=True)
+            return stack
+        finally:
+            if owner:
+                try:
+                    await client.delete(lock_key)
+                except Exception:
+                    logger.info("CTEM cases: matcher stack lock not released", exc_info=True)
+            _MATCHER_STACK_LOCKS.pop(key, None)
+
+
+async def _compute_matcher_stack(db: AsyncSession) -> list[dict[str, Any]]:
     """The software the OpenCTI issues are read for, each with every version the device inventory
     reports (#2038): the same versions the case's ``running_versions`` shows, so each gets its
     own outcome. The inventory failing keeps the software's own versions."""
@@ -674,7 +769,7 @@ def openaev_issues(findings: list[dict[str, Any]]) -> list[rules.SourceIssue]:
                 name=f.value[:300],
                 cve=f.value if f.value.upper().startswith("CVE-") else None,
                 assets=f.asset_labels,
-                first_seen_at=_when(f.created_at),
+                first_seen_at=_when(f.first_seen),
                 **_finding_lifecycle(f),
             )
         )
@@ -871,7 +966,22 @@ async def _read_openaev(
         page += 1
         if not content or page >= int(body.get("totalPages") or 0):
             break
-    return openaev_issues(findings[:AEV_FINDING_CAP])
+    since_at = now - timedelta(days=_AEV_VALIDATION_WINDOW_DAYS)
+    return openaev_issues([f for f in findings[:AEV_FINDING_CAP] if _seen_since(f, since_at)])
+
+
+def _seen_since(raw: dict[str, Any], since: datetime) -> bool:
+    """Whether a search row was detected in the window (OpenAEV #9846).
+
+    An OpenAEV that answers ``finding_last_seen`` is read on it: a row the server window kept only
+    because a later write moved its update time is left out. An older OpenAEV answers no detection
+    time, so its row stays (the server already filtered it on ``finding_updated_at``).
+    """
+    f = parse_finding(raw)
+    if f is None or not f.seen_reported:
+        return True
+    seen = _when(f.last_seen)
+    return seen is None or seen >= since
 
 
 async def _read_opencti_by_id(

@@ -57,6 +57,18 @@ export function otherVariantFieldKeys(entry: Entry | undefined, value: string | 
 }
 
 /**
+ * The credential fields the creation form asks for in `authType`: the entry's
+ * fields for that mode when it declares them per mode (`fields_by_auth_type`),
+ * else its own `fields` (those of the default mode).
+ */
+export function credentialFieldsFor(
+  entry: Pick<ProviderCatalogItem, "fields" | "fields_by_auth_type">,
+  authType: string | null | undefined,
+): string[] {
+  return (authType ? entry.fields_by_auth_type?.[authType] : undefined) ?? entry.fields;
+}
+
+/**
  * The setup guide of `authType`: the entry's guide for that authentication
  * mode when it has one (`auth_setup_guides`), else its own `setup_guide`.
  * Pass the entry as resolved for its variant.

@@ -91,8 +91,10 @@ _TITLES: dict[str, str] = {
 
 #: The action a ``control_decay`` signal asks for, by its evidence state (#2069): a control never
 #: measured has nothing to restore. Titled on the asset name; the reason stays on the signal.
+#: ``never_measured`` says nothing about a missing control, only that no test evidence exists yet:
+#: the action is a first measurement of the asset (#2352).
 _CONTROL_DECAY_TITLES: dict[str, str] = {
-    "never_measured": "Put in place and measure the control on {asset}",
+    "never_measured": "Measure {asset} for the first time (no test evidence yet)",
     "attested_only": "Measure the control on {asset} (attested only)",
     "expired": "Re-test the control on {asset}",
 }
