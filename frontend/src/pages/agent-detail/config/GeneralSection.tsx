@@ -100,6 +100,14 @@ const MODEL_FIELD_ID = "agent-general-model";
 const PERSONA_FIELD_ID = "agent-general-persona";
 const COMMIT_MESSAGE_FIELD_ID = "agent-general-commit-message";
 
+/** The sharing card's read-only wording where the viewer cannot manage the agent (#2203), translated by the card. @i18n-keys */
+const READ_ONLY_RESTRICTION_COPY = {
+  title: "Restrict access",
+  restricted: "Only the people and groups below can see this. Access to a built-in agent cannot be changed.",
+  open: "Visible to everyone on the platform. Access to a built-in agent cannot be restricted.",
+  empty: "No one is listed yet, so only admins and the owner can reach this.",
+} as const;
+
 /* ── Searchable Tool Picker ──────────────────────────────────────────── */
 type ToolOption = { id: string; name: string; group: string; ref: { source: string; tool_id?: string; server_id?: string; provider?: string; tool_name: string } };
 
@@ -1524,7 +1532,10 @@ export function GeneralSection({
             )}
             {/* Sharing — visible to any user who can manage. Rendered for
                 company-managed agents too: there the picker names the
-                audience an access restriction narrows the agent down to. */}
+                audience an access restriction narrows the agent down to.
+                Read-only where the viewer cannot manage the agent (a
+                built-in in XTM One mode, administrators included): the
+                server answers 403 to the write (#2203). */}
             <PrincipalSharingCard
               sharedGroupIds={sharedGroupIds}
               onChange={onSaveSharedGroups}
@@ -1533,7 +1544,8 @@ export function GeneralSection({
               userSharing={userSharing}
               entityType="agent"
               isCompanyManaged={companyManaged}
-              disabled={isPending}
+              disabled={isPending || !canManage}
+              restrictionCopy={canManage ? undefined : READ_ONLY_RESTRICTION_COPY}
             />
             {!companyManaged && (
               <PersonalIntegrationsBanner
