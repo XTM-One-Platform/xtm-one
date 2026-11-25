@@ -166,8 +166,9 @@ def category_counts(
 ) -> dict[str, int]:
     """The size of every category of *profile* (``tracked_organizations`` from *tracked_count*).
 
-    *asset_counts* (``organization_context.asset_list_counts``) gives the asset
-    and group sizes the records hold (#1543), counted without loading a row.
+    *asset_counts* (``organization_context.agent_list_counts``) gives the asset,
+    group and software sizes the paged reads answer from (#1543, #2144),
+    counted without loading a row.
     """
     from app.services import organization_context_categories as cats
 
@@ -347,7 +348,7 @@ async def organization_summary_for(
     try:
         if not await effective_for(db, agent=agent, assignment=assignment):
             return ""
-        from app.services.organization_context import asset_list_counts, ctem_work_for, current_version
+        from app.services.organization_context import agent_list_counts, ctem_work_for, current_version
 
         row = await current_version(db)
         if row is None:
@@ -356,7 +357,7 @@ async def organization_summary_for(
             row,
             tracked_count=len(await _tracked(db)),
             ctem_work=await ctem_work_for(db, agent),
-            asset_counts=await asset_list_counts(db, row.organization_id),
+            asset_counts=await agent_list_counts(db, row.organization_id),
         )
         preloaded = await render_preloaded_categories(
             db, row, await categories_for(db, agent=agent, assignment=assignment)

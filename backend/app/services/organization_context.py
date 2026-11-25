@@ -1387,6 +1387,29 @@ async def asset_list_counts(db: AsyncSession, organization_id: uuid.UUID | None)
     return await records.list_counts(db, organization_id)
 
 
+async def agent_list_counts(db: AsyncSession, organization_id: uuid.UUID | None) -> dict[str, int] | None:
+    """The category sizes an agent reads, counted from what ``get_organization_context`` pages (#2144).
+
+    :func:`asset_list_counts`, then ``assets_exposure`` from the merged
+    inventory (one asset per identity cluster) and ``software`` from the
+    Software entities, each once it holds a row: the paged read answers from
+    those same stores, so the summary, the ``*`` index and the "of N" of a
+    page name one size. Read only, never builds a store.
+    """
+    from app.models.organization_asset import OrganizationAsset, OrganizationSoftware
+
+    if organization_id is None:
+        return None
+    counts = dict(await asset_list_counts(db, organization_id) or {})
+    for name, model in (("assets_exposure", OrganizationAsset), ("software", OrganizationSoftware)):
+        held = (
+            await db.execute(select(func.count()).select_from(model).where(model.organization_id == organization_id))
+        ).scalar() or 0
+        if held:
+            counts[name] = int(held)
+    return counts or None
+
+
 async def hydrated_profile(db: AsyncSession, row: OrganizationContextVersion | None) -> OrganizationProfile:
     """The profile of *row* with ``assets_exposure`` and ``asset_groups`` read from the asset records (#1543).
 
@@ -1686,7 +1709,7 @@ async def fleet_run_context(
         block = render_for_agent(
             primary,
             ctem_work=ctem_work,
-            asset_counts=await asset_list_counts(db, primary.organization_id if primary else None),
+            asset_counts=await agent_list_counts(db, primary.organization_id if primary else None),
         )
         tracked = await scoped_tracked_blocks(db, getattr(resolved, "organization_scope", None))
         scoped = f"\n\n{FLEET_RUN_CONTEXT_HEADER}\n" + "\n\n".join([block, *tracked])
