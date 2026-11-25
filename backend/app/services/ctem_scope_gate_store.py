@@ -945,8 +945,12 @@ async def triage(
     actor: str,
     evaluator_id: uuid.UUID | None,
     now: datetime | None = None,
+    outcomes: list[dict[str, Any]] | None = None,
 ) -> dict[str, int]:
     """Dismiss, restore or re-check *rows* (#1505); counts ``changed``, ``skipped`` and by state after. The caller commits.
+
+    With *outcomes*, one entry per row is appended (id, state before and after,
+    ``changed``, ``skipped`` or ``unchanged``): a dry run reads them, then rolls back.
 
     ``dismiss`` moves a signal that opened no case to ``discarded`` with the
     actor's name; ``restore`` decides a dismissed one again; ``recheck`` runs the
@@ -967,6 +971,7 @@ async def triage(
         if action == "dismiss":
             if row.state not in GATED_STATES or dismissed(row):
                 counts["skipped"] += 1
+                _outcome(outcomes, row, before, "skipped")
                 continue
             row.decision = dismissal_record(row, by=actor, at=at)
             row.state = "discarded"
@@ -974,6 +979,7 @@ async def triage(
         else:
             if row.state not in GATED_STATES or (action == "restore") != dismissed(row):
                 counts["skipped"] += 1
+                _outcome(outcomes, row, before, "skipped")
                 continue
             if profile is None:
                 profile = await _profile(db, row.organization_id)
@@ -983,6 +989,14 @@ async def triage(
             await evaluate(
                 db, row, profile=profile, scenarios=by_reader[reader], now=at, restore=True, remote_reads=False
             )
-        counts["changed"] += int(row.state != before or action != "recheck")
+        changed = row.state != before or action != "recheck"
+        counts["changed"] += int(changed)
         counts[row.state] = counts.get(row.state, 0) + 1
+        _outcome(outcomes, row, before, "changed" if changed else "unchanged")
     return counts
+
+
+def _outcome(outcomes: list[dict[str, Any]] | None, row: CtemSignal, before: str, outcome: str) -> None:
+    """One triage outcome of *row*, read before a dry run rolls the session back (#2341)."""
+    if outcomes is not None:
+        outcomes.append({"id": str(row.id), "before": before, "after": row.state, "outcome": outcome})

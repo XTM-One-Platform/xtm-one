@@ -27,7 +27,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * Nothing exposes an agent any other way, and nothing nominates the identity
  * external work runs as: a second path to one state disagrees with the first
  * the moment either is used. The identity is inherited from the
- * agent's stored owner.
+ * agent's stored owner. The one write on a live exposure is its #2202
+ * opt-in (`useSetA2APartnerFleetReads`): it widens nothing about WHO can
+ * reach the agent, only what an already-admitted partner task may read.
  */
 
 import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -138,6 +140,26 @@ export interface A2AExposureStatus {
   /** Where a partner exchanges its credential for a bearer: the card's
    * `tokenUrl`, set on every live exposure. */
   token_url?: string | null;
+  /** The per-exposure opt-in of #2202, off by default: a partner's task on
+   * this exposure also reads the exposed agent's home fleet, its health, its
+   * work items and the running build. Read at each partner call. */
+  partner_fleet_reads?: boolean;
+}
+
+/** Switch the #2202 opt-in on the agent's LIVE exposure. Exposing stays the
+ * bindings' job: an agent that is not exposed answers 404. The answer is the
+ * exposure status, written straight into the shared cache entry. */
+export function useSetA2APartnerFleetReads(agentId: string) {
+  const qc = useQueryClient();
+  return useMutation<A2AExposureStatus, Error, boolean>({
+    mutationFn: (enabled) =>
+      api.put<A2AExposureStatus>(`/agents/${agentId}/a2a/partner-fleet-reads`, { enabled }),
+    // The switch says what went wrong in its own toast: no second, generic one.
+    meta: { suppressGlobalErrorToast: true },
+    onSuccess: (status) => {
+      qc.setQueryData(["a2a-exposure", agentId], status);
+    },
+  });
 }
 
 /** The A2A liaisons of the agents the caller sees, drawn by the Agentic Flow

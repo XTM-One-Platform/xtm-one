@@ -313,6 +313,20 @@ async def test_a_list_read_answers_the_previous_view_after_its_generation_key_ex
 
 
 @pytest.mark.asyncio
+async def test_a_list_read_answers_the_kept_view_of_the_same_generation_after_its_ttl(
+    redis: Any, judged: list[str], revalidations: list[Any]
+) -> None:
+    """ctem.one, 25 Nov 2026: no case change, the view's own copy expired, and every list read 503'd."""
+    await view_of.viewer_view(None, "u-1", "cyber")
+    redis.data.pop(view_of._view_key("u-1", "cyber", "0"))  # VIEW_TTL_SECONDS passed, no generation bump
+    phases = view_of.start_timing()
+    view = await view_of.viewer_view(None, "u-1", "cyber", stale_ok=True)
+    assert judged == ["u-1"] and view.sees("opencti:a") and view.stale
+    # One background build of the same generation, never a wait on the request.
+    assert "cache-stale" in phases and revalidations == [("u-1", "cyber", "0")]
+
+
+@pytest.mark.asyncio
 async def test_a_case_read_never_takes_a_previous_view_older_than_the_view_ttl(
     redis: Any, judged: list[str], revalidations: list[Any]
 ) -> None:
