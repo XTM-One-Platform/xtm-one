@@ -7,10 +7,11 @@ import { isWhatsAppGateway } from "./whatsapp-gateway";
 /**
  * Whether at least one event of the provider can arrive by webhook (mechanism
  * webhook or hybrid). A provider whose events are all polled (NetSuite,
- * OpenCRQ) never calls the integration webhook URL, so no screen shows it.
+ * OpenCRQ) or read from a stream the platform consumes (Defender XDR through
+ * its Event Hub) never calls the integration webhook URL, so no screen shows it.
  */
 export function hasWebhookDeliveredEvents(catalogEntry: ProviderCatalogItem | undefined): boolean {
-  return !!catalogEntry?.available_events.some((e) => e.mechanism !== "polling");
+  return !!catalogEntry?.available_events.some((e) => e.mechanism === "webhook" || e.mechanism === "hybrid");
 }
 
 /** Which blocks the Webhooks card of the Configuration tab renders. */
