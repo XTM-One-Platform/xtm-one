@@ -750,8 +750,21 @@ def lab_org_import_read(section: str, source: str, batch_type: str = ""):
     return imp.ReadResult(rows=rows, total=len(rows))
 
 
-def _not_connected(error: str | None) -> bool:
-    return bool(error) and "not connected" in (error or "").lower()
+def _not_connected(error: str | None, source: str = "", environ: dict | None = None) -> bool:
+    """Whether the real read failed because no reachable platform answers it, so the fixture stands in.
+
+    "not connected" (no integration or no token), and "could not connect" too: the lab registers each Suite
+    platform at ``https://<provider>.lab.invalid`` (``seed_suite_registrations``), which no worker reaches, so the
+    real path answers an outage, not "not connected" (gap lab-org-synced-import-preview-empty). A lab with its own
+    OpenCTI (``LAB_OPENCTI = "live"``) keeps the real OpenCTI answer, an outage included.
+    """
+    text = (error or "").lower()
+    if "not connected" in text:
+        return True
+    if "could not connect" not in text:
+        return False
+    live = (environ or {}).get("LAB_OPENCTI", "").strip().lower() == "live"
+    return not (source == "opencti" and live)
 
 
 def stub_org_import(environ: dict) -> bool:
@@ -769,7 +782,7 @@ def stub_org_import(environ: dict) -> bool:
         real = await live_read(
             db, user_id=user_id, section=section, source=source, filters=filters, batch_type=batch_type
         )
-        if not _not_connected(real.error):
+        if not _not_connected(real.error, source, environ):
             return real
         return lab_org_import_read(section, source, batch_type) or real
 
