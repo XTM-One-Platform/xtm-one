@@ -690,6 +690,11 @@ async def get_work_item(
     item = await work_item_service.get_work_item(work_item_id, user_id=str(user.id))
     if item is None:
         raise HTTPException(status_code=404, detail="Work item not found")
+    if item.get("needs_human"):
+        # A person opened the decision: it is no longer unseen (#2390).
+        from app.services.work_item_decision_reach import mark_opened
+
+        await mark_opened(work_item_id)
     described = (await work_item_context.describe_work_items([item], viewer=user))[0]
     access = await work_item_service.person_write_access(work_item_id, user_id=str(user.id))
     can_write, read_only_reason = access if access is not None else (False, None)

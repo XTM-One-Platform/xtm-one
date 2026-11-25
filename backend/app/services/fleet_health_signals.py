@@ -37,6 +37,10 @@ was read from, so one read tells a fleet orchestrator everything the seeded
 * ``decision_card_not_readable``: an open item waiting for a person whose ask
   is missing, incomplete or holds ids and timestamps
   (:func:`app.services.work_item_ask_backfill.card_unreadable`, #776).
+* ``decision_unseen``: an open decision gate nobody opened in
+  ``work_item_decision_unseen_hours`` hours; ``decision_recipient_inactive``: one
+  whose recipient never signed in, not recently, is the seed account, or is a
+  group none of whose members signed in (:mod:`app.services.work_item_decision_reach`, #2390).
 * ``wait_cycle``: blocked items waiting on each other, through ``blocked_on`` or a
   pull request a review item gates (:mod:`app.services.work_item_wait_cycles`, #606).
 * ``blocked_chain_stalled``: a chain of blocked items waiting on each other, every
@@ -102,6 +106,8 @@ FINDING_FIX: dict[str, str] = {
     "not_picked_up": FIX_OWNER,
     "blocked_without_blocker": FIX_OWNER,
     "decision_card_not_readable": FIX_OWNER,
+    "decision_unseen": FIX_OWNER,
+    "decision_recipient_inactive": FIX_OWNER,
     "wait_cycle": FIX_OWNER,
     "blocked_chain_stalled": FIX_OWNER,
     "disabled_owner": FIX_OWNER,
@@ -129,6 +135,14 @@ FINDING_ADVICE: dict[str, str] = {
     "decision_card_not_readable": (
         "Rewrite the item's ask for its reader: a plain question, 2 to 4 context lines, 2 options or more; "
         "ids and timestamps go in blocked_reason."
+    ),
+    "decision_unseen": (
+        "Nobody opened these decisions in time: open and answer them, or name an active recipient "
+        "(update_work_item recipient)."
+    ),
+    "decision_recipient_inactive": (
+        "Their recipient never signed in, not recently, or is the seed account: name an active person or group "
+        "(update_work_item recipient)."
     ),
     "wait_cycle": "Block the review on the fix item and let the merge wait on the review, or drop one wait.",
     "blocked_chain_stalled": (
@@ -526,7 +540,52 @@ async def _work_item_findings(
                 unreadable,
             )
         )
+    out += await _decision_reach_findings(db, scope, now)
     out += await _wait_graph_findings(db, scope, now, person_waits=person_waits)
+    return out
+
+
+#: Decision gates read per fleet for ``decision_unseen`` and ``decision_recipient_inactive``.
+DECISION_REACH_SCAN = 200
+
+
+async def _decision_reach_findings(db: AsyncSession, scope: Any, now: datetime) -> list[FleetFinding]:
+    """``decision_unseen`` and ``decision_recipient_inactive`` over the fleet's open gates (#2390)."""
+    from app.models.work_item import WorkItem
+    from app.services.work_item_decision_reach import inactive_reasons, is_unseen, unseen_hours
+
+    gates = (
+        await db.execute(
+            select(
+                WorkItem.id,
+                WorkItem.payload,
+                WorkItem.last_activity_at,
+                WorkItem.waits_for_user_id,
+                WorkItem.waits_for_group_ids,
+                WorkItem.user_id,
+            )
+            .where(scope, WorkItem.needs_human.is_(True))
+            .order_by(WorkItem.last_activity_at.desc())
+            .limit(DECISION_REACH_SCAN)
+        )
+    ).all()
+    if not gates:
+        return []
+    hours = unseen_hours()
+    out: list[FleetFinding] = []
+    unseen = [g[0] for g in gates if is_unseen(g[1], waiting_since=g[2], now=now, hours=hours)]
+    if unseen:
+        out.append(_finding("decision_unseen", f"{len(unseen)} decision(s) nobody opened in {hours} hours", unseen))
+    reasons = await inactive_reasons(db, [(g[3] or g[5], g[4]) for g in gates], now=now)
+    inactive = [g[0] for g, reason in zip(gates, reasons, strict=True) if reason]
+    if inactive:
+        out.append(
+            _finding(
+                "decision_recipient_inactive",
+                f"{len(inactive)} decision(s) wait for a recipient that is unlikely to see them",
+                inactive,
+            )
+        )
     return out
 
 

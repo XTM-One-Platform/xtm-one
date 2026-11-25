@@ -261,18 +261,35 @@ def recipient_clause(user_uuid: uuid.UUID) -> Any:
 
 
 async def recipient_line(item: dict[str, Any]) -> str | None:
-    """The tool line naming who a ``needs_human`` item waits for; ``None`` when it needs nobody."""
+    """The tool line naming who a ``needs_human`` item waits for; ``None`` when it needs nobody.
+
+    A recipient unlikely to see the gate (never signed in, not recently, the
+    seed account, a group nobody of which signed in) adds a warning line (#2390).
+    """
     if not item.get("needs_human"):
         return None
-    if item.get("waits_for_group_ids"):
-        return "  - waits for: the members of its groups, notified in the bell; the first answer decides."
+    from app.core.database import async_session
+    from app.services.work_item_decision_reach import inactive_reason, warning_line
+
+    groups = item.get("waits_for_group_ids")
+    if groups:
+        try:
+            async with async_session() as db:
+                reason = await inactive_reason(db, user_id=None, group_ids=groups)
+        except Exception:  # the warning is advice: an unreadable sign-in history says nothing
+            reason = None
+        line = "  - waits for: the members of its groups, notified in the bell; the first answer decides."
+        return f"{line}\n{warning_line(reason)}" if reason else line
     ref = item.get("waits_for_user_id") or item.get("user_id")
     if not ref:
         return "  - waits for: the platform administrators, notified in the bell."
-    from app.core.database import async_session
-
     async with async_session() as db:
         person = await _user_by_ref(db, str(ref))
+        try:
+            reason = await inactive_reason(db, user_id=person.id, group_ids=None) if person is not None else None
+        except Exception:  # the warning is advice: an unreadable sign-in history says nothing
+            reason = None
     if person is None:
         return "  - waits for: a person no longer on the platform; set recipient to notify someone."
-    return f"  - waits for: {person.full_name} ({person.email}), notified in the bell."
+    line = f"  - waits for: {person.full_name} ({person.email}), notified in the bell."
+    return f"{line}\n{warning_line(reason)}" if reason else line
