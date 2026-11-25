@@ -103,6 +103,7 @@ write that raised the event.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from collections.abc import Iterable, Mapping
@@ -1554,9 +1555,39 @@ async def can_read_object(sub: Subscription, payload: Mapping[str, Any], cache: 
     return True
 
 
+#: Most platform event dispatches one process runs at once (#2084); see :func:`dispatch_limit`.
+DISPATCH_LIMIT_MAX = 4
+#: One gate per event loop (a test runs several loops in one process).
+_dispatch_gates: dict[int, asyncio.Semaphore] = {}
+
+
+def dispatch_limit() -> int:
+    """How many platform events one process dispatches at once: a tenth of its DB pool, 1 to 4.
+
+    Every dispatch opens sessions (subscriptions, task watches, flows, the run it starts): a burst
+    of events (a case-opening drain raising ``ctem_case.opened`` for 500 cases) dispatched all at
+    once took every pooled connection and starved request handling (#2084). The rest wait their
+    turn in memory, holding no connection.
+    """
+    from app.core.config import settings
+
+    capacity = int(settings.db_pool_size) + int(settings.db_max_overflow)
+    return max(1, min(DISPATCH_LIMIT_MAX, capacity // 10))
+
+
+def _gate() -> asyncio.Semaphore:
+    loop_id = id(asyncio.get_running_loop())
+    gate = _dispatch_gates.get(loop_id)
+    if gate is None:
+        _dispatch_gates.clear()  # a process runs one loop at a time: an older loop's gate is dead
+        gate = _dispatch_gates[loop_id] = asyncio.Semaphore(dispatch_limit())
+    return gate
+
+
 async def dispatch(event: Any) -> None:
-    """Event-bus listener: deliver a platform event to its subscribers."""
-    await dispatch_event(event.name, event.data)
+    """Event-bus listener: deliver a platform event to its subscribers, a bounded few at a time."""
+    async with _gate():
+        await dispatch_event(event.name, event.data)
 
 
 _registered = False
