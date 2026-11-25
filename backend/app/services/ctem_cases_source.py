@@ -132,7 +132,7 @@ _OCTI_STACK_SOFTWARE = """
 query CtemCaseStackSoftware($filters: FilterGroup, $first: Int, $after: ID) {
   stixCyberObservables(types: ["Software"], filters: $filters, first: $first, after: $after) {
     pageInfo { hasNextPage endCursor }
-    edges { node { id ... on Software { name vendor version cpe } } }
+    edges { node { id ... on Software { name vendor version cpe x_opencti_purl } } }
   }
 }
 """
@@ -143,7 +143,7 @@ _OCTI_SOFTWARE_REMEDIATES = """
 query CtemCaseSoftwareRemediates($to: [String], $first: Int) {
   stixCoreRelationships(toId: $to, relationship_type: ["remediates"], fromTypes: ["Software"], first: $first) {
     edges { node {
-      from { ... on Software { id name vendor version cpe } }
+      from { ... on Software { id name vendor version cpe x_opencti_purl } }
       to { ... on Vulnerability { id } }
     } }
   }

@@ -49,6 +49,7 @@ from app.models.organization_asset import (
     OrganizationSoftwareDependency,
     OrganizationSoftwareVersion,
 )
+from app.services import ctem_product_identity as identity_match
 from app.services import organization_asset_identity as identity
 
 #: What a software is (STIX 2.1 Software SCO plus the XTM Platform's SaaS).
@@ -758,7 +759,16 @@ def matcher_entries(
     out: list[dict[str, Any]] = []
     seen: dict[Key, dict[str, Any]] = {}
 
-    def add(vendor: str, product: str, cpe: str, version: str, versions: list[str], source: str) -> None:
+    def add(
+        vendor: str,
+        product: str,
+        cpe: str,
+        version: str,
+        versions: list[str],
+        source: str,
+        purl: str = "",
+        families: list[str] | None = None,
+    ) -> None:
         vendor, product = vendor.strip(), product.strip()
         if not product:
             return
@@ -781,6 +791,9 @@ def matcher_entries(
             "versions": versions,
             "label": display_name(vendor, product),
             "version_source": source,
+            # The identity the matcher compares before the name (#2036): empty when not known.
+            "purl": purl.strip(),
+            "os_families": list(families or []),
         }
         seen[key] = entry
         out.append(entry)
@@ -800,6 +813,8 @@ def matcher_entries(
             known[0] if len(known) == 1 else "",
             known,
             "software",
+            str(soft.get("purl") or ""),
+            [str(f) for f in soft.get("os_families") or ()],
         )
     for row in typed:
         typed_version = str(row.get("version") or "").strip()
@@ -817,13 +832,15 @@ def matcher_entries(
 async def matcher_software(db: AsyncSession, organization_id: uuid.UUID) -> list[dict[str, Any]]:
     """The software entities of *organization_id* with the versions installed, for :func:`matcher_entries`.
 
-    Two reads: the software, then its versions that an installation links
-    (a hand-typed software with no installation keeps its typed versions).
+    Three reads: the software, then its versions that an installation links
+    (a hand-typed software with no installation keeps its typed versions), then
+    the OS family of each asset running it (#2036): ``os_families`` is empty when
+    one of those assets reports none, so an unknown OS never rejects a match.
     """
     soft = OrganizationSoftware
     rows = (
         await db.execute(
-            select(soft.id, soft.vendor, soft.product, soft.cpe)
+            select(soft.id, soft.vendor, soft.product, soft.cpe, soft.purl)
             .where(soft.organization_id == organization_id)
             .order_by(soft.name_key, soft.id)
         )
@@ -834,9 +851,28 @@ async def matcher_software(db: AsyncSession, organization_id: uuid.UUID) -> list
         await db.execute(select(ver.software_id, ver.version).where(ver.organization_id == organization_id))
     ).all():
         versions.setdefault(software_id, []).append(str(version))
+    inst = OrganizationAssetSoftware
+    families: dict[uuid.UUID, list[Any]] = {}
+    for software_id, family in (
+        await db.execute(
+            select(ver.software_id, OrganizationAsset.fields["os_family"]["value"].astext)
+            .join(inst, inst.software_version_id == ver.id)
+            .join(OrganizationAsset, OrganizationAsset.id == inst.asset_id)
+            .where(ver.organization_id == organization_id, inst.organization_id == organization_id)
+            .distinct()
+        )
+    ).all():
+        families.setdefault(software_id, []).append(family)
     return [
-        {"vendor": vendor, "product": product, "cpe": cpe, "versions": versions.get(sid, [])}
-        for sid, vendor, product, cpe in rows
+        {
+            "vendor": vendor,
+            "product": product,
+            "cpe": cpe,
+            "purl": purl or "",
+            "versions": versions.get(sid, []),
+            "os_families": identity_match.os_families(families.get(sid, [])),
+        }
+        for sid, vendor, product, cpe, purl in rows
     ]
 
 
