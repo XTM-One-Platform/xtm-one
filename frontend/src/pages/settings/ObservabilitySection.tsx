@@ -668,7 +668,9 @@ export function ObservabilitySection() {
               <div>
                 <SettingsGroupTitle>{t_i18n("Coordination retention")}</SettingsGroupTitle>
                 <SettingsGroupDescription>
-                  {t_i18n("How long work items, shared state and worksets are kept once they are closed. 0 keeps them forever.")}
+                  {t_i18n(
+                    "How long work items, shared state, worksets and runs are kept once they are closed. 0 keeps them forever.",
+                  )}
                 </SettingsGroupDescription>
               </div>
 

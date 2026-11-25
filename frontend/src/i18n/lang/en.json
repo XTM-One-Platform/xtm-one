@@ -21796,7 +21796,7 @@
   "Applied a change through an integration": "Applied a change through an integration",
   "How the fix is carried out once decided: a ticket for the owner, a change applied through a bound integration after the production change gate, or both.": "How the fix is carried out once decided: a ticket for the owner, a change applied through a bound integration after the production change gate, or both.",
   "Coordination retention": "Coordination retention",
-  "How long work items, shared state and worksets are kept once they are closed. 0 keeps them forever.": "How long work items, shared state and worksets are kept once they are closed. 0 keeps them forever.",
+  "How long work items, shared state, worksets and runs are kept once they are closed. 0 keeps them forever.": "How long work items, shared state, worksets and runs are kept once they are closed. 0 keeps them forever.",
   "Closed work items": "Closed work items",
   "Closed work items (days)": "Closed work items (days)",
   "Done and cancelled work items are deleted this many days after their last update.": "Done and cancelled work items are deleted this many days after their last update.",
