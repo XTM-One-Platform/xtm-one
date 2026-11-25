@@ -1680,6 +1680,33 @@ async def list_asset_group_members(
     }
 
 
+@router.get("/primary-assets/link-counts")
+async def list_primary_asset_link_counts(
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """How many assets and groups support each primary asset, by source (#1978 S2).
+
+    ``items`` maps a primary asset's key (its name, whitespace collapsed and
+    case-folded) to ``{total, manual, opencrq, rule}``; a primary asset with no
+    link is absent. The links a sync wrote count here, so the Assets column of
+    the primary assets table shows them; the profile's ``asset_names`` holds
+    only the names a person typed.
+    """
+    from app.services import organization_asset_records as records
+
+    org = await _built_store(db)
+    if org is None:
+        return {"items": {}}
+    counts = await records.primary_asset_link_counts(db, org)
+    return {
+        "items": {
+            key: {"total": sum(by_source.values()), **{s: by_source.get(s, 0) for s in ("manual", "opencrq", "rule")}}
+            for key, by_source in counts.items()
+        }
+    }
+
+
 @router.put("/primary-assets/{primary_asset}/links")
 async def set_primary_asset_asset_links(
     primary_asset: str,
