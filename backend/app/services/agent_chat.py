@@ -1407,6 +1407,22 @@ def _platform_builder_actor(user_id: str) -> tuple[str, bool]:
     return user_id, False
 
 
+def _add_partner_fleet_tools(composite: CompositeToolExecutor, user_id: str, *, agent_id: str | None) -> None:
+    """Wire the partner fleet reads of #2202 in a partner task that names its partner.
+
+    Acting as the run-as identity, but scoped by ``a2a.partner_fleet`` to the
+    exposed agent's home fleet and to its exposure's opt-in, read at each call.
+    """
+    from app.a2a.partner_scope import current_partner
+
+    if current_partner() is None or not is_valid_uuid(user_id):
+        return
+    from app.a2a.partner_fleet import scope_fleet_tools_to_partner
+    from app.services.builtin_tools import build_fleet_tools
+
+    composite.add_tools(*scope_fleet_tools_to_partner(*build_fleet_tools(user_id, agent_id=agent_id)))
+
+
 def _add_trace_tools(
     composite: CompositeToolExecutor,
     db: AsyncSession,
@@ -1511,6 +1527,7 @@ def _add_platform_builder_tools(
         # The conversation is where export_fleet_spec keeps the full spec file.
         fl_defs, fl_exec = build_fleet_tools(actor_id, conversation_id=conversation_id, agent_id=agent_id)
         composite.add_tools(fl_defs, fl_exec)
+    _add_partner_fleet_tools(composite, user_id, agent_id=agent_id)
     if "roi" in agent_builtin_tool_ids and not read_only:
         from app.services.builtin_tools.roi import build_roi_tools
 
