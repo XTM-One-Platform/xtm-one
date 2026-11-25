@@ -2714,6 +2714,7 @@ async def _activation_check_executor(
                 is_company_managed=run.is_company_managed,
                 company_managed_agent=agent.is_company_managed,
                 acting_admin=acting_admin,
+                run_person_id=str(run.user_id) if run.user_id else None,
             )
         )
     if "shared_state" in builtin_ids:
@@ -6628,6 +6629,9 @@ async def execute_assignment_run(
                     peer_agents=wi_peers,
                     origin=WorkItemOrigin(run_id=run.id),
                     acting_admin=_coord_acting_admin,
+                    # The run's person routes its decisions (#2422); the
+                    # file owner above stays empty for a company-managed run.
+                    run_person_id=str(run.user_id) if run.user_id else None,
                 )
                 composite.add_tools(wi_defs, wi_exec)
 

@@ -98,6 +98,10 @@ class CompanyManagedWriter:
     # The person the agent's turn or run acts for is an administrator: the
     # agent reads past every governor's narrowing (writes stay narrowed).
     acting_admin: bool = False
+    # The person an assignment run acts for (its triggering user, else its
+    # run-as user), apart from the file owner a company-managed run leaves
+    # empty: who that run's decisions wait for when nobody is named (#2422).
+    run_person_id: uuid.UUID | None = None
 
 
 def person_writer(*, is_admin: bool) -> CompanyManagedWriter:
@@ -110,18 +114,22 @@ def agent_writer(
     is_company_managed: bool,
     agent_id: str | uuid.UUID | None = None,
     acting_admin: bool = False,
+    run_person_id: str | uuid.UUID | None = None,
 ) -> CompanyManagedWriter:
     """An agent's tools, dispatch or run: a company-managed agent writes them.
 
     *agent_id* is the acting agent, whose admission the governing agents'
     ``coordination_access`` decides; *acting_admin* (the person it acts for is
-    an administrator) lets it read past every narrowing.
+    an administrator) lets it read past every narrowing; *run_person_id* is
+    the person an assignment run acts for, read only to route its decisions
+    (``work_item_recipient``, #2422), never for file access.
     """
     return CompanyManagedWriter(
         bool(is_company_managed),
         "company-managed agents",
         _as_uuid(agent_id),
         acting_admin=bool(acting_admin),
+        run_person_id=_as_uuid(run_person_id),
     )
 
 
