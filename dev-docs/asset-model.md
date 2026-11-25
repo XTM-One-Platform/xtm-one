@@ -163,7 +163,7 @@ when this sync created it. The same filters select the AI target assets an outbo
 | Tags | `asset_tags` (tag entities) | `supporting_asset_tags` with their origin (`tag_sources`: a person, OpenAEV, XTM One) | `objectLabel` | `tags` (names) |
 | Environment | none (a tag by convention) | none | none | `environment` (production, staging, development, test, other); pushed to OpenAEV as the tag `env:<value>` |
 | External id | `asset_external_reference` | `external_reference`, and per source `source_asset_id` | `externalReferences` | `external_id`, with `source` naming the origin |
-| Tech stack | none on the asset (Endpoint: `endpoint_platform`, `endpoint_arch`, `endpoint_is_eol`) | endpoint facts: `operating_system`, `os_version`, `platform`, `arch`, `is_eol` | none | `tech_stack` (product names of the profile's tech stack) |
+| Tech stack | none on the asset (Endpoint: `endpoint_platform`, `endpoint_arch`, `endpoint_is_eol`) | endpoint facts: `operating_system`, `os_version`, `platform`, `arch`, `is_eol` | none | `products` (product names of the organization's software) |
 | Network | `asset_hostname`, `asset_ips`, `asset_mac_addresses`, `asset_seen_ip`, `asset_url` | endpoint facts: `hostname`, `ip_addresses`, `mac_addresses`, `seen_ip`; `url` | none | none (the profile names assets, it is not an inventory) |
 | Cloud | `asset_cloud_provider`, `asset_cloud_native_type`, `asset_cloud_region` | `cloud_provider`, `cloud_native_type`, `cloud_region` | none | none |
 
@@ -439,7 +439,9 @@ assets running a product.
   import and sync section and the outbound pairing are all `software`. `s1495swprofile01` turned each profile
   tech stack row into a hand-typed Software (a hand CPE kept as the override) and renamed stored category
   selections; `s1495swsection01` renames the saved syncs' section and any selection still naming it.
-  The profile list the rows are stored under keeps its key `tech_stack` until the profile field is dropped.
+  `s1495swfield01` renamed the profile field itself to `software`; `s1495products01` renames the product list
+  each asset and asset group carries (`assets_exposure[].products`, `asset_groups[].products`, the inventory
+  store's `fields.products`, the CSV column `products`) and the scope gate's `reconcile.products`.
 - `upsert_organization_rows(section="software")` writes Software entities, not profile rows:
   a row whose vendor and product a software already carries is reported `unchanged` and never overwritten;
   a new one becomes a hand-typed Software (`create_software`, its typed version stored as a version). Rows are
