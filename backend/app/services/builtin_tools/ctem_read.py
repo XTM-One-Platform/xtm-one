@@ -148,7 +148,7 @@ def empty_sections(
 
 def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """The three read tools, acting for *user_id*; nothing is written."""
-    from .ctem_cases import _bounded_issues, _uuid, build_ctem_case_tools, resolve_case_id
+    from .ctem_cases import _bounded_issues, _uuid, build_ctem_case_tools, missing_case_answer, resolve_case_id
     from .ctem_signals import build_ctem_signal_tools
 
     signal_defs, signal_exec = build_ctem_signal_tools(user_id=user_id)
@@ -181,7 +181,8 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 vertical = normalize_vertical(getattr(user, "ctem_vertical", None))
                 found = await store.get_case(db, wanted, organization_id=primary.id)
                 if found is None:
-                    return f"No case {case_id}."
+                    # A merged-away case answers its survivor (#2289).
+                    return await missing_case_answer(db, case_id, wanted, primary.id)
                 case, rows, events = found
                 # This case's members only (#2092): never a whole view build on the call during a drain.
                 members = [f"{r.source}:{r.external_id}" for r in rows]

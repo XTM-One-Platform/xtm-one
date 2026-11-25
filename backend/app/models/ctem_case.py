@@ -45,6 +45,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -192,6 +193,16 @@ class CtemCaseIssue(Base):
 
 class CtemCaseEvent(Base):
     __tablename__ = "ctem_case_events"
+    # The merged-away case ids (#2289): a read of a merged id finds the survivor by
+    # one probe of the ``merge`` rows, by full id or by an 8+ character prefix.
+    __table_args__ = (
+        Index(
+            "ix_ctem_case_events_merged_from",
+            "from_value",
+            postgresql_where=text("kind = 'merge'"),
+            postgresql_ops={"from_value": "varchar_pattern_ops"},
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     case_id: Mapped[uuid.UUID] = mapped_column(

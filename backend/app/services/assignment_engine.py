@@ -3127,6 +3127,61 @@ async def _skip_by_module_preflight(
     return True
 
 
+async def _skip_by_case_start(
+    db: AsyncSession,
+    *,
+    run: AssignmentRun,
+    agent: Any,
+    assignment: Assignment,
+) -> bool:
+    """End a ``ctem_case.opened`` run at zero tokens when its case is gone (#2289).
+
+    A case merged away while the run waited adds ``merged_into`` (the survivor)
+    to the trigger context and lets the run go ahead; a case deleted ends it
+    skipped with the reason ``case_gone``. ``True`` when the run was ended. Any
+    other run, and a check that cannot decide, go ahead.
+    """
+    from app.services import ctem_case_run_start as case_start_mod
+
+    case_id = case_start_mod.case_of(getattr(run, "trigger_context", None))
+    if case_id is None:
+        return False
+    try:
+        verdict = await case_start_mod.case_start(db, case_id)
+    except Exception as exc:  # the check never blocks a run
+        logger.warning(
+            "Assignment '%s': case start check failed (%s) - the run proceeds",
+            assignment.name,
+            format_exception_message(exc),
+        )
+        return False
+    if verdict.context:
+        run.trigger_context = {**(run.trigger_context or {}), **verdict.context}
+    if verdict.proceed:
+        return False
+    await ensure_single_writer()
+    now = datetime.now(UTC)
+    run.status = "skipped"
+    run.error = case_start_mod.CASE_GONE
+    run.result_summary = verdict.summary
+    run.total_input_tokens = 0
+    run.total_output_tokens = 0
+    run.started_at = run.started_at or now
+    run.completed_at = now
+    await db.commit()
+    await _release_run_work_item(run, agent, failed=False)
+    await _publish_run_status(
+        str(run.user_id),
+        str(run.id),
+        "skipped",
+        assignment.name,
+        run.result_summary,
+        is_company=run.is_company_managed,
+    )
+    logger.info("Assignment '%s' skipped at start: %s", assignment.name, verdict.summary)
+    return True
+
+
 async def _end_run_skipped_by_gate_check(
     db: AsyncSession,
     *,
@@ -4842,6 +4897,13 @@ async def execute_assignment_run(
             effective_user_id=effective_user_id,
         ):
             return
+        # ── CTEM case start check (#2289) ───────────────────────────────
+        # A queued ctem_case.opened run whose case was merged starts with the
+        # survivor in its context; one whose case was deleted ends here.
+        if _gate_check_due(run, resuming=_resuming) and await _skip_by_case_start(
+            db, run=run, agent=agent, assignment=assignment
+        ):
+            return None
         # Outcome of the quota enforcement, attached to the workflow trace
         # metadata below so the Trace Explorer can show the platform-action
         # consumption of this run.
