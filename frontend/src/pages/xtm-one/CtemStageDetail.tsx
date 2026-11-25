@@ -50,6 +50,7 @@ import { TREND_PERIODS, formatTrendDay, historyWindow, seriesChange, type TrendP
 import { FollowUpInChatButton, AssignAgentButton } from "./ctem/ImplementWithAgent";
 import { AssessmentFreshness, shouldAutoGenerate } from "./ctem/assessment-freshness";
 import { postureBusy } from "./ctem/landing-refresh";
+import { StageSignInHint } from "./ctem/stage-sign-in-hint";
 import { Spinner } from "@filigran/design-system";
 import { ScopingRing, DiscoveryArea, ValidationMatrix, type DiscoveryPoint } from "./ctem/stage-heroes";
 import { DiscoveryMix } from "./ctem/DiscoveryMix";
@@ -322,6 +323,12 @@ export default function CtemStageDetail() {
   // Refresh or Generate button calls an endpoint that refuses.
   const eeLocked = lockReason !== null;
   const generating = status === "generating" || !!assessmentResp?.generating;
+  // The member's newest run was skipped before any model call: no account on
+  // these modules yet (#2042). Same hint as the command center stage card.
+  const unsignedModules =
+    !generating && !refresh.isPending && assessmentResp?.status === "no_module_account"
+      ? (assessmentResp.no_module_account ?? [])
+      : null;
 
   const owner = live?.agent;
   const contextMissing = posture?.context?.state === "missing";
@@ -715,13 +722,20 @@ export default function CtemStageDetail() {
               <div className="flex items-center gap-3 rounded-sm bg-elevation-hover p-4">
                 <Radar className={cn("h-4 w-4 text-accent shrink-0", (generating || refresh.isPending) && "animate-pulse")} />
                 <div className="flex-1">
-                  <p className="content-compact text-default-secondary">
-                    {generating || refresh.isPending
-                      ? t_i18n("Generating your assessment - this runs as you, scoped to your access.")
-                      : t_i18n("No assessment yet for this vertical. Generate one to get an actionable read.")}
-                  </p>
+                  {unsignedModules ? (
+                    <StageSignInHint modules={unsignedModules} className="content-compact" />
+                  ) : (
+                    <p className="content-compact text-default-secondary">
+                      {generating || refresh.isPending
+                        ? t_i18n("Generating your assessment - this runs as you, scoped to your access.")
+                        : t_i18n("No assessment yet for this vertical. Generate one to get an actionable read.")}
+                    </p>
+                  )}
                 </div>
-                {!generating && !refresh.isPending && (
+                {/* No Generate in the sign-in state: the run would be skipped
+                    again by the module-account preflight (#2042); the header
+                    Refresh regenerates once the member has signed in. */}
+                {!generating && !refresh.isPending && !unsignedModules && (
                   <Button
                     size="sm"
                     className="gap-1.5 h-7 content-compact bg-accent text-negative-primary hover:bg-accent/90"

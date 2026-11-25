@@ -3891,6 +3891,8 @@
   "No agents yet": "No agents yet",
   "No analytics data available": "No analytics data available",
   "No assessment yet - generate one for this vertical.": "No assessment yet - generate one for this vertical.",
+  "Sign in to OpenCTI or OpenAEV once, then regenerate: your assessment reads your own account there.": "Sign in to OpenCTI or OpenAEV once, then regenerate: your assessment reads your own account there.",
+  "Sign in to {modules} once, then regenerate: your assessment reads your own account there.": "Sign in to {modules} once, then regenerate: your assessment reads your own account there.",
   "No assessment yet for this vertical. Generate one to get an actionable read.": "No assessment yet for this vertical. Generate one to get an actionable read.",
   "No assets yet": "No assets yet",
   "No assignment runs yet.": "No assignment runs yet.",

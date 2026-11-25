@@ -3887,6 +3887,8 @@
   "No agents yet": "Aún no hay agentes",
   "No analytics data available": "No hay datos de analítica disponibles",
   "No assessment yet - generate one for this vertical.": "Aún no hay evaluación - genere una para esta vertical.",
+  "Sign in to OpenCTI or OpenAEV once, then regenerate: your assessment reads your own account there.": "Inicie sesión una vez en OpenCTI u OpenAEV y vuelva a generar: su evaluación lee su propia cuenta allí.",
+  "Sign in to {modules} once, then regenerate: your assessment reads your own account there.": "Inicie sesión una vez en {modules} y vuelva a generar: su evaluación lee su propia cuenta allí.",
   "No assessment yet for this vertical. Generate one to get an actionable read.": "Aún no hay evaluación para esta vertical. Genere una para obtener una lectura procesable.",
   "No assets yet": "Aún no hay recursos",
   "No assignment runs yet.": "Aún no hay ejecuciones de asignación.",

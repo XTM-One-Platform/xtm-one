@@ -5920,7 +5920,8 @@ interface CtemStageAssessment {
 /** Status of a per-user CTEM AI artifact (briefing, stage assessment). The
  *  locked ones (ee_locked, ai_disabled, no_model) never start a run. */
 type CtemAiArtifactStatus =
-  | "ready" | "generating" | "pending" | "ee_locked" | "ai_disabled" | "no_model" | "unavailable";
+  | "ready" | "generating" | "pending" | "ee_locked" | "ai_disabled" | "no_model" | "unavailable"
+  | "not_assessable" | "no_module_account";
 
 export interface CtemStageAssessmentResponse {
   assessment: CtemStageAssessment | null;
@@ -5942,6 +5943,10 @@ export interface CtemStageAssessmentResponse {
    *  page regenerates it on visit and marks it stale meanwhile. */
   stale?: boolean;
   fresh_days?: number;
+  /** The newest run was skipped before any model call because the member has
+   *  no account on these modules (status no_module_account, #2042): the card
+   *  tells the member to sign in to them once. */
+  no_module_account?: string[] | null;
 }
 
 export interface CtemStage {

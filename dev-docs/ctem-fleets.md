@@ -2635,4 +2635,11 @@ guarded inside the run. `assignment_engine` binds
   it as `expected_error`, disposed `platform_acceptable` / `accepted` with the
   reason `no_module_account: <module>`, never as an undisposed `tool_error`.
 
-Still to do (#2042): the log-in-once hint on the stage card (frontend, UX gate).
+The stage card (#2042): `GET /ctem-metrics/stages/{stage}/assessment` reads the
+user's newest run for the vertical; when it was skipped `no_module_account` and
+no assessment can be shown, it answers `status: "no_module_account"` with
+`no_module_account: [modules]` (the `missing` ones of
+`trigger_context.module_accounts`) and never `stale`, so the page does not start
+another run that would be skipped again. The card's AI strip draws
+`StageSignInHint` (`frontend/src/pages/xtm-one/ctem/stage-sign-in-hint.tsx`):
+"Sign in to <modules> once, then regenerate".
