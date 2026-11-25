@@ -97,8 +97,16 @@ async def stamp_reachability_assertion(
 
 
 async def _read_assertion_flag(integration_id: str, scenario_id: str) -> bool | None:
-    import uuid
     from urllib.parse import quote
+
+    body = await _read_object(integration_id, f"/api/scenarios/{quote(scenario_id, safe='')}")
+    value = body.get(ASSERTION_FIELD) if isinstance(body, dict) else None
+    return value if isinstance(value, bool) else None
+
+
+async def _read_object(integration_id: str, path: str) -> Any:
+    """One OpenAEV object read with the integration owner's credential, ``None`` when unread."""
+    import uuid
 
     from app.core.database import async_session
     from app.integrations.providers.openaev._common import _api, _headers
@@ -114,13 +122,63 @@ async def _read_assertion_flag(integration_id: str, scenario_id: str) -> bool | 
     if not token or "||" not in str(token):
         return None
     base_url, _, api_token = str(token).partition("||")
-    path = f"/api/scenarios/{quote(scenario_id, safe='')}"
     resp, err = await _api(base_url.strip().rstrip("/"), _headers(api_token.strip()), "get", path, f"GET {path}")
     if err or resp is None:
         return None
-    body = resp.json()
-    value = body.get(ASSERTION_FIELD) if isinstance(body, dict) else None
-    return value if isinstance(value, bool) else None
+    return resp.json()
+
+
+#: The events OpenAEV delivers again on every later update of the same object: its live
+#: triggers watch ``UPDATE`` filtered on a state, with no "changed to" event, so a finished
+#: simulation edited later is notified again (c87c8335). The OpenAEV field that tells one
+#: run of the object from the next (a relaunched simulation ends again, later).
+ONCE_PER_OCCURRENCE: dict[str, tuple[str, str]] = {
+    "simulation_finished": ("/api/exercises/{id}", "exercise_end_date"),
+}
+#: How long a delivered occurrence is remembered (a later update past it starts one more run).
+REPEAT_TTL_SECONDS = 30 * 24 * 3600
+
+
+async def repeated_delivery(
+    event: str, payload: Mapping[str, Any], *, integration_id: str, assignment_id: str, verified: bool
+) -> bool:
+    """Whether *assignment_id* already received this occurrence of a once-per-occurrence event.
+
+    ``simulation_finished`` is delivered once per simulation and end date: the first
+    delivery claims the occurrence, a later update of the same finished simulation is a
+    repeat. A relaunched simulation ends again with a new end date and is delivered.
+    Verified deliveries only (a forged one never claims an occurrence); fails open: an
+    unread end date or an unreachable Redis delivers as before. Never raises.
+    """
+    read = ONCE_PER_OCCURRENCE.get(event)
+    meta = payload.get("_openaev_event") if isinstance(payload, Mapping) else None
+    if read is None or not verified or not isinstance(meta, Mapping):
+        return False
+    resource_id = str(meta.get("resource_id") or "").strip()
+    if not resource_id:
+        return False
+    from urllib.parse import quote
+
+    path, field = read
+    try:
+        body = await _read_object(integration_id, path.format(id=quote(resource_id, safe="")))
+    except Exception:
+        logger.warning("OpenAEV %s %s not read for its occurrence", event, resource_id, exc_info=True)
+        return False
+    occurrence = body.get(field) if isinstance(body, dict) else None
+    if not isinstance(occurrence, str) or not occurrence.strip():
+        return False
+    marker = "\n".join((assignment_id, event, resource_id, occurrence.strip()))
+    key = f"openaev:occurrence:{hashlib.sha256(marker.encode()).hexdigest()[:32]}"
+    try:
+        from app.core.redis import redis_client
+
+        redis = await redis_client()
+        claimed = await redis.set(key, "1", nx=True, ex=REPEAT_TTL_SECONDS)
+    except Exception:
+        logger.warning("OpenAEV %s occurrence not claimed (delivered)", event, exc_info=True)
+        return False
+    return not claimed
 
 
 def references(case: CtemCase, issues: list[CtemCaseIssue], resource_id: str) -> bool:

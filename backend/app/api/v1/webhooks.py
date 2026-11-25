@@ -4833,6 +4833,19 @@ async def receive_assignment_webhook(
                 "headers": _safe_webhook_headers(request),
                 "method": request.method,
             }
+            if provider == "openaev" and await ctem_openaev_events.repeated_delivery(
+                event_key,
+                payload,
+                integration_id=str(integration_id),
+                assignment_id=str(assignment_id),
+                verified=_signed_with_webhook_secret(integration.extra_config_enc),
+            ):
+                # A later update of a simulation this assignment already heard
+                # finish: no case moves and no run starts again (c87c8335).
+                return await _finalize_dedup(
+                    dedup_key,
+                    {"status": "ok", "triggered": [], "count": 0, "reason": "occurrence already delivered"},
+                )
             if provider == "openaev":
                 # CTEM-26: a failed reachability assertion is an outside-lens exposure (#1164).
                 await ctem_openaev_events.stamp_reachability_assertion(
