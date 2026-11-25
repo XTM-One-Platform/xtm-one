@@ -235,100 +235,6 @@ async def _primary_assets(db: AsyncSession, organization_id: uuid.UUID) -> Any:
         return ctem_primary_assets.PrimaryAssetIndex()
 
 
-#: Supporting assets one page of the loop trace lists at most (#1979).
-SUPPORTING_PAGE_MAX = 200
-#: Seconds a signal's supporting asset list is kept for the next page, search or sort (UX r1 B4 on #1995).
-SUPPORTING_CACHE_SECONDS = 300.0
-#: Lists kept at most (one per signal version and primary asset); the oldest goes first.
-SUPPORTING_CACHE_MAX = 64
-#: The columns the supporting asset table sorts on the server (UX r1 B3 on #1995).
-SUPPORTING_SORTS: tuple[str, ...] = ("asset", "through")
-
-#: (organization, signal, signal version, primary asset key) -> (read at, rows sorted by asset, truncated).
-_supporting_cache: dict[tuple[str, str, str, str], tuple[float, list[dict[str, Any]], bool]] = {}
-
-
-def _supporting_cached(cache_key: tuple[str, str, str, str]) -> tuple[list[dict[str, Any]], bool] | None:
-    hit = _supporting_cache.get(cache_key)
-    if hit is None or time.monotonic() - hit[0] > SUPPORTING_CACHE_SECONDS:
-        _supporting_cache.pop(cache_key, None)
-        return None
-    return hit[1], hit[2]
-
-
-def _supporting_keep(cache_key: tuple[str, str, str, str], rows: list[dict[str, Any]], truncated: bool) -> None:
-    while len(_supporting_cache) >= SUPPORTING_CACHE_MAX:
-        _supporting_cache.pop(min(_supporting_cache, key=lambda k: _supporting_cache[k][0]))
-    _supporting_cache[cache_key] = (time.monotonic(), rows, truncated)
-
-
-async def _supporting_rows(db: AsyncSession, row: CtemSignal, key: str) -> tuple[list[dict[str, Any]], bool]:
-    """Every supporting asset of *row* for primary asset *key*, read once per signal version (UX r1 B4 on #1995).
-
-    The index and profile reads cost seconds on a 10,000-asset inventory; the page,
-    the search and the sort then work on the list kept here for a few minutes, keyed
-    on the signal's ``updated_at`` so a re-decided signal reads again.
-    """
-    version = str(getattr(row, "updated_at", "") or "")
-    cache_key = (str(row.organization_id), str(row.id), version, key)
-    hit = _supporting_cached(cache_key)
-    if hit is not None:
-        return hit
-    organization_id = row.organization_id
-    profile = await _profile(db, organization_id)
-    index = await _primary_assets(db, organization_id)
-    resolution = gate.resolve(profile, facts_of(row), None)
-    refs = list(dict.fromkeys([*resolution.software_refs, *resolution.products]))
-    rows = index.supporting(refs, resolution.keys, key)
-    truncated = bool(index.truncated)
-    _supporting_keep(cache_key, rows, truncated)
-    return rows, truncated
-
-
-async def supporting_assets(
-    db: AsyncSession,
-    row: CtemSignal,
-    primary_asset: str,
-    *,
-    query: str = "",
-    offset: int = 0,
-    limit: int = 50,
-    sort: str = "asset",
-    direction: str = "asc",
-) -> dict[str, Any]:
-    """The inventory assets through which *row* reaches *primary_asset*, paged (#1979).
-
-    Read live from the link index with the signal's own software and keys (the
-    same reach the gate ran), so a primary asset 10,000 workstations support
-    lists all of them, not the chains the decision record keeps. *query* filters
-    by asset or group name, case-insensitive; *sort* (``asset`` or ``through``) and
-    *direction* (``asc`` or ``desc``) order the whole list before the page is cut.
-    Answers ``{primary_asset, total, offset, limit, sort, direction, truncated,
-    assets}``; ``truncated`` says the index read itself was cut at its bounds.
-    """
-    key = " ".join(str(primary_asset).split()).casefold()[:200]
-    rows, truncated = await _supporting_rows(db, row, key)
-    needle = query.strip().casefold()
-    if needle:
-        rows = [r for r in rows if needle in r["asset"].casefold() or needle in str(r["through"]).casefold()]
-    sort = sort if sort in SUPPORTING_SORTS else "asset"
-    descending = direction == "desc"
-    if sort != "asset" or descending:
-        rows = sorted(rows, key=lambda r: (str(r[sort]).casefold(), r["asset"].casefold()), reverse=descending)
-    limit = max(1, min(int(limit), SUPPORTING_PAGE_MAX))
-    offset = max(0, int(offset))
-    return {
-        "primary_asset": key,
-        "total": len(rows),
-        "offset": offset,
-        "limit": limit,
-        "sort": sort,
-        "direction": "desc" if descending else "asc",
-        "truncated": truncated,
-        "assets": rows[offset : offset + limit],
-    }
-
-
 async def default_scenario_reader(db: AsyncSession) -> uuid.UUID | None:
     """#1591 S3: whose OpenCRQ read decides a ``system`` signal no administrator evaluates (the listener path).
 
@@ -501,8 +407,12 @@ async def evaluate_after_record(db: AsyncSession, row: CtemSignal, *, created: b
         return pending
     verdict = signals.verdict_of(row.state)
     try:
-        async with db.begin_nested():
-            await ctem_case_loop.open_from_signal(db, row, events=pending)
+        # #1951: nothing opens while an administrator paused case opening; the signal waits confirmed.
+        from app.services import ctem_case_opening
+
+        if await ctem_case_opening.is_on(db, "cyber"):
+            async with db.begin_nested():
+                await ctem_case_loop.open_from_signal(db, row, events=pending)
     except Exception:
         pending.items.clear()
         logger.warning("CTEM case not opened for signal %s; the sweep retries", getattr(row, "id", "?"), exc_info=True)
