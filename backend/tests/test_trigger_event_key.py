@@ -324,7 +324,7 @@ async def test_update_assignment_stores_the_config_as_sent(monkeypatch):
     async def _caller(_db, _uid):
         return SimpleNamespace(id=caller_id, is_admin=False, role="member")
 
-    async def _load_writable(_db, _uid, _assignment_uuid, *, action="modify"):
+    async def _load_writable(_db, _uid, _assignment_uuid, *, action="modify", written=frozenset()):
         return assignment, agent, None
 
     monkeypatch.setattr(helpers_mod, "get_user_group_ids", _groups)

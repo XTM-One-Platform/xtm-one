@@ -3454,6 +3454,27 @@ def is_admin_opt_in_builtin_assignment(agent, assignment) -> bool:
     ) in ADMIN_OPT_IN_BUILTIN_ASSIGNMENTS
 
 
+#: What whoever may manage a built-in agent may write on ANY of its
+#: assignments: the switch alone, so one automation can be stopped without
+#: disabling the whole agent (#2192). Its seeded definition stays read-only.
+BUILTIN_ASSIGNMENT_SWITCH_FIELDS: frozenset[str] = frozenset({"enabled"})
+
+
+def builtin_assignment_write_allowed(agent: Any, assignment: Any, written: Any) -> bool:
+    """Whether writing the fields *written* lifts the built-in gate on *assignment*.
+
+    True for the switch alone on any assignment of a built-in agent, and for
+    ``ADMIN_OPT_IN_WRITABLE_FIELDS`` on a seeded opt-in one. An empty write
+    never lifts it. The company-managed and manage gates still apply.
+    """
+    fields = frozenset(written or ())
+    if not fields or not bool(getattr(agent, "is_builtin", False)):
+        return False
+    if fields <= BUILTIN_ASSIGNMENT_SWITCH_FIELDS:
+        return True
+    return is_admin_opt_in_builtin_assignment(agent, assignment) and fields <= ADMIN_OPT_IN_WRITABLE_FIELDS
+
+
 #: The seeded fleet automations (``SEEDED_FLEET_OPT_IN``): the opt-in ones
 #: outside the 1.261102.0 allowlist, so the hourly indicator decay re-check
 #: keeps its own run-as rule (``app.services.fleet_run_as``, #9188).
