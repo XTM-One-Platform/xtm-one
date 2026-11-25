@@ -76,10 +76,13 @@ def completing_refs(body: str, default_repo: str) -> list[tuple[str, int]]:
     reference is bare or follows a non-closing word; or when another line of the
     body marks it and the reference follows ``Refs`` or ``Part of`` (the slice
     words). A reference the body also closes (``Closes #N``) never counts.
+    The cross-line rule applies only to a body that closes nothing: when the body
+    closes an issue, a marker on another line is read as completing that issue,
+    and a ``Part of #N`` epic beside it is left alone.
     """
     text = body or ""
     closed = {(r.lower(), n) for r, n, _k in closing_refs(text, default_repo)}
-    body_marked = _completes_line(text)
+    body_marked = not closed and _completes_line(text)
     found: list[tuple[str, int]] = []
     seen: set[tuple[str, int]] = set()
     for line in text.splitlines():

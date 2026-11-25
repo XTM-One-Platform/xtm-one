@@ -113,6 +113,12 @@ def test_completing_refs_lets_an_earlier_slice_and_a_closing_keyword_pass() -> N
     assert completing_refs("", "acme/app") == []
 
 
+def test_a_body_wide_marker_is_read_as_the_closed_issue_not_an_epic() -> None:
+    assert completing_refs("Closes #10 (last slice)\n\nPart of #3", "acme/app") == []
+    assert completing_refs("This is the last slice.\n\nCloses #10\nRefs #3", "acme/app") == []
+    assert completing_refs("Closes #10\nRefs #3 (slice 4 of 4)", "acme/app") == [("acme/app", 3)]
+
+
 @pytest.mark.asyncio
 async def test_create_refuses_a_last_slice_written_refs() -> None:
     fake = _GitHub()
