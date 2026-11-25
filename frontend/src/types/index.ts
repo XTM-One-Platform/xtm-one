@@ -2669,6 +2669,8 @@ export interface TriggerConfig {
   fired_at?: string;
   /** platform_event triggers: the subscription's deadline (ISO 8601 with its offset); an event after it starts nothing. */
   expires_at?: string;
+  /** platform_event triggers: "observer" watches the objects of its events without working them (never counted as a CTEM case worker). */
+  role?: "observer" | "worker";
   /** Evaluated before any run or gate; a dropped event is counted (`events_filtered_count`). */
   filter?: {
     channels?: string[];
@@ -5424,14 +5426,6 @@ export interface ObservabilityConfig {
   trace_storage_enabled: boolean;
   trace_retention_days: number;
   audit_log_retention_days: number;
-  /** Days the coordination tables keep a row (#2070); 0 keeps forever. */
-  coordination_retention?: {
-    work_item_resolved_days: number;
-    work_item_abandoned_days: number;
-    shared_state_resolved_days: number;
-    shared_state_archive_days: number;
-    workset_resolved_days: number;
-  } | null;
   trace_store_payloads: boolean;
   last_aggregation_at: string | null;
   aggregation_stale: boolean;
