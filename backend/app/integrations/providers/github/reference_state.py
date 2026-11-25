@@ -725,6 +725,9 @@ def dequeued_from_timeline(repo: str, number: int, data: Any) -> PullRequestEven
     if not when:
         return None
     reason = (_text(removal.get("reason")) or "unknown").lower()
+    from .pr_events import queue_run_hint
+
+    hint = queue_run_hint(repo.lower(), reason, when)
     return PullRequestEvent(
         kind="dequeued",
         repo=repo.lower(),
@@ -734,6 +737,7 @@ def dequeued_from_timeline(repo: str, number: int, data: Any) -> PullRequestEven
         conclusion=reason,
         url=_text(pull.get("url")),
         closed_at=when,
+        extra={"queue_run_hint": hint} if hint else {},
     )
 
 
