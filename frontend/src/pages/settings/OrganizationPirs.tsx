@@ -17,7 +17,13 @@
  * While OpenCTI's list is on its way, a PIR saved without a name draws a
  * skeleton chip, never placeholder text; two PIRs that share a name are told
  * apart by the start of their id (#11589).
+ *
+ * Each PIR OpenCTI lists carries its details action (#1974): "N of 4 set" names how much of
+ * its question, owner, review cadence and primary assets served is filled, and opens the
+ * details dialog, so a PIR with nothing said about it stands out where it is picked.
  */
+
+import { Icon } from "@filigran/design-system";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +32,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { OrganizationPirsResponse } from "@/hooks/api/useOrganizationContextApi";
 import { useFormatter } from "@/i18n";
 import { pirLink } from "@/lib/organization-profile";
+import { type PirDetail, PIR_DETAIL_FIELDS, pirDetailFilled } from "@/lib/organization-reference";
 
 type PirState = "known" | "missing" | "unknown" | "loading";
 
@@ -94,6 +101,10 @@ interface OrganizationPirsViewProps {
   /** Opens the form with this PIR taken out (nothing is saved until Save). */
   onRemove: (id: string) => void;
   describedBy?: string;
+  /** The stored details by PIR id (#1974); with onDetails, each PIR shows its completeness. */
+  details?: Record<string, PirDetail>;
+  /** Opens the details dialog of a PIR, with the name its chip shows. */
+  onDetails?: (id: string, name: string) => void;
 }
 
 /** OpenCTI could not be read: one line with Retry, the same in read and edit mode (#11589). */
@@ -122,7 +133,26 @@ function PirChipSkeleton() {
   );
 }
 
-export function OrganizationPirsView({ pirs, list, unreadable, retrying, onRetry, onRemove, describedBy }: OrganizationPirsViewProps) {
+/** The details action of a PIR chip: its completeness, a full PIR marked, the dialog on click (#1974). */
+function PirDetailsButton({ name, filled, onClick }: { name: string; filled: number; onClick: () => void }) {
+  const { t_i18n } = useFormatter();
+  const count = t_i18n("{set} of {total} set", { set: filled, total: PIR_DETAIL_FIELDS });
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="h-6 shrink-0 gap-1 px-1.5 content-compact"
+      aria-label={t_i18n("Details of {name}, {count}", { name, count })}
+      onClick={onClick}
+      data-testid="settings.organization.pir-details-open"
+    >
+      <Icon name={filled === PIR_DETAIL_FIELDS ? "circle-check" : "list-checks"} size={16} aria-hidden />
+      {count}
+    </Button>
+  );
+}
+
+export function OrganizationPirsView({ pirs, list, unreadable, retrying, onRetry, onRemove, describedBy, details, onDetails }: OrganizationPirsViewProps) {
   const { t_i18n } = useFormatter();
   const text = usePirText();
   const loading = pirs.some((pir) => pir.state === "loading");
@@ -158,6 +188,9 @@ export function OrganizationPirsView({ pirs, list, unreadable, retrying, onRetry
                   <Button variant="ghost" size="sm" className="h-6 px-1.5 content-compact" onClick={() => onRemove(pir.id)}>
                     {t_i18n("Remove")}
                   </Button>
+                )}
+                {pir.state !== "missing" && onDetails && (
+                  <PirDetailsButton name={label} filled={pirDetailFilled(details?.[pir.id])} onClick={() => onDetails(pir.id, label)} />
                 )}
               </Badge>
           );
