@@ -225,6 +225,27 @@ Re-import is keyed on source and `external_id`: a row this source wrote is updat
 (`manual`, `csv`, `api`) is never overwritten, and a row this source wrote that the read no longer returns
 is reported as gone, kept unless the administrator removes it. A truncated or failed read removes nothing.
 
+### Outbound to OpenCTI (#1982 S3)
+
+An outbound `assets` sync to `opencti` (`backend/app/services/organization_context_opencti_outbound.py`)
+writes the STIX model OpenCTI's own rule `vulnerability_software_to_system` reads, so a vulnerability OpenCTI
+knows on a software reaches the systems that run it:
+
+| XTM One | OpenCTI | Written |
+|---|---|---|
+| asset | `System` (Identity) | `name`; with the #19943 taxonomy: category, subcategory, criticality, internet facing, environment, owner, platform (`os_family`); `unknown` and empty values never written |
+| software installed (asset store, else the row's `products`) | `Software` observable (STIX 2.1 SCO) | `name` (product), `vendor`, `version`, `cpe`; one per vendor, product and version |
+| installation | `uses` relationship, System to Software | |
+| asset group | not written | OpenCTI has no group of Systems yet |
+
+Only what the sync created is touched (`outbound_ids`: `system:<name>`, `software:<vendor>|<product>|<version>`,
+`uses:<name>|<software>`); a System OpenCTI's connectors wrote is never updated or deleted, an asset whose
+source is `opencti` is never pushed back. The outbound filters select the assets; an asset leaving them has its
+System deleted (its relationships with it). A Software observable is never deleted, OpenCTI deduplicating
+observables on their STIX id: a software no asset runs any more loses its `uses` relationships and leaves the
+keys. An object deleted in OpenCTI is forgotten and created again on the next run. More than 5,000
+installations writes nothing and says so.
+
 ## 9. One thing across sources (#1178)
 
 `backend/app/services/organization_asset_identity.py` is the pure rule (no I/O, no model call) that turns the
