@@ -20370,6 +20370,7 @@
   "Triggers when an accounting period is closed, reopened, locked or unlocked. Uses polling (every 5 minutes); the first poll starts from now.": "会計期間がクローズ、再オープン、ロック、またはロック解除されたときに起動します。ポーリング（5 分ごと）を使用し、最初のポーリングは現在時点から開始します。",
   "{source} · {by}": "{source} · {by}",
   "Confirm: {option}": "確認: {option}",
+  "The agent acts on this answer as soon as it is sent, and it cannot be changed afterwards.": "この回答は送信と同時にエージェントが処理し、後から変更することはできません。",
   "Runs this call once. The tool asks again next time.": "この呼び出しを一度だけ実行します。次回もツールが確認します。",
   "{count, plural, one {Runs # call once.} other {Runs these # calls once.}} The tool asks again next time.": "{count, plural, other {これら # 件の呼び出しを一度だけ実行します。}} 次回もツールが確認します。",
   "This needs your own consent: the action is run as you approve it now, and it cannot be undone.": "あなた自身の同意が必要です。操作は今承認した内容で実行され、元に戻せません。",
@@ -21781,7 +21782,6 @@
   "Rows the first run creates in {platform}": "最初の実行が {platform} に作成する行",
   "Observer only": "監視のみ",
   "This automation watches the objects of its events without working them: a CTEM case it hears is not shown as worked by it.": "この自動化はイベントの対象を監視するだけで処理しません。受信した CTEM ケースはこの自動化が処理中として表示されません。",
-  "{count, plural, one {# automation that can work this case is switched off} other {# automations that can work this case are switched off}}": "{count, plural, other {このケースを処理できる自動化 # 件がオフです}}",
   "Ticket": "チケット",
   "Applied change": "適用済みの変更",
   "Ticket and applied change": "チケットと適用済みの変更",
@@ -21813,5 +21813,13 @@
   "Resolved worksets (days)": "解決済みワークセット（日）",
   "Resolved worksets are deleted with their documents this many days after they were resolved.": "解決済みのワークセットは、解決からこの日数後にドキュメントとともに削除されます。",
   "Kept forever": "無期限に保持",
-  "An hourly sweep deletes what is past this window, in batches, until nothing is left. Active entries and work items still open are never deleted. 0 keeps them forever. Allowed range: {min} to {max}.": "1時間ごとのクリーンアップが、この期間を過ぎたものを何も残らなくなるまでバッチで削除します。アクティブなエントリと未完了のワークアイテムは削除されません。0 は無期限に保持します。許容範囲：{min}〜{max}。"
+  "An hourly sweep deletes what is past this window, in batches, until nothing is left. Active entries and work items still open are never deleted. 0 keeps them forever. Allowed range: {min} to {max}.": "1時間ごとのクリーンアップが、この期間を過ぎたものを何も残らなくなるまでバッチで削除します。アクティブなエントリと未完了のワークアイテムは削除されません。0 は無期限に保持します。許容範囲：{min}〜{max}。",
+  "Waits for a person": "担当者の対応待ち",
+  "Waits for a decision": "判断待ち",
+  "Waits for the case to start": "ケースの開始待ち",
+  "Waits for the analysis to finish": "分析の完了待ち",
+  "Waits for the remediation to be applied": "修復の適用待ち",
+  "Waits for the validation to finish": "検証の完了待ち",
+  "Watches whether the exposure comes back": "露出の再発を監視中",
+  "Last run by {agent}, {when}": "{agent} による最終実行、{when}"
 }

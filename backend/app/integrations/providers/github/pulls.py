@@ -1488,6 +1488,24 @@ def register(
                 resp, err = await _put_merge()
                 attempts += 1
             if err and _is_base_modified(resp):
+                # A base protected by a merge queue: the queue takes the PR
+                # whatever the base did meanwhile, so enqueue it now instead of
+                # polling mergeability and advising a branch update (#2147).
+                queued = await merge_refusals.refusal_answer(
+                    client,
+                    headers,
+                    owner,
+                    name,
+                    number,
+                    base_ref,
+                    head_sha,
+                    "Base branch was modified.",
+                    queue_only=True,
+                )
+                if queued:
+                    if queued.startswith(f"PR #{number} in {repo} queued"):
+                        await mark_self_action(repo, number)
+                    return queued
                 # The base moved seconds before the PUT. GitHub recomputes the
                 # PR's mergeability; a clean PR merges once it has, without a
                 # branch update and the CI round that would cost.

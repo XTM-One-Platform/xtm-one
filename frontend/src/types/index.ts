@@ -6506,6 +6506,8 @@ export interface WorkItemAskOption {
   key: string;
   label: string;
   effect?: string | null;
+  /** A terminal option (cancel, close): the card asks to confirm it before sending (#2150). */
+  confirm?: boolean;
 }
 
 /** `work_items.ask` (#9437): the question a person answers, as the agent wrote it. */

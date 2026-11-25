@@ -37,8 +37,10 @@ A poller declares how its own fields merge with ``coalesce_merge`` on the event
 (:data:`MERGE_KEY`): ``union`` lists are joined without duplicates, ``by_key``
 lists of objects are joined by an id field (the newer object wins), and
 ``count_at_least`` counts are at least the length of the list they count and
-never below either side. A field the spec does not name takes the newer
-event's value, as before. A field also carried on ``entity`` is mirrored there.
+never below either side, and ``sum`` counts add up, less what the covers both
+events list carry under the same name (an event covered twice counts once).
+A field the spec does not name takes the newer event's value, as before. A
+field also carried on ``entity`` is mirrored there.
 """
 
 from __future__ import annotations
@@ -165,6 +167,15 @@ def _merge_declared_fields(merged: dict[str, Any], waiting: Mapping[str, Any], i
             merged[field] = [*loose, *keyed.values()]
         else:
             merged.pop(field, None)
+        written.append(field)
+    for field in _names(spec.get("sum")):
+        if field not in waiting and field not in incoming:
+            continue
+        waiting_ids = {str(entry.get("id")) for entry in _covers(waiting) if entry.get("id")}
+        twice = sum(
+            _int(entry.get(field)) for entry in _covers(incoming) if entry.get("id") and str(entry["id"]) in waiting_ids
+        )
+        merged[field] = max(_int(waiting.get(field)) + _int(incoming.get(field)) - twice, 0)
         written.append(field)
     count_at_least = spec.get("count_at_least")
     for field, counted in count_at_least.items() if isinstance(count_at_least, Mapping) else []:

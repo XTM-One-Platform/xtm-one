@@ -181,15 +181,23 @@ async def refusal_answer(
     base: str,
     expected_head: str,
     github_msg: str,
+    *,
+    queue_only: bool = False,
 ) -> str | None:
     """The answer to a 405 merge refusal, or None to keep the generic one.
 
     Enqueues the PR when its base has a merge queue; otherwise names the
-    cause GitHub reports and the one fix.
+    cause GitHub reports and the one fix. With ``queue_only`` (a 'Base branch
+    was modified' refusal) a base without a merge queue answers None, so the
+    caller keeps its own wait-and-retry: on a queue-protected base the queue
+    takes the PR whatever the base did meanwhile, and no branch update or
+    second PUT is needed.
     """
     repo = f"{owner}/{name}"
     facts = await read_facts(client, headers, owner, name, number, base)
     if facts is None:
+        return None
+    if queue_only and not (facts.base_has_queue or facts.in_queue):
         return None
     said = f" GitHub answered: {github_msg}" if github_msg else ""
     if expected_head and facts.head and facts.head != expected_head:

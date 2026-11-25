@@ -663,6 +663,85 @@ async def inventory_versions(
     return answer
 
 
+def inventory_platform_sets(rows: Iterable[Any], labels: Iterable[str]) -> dict[str, tuple[str, ...]]:
+    """Per product label, the platforms (``os_family``) of every asset running it (pure, #2152).
+
+    *rows* are ``(vendor, product, asset_count, platforms)`` groups of the asset software, joined
+    to their asset; a row matches a label by :func:`matches_case` (the rule
+    :func:`inventory_version_counts` reads). A label is answered only when every asset running it
+    reports a platform: one asset with none (``None`` or blank) leaves the label out, so the
+    platform is never guessed. Platforms are sorted and named as the inventory stores them.
+    """
+    rows = list(rows)
+    keys, index = _row_index(rows)
+    out: dict[str, tuple[str, ...]] = {}
+    for label in dict.fromkeys(labels):
+        folded = _key(label)
+        found: set[str] = set()
+        unknown = False
+        for i in sorted(set(index.get(folded, ()))) if folded else ():
+            vendor_key, product_key = keys[i]
+            if not _keys_match(folded, vendor_key, product_key):
+                continue
+            for platform in rows[i][3] or (None,):
+                named = _platform(platform)
+                if named is None:
+                    unknown = True
+                else:
+                    found.add(named)
+        if found and not unknown:
+            out[label] = tuple(sorted(found))
+    return out
+
+
+async def inventory_platforms(
+    db: AsyncSession, organization_id: uuid.UUID, labels: Iterable[str]
+) -> dict[str, tuple[str, ...]]:
+    """Per product label, the platforms of every asset running it, when all are known (#2152).
+
+    One grouped read per chunk of labels, joined on the asset row (bind parameters are the
+    organization and the product keys). ``{}`` when the store cannot be read: the CVE matcher then
+    evaluates no platform, as before.
+    """
+    wanted = [label for label in dict.fromkeys(labels) if product_keys(label)]
+    if not wanted:
+        return {}
+    soft = OrganizationAssetSoftware
+    asset = OrganizationAsset
+    rows: list[Any] = []
+    try:
+        async with db.begin_nested():
+            for start in range(0, len(wanted), _INVENTORY_LABELS_CHUNK):
+                chunk = wanted[start : start + _INVENTORY_LABELS_CHUNK]
+                keys = sorted({k for label in chunk for k in product_keys(label)})
+                like = [
+                    soft.product_key.like("% " + _like_escape(product_keys(label)[0]), escape="\\") for label in chunk
+                ]
+                rows.extend(
+                    (
+                        await db.execute(
+                            select(
+                                func.min(soft.vendor),
+                                func.min(soft.product),
+                                func.count(func.distinct(soft.asset_id)),
+                                func.array_agg(func.distinct(asset.fields["os_family"]["value"].astext)),
+                            )
+                            .join(asset, asset.id == soft.asset_id)
+                            .where(
+                                soft.organization_id == organization_id,
+                                asset.organization_id == organization_id,
+                                or_(soft.product_key.in_(keys), *like),
+                            )
+                            .group_by(soft.vendor_key, soft.product_key)
+                        )
+                    ).all()
+                )
+    except Exception:  # the inventory never breaks the issues read
+        logger.info("CTEM inventory platforms unavailable", exc_info=True)
+        return {}
+    return await asyncio.to_thread(inventory_platform_sets, rows, wanted)
+
+
 async def inventory_sources(db: AsyncSession, organization_id: uuid.UUID) -> list[str] | None:
     """The sources the organization's asset software was imported from, sorted (#1736).
 

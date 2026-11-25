@@ -219,6 +219,39 @@ async def test_an_enqueue_refused_because_another_run_queued_it_is_said_queued()
     assert "queued meanwhile" in result
 
 
+_BASE_MODIFIED = (405, {"message": "Base branch was modified. Review and try the merge again."})
+
+
+@pytest.mark.asyncio
+async def test_a_base_modified_refusal_on_a_queue_protected_base_enqueues_at_once() -> None:
+    """Main moving under a merge queue: enqueue the PR, no poll, no second PUT, no branch update."""
+    enqueue = {"data": {"enqueuePullRequest": {"mergeQueueEntry": {"position": 4, "state": "QUEUED"}}}}
+    github = _GitHub(_BASE_MODIFIED, facts=_facts(queue=True, state="BEHIND"), enqueue=enqueue)
+
+    with patch("app.integrations.providers.github.pulls.asyncio.sleep") as sleep:
+        result = await _run(github)
+
+    assert result.startswith("PR #12 in acme/app queued")
+    assert "position 4" in result
+    assert "update_branch" not in result
+    assert len(github.puts) == 1
+    sleep.assert_not_called()
+    mutation = github.graphql[-1]
+    assert mutation["variables"] == {"id": "PR_node", "head": _HEAD}
+
+
+@pytest.mark.asyncio
+async def test_a_base_modified_refusal_without_a_queue_keeps_the_wait_and_retry() -> None:
+    github = _GitHub(_BASE_MODIFIED, facts=_facts(queue=False))
+
+    with patch("app.integrations.providers.github.pulls.asyncio.sleep"):
+        result = await _run(github)
+
+    assert len(github.puts) == 2
+    assert not any("enqueuePullRequest" in g["query"] for g in github.graphql)
+    assert "queued" not in result
+
+
 @pytest.mark.asyncio
 async def test_a_pr_already_in_the_queue_is_said_queued_without_a_branch_update():
     github = _GitHub(_NOT_MERGEABLE, facts=_facts(queue=True, in_queue=True))

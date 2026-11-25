@@ -102,7 +102,10 @@ _DESKS = {
         opencrq_risk_budget_desk.RECOMMENDATION_PREFIX,
         opencrq_risk_budget_desk.APPROVAL_PREFIX,
     ),
-    openaev_detection_desk.ORCHESTRATOR: (openaev_detection_desk.LAUNCH_PREFIX,),
+    openaev_detection_desk.ORCHESTRATOR: (
+        openaev_detection_desk.LAUNCH_PREFIX,
+        openaev_detection_desk.REMEDIATION_PREFIX,
+    ),
 }
 
 
@@ -134,6 +137,26 @@ def test_the_risk_desk_persona_keys_its_register_writes() -> None:
 def test_the_detection_desk_persona_keys_its_launches() -> None:
     text = (_PERSONAS / f"{openaev_detection_desk.ORCHESTRATOR}.md").read_text(encoding="utf-8")
     assert f"`{openaev_detection_desk.LAUNCH_PREFIX}`" in text
+
+
+def test_every_detection_desk_item_reaches_an_inbox() -> None:
+    """#2145 (partner e29c70b4): a gap item is a person's decision its orchestrator owns,
+    its answer files the re-test, and the persona keys nothing outside the desk's inboxes."""
+    text = (_PERSONAS / f"{openaev_detection_desk.ORCHESTRATOR}.md").read_text(encoding="utf-8")
+    gap_step = next(line for line in text.splitlines() if openaev_detection_desk.REMEDIATION_PREFIX in line)
+    assert "owned by you" in gap_step and "needs_human: true" in gap_step
+    prompt = _gate_assignment(openaev_detection_desk.ORCHESTRATOR)["prompt"]
+    assert openaev_detection_desk.RETEST_PREFIX in prompt
+    inbox_prefixes = {
+        *_DESKS[openaev_detection_desk.ORCHESTRATOR],
+        *(
+            b["trigger_config"]["correlation_prefix"]
+            for b in BUILTIN_ASSIGNMENTS
+            if b["agent_slug"] == openaev_detection_desk.ORCHESTRATOR and b["trigger_type"] == "work_item"
+        ),
+    }
+    keyed = set(re.findall(r"`(openaev:detection-desk:[a-z-]+:)`", text))
+    assert keyed and keyed <= inbox_prefixes, keyed - inbox_prefixes
 
 
 def test_the_re_test_keeps_its_single_path() -> None:
