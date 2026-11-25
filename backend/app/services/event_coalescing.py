@@ -25,6 +25,20 @@ one run of the key runs and at most one waits, whatever the burst.
 
 An event without the key is dispatched as before: coalescing applies only to
 the providers and events that declare it.
+
+The run folded into is any run of the key that has not started: queued behind
+a run in flight, or ``pending`` in a free slot (#2117: the first page of a
+backlog starts a run, the next page of the same poll tick folds into it). The
+executor re-reads the payload under the row lock when it marks the run
+running, so a fold committed before that is in the run's prompt, and one that
+comes after finds the run started and queues the next run.
+
+A poller declares how its own fields merge with ``coalesce_merge`` on the event
+(:data:`MERGE_KEY`): ``union`` lists are joined without duplicates, ``by_key``
+lists of objects are joined by an id field (the newer object wins), and
+``count_at_least`` counts are at least the length of the list they count and
+never below either side. A field the spec does not name takes the newer
+event's value, as before. A field also carried on ``entity`` is mirrored there.
 """
 
 from __future__ import annotations
@@ -38,6 +52,10 @@ PAYLOAD_KEY = "coalesce_key"
 CONTEXT_KEY = "coalesce_key"
 #: Most runs a merged payload lists in ``covers``; ``run_count`` keeps the total.
 MAX_COVERED = 50
+#: Event payload key holding the poller's merge spec (``union``, ``by_key``, ``count_at_least``).
+MERGE_KEY = "coalesce_merge"
+#: Run statuses a coalescing event folds into: the run has not started.
+FOLDABLE_STATUSES = ("queued", "pending")
 
 
 def payload_key(payload: Mapping[str, Any] | None) -> str | None:
@@ -93,4 +111,75 @@ def merged_payload(waiting: Mapping[str, Any] | None, incoming: Mapping[str, Any
     merged = {**waiting, **incoming}
     merged["covers"] = covers[-MAX_COVERED:]
     merged["run_count"] = max(_count(waiting) + _count(incoming) - duplicates, len(covers))
+    _merge_declared_fields(merged, waiting, incoming)
     return merged
+
+
+def _spec(waiting: Mapping[str, Any], incoming: Mapping[str, Any]) -> dict[str, Any]:
+    spec = incoming.get(MERGE_KEY)
+    if not isinstance(spec, Mapping):
+        spec = waiting.get(MERGE_KEY)
+    return dict(spec) if isinstance(spec, Mapping) else {}
+
+
+def _names(value: Any) -> list[str]:
+    return [name for name in value if isinstance(name, str)] if isinstance(value, list | tuple) else []
+
+
+def _list(payload: Mapping[str, Any], field: str) -> list[Any]:
+    value = payload.get(field)
+    return list(value) if isinstance(value, list) else []
+
+
+def _int(value: Any) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
+
+
+def _merge_declared_fields(merged: dict[str, Any], waiting: Mapping[str, Any], incoming: Mapping[str, Any]) -> None:
+    """Apply the poller's ``coalesce_merge`` spec to *merged* (see the module doc)."""
+    spec = _spec(waiting, incoming)
+    if not spec:
+        return
+    written: list[str] = []
+    for field in _names(spec.get("union")):
+        joined: list[Any] = []
+        for item in [*_list(waiting, field), *_list(incoming, field)]:
+            if item not in joined:
+                joined.append(item)
+        merged[field] = joined
+        written.append(field)
+    by_key = spec.get("by_key")
+    for field, id_field in by_key.items() if isinstance(by_key, Mapping) else []:
+        if not isinstance(field, str) or not isinstance(id_field, str):
+            continue
+        keyed: dict[Any, Any] = {}
+        loose: list[Any] = []
+        for item in [*_list(waiting, field), *_list(incoming, field)]:
+            item_id = item.get(id_field) if isinstance(item, Mapping) else None
+            if item_id is None:
+                loose.append(item)
+            else:
+                keyed.pop(item_id, None)
+                keyed[item_id] = item
+        if keyed or loose:
+            merged[field] = [*loose, *keyed.values()]
+        else:
+            merged.pop(field, None)
+        written.append(field)
+    count_at_least = spec.get("count_at_least")
+    for field, counted in count_at_least.items() if isinstance(count_at_least, Mapping) else []:
+        if not isinstance(field, str) or not isinstance(counted, str):
+            continue
+        merged[field] = max(len(_list(merged, counted)), _int(waiting.get(field)), _int(incoming.get(field)))
+        written.append(field)
+    entity = merged.get("entity")
+    if isinstance(entity, Mapping):
+        entity = dict(entity)
+        for field in written:
+            if field not in entity:
+                continue
+            if field in merged:
+                entity[field] = merged[field]
+            else:
+                entity.pop(field, None)
+        merged["entity"] = entity
