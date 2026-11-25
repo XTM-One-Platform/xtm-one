@@ -1275,14 +1275,24 @@ def reconcile_failure(done: CiCompleted, state: dict[str, Any] | None) -> tuple[
     On the same head, a live ``success`` turns the dispatch green, and an
     undecided read (a required check still running, the red on a check the
     base does not require) dispatches nothing: the answer's second value says
-    why. No read, another head, or a live ``failure``: the delivery stands.
+    why. A live head the pull request moved to past the delivered one also
+    dispatches nothing: that red is spent, the new head's CI decides (#2014).
+    No read, or a live ``failure`` on the same head: the delivery stands.
     """
-    if done.conclusion != "failure" or not isinstance(state, dict) or state.get("head_sha") != done.head_sha:
+    if done.conclusion != "failure" or not isinstance(state, dict):
+        return done, None
+    label = f"{done.repo}#{done.number}"
+    live_sha = state.get("head_sha")
+    if isinstance(live_sha, str) and live_sha and done.head_sha and live_sha != done.head_sha:
+        return done, (
+            f"not dispatched: the red on {label} was on {done.head_sha[:12]}, the pull request moved to "
+            f"{live_sha[:12]} (read live); the new head's CI completion wakes it"
+        )
+    if live_sha != done.head_sha:
         return done, None
     live = state.get("conclusion")
     if live == "failure":
         return done, None
-    label = f"{done.repo}#{done.number}"
     if live == "success":
         return (
             CiCompleted(
@@ -1329,10 +1339,28 @@ def record_unconfirmed_failure(payload: object, done: CiCompleted, state: dict |
     require) marks the recorded failed runs ``not_required``. Either way the
     head no longer reads red (:func:`red_pull_requests`), so neither the red
     self-block release nor the inbox red guard acts on it (#11807). A live
-    ``failure``, another head or no read: unchanged, and ``None``.
+    ``failure`` or no read: unchanged, and ``None``. A live head past the
+    delivered one: the binding takes the live head and forgets the old CI, so
+    the spent red neither releases nor parks the item (#2014).
     """
     out = dict(payload) if isinstance(payload, dict) else {}
-    if done.conclusion != "failure" or not isinstance(state, dict) or state.get("head_sha") != done.head_sha:
+    if done.conclusion != "failure" or not isinstance(state, dict):
+        return out, None
+    live_sha = state.get("head_sha")
+    if isinstance(live_sha, str) and live_sha and done.head_sha and live_sha != done.head_sha:
+        bindings = pull_request_bindings(out)
+        for binding in bindings:
+            if (binding["repo"], binding["number"]) != (done.repo, done.number):
+                continue
+            recorded_ci: dict[str, Any] = binding["ci"] if isinstance(binding.get("ci"), dict) else {}
+            if recorded_ci.get("head_sha") == live_sha:
+                return out, None  # the new head's CI is recorded already
+            binding["head_sha"] = live_sha
+            binding["ci"] = {"head_sha": live_sha}
+            out["pull_requests"] = bindings
+            return out, f"{done.repo}#{done.number} moved from {done.head_sha[:12]} to {live_sha[:12]}"
+        return out, None
+    if state.get("head_sha") != done.head_sha:
         return out, None
     live = state.get("conclusion")
     if live == "failure":

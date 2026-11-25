@@ -162,7 +162,7 @@ function ToneChip({ tone, children, className }: { tone: DashboardTone; children
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono-plex text-[11px] font-medium whitespace-nowrap",
+        "inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 font-mono-plex text-[11px] font-medium whitespace-nowrap",
         TONE_CHIP[tone],
         className,
       )}

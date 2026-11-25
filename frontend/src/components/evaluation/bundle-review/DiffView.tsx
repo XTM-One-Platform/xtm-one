@@ -114,7 +114,7 @@ function DiffRow({ ctx, it, layout }: { ctx: ReviewContext; it: EntityItem | Rel
     verdict && verdict !== "same" ? (
       <span
         title={ctx.mode === "runs" ? undefined : t_i18n("vs {label}", { label: ctx.comparator?.name ?? "" })}
-        className={cn("rounded-full border px-1.5 content-caption text-default-primary", STATUS_SURFACE[verdict])}
+        className={cn("rounded-sm border px-2 content-caption text-default-primary", STATUS_SURFACE[verdict])}
       >
         {t_i18n(statusLabel(verdict, "runs"))}
       </span>

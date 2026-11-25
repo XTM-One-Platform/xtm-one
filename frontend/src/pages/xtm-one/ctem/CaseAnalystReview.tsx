@@ -13,6 +13,7 @@
  */
 import { Icon } from "@filigran/design-system";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { TruncatedText } from "@/components/ui/truncated-text";
 import { CASE_SECTION_ICON, CaseCardTitleText } from "./case-icons";
 import { WorkItemDecisionCard } from "@/components/work-items/WorkItemDecisionCard";
 import { mayAnswerCaseGate } from "@/lib/ctem-access";
@@ -118,7 +119,7 @@ export function CaseAnalystReview({
         )}
         <div className="flex min-w-0 flex-col gap-1" data-testid="ctem-case-threat-package">
           {stage === "not_started" && !gate && !record ? (
-            <CaseSectionReason own={t_i18n(REVIEW_STAGE_LABEL[stage])} source="opencti" testId="ctem-case-analyst-review-empty" />
+            <CaseSectionReason own={t_i18n(REVIEW_STAGE_LABEL[stage])} source="opencti" icon={CASE_SECTION_ICON.analyst_review} testId="ctem-case-analyst-review-empty" />
           ) : (
             <span className={stage === "not_started" ? "text-default-secondary" : undefined} data-testid="ctem-case-threat-package-stage">
               {t_i18n(REVIEW_STAGE_LABEL[stage])}
@@ -142,12 +143,12 @@ export function CaseAnalystReview({
                   className="inline-flex min-w-0 items-center gap-1 font-medium hover:underline"
                   data-testid="ctem-case-threat-package-link"
                 >
-                  <span className="truncate" title={name ?? undefined}>{name}</span>
+                  <TruncatedText text={name ?? ""} />
                   <Icon name="external-link" size={16} className="shrink-0" />
                   <span className="sr-only">{t_i18n("Open in OpenCTI")}</span>
                 </a>
               ) : (
-                <span className="min-w-0 truncate font-medium" title={name ?? undefined}>{name}</span>
+                <TruncatedText text={name ?? ""} className="font-medium" />
               )}
               {pkg.at && (
                 <span className="ml-auto whitespace-nowrap text-default-secondary">

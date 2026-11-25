@@ -8,8 +8,9 @@ import { Tip } from "@/components/ui/tooltip";
  * DiffBadge — shows +N / -N / = compared to a previous period.
  *
  * Shared by the dashboards to keep their period comparisons visually consistent.
- * Shape: the chip radius and padding (`rounded-sm px-2`, #1333); it is the
- * filled chip, so it carries no 1 px edge (its tint is the boundary).
+ * Shape: the chip geometry (`rounded-sm`, a 1 px edge, `px-2`, #1333). The
+ * edge is transparent: the tint is the boundary, and the edge keeps the box
+ * the same size as an outlined Badge beside it.
  */
 export function DiffBadge({
   current,
@@ -46,7 +47,7 @@ export function DiffBadge({
     <Tip content={`Was ${formatValue(previous)} ${label}`}>
       <span
         className={cn(
-          "inline-flex items-center gap-0.5 content-caption font-medium rounded-sm px-2 py-0.5",
+          "inline-flex items-center gap-0.5 content-caption font-medium rounded-sm border border-transparent px-2 py-0.5",
           isNeutral
             ? "bg-elevation-hover text-default-secondary"
             : isGood

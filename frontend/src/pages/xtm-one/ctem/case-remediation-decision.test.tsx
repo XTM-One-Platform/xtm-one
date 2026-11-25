@@ -120,6 +120,8 @@ describe("CaseRemediationDecision", () => {
   it("says so when the case is not decided yet", () => {
     renderWithProviders(<CaseRemediationDecision caseId="c1" history={[]} />);
     expect(screen.getByText(/once the case is validated|once the case is prioritized|writes in OpenCRQ/)).toBeTruthy();
+    // The section's icon before the sentence: it has no product logo (#1679, point 5).
+    expect(screen.getByTestId("ctem-case-remediation-empty").querySelector("svg")).not.toBeNull();
   });
 });
 

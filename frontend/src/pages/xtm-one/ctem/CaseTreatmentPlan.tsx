@@ -8,6 +8,7 @@
  */
 import { Icon } from "@filigran/design-system";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { TruncatedText } from "@/components/ui/truncated-text";
 import { CASE_SECTION_ICON, CaseCardTitleText } from "./case-icons";
 import type { CtemCaseTreatmentPlan } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
@@ -31,6 +32,7 @@ export function CaseTreatmentPlan({ plan }: { plan: CtemCaseTreatmentPlan | null
           <CaseSectionReason
             own={t_i18n("The treatment plan the approved remediation writes in OpenCRQ, with its cost and promised loss reduction.")}
             source="opencrq"
+            icon={CASE_SECTION_ICON.treatment_plan}
             testId="ctem-case-treatment-plan-empty"
           />
         ) : (
@@ -45,12 +47,12 @@ export function CaseTreatmentPlan({ plan }: { plan: CtemCaseTreatmentPlan | null
                 className="inline-flex min-w-0 items-center gap-1 font-medium hover:underline"
                 data-testid="ctem-case-treatment-plan-link"
               >
-                <span className="truncate" title={name ?? undefined}>{name}</span>
+                <TruncatedText text={name ?? ""} />
                 <Icon name="external-link" size={16} className="shrink-0" />
                 <span className="sr-only">{t_i18n("Open in OpenCRQ")}</span>
               </a>
             ) : (
-              <span className="min-w-0 truncate font-medium" title={name ?? undefined}>{name}</span>
+              <TruncatedText text={name ?? ""} className="font-medium" />
             )}
             {plan.at && (
               <span className="text-default-secondary">

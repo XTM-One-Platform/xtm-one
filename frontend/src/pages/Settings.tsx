@@ -933,7 +933,7 @@ function SettingsPage() {
 
       {/* Organization (#8987): the profile every agent reads. Not wrapped:
           filling it involves no model, so it stays editable with AI off. */}
-      {/* The scheduled imports and the agents' context default sit in its "Knowledge and sources" tab (#12329). */}
+      {/* Two tabs (#1975): Organization (identity, enterprise knowledge, the agents' context default), Risk and response. */}
       {tab === "organization" && organizationSection === "profile" && <OrganizationSection />}
       {/* Not wrapped either: the departments analytics roll usage up to
           involve no model, so they stay editable with AI off. */}
