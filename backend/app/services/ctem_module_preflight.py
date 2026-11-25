@@ -30,8 +30,7 @@ from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Final, Literal
 
-import httpx
-
+from app.core.egress import egress_client
 from app.core.utils import format_exception_message
 
 logger = logging.getLogger(__name__)
@@ -165,7 +164,9 @@ async def probe_identity(module: str, base_url: str, token: str) -> AccountState
     """Read the member's identity on *module* once; never raises."""
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     try:
-        async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT_SECS) as client:
+        # Through the egress funnel: the probe reads the same module URLs as
+        # the module tools, so it follows the run's relay route like them.
+        async with egress_client(timeout=_PROBE_TIMEOUT_SECS) as client:
             if module == "opencti":
                 resp = await client.post(
                     f"{base_url}/graphql", headers=headers, json={"query": "query XtmOnePreflight { me { id } }"}
