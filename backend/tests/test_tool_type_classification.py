@@ -155,6 +155,9 @@ def test_no_consolidated_management_tool_is_read():
 #: The NetSuite pair queries too: ``run_netsuite_suiteql`` refuses anything
 #: but a SELECT (or WITH ... SELECT), and ``run_netsuite_saved_search`` runs a
 #: saved search by id through the companion RESTlet's read action.
+#: ``manage_openaev_finding`` keeps its consolidated name but only reads (get,
+#: summary): OpenAEV #9233 removed the finding create, update and delete
+#: endpoints, and its definition declares ``read_only``.
 DECLARED_READ_ONLY_HUNTS = {
     "run_defender_hunting_query": "defender",
     "run_sentinelone_dv_query": "sentinelone",
@@ -163,6 +166,7 @@ DECLARED_READ_ONLY_HUNTS = {
     "hunt_harfanglab_process_hash": "harfanglab",
     "run_netsuite_suiteql": "netsuite",
     "run_netsuite_saved_search": "netsuite",
+    "manage_openaev_finding": "openaev",
 }
 
 
