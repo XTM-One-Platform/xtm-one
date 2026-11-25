@@ -20064,6 +20064,7 @@
   "Approval setting of {action}": "{action} の承認設定",
   "Setting": "設定",
   "Back to Case": "ケースに戻る",
+  "Back to the work item": "作業項目に戻る",
   "Ran a fleet step on this case": "このケースでフリートのステップを実行しました",
   "Fleet step queued on this case": "このケースでフリートのステップが待機中です",
   "Running a fleet step on this case": "このケースでフリートのステップを実行中です",
