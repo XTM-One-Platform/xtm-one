@@ -912,7 +912,10 @@ def register_knowledge(
     # Drafts this build created (create_opencti_draft, the autonomous gate):
     # the only ones delete_opencti_draft may remove with the setting off.
     _created_drafts: set[str] = set()
-    _skip_gate = direct_mutations or live_writes
+    # A fleet gate deciding the draft validation (#2089) keeps the draft gate
+    # with Live writes on: what that gate reviews must sit in a draft until
+    # it is answered, never in the live graph.
+    _skip_gate = direct_mutations or (live_writes and not gated_draft_validation)
 
 
     async def validate_nlq_filter(
@@ -4743,7 +4746,7 @@ def register_knowledge(
         did = (draft_id or "").strip()
         if not did:
             return "Error: `draft_id` is required."
-        if not live_writes and did not in _created_drafts:
+        if not live_writes and not gated_draft_validation and did not in _created_drafts:
             # Setting off: no wording names it or offers to turn it on.
             return (
                 f"Error: draft `{did}` was not created in this run, so it is not "
@@ -5240,6 +5243,8 @@ def register_knowledge(
                 + (
                     "Allowed on any draft. "
                     if live_writes
+                    else "Allowed on the draft a refused review of this fleet discards. "
+                    if gated_draft_validation
                     else "Allowed on a draft created in this run (create_opencti_draft). "
                 )
                 + "Answers the draft's name and confirms it no longer exists."

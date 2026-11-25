@@ -153,10 +153,19 @@ async def verify_package(db: AsyncSession, user_id: str, package: Any, review: s
     the case's ``ctem_cases_view.review_outcome`` (#1573): while the review
     waits, was refused or asked for a re-plan, an open draft holding the
     Grouping wins over the live graph, and a Grouping found in none is refused.
+    Until the review approved, no gate written yet included (#2089), a package
+    with a draft page or no page is read too: its Grouping found in the live
+    graph and in no open draft was written live before any approval, and is
+    refused (create a draft first).
     """
-    if not isinstance(package, dict) or not _grouping_page_of(package):
+    if not isinstance(package, dict):
         return package
     held = _not_approved(review)
+    if not _grouping_page_of(package):
+        grouping_id = str(package.get("grouping_id") or "").strip()
+        if (held or review is None) and grouping_id:
+            await _refuse_live_before_review(db, user_id, grouping_id)
+        return package
     placement = await grouping_placement(db, user_id, str(package.get("grouping_id") or "").strip(), draft_first=held)
     if placement.where == DRAFT:
         return {**package, "url": placement.draft_page}
@@ -178,6 +187,28 @@ async def verify_package(db: AsyncSession, user_id: str, package: Any, review: s
         "threat_package.url is the Grouping page but whether the Grouping is in OpenCTI's live graph could not "
         f"be read ({placement.detail}): record the draft page while the package is drafted, or try again"
     )
+
+
+#: The refusal of a package written live before its review approved it (#2089).
+LIVE_BEFORE_REVIEW = (
+    "threat_package.grouping_id is in OpenCTI's live graph and in no open draft, but the case's analyst review "
+    "(ctem.analyst_review) has not approved the package: create a draft first (create_opencti_draft), write "
+    "the package in it and record the draft page; the package reaches the live graph only when the approved "
+    "review validates the draft (apply_opencti_draft)"
+)
+
+
+async def _refuse_live_before_review(db: AsyncSession, user_id: str, grouping_id: str) -> None:
+    """Refuse a Grouping placed in the live graph alone while the review is held (#2089).
+
+    Draft first: a Grouping inside an open draft passes, whether or not it also
+    exists live (an edit of a live object is still a drafted package). One
+    OpenCTI cannot place passes as given: the draft page or the empty page
+    keeps the package ``drafted``, and an unreadable OpenCTI never blocks a case.
+    """
+    placement = await grouping_placement(db, user_id, grouping_id, draft_first=True)
+    if placement.where == LIVE:
+        raise rules.CaseRuleError(LIVE_BEFORE_REVIEW)
 
 
 async def repair_stored_packages(
