@@ -2049,6 +2049,21 @@ slots (EDR/XDR, SIEM, beside ticketing and notification), under
 indicators and the EDR custom rules that support it go to prevention mode. The
 re-test still closes the case.
 
+The coverage scenario starts after the validation decision (#2102, Sam, 25 Nov
+2026). OpenAEV builds a scenario from every security coverage it receives and
+schedules it two minutes later only when the coverage carries a periodicity.
+When `ctem.validation.non_readonly` waits at the fleet's level (or is pinned
+`wait`), the orchestrators create the coverage without periodicity (auto
+enrichment left on), so the scenario exists unscheduled; the validation decision
+shows it (link, injects, targets, read-only or not) with a daily-repeat option,
+and the approval launches it (`manage_openaev_scenario` `launch`, then
+`schedule_recurrence` when the repeat is chosen). The run's integration context
+carries the gate keys that wait (`fleet_autonomy.waiting_gate_keys`, context key
+`fleet_waiting_gates`); with the validation gate among them,
+`manage_opencti_security_coverage` refuses a periodicity on `create` and
+`update`, naming the gate, so a repeat is never set through the coverage. When
+the gate runs, the coverage keeps `P1D` and starts on its own.
+
 No seeded gate names a tool or a grant (#1675, Sam, 24 Nov 2026): every tool
 is offered and runs when called; a gate that waits is one decision item the
 orchestrator files between two steps (`needs_human`, its ask card), and the
