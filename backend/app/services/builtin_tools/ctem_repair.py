@@ -121,7 +121,10 @@ def build_ctem_repair_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                 if fact or org_id is None:
                     return fact
                 rows = await surface.list_passes(db, org_id, limit=bounded)
-                return _dump({"passes": [surface.pass_to_dict(r) for r in rows], "count": len(rows)})
+                answer: dict[str, Any] = {"passes": [surface.pass_to_dict(r) for r in rows], "count": len(rows)}
+                if not rows:
+                    answer["why_empty"] = await surface.why_no_pass(db, org_id)
+                return _dump(answer)
         except Exception:
             logger.warning("CTEM attack surface pass read failed", exc_info=True)
             return "Error: the attack surface passes could not be read right now. Say so; do not guess them."

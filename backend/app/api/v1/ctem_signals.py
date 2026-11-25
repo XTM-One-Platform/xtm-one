@@ -209,13 +209,17 @@ async def list_attack_surface_passes(
 
     Each pass names its providers, what each read covered (pages, records,
     truncated) per owned domain or range, the hosts observed and the signals per
-    path, including a pass that found nothing.
+    path, including a pass that found nothing. No pass at all answers ``why_empty``.
     """
     _require_xtm_one()
     from app.services import ctem_attack_surface as surface
 
-    rows = await surface.list_passes(db, await _organization_id(db), limit=limit)
-    return {"passes": [surface.pass_to_dict(r) for r in rows]}
+    organization_id = await _organization_id(db)
+    rows = await surface.list_passes(db, organization_id, limit=limit)
+    answer: dict[str, Any] = {"passes": [surface.pass_to_dict(r) for r in rows]}
+    if not rows:
+        answer["why_empty"] = await surface.why_no_pass(db, organization_id)
+    return answer
 
 
 class SurfaceRepair(BaseModel):
