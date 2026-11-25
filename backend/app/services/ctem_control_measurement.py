@@ -3,16 +3,18 @@
 """CTEM Cases: what a validation of a ``control_decay`` case measures in OpenCRQ (#2369).
 
 A ``control_decay`` case (evidence state ``never_measured``, ``attested_only`` or
-``expired``) closes only when OpenCRQ books a measurement against the control.
-OpenCRQ books one kind of OpenAEV result as a measurement: the observation of a
-simulation inject that carries a DETECTION or PREVENTION expectation, on a MITRE
-technique the control covers, on a host mapped to the supporting asset. A port
-or version scan carries no expectation and reaches OpenCRQ as nothing (no CVE,
-no finding, no test): approving one never closes the case.
+``expired``) closes only when OpenCRQ books a measurement against the control:
+the observation of an OpenAEV inject that carries a DETECTION or PREVENTION
+expectation on a MITRE technique the control covers, or CVE observations on the
+asset (an integration's vulnerability scanning, OpenAEV generic vulnerability
+scanning). A port-only scan with no expectation and no CVE output reaches
+OpenCRQ as nothing: approving one never closes the case.
 
-The evidence of a one-off run expires after ``evidence_health.max_age_days``
-(``ctem_evidence_health``), and the next pass opens the case again: the
-measuring test is proposed recurring, at a period below that delay.
+The agent chooses the measurement from the asset type and the tenant's live
+integrations, a permanent control first (``CTEM_CONTROL_MEASUREMENT_RULE``). The
+evidence of a one-off run expires after ``evidence_health.max_age_days``
+(``ctem_evidence_health``), and the next pass opens the case again: a recurring
+option repeats at a period below that delay.
 
 This module states both on the validation gate card of such a case, from the
 case and the organization profile, so the line never depends on the prompt:
@@ -63,14 +65,20 @@ def recurrence(max_age_days: int) -> dict[str, Any]:
 
 
 def card_line(max_age_days: int) -> str:
-    """What the validation updates in OpenCRQ and what not, and the recurrence it needs (pure)."""
+    """What the validation updates in OpenCRQ and what not, permanent versus one-off (pure).
+
+    The platform does not know which option the agent proposes, so the line states
+    both: the re-run period applies to a recurring option only.
+    """
     days = max(int(max_age_days or DEFAULT_MAX_AGE_DAYS), 1)
     period = recurrence(days)["words"]
     return (
-        f"{LINE_LEAD} only injects with {' or '.join(MEASURING_EXPECTATIONS)} expectations on a technique the control "
-        "covers update its technique test result; a port or version scan, findings and other controls "
-        f"are not updated, so they never close this case. Evidence expires after {days} days: "
-        f"the measuring test repeats {period}."
+        f"{LINE_LEAD} a permanent control (an integration's continuous scanning or policy, or a recurring "
+        f"OpenAEV scenario repeating {period}) keeps the control measured; a one-off test counts once and its "
+        f"evidence expires after {days} days. OpenCRQ updates the control's technique test result "
+        f"(injects with {' or '.join(MEASURING_EXPECTATIONS)} expectations on a covered technique) or the "
+        "asset's CVE findings; a port-only scan with no expectation and no CVE output updates nothing and "
+        "never closes this case."
     )
 
 

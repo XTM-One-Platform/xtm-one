@@ -31,28 +31,69 @@ def _section(text: str, heading: str) -> str:
     return text[start : end if end != -1 else len(text)]
 
 
-def test_the_persona_measures_a_control_only_with_detection_or_prevention_expectations() -> None:
+def _rule_section() -> tuple[str, str]:
     section = _section(_PERSONA.read_text(encoding="utf-8"), "## A control_decay case: reconcile the controls first")
-    rule = _section(section, "### What measures a control in OpenCRQ")
-    assert "DETECTION or PREVENTION expectation" in rule and "technique the control covers" in rule
-    assert "never_measured" in rule and "attested_only" in rule
-    assert "Never propose a port or version scan, nor an inject with no expectation, as the measurement" in rule
-    # Reuse (#2368) counts only a covering scenario with those expectations.
-    assert "a recurring port scan is cited as exposure, not as a measurement" in rule
-    # The gate says what OpenCRQ will and will not update.
-    assert "technique test result" in rule and "findings, other controls" in rule
-    # Recurring below the re-test delay, on the existing recurring scenario or group.
-    assert "recurring, at a period below `evidence_health.max_age_days`" in rule
-    # No measurable test: say it, name the root cause, no scan.
-    assert '"no measuring source connected"' in rule and "never a scan" in rule
+    return section, _section(section, "### What measures a control in OpenCRQ")
+
+
+def test_the_persona_chooses_from_the_asset_and_the_live_integrations_permanent_first() -> None:
+    section, rule = _rule_section()
+    assert "from the asset type and the integrations the tenant has connected, read at decision time" in rule
+    assert "never from a fixed recipe" in rule
+    assert "A permanent control (recurring, running without a person) always comes before a one-off test" in rule
+    order = [rule.index("(1) a permanent control an integration"), rule.index("(2) A permanent control in OpenAEV")]
+    order.append(rule.index("(3) A one-off test, only when (1) and (2) are impossible"))
+    assert order == sorted(order)
+    # Reuse (#2368) counts only a covering scenario; a port-only scan is exposure.
+    assert "a recurring port-only scan is cited as exposure, not as a measurement" in rule
+    assert "Several options can be offered, the recommended one first" in rule
+    assert "whether it is permanent or one-off" in rule and "what it will not (other controls" in rule
     # expired re-tests keep their behaviour under the same rule.
     assert "re-test or measure it as before, under the measurement rule below" in section
+
+
+# The five mocked cases of the issue comment (25 Nov 2026 21:46Z). The choice itself is agent
+# behaviour (the model reads the live integrations), so each case is a text test: the rule the
+# persona and the case prompt give the agent names the input of the case and the proposal it gets.
+_CASES = {
+    "repository + Aikido": ("a repository with Aikido connected", "enabling Aikido scanning on that repository"),
+    "IP + vulnerability scanner": (
+        "an IP or host with a vulnerability scanner connected (Tenable, Qualys, Rapid7, Wiz)",
+        "permanent vulnerability scanning of the asset in that scanner",
+    ),
+    "IP, no scanner": ("(2) A permanent control in OpenAEV", "OpenAEV generic vulnerability scanning"),
+    "no permanent path": ("only when (1) and (2) are impossible", "the decision says why no permanent control fits"),
+    "nothing at all": ("no integration for the asset type and no OpenAEV path", '"no measuring source connected"'),
+}
+_PROMPT_CASES = {
+    "repository + Aikido": ("a repository with Aikido connected", "enable Aikido scanning on it"),
+    "IP + vulnerability scanner": ("an IP or host with a vulnerability scanner", "permanent scanning of the asset"),
+    "IP, no scanner": ("(2) a recurring OpenAEV scenario", "OpenAEV generic vulnerability scanning"),
+    "no permanent path": ("only when (1) and (2) are impossible", "why no permanent control fits"),
+    "nothing at all": ("no integration and no OpenAEV path", "no measuring source connected"),
+}
+
+
+@pytest.mark.parametrize("case", sorted(_CASES))
+def test_each_mocked_case_gets_its_proposal_in_the_persona(case: str) -> None:
+    _section_text, rule = _rule_section()
+    given, proposed = _CASES[case]
+    assert given in rule and proposed in rule
+
+
+@pytest.mark.parametrize("case", sorted(_PROMPT_CASES))
+def test_each_mocked_case_gets_its_proposal_in_the_case_prompt(case: str) -> None:
+    given, proposed = _PROMPT_CASES[case]
+    rule = ba.CTEM_CONTROL_MEASUREMENT_RULE
+    assert given in rule and proposed in rule
+    assert rule.index(given) <= rule.index(proposed)
 
 
 def test_the_validation_step_of_the_loop_applies_the_rule_on_a_control_decay_case() -> None:
     persona = _PERSONA.read_text(encoding="utf-8")
     step = persona[persona.index("3. **Validation.**") : persona.index("4. **Risk.**")]
-    assert "On a `control_decay` case" in step and "never a port or version scan" in step
+    assert "On a `control_decay` case" in step and "a permanent control an integration offers comes first" in step
+    assert "never a port-only scan as the measurement" in step
 
 
 def test_the_case_prompt_carries_the_measurement_rule() -> None:
@@ -60,11 +101,14 @@ def test_the_case_prompt_carries_the_measurement_rule() -> None:
     assert rule in ba.CTEM_CONTROL_DECAY_RECONCILE
     assert ba.CTEM_CONTROL_DECAY_RECONCILE in ba.CTEM_F1_CASE_ASSIGNMENT["prompt"]
     for words in (
-        "DETECTION or PREVENTION expectations on a technique the control covers",
-        "a port or version scan is exposure, never the measurement",
-        "nor counted as reusable evidence",
-        "what it will not (findings, other controls)",
-        "recurring at a period below evidence_health.max_age_days",
+        "read at decision time",
+        "never from a fixed recipe",
+        "DETECTION or PREVENTION expectations on a technique the control",
+        "A port-only scan with no expectation and no CVE output is exposure, never",
+        "never counted as reusable evidence",
+        "at a period below",
+        "the recommended one first",
+        "whether it is permanent or one-off",
         "no measuring source connected",
         "no scan",
     ):
@@ -78,12 +122,16 @@ def test_the_recurrence_period_is_always_below_the_re_test_delay(days: int) -> N
     assert len(period["cron"].split()) == 5
 
 
-def test_the_card_line_says_what_opencrq_updates_and_what_not() -> None:
+def test_the_card_line_says_permanent_or_one_off_and_what_opencrq_updates() -> None:
     line = measurement.card_line(30)
     assert line.startswith(measurement.LINE_LEAD)
-    assert "DETECTION or PREVENTION" in line and "technique test result" in line
-    assert "a port or version scan, findings and other controls are not updated" in line
-    assert "expires after 30 days" in line and "repeats weekly" in line
+    # The re-run period belongs to the recurring option only, never to a one-off.
+    assert "recurring OpenAEV scenario repeating weekly" in line
+    assert "a one-off test counts once and its evidence expires after 30 days" in line
+    assert "technique test result" in line and "CVE findings" in line and "DETECTION or PREVENTION" in line
+    assert "a port-only scan with no expectation and no CVE output updates nothing" in line
+    # It never contradicts the persona: no fixed scenario-only recipe.
+    assert "only injects with" not in line
 
 
 class _Db:
@@ -114,7 +162,7 @@ async def test_the_platform_completes_the_validation_card_of_a_control_decay_cas
     ask = await work_item._complete_case_ask(_Db(case), f"ctem:validation:{case.id}", _ASK)
     lines = ask["context"].splitlines()
     assert lines[0] == measurement.card_line(10)
-    assert "expires after 10 days" in lines[0] and "repeats weekly" in lines[0]
+    assert "expires after 10 days" in lines[0] and "repeating weekly" in lines[0]
     assert lines[1] == _ASK["context"]
     # Written once: a second completion keeps the card as is.
     assert await work_item._complete_case_ask(_Db(case), f"ctem:validation:{case.id}", ask) == ask
