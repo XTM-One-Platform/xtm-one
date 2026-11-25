@@ -41,9 +41,8 @@ MAX_BULK_SIGNALS = 100
 _SOURCE = "builtin:ctem_signals"
 #: #2171: what the gate reads of ``evidence``; any other key is stored but never reconciled.
 EVIDENCE_DESCRIPTION = (
-    "Facts and a link. The gate matches only these keys (a string or a list of strings): "
-    "assets, hostnames, urls, ips for assets; software, products, cpe (CPE 2.3) for software; "
-    "cve or cves. Free-text keys are kept but never matched."
+    "Facts and a link. Matched keys (string or list): assets, hostnames, urls, ips; "
+    "software, products, cpe (CPE 2.3); cve, cves. Other keys are kept, never matched."
 )
 
 
