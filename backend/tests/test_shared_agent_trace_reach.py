@@ -261,3 +261,66 @@ async def test_the_check_reads_the_rule_of_the_chats_tab():
     ids = [str(readable.id), str(company.id), "not-a-uuid"]
     assert await traces_module.agents_whose_traces_user_may_read(db, user, ids, []) == {str(readable.id)}
     assert await traces_module.agents_whose_traces_user_may_read(db, None, ids, []) == set()
+
+
+# ---------------------------------------------------------------------------
+# An assignment run, as the user it acts as
+# ---------------------------------------------------------------------------
+
+
+class _RunDB:
+    """Loads the run's acting user, the one row the wiring reads."""
+
+    def __init__(self, user):
+        self.user = user
+
+    async def get(self, _model, ident):
+        return self.user if self.user is not None and ident == self.user.id else None
+
+
+async def _run_tools(monkeypatch, acting_user, agent, carried):
+    from app.api.v1 import helpers
+    from app.services.assignment_engine import _add_run_trace_tools
+    from app.tools.base import CompositeToolExecutor
+
+    async def _no_groups(_db, _uid):
+        return []
+
+    monkeypatch.setattr(helpers, "get_user_group_ids", _no_groups)
+    composite = CompositeToolExecutor()
+    await _add_run_trace_tools(
+        composite, _RunDB(acting_user), agent, list(carried), acting_user.id if acting_user else None
+    )
+    return set(composite.tool_names)
+
+
+@pytest.mark.parametrize("carried", [["inspect_my_traces", "inspect_agent_traces"], ["agent_builder"]])
+@pytest.mark.parametrize("tier", ["read_only", "config"])
+async def test_a_run_a_grantee_without_chat_access_triggers_wires_no_trace_suite(monkeypatch, carried, tier):
+    # A manual trigger acts as whoever clicked, and any viewer may click.
+    viewer = _user()
+    agent = _agent(owner=uuid.uuid4(), carries=carried, tier=tier, grantee=viewer)
+    assert await _run_tools(monkeypatch, viewer, agent, carried) == set()
+
+
+async def test_a_run_of_a_company_agent_wires_no_trace_suite_for_its_non_admin_trigger(monkeypatch):
+    viewer = _user()
+    agent = _agent(owner=uuid.uuid4(), company_managed=True, carries=["inspect_my_traces"])
+    assert await _run_tools(monkeypatch, viewer, agent, ["inspect_my_traces"]) == set()
+
+
+async def test_a_run_wires_the_suites_for_whoever_may_read_the_agent_s_chats(monkeypatch):
+    owner = _user()
+    agent = _agent(owner=owner.id, carries=["inspect_my_traces"])
+    wired = await _run_tools(monkeypatch, owner, agent, ["inspect_my_traces"])
+    assert wired == {"inspect_my_traces", traces_module.TRACE_PAYLOAD_TOOL_NAME}
+
+    grantee = _user()
+    shared = _agent(owner=uuid.uuid4(), carries=["agent_builder"], tier="config_with_chats", grantee=grantee)
+    wired = await _run_tools(monkeypatch, grantee, shared, ["agent_builder"])
+    assert wired == set(traces_module.TRACE_SUITE_IDS) | {traces_module.TRACE_PAYLOAD_TOOL_NAME}
+
+
+async def test_a_run_with_no_acting_user_wires_no_trace_suite(monkeypatch):
+    agent = _agent(owner=uuid.uuid4(), carries=["inspect_my_traces"])
+    assert await _run_tools(monkeypatch, None, agent, ["inspect_my_traces"]) == set()
