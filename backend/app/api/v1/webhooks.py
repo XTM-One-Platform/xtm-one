@@ -4741,6 +4741,10 @@ async def receive_assignment_webhook(
     # transient first-attempt failure (signature mismatch, DB blip,
     # crash) would silently swallow legitimate retries within the TTL
     # with a generic "duplicate" reply.
+    # An OpenAEV occurrence claimed below is kept only once a run started or was
+    # queued; every other path gives it back (finally), so the next delivery of
+    # the same occurrence still runs (#2247).
+    occurrence_claim: str | None = None
     try:
         try:
             payload_raw = json.loads(body)
@@ -4833,6 +4837,22 @@ async def receive_assignment_webhook(
                 "headers": _safe_webhook_headers(request),
                 "method": request.method,
             }
+            repeat = False
+            if provider == "openaev":
+                repeat, occurrence_claim = await ctem_openaev_events.claim_occurrence(
+                    event_key,
+                    payload,
+                    integration_id=str(integration_id),
+                    assignment_id=str(assignment_id),
+                    verified=_signed_with_webhook_secret(integration.extra_config_enc),
+                )
+            if repeat:
+                # A later update of a simulation this assignment already heard
+                # finish: no case moves and no run starts again (c87c8335).
+                return await _finalize_dedup(
+                    dedup_key,
+                    {"status": "ok", "triggered": [], "count": 0, "reason": "occurrence already delivered"},
+                )
             if provider == "openaev":
                 # CTEM-26: a failed reachability assertion is an outside-lens exposure (#1164).
                 await ctem_openaev_events.stamp_reachability_assertion(
@@ -5172,6 +5192,8 @@ async def receive_assignment_webhook(
             )
 
             await db.commit()
+            # The run is recorded: the occurrence stays claimed.
+            occurrence_claim = None
 
         response = {
             "status": "ok",
@@ -5184,6 +5206,8 @@ async def receive_assignment_webhook(
     except Exception:
         await _release_webhook_dedup_slot(dedup_key)
         raise
+    finally:
+        await ctem_openaev_events.release_occurrence(occurrence_claim)
 
 
 # ---------------------------------------------------------------------------
