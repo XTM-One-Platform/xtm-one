@@ -106,3 +106,11 @@ def test_without_the_system_taxonomy_only_the_name_is_written() -> None:
 
 def test_software_body_drops_an_unknown_version() -> None:
     assert cti.software_body({"product": "curl", "version": "unknown"}) == {"name": "curl"}
+
+
+def test_selected_asset_names_follow_the_filters() -> None:
+    # The installation cap counts only these assets: narrowing the filters lowers it.
+    own = {**DB, "name": "cti-01", "source": "opencti", "external_id": "x"}
+    profile = _profile(WEB, DB, own)
+    assert cti.selected_asset_names(profile, {"tags": ["dmz"]}) == {"web-01": "web-01"}
+    assert cti.selected_asset_names(profile, {}) == {"web-01": "web-01", "db-01": "db-01"}

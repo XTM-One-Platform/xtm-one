@@ -111,6 +111,15 @@ def _patch(body: dict[str, Any], current: Mapping[str, Any]) -> list[dict[str, A
     ]
 
 
+def selected_asset_names(profile: OrganizationProfile, filters: dict[str, Any] | None = None) -> dict[str, str]:
+    """Folded name -> name of the assets the outbound filters select (``opencti`` rows never pushed back)."""
+    return {
+        _fold(asset.name): str(asset.name)
+        for asset in getattr(profile, "assets_exposure", None) or []
+        if str(asset.source or "").strip().casefold() != "opencti" and outbound_row_matches(asset, filters)
+    }
+
+
 def plan_opencti_outbound(
     profile: OrganizationProfile,
     installed: Mapping[str, Iterable[Mapping[str, Any]]],
@@ -228,15 +237,20 @@ async def _read_current(gql: Any, ids: list[str], taxonomy: bool) -> tuple[dict[
 
 
 async def _installations(
-    db: AsyncSession, organization_id: uuid.UUID | None
+    db: AsyncSession, organization_id: uuid.UUID | None, selected: Mapping[str, str]
 ) -> tuple[dict[str, list[dict[str, Any]]], int]:
-    """Asset folded name -> its installations from the asset store (``(map, count)``)."""
-    from sqlalchemy import select
+    """Selected asset folded name -> its installations from the asset store (``(map, count)``).
+
+    Only the installations of the assets in *selected* (``selected_asset_names``) are read and
+    counted, so narrowing the outbound filters lowers the count the cap is checked against.
+    """
+    from sqlalchemy import func, select
 
     from app.models.organization_asset import OrganizationAsset, OrganizationAssetSoftware
 
-    if organization_id is None:
+    if organization_id is None or not selected:
         return {}, 0
+    names = sorted({name.strip().lower() for name in selected.values()})
     rows = (
         await db.execute(
             select(
@@ -248,6 +262,8 @@ async def _installations(
             )
             .join(OrganizationAsset, OrganizationAsset.id == OrganizationAssetSoftware.asset_id)
             .where(OrganizationAssetSoftware.organization_id == organization_id)
+            .where(func.lower(func.trim(OrganizationAsset.name)).in_(names))
+            .order_by(OrganizationAsset.name)
             .limit(MAX_INSTALLATIONS + 1)
         )
     ).all()
@@ -286,20 +302,23 @@ async def run_opencti_outbound(
         return OutboundPlan(platform="opencti", error=f"OpenCTI: {err}"[:500]), ids
     row = await org_context.current_version(db)
     profile = await org_context.hydrated_profile(db, row)
-    installed, count = await _installations(db, getattr(row, "organization_id", None))
+    filters = getattr(sync, "filters", None) or {}
+    selected = selected_asset_names(profile, filters)
+    installed, count = await _installations(db, getattr(row, "organization_id", None), selected)
     if count > MAX_INSTALLATIONS:
         return (
             OutboundPlan(
                 platform="opencti",
-                error=f"OpenCTI: more than {MAX_INSTALLATIONS} installations to push; narrow the filters, nothing written",
+                error=(
+                    f"OpenCTI: the selected assets have more than {MAX_INSTALLATIONS} installations;"
+                    " narrow the filters, nothing written"
+                ),
             ),
             ids,
         )
     if not installed:
         installed = _profile_installations(profile)
-    plan = plan_opencti_outbound(
-        profile, installed, current, ids, getattr(sync, "filters", None) or {}, taxonomy=taxonomy
-    )
+    plan = plan_opencti_outbound(profile, installed, current, ids, filters, taxonomy=taxonomy)
     for key in [k for k, v in ids.items() if v not in current]:
         ids.pop(key, None)  # gone from OpenCTI: forgotten, created again by this plan
     if not apply:

@@ -243,8 +243,9 @@ Only what the sync created is touched (`outbound_ids`: `system:<name>`, `softwar
 source is `opencti` is never pushed back. The outbound filters select the assets; an asset leaving them has its
 System deleted (its relationships with it). A Software observable is never deleted, OpenCTI deduplicating
 observables on their STIX id: a software no asset runs any more loses its `uses` relationships and leaves the
-keys. An object deleted in OpenCTI is forgotten and created again on the next run. More than 5,000
-installations writes nothing and says so.
+keys. An object deleted in OpenCTI is forgotten and created again on the next run. When the assets the filters
+select hold more than 5,000 installations, the run writes nothing and says so (only the selected
+assets' installations are counted, so narrowing the filters lowers the count).
 
 ## 9. One thing across sources (#1178)
 
