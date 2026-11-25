@@ -36,6 +36,7 @@ from app.integrations.providers.rydoo.webhooks import TRIGGER_EVENTS as RYDOO_TR
 from app.integrations.providers.spendesk.webhooks import EVENT_TYPES as SPENDESK_EVENT_TYPES
 from app.integrations.providers.spendesk.webhooks import TRIGGER_EVENTS as SPENDESK_TRIGGER_EVENTS
 from app.services.dealhub_events import catalog_events as _dealhub_catalog_events
+from app.services.defender_stream import catalog_events as _defender_catalog_events
 from app.services.opencrq_job_events import FILTER_KEYS as _OPENCRQ_FILTER_KEYS
 from app.services.tool_classification import definition_tool_type
 from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
@@ -152,31 +153,6 @@ _NETSUITE_TRANSACTION_EVENTS: tuple[tuple[str, str, str], ...] = (
     ),
 )
 
-#: The Notion webhook events (services/notion_webhooks.EVENTS): event, label, what happened.
-_NOTION_EVENTS: tuple[tuple[str, str, str], ...] = (
-    ("comment.created", "Notion comment created", "a comment is added to a page or a block"),
-    ("page.created", "Notion page created", "a page is created"),
-    ("page.properties_updated", "Notion page properties updated", "a page's properties change"),
-    ("page.content_updated", "Notion page content updated", "a page's content changes"),
-    (
-        "data_source.content_updated",
-        "Notion data source content updated",
-        "the rows of a data source (database) change",
-    ),
-)
-#: The filter keys of every Notion webhook event (services/notion_webhooks.FILTER_KEYS).
-_NOTION_FILTER_KEYS: dict[str, str] = {
-    "entity.id": "The id of the page, comment or data source the event is about",
-    "entity.type": "The kind of object: page, comment, data_source, block",
-    "data.page_id": "The page a comment belongs to (comment.created)",
-    "data.parent.id": "The parent page or data source of the object",
-    "workspace_id": "The Notion workspace that sent the event",
-    "authors.0.type": "Who caused the event: person or bot",
-    "mentions_bot": (
-        "comment.created only: true keeps the comments that mention the integration's own bot "
-        "(read through the comments API)"
-    ),
-}
 #: The filter keys of every Aikido webhook event (the delivery envelope and its payload).
 _AIKIDO_FILTER_KEYS: dict[str, str] = {
     "event_type": "The Aikido event type (issue.open.created, ci.gate.failed, zen.attack...)",
@@ -2088,22 +2064,6 @@ PROVIDER_CATALOG = {
         "category": "integration",
         "integration_category": "business_operations",
         "integration_types": ["documentation"],
-        # Notion's native webhooks (services/notion_webhooks.py): the admin
-        # subscribes the integration's webhook URL in the connection's Webhooks
-        # tab; no polling.
-        "available_events": [
-            {
-                "event": event,
-                "label": label,
-                "description": (
-                    f"Triggers when {what}. Delivered by Notion's webhooks; set up in the Webhooks card of "
-                    "the integration's Configuration tab."
-                ),
-                "mechanism": "webhook",
-                "filter_keys": _NOTION_FILTER_KEYS,
-            }
-            for event, label, what in _NOTION_EVENTS
-        ],
         # OAuth (public integration) or an internal integration token in the
         # API Key field: both are accepted (#8386 makes the list binding).
         "auth_type": "oauth",
@@ -6920,7 +6880,14 @@ PROVIDER_CATALOG = {
         "token_url": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
         "extra_fields": {
             "tenant_id": "Azure AD Tenant ID (required)",
+            "event_hub_namespace": "Event Hub namespace: the <name>.servicebus.windows.net host the Defender XDR Streaming API sends alert events to",
+            "event_hub_name": "Event Hub name: the hub of that namespace the Streaming API writes to",
+            "event_hub_consumer_group": "Event Hub consumer group: optional, $Default when empty",
+            "event_hub_connection_string": "Event Hub connection string: optional, used instead of the Entra app's Azure Event Hubs Data Receiver role",
         },
+        # Alert events: the Defender XDR Streaming API to the tenant's Azure
+        # Event Hub, read by the platform's consumer (services/defender_stream.py).
+        "available_events": _defender_catalog_events(),
         "setup_guide": {
             "title": "Microsoft Defender XDR Integration Setup",
             "url": "https://learn.microsoft.com/en-us/graph/api/resources/security-api-overview",
