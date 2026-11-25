@@ -49,6 +49,7 @@ from app.integrations.providers.opencti.capabilities import attach_probe
 from app.services import ctem_cases as rules
 from app.services import ctem_cases_store as store
 from app.services import ctem_fixed_version as fixed_versions
+from app.services import ctem_product_identity as product_identity
 from app.services.ctem_cases import VERSION_AFFECTED, VERSION_NOT_AFFECTED, VERSION_UNKNOWN
 from app.services.ctem_metrics_collector import (
     _AEV_VALIDATION_WINDOW_DAYS,
@@ -446,6 +447,8 @@ def opencti_issues(
     """
     entry_by_label = {e["label"]: e for e in stack}
     product_of: dict[str, dict[str, Any]] = {}
+    # The language ecosystem each stack Software is a package of, else ``None`` (#2223).
+    ecosystem_of: dict[str, str | None] = {}
     # The platform each stack Software is built for (CPE target, else its name or version), #2152.
     platform_of: dict[str, str | None] = {}
     # The OpenCTI Software ids of each installed version, per stack entry.
@@ -456,6 +459,8 @@ def opencti_issues(
             continue
         entry = entry_by_label[label]
         product_of[node["id"]] = entry
+        # A language package (pkg:pypi minio) is not the server product of the same name (#2223).
+        ecosystem_of[node["id"]] = product_identity.software_ecosystem(node)
         platform_of[node["id"]] = fixed_versions.platform_of_software(
             node.get("name"), node.get("version"), node.get("cpe")
         )
@@ -577,6 +582,8 @@ def opencti_issues(
                 fixed_versions=tuple(sorted(per_platform.items())) if fixed and fixed_by else (),
                 declared_version_known=any(o != VERSION_UNKNOWN for _v, o in outcomes) if outcomes else None,
                 version_outcomes=facts,
+                # Every Software the vulnerability names is a language package: the repository rows count.
+                language_package=all(ecosystem_of.get(sw) for sw in holders[(vuln_id, label)]),
             )
         )
     return out

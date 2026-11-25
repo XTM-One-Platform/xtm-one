@@ -106,6 +106,24 @@ def ecosystem(purl: str | None) -> str | None:
     return found[0] if found and found[0] in ECOSYSTEM_TARGETS else None
 
 
+def software_ecosystem(node: Mapping[str, Any]) -> str | None:
+    """The language ecosystem an OpenCTI Software is a package of (#2223), else ``None``.
+
+    Its purl names one (``pkg:pypi``, ``pkg:maven``, ...), else its application CPE's
+    ``target_sw`` names one (``cpe:2.3:a:minio:minio:*:*:*:*:*:python:*:*``). A server
+    CPE with no ``target_sw`` (``cpe:2.3:a:minio:minio:*``) is no package.
+    """
+    kind = ecosystem(str(node.get("x_opencti_purl") or node.get("purl") or ""))
+    if kind:
+        return kind
+    fields = cpe_fields(str(node.get("cpe") or ""))
+    if fields and fields["part"] == "a" and fields["target_sw"]:
+        for name, targets in ECOSYSTEM_TARGETS.items():
+            if fields["target_sw"] in targets:
+                return name
+    return None
+
+
 def platform_of(cpe: str | None) -> str | None:
     """The one OS family a CPE names: the product of an ``o`` CPE, else its ``target_sw`` / ``target_hw``."""
     fields = cpe_fields(cpe)
