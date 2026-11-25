@@ -351,10 +351,37 @@ async def viewer_view(
     return replace(view, signals=signals, signal_details=details)
 
 
+def _pivot_id(signal: CtemSignal, evidence: dict[str, Any]) -> str | None:
+    """The module id a row pivots to when the signal carries no link, or None (never a guessed page).
+
+    An OpenCTI signal names an OpenCTI object by its id; an OpenAEV one is a finding only when a
+    source reader recorded it from an OpenAEV issue (``evidence.source_issue``): a listener delivery
+    names a scenario or a run, which carries its own ``platform_url`` instead.
+    """
+    external_id = (signal.source_external_id or "").strip() or None
+    provider = (signal.source_provider or "").lower()
+    if provider == "opencti":
+        return external_id
+    if provider in ("openaev", "openbas") and evidence.get("source_issue"):
+        return external_id
+    return None
+
+
 def signal_detail(signal: CtemSignal) -> dict[str, Any]:
     """What a signal member is, as a case row names it (#1936): never its id as a label."""
     from app.services.ctem_signals import PATH_CATALOG, provider_name
 
+    # What the row's "Open in <Module>" pivot needs (#1357): the source's own id of the object, and
+    # the link to it the delivery carried (OpenCRQ, OpenCTI: link; OpenAEV: platform_url), http(s) only.
+    evidence = signal.evidence if isinstance(signal.evidence, dict) else {}
+    link = next(
+        (
+            value
+            for value in (evidence.get("link"), evidence.get("platform_url"))
+            if isinstance(value, str) and value.lower().startswith(("https://", "http://"))
+        ),
+        None,
+    )
     return {
         "name": (signal.subject_label or signal.subject_ref or None),
         "trigger_path": signal.trigger_path,
@@ -362,6 +389,8 @@ def signal_detail(signal: CtemSignal) -> dict[str, Any]:
         "lens": signal.lens,
         "source_provider": signal.source_provider,
         "source_name": provider_name(signal.source_provider),
+        "source_external_id": _pivot_id(signal, evidence),
+        "source_link": link,
         "subject_kind": signal.subject_kind,
         "assets": [signal.subject_ref] if signal.subject_kind == "asset" and signal.subject_ref else [],
         "first_seen_at": signal.first_seen_at.isoformat() if signal.first_seen_at else None,

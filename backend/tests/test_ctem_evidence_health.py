@@ -220,6 +220,22 @@ async def test_pass_signals_are_recorded_by_system_on_the_inside_lens(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_an_asset_gap_links_to_its_opencrq_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The case row's "Open in OpenCRQ" icon (#1357) reads the asset page the pass writes."""
+    recorded = _patch_record(monkeypatch)
+    reader = _Reader({"s-1": _health(_asset("a1", "expired"))})
+    reader.asset_link = lambda asset_id: f"https://crq.example/t1/assets/{asset_id}/overview"  # type: ignore[attr-defined]
+    await health.run_pass(object(), organization_id=uuid.uuid4(), reader=reader, max_age_days=45, now=NOW)
+    assert recorded[0]["signal"].evidence["link"] == "https://crq.example/t1/assets/a1/overview"
+
+
+def test_the_opencrq_reader_builds_the_asset_page_or_nothing() -> None:
+    reader = health.OpenCrqEvidenceReader("https://crq.example/", {}, "t1")
+    assert reader.asset_link("a1") == "https://crq.example/t1/assets/a1/overview"
+    assert reader.asset_link("../a1") is None
+
+
+@pytest.mark.asyncio
 async def test_two_identical_passes_give_no_new_signal(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_record(monkeypatch)
     reader = _Reader({"s-1": _health(_asset("a1", "expired"))})

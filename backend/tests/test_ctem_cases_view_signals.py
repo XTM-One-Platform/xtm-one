@@ -99,6 +99,31 @@ def test_a_signal_about_an_asset_names_it_as_its_asset() -> None:
     assert detail["name"] == "portal-edge-01" and detail["assets"] == ["portal-edge-01"]
 
 
+def test_a_signal_member_carries_what_its_module_pivot_needs() -> None:
+    """A signal row opens its object in OpenCTI, OpenAEV or OpenCRQ (#1357, lost by #1945)."""
+    cti = view_of.signal_detail(_signal(source_external_id="vulnerability--1"))
+    assert cti["source_external_id"] == "vulnerability--1" and cti["source_link"] is None
+    # An OpenAEV signal read from an OpenAEV issue names the finding; a listener delivery its page.
+    finding = view_of.signal_detail(
+        _signal(source_provider="openaev", source_external_id="f-1", evidence={"source_issue": "openaev:f-1"})
+    )
+    assert finding["source_external_id"] == "f-1"
+    run = view_of.signal_detail(
+        _signal(source_provider="openaev", source_external_id="s-1", evidence={"platform_url": "https://aev.example/s/1"})
+    )
+    assert run["source_external_id"] is None and run["source_link"] == "https://aev.example/s/1"
+    # OpenCRQ: the asset page the pass wrote; no id route is guessed.
+    crq = view_of.signal_detail(
+        _signal(source_provider="opencrq", evidence={"link": "https://crq.example/t1/assets/a1/overview"})
+    )
+    assert crq["source_link"] == "https://crq.example/t1/assets/a1/overview" and crq["source_external_id"] is None
+    # A non-http link and a non-module source give nothing to pivot to.
+    unsafe = view_of.signal_detail(_signal(evidence={"link": "javascript:alert(1)"}, source_external_id=None))
+    assert unsafe["source_link"] is None and unsafe["source_external_id"] is None
+    manual = view_of.signal_detail(_signal(source_provider="manual", source_external_id="x-1"))
+    assert manual["source_external_id"] is None and manual["source_link"] is None
+
+
 def test_a_hidden_signal_member_stays_restricted_with_nothing_of_it() -> None:
     case = _case()
     seen, hidden = _signal(), _signal(subject_label="secret campaign")

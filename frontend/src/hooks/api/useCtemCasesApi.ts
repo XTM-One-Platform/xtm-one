@@ -179,6 +179,10 @@ export interface CtemCaseVisibleIssue {
   lens?: string;
   source_provider?: string;
   source_name?: string;
+  /** The source's own id of the object a module pivot opens (an OpenCTI entity, an OpenAEV finding), or null. */
+  source_external_id?: string | null;
+  /** The link to the object its source delivered (OpenCRQ, OpenCTI `link`, OpenAEV `platform_url`), or null. */
+  source_link?: string | null;
   subject_kind?: string;
 }
 
