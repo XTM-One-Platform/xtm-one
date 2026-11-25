@@ -451,9 +451,6 @@ const TAXONOMY_FILTERS: FilterKey[] = ["category", "subcategory", "criticality",
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Today's one-click draft of the empty fields from every platform; without it the Quick setup row is not drawn. */
-  onQuickSetup?: () => void;
-  quickSetupPending?: boolean;
   /**
    * The sections offered (#1367, points 4 and 5): CTEM > Inventory > Sources imports the inventory sections, Settings >
    * Organization the business profile ones (PIRs). Every section when omitted.
@@ -474,7 +471,7 @@ interface Props {
 export const INVENTORY_IMPORT_SECTIONS = ["assets", "asset_groups", "software", "primary_assets"] as const satisfies readonly ImportSectionKey[];
 export const PROFILE_IMPORT_SECTIONS = ["pirs"] as const satisfies readonly ImportSectionKey[];
 
-export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, quickSetupPending, sections: offered, initialSection, initialSource }: Props) {
+export function OrganizationImportDialog({ open, onOpenChange, sections: offered, initialSection, initialSource }: Props) {
   const { t_i18n } = useFormatter();
   const f = useNumberFormat();
   const { toast } = useToast();
@@ -790,17 +787,6 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
           />
         ))}
       </div>
-      {onQuickSetup && (
-        <div className="flex items-center justify-between gap-3 rounded-sm border border-elevation-subtle px-3 py-2">
-          <p className="content-compact text-default-secondary">
-            {t_i18n("Quick setup: fill the empty fields from every connected platform in one click, then review them in the form.")}
-          </p>
-          <Button variant="secondary" onClick={onQuickSetup} disabled={quickSetupPending} aria-busy={quickSetupPending || undefined}>
-            {quickSetupPending && <Spinner size="sm" tone="inherit" />}
-            {t_i18n("Quick setup")}
-          </Button>
-        </div>
-      )}
     </div>
   );
 

@@ -82,7 +82,7 @@ const plan = ({ gone = 0, ...counts }: Counts, total: number | null = 3) => ({
 });
 
 function open() {
-  renderWithProviders(<OrganizationImportDialog open onOpenChange={() => {}} onQuickSetup={() => {}} />);
+  renderWithProviders(<OrganizationImportDialog open onOpenChange={() => {}} />);
 }
 
 /** A choice card of the stepper (the shared OptionCard, a radio). */
