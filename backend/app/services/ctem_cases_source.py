@@ -28,6 +28,7 @@ source products decide what the viewer sees.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 import uuid
@@ -366,11 +367,106 @@ def _remediating_node(node: dict[str, Any]) -> dict[str, Any]:
     return {**node, "name": head, "version": version or tail}
 
 
+#: Seconds a matcher stack is shared by every viewer build and pod of an organization (#2232): the
+#: stack is the organization's software and inventory, never the viewer's, so one build computes it.
+MATCHER_STACK_TTL_SECONDS = 300
+#: Seconds a build waits for the stack another pod is computing before it computes its own.
+MATCHER_STACK_WAIT_SECONDS = 180.0
+_MATCHER_STACK_POLL_SECONDS = 0.5
+#: One computation of a stack key at a time on this worker.
+_MATCHER_STACK_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+def _matcher_stack_key(organization_id: uuid.UUID, profile_version: int) -> str:
+    return f"ctem:cases:matcher-stack:{organization_id}:{profile_version}"
+
+
+async def _stack_redis() -> Any | None:
+    try:
+        from app.core.redis import redis_client
+
+        return await redis_client()
+    except Exception:  # no Redis: each worker computes its own stack
+        return None
+
+
+async def _cached_stack(client: Any, key: str) -> list[dict[str, Any]] | None:
+    try:
+        raw = await client.get(key)
+    except Exception:
+        logger.info("CTEM cases: matcher stack cache unreadable", exc_info=True)
+        return None
+    if raw is None:
+        return None
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if isinstance(value, list) else None
+
+
 async def _matcher_stack(db: AsyncSession) -> list[dict[str, Any]]:
+    """The organization's matcher stack (:func:`_compute_matcher_stack`), computed once per
+    organization and profile version and shared across viewers and pods through Redis (#2232).
+
+    A view build after a case-opening drain read it once per viewer and per pod (150 s each on
+    ctem.one). A build that finds another pod computing it (``SET NX`` lock) waits for its answer
+    up to :data:`MATCHER_STACK_WAIT_SECONDS`, then computes its own. Without Redis, or with no
+    organization profile, it is computed as before.
+    """
+    from app.services import organization_context as org_context
+
+    try:
+        row = await org_context.current_version(db)
+    except Exception:
+        row = None
+    client = await _stack_redis() if row is not None else None
+    if row is None or client is None:
+        return await _compute_matcher_stack(db)
+    key = _matcher_stack_key(row.organization_id, int(row.version))
+    cached = await _cached_stack(client, key)
+    if cached is not None:
+        return cached
+    local = _MATCHER_STACK_LOCKS.setdefault(key, asyncio.Lock())
+    async with local:
+        cached = await _cached_stack(client, key)
+        if cached is not None:
+            return cached
+        lock_key = f"{key}:lock"
+        try:
+            owner = bool(await client.set(lock_key, "1", ex=int(MATCHER_STACK_WAIT_SECONDS), nx=True))
+        except Exception:
+            owner = True
+        if not owner:
+            deadline = time.monotonic() + MATCHER_STACK_WAIT_SECONDS
+            while time.monotonic() < deadline:
+                await asyncio.sleep(_MATCHER_STACK_POLL_SECONDS)
+                cached = await _cached_stack(client, key)
+                if cached is not None:
+                    return cached
+        try:
+            stack = await _compute_matcher_stack(db)
+            try:
+                await client.set(key, json.dumps(stack), ex=MATCHER_STACK_TTL_SECONDS)
+            except Exception:
+                logger.info("CTEM cases: matcher stack not cached", exc_info=True)
+            return stack
+        finally:
+            if owner:
+                try:
+                    await client.delete(lock_key)
+                except Exception:
+                    logger.info("CTEM cases: matcher stack lock not released", exc_info=True)
+            _MATCHER_STACK_LOCKS.pop(key, None)
+
+
+async def _compute_matcher_stack(db: AsyncSession) -> list[dict[str, Any]]:
     """The software the OpenCTI issues are read for, each with every version the device inventory
     reports (#2038): the same versions the case's ``running_versions`` shows, so each gets its
     own outcome. The inventory failing keeps the software's own versions."""
+    started = time.perf_counter()
     stack = await _organization_software(db)
+    software_ms = (time.perf_counter() - started) * 1000
     if not stack:
         return stack
     from app.services import ctem_case_versions as case_versions
@@ -381,12 +477,29 @@ async def _matcher_stack(db: AsyncSession) -> list[dict[str, Any]]:
         if row is None:
             return stack
         labels = [e["label"] for e in stack if e.get("label")]
+        lap = time.perf_counter()
         inventory = await case_versions.inventory_versions(db, row.organization_id, labels)
+        versions_ms = (time.perf_counter() - lap) * 1000
+        lap = time.perf_counter()
         platforms = await case_versions.inventory_platforms(db, row.organization_id, labels)
+        platforms_ms = (time.perf_counter() - lap) * 1000
     except Exception as exc:  # the inventory never breaks the issues read
         logger.info("CTEM cases: inventory versions unavailable: %s", format_exception_message(exc))
         return stack
-    return with_inventory_platforms(with_inventory_versions(stack, inventory), platforms)
+    lap = time.perf_counter()
+    merged = with_inventory_platforms(with_inventory_versions(stack, inventory), platforms)
+    # Where the products phase of a view build spends its time before any product call (#2232):
+    # 110 s of a 111 s build on ctem.one with both product reads rejected in under a second.
+    logger.info(
+        "CTEM cases: matcher stack of %d software: software %.0f ms, inventory versions %.0f ms, "
+        "inventory platforms %.0f ms, merge %.0f ms",
+        len(stack),
+        software_ms,
+        versions_ms,
+        platforms_ms,
+        (time.perf_counter() - lap) * 1000,
+    )
+    return merged
 
 
 def with_inventory_platforms(

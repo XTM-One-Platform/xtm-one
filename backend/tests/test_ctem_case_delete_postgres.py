@@ -203,6 +203,10 @@ async def test_a_delete_cascades_cancels_releases_and_audits(_gate):
         audit = (await session.execute(select(AuditLog).where(AuditLog.entity_type == "ctem_case"))).scalars().all()
         assert len(audit) == 1 and audit[0].action == "delete" and audit[0].entity_id == world["legacy"]
         assert audit[0].details["case"]["keys"] == [KEY] and audit[0].details["reason"] == "legacy reset"
+        # A read of the deleted id answers deleted, from that audit row (#2328).
+        answer = await case_delete.deleted_case_answer(session, world["legacy"])
+        assert answer is not None and "was deleted" in answer and "legacy reset" in answer
+        assert await case_delete.deleted_case_answer(session, world["kept"]) is None
 
 
 async def test_the_fix_key_is_free_and_the_released_signal_waits_for_the_sweep():

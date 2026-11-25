@@ -209,13 +209,17 @@ async def list_attack_surface_passes(
 
     Each pass names its providers, what each read covered (pages, records,
     truncated) per owned domain or range, the hosts observed and the signals per
-    path, including a pass that found nothing.
+    path, including a pass that found nothing. No pass at all answers ``why_empty``.
     """
     _require_xtm_one()
     from app.services import ctem_attack_surface as surface
 
-    rows = await surface.list_passes(db, await _organization_id(db), limit=limit)
-    return {"passes": [surface.pass_to_dict(r) for r in rows]}
+    organization_id = await _organization_id(db)
+    rows = await surface.list_passes(db, organization_id, limit=limit)
+    answer: dict[str, Any] = {"passes": [surface.pass_to_dict(r) for r in rows]}
+    if not rows:
+        answer["why_empty"] = await surface.why_no_pass(db, organization_id)
+    return answer
 
 
 class SurfaceRepair(BaseModel):
@@ -278,6 +282,8 @@ class SignalTriage(BaseModel):
     action: Literal[scope_gate.TRIAGE_ACTIONS]  # type: ignore[valid-type]
     ids: list[uuid.UUID] = Field(default_factory=list, max_length=scope_gate.MAX_BULK)
     filter: TriageFilter | None = None
+    #: Run the same selection and decisions, answer each signal's outcome, write nothing (#2341).
+    dry_run: bool = False
 
 
 @router.post("/triage")
@@ -309,6 +315,13 @@ async def triage_ctem_signals(
         limit=scope_gate.MAX_BULK,
     )
     actor = (getattr(user, "name", None) or getattr(user, "email", None) or str(user.id))[:200]
+    if body.dry_run:
+        outcomes: list[dict[str, Any]] = []
+        counts = await scope_gate.triage(
+            db, rows, action=body.action, actor=actor, evaluator_id=user.id, outcomes=outcomes
+        )
+        await db.rollback()
+        return {"dry_run": True, "matched": len(rows), "counts": counts, "signals": outcomes}
     counts = await scope_gate.triage(db, rows, action=body.action, actor=actor, evaluator_id=user.id)
     await db.commit()
     return {"matched": len(rows), "counts": counts}

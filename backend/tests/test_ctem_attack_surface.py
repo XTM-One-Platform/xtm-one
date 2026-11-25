@@ -493,6 +493,56 @@ async def test_an_unreadable_integration_is_skipped_and_the_others_are_read(monk
     assert await surface.reader_for(object(), only_bad) == "securityscorecard has no attack surface pass"  # type: ignore[arg-type]
 
 
+@pytest.mark.asyncio
+async def test_an_empty_pass_list_names_the_first_step_the_schedule_stops_at(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#2331: why_no_pass reads the profile as scheduled_pass does."""
+    profiles: list[Any] = []
+
+    async def _current(_db: Any, _org: Any) -> Any:
+        return None, profiles[-1]
+
+    async def _reader_for(_db: Any, _profile: Any) -> Any:
+        return "no attack surface provider is declared in the profile"
+
+    monkeypatch.setattr(oc, "current_profile", _current)
+    monkeypatch.setattr(surface, "reader_for", _reader_for)
+    profiles.append(_profile())
+    assert "turned off" in await surface.why_no_pass(object(), None)  # type: ignore[arg-type]
+    profiles.append(_profile(attack_surface={"enabled": True}, owned_domains=[], address_ranges=[]))
+    assert "no owned domains" in await surface.why_no_pass(object(), None)  # type: ignore[arg-type]
+    profiles.append(_profile(attack_surface={"enabled": True}))
+    assert await surface.why_no_pass(object(), None) == "no attack surface provider is declared in the profile"  # type: ignore[arg-type]
+
+    async def _readable(_db: Any, _profile: Any) -> Any:
+        return object()
+
+    monkeypatch.setattr(surface, "reader_for", _readable)
+    assert (await surface.why_no_pass(object(), None)).startswith("no pass has completed yet")  # type: ignore[arg-type]
+
+
+def test_a_repaired_signal_carries_its_dates() -> None:
+    """#2331: the dry run names each signal with the dates an operator checks it against."""
+    seen = datetime(2026, 11, 20, 8, 0, tzinfo=UTC)
+    row = type(
+        "Row",
+        (),
+        {
+            "id": "s1",
+            "subject_ref": "a.corp.example",
+            "first_seen_at": seen,
+            "observed_at": seen,
+            "state": "to_validate",
+        },
+    )()
+    assert surface._signal_dates(row) == {
+        "id": "s1",
+        "host": "a.corp.example",
+        "first_seen_at": seen.isoformat(),
+        "observed_at": seen.isoformat(),
+        "state": "to_validate",
+    }
+
+
 def test_every_connected_provider_is_either_read_or_named_with_its_reason() -> None:
     assert set(surface.READERS) == set(surface.SUPPORTED_PROVIDERS)
     assert not set(surface.READERS) & set(surface.NOT_SUPPORTED)

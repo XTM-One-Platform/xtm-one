@@ -21,8 +21,10 @@ from app.services.work_item_wait_cycles import (
     cycle_through,
     find_cycles,
     node_of,
+    person_wait_chains,
     refusal_message,
     stalled_chains,
+    waits_on_person,
 )
 
 REPO = "owner/name"
@@ -168,6 +170,105 @@ def test_items_of_a_cycle_are_not_a_stalled_chain_too():
     old = NOW - timedelta(hours=3)
     nodes = _graph(_node("a", on=["b"], at=old), _node("b", on=["a"], at=old))
     assert stalled_chains(nodes, NOW, in_cycles=["a", "b"]) == []
+
+
+# -- a chain waiting on a person's open decision (#2326) -----------------------------
+
+ASK = {
+    "question": "Accept the residual risk on this asset?",
+    "context": "The fix needs a maintenance window the asset owner has not given.",
+    "options": [
+        {"key": "A", "label": "Accept the risk for 30 days", "effect": "The case waits 30 days."},
+        {"key": "B", "label": "Escalate to the asset owner", "effect": "The case goes to the owner."},
+    ],
+    "recommendation": "B",
+}
+
+
+def _gate(item_id="gate", *, due=None, ask=ASK, payload=None, at=None, recipient="person-1"):
+    return node_of(
+        item_id,
+        status="blocked",
+        blocked_on=[],
+        blocked_on_refs=[],
+        correlation_key=None,
+        title=None,
+        payload=payload,
+        last_activity_at=at,
+        needs_human=True,
+        ask=ask,
+        due_at=due,
+        created_at=at,
+        recipient=recipient,
+    )
+
+
+def test_a_chain_waiting_on_a_valid_unanswered_gate_is_not_stalled():
+    old = NOW - timedelta(hours=3)
+    nodes = _graph(_node("case", on=["gate"], at=old), _gate(due=NOW + timedelta(days=1), at=old))
+    assert waits_on_person(nodes["gate"], NOW)
+    assert stalled_chains(nodes, NOW) == []
+    assert person_wait_chains(nodes, NOW) == [["case", "gate"]]
+
+
+def test_a_gate_with_no_due_date_still_waits_on_its_person():
+    old = NOW - timedelta(hours=30)
+    nodes = _graph(_node("case", on=["gate"], at=old), _gate(at=old))
+    assert stalled_chains(nodes, NOW) == []
+
+
+def test_a_gate_past_its_due_date_stalls_the_chain():
+    old = NOW - timedelta(hours=3)
+    nodes = _graph(_node("case", on=["gate"], at=old), _gate(due=NOW - timedelta(minutes=1), at=old))
+    assert stalled_chains(nodes, NOW) == [["case", "gate"]]
+    assert person_wait_chains(nodes, NOW) == []
+
+
+def test_an_answered_gate_that_never_released_its_chain_is_stalled():
+    old = NOW - timedelta(hours=3)
+    answered = _gate(due=NOW + timedelta(days=1), at=old, payload={"answer": {"option": "B", "answered_at": "x"}})
+    nodes = _graph(_node("case", on=["gate"], at=old), answered)
+    assert stalled_chains(nodes, NOW) == [["case", "gate"]]
+
+
+def test_a_keep_waiting_answer_leaves_the_gate_waiting():
+    old = NOW - timedelta(hours=3)
+    ask = {**ASK, "options": [*ASK["options"], {"key": "W", "label": "Keep waiting", "keeps_waiting": True}]}
+    gate = _gate(due=NOW + timedelta(days=1), ask=ask, at=old, payload={"answer": {"option": "W"}})
+    assert stalled_chains(_graph(_node("case", on=["gate"], at=old), gate), NOW) == []
+
+
+def test_a_gate_on_an_unreadable_card_or_a_dead_blocker_is_stalled():
+    old = NOW - timedelta(hours=3)
+    blank = _gate(due=NOW + timedelta(days=1), ask={"question": ""}, at=old)
+    assert stalled_chains(_graph(_node("case", on=["gate"], at=old), blank), NOW) == [["case", "gate"]]
+    dead = _graph(_node("case", on=["sink"], at=old), _node("sink", at=old))
+    assert stalled_chains(dead, NOW) == [["case", "sink"]]
+
+
+def test_hundreds_of_gated_chains_are_never_flagged_before_their_due_date_whatever_was_touched():
+    nodes = {}
+    for n in range(300):
+        at = NOW - timedelta(hours=2 + n % 7, minutes=n)
+        nodes[f"case-{n}"] = _node(f"case-{n}", on=[f"gate-{n}"], at=NOW - timedelta(minutes=n % 3) if n % 2 else at)
+        nodes[f"gate-{n}"] = _gate(f"gate-{n}", due=NOW + timedelta(days=1 + n % 3), at=at)
+    assert stalled_chains(nodes, NOW) == []
+    assert len(person_wait_chains(nodes, NOW)) == 300
+
+
+def test_the_report_lists_person_waits_apart_with_recipient_and_age():
+    from app.services.fleet_health_signals import FleetHealthReport, format_report, person_wait_rows
+
+    old = NOW - timedelta(hours=3)
+    nodes = _graph(_node("case", on=["gate"], at=old), _gate(due=NOW + timedelta(days=1), at=old))
+    rows = person_wait_rows(nodes, person_wait_chains(nodes, NOW), NOW)
+    assert rows == [{"items": ["case", "gate"], "decisions": ["gate"], "recipients": ["person-1"], "age_hours": 3.0}]
+    report = FleetHealthReport(
+        fleet_id="f1", fleet_name="Ops", status="ok", members=[], findings=[], waiting_on_people=rows
+    )
+    assert report.healthy and report.structured()["waiting_on_people"] == rows
+    assert "Waiting on a person's decision (1 chain(s), no finding)" in format_report(report)
+    assert "cancel" not in FINDING_ADVICE["blocked_chain_stalled"]
 
 
 def test_fleet_health_and_the_event_catalog_know_the_new_kinds():

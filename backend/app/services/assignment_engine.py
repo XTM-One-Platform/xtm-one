@@ -163,7 +163,7 @@ from app.services.orchestration_engine import (
     notify_orchestration_wake,
     queued_deadline,
 )
-from app.services.tool_surface_refresh import IntegrationSurfaceRefresher
+from app.services.tool_surface_refresh import IntegrationSurfaceRefresher, rebuild_bound_builtin_groups
 from app.tools.base import FileContext, HumanInputRequestedError, ScopedToolExecutor
 from app.tools.wait_policy import WaitPolicy
 
@@ -3134,11 +3134,12 @@ async def _skip_by_case_start(
     agent: Any,
     assignment: Assignment,
 ) -> bool:
-    """End a ``ctem_case.opened`` run at zero tokens when its case is gone (#2289).
+    """End a ``ctem_case.opened`` run at zero tokens when its case is gone or closed (#2289, #2320).
 
     A case merged away while the run waited adds ``merged_into`` (the survivor)
     to the trigger context and lets the run go ahead; a case deleted ends it
-    skipped with the reason ``case_gone``. ``True`` when the run was ended. Any
+    skipped with the reason ``case_gone``, a case no longer open with
+    ``case_not_open`` and its state in the summary. ``True`` when the run was ended. Any
     other run, and a check that cannot decide, go ahead.
     """
     from app.services import ctem_case_run_start as case_start_mod
@@ -3162,7 +3163,7 @@ async def _skip_by_case_start(
     await ensure_single_writer()
     now = datetime.now(UTC)
     run.status = "skipped"
-    run.error = case_start_mod.CASE_GONE
+    run.error = verdict.error
     run.result_summary = verdict.summary
     run.total_input_tokens = 0
     run.total_output_tokens = 0
@@ -8572,7 +8573,24 @@ async def execute_assignment_run(
                 # tool of the run changes an integration it is bound to (#1874).
                 if loop_kwargs["executor"] is not None and _rebuild_integration_tools is not None:
                     loop_kwargs["tool_surface_refresher"] = IntegrationSurfaceRefresher(
-                        composite, loop_kwargs["executor"], _rebuild_integration_tools, _narrow_tool_surface
+                        composite,
+                        loop_kwargs["executor"],
+                        _rebuild_integration_tools,
+                        _narrow_tool_surface,
+                        # update_agent on this run's own agent refreshes it too (#2205).
+                        agent_id=str(agent.id),
+                        # A built-in group granted in the run loads from the next step,
+                        # through its own gate for the person the run acts as (#2205).
+                        rebuild_builtins=(
+                            partial(
+                                rebuild_bound_builtin_groups,
+                                str(agent.id),
+                                str(effective_user_id),
+                                run_id=str(run.id),
+                            )
+                            if effective_user_id
+                            else None
+                        ),
                     )
                 # Tool groups the assignment declares are on the wire from the
                 # first request, so the cached prompt prefix holds all run.

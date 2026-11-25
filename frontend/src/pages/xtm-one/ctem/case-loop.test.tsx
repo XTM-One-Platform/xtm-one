@@ -125,6 +125,27 @@ describe("actNowCases", () => {
     expect(actNowCases(cases, scopes).map((c) => c.id)).toEqual(["e", "a", "b", "c"]);
   });
 
+  it("names a crown jewel the scope gate reached through an asset, once (#2343)", () => {
+    const scopes = caseScopes([
+      {
+        case_id: "f",
+        decision: {
+          scope: {
+            criticality: "critical",
+            sources: [
+              { from: "asset", name: "srv-db-01" },
+              { from: "primary_asset", name: "Payments platform" },
+              { from: "primary_asset", name: "Customer data" },
+            ],
+          },
+          reconcile: { primary_assets_named: ["Customer data"] },
+        },
+      },
+      { case_id: "f", decision: { scope: { sources: [{ from: "primary_asset", name: "Payments platform" }] } } },
+    ]);
+    expect(scopes.get("f")?.primaryAssets).toEqual(["Customer data", "Payments platform"]);
+  });
+
   it("keeps a P2 below what waits on the reader and a P1 above it, in the loop's order", () => {
     expect(actNowCasePriority("P1", 1)).toBeGreaterThan(98);
     expect(actNowCasePriority("P2", 0)).toBeLessThan(97);

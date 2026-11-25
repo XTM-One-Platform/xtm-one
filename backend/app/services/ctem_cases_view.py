@@ -537,12 +537,18 @@ def _age_seconds(view: ViewerView) -> float:
     return max(0.0, (datetime.now(UTC) - view.built_at).total_seconds())
 
 
-async def _older_view(client: Any, user_id: str, vertical: str, generation: str) -> ViewerView | None:
+async def _older_view(
+    client: Any, user_id: str, vertical: str, generation: str, *, same_generation: bool = False
+) -> ViewerView | None:
     """The viewer's own newest view of a generation older than *generation*.
 
     Kept :data:`STALE_VIEW_TTL_SECONDS` (#2232) under its own key, so a build longer than
     :data:`VIEW_TTL_SECONDS` still leaves the list a view to answer from; a case read takes it
     only within :data:`VIEW_TTL_SECONDS` of its build (:func:`_stale_view`).
+
+    With *same_generation* (the list), the kept view of *generation* itself is taken too: with
+    no case change, its own copy expires after :data:`VIEW_TTL_SECONDS` while the kept one stays,
+    and refusing it made every list read a 503 for the whole rebuild, every five minutes.
     """
     try:
         latest = await client.get(_latest_key(user_id, vertical))
@@ -550,7 +556,7 @@ async def _older_view(client: Any, user_id: str, vertical: str, generation: str)
         return None
     if isinstance(latest, bytes):
         latest = latest.decode()
-    if not latest or str(latest) == generation:
+    if not latest or (str(latest) == generation and not same_generation):
         return None
     try:
         previous = await client.get(_previous_key(user_id, vertical))
@@ -571,10 +577,12 @@ async def _list_view(client: Any, user_id: str, vertical: str, generation: str) 
 
     A generation bump says the cases changed, not that the viewer's access did: their
     own older view answers the list (the cases are read fresh from the store, only the
-    issue details come from it) while the new one builds in the background. With no
-    older view, the background build is awaited for :data:`LIST_BUILD_WAIT_SECONDS`.
+    issue details come from it) while the new one builds in the background. The kept
+    view of the current generation past :data:`VIEW_TTL_SECONDS` answers the same way.
+    With no kept view at all, the background build is awaited for
+    :data:`LIST_BUILD_WAIT_SECONDS`.
     """
-    older = await _older_view(client, user_id, vertical, generation)
+    older = await _older_view(client, user_id, vertical, generation, same_generation=True)
     if older is not None:
         mark("cache", "stale")
         _revalidate(user_id, vertical, generation)

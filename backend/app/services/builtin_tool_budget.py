@@ -139,7 +139,9 @@ from app.services.builtin_tool_groups import schema_chars
 #: CTEM agents already carried these functions by slug; on top of #1759, 24 Nov 2026).
 #: Raised to 494,000 for list_my_notifications in the coordination group (#2198) and
 #: get_platform_health in the health_orchestrator group (#2199): +433, total 493,833 on 25 Nov 2026.
-TOTAL_SCHEMA_CHARS_CEILING = 494_000
+#: Raised to 494,700 for update_organization_sync in the organization_context group (partial
+#: update of a sync, opt-in and administrator-only, +~650 on 25 Nov 2026).
+TOTAL_SCHEMA_CHARS_CEILING = 494_700
 
 #: Ceilings of the groups that carry one of their own (group id -> characters);
 #: generate_presentation, platform and coordination since the chat-reactivity

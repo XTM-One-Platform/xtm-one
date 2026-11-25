@@ -2519,6 +2519,13 @@ writes it on the built-in fleets (`case_ownership` of `BUILTIN_FLEETS`).
   now owns at once; Pause all or Back to not set up hands them back through
   the same catch-up. An open case item of any declared key blocks a second
   run, so a case the built-in loop is running is not started again on the fork.
+- Backlog place (#2345): a pass asks at most `CATCH_UP_BATCH` (100) cases,
+  most urgent first. `get_ctem_case` and `list_ctem_cases` give a case still
+  waiting for its ask a `catch_up` block: `position` (1: the next pass asks
+  it), `backlog`, `batch_size`, `passes_ahead`, `sweep_seconds` and
+  `asked_before` (`ctem_case_routing.catch_up_places`, the same order and
+  filters as the pass). A case already run, asked recently, with its asks
+  spent or owned by no active fleet carries none.
 
 The five shared loop roles (relevance analyst, scenario creator, risk
 quantifier, remediation coordinator, threat hunt creator) are exposed

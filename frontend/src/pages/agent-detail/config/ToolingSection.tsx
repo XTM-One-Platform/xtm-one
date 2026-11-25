@@ -40,6 +40,7 @@ import { useSkillPackageBindings } from "@/hooks/api/useSkillApi";
 import { usePerUserReadiness } from "@/hooks/api/useIntegrationApi";
 import { isA2AProvider, useA2AExposure } from "@/hooks/api/useA2AApi";
 import { A2ARunAs } from "./A2ARunAs";
+import { A2APartnerFleetReads } from "./A2APartnerFleetReads";
 import { EmailSignaturesCard } from "./EmailSignaturesCard";
 import { NewBuiltinToolsNotice } from "./NewBuiltinToolsNotice";
 import { A2AUnavailableNotice } from "@/components/ui/a2a-unavailable-notice";
@@ -628,7 +629,10 @@ export function ToolingSection({
                     {/* The card URL lives on the integration's Config tab,
                         one row per bound agent. */}
                     {a2aExposure?.exposed && (
-                      <A2ARunAs agent={agent} exposure={a2aExposure} />
+                      <>
+                        <A2ARunAs agent={agent} exposure={a2aExposure} />
+                        <A2APartnerFleetReads agentId={agent.id} exposure={a2aExposure} />
+                      </>
                     )}
                     {/* Why the card URL is absent while A2A is not offered —
                         the exposure query above is disabled then. Renders

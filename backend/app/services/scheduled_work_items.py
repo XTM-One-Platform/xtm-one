@@ -972,14 +972,14 @@ def hands_work_to(handover_agent_ids: Any, type_map: Any, target_id: uuid.UUID |
     A target of a legacy map (no type recorded) runs every type; a target of an
     explicit map runs the type it has, ``delegate`` when it has none.
     """
-    from app.services.handover_types import is_legacy_handover_map
+    from app.services.handover_types import handover_type_set, is_legacy_handover_map
 
     target = str(target_id)
     if target not in {str(agent_id) for agent_id in handover_agent_ids or ()}:
         return False
     if is_legacy_handover_map(type_map):
         return True
-    return (type_map or {}).get(target, "delegate") in _RESPONSIBLE_HANDOVER_TYPES
+    return bool(handover_type_set((type_map or {}).get(target, "delegate")) & _RESPONSIBLE_HANDOVER_TYPES)
 
 
 def change_authority(

@@ -11026,6 +11026,12 @@ async def run_agent_loop(
             content=_surface_refresh_note(refreshed.added, refreshed.removed, gated=_gated),
         )
 
+    def _changes_own_agent_tools(result: Any) -> bool:
+        """An ``update_agent`` result that changed the tools of the agent this run serves (#2205)."""
+        return tool_surface_refresher is not None and tool_surface_refresher.follows(
+            getattr(result, "agent_tool_scope", None)
+        )
+
     # Set by a successful call of a ``changes_tool_surface`` tool; the refresh
     # runs once at the end of that step.
     _tool_surface_changed = False
@@ -17259,7 +17265,7 @@ async def run_agent_loop(
                         _tc_is_write and not result.is_error and not getattr(result, "no_op", False)
                     )
                     if (
-                        _tc_orig_name in _surface_changing_tools
+                        (_tc_orig_name in _surface_changing_tools or _changes_own_agent_tools(result))
                         and not result.is_error
                         and not getattr(result, "no_op", False)
                     ):
@@ -17746,7 +17752,7 @@ async def run_agent_loop(
                         ):
                             _effective_writes.append(_result_orig_name)
                         if (
-                            _result_orig_name in _surface_changing_tools
+                            (_result_orig_name in _surface_changing_tools or _changes_own_agent_tools(result))
                             and not result.is_error
                             and not getattr(result, "no_op", False)
                         ):
