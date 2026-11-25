@@ -5032,6 +5032,17 @@ def build_agent_builder_tool(
                     _token_caller, agent, group_ids
                 )
 
+            # The agent's tool approval policy, resolved as the gate resolves
+            # it, and the platform tool rules for an administrator (#2189).
+            from app.services.agent_approval_policy import approval_policy_lines
+
+            _approval_caller = await _load_caller_user_for_builder(_db, uid) if uid else None
+            _approval_lines = await approval_policy_lines(
+                _db,
+                agent,
+                caller_is_admin=_approval_caller is not None and bool(agent_tool_admin_bypass(_approval_caller)),
+            )
+
             # Self fan-out: the stored setting and what it does once the
             # platform switch and the delegation depth are applied.
             from app.services.builtin_tools.handover import self_fanout_effective_text
@@ -5137,6 +5148,7 @@ def build_agent_builder_tool(
                 "",
                 "Human-in-the-loop:",
                 f"  • Enabled: {_yn(_g('human_in_the_loop', False))}",
+                *_approval_lines,
                 "",
                 "Channels & web:",
                 f"  • Available channels: {_fmt_channels()}",
