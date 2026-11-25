@@ -1451,7 +1451,7 @@ interface ProviderEvent {
   event: string;
   label: string;
   description: string;
-  mechanism: "polling" | "webhook" | "hybrid";
+  mechanism: "polling" | "webhook" | "hybrid" | "stream";
   /** The `trigger_config.filter` keys the event takes, each with what it does. */
   filter_keys?: Record<string, string>;
 }
