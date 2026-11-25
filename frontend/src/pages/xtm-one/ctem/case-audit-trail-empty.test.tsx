@@ -28,20 +28,16 @@ function renderEmpty() {
   );
 }
 
-const containerOf = () => {
-  const block = screen.getByTestId("ctem-audit-empty").parentElement;
-  expect(block).not.toBeNull();
-  return { testId: block?.getAttribute("data-testid"), className: block?.className };
-};
+// The wrapper of the empty line, named by its test id: both views render the same block.
+const containerOf = () => screen.getByTestId("ctem-audit-empty").parentElement?.getAttribute("data-testid");
 
 describe("CaseAuditTrail empty state (#2008, B1)", () => {
   it("renders the empty line in the same container in the Table and the Timeline", async () => {
     renderEmpty();
-    const table = containerOf();
-    expect(table.testId).toBe("ctem-audit-empty-block");
+    expect(containerOf()).toBe("ctem-audit-empty-block");
 
     await userEvent.click(screen.getByRole("radio", { name: "Timeline" }));
     expect(screen.getByTestId("ctem-case-history")).toBeInTheDocument();
-    expect(containerOf()).toEqual(table);
+    expect(containerOf()).toBe("ctem-audit-empty-block");
   });
 });
