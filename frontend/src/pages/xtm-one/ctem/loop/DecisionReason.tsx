@@ -249,7 +249,21 @@ export type DecisionInput = {
   lines?: string[];
   /** A long list (the matched assets): the count and the first names drawn, every name in the tooltip. */
   names?: string[];
+  /** UX r2 B7 on #1995: the names are a floor (the record's list was cut), so the count reads "At least". */
+  capped?: boolean;
 };
+
+/**
+ * Whether the matched asset list of a record is shorter than what it matched (UX r2 B7 on #1995):
+ * the record says so (`assets_capped`), or, on a record older than that flag, a primary asset
+ * is reached by more inventory assets than the list names.
+ */
+function matchedAssetsCapped(reconcile: NonNullable<CtemDecisionRecord["reconcile"]>, count: number): boolean {
+  if (reconcile.assets_capped) return true;
+  const totals = reconcile.primary_asset_totals;
+  if (!totals || typeof totals !== "object") return false;
+  return Object.values(totals as Record<string, { assets?: unknown }>).some((t) => typeof t?.assets === "number" && t.assets > count);
+}
 
 /** The inputs the gate read, labelled, in the order the rule reads them; empty values are left out. */
 export function decisionInputs(decision: CtemDecisionRecord | null | undefined, t_i18n: Translate): DecisionInput[] {
@@ -269,13 +283,21 @@ export function decisionInputs(decision: CtemDecisionRecord | null | undefined, 
   // Asset matched or not (#874): a decided record says "None matched", never an empty row.
   // CTEM-29-UI: a leaked identity resolves through the owned domain it is on, not an asset.
   const domains = list((scope?.sources ?? []).filter((s) => s.from === "owned_domain").map((s) => s.name));
-  const assetNames = Array.isArray(reconcile.assets) ? reconcile.assets.filter(Boolean).map(String) : [];
+  // UX r2 B7 on #1995: each name once (an older record can name an asset twice).
+  const assetNames = Array.isArray(reconcile.assets) ? [...new Set(reconcile.assets.filter(Boolean).map(String))] : [];
+  const assetsCapped = assetNames.length > 0 && matchedAssetsCapped(reconcile, assetNames.length);
   const matched = list(assetNames) || (decision.reconcile && !domains ? t_i18n("None matched") : "");
   const reached = primaryAssetsRow(decision, t_i18n);
   const rows: DecisionInput[] = [
     { key: "lenses", label: t_i18n("Lenses"), value: lenses },
     { key: "confidence", label: t_i18n("Confidence"), value: level(reconcile.confidence) },
-    { key: "matched_assets", label: t_i18n("Matched assets"), value: matched, names: assetNames.length > 0 ? assetNames : undefined },
+    {
+      key: "matched_assets",
+      label: t_i18n("Matched assets"),
+      value: matched,
+      names: assetNames.length > 0 ? assetNames : undefined,
+      capped: assetsCapped || undefined,
+    },
     // UX r1 B3 on #1796: the names the record matched, next to the primary assets reached below.
     { key: "primary_assets_named", label: t_i18n("Primary assets named"), value: list(reconcile.primary_assets_named) },
     { key: "software", label: t_i18n("Software"), value: list(reconcile.products) },
@@ -332,15 +354,17 @@ function criticalityAgainstThreshold(scope: CtemDecisionRecord["scope"], t_i18n:
  * (#1979) draws it in its scope section and leaves out the rows it draws elsewhere
  * (`omit`: the policy checks as the funnel, the primary assets reached as cards).
  */
-/** "2.5K assets: pay-api-01, vpn-gw-01, vpn-gw-lyon, +2.5K": the count compact, the first names, the rest counted. */
-function listSummary(names: readonly string[], locale: string, t_i18n: Translate): string {
+/**
+ * "2.5K assets: pay-api-01, vpn-gw-01, vpn-gw-lyon, +2.5K": the count compact, the first names,
+ * the rest counted; a capped list reads "At least 5K assets: ..." (UX r2 B7 on #1995), never a cut length as the total.
+ */
+function listSummary(names: readonly string[], locale: string, t_i18n: Translate, capped = false): string {
   const shown = names.slice(0, LIST_INPUT_NAMES).join(", ");
   const rest = names.length - LIST_INPUT_NAMES;
-  const head = t_i18n("{total} {count, plural, one {asset} other {assets}}: {names}", {
-    total: formatCount(locale, names.length),
-    count: names.length,
-    names: shown,
-  });
+  const values = { total: formatCount(locale, names.length), count: names.length, names: shown };
+  const head = capped
+    ? t_i18n("At least {total} {count, plural, one {asset} other {assets}}: {names}", values)
+    : t_i18n("{total} {count, plural, one {asset} other {assets}}: {names}", values);
   return rest > 0 ? `${head}, ${t_i18n("+{count} more", { count: formatCount(locale, rest) })}` : head;
 }
 
@@ -367,7 +391,7 @@ export function DecisionInputs({ decision, omit = [] }: { decision: CtemDecision
             <dd className="min-w-0" data-testid={`ctem-decision-input-${input.key}`}>
               <Tip content={input.value}>
                 <span className={cn("block truncate", TIP_WRAP_FOCUS_RING)} tabIndex={0}>
-                  {listSummary(input.names, intl.locale, t_i18n)}
+                  {listSummary(input.names, intl.locale, t_i18n, input.capped)}
                 </span>
               </Tip>
             </dd>

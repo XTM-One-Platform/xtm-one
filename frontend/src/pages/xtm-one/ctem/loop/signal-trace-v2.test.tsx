@@ -233,10 +233,28 @@ describe("loop trace v2 (#1979)", () => {
 
   it("summarises a long matched asset list: the count, three names, the rest counted (UX r1 B5 on #1995)", async () => {
     const names = Array.from({ length: 2500 }, (_, n) => `ws-${String(n).padStart(5, "0")}`);
-    await renderTrace({ ...signal, decision: { ...signal.decision, reconcile: { ...signal.decision!.reconcile!, assets: names } } as CtemSignal["decision"] });
+    const reconcile = { ...signal.decision!.reconcile!, assets: names, primary_asset_totals: { "employee workstations": { assets: 2500, direct: 0, via_group: 2500 } } };
+    await renderTrace({ ...signal, decision: { ...signal.decision, reconcile } as CtemSignal["decision"] });
     const cell = screen.getByTestId("ctem-decision-input-matched_assets");
     expect(cell).toHaveTextContent("2.5K assets: ws-00000, ws-00001, ws-00002, +2.5K more");
     expect(cell.querySelector("[title]")).toBeNull();
+  });
+
+  it("never counts a capped matched list as the total, and names each asset once (UX r2 B7 on #1995)", async () => {
+    const names = Array.from({ length: 4991 }, (_, n) => (n === 1 ? "vpn-gw-01" : n === 0 ? "vpn-gw-01" : `ws-${String(n).padStart(5, "0")}`));
+    await renderTrace({
+      ...signal,
+      decision: { ...signal.decision, reconcile: { ...signal.decision!.reconcile!, assets: names, assets_capped: true } } as CtemSignal["decision"],
+    });
+    const cell = screen.getByTestId("ctem-decision-input-matched_assets");
+    expect(cell).toHaveTextContent("At least 5K assets: vpn-gw-01, ws-00002, ws-00003, +5K more");
+    expect(cell.textContent?.match(/vpn-gw-01/g)).toHaveLength(1);
+  });
+
+  it("reads a record older than the cap flag as capped when a primary asset total is larger (UX r2 B7 on #1995)", async () => {
+    const names = Array.from({ length: 40 }, (_, n) => `ws-${String(n).padStart(5, "0")}`);
+    await renderTrace({ ...signal, decision: { ...signal.decision, reconcile: { ...signal.decision!.reconcile!, assets: names } } as CtemSignal["decision"] });
+    expect(screen.getByTestId("ctem-decision-input-matched_assets")).toHaveTextContent(/^At least 40 assets: /);
   });
 
   it("keeps the next step, the stages and Open case", async () => {

@@ -37,6 +37,7 @@ from typing import Any
 
 from app.services.ctem_primary_assets import PrimaryAssetIndex
 from app.services.organization_context import (
+    PROFILE_ASSET_CAP,
     AssetEntry,
     OrganizationProfile,
     ShippedProduct,
@@ -628,7 +629,10 @@ def decide(
         },
         "reconcile": {
             "keys": resolution.keys,
-            "assets": [a.name for a in resolution.assets],
+            # UX r2 B7 on #1995: each name once, and whether the profile's asset list was cut at its
+            # model cap (more assets may match than the list holds: a reader never counts it as the total).
+            "assets": list(dict.fromkeys(a.name for a in resolution.assets)),
+            "assets_capped": len(profile.assets_exposure) >= PROFILE_ASSET_CAP,
             "asset_groups": resolution.groups,
             "primary_assets_named": resolution.named_primary_assets,
             "products": resolution.products,

@@ -29,6 +29,8 @@ export interface CtemDecisionRecord {
   inputs?: { lens?: string; source_provider?: string; cves?: string[] } & Record<string, unknown>;
   reconcile?: {
     assets?: string[];
+    /** UX r2 B7 on #1995: the profile asset list was cut at its cap, so `assets` is a floor, not the total. */
+    assets_capped?: boolean;
     primary_assets_named?: string[];
     products?: string[];
     lenses?: string[];

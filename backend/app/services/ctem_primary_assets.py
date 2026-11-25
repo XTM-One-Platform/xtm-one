@@ -200,8 +200,21 @@ def _record_products(fields: dict[str, Any]) -> dict[str, str]:
     return out
 
 
-async def load_index(db: AsyncSession, organization_id: uuid.UUID) -> PrimaryAssetIndex:
-    """Read the assets of *organization_id* that reach a primary asset. Never raises on empty data."""
+async def load_index(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    *,
+    primary_asset_key: str | None = None,
+    software: list[str] | None = None,
+) -> PrimaryAssetIndex:
+    """Read the assets of *organization_id* that reach a primary asset. Never raises on empty data.
+
+    The loop trace's supporting asset list (UX r2 B4 on #1995) reads a narrower index:
+    *primary_asset_key* keeps the links of that primary asset alone, and *software*
+    keeps the installed software rows of the products those references name (the
+    distinct products are matched first, then only their rows are read), so a cold
+    read of 10,000 supporting assets does not pull every installed product of the fleet.
+    """
     from app.models.organization_asset import OrganizationAssetSoftware
     from app.models.organization_asset_record import (
         OrganizationAssetGroup,
@@ -214,7 +227,9 @@ async def load_index(db: AsyncSession, organization_id: uuid.UUID) -> PrimaryAss
     rows = (
         await db.execute(
             select(link.record_id, link.group_id, link.primary_asset_key, link.source, link.roles, link.via).where(
-                link.organization_id == organization_id, link.removed.is_(False)
+                link.organization_id == organization_id,
+                link.removed.is_(False),
+                *([link.primary_asset_key == primary_asset_key] if primary_asset_key is not None else []),
             )
         )
     ).all()
@@ -271,10 +286,23 @@ async def load_index(db: AsyncSession, organization_id: uuid.UUID) -> PrimaryAss
                 holder.links.append(entry)
     if asset_ids:
         soft = OrganizationAssetSoftware
+        scope = [soft.organization_id == organization_id, soft.asset_id.in_(asset_ids)]
+        if software is not None:
+            refs = [r for r in software if r]
+            products = (await db.execute(select(soft.product_key, soft.product).where(*scope).distinct())).all()
+            wanted = sorted(
+                {
+                    str(key)
+                    for key, product in products
+                    if product
+                    and any(product_matches(str(product), r) or product_matches(r, str(product)) for r in refs)
+                }
+            )
+            scope.append(soft.product_key.in_(wanted))
         installed = (
             await db.execute(
                 select(soft.asset_id, soft.product_key, soft.product)
-                .where(soft.organization_id == organization_id, soft.asset_id.in_(asset_ids))
+                .where(*scope)
                 .distinct()
                 .limit(MAX_SOFTWARE_ROWS + 1)
             )

@@ -262,24 +262,56 @@ def _supporting_keep(cache_key: tuple[str, str, str, str], rows: list[dict[str, 
     _supporting_cache[cache_key] = (time.monotonic(), rows, truncated)
 
 
+async def _supporting_index(db: AsyncSession, organization_id: uuid.UUID, key: str, refs: list[str]) -> Any:
+    """The link index narrowed to primary asset *key* and the products *refs* name (UX r2 B4 on #1995)."""
+    from app.services import ctem_primary_assets
+
+    try:
+        async with db.begin_nested():
+            return await ctem_primary_assets.load_index(db, organization_id, primary_asset_key=key, software=refs)
+    except Exception:
+        logger.warning("CTEM loop trace: supporting assets not read for %s", organization_id, exc_info=True)
+        return ctem_primary_assets.PrimaryAssetIndex()
+
+
+async def _reach_inputs(db: AsyncSession, row: CtemSignal) -> tuple[list[str], list[str]]:
+    """The software references and subject keys the gate followed for *row*.
+
+    Read from its decision record (UX r2 B4 on #1995: no profile read on the trace's
+    path); a record without them (older than #1591 S3) resolves them again.
+    """
+    decision = getattr(row, "decision", None)
+    reconcile = decision.get("reconcile") if isinstance(decision, dict) else None
+    if (
+        isinstance(reconcile, dict)
+        and isinstance(reconcile.get("software_refs"), list)
+        and isinstance(reconcile.get("keys"), list)
+    ):
+        products = reconcile.get("products") if isinstance(reconcile.get("products"), list) else []
+        refs = [str(r) for r in dict.fromkeys([*reconcile["software_refs"], *products]) if r]
+        return refs, [str(k) for k in reconcile["keys"] if k]
+    profile = await _profile(db, row.organization_id)
+    resolution = gate.resolve(profile, facts_of(row), None)
+    return list(dict.fromkeys([*resolution.software_refs, *resolution.products])), list(resolution.keys)
+
+
 async def _supporting_rows(db: AsyncSession, row: CtemSignal, key: str) -> tuple[list[dict[str, Any]], bool]:
     """Every supporting asset of *row* for primary asset *key*, read once per signal version (UX r1 B4 on #1995).
 
-    The index and profile reads cost seconds on a 10,000-asset inventory; the page,
-    the search and the sort then work on the list kept here for a few minutes, keyed
-    on the signal's ``updated_at`` so a re-decided signal reads again.
+    The first read takes the signal's references from its decision record and reads
+    the link index of that primary asset alone, with only the installed software rows
+    of the products the signal names (UX r2 B4); the page, the search and the sort then
+    work on the list kept here for a few minutes, keyed on the signal's ``updated_at``
+    so a re-decided signal reads again.
     """
     version = str(getattr(row, "updated_at", "") or "")
     cache_key = (str(row.organization_id), str(row.id), version, key)
     hit = _supporting_cached(cache_key)
     if hit is not None:
         return hit
-    organization_id = row.organization_id
-    profile = await _profile(db, organization_id)
-    index = await _primary_assets(db, organization_id)
-    resolution = gate.resolve(profile, facts_of(row), None)
-    refs = list(dict.fromkeys([*resolution.software_refs, *resolution.products]))
-    rows = index.supporting(refs, resolution.keys, key)
+    refs, keys = await _reach_inputs(db, row)
+    index = await _supporting_index(db, row.organization_id, key, refs)
+    rows = index.supporting(refs, keys, key)
     truncated = bool(index.truncated)
     _supporting_keep(cache_key, rows, truncated)
     return rows, truncated

@@ -44,12 +44,12 @@ def reads(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
     async def profile(db: Any, organization_id: Any) -> None:
         return None
 
-    async def index(db: Any, organization_id: Any) -> Index:
+    async def index(db: Any, organization_id: Any, key: str, refs: list[str]) -> Index:
         calls.append(str(organization_id))
         return Index()
 
     monkeypatch.setattr(store, "_profile", profile)
-    monkeypatch.setattr(store, "_primary_assets", index)
+    monkeypatch.setattr(store, "_supporting_index", index)
     monkeypatch.setattr(store, "facts_of", lambda row: None)
     monkeypatch.setattr(
         store.gate,
@@ -90,6 +90,38 @@ async def test_a_re_decided_signal_reads_again(reads: list[str]) -> None:
     row.updated_at = datetime(2026, 11, 25, 1, tzinfo=UTC)
     await store.supporting_assets(None, row, "employee workstations", limit=1)
     assert len(reads) == 2
+
+
+async def test_the_first_read_takes_the_references_from_the_record(monkeypatch: pytest.MonkeyPatch) -> None:
+    """UX r2 B4 on #1995: a decided signal's cold read uses its record, no profile read, one narrowed index."""
+    store._supporting_cache.clear()
+    seen: dict[str, Any] = {}
+
+    async def no_profile(db: Any, organization_id: Any) -> None:
+        raise AssertionError("the profile is not read when the record names the references")
+
+    class Index:
+        truncated = False
+
+        def supporting(self, refs: list[str], keys: list[str], key: str) -> list[dict[str, Any]]:
+            seen["supporting"] = (refs, keys, key)
+            return _rows(3)
+
+    async def index(db: Any, organization_id: Any, key: str, refs: list[str]) -> Index:
+        seen["index"] = (key, refs)
+        return Index()
+
+    monkeypatch.setattr(store, "_profile", no_profile)
+    monkeypatch.setattr(store, "_supporting_index", index)
+    row = _signal(datetime(2026, 11, 25, tzinfo=UTC))
+    row.decision = {
+        "reconcile": {"software_refs": ["Windows"], "products": ["Microsoft Windows", "Windows"], "keys": ["cve-1"]}
+    }
+    page = await store.supporting_assets(None, row, "Employee Workstations", limit=10)
+    assert page["total"] == 3
+    assert seen["index"] == ("employee workstations", ["Windows", "Microsoft Windows"])
+    assert seen["supporting"] == (["Windows", "Microsoft Windows"], ["cve-1"], "employee workstations")
+    store._supporting_cache.clear()
 
 
 def test_the_cache_keeps_at_most_its_bound() -> None:

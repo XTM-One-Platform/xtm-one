@@ -785,7 +785,10 @@ function LoopStages({ signal, currentCaseId }: { signal: CtemSignal; currentCase
                   {gate.next && (
                     <>
                       <dt className="min-w-0 break-words text-default-secondary">{t_i18n("Next step")}</dt>
-                      <dd className="min-w-0 break-words">{gate.next}</dd>
+                      {/* #1979: the one next step of the trace; the gate gives it, so the stage line below does not repeat it. */}
+                      <dd className="min-w-0 break-words" data-testid={here ? "ctem-decision-next-step" : undefined}>
+                        {gate.next}
+                      </dd>
                     </>
                   )}
                 </dl>

@@ -21718,5 +21718,6 @@
   "{count, plural, one {through an asset group} other {through asset groups}}": "{count, plural, one {a través de un grupo de activos} other {a través de grupos de activos}}",
   "≥ {threshold}": "≥ {threshold}",
   "< {threshold}": "< {threshold}",
+  "At least {total} {count, plural, one {asset} other {assets}}: {names}": "Al menos {total} {count, plural, one {activo} other {activos}}: {names}",
   "{total} {count, plural, one {asset} other {assets}}: {names}": "{total} {count, plural, one {activo} other {activos}}: {names}"
 }
