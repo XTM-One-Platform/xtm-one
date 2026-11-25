@@ -1707,6 +1707,54 @@ async def list_primary_asset_link_counts(
     }
 
 
+@router.get("/primary-assets/{primary_asset}")
+async def get_primary_asset(
+    primary_asset: str,
+    q: str = Query("", max_length=200),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """One primary asset's page (#1980 S2): its profile entry and a page of the assets that support it.
+
+    ``primary_asset`` is the profile entry as stored (criticality, owner,
+    business service, source); ``supporters`` is one page of the records linked
+    to it directly or through an asset group, searched on ``q`` (name or group),
+    with ``total`` and the whole primary asset's ``counts`` by path and source.
+    404 when no primary asset of the profile has that name.
+    """
+    from app.services.ctem_primary_assets import primary_asset_supporters
+
+    current = await org_context.current_version(db)
+    wanted = " ".join(primary_asset.split()).casefold()
+    entry = next(
+        (
+            dict(j)
+            for j in ((current.profile or {}) if current else {}).get("primary_assets") or []
+            if isinstance(j, dict) and " ".join(str(j.get("name") or "").split()).casefold() == wanted
+        ),
+        None,
+    )
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"No primary asset is named '{primary_asset}'")
+    org = await _built_store(db)
+    supporters = (
+        await primary_asset_supporters(
+            db, org, str(entry.get("name") or primary_asset), q=q, offset=offset, limit=limit
+        )
+        if org is not None
+        else {
+            "items": [],
+            "total": 0,
+            "offset": offset,
+            "limit": limit,
+            "counts": {"total": 0, "through": {}, "source": {}},
+        }
+    )
+    return {"primary_asset": entry, "supporters": supporters}
+
+
 @router.put("/primary-assets/{primary_asset}/links")
 async def set_primary_asset_asset_links(
     primary_asset: str,
