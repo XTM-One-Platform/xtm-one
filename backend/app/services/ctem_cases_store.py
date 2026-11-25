@@ -355,6 +355,11 @@ async def _case_of_signal(
 
     if signal.case_id is not None:
         return await db.get(CtemCase, signal.case_id)
+    from app.services import ctem_case_opening
+
+    # #1951: while case opening is paused the signal waits, confirmed with no case.
+    if not await ctem_case_opening.is_on(db, vertical):
+        return None
     async with db.begin_nested():
         return await loop.open_from_signal(db, signal, vertical=vertical, events=events, now=now)
 

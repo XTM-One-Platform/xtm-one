@@ -776,3 +776,39 @@ export function useSplitCtemCase() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ctem-cases"] }),
   });
 }
+
+/** Whether case opening runs, and the confirmed signals that wait for their case (#1951). */
+export interface CtemCaseOpening {
+  vertical: string;
+  on: boolean;
+  waiting: number;
+}
+
+/** The answer of a change: `draining` when the waiting signals are opening their cases now. */
+export interface CtemCaseOpeningChange extends CtemCaseOpening {
+  changed: boolean;
+  draining: boolean;
+}
+
+/** GET /ctem-cases/opening: read by everyone who reads cases; polled while signals wait. */
+export function useCtemCaseOpening() {
+  return useQuery<CtemCaseOpening>({
+    queryKey: ["ctem-cases", "opening"],
+    queryFn: () => api.get("/ctem-cases/opening"),
+    retry: ctemCasesRetry,
+    // While cases open from the waiting signals the count falls: read it again every few seconds.
+    refetchInterval: (query) => (query.state.data?.on && query.state.data.waiting > 0 ? 3000 : REFETCH_INTERVAL_SLOW),
+  });
+}
+
+/** PUT /ctem-cases/opening, administrators only: pause or resume case opening. */
+export function useSetCtemCaseOpening() {
+  const qc = useQueryClient();
+  return useMutation<CtemCaseOpeningChange, Error, { on: boolean }>({
+    mutationFn: (body) => api.put("/ctem-cases/opening", body),
+    onSuccess: (data) => {
+      qc.setQueryData(["ctem-cases", "opening"], { vertical: data.vertical, on: data.on, waiting: data.waiting });
+      void qc.invalidateQueries({ queryKey: ["ctem-cases", "list"] });
+    },
+  });
+}

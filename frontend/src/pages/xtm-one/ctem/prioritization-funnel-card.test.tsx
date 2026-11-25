@@ -275,8 +275,21 @@ describe("the gate counts", () => {
     signalsRead.value = { data: { total: 3, counts: { to_validate: 1, watchlist: 1, confirmed: 1 }, signals: [] } };
     draw(<PrioritizationFunnelWithCases funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);
     expect(screen.getByTestId("ctem-funnel-gate-counts").textContent).toBe(
-      "Signals: 3 in, 2 confirmed, 1 in scope, 0 opened a case, 1 on the watchlist",
+      "Signals: 3 in, 2 confirmed, 1 in scope, 0 opened a case, 1 on the watchlist Show the watchlist",
     );
+    signalsRead.value = { data: undefined };
+  });
+
+  // #874 S2: the watchlist is a filter of the signals list, reached from the gate line.
+  it("links the watchlist to the signals list filtered on it, and draws no link on an empty watchlist", () => {
+    casesRead.value = { data: undefined };
+    signalsRead.value = { data: { total: 3, counts: { to_validate: 1, watchlist: 2 }, signals: [] } };
+    const { unmount } = draw(<PrioritizationFunnelWithCases funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);
+    expect(screen.getByTestId("ctem-funnel-gate-watchlist")).toHaveAttribute("href", "/ctem/signals?state=watchlist");
+    unmount();
+    signalsRead.value = { data: { total: 1, counts: { to_validate: 1 }, signals: [] } };
+    draw(<PrioritizationFunnelWithCases funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);
+    expect(screen.queryByTestId("ctem-funnel-gate-watchlist")).toBeNull();
     signalsRead.value = { data: undefined };
   });
 

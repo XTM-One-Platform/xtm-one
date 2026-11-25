@@ -8,6 +8,9 @@ page at once instead of after ``VIEW_TTL_SECONDS``.
 
 from __future__ import annotations
 
+import asyncio
+from typing import Any
+
 import pytest
 
 from app.services import ctem_cases as rules
@@ -115,7 +118,13 @@ def judged(monkeypatch):
     async def source_signal_members(db, seen):
         return set()
 
+    async def read_case_view(db: Any, user_id: str, vertical: str, members: list[str]) -> view_of.ViewerView:
+        calls.append(f"case:{user_id}")
+        issues = {m: rules.SourceIssue(source="opencti", external_id=m.split(":", 1)[1], name=m) for m in members}
+        return view_of.ViewerView(issues={m: i for m, i in issues.items() if m.startswith("opencti:")})
+
     monkeypatch.setattr("app.services.ctem_cases_source.read_view", read_view)
+    monkeypatch.setattr("app.services.ctem_cases_source.read_case_view", read_case_view)
     monkeypatch.setattr(view_of, "signal_members", signal_members)
     monkeypatch.setattr(view_of, "source_signal_members", source_signal_members)
     return calls
@@ -136,11 +145,16 @@ async def test_a_case_read_after_a_bump_answers_from_the_older_view_and_rebuilds
 
 
 @pytest.mark.asyncio
-async def test_a_member_the_older_view_never_judged_waits_for_the_current_view(redis, judged, revalidations):
+async def test_a_member_the_older_view_never_judged_is_read_for_this_case_only(
+    redis: Any, judged: list[str], revalidations: list[Any]
+) -> None:
     await view_of.viewer_view(None, "u-1", "cyber")
     await view_of.forget_all_views("cyber")
-    await view_of.viewer_view(None, "u-1", "cyber", members=["opencti:a", "opencti:new"])
-    assert judged == ["u-1", "u-1"] and revalidations == []
+    phases = view_of.start_timing()
+    view = await view_of.viewer_view(None, "u-1", "cyber", members=["opencti:a", "opencti:new"])
+    # The case's own members are read with the viewer's credentials; the whole view builds in the background.
+    assert judged == ["u-1", "case:u-1"] and revalidations == [("u-1", "cyber", "1")]
+    assert view.sees("opencti:new") and "cache-scoped" in phases
 
 
 @pytest.mark.asyncio
@@ -156,7 +170,61 @@ async def test_another_viewers_older_view_is_never_served(redis, judged, revalid
     await view_of.viewer_view(None, "u-1", "cyber")
     await view_of.forget_all_views("cyber")
     await view_of.viewer_view(None, "u-2", "cyber", members=["opencti:a"])
-    assert judged == ["u-1", "u-2"] and revalidations == []
+    # u-2 has no view of its own: its own read of the case, never u-1's view.
+    assert judged == ["u-1", "case:u-2"] and revalidations == [("u-2", "cyber", "1")]
+
+
+@pytest.mark.asyncio
+async def test_a_case_read_with_no_view_reads_the_case_and_caches_nothing(
+    redis: Any, judged: list[str], revalidations: list[Any]
+) -> None:
+    view = await view_of.viewer_view(None, "u-1", "cyber", members=["opencti:a", "openaev:hidden"])
+    assert judged == ["case:u-1"] and revalidations == [("u-1", "cyber", "0")]
+    # What the viewer's own read did not return stays Restricted.
+    assert view.sees("opencti:a") and not view.sees("openaev:hidden")
+    assert not any(k.startswith("ctem:cases:view:") for k in redis.data)
+
+
+@pytest.mark.asyncio
+async def test_a_scoped_read_keeps_the_seen_ids_of_a_product_that_does_not_answer(
+    redis: Any, monkeypatch: pytest.MonkeyPatch, revalidations: list[Any]
+) -> None:
+    async def read_case_view(db: Any, user_id: str, vertical: str, members: list[str]) -> view_of.ViewerView:
+        return view_of.ViewerView(missing=["openaev"], reasons={"openaev": "timeout"})
+
+    async def none(db: Any, *a: Any) -> set[str]:
+        return set()
+
+    monkeypatch.setattr("app.services.ctem_cases_source.read_case_view", read_case_view)
+    monkeypatch.setattr(view_of, "signal_members", none)
+    monkeypatch.setattr(view_of, "source_signal_members", none)
+    redis.data[view_of._seen_key("u-1", "cyber")] = '["openaev:b", "openaev:other-case"]'
+    view = await view_of.viewer_view(None, "u-1", "cyber", members=["openaev:b"])
+    assert view.unavailable == {"openaev:b"} and view.missing == ["openaev"]
+
+
+@pytest.mark.asyncio
+async def test_a_case_read_waits_for_a_build_in_flight_instead_of_a_scoped_read(
+    redis: Any, judged: list[str], revalidations: list[Any]
+) -> None:
+    key = view_of._view_key("u-1", "cyber", "0")
+    async with view_of._singleflight(key):
+        task = asyncio.create_task(view_of.viewer_view(None, "u-1", "cyber", members=["opencti:a"]))
+        await asyncio.sleep(0)
+        assert not task.done()
+    await task
+    assert judged == ["u-1"] and revalidations == []
+
+
+@pytest.mark.asyncio
+async def test_a_case_read_never_waits_for_a_background_build(
+    redis: Any, judged: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    key = view_of._view_key("u-1", "cyber", "0")
+    monkeypatch.setitem(view_of._revalidations, key, None)
+    async with view_of._singleflight(key):
+        view = await view_of.viewer_view(None, "u-1", "cyber", members=["opencti:a"])
+    assert judged == ["case:u-1"] and view.sees("opencti:a")
 
 
 @pytest.mark.asyncio
