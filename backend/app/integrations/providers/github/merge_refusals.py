@@ -13,7 +13,8 @@ GraphQL (draft, head, merge state, review decision, merge queue) and:
   ``enqueuePullRequest``, pinned to the head read before the merge), and
   answers "queued" with the position;
 - says the PR is already queued, with its position, and that no branch
-  update is needed;
+  update is needed, also when another run queued it between the read and
+  the enqueue (GitHub then refuses the mutation; #2018);
 - refuses to enqueue a head the merge queue ejected for failing checks with
   no commit since: the queue would run the same tree and fail it again,
   locking the branch for the fix meanwhile (#2010);
@@ -228,6 +229,17 @@ async def refusal_answer(
             client, headers, _ENQUEUE_MUTATION, variables, action=f"add PR #{number} in {repo} to the merge queue"
         )
         if err:
+            # Another run may have queued it between the read and the mutation:
+            # GitHub then refuses the enqueue, yet the PR is queued (#2018).
+            again = await read_facts(client, headers, owner, name, number, base)
+            if again is not None and again.in_queue:
+                return (
+                    f"PR #{number} in {repo} is already in the merge queue of {base} "
+                    f"({_position(again.queue_position)}"
+                    f"{', ' + again.queue_state.lower() if again.queue_state else ''}): it was queued meanwhile, "
+                    f"so the enqueue was refused. Nothing else was done: the queue merges it. No branch update "
+                    f"is needed."
+                )
             return (
                 f"Error: PR #{number} in {repo} is NOT merged: {base} is protected by a merge queue, so a "
                 f"direct merge is refused, and adding it to the queue failed: {err.removeprefix('Error: ')}"
