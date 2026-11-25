@@ -30,7 +30,9 @@ scheme of ``ctem_fixed_version``.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 import uuid
 from collections.abc import Iterable, Mapping
 from typing import Any
@@ -539,19 +541,38 @@ def inventory_version_counts(
     ``unknown`` version is left out: it names nothing OpenCTI could place. A label no asset runs
     is absent.
     """
-    rows = list(rows)
+    wanted = list(dict.fromkeys(labels))
+    by_key: dict[str, list[str]] = {}
+    for label in wanted:
+        key = _key(label)
+        if key:
+            by_key.setdefault(key, []).append(label)
+    on_versions: dict[str, dict[str, set[str]]] = {label: {} for label in wanted}
+    counteds: dict[str, set[str]] = {label: set() for label in wanted}
+    # One pass over the rows (#2072): a row can only match a label equal to its product key, to
+    # its vendor and product keys joined, or to a word suffix of its product key
+    # (:func:`_publisher_prefixed`), so only those labels are tested with :func:`matches_case`.
+    for vendor, product, version, asset_ids in rows:
+        product_key = _key(product)
+        vendor_key = publisher_key(vendor)
+        candidates = {product_key, f"{vendor_key} {product_key}" if vendor_key else product_key}
+        words = product_key.split(" ")
+        candidates.update(" ".join(words[i:]) for i in range(1, len(words)))
+        ids: set[str] | None = None
+        text = str(version or "").strip()
+        for key in candidates:
+            for label in by_key.get(key, ()):
+                if not matches_case(label, vendor, product):
+                    continue
+                if ids is None:
+                    ids = {str(a) for a in asset_ids or ()}
+                counteds[label] |= ids
+                if text and text != UNKNOWN:
+                    on_versions[label].setdefault(text, set()).update(ids)
     out: dict[str, dict[str, int]] = {}
-    for label in dict.fromkeys(labels):
-        on_version: dict[str, set[str]] = {}
-        counted: set[str] = set()
-        for vendor, product, version, asset_ids in rows:
-            if not matches_case(label, vendor, product):
-                continue
-            ids = {str(a) for a in asset_ids or ()}
-            counted |= ids
-            text = str(version or "").strip()
-            if text and text != UNKNOWN:
-                on_version.setdefault(text, set()).update(ids)
+    for label in wanted:
+        on_version = on_versions[label]
+        counted = counteds[label]
         family = os_family_of(label)
         for row in os_rows(os_assets.get(family) or [], product_label=label, skip=counted) if family else []:
             if row["version"] != UNKNOWN:
@@ -563,6 +584,11 @@ def inventory_version_counts(
 
 #: Product labels per grouped inventory read of :func:`inventory_versions` (bounded bind parameters).
 _INVENTORY_LABELS_CHUNK = 100
+#: Seconds an :func:`inventory_versions` answer is reused for the same organization and labels, so
+#: the cases list does not re-read and re-count the inventory on every read (#2072).
+INVENTORY_CACHE_TTL_SECONDS = 120.0
+_INVENTORY_CACHE_SIZE = 64
+_INVENTORY_CACHE: dict[tuple[uuid.UUID, tuple[str, ...]], tuple[float, dict[str, dict[str, int]]]] = {}
 
 
 async def inventory_versions(
@@ -577,6 +603,10 @@ async def inventory_versions(
     wanted = [label for label in dict.fromkeys(labels) if product_keys(label)]
     if not wanted:
         return {}
+    cache_key = (organization_id, tuple(sorted(wanted)))
+    cached = _INVENTORY_CACHE.get(cache_key)
+    if cached is not None and time.monotonic() - cached[0] < INVENTORY_CACHE_TTL_SECONDS:
+        return cached[1]
     soft = OrganizationAssetSoftware
     rows: list[Any] = []
     os_assets: dict[str, list[dict[str, Any]]] = {}
@@ -607,7 +637,11 @@ async def inventory_versions(
     except Exception:  # the inventory never breaks the issues read
         logger.info("CTEM inventory versions unavailable", exc_info=True)
         return {}
-    return inventory_version_counts(rows, os_assets, wanted)
+    answer = await asyncio.to_thread(inventory_version_counts, rows, os_assets, wanted)
+    _INVENTORY_CACHE[cache_key] = (time.monotonic(), answer)
+    while len(_INVENTORY_CACHE) > _INVENTORY_CACHE_SIZE:
+        _INVENTORY_CACHE.pop(next(iter(_INVENTORY_CACHE)))
+    return answer
 
 
 async def inventory_sources(db: AsyncSession, organization_id: uuid.UUID) -> list[str] | None:
