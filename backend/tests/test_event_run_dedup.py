@@ -97,6 +97,49 @@ def test_one_modification_seen_by_two_calendars_has_one_key():
     assert dedup.calendar_dedup_key(organizer).startswith("calendar:040000008200E00074C5B7101A82E008@")
 
 
+def _calendar(modified: str, **changes) -> dict:
+    event = {
+        "id": "AAMk-org",
+        "iCalUId": "U",
+        "lastModifiedDateTime": modified,
+        "subject": "[Workshop] Community PRs",
+        "start": {"dateTime": "2026-11-26T09:00:00", "timeZone": "UTC"},
+        "end": {"dateTime": "2026-11-26T10:00:00", "timeZone": "UTC"},
+        "attendees": [{"emailAddress": {"address": "A@x.io"}}, {"emailAddress": {"address": "b@x.io"}}],
+    }
+    event.update(changes)
+    return event_poller.calendar_event_payload(event)
+
+
+def test_saves_that_change_nothing_an_agent_reads_share_one_key():
+    """#2216: five saves of one event within minutes, identical time, cancellation
+    and attendees, raised five runs; they now carry one dedup key."""
+    keys = {
+        dedup.calendar_dedup_key(_calendar(t))
+        for t in ("2026-11-25T08:47:00Z", "2026-11-25T08:48:00Z", "2026-11-25T08:50:00Z")
+    }
+    assert len(keys) == 1
+    # Attendee order and case are not a change.
+    reordered = _calendar(
+        "2026-11-25T08:53:00Z",
+        attendees=[{"emailAddress": {"address": "b@x.io"}}, {"emailAddress": {"address": "a@x.io"}}],
+    )
+    assert dedup.calendar_dedup_key(reordered) in keys
+
+
+def test_a_new_time_attendee_or_cancellation_is_its_own_key():
+    base = dedup.calendar_dedup_key(_calendar("T1"))
+    moved = _calendar("T2", start={"dateTime": "2026-11-26T11:00:00", "timeZone": "UTC"})
+    invited = _calendar("T3", attendees=[{"emailAddress": {"address": "c@x.io"}}])
+    cancelled = _calendar("T4", isCancelled=True)
+    keys = {base, *(dedup.calendar_dedup_key(p) for p in (moved, invited, cancelled))}
+    assert len(keys) == 4
+
+
+def test_the_calendar_poll_selects_the_attendees():
+    assert "attendees" in event_poller._CALENDAR_SELECT.split(",")
+
+
 def test_each_modification_of_one_event_is_its_own_key():
     first = dedup.calendar_dedup_key({"ical_uid": "U", "last_modified_at": "T1"})
     second = dedup.calendar_dedup_key({"ical_uid": "U", "last_modified_at": "T2"})

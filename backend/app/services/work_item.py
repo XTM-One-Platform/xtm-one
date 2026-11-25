@@ -7449,6 +7449,56 @@ async def release_ended_run_claims(
     return released
 
 
+async def wake_on_background_task(work_item_id: object, *, task_id: object, outcome: str) -> str | None:
+    """Note a finished background task on the work item its spawning run was dispatched for; never raises.
+
+    The item gets the note ``background task <id> <outcome>`` in its claim
+    notes. When nothing else will run it again, it goes back to ``open`` for
+    its owner's inbox, which resumes it with the task's result to read
+    (#2215): an item still claimed or in progress by a holder that ended, or
+    blocked with no blocker, no reference and no person to wait for. An item
+    held by a live run (the spawning run still working), finished, waiting
+    on a person or on blockers, or a scheduled one-off keeps its status.
+    Returns ``"reopened"``, ``"noted"`` or ``None`` (no such item).
+    """
+    from app.core.database import async_session
+
+    item_uuid = safe_uuid(str(work_item_id or ""))
+    if item_uuid is None:
+        return None
+    now = datetime.now(UTC)
+    note = {"at": now.isoformat(), "text": f"background task {task_id} {outcome}"}
+    try:
+        async with async_session() as db:
+            item = (
+                await db.execute(select(WorkItem).where(WorkItem.id == item_uuid).with_for_update())
+            ).scalar_one_or_none()
+            if item is None:
+                return None
+            reopen = False
+            if item.action_mode is None and not item.needs_human:
+                if item.status in CLAIM_HELD_STATUSES:
+                    holder = item.claimed_by_run_id
+                    alive = _holder_alive_clause(holder)  # type: ignore[no-untyped-call]
+                    reopen = holder is None or not (await db.execute(select(alive))).scalar()
+                elif item.status == "blocked":
+                    reopen = not item.blocked_on and not item.blocked_on_refs
+            item.claim_notes = _with_note(item.claim_notes, note)
+            item.last_activity_at = now
+            if reopen:
+                item.status = "open"
+                item.claimed_by_agent_id = None
+                item.claimed_by_run_id = None
+                item.claimed_at = None
+            await db.commit()
+        return "reopened" if reopen else "noted"
+    except Exception as exc:  # best-effort: the event itself is published
+        logger.warning(
+            "Work item %s not woken by background task %s: %s", work_item_id, task_id, format_exception_message(exc)
+        )
+        return None
+
+
 # A holder that ended this way finished its turn: the claims it left are
 # released without a ``run.orphaned`` (which names a holder that ended
 # without finishing).

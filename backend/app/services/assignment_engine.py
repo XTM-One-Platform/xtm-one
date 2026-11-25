@@ -10996,7 +10996,7 @@ class _SlotUsage:
         return not self.held and not self.exclusive and self.active < cap
 
 
-def _resuming_run_clause():
+def _resuming_run_clause() -> Any:
     """A run handed back by its stopping worker, or resumed since (its trigger_context records it)."""
     from app.services.background_checkpoint import HANDED_BACK_KEY, RESUMES_KEY
 
@@ -11006,7 +11006,7 @@ def _resuming_run_clause():
     )
 
 
-def resume_holds_assignment(trigger_config: dict | None) -> bool:
+def resume_holds_assignment(trigger_config: dict[str, Any] | None) -> bool:
     """Whether a resuming run keeps the assignment to itself: its trigger sets no ``max_concurrent_runs``.
 
     A delivery (a ``platform.release.deployed`` event during the rollout that
