@@ -121,8 +121,8 @@ test.describe.serial('Organization profile: onboarding in chat', () => {
     expect(after.profile.onboarding_skipped).toContain('ticketing');
     expect(after.missing_fields).not.toContain('currency');
 
-    // The page reads the same state: the hourly rate is shown in the saved currency.
-    await page.goto('/settings/organization');
+    // The page reads the same state: the hourly rate is shown in the saved currency, on the Risk and response tab (#1975).
+    await page.goto('/settings/organization/profile/risk');
     await expect(page.getByTestId('settings.organization.read.loaded_hourly_rate')).toContainText('EUR', { timeout: 15_000 });
   });
 });
