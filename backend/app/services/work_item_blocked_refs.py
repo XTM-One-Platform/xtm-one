@@ -760,14 +760,14 @@ def _bound_pull_requests(payload: object) -> set[tuple[str, int]]:
     return {(str(b.get("repo") or "").lower(), int(b["number"])) for b in pull_request_bindings(payload)}
 
 
-def _foreign_pull_request_refs(refs: object, own: dict, payload: object = None) -> list[dict]:
+def _foreign_pull_request_refs(refs: object, own: dict[str, Any], payload: object = None) -> list[dict[str, Any]]:
     """The open references of *refs* naming another pull request of *own*'s repository. Pure.
 
     A pull request the item's own payload binds is never foreign: the payload is
     where the item says which pull request carries its change (#2242).
     """
     bound = _bound_pull_requests(payload)
-    out: list[dict] = []
+    out: list[dict[str, Any]] = []
     for ref in refs if isinstance(refs, list) else []:
         if not isinstance(ref, dict) or _satisfied(ref):
             continue
