@@ -67,6 +67,11 @@ RETEST_PREFIX = "openaev:detection-desk:retest:"
 REMEDIATION_PREFIX = "openaev:detection-desk:gap:"
 #: Work-item key prefix of the launch approvals the fleet files for a person (#1388).
 LAUNCH_PREFIX = "openaev:detection-desk:launch:"
+#: What every item of the desk carries in its payload, so a CTEM case delete cancels it (#2389).
+CASE_LINK_RULE = (
+    "Every item you file names in its payload the simulation it comes from as simulation_id and, when a "
+    "CTEM case launched or recorded that simulation, the case id as ctem_case_id."
+)
 
 #: Existing agents the fleet works with; connected, never members.
 SHARED_AGENTS: tuple[str, ...] = (
@@ -83,21 +88,10 @@ SHARED_AGENTS: tuple[str, ...] = (
 #: The verdicts of one expectation, from the strongest control to none.
 VERDICTS: tuple[str, ...] = ("blocked", "detected", "logged", "missed")
 #: The root causes the gap analyst can name.
-#: ``no_platform``: no security platform of the type the expectation is scoped to
-#: is registered, so the control cannot be measured here (#2378): a configuration
-#: gap of the tenant, grouped per platform type, never a per-host remediation.
-ROOT_CAUSES: tuple[str, ...] = (
-    "none",
-    "no_rule",
-    "no_log",
-    "broken_collector",
-    "matching_defect",
-    "no_platform",
-    "unknown",
-)
-#: The key prefix of the one configuration item per tenant and expected platform
-#: type a ``no_platform`` gap raises, followed by the platform type (e.g. SIEM).
-CONFIGURATION_PREFIX = "openaev:detection-desk:gap:no-platform-"
+ROOT_CAUSES: tuple[str, ...] = ("none", "no_rule", "no_log", "broken_collector", "matching_defect", "unknown")
+#: The agent statuses of a pair whose payload never ran on the asset (#2380): such a pair
+#: was not tested, so it is never a gap; it goes to ``not_executed`` and out of the coverage.
+NOT_EXECUTED_STATUSES: tuple[str, ...] = ("AGENT_INACTIVE", "TIMEOUT", "ERROR", "ASSET_AGENTLESS", "OTHER")
 
 _TARGETS = ["xtm_one", "dev"]
 
@@ -107,7 +101,10 @@ _GAP_SCHEMA: dict[str, Any] = {
         "simulation": {"type": "string", "description": "The OpenAEV simulation analysed (name and id)."},
         "gaps": {
             "type": "array",
-            "description": "One entry per inject and asset whose strongest control is not 'blocked'.",
+            "description": (
+                "One entry per inject and asset whose payload ran and whose strongest control is not "
+                "'blocked'. A pair whose payload never ran goes to not_executed, never here."
+            ),
             "items": {
                 "type": "object",
                 "properties": {
@@ -129,25 +126,30 @@ _GAP_SCHEMA: dict[str, Any] = {
                 "required": ["technique", "asset", "verdict", "missing", "root_cause", "evidence"],
             },
         },
+        "not_executed": {
+            "type": "array",
+            "description": "One entry per inject and asset whose payload never ran on the asset: not tested, no gap.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "technique": {"type": "string", "description": "The ATT&CK technique of the inject."},
+                    "asset": {"type": "string", "description": "The asset or asset group targeted."},
+                    "status": {"type": "string", "enum": list(NOT_EXECUTED_STATUSES)},
+                    "evidence": {"type": "string", "description": "What in OpenAEV shows the payload did not run."},
+                },
+                "required": ["technique", "asset", "status", "evidence"],
+            },
+        },
         "coverage": {
             "type": "object",
             "description": (
-                "Share of expectations met in this simulation, 0 to 100, over the expectations that "
-                "can be measured: no_platform expectations are left out of the denominator and "
-                "counted apart in 'unmeasurable'."
+                "Share of expectations met in this simulation, 0 to 100, over the pairs whose payload ran; "
+                "not_executed pairs are left out of the denominators."
             ),
             "properties": {
                 "prevention": {"type": "number"},
                 "detection": {"type": "number"},
                 "logging": {"type": "number"},
-                "unmeasurable": {
-                    "type": "object",
-                    "description": (
-                        "no_platform expectations per control (prevention, detection, logging): "
-                        "no registered security platform of the expected type."
-                    ),
-                    "additionalProperties": {"type": "integer"},
-                },
             },
         },
         "silent_collectors": {
@@ -157,7 +159,7 @@ _GAP_SCHEMA: dict[str, Any] = {
         },
         "missing_context": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["simulation", "gaps", "missing_context"],
+    "required": ["simulation", "gaps", "not_executed", "missing_context"],
 }
 
 _REPORT_SCHEMA: dict[str, Any] = {
@@ -265,7 +267,8 @@ DETECTION_DESK_AGENTS: list[dict[str, Any]] = [
         "name": "Coverage Gap Analyst",
         "description": (
             "Sorts the results of one OpenAEV simulation into blocked, detected, logged and missed, "
-            "and names the root cause of each gap: no rule, no log or a broken collector."
+            "names the root cause of each gap: no rule, no log or a broken collector, and lists apart "
+            "the pairs whose payload never ran."
         ),
         "icon": "ScanSearch",
         "output_schema": _GAP_SCHEMA,
@@ -324,14 +327,9 @@ DETECTION_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
             "Run one analysis of the detection desk loop: delegate the sorting of its results to the "
             "Coverage Gap Analyst, draft a detection rule for each gap whose root cause is a missing "
             f"rule, raise one remediation work item per gap (keyed {REMEDIATION_PREFIX}, owned by you, "
-            "needs_human with an ask card: a person makes the fix), except a no_platform gap. A "
-            "no_platform gap is a configuration gap, never a per-host remediation: group them into at "
-            "most one configuration item per expected platform type, keyed "
-            f"{CONFIGURATION_PREFIX} followed by the platform type (dedupe on that key, so a later "
-            "simulation adds to it), owned by you, needs_human with an ask card (register a security "
-            "platform of that type, or accept that the control is not measured). When the "
+            "needs_human with an ask card: a person makes the fix). When the "
             f"simulation is itself a re-test (a {RETEST_PREFIX} item names it), close each gap it "
-            "proves closed. Answer with the run JSON."
+            f"proves closed. {CASE_LINK_RULE} Answer with the run JSON."
         ),
     },
     {
@@ -390,9 +388,8 @@ DETECTION_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
             f"A launch ({LAUNCH_PREFIX}) approved: launch exactly the simulation the approval named, and "
             f"record it in shared state {STATE_KEY}; its results come back through Simulation finished. "
             f"A remediation ({REMEDIATION_PREFIX}) answered done: create the re-test work item keyed "
-            f"{RETEST_PREFIX} followed by the same ids, owned by you (none when one is already open). "
-            f"A configuration item ({CONFIGURATION_PREFIX}) answered: record the decision in {STATE_KEY}; "
-            "it files no re-test, the next simulation measures the control once the platform is registered. "
+            f"{RETEST_PREFIX} followed by the same ids, owned by you (none when one is already open), "
+            "with the payload links of the remediation item. "
             f"Rejected, declined or deferred: record the decision and the reason in {STATE_KEY}. "
             "Answer with the run JSON."
         ),
