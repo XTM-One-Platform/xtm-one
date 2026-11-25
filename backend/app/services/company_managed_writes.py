@@ -42,7 +42,9 @@ agent on every access, so a change applies to the rows it already governs; a
 row whose governor is gone (the foreign key sets it NULL) falls back to the base
 rule. It narrows agents only: an administrator on the REST API, a
 company-managed flow and the platform keep the base rule, and a person's REST
-reads are unchanged. It never widens: a personal agent can never be granted
+reads are unchanged. An agent whose turn or run acts for an administrator
+(``acting_admin``) reads past every narrowing (Sam, 25 Nov 2026, #2161); its
+writes stay narrowed. It never widens: a personal agent can never be granted
 write on a company-managed row.
 
 Every write function of ``services/shared_state.py`` and ``services/work_item.py``
@@ -93,6 +95,9 @@ class CompanyManagedWriter:
     # The acting flow when a flow's node writes: carried on the platform events
     # the write raises (``actor_flow_id``), so the flow never hears its own.
     flow_id: uuid.UUID | None = None
+    # The person the agent's turn or run acts for is an administrator: the
+    # agent reads past every governor's narrowing (writes stay narrowed).
+    acting_admin: bool = False
 
 
 def person_writer(*, is_admin: bool) -> CompanyManagedWriter:
@@ -101,15 +106,22 @@ def person_writer(*, is_admin: bool) -> CompanyManagedWriter:
 
 
 def agent_writer(
-    *, is_company_managed: bool, agent_id: str | uuid.UUID | None = None
+    *,
+    is_company_managed: bool,
+    agent_id: str | uuid.UUID | None = None,
+    acting_admin: bool = False,
 ) -> CompanyManagedWriter:
     """An agent's tools, dispatch or run: a company-managed agent writes them.
 
     *agent_id* is the acting agent, whose admission the governing agents'
-    ``coordination_access`` decides.
+    ``coordination_access`` decides; *acting_admin* (the person it acts for is
+    an administrator) lets it read past every narrowing.
     """
     return CompanyManagedWriter(
-        bool(is_company_managed), "company-managed agents", _as_uuid(agent_id)
+        bool(is_company_managed),
+        "company-managed agents",
+        _as_uuid(agent_id),
+        acting_admin=bool(acting_admin),
     )
 
 
@@ -344,6 +356,8 @@ def coordination_admits(
         return True
     if agent_id in {_as_uuid(p) for p in participants}:
         return True
+    if mode == READ and actor.acting_admin:
+        return True
     scope = access.scope(mode)
     if scope == SCOPE_ALL:
         return True
@@ -433,7 +447,8 @@ def restricted_governors(actor: CompanyManagedWriter, *, mode: str):
     halves (a listing adds the participant half itself): a scope of ``agents``
     admits *actor* only while it is company-managed and listed, anything other
     than ``all`` / ``agents`` reads as ``self``. The agent itself is never a
-    governor that keeps itself out.
+    governor that keeps itself out, and an agent acting for an administrator is
+    kept out of nothing it reads.
     """
     from sqlalchemy import Text, and_, cast, false, func, literal, not_, select
     from sqlalchemy.dialects.postgresql import ARRAY, JSONB
@@ -452,6 +467,8 @@ def restricted_governors(actor: CompanyManagedWriter, *, mode: str):
         )
         restricts = and_(restricts, not_(and_(scope == SCOPE_AGENTS, listed)))
     stmt = select(Agent.id).where(access.is_not(None), restricts)
+    if mode == READ and actor.acting_admin:
+        stmt = stmt.where(false())
     if actor.agent_id is not None:
         stmt = stmt.where(Agent.id != actor.agent_id)
     return stmt
