@@ -10177,6 +10177,17 @@ def _acting_identity(user_id: _uuid.UUID | None, agent: Agent | None) -> _uuid.U
     return user_id or (agent.user_id if agent else None)
 
 
+def _with_partner_scope(payload: dict | None) -> dict | None:
+    """*payload* with the partner-task scope recorded when a partner's task starts the run.
+
+    The assignment worker reopens it (``orchestration_adapters.assignment``), so
+    the run gets what the task's own turn gets (``a2a.partner_scope``)."""
+    from app.a2a.partner_scope import partner_task_payload
+
+    scope = partner_task_payload()
+    return {**(payload or {}), **scope} if scope else payload
+
+
 async def trigger_assignment(
     assignment: Assignment,
     agent: Agent,
@@ -10264,6 +10275,7 @@ async def trigger_assignment(
     """
     await _refuse_if_ai_disabled(assignment)
     await _refuse_if_group_ai_disabled(_run_person(assignment, triggered_by_user_id, agent))
+    payload = _with_partner_scope(payload)
 
     # Defense-in-depth: reject disabled assignments/agents early
     if not assignment.enabled:
@@ -11622,6 +11634,7 @@ async def _create_queued_run(
     run_visible_to_all = assignment.is_company_managed and not resolve_hide_runs(
         agent, assignment
     )
+    payload = _with_partner_scope(payload)
     run = AssignmentRun(
         assignment_id=assignment.id,
         agent_id=assignment.agent_id,
