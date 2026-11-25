@@ -434,10 +434,8 @@ def agent_keyed_session_additions(
 # Explicit OpenAEV mutation tools that do NOT share the ``manage_openaev_``
 # prefix (the run-scoped autonomous authoring/writing tools). The unified
 # ``manage_openaev_*`` tools are all mutation-capable (create/update/delete via
-# an ``action`` arg), so they are matched by prefix instead of being listed.
-# ``manage_openaev_finding`` is the exception: read-only since OpenAEV #9233
-# removed the finding writes (get and summary only).
-_OPENAEV_READ_ONLY_MANAGE_TOOLS = frozenset({"manage_openaev_finding"})
+# an ``action`` arg), so they are matched by prefix instead of being listed;
+# a definition that declares ``read_only`` is never a write, whatever its name.
 _OPENAEV_EXTRA_WRITE_TOOLS = frozenset(
     {
         "author_openaev_attack_path_step",
@@ -484,8 +482,9 @@ def is_openaev_write_tool(td_or_name) -> bool:
 
     Covers every unified ``manage_openaev_*`` tool (create/update/delete) plus
     the run-scoped autonomous authoring/writing tools. Read-only OpenAEV tools
-    (``search_openaev_*`` / ``read_openaev_*`` / ``get_openaev_*`` and the
-    read-only ``manage_openaev_finding``) are NOT matched, so a consulted specialist keeps its ability to look things up.
+    (``search_openaev_*`` / ``read_openaev_*`` / ``get_openaev_*``, and any
+    definition its provider declares ``read_only``) are NOT matched, so a
+    consulted specialist keeps its ability to look things up.
 
     Matched on the instance-BASE name (see :func:`_openaev_gate_bases`): with
     two OpenAEV platform integrations bound to one agent, multi-instance
@@ -493,10 +492,10 @@ def is_openaev_write_tool(td_or_name) -> bool:
     etc., and an exact-name match would let a suffixed run-scoped write slip
     past the advisory strip.
     """
+    if getattr(td_or_name, "read_only", False) is True:
+        return False
     return any(
-        (b.startswith("manage_openaev_") and b not in _OPENAEV_READ_ONLY_MANAGE_TOOLS)
-        or b in _OPENAEV_EXTRA_WRITE_TOOLS
-        for b in _openaev_gate_bases(td_or_name)
+        b.startswith("manage_openaev_") or b in _OPENAEV_EXTRA_WRITE_TOOLS for b in _openaev_gate_bases(td_or_name)
     )
 
 

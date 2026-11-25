@@ -173,6 +173,8 @@ def register(
                 "required": ["action", "finding_id"],
             },
             source=_SOURCE,
+            # OpenAEV #9233 removed the finding writes: no action of this tool changes anything.
+            read_only=True,
         ),
         ToolDefinition(
             name="manage_openaev_vulnerability",

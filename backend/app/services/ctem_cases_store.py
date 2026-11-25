@@ -314,6 +314,7 @@ async def remap_members(
     remap: dict[str, str | None],
     retired_line: str,
     actor: str = rules.SYSTEM_ACTOR,
+    events: PendingEvents | None = None,
     now: datetime | None = None,
 ) -> dict[str, int]:
     """Move the members a source re-keyed onto their new id, in place; answers the counts.
@@ -322,16 +323,19 @@ async def remap_members(
     member keeps its row (so the case keeps its history, owner, tickets, SLA and validations);
     when the case already holds the new id (a duplicate joined since), the two rows merge into
     one, open when either was. A retired member leaves the case with *retired_line* in its
-    history and counts neither open nor closed. Pinned issues follow their member.
+    history and counts neither open nor closed. Pinned issues follow their member. An open case
+    whose members were all retired resolves with *retired_line* as its evidence: no member is
+    left for a recompute to resolve it, so it would stay open with nothing to act on.
     """
     now = now or datetime.now(UTC)
-    counts = {"remapped": 0, "merged": 0, "retired": 0}
+    counts = {"remapped": 0, "merged": 0, "retired": 0, "resolved": 0}
     if not remap:
         return counts
     cases = await _scope_cases(db, organization_id, vertical)
     members = await _members(db, [c.id for c in cases])
     for case in cases:
         rows = {f"{r.source}:{r.external_id}": r for r in members.get(case.id, [])}
+        had_members = bool(rows)
         pinned = list(case.pinned_issues or [])
         for old, new in remap.items():
             row = rows.get(old)
@@ -369,6 +373,22 @@ async def remap_members(
             )
         if pinned != list(case.pinned_issues or []):
             case.pinned_issues = pinned
+        if had_members and not rows and case.state in OPEN_STATES:
+            db.add(
+                _event(
+                    case.id,
+                    rules.SYSTEM_ACTOR,
+                    "state",
+                    from_value=case.state,
+                    to_value="resolved",
+                    evidence=retired_line,
+                    at=now,
+                )
+            )
+            case.state = "resolved"
+            case.state_since = now
+            _state_event(case, events, now)
+            counts["resolved"] += 1
     await db.flush()
     return counts
 
