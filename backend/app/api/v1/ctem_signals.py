@@ -423,6 +423,8 @@ async def list_ctem_signal_supporting_assets(
     q: str = Query(default="", max_length=200),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=scope_gate.SUPPORTING_PAGE_MAX),
+    sort: Literal["asset", "through"] = Query(default="asset"),
+    direction: Literal["asc", "desc"] = Query(default="asc"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
@@ -431,7 +433,8 @@ async def list_ctem_signal_supporting_assets(
     The loop trace's primary asset card lists them with their real total, where
     the decision record keeps only the first chains. Same read rule as the
     signal itself: 404 for a signal the caller cannot read. *primary_asset* is
-    its name or key; *q* filters by asset or group name.
+    its name or key; *q* filters by asset or group name; *sort* and *direction*
+    order the whole list before the page is cut (UX r1 B3 on #1995).
     """
     _require_xtm_one()
     row = await signals.get_signal(
@@ -439,7 +442,9 @@ async def list_ctem_signal_supporting_assets(
     )
     if row is None:
         raise HTTPException(status_code=404, detail="No such signal")
-    return await scope_gate.supporting_assets(db, row, primary_asset, query=q, offset=offset, limit=limit)
+    return await scope_gate.supporting_assets(
+        db, row, primary_asset, query=q, offset=offset, limit=limit, sort=sort, direction=direction
+    )
 
 
 @router.get("/{signal_id}")

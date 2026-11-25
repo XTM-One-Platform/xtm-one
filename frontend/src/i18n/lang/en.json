@@ -21697,11 +21697,14 @@
   "Show all supporting assets": "Show all supporting assets",
   "Hide supporting assets": "Hide supporting assets",
   "{count, plural, one {supporting asset} other {supporting assets}}": "{count, plural, one {supporting asset} other {supporting assets}}",
-  "{count, plural, one {# direct link} other {# direct links}}": "{count, plural, one {# direct link} other {# direct links}}",
-  "{count, plural, one {# through an asset group} other {# through asset groups}}": "{count, plural, one {# through an asset group} other {# through asset groups}}",
   "Source finding": "Source finding",
   "Subject details": "Subject details",
   "Evidence coverage": "Evidence coverage",
   "Surface change": "Surface change",
-  "Inventory freshness": "Inventory freshness"
+  "Inventory freshness": "Inventory freshness",
+  "{count, plural, one {direct link} other {direct links}}": "{count, plural, one {direct link} other {direct links}}",
+  "{count, plural, one {through an asset group} other {through asset groups}}": "{count, plural, one {through an asset group} other {through asset groups}}",
+  "≥ {threshold}": "≥ {threshold}",
+  "< {threshold}": "< {threshold}",
+  "{total} {count, plural, one {asset} other {assets}}: {names}": "{total} {count, plural, one {asset} other {assets}}: {names}"
 }

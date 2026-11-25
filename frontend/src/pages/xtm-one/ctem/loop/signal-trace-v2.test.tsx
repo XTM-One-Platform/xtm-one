@@ -199,7 +199,9 @@ describe("loop trace v2 (#1979)", () => {
     expect(within(card).getByTestId("ctem-primary-asset-total")).toHaveTextContent("10K supporting assets");
     expect(within(card).getByTitle("10,000")).toBeTruthy();
     expect(card).toHaveTextContent("12 direct links");
-    expect(card).toHaveTextContent("9,988 through asset groups");
+    // UX r1 B2 on #1995: the via-group count is compact too, exact on hover.
+    expect(within(card).getByTestId("ctem-primary-asset-via-group")).toHaveTextContent("10K through asset groups");
+    expect(within(card).getByTitle("9,988")).toBeTruthy();
     // Five chains kept, the sixth counted, never silently cut.
     expect(within(within(card).getByTestId("ctem-primary-asset-chains")).getAllByRole("listitem")).toHaveLength(6);
     expect(card).toHaveTextContent("+1 more");
@@ -207,6 +209,34 @@ describe("loop trace v2 (#1979)", () => {
     const table = await within(card).findByTestId("ctem-primary-asset-supporting");
     expect(await within(table).findByText("LAPTOP-00000")).toBeTruthy();
     expect(get).toHaveBeenCalledWith(expect.stringContaining(`/ctem-signals/${ID}/primary-assets/employee%20workstations/supporting-assets?offset=0&limit=10`));
+  });
+
+  it("sends the sort of the supporting table to the server (UX r1 B3 on #1995)", async () => {
+    await renderTrace(signal);
+    const card = screen.getByTestId("ctem-primary-asset-card");
+    fireEvent.click(within(card).getByTestId("ctem-primary-asset-toggle"));
+    const table = await within(card).findByTestId("ctem-primary-asset-supporting");
+    await within(table).findByText("LAPTOP-00000");
+    fireEvent.click(within(table).getByRole("button", { name: /^Asset/ }));
+    await vi.waitFor(() => expect(get).toHaveBeenCalledWith(expect.stringContaining("sort=asset&direction=desc")));
+    fireEvent.click(within(table).getByRole("button", { name: /^Through/ }));
+    await vi.waitFor(() => expect(get).toHaveBeenCalledWith(expect.stringMatching(/sort=through&direction=(asc|desc)/)));
+  });
+
+  it("draws the criticality tile as the level, the threshold on its own line (UX r1 B1 on #1995)", async () => {
+    await renderTrace({ ...signal, decision: { ...signal.decision, scope: { ...signal.decision!.scope!, criticality: "critical" } } as CtemSignal["decision"] });
+    const tile = screen.getByTestId("ctem-loop-trace-figure-criticality");
+    expect(tile).toHaveTextContent("Critical");
+    expect(tile).toHaveTextContent("≥ High");
+    expect(tile).not.toHaveTextContent("at or above");
+  });
+
+  it("summarises a long matched asset list: the count, three names, the rest counted (UX r1 B5 on #1995)", async () => {
+    const names = Array.from({ length: 2500 }, (_, n) => `ws-${String(n).padStart(5, "0")}`);
+    await renderTrace({ ...signal, decision: { ...signal.decision, reconcile: { ...signal.decision!.reconcile!, assets: names } } as CtemSignal["decision"] });
+    const cell = screen.getByTestId("ctem-decision-input-matched_assets");
+    expect(cell).toHaveTextContent("2.5K assets: ws-00000, ws-00001, ws-00002, +2.5K more");
+    expect(cell.querySelector("[title]")).toBeNull();
   });
 
   it("keeps the next step, the stages and Open case", async () => {

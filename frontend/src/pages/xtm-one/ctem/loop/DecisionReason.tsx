@@ -10,10 +10,13 @@
  * its chip and says so, never an empty cell.
  */
 import { type HotTone, ToneBadge } from "@/components/ui/tone-badge";
+import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import type { CtemDecisionRecord, CtemSignalState } from "@/hooks/api/useCtemSignalsApi";
 import { useFormatter } from "@/i18n";
+import { formatCount } from "@/lib/number-format";
 import { formatDayIntl } from "@/lib/relative-time";
+import { cn } from "@/lib/utils";
 import { primaryAssetsRow, thresholdSource, thresholdWithSource } from "./decision-primary-assets";
 
 type Translate = (id: string, values?: Record<string, string | number>) => string;
@@ -188,7 +191,14 @@ export function nextStepSentence(
 }
 
 /** One input of the trace: a value on one line, or several lines drawn whole (the primary asset chains). */
-export type DecisionInput = { key: string; label: string; value: string; lines?: string[] };
+export type DecisionInput = {
+  key: string;
+  label: string;
+  value: string;
+  lines?: string[];
+  /** A long list (the matched assets): the count and the first names drawn, every name in the tooltip. */
+  names?: string[];
+};
 
 /** The inputs the gate read, labelled, in the order the rule reads them; empty values are left out. */
 export function decisionInputs(decision: CtemDecisionRecord | null | undefined, t_i18n: Translate): DecisionInput[] {
@@ -208,12 +218,13 @@ export function decisionInputs(decision: CtemDecisionRecord | null | undefined, 
   // Asset matched or not (#874): a decided record says "None matched", never an empty row.
   // CTEM-29-UI: a leaked identity resolves through the owned domain it is on, not an asset.
   const domains = list((scope?.sources ?? []).filter((s) => s.from === "owned_domain").map((s) => s.name));
-  const matched = list(reconcile.assets) || (decision.reconcile && !domains ? t_i18n("None matched") : "");
+  const assetNames = Array.isArray(reconcile.assets) ? reconcile.assets.filter(Boolean).map(String) : [];
+  const matched = list(assetNames) || (decision.reconcile && !domains ? t_i18n("None matched") : "");
   const reached = primaryAssetsRow(decision, t_i18n);
   const rows: DecisionInput[] = [
     { key: "lenses", label: t_i18n("Lenses"), value: lenses },
     { key: "confidence", label: t_i18n("Confidence"), value: level(reconcile.confidence) },
-    { key: "matched_assets", label: t_i18n("Matched assets"), value: matched },
+    { key: "matched_assets", label: t_i18n("Matched assets"), value: matched, names: assetNames.length > 0 ? assetNames : undefined },
     // UX r1 B3 on #1796: the names the record matched, next to the primary assets reached below.
     { key: "primary_assets_named", label: t_i18n("Primary assets named"), value: list(reconcile.primary_assets_named) },
     { key: "software", label: t_i18n("Software"), value: list(reconcile.tech_stack) },
@@ -231,6 +242,26 @@ export function decisionInputs(decision: CtemDecisionRecord | null | undefined, 
   ];
   return rows.filter((row) => row.value);
 }
+
+/**
+ * The hero tile of the criticality (UX r1 B1 on #1995): the level alone as the value,
+ * "≥ High" or "< High" (the threshold) as its caption, so the tile never repeats the sentence.
+ */
+export function criticalityFigure(
+  scope: CtemDecisionRecord["scope"],
+  t_i18n: Translate,
+): { value: string; caption?: string } | null {
+  if (!scope || (!scope.criticality && !scope.threshold)) return null;
+  const threshold = scope.threshold ? String(levelLabel(scope.threshold, t_i18n)) : "";
+  const value = scope.criticality ? String(levelLabel(scope.criticality, t_i18n)) : t_i18n("Unknown");
+  if (!threshold) return { value };
+  const rank = (level: string | null | undefined) => ["low", "medium", "high", "critical"].indexOf(String(level));
+  const above = Boolean(scope.criticality) && rank(scope.criticality) >= rank(scope.threshold);
+  return { value, caption: above ? t_i18n("≥ {threshold}", { threshold }) : t_i18n("< {threshold}", { threshold }) };
+}
+
+/** How many names a list input shows before "+N" (UX r1 B5 on #1995). */
+export const LIST_INPUT_NAMES = 3;
 
 /** The criticality found, against the threshold X of the scope gate (#874). */
 export function criticalityAgainstThreshold(scope: CtemDecisionRecord["scope"], t_i18n: Translate): string {
@@ -250,8 +281,20 @@ export function criticalityAgainstThreshold(scope: CtemDecisionRecord["scope"], 
  * (#1979) draws it in its scope section and leaves out the rows it draws elsewhere
  * (`omit`: the policy checks as the funnel, the primary assets reached as cards).
  */
+/** "2.5K assets: pay-api-01, vpn-gw-01, vpn-gw-lyon, +2.5K": the count compact, the first names, the rest counted. */
+export function listSummary(names: readonly string[], locale: string, t_i18n: Translate): string {
+  const shown = names.slice(0, LIST_INPUT_NAMES).join(", ");
+  const rest = names.length - LIST_INPUT_NAMES;
+  const head = t_i18n("{total} {count, plural, one {asset} other {assets}}: {names}", {
+    total: formatCount(locale, names.length),
+    count: names.length,
+    names: shown,
+  });
+  return rest > 0 ? `${head}, ${t_i18n("+{count} more", { count: formatCount(locale, rest) })}` : head;
+}
+
 export function DecisionInputs({ decision, omit = [] }: { decision: CtemDecisionRecord | null | undefined; omit?: readonly string[] }) {
-  const { t_i18n } = useFormatter();
+  const { t_i18n, intl } = useFormatter();
   const inputs = decisionInputs(decision, t_i18n).filter((input) => !omit.includes(input.key));
   if (inputs.length === 0) return null;
   return (
@@ -268,9 +311,18 @@ export function DecisionInputs({ decision, omit = [] }: { decision: CtemDecision
                 ))}
               </ul>
             </dd>
+          ) : input.names && input.names.length > LIST_INPUT_NAMES ? (
+            // UX r1 B5 on #1995: the count and the first names, every name in the design-system tooltip.
+            <dd className="min-w-0" data-testid={`ctem-decision-input-${input.key}`}>
+              <Tip content={input.value}>
+                <span className={cn("block truncate", TIP_WRAP_FOCUS_RING)} tabIndex={0}>
+                  {listSummary(input.names, intl.locale, t_i18n)}
+                </span>
+              </Tip>
+            </dd>
           ) : (
-            <dd className="min-w-0 truncate" title={input.value}>
-              {input.value}
+            <dd className="min-w-0">
+              <TruncatedText text={input.value} />
             </dd>
           )}
         </div>

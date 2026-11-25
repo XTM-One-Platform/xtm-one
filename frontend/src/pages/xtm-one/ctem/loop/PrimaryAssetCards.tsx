@@ -16,23 +16,57 @@ import { Button } from "@/components/ui/button";
 import { CompactFigure } from "@/components/ui/compact-figure";
 import { exactCount, formatCount } from "@/lib/number-format";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
-import { useCtemSupportingAssets, type CtemDecisionRecord, type CtemSupportingAsset } from "@/hooks/api/useCtemSignalsApi";
+import {
+  useCtemSupportingAssets,
+  type CtemDecisionRecord,
+  type CtemSupportingAsset,
+  type CtemSupportingAssetSort,
+} from "@/hooks/api/useCtemSignalsApi";
 import { useFormatter } from "@/i18n";
 import { levelLabel } from "./DecisionReason";
 import { CHAINS_PER_PRIMARY_ASSET, chainText, linkRoleLabel, primaryAssetsReached, type PrimaryAssetReached } from "./decision-primary-assets";
 
 const SUPPORTING_PAGE_SIZE = 10;
 
+/** The columns the endpoint sorts (UX r1 B3 on #1995): the sort goes to the server, which orders every row before the page. */
+const SERVER_SORTS = new Set<CtemSupportingAssetSort>(["asset", "through"]);
+
+/** A count drawn compact ("10K"), exact on hover, then its words (UX r1 B2 on #1995). */
+function CountLabel({ count, words, testId }: { count: number; words: string; testId?: string }) {
+  const { intl } = useFormatter();
+  return (
+    <span data-testid={testId}>
+      <CompactFigure className="text-default-primary" exact={exactCount(intl.locale, count)}>
+        {formatCount(intl.locale, count)}
+      </CompactFigure>{" "}
+      {words}
+    </span>
+  );
+}
+
 function SupportingAssetsTable({ signalId, primary }: { signalId: string; primary: PrimaryAssetReached }) {
   const { t_i18n } = useFormatter();
-  const [page, setPage] = useState({ index: 0, size: SUPPORTING_PAGE_SIZE, search: "" });
-  const query = useCtemSupportingAssets(signalId, primary.key, { search: page.search, offset: page.index * page.size, limit: page.size });
+  const [page, setPage] = useState<{ index: number; size: number; search: string; sort: CtemSupportingAssetSort; direction: "asc" | "desc" }>({
+    index: 0,
+    size: SUPPORTING_PAGE_SIZE,
+    search: "",
+    sort: "asset",
+    direction: "asc",
+  });
+  const query = useCtemSupportingAssets(signalId, primary.key, {
+    search: page.search,
+    offset: page.index * page.size,
+    limit: page.size,
+    sort: page.sort,
+    direction: page.direction,
+  });
   const columns: DataTableColumn<CtemSupportingAsset>[] = [
     { key: "asset", header: t_i18n("Asset"), cell: (row) => row.asset, sortValue: (row) => row.asset },
     {
       key: "through",
       header: t_i18n("Through"),
       cell: (row) => (row.through_kind === "asset_group" ? t_i18n("group {group}", { group: row.through }) : t_i18n("Direct link")),
+      sortValue: (row) => row.through,
     },
     { key: "software", header: t_i18n("Software"), cell: (row) => row.software || "--", hideable: true },
     { key: "roles", header: t_i18n("Roles"), hideable: true, cell: (row) => row.roles.map((role) => linkRoleLabel(role, t_i18n)).join(", ") || "--" },
@@ -44,8 +78,14 @@ function SupportingAssetsTable({ signalId, primary }: { signalId: string; primar
         columns={columns}
         rowKey={(row) => `${row.asset}|${row.through}`}
         server={{ total: query.data?.total ?? 0 }}
-        onStateChange={(state) => setPage({ index: state.page, size: state.pageSize, search: state.search })}
+        onStateChange={(state) => {
+          const key = state.sort?.key;
+          const sort = key && SERVER_SORTS.has(key as CtemSupportingAssetSort) ? (key as CtemSupportingAssetSort) : "asset";
+          setPage({ index: state.page, size: state.pageSize, search: state.search, sort, direction: state.sort?.direction ?? "asc" });
+        }}
         defaultPageSize={SUPPORTING_PAGE_SIZE}
+        // The order the server answers in when no sort is sent, so the header names it.
+        defaultSort={{ key: "asset", direction: "asc" }}
         searchPlaceholder={t_i18n("Search supporting assets")}
         noFilters="One primary asset's supporting assets for one signal, searched and paged on the server."
         isLoading={query.isLoading}
@@ -83,8 +123,16 @@ function PrimaryAssetCard({ signalId, primary }: { signalId: string; primary: Pr
             {t_i18n("{count, plural, one {supporting asset} other {supporting assets}}", { count: total })}
           </span>
         )}
-        {primary.direct !== null && <span>{t_i18n("{count, plural, one {# direct link} other {# direct links}}", { count: primary.direct })}</span>}
-        {primary.viaGroup !== null && <span>{t_i18n("{count, plural, one {# through an asset group} other {# through asset groups}}", { count: primary.viaGroup })}</span>}
+        {primary.direct !== null && (
+          <CountLabel count={primary.direct} words={t_i18n("{count, plural, one {direct link} other {direct links}}", { count: primary.direct })} testId="ctem-primary-asset-direct" />
+        )}
+        {primary.viaGroup !== null && (
+          <CountLabel
+            count={primary.viaGroup}
+            words={t_i18n("{count, plural, one {through an asset group} other {through asset groups}}", { count: primary.viaGroup })}
+            testId="ctem-primary-asset-via-group"
+          />
+        )}
         {roles.length > 0 && <span>{t_i18n("Roles")}: {roles.join(", ")}</span>}
       </div>
       <ul className="flex flex-col content-caption break-words" data-testid="ctem-primary-asset-chains">

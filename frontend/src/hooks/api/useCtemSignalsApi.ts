@@ -291,22 +291,34 @@ export interface CtemSupportingAssetPage {
   total: number;
   offset: number;
   limit: number;
+  /** The order the server applied before cutting the page. */
+  sort?: "asset" | "through";
+  direction?: "asc" | "desc";
   /** The inventory read was cut at its bounds: the total is a floor. */
   truncated: boolean;
   assets: CtemSupportingAsset[];
 }
 
-/** One page of the supporting assets of one primary asset a signal reaches, searched by name (#1979). */
+/** The columns the supporting-assets endpoint orders by (UX r1 B3 on #1995). */
+export type CtemSupportingAssetSort = "asset" | "through";
+
+/** One page of the supporting assets of one primary asset a signal reaches, searched by name and sorted on the server (#1979). */
 export function useCtemSupportingAssets(
   signalId: string,
   primaryAsset: string,
-  page: { search: string; offset: number; limit: number },
+  page: { search: string; offset: number; limit: number; sort?: CtemSupportingAssetSort; direction?: "asc" | "desc" },
   enabled = true,
 ) {
   const params = new URLSearchParams({ offset: String(page.offset), limit: String(page.limit) });
   if (page.search) params.set("q", page.search);
+  const sort = page.sort ?? "asset";
+  const direction = page.direction ?? "asc";
+  if (sort !== "asset" || direction !== "asc") {
+    params.set("sort", sort);
+    params.set("direction", direction);
+  }
   return useQuery<CtemSupportingAssetPage>({
-    queryKey: ["ctem-signals", "supporting-assets", signalId, primaryAsset, page.search, page.offset, page.limit],
+    queryKey: ["ctem-signals", "supporting-assets", signalId, primaryAsset, page.search, page.offset, page.limit, sort, direction],
     queryFn: () =>
       api.get(`/ctem-signals/${encodeURIComponent(signalId)}/primary-assets/${encodeURIComponent(primaryAsset)}/supporting-assets?${params}`),
     enabled: enabled && Boolean(signalId && primaryAsset),

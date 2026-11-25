@@ -26,7 +26,8 @@ import { isNotFoundError } from "@/lib/api";
 import { formatDayIntl, formatShortDateTimeIntl } from "@/lib/relative-time";
 import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
 import { cn, safeExternalUrl } from "@/lib/utils";
-import { criticalityAgainstThreshold, DecisionInputs, DecisionReason, decisionSentence, levelLabel, nextStepSentence } from "./DecisionReason";
+import { TruncatedText } from "@/components/ui/truncated-text";
+import { criticalityFigure, DecisionInputs, DecisionReason, decisionSentence, levelLabel, nextStepSentence } from "./DecisionReason";
 import { PolicyFunnel } from "./PolicyFunnel";
 import { PrimaryAssetCards } from "./PrimaryAssetCards";
 import { EVIDENCE_HEALTH_ROW_KEYS, EVIDENCE_STATE_LABEL, evidenceHealthFacts, type EvidenceHealthFact } from "./evidence-health";
@@ -694,12 +695,17 @@ export function signalCaseLink(caseId: string | null | undefined, currentCaseId?
   return caseDetailPath(caseId);
 }
 
-/** One key figure of the hero: a label and a large value (CVSS, EPSS, criticality vs threshold, confidence, seen). */
-function KeyFigure({ label, value, testId }: { label: string; value: string; testId: string }) {
+/**
+ * One key figure of the hero: a label, a large value and an optional caption line (CVSS,
+ * EPSS, criticality with its threshold under it, confidence, seen). A value too long for
+ * its tile is cut and named whole by the design-system tooltip (UX r1 B1 on #1995).
+ */
+function KeyFigure({ label, value, caption, testId }: { label: string; value: string; caption?: string; testId: string }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5 rounded-sm border border-elevation-subtle layer-1 bg-elevation-default px-3 py-2" data-testid={testId}>
       <span className="content-caption text-default-secondary">{label}</span>
-      <span className="title-xs truncate tabular-nums">{value}</span>
+      <TruncatedText text={value} className="title-xs tabular-nums" />
+      {caption && <TruncatedText text={caption} className="content-caption text-default-secondary" />}
     </div>
   );
 }
@@ -708,12 +714,13 @@ function KeyFigure({ label, value, testId }: { label: string; value: string; tes
 function keyFigures(signal: CtemSignal, t_i18n: ReturnType<typeof useFormatter>["t_i18n"]) {
   const evidence = signal.evidence ?? {};
   const decision = signal.decision;
-  const out: { id: string; label: string; value: string }[] = [];
+  const out: { id: string; label: string; value: string; caption?: string }[] = [];
   const score = (key: string) => (typeof evidence[key] === "number" || typeof evidence[key] === "string" ? String(evidence[key]) : "");
   if (score("cvss")) out.push({ id: "cvss", label: t_i18n("CVSS"), value: score("cvss") });
   if (score("epss")) out.push({ id: "epss", label: t_i18n("EPSS"), value: score("epss") });
-  const criticality = criticalityAgainstThreshold(decision?.scope ?? null, t_i18n);
-  if (criticality) out.push({ id: "criticality", label: t_i18n("Criticality"), value: criticality });
+  // UX r1 B1 on #1995: the level alone on the tile, the threshold on its own caption line.
+  const criticality = criticalityFigure(decision?.scope ?? null, t_i18n);
+  if (criticality) out.push({ id: "criticality", label: t_i18n("Criticality"), ...criticality });
   const confidence = decision?.reconcile?.confidence;
   if (confidence) out.push({ id: "confidence", label: t_i18n("Confidence"), value: String(levelLabel(confidence, t_i18n)) });
   out.push({ id: "seen", label: t_i18n("Seen"), value: t_i18n("{count, plural, one {# time} other {# times}}", { count: signal.seen_count }) });
@@ -802,7 +809,7 @@ function SignalTrace({ signal, currentCaseId }: { signal: CtemSignal; currentCas
         <DecisionReason state={signal.state} decision={signal.decision} showNextStep={false} />
         <div className="grid min-w-0 grid-cols-2 gap-2 @[40rem]:grid-cols-5" data-testid="ctem-loop-trace-figures">
           {figures.map((figure) => (
-            <KeyFigure key={figure.id} label={figure.label} value={figure.value} testId={`ctem-loop-trace-figure-${figure.id}`} />
+            <KeyFigure key={figure.id} label={figure.label} value={figure.value} caption={figure.caption} testId={`ctem-loop-trace-figure-${figure.id}`} />
           ))}
         </div>
         <SignalFacts signal={signal} />

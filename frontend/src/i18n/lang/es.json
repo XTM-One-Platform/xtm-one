@@ -21697,11 +21697,14 @@
   "Show all supporting assets": "Mostrar todos los activos de soporte",
   "Hide supporting assets": "Ocultar los activos de soporte",
   "{count, plural, one {supporting asset} other {supporting assets}}": "{count, plural, one {activo de soporte} other {activos de soporte}}",
-  "{count, plural, one {# direct link} other {# direct links}}": "{count, plural, one {# vínculo directo} other {# vínculos directos}}",
-  "{count, plural, one {# through an asset group} other {# through asset groups}}": "{count, plural, one {# a través de un grupo de activos} other {# a través de grupos de activos}}",
   "Source finding": "Hallazgo de la fuente",
   "Subject details": "Detalles del sujeto",
   "Evidence coverage": "Cobertura de evidencias",
   "Surface change": "Cambio de superficie",
-  "Inventory freshness": "Actualidad del inventario"
+  "Inventory freshness": "Actualidad del inventario",
+  "{count, plural, one {direct link} other {direct links}}": "{count, plural, one {vínculo directo} other {vínculos directos}}",
+  "{count, plural, one {through an asset group} other {through asset groups}}": "{count, plural, one {a través de un grupo de activos} other {a través de grupos de activos}}",
+  "≥ {threshold}": "≥ {threshold}",
+  "< {threshold}": "< {threshold}",
+  "{total} {count, plural, one {asset} other {assets}}: {names}": "{total} {count, plural, one {activo} other {activos}}: {names}"
 }
