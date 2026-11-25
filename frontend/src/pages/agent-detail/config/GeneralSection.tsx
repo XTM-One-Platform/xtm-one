@@ -1524,7 +1524,10 @@ export function GeneralSection({
             )}
             {/* Sharing — visible to any user who can manage. Rendered for
                 company-managed agents too: there the picker names the
-                audience an access restriction narrows the agent down to. */}
+                audience an access restriction narrows the agent down to.
+                Read-only where the viewer cannot manage the agent (a
+                built-in in XTM One mode, administrators included): the
+                server answers 403 to the write (#2203). */}
             <PrincipalSharingCard
               sharedGroupIds={sharedGroupIds}
               onChange={onSaveSharedGroups}
@@ -1533,7 +1536,7 @@ export function GeneralSection({
               userSharing={userSharing}
               entityType="agent"
               isCompanyManaged={companyManaged}
-              disabled={isPending}
+              disabled={isPending || !canManage}
             />
             {!companyManaged && (
               <PersonalIntegrationsBanner
