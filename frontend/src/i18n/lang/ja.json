@@ -21828,5 +21828,10 @@
   "Waits for the remediation to be applied": "修復の適用待ち",
   "Waits for the validation to finish": "検証の完了待ち",
   "Watches whether the exposure comes back": "露出の再発を監視中",
-  "Last run by {agent}, {when}": "{agent} による最終実行、{when}"
+  "Last run by {agent}, {when}": "{agent} による最終実行、{when}",
+  "Defender XDR alert raised": "Defender XDR アラートの発生",
+  "Defender XDR alert evidence": "Defender XDR アラートの証拠",
+  "Carries alert_id, title, severity, category, service_source, detection_source and the attack techniques. Real time through the Defender XDR Streaming API to your Azure Event Hub. Each alert runs once.": "alert_id、title、severity、category、service_source、detection_source、攻撃手法を含みます。Defender XDR Streaming API からお使いの Azure Event Hub を経由してリアルタイムに届きます。各アラートは一度だけ実行されます。",
+  "Carries alert_id, the entity type, its evidence role and the entity fields (device, file, IP, URL, account). Real time through the Defender XDR Streaming API to your Azure Event Hub. Each row runs once.": "alert_id、エンティティの種類、証拠としての役割、エンティティのフィールド（デバイス、ファイル、IP、URL、アカウント）を含みます。Defender XDR Streaming API からお使いの Azure Event Hub を経由してリアルタイムに届きます。各行は一度だけ実行されます。",
+  "Read in real time from an event stream the platform consumes.": "プラットフォームが受信するイベントストリームからリアルタイムに読み取ります。"
 }
