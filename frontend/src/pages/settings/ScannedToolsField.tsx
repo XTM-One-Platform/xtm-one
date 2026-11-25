@@ -52,7 +52,7 @@ function EntryPill({ described, onRemove }: { described: DescribedEntry; onRemov
       data-entry={described.entry}
       data-stale={described.stale || undefined}
       className={cn(
-        "flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-0.5 content-compact",
+        "flex max-w-full items-center gap-1.5 rounded-sm border px-2 py-0.5 content-compact",
         described.stale ? "border-feedback-alert-primary/40 bg-feedback-alert-primary/10" : "border-elevation-subtle-soft bg-elevation-hover",
       )}
     >

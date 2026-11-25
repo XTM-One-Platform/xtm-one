@@ -125,7 +125,7 @@ function WizardNodeCard({ data }: NodeProps<Node<WizardNodeData>>) {
       )}
     >
       {data.highlighted && data.assisting && (
-        <span className="absolute -top-2.5 right-3 flex items-center gap-1 rounded-full bg-accent px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-negative-primary shadow">
+        <span className="absolute -top-2.5 right-3 flex items-center gap-1 rounded-sm border border-transparent bg-accent px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-negative-primary shadow">
           <Sparkles className="h-2.5 w-2.5 animate-pulse" /> {t_i18n("AI")}
         </span>
       )}

@@ -220,7 +220,7 @@ function Orb({ data, score, gaps, validations, mode, onExplain }: { data: Widget
       </div>
       <Tip content={t_i18n("Exposure score {score} / 100 - click to understand how it is computed", { score: Math.round(score) })}>
         <span
-          className="inline-flex h-[22px] cursor-pointer items-center gap-1.5 rounded-full border px-2 transition-colors"
+          className="inline-flex h-[22px] cursor-pointer items-center gap-1.5 rounded-sm border px-2 transition-colors"
           style={{ borderColor: tint(color, 30), background: tint(color, 10) }}
           onMouseEnter={(event) => (event.currentTarget.style.background = tint(color, 20))}
           onMouseLeave={(event) => (event.currentTarget.style.background = tint(color, 10))}

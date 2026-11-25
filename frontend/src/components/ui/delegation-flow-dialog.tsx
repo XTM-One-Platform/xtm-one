@@ -138,7 +138,7 @@ export function DelegationFlowDialog({
 
                     {/* Arrow with type */}
                     <div className="flex items-center gap-1.5 px-2">
-                      <div className={cn("flex items-center gap-1 rounded-full px-2 py-0.5", cfg.bg)}>
+                      <div className={cn("flex items-center gap-1 rounded-sm px-2 py-0.5", cfg.bg)}>
                         <TypeIcon className={cn("h-2.5 w-2.5", cfg.color)} />
                         <span className={cn("text-[9px] font-medium", cfg.color)}>{t_i18n(cfg.label)}</span>
                       </div>
