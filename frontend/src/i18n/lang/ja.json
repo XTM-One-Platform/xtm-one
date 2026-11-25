@@ -21680,7 +21680,7 @@
   "Organization profile tabs": "組織プロファイルのタブ",
   "Unsaved": "未保存",
   "{count, plural, one {# field not filled} other {# fields not filled}}": "{count, plural, other {未入力の項目 # 件}}",
-  "{count, plural, one {# field not filled on this tab, reported by every agent that needs it} other {# fields not filled on this tab, reported by every agent that needs them}}": "{count, plural, other {このタブの未入力の項目 # 件（必要とするすべてのエージェントが報告）}}",
+  "{count, plural, one {# field not filled on this tab, reported by every agent that needs it.} other {# fields not filled on this tab, reported by every agent that needs them.}}": "{count, plural, other {このタブの未入力の項目 # 件（必要とするすべてのエージェントが報告）。}}",
   "Every field of this tab is filled.": "このタブの項目はすべて入力済みです。",
   "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}": "{count, plural, other {{tab} にさらに # 件。}}"
 }
