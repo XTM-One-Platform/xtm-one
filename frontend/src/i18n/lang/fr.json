@@ -21681,5 +21681,7 @@
   "The primary assets of the inventory this PIR protects.": "Les actifs principaux de l'inventaire que ce PIR protège.",
   "Example: Payment platform, picked from the primary assets of the inventory. Agents read them with the PIR in the organization context. Left empty, the PIR names no primary asset.": "Exemple : Plateforme de paiement, choisie parmi les actifs principaux de l'inventaire. Les agents les lisent avec le PIR dans le contexte de l'organisation. Laissé vide, le PIR ne nomme aucun actif principal.",
   "{set} of {total} set": "{set} sur {total} renseignés",
-  "Details of {name}, {count}": "Détails de {name}, {count}"
+  "Details of {name}, {count}": "Détails de {name}, {count}",
+  "To validate": "À valider",
+  "Running version not verified: validate it before acting on the case.": "Version en service non vérifiée : validez-la avant d'agir sur le cas."
 }

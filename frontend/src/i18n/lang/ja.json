@@ -21681,5 +21681,7 @@
   "The primary assets of the inventory this PIR protects.": "このPIRが保護するインベントリの主要資産。",
   "Example: Payment platform, picked from the primary assets of the inventory. Agents read them with the PIR in the organization context. Left empty, the PIR names no primary asset.": "例: 決済プラットフォーム（インベントリの主要資産から選択）。エージェントは組織コンテキストでPIRとともにこれを読み取ります。空欄の場合、PIRは主要資産を指定しません。",
   "{set} of {total} set": "{total}件中{set}件設定済み",
-  "Details of {name}, {count}": "{name}の詳細、{count}"
+  "Details of {name}, {count}": "{name}の詳細、{count}",
+  "To validate": "要検証",
+  "Running version not verified: validate it before acting on the case.": "稼働中のバージョンは未検証です。ケースに対応する前に検証してください。"
 }
