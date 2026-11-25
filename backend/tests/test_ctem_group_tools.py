@@ -102,12 +102,16 @@ class _Db:
     def __init__(self, user: Any) -> None:
         self.user = user
         self.commits = 0
+        self.rollbacks = 0
 
     async def get(self, _model: Any, _key: Any) -> Any:
         return self.user
 
     async def commit(self) -> None:
         self.commits += 1
+
+    async def rollback(self) -> None:
+        self.rollbacks += 1
 
     async def __aenter__(self) -> _Db:
         return self
@@ -135,6 +139,10 @@ def world(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
 
     async def _triage(_db: Any, rows: list[Any], **kw: Any) -> dict[str, int]:
         state.triaged.append((len(rows), kw))
+        if kw.get("outcomes") is not None:
+            kw["outcomes"].extend(
+                {"id": str(r.id), "before": "pending", "after": "discarded", "outcome": "changed"} for r in rows
+            )
         return {"changed": len(rows), "skipped": 0}
 
     monkeypatch.setattr(database, "async_session", lambda: state.db)
@@ -190,6 +198,17 @@ async def test_triage_keeps_an_administrator_under_strict_agent_access_to_their_
     answer = json.loads(await _call(str(person), action="dismiss", state="pending"))
     assert answer["matched"] == 1
     assert world.selected[0]["recorded_by"] == str(person)
+
+
+async def test_triage_dry_run_answers_each_signal_and_writes_nothing(world: SimpleNamespace) -> None:
+    # #2341: the same selection and decisions, the per-signal outcome, then a rollback.
+    person = uuid.uuid4()
+    world.db = _Db(SimpleNamespace(id=person, is_admin=False, name="Decider"))
+    world.level = "decide"
+    answer = json.loads(await _call(str(person), action="dismiss", state="pending", dry_run=True))
+    assert answer["dry_run"] is True and answer["matched"] == 1
+    assert answer["signals"][0]["before"] == "pending" and answer["signals"][0]["outcome"] == "changed"
+    assert world.db.commits == 0 and world.db.rollbacks == 1
 
 
 async def test_triage_checks_its_arguments_before_any_read(world: SimpleNamespace) -> None:

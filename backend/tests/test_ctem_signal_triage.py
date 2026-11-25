@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -111,6 +112,20 @@ async def test_dismiss_records_who_and_keeps_the_reconcile(fake_io):
     assert row.decision["reason_params"] == {"by": "Ana"}
     assert row.decision["dismissed"]["previous_state"] == "to_validate"
     assert row.decision["reconcile"] == {"keys": ["h0.example.com"]}
+
+
+async def test_triage_outcomes_name_each_signal_before_and_after(fake_io: object) -> None:
+    # #2341: the dry run reads these before it rolls back.
+    fresh, dismissed_row = _row(ref="a.example.com"), _row(ref="b.example.com")
+    db: Any = None
+    await store.triage(db, [dismissed_row], action="dismiss", actor="Ana", evaluator_id=None, now=NOW)
+    outcomes: list[dict[str, Any]] = []
+    await store.triage(
+        db, [fresh, dismissed_row], action="dismiss", actor="Ana", evaluator_id=None, now=NOW, outcomes=outcomes
+    )
+    assert [o["outcome"] for o in outcomes] == ["changed", "skipped"]
+    assert outcomes[0] == {"id": str(fresh.id), "before": "to_validate", "after": "discarded", "outcome": "changed"}
+    assert outcomes[1]["before"] == outcomes[1]["after"] == "discarded"
 
 
 async def test_a_dismissed_signal_stays_dismissed_until_restored(fake_io):
